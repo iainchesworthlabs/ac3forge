@@ -12,1102 +12,496 @@ See [docs/releasing.md](docs/releasing.md) for how releases and version numbers 
 
 ## [Unreleased]
 
-The bare-metal arithmetic-tier work gains a fixed-point decode scalar and an ESP32-C3
-target, and a sequence of profiling passes brings E-AC-3 decode and encode to real time on
-the ESP32-S3. The Windows desktop demo introduced this cycle is renamed to AC3Forge
-Crucible, gains a Linux/PipeWire backend verified against an Atmos receiver, keyboard and
-screen-reader access, and per-platform packaging with third-party notices. The
-gold-reference quality gate moves to a per-channel SNR floor, and the ~6.02 dB
-cross-platform decode split is traced to a last-bit arithmetic difference rather than a
-codec defect. AC-4 gains container carriage, the WASM encode demo picks up wide layouts and
-live microphone capture, and the Rust bindings cover the whole codec surface. Fixed issues
-span an AC-4 parser null-pointer and unbounded-allocation pair, an E-AC-3 legacy-core
-programme-selection bug, Crucible's startup and tap lifecycle on Linux and macOS, and
-release packaging.
+The bare-metal profile gains a fixed-point decode tier and an ESP32-C3 target, and a
+sequence of profiling passes brings both E-AC-3 decode and encode to real time on the
+ESP32-S3. The Windows-only Desktop Atmos Demo becomes AC3Forge Crucible, a real desktop
+application: a Linux/PipeWire backend verified against an Atmos receiver, keyboard and
+screen-reader access, and per-platform packaging with third-party notices. The gold-
+reference quality gate moves to a per-channel SNR floor, and the ~6.02 dB cross-platform
+decode split turns out to be a last-bit arithmetic difference rather than a codec
+defect. AC-4 gains container carriage, the WASM encode demo gains wide layouts and live
+microphone capture, and the Rust bindings now cover the whole codec surface. Fixed
+issues span an AC-4 parser null-pointer and unbounded-allocation pair, an E-AC-3 legacy-
+core programme-selection bug, Crucible's startup and tap lifecycle on Linux and macOS,
+and release packaging.
 
 ### Added
 
 **Minimum-footprint / ESP32 decode profile**
 
-- **A fixed-point decode tier**, `-DAC3FORGE_DECODE_SCALAR=fixed`, the third value of the
-  decode scalar axis beside `double` and `float` (`planning/arithmetic-tiers.md`): a Q7.24
-  integer scalar (`src/forge/src/core/fixed32.hpp`), its own §7.9.4 inverse transform pair
-  (`src/forge/src/core/mdct_fixed.hpp`) and a block exponent per stream per block
-  (`src/forge/src/decoder/block_norm.hpp`) that keeps every mantissa's bits where an absolute
-  store lost them. For parts with no FPU - an ESP32-C3, a Cortex-M3 - and the one value the
-  minimum-footprint profile honours over its `float` default. Measured against the double decode
-  at 121 dB and above on the gold streams and at 111 dB and above on every checked-in
-  third-party stream; the gold-reference gate passes with it at the double decoder's floors, and
-  its bitstreams are byte-identical. The bare-metal probe now prints a PCM hash per fixture
-  (`<codec>.pcm_hash`), identical between the host and the Cortex-M3 leg for this tier by
-  construction; the tier's are pinned in `tests/golden/fixed-probe-pcm-hashes.json` and
-  `tools/checks/check_probe_hashes.py` holds a run to them, or two runs to each other; the probe
-  runner takes `--scalar=fixed`. Annex E's tools are in the tier too - the adaptive hybrid
-  transform's dequantisers and six-point inverse, the spectral extension notch, and enhanced
-  coupling's spectrum, amplitudes, angles and reconstruction, the last with block floating point
-  across the 512-point DFT's stages and its own sine and cosine. Fidelity is unchanged to a
-  tenth of a decibel; on the Cortex-M3 leg enhanced coupling went from 28.9 M instructions per
-  frame in the float tier to 10.1 M, E-AC-3 5.1 from 12.9 M to
-  4.8 M. `check_decode_scalar_snr.py` gained a fourth stream, enhanced coupling,
-  which neither non-double scalar's gate had measured. JOC's object reconstruction is `float` in
-  every build of this library and is not part of this axis.
-- **An ESP32-C3 target for the minimum-footprint profile**
-  (`apps/baremetal/platform/esp32c3/`, `tools/checks/run_esp32c3_probe.sh`), decoding in the
-  fixed-point tier because the part has no floating-point unit, and listed beside `esp32s3` in
-  the ESP-IDF component's manifest. CI builds and runs it under `qemu-riscv32`: 11 of the
-  twelve fixtures decode, peaking at 225,038 bytes of heap, and their PCM is identical to
-  what the x86 host and the Cortex-M3 leg produce - three architectures, three compilers, one
-  pinned set of hashes. 7.1.4 is the exception and needs 238,094 bytes where the part
-  has 249,180 free in a heap whose largest block is 114,688; the probe now
-  takes a per-target heap budget, skips a fixture above it and names it, and the hash check
-  accepts a declared skip while still failing on an undeclared absence. The component packaging
-  check builds the archive for every target the manifest claims rather than only the first.
-  Speed on a C3 is not measured here: QEMU is not cycle-accurate and a board is what settles it.
-- **`delta_allocation`** on `ac3::EncoderConfig` and `ac3::eac3::FrameConfig` (`delta=off` on
-  the CLI, `nodelta` in `eac3-encode`'s tools string): off, the encoder chooses no §7.2.2.6
-  segments and runs no second search to weigh them. The first level of an effort axis for
-  parts with little time for the search (`planning/arithmetic-tiers.md`): on the ESP32-S3 it
-  removes about 9 ms of an E-AC-3 5.1 frame, and on the five gold streams it costs 0.01 dB on
-  the worst channel of the E-AC-3 ones and nothing on the AC-3 ones.
-- **An `f32x4` lane type in the SIMD arch seam** (roadmap PF7), alongside the `f64x2` and
-  `i32x4` already there, in all three of
-  `src/forge/src/internal/arch/{generic,x86_64,aarch64}/`. The float32 decode path's IMDCT
-  twiddle stages ran plain scalar loops for want of one; `mdct.cpp`'s four vectorised float32
-  sections now go four lanes at a time under SSE2 and NEON, in the same 128-bit register the
-  double path fits two in. `tests/core/test_simd_kernels.cpp` pins the type against scalar
-  `float` bit-for-bit, including 9,997 products that underflow into the denormal range - the
-  case a flush-to-zero vector unit is the only one to fail, and the reason this type is safe
-  on AArch64 where it would not have been on AArch32.
-- **Block-granular decoder output**: `FrameDecoder::decode_frame_by_block` and
-  `Eac3Decoder::decode_access_unit_by_block` hand the decoded PCM to a `BlockSink` - a non-owning
-  callback reference, so no allocation - one `PcmBlock` (256 samples of every output slot) at a
-  time, after the output stage has run, so the samples are the `_into` forms' exactly. A caller
-  feeding a DMA ring now needs a block of storage per channel where the `_into` forms needed a
-  frame - 73,728 bytes for 7.1.4 on an ESP32-S3. E-AC-3 copies nothing on the way out (each slot
-  is a view onto the substream vector that supplies it); AC-3 keeps one frame of its own. The
-  footprint probe decodes through the forms and holds no PCM, which took 73,824 bytes out of its
-  `.bss`. Both forms are pinned against the value forms sample for sample.
-- **A web page on the ESP32 player** (`esp-idf/ac3forge/ui/`, `planning/esp32-device-ui.md`).
-  `ac3forge::Control` serves it at `/`, with its script at `/ui.js`: the state, what is playing,
-  its codec, channels and objects, the layout, the volume, each frame's decode, render and sink
-  time, how low the ring ran and why a play ended; and play, stop, volume and layout, each one
-  request to the REST routes beside it, which are unchanged. The list of routes `/` used to send
-  is at `/api`. Both files go out from where the linker put them, 16,190 bytes against the
-  design's budget of 16,384, and the two routes hold 76 bytes of internal heap under QEMU. Tested
-  in Chromium against a stand-in for the routes, with the script's coverage gated by c8, and on
-  the emulated board in the ESP32 job.
-- **The ESP32 web page says what the output layout does, and a stream set shows it**
-  (`planning/esp32-device-ui.md`, `planning/esp32-stream-set.md`). The field is Output layout,
-  described as the speakers the player drives, with the sink's slot count and suggestions that
-  fit it; a closed section says what 2.0, wider layouts and height layouts do, and that nothing
-  is upmixed. Now shows this play's output and how it is served - the decoder's fold, each
-  channel on the speaker at its location, or objects placed - the speakers it leaves silent, and
-  the next play's layout while it differs. `GET /status` gains, additively, `sink_slots` and the
-  play's `stream.layout`, `render`, `coded` and `silent`. The page's flash budget is 20,480 bytes.
-  `esp-idf/ac3forge/examples/stream_player/www/` is 38 streams for the `http` source, made by
-  `tools/generators/gen_device_streams.py` or copied from the tree: 7.1.4 streams that reach all
-  twelve slots of a 7.1.4 output; E-AC-3 at the seven layouts from 1.0 to 7.1.4 and AC-3 at 2.0
-  and 5.1; dependent substreams, two programmes, dual mono, each Annex E coding tool, short
-  frames, VBR, DRC words, other encoders' streams and objects, with the host's level for every
-  slot in `streams.json`. CI plays the set under QEMU onto 7.1.4 (`sdkconfig.ci-http714`) and
-  holds each slot to the host's level within 1% + 20, the silent ones at exactly zero. Playing it found two faults in the player,
-  fixed: a stream with two programmes had both played, a frame of each, and now plays its first;
-  and a stream at 44.1 or 32 kHz played at the wrong speed, and is now refused.
-- **The ESP32 player can hold a play's first unit** (`planning/esp32-714-realtime.md`, which also
-  has a stage-by-stage profile of a 7.1.4 frame on the board and what each change measured
-  there). With `PlayerConfig::hold_first_unit` set, the first access unit waits until the second
-  has decoded, so the sink starts with two frames queued rather than one
-  (`ac3forge/unit_hold.hpp`, and the `ac3forge/block_ring.hpp` it keeps the unit in, both tested
-  on the host). A play's first frames decode more slowly than the rest, and on an ESP32-S3
-  playing 7.1.4 over WiFi they ran the DAC dry. The streaming example's
-  `CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT` selects it, and `sdkconfig.psram` turns it on together
-  with a 32 KB instruction cache, which takes 3.1 ms off the decode of a 7.1.4 frame at 2.0 and
-  3.8 ms off a twelve-slot frame for 16 KB of internal SRAM. With the output stage folding a block
-  at a time, `714-walk.ec3` and `714-tones.ec3` then play at 2.0 over WiFi with no block reaching
-  an empty queue. CI's `sdkconfig.ci` plays through the hold. The component's `player.cpp` joins
-  the `-O2` sources under `AC3FORGE_MINIMAL_HOT_O2`, and the example compiles the bare-metal
-  probe's stage-timer backend where the repository has it, so
-  `idf.py -DAC3FORGE_STAGE_TIMERS=ON build` gives each play a line per decoder stage.
-- **The ESP32 output layout takes speaker size and height realization**
-  (`esp-idf/ac3forge/include/ac3forge/layout.hpp`, `render.hpp`). A speaker in the list form can
-  be marked `:small` - a full-bandwidth speaker too small for the bottom two octaves -
-  validated to require an LFE feed in the layout; `LayoutRenderer` redirects its bass there with
-  a matched 80 Hz Butterworth high-pass/low-pass pair, float throughout rather than the double
-  state a shared biquad class carries, since every double operation is a software call on the
-  S3's Xtensa core. `:height`, `:top` and `:upfiring` name which physical thing realizes one of
-  the five Dolby height positions (Vhl, Vhr, Vhc, Lts, Rts): `:top` moves that slot to ITU-R
-  BS.2051's Top tier, 90 degrees elevation, for a true in-ceiling speaker; the other two are
-  numerically identical to today's default - BS.2051 has one Upper tier, not a separate angle
-  per way of reaching it - and exist so a configuration and `/status` can say what is actually
-  installed. The named form takes the same three as a modifier applied to every height slot at
-  once (`"7.1.4:top"`). `OutputLayout::kTextBytes` stays at 96, not raised for the longer
-  decorated strings the new suffixes allow: a QEMU boot check found that growing it 128 bytes
-  boot-loops the example on a FreeRTOS stack overflow, since `PlayerConfig` holds an
-  `OutputLayout` by value on a tight main-task stack; parsing and validation read the caller's
-  string directly and never touch the buffer, so only a pathologically long decorated list loses
-  its tail in the `text()`/status echo. `Speaker::small`/`Speaker::Realization` are placed to
-  land in alignment padding guaranteed on any ABI rather than one compiler's, and MSVC-guarded
-  `static_assert`s pin `sizeof(Speaker)`/`sizeof(OutputLayout)` against a future regression.
-- **The ESP32 streaming example's I2S sink reconfigures itself instead of needing a rebuild**
-  (`ac3forge/sink_plan.hpp`, `main/sink/i2s/audio_sink.cpp`). `sink_open` is callable more than
-  once now: `PUT /layout` takes effect at the very next play by calling
-  `i2s_channel_reconfig_std_slot`/`_tdm_slot` when the new layout stays within one mode, or by
-  deleting and recreating the channel when it crosses standard I2S and TDM, rather than a slot
-  count fixed at boot. The old build-time choice between a stereo `i2s` sink and a separate `tdm`
-  one is gone - one sink now opens standard mode for one or two channels and TDM for three or
-  more - and `AC3FORGE_EXAMPLE_SINK_TDM`, with `sink/tdm/`, is removed;
-  `AC3FORGE_EXAMPLE_TDM_SLOTS` now sizes only the `capture` sink's emulated width.
-  `AC3FORGE_EXAMPLE_I2S_SECOND_LINE` brings up a second, independent I2S peripheral, sharing the
-  first line's BCLK/WS as inputs through the GPIO matrix rather than a new wire, doubling the
-  ceiling to eight 32-bit slots. `sink_slots()` now reports that ceiling rather than whatever
-  happens to be open, which is what `PUT /layout` and `/status`'s `sink_slots` validate and
-  report against. The mode/slot-count arithmetic behind all of it - one line's own ceiling, when
-  a second line is usable, which of a layout's channels each line carries - is host-tested
-  independent of ESP-IDF (`tests/io/test_sink_plan.cpp`), the convention `interleave.hpp` and
-  `dac_queue_model.hpp` beside it already follow. On an ESP32-S3-DevKitC-1-N16R8 over WiFi,
-  reconfiguring standard I2S to TDM and back, in both directions, plays at the host's RMS with no
-  reflash between them; bringing up a second line reconfigures both correctly - the right mode,
-  the right GPIO sharing, `sink_slots` reporting 8 - but its own DMA buffers on top of WiFi's
-  footprint left too little contiguous internal RAM for the decode task's stack on a six-channel
-  unfolded layout, and the play failed to start rather than hang or run wrong. Whether the two
-  lines' samples stay aligned with something actually wired to both, and whether holding one DMA
-  depth across a reconfigure keeps the driver from reallocating its buffers rather than just
-  saving the channel recreation around them, remain unconfirmed.
+- **A fixed-point decode tier** (`-DAC3FORGE_DECODE_SCALAR=fixed`), a Q7.24 integer
+  scalar path for parts with no FPU (an ESP32-C3, a Cortex-M3), joining `double` and
+  `float` on the decode-scalar axis. Measured at 121 dB+ on the gold streams and 111 dB+
+  on every third-party fixture, with byte-identical bitstreams; on the Cortex-M3 leg,
+  enhanced coupling drops from 28.9M instructions/frame to 10.1M and E-AC-3 5.1 from
+  12.9M to 4.8M. Covers Annex E's tools too (AHT, spectral extension, enhanced
+  coupling); JOC object reconstruction stays `float` in every build. See
+  `planning/arithmetic-tiers.md`.
+- **An ESP32-C3 target** for the minimum-footprint profile
+  (`apps/baremetal/platform/esp32c3/`), decoding in the fixed-point tier since the part
+  has no FPU. CI builds and runs it under `qemu-riscv32`: 11 of 12 fixtures decode with
+  PCM identical to the x86 host and Cortex-M3 legs; 7.1.4 needs more heap than the
+  part's largest free block and is declared skipped rather than silently missing. Speed
+  is unmeasured — QEMU isn't cycle-accurate.
+- **`delta_allocation`** on `EncoderConfig`/`eac3::FrameConfig` (`delta=off`): the first
+  rung of an effort axis for parts with little time for the §7.2.2.6 search. Removes
+  about 9 ms of an ESP32-S3 E-AC-3 5.1 frame for 0.01 dB on the worst channel of the
+  E-AC-3 gold streams.
+- **An `f32x4` SIMD lane** alongside `f64x2`/`i32x4` in the arch seam (roadmap PF7): the
+  float32 IMDCT twiddle stages now vectorise under SSE2/NEON, pinned bit-for-bit against
+  scalar `float` including denormal underflow.
+- **Block-granular decoder output**
+  (`decode_frame_by_block`/`decode_access_unit_by_block`): PCM delivered 256 samples at
+  a time through a non-owning `BlockSink` callback instead of a whole frame, cutting a
+  DMA-fed caller's storage need from a frame to a block (73,728 bytes for 7.1.4 on an
+  ESP32-S3) and taking 73,824 bytes out of the footprint probe's `.bss`. Pinned sample-
+  for-sample against the frame forms.
+- **A web page on the ESP32 player** (`esp-idf/ac3forge/ui/`), served at `/`: state,
+  codec, layout, volume, per-frame stage timing and ring depth, with
+  play/stop/volume/layout controls over the existing REST routes. 16,190 bytes against a
+  16,384-byte budget; tested in Chromium and on the emulated board.
+- **The ESP32 web page explains the output layout**, showing this play's fold, each
+  channel's speaker or object placement, and the speakers left silent; `GET /status`
+  gains `sink_slots`, `stream.layout`, `render`, `coded` and `silent`. A 38-stream set
+  for the `http` source exercises every layout and coding tool; CI plays it under QEMU
+  onto 7.1.4, holding every slot to the host's level. Found and fixed two player bugs: a
+  dual-programme stream played both, and a 44.1/32 kHz stream played at the wrong speed
+  (now refused).
+- **The ESP32 player can hold a play's first unit** (`PlayerConfig::hold_first_unit`),
+  queuing two frames before the sink starts rather than one, since a play's first frames
+  decode more slowly than the rest and were running the DAC dry over WiFi at 7.1.4.
+  Combined with a 32 KB instruction cache, this takes 3.1–3.8 ms off decode; CI's
+  default config plays through the hold.
+- **The ESP32 output layout takes speaker size and height realization**: a `:small`
+  speaker redirects its bass to the LFE through a matched Butterworth pair, and
+  `:height`/`:top`/`:upfiring` distinguish how a height position is physically realized
+  without changing the render.
+- **The ESP32 streaming example's I2S sink reconfigures itself** instead of needing a
+  rebuild: `PUT /layout` takes effect at the next play via `i2s_channel_reconfig_*` or a
+  channel recreate when it crosses standard/TDM modes, replacing the old build-time
+  stereo/TDM split. `AC3FORGE_EXAMPLE_I2S_SECOND_LINE` brings up a second I2S line
+  sharing the first's clocks, doubling the slot ceiling to eight; verified on an
+  ESP32-S3-DevKitC-1-N16R8, though a six-channel unfolded layout with both lines up left
+  too little RAM for the decode task's stack.
 
 **Crucible desktop application**
 
-- The Desktop Atmos Demo is built, tested and packaged in CI (roadmap UX11 phase 6): both
-  Windows legs build `ac3desk`/`ac3windemo` and run the demo's 68 tests, and the MSVC leg
-  packages `ac3forge-desktop-atmos-<version>-win64.zip` - the window, the runner, the
-  driver's install/remove scripts and a Qt runtime - as a release asset of its own. The
-  NSIS installer is unchanged: the demo stays a separate download while its null-sink
-  driver is test-signed only.
-- Per-process loopback capture and endpoint change notifications on Windows (roadmap UX11,
-  the library pieces of the Desktop Atmos Demo): `Capture::start_process_loopback`
-  taps what one process tree renders, whichever endpoint it renders to, at a caller-stated
-  format (Windows 10 build 20348+; `process_loopback_available()` and
-  `audio_backend().process_loopback` say whether this machine can), and `DeviceWatcher` delivers
-  endpoint added/removed/state-changed and default-changed events on a callback instead of
-  leaving an application to poll. Every other backend refuses both honestly rather than the API
-  disappearing. `AudioBackend` gains `process_loopback` and `device_watch` capabilities.
-- The Desktop Atmos Demo for Windows (roadmap UX11; `apps/windows/`,
-  `docs/platforms/windows-demo.md`), behind `option(AC3FORGE_BUILD_WINDEMO)` (default OFF,
-  Windows only): every application that is playing sound becomes an Atmos object the user
-  places in a room, streamed live as E-AC-3 JOC over HDMI, or as AC-3 5.1, decoded PCM
-  surround, Windows Spatial Sound objects or stereo when the endpoint cannot take it,
-  switching on device arrival and removal. `ac3windemo` is the console runner (positions on
-  stdin, a mode pin, the signing key, codec bypass, split, size and the default-output
-  switch); `ac3desk` is the Qt Quick window (module `Ac3ForgeDesk`, six languages, tray
-  residency, a 3D room where Qt Quick 3D exists, driver install and remove from Settings).
-  `apps/windows/driver/` is `Ac3ForgeNullSink`, the silent 7.1 render endpoint the demo makes
-  the default: a derivative of Microsoft's Simple Audio Sample under its own MS-PL licence,
-  separately licensed from the rest of the repository, test-signed and verified in a VMware
-  guest under Driver Verifier and KASAN (`apps/windows/driver-vm/`). The engine's pure
-  modules, tap pool and output stage are tested in `tests/windemo/` on every platform (the
-  WASAPI classes sit behind an `AudioDevices` seam with in-memory fakes), and `ac3desk`'s
-  pages by five Qt Quick Test suites.
-- `MonitorSink::start` takes a `low_latency` flag (default off): on Windows it asks
-  `IAudioClient3` for the engine's smallest shared-mode period for the stream's format and
-  opens at that, falling back to the default period where the interface is missing or the
-  engine refuses the format at that size; the other backends take the flag and ignore it.
-- The demo's engine flushes its taps when the output starts or switches, and bounds the PCM
-  sink's queue at two frames (never under 30 ms), dropping tap audio to half the bound when
-  it is exceeded, so a pipeline's start-up offset no longer becomes the session's latency;
-  the status reports tap backlog, sink queue and catch-ups.
-- Coverage on Windows: `cmake/Coverage.cmake` gains a clang-cl arm (`-fprofile-instr-generate
-  -fcoverage-mapping`), the `config-windows-llvm-coverage` preset (with its `build-` and
-  `test-` twins) builds the demo and the GUI under it, and `tools/checks/coverage_windemo.ps1`
-  runs the `windemo` and `desk` ctest labels and prints `llvm-cov`'s per-file line and branch
-  report over `apps/windows`.
-- **Crucible can be operated without a mouse, and says what it is doing to a screen reader**
-  ([Keyboard and screen readers](docs/crucible/accessibility.md)). Every button, checkbox, bed
-  chip, the header pill and the Advanced disclosure are tab stops that Space and Return press;
-  a segmented choice is one tab stop with Left, Right, Home and End choosing inside it; the
-  applications list walks with Up and Down and places with Enter; and the room is one focus
-  scope whose arrows move whichever application is selected — 0.05 of the room per press, 0.01
-  with Shift, 0.25 with Ctrl, Page Up and Page Down for height, Home to recentre, Delete to
-  send it back to the bed, plus and minus for size — the same keys whichever picture is on
-  screen. `Ctrl+1`, `Ctrl+2` and `Ctrl+3` switch pages, F1 opens About, Escape closes a dialog.
-  Whatever holds the keyboard draws a ring just outside its own border. Room markers,
-  application rows, bed chips, endpoint rows and both buttons on each of them, the signal
-  path's stations, the combo boxes and the text fields carry a role, a name and a description
-  built from the same live values the window draws, and changes worth hearing — the engine
-  starting or refusing, where applications play, what you hear it on, the signing key, and
-  every keyboard move in the room — are announced once each and written into the diagnostics
-  file as well. The palettes were re-derived so muted text, the accent used as ink, control
-  borders and the focus ring meet the WCAG floors in all three palettes and both modes; the one
-  number that does not reach 4.5:1, the label on a primary button's accent fill, is stated
-  plainly in the guide. **Settings → Appearance → Text size** is 100% (the default, and the size
-  the window is drawn at), 125%, 150%, 175% or System, which reads the point size the desktop
-  reports; every size in the window follows it and the controls grow rather than clip. Building
-  the window now needs Qt 6.8 or later, because that is where `Accessible.announce` arrives.
-  No screen reader has been run against the window by hand yet.
-- **Applications have their own icons on Linux**, in the rail, the bed chips and both room
-  views. The identity comes from PipeWire: `application.icon-name`, `application.process.binary`
-  and, for a sandboxed application, its portal application id. All three live on an object's
-  info rather than on the registry dictionary a listener is handed, so the session monitor now
-  binds each stream node and its client for them, the way the sink walk already did for
-  `iec958.codecs`. The window then resolves in four steps and takes the first that yields a
-  picture: the icon name through the icon theme; a `.desktop` entry matched by application id,
-  `TryExec`, `Exec`, `StartupWMClass` or `Name`; the theme under the binary's own name; and the
-  monogram, which is still the right picture for a script, an interpreter or a command-line
-  player. Qt SVG is an optional dependency (`qt6-svg-dev` to build, `libqt6svg6` to run): an
-  icon that exists only as SVG needs it, and without it the configure log says so and those
-  applications show the monogram. The image provider now keeps each picture at the size the
-  platform gave it and scales per request, so the 3D room's large icon is its own image rather
-  than the rail's small one enlarged; that applies on Windows as well.
-- **Crucible explains itself on first run, and puts the default output back on quit**
-  (`apps/crucible/`): the first launch opens a dialog that says what Crucible does to the sound
-  settings before it does it, naming the silent device the platform uses, saying the default
-  output will move to it and be restored on quit, and offering Send now, Not now or Open
-  Settings, with a tick that makes the move automatic on every launch; it is shown once per user
-  (a store carried over from the Desktop Atmos demo sees it once too) and a `--shot` capture
-  suppresses it unless `--page firstrun` asks for it. Quitting from the tray, or closing the
-  window with "Keep running in the tray" off, now restores the previous default output when
-  Crucible moved it, which four places already promised. On Linux, Send applications creates the
-  "Crucible (silent)" node in the same press when it is not there yet.
-- **Crucible saves a diagnostics file** (Settings, "Save diagnostics…";
-  [Troubleshooting](docs/crucible/troubleshooting.md#saving-a-diagnostics-file)): a text
-  file with the version and platform, how the signing key was obtained, the engine's counters
-  (the catch-ups, tap backlog and sink queue included, which the window did not show), the
-  endpoints the last probe found, the applications by name and description, the two devices
-  of the signal path, the settings and the last 512 messages the application and its engine
-  left. It never carries the signing key, the path to the key file or the value of any
-  environment variable: the `signing/` settings are written as withheld and the finished text
-  is scrubbed of every spelling of the key path and of the inline key value.
-- **Every Crucible package carries its third-party notices, and About has a Licences view**
-  (`apps/crucible/notices/`, `cmake/Notices.cmake`). `NOTICES.txt` is generated per platform at
-  configure time from shared fragments and a component list per platform directory, with the
-  versions CMake already holds: the Windows zip's copy names the bundled Qt modules, reproduces
-  the LGPL-3 text with the relinking statement and the download.qt.io source location, lists the
-  third-party code inside the Qt libraries from the kit's SBOM, credits the Mesa, DirectX Shader
-  Compiler and Microsoft runtime files the deploy places, and reproduces the MS-PL for the driver
-  scripts; the Linux tarball and `.deb` carry theirs under `share/doc/ac3forge-crucible/` (with
-  `LICENSE.txt` and the Debian `copyright` alias), naming the system Qt and PipeWire instead.
-  Both name `{fmt}` and reproduce the OFL 1.1 with the Archivo and Noto copyright lines, and a
-  build with the room's 3D view states that Qt Quick 3D is used under the GPL-3, which is what
-  Qt's SBOM records for it (the About box had said LGPL for all of Qt). The same file is
-  embedded and shown by About > Licences… (`--page licences` captures it), so the window and
-  the package cannot disagree; `tools/ci/check_crucible_package.py` reads the file and refuses a
-  package whose notices were written for the other platform or whose Qt Quick 3D section
-  disagrees with what shipped.
+- The Desktop Atmos Demo is built, tested and packaged in CI (roadmap UX11 phase 6):
+  both Windows legs build and run the demo's 68 tests, and the MSVC leg packages
+  `ac3forge-desktop-atmos-<version>-win64.zip` as its own release asset.
+- **Per-process loopback capture and endpoint change notifications on Windows** (roadmap
+  UX11): `Capture::start_process_loopback` taps one process tree's render output at a
+  caller-stated format (Windows 10 build 20348+), and `DeviceWatcher` delivers endpoint
+  add/remove/state/default-changed events on a callback instead of requiring polling.
+  Every other backend refuses both honestly.
+- **The Desktop Atmos Demo for Windows** (roadmap UX11; `apps/windows/`, behind
+  `AC3FORGE_BUILD_WINDEMO`, default OFF): every application playing sound becomes an
+  Atmos object the user places in a room, streamed live as E-AC-3 JOC over HDMI or
+  AC-3/PCM/Spatial Sound/stereo as the endpoint requires. `ac3windemo` is the console
+  runner, `ac3desk` the Qt Quick window (six languages, tray residency, a 3D room).
+  `apps/windows/driver/` is `Ac3ForgeNullSink`, the silent 7.1 render endpoint, test-
+  signed and verified in a VMware guest under Driver Verifier and KASAN.
+- `MonitorSink::start` takes a `low_latency` flag: on Windows it asks `IAudioClient3`
+  for the engine's smallest shared-mode period, falling back to the default where
+  unsupported; other backends ignore it.
+- The demo's engine flushes its taps on output start/switch and bounds the PCM sink's
+  queue at two frames, so a pipeline's start-up offset no longer becomes the session's
+  latency.
+- Coverage on Windows: a clang-cl arm (`cmake/Coverage.cmake`), the `config-windows-
+  llvm-coverage` preset, and `tools/checks/coverage_windemo.ps1` report per-file
+  line/branch coverage over `apps/windows`.
+- **Crucible can be operated without a mouse, and describes itself to a screen reader**
+  ([Keyboard and screen readers](docs/crucible/accessibility.md)): every control is a
+  tab stop, the room is a keyboard-navigable focus scope, and every element carries a
+  role/name/description built from the same live state the window draws — announced on
+  every meaningful change. **Settings → Appearance → Text size** (100–175% or System)
+  scales the whole window. Requires Qt 6.8+ for `Accessible.announce`; no screen reader
+  has been run against the window by hand yet.
+- **Applications have their own icons on Linux**, resolved from PipeWire's icon name, a
+  matched `.desktop` entry, the binary's own theme entry, or a monogram, in that order.
+  Qt SVG is an optional dependency for SVG-only icons.
+- **Crucible explains itself on first run, and restores the default output on quit**: a
+  first-launch dialog names the silent device and offers to move the default output
+  automatically; quitting (tray or window) restores the previous default when Crucible
+  moved it. On Linux, this also creates the "Crucible (silent)" node.
+- **Crucible saves a diagnostics file** (Settings → Save diagnostics…): version,
+  platform, engine counters, endpoints, applications, the signal path and recent log
+  lines — never the signing key or its path.
+- **Every Crucible package carries its third-party notices, and About has a Licences
+  view** (`apps/crucible/notices/`): `NOTICES.txt` is generated per platform at
+  configure time from the actual component list and versions, so the window and the
+  package cannot disagree; `check_crucible_package.py` enforces it.
 
 **Containers and encoding**
 
-- AC-4 container carriage (roadmap IM4's remaining slice): `ac3cli mp4`/`ts` accept an AC-4
-  elementary stream — TS 103 190-2 Annex E's `ac-4` sample entry and `dac4` box on the MP4
-  side (with the Annex E.13 `codecs` string for HLS/DASH), EN 300 468 Annex D.7's DVB
-  extension descriptor plus a registration descriptor on the TS side — and `demux` brings
-  either back out (byte-identical through TS; re-framed with the no-CRC sync word out of MP4,
-  where the container drops the wrapper by design). Both readers recognise the new signalling;
-  ffprobe identifies the output of both muxers as `ac4`.
-- The `atmos*` encode commands take `numblkscod=N` (0–3), carrying the object layer over
-  §E2.3.1.4 short syncframes: the OAMD update's ramp covers exactly one shortened frame, the
-  JOC matrix interpolates across the frame's own QMF timeslots (four per block), and both
-  reconstruction domains handle 1/2/3-block frames — completing roadmap EQ11's second half.
-  Measured worst-object SNR at every short code matches the six-block control on stationary
+- **AC-4 container carriage** (roadmap IM4): `ac3cli mp4`/`ts` read and write an AC-4
+  elementary stream (TS 103 190-2 Annex E's `ac-4` sample entry/`dac4` box, EN 300 468
+  Annex D.7's DVB descriptors); `demux` brings either back out byte-identical.
+- **`numblkscod=N` (0–3) on the `atmos*` encode commands**, carrying the object layer
+  over §E2.3.1.4 short syncframes across 1/2/3-block frames — completing roadmap EQ11.
+  Worst-object SNR at every short code matches the six-block control on stationary
   material.
 
 **Browser (WASM)**
 
-- Browser (WASM): the encode demo now covers the whole of roadmap UX6 — wide E-AC-3 layouts
-  (7.1 / 5.1.4 / 7.1.4, routed through `ac3::plan` inside the module so the page
-  never restates channel-order knowledge, with `QcMeter.meterOrderForWav()` supplying the
-  BS.1770-5 metering order the same way), `dialnorm` derived from the QC pass's measured
-  integrated loudness instead of shipping the unmeasured default 31, live microphone capture
-  (`getUserMedia` → `AudioWorklet` → the same encoder, with a measure-then-encode pre-roll so the
-  first frame already carries a measured dialnorm), and a new Atmos object-authoring page
-  (`apps/wasm/atmos/`, a subdirectory of the encode demo) that pans real audio objects on a room
-  canvas and encodes each drag as that frame's OAMD/JOC placement via the already-bound
-  `AtmosBedEncoder`. All of it is Playwright-tested (`encode.spec.js`, `atmos.spec.js`),
-  including the microphone path via Chromium's fake media device.
+- The encode demo now covers the whole of roadmap UX6 — wide E-AC-3 layouts
+  (7.1/5.1.4/7.1.4), content-measured `dialnorm`, live microphone capture
+  (`getUserMedia` → `AudioWorklet` → encoder, with a measure-then-encode pre-roll), and
+  a new Atmos object-authoring page (`apps/wasm/atmos/`) that pans real audio objects on
+  a room canvas. Playwright-tested end to end, including the microphone path via
+  Chromium's fake media device.
 
 **Library, Python and Rust**
 
-- Python completeness (roadmap AP6): new `ac3forge.containers` (Matroska/MP4/MPEG-TS mux and
-  demux, with `build_codec_config_box()` for the `dac3`/`dec3` payload), `ac3forge.meta`
-  (BS.1770 `LoudnessMeter`, the cited QC presets and `evaluate_qc_gate`) and
-  `ac3forge.signing` (EMDF object signing/verification); `Eac3Decoder` is a context manager
-  that drains the §3.7 hold-back on exit. Wheels now build for manylinux aarch64 (the
-  documented-but-wheelless Raspberry Pi) and Intel macOS, and a `stubtest` step holds the
-  hand-written type stubs to the compiled module on every push.
-- The Rust bindings now cover the whole codec surface (roadmap AP9's completeness pass): the
-  wide-layout access-unit encoder and rendered-programme decoder, the Atmos/JOC object encoder
-  with the OAMD/JOC decode accessors, the stream framing/scan helpers (whose spans come back as
-  borrow-checked slices into the caller's buffer), and the BS.1770 loudness meter — each with
-  real-signal round-trip tests. `build-rust` runs on all three desktop OSes now; the first
-  Windows build found and fixed a real portability bug (bindgen types C enums `i32` on MSVC,
-  `u32` elsewhere — `Error::Other` had baked the Linux answer in).
+- **Python completeness** (roadmap AP6): new `ac3forge.containers` (Matroska/MP4/MPEG-TS
+  mux/demux), `ac3forge.meta` (BS.1770 loudness, QC presets/gate) and `ac3forge.signing`
+  (EMDF object signing/verification); `Eac3Decoder` is now a context manager. Wheels
+  build for manylinux aarch64 and Intel macOS; `stubtest` holds the type stubs to the
+  compiled module on every push.
+- **The Rust bindings now cover the whole codec surface** (roadmap AP9): the wide-layout
+  encoder/decoder, the Atmos/JOC object encoder with OAMD/JOC decode accessors, stream
+  framing/scan helpers and the BS.1770 meter, each with real-signal round-trip tests.
+  `build-rust` runs on all three desktop OSes; the first Windows build found a real
+  portability bug (bindgen types C enums `i32` on MSVC, `u32` elsewhere).
 
 **Verification and CI**
 
-- **Heap churn is now gated before a merge, not only after one** (`Memory vs merge base` and
-  `Memory gate` in `ci.yml`, `tools/ci/compare_memory.py`). `ac3membench` was built and run
-  by exactly one job, `persist-performance-trend`, which is `push` to `main` only - so an
-  allocation regression turned the check red on a commit that had already landed, where it
-  blocked nothing. That is how E-AC-3 encode churn stepping 67 → 199 allocs/frame (and Atmos
-  106 → 219) was found at PR #352, and the regression is still open as #544. The new job
-  builds `ac3membench` at the pull request's head and at its merge base and compares
-  `allocs_per_frame` and `bytes_per_frame` per leg and config, reusing
-  `append_memory_history.py`'s tiers by import so the pre-merge and post-merge gates cannot
-  disagree about what a regression is. One run per side is the whole measurement - these
-  counts do not move between runs of a fixed binary - so it needs none of the repetition and
-  interleaving the speed comparison uses against timing noise, and costs less than it. The
-  hard tier (churn at least doubled) fails `Memory gate`; `memory-regression-approved` on the
-  pull request turns it back into an annotation. The `steady_live_growth` leak check keeps
-  its absolute thresholds but applies them to what the branch changed, because three of the
-  six workloads already retain bytes across their steady state and two sit past the 4 KiB
-  warn line - checking the head alone would have annotated every pull request for the merge
-  base's own findings.
-- **CI now asserts that Linux and macOS packages carry the `ac3cli` man page and the four
-  shell completions** (`tools/ci/check_cli_docs_package.py`, run from `_build.yml`), so the
-  packaging bug in Fixed below cannot come back unseen. Nothing checked these five files
-  before: the only test asserting they exist is the Homebrew formula's `test do` block, and
-  a Homebrew build passes no toolchain file, so it kept passing throughout. The gate reads
-  the runtime archive after `cpack` - on the macOS legs on every push, on the Linux legs on
-  a release run - and also the lipo-merged tree the universal `.dmg` is built from, which
-  `cpack` never packages and which can drop the files at its own two steps. It reads the
-  archive rather than the `.deb`/`.rpm`, which come from the same install tree in the same
-  `cpack` run; the RPM generator gzips the man page to `ac3cli.1.gz`, so checking those too
-  would make the expected names generator-specific for no further failure mode caught.
-- Fuzz harnesses for the two parsers of third-party files that had none: `fuzz_iab_parse`
-  (`ac3iab::parse_iabitstream`, `parse_mxf_iab` and `parse_iaframe` - §7's Preamble+IAFrame
-  run, the SMPTE ST 2067-201 KLV wrapper around it, and §9.1's single extracted frame) and
-  `fuzz_ac4_parse` (`ac4::scan` and `ac4::parse_raw_frame`). Both exist only to read files
-  this project did not write, and both size their loops from numbers the file chose. IAB is
-  clean over 1.5 million executions, `fuzz_ac4_parse` over six million once the findings below
-  were fixed, and both are in `run.sh`'s default target list.
-- **The cross-platform bitstream-hash gate now pins `aarch64-neon`, from real arm64 CI rather than
-  emulation — and it is byte-identical to `x86_64-sse2`.** That key had never been pinned: the
-  checker printed `[unpinned]` and passed, so every arm64 run had compared its encoder's output to
-  nothing. All three streams match exactly, which means this project's *encoder* is bit-exact
-  across architectures and the ~6.02 dB gold-reference gap the arm64 legs measure is entirely
-  decode-side. It also explains why only the LFE splits on the fixed third-party fixtures while
-  every channel splits on this project's own: the gold-reference streams are encoded `dither=off`,
-  so nothing is dither-limited and all six channels sit in the rounding-limited regime — one
-  mechanism, two fixture populations, no encoder divergence.
+- **Heap churn is now gated before a merge, not only after one** (`Memory gate` in
+  `ci.yml`): `ac3membench` used to run only on `push` to `main`, so a regression (E-AC-3
+  encode churn 67→199 allocs/frame at PR #352) was found blocking nothing. The new job
+  builds and compares `ac3membench` at the PR's head and merge base; the hard tier
+  (churn at least doubled) fails the gate, with `memory-regression-approved` as the
+  override. The `steady_live_growth` leak check now applies its absolute thresholds to
+  what the branch changed rather than the head alone.
+- **CI now asserts that Linux and macOS packages carry the `ac3cli` man page and shell
+  completions** (`check_cli_docs_package.py`), so the packaging bug fixed below cannot
+  come back unseen — nothing had checked these five files before, and the only test that
+  did (Homebrew's) passed for an unrelated reason.
+- **Fuzz harnesses for the two parsers of third-party files that had none**:
+  `fuzz_iab_parse` (IAB/MXF) and `fuzz_ac4_parse` (AC-4 scan/parse). IAB is clean over
+  1.5M executions, AC-4 over 6M once the findings below were fixed.
+- **The cross-platform bitstream-hash gate now pins `aarch64-neon`**, from real arm64
+  CI: byte-identical to `x86_64-sse2`, proving the encoder is bit-exact across
+  architectures and that the ~6.02 dB gold-reference gap is entirely decode-side.
 - **Roadmap VX11 resolved: the ~6.02 dB cross-platform split is a last-bit arithmetic
-  difference, not a systematic codec error.** It splits the legs strictly by architecture — `macos-llvm` (arm64) sits
-  with the arm64 group and `macos-llvm-x64` with the x86-64 group, same OS and compiler on
-  both sides — which rules out the "macOS libm" and "arm64 and macOS" readings this was
-  carried under. Sorting all 52 (check, channel) pairs by SNR gives a step rather than a
-  gradient: every pair below 67 dB shows a 0.00–0.11 dB difference, every pair above it shows
-  5.85–6.05 dB, with nothing in between. A systematic codec error would be level-independent; a last-bit
-  one is visible only once the two decoders agree closely enough that arithmetic is all that is
-  left to disagree about. (6.02 dB is one exponent step because exponent extraction amplifies a
-  last-bit difference into one — the mechanism the aarch64 SIMD header already documents.) Consequently the per-channel floor headroom drops from 6.02 dB
-  to 1.0 dB — `min_observed` is a minimum *across legs*, so it had already absorbed the split,
-  and subtracting it again was a double-count costing ~5 dB of sensitivity on every channel.
-  The gates now catch a 1 dB per-channel regression where they previously needed 6.
+  difference, not a systematic codec error.** It splits strictly by architecture, not OS
+  or compiler, and steps rather than grades — every (check, channel) pair sits at
+  0.00–0.11 dB or 5.85–6.05 dB, nothing between. Per-channel floor headroom drops from
+  6.02 dB to 1.0 dB, so the gates now catch a 1 dB regression where they previously
+  needed 6.
 - The Python oracles under `tools/` now have unit tests of their own
-  (`tools/checks/test_compare_wav.py`, run by `ci.yml`'s Script Lint job). Lint could tell
-  whether a gate parsed; nothing told whether it still gated. The suite pins the
-  single-floor blind spot above with a test that fails if it is ever reintroduced.
+  (`test_compare_wav.py`), pinning the single-floor blind spot fixed above.
 
 ### Changed
 
 **Minimum-footprint / ESP32 decode and encode profile**
 
-- **E-AC-3 decodes in real time on the ESP32-S3** (roadmap PF7). Measured on an
-  ESP32-S3-DevKitC-1-N16R8 at 240 MHz, a 5.1 frame went from 78.8 ms to 14.2 ms, 2/0 from
-  34.7 to 6.8 ms and an Atmos objects frame from 82.7 to 29.4 ms, against a 32 ms budget, with
-  every fixture's levels unchanged. The cost was `double` arithmetic between the bitstream and
-  the float32 coefficient store - mantissa dequantisation, dither, coordinates, decoupling,
-  spectral extension, the AHT and JOC's mixing - each operation a call into the ROM's software
-  floating point on that single-precision FPU; those paths now run in `decode_scalar_t`, through
-  templates whose `<double>` instantiations are the exported functions every other build calls,
-  so nothing changes outside the minimum-footprint profile. Two new build switches:
-  `AC3FORGE_STAGE_TIMERS` routes the library's zone markers to a per-stage timer an application
-  supplies (the bare-metal probe does; `--stage-timers` on both probe runners), and
-  `AC3FORGE_MINIMAL_HOT_O2` compiles five decode-critical files at `-O2` under the `-Os`
-  profile (on in the ESP32-S3 project, off by default; flash, not SRAM). `aht_inverse` gains a
-  `float` overload. [The ESP32-S3 page](docs/platforms/esp32.md#timing) has the stage tables.
-- **Enhanced coupling too** (§E3.5), in a second pass: 217 ms a frame to 23.8 ms on the same
-  board, so every E-AC-3 configuration the profile decodes is in real time there. The §3.5.5
-  routines - `ecpl_channel_spectrum`, `ecpl_amplitudes`, `ecpl_angles`,
-  `ecpl_channel_coefficients` - and `dft512` gain `float` overloads beside their `double` forms,
-  which are unchanged and remain the encoder's; `EcplNoise::next_as` and
-  `ecpl_rand_notrans_as` are the noise sources in the caller's scalar. The float spectrum
-  scratch is 23,552 bytes against the double one's 32,768, the bin-angle buffer that was a
-  second `thread_local` is a stack array, and every `Eac3Decoder` is 4 KB smaller on the profile.
-- **A third pass over the same profile's hot path**, bit-exact for the double build and to the
-  digit on the probe's levels: `BitReader::read()` serves a field from a 64-bit cache rather than
-  looping once per bit; a block whose exponents, allocation parameters and region are its
-  predecessor's reuses the allocation it has; the symmetric mantissa quantisers read a
-  `constexpr` table and the asymmetric ones scale by an exact power of two; an AHT bin resolves
-  its GAQ dequantiser's constants once for its six codewords; JOC's mixing reads each
-  (channel, band)'s data points once per object per block; `fft.cpp` joins the `-O2` list; four
-  `eac3_au_*` timer zones cover the access-unit level. On the board, E-AC-3 5.1 went from 14.2 ms
-  a frame to 12.8, 2/0 from 6.8 to 6.2, Atmos objects from 29.4 to 23.2 and enhanced
-  coupling from 23.8 to 21.5.
-- **An access unit's PCM reaches the caller through `memcpy`, and its object description is
-  moved, not copied.** `std::copy` into the caller's spans lowered to the ESP32-S3 mask ROM's
-  `memmove`, which measured some twelve cycles a byte: 1.9 ms of a 5.1 frame for 36 KB the ROM's
-  `memcpy` moves in 0.12. A consumed substream's object description was copied into the unit,
-  vectors and all, once per frame. On the board, E-AC-3 5.1 is now 11.0 ms a frame, 2/0 5.5,
-  the Atmos bed 9.1, objects 21.2 and enhanced coupling 19.8; the objects fixture's
-  peak heap is 210,203 bytes (was 234,803) and its allocations a frame 31 (was 41), the bed's 20
-  (was 23). Every level unchanged to the digit.
-- **A 7.1.4 fixture in the footprint probe, and the peak heap per fixture.** E-AC-3 7.1.4 at
-  640 kbit/s - a 5.1 bed and two dependent substreams, the widest programme the encoder makes -
-  decodes on the target with every level exact, the first fixture to exercise the access unit's
-  assembly there. On the ESP32-S3 a frame takes 28.8 ms of its 32 (0.90x) and peaks at
-  229,630 bytes; on the Cortex-M3 leg it is 33.8 M instructions, 2.6 times a 5.1 frame on
-  both. Each fixture now prints `<fixture>.peak_bytes=`, so a part with another budget can read
-  which fixture needs what. The probe's PCM block is twelve channels (73,728 bytes) rather than
-  eight.
-- **The output stage's per-sample arithmetic in `decode_scalar_t`, and two folded fixtures.**
-  Dialnorm, the §7.8 folds, the Hilbert phase shift behind Lt/Rt and RF mode's overload
-  protection ran in `double` under the minimum-footprint profile, on the ESP32-S3's software
-  floating point; they now follow the decoder's scalar, the gains and mix coefficients staying
-  `double`, through the same template-and-`<double>`-instantiation shape as the passes before,
-  so every ordinary build is unchanged. The probe gains `ac3_fold` and `eac3_fold` - the two
-  5.1 streams decoded to Lo/Ro stereo in line mode, both levels exact on every leg - at 68,617
-  and 216,406 bytes of peak heap and 10.78 M and 14.28 M instructions a frame on the Cortex-M3
-  leg, 0.56 M and 1.35 M over the plain 5.1 rows; `run_baremetal_probe.sh --icount` gates
-  both. `tools/generators/gen_baremetal_fixture.py` can now emit a fixture that decodes an
-  existing stream under a decoder setting rather than encoding a new one.
-- **The output stage folds a block at a time.** Stage-timer zones inside `OutputStage::apply`
-  (seating, the fold, dialnorm, the Lt/Rt shift, RF mode's limiter) and around both decoders'
-  §7.7 gain showed where a 7.1.4 frame folded to stereo spent 4.1 ms on an ESP32-S3: seating
-  twelve locations into §7.8's six, the fold, and two `std::copy` calls that lowered to the mask
-  ROM's `memmove`, in loops that reloaded their base pointers every sample at `-Os`. The stage
-  now works in 256-sample blocks, folds a rendered layout straight into the caller's first two
-  channels and copies with `memcpy` where it has to; `output.cpp` joins the `-O2` list; both
-  decoders resolve the §7.7 gain once per programme per block rather than once per channel.
-  No result changes: the double build's decode of 24 streams under 17 output configurations,
-  408 decodes, is byte-identical, the float probe's PCM hashes are unchanged and the fixed
-  tier's pinned ones hold. On the board the 7.1.4 fold went from 4.1 ms a frame to 1.1 and the 5.1 one from 3.2
-  to 0.8, and `stream_player` folding 7.1.4 to stereo over WiFi from 35.3 ms of decode a frame
-  to 30.0, with 18 of 900 blocks reaching an empty queue where 149 did. The fold's working
-  storage went from 49 KB to 6 KB. The probe gains `eac3_714_fold`, now its peak at 237,206
-  bytes, and `eac3_line`, a 5.1 stream with dynrng words and dialnorm 24 decoded in line mode:
-  the one fixture where line mode has per-sample work, 0.67 ms of a 5.1 frame on the board.
-  `run_baremetal_probe.sh --icount --stage-timers` no longer reads the stage lines as fixtures.
-- **The encode probe times its frames, and three more rows.** `apps/baremetal/encode_probe.cpp`
-  prints `<row>.us_per_frame` and `realtime_permille` on the decode probe's terms and a peak
-  heap per row; `run_baremetal_probe.sh --encoder --icount` counts instructions per encoded
-  frame under QEMU against its own `ICOUNT_CEILING_ENCODE` table, and CI runs it. AC-3 2/0 and
-  E-AC-3 2/0 join the two 5.1 rows, and `eac3_tools` - 2/0 with coupling, spectral extension
-  and AHT all live, its band edges pinned so §E3.3.1 does not drop the coupling - is the first
-  row to reach those three encoders on the target. On the Cortex-M3 leg an E-AC-3 5.1 frame
-  encodes in 62.6 M instructions against 12.9 M to decode it, both directions soft float
-  there; the encoders are `double` throughout, and on the board that is 2.3x over real time for
-  AC-3 2/0 and 10.9x for E-AC-3 5.1, every row's bytes the host's. The probe reports its stages
-  under `AC3FORGE_STAGE_TIMERS` as the decode probe does - the stage-timer table holds 64 zones
-  now, the two encoders' rows having overflowed 32 - and the board's breakdown puts the forward
-  MDCT and transient detection, both `double`, at 64% of an AC-3 5.1 frame. Measured and
-  documented as not fitting
-  an ESP32-S3: 5.1 with AHT or coupling, any dependent-substream layout (7.1.4 peaks at 601,954
-  bytes), and the Atmos object encoder.
-- **The block form carries the objects.** `PcmBlock` gains `objects`, `object_indices` and
-  `object_metadata`: a view per JOC output onto the unit's own reconstruction, cut to the block,
-  with what places it - so a sink rendering objects to loudspeakers needs no frame of anything,
-  where the value form's `object_audio` is a frame of copies per object. Empty for AC-3, for a
-  bed-only decode and for a unit with no object layer. Pinned against the value form sample for
-  sample in `tests/oba/test_atmos.cpp`.
-- **Objects placed on loudspeakers on the minimum-footprint targets.** `spatial.cpp` joins the
-  decoder profile, and the probe's `eac3_atmos_render` row pans a new height-object stream
-  (`tools/generators/atmos_height_scene.txt`, three objects at the ceiling and one half way) onto
-  7.1.4 by each object's OAMD position through `ac3::spatial::pan_direction`, every level the
-  host's to the digit on both emulated legs. The render is 5% of the row's
-  28,938,000 instructions a frame on the Cortex-M3 leg, at 210,573
-  bytes of peak, and 25.1 ms a frame on the ESP32-S3 (0.78x; the render 3.3 ms of it). `pan_ring`
-  and `pan_direction` no longer allocate - eight vectors per object per call, on the stack now -
-  which took the row from 129 allocations a frame to 36.
-- **The ESP32-S3 page has a capability table**: everything the library does against what the
-  part has been shown to do with it, with how each row is known - board, emulation, or a host
-  measurement of what does not fit.
-- **The encoders' analysis front end in the profile's scalar** (roadmap PF7). A second axis
-  beside `decode_scalar_t`: `src/forge/src/internal/scalar/encode/` carries `encode_scalar_t`,
-  `double` by default and in every ordinary build, `float` under the minimum-footprint profile,
-  selectable with `-DAC3FORGE_ENCODE_SCALAR=float`. Transient detection
-  (`BasicTransientDetector<Scalar>`, of which `TransientDetector` is the `double` instantiation),
-  the block gather, the analysis window and the forward transform - the short-block pair gains
-  `float` forms - run in it, and the coefficients are widened to `double` for the rest of the
-  encoder, which is unchanged; every `<double>` instantiation is the function the ordinary build
-  always called, so the golden bitstream hashes hold. On the ESP32-S3, where the two stages were
-  64% of an AC-3 5.1 frame, AC-3 2/0 encode went from 75.0 ms a frame to 28.3 - real time, at
-  0.88x - AC-3 5.1 from 199.9 to 71.0, E-AC-3 5.1 from 348.9 to 219.7 and 2/0 from 137.2 to 90.4;
-  the peaks fell with the halved scratch, and the profile's encode fixtures are the float front
-  end's streams, identical on host, Cortex-M3 and ESP32-S3.
-- **The rest of the encoders in the profile's scalar** (roadmap PF7), the same day. The
-  coefficient store and every analysis behind it - the coupling, spectral-extension and
-  enhanced-coupling analyses and fits, the dither and delta-segment decisions, the fixed-point
-  conversion, the rematrix - run in `encode_scalar_t`, with `float` overloads of the exported
-  functions the store feeds (`to_fixed25` is a template; `to_fixed25_block`,
-  `accumulate_peak_exponents`, `choose_delta_segments` and `PerceptualModel::analyse` take
-  `float`; `DitherBallot` is `BasicDitherBallot<double>`) and the project's own `log2` and `exp`
-  for the float path (`src/forge/src/core/scalar_math.hpp`: the profile's fixture hashes are
-  checked on three C libraries whose `logf` differ in the last bit). Only the adaptive hybrid
-  transform and the masking model's internals are still `double`; the allocation search is
-  integer. Every `<double>` instantiation is the function the ordinary build called, so the golden
-  hashes hold, and no fixture hash moved either. On the ESP32-S3: AC-3 2/0 in 12.1 ms a frame
-  (0.38x), E-AC-3 2/0 in 33.8 (1.06x), AC-3 5.1 in 35.1 (1.10x), E-AC-3 5.1 in 81.2 (2.54x) and
-  the §E3.5 2/0 row from 425.5 to 54.7; peaks fell a further 50 KB (E-AC-3 5.1: 202,760 to
-  154,932). CI's `linux-gcc` leg builds `-DAC3FORGE_ENCODE_SCALAR=float` beside the float decoder
-  and runs its streams through the gold-reference gate and the new
-  `tools/checks/check_encode_scalar_quality.py`, which holds the float encoder's worst channel to
-  within 0.5 dB of the double encoder's (on the five gold streams they are identical);
-  `tests/golden/bitstream-hashes.json` pins its three streams under the `encfloat` mode. The
-  exported `BasicTransientDetector` instantiations carry their attribute where each compiler wants
-  it (three generated macros; GCC's shared build had rejected the earlier placement).
-- **The encoders' rate-control search and exponent-run planner cost less, exactly and not.**
-  Three exact changes - the same candidates, the same answer, gated by the fixture hashes and
-  the golden pins not moving: the planner scores both Annex E frame forms in one pass with a
-  lower bound, only the coded bins and an incremental waste (held to a transcription of the old
-  pass over 400 random inputs); the masking curve is computed once per run per search and only
-  §7.2.2.7's offset applied per probe (`compute_masking_curve` and `allocate_from_curve`, new
-  exports of `ac3/core/bitalloc.hpp`, held to `compute_bit_allocation` over 1,800 offsets);
-  blocks that read the same run of every stream are counted once. And one that is not exact:
-  the delta race's two searches each warm-start from their own previous answer instead of each
-  other's, which halves their probes. That was documented as never changing the answer and
-  does, because the frame's mantissa cost is not monotone in the offset (mantissa grouping), so
-  the probe sequence decides which fitting boundary a rare frame lands on; the E-AC-3 streams
-  moved by a unit of offset here and there, the gold margins did not, and the E-AC-3 golden
-  hashes and profile fixtures are re-pinned (`snr_search.hpp` says why). On the ESP32-S3:
-  E-AC-3 2/0 33.8 -> 23.5 ms a frame (real time), E-AC-3 5.1 81.2 -> 55.5, AC-3 5.1 35.1 ->
-  32.2 (the line), §E3.5 2/0 54.7 -> 42.3.
-- **A minimum-footprint build resolves the arch seam** instead of naming `generic/` literally
-  (`src/forge/minimal.cmake`, and the resolution moved above the branch that includes it in
-  `src/forge/CMakeLists.txt`). Both bare-metal targets still land on `generic/` and nothing
-  about those builds changes - an `arm-none-eabi` Cortex-M3 has no vector unit and the
-  ESP32-S3's is fixed-point. What the literal spelling cost was a minimum-footprint decoder
-  built for aarch64, whose float32 decode path NEON holds four lanes of.
+- **E-AC-3 decodes in real time on the ESP32-S3** (roadmap PF7), the result of five
+  successive profiling passes. The double-arithmetic bottleneck between the bitstream
+  and the float32 coefficient store (mantissa dequantisation, dither, coordinates,
+  decoupling, spectral extension, AHT, JOC mixing — each a call into the ROM's software
+  float) now runs in `decode_scalar_t`; enhanced coupling gained the same `float`
+  overloads in a second pass. Two new switches, `AC3FORGE_STAGE_TIMERS` and
+  `AC3FORGE_MINIMAL_HOT_O2` (five hot files at `-O2` under the `-Os` profile) back the
+  work. Further passes replaced `BitReader`'s per-bit loop with a 64-bit cache, reused a
+  block's allocation when its exponents/parameters repeat, moved the PCM handoff from
+  `std::copy` to `memcpy` (the ROM's `memmove` cost ~12 cycles/byte), and folded the
+  output stage a block at a time instead of per-sample. On an ESP32-S3-DevKitC-1-N16R8
+  at 240 MHz: a 5.1 frame went from 78.8 ms to 6.2, an Atmos objects frame from 82.7 to
+  21.2, enhanced coupling from 217 to 19.8, and a 7.1.4-to-stereo fold from 4.1 ms to
+  1.1 — every level unchanged to the digit throughout. [The ESP32-S3
+  page](docs/platforms/esp32.md#timing) has the full stage tables and a capability table
+  of what fits the part.
+- **The encoders now run their analysis front end and coefficient store in
+  `encode_scalar_t`** (roadmap PF7, a second scalar axis beside the decoder's):
+  transient detection, the block gather, the forward transform, and — in a second pass
+  the same day — the coupling/spectral-extension/enhanced-coupling analyses, dither and
+  delta-segment decisions, and the fixed-point conversion. Only the AHT and the masking
+  model's internals stay `double`. On the ESP32-S3: AC-3 2/0 encode went from 75.0 ms to
+  12.1 (real time), E-AC-3 5.1 from 348.9 to 81.2. Every `<double>` instantiation is the
+  function the ordinary build already called, so the golden bitstream hashes hold; CI's
+  `linux-gcc` leg builds the float encoder alongside the float decoder and gates it to
+  within 0.5 dB of the double encoder.
+- **The rate-control search and exponent-run planner cost less** — mostly exactly (the
+  same candidates, the same answer, pinned by the fixture and golden hashes): both Annex
+  E frame forms scored in one pass, the masking curve computed once per search rather
+  than once per probe, repeated stream runs counted once. One change isn't exact — the
+  delta race's two searches now warm-start from their own previous answer rather than
+  each other's — because the frame's mantissa cost isn't monotone in the offset; the
+  E-AC-3 golden hashes and profile fixtures are re-pinned to the new, still passing,
+  answer. On the ESP32-S3: E-AC-3 5.1 encode dropped a further 81.2 to 55.5 ms.
+- **The decoder's block form carries the objects**
+  (`PcmBlock::objects`/`object_indices`/`object_metadata`, views onto the unit's own
+  reconstruction) and **objects are placed on loudspeakers on the minimum-footprint
+  targets** (`spatial.cpp` joins the decoder profile): a height-object stream pans onto
+  7.1.4 at 25.1 ms/frame on the ESP32-S3 (0.78x), with `pan_ring`/`pan_direction` no
+  longer allocating.
+- **A minimum-footprint build resolves the SIMD arch seam** instead of naming `generic/`
+  literally, fixing a minimum-footprint decoder built for aarch64 that had been missing
+  NEON.
 
 **Library internals**
 
-- **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The include was
-  there for a `BlockTail` struct that used `eac3::BandLayout`; that struct moved into
-  `src/forge/src/decoder/eac3_decoder.cpp` with the AP3 pimpl sweep, and nothing in the header has
-  needed the declarations since. Every `ac3::eac3` name `decoder.hpp` still uses —
-  `StreamType`, `kBsid`, `chanmap::acmod_map`, `chanmap::Layout` — comes from
-  `ac3/core/eac3_tables.hpp`, which it includes directly; the remaining mentions of
-  `ecpl_channel_spectrum` and `BandLayout` are in prose comments. Source-breaking only for a
-  consumer that was relying on `decoder.hpp` to pull `eac3_tools.hpp` in transitively: such a
-  caller adds `#include "ac3/core/eac3_tools.hpp"` itself. No in-repo consumer did. The ABI is
-  unchanged — no declaration moved, and nothing about the exported surface depends on which
-  header a caller reaches it through.
-- **Two coding-tool headers moved out of `ac3/encoder/` into `ac3/core/`**, where the code
-  shared by both generations already lives: `ac3/encoder/coupling.hpp` is now
-  `ac3/core/coupling.hpp` and `ac3/encoder/eac3_tools.hpp` is now `ac3/core/eac3_tools.hpp`.
-  Neither namespace changes — they were already `ac3::coupling` and `ac3::eac3` — and neither
-  file's contents change. The paths said "encoder" while both decoders call into them on every
-  frame: `coupling.cpp` carries §7.4.3's coordinate dequantizer, used on every coupled block,
-  and `eac3_tools.cpp` the spx/ecpl band geometry and the §3.5.5 enhanced-coupling
-  reconstruction, which meant the public `ac3/decoder/decoder.hpp` included a header out of
-  `ac3/encoder/` and every decode-only consumer pulled it in. Update the two `#include` paths;
-  nothing else is affected. This is source-breaking and deliberately lands before the v1.0 API
-  freeze, with no compatibility shim — mangled names carry the namespace rather than the
-  directory, so the ABI is unchanged, the same terms `ac3/sinks/` → `ac3/iec61937/` moved on.
+- **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The
+  include was left over from a struct that moved out with the AP3 pimpl sweep; source-
+  breaking only for a consumer relying on the transitive include (none in-repo). ABI
+  unchanged.
+- **Two coding-tool headers moved from `ac3/encoder/` into `ac3/core/`**
+  (`coupling.hpp`, `eac3_tools.hpp`), where the code they hold — used by both decoders
+  on every frame — already lived. Source-breaking, deliberately landing before the v1.0
+  API freeze with no compatibility shim; ABI unchanged.
 
 **SonarCloud and code quality**
 
-- Four places now use the idiom SonarCloud's first scan asked for, because it is better code
-  and not only a quieter report. `*opt = v` is defined only while an optional is engaged, so
-  it depends silently on a guard staying put: `BitReservoir::commit`'s clamp and
-  `Eac3Decoder`'s pending-slot handover assign the optional instead (`cpp:S6427`). And
-  `WavStreamWriter::close()`, `WavPcm16StreamWriter::close()` and `WavStreamReader::close()`
-  are `noexcept`, which is what their destructors have always required of them (`cpp:S1048`);
-  `noexcept` is not mangled under either the Itanium or the MSVC ABI, so nothing about the
-  exported interface changes.
-- The nightly SonarCloud scan now builds the examples, so they are analysed. The CFamily
-  analyser only sees a file the compile database names, and `config-linux-gcc-coverage` turns
-  examples off - for a coverage reason, not an analysis one - so the ~15 translation units
-  under `examples/` were listed in `sonar.sources` and then silently skipped. They are
-  documentation people copy from, which is an argument for analysing them. The coverage figure
-  is unaffected: `sonar.coverage.exclusions` already lists `examples/**`, so they stay
-  unmeasured rather than reading as 0%.
+- Four places now use the idiom SonarCloud's first scan asked for (`cpp:S6427`,
+  `cpp:S1048`), because it's better code and not only a quieter report.
+- The nightly SonarCloud scan now builds the examples, so the ~15 translation units
+  under `examples/` are analysed instead of silently skipped by the coverage-only preset
+  that had excluded them.
 
 **Crucible desktop application**
 
-- **The Desktop Atmos Demo is now AC3Forge Crucible** (roadmap UX12; `apps/crucible/`, the
-  [Crucible guide](docs/crucible/index.md)): a desktop application rather than a Windows
-  demo, with the same idea - every application that is playing sound becomes an Atmos
-  object the user places in a room, streamed live as E-AC-3 JOC or AC-3, or as PCM
-  surround or stereo when the endpoint cannot take a bitstream. `ac3desk`/`ac3windemo`
-  are `ac3crucible`/`ac3crucible-run`; the option is `AC3FORGE_BUILD_CRUCIBLE`; settings
-  migrate from `ac3forge/DesktopAtmos` on first launch; the Windows package is
-  `ac3forge-crucible-<version>-win64.zip`. Everything the application asks of the operating
-  system - which applications are playing, which window is in front, what the default
-  output is, and a silent device for applications to play into - now goes through four
-  platform seams under `apps/crucible/engine/`, with one implementation per platform
-  directory and no `#ifdef`s, and the same engine, room and signal-path tests run against
-  fakes of them on every platform. The Windows null-sink driver stays in
-  `apps/windows/driver/` under its own name until it is signed.
-- **Crucible runs on Linux, on PipeWire** (verified on a Raspberry Pi 4B with an Atmos
-  receiver on HDMI, 2026-09-05). Applications are tapped one at a time through PipeWire's
-  per-stream target, the silent device is a `support.null-audio-sink` node the application
-  creates and removes itself (no driver, nothing installed), the default sink moves through
-  the `default` metadata as `wpctl set-default` does, and the front window is read from the X11 active window through libxcb (`_NET_ACTIVE_WINDOW`, `_NET_WM_STATE`, `_NET_WM_PID`, matched against each application's process tree on the engine's session-monitor thread; `AC3FORGE_CRUCIBLE_X11`, AUTO/ON/OFF, takes `libxcb1-dev` when it is there) or, under Wayland, without a display, or in a build without libxcb, reported as off with the reason, which the Room page, `ac3crucible-run status` and the platform probe print. Linux
-  needs the PipeWire backend: a Crucible build against ALSA is refused at configure time,
-  since ALSA has no per-application streams to tap. The window builds and its Qt Quick
-  tests pass on Linux; the `crucible` CPack component produces an
-  `ac3forge-crucible-<version>-Linux-<arch>.tar.gz` and an `ac3forge-crucible` `.deb`
-  (depending on `pipewire` and a session manager, carrying no Qt of its own), for x86_64 and
-  aarch64 alike. Both ship in a release: the release legs build against ALSA and cannot produce
-  them, but the Linux LLVM legs' Crucible pass uploads them under the artifact name the release
-  job collects. They are the one package a release is not guaranteed to carry, since that step
-  skips itself on a runner whose Qt is older than 6.8. Settings on
-  Linux say "Create device" where Windows says "Install driver", and show no driver folder.
-  On 2026-09-05 the whole path was confirmed against a receiver: an application tapped through
-  PipeWire, encoded live as E-AC-3 with a JOC object layer and a signed object container, read
-  on the receiver's own front panel as "Atmos/DD+" rendered to its 7.1 speakers. A pre-encoded
-  5.1 stream through the same sink read "5.1 DD+".
-- The PipeWire backend's passthrough now offers AC-3 and E-AC-3 on a sink only when the
-  sink's `iec958.codecs` lists them - the session manager's reading of the display's EDID -
-  and never on the strength of a successful connect, which PipeWire's adapter grants to a
-  headphone jack as readily as to a receiver. Reading that property means binding each
-  sink for its node info; the registry's property dictionary is a subset that never carries
-  it, which is how the first gate on the Pi rejected the very receiver it was written for.
-  `Capture::start_process_loopback` works on PipeWire (one application's output streams,
-  found by joining each stream node to the process behind it - see the Fixed entry below for
-  which of the two pids that is), refusing the exclude-process-tree mode ALSA and PipeWire
-  cannot express, and `DeviceWatcher` reports default-sink changes from the `default`
-  metadata object.
-- **`process_loopback` is reported unavailable on macOS**, where the version gate alone used to
-  report it available on macOS 14.2 and up. The Core Audio process tap is written and stays in
-  the tree; what changed is the claim made for it. The first machine ever to run the path - the
-  Apple Silicon CI leg, macOS 26.6.2 - never returned from `AudioDeviceCreateIOProcID` on the
-  tap's aggregate device, and while that request was outstanding the whole process's Core Audio
-  client was unusable, so an unrelated device enumeration on another thread blocked behind it
-  and the application froze rather than reporting a failed tap. `Capture::start_process_loopback()`
-  now refuses before that call, `audio_backend().process_loopback` carries the reason, and
-  `AC3FORGE_MACOS_PROCESS_TAP` in the environment turns the path back on for anyone with a Mac
-  to settle it on. Crucible on macOS therefore lists the applications using sound and taps none
-  of them, and says so. No other platform changes.
-- The Desktop Atmos Demo's silent output device, `Ac3ForgeNullSink`, is now an ACX (Audio
-  Class eXtensions) driver on KMDF, derived from Microsoft's AudioCodec sample, in place of
-  the PortCls/WaveRT miniport derived from the Simple Audio Sample: about 1,900 lines in
-  place of 9,700, on the framework Microsoft recommends for new audio drivers, with Driver
-  Verifier's DDI compliance and code-integrity checks now part of its verification. Nothing
-  the demo or the scripts see changes: the same hardware id, service, device description,
-  endpoint name ("Speakers (Desktop Atmos)"), 7.1/48 kHz format and discard-at-nominal-rate
-  behaviour. The position and timing simulation is now a kernel-free header with a test of
-  its own, a failed device start names the call that failed, and `install.ps1`/`remove.ps1`
-  create and remove the device through SetupAPI and `pnputil` rather than the WDK's
-  `devcon`, so they need nothing beyond Windows. The driver is now built, test-signed
-  and Code-Analysed in CI on every push, from the WDK's NuGet packages, and uploaded as
-  the `ac3forge-nullsink-driver-testsigned` artifact; it is still not a release asset.
+- **The Desktop Atmos Demo is now AC3Forge Crucible** (roadmap UX12): a desktop
+  application rather than a Windows-only demo, with the same idea.
+  `ac3desk`/`ac3windemo` are `ac3crucible`/`ac3crucible-run`; settings migrate on first
+  launch; everything the app asks of the OS goes through four platform seams under
+  `apps/crucible/engine/` with no `#ifdef`s, tested against fakes on every platform.
+- **Crucible runs on Linux, on PipeWire** — verified on a Raspberry Pi 4B against an
+  Atmos receiver over HDMI on 2026-09-05: an application tapped through PipeWire,
+  encoded live as E-AC-3 with a signed JOC object layer, read on the receiver's front
+  panel as "Atmos/DD+". Applications are tapped through PipeWire's per-stream target,
+  the silent device is a `support.null-audio-sink` node the app creates and removes
+  itself (no driver needed), and the front window is read from X11
+  (`AC3FORGE_CRUCIBLE_X11`) or reported off under Wayland. A build against ALSA is
+  refused at configure time. Both the `.tar.gz` and the `.deb` ship as release assets,
+  for x86_64 and aarch64.
+- **The PipeWire backend's passthrough now offers AC-3/E-AC-3 only when the sink's
+  `iec958.codecs` (its EDID) lists them**, never on the strength of a successful connect
+  — which PipeWire grants a headphone jack as readily as a receiver, and which rejected
+  the very receiver this was written for on the Pi.
+- **`process_loopback` is now reported unavailable on macOS**, where the version gate
+  used to claim it was available from 14.2. The Core Audio process tap never returned
+  from `AudioDeviceCreateIOProcID` on the CI leg's first real run and froze the whole
+  process; the tap stays in the tree behind `AC3FORGE_MACOS_PROCESS_TAP` for anyone with
+  hardware to settle it on.
+- **The Windows null-sink driver is now an ACX driver on KMDF**, derived from
+  Microsoft's AudioCodec sample, in place of the PortCls/WaveRT miniport — about 1,900
+  lines in place of 9,700, with Driver Verifier's DDI compliance now part of its
+  verification. Nothing the demo or scripts see changes.
 
 **CI and static analysis**
 
-- Code analysis runs nightly against `main` instead of on every pull request, push and
-  merge-queue entry: CodeQL (`codeql.yml`, 02:17 UTC), MSVC Code Analysis
-  (`msvc-analysis.yml`, 02:23 UTC) and clang-tidy, which moved out of `ci.yml`'s
-  `static-analysis` job into `.github/workflows/static-analysis.yml` (02:29 UTC) on the same
-  DEBUG preset with the same `-warnings-as-errors='*'`. Each opens or refreshes a
-  `nightly-analysis` issue when a run finds something or fails, because nothing reliably
-  notifies anyone about a new default-branch alert. `CI Status` no longer waits on
-  clang-tidy, and the required checks on `main` (`Branch Name`, `CI Status`, `Scan
-  dependency diff`) are unchanged. The `code-scanning-gate-main` ruleset was deleted, since
-  a merge-time code-scanning rule cannot be satisfied when analysis runs only on `main`.
-  What stays per pull request is everything that builds, runs or measures the codec's
-  output: the build/test matrix and its gold-reference gate, FFmpeg Validate, ADM Module,
-  the coverage floors, performance vs merge base, the fuzz regression replay and the FATE
-  interop check. Measured motivation: on 2026-09-04 the analysis engines held about 55
-  self-hosted runner-minutes per CI event (~20 Linux, ~35 Windows) and every merge paid it
-  three times, on a fleet shared with another repository whose jobs were queued in the same
-  minute; the cost is that a finding now lands on `main` and is reported the next morning
-  rather than annotating the pull request that introduced it. The java-kotlin CodeQL scan
-  moved with them, out of the Android build job in `_build.yml` (where a scanner failure
-  failed a required check) and into the nightly matrix as a leg of its own; the APK build and
-  the emulator tests stay where they were, and `security-events: write` came off
-  `build-android` and both of its callers. A fourth engine, SonarCloud, joins them at 02:35
-  UTC (`sonarcloud.yml`): maintainability, duplication and coverage on new code, which is the
-  view the other three do not give. It reads CMake's own `compile_commands.json` rather than
-  running build-wrapper, is pinned to GitHub-hosted because the CFamily analyser does not fit
-  the shared fleet's guests, and skips itself with a notice until `SONAR_TOKEN` is set rather
-  than failing nightly over a setup step. Its findings live in the SonarCloud dashboard, not
-  Security > Code scanning. Surfacing a failure is a job of its own on an uncontainerised
-  runner, the shape the other three already use, because `report-nightly-failure` is a `gh`
-  script and `gh` is not in `ubuntu:26.04`; and the scan lets the scanner find
-  `sonar-project.properties` itself rather than naming it through `github.workspace`, which
-  expands to the host path a container job cannot see.
-- The ABI gate no longer runs on merge-queue entries. The pull-request run already produced
-  the merge-base comparison the job exists for; a `merge_group` run takes the
-  release-relative view instead (HEAD against the latest `v*` tag), which the push to `main`
-  then repeats. While `ABI_ENFORCE` is `'false'` that second view blocks nothing and nobody
-  reads it before the merge lands, so it was two shared-library builds per queue entry for a
-  result with no audience.
+- **Code analysis now runs nightly against `main` instead of on every PR/push/merge-
+  queue entry**: CodeQL, MSVC Code Analysis and clang-tidy (moved to its own workflow)
+  each open or refresh a `nightly-analysis` issue on a finding. `CI Status` no longer
+  waits on them. Measured motivation: the three engines held about 55 self-hosted
+  runner-minutes per CI event, paid three times per merge on a fleet shared with another
+  repository. A fourth engine, SonarCloud, joins them (maintainability, duplication,
+  new-code coverage), pinned to GitHub-hosted since the CFamily analyser doesn't fit the
+  shared fleet.
+- The ABI gate no longer runs on merge-queue entries — the PR run already produced the
+  comparison it exists for, and while `ABI_ENFORCE` is off nobody reads the release-
+  relative second view before the merge lands.
 
 **Quality gates**
 
-- **The gold-reference quality gate now has one SNR floor per channel, not one per fixture.**
-  A 5.1 fixture's surround channels sit 35 dB below its front channels for a legitimate
-  reason — A/52 §7.3.4 leaves the values a decoder substitutes for zero-bit bins unspecified,
-  so two spec-correct decoders are *required* to differ wherever those bins fall. A single floor had to clear the surrounds, which on
-  `ac3-51-448/dee.ac3` meant gating the centre channel at 22 dB while it measured 58.1: it
-  could have lost 36 dB, and the LFE 60 dB, without failing anything. Each channel now carries
-  its own floor, derived as `floor(min_observed − 1.0)` from that channel's lowest value
-  across every CI leg and every recorded commit by the new
-  `tools/checks/derive_channel_floors.py` — so a floor move is reviewable against evidence
-  rather than asserted. Every check gained 19–71 dB of real gate on its front channels and
-  LFE; one pair of floors (this fixture's `Ls`/`Rs`) went *down*, from 22 to 21, because 22
-  was never derived for them. The trend check in `tools/ci/append_quality_history.py` follows
-  the same rule, comparing each channel against its own trailing average instead of watching
-  only the worst channel — which was the same dither-dominated surround on every run.
-  `compare_wav.py`'s `--json-out` gains `thresholds_db`, `headroom_db`, `channel_labels` and
-  `tightest_channel`; `threshold_db` keeps its old scalar meaning for existing consumers.
-  [Validation](docs/verification.md) carries the derivation and the two gaps that still limit
-  how sharply these gates can see.
+- **The gold-reference quality gate now has one SNR floor per channel, not one per
+  fixture.** A/52 leaves the values a decoder substitutes for zero-bit bins unspecified,
+  so two spec-correct decoders legitimately differ there — a 5.1 fixture's surrounds
+  sitting 35 dB below its fronts meant a single floor had to clear the surrounds, gating
+  the centre channel at 22 dB while it measured 58.1. Each channel now carries its own
+  floor, `floor(min_observed - 1.0)` derived across every CI leg and commit
+  (`derive_channel_floors.py`), gaining 19–71 dB of real gate on front channels and LFE.
+  The trend check follows the same rule, comparing each channel against its own trailing
+  average. See [Validation](docs/verification.md).
 
 **Documentation**
 
-- **The Crucible guide gained the two pages it was missing**, written from the window rather
-  than from the plan: [The room](docs/crucible/room.md), and
-  [Settings](docs/crucible/settings.md). There is no output-modes page and there will not be
-  one; the signal path page already carries the modes.
-- **The library is presented as a member in its own right.** Its page opens by saying what it
-  is before it says what to link, its navigation entry reads "What it is" like its two
-  siblings, the home page paragraph carries a download route as theirs do, and the site
-  description names all three members instead of describing a codec only. Both first screens'
-  status paragraphs now say where Crucible is built and tested rather than passing over it.
-- **The published-asset table matches the pipeline.** It gained a Windows arm64 row and rows
-  for Crucible, and four claims that had gone stale were corrected: that the Linux Crucible
-  package cannot reach a release, that a `.rpm` is produced for it in CI, that every
-  `release_package` leg carries the GUI, and that a failure on the experimental arm64 leg
-  fails the leg like any other.
-- **The CLI reference lists all forty-one commands.** The `spatial` command was undocumented
-  and every command count in the reference was stale. The browser demo pages no longer call
-  the WebAssembly decoder published: it is packed on every pull request and has never been
-  pushed to the registry, and the pages now say what a reader can do today instead of linking
-  an entry that returns nothing.
+- The Crucible guide gained its two missing pages ([The room](docs/crucible/room.md),
+  [Settings](docs/crucible/settings.md)).
+- The library's docs page now presents it as a member in its own right, matching its two
+  siblings.
+- The published-asset table now matches the pipeline: a Windows arm64 row, Crucible
+  rows, and four stale claims corrected.
+- The CLI reference lists all forty-one commands, including the previously-undocumented
+  `spatial`.
 
 **Release engineering**
 
-- `ac3::version_details()` (and so `ac3cli --version` and the apps' About boxes) puts the
-  commits past the tag in the headline as semver build metadata: `ac3forge 0.10.0-beta.1+100`
-  rather than `ac3forge 0.10.0-beta.1`, which read as the tagged release. `version_full` is
-  unchanged; the new `git_commits_since_tag` constant carries the count (0 on a tag).
+- `ac3::version_details()` (and `ac3cli --version`) now puts commits-past-tag in the
+  headline as semver build metadata (`0.10.0-beta.1+100`), so it no longer reads as a
+  tagged release when it isn't.
 
 ### Fixed
 
 **Command line and GUI**
 
-- **The GUI offered E-AC-3 bitrates a source's sample rate could not frame**
-  (`apps/gui/encoder_controller.cpp`). `bitrates()` branched on the codec but not on the loaded
-  source's rate, so a 16 kHz file (reachable in the GUI via the three Annex E `fscod2` half rates)
-  offered every rung above 320 kbit/s though none of them fit an 11-bit `frmsiz`'s `kMaxFrameWords`
-  ceiling — even a 32 kHz source couldn't take the 768 the list always added. Picking one of those
-  rungs and encoding was refused at the encode button with a correct but avoidable error. The list
-  is now filtered per-rate with the same `ac3::eac3::frame_words()`/`kMaxFrameWords` rule
-  `plan::validate()` already applies to the independent substream, and loading a lower-rate source
-  clamps a selection that no longer fits down to the top rung still offered, the same way switching
-  to AC-3 already clamped 768 back to 640.
+- **The GUI offered E-AC-3 bitrates a source's sample rate couldn't frame.**
+  `bitrates()` branched on codec but not on the loaded source's rate, so a 16 kHz file
+  offered rungs no `frmsiz` could carry; encoding was refused only at the encode button.
+  The list is now filtered per-rate by the same rule `plan::validate()` already applies,
+  and a lower-rate source clamps an out-of-range selection down.
 
 **ESP32 / bare-metal**
 
-- **The ESP32 streaming example's `tdm` sink claimed sixteen 32-bit slots on one data line; an
-  ESP32-S3 carries four** (`esp-idf/ac3forge/examples/stream_player/main/sink/tdm/`). An S3 TDM
-  frame holds at most 128 bits, because the peripheral's half-frame length is a 6-bit register
-  field, and ESP-IDF v6.1 refuses more. The sink had never run on hardware, and CI's eight- and
-  twelve-slot shapes use the `capture` sink, which configures no peripheral, so a board run on
-  2026-09-11 was the first to try one. The sink now refuses a frame over 128 bits and says why,
-  and the Kconfig help, both READMEs, `docs/platforms/esp32.md` and the ESP32 planning pages say
-  what the part carries: four slots of 32 bits or eight of 16 on a line, twice that across the
-  two I2S controllers.
-- **A panic or a reset after `result=pass` passed every ESP32 leg CI runs under QEMU**
-  (`tools/checks/check_esp_console.py`). The two probe runners, `run_esp32s3_probe.sh` and
-  `run_esp32c3_probe.sh`, and the streaming player's streaming, capture, render and HTTP steps in
-  `_build.yml` end QEMU on a timeout and passed on `result=pass` in the console, looking for panic
-  output only when that line was missing. The application prints it before it has finished, and
-  a panic in what follows resets the part into a second run that prints it again. On 2026-09-10
-  the HTTP step's player freed its ring buffer twice after its verdict, and the heap's assert, the
-  backtrace and the reboot reached the step only as a `/status` that still read "playing". Each
-  of those places now also fails on panic output or a second boot banner anywhere after the first
-  boot, and lists the offending lines. The HTTP step checks its console once `/status` reports the
-  stop, which comes after the replay's teardown, and its other failures now report a panic first
-  when there is one.
-- **`PUT /layout` overflowed the ESP32 control surface's stack** (`esp-idf/ac3forge/src/control.cpp`).
-  esp_http_server runs every handler on its one task, with 4,096 bytes of stack by default, and the
-  streaming example's layout handler parses the layout there: its deepest use was 4,596 bytes under
-  QEMU. The stack's canary did not catch it, and the part panicked in FreeRTOS's list code in that
-  request or a few after it, on the base branch as well as with the web page. `Control::start` takes
-  the stack's size, 6,144 bytes by default, which on a board playing over WiFi costs 2,192 bytes of
-  internal heap and left 13,619 free at the play's lowest.
+- **The ESP32 streaming example's `tdm` sink claimed sixteen 32-bit slots on one data
+  line; an ESP32-S3 carries four.** An S3 TDM frame holds at most 128 bits (ESP-IDF v6.1
+  enforces it); the sink had never run on hardware before a 2026-09-11 board run found
+  it. It now refuses an over-budget frame and says why; the docs say what the part
+  actually carries.
+- **A panic or reset after `result=pass` passed every ESP32 CI leg under QEMU.** The
+  probe runners and the streaming player's steps ended QEMU on a timeout and looked for
+  panic output only when the pass line was missing — but the application prints that
+  line before it finishes, and a panic resets the part into a second run that prints it
+  again. One HTTP-step player freed its ring buffer twice after its verdict and reached
+  the step only as a stale `/status`. Every leg now also fails on panic output or a
+  second boot banner anywhere after the first.
+- **`PUT /layout` overflowed the ESP32 control surface's stack.** `esp_http_server`'s
+  handler task has 4,096 bytes by default; parsing the layout there peaked at 4,596
+  under QEMU, past the canary. `Control::start` now takes the stack size (6,144 bytes by
+  default).
 
 **Codec correctness**
 
-- **The AC-4 parser dereferenced a null pointer on a legal bitstream, and could be made to ask
-  for gigabytes.** §4.2.3.11 transmits `substream_size[]` only when `b_size_present`, a flag
-  Table 14 reads only when `n_substreams == 1` - so a stream that clears it left
-  `Toc::substream_sizes` empty while `Toc::n_substreams` was 1, and `parse_raw_frame()` indexed
-  element 0 of an empty vector. `tests/ac4` had only ever built the `b_size_present = 1` shape,
-  so the whole branch was untested. A substream whose size is not transmitted now runs from
-  `payload_base` to the end of the frame, which is unambiguous because `scan()` hands
-  `parse_raw_frame()` exactly one `frame_size`-bounded frame. Separately, `parse_toc()` no
-  longer calls `reserve()` on counts that arrive through `variable_bits()` (one fuzzed frame
-  asked for a 137 GB `vector<SubstreamGroupInfo>`), and the three count-driven loops that grew
-  a vector without checking whether the reader had run out - `substream_sizes`, a
-  presentation's `group_refs`, and the channel-coded `n_lf_substreams` loop - now stop the way
-  the substream-group loop beside them always did. Two more loops joined them: the
-  `b_add_emdf_substreams` runs in both presentation parsers, and the `n_bed_signals` loop in
-  `parse_bed_dyn_obj_assignment()`. That last one was the expensive one - `n_signals` reaches
-  2^32 through `variable_bits()` when `n_fullband_upmix_signals` is 16, and once the data was
-  gone its `r.bits(4)` returned a phantom 0 rather than the 3 that skips the append, so it kept
-  growing the object list: **1.8 GB and 6.7 seconds on a 200-byte frame**, now 33 MB and 0.03
-  seconds. All found by the new `fuzz/fuzz_ac4_parse.cpp`, the first two within seconds of its
-  first run; six million executions since are clean.
-- Short E-AC-3 syncframes (`numblkscod` 0–2) were sized at the full six-block byte budget, so a
-  short stream measured 6×/3×/2× its nominal bit rate — each shortened frame carried a
-  full-length frame's bytes. CBR frames now take `frame_words`' documented per-block scaling,
-  matching what `validate()` already checked. Six-block streams are byte-identical to before.
-- **A §E2.3.1.2 legacy-core stream failed to decode, or silently selected the wrong programme.**
-  `Eac3Decoder::decode_access_unit`'s programme-selection step parsed its unit's lead frame as an
-  Annex E syncframe. An AC-3 core carries neither `strmtyp` nor `substreamid` — the two bits where
-  `strmtyp` lives are the top of `crc1` — so the selection read a programme id out of a checksum:
-  about a quarter of frames alias to the reserved `strmtyp` 0x3 and failed the decode outright with
-  `kReservedValue`, and the rest aliased to a plausible id and were selected on silently. The
-  identity is now asserted from `bsid`, as the surrounding framing and `decode_substream` already
-  did. FFmpeg's FATE fixture `the_great_wall_7.1.eac3` (an AC-3 core plus an Annex E dependent
-  extending it to 7.1) decodes all 157 access units as a result; it had failed on its first.
-- `ac3cli` reports a decode failure in words rather than as an enumerator — `decode failed: a header
-  field holds a value A/52 reserves`, not `decode failed (code 3)`. `describe()` already existed for
-  these; nine call sites across `decode`, `analysis` and `live` were not using it, which is what made
-  the failure above unreadable from a CI log.
+- **The AC-4 parser dereferenced a null pointer on a legal bitstream, and could be made
+  to ask for gigabytes.** A stream that clears `b_size_present` left
+  `Toc::substream_sizes` empty while `n_substreams` was 1, and `parse_raw_frame()`
+  indexed element 0 of the empty vector; the untransmitted substream now runs to the end
+  of the frame instead. Separately, five count-driven loops fed by `variable_bits()`
+  (including the object-assignment loop, which reached 2^32 once the reader ran dry and
+  kept reading phantom zeros) grew a vector without checking for exhaustion — one fuzzed
+  frame allocated 1.8 GB and took 6.7 seconds; now 33 MB and 0.03 seconds. Found by the
+  new `fuzz_ac4_parse.cpp` within seconds of its first run; six million executions since
+  are clean.
+- Short E-AC-3 syncframes (`numblkscod` 0–2) were sized at the full six-block byte
+  budget, so a short stream measured up to 6x its nominal bit rate. CBR frames now take
+  `frame_words`' documented per-block scaling; six-block streams are unchanged.
+- **A §E2.3.1.2 legacy-core stream failed to decode, or silently selected the wrong
+  programme.** Programme selection parsed an AC-3 core's lead frame as an Annex E
+  syncframe — but an AC-3 core carries neither `strmtyp` nor `substreamid`, so the
+  selection read a programme id out of the `crc1` checksum: about a quarter of frames
+  failed outright, the rest were silently mis-selected. The identity is now asserted
+  from `bsid`. FFmpeg's FATE fixture `the_great_wall_7.1.eac3` (an AC-3 core plus an
+  Annex E extension to 7.1) now decodes all 157 access units; it had failed on its
+  first.
+- `ac3cli` reports a decode failure in words (`decode failed: a header field holds a
+  value A/52 reserves`) rather than as a bare enumerator — nine call sites across
+  `decode`, `analysis` and `live` weren't using the existing `describe()`.
 
 **Robustness and diagnostics**
 
-- The four copies of the IAB `BitWriter::push_plex` test helper could shift by 64. `width`
-  doubles on every escape - 4, 8, 16, 32, **64** - and `std::uint64_t{1} << 64` is undefined,
-  so a value at or above `0xFFFFFFFE` walked straight into it. The reader these helpers exist
-  to feed has always had the bound: `BitReader::read_plex` (`src/ac3iab/src/bitreader.cpp`)
-  stops at `width >= 32` and returns `kBadEscape`, on §5.2's guarantee that a Plex symbol
-  never exceeds `0xFFFFFFFE`. The writers now stop at the same place, so they cannot invoke
-  undefined behaviour and cannot emit an escape chain this project's own reader would reject.
-  Unreachable for the values these fixtures encode, so no test expectation changes.
-- **`bap-census=` was accepted by commands that cannot produce a census.** The option parser is
-  effectively global — 88 keys, three of them command-scoped — so `qc`, `levels`, `transcode`,
-  `probe`, `normalize`, `cut`, `spdif` and `mkv` all parsed the key and then did nothing with it,
-  exiting 0 having written no file. That is the same silent-no-output trap the E-AC-3 decode path
-  had (below), and it contradicts the parser's own contract, which refuses a key it cannot honour
-  with `error: unknown option`. `bap-census=` is now scoped to `decode`, the only command that
-  builds one — `run_decode` is reached from nowhere else, and the loudness commands run their own
-  decode loop that never accumulates a census — so every other command now refuses the token
-  through that existing error rather than swallowing it.
-- **`ac3cli decode … bap-census=` silently wrote nothing for E-AC-3 input.** `run_decode_eac3`
-  wired the per-block trace in and accumulated it into the census for every access unit, but never
-  wrote the result — so the flag was accepted, the trace cost was paid, and no file appeared, with
-  exit status 0. The AC-3 path had always written it. That is the exact failure the writer's own
-  contract refuses (a census is evidence a CI check gates on, and a decode asked for one that
-  silently produces none leaves that check passing on a stale file from a previous run), and it
-  was reachable from the moment the option landed, since `BapCensus` has carried an
-  `Eac3AccessUnitTrace` overload — one that folds an access unit's substreams together by stream
-  index — from the start. Both paths now write at the same point in the sequence. Covered by a CLI
-  test over single- and multi-substream E-AC-3, with the AC-3 case alongside as a control.
-- **`quiet` crashed `decode` on a stream with more than one programme or whose report has
-  Annex D, infomdat, mixing metadata or a concealed frame, and crashed `transcode`, `metadata`,
-  `normalize`, `cut` and `cat` on every stream** (`apps/cli/commands/decode.cpp`,
-  `apps/cli/commands/stream_tools.cpp`). `quiet` makes the status stream a null `FILE*`, which
-  `status_println` skips; those report lines called `fmt::println` on it directly. On Windows the
-  C runtime's parameter check ended the process with 0xC0000409, in most cases after the output
-  had been written in full. It was seen first on
-  `fuzz/seeds/fuzz_eac3_decode/external-eac3-51-256-dee.ec3`, whose report carries copyright and
-  a `dsurexmod`; FFmpeg's encode of the same programme carries neither and decoded quietly. Every
-  status line in the two files now goes through `status_println`, and `tests/cli` runs each of
-  these paths under `quiet` and compares the output with a run without it.
-
-- **`quiet` left three of `monitor`'s status lines on stdout, and `decode` wrote its object
-  signature summary into a `-` output** (`apps/cli/commands/live_audio.cpp`,
-  `apps/cli/support.cpp`). `monitor` printed the §7.8 fold note, the object-count line and the
-  `verify-objects` summary with plain `fmt::println`, which `quiet` does not reach. The summary is
-  shared with `decode`, where it also went to stdout when a `-` output put the WAV there, ahead of
-  the RIFF header. `live` printed the blank line that ends its level meter the same way before
-  refusing an IEC 61937 capture. All four now go to the command's status stream: nowhere under
-  `quiet`, and stderr when a `-` output owns stdout. `tests/cli` plays a signed object stream
-  through `monitor` with and without `quiet` and checks that stdout stays empty under it - on a
-  machine with no render endpoint only the summary is reached - and decodes one under `quiet`
-  and to `-`.
-
-- **`monitor` misdescribed the object layer of every bed program, and claimed an LFE object for
-  streams that carry none** (`apps/cli/commands/live_audio.cpp`, `apps/cli/support.cpp`). It
-  printed its own copy of `decode`'s object-count line, and that copy had kept only the shape this
-  project's own encoder writes - "N dynamic objects + the bed's LFE = M objects" - whatever the
-  program was. `decode` counts the bed's LFE only when the program has one, and names a bed
-  program's channels instead: "bed [L R C LFE Ls Rs Tfl Tfr Tbl Tbr] + 2 dynamic objects = 12
-  objects", followed by a line each for a trim element, for elements skipped by size, and for more
-  than one metadata update block per frame. Channel-based immersive content from other encoders is
-  a bed program, so `monitor` described all of it wrongly. Both commands now report through one
-  function on the status stream, `print_object_summary`, and cannot drift apart again; `monitor`
-  keeps its own note about the JOC audio, which it reconstructs and does not play. `tests/cli`
-  builds streams for the two shapes this project's encoder does not write - a 5.1.4 bed program,
-  and dynamic objects with no LFE object - and requires `monitor` to print what `decode` prints
-  for each.
+- The four copies of the IAB `BitWriter::push_plex` test helper could shift by 64 —
+  `width` doubles through 4/8/16/32/64, and a value at or above `0xFFFFFFFE` hit
+  undefined behaviour. The reader has always had the bound (`width >= 32` returns
+  `kBadEscape`); the writers now match it. Unreachable for these fixtures' actual
+  values.
+- **`bap-census=` was accepted by eight commands that cannot produce one** (`qc`,
+  `levels`, `transcode`, `probe`, `normalize`, `cut`, `spdif`, `mkv`) — each parsed the
+  key and silently did nothing, exiting 0. The option is now scoped to `decode`, the
+  only command that builds a census; every other command refuses it with the parser's
+  existing `error: unknown option`.
+- **`ac3cli decode … bap-census=` silently wrote nothing for E-AC-3 input**, though the
+  trace was wired in and its cost paid — the AC-3 path had always written it. Both paths
+  now write at the same point; covered by a CLI test over single- and multi-substream
+  E-AC-3.
+- **`quiet` crashed `decode` on a multi-programme or richly-annotated stream, and
+  crashed `transcode`, `metadata`, `normalize`, `cut` and `cat` on every stream.**
+  `quiet` makes the status stream a null `FILE*`; several report lines called
+  `fmt::println` on it directly instead of going through `status_println`, which the
+  Windows CRT's parameter check turns into a hard crash. All such lines now route
+  through `status_println`.
+- **`quiet` left three of `monitor`'s status lines on stdout, and `decode` wrote its
+  object-signature summary ahead of a `-` output's WAV data.** All four now go to the
+  command's status stream, tested with and without `quiet`.
+- **`monitor` misdescribed the object layer of every bed programme, and claimed an LFE
+  object for streams that carry none** — its own copy of `decode`'s object-count line
+  had kept only the shape this project's own encoder writes. Both commands now report
+  through one shared function, `print_object_summary`, tested against a 5.1.4 bed
+  programme and objects with no LFE.
 
 **Crucible desktop application**
 
-- **A Crucible re-probe asked for while one was already running was dropped**
-  (`apps/crucible/engine/engine.cpp`). The frame loop tested `want_reprobe` before it tested
-  whether an enumeration was in flight, so a request that arrived during one was cleared by that
-  test and then served by nobody - not queued, not retried. The next probe came only from the
-  device watcher or from the user asking again. That is the case the request exists for: reading
-  the endpoint list is slow, so the world routinely changes after the running enumeration has
-  read it, and the request that would have caught the change was the one being thrown away.
-  Every caller was affected - Re-probe on the Room page, pinning a mode, choosing an endpoint,
-  loading or clearing a signing key, and the device watcher itself. A request that arrives during
-  an enumeration is now kept, and starts a fresh probe as soon as that one finishes.
-- **Crucible tapped applications before it had anywhere to play them**
-  (`apps/crucible/engine/engine.cpp`). The frame loop refreshed the session list and opened a tap
-  per application earlier in the frame than the block that applies an endpoint probe, and a probe
-  is requested rather than applied at construction - so the first frame tapped whatever was
-  playing and only then went looking for an output. On macOS that is audible: the Core Audio
-  process tap is created with `CATapMutedWhenTapped`, which is what lets that platform do
-  without a silent device, so on a Mac whose output policy finds nothing usable Crucible would
-  have muted the user's applications and delivered their audio nowhere. Taps are now opened only
-  while the output stage has an endpoint and released as soon as it has none, checked on every
-  frame so an endpoint that appears or vanishes between session refreshes is followed at once.
-  Windows and Linux hear no difference - a WASAPI process-loopback activation and a PipeWire link
-  to a sink monitor both capture without muting - and the rule only stops a tap being opened to
-  be thrown away.
-- **AC3Forge Crucible reported a running engine on a machine with nothing to play into**
-  (`apps/crucible/engine/engine.cpp`). `Engine::start()` spawned its worker thread and reported
-  success unconditionally, while everything that can actually fail - building the output stage,
-  the first device enumeration, opening a sink - happened on that thread after the answer had
-  already been given. On a machine with no usable audio endpoint the window therefore came up
-  saying the engine was running, with no error to show and nothing being played, and the two
-  test branches written for that state could never be reached. `start()` now waits for the
-  worker to report, under two short deadlines: the half that builds has to be up promptly and a
-  silent worker is refused, while the first probe's verdict is waited on only briefly, because
-  PipeWire spends two seconds per endpoint and the machines slow to answer are the ones with
-  endpoints to answer with. A working start still costs about a frame. The status strip now
-  prints why the engine could not start - no endpoint can carry any mode, or the sink refused -
-  instead of claiming it is running. Writing the test for that turned up a second bug beside
-  it: a `Engine` that was stopped and started again never enumerated, because the flag asking
-  for the first probe was set once at construction and cleared by the first frame, so the
-  second run sat in "none" whatever the machine had. Nothing shipped took that path - the
-  window builds a new engine each time - but the API allowed it.
-- **Crucible listed every PulseAudio application on Linux as one entry, and could tap none of
-  them** (`src/audio/src/backend/pipewire/pipewire_support.hpp`). PipeWire records the process
-  behind a client from the socket credentials, and the session list and the per-process tap both
-  read that. It names the application only where the application talks to the daemon itself: one
-  using the PulseAudio API - VLC, Firefox, Chromium, most of a desktop - reaches it through
-  `pipewire-pulse`, whose pid every one of their clients then carries. Read off a Raspberry Pi
-  4B: VLC's client said pid 32005, which was `pipewire-pulse`; VLC was 49692. A stream whose
-  `client.api` names a relay is now bound for the `application.process.id` on its info, which is
-  the pid that means something, and `stream_owner_pid()` carries the rule with a test on it. A
-  graph with no PulseAudio application in it costs the tap what it always did.
-- **Crucible could not start on a Linux desktop with a system tray** (`apps/crucible/ui/`).
-  Publishing a StatusNotifierItem took the process down before the window drew a frame, on nine
-  or ten launches out of ten. It is a type confusion in Qt: `QDBusPlatformMenu` implements no
-  `createSubMenu()`, so a `Qt.labs.platform` `Menu` nested inside a tray icon's menu is handed
-  Qt Labs Platform's QWidget fallback and then `static_cast` to the D-Bus one, and the panel's
-  first request for the menu layout reads a `QWidgetPlatformMenu` as a `QDBusPlatformMenu`. The
-  tray's menu is now flat on every platform — the signal path is a heading and seven choices
-  rather than a submenu — and Linux publishes a tray again, with both platforms answering
-  `ui/tray_support.hpp` from `QSystemTrayIcon::isSystemTrayAvailable()`.
-  `tst_platform.qml` fails on a tray menu item with a `subMenu`, so the constraint cannot be
-  lost. `apps/linux/tray-vm/` is the scripted Debian guest that found it — Qt debug symbols and
-  valgrind, which the 2 GB Raspberry Pi the crash was first read on could not give — and it
-  reproduces on demand: ten launches of ten survive as shipped, none with a submenu put back.
-  `docs/crucible/promotion.md` has the finding.
-- **The room page described Windows' application list on Linux.** Windows keeps an audio session
-  while an application holds the device open, so a paused player stays listed and greys;
-  PipeWire has a stream only while there is sound, so on Linux applications appear when they
-  start playing and leave when they stop. The sentence is now `SessionMonitor::listing_rule()`,
-  one paragraph from each platform, and `docs/crucible/troubleshooting.md` leads with it.
+- **A Crucible re-probe requested while one was already running was silently dropped**,
+  served by nobody — not queued, not retried — affecting every caller (Re-probe, pinning
+  a mode, choosing an endpoint, the device watcher itself). A request that arrives mid-
+  enumeration is now kept and starts a fresh probe once the running one finishes.
+- **Crucible tapped applications before it had anywhere to play them.** On macOS the
+  Core Audio process tap mutes the source app while tapped, so a machine with no usable
+  output would have muted every application and delivered its audio nowhere. Taps now
+  open only while the output stage has an endpoint, checked every frame.
+- **Crucible reported a running engine on a machine with nothing to play into.**
+  `Engine::start()` reported success before the worker thread had built the output stage
+  or opened a sink; it now waits for the worker under two deadlines and the status strip
+  reports why start failed instead of claiming success. A second bug found while testing
+  this: a stopped-and-restarted engine never re-enumerated.
+- **Crucible listed every PulseAudio application on Linux as one entry, and could tap
+  none of them** — PipeWire reports the pid of `pipewire-pulse`, the relay every
+  PulseAudio-API app talks through, not the app's own pid. A stream whose `client.api`
+  names a relay is now bound for `application.process.id` instead.
+- **Crucible could not start on a Linux desktop with a system tray**, crashing on nine
+  or ten launches out of ten: a `Qt.labs.platform` submenu nested in the tray icon's
+  menu triggers a type-confusion `static_cast` inside Qt's D-Bus tray implementation.
+  The tray's menu is now flat on every platform, with a regression test pinning the
+  constraint.
+- The room page described Windows' application-list behaviour on Linux, where PipeWire
+  (unlike Windows' session model) only shows an application while it's actually playing
+  sound.
 
 **Tooling, packaging and release engineering**
 
-- **Every Linux and macOS package shipped without the `ac3cli` man page or any of the four
-  shell completions** (`apps/cli/CMakeLists.txt`). The generated `ac3cli.1` and the
-  bash/zsh/fish/PowerShell completion scripts were guarded by `if(CMAKE_CROSSCOMPILING)` on the
-  understanding that this meant the arm64 cross legs. It does not: CMake sets that flag whenever
-  a toolchain file supplies `CMAKE_SYSTEM_NAME`, whether or not the target differs from the host,
-  and every Linux and macOS preset chainloads a toolchain file that sets it unconditionally. So
-  both Linux `.tar.gz`, both `.deb`, both `.rpm` and the universal `.dmg` carried none of the
-  five files. Windows was unaffected (its toolchains set only `CMAKE_SYSTEM_PROCESSOR`), and the
-  Homebrew formula was the one build that got them - it passes no toolchain file, which is why
-  the only test asserting they exist kept passing. The guard now asks the question it meant to
-  ask, comparing host and target system name and processor, and the configure log says which way
-  it went. `man ac3cli` and tab completion work from a distribution package again; a genuine
-  cross build still skips them, as does Emscripten.
-- **A dispatched release would have published the Linux AC3Forge Crucible package stamped with
-  the previous release's version** (`.github/workflows/_build.yml`). That package is built by a
-  step that configures its own tree, and unlike the other two configure sites it passed no
-  `DERIVED_VERSION_OVERRIDE`. On the `workflow_dispatch` release path the tag is pushed only
-  after build, package, sign and attest all succeed, so `git describe` finds the previous release
-  while the build runs - and the step has no release gate, while its artifact name is one
-  `release.yml` collects and attaches. An `ac3forge-crucible-<previous version>` would have gone
-  out beside correctly versioned assets. The same override is now passed there.
-- **Three smaller gaps on the same release path** (`.github/workflows/`). The Linux Crucible
-  upload listed only the `.tar.gz` and `.deb`, leaving cpack's `.sha512` side-cars on the runner,
-  so those two assets alone reached a release without the per-file checksum every other asset
-  carries. The `SHA512SUMS` generator's glob omitted `*.AppImage`, alone among five otherwise
-  identical globs, so the AppImage had a side-car but no line in the aggregate manifest.
-  And the release job asserted only that at least one package existed, so an `experimental` leg
-  dying - which `continue-on-error` keeps out of the job's own status - would have published a
-  release silently missing that platform, while `docs/releasing.md` told the maintainer that
-  could not happen. It now names every package the documentation promises and fails on whatever
-  is absent, listing what did arrive.
-- **The README's decode-accuracy badge disagreed with the page it links to.** Per-channel SNR
-  floors taught `docs/performance-quality.md`'s Decode accuracy card to pick a check by its
-  tightest per-channel *margin* and report the channel that owns it, but
-  `tools/ci/write_measurement_badges.py` kept the old scalar rule — pick by
-  `worst_db - threshold_db`, print `worst_db`. On one commit that left the badge reading
-  `18.3 dB SNR`, a dither-dominated surround sitting 1.3 dB clear of its floor, while the card
-  one click away read `58.1 dB SNR`, a front channel with 1.1 dB of margin and the check
-  genuinely closest to failing. Both numbers were correct; they answered different questions.
-  The badge now runs the card's computation, falling back to the scalar one for records written
-  before per-channel floors so a mixed history still compares on one scale. Its colour moved to
-  that same margin: `worst_db >= threshold_db` could not see a high-floor channel breaching, so
-  a centre channel dropping under its own 49 dB floor left the badge green — on a build the
-  gold-reference gate itself fails — because the 18 dB surround still cleared the scalar 17 dB.
-  `tools/ci` gains a unit-test suite, run by `ci.yml`'s script-lint job alongside
-  `tools/checks`.
+- **Every Linux and macOS package shipped without the `ac3cli` man page or any of the
+  four shell completions.** They were guarded by `if(CMAKE_CROSSCOMPILING)` on the
+  mistaken assumption this meant only the arm64 cross legs — it's set whenever a
+  toolchain file supplies `CMAKE_SYSTEM_NAME`, which every Linux/macOS preset does. Only
+  the Homebrew formula (no toolchain file) got them, which is why the one test asserting
+  they exist kept passing. The guard now compares host and target system name/processor.
+- **A dispatched release would have published the Linux Crucible package stamped with
+  the previous release's version** — its configure step was the one of three that passed
+  no `DERIVED_VERSION_OVERRIDE`, so `git describe` saw the previous tag before the new
+  one was pushed. Fixed, plus three smaller release-path gaps: missing `.sha512` side-
+  cars for the Linux Crucible assets, a `SHA512SUMS` glob missing `*.AppImage`, and a
+  release job that only checked some package existed rather than every promised one.
+- **The README's decode-accuracy badge disagreed with the page it links to.** Per-
+  channel SNR floors taught the docs page to report the tightest per-channel margin, but
+  the badge generator kept the old scalar rule (worst absolute dB) — on one commit the
+  badge read 18.3 dB (a surround 1.3 dB clear of its floor) while the page read 58.1 dB
+  (the front channel genuinely closest to failing), and the badge's colour could stay
+  green while the gold-reference gate itself failed. The badge now runs the same
+  computation as the page.
 
 **Browser (WASM)**
 
-- The three unlabelled `<input>` elements in the WASM demos now carry an `aria-label`: the
-  stream picker and the seek slider in the decode demo, and the WAV picker in the encode one.
-  A screen reader announced them by type alone ("file upload button", "slider"), with the
-  surrounding text giving the only clue what they were for. `aria-label` rather than a visible
-  `<label>` so nothing moves on the page; the `Format` control beside them already used the
-  wrapping-`<label>` form and keeps it. Found by the first SonarCloud scan
-  (`Web:InputWithoutLabelCheck`). `docs/assets/wasm-decode-demo/` and
-  `docs/assets/wasm-encode-demo/` are re-copied to match, which `docs.yml` compares byte for
-  byte.
-- **The AudioWorklet pipeline's browser test never ran.** `apps/wasm/tests/worklet.spec.js` — the
-  one check that a real `AudioWorkletNode`, a real Worker and a real `SharedArrayBuffer` ring
-  buffer carry decoded audio end to end — was added in 0.10.0-beta.1 but matched no Playwright
-  project, so `npx playwright test` silently skipped it locally and in CI while the release notes
-  and `docs/platforms/wasm.md` both described that pipeline as covered. It now runs in the decode
-  project. Wiring it in also surfaced the spec's own bug: it navigated to `/index.html`, which
-  resolves to the server root rather than the demo subdirectory, and the resulting 404 page (which
-  carries no cross-origin-isolation headers) made the failure read as "COOP/COEP headers missing".
+- The WASM demos' three unlabelled `<input>` elements (the stream picker, the seek
+  slider, the WAV picker) now carry an `aria-label`, found by the first SonarCloud scan.
+- **The AudioWorklet pipeline's browser test never ran.** `worklet.spec.js` matched no
+  Playwright project, so it silently skipped in CI while the docs described that
+  pipeline as covered. It now runs in the decode project; wiring it in also found the
+  spec navigating to a 404 page that read as a COOP/COEP failure.
 
 **Build system**
 
-- **macOS cross-builds compiled the wrong architecture's SIMD kernels.** `AC3FORGE_SIMD`'s `auto`
-  and the `AC3FORGE_AVX2` tier both keyed on `CMAKE_SYSTEM_PROCESSOR`, which on Apple platforms
-  describes the *host* — `CMAKE_OSX_ARCHITECTURES` overrides it per compile line. A Mac configured
-  with `-DCMAKE_OSX_ARCHITECTURES` for the other architecture therefore picked its own kernels, and
-  building for arm64 from an Intel Mac handed the ARM compile SSE2 intrinsics and `-mavx2`, failing
-  outright. Both now follow the effective target architecture, and a universal (multi-`-arch`)
-  configure resolves `generic`, since no single compile-time choice can serve both slices. Native
-  builds on every platform are unaffected.
+- **macOS cross-builds compiled the wrong architecture's SIMD kernels.**
+  `AC3FORGE_SIMD`'s `auto` keyed on `CMAKE_SYSTEM_PROCESSOR`, which on Apple platforms
+  describes the host, not `CMAKE_OSX_ARCHITECTURES`'s target — building arm64 from an
+  Intel Mac handed it SSE2/AVX2 intrinsics and failed outright. Both now follow the
+  effective target architecture; a universal configure resolves `generic`.
+
 **Audio backend and object signing**
 
-- **`PassthroughSink` crashed the instant a real exclusive-mode bitstream endpoint was available to
-  drive it**, surfaced once an Onkyo TX-RZ740 over an Nvidia GPU's HDMI audio endpoint locked AC-3,
-  E-AC-3 and signed Atmos through the sink itself for the first time. `Activate`/`Initialize` ran
-  on the calling thread while `Start`/`GetBuffer`/`Stop` ran on a worker thread - harmless for
-  `MonitorSink`'s shared-mode path, fatal deep inside `AUDIOSES.DLL` for a real exclusive-mode
-  client. The whole WASAPI lifecycle now runs on one worker thread, with `start()` blocking on a
-  promise so it still reports the real open/format-support result synchronously. The same session
-  also found the render loop's "bursts rendered" counter dividing each callback's bytes by the
-  burst size, which truncates to zero almost every callback since the exclusive-mode buffer size
-  has no reason to align to a whole burst - hanging the CLI's drain-wait loop forever after real
-  playback had already finished. Now accumulates bytes and converts to bursts only when `stats()`
-  is read.
-- **`ac3::signing::decode_signing_key` silently signed with the wrong bytes when a key file held a
-  comma-separated `0xHH` hex-array export** - a common disassembler/decompiler shape, and how this
-  project's own reverse-engineered test key had been saved - rather than base64 or raw binary. The
-  literal ASCII text became the HMAC key: self-consistent against this project's own sign/verify
-  round-trip, but rejected by a real licensed decoder, which is how a real AV receiver locking
-  Dolby Digital Plus but refusing to unlock a signed Atmos stream's object layer surfaced it. Now
-  recognises that format, and refuses content that is made up entirely of hex/array-shaped
-  characters but still fails to parse as one, instead of silently taking it as raw key bytes.
+- **`PassthroughSink` crashed the instant a real exclusive-mode bitstream endpoint drove
+  it** — surfaced once an Onkyo TX-RZ740 over HDMI locked AC-3, E-AC-3 and signed Atmos
+  through it for the first time. `Activate`/`Initialize` ran on the calling thread while
+  `Start`/`GetBuffer`/`Stop` ran on a worker thread, fatal inside `AUDIOSES.DLL` for a
+  real exclusive-mode client; the whole WASAPI lifecycle now runs on one worker thread.
+  The same session found the "bursts rendered" counter truncating to zero almost every
+  callback, hanging the CLI's drain-wait loop after playback had already finished.
+- **`ac3::signing::decode_signing_key` silently signed with the wrong bytes** when a key
+  file held a comma-separated `0xHH` hex-array export — a common disassembler shape, and
+  how this project's own reverse-engineered test key was saved — rather than base64 or
+  raw binary. Self-consistent against this project's own round-trip but rejected by a
+  real licensed decoder, which is how a real AV receiver refusing to unlock a signed
+  Atmos object layer surfaced it. Now recognises the format and refuses ambiguous
+  hex/array-shaped content instead of silently taking it as raw key bytes.
 
 ## [0.10.0-beta.1] - 2026-09-01
 
