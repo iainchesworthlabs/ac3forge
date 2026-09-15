@@ -1249,6 +1249,13 @@ std::expected<DecodedSubstream, DecodeError> Eac3Decoder::decode_ac3_core(
     DecodedSubstream out;
     out.strmtyp = StreamType::kIndependent;
     out.substreamid = 0;
+    // The core's own bsid (6 or 8, per DecodedFrame::bsid's own comment) -
+    // not the DecodedSubstream default of eac3::kBsid, which would say this
+    // substream is a genuine E-AC-3 one. apply_output()/flush() key their
+    // downmix-level resolution off this: bsid <= 8 means the levels below are
+    // the ones to fold with, since a core has no mixmdate to read `mixing`
+    // from at all (§E2.3.1.2, §D3.1.2).
+    out.bsid = decoded->bsid;
     out.sample_rate = decoded->sample_rate;
     out.acmod = decoded->acmod;
     out.lfe = decoded->lfe;
@@ -1258,6 +1265,17 @@ std::expected<DecodedSubstream, DecodeError> Eac3Decoder::decode_ac3_core(
     out.dialnorm2 = decoded->dialnorm2;
     out.compr2 = decoded->compr2;
     out.dynrng2 = decoded->dynrng2;
+    // §5.4.2.4/§5.4.2.5's bsi levels, and Annex D's xbsi1 group when the core
+    // is bsid 6 - the AC-3-syntax equivalent of a genuine substream's
+    // `mixing` above, carried the same way every other field on this line is:
+    // straight off the core FrameDecoder's own read, unmodified. Resolving
+    // them into the coefficients the §7.8 fold needs is `ac3::mix_levels()`'s
+    // job (via resolve_mix_levels below), same as it always was for a bare
+    // AC-3 stream through FrameDecoder - only the plumbing to reach an
+    // assembled E-AC-3 programme's fold is new here.
+    out.cmixlev = decoded->cmixlev;
+    out.surmixlev = decoded->surmixlev;
+    out.alternate_bsi = decoded->alternate_bsi;
     // An AC-3 syncframe is always six audblks (§5.3.1), which Annex E spells
     // numblkscod 3. That is also what every dependent riding alongside a core
     // must carry - §E2.3.1.2 requires a dependent to have "the same number of
@@ -3855,6 +3873,35 @@ int Eac3Decoder::latency_samples() const {
     return 0;
 }
 
+namespace {
+
+// The fold levels for one substream/access-unit's own bed, whichever syntax
+// stated them. A §E2.3.1.2 legacy core (bsid <= 8) has no mixmdate on the
+// wire at all - AC-3's bsi carries cmixlev/surmixlev instead, widened by
+// Annex D's xbsi1 group for a bsid-6 core (§D3.1.2) - so `mixing` and
+// `cmixlev`/`surmixlev`/`alternate_bsi` are never both meaningful for the
+// same bed; bsid says which one is. A genuine E-AC-3 bed always takes the
+// `mixing` branch, exactly as it did before this function existed.
+//
+// This is the same resolution FrameDecoder applies to a bare AC-3 stream
+// (ac3::mix_levels(), the acmod/cmixlev/surmixlev/alternate_bsi overload
+// PR #691 added); the only thing new here is reaching it from an assembled
+// E-AC-3 programme or a still-pending substream instead of a lone AC-3 frame.
+// A dependent's own `mixing`, if it sent one, is not consulted either way -
+// same rule DecodedAccessUnit::mixing's own comment already states for the
+// non-legacy-core case, extended rather than special-cased here.
+MixLevels resolve_mix_levels(int bsid, Acmod acmod, const std::optional<meta::MixMetadata>& mixing,
+                             std::optional<meta::CentreMixLevel> cmixlev,
+                             std::optional<meta::SurroundMixLevel> surmixlev,
+                             const std::optional<meta::AlternateBsi>& alternate_bsi) {
+    if (bsid <= 8) {
+        return mix_levels(acmod, cmixlev, surmixlev, alternate_bsi);
+    }
+    return mix_levels(mixing);
+}
+
+}  // namespace
+
 std::vector<DecodedSubstream> Eac3Decoder::flush() {
     std::vector<DecodedSubstream> ready;
     // Slot order is key order, so this drains in the same ascending
@@ -3893,8 +3940,10 @@ std::vector<DecodedSubstream> Eac3Decoder::flush() {
         }
         const auto layout = eac3::chanmap::expand(substream.location_map());
         impl_->output_.apply(views, layout, substream.acmod, substream.lfe,
-                             mix_levels(substream.mixing), substream.dialnorm,
-                             substream.dialnorm2);
+                             resolve_mix_levels(substream.bsid, substream.acmod, substream.mixing,
+                                                substream.cmixlev, substream.surmixlev,
+                                                substream.alternate_bsi),
+                             substream.dialnorm, substream.dialnorm2);
         substream.channels.resize(
             output_channel_count(impl_->config_.output, substream.acmod, substream.lfe));
     }
@@ -3958,7 +4007,9 @@ void Eac3Decoder::apply_output(DecodedAccessUnit& out, std::span<const std::span
         // finished program, not part of decoding one.
         AC3_ZONE_SCOPED_N("eac3_output");
         impl_->output_.apply(impl_->au_views_, out.layout, out.acmod, rendered_lfe,
-                             mix_levels(out.mixing), out.dialnorm, out.dialnorm2);
+                             resolve_mix_levels(out.bsid, out.acmod, out.mixing, out.cmixlev,
+                                                out.surmixlev, out.alternate_bsi),
+                             out.dialnorm, out.dialnorm2);
     }
     if (!external.empty()) {
         return;
@@ -4208,6 +4259,13 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     out.dynrng = lead.dynrng;
     out.numblkscod = lead.numblkscod;
     out.mixing = lead.mixing;
+    // The bed's own bsid, and its AC-3-syntax downmix levels when it is a
+    // §E2.3.1.2 legacy core - see DecodedAccessUnit::bsid's own comment.
+    // apply_output() below is where these actually get used.
+    out.bsid = lead.bsid;
+    out.cmixlev = lead.cmixlev;
+    out.surmixlev = lead.surmixlev;
+    out.alternate_bsi = lead.alternate_bsi;
     out.info = lead.info;
     // TS 103 420 §8.3.1's "whichever substream carries the EMDF container":
     // this project's own AtmosEncoder always makes that the bed, but a

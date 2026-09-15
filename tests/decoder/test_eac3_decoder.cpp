@@ -2587,6 +2587,148 @@ TEST_CASE("a legacy core plus dependent still folds to Lo/Ro instead of refusing
     }
 }
 
+// decode_ac3_core copied acmod, lfe, dialnorm, compr and so on off the core's
+// own DecodedFrame, but never its cmixlev/surmixlev - so DecodedSubstream's
+// (and DecodedAccessUnit's) `mixing` stayed std::nullopt for a legacy core,
+// and apply_output()/flush() folded it with §7.8's AC-3 DEFAULTS (-4.5 dB
+// centre, -6 dB surround) regardless of what the core's own bsi said. Fixed
+// by carrying cmixlev/surmixlev onto both structs and resolving them through
+// the same ac3::mix_levels() overload FrameDecoder already folds a bare AC-3
+// stream with.
+TEST_CASE("a legacy core's own bsi levels fold the programme, not the AC-3 defaults",
+          "[eac3][decoder]") {
+    using ac3::Acmod;
+
+    // -6 dB centre is away from §7.8's -4.5 dB default; silent surround is
+    // away from its -6 dB default too - "dropped from the fold entirely" is
+    // as far from "-6 dB" as a real Table 5.10 code gets.
+    ac3::EncoderConfig config;
+    config.acmod = Acmod::k3_2;
+    config.lfe = true;
+    config.bitrate_kbps = 448;
+    config.cmixlev = ac3::meta::CentreMixLevel::kMinus6dB;
+    config.surmixlev = ac3::meta::SurroundMixLevel::kSilent;
+    ac3::FrameEncoder core{config};
+
+    // One distinct tone per coded channel (L C R Ls Rs LFE) - silence would
+    // fold to silence under any gain at all, telling a wrong level apart from
+    // the right one needs real signal on every channel the fold touches.
+    const std::vector<double> tones = {1000.0, 800.0, 1200.0, 500.0, 1600.0, 60.0};
+    constexpr int kFrames = 4;
+    std::vector<std::vector<std::byte>> frames;
+    std::uint64_t n0 = 0;
+    for (int f = 0; f < kFrames; ++f) {
+        std::vector<std::vector<float>> block(6, std::vector<float>(ac3::kSamplesPerFrame));
+        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
+            for (std::size_t ch = 0; ch < 6; ++ch) {
+                block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                    kAmplitude * std::sin(2.0 * std::numbers::pi * tones[ch] * t));
+            }
+        }
+        n0 += ac3::kSamplesPerFrame;
+        const std::vector<std::span<const float>> views(block.begin(), block.end());
+        const auto frame = core.encode_frame(views);
+        REQUIRE(frame.has_value());
+        frames.push_back(*frame);
+    }
+    std::vector<std::byte> stream;
+    for (const auto& frame : frames) {
+        stream.insert(stream.end(), frame.begin(), frame.end());
+    }
+    const auto units = ac3::split_access_units(stream);
+    REQUIRE(units.has_value());
+    REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
+
+    for (const auto target : {ac3::DownmixTarget::kLoRo, ac3::DownmixTarget::kLtRt}) {
+        INFO("target " << static_cast<int>(target));
+        ac3::Eac3Decoder eac3{{.output = {.target = target}}};
+        ac3::FrameDecoder plain{{.output = {.target = target}}};
+        for (std::size_t f = 0; f < frames.size(); ++f) {
+            const auto via_eac3 = eac3.decode_access_unit((*units)[f]);
+            REQUIRE(via_eac3.has_value());
+            REQUIRE(via_eac3->has_value());
+            const auto via_ac3 = plain.decode_frame(frames[f]);
+            REQUIRE(via_ac3.has_value());
+            REQUIRE((*via_eac3)->channels.size() == via_ac3->channels.size());
+            CHECK((*via_eac3)->channels == via_ac3->channels);
+        }
+    }
+}
+
+// The other half of the same gap: a bsid-6 core's xbsi1 group (§D3.1.2)
+// widens or overrides bsi's cmixlev/surmixlev, and decode_ac3_core dropped
+// alternate_bsi along with them - so a legacy core written with its own
+// Lt/Rt and Lo/Ro levels folded with bsi's plain pair instead once it went
+// through Eac3Decoder, even though FrameDecoder already read xbsi1 correctly
+// (PR #691) for the identical bytes decoded on their own.
+TEST_CASE("a bsid-6 legacy core folds with its own xbsi1 levels, not bsi's",
+          "[eac3][decoder]") {
+    using ac3::Acmod;
+
+    // bsi's pair - §D4.2.1 requires a bsid-6 encoder to keep sending it for
+    // legacy decoders - and xbsi1's own, chosen to disagree with bsi AND with
+    // §7.8.2's -3 dB Lt/Rt in every one of the four fields, so a fold taking
+    // a level from the wrong place cannot match by coincidence.
+    ac3::meta::MixMetadata xbsi1;
+    xbsi1.dmixmod = ac3::meta::DownmixMode::kLoRo;
+    xbsi1.ltrtcmixlev = ac3::meta::MixLevel::kMinus1_5dB;
+    xbsi1.lorocmixlev = ac3::meta::MixLevel::kUnity;
+    xbsi1.ltrtsurmixlev = ac3::meta::MixLevel::kMinus4_5dB;
+    xbsi1.lorosurmixlev = ac3::meta::MixLevel::kSilent;
+
+    ac3::EncoderConfig config;
+    config.acmod = Acmod::k3_2;
+    config.lfe = true;
+    config.bitrate_kbps = 448;
+    config.cmixlev = ac3::meta::CentreMixLevel::kMinus3dB;
+    config.surmixlev = ac3::meta::SurroundMixLevel::kMinus3dB;
+    config.alternate_bsi = ac3::meta::AlternateBsi{.mix = xbsi1};
+    ac3::FrameEncoder core{config};
+
+    const std::vector<double> tones = {1000.0, 800.0, 1200.0, 500.0, 1600.0, 60.0};
+    constexpr int kFrames = 4;
+    std::vector<std::vector<std::byte>> frames;
+    std::uint64_t n0 = 0;
+    for (int f = 0; f < kFrames; ++f) {
+        std::vector<std::vector<float>> block(6, std::vector<float>(ac3::kSamplesPerFrame));
+        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
+            for (std::size_t ch = 0; ch < 6; ++ch) {
+                block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                    kAmplitude * std::sin(2.0 * std::numbers::pi * tones[ch] * t));
+            }
+        }
+        n0 += ac3::kSamplesPerFrame;
+        const std::vector<std::span<const float>> views(block.begin(), block.end());
+        const auto frame = core.encode_frame(views);
+        REQUIRE(frame.has_value());
+        frames.push_back(*frame);
+    }
+    std::vector<std::byte> stream;
+    for (const auto& frame : frames) {
+        stream.insert(stream.end(), frame.begin(), frame.end());
+    }
+    const auto units = ac3::split_access_units(stream);
+    REQUIRE(units.has_value());
+    REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
+
+    for (const auto target : {ac3::DownmixTarget::kLoRo, ac3::DownmixTarget::kLtRt}) {
+        INFO("target " << static_cast<int>(target));
+        ac3::Eac3Decoder eac3{{.output = {.target = target}}};
+        ac3::FrameDecoder plain{{.output = {.target = target}}};
+        for (std::size_t f = 0; f < frames.size(); ++f) {
+            const auto via_eac3 = eac3.decode_access_unit((*units)[f]);
+            REQUIRE(via_eac3.has_value());
+            REQUIRE(via_eac3->has_value());
+            const auto via_ac3 = plain.decode_frame(frames[f]);
+            REQUIRE(via_ac3.has_value());
+            REQUIRE((*via_eac3)->channels.size() == via_ac3->channels.size());
+            CHECK((*via_eac3)->channels == via_ac3->channels);
+        }
+    }
+}
+
 TEST_CASE("split_access_units keeps an AC-3 core and its dependent together",
           "[eac3][decoder]") {
     // frame[2]'s top two bits are crc1's, not strmtyp's, in an AC-3
