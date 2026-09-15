@@ -126,9 +126,37 @@ struct MixLevels {
     // Table D2.2's dmixmod - which fold the CONTENT was authored to be heard
     // through, when it says. Advisory: a caller asking for a specific
     // DownmixTarget gets that target. It is what a UI would offer as the
-    // stream's own preference, and what ac3cli's own downmix=auto follows.
+    // stream's own preference; automatic_stereo_target() below turns it into
+    // one. E-AC-3's mixmdate is the only source mix_levels() reads it from -
+    // AC-3's two bsi levels say nothing about it - and a reserved '11' is
+    // reported here as kReserved, as sent.
     meta::DownmixMode preferred = meta::DownmixMode::kNotIndicated;
 };
+
+// §D3.1.1's third choice for a two-channel output: "automatic selection of
+// either Lt/Rt or Lo/Ro based on the preferred downmix mode parameter
+// dmixmod". '01' gives Lt/Rt and '10' gives Lo/Ro, both folds this stage
+// produces. Every other case gets Lo/Ro, the plain fold a two-channel output
+// gets when nothing is preferred: '00', a stream that sends no dmixmod at all,
+// and the reserved '11', which §D2.3.1.2 allows a decoder to read as "not
+// indicated". Neither A/52 nor TS 102 366 V1.4.1 assigns '11' a downmix, so no
+// code can ask for a fold this stage lacks. Should a later revision define
+// one, it gets an enumerator of its own and -Wswitch flags the switch below
+// until the new code is given a fold.
+//
+// ac3cli's downmix=auto is this function applied to the dmixmod of the first
+// syncframe of the programme it decodes.
+[[nodiscard]] constexpr DownmixTarget automatic_stereo_target(meta::DownmixMode preferred) {
+    switch (preferred) {
+        case meta::DownmixMode::kLtRt:
+            return DownmixTarget::kLtRt;
+        case meta::DownmixMode::kNotIndicated:
+        case meta::DownmixMode::kLoRo:
+        case meta::DownmixMode::kReserved:
+            break;
+    }
+    return DownmixTarget::kLoRo;
+}
 
 // AC-3 (§5.4.2.4/§5.4.2.5). Both arguments are std::nullopt for any acmod
 // whose bsi does not carry that field, and the §7.8 defaults stand in: -4.5 dB
