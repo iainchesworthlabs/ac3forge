@@ -5,14 +5,17 @@
 # (planning/hearth-sendspin-extension.md).
 #
 # Two layers. The core needs nothing: JSON, base64url, the transport-mode framing, the
-# audio chunk formats and the handshake-phase messages. The rest - the crypto seam over
-# the PSA Crypto API, Noise and PSK identities - needs mbedTLS, which a computer build
-# takes from vcpkg's "hearth" feature. AC3FORGE_SENDSPIN_CORE_ONLY builds the core
-# alone, which is what fuzz/run.sh does so the fuzz build keeps no vcpkg dependency.
+# audio chunk formats, the handshake-phase messages, pairing tokens, and the transport
+# seam with its in-memory pair. The rest takes its dependencies from vcpkg's "hearth"
+# feature on a computer: mbedTLS for the crypto seam over the PSA Crypto API and the Noise,
+# PSK, CPace and pairing code above it, and cpp-httplib for the WebSocket transport.
+# AC3FORGE_SENDSPIN_CORE_ONLY builds the core alone, which is what fuzz/run.sh does so the
+# fuzz build keeps no vcpkg dependency.
 #
 # Written for the player half's hardest host, an ESP32 inside an HTTP server task:
 # no thread_local, no recursion over input, no large stack frames, and allocations
-# bounded by limits the caller sets (see the plan's constraints on src/sendspin).
+# bounded by limits the caller sets (see the plan's constraints on src/sendspin). The
+# WebSocket transport over cpp-httplib is the exception, since only a computer builds it.
 #
 # Always STATIC and never installed, like ac3::audio: no export annotations, and not
 # part of the ac3forge-dev package.
@@ -48,9 +51,11 @@ target_sources(ac3sendspin
 
 if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     find_package(MbedTLS CONFIG REQUIRED)
-    # The crypto seam's backend: one directory per backend, chosen here rather than by
-    # a preprocessor branch. psa/ is the PSA Crypto API, which mbedTLS 3.6 and 4 both
-    # provide.
+    find_package(httplib CONFIG REQUIRED)
+    # The seams' backends: one directory per backend, chosen here rather than by a
+    # preprocessor branch. crypto/psa/ is the PSA Crypto API, which mbedTLS 3.6 and 4 both
+    # provide; transport/httplib/ is the WebSocket transport over cpp-httplib, for a
+    # computer (a board brings its own over esp_http_server).
     target_sources(ac3sendspin
         PRIVATE
             src/cpace.cpp
@@ -58,8 +63,27 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
             src/hmac.cpp
             src/noise.cpp
             src/pairing.cpp
-            src/psk.cpp)
-    target_link_libraries(ac3sendspin PRIVATE MbedTLS::mbedcrypto)
+            src/psk.cpp
+            src/transport/httplib/websocket.cpp)
+    # The listening socket's options, which differ by platform (listen_socket.hpp).
+    if(WIN32)
+        target_sources(ac3sendspin PRIVATE src/transport/httplib/listen_socket_windows.cpp)
+    else()
+        target_sources(ac3sendspin PRIVATE src/transport/httplib/listen_socket_posix.cpp)
+    endif()
+    target_link_libraries(ac3sendspin PRIVATE MbedTLS::mbedcrypto httplib::httplib)
+    # cpp-httplib is configured by macros, which reach every file here that includes it.
+    # Code elsewhere in the same program that included cpp-httplib would need the same
+    # values, since its inline functions would otherwise differ between the two.
+    #   - A Sendspin WebSocket message is one Noise transport message or one handshake-phase
+    #     JSON text, never over 65535 bytes (messaging.md, Binary Messages). A peer that
+    #     announces a longer one is disconnected before anything is allocated for it.
+    #   - close() waits for the peer's answering Close frame when no reader is waiting for
+    #     it. Upstream's 5 s would be what Listener::stop() waits out for a peer gone quiet.
+    target_compile_definitions(ac3sendspin
+        PRIVATE
+            CPPHTTPLIB_WEBSOCKET_MAX_PAYLOAD_LENGTH=65535
+            CPPHTTPLIB_WEBSOCKET_CLOSE_TIMEOUT_SECOND=1)
 endif()
 
 target_include_directories(ac3sendspin

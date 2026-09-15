@@ -166,6 +166,14 @@ and release packaging.
   specification's form and aiosendspin 9.1.1's where the two differ.
 - **Sendspin's reference time filter**, vendored unmodified into
   `src/sendspin/third_party/time-filter` for the player half's clock synchronisation.
+- **Sendspin's WebSocket transport in `src/sendspin`**: the seam every session runs over,
+  with an in-memory pair for tests and loopback groups, and plain `ws://` over cpp-httplib in
+  both directions the specification allows, a listener and a dialler. A close from any thread
+  reaches a waiting reader within 100 ms whether or not the peer answers it, a message longer
+  than one Noise message ends the connection, and a second listener on a port that one
+  already holds fails to start, where cpp-httplib's default socket options would let it share
+  the port. cpp-httplib joins the `hearth` feature at 0.56.0 through an overlay port, ahead of
+  the vcpkg baseline's 0.52.0, for the read timeout that makes the close possible.
 
 **Containers and encoding**
 

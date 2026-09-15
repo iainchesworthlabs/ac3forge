@@ -668,7 +668,8 @@ if(AC3FORGE_BUILD_HEARTH)
             sendspin/test_cpace.cpp
             sendspin/test_crypto.cpp
             sendspin/test_noise.cpp
-            sendspin/test_pairing.cpp)
+            sendspin/test_pairing.cpp
+            sendspin/test_websocket.cpp)
     endif()
     target_link_libraries(ac3tests PRIVATE ac3::sendspin)
 endif()
