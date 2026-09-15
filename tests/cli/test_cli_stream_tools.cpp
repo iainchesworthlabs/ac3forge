@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/decoder.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/metadata_edit.hpp"
 #include "ac3/io/wav.hpp"
@@ -401,6 +402,55 @@ TEST_CASE("transcode needs to be told the codec when the name cannot say it",
     const auto scanned = ac3::io::scan(read_bytes(out));
     REQUIRE(scanned.has_value());
     CHECK(scanned->kind == ac3::io::StreamKind::kAc3);
+}
+
+TEST_CASE("transcode carries a reserved dmixmod across as not indicated", "[cli][transcode]") {
+    // Table D2.2's '11' (TS 102 366 Table D.1.1) is reserved in E-AC-3's
+    // mixmdate, as in AC-3's Annex D, and the encoder refuses to write it. A
+    // DD+ to DD+ transcode carries mixmdate across, so it has to carry
+    // §D2.3.1.2's reading of the code - "not indicated" - or refuse a stream
+    // that decodes fine. The source is the '01' and '10' encodes of one tone
+    // ORed byte by byte ('01' | '10' is '11', every other bit meets an
+    // identical copy) with each syncframe's CRCs re-stamped;
+    // tests/meta/test_bsi.cpp checks that this changes nothing but dmixmod.
+    const auto dir = scratch_dir();
+    const auto ltrt = read_bytes(
+        make_stream("tx_dmix_ltrt.ec3", "eac3-encode", "none 51 off mixmeta dmixmod=ltrt"));
+    const auto loro = read_bytes(
+        make_stream("tx_dmix_loro.ec3", "eac3-encode", "none 51 off mixmeta dmixmod=loro"));
+    REQUIRE(ltrt.size() == loro.size());
+    std::vector<std::byte> merged(ltrt.size());
+    for (std::size_t i = 0; i < merged.size(); ++i) {
+        merged[i] = ltrt[i] | loro[i];
+    }
+    const auto frames = ac3::split_frames(merged);
+    REQUIRE(frames.has_value());
+    for (const auto frame : *frames) {
+        const auto at = static_cast<std::size_t>(frame.data() - merged.data());
+        REQUIRE(ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
+    }
+    const auto before = ac3::io::read_frame_metadata(merged);
+    REQUIRE(before.has_value());
+    REQUIRE(before->mix.has_value());
+    REQUIRE(before->mix->dmixmod == ac3::meta::DownmixMode::kReserved);
+    const auto source = dir / "tx_dmix_reserved.ec3";
+    {
+        std::ofstream file{source, std::ios::binary};
+        file.write(reinterpret_cast<const char*>(merged.data()),
+                   static_cast<std::streamsize>(merged.size()));
+        REQUIRE(file.good());
+    }
+
+    const auto out = dir / "tx_dmix_out.ec3";
+    const auto log = dir / "tx_dmix.log";
+    fs::remove(out);
+    REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(out) + " 448", log) == 0);
+    INFO(read_log(log));
+    const auto after = ac3::io::read_frame_metadata(read_bytes(out));
+    REQUIRE(after.has_value());
+    CHECK(after->kind == ac3::io::StreamKind::kEac3);
+    REQUIRE(after->mix.has_value());
+    CHECK(after->mix->dmixmod == ac3::meta::DownmixMode::kNotIndicated);
 }
 
 TEST_CASE("transcode also goes the other way, DD into DD+", "[cli][transcode]") {

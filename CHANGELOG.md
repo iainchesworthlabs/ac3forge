@@ -148,6 +148,15 @@ and release packaging.
   over §E2.3.1.4 short syncframes across 1/2/3-block frames — completing roadmap EQ11.
   Worst-object SNR at every short code matches the six-block control on stationary
   material.
+- **`downmix=auto` on `decode` and `monitor`**: A/52 §D3.1.1's automatic choice of
+  stereo fold, from the stream's own `dmixmod`. Lt/Rt when it prefers Lt/Rt at an
+  acmod Table D2.2 defines the field for (`3/0`, `2/1`, `3/1`, `2/2`, `3/2`); Lo/Ro
+  otherwise, including no preference, the reserved code, and every narrower acmod,
+  where the table's own note leaves the field's meaning reserved outright. The
+  choice is made once, from the programme's first `dmixmod`, and printed.
+  `ac3::automatic_stereo_target()` holds the rule for library callers.
+- **`probe` reports `dmixmod`**, as a table line and as `metadata.dmixmod` plus a
+  per-syncframe `dmixmod` in the `ac3forge.probe/1` JSON document.
 
 **Browser (WASM)**
 
@@ -448,6 +457,14 @@ and release packaging.
 - `ac3cli` reports a decode failure in words (`decode failed: a header field holds a
   value A/52 reserves`) rather than as a bare enumerator — nine call sites across
   `decode`, `analysis` and `live` weren't using the existing `describe()`.
+- **A reserved `dmixmod` read back as "not indicated".** A/52:2018 Table D2.2 and ETSI
+  TS 102 366 V1.4.1 Table D.1.1 both list `'11'` as reserved, and Annex E gives
+  E-AC-3's `mixmdate` field the same table, so neither codec defines a fourth preferred
+  downmix. Both decoders, `io::read_frame_header` and `io::read_frame_metadata` used to
+  store `'11'` as `'00'`. `meta::DownmixMode::kReserved` now keeps it, and
+  `meta::describe()` names it. Both encoders refuse to write it, as they already refuse
+  reserved surround levels, and `transcode` carries a reserved source value across as
+  not indicated.
 
 **Robustness and diagnostics**
 

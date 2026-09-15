@@ -166,7 +166,12 @@ void carry_mix_metadata(const ac3::io::FrameMetadata& source, plan::Metadata& ta
         target.surmixlev = nearest_level(*surround, kSurround);
     }
     if (source.mix->dmixmod.has_value()) {
-        target.dmixmod = *source.mix->dmixmod;
+        // A reserved '11' is carried as "not indicated", §D2.3.1.2's reading
+        // of it: the encoder will not write the reserved code itself (see
+        // meta::valid_downmix_mode), and there is no preference to keep.
+        target.dmixmod = ac3::meta::valid_downmix_mode(*source.mix->dmixmod)
+                             ? *source.mix->dmixmod
+                             : ac3::meta::DownmixMode::kNotIndicated;
     }
     // §E2.3.1.10: absent means LFE mixing is DISABLED, which is a decision in
     // its own right - so an absent lfemixlevcod is carried across as absent,

@@ -12,6 +12,7 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/export.hpp"
+#include "ac3/meta/mixing.hpp"
 
 // Reading the shape of an AC-3 or E-AC-3 elementary stream back off the wire.
 //
@@ -189,6 +190,12 @@ struct FrameHeader {
     // Ch2's own pair (§5.4.2.16-18), present only for acmod 1+1.
     std::optional<int> dialnorm2 = std::nullopt;
     std::optional<std::uint8_t> compr2 = std::nullopt;
+    // Table D2.2's preferred stereo downmix, where the syncframe sends one:
+    // AC-3's Annex D xbsi1 (bsid 6 with xbsi1e set), or E-AC-3's mixmdate at
+    // an acmod wider than 2/0 (Table E1.2). std::nullopt everywhere else, so
+    // "not sent" stays distinguishable from a transmitted '00'. A reserved
+    // '11' is reported as sent, as meta::DownmixMode::kReserved.
+    std::optional<meta::DownmixMode> dmixmod = std::nullopt;
 
     // --- E-AC-3 only (Table E1.2) ------------------------------------------
     eac3::StreamType strmtyp = eac3::StreamType::kIndependent;

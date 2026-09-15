@@ -33,6 +33,7 @@
 #include "ac3/decoder/output.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
+#include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
@@ -646,10 +647,12 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             // channels= alone is enough to get a usable fold.
             if (value == "as-coded") {
                 out.output.target = ac3::DownmixTarget::kAsCoded;
+                out.downmix_auto = false;
                 continue;
             }
             if (value == "1") {
                 out.output.target = ac3::DownmixTarget::kMono;
+                out.downmix_auto = false;
                 continue;
             }
             if (value == "2") {
@@ -678,17 +681,27 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             } else if (value == "loro") {
                 out.output.target = ac3::DownmixTarget::kLoRo;
                 out.downmix_named = true;
+                out.downmix_auto = false;
             } else if (value == "ltrt") {
                 out.output.target = ac3::DownmixTarget::kLtRt;
                 out.downmix_named = true;
+                out.downmix_auto = false;
             } else if (value == "mono") {
                 out.output.target = ac3::DownmixTarget::kMono;
                 out.downmix_named = true;
+                out.downmix_auto = false;
+            } else if (value == "auto") {
+                // §D3.1.1's automatic choice, which needs the stream -
+                // resolve_output() settles it. Lo/Ro stands in until then, so
+                // a channels=2 either side of it sees a stereo target.
+                out.output.target = ac3::DownmixTarget::kLoRo;
+                out.downmix_named = true;
+                out.downmix_auto = true;
             } else {
                 fmt::println(stderr,
                              "error: downmix is 'on'/'off' (live) or 'loro' (§7.8.1)/'ltrt' "
-                             "(§7.8.2, Dolby Surround compatible)/'mono' (decode/monitor) "
-                             "(got '{}')",
+                             "(§7.8.2, Dolby Surround compatible)/'mono'/'auto' (the stream's "
+                             "own dmixmod, §D3.1.1) (decode/monitor) (got '{}')",
                              token);
                 return false;
             }
@@ -1712,6 +1725,67 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
         return std::nullopt;
     }
     return wanted;
+}
+
+namespace {
+
+// The first dmixmod a programme's independent substream sends, and the acmod
+// it rode in on - ac3::automatic_stereo_target() needs both, since Table
+// D2.2's own note leaves dmixmod's meaning reserved below acmod 3/0 (see that
+// function's comment). Same value `ac3cli probe` reports for the lead
+// programme. Headers only, and it stops at the first answer, which is the
+// stream's first syncframe for ordinary content. An unset `programme` follows
+// choose_programme(): the first programme the stream carries. Dependents are
+// passed over, since the independent substream is the one every decoder of
+// the programme reads.
+struct PreferredDownmix {
+    ac3::meta::DownmixMode dmixmod;
+    ac3::Acmod acmod;
+};
+
+std::optional<PreferredDownmix> preferred_downmix(std::span<const std::byte> stream,
+                                                   std::optional<int> programme) {
+    std::size_t offset = 0;
+    while (offset < stream.size()) {
+        const auto header = ac3::io::read_frame_header(stream.subspan(offset));
+        if (!header.has_value()) {
+            break;
+        }
+        if (header->strmtyp != ac3::eac3::StreamType::kDependent) {
+            if (!programme.has_value()) {
+                programme = header->substreamid;
+            }
+            if (header->substreamid == *programme && header->dmixmod.has_value()) {
+                return PreferredDownmix{*header->dmixmod, header->acmod};
+            }
+        }
+        offset += header->bytes;
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
+ac3::OutputConfig resolve_output(const Options& meta, std::span<const std::byte> stream,
+                                 FILE* status) {
+    auto output = meta.output;
+    if (!meta.downmix_auto) {
+        return output;
+    }
+    const auto preferred = preferred_downmix(stream, meta.programme);
+    // No dmixmod found at all is the same "no preference" case
+    // automatic_stereo_target() answers Lo/Ro to for any acmod, so there is no
+    // acmod to invent one for here.
+    output.target = preferred.has_value()
+                        ? ac3::automatic_stereo_target(preferred->acmod, preferred->dmixmod)
+                        : ac3::DownmixTarget::kLoRo;
+    status_println(status, "  downmix=auto: dmixmod {} -> {} (§D3.1.1)",
+                   preferred.has_value()
+                       ? fmt::format("{} ({})", static_cast<int>(preferred->dmixmod),
+                                     ac3::meta::describe(preferred->dmixmod))
+                       : std::string{"absent"},
+                   output.target == ac3::DownmixTarget::kLtRt ? "Lt/Rt stereo" : "Lo/Ro stereo");
+    return output;
 }
 
 bool write_frames(std::string_view path, std::span<const std::vector<std::byte>> frames) {
