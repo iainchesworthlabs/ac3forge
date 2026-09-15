@@ -1069,8 +1069,12 @@ TEST_CASE("every substream of an E-AC-3 access unit carries the same dynrng",
         REQUIRE(independent.dynrng.has_value());
         REQUIRE(dependent.dynrng.has_value());
         words.push_back({*independent.dynrng, *dependent.dynrng});
-        // §E3.8.5: the dependent's compre is the marker, and the word it drags
-        // in is unity - never a gain.
+        // §E3.8.5: the dependent's compre is the marker. No heavy compression
+        // is configured on this programme, so the word it drags in is unity -
+        // the same word a programme with dependents always carries when
+        // FrameConfig::heavy is unset; see "every substream of an E-AC-3
+        // program takes its last dependent's compr word" for a programme
+        // where it is set, and the word is a real gain instead.
         REQUIRE(dependent.compr.has_value());
         CHECK(*dependent.compr == ac3::meta::kComprUnity);
         CHECK_FALSE(independent.compr.has_value());
@@ -1370,13 +1374,16 @@ TEST_CASE("every substream of an E-AC-3 program takes its last dependent's compr
           "[drc][eac3][decoder][rf]") {
     // §E3.8.5: only the last dependent substream of a program carries compr
     // and dynrng, and its words apply to every substream of the program, the
-    // independent one included. A loud bed gives
-    // the independent substream a heavy-compression word of its own well
-    // below unity, and the dependent's compre - the end-of-program marker -
-    // brings a unity word. Every rendered channel has to take the dependent's:
-    // one gain for the whole program, 11 dB over line mode. The Dolby
-    // Reference Player's RF mode did exactly that with a 7.1 stream built the
-    // same way - the same 11.29 dB on all eight channels.
+    // independent one included. A loud bed with quiet height channels on top
+    // gives the independent substream its own heavy-compression word, from
+    // the bed's five channels alone (what a receiver decoding only the 5.1
+    // bed uses) - and AccessUnitEncoder gives the dependent a SECOND word,
+    // measured from the whole rendered program, height included, folded the
+    // way ac3::OutputStage's rendered-layout overload seats a wide layout.
+    // Every rendered channel takes the dependent's: one real gain for the
+    // whole program, not the unity placeholder a program with dependents used
+    // to carry regardless of how loud it was. The Dolby Reference Player's RF
+    // mode does exactly this with a 7.1 stream built the same way.
     ac3::eac3::AccessUnitConfig config;
     config.independent = {.bitrate_kbps = 448,
                           .acmod = ac3::Acmod::k3_2,
@@ -1394,6 +1401,7 @@ TEST_CASE("every substream of an E-AC-3 program takes its last dependent's compr
     ac3::Eac3Decoder line{kLineMode};
     ac3::Eac3Decoder rf{kRfMode};
     std::vector<GainFit> per_channel;
+    std::optional<std::uint8_t> last_dependent_word;
     for (int frame = 0; frame < 4; ++frame) {
         auto views = frame_views(bed, frame);
         for (auto& view : frame_views(height, frame)) {
@@ -1402,13 +1410,15 @@ TEST_CASE("every substream of an E-AC-3 program takes its last dependent's compr
         const auto unit = encoder.encode_access_unit(views);
         REQUIRE(unit.has_value());
         REQUIRE(unit->substream_count() == 2);
-        // The two words differ, or one gain everywhere would prove nothing
-        // about which of them was used.
+        // Both real words now, and not necessarily equal: the independent's
+        // is the bed's own five channels, the dependent's the whole eight.
         const auto independent = probe_eac3(unit->substream(0));
         const auto dependent = probe_eac3(unit->substream(1));
         REQUIRE(independent.compr.has_value());
-        REQUIRE(dependent.compr == std::optional<std::uint8_t>{ac3::meta::kComprUnity});
+        REQUIRE(dependent.compr.has_value());
         CHECK(compr_gain(*independent.compr) < 0.7);
+        CHECK(compr_gain(*dependent.compr) < 0.7);
+        last_dependent_word = dependent.compr;
 
         const auto a = line.decode_access_unit(unit->bytes);
         const auto b = rf.decode_access_unit(unit->bytes);
@@ -1416,8 +1426,9 @@ TEST_CASE("every substream of an E-AC-3 program takes its last dependent's compr
         REQUIRE(b.has_value());
         REQUIRE(a->has_value());
         REQUIRE(b->has_value());
-        // Reported as the word the program was decoded with.
-        CHECK((*b)->compr == std::optional<std::uint8_t>{ac3::meta::kComprUnity});
+        // Reported as the word the program was decoded with: the DEPENDENT's,
+        // per §E3.8.5, never the independent's own.
+        CHECK((*b)->compr == dependent.compr);
         const auto& reference = (*a)->channels;
         const auto& other = (*b)->channels;
         REQUIRE(reference.size() == 8);
@@ -1429,9 +1440,18 @@ TEST_CASE("every substream of an E-AC-3 program takes its last dependent's compr
             }
         }
     }
+    // A steady tone gives the compressor's instantaneous attack nothing to
+    // settle into after the first frame, so one gain - RF mode's 11 dB plus
+    // the dependent's own cut - fits every channel across frames 1-3, and it
+    // is a real cut: no longer the flat 11 dB a unity placeholder word gave
+    // regardless of how loud the program was.
+    REQUIRE(last_dependent_word.has_value());
+    CHECK(*last_dependent_word != ac3::meta::kComprUnity);
+    const double expected =
+        11.0 + ac3::meta::to_db(compr_gain(*last_dependent_word));
     for (std::size_t ch = 0; ch < per_channel.size(); ++ch) {
         INFO("rendered channel " << ch);
-        CHECK(per_channel[ch].db() == Catch::Approx(11.0).margin(1e-6));
+        CHECK(per_channel[ch].db() == Catch::Approx(expected).margin(1e-6));
     }
 }
 

@@ -373,6 +373,15 @@ and release packaging.
   from the last dependent for every substream (§E3.8.5), as the Reference Player does.
   Before, the bed took the independent substream's word and the dependents' channels
   took none, which the 11 dB would have set 11 dB apart. See `docs/library/decoding.md`.
+- **Heavy compression did nothing for a program's dependent substreams.** The encoder
+  wrote the last dependent's `compr` as unity regardless of `FrameConfig::heavy`, so a
+  program with dependents (7.1, 5.1.2, ...) carried no ceiling for the channels riding
+  on them, on top of the decoder gap above: an RF-mode decode applied the fixed 11 dB
+  with no cut at all. `AccessUnitEncoder` now measures the last dependent's word from
+  the complete rendered program - every dependent's channels folded in the way
+  `ac3::OutputStage`'s rendered-layout overload seats a wide layout - while the
+  independent substream keeps its own bed-only word, for a receiver that only ever
+  decodes the 5.1 downmix.
 - **Heavy compression's `compr` words played 11 dB hot on a Dolby decoder.** The
   encoder put RF mode's 11 dB and the dialnorm offset into the word itself, so a stream
   at dialnorm 31 decoded 22 dB above line mode on the Reference Player, which pushed

@@ -39,6 +39,7 @@
 #include "ac3/verify/eac3_mirror.hpp"
 #include "bit_reservoir.hpp"
 #include "dither.hpp"
+#include "eac3_seat_fold.hpp"
 #include "exp_strategy.hpp"
 #include "scalar_math.hpp"
 #include "scalar_transform.hpp"
@@ -1491,13 +1492,19 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
     // §E3.8.5: in a dependent substream compre is not really "a compression
     // word follows" - it marks the LAST dependent of the program, which is how
     // a decoder knows every channel has arrived. The last one must set it and
-    // the others must clear it. That leaves no way to signal real heavy
-    // compression from a dependent, so the word it drags in stays 0x00 (unity,
-    // §7.7.2.2) and only the independent substream carries a live compr.
+    // the others must clear it, whether or not the program carries real heavy
+    // compression - a decoder needs the marker to know the program is
+    // complete either way. The word it drags in is the whole programme's
+    // (AccessUnitEncoder measures it - see whole_programme_mono_peak_dbfs),
+    // or 0x00 (unity, §7.7.2.2) when no heavy compression was ever configured
+    // - the same word a program with no dependents has always sent when
+    // `heavy` was unset. A dependent encoded on its own, outside an access
+    // unit, has no programme measurement to give it and always falls back to
+    // unity.
     const bool compre = dependent ? config.last_dependent : payload.compr.has_value();
     w.put(compre ? 1 : 0, 1);
     if (compre) {
-        w.put(dependent ? meta::kComprUnity : *payload.compr, 8);
+        w.put(dependent ? payload.compr.value_or(meta::kComprUnity) : *payload.compr, 8);
     }
     // Annex E Table E1.2: unconditional on strmtyp, unlike chanmape below -
     // a dependent substream coding 1+1 would need its own Ch2 metadata too,
@@ -2880,6 +2887,117 @@ FrameMetadata derive_metadata(const FrameConfig& config,
     return out;
 }
 
+// The whole programme's §7.8 mono downmix peak: every rendered channel - the
+// bed's own plus every dependent's - seated the way a wide Table E2.5 layout
+// reduces to the nearest acmod (core/eac3_seat_fold.hpp), which is what a
+// decoder's OutputStage does to the same programme on the way out. Only
+// meaningful once a programme has dependents: §E3.8.5 gives the LAST
+// dependent's compr to the whole programme, so that word - unlike the
+// independent's own, which stays a measurement of the bed alone for a
+// receiver that only ever decodes the 5.1 downmix - has to answer for every
+// channel a decoder might fold in, not just the bed's five.
+//
+// `seats` and `tail` are Programme's own scratch and history, reused across
+// frames rather than reallocated. `tail` is already in seat order rather
+// than per-rendered-channel: the fold is linear and the programme's layout
+// never changes frame to frame once AccessUnitEncoder is built, so seating
+// the fold's own tail is exactly seating every channel's tail and then
+// folding THAT would have been, for one array instead of up to sixteen.
+double whole_programme_mono_peak_dbfs(std::span<const FrameEncoder> substreams,
+                                      std::span<const std::span<const float>> channels,
+                                      std::array<std::vector<float>, 6>& seats,
+                                      std::array<std::array<internal::encode_scalar_t, 256>, 6>& tail,
+                                      double clev, double slev) {
+    const std::size_t frame_samples = channels.empty() ? 0 : channels.front().size();
+    for (auto& s : seats) {
+        s.assign(frame_samples, 0.0F);
+    }
+    std::array<bool, 6> occupied{};
+    std::size_t offset = 0;
+    for (const auto& sub : substreams) {
+        const FrameConfig& cfg = sub.config();
+        const std::uint16_t map =
+            cfg.chanmap ? *cfg.chanmap : chanmap::acmod_map(cfg.acmod, cfg.lfe);
+        const auto locations = chanmap::expand(map);
+        const auto count = static_cast<std::size_t>(sub.channel_count());
+        // programme_configs() already required this substream's chanmap (or
+        // acmod/lfeon) to name exactly its own coded channels, so the two
+        // walk in lock step - see chanmap::Layout's own "coded order" comment
+        // for why index i of one is always channel i of the other.
+        assert(static_cast<std::size_t>(locations.count) == count);
+        for (int i = 0; i < locations.count; ++i) {
+            const auto location = locations[static_cast<std::size_t>(i)];
+            if (location == chanmap::Location::kLfe || location == chanmap::Location::kLfe2) {
+                continue;  // §7.8's mono fold has no LFE term (mono_downmix_peak_dbfs's own contract)
+            }
+            const seat::SeatMix mix = seat::seat_of(location);
+            const auto& source = channels[offset + static_cast<std::size_t>(i)];
+            const auto pour = [&](seat::Seat s, double gain) {
+                occupied[static_cast<std::size_t>(s)] = true;
+                auto& dest = seats[static_cast<std::size_t>(s)];
+                for (std::size_t n = 0; n < source.size(); ++n) {
+                    dest[n] += static_cast<float>(source[n] * gain);
+                }
+            };
+            pour(mix.first, mix.first_gain);
+            if (mix.has_second) {
+                pour(mix.second, mix.second_gain);
+            }
+        }
+        offset += count;
+    }
+
+    const bool has_centre = occupied[static_cast<std::size_t>(seat::Seat::kCentre)];
+    const bool has_surrounds = occupied[static_cast<std::size_t>(seat::Seat::kLeftSurround)] ||
+                               occupied[static_cast<std::size_t>(seat::Seat::kRightSurround)];
+    const bool has_mains = occupied[static_cast<std::size_t>(seat::Seat::kLeft)] ||
+                           occupied[static_cast<std::size_t>(seat::Seat::kRight)];
+    const Acmod folded = seat::reduced_acmod(has_centre, has_mains, has_surrounds);
+
+    // Table 5.8 coded order for `folded` - the same sequence
+    // ac3::OutputStage's own rendered-layout fold lends its seats in (see its
+    // apply() overload in decoder/output.cpp), minus the LFE seat it also
+    // lends: mono_downmix_peak_dbfs has no LFE parameter at all, matching
+    // §7.8's mono formula, which never mixes it in.
+    std::array<seat::Seat, 5> order{};
+    std::size_t nseats = 0;
+    if (folded == Acmod::k1_0) {
+        order[nseats++] = seat::Seat::kCentre;
+    } else {
+        order[nseats++] = seat::Seat::kLeft;
+        if (has_centre) {
+            order[nseats++] = seat::Seat::kCentre;
+        }
+        order[nseats++] = seat::Seat::kRight;
+        if (has_surrounds) {
+            order[nseats++] = seat::Seat::kLeftSurround;
+            order[nseats++] = seat::Seat::kRightSurround;
+        }
+    }
+
+    std::array<std::span<const float>, 5> ordered_channels{};
+    std::array<std::array<internal::encode_scalar_t, 256>, 5> ordered_tail{};
+    for (std::size_t i = 0; i < nseats; ++i) {
+        ordered_channels[i] = seats[static_cast<std::size_t>(order[i])];
+        ordered_tail[i] = tail[static_cast<std::size_t>(order[i])];
+    }
+
+    const double peak = meta::mono_downmix_peak_dbfs(std::span{ordered_tail}.first(nseats),
+                                                      std::span{ordered_channels}.first(nseats),
+                                                      folded, clev, slev);
+
+    // The seat-domain tail for next frame, from every seat whether or not
+    // this frame's layout happened to fill it - reduced_acmod cannot change
+    // frame to frame, so an unfilled seat's zeroed tail is simply never read.
+    for (std::size_t s = 0; s < 6; ++s) {
+        for (std::size_t n = 0; n < 256; ++n) {
+            tail[s][n] =
+                static_cast<internal::encode_scalar_t>(seats[s][frame_samples - 256 + n]);
+        }
+    }
+    return peak;
+}
+
 }  // namespace
 
 std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
@@ -2968,10 +3086,12 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // §7.7 dynamic range, carried in before the side information is sized: a
     // transmitted dynrng costs nine bits and the SNR search spends what is
     // left. §E3.8.5 gives a DEPENDENT substream's compre to the
-    // end-of-programme marker instead, so a heavy-compression word cannot
-    // travel there whatever the caller asked for.
+    // end-of-programme marker instead of "a compr word follows" - except for
+    // the LAST dependent, whose word IS the marker AND the programme's real
+    // compr (AccessUnitEncoder is the only caller that ever sets
+    // last_dependent and supplies a metadata.compr for one).
     payload.dynrng = metadata.dynrng;
-    if (impl_->config_.strmtyp == StreamType::kIndependent) {
+    if (impl_->config_.strmtyp == StreamType::kIndependent || impl_->config_.last_dependent) {
         payload.compr = metadata.compr;
     }
     payload.dynrng2 = metadata.dynrng2;
@@ -5752,6 +5872,19 @@ struct AccessUnitEncoder::Impl {
         // because the peak §7.7.2 bounds has to be measured before any
         // substream runs.
         std::array<std::array<internal::encode_scalar_t, 256>, 6> tail{};
+        // §E3.8.5: once this programme has dependents, the LAST one's compr
+        // is what a decoder applies to the whole programme - a second,
+        // independent compressor for that measurement, present only when
+        // there is a dependent to carry it. Never the same instance as
+        // `heavy` above: HeavyCompressor rate-limits its release across
+        // calls, and the bed-only and whole-programme peaks are two
+        // different signals that would otherwise fight over one gain state.
+        std::optional<meta::HeavyCompressor> heavy_program;
+        // Seat-domain scratch and history for heavy_program's measurement -
+        // see whole_programme_mono_peak_dbfs. Empty/zero and untouched for a
+        // programme with no dependents or no heavy compression configured.
+        std::array<std::vector<float>, 6> program_seats;
+        std::array<std::array<internal::encode_scalar_t, 256>, 6> program_tail{};
         // Spans of encode_access_unit's `channels` this programme consumes,
         // settled once in the constructor alongside the substream identities.
         std::size_t channel_offset = 0;
@@ -5797,6 +5930,13 @@ struct AccessUnitEncoder::Impl {
             }
             if (lead.heavy.has_value()) {
                 state.heavy.emplace(*lead.heavy, lead.sample_rate);
+                // §E3.8.5 only has a last dependent to carry this on a
+                // programme that has any; dual mono never has one (see
+                // heavy2's own comment above), so the two conditions never
+                // both apply to the same programme in practice.
+                if (state.substreams.size() > 1) {
+                    state.heavy_program.emplace(*lead.heavy, lead.sample_rate);
+                }
             }
             if (dual_mono && lead.heavy2.has_value()) {
                 state.heavy2.emplace(*lead.heavy2, lead.sample_rate);
@@ -5880,11 +6020,35 @@ std::expected<AccessUnit, FrameError> AccessUnitEncoder::encode_access_unit(
             }
         }
 
+        // §E3.8.5: a programme with dependents gives the LAST one's compr to
+        // the whole programme, so that word has to answer for every rendered
+        // channel, not the bed's alone - see FrameConfig::heavy and
+        // whole_programme_mono_peak_dbfs. `metadata` above stays the bed-only
+        // measurement the independent substream (and any non-last dependent,
+        // which transmits no compr at all) keeps.
+        FrameMetadata last_dependent_metadata;
+        const bool has_last_dependent_metadata = programme.heavy_program.has_value();
+        if (has_last_dependent_metadata) {
+            const double clev = lead.mixing ? meta::coefficient(lead.mixing->lorocmixlev)
+                                            : meta::level::kMinus4_5dB;
+            const double slev = lead.mixing ? meta::coefficient(lead.mixing->lorosurmixlev)
+                                            : meta::level::kMinus6dB;
+            const double peak = whole_programme_mono_peak_dbfs(
+                programme.substreams, own, programme.program_seats, programme.program_tail, clev,
+                slev);
+            last_dependent_metadata = metadata;  // same dynrng - §E3.8.5 already hands one to every substream
+            last_dependent_metadata.compr = programme.heavy_program->next(peak, lead.dialnorm);
+        }
+
         std::size_t taken = 0;
         for (auto& sub : programme.substreams) {
             const auto count = static_cast<std::size_t>(sub.channel_count());
-            const auto frame = sub.encode_frame(own.subspan(taken, count), metadata,
-                                                index == aux_at ? aux : AuxPayload{});
+            const bool use_programme_metadata =
+                has_last_dependent_metadata && sub.config().last_dependent;
+            const auto frame =
+                sub.encode_frame(own.subspan(taken, count),
+                                 use_programme_metadata ? last_dependent_metadata : metadata,
+                                 index == aux_at ? aux : AuxPayload{});
             if (!frame.has_value()) {
                 return std::unexpected(frame.error());
             }
