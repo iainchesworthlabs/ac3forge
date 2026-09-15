@@ -214,9 +214,13 @@ one the driver accepted, timing how long the writes took to drain:
 | 24 bits | 2 to 5 slots; 6 to 16 refused | 2 and 4 slots | 3 and 5 slots |
 | 32 bits | 2 to 4 slots; 5 to 16 refused | 2, 3 and 4 slots | - |
 
-The 937 ms shapes play 6.7% fast, so a TDM line on this part runs correctly at the full 128-bit
-frame, eight 16-bit slots or four 32-bit ones, with the slots a layout leaves unused written as
-zeros. Nothing was connected to the pins; a DAC on the line is not part of this measurement.
+The 937 ms shapes play 6.7% fast. The driver's clock setup (`i2s_tdm_calculate_clock` in the same
+file) divides the MCLK by the bit clock in integers and only logs a warning when it does not
+divide: with the default MCLK of 256 times the sample rate, three 16-bit slots need 5.33 and get
+5, and the frame runs at 51,200 Hz. A divider of 2 or less is raised to 3 with the MCLK adjusted
+to match, which is why six, seven and eight slots come out exact. So a TDM line on this part runs
+correctly at the full 128-bit frame, eight 16-bit slots or four 32-bit ones, with the slots a
+layout leaves unused written as zeros. Nothing was connected to the pins; a DAC on the line is not part of this measurement.
 
 Getting samples onto those slots costs time here too. The decoder hands a sink planar `float`
 blocks, and the component's conversions (`esp-idf/ac3forge/include/ac3forge/interleave.hpp`)
