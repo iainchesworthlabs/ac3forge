@@ -580,6 +580,16 @@ struct DecodedSubstream {
     // ac3::mix_levels() turns the downmix levels alone into the coefficients
     // the §7.8 output stage needs.
     std::optional<meta::MixMetadata> mixing = std::nullopt;
+    // §E2.3.1.2's legacy core (bsid <= 8) has no mixmdate syntax to carry
+    // above - AC-3 states its downmix in bsi's cmixlev/surmixlev instead,
+    // widened by Annex D's xbsi1 group for a bsid-6 core (§D3.1.2). These stay
+    // std::nullopt for a genuine E-AC-3 substream, which reports its levels
+    // through `mixing` above; decode_ac3_core is the only place that sets
+    // them, copied straight off the core FrameDecoder's own
+    // DecodedFrame::cmixlev/surmixlev/alternate_bsi.
+    std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;
+    std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;
+    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     // Table E1.2's infomdat group, std::nullopt when infomdate was clear.
     // BsiInfo's langcod/langcod2 and timecod1/timecod2 have no Annex E field
     // and are never set here.
@@ -668,6 +678,18 @@ struct DecodedAccessUnit {
     // the levels alone anyway, and Table E1.2 gives a dependent no infomdat
     // gate of its own worth surfacing at this level.
     std::optional<meta::MixMetadata> mixing = std::nullopt;
+    // The independent substream's own bsid - eac3::kBsid (11-16) for a
+    // genuine E-AC-3 bed, 6 or 8 for a §E2.3.1.2 legacy core - copied
+    // straight from DecodedSubstream::bsid the same way dialnorm/compr/mixing
+    // above are. This is what tells the output stage whether to resolve the
+    // programme's fold from `mixing` above or from cmixlev/surmixlev/
+    // alternate_bsi below: a core has no mixmdate syntax to carry the former
+    // in at all, only bsi's own downmix fields, so the two are never both
+    // meaningful at once.
+    int bsid = eac3::kBsid;
+    std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;
+    std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;
+    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     std::optional<meta::BsiInfo> info = std::nullopt;
     // object_metadata/object_audio from whichever substream of the access
     // unit carries them, first one wins - see DecodedSubstream's own comments

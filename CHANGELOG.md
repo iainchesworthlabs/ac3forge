@@ -403,6 +403,16 @@ and release packaging.
   could be laid over it, failing every access unit with `kInvalidStream`. The core
   now decodes with `output` reset; `drc_scale`, `heavy_compression` and every other
   field are unchanged.
+- **A §E2.3.1.2 legacy core folded with the AC-3 defaults instead of its own downmix
+  levels.** `decode_ac3_core` copied the core's acmod, `dialnorm`, `compr` and so on onto
+  `DecodedSubstream`, but not its `cmixlev`/`surmixlev` or, for a `bsid`-6 core, Annex
+  D's `xbsi1` group — a legacy core has no `mixmdate` to carry them in at all, and the
+  fields those needed did not exist on `DecodedSubstream`/`DecodedAccessUnit`. So
+  `apply_output()` and `flush()` always folded a legacy core's programme with §7.8's
+  −4.5 dB centre / −6 dB surround, whatever the core's own bsi or `xbsi1` actually said.
+  Both structs now carry `bsid` alongside `cmixlev`/`surmixlev`/`alternate_bsi`, and the
+  fold resolves them through the same `ac3::mix_levels(acmod, cmixlev, surmixlev,
+  alternate_bsi)` overload `FrameDecoder` already uses for a bare AC-3 stream.
 - `ac3cli` reports a decode failure in words (`decode failed: a header field holds a
   value A/52 reserves`) rather than as a bare enumerator — nine call sites across
   `decode`, `analysis` and `live` weren't using the existing `describe()`.

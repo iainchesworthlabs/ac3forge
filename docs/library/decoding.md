@@ -364,6 +364,17 @@ Not covered: Annex C's karaoke downmix rules for `bsmod` 7. The mode's `cmixlev`
 re-purposed as vocal-channel levels there, so it is a different matrix rather than a variation on
 this one, and nothing in this project emits a karaoke stream to check it against.
 
+**A §E2.3.1.2 legacy core inside `Eac3Decoder`.** An AC-3 syncframe (`bsid` <= 8) present in an
+E-AC-3 stream is processed as independent substream 0, and its channels become the bed §E3.8.2
+assembles a wider programme from. That core has no `mixmdate` to carry — mixing metadata is
+Annex E syntax an AC-3 syncframe cannot express — so `apply_output()` folds the ASSEMBLED
+programme with exactly the levels described above: the core's own bsi `cmixlev`/`surmixlev`, and
+Annex D's `xbsi1` group in place of them where a `bsid`-6 core sent one. `DecodedSubstream` and
+`DecodedAccessUnit` carry `bsid` alongside `cmixlev`/`surmixlev`/`alternate_bsi` for exactly this —
+`bsid` says which of that trio or `mixing` the fold should read, since a bed only ever populates
+one or the other. A dependent's own `mixmdate`, if it sent one, is not consulted either way; only
+the bed's ever describes the programme, the same rule a non-legacy-core stream already followed.
+
 The E-AC-3 decoder reads every Annex E coding tool — standard coupling (§E3.3), enhanced coupling
 (§E3.5), spectral extension (§E3.6), the adaptive hybrid transform with GAQ (§E3.4), and transient
 pre-noise processing (§3.7) — individually or stacked together, at every channel layout including
