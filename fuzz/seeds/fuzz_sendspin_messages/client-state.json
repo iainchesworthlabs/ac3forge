@@ -1,0 +1,1 @@
+{"type":"client/state","payload":{"available":true,"player":{"volume":40,"muted":false,"output_delay_ms":120,"static_delay_ms":120,"required_lead_time_ms":400,"min_buffer_ms":250,"supported_commands":["volume","mute","set_output_delay","set_static_delay"],"format":{"codec":"opus","channels":2,"sample_rate":48000,"bit_depth":16}}}}

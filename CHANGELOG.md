@@ -190,6 +190,12 @@ and release packaging.
   already holds fails to start, where cpp-httplib's default socket options would let it share
   the port. cpp-httplib joins the `hearth` feature at 0.56.0 through an overlay port, ahead of
   the vcpkg baseline's 0.52.0, for the read timeout that makes the close possible.
+- **Sendspin's core messages in `src/sendspin`**: `server/hello` through `group/update` with
+  `player@v1`'s objects, each a struct with a writer and a reader in both the specification's
+  form and aiosendspin 9.1.1's, and the `client/hello` field that tells a 9.1.1 client apart.
+  Readers ignore what they do not recognise where the specification says to. Standard Base64
+  for `codec_header`, and a fourth fuzz harness, `fuzz_sendspin_messages`, which reads every
+  message in both dialects and checks that what it writes back reads back the same.
 
 **Containers and encoding**
 

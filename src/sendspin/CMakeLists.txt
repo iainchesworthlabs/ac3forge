@@ -40,11 +40,13 @@ add_library(ac3::sendspin ALIAS ac3sendspin)
 
 target_sources(ac3sendspin
     PRIVATE
+        src/base64.cpp
         src/base64url.cpp
         src/chunks.cpp
         src/frames.cpp
         src/handshake.cpp
         src/json.cpp
+        src/messages.cpp
         src/pairing_token.cpp
         src/suite.cpp
         src/transport_memory.cpp)

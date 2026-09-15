@@ -341,4 +341,9 @@ if(TARGET ac3sendspin)
     # noise/handshake and the two Noise payloads - read and written back
     # (src/sendspin/src/handshake.cpp).
     ac3forge_add_container_fuzzer(fuzz_sendspin_handshake ac3::sendspin)
+
+    # The core messages after the handshake, every reader in both dialects, with a check
+    # that what is written back reads and writes back to itself
+    # (src/sendspin/src/messages.cpp).
+    ac3forge_add_container_fuzzer(fuzz_sendspin_messages ac3::sendspin)
 endif()
