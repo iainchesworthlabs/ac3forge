@@ -293,6 +293,55 @@ TEST_CASE("AC-3: a layout carrying neither mix level reports the 7.8 fallbacks",
     CHECK(levels.loro_slev == ac3::meta::level::kMinus6dB);
 }
 
+TEST_CASE("AC-3: a decoded Annex D frame resolves to its own xbsi1 levels", "[bsi]") {
+    // DecodedFrame carries everything the Annex D form of mix_levels() reads,
+    // so a caller folding for itself gets the levels FrameDecoder folds with
+    // (§D3.1.2). bsi says -3 dB for both levels; xbsi1 says something else for
+    // all four.
+    ac3::EncoderConfig config;
+    config.acmod = ac3::Acmod::k3_2;
+    config.cmixlev = ac3::meta::CentreMixLevel::kMinus3dB;
+    config.surmixlev = ac3::meta::SurroundMixLevel::kMinus3dB;
+    ac3::meta::AlternateBsi alternate;
+    alternate.mix = ac3::meta::MixMetadata{
+        .dmixmod = ac3::meta::DownmixMode::kLoRo,
+        .ltrtcmixlev = ac3::meta::MixLevel::kPlus1_5dB,
+        .lorocmixlev = ac3::meta::MixLevel::kMinus4_5dB,
+        .ltrtsurmixlev = ac3::meta::MixLevel::kMinus1_5dB,
+        .lorosurmixlev = ac3::meta::MixLevel::kSilent,
+    };
+    config.alternate_bsi = alternate;
+    const auto resolve = [](const ac3::DecodedFrame& frame) {
+        return ac3::mix_levels(frame.acmod, frame.cmixlev, frame.surmixlev, frame.alternate_bsi);
+    };
+
+    const auto levels = resolve(round_trip_ac3(config));
+    CHECK(levels.ltrt_clev == ac3::meta::level::kPlus1_5dB);
+    CHECK(levels.ltrt_slev == ac3::meta::level::kMinus1_5dB);
+    CHECK(levels.loro_clev == ac3::meta::level::kMinus4_5dB);
+    CHECK(levels.loro_slev == ac3::meta::level::kSilent);
+    CHECK(levels.preferred == ac3::meta::DownmixMode::kLoRo);
+
+    // Table D2.2's note leaves dmixmod's meaning reserved below 3/0. At 2/0
+    // the field is still reported as sent, but it states no preference.
+    config.acmod = ac3::Acmod::k2_0;
+    const auto stereo = round_trip_ac3(config);
+    REQUIRE(stereo.alternate_bsi);
+    REQUIRE(stereo.alternate_bsi->mix);
+    CHECK(stereo.alternate_bsi->mix->dmixmod == ac3::meta::DownmixMode::kLoRo);
+    CHECK(resolve(stereo).preferred == ac3::meta::DownmixMode::kNotIndicated);
+
+    // With xbsi1e clear there is nothing to replace bsi's two levels with.
+    config.acmod = ac3::Acmod::k3_2;
+    config.alternate_bsi = ac3::meta::AlternateBsi{};
+    const auto bsi = resolve(round_trip_ac3(config));
+    CHECK(bsi.loro_clev == ac3::meta::level::kMinus3dB);
+    CHECK(bsi.loro_slev == ac3::meta::level::kMinus3dB);
+    CHECK(bsi.ltrt_clev == ac3::meta::level::kMinus3dB);
+    CHECK(bsi.ltrt_slev == ac3::meta::level::kMinus3dB);
+    CHECK(bsi.preferred == ac3::meta::DownmixMode::kNotIndicated);
+}
+
 // --- DC4: mixmdate depth and infomdat ---------------------------------------
 
 TEST_CASE("E-AC-3: programme scale factors round trip", "[bsi]") {

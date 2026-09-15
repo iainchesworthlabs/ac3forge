@@ -332,6 +332,17 @@ void reset_nested(std::vector<std::vector<T>>& v, std::size_t n) {
     }
 }
 
+// One of xbsi1's two surround levels. Tables D2.4/D2.6 reserve '000'..'010',
+// and §D2.3.1.4/§D2.3.1.6 have a decoder receiving one use 0.841, which is
+// MixLevel::kMinus1_5dB. Substituting at the read, as the E-AC-3 reader does
+// for the same two fields in mixmdate, means DecodedFrame reports the level
+// the output stage folds with, and neither the report nor mix_levels() has to
+// remember the rule.
+meta::MixLevel read_surround_mix_level(BitReader& r) {
+    const auto level = static_cast<meta::MixLevel>(r.read(3));
+    return meta::valid_surround_mix_level(level) ? level : meta::MixLevel::kMinus1_5dB;
+}
+
 }  // namespace
 
 FrameDecoder::FrameDecoder() : impl_(std::make_unique<Impl>()) {}
@@ -554,7 +565,7 @@ std::optional<DecodedFrame> FrameDecoder::conceal(DecodeError error,
         }
     }
 
-    const auto levels = mix_levels(out.cmixlev, out.surmixlev);
+    const auto levels = mix_levels(out.acmod, out.cmixlev, out.surmixlev, out.alternate_bsi);
     if (external.empty()) {
         impl_->output_.apply(out.channels, out.acmod, out.lfe, levels, out.dialnorm);
     } else {
@@ -726,12 +737,13 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
             }
             // Table D2.1's order: both Lt/Rt levels, then both Lo/Ro ones.
             mix.ltrtcmixlev = static_cast<meta::MixLevel>(r.read(3));
-            mix.ltrtsurmixlev = static_cast<meta::MixLevel>(r.read(3));
+            mix.ltrtsurmixlev = read_surround_mix_level(r);
             mix.lorocmixlev = static_cast<meta::MixLevel>(r.read(3));
-            mix.lorosurmixlev = static_cast<meta::MixLevel>(r.read(3));
-            // Annex D has no LFE mix level at all; std::nullopt is already
-            // MixMetadata's own "LFE mixing disabled", which is the right
-            // reading of a syntax that cannot express one.
+            mix.lorosurmixlev = read_surround_mix_level(r);
+            // Annex D has no LFE mix level at all, so lfemixlevcod stays
+            // std::nullopt. ac3::mix_levels() does not read that as E-AC-3's
+            // "LFE mixing disabled" (§E2.3.1.10): an AC-3 fold keeps §7.8's
+            // +10 dB ideal whichever bsid carried it.
             alternate.mix = mix;
         }
         if (r.read(1) != 0) {  // xbsi2e
@@ -1789,7 +1801,9 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // rewrite - buffers this call promised to leave untouched.
     if (!impl_->config_.skip_reconstruction) {
         AC3_ZONE_SCOPED_N("ac3_output");
-        const auto levels = mix_levels(cmixlev, surmixlev);
+        // Annex D's xbsi1 levels when the frame carries them (§D3.1.2), bsi's
+        // cmixlev/surmixlev otherwise - see mix_levels()'s own comment.
+        const auto levels = mix_levels(acmod, cmixlev, surmixlev, alternate_bsi);
         if (external.empty()) {
             impl_->output_.apply(out.channels, acmod, lfe, levels, dialnorm);
         } else {
