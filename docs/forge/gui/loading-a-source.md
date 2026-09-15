@@ -39,12 +39,12 @@ per §7.8 using the centre/surround downmix levels on the [Metadata tab](metadat
 more than one source is loaded — see below.
 
 Each **file** row's level pip is a whole-programme peak/RMS reduction over that source's own
-channels, *before* routing — every channel pooled into one reading, so it answers "how loud is
-this file" independently of where (or whether) its channels currently go, unlike the coded-channel
-meters in **02 · Levels** below, which read the plan. It is computed in the same background pass
-that already renders the loaded sources for those meters, so it lags an edit by the same small
-amount. Live capture rows show no pip — a device's level belongs to the capture chain the Live
-session tab already reports on, not this reduction.
+channels, computed *before* routing — every channel pooled into one reading, so it answers "how
+loud is this file" independently of where its channels currently go. This differs from the
+coded-channel meters in **02 · Levels** below, which read the plan instead; the pip is computed in
+the same background pass that renders loaded sources for those meters, so it lags an edit by the
+same small amount. Live capture rows show no pip — a device's level belongs to the capture chain
+the Live session tab already reports on, not this reduction.
 
 **Start offset** delays a source's own channels by that many seconds of leading silence — all of
 them shift together, encoded exactly as `ac3cli`'s `offset=` token would (see
@@ -56,13 +56,13 @@ reads `max(offset + duration)` over every source, not just the longest source's 
 so a source pushed out further is never implied to have been cut short.
 
 **+ Add files…** appends another WAV rather than replacing the primary. A source whose rate
-doesn't match the primary's is resampled to it right here at load — a proper offline windowed-sinc
-conversion, not the cheap interpolation a live capture's drift correction uses — and its row's
-duration line grows a small `44.1→48 k` label so the resample is never invisible; only a primary
-whose own rate has no legal AC-3 target at all still refuses the add outright, since resampling TO
-an illegal rate would just move the problem. With two or more sources loaded, automatic fold-down
-no longer applies: every loaded channel needs an explicit destination in the [assignment
-table](source-assignment.md), which the **Assign** link beside the button jumps to.
+doesn't match the primary's is resampled to it right here at load — a proper offline
+windowed-sinc conversion, not the cheap interpolation a live capture's drift correction uses —
+and its row's duration line grows a small `44.1→48 k` label so the resample is never invisible.
+Only a primary whose own rate has no legal AC-3 target at all refuses the add outright, since
+resampling to an illegal rate would just move the problem. With two or more sources loaded,
+automatic fold-down no longer applies: every loaded channel needs an explicit destination in the
+[assignment table](source-assignment.md), which the **Assign** link beside the button jumps to.
 
 ### Live capture
 
@@ -124,8 +124,8 @@ the block's headline:
 
 **The meters follow the plan, not just the file.** Loading a source renders it through the actual
 routing in the background and publishes whole-programme peak/RMS per coded channel, so a bed
-click, an extras tick or an [assignment](source-assignment.md) edit answers with real numbers — a
-channel the routing feeds carries its true level, and a channel nothing feeds is drawn at reduced
+click, an extras tick or an [assignment](source-assignment.md) edit answers with real numbers. A
+channel the routing feeds carries its true level; a channel nothing feeds is drawn at reduced
 opacity reading `-∞`, so "correctly silent" stays distinguishable from "meter wired to nothing."
 The footer counts the same fed set the soundfield dots use (`8 of 12 coded channels fed by the
 assignments.`), on an accent rule whenever something is carried silent.
@@ -138,11 +138,10 @@ metering updates in real time (~30 snapshots/sec); once the run finishes, the ba
 exact whole-file peak/RMS, with per-channel **CLIP** indicators.
 
 **CLIP latches**: once a channel clips during a run, its box stays lit — not just the newest
-snapshot — until either it is clicked (clearing that one channel) or a new transport starts
-(encode, record, a live session, the Objects tab's motion preview), which clears every channel's
-latch at once. Idly browsing the assignment table or switching tabs never clears one; a latch is
-only ever cleared by an explicit click or a fresh run beginning, so a clip caught mid-file is
-never missed just because the level happened to be under 0 dBFS again by the time you looked.
+snapshot — until it's clicked (clearing that one channel) or a new transport starts (encode,
+record, a live session, the Objects tab's motion preview), which clears every channel's latch at
+once. Browsing the assignment table or switching tabs never clears one, so a clip caught mid-file
+is never missed just because the level was back under 0 dBFS by the time you looked.
 
 ## 03 · Soundfield
 

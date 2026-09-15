@@ -142,16 +142,14 @@ So the backend is split, unlike the other three:
 ### Partial `AudioTrack` writes are resumed from, not restarted
 
 `PassthroughSink::submit` treated a short but non-negative `AudioTrack.write` as a plain failure,
-and the caller's retry loop resubmitted the **whole** burst — so the bytes the track had already
-accepted went out a second time, splicing a corrupt IEC 61937 burst into the stream. A receiver
-answers that with a mute or a glitch, not with anything traceable.
-
-The comment that used to excuse it claimed the short write could not happen because "that space is
-inspected by the Kotlin side before calling write". `PassthroughBridge.submit` does no such
-inspection — it calls `write` directly — and `WRITE_NON_BLOCKING` is documented to queue as
-much as fits and report how much. The sink now remembers how much of the current burst is already
-queued and offers only the remainder on the next attempt. Entirely inside the sink: no JNI signature
-change, and no change to what a caller has to know.
+so the caller's retry loop resubmitted the **whole** burst — the bytes the track had already
+accepted went out a second time, splicing a corrupt IEC 61937 burst into the stream (a receiver
+answers that with a mute or a glitch, not anything traceable). The excuse in the old comment —
+that the short write "cannot happen because that space is inspected by the Kotlin side before
+calling write" — didn't hold: `PassthroughBridge.submit` calls `write` directly with no such
+inspection, and `WRITE_NON_BLOCKING` is documented to queue only as much as fits. The sink now
+remembers how much of the current burst is already queued and offers only the remainder on the
+next attempt — entirely inside the sink, no JNI signature change.
 
 ## Lifecycle: the stream stops when the demo leaves the screen
 
@@ -188,25 +186,22 @@ not a block, since a demo nobody can leave is worse than one that exits by accid
 
 ## Real-time performance: `RelWithDebInfo`, and a real MDCT bug it uncovered
 
-AGP's default for the `debug` build type is `CMAKE_BUILD_TYPE=Debug` (`-O0`). That is fine for
-`jni_entry.cpp`'s smoke tests but nowhere near real-time for `live_cursor.cpp`'s actual per-frame
-work (`AtmosEncoder::encode_frame`'s MDCT/bit-allocation/JOC matrix, once every 32ms). Confirmed on
-this Shield's Tegra X1: `-O0` took **~425ms/frame**, over 13x the budget — bursts arrived in huge
-sparse gaps instead of a steady stream, which is exactly why the receiver's HDMI link stayed
-flashing (video locked, audio never did). `app/build.gradle.kts`'s `debug` build type now overrides
-this to `-DCMAKE_BUILD_TYPE=RelWithDebInfo`, which keeps the APK debuggable (`isDebuggable` stays
-on, no separate release signing needed to `adb install`) while actually optimizing the native side.
-
-That override alone only bought back ~1.6x — nowhere near enough. Profiling with
-[Tracy](https://github.com/wolfpld/tracy) (`vcpkg`'s `profiling` manifest feature,
-`AC3FORGE_ENABLE_TRACY`) traced the remaining gap to `mdct_forward_core`: it recomputed `std::cos()`
-fresh, every iteration, inside an O(N²) loop, while the *inverse* transform right next to it already
-used a precomputed table. Fixing the forward transform to do the same (`ForwardCosTable` in
-`src/forge/src/core/mdct.cpp`) gave a further ~3.8x — this is a real library-level fix, verified
-bit-exact against the full test suite, not an Android-specific workaround, and it benefits every
-platform's Atmos encode path. With both fixes, the Shield holds an exact 32.0ms/frame cadence with
-zero underruns. See [Performance trend](../performance-trend.md) for the CI regression gate this
-bug prompted (`tests/performance/`'s hard real-time gate plus the `ac3bench` trend tracker).
+AGP's default `debug` build type is `CMAKE_BUILD_TYPE=Debug` (`-O0`) — fine for
+`jni_entry.cpp`'s smoke tests, but nowhere near real-time for `live_cursor.cpp`'s per-frame work
+(`AtmosEncoder::encode_frame`'s MDCT/bit-allocation/JOC matrix, once every 32 ms). On this
+Shield's Tegra X1, `-O0` took **~425 ms/frame**, over 13x the budget: bursts arrived in sparse
+gaps instead of a steady stream, which is why the receiver's HDMI link stayed flashing (video
+locked, audio never did). `app/build.gradle.kts`'s `debug` build type now overrides this to
+`-DCMAKE_BUILD_TYPE=RelWithDebInfo` (still debuggable, no separate release signing needed to
+`adb install`) — which bought back only ~1.6x. [Tracy](https://github.com/wolfpld/tracy)
+profiling (`AC3FORGE_ENABLE_TRACY`) traced the rest of the gap to `mdct_forward_core`
+recomputing `std::cos()` fresh every iteration inside an O(N²) loop, while the *inverse*
+transform beside it already used a precomputed table; fixing the forward transform to match
+(`ForwardCosTable` in `src/forge/src/core/mdct.cpp`) gave a further ~3.8x. This is a real
+library-level fix — bit-exact against the full test suite, benefiting every platform's Atmos
+encode path, not an Android-specific workaround. With both fixes the Shield holds an exact
+32.0 ms/frame cadence with zero underruns. See [Performance trend](../performance-trend.md) for
+the CI regression gate this bug prompted.
 
 ## Objects: one interactive lead, two ambient, all on pre-planned paths
 
@@ -463,14 +458,13 @@ so the object drifts back onto its planned course on its own rather than needing
   — held-stick input biases smoothly, not per-event-stepped. `L1`/`R1` add continuous height
   deflection independent of the D-pad's axis mode below.
 
-    The deadzone is **radial and rescaled**, and its threshold comes from the device's own declared
-    `MotionRange.getFlat()` (cached per device id, falling back to 0.15). The original flat per-axis
-    cut — `if (abs(v) < 0.15) 0 else v` — did two things wrong at once: per-axis, a diagonal
-    push registered on one axis while the other was still inside its own cut; and with no rescaling
-    the smallest value it could ever emit *was* the deadzone, so velocity jumped from nothing
-    straight to 15% of full travel. Against the 1.5s spring-back that settles at about a third of
-    the clamp box, the smallest deflection anyone could hold was a third of full travel — in a
-    demo whose entire point is placing an object precisely.
+    The deadzone is **radial and rescaled**, its threshold taken from the device's own declared
+    `MotionRange.getFlat()` (cached per device id, falling back to 0.15) — fixing two problems in
+    the original flat per-axis cut (`if (abs(v) < 0.15) 0 else v`): a diagonal push registering on
+    one axis while the other stayed inside its own cut, and, with no rescaling, velocity jumping
+    from nothing straight to 15% of full travel. Against the 1.5s spring-back settling at about a
+    third of the clamp box, that made the smallest deflection anyone could hold a third of full
+    travel — in a demo whose entire point is placing an object precisely.
 
     Right-stick **height** is resolved by asking the device which axis it actually declares
     (`AXIS_RZ`, then `AXIS_RY`, then `AXIS_Z`), once per device id and logged. It was hardcoded to
@@ -581,32 +575,28 @@ competing for the same screen space:
 
 ## HDMI receiver resilience: waiting, not crashing
 
-Earlier hands-on use surfaced a real annoyance: if the AVR/receiver was off (or not yet HDMI-
-negotiated) at launch, or got powered off mid-session, the app just sat there having silently done
-nothing — the only fix was a force-restart, timed for whenever the receiver happened to be ready.
-`MainActivity.reconcileReceiverState()` closes that gap: `nativeStartLiveCursor()` is no longer
-called unconditionally in `onCreate` — it's gated on the receiver actually accepting E-AC3 right
-now, re-evaluated on every `AudioManager.ACTION_HDMI_AUDIO_PLUG` broadcast (the system's own
-"HDMI audio route capabilities changed" signal — receiver on/off, input switched, EDID
-renegotiated) and on a slow (2.5s) periodic fallback, since that broadcast isn't guaranteed on every
-real AVR power-off (some receivers don't change their reported EDID/HPD state on standby). A
-persistent, full-screen "Waiting for receiver…" interstitial covers the dashboard until then, and
-disappears on its own once streaming actually starts — no restart, ever.
+Earlier hands-on use found a real annoyance: an AVR off (or not yet HDMI-negotiated) at launch, or
+powered off mid-session, left the app sitting there having silently done nothing — the only fix
+was a force-restart. `MainActivity.reconcileReceiverState()` closes that gap:
+`nativeStartLiveCursor()` is no longer called unconditionally in `onCreate` — it's gated on the
+receiver actually accepting E-AC3 right now, re-evaluated on every
+`AudioManager.ACTION_HDMI_AUDIO_PLUG` broadcast (the system's own "HDMI audio route capabilities
+changed" signal) and a slow (2.5s) periodic fallback, since that broadcast isn't guaranteed on
+every real AVR power-off (some receivers don't change their reported EDID/HPD state on standby). A
+persistent, full-screen "Waiting for receiver…" interstitial covers the dashboard until streaming
+actually starts — no restart, ever.
 
-**Readiness has three states, not two, and READY means audio is flowing.** The overlay used to clear
-on `isDirectPlaybackSupported` alone — "this route *could* accept E-AC-3" — which is a
-different claim from "audio is flowing". If `PassthroughSink::start()` then failed, the loop's
-thread exited immediately, the next reconcile still found the route capable, the ready flag
-short-circuited as no-change, and the user got a fully-drawn dashboard over permanent silence, with
-all three objects stacked at the origin because no encode frame had ever run to move them. A
-plausible-looking picture, not an obviously broken one.
+**Readiness has three states, not two, and READY means audio is flowing.** The overlay used to
+clear on `isDirectPlaybackSupported` alone — "this route *could* accept E-AC-3", a different
+claim from "audio is flowing." If `PassthroughSink::start()` then failed, the ready flag
+short-circuited as no-change (the route was still capable), leaving a fully-drawn dashboard over
+permanent silence with all three objects stacked at the origin.
 
-READY now means `nativeIsLiveCursorRunning()`, which becomes true only after the sink actually
-opened. **STARTING** covers the gap between asking and knowing, so a slow AVR handshake reads as
-progress rather than as either a lie or a stall. `nativeStartLiveCursor`'s return value is
-deliberately left alone: it is `JNI_TRUE` unconditionally by design, returning as soon as the worker
-is *spawned*, and making it wait for that worker's outcome is precisely the main-thread hang the
-grace period below exists to avoid.
+READY now means `nativeIsLiveCursorRunning()`, true only after the sink actually opened.
+**STARTING** covers the gap between asking and knowing, so a slow AVR handshake reads as progress
+rather than a lie or a stall. `nativeStartLiveCursor`'s return value stays `JNI_TRUE`
+unconditionally by design — it returns as soon as the worker is *spawned*, and waiting for that
+worker's outcome is exactly the main-thread hang the grace period below exists to avoid.
 
 **The waiting screen says what the sink advertises.** `CapabilityProbe` reads the connected HDMI
 route through `AudioManager.getDevices` — encodings, channel counts, and specifically
@@ -621,34 +611,27 @@ receiver into an on-screen accusation.
 ![Waiting-for-receiver interstitial, shown until the AVR is detected](screenshots/android-waiting-for-receiver.png)
 
 !!! warning "`AudioTrack.isDirectPlaybackSupported()` blocks indefinitely against your own active track"
-    Getting this right took two real bugs found on hardware, not just review — worth stating
-    explicitly so neither is rediscovered the hard way again:
+    Two real bugs, found on hardware:
 
     **The capability probe hangs, not fails, if called while a direct `AudioTrack` on the same
-    route is already open or still opening.** The obvious design — poll
-    `isDirectPlaybackSupported()` on a timer regardless of state, start/stop the loop based on the
-    result — froze the whole Activity on its own splash screen forever (main thread confirmed idle
-    via `dumpsys`, no exception, the encode loop itself kept streaming happily underneath) the
-    moment that poll landed while the loop's `AudioTrack` was live, almost certainly audio-policy-
-    manager lock contention rather than a bug in the probe itself. The same hang recurred calling
-    it again moments after `nativeStartLiveCursor()`, before that background thread's own
-    `AudioTrack.Builder().build().play()` had resolved — opening a track contends the same way an
-    already-playing one does. `reconcileReceiverState()` now probes capability **only** when
+    route is already open or still opening** — polling it on a timer regardless of state froze
+    the whole Activity on its own splash screen forever (main thread idle, no exception, the
+    encode loop kept streaming underneath), almost certainly audio-policy-manager lock
+    contention. `reconcileReceiverState()` now probes capability **only** when
     `NativeBridge.nativeIsLiveCursorRunning()` is false *and* no start attempt is still within a
     3s grace period (`START_ATTEMPT_GRACE_MS`); detecting a receiver disappearing **while already
     streaming** instead watches `NativeBridge.nativeGetUnderrunCount()` (the same
     `StreamStats::underruns` counter `submit()` already tracked) for a rise, since a real AVR loss
-    shows up as failed `AudioTrack.write()` calls, and this needs no further call into
-    `AudioTrack` at all.
+    shows up as failed `AudioTrack.write()` calls, needing no further call into `AudioTrack` at
+    all.
 
     **A view's default visibility has to match its state variable's own default, or the first
     "no change" transition never applies either.** The waiting overlay started `GONE` while
-    `receiverReady` started `false` (Kotlin's own default) — consistent-looking, but
-    `setReceiverReady()` only touches the view on an actual *change* (`ready == receiverReady`
-    short-circuits otherwise), so a receiver absent from the very first check (`false -> false`,
-    no change) left the overlay hidden and the full (empty, zeroed) dashboard showing instead —
-    confirmed on a real device screenshot. Fixed by defaulting the overlay to `VISIBLE`, matching
-    `receiverReady`'s own `false` default.
+    `receiverReady` started `false` (Kotlin's own default); since `setReceiverReady()` only
+    touches the view on an actual *change*, a receiver absent from the very first check left the
+    overlay hidden and the full (empty, zeroed) dashboard showing instead — confirmed on a real
+    device screenshot. Fixed by defaulting the overlay to `VISIBLE`, matching `receiverReady`'s
+    own `false` default.
 
 ## Object signing
 
@@ -728,7 +711,6 @@ live smoke test of the on-device signing path. The asset is then deleted again b
 keystore is even decoded, and the staged release APK is asserted to contain no `signing.key` entry
 before it can be uploaded, so **a published `.apk` is always the unsigned `bed51` app**. With no
 secret, the materialize step is skipped and every build is unsigned.
-
 
 For an actual release (`release.yml`, `do_package: true`), the same job also builds and stages the
 **release** variant (`CMAKE_BUILD_TYPE=Release`) as `ac3forge-shield-<version>.apk`. A separate,

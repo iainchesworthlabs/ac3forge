@@ -137,9 +137,9 @@ Everything above is the library's ALSA and PipeWire backends, which `ac3cli` and
 family, is the exception: it taps each application separately, ALSA has no per-application
 concept at all, and building Crucible against ALSA is refused at configure time.
 
-That trade is uncomfortable and worth stating here rather than only there: forcing PipeWire gives
-up the passthrough path confirmed against a real receiver (ALSA `iec958`, on the Pi) for the one
-that is not. See [the plan](../crucible/design/promotion.md#alsa-or-pipewire).
+That trade is uncomfortable: forcing PipeWire gives up the passthrough path confirmed against a
+real receiver (ALSA `iec958`, on the Pi) for the one that is not. See
+[the plan](../crucible/design/promotion.md#alsa-or-pipewire).
 
 ## Reading a sink's own EDID/ELD
 

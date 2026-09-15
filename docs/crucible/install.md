@@ -43,10 +43,9 @@ bcdedit /set testsigning on
 ```
 then restart. Memory integrity is under Windows Security → Device security → Core isolation.
 
-Both are machine-wide security settings. Turning them off to run a test-signed driver is what a
-development machine does, and more than you should ask of a machine you depend on. All of this
-goes away when the driver is attestation-signed: it will then travel in the package, install
-with the application, and need neither setting.
+Both are machine-wide security settings, appropriate for a development machine but not a machine
+you depend on. Once the driver is attestation-signed, it travels in the package, installs with
+the application, and needs neither setting.
 
 With the driver installed, "Speakers (Desktop Atmos)" appears in your sound settings.
 Crucible's Settings page then shows the silent device as present.
@@ -170,19 +169,18 @@ Two things worth knowing before you start:
 ## macOS
 
 Builds, and is not packaged. The library's Core Audio process tap and device watcher, and
-Crucible's macOS platform half, are in the tree, and on 2026-09-06 both macOS CI legs configured,
-compiled and linked them and ran the test suites over them: every test passed on the Intel leg,
-and three of the window's eleven Qt Quick suites timed out on the Apple Silicon one. Nothing
-beyond that — a hosted runner has no audio device and no desktop session, so no tap has been
-created, nothing has been captured or played, and the application itself has never been launched
-on a Mac. There is no macOS package either — CPack's Crucible component is gated to Windows and
-Linux — so the only route is a source build with `-DAC3FORGE_BUILD_CRUCIBLE=ON`, which is what
-those two CI legs do.
+Crucible's macOS platform half, are in the tree and build: on 2026-09-06 both macOS CI legs
+compiled, linked and ran the test suites — every test passed on Intel, and three of the window's
+eleven Qt Quick suites timed out on Apple Silicon. Nothing beyond that: a hosted runner has no
+audio device and no desktop session, so nothing has been captured, played, or launched on a Mac.
+There's no macOS package either — CPack's Crucible component is gated to Windows and Linux — so
+the only route is a source build with `-DAC3FORGE_BUILD_CRUCIBLE=ON`, the same those two CI legs
+use.
 
-When it does run it needs no driver: macOS process taps mute an application where they capture
-it, so there is no silent device to install and no default output to move. What stays blocked is
-a Mac with a desktop and an audio device to run it on, and a Developer ID certificate to sign it,
-since the tap's consent prompt does not fire for an unsigned binary.
+It needs no driver when it runs: macOS process taps mute an application where they capture it, so
+there's no silent device to install and no default output to move. What's still needed: a Mac
+with a desktop and an audio device, and a Developer ID certificate — the consent prompt doesn't
+fire for an unsigned binary.
 
 [The plan](design/promotion.md) has the detail.
 

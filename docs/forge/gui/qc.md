@@ -1,15 +1,13 @@
 # QC a stream
 
-The same verification `ac3cli qc` runs on the command line, reachable from the window itself. Everything else in this guide configures and runs an **encode**: a source is
-loaded, a plan is built on it, Encode writes a new file. QC is the opposite shape — an
-**already-encoded** `.ac3`/`.ec3` file is opened, decoded and measured against its own embedded
-`dialnorm`/`compr`, with no source, no plan and no encoder involved anywhere in the path. Folding
-that into the encode workflow's tab bar (Format, Coding tools, Metadata, Objects, Live session —
-every one of them a page of controls for a plan still to come) would put a page with nothing to
-configure next to five pages that are nothing else, so it lives instead as its own dialog, opened
-from a **QC a stream…** button in the header beside **Preferences** — the same "distinct surface,
-reachable from the header, not living in the tab structure" shape [Preferences](index.md#preferences)
-and a run chip's own details popover already use in this window.
+The same verification `ac3cli qc` runs on the command line, reachable from the window itself.
+Everything else in this guide configures and runs an **encode** — a source loaded, a plan built,
+Encode writing a new file. QC is the opposite shape: an **already-encoded** `.ac3`/`.ec3` file is
+opened, decoded and measured against its own embedded `dialnorm`/`compr`, with no source, no plan
+and no encoder involved. That's why it lives as its own dialog rather than a tab — opened from a
+**QC a stream…** button in the header beside **Preferences**, the same "distinct surface,
+reachable from the header" shape [Preferences](index.md#preferences) and a run chip's own details
+popover use.
 
 ## Opening it
 

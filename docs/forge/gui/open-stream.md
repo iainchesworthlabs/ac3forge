@@ -1,12 +1,11 @@
 # Open stream
 
 The GUI player/monitor for an existing file — the same shape [QC a stream](qc.md) and
-[Inspect objects](inspect-objects.md) already use, for the same reason. Everything else in this
-guide configures and runs an **encode**: a source is loaded, a plan is built on it, Encode writes
-a new file. This dialog is the opposite shape again — an **already-encoded** `.ac3`/`.ec3` file is
-opened and decoded, with no source, no plan and no encoder involved anywhere in the path — so it
-lives as its own dialog too, opened from an **Open stream…** button in the header beside **QC a
-stream…**, **Inspect objects…** and **Preferences**.
+[Inspect objects](inspect-objects.md) use, for the same reason: everything else in this guide
+configures and runs an **encode**, while this dialog opens an **already-encoded** `.ac3`/`.ec3`
+file and decodes it, with no source, no plan and no encoder involved. It lives as its own dialog,
+opened from an **Open stream…** button in the header beside **QC a stream…**, **Inspect
+objects…** and **Preferences**.
 
 Where QC measures a stream and Inspect objects shows its Atmos object metadata, this one plays
 it: the GUI twin of `ac3cli monitor`, plus `ac3cli decode`'s WAV and object export.

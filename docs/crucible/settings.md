@@ -49,13 +49,11 @@ node named "Crucible (silent)" while it runs and takes it away when it exits, so
 no elevation and cannot fail for signing reasons. The page says as much instead of offering a
 driver folder that would mean nothing there.
 
-**On macOS** there is nothing here to install. The design needs no silent device at all, because
-process taps mute each application where they capture it, so there would be nothing to install and
-no default output to move: the macOS seam answers that a silent device is not needed
-(`apps/crucible/engine/platform/macos/virtual_device.cpp`), and the whole card is hidden wherever
-a platform answers that way. That is read off the source rather than seen: Crucible's macOS half
-has never run on a Mac, CI compiles it rather than running it, and whether it compiles past
-configure is not yet known ([Install](install.md#macos)).
+**On macOS** there is nothing here to install: process taps mute each application where they
+capture it, so there's no default output to move either. The macOS seam answers that a silent
+device isn't needed (`apps/crucible/engine/platform/macos/virtual_device.cpp`), and the whole card
+is hidden wherever a platform answers that way. Crucible's macOS half compiles and its test suites
+run in CI, but nothing has launched on a Mac ([Install](install.md#macos)).
 
 ### Advanced
 
@@ -163,12 +161,11 @@ the note beside it says which, and closing the window quits.
 [Troubleshooting](troubleshooting.md#there-is-no-tray-icon) says how to check what your session
 has.
 
-Linux published no tray at all before 2026-09-06, because publishing one crashed the window on
-nine or ten launches out of ten. That was a bug in Qt rather than a preference — a `Menu` nested
-inside a tray icon's menu is handed Qt's QWidget fallback and then read as a D-Bus menu — and
-the tray's menu is flat now, which is why the signal path appears there as a heading and seven
-choices rather than as a submenu. `apps/crucible/ui/platform/linux/tray_support.cpp` carries the
-finding.
+Linux published no tray at all before 2026-09-06: a `Menu` nested inside a tray icon's menu hit a
+Qt bug (handed the QWidget fallback, then read as a D-Bus menu) that crashed the window on nine or
+ten launches out of ten. The tray's menu is flat now, which is why the signal path appears there
+as a heading and seven choices rather than a submenu
+(`apps/crucible/ui/platform/linux/tray_support.cpp`).
 
 **Show applications with no audio.** On by default. Running applications with a window but no
 audio session, greyed until they play. Off hides them unless they are placed. This is a Windows

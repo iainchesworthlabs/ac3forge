@@ -217,7 +217,7 @@ claim.
 | **Linux, X11** | On. Crucible reads `_NET_WM_STATE` and `_NET_WM_PID` on the active window through libxcb. A build configured without libxcb has no reader and says so. |
 | **Linux, Wayland** | Off. A Wayland client is given no way to ask about another client's windows, and no portal exposes it. |
 | **Linux, no display** | Off. An ssh login or a container has no window manager to ask. |
-| **macOS** | Off, and written to be. `NSWorkspace` names the application a person is working in and says nothing about its windows, and AppKit gives one application no way to ask about another's, so the seam reports that it cannot answer and which of two reasons applies: there is a window session but macOS will not say what fills the screen, or there is no window session at all. `CGWindowListCopyWindowInfo` bounds against `CGDisplayBounds` would answer it, and is not written. The seam compiles on the two macOS CI legs and a suite there reads its refusal; the `NSWorkspace` call that chooses between the two reasons runs only once the engine polls, and nothing has polled it. |
+| **macOS** | Off, and written to be. `NSWorkspace` can't say which windows an application has, and AppKit gives no cross-application window query, so the seam reports it can't answer — a window session exists but won't say what's full-screen, or there's no window session at all. `CGWindowListCopyWindowInfo` against `CGDisplayBounds` would answer it and isn't written. Compiles on both macOS CI legs, which read the refusal; nothing has polled it on a Mac. |
 
 The note under the applications list is the reason in the platform's own words, so the rule being
 off is always attributed.

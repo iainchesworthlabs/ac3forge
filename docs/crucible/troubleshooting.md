@@ -48,14 +48,12 @@ DD+ 5.1 to Atmos.
 
 ## An application is not in the list
 
-- **On Linux, it is not playing.** This is the usual answer there and it is not a fault. Windows
-  keeps an audio session for as long as an application holds the output device open, so a paused
-  player stays in the list and greys out. PipeWire has no session, only a stream, and an
-  application that is not making sound has no stream in the graph for Crucible to find. So on
-  Linux applications appear when they start playing and leave when they stop. Press play and the
-  entry appears within half a second. Once you have placed it, it stays in the room while the
-  process lives, silence and all, which is the point of placing it. The room page says which of
-  the two rules your build follows.
+- **On Linux, it is not playing.** This is the usual answer there, not a fault: PipeWire has no
+  session, only a stream, so an application making no sound has nothing in the graph for Crucible
+  to find. Windows differs — it keeps a session open for as long as the output device is held, so
+  a paused player stays in the list, greyed out. Press play and the Linux entry appears within
+  half a second; once placed, it stays in the room while the process lives, silence and all —
+  that's the point of placing it. The Room page says which rule your build follows.
 - **On Windows, it is not playing.** Crucible lists every running application with a window, but
   only ones with an audio session are tapped. A silent one shows greyed and reads "no audio".
 - **It is a background process.** Anything without a visible window is hidden unless the Behaviour
@@ -181,6 +179,7 @@ scrub matches the key path wherever it occurs, so a key file at a very short pat
 that prefix everywhere it appears, which costs some of the report's usefulness and none of its
 safety. The audio daemon's own output (PipeWire's log on Linux) is a separate thing and is not
 captured here.
+
 ## Linux: an application shows a monogram
 
 Crucible found no icon for it. It looks in three places, in order: the icon name the
