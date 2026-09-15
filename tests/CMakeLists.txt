@@ -693,9 +693,15 @@ if(AC3FORGE_BUILD_HEARTH)
             sendspin/test_websocket.cpp)
         # test_mdns.cpp reads the mdns backend's packet layer, which is private to the library.
         target_include_directories(ac3tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src/sendspin/src")
-        # Hearth's test sink, run in process (apps/hearth/testsink).
-        target_sources(ac3tests PRIVATE hearth/test_group.cpp hearth/test_testsink.cpp)
+        # Hearth's test sink, run in process (apps/hearth/testsink), and the server's half of A4's
+        # exit with aiosendspin 9.1.1, which tools/sendspin/aiosendspin_exit.py runs.
+        target_sources(ac3tests PRIVATE hearth/test_aiosendspin.cpp hearth/test_group.cpp hearth/test_testsink.cpp)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
+        # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
+        # as core/test_simd_kernels.cpp's.
+        if(AC3FORGE_IS_MSVC_LIKE)
+            set_source_files_properties(hearth/test_aiosendspin.cpp PROPERTIES COMPILE_OPTIONS "/wd4996")
+        endif()
     endif()
     target_link_libraries(ac3tests PRIVATE ac3::sendspin)
 endif()

@@ -1,0 +1,4 @@
+# The scripted aiosendspin 9.1.1 player for A4's exit (tools/sendspin/aiosendspin_player.py), on
+# Python 3.12 or later: the SDK, and PyAV for its FLAC and Opus decoders.
+aiosendspin==9.1.1
+av==18.1.0

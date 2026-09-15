@@ -336,6 +336,14 @@ and release packaging.
   sends controller commands typed on its standard input; in `ac3tests`, two test sinks in one
   group, one paired and one approved unpaired, get the group's metadata, colours, artwork and
   visualizer frames, and a volume and mute set from either reaches both.
+- **A scripted aiosendspin 9.1.1 player for A4's exit** (`tools/sendspin`), standing in for
+  Sendspin's reference player: `aiosendspin_exit.py` runs `ac3tests`' hidden `[aiosendspin]` case
+  against it once each for PCM, FLAC and Opus. The host pairs with the player by its token in
+  aiosendspin 9.1.1's dialect and plays it three seconds of two tones; PCM and FLAC arrive sample
+  for sample, Opus at 42.5 dB after its 312-frame look-ahead, and every chunk's timestamp is where
+  the programme's timeline puts it. The released client refuses to offer Opus, so the player adds
+  it to the SDK's decodable codecs for that run (`planning/hearth-sendspin-extension.md`, decision
+  5). `hearth-validate` runs the script.
 - **Hearth's third-party notices** (`apps/hearth/notices/`): `NOTICES.txt` for cpp-httplib,
   Mbed TLS, mdns, libFLAC, libogg, Opus and Sendspin's time filter, generated at configure time
   with the versions and licence texts vcpkg installs with each port, ready for Hearth's About page

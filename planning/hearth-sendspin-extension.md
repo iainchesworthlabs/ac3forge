@@ -239,7 +239,7 @@ and **Server** is Hearth's server with a 9.1.1 client, such as the scripted play
 | C29 | Player state and commands | `client/state` lists `supported_commands` from `volume`, `mute` and `set_output_delay`, and reports `output_delay_ms`; the command is `set_output_delay` | `supported_commands` may list only `set_static_delay`; the delay is `static_delay_ms`, set with the command `set_static_delay`. Music Assistant closes the connection on a `client/state` that lists anything else | Player: reports `static_delay_ms` and `supported_commands: ["set_static_delay"]`, and accepts `set_static_delay`. Server: reads `static_delay_ms` and sends `set_static_delay` |
 | C30 | Timing fields | No upper bound on `required_lead_time_ms` or `min_buffer_ms` | Each 0 to 30,000 when parsed | Player: keeps both at or below 30,000 ms |
 | C31 | Audio chunk header | `[4][int64 timestamp][uint32 send_ahead][frame]`, 13 bytes | `[4][int64 timestamp][frame]`, 9 bytes | With a 9.1.1 peer, both halves read and write the 9-byte header; the player then has no `send_ahead` samples, which it never schedules by ([R5](#playerv1)). Read with the other header, every frame gains or loses 4 bytes |
-| C32 | Formats | Servers support `opus`, `flac` and `pcm`, and `client/state` can name a preferred `format`; `bit_depth` is ignored for Opus | Music Assistant encodes PCM at 16, 24 or 32 bits, FLAC at 16 or 24, and Opus only with `bit_depth` 16, 1 or 2 channels and 8, 12, 16, 24 or 48 kHz; it takes the first listed format it can encode, and a `bit_depth` of 0 or less fails parsing. The 9.1.1 client decodes PCM and FLAC only, and refuses Opus in its own `supported_formats` | Player: lists its formats in order of preference, with Opus entries at `bit_depth` 16. Server: sends a 9.1.1 client PCM or FLAC. A4's exit sends Opus to the scripted player, which the 9.1.1 client cannot receive as released; proposed for review: the scripted player lifts the SDK's codec check and decodes Opus with libopus itself |
+| C32 | Formats | Servers support `opus`, `flac` and `pcm`, and `client/state` can name a preferred `format`; `bit_depth` is ignored for Opus | Music Assistant encodes PCM at 16, 24 or 32 bits, FLAC at 16 or 24, and Opus only with `bit_depth` 16, 1 or 2 channels and 8, 12, 16, 24 or 48 kHz; it takes the first listed format it can encode, and a `bit_depth` of 0 or less fails parsing. The 9.1.1 client decodes PCM and FLAC only, and refuses Opus in its own `supported_formats` | Player: lists its formats in order of preference, with Opus entries at `bit_depth` 16. Server: sends a 9.1.1 client PCM or FLAC. A4's exit sends Opus to the scripted player, which the 9.1.1 client cannot receive as released, so the scripted player widens the SDK's list of decodable codecs and decodes Opus with the SDK's own PyAV decoder ([Decisions](#decisions), 5) |
 
 **Other roles**
 
@@ -472,7 +472,7 @@ Recorded here and not yet raised with the Sendspin project ([Decisions](#decisio
 
 ## Decisions
 
-Taken on 2026-09-15.
+Taken on 2026-09-15, and the fifth on 2026-09-16.
 
 | # | Question | **Taken** |
 |---|---|---|
@@ -480,3 +480,4 @@ Taken on 2026-09-15.
 | 2 | What stands in for "Sendspin's reference Python player" in A4's exit, since the released `sendspin` 7.5.0 command-line player has no encryption | **A scripted player on aiosendspin 9.1.1** (Apache-2.0), kept under `tools/` and run in the loopback test |
 | 3 | How the open questions reach the Sendspin project | **Not yet**: recorded on this page only |
 | 4 | Whether mbedTLS, libFLAC, Opus and the vendored time filter join `vcpkg.json` | **Yes, all four**, behind the manifest feature `hearth`, each in the generated notices |
+| 5 | How the scripted player takes A4's Opus stream, which aiosendspin 9.1.1 refuses to offer (C32) | **It lifts the SDK's codec check**: `tools/sendspin/aiosendspin_player.py` adds Opus to the SDK's decodable codecs and decodes it with PyAV, while PCM and FLAC go through the SDK as released |
