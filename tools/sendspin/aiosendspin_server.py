@@ -90,17 +90,23 @@ def read_float_wav(path: Path) -> tuple[int, array]:
 class TestSink:
     """ac3hearth-testsink as a child process, with what it has logged."""
 
-    def __init__(self, binary: Path, directory: Path, codec: str, pair: str) -> None:
+    def __init__(
+        self, binary: Path, directory: Path, codec: str, pair: str, extension: bool
+    ) -> None:
         self.binary = binary
         self.directory = directory
         self.codec = codec
         self.pair = pair
+        self.extension = extension
         self.lines: list[str] = []
         self.changed = asyncio.Condition()
         self._process: asyncio.subprocess.Process | None = None
         self._reader: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
+        # A Hearth sink lists _ac3forge_player@v1 before player@v1, which a 9.1.1 server does not
+        # know; --extension leaves it listed to see that the server passes it over.
+        extension = [] if self.extension else ["--no-extension"]
         self._process = await asyncio.create_subprocess_exec(
             str(self.binary),
             "--name",
@@ -117,7 +123,7 @@ class TestSink:
             self.codec,
             "--pair",
             "dynamic" if self.pair == "code" else "none",
-            "--no-extension",
+            *extension,
             "--no-mdns",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
@@ -291,8 +297,10 @@ def check(codec: str, directory: Path, samples: array) -> tuple[list[str], str]:
     return problems, summary
 
 
-async def exercise(testsink: Path, codec: str, pair: str, directory: Path) -> list[str]:
-    sink = TestSink(testsink, directory, codec, pair)
+async def exercise(
+    testsink: Path, codec: str, pair: str, directory: Path, extension: bool
+) -> list[str]:
+    sink = TestSink(testsink, directory, codec, pair, extension)
     await sink.start()
     samples = programme()
     try:
@@ -309,10 +317,10 @@ async def exercise(testsink: Path, codec: str, pair: str, directory: Path) -> li
     return [f"{codec}: {problem}" for problem in problems]
 
 
-async def run(testsink: Path, codecs: list[str], pair: str, out: Path) -> int:
+async def run(testsink: Path, codecs: list[str], pair: str, out: Path, extension: bool) -> int:
     problems: list[str] = []
     for codec in codecs:
-        problems += await exercise(testsink, codec, pair, out / f"{codec}-{pair}")
+        problems += await exercise(testsink, codec, pair, out / f"{codec}-{pair}", extension)
     for problem in problems:
         print(problem, file=sys.stderr)
     return 1 if problems else 0
@@ -326,6 +334,9 @@ def main() -> int:
     parser.add_argument(
         "--out", type=Path, help="where each codec's files go; a temporary directory otherwise"
     )
+    parser.add_argument(
+        "--extension", action="store_true", help="let the sink list _ac3forge_player@v1 as well"
+    )
     parser.add_argument("--verbose", action="store_true", help="the SDK's debug log")
     arguments = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if arguments.verbose else logging.WARNING)
@@ -334,9 +345,13 @@ def main() -> int:
     if unknown or not codecs:
         parser.error(f"--codecs takes pcm, flac and opus, not {', '.join(unknown) or 'nothing'}")
     if arguments.out is not None:
-        return asyncio.run(run(arguments.testsink, codecs, arguments.pair, arguments.out))
+        return asyncio.run(
+            run(arguments.testsink, codecs, arguments.pair, arguments.out, arguments.extension)
+        )
     with tempfile.TemporaryDirectory(prefix="aiosendspin-server-") as scratch:
-        return asyncio.run(run(arguments.testsink, codecs, arguments.pair, Path(scratch)))
+        return asyncio.run(
+            run(arguments.testsink, codecs, arguments.pair, Path(scratch), arguments.extension)
+        )
 
 
 if __name__ == "__main__":
