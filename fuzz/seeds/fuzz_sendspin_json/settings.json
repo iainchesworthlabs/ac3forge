@@ -1,0 +1,1 @@
+{"type":"server/command","payload":{"_ac3forge_player":{"command":"settings","settings":{"revision":7,"layout":"L:small,C,R:small,Ls,Rs,LFE","routing":"0,2,1,-,4,5","trim_db":[-1.5,0.0,-1.0,2.5e0,0,1E-1],"delay_ms":[3.2,1.8,3.2,5.9,5.9,0],"crossover_hz":80,"decoder":{"mode":"line","drc_cut":1.0,"drc_boost":0.5,"programme":null,"objects":"auto"}}}}}

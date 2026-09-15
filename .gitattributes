@@ -33,6 +33,11 @@ apps/notices/** text eol=lf
 # three need the same bytes on every checkout.
 esp-idf/ac3forge/ui/** text eol=lf
 
+# vcpkg overlay ports. vcpkg applies a port's patches to upstream's sources, which have
+# LF endings, so a patch that a Windows checkout had turned to CRLF would add stray
+# carriage returns or fail to apply.
+cmake/vcpkg/ports/** text eol=lf
+
 # ESP-IDF example stream assets. Binary: git must not touch line endings in an
 # elementary bitstream, where 0x0D 0x0A is audio data like any other pair of
 # bytes - see the fixture-hash note above for the same failure caught once
