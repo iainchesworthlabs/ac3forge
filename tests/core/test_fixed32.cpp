@@ -279,7 +279,9 @@ TEST_CASE("Fixed32's integer ratio, unsaturated product and integer root are exa
         }
     }
     for (int i = 0; i < 100000; ++i) {
-        const auto num_bits = static_cast<unsigned>(rng() % 21U);
+        // 1..20, not 0..20: a shift by 64 (num_bits == 0) is undefined, and
+        // num == 0 is already in the edge cases above.
+        const auto num_bits = 1U + static_cast<unsigned>(rng() % 20U);
         const auto den_bits = 1U + static_cast<unsigned>(rng() % 20U);
         const auto sign = (rng() & 1U) != 0 ? 1 : -1;
         const auto num = static_cast<std::int64_t>(rng() >> (64U - num_bits)) * sign;
