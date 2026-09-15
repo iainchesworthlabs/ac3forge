@@ -67,11 +67,13 @@ config AC3FORGE_EXAMPLE_I2S_SLOT_BITS
     help
         32-bit slots carry the decoder's 24-bit samples left-justified, which
         every DAC tried here accepts and a SigmaDSP requires, at twice the bit
-        clock of 16 (3.07 MHz against 1.54 for stereo at 48 kHz); they are
-        also the only width this sink can carry more than two slots in - a
-        TDM mode at 16 bits would need a padding-capable interleave this
-        codebase does not have, so a layout past two slots at 16 bits is
-        refused rather than attempted. Only 16 and 32 are valid.
+        clock of 16 (3.07 MHz against 1.54 for stereo at 48 kHz). A TDM frame
+        holds 128 bits, so one line carries four 32-bit slots or eight 16-bit
+        ones: at 16 a 7.1 layout fits one line. The second line
+        (AC3FORGE_EXAMPLE_I2S_SECOND_LINE) is used at 32 bits only. The DMA
+        queue is sized for the line's widest frame either way, eight 16-bit
+        slots being the same 16 bytes a frame as four 32-bit ones. Only 16 and
+        32 are valid.
 
 config AC3FORGE_EXAMPLE_I2S_SLAVE
     int "The DAC supplies the clocks (1) or the ESP32-S3 does (0)"
@@ -293,9 +295,9 @@ config AC3FORGE_EXAMPLE_HTTP_URL
     depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
     default "http://example.invalid/sample.ac3"
 
-# THE OUTPUT LAYOUT - esp-idf/ac3forge/include/ac3forge/layout.hpp. The
+# THE OUTPUT LAYOUT - src/forge/include/ac3/render/layout.hpp. The
 # speakers the room has, one per output slot; the stream is rendered onto them
-# whatever it was coded as (ac3forge/render.hpp). A stereo or mono layout is
+# whatever it was coded as (ac3/render/render.hpp). A stereo or mono layout is
 # the decoder's own §7.8 fold; anything else is placed channel by channel, and
 # a layout with height speakers has the stream's objects reconstructed and
 # placed by their own positions.

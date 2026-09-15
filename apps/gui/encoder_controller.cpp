@@ -1006,11 +1006,20 @@ QString EncoderController::metaTokens() const {
                                    : QStringLiteral("lfemix=off"));
     }
     if (meta_.dmixmod != defaults.dmixmod) {
-        const QString name = meta_.dmixmod == ac3::meta::DownmixMode::kLtRt
-                                 ? QStringLiteral("ltrt")
-                                 : meta_.dmixmod == ac3::meta::DownmixMode::kLoRo
-                                       ? QStringLiteral("loro")
-                                       : QStringLiteral("none");
+        QString name = QStringLiteral("none");
+        switch (meta_.dmixmod) {
+            case ac3::meta::DownmixMode::kLtRt:
+                name = QStringLiteral("ltrt");
+                break;
+            case ac3::meta::DownmixMode::kLoRo:
+                name = QStringLiteral("loro");
+                break;
+            case ac3::meta::DownmixMode::kNotIndicated:
+            // Table D2.2's reserved '11' has no CLI token, and setDmixIndex()
+            // never selects it; the encoder refuses it in any case.
+            case ac3::meta::DownmixMode::kReserved:
+                break;
+        }
         tokens.append(QStringLiteral("dmixmod=%1").arg(name));
     }
     // The service and production group. Each token is emitted only where the
@@ -1625,6 +1634,9 @@ void EncoderController::setLfeMix(int value) {
 }
 
 void EncoderController::setDmixIndex(int index) {
+    // The three entries dmixNames() lists are Table D2.2's three defined
+    // codes; the reserved '11' is not offered, since the encoder will not
+    // write it.
     const auto value = static_cast<ac3::meta::DownmixMode>(std::clamp(index, 0, 2));
     if (value == meta_.dmixmod) {
         return;

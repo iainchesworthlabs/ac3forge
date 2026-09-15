@@ -14,7 +14,7 @@ target and the arithmetic tier differ.
 |---|---|
 | Decode | **Correct, and that is all this row claims.** `apps/baremetal/platform/esp32c3/` is a probe target CI runs under `qemu-riscv32`: twelve of the fourteen fixtures decode, every one producing PCM **identical to the x86 host's and the Cortex-M3 leg's** — three architectures, three compilers, one pinned set of hashes (`tests/golden/fixed-probe-pcm-hashes.json`) |
 | Memory | Peaks at 212,221 bytes of heap across the twelve fixtures that fit. The two 7.1.4 rows do not: they need 238,094 and 244,502 bytes where the part reports 249,180 free in a heap whose largest block is 114,688 |
-| Speed | **Unmeasured.** QEMU is not cycle-accurate and no board has run this. On the [Cortex-M3 leg](../../performance-trend.md#instructions-per-frame-fixed-point-tier) an E-AC-3 5.1 frame is 4.8 M integer instructions against 12.9 M soft-float, AC-3 5.1 3.8 M, AC-3 2/0 1.2 M and mono 0.61 M — against 5.12 M cycles per frame at 160 MHz, but instructions are not cycles and no leg models this part's 16 KB flash cache |
+| Speed | **Unmeasured.** QEMU is not cycle-accurate and no C3 board has run this. On the [Cortex-M3 leg](../../performance-trend.md#instructions-per-frame-fixed-point-tier) an E-AC-3 5.1 frame is 4.8 M integer instructions against 12.9 M soft-float, AC-3 5.1 3.8 M, AC-3 2/0 1.2 M and mono 0.61 M — against 5.12 M cycles per frame at 160 MHz, but instructions are not cycles and no leg models this part's 16 KB flash cache. The [ESP32-C6](esp32-c6.md), a 160 MHz RISC-V core with no FPU in the same tier, has been timed on a board: AC-3 5.1 at 1.09x a frame, E-AC-3 5.1 at 1.21x, stereo 0.35x and 0.50x, with no network |
 | Encode | Not validated here at all: both encoders are floating-point, which on a part with no FPU means software floating point |
 | Real silicon | None. Correctness is established under `qemu-riscv32` emulation |
 | CI | The `esp32c3` fixed-point leg alongside `build-esp32s3` in `.github/workflows/_build.yml`, under QEMU |
@@ -31,7 +31,7 @@ Whether a part is viable comes down to floating point, not RAM. Espressif measur
 | **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **No** — see below |
 | ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
 | ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
-| **ESP32-C3**/C6 | 400/512 KB | 160 MHz | **none** | none | **Yes, in the fixed-point tier** — this page |
+| **ESP32-C3**/C6 | 400/512 KB | 160 MHz | **none** | none | **Yes, in the fixed-point tier** — this page and [ESP32-C6](esp32-c6.md) |
 
 Every part with an FPU has a single-precision one, so `double` is soft-float across the whole
 family and `decode_scalar_t` earns its keep on all of them.
@@ -79,8 +79,14 @@ are the same on RISC-V as on the x86 host and the Cortex-M3 leg, and the runner 
 one pinned set (`tests/golden/fixed-probe-pcm-hashes.json`). `--scalar=float` builds the same part
 with the S3's tier, which is what the two arithmetics are compared with.
 
+Any other project built for this target against the component gets the fixed-point tier too:
+when a project leaves `AC3FORGE_DECODE_SCALAR` unset, the component sets it from the part, and a
+part with no FPU gets `fixed`
+([ESP32-S3 → The ESP-IDF component](esp32-s3.md#the-esp-idf-component)).
+
 ## Where to go next
 
 - [ESP32-S3](esp32-s3.md) — the primary, hardware-verified target this component was built for.
+- [ESP32-C6](esp32-c6.md) — the same tier on a board, with and without WiFi running.
 - [Cortex-M3 (QEMU reference)](cortex-m3.md) — the same fixed-point tier's reference leg.
-- [Bare metal overview](index.md) — how the four pages in this section relate.
+- [Bare metal overview](index.md) — how the pages in this section relate.

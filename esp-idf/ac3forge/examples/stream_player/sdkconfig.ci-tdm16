@@ -1,0 +1,8 @@
+# The capture shape of sdkconfig.ci-tdm at 16-bit slots, layered on it:
+#
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci-tdm;sdkconfig.ci-tdm16"
+#
+# Eight 16-bit slots are what one TDM line carries at this width (a 128-bit
+# frame, ac3forge/sink_plan.hpp), converted by ac3forge::interleave_16in16:
+# the same padding and level checks as the 32-bit shape, on 16-bit integers.
+CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS=16

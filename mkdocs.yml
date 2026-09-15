@@ -170,6 +170,7 @@ nav:
           - Cortex-M3 (QEMU reference): platforms/bare-metal/cortex-m3.md
           - ESP32-S3: platforms/bare-metal/esp32-s3.md
           - ESP32-C3: platforms/bare-metal/esp32-c3.md
+          - ESP32-C6: platforms/bare-metal/esp32-c6.md
           - ESPHome: platforms/bare-metal/esphome.md
       - Windows null-sink driver: platforms/windows-driver-acx.md
   - Project:

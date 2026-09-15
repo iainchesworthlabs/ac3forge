@@ -23,12 +23,16 @@
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/stream_accumulator.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/render/render.hpp"
+#include "ac3/render/serving.hpp"
 
-#include "ac3forge/render.hpp"
 #include "ac3forge/unit_hold.hpp"
 
 namespace ac3forge {
 namespace {
+
+using ac3::render::LayoutRenderer;
+using ac3::render::OutputLayout;
 
 // One block per slot is what the player holds of the audio: sixteen slots of
 // 256 samples, 16 KB, against the 96 KB a frame of them would be. Sixteen is
@@ -791,20 +795,15 @@ bool Player::start() {
     // How the layout is served: the decoder's own §7.8 stage for a stereo or
     // mono room, the renderer for everything else, with the objects
     // reconstructed when the layout asks for what the bed cannot give.
-    im.fold = im.config.layout.fold(im.config.stereo_fold);
+    const ac3::render::Serving serving =
+        ac3::render::serve(im.config.layout, im.config.stereo_fold, im.config.objects);
+    im.fold = serving.fold;
     im.fold_word = im.fold == ac3::DownmixTarget::kMono   ? "mono"
                    : im.fold == ac3::DownmixTarget::kLtRt ? "ltrt"
                    : im.fold.has_value()                  ? "loro"
                                                           : nullptr;
-    im.config.decoder.output.target = im.fold.value_or(ac3::DownmixTarget::kAsCoded);
-    switch (im.config.objects) {
-        case PlayerConfig::Objects::kNever: im.reconstruct = false; break;
-        case PlayerConfig::Objects::kAlways: im.reconstruct = !im.fold.has_value(); break;
-        case PlayerConfig::Objects::kAuto:
-            im.reconstruct = !im.fold.has_value() && im.config.layout.has_height();
-            break;
-    }
-    im.config.decoder.skip_object_reconstruction = !im.reconstruct;
+    im.reconstruct = serving.reconstruct;
+    ac3::render::configure_decoder(serving, im.config.decoder);
     im.renderer = LayoutRenderer{im.config.layout};
 
     im.events = xEventGroupCreate();
@@ -829,12 +828,17 @@ bool Player::start() {
                     static_cast<unsigned long>(im.config.ring_bytes));
         return false;
     }
+    // -1 for tskNO_AFFINITY, the spelling the example's Kconfig uses for "any
+    // core", rather than the constant's own 2147483647.
+    const auto core_number = [](BaseType_t core) {
+        return core == tskNO_AFFINITY ? -1 : static_cast<int>(core);
+    };
     std::printf("player: ring %lu bytes in %s, fetch on core %d at priority %u, decode on core %d "
                 "at priority %u\n",
                 static_cast<unsigned long>(im.config.ring_bytes),
                 im.ring_in_psram ? "PSRAM" : "internal SRAM",
-                static_cast<int>(im.config.fetch_core), static_cast<unsigned>(im.config.fetch_priority),
-                static_cast<int>(im.config.decode_core),
+                core_number(im.config.fetch_core), static_cast<unsigned>(im.config.fetch_priority),
+                core_number(im.config.decode_core),
                 static_cast<unsigned>(im.config.decode_priority));
     const char* how = "as coded, the bed placed";
     if (im.fold == ac3::DownmixTarget::kMono) {

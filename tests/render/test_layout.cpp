@@ -1,18 +1,22 @@
-// The player's output layouts and the block renderer over them, on the host.
+// The output layouts and the block renderer over them (ac3/render/), on the
+// host.
 //
-// Both headers live in the ESP-IDF component and include nothing from ESP-IDF,
-// which is what makes this possible - the same arrangement test_interleave.cpp
-// has. The panner's geometry is tests/spatial/'s business; what is checked
-// here is the indexing between coded channels, objects and slots, where a
-// swapped subscript puts the centre channel in the subwoofer and nothing
-// complains.
+// Both headers came from the ESP-IDF component's player and moved into the
+// library with these tests; the boards, the desktop player and the test sink
+// all render through them. The panner's geometry is tests/spatial/'s business;
+// what is checked here is the indexing between coded channels, objects and
+// slots, where a swapped subscript puts the centre channel in the subwoofer
+// and nothing complains.
 
 #include <array>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -21,15 +25,14 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/oba/oamd.hpp"
-
-#include "ac3forge/layout.hpp"
-#include "ac3forge/render.hpp"
+#include "ac3/render/layout.hpp"
+#include "ac3/render/render.hpp"
 
 namespace {
 
-using ac3forge::LayoutRenderer;
-using ac3forge::OutputLayout;
-using ac3forge::Speaker;
+using ac3::render::LayoutRenderer;
+using ac3::render::OutputLayout;
+using ac3::render::Speaker;
 using Location = ac3::eac3::chanmap::Location;
 using Catch::Approx;
 
@@ -682,4 +685,66 @@ TEST_CASE("bass management: a small speaker's bass moves to the LFE feed",
     plain.render(plain_source.block(), false, 1.0F, plain_out.spans);
     REQUIRE(plain_out.at(0) == Approx(1.0F));
     REQUIRE(plain_out.at(5) == 0.0F);
+}
+
+TEST_CASE("the crossover frequency is a setting, inside an AVR's range", "[render][layout]") {
+    LayoutRenderer renderer{*OutputLayout::parse("L:small,C,R,Ls,Rs,LFE")};
+    REQUIRE(renderer.crossover_hz() == LayoutRenderer::kDefaultCrossoverHz);
+    REQUIRE_FALSE(renderer.set_crossover_hz(LayoutRenderer::kMinCrossoverHz - 1.0));
+    REQUIRE_FALSE(renderer.set_crossover_hz(LayoutRenderer::kMaxCrossoverHz + 1.0));
+    REQUIRE_FALSE(renderer.set_crossover_hz(std::numeric_limits<double>::quiet_NaN()));
+    REQUIRE(renderer.crossover_hz() == LayoutRenderer::kDefaultCrossoverHz);
+    REQUIRE(renderer.set_crossover_hz(LayoutRenderer::kMaxCrossoverHz));
+    REQUIRE(renderer.crossover_hz() == LayoutRenderer::kMaxCrossoverHz);
+
+    // A layout with nothing small keeps the setting for when it matters.
+    LayoutRenderer plain{*OutputLayout::parse("5.1")};
+    REQUIRE(plain.set_crossover_hz(120.0));
+    REQUIRE(plain.crossover_hz() == 120.0);
+}
+
+TEST_CASE("moving the crossover moves a small speaker's bass", "[render][layout]") {
+    // A 120 Hz tone on a small L: with the corner at 60 Hz most of it stays on
+    // L; with the corner at 250 Hz most of it goes to the LFE feed.
+    constexpr std::size_t kBlockSamples = 256;
+    constexpr double kToneHz = 120.0;
+    const auto layout = *OutputLayout::parse("L:small,C,R,Ls,Rs,LFE");
+    const auto measure = [&](double crossover_hz) {
+        LayoutRenderer renderer{layout};
+        REQUIRE(renderer.set_crossover_hz(crossover_hz));
+        renderer.set_bed(coded(k51));
+        std::vector<float> tone(kBlockSamples);
+        std::vector<float> silence(kBlockSamples, 0.0F);
+        Out out(6, kBlockSamples, 0.0F);
+        double left_energy = 0.0;
+        double lfe_energy = 0.0;
+        for (std::size_t block = 0; block < 100; ++block) {
+            for (std::size_t k = 0; k < kBlockSamples; ++k) {
+                const double t = static_cast<double>((block * kBlockSamples) + k) / 48000.0;
+                tone[k] = static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * kToneHz * t));
+            }
+            const std::array<std::span<const float>, 6> channels = {tone, silence, silence,
+                                                                     silence, silence, silence};
+            const ac3::PcmBlock pcm{.index = 0,
+                                    .blocks = 6,
+                                    .channels = channels,
+                                    .objects = {},
+                                    .object_indices = {},
+                                    .object_metadata = nullptr};
+            renderer.render(pcm, false, 1.0F, out.spans);
+            if (block >= 20) {  // past the filters' settling
+                for (std::size_t k = 0; k < kBlockSamples; ++k) {
+                    const auto left = static_cast<double>(out.storage[0][k]);
+                    const auto lfe = static_cast<double>(out.storage[5][k]);
+                    left_energy += left * left;
+                    lfe_energy += lfe * lfe;
+                }
+            }
+        }
+        return std::array<double, 2>{left_energy, lfe_energy};
+    };
+    const auto low_corner = measure(60.0);
+    const auto high_corner = measure(250.0);
+    REQUIRE(low_corner[0] > 2.0 * low_corner[1]);
+    REQUIRE(high_corner[1] > 2.0 * high_corner[0]);
 }

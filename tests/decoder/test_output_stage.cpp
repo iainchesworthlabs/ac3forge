@@ -429,6 +429,42 @@ TEST_CASE("mix_levels resolves both generations' downmix syntax", "[decoder][out
     // No mixmdate at all falls back on the AC-3 defaults rather than zero.
     CHECK(ac3::mix_levels(std::optional<ac3::meta::MixMetadata>{}).loro_clev ==
           ac3::meta::level::kMinus4_5dB);
+
+    // Table D2.2's reserved '11' is passed on as sent, not folded into '00'.
+    mix.dmixmod = ac3::meta::DownmixMode::kReserved;
+    CHECK(ac3::mix_levels(std::optional{mix}).preferred == ac3::meta::DownmixMode::kReserved);
+}
+
+TEST_CASE("automatic_stereo_target follows Lt/Rt and folds everything else Lo/Ro",
+          "[decoder][output]") {
+    // §D3.1.1's automatic selection between the two folds dmixmod can name,
+    // at an acmod Table D2.2 defines the field for.
+    CHECK(ac3::automatic_stereo_target(ac3::Acmod::k3_2, ac3::meta::DownmixMode::kLtRt) ==
+          ac3::DownmixTarget::kLtRt);
+    CHECK(ac3::automatic_stereo_target(ac3::Acmod::k3_2, ac3::meta::DownmixMode::kLoRo) ==
+          ac3::DownmixTarget::kLoRo);
+    // No preference, and the reserved code §D2.3.1.2 lets a decoder read as
+    // "not indicated", both take the plain fold.
+    CHECK(ac3::automatic_stereo_target(ac3::Acmod::k3_2, ac3::meta::DownmixMode::kNotIndicated) ==
+          ac3::DownmixTarget::kLoRo);
+    CHECK(ac3::automatic_stereo_target(ac3::Acmod::k3_2, ac3::meta::DownmixMode::kReserved) ==
+          ac3::DownmixTarget::kLoRo);
+    // A MixLevels nobody filled in says nothing, so it folds Lo/Ro as well.
+    CHECK(ac3::automatic_stereo_target(ac3::Acmod::k3_2, ac3::MixLevels{}.preferred) ==
+          ac3::DownmixTarget::kLoRo);
+
+    // Table D2.2's own note leaves dmixmod's meaning reserved below acmod
+    // 3/0 - at 1+1, 1/0 and 2/0 the field is reserved whatever code it
+    // carries, so a preference that would choose Lt/Rt at a wider acmod
+    // still folds Lo/Ro at each of these three.
+    for (const auto acmod : {ac3::Acmod::kDualMono, ac3::Acmod::k1_0, ac3::Acmod::k2_0}) {
+        CHECK(ac3::automatic_stereo_target(acmod, ac3::meta::DownmixMode::kLtRt) ==
+              ac3::DownmixTarget::kLoRo);
+    }
+    // k3_0 is the narrowest acmod the note DOES define the field for - the
+    // sharp edge of that boundary, not just one more wide case.
+    CHECK(ac3::automatic_stereo_target(ac3::Acmod::k3_0, ac3::meta::DownmixMode::kLtRt) ==
+          ac3::DownmixTarget::kLtRt);
 }
 
 TEST_CASE("a plain 5.1 layout folds identically through the acmod and the layout forms",

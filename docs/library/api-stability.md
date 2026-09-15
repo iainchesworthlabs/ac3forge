@@ -45,6 +45,7 @@ it directly. Four tiers, assigned per header below:
 | `ac3/io/elementary.hpp`, `metadata_edit.hpp`, `probe.hpp`, `object_strip.hpp`, `dec3.hpp`, `wav.hpp` | Public. |
 | `ac3/meta/bsi.hpp`, `drc.hpp`, `loudness.hpp`, `mixing.hpp`, `qc.hpp` | Public. |
 | `ac3/spatial/spatial.hpp` | Public. |
+| `ac3/render/layout.hpp`, `render.hpp`, `serving.hpp`, `routing.hpp`, `trim_delay.hpp`, `identify.hpp`, `float_biquad.hpp` | **Experimental** — the output layout, renderer and speaker management the ESP32 player and Hearth share (`planning/hearth-reference-player.md`), outside the `v1.0.0` freeze while Hearth's phases settle their shape; see [Experimental modules](#experimental-modules). |
 | `ac3/oba/atmos.hpp`, `joc.hpp`, `oamd.hpp`, `motion.hpp`, `scene.hpp` | Public — `ac3::oba::joc` included, now that AP2 folded it into `ac3::oba` proper. |
 | `ac3/emdf/emdf.hpp` | Public. |
 | `ac3/iec61937/iec61937.hpp` | Public. |
@@ -168,7 +169,9 @@ scoped as "an explicitly experimental module" gated behind its own `AC3FORGE_BUI
 page's policy just confirms that plan rather than overriding it; real interoperability, `IM6`,
 stays separately blocked on MLP/FBA source material that isn't public). A new module defaults to
 Experimental from its first merge, and only leaves that tier through a deliberate, documented
-decision on this page, the same way `ac3iab` will.
+decision on this page, the same way `ac3iab` will. `ac3::render` is one: it moved into
+`ac3::forge` from the ESP32 player to serve the desktop player as well, and its speaker
+management is new with it.
 
 `ac3adm::ac3adm` and `ac3::admbridge` are a different case: also opt-in
 (`-DAC3FORGE_BUILD_ADM=ON`), but consumed for real by the ADM→Atmos bridging path and stable in

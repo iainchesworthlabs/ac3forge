@@ -245,7 +245,7 @@ platform/compiler fragment matches your machine.
 |---|---|---|
 | `AC3FORGE_BUILD_CLI` | `ON` | Build `ac3cli`. |
 | `AC3FORGE_BUILD_GUI` | `ON` on the two Windows presets, `OFF` on Linux and macOS | Build `ac3gui`. Requires Qt. Off by default outside Windows because a Qt kit isn't assumed present there — see [Building on Linux](#building-on-linux). |
-| `AC3FORGE_FETCH_FMT` | `ON` | When no local {fmt} is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v12.2.0 from source via `FetchContent` instead of failing. Turn off to insist on a package-manager copy — see `cmake/Fmt.cmake`. Unlike the other `AC3FORGE_FETCH_*` options, this one is never irrelevant: {fmt} is a base dependency needed by every build. |
+| `AC3FORGE_FETCH_FMT` | `ON` | When no local {fmt} 11.1.0 or newer is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v12.2.0 from source via `FetchContent` instead of failing. An older local copy, such as Ubuntu 26.04's `libfmt-dev` 10.1.1, is skipped and named in the configure output. Turn off to insist on a package-manager copy — see `cmake/Fmt.cmake`. Unlike the other `AC3FORGE_FETCH_*` options, this one is never irrelevant: {fmt} is a base dependency needed by every build. |
 | `AC3FORGE_BUILD_TESTS` | `ON` | Build the Catch2 suite. Requires Catch2. |
 | `AC3FORGE_FETCH_CATCH2` | `ON` | When no local Catch2 3 is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v3.15.3 from source via `FetchContent` instead of failing. Turn off to insist on a package-manager copy — see `tests/CMakeLists.txt`. Irrelevant when `AC3FORGE_BUILD_TESTS` is off. |
 | `AC3FORGE_BUILD_EXAMPLES` | `ON` | Build `examples/`, and register them as tests. |
@@ -513,7 +513,9 @@ encoder's - and with it the last of the decode path is in `decode_scalar_t`.
 (`src/forge/src/core/fixed32.hpp`): a signed 32-bit integer read as Q7.24, products through 64
 bits and rounded once, sums wrapping, conversions saturating. It is the tier for an ESP32-C3 or
 a Cortex-M3, where even `float` is a compiled subroutine, and the minimum-footprint profile
-honours it (every other value of the option is `float` there). What the tier does, in the order
+honours it (every other value of the option is `float` there). The ESP-IDF component
+(`esp-idf/ac3forge/`) sets it for a part with no FPU when a project has not set the option
+itself, and `float` for a part with one. What the tier does, in the order
 the decode runs: dequantisation, dither, coordinates and decoupling in `Fixed32`; a coupling
 or spectral extension coordinate kept as its mantissa and its power of two, so the product with
 a coefficient is a shift; the §7.9.4 inverse pair as its own kernel

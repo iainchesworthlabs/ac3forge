@@ -720,10 +720,10 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         meta::AlternateBsi alternate;
         if (r.read(1) != 0) {  // xbsi1e
             meta::MixMetadata mix;
-            const auto mode = r.read(2);
-            if (mode < 3) {  // Table D2.2's '11' reads as "not indicated"
-                mix.dmixmod = static_cast<meta::DownmixMode>(mode);
-            }
+            // dmixmod, kept as sent: Table D2.2's reserved '11' has an
+            // enumerator of its own (see DownmixMode), so a report can say it
+            // was there.
+            mix.dmixmod = static_cast<meta::DownmixMode>(r.read(2));
             // Table D2.1's order: both Lt/Rt levels, then both Lo/Ro ones.
             mix.ltrtcmixlev = static_cast<meta::MixLevel>(r.read(3));
             mix.ltrtsurmixlev = static_cast<meta::MixLevel>(r.read(3));

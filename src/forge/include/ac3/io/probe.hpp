@@ -202,6 +202,11 @@ struct ProbeReport {
     MinMax compr2;
     MinMax dynrng;
     MinMax dynrng2;
+    // Table D2.2's preferred stereo downmix, from the first syncframe of the
+    // lead programme's independent substream that sends one - see
+    // FrameHeader::dmixmod. A code rather than a range, because a range of
+    // preferences means nothing. std::nullopt where no such syncframe did.
+    std::optional<meta::DownmixMode> dmixmod = std::nullopt;
 
     // --- object audio ------------------------------------------------------
     // TS 103 420 §8.3.2.2, straight off addbsi - readable without decoding

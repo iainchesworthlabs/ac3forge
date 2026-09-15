@@ -77,7 +77,14 @@ shape `apps/android/app/src/main/cpp/CMakeLists.txt` uses. Re-listing
 `src/forge/minimal.cmake`'s sources in an `idf_component_register(SRCS ...)` was rejected: two
 copies of a source list drift, and the drift surfaces as a link error rather than a diff.
 
-`idf_component.yml` carries registry metadata and names `esp32s3` as its only target. **It is not
+The decode arithmetic follows the part unless the project chooses: `float` where ESP-IDF's
+`SOC_CPU_HAS_FPU` capability says the part has a floating-point unit, as this one does, and the
+fixed-point tier where it has none, as on an [ESP32-C3](esp32-c3.md). To build the other one,
+set `AC3FORGE_DECODE_SCALAR` to `float` or `fixed` above `project()`, or pass
+`-DAC3FORGE_DECODE_SCALAR=...` to `idf.py`.
+
+`idf_component.yml` carries registry metadata and the list of targets, each of which
+`tools/packaging/pack_esp_component.py --verify` builds against the packed archive. **It is not
 published to the ESP Component Registry.** `.github/workflows/esp-component.yml` lints the
 manifest and packs the archive on every change, but its `compote component upload` job is gated to
 a manual `workflow_dispatch` on a `v` tag — a published version cannot be replaced, so the upload
@@ -141,7 +148,7 @@ neither a partition nor I2S:
 
 Chosen under *ac3forge stream player* in `idf.py menuconfig`, along with the output layout — a
 name such as `5.1.4` or a speaker list — that the player renders every stream onto
-(`esp-idf/ac3forge/include/ac3forge/layout.hpp`, `render.hpp`).
+(`src/forge/include/ac3/render/layout.hpp`, `render.hpp`).
 
 It exists to exercise the incremental input path. `ac3::split_frames` takes a span over a whole
 stream, which nothing streaming can produce; `ac3::io::AccessUnitAccumulator` applies the same
@@ -1159,4 +1166,4 @@ followed on 2026-09-10 — see [Folded to stereo](#folded-to-stereo).
 - [ESPHome](esphome.md) — the external component wrapping this decoder for ESPHome projects.
 - [Cortex-M3 (QEMU reference)](cortex-m3.md) — the first bare-metal target, with no hardware
   floating point.
-- [Bare metal overview](index.md) — how the four pages in this section relate.
+- [Bare metal overview](index.md) — how the pages in this section relate.

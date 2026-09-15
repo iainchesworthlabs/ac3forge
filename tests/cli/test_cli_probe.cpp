@@ -6,9 +6,13 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include "ac3/decoder/decoder.hpp"
+#include "ac3/io/metadata_edit.hpp"
 
 // `ac3cli probe` (roadmap IO1), at the level its consumers actually use it:
 // the real binary, run as a subprocess, and the text it puts on stdout.
@@ -210,6 +214,13 @@ TEST_CASE("probe's JSON document carries the schema docs/forge/cli/commands.md p
     CHECK(json_field(dialnorm, "min") == "-31");
     CHECK(json_field(dialnorm, "max") == "-31");
     CHECK(json_field(json_section(metadata, "compr"), "present") == "false");
+    // A bsid-8 stream has no xbsi1, so no dmixmod: present and null, per the
+    // versioning rule, rather than missing.
+    const auto dmixmod = json_section(metadata, "dmixmod");
+    INFO(dmixmod);
+    CHECK(json_field(dmixmod, "present") == "false");
+    CHECK(json_field(dmixmod, "code") == "null");
+    CHECK(json_field(dmixmod, "label") == "null");
 
     // Tools: this FFmpeg encode couples every block, which is a fact about the
     // fixture rather than about our encoder - exactly why it is asserted here.
@@ -414,6 +425,76 @@ TEST_CASE("probe's table and JSON forms agree about the same stream", "[cli][pro
     CHECK(json_field(document, "bsmod_label") == "\"complete main\"");
     CHECK(table.find("L C R Ls Rs LFE") != std::string::npos);
     CHECK(document.find("\"L\"") != std::string::npos);
+}
+
+TEST_CASE("probe names a reserved dmixmod in both output forms, for both codecs",
+          "[cli][probe]") {
+    // Table D2.2's '11' (TS 102 366 Table D.1.1): reserved in AC-3's Annex D
+    // xbsi1 and, since Annex E defines no dmixmod of its own, in E-AC-3's
+    // mixmdate as well. The encoder will not write it, so each stream is the
+    // '01' and '10' encodes of one tone ORed byte by byte - '01' | '10' is
+    // '11', and every other bit meets an identical copy of itself - with each
+    // syncframe's CRCs re-stamped. tests/meta/test_bsi.cpp checks that this
+    // changes nothing but dmixmod.
+    const auto make_reserved = [](const std::string& command, const std::string& name,
+                                  const std::string& args) {
+        const auto ltrt = scratch_dir() / ("ltrt_" + name);
+        const auto loro = scratch_dir() / ("loro_" + name);
+        const auto log = scratch_dir() / (name + ".log");
+        REQUIRE(run_cli(command + " \"" + ltrt.string() + "\" " + args + " dmixmod=ltrt", log) ==
+                0);
+        REQUIRE(run_cli(command + " \"" + loro.string() + "\" " + args + " dmixmod=loro", log) ==
+                0);
+        const auto first = read_log(ltrt);
+        const auto second = read_log(loro);
+        REQUIRE(first.size() == second.size());
+        std::vector<std::byte> merged(first.size());
+        for (std::size_t i = 0; i < merged.size(); ++i) {
+            merged[i] = static_cast<std::byte>(static_cast<unsigned char>(first[i]) |
+                                               static_cast<unsigned char>(second[i]));
+        }
+        const auto frames = ac3::split_frames(merged);
+        REQUIRE(frames.has_value());
+        for (const auto frame : *frames) {
+            const auto at = static_cast<std::size_t>(frame.data() - merged.data());
+            REQUIRE(ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
+        }
+        const auto out = scratch_dir() / name;
+        std::ofstream file{out, std::ios::binary};
+        file.write(reinterpret_cast<const char*>(merged.data()),
+                   static_cast<std::streamsize>(merged.size()));
+        REQUIRE(file.good());
+        return out;
+    };
+    const auto check = [](const fs::path& input) {
+        const auto table_log = scratch_dir() / (input.filename().string() + ".txt");
+        REQUIRE(run_cli("probe \"" + input.string() + "\"", table_log) == 0);
+        const auto table = read_log(table_log);
+        INFO(table);
+        // The table's "code (name)" shape, bsmod's own, at its 16-column label.
+        CHECK(table.find(std::string{"dmixmod"} + std::string(9, ' ') + "3 (reserved)") !=
+              std::string::npos);
+
+        const auto json_log = scratch_dir() / (input.filename().string() + ".json");
+        REQUIRE(run_cli("probe \"" + input.string() + "\" json=1 detail=frames", json_log) == 0);
+        const auto document = read_log(json_log);
+        INFO(document);
+        const auto dmixmod = json_section(json_section(document, "metadata"), "dmixmod");
+        CHECK(json_field(dmixmod, "present") == "true");
+        CHECK(json_field(dmixmod, "code") == "3");
+        CHECK(json_field(dmixmod, "label") == "\"reserved\"");
+        // Each syncframe's own header agrees. The per-frame dump is written
+        // before `stream`, so everything ahead of that key is frames only.
+        const auto frames_only = document.substr(0, document.find("\"stream\": {"));
+        CHECK(json_field(frames_only, "dmixmod") == "3");
+    };
+
+    SECTION("AC-3, Annex D") {
+        check(make_reserved("sine", "reserved_dmixmod.ac3", "1 448 1000 50 51"));
+    }
+    SECTION("E-AC-3, mixmdate") {
+        check(make_reserved("eac3-sine", "reserved_dmixmod.ec3", "1 448 1000 50 51"));
+    }
 }
 
 TEST_CASE("probe rejects malformed json=/detail= tokens", "[cli][probe]") {
