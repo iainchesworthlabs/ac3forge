@@ -71,10 +71,9 @@ enum class OperatingMode : std::uint8_t {
     // which puts dialogue at -20 dBFS against line mode's -31. A syncframe
     // that falls back on dynrng gets no 11 dB and plays at line mode's level,
     // so a stream with no compr words at all takes the same gains as kLine,
-    // the overload protection aside.
-    // Both match the Dolby Reference Player's RF mode, measured frame by
-    // frame; Dolby's encoder writes its compr words for this decode, and so
-    // does meta::HeavyCompressor.
+    // the overload protection aside. The Dolby Reference Player's RF mode
+    // does both, measured frame by frame, and Dolby's encoder writes its
+    // compr words for this decode, as meta::HeavyCompressor does.
     kRf,
 };
 
