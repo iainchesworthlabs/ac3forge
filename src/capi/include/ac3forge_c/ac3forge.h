@@ -819,6 +819,12 @@ AC3FORGEC_EXPORT uint8_t ac3forge_decoded_access_unit_compr(
     const ac3forge_decoded_access_unit_t* unit);
 AC3FORGEC_EXPORT uint8_t ac3forge_decoded_access_unit_dynrng(
     const ac3forge_decoded_access_unit_t* unit, int block_index);
+/* Ch2's own word — meaningful only when acmod() == AC3FORGE_ACMOD_DUAL_MONO;
+ * see ac3forge_decoded_frame_has_dialnorm2()'s own comment. */
+AC3FORGEC_EXPORT int ac3forge_decoded_access_unit_has_dialnorm2(
+    const ac3forge_decoded_access_unit_t* unit);
+AC3FORGEC_EXPORT int ac3forge_decoded_access_unit_dialnorm2(
+    const ac3forge_decoded_access_unit_t* unit);
 AC3FORGEC_EXPORT int ac3forge_decoded_access_unit_numblkscod(
     const ac3forge_decoded_access_unit_t* unit);
 AC3FORGEC_EXPORT int ac3forge_decoded_access_unit_substream_count(

@@ -654,6 +654,12 @@ struct DecodedAccessUnit {
     SampleRate sample_rate = SampleRate::k48000;
     Acmod acmod = Acmod::k2_0;
     int dialnorm = 31;
+    // Ch2's own dialnorm (§5.4.2.16), present only when acmod is kDualMono -
+    // the independent substream's own, same reasoning as dialnorm above. A
+    // 1+1 programme is always exactly one substream (this struct's own
+    // comment), so "the lead substream's dialnorm2" is unambiguous here in a
+    // way it would not be for a bed-plus-dependents programme.
+    std::optional<int> dialnorm2 = std::nullopt;
     // The independent substream's own compr, when it carries one - see
     // DecodedSubstream::compr's own comment; a dependent substream's compre
     // bit means something else entirely, so only the independent (bed)

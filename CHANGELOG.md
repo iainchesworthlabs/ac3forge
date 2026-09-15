@@ -481,6 +481,15 @@ and release packaging.
   from `bsid`. FFmpeg's FATE fixture `the_great_wall_7.1.eac3` (an AC-3 core plus an
   Annex E extension to 7.1) now decodes all 157 access units; it had failed on its
   first.
+- **Dual mono's output-stage dialnorm normalisation levelled Ch2 by Ch1's dialnorm,
+  not its own.** `OutputStage::apply` took one `dialnorm` and scaled every channel by
+  it; acmod 0 (1+1) codes two unrelated programmes with independent dialnorm words
+  (§5.4.2.16's `dialnorm2` for Ch2), and an encoder sizes Ch2's `compr2` on the
+  assumption Ch2 is normalised by `dialnorm2`. A 1+1 stream with dialnorm 27 and
+  dialnorm2 20 played Ch2 7 dB too quiet under `kLine`/`kRf`/`apply_dialnorm`.
+  `apply()` now takes an optional second dialnorm and levels Ch2 by it alone;
+  `FrameDecoder`, `Eac3Decoder` (`decode_access_unit` and `flush()`) and the WASM
+  decode demo's own side fold all thread it through.
 - **A §E2.3.1.2 legacy core's own output stage ran a second time, ahead of the
   programme it belongs to.** `decode_ac3_core` built the core's `FrameDecoder` from
   the whole `DecoderConfig`, `output` included, so `OperatingMode::kLine` normalised

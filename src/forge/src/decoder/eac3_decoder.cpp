@@ -3911,7 +3911,7 @@ std::vector<DecodedSubstream> Eac3Decoder::flush() {
                              resolve_mix_levels(substream.bsid, substream.acmod, substream.mixing,
                                                 substream.cmixlev, substream.surmixlev,
                                                 substream.alternate_bsi),
-                             substream.dialnorm);
+                             substream.dialnorm, substream.dialnorm2);
         substream.channels.resize(
             output_channel_count(impl_->config_.output, substream.acmod, substream.lfe));
     }
@@ -3977,7 +3977,7 @@ void Eac3Decoder::apply_output(DecodedAccessUnit& out, std::span<const std::span
         impl_->output_.apply(impl_->au_views_, out.layout, out.acmod, rendered_lfe,
                              resolve_mix_levels(out.bsid, out.acmod, out.mixing, out.cmixlev,
                                                 out.surmixlev, out.alternate_bsi),
-                             out.dialnorm);
+                             out.dialnorm, out.dialnorm2);
     }
     if (!external.empty()) {
         return;
@@ -4188,6 +4188,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     out.sample_rate = lead.sample_rate;
     out.acmod = lead.acmod;
     out.dialnorm = lead.dialnorm;
+    out.dialnorm2 = lead.dialnorm2;
     out.compr = lead.compr;
     out.dynrng = lead.dynrng;
     out.numblkscod = lead.numblkscod;

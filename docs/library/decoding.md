@@ -307,8 +307,8 @@ mix level. Both decoders now keep those and report them (`DecodedFrame::cmixlev`
 fallbacks where a field is simply not there.
 
 `MixLevels::preferred` passes on `dmixmod`, the fold the content was mixed for (Table D2.2) —
-from E-AC-3's `mixmdate`, or from Annex D's `xbsi1` for a `bsid`-6 AC-3 stream that sends one
-(see below) — without acting on it: `target` is always what the caller asked for. A caller that
+E-AC-3's `mixmdate`, or an Annex D stream's `xbsi1` (see below) — without acting on it: `target` is
+always what the caller asked for. A caller that
 wants to follow the stream uses `ac3::automatic_stereo_target(acmod, preferred)`, A/52 §D3.1.1's
 automatic selection: `kLtRt` when the stream prefers Lt/Rt, `kLoRo` for every other code —
 `kNotIndicated`, and `kReserved` (Table D2.2's `11`, which A/52:2018 and ETSI TS 102 366 V1.4.1
@@ -428,6 +428,12 @@ from its own words — Ch2 is never affected by Ch1's compression or vice versa.
 `Eac3Decoder::decode_access_unit`'s `layout` comes back empty for it (`DecodedAccessUnit::acmod ==
 kDualMono`), since there's no Table E2.5 location for "the second programme" to render onto — the
 two channels come back in coded order (Ch1, Ch2) instead.
+
+The output stage's own §5.4.2.8 normalisation follows the same rule: `OutputStage::apply`'s
+optional `dialnorm2` parameter, threaded through from `DecodedFrame`/`DecodedSubstream`/
+`DecodedAccessUnit`, levels Ch2 by its own reference under `kLine`/`kRf`/`apply_dialnorm` rather
+than by Ch1's `dialnorm` — the two programmes are unrelated, and an encoder sizes Ch2's `compr2`
+on the assumption Ch2 is normalised by `dialnorm2`.
 
 Delta bit allocation (§7.2.2.6) is decoded like any other transmitted parameter: both decoders
 carry per-channel state across a syncframe's blocks and apply it to the masking curve before
