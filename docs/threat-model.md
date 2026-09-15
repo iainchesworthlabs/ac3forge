@@ -282,15 +282,27 @@ libadm and libbw64, plus Boost headers. That means:
   harnesses that run on every push. The resource limits above do not apply here either way: there
   is no document-size cap, no entity-expansion limit and no element-count limit; an enormous or
   deeply nested ADM document is bounded by nothing this project controls.
-- **libbw64 is pinned at `0.10.0`, tagged in January 2019.** Its `master` branch is 77 commits
-  ahead and its changelog describes those commits as fixing "a number of buffer overruns,
-  integer overflows, and uses of uninitialised data which may be triggered by reading malformed
-  files"; upstream has tagged no release containing them. `src/ac3adm/patch_libbw64.cmake`
-  patches the undefined behaviour that blocked instrumenting the module for fuzzing, and
-  `adm.cpp`'s own pre-check refuses the chunk tables that drove libbw64 into an unbounded
-  allocation, an unbounded loop or a read of uninitialised stack — each found by
-  `fuzz_adm_parse` or while auditing for the first. A `<ds64>` table that resizes some other
-  chunk id is a gap that remains; see that function's own comment.
+- **libbw64 is fetched from a maintained fork, not the EBU's own repository.** The EBU's
+  `github.com/ebu/libbw64` last tagged a release in January 2019 (`0.10.0`); its own `master`
+  branch is 77 commits ahead of that tag, and its changelog describes those commits as fixing "a
+  number of buffer overruns, integer overflows, and uses of uninitialised data which may be
+  triggered by reading malformed files", but has tagged no release containing them. This module
+  pinned `0.10.0` at first and patched around the gap
+  (`src/ac3adm/patch_libbw64.cmake`, `adm.cpp`'s own pre-check) as `fuzz_adm_parse` and an audit
+  of libbw64 for the same pattern found an unbounded allocation, an unbounded loop, a read of
+  uninitialised stack and a `<ds64>` table that could resize a chunk other than `<data>` to
+  whatever it liked. `github.com/pwnified/libbw64`, an active single-maintainer fork, carries the
+  EBU's own unreleased hardening forward and closes all of that — confirmed by replaying every
+  crafted input from that investigation clean, not just by reading its source — plus real
+  hardening of its own; `docs/library/adm.md`'s "Built on the EBU's own reference implementations"
+  section has the reasoning for depending on a fork rather than the EBU directly, and
+  `fuzz/README.md`'s ADM section has the measurements. The fork's own commit is pinned (not a
+  branch), the same way the tag used to be. Two small patches remain against it, for behaviours
+  this module's tests need that the fork does not have by default: a truncated recording still
+  parsing, and 64-bit float actually reaching the decode the fork's own utilities already
+  support (its `<fmt >` parsing refuses any 64-bit width outright, PCM or float, before that
+  decode is ever called) — see `patch_libbw64.cmake`'s own comment, which also links the PRs
+  proposing the same fixes upstream.
 - The whole `axml` chunk is materialised as a string and re-parsed from an `istringstream`, so
   memory is O(document).
 - Parse and graph-resolution failures do surface as real diagnostics (`ac3adm::AdmError`,

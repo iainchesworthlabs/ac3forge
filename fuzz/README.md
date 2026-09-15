@@ -277,16 +277,17 @@ escape through `variable_bits()` could overflow.
 set, and the only one that needed a change to a dependency before it could join.
 libbw64 is header-only, so instrumenting `ac3adm_objects` instruments the libbw64
 code it compiles, and UBSan stopped the harness a few hundred executions in,
-inside `UnknownChunk`'s constructor. `src/ac3adm/patch_libbw64.cmake` patches
-that and the sites like it when the dependency is populated; `src/ac3adm/CMakeLists.txt`
-records why a patch rather than an ignorelist scoped to libbw64.
+inside `UnknownChunk`'s constructor.
+
+### First pass: instrumented against the pinned `0.10.0`
 
 Same caveat as the sections above — a point-in-time result, not a standing
 guarantee. Measured on WSL2 Ubuntu 26.04, Clang 22.1.2, `RelWithDebInfo` +
 ASan/UBSan, 300 s per build from an empty grown corpus. "Before" is
-`ac3adm_objects` uninstrumented, as it shipped; "after" is instrumented, with the
-fixes below. The replay column feeds each grown corpus, plus the committed seeds
-and regressions, through the same instrumented binary with `-runs=0`:
+`ac3adm_objects` uninstrumented, as it shipped; "after" is instrumented, with a
+patch for the constructor above and the fixes below applied. The replay column
+feeds each grown corpus, plus the committed seeds and regressions, through the
+same instrumented binary with `-runs=0`:
 
 | Build    | Executions | exec/s | `cov` / `ft` (own build) | Replay `cov` / `ft` |
 |----------|-----------:|-------:|--------------------------|---------------------|
@@ -302,10 +303,8 @@ did not register as new, and was not kept. Its execution rate was the higher one
 until the findings below were fixed — several of them cost whole seconds per
 execution, and the instrumented run reached 489 exec/s once they were gone.
 
-### What instrumenting it found
-
-Two in libbw64, patched there; the rest in `ac3adm`'s own code. Each has a
-reproducer under `fuzz/regressions/fuzz_adm_parse/`:
+**What it found.** Two in libbw64, patched at the time; the rest in `ac3adm`'s
+own code. Each has a reproducer under `fuzz/regressions/fuzz_adm_parse/`:
 
 - **`&buffer[0]` of an empty `std::vector<char>`**, in libbw64's `UnknownChunk`
   constructor (any zero-length chunk of an id it has no class for) and in
@@ -329,18 +328,80 @@ reproducer under `fuzz/regressions/fuzz_adm_parse/`:
 - **`malloc(4278190080)` out of a 19-byte file**, whose chunk table ends in a
   fragment too short to hold a header: libbw64 reads one anyway, and its size
   field keeps whatever was on the stack. (`truncated-chunk-header-fragment`.)
-- **A hang in this project's own code**, 265 s into the first full-budget run:
-  `float_pcm_bw64.cpp`'s `find_chunk()` stepped over each chunk in 32-bit
-  arithmetic, and a size of `0xFFFFFFF7` carries `8 + declared + pad` to exactly
-  2^32, which wraps to zero. Every file goes through that walk.
-  (`chunk-size-wraps-the-walk`.)
+- **A hang in this project's own code**, 265 s into the first full-budget run,
+  and at the time the only finding not in libbw64: this module used to detect a
+  float master by walking the chunk table itself, ahead of libbw64
+  (`float_pcm_bw64.cpp`, since retired - see below), and that walk's own
+  `find_chunk()` stepped over each chunk in 32-bit arithmetic. A size of
+  `0xFFFFFFF7` carries `8 + declared + pad` to exactly 2^32, which wraps to
+  zero, and every file went through that walk. (`chunk-size-wraps-the-walk`.)
 
-Still open: `<ds64>`'s table can give any chunk id a 64-bit size, which libbw64
-prefers over the 32-bit header and which the pre-check reads only the length of.
-Crafted inputs reach a hang and a 1 TiB allocation through it; mutation has not.
-See `chunk_sizes_fit()`'s own comment in `src/ac3adm/src/adm.cpp`, and the note on
-the pin in `docs/threat-model.md` — libbw64 `0.10.0` is a January 2019 tag, and
-the upstream commits that fix this class are in no release.
+One gap was left open at this point: `<ds64>`'s table can give any chunk id a
+64-bit size, which libbw64 prefers over the 32-bit header and which
+`chunk_sizes_fit()`'s pre-check reads only the length of, not the entries.
+Crafted inputs reached a hang and a 1 TiB allocation through it; mutation had
+not. See the next section for how that was closed.
+
+### Re-pinned to a maintained fork
+
+`src/ac3adm/CMakeLists.txt` now fetches libbw64 from a maintained fork,
+`github.com/pwnified/libbw64`, rather than the EBU's own repository - see that
+file's own header comment for why, and `docs/library/adm.md`/`docs/threat-model.md`
+for what changed. Two consequences for this harness:
+
+- The fork carries the EBU's own upstream hardening forward (77 commits past the
+  `0.10.0` tag this module used to pin, none of them ever tagged in a release),
+  which **closes the gap left open above**: its chunk-header scan resolves every
+  chunk's size through the `<ds64>` table, not only `<data>`'s, and refuses
+  anything that then runs past the real end of the file - confirmed empirically
+  by replaying both crafted inputs from that gap (now clean) and by
+  `tests/adm/test_adm.cpp`'s own dedicated case for it.
+- The fork also added native `WAVE_FORMAT_IEEE_FLOAT` support, which this module
+  did not have a use for before: `float_pcm_bw64.cpp`/`.hpp`, the hand-rolled
+  container walk that used to exist purely to read float samples libbw64
+  refused to open, is retired. Both integer PCM and float now go through the
+  same libbw64 read - see `docs/library/adm.md`'s "PCM formats" section.
+
+Two things the fork does not do differently from the EBU's own upstream, both
+caught by this project's own tests rather than by fuzzing - neither is a
+memory-safety finding, just a capability gap against what this module's own
+docs claimed:
+
+- Its chunk-header scan has no exception for `<data>` running past the file,
+  so a recording truncated mid-capture - which `tests/adm/test_adm.cpp`
+  requires to still parse, and which every prior version of libbw64 allowed -
+  is refused outright.
+- `FormatInfoChunk`'s constructor (`chunks.hpp`) accepts `bitsPerSample` 16, 24
+  or 32 only, regardless of format - so a 64-bit `WAVE_FORMAT_IEEE_FLOAT`
+  `<fmt >` is refused at open time even though the fork's own
+  `decodeFloatSamples`/`encodeFloatSamples` (`utils.hpp`) both handle 64-bit
+  float correctly; they are simply never reached. `model.hpp`'s own `PcmAudio`
+  comment had claimed 32/64-bit float both read since before this module was
+  first vendored, and no test had ever exercised the 64-bit half of that claim
+  until this pass added one - which is what surfaced this.
+
+`src/ac3adm/patch_libbw64.cmake` carves out both; see its own comment for the
+reasoning and for the upstream PRs proposing the same fixes, which would let
+each half of this patch be deleted once it lands.
+
+Re-measured the same way as the first pass, with this instrumented build now
+the sole build (there is no meaningful "before" any more - `ac3adm_objects` has
+been instrumented since the first pass, and the library underneath it changed,
+not the instrumentation):
+
+| Executions | exec/s | `cov` / `ft` (own build) | Replay `cov` / `ft` |
+|-----------:|-------:|--------------------------|----------------------|
+|    575,498 |  1,911 | 1,754 / 3,529            | **1,752 / 3,528**    |
+
+Clean over the full budget: no crash, hang or sanitizer report. Every input
+from the first pass - the six findings above, the residual-gap probes, and the
+committed seed/regression corpus - replays clean through this build too. Both
+exec/s and coverage moved up again from the first pass's already-improved
+"after" row (489 exec/s, cov 1,656) - the fork's own `<cue >`/`labl` marker
+chunks (added on top of the EBU's upstream, not part of this module's own
+model) are new code the seed corpus never reached before and mutation now
+does, and nothing left in the reader costs whole seconds per execution the
+way the fixed findings used to.
 
 ## Entry points covered
 

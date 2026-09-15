@@ -413,27 +413,48 @@ and release packaging.
   300 seconds, and their corpora reach 1,270 (AC-4) and 711 (IAB) edges, against 1,064
   and 564 for corpora grown uninstrumented in the same time.
 - **The BW64/ADM reader was the third parser fuzzed blind, and closing that needed a
-  patch to a dependency first.** `ac3adm_objects` was the last library a harness links
-  that `fuzz/CMakeLists.txt` did not instrument, and adding it stopped `fuzz_adm_parse`
-  within a few hundred executions: libbw64 0.10.0 takes `&buffer[0]` of a
-  `std::vector<char>` that a zero-length chunk leaves empty — in `UnknownChunk`'s
-  constructor, in `Bw64Reader::read()` and in `Bw64Writer::write()` — which UBSan reports
-  and a standard library with its bounds checks on aborts over. A `FetchContent` patch
-  step (`src/ac3adm/patch_libbw64.cmake`) fixes all five of those sites at populate time;
-  upstream made the same change in 2021 and has tagged no release carrying it. What the instrumented
-  harness then found, all in `ac3adm`'s own handling of the chunk table: a `<fmt >` whose
-  channel count and sample width overflow libbw64's `uint16_t` block alignment had its
-  read buffer sized from the wrapped value and decoded against the real one — a heap
-  overread that an uninstrumented build ran as a clean execution; the chunk-table
-  pre-check stopped at an RF64 `<data>` declaring more than the file holds, leaving the
-  chunks behind it to be allocated whole (1.7 GB, found by mutation); a 28-byte `<ds64>`
-  declaring 4.26 billion table entries drove a loop of that many reads; and a file ending
-  in a fragment too short to be a chunk header had that header's size read out of
-  uninitialised stack (`malloc(4278190080)`, from 19 bytes). Each has a reproducer under
-  `fuzz/regressions/fuzz_adm_parse/`, and the first has tests in `tests/adm/` that fail on
-  the old code. The harness now runs a full 300-second budget clean, at 489 executions a
-  second against the uninstrumented build's 253, and its corpus reaches 1,654 edges
-  against 1,425 for one grown uninstrumented in the same time.
+  patch to a dependency, then a change of dependency.** `ac3adm_objects` was the last
+  library a harness links that `fuzz/CMakeLists.txt` did not instrument, and adding it
+  stopped `fuzz_adm_parse` within a few hundred executions: libbw64 0.10.0 takes
+  `&buffer[0]` of a `std::vector<char>` that a zero-length chunk leaves empty — in
+  `UnknownChunk`'s constructor, in `Bw64Reader::read()` and in `Bw64Writer::write()` —
+  which UBSan reports and a standard library with its bounds checks on aborts over. A
+  `FetchContent` patch fixed all five sites at populate time; upstream made the same
+  change in 2021 and has tagged no release carrying it. Instrumented, the harness then
+  found, all in `ac3adm`'s own handling of the chunk table: a `<fmt >` whose channel
+  count and sample width overflow libbw64's `uint16_t` block alignment had its read
+  buffer sized from the wrapped value and decoded against the real one — a heap overread
+  that an uninstrumented build ran as a clean execution; the chunk-table pre-check
+  stopped at an RF64 `<data>` declaring more than the file holds, leaving the chunks
+  behind it to be allocated whole (1.7 GB, found by mutation); a 28-byte `<ds64>`
+  declaring 4.26 billion table entries drove a loop of that many reads; a file ending in
+  a fragment too short to be a chunk header had that header's size read out of
+  uninitialised stack (`malloc(4278190080)`, from 19 bytes); and a hang in this module's
+  own float-detection pass, which stepped over chunks in 32-bit arithmetic that wrapped
+  to zero on one declared size, was reachable through every file that pass ran ahead of
+  libbw64 on.
+
+  Closing one further gap — a `<ds64>` table entry giving some other chunk than `<data>`
+  a 64-bit size, which the pre-check does not read — meant moving off the EBU's own
+  `github.com/ebu/libbw64` (last tagged January 2019) to a maintained fork,
+  `github.com/pwnified/libbw64`, which carries the EBU's own 77 unreleased commits
+  forward and closes it. The fork also reads `WAVE_FORMAT_IEEE_FLOAT` natively, so the
+  hand-rolled container walk this module used to fall back to for float samples
+  (`float_pcm_bw64.cpp`/`.hpp`) is retired — both integer PCM and float go through one
+  path now. Two small patches remain against the fork, each with an upstream PR
+  proposing the same fix: `<data>` still has to be exempt from the fork's stricter
+  end-of-file check, the way every prior libbw64 allowed, for a recording truncated
+  mid-capture to keep reading; and a 64-bit `WAVE_FORMAT_IEEE_FLOAT` `<fmt >`, which the
+  fork's own decoder already handles correctly, needs one more accepted bit depth to
+  reach it — a capability gap this module's own docs had claimed was covered since
+  before this fuzz work, caught only once a test for it existed.
+
+  Each finding has a reproducer under `fuzz/regressions/fuzz_adm_parse/`, and the
+  memory-safety ones have tests in `tests/adm/` that fail on the old code. The harness
+  now runs a full 300-second budget clean at 1,911 executions a second — against the
+  first instrumented run's 489, itself already up from the uninstrumented harness's 253
+  — and its corpus reaches 1,752 edges, against 114 for the uninstrumented harness's own
+  translation unit.
 - Short E-AC-3 syncframes (`numblkscod` 0–2) were sized at the full six-block byte
   budget, so a short stream measured up to 6x its nominal bit rate. CBR frames now take
   `frame_words`' documented per-block scaling; six-block streams are unchanged.

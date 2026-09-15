@@ -24,7 +24,6 @@
 #include <bw64/bw64.hpp>
 
 #include "adm_model.hpp"
-#include "float_pcm_bw64.hpp"
 
 // Every `bw64::`/`adm::` symbol below is a vendored third-party library
 // (libbw64/libadm respectively, see src/ac3adm/CMakeLists.txt); every
@@ -42,9 +41,6 @@ std::string_view describe(AdmError error) {
     switch (error) {
         case AdmError::kCannotOpen: return "cannot open file";
         case AdmError::kNotRiff: return "not a well-formed RIFF/RF64/BW64 WAVE file";
-        case AdmError::kMissingFmt: return "missing fmt chunk";
-        case AdmError::kMissingData: return "missing data chunk";
-        case AdmError::kUnsupportedFormat: return "unsupported audio format";
         case AdmError::kMalformedXml: return "axml chunk is not well-formed XML";
         case AdmError::kMalformedAdm: return "axml chunk XML is not a valid ADM document";
         case AdmError::kOther: return "unexpected failure reading the BW64/ADM file";
@@ -135,20 +131,27 @@ PcmAudio read_pcm(bw64::Bw64Reader& reader, std::uint64_t file_bytes) {
     if (block_align == 0) {
         return audio;
     }
-    // libbw64's own copy of that same figure is a uint16_t, so a <fmt > whose
-    // channel count and sample width multiply past 65,535 wraps it - and
-    // WAVE's nBlockAlign field is 16 bits wide as well, so the file's declared
-    // value matches the wrapped one and libbw64's "blockAlignment is X but
-    // should be Y" check passes. 32,768 channels at 16 bits wraps to 0, and
-    // numberOfFrames() - the call immediately below - then divides by it;
-    // 32,769 wraps to 2, which sizes read()'s buffer at two bytes a frame
-    // while its decodePcmSamples call reads 65,538 of them, a heap overread
-    // the length of the whole frame. Confirmed by running both shapes through
-    // fuzz_adm_parse against an instrumented ac3adm: a SIGFPE (uninstrumented
-    // too) and an ASan heap-buffer-overflow reported against the read below.
-    // Neither file can be read on its own terms, since the container has no
-    // way to state a block alignment this large, so the PCM is left empty the
-    // way the two degenerate cases above leave it.
+    // libbw64's own copy of that same figure is a uint16_t, so a <fmt > whose channel count and
+    // sample width multiply past 65,535 wraps it - and WAVE's nBlockAlign field is 16 bits wide
+    // as well, so the file's declared value matches the wrapped one and libbw64's own
+    // "blockAlignment is X but should be Y" check passes it. Found against the 0.10.0 pin, where
+    // that meant 32,768 channels at 16 bits wrapped to 0 (numberOfFrames(), the call immediately
+    // below, dividing by it - a SIGFPE, on an uninstrumented build too) and 32,769 wrapped to 2
+    // (sizing read()'s buffer at two bytes a frame while its decodePcmSamples call read 65,538 of
+    // them - a heap overread the length of a whole frame, which an uninstrumented ac3adm ran as a
+    // clean execution and returned as audio). Neither file can be read on its own terms, since
+    // the container has no way to state a block alignment this large, so the PCM is left empty
+    // the way the two degenerate cases above leave it - a value this comparison can still reach.
+    //
+    // The pinned fork now guards the same thing one layer further in, and more strictly:
+    // FormatInfoChunk::blockAlignment() is utils::safeCast<uint16_t>, which THROWS rather than
+    // wraps, and that call happens inside parseFormatInfoChunk's own sanity check - before a
+    // Bw64Reader is ever constructed. Both fixtures above now fail the whole open (kCannotOpen)
+    // rather than reaching this function at all, confirmed by re-running them after the re-pin
+    // (tests/adm/test_adm.cpp's own case for this). This check stays regardless, the same
+    // defense-in-depth reasoning as chunk_sizes_fit()'s own comment above parse_bw64_path: it is
+    // this project's own code, and does not depend on the pinned dependency continuing to throw
+    // here rather than wrap.
     if (reader.blockAlignment() != block_align) {
         return audio;
     }
@@ -295,12 +298,16 @@ std::expected<AdmModel, AdmError> read_adm_model(const bw64::Bw64Reader& reader)
 // with the size field left holding whatever was on the stack. See the return
 // at the bottom.
 //
-// The residual gap, stated rather than papered over: <ds64>'s table can also
-// carry a 64-bit size for any OTHER chunk id, whose own 32-bit header is then
-// perfectly plausible, and libbw64 prefers that value. Following it means
-// reading the table's entries and not just its length, which is the parsing
-// this function is deliberately not doing. Closing it belongs upstream in
-// libbw64, where the allocation is.
+// Not covered here, deliberately: <ds64>'s table can also carry a 64-bit size for any OTHER
+// chunk id, whose own 32-bit header is then perfectly plausible, and libbw64 prefers that value.
+// Following it would mean reading the table's entries and not just its length, which this
+// function still does not do - but the pinned libbw64 now closes this itself, one layer down: its
+// own chunk-header scan resolves every chunk's size through the same table before any chunk is
+// materialised, and refuses one that then runs past the real end of the file (patched to still
+// allow <data> to, for the same reason this function does - see patch_libbw64.cmake). This
+// function stays as an independent check ahead of that rather than being trimmed down to only
+// what libbw64 itself does not also catch: it is this project's own code, fuzzed directly, and
+// does not depend on a third-party dependency's pin continuing to get this right.
 bool chunk_sizes_fit(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
@@ -398,38 +405,24 @@ bool chunk_sizes_fit(const std::string& path) {
 
 std::expected<AdmDocument, AdmError> parse_bw64_path(const std::string& path) {
     // Ahead of everything else: an untrusted file's chunk sizes are checked
-    // before either reader below ever touches them, so a malformed size
-    // cannot exploit whichever path (libbw64's own allocator, or this
-    // module's own float_pcm_bw64 walk just below) happens to run next.
+    // before libbw64's own allocator ever touches them.
     if (!chunk_sizes_fit(path)) {
         return std::unexpected(AdmError::kNotRiff);
     }
-    // The one shape libbw64 will not open at all: WAVE_FORMAT_IEEE_FLOAT.
-    // Asked BEFORE readFile() rather than after catching its refusal - the
-    // exception it throws for a format it dislikes is the same untyped
-    // std::runtime_error it throws for a missing file (see the catch below),
-    // so "did it fail because the samples are floats?" is not answerable
-    // from the exception at all. src/ac3adm/src/float_pcm_bw64.hpp walks the
-    // container itself for exactly this case, and routes the <axml> bytes
-    // back through the same libadm parse everything else uses.
-    if (detail::is_ieee_float_wave(path)) {
-        return detail::parse_float_pcm_bw64(path);
-    }
+    // Integer PCM and IEEE float both go through the same libbw64 read here -
+    // see model.hpp's PcmAudio comment for why this module used to need a
+    // second, hand-rolled container walk for float and no longer does.
     std::unique_ptr<bw64::Bw64Reader> reader;
     try {
         reader = bw64::readFile(path);
     } catch (const std::exception&) {
-        // libbw64 reports "could not open", "malformed container" AND "unsupported <fmt >
-        // formatTag" (parser.hpp's parseFormatInfoChunk rejects anything but PCM/formatTag 1 or
-        // WAVE_FORMAT_EXTENSIBLE-wrapped PCM outright, during this same readFile() call - an
-        // IEEE-float source never reaches this call at all now, having been routed to
-        // detail::parse_float_pcm_bw64 above, but any OTHER unsupported formatTag still
-        // lands here) all through the same std::runtime_error
+        // libbw64 reports "could not open", "malformed container", "unsupported <fmt >
+        // formatTag" and "missing fmt/data chunk" all through the same std::runtime_error
         // hierarchy (reader.hpp), with no distinguishing exception type - kCannotOpen covers the
         // whole family here since a caller's next move (check the path/format) is the same
         // either way, and libbw64 does not label a chunk it dislikes clearly enough to justify
-        // inventing a false-precision mapping to kMissingFmt/kMissingData/kNotRiff/
-        // kUnsupportedFormat from the exception text alone.
+        // inventing a false-precision mapping to a more specific AdmError from the exception
+        // text alone.
         return std::unexpected(AdmError::kCannotOpen);
     }
 
@@ -503,9 +496,10 @@ namespace {
 
 // 24-bit: the only integer width libbw64's FormatInfoChunk validates that real ADM BWF masters
 // actually use (EBU Tech 3306 §2's own PCM-only framing settles for 16- or 24-bit; 24 keeps
-// headroom this project's own float32 pipeline already exceeds). libbw64's writer has no
-// IEEE-float path at all - see this file's own is_ieee_float_wave() comment on the matching
-// read-side refusal - so 32 here would mean 32-bit INTEGER, a worse choice than 24 for no benefit.
+// headroom this project's own float32 pipeline already exceeds). The pinned libbw64 (unlike the
+// EBU's own upstream) does have an IEEE-float write path (Bw64Writer's useFloat), but this
+// function does not use it - write_bw64() has no parameter for a caller to ask for float output,
+// and 32 here would otherwise mean 32-bit INTEGER, a worse choice than 24 for no benefit.
 constexpr std::uint16_t kWriteBitDepth = 24;
 
 std::vector<float> interleave(const PcmAudio& audio) {

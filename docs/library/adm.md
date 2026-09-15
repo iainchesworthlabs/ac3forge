@@ -83,7 +83,7 @@ of whether the file re-declared it — so `model.pack_formats`/`channel_formats`
 above), `chna` (the join table, one `ChnaEntry` per physical-track-to-ADM-ID row), and `audio`
 (the decoded PCM, one `std::vector<float>` per channel, same `[-1, 1)` normalization convention
 `ac3::io::WavData` uses). `AdmError` covers open/parse failure — `kCannotOpen`, `kNotRiff`,
-`kMissingFmt`, `kMissingData`, `kUnsupportedFormat`, `kMalformedXml`, `kMalformedAdm`, `kOther`;
+`kMalformedXml`, `kMalformedAdm`, `kOther`;
 see [`ac3adm/ac3adm.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/include/ac3adm/ac3adm.hpp) for the full list. In practice, the two libraries underneath this
 module (see below) report almost everything through one broad exception family each, so most
 real failures currently surface as `kCannotOpen` (bad/truncated container), `kMalformedXml` (axml
@@ -143,17 +143,25 @@ Unlike every other module in this project, `ac3adm::ac3adm` is not a from-scratc
 implementation. It is a thin translation layer over two vendored third-party libraries, fetched
 via CMake `FetchContent` (see [`src/ac3adm/CMakeLists.txt`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/CMakeLists.txt)):
 
-- **[libbw64](https://github.com/ebu/libbw64)** (Apache-2.0, header-only, no dependency of its
-  own) — the BW64/RF64 chunk-walking and PCM-decoding layer. Pinned at `0.10.0`, and patched at
-  populate time by [`src/ac3adm/patch_libbw64.cmake`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/patch_libbw64.cmake)
-  for undefined behaviour on zero-length chunks — see that script, and
-  [the threat model](../threat-model.md#adm-xml-and-bw64) for what is and is not covered.
+- **[libbw64](https://github.com/pwnified/libbw64)** (Apache-2.0, header-only, no dependency of
+  its own) — the BW64/RF64 chunk-walking and PCM-decoding layer, including native IEEE-float
+  support. Fetched from a maintained fork of the EBU's own `github.com/ebu/libbw64`, pinned to a
+  commit rather than a tag or branch — see
+  [`src/ac3adm/CMakeLists.txt`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/CMakeLists.txt)
+  for why the EBU's own repository is not what this module fetches, and
+  [the threat model](../threat-model.md#adm-xml-and-bw64) for what the pin does and does not
+  cover. Patched at populate time by
+  [`src/ac3adm/patch_libbw64.cmake`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/patch_libbw64.cmake)
+  for two behaviours this module's own tests need that the pinned commit does not have by
+  default (a truncated recording reading as far as it goes; 64-bit float actually reaching the
+  decode this fork's own utilities already support) — see that script.
 - **[libadm](https://github.com/ebu/libadm)** (Apache-2.0) — the ADM XML object model: parsing,
   schema validation, and the full element graph.
 
-Both are maintained by the BBC/IRT team that also authored the underlying ITU-R Recommendations
-(BS.2088-1, BS.2076-2) themselves — using them means this module's own code only has to translate
-an already-validated object graph into `ac3adm`'s own types
+libadm is the EBU/BBC/IRT team's own repository, the same team that authored the underlying ITU-R
+Recommendations (BS.2088-1, BS.2076-2) themselves; libbw64's fork carries that team's original
+code forward with fixes of its own on top. Using both means this module's own code only has to
+translate an already-validated object graph into `ac3adm`'s own types
 ([`src/ac3adm/src/adm_model.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/src/adm_model.cpp)), rather than re-implementing container-walking and XML/schema
 validation this project has no comparative advantage in getting exactly right on the first try.
 An earlier attempt at exactly that hand-rolled approach is what prompted switching to these
@@ -191,31 +199,28 @@ comment for both points.
 
 ## PCM formats
 
-Integer PCM (8/16/24/32-bit) and IEEE float (32/64-bit) both read, and both come back as the
-same `[-1, 1)` floats on `PcmAudio::channels`. `bits_per_sample` reports the container width and
-is not, on its own, a statement about which of the two it was.
+Integer PCM (8/16/24/32-bit) and IEEE float (32/64-bit) both read, through the vendored libbw64
+directly, and both come back as the same `[-1, 1)` floats on `PcmAudio::channels`.
+`bits_per_sample` reports the container width and is not, on its own, a statement about which of
+the two it was.
 
-The two arrive by different routes. Integer PCM goes through the vendored libbw64, which is also
-this module's reference for the container itself. libbw64's own `<fmt >` parsing rejects any
-other `formatTag` outright at open time (`"format unsupported: <tag>"`), IEEE float included, so
-a float master never reaches any of its accessors and there is nothing to widen from the
-outside. Teaching it that format would mean carrying a feature of this project's own as a patch
-against a pinned tag, which is a standing maintenance cost the module's one patch (undefined
-behaviour on zero-length chunks, see above) does not carry. A float file is detected up front and
-read by this module's own container walk instead
-([`src/ac3adm/src/float_pcm_bw64.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/src/float_pcm_bw64.hpp)) —
-which re-implements the chunk walk and the `<chna>` record table and nothing else: the `<axml>`
-bytes go through the identical libadm parse the ordinary path uses, so the ADM metadata cannot
-come out differently depending on how the samples were stored.
+This module used to need a second, hand-rolled container walk for float specifically: the EBU's
+own libbw64 refuses any `<fmt >` `formatTag` but PCM outright at open time
+(`"format unsupported: <tag>"`), and patching a dependency fetched at a pinned tag to teach it a
+feature of this project's own was judged a worse standing cost than a second, narrower reader.
+The pinned fork (see above) added native `WAVE_FORMAT_IEEE_FLOAT` support upstream of this
+module, so that second reader (`float_pcm_bw64.hpp`, retired) is no longer needed — both formats
+go through the identical libbw64 read and the identical libadm `<axml>` parse now, so there is
+exactly one place either one could come out differently depending on how the samples were
+stored, not two.
 
-That path is also the only one that can report `AdmError::kNotRiff`/`kMissingFmt`/`kMissingData`/
-`kUnsupportedFormat` precisely, because it does the walk itself. A file libbw64 opens and then
-rejects still surfaces as `kCannotOpen`, since its exceptions carry no type this module could map
-from — see [`ac3adm.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/include/ac3adm/ac3adm.hpp)'s
-own comment on those four errors.
+A file libbw64 opens and then rejects surfaces as `AdmError::kCannotOpen`; its exceptions carry
+no type this module could map to anything more specific — see
+[`ac3adm.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/include/ac3adm/ac3adm.hpp)'s
+own comment on `AdmError`.
 
 Most real ADM BWF masters are 16- or 24-bit integer (EBU Tech 3306/BS.2088-1 Annex 2 §2's own
-PCM-only framing). Float ones exist, and used to be refused outright.
+PCM-only framing). Float ones exist too.
 
 ---
 
