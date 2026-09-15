@@ -148,6 +148,15 @@ and release packaging.
   over §E2.3.1.4 short syncframes across 1/2/3-block frames — completing roadmap EQ11.
   Worst-object SNR at every short code matches the six-block control on stationary
   material.
+- **`downmix=auto` on `decode` and `monitor`**: A/52 §D3.1.1's automatic choice of
+  stereo fold, from the stream's own `dmixmod`. Lt/Rt when it prefers Lt/Rt at an
+  acmod Table D2.2 defines the field for (`3/0`, `2/1`, `3/1`, `2/2`, `3/2`); Lo/Ro
+  otherwise, including no preference, the reserved code, and every narrower acmod,
+  where the table's own note leaves the field's meaning reserved outright. The
+  choice is made once, from the programme's first `dmixmod`, and printed.
+  `ac3::automatic_stereo_target()` holds the rule for library callers.
+- **`probe` reports `dmixmod`**, as a table line and as `metadata.dmixmod` plus a
+  per-syncframe `dmixmod` in the `ac3forge.probe/1` JSON document.
 
 **Browser (WASM)**
 
@@ -179,6 +188,13 @@ and release packaging.
   raw code. Callers folding for themselves use the new
   `ac3::mix_levels(acmod, cmixlev, surmixlev, alternate_bsi)`. `bsid`-8 streams, and
   `bsid`-6 streams without `xbsi1`, fold as before.
+- **Speaker management beside the renderer** (`src/forge/include/ac3/render/`, the first
+  step of `planning/hearth-reference-player.md`): `Routing` patches each rendered channel
+  to one device output or to none, `TrimDelay` applies a per-output trim in dB and delay in
+  samples over caller-owned storage, `IdentifyTone` plays pink noise at a stated level on
+  one output at a time (30-80 Hz for an LFE feed), and `LayoutRenderer::set_crossover_hz()`
+  makes the bass-management corner a setting between 40 and 250 Hz. All header-only and
+  allocation-free, so the boards can use them too.
 
 **Verification and CI**
 
@@ -266,6 +282,13 @@ and release packaging.
   (`coupling.hpp`, `eac3_tools.hpp`), where the code they hold — used by both decoders
   on every frame — already lived. Source-breaking, deliberately landing before the v1.0
   API freeze with no compatibility shim; ABI unchanged.
+- **The ESP32 player's output layout and renderer moved into the library as
+  `ac3::render`** (`esp-idf/ac3forge/include/ac3forge/{layout,render}.hpp` to
+  `src/forge/include/ac3/render/`), with the player's fold-and-objects policy as
+  `ac3::render::serve()`, so the desktop player and its test sink render with the boards'
+  code. The arithmetic is unchanged: the QEMU render shape's twelve slot levels are the
+  same as main's. Source-breaking for the component's `ac3forge::OutputLayout` and
+  `ac3forge::LayoutRenderer`, which were never published to the component registry.
 
 **SonarCloud and code quality**
 
@@ -425,6 +448,28 @@ and release packaging.
   mutation have reproducers under `fuzz/regressions/`. Both harnesses now run clean for
   300 seconds, and their corpora reach 1,270 (AC-4) and 711 (IAB) edges, against 1,064
   and 564 for corpora grown uninstrumented in the same time.
+- **The BW64/ADM reader was the third parser fuzzed blind, and closing that needed a
+  patch to a dependency first.** `ac3adm_objects` was the last library a harness links
+  that `fuzz/CMakeLists.txt` did not instrument, and adding it stopped `fuzz_adm_parse`
+  within a few hundred executions: libbw64 0.10.0 takes `&buffer[0]` of a
+  `std::vector<char>` that a zero-length chunk leaves empty — in `UnknownChunk`'s
+  constructor, in `Bw64Reader::read()` and in `Bw64Writer::write()` — which UBSan reports
+  and a standard library with its bounds checks on aborts over. A `FetchContent` patch
+  step (`src/ac3adm/patch_libbw64.cmake`) fixes all five of those sites at populate time;
+  upstream made the same change in 2021 and has tagged no release carrying it. What the instrumented
+  harness then found, all in `ac3adm`'s own handling of the chunk table: a `<fmt >` whose
+  channel count and sample width overflow libbw64's `uint16_t` block alignment had its
+  read buffer sized from the wrapped value and decoded against the real one — a heap
+  overread that an uninstrumented build ran as a clean execution; the chunk-table
+  pre-check stopped at an RF64 `<data>` declaring more than the file holds, leaving the
+  chunks behind it to be allocated whole (1.7 GB, found by mutation); a 28-byte `<ds64>`
+  declaring 4.26 billion table entries drove a loop of that many reads; and a file ending
+  in a fragment too short to be a chunk header had that header's size read out of
+  uninitialised stack (`malloc(4278190080)`, from 19 bytes). Each has a reproducer under
+  `fuzz/regressions/fuzz_adm_parse/`, and the first has tests in `tests/adm/` that fail on
+  the old code. The harness now runs a full 300-second budget clean, at 489 executions a
+  second against the uninstrumented build's 253, and its corpus reaches 1,654 edges
+  against 1,425 for one grown uninstrumented in the same time.
 - Short E-AC-3 syncframes (`numblkscod` 0–2) were sized at the full six-block byte
   budget, so a short stream measured up to 6x its nominal bit rate. CBR frames now take
   `frame_words`' documented per-block scaling; six-block streams are unchanged.
@@ -459,6 +504,14 @@ and release packaging.
 - `ac3cli` reports a decode failure in words (`decode failed: a header field holds a
   value A/52 reserves`) rather than as a bare enumerator — nine call sites across
   `decode`, `analysis` and `live` weren't using the existing `describe()`.
+- **A reserved `dmixmod` read back as "not indicated".** A/52:2018 Table D2.2 and ETSI
+  TS 102 366 V1.4.1 Table D.1.1 both list `'11'` as reserved, and Annex E gives
+  E-AC-3's `mixmdate` field the same table, so neither codec defines a fourth preferred
+  downmix. Both decoders, `io::read_frame_header` and `io::read_frame_metadata` used to
+  store `'11'` as `'00'`. `meta::DownmixMode::kReserved` now keeps it, and
+  `meta::describe()` names it. Both encoders refuse to write it, as they already refuse
+  reserved surround levels, and `transcode` carries a reserved source value across as
+  not indicated.
 
 **Robustness and diagnostics**
 
@@ -490,6 +543,14 @@ and release packaging.
   had kept only the shape this project's own encoder writes. Both commands now report
   through one shared function, `print_object_summary`, tested against a 5.1.4 bed
   programme and objects with no LFE.
+- **`transcode` crashed, printing nothing, when the encoder refused the configuration it
+  carried from the source.** A `dialnorm` or `dialnorm2` of 0, which §5.4.2.8 reserves and
+  a decoder reads as 31, is one such value. The E-AC-3 encoder refuses it when it is built,
+  by coding no channels, and `transcode` went on to render the decoded audio into a channel
+  list sized for none (`0xC0000005` on Windows). It now stops before decoding and prints the
+  encoder's reason. Transcoding the same stream to AC-3 reported
+  `bitrate must be a legal AC-3 rate` whatever the refusal was; both codecs now name the
+  cause, as in `dialnorm out of range 1..31`.
 
 **Crucible desktop application**
 
@@ -557,6 +618,14 @@ and release packaging.
   describes the host, not `CMAKE_OSX_ARCHITECTURES`'s target — building arm64 from an
   Intel Mac handed it SSE2/AVX2 intrinsics and failed outright. Both now follow the
   effective target architecture; a universal configure resolves `generic`.
+- **An installed {fmt} older than 11.1.0 was accepted, and the build then failed.**
+  `cmake/Fmt.cmake` looked {fmt} up with no version, so Ubuntu 26.04's `libfmt-dev`
+  10.1.1 satisfied it and compilation stopped at the first `#include <fmt/base.h>`, a
+  header fmt 11 introduced. The lookup now asks for 11.1.0 or newer, the first release
+  the tree builds against (11.0.x's `fmt/chrono.h` fails under Clang 22): an older copy
+  is skipped and named in the configure output, and the `FetchContent` fallback (or the
+  `AC3FORGE_FETCH_FMT=OFF` error) applies. A build directory that had already cached
+  the old copy recovers on its next configure.
 
 **Audio backend and object signing**
 

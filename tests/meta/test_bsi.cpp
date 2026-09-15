@@ -14,6 +14,8 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/plan.hpp"
+#include "ac3/io/elementary.hpp"
+#include "ac3/io/metadata_edit.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/mixing.hpp"
 
@@ -89,6 +91,28 @@ ac3::DecodedSubstream round_trip_eac3(const ac3::eac3::FrameConfig& config) {
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->has_value());
     return **decoded;
+}
+
+// A syncframe whose dmixmod is Table D2.2's reserved '11'. `encode` returns
+// one syncframe for the dmixmod it is given, with everything else fixed; its
+// '01' and '10' frames are ORed together byte by byte. '01' | '10' is '11',
+// every other bit is ORed with an identical copy of itself, and restamp_crc()
+// then repairs the CRC words the OR spoiled. This is the one exception to the
+// round-trip rule above, and it is forced: the encoder will not write '11'
+// (meta::valid_downmix_mode), so a frame carrying it has to be made the way a
+// third-party one would arrive. The tests check the result decodes to the same
+// audio as the '01' frame, which is what shows the OR touched nothing else.
+template <typename Encode>
+std::vector<std::byte> reserved_dmixmod_frame(Encode encode) {
+    const auto ltrt = encode(ac3::meta::DownmixMode::kLtRt);
+    const auto loro = encode(ac3::meta::DownmixMode::kLoRo);
+    REQUIRE(ltrt.size() == loro.size());
+    std::vector<std::byte> out(ltrt.size());
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        out[i] = ltrt[i] | loro[i];
+    }
+    REQUIRE(ac3::io::restamp_crc(out).has_value());
+    return out;
 }
 
 }  // namespace
@@ -228,6 +252,62 @@ TEST_CASE("AC-3: Annex D's two groups are independently optional", "[bsi]") {
     CHECK(!decoded.alternate_bsi->extended);
 }
 
+TEST_CASE("AC-3: Annex D's reserved dmixmod is kept as sent and named reserved", "[bsi]") {
+    // A/52:2018 Table D2.2 and TS 102 366 Table D.1.1 both reserve '11'. The
+    // readers used to fold it into '00', so a report could not say it was
+    // there; kReserved keeps it.
+    const auto encode = [](ac3::meta::DownmixMode dmixmod) {
+        ac3::EncoderConfig config;
+        config.acmod = ac3::Acmod::k3_2;
+        config.lfe = true;
+        ac3::meta::AlternateBsi alternate;
+        alternate.mix = ac3::meta::MixMetadata{
+            .dmixmod = dmixmod,
+            .ltrtcmixlev = ac3::meta::MixLevel::kMinus1_5dB,
+            .lorocmixlev = ac3::meta::MixLevel::kMinus4_5dB,
+            .ltrtsurmixlev = ac3::meta::MixLevel::kMinus3dB,
+            .lorosurmixlev = ac3::meta::MixLevel::kMinus6dB,
+        };
+        config.alternate_bsi = alternate;
+        ac3::FrameEncoder encoder{config};
+        const auto pcm = tone(6);
+        const auto spans = views(pcm);
+        auto frame = encoder.encode_frame(spans);
+        REQUIRE(frame.has_value());
+        frame = encoder.encode_frame(spans);
+        REQUIRE(frame.has_value());
+        return *frame;
+    };
+    const auto reserved = reserved_dmixmod_frame(encode);
+
+    ac3::FrameDecoder decoder;
+    const auto decoded = decoder.decode_frame(reserved);
+    REQUIRE(decoded.has_value());
+    CHECK(decoded->bsid == 6);
+    REQUIRE(decoded->alternate_bsi);
+    REQUIRE(decoded->alternate_bsi->mix);
+    const auto& mix = *decoded->alternate_bsi->mix;
+    CHECK(mix.dmixmod == ac3::meta::DownmixMode::kReserved);
+    CHECK(ac3::meta::describe(mix.dmixmod) == "reserved");
+    // The four levels after it are where the '01' frame put them.
+    CHECK(mix.ltrtcmixlev == ac3::meta::MixLevel::kMinus1_5dB);
+    CHECK(mix.ltrtsurmixlev == ac3::meta::MixLevel::kMinus3dB);
+    CHECK(mix.lorocmixlev == ac3::meta::MixLevel::kMinus4_5dB);
+    CHECK(mix.lorosurmixlev == ac3::meta::MixLevel::kMinus6dB);
+
+    // The header tier, which probe and downmix=auto read, sees the same code.
+    const auto header = ac3::io::read_frame_header(reserved);
+    REQUIRE(header.has_value());
+    CHECK(header->dmixmod == ac3::meta::DownmixMode::kReserved);
+
+    // And nothing else moved: the audio is the '01' frame's, bit for bit.
+    ac3::FrameDecoder reference_decoder;
+    const auto reference = reference_decoder.decode_frame(encode(ac3::meta::DownmixMode::kLtRt));
+    REQUIRE(reference.has_value());
+    const bool same_audio = decoded->channels == reference->channels;
+    CHECK(same_audio);
+}
+
 TEST_CASE("AC-3: bsi values wider than their field are refused, not truncated", "[bsi]") {
     const auto pcm = tone(2);
     const auto spans = views(pcm);
@@ -261,6 +341,16 @@ TEST_CASE("AC-3: bsi values wider than their field are refused, not truncated", 
         ac3::EncoderConfig config;
         ac3::meta::AlternateBsi alternate;
         alternate.mix = ac3::meta::MixMetadata{.ltrtsurmixlev = ac3::meta::MixLevel::kUnity};
+        config.alternate_bsi = alternate;
+        ac3::FrameEncoder encoder{config};
+        const auto frame = encoder.encode_frame(spans);
+        REQUIRE(!frame.has_value());
+        CHECK(frame.error() == ac3::FrameError::kInvalidBsi);
+    }
+    SECTION("a reserved dmixmod would state no preference a receiver can act on") {
+        ac3::EncoderConfig config;
+        ac3::meta::AlternateBsi alternate;
+        alternate.mix = ac3::meta::MixMetadata{.dmixmod = ac3::meta::DownmixMode::kReserved};
         config.alternate_bsi = alternate;
         ac3::FrameEncoder encoder{config};
         const auto frame = encoder.encode_frame(spans);
@@ -608,6 +698,76 @@ TEST_CASE("E-AC-3: a mixmdate value wider than its field is refused", "[bsi]") {
     CHECK(frame.error() == ac3::FrameError::kInvalidBsi);
 }
 
+TEST_CASE("E-AC-3: mixmdate's reserved dmixmod is kept as sent and never written",
+          "[bsi][eac3]") {
+    // Annex E defines no dmixmod of its own (§E2.2, TS 102 366 clause
+    // E.1.2.0), so Table D2.2 applies to mixmdate unchanged and '11' is
+    // reserved here exactly as it is in Annex D.
+    const auto encode = [](ac3::meta::DownmixMode dmixmod) {
+        ac3::eac3::FrameConfig config;
+        config.acmod = ac3::Acmod::k3_2;  // acmod > 0x2, so dmixmod is sent
+        config.lfe = true;
+        config.mixing = ac3::meta::MixMetadata{.dmixmod = dmixmod, .lfemixlevcod = 3};
+        ac3::eac3::FrameEncoder encoder{config};
+        const auto pcm = tone(6);
+        const auto spans = views(pcm);
+        auto frame = encoder.encode_frame(spans);
+        REQUIRE(frame.has_value());
+        frame = encoder.encode_frame(spans);
+        REQUIRE(frame.has_value());
+        return *frame;
+    };
+
+    SECTION("a stream carrying it decodes, and every reader reports it") {
+        const auto reserved = reserved_dmixmod_frame(encode);
+
+        ac3::Eac3Decoder decoder;
+        const auto decoded = decoder.decode_substream(reserved);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->has_value());
+        const auto& substream = **decoded;
+        REQUIRE(substream.mixing);
+        CHECK(substream.mixing->dmixmod == ac3::meta::DownmixMode::kReserved);
+        CHECK(substream.mixing->lfemixlevcod == 3);
+        CHECK(ac3::meta::describe(substream.mixing->dmixmod) == "reserved");
+
+        // The output stage passes it on as sent; automatic selection reads it
+        // as "not indicated" (§D2.3.1.2) and takes the plain fold.
+        const auto levels = ac3::mix_levels(substream.mixing);
+        CHECK(levels.preferred == ac3::meta::DownmixMode::kReserved);
+        CHECK(ac3::automatic_stereo_target(substream.acmod, levels.preferred) ==
+              ac3::DownmixTarget::kLoRo);
+
+        const auto header = ac3::io::read_frame_header(reserved);
+        REQUIRE(header.has_value());
+        CHECK(header->dmixmod == ac3::meta::DownmixMode::kReserved);
+        const auto wire = ac3::io::read_frame_metadata(reserved);
+        REQUIRE(wire.has_value());
+        REQUIRE(wire->mix);
+        CHECK(wire->mix->dmixmod == ac3::meta::DownmixMode::kReserved);
+
+        ac3::Eac3Decoder reference_decoder;
+        const auto reference =
+            reference_decoder.decode_substream(encode(ac3::meta::DownmixMode::kLtRt));
+        REQUIRE(reference.has_value());
+        REQUIRE(reference->has_value());
+        const bool same_audio = substream.channels == (*reference)->channels;
+        CHECK(same_audio);
+    }
+
+    SECTION("the encoder refuses to write it") {
+        ac3::eac3::FrameConfig config;
+        config.acmod = ac3::Acmod::k3_2;
+        config.mixing = ac3::meta::MixMetadata{.dmixmod = ac3::meta::DownmixMode::kReserved};
+        ac3::eac3::FrameEncoder encoder{config};
+        const auto pcm = tone(5);
+        const auto frame = encoder.encode_frame(views(pcm));
+        REQUIRE(!frame.has_value());
+        CHECK(frame.error() == ac3::FrameError::kInvalidMixLevel);
+        CHECK_FALSE(ac3::meta::valid_mix_metadata(*config.mixing));
+    }
+}
+
 TEST_CASE("E-AC-3: a stream that asks for neither group writes neither flag", "[bsi]") {
     ac3::eac3::FrameConfig config;
     config.acmod = ac3::Acmod::k3_2;
@@ -707,6 +867,27 @@ TEST_CASE("meta: the bsi token vocabularies parse and describe", "[bsi]") {
     ac3::meta::SurroundMode surround{};
     CHECK(ac3::meta::parse_surround_mode("off", surround));
     CHECK(surround == ac3::meta::SurroundMode::kNotDolbySurround);
+}
+
+TEST_CASE("meta: every dmixmod code has a name, and only three are writable", "[bsi]") {
+    // Table D2.2 (TS 102 366 Table D.1.1), which both codecs share.
+    CHECK(ac3::meta::describe(ac3::meta::DownmixMode::kNotIndicated) == "not indicated");
+    CHECK(ac3::meta::describe(ac3::meta::DownmixMode::kLtRt) == "Lt/Rt");
+    CHECK(ac3::meta::describe(ac3::meta::DownmixMode::kLoRo) == "Lo/Ro");
+    CHECK(ac3::meta::describe(ac3::meta::DownmixMode::kReserved) == "reserved");
+    CHECK(static_cast<int>(ac3::meta::DownmixMode::kReserved) == 3);
+
+    CHECK(ac3::meta::valid_downmix_mode(ac3::meta::DownmixMode::kNotIndicated));
+    CHECK(ac3::meta::valid_downmix_mode(ac3::meta::DownmixMode::kLtRt));
+    CHECK(ac3::meta::valid_downmix_mode(ac3::meta::DownmixMode::kLoRo));
+    CHECK_FALSE(ac3::meta::valid_downmix_mode(ac3::meta::DownmixMode::kReserved));
+
+    // Annex D's writer takes the same view as mixmdate's.
+    ac3::meta::AlternateBsi alternate;
+    alternate.mix = ac3::meta::MixMetadata{.dmixmod = ac3::meta::DownmixMode::kReserved};
+    CHECK_FALSE(ac3::meta::valid_alternate_bsi(alternate));
+    alternate.mix->dmixmod = ac3::meta::DownmixMode::kNotIndicated;
+    CHECK(ac3::meta::valid_alternate_bsi(alternate));
 }
 
 TEST_CASE("meta: a time code splits across the two halves at eight seconds", "[bsi]") {

@@ -282,6 +282,15 @@ libadm and libbw64, plus Boost headers. That means:
   harnesses that run on every push. The resource limits above do not apply here either way: there
   is no document-size cap, no entity-expansion limit and no element-count limit; an enormous or
   deeply nested ADM document is bounded by nothing this project controls.
+- **libbw64 is pinned at `0.10.0`, tagged in January 2019.** Its `master` branch is 77 commits
+  ahead and its changelog describes those commits as fixing "a number of buffer overruns,
+  integer overflows, and uses of uninitialised data which may be triggered by reading malformed
+  files"; upstream has tagged no release containing them. `src/ac3adm/patch_libbw64.cmake`
+  patches the undefined behaviour that blocked instrumenting the module for fuzzing, and
+  `adm.cpp`'s own pre-check refuses the chunk tables that drove libbw64 into an unbounded
+  allocation, an unbounded loop or a read of uninitialised stack — each found by
+  `fuzz_adm_parse` or while auditing for the first. A `<ds64>` table that resizes some other
+  chunk id is a gap that remains; see that function's own comment.
 - The whole `axml` chunk is materialised as a string and re-parsed from an `istringstream`, so
   memory is O(document).
 - Parse and graph-resolution failures do surface as real diagnostics (`ac3adm::AdmError`,

@@ -8,10 +8,12 @@
 #include <fstream>
 #include <iterator>
 #include <numbers>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/decoder.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/metadata_edit.hpp"
 #include "ac3/io/wav.hpp"
@@ -402,6 +404,55 @@ TEST_CASE("transcode needs to be told the codec when the name cannot say it",
     CHECK(scanned->kind == ac3::io::StreamKind::kAc3);
 }
 
+TEST_CASE("transcode carries a reserved dmixmod across as not indicated", "[cli][transcode]") {
+    // Table D2.2's '11' (TS 102 366 Table D.1.1) is reserved in E-AC-3's
+    // mixmdate, as in AC-3's Annex D, and the encoder refuses to write it. A
+    // DD+ to DD+ transcode carries mixmdate across, so it has to carry
+    // §D2.3.1.2's reading of the code - "not indicated" - or refuse a stream
+    // that decodes fine. The source is the '01' and '10' encodes of one tone
+    // ORed byte by byte ('01' | '10' is '11', every other bit meets an
+    // identical copy) with each syncframe's CRCs re-stamped;
+    // tests/meta/test_bsi.cpp checks that this changes nothing but dmixmod.
+    const auto dir = scratch_dir();
+    const auto ltrt = read_bytes(
+        make_stream("tx_dmix_ltrt.ec3", "eac3-encode", "none 51 off mixmeta dmixmod=ltrt"));
+    const auto loro = read_bytes(
+        make_stream("tx_dmix_loro.ec3", "eac3-encode", "none 51 off mixmeta dmixmod=loro"));
+    REQUIRE(ltrt.size() == loro.size());
+    std::vector<std::byte> merged(ltrt.size());
+    for (std::size_t i = 0; i < merged.size(); ++i) {
+        merged[i] = ltrt[i] | loro[i];
+    }
+    const auto frames = ac3::split_frames(merged);
+    REQUIRE(frames.has_value());
+    for (const auto frame : *frames) {
+        const auto at = static_cast<std::size_t>(frame.data() - merged.data());
+        REQUIRE(ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
+    }
+    const auto before = ac3::io::read_frame_metadata(merged);
+    REQUIRE(before.has_value());
+    REQUIRE(before->mix.has_value());
+    REQUIRE(before->mix->dmixmod == ac3::meta::DownmixMode::kReserved);
+    const auto source = dir / "tx_dmix_reserved.ec3";
+    {
+        std::ofstream file{source, std::ios::binary};
+        file.write(reinterpret_cast<const char*>(merged.data()),
+                   static_cast<std::streamsize>(merged.size()));
+        REQUIRE(file.good());
+    }
+
+    const auto out = dir / "tx_dmix_out.ec3";
+    const auto log = dir / "tx_dmix.log";
+    fs::remove(out);
+    REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(out) + " 448", log) == 0);
+    INFO(read_log(log));
+    const auto after = ac3::io::read_frame_metadata(read_bytes(out));
+    REQUIRE(after.has_value());
+    CHECK(after->kind == ac3::io::StreamKind::kEac3);
+    REQUIRE(after->mix.has_value());
+    CHECK(after->mix->dmixmod == ac3::meta::DownmixMode::kNotIndicated);
+}
+
 TEST_CASE("transcode also goes the other way, DD into DD+", "[cli][transcode]") {
     const auto dir = scratch_dir();
     const auto source = make_stream("tx_up_source.ac3", "encode", "51 dialnorm=27");
@@ -413,6 +464,59 @@ TEST_CASE("transcode also goes the other way, DD into DD+", "[cli][transcode]") 
     REQUIRE(after.has_value());
     CHECK(after->kind == ac3::io::StreamKind::kEac3);
     CHECK(after->dialnorm == 27);
+}
+
+// §5.4.2.8 reserves a dialnorm of 0. A decoder reads it as 31, so a stream
+// carrying one decodes, but neither encoder writes it, and transcode carries
+// the source's dialnorm across unless dialnorm= replaces it. The E-AC-3
+// encoder refuses when it is built, by coding no channels, and transcode did
+// not check for that: decode_and_render sized its channel list from the zero
+// and plan::render indexed past the end of it (0xC0000005 on Windows, with
+// nothing printed). The AC-3 encoder refuses at the first frame, where
+// transcode reported an illegal bitrate whatever the cause.
+TEST_CASE("transcode names the reason when the encoder refuses a carried dialnorm of 0",
+          "[cli][transcode]") {
+    const auto dir = scratch_dir();
+    auto bytes = read_bytes(make_stream("tx_dialnorm0_source.ec3", "eac3-encode", "none 51 off"));
+    // Table E1.2: syncword (16), strmtyp (2), substreamid (3), frmsiz (11),
+    // fscod (2), numblkscod (2), acmod (3), lfeon (1) and bsid (5) put dialnorm
+    // at bits 45 to 49 of every syncframe - the low three bits of byte 5 and
+    // the top two of byte 6.
+    for (std::size_t at = 0; at < bytes.size();) {
+        const auto frame = std::span{bytes}.subspan(at);
+        const auto meta = ac3::io::read_frame_metadata(frame);
+        REQUIRE(meta.has_value());
+        frame[5] &= std::byte{0xF8};
+        frame[6] &= std::byte{0x3F};
+        REQUIRE(ac3::io::restamp_crc(frame).has_value());
+        at += meta->bytes;
+    }
+    const auto carried = ac3::io::read_frame_metadata(bytes);
+    REQUIRE(carried.has_value());
+    REQUIRE(carried->dialnorm == 0);
+    const auto source = dir / "tx_dialnorm0.ec3";
+    {
+        std::ofstream file{source, std::ios::binary};
+        file.write(reinterpret_cast<const char*>(bytes.data()),
+                   static_cast<std::streamsize>(bytes.size()));
+        REQUIRE(file.good());
+    }
+
+    const auto refused = [&](const std::string& suffix) {
+        INFO("output " << suffix);
+        const auto out = dir / ("tx_dialnorm0_out" + suffix);
+        const auto log = dir / ("tx_dialnorm0" + suffix + ".log");
+        fs::remove(out);
+        const auto rc = run_cli("transcode " + quoted(source) + " " + quoted(out) + " 448", log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK(text.find("dialnorm out of range 1..31") != std::string::npos);
+        CHECK(text.find("bitrate") == std::string::npos);
+        CHECK_FALSE(fs::exists(out));
+    };
+    refused(".ec3");
+    refused(".ac3");
 }
 
 // All five printed their reports with plain fmt::println on the status

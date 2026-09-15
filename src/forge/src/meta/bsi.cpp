@@ -79,11 +79,13 @@ bool valid_bsi_info(const BsiInfo& value) {
 }
 
 bool valid_alternate_bsi(const AlternateBsi& value) {
-    // xbsi1's five fields are all enumerators of exactly their field's width,
-    // and xbsi2's are too - bar the surround levels, whose reserved codes
-    // valid_surround_mix_level() already refuses on the E-AC-3 path and which
-    // Tables D2.4/D2.6 reserve identically here.
-    return !value.mix || (valid_surround_mix_level(value.mix->ltrtsurmixlev) &&
+    // xbsi1's five fields and xbsi2's are all enumerators of exactly their
+    // field's width, so none of them can overrun it. What is left to refuse is
+    // the reserved codes: dmixmod's '11' (Table D2.2), and the surround levels
+    // Tables D2.4/D2.6 reserve here exactly as valid_surround_mix_level()
+    // already refuses them on the E-AC-3 path.
+    return !value.mix || (valid_downmix_mode(value.mix->dmixmod) &&
+                          valid_surround_mix_level(value.mix->ltrtsurmixlev) &&
                           valid_surround_mix_level(value.mix->lorosurmixlev));
 }
 
@@ -170,6 +172,20 @@ std::string_view describe(RoomType value) {
             return "small room, flat monitor";
     }
     return "not indicated";
+}
+
+std::string_view describe(DownmixMode value) {
+    switch (value) {
+        case DownmixMode::kNotIndicated:
+            return "not indicated";
+        case DownmixMode::kLtRt:
+            return "Lt/Rt";
+        case DownmixMode::kLoRo:
+            return "Lo/Ro";
+        case DownmixMode::kReserved:
+            break;
+    }
+    return "reserved";
 }
 
 bool parse_bsmod(std::string_view text, BitstreamMode& out) {

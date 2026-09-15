@@ -209,6 +209,16 @@ struct Prober::Impl {
         if (header.oba_complexity_index.has_value() && !report.oba_complexity_index.has_value()) {
             report.oba_complexity_index = header.oba_complexity_index;
         }
+        // The lead programme's independent substream only: a second
+        // independent substream is another programme (§E2.3.1.2), and the
+        // independent substream is the one every decoder of this programme
+        // reads, including one that ignores its dependents. slot_for() above
+        // has already recorded the first syncframe's identity.
+        if (header.dmixmod.has_value() && !report.dmixmod.has_value() &&
+            header.strmtyp != eac3::StreamType::kDependent &&
+            header.substreamid == report.substreams.front().substreamid) {
+            report.dmixmod = header.dmixmod;
+        }
         if (first_unit && header.strmtyp == eac3::StreamType::kDependent && header.chanmap.has_value()) {
             locations = static_cast<std::uint16_t>(locations | *header.chanmap);
         }

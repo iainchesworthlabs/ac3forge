@@ -106,8 +106,9 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     // cmixlev/surmixlev and no §7.8.1 normalisation. That is exactly the case
     // worth catching, and the only way to catch it is to notice the width
     // beforehand: RenderDeviceInfo::channels is 0 on any backend that cannot
-    // say, and 0 leaves the audio alone.
-    ac3::OutputConfig output = meta.output;
+    // say, and 0 leaves the audio alone. downmix=auto counts as explicit, and
+    // is settled from the stream here first.
+    ac3::OutputConfig output = resolve_output(meta, stream, status_stream());
     if (output.target == ac3::DownmixTarget::kAsCoded && device_channels > 0) {
         const auto scanned = ac3::io::scan(stream);
         if (scanned && scanned->channels > static_cast<int>(device_channels)) {

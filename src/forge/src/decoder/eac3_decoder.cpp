@@ -202,10 +202,9 @@ meta::MixMetadata read_mixing_metadata(BitReader& r, const Bsi& bsi, int nblks) 
     const auto acmod = static_cast<std::uint8_t>(bsi.acmod);
     meta::MixMetadata mix;
     if (acmod > 0x2) {
-        const auto mode = r.read(2);  // dmixmod
-        if (mode < 3) {               // Table D2.2's '11' reads as "not indicated"
-            mix.dmixmod = static_cast<meta::DownmixMode>(mode);
-        }
+        // dmixmod, kept as sent: Table D2.2's reserved '11' has an enumerator
+        // of its own (see DownmixMode), so a report can say it was there.
+        mix.dmixmod = static_cast<meta::DownmixMode>(r.read(2));
     }
     if ((acmod & 0x1) != 0 && acmod > 0x2) {
         mix.ltrtcmixlev = static_cast<meta::MixLevel>(r.read(3));
