@@ -14,8 +14,22 @@
 using ac3forge::line_ceiling;
 using ac3forge::plan_sink;
 using ac3forge::sink_ceiling;
+using ac3forge::SinkFrame;
 using ac3forge::SinkLinePlan;
 using ac3forge::SinkPlan;
+
+namespace {
+
+// The two frame choices, short enough that every call below names the one it
+// asks for.
+constexpr SinkFrame kFollow = SinkFrame::follow_layout;
+constexpr SinkFrame kFixed = SinkFrame::fixed;
+
+bool same_line(const SinkLinePlan& a, const SinkLinePlan& b) {
+    return a.slots == b.slots && a.channels == b.channels && a.tdm == b.tdm;
+}
+
+}  // namespace
 
 TEST_CASE("sink_ceiling matches the per-line ceiling plan_sink refuses past",
           "[io][sink_plan]") {
@@ -39,14 +53,15 @@ TEST_CASE("sink_ceiling matches the per-line ceiling plan_sink refuses past",
     // per-line buffer from it.
     STATIC_REQUIRE(line_ceiling(16).slots * 16 == 128);
     STATIC_REQUIRE(line_ceiling(32).slots * 32 == 128);
-    STATIC_REQUIRE(plan_sink(8, 16, false).has_value());
+    STATIC_REQUIRE(plan_sink(8, 16, false, kFollow).has_value());
+    STATIC_REQUIRE(plan_sink(2, 16, false, kFixed)->line0.slots == 8);
 }
 
-TEST_CASE("one line, 32-bit: standard mode for 1-2, a full four-slot TDM frame for 3-4, refused past 4",
+TEST_CASE("one line, 32-bit, frame following the layout: standard mode for 1-2, a full four-slot TDM frame for 3-4, refused past 4",
           "[io][sink_plan]") {
     for (const std::size_t channels : {std::size_t{1}, std::size_t{2}}) {
         CAPTURE(channels);
-        const auto plan = plan_sink(channels, 32, false);
+        const auto plan = plan_sink(channels, 32, false, kFollow);
         REQUIRE(plan.has_value());
         REQUIRE(plan->line0.slots == channels);
         REQUIRE(plan->line0.channels == channels);
@@ -58,25 +73,25 @@ TEST_CASE("one line, 32-bit: standard mode for 1-2, a full four-slot TDM frame f
     // driver clocks wrongly at some widths (see sink_plan.hpp).
     for (const std::size_t channels : {std::size_t{3}, std::size_t{4}}) {
         CAPTURE(channels);
-        const auto plan = plan_sink(channels, 32, false);
+        const auto plan = plan_sink(channels, 32, false, kFollow);
         REQUIRE(plan.has_value());
         REQUIRE(plan->line0.slots == 4);
         REQUIRE(plan->line0.channels == channels);
         REQUIRE(plan->line0.tdm);
         REQUIRE(plan->line1.slots == 0);
     }
-    REQUIRE_FALSE(plan_sink(5, 32, false).has_value());
-    REQUIRE_FALSE(plan_sink(0, 32, false).has_value());
+    REQUIRE_FALSE(plan_sink(5, 32, false, kFollow).has_value());
+    REQUIRE_FALSE(plan_sink(0, 32, false, kFollow).has_value());
 }
 
-TEST_CASE("one line, 16-bit: standard mode for 1-2, a full eight-slot TDM frame for 3-8, refused past 8",
+TEST_CASE("one line, 16-bit, frame following the layout: standard mode for 1-2, a full eight-slot TDM frame for 3-8, refused past 8",
           "[io][sink_plan]") {
-    const auto mono = plan_sink(1, 16, false);
+    const auto mono = plan_sink(1, 16, false, kFollow);
     REQUIRE(mono.has_value());
     REQUIRE(mono->line0.slots == 1);
     REQUIRE_FALSE(mono->line0.tdm);
 
-    const auto stereo = plan_sink(2, 16, false);
+    const auto stereo = plan_sink(2, 16, false, kFollow);
     REQUIRE(stereo.has_value());
     REQUIRE(stereo->line0.slots == 2);
     REQUIRE_FALSE(stereo->line0.tdm);
@@ -87,7 +102,7 @@ TEST_CASE("one line, 16-bit: standard mode for 1-2, a full eight-slot TDM frame 
     // own, so every count opens the full eight.
     for (std::size_t channels = 3; channels <= 8; ++channels) {
         CAPTURE(channels);
-        const auto plan = plan_sink(channels, 16, false);
+        const auto plan = plan_sink(channels, 16, false, kFollow);
         REQUIRE(plan.has_value());
         REQUIRE(plan->line0.slots == 8);
         REQUIRE(plan->line0.channels == channels);
@@ -96,24 +111,26 @@ TEST_CASE("one line, 16-bit: standard mode for 1-2, a full eight-slot TDM frame 
     }
 
     // Nine would need a 136-bit frame - refused, not silently rounded down.
-    REQUIRE_FALSE(plan_sink(9, 16, false).has_value());
-    REQUIRE_FALSE(plan_sink(0, 16, false).has_value());
+    REQUIRE_FALSE(plan_sink(9, 16, false, kFollow).has_value());
+    REQUIRE_FALSE(plan_sink(0, 16, false, kFollow).has_value());
 }
 
 TEST_CASE("an unrecognised slot width is refused, not silently rounded", "[io][sink_plan]") {
-    REQUIRE_FALSE(plan_sink(2, 24, false).has_value());
-    REQUIRE_FALSE(plan_sink(2, 0, false).has_value());
-    REQUIRE_FALSE(plan_sink(2, -32, false).has_value());
+    for (const SinkFrame frame : {kFollow, kFixed}) {
+        REQUIRE_FALSE(plan_sink(2, 24, false, frame).has_value());
+        REQUIRE_FALSE(plan_sink(2, 0, false, frame).has_value());
+        REQUIRE_FALSE(plan_sink(2, -32, false, frame).has_value());
+    }
 }
 
-TEST_CASE("two lines, 32-bit: line 0 fills to its ceiling before line 1 is used at all",
+TEST_CASE("two lines, 32-bit, frame following the layout: line 0 fills to its ceiling before line 1 is used at all",
           "[io][sink_plan]") {
     // Within one line's own reach: line 1 stays unused even though it is
     // enabled - no reason to bring up a second peripheral nothing needs.
     for (const std::size_t channels : {std::size_t{1}, std::size_t{2}, std::size_t{3},
                                        std::size_t{4}}) {
         CAPTURE(channels);
-        const auto plan = plan_sink(channels, 32, true);
+        const auto plan = plan_sink(channels, 32, true, kFollow);
         REQUIRE(plan.has_value());
         REQUIRE(plan->line0.slots == (channels <= 2 ? channels : std::size_t{4}));
         REQUIRE(plan->line0.channels == channels);
@@ -125,7 +142,7 @@ TEST_CASE("two lines, 32-bit: line 0 fills to its ceiling before line 1 is used 
     // word select and a mismatched frame would desync that. Line 0 takes
     // its full 4 real channels; line 1 carries the remainder, its unused
     // tail slots present (fixed width) but not carrying real audio.
-    const auto five = plan_sink(5, 32, true);
+    const auto five = plan_sink(5, 32, true, kFollow);
     REQUIRE(five.has_value());
     REQUIRE(five->line0.slots == 4);
     REQUIRE(five->line0.channels == 4);
@@ -134,7 +151,7 @@ TEST_CASE("two lines, 32-bit: line 0 fills to its ceiling before line 1 is used 
     REQUIRE(five->line1.channels == 1);
     REQUIRE(five->line1.tdm);
 
-    const auto eight = plan_sink(8, 32, true);
+    const auto eight = plan_sink(8, 32, true, kFollow);
     REQUIRE(eight.has_value());
     REQUIRE(eight->line0.slots == 4);
     REQUIRE(eight->line0.channels == 4);
@@ -142,12 +159,12 @@ TEST_CASE("two lines, 32-bit: line 0 fills to its ceiling before line 1 is used 
     REQUIRE(eight->line1.channels == 4);
 
     // Past both lines' combined ceiling (8): refused, not clamped.
-    REQUIRE_FALSE(plan_sink(9, 32, true).has_value());
+    REQUIRE_FALSE(plan_sink(9, 32, true, kFollow).has_value());
 
     // The same 5-8 range with the second line NOT enabled: refused, since
     // there is nowhere for the overflow to go.
-    REQUIRE_FALSE(plan_sink(5, 32, false).has_value());
-    REQUIRE_FALSE(plan_sink(8, 32, false).has_value());
+    REQUIRE_FALSE(plan_sink(5, 32, false, kFollow).has_value());
+    REQUIRE_FALSE(plan_sink(8, 32, false, kFollow).has_value());
 }
 
 TEST_CASE("two lines, 16-bit: the combined ceiling is one line's 8 - no second 16-bit line yet",
@@ -155,16 +172,108 @@ TEST_CASE("two lines, 16-bit: the combined ceiling is one line's 8 - no second 1
     // With a second line enabled, eight channels still go on line 0 alone,
     // and nine have nowhere to go: the sink writes no second 16-bit line
     // (SinkLineCeiling::second_line_usable is false at this width).
-    const auto eight = plan_sink(8, 16, true);
+    const auto eight = plan_sink(8, 16, true, kFollow);
     REQUIRE(eight.has_value());
     REQUIRE(eight->line0.slots == 8);
     REQUIRE(eight->line0.tdm);
     REQUIRE(eight->line1.slots == 0);
-    REQUIRE_FALSE(plan_sink(9, 16, true).has_value());
+    REQUIRE_FALSE(plan_sink(9, 16, true, kFollow).has_value());
 
-    const auto two = plan_sink(2, 16, true);
+    const auto two = plan_sink(2, 16, true, kFollow);
     REQUIRE(two.has_value());
     REQUIRE(two->line0.slots == 2);
     REQUIRE_FALSE(two->line0.tdm);
     REQUIRE(two->line1.slots == 0);
+
+    // A fixed frame does not bring line 1 up at this width either: there is
+    // no 16-bit buffer for it to write.
+    const auto fixed_two = plan_sink(2, 16, true, kFixed);
+    REQUIRE(fixed_two.has_value());
+    REQUIRE(fixed_two->line0.slots == 8);
+    REQUIRE(fixed_two->line0.tdm);
+    REQUIRE(fixed_two->line1.slots == 0);
+    REQUIRE_FALSE(plan_sink(9, 16, true, kFixed).has_value());
+}
+
+TEST_CASE("fixed frame, one line: every channel count from 1 opens the full TDM frame",
+          "[io][sink_plan]") {
+    // A TDM DAC set up over I2C for one frame shape (an ES9080, say) reads a
+    // mono or 2.0 play from the same frame as a 7.1 one, the slots past the
+    // layout zeroed: no standard mode at 1 or 2.
+    for (std::size_t channels = 1; channels <= 8; ++channels) {
+        CAPTURE(channels);
+        const auto plan = plan_sink(channels, 16, false, kFixed);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->line0.slots == 8);
+        REQUIRE(plan->line0.channels == channels);
+        REQUIRE(plan->line0.tdm);
+        REQUIRE(plan->line1.slots == 0);
+    }
+    for (std::size_t channels = 1; channels <= 4; ++channels) {
+        CAPTURE(channels);
+        const auto plan = plan_sink(channels, 32, false, kFixed);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->line0.slots == 4);
+        REQUIRE(plan->line0.channels == channels);
+        REQUIRE(plan->line0.tdm);
+        REQUIRE(plan->line1.slots == 0);
+    }
+
+    // The same ceilings as a frame that follows the layout.
+    REQUIRE_FALSE(plan_sink(9, 16, false, kFixed).has_value());
+    REQUIRE_FALSE(plan_sink(5, 32, false, kFixed).has_value());
+    REQUIRE_FALSE(plan_sink(0, 16, false, kFixed).has_value());
+    REQUIRE_FALSE(plan_sink(0, 32, false, kFixed).has_value());
+}
+
+TEST_CASE("fixed frame, two lines at 32 bits: line 1 runs its full frame for every layout",
+          "[io][sink_plan]") {
+    // Within line 0's reach, line 1 is still open at the same shape with
+    // nothing to carry, every slot zeroed: a second DAC on its data pin reads
+    // defined samples while its PLL follows the shared bit clock.
+    for (std::size_t channels = 1; channels <= 4; ++channels) {
+        CAPTURE(channels);
+        const auto plan = plan_sink(channels, 32, true, kFixed);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->line0.slots == 4);
+        REQUIRE(plan->line0.channels == channels);
+        REQUIRE(plan->line0.tdm);
+        REQUIRE(plan->line1.slots == 4);
+        REQUIRE(plan->line1.channels == 0);
+        REQUIRE(plan->line1.tdm);
+    }
+    // Past it, the same split a frame that follows the layout makes.
+    for (std::size_t channels = 5; channels <= 8; ++channels) {
+        CAPTURE(channels);
+        const auto fixed = plan_sink(channels, 32, true, kFixed);
+        const auto follow = plan_sink(channels, 32, true, kFollow);
+        REQUIRE(fixed.has_value());
+        REQUIRE(follow.has_value());
+        REQUIRE(same_line(fixed->line0, follow->line0));
+        REQUIRE(same_line(fixed->line1, follow->line1));
+        REQUIRE(fixed->line1.channels == channels - 4);
+    }
+    REQUIRE_FALSE(plan_sink(9, 32, true, kFixed).has_value());
+}
+
+TEST_CASE("fixed frame and a frame following the layout plan three channels and up on one line the same way",
+          "[io][sink_plan]") {
+    for (std::size_t channels = 3; channels <= 8; ++channels) {
+        CAPTURE(channels);
+        const auto fixed = plan_sink(channels, 16, false, kFixed);
+        const auto follow = plan_sink(channels, 16, false, kFollow);
+        REQUIRE(fixed.has_value());
+        REQUIRE(follow.has_value());
+        REQUIRE(same_line(fixed->line0, follow->line0));
+        REQUIRE(same_line(fixed->line1, follow->line1));
+    }
+    for (std::size_t channels = 3; channels <= 4; ++channels) {
+        CAPTURE(channels);
+        const auto fixed = plan_sink(channels, 32, false, kFixed);
+        const auto follow = plan_sink(channels, 32, false, kFollow);
+        REQUIRE(fixed.has_value());
+        REQUIRE(follow.has_value());
+        REQUIRE(same_line(fixed->line0, follow->line0));
+        REQUIRE(same_line(fixed->line1, follow->line1));
+    }
 }
