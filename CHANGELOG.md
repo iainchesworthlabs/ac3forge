@@ -359,7 +359,9 @@ and release packaging.
   tones in each codec, driving aiosendspin's `SendspinServer` as Music Assistant's provider does.
   The sink's WAV file is the programme sample for sample in PCM and FLAC and within 20 dB in Opus,
   less the chunks the server sends only in its replay and the FLAC block it keeps when a stream
-  stops. `hearth-validate` runs it for both pairing methods.
+  stops. The sink lists `controller@v1`, `metadata@v1` and `color@v1` as well, and the run shows the
+  server's metadata, colours and controller state reaching it, and a volume the sink asks for coming
+  back as a player command. `hearth-validate` runs it for both pairing methods.
 - **Hearth's third-party notices** (`apps/hearth/notices/`): `NOTICES.txt` for cpp-httplib,
   Mbed TLS, mdns, libFLAC, libogg, Opus and Sendspin's time filter, generated at configure time
   with the versions and licence texts vcpkg installs with each port, ready for Hearth's About page

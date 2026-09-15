@@ -32,11 +32,13 @@ from typing import Any
 
 import numpy as np
 from aiosendspin.audio.format import AudioFormat
-from aiosendspin.models.types import PairMethod
+from aiosendspin.models.types import MediaCommand, PairMethod
 from aiosendspin.noise.keys import Identity
 from aiosendspin.noise.pairing import PairingAttempt
 from aiosendspin.noise.pairing_token import decode_token
 from aiosendspin.noise.trust_store import InMemoryServerPairingStore
+from aiosendspin.server.roles.color.state import Color
+from aiosendspin.server.roles.metadata.state import Metadata
 from aiosendspin.server.server import SendspinServer
 
 SAMPLE_RATE = 48000
@@ -98,6 +100,7 @@ class TestSink:
         self.codec = codec
         self.pair = pair
         self.extension = extension
+        self.roles = "controller,metadata,color"
         self.lines: list[str] = []
         self.changed = asyncio.Condition()
         self._process: asyncio.subprocess.Process | None = None
@@ -121,6 +124,8 @@ class TestSink:
             str(self.directory / "out"),
             "--codecs",
             self.codec,
+            "--roles",
+            self.roles,
             "--pair",
             "dynamic" if self.pair == "code" else "none",
             *extension,
@@ -150,6 +155,12 @@ class TestSink:
         match = found()
         assert match is not None
         return match
+
+    async def command(self, text: str) -> None:
+        """Types one line on the sink's standard input."""
+        assert self._process is not None and self._process.stdin is not None
+        self._process.stdin.write(text.encode() + b"\n")
+        await self._process.stdin.drain()
 
     async def stop(self) -> None:
         if self._process is None:
@@ -209,12 +220,54 @@ async def play(sink: TestSink, pair: str, samples: array) -> None:
             block = samples[first * CHANNELS : (first + BLOCK_FRAMES) * CHANNELS]
             stream.prepare_audio(block.tobytes(), source)
             await stream.commit_audio()
+            if first == 0:
+                await show_roles(client, sink)
             await stream.sleep_to_limit_buffer(1_500_000)
         await asyncio.sleep(1.0)
         await client.group.stop()
         await asyncio.sleep(1.0)
     finally:
         await server.close()
+
+
+async def show_roles(client: Any, sink: TestSink) -> None:
+    """What Music Assistant shows a player's other roles, and a volume command back from the sink.
+
+    The metadata, colour and controller state go out through aiosendspin's group roles, as the
+    provider sets them; the sink logs each. A volume the sink asks for goes to the server's
+    controller role, which applies it to the player it came from.
+    """
+    metadata = client.group.group_role("metadata")
+    colors = client.group.group_role("color")
+    controller = client.group.group_role("controller")
+    metadata.set_metadata(
+        Metadata(
+            title="Spring",
+            artist="Hearth",
+            album="Seasons",
+            year=2026,
+            track=3,
+            track_progress=0,
+            track_duration=3_000,
+            playback_speed=1_000,
+        )
+    )
+    colors.set_color(
+        Color(
+            background_dark=(20, 30, 60),
+            background_light=(250, 250, 245),
+            primary=(200, 40, 40),
+            accent=(40, 120, 200),
+            on_dark=(230, 230, 240),
+            on_light=(40, 40, 40),
+        )
+    )
+    controller.set_supported_commands([MediaCommand.PLAY, MediaCommand.PAUSE, MediaCommand.NEXT])
+    await sink.wait_for(r'state:.*metadata "Spring"', timeout=10.0)
+    await sink.wait_for(r"state:.*colours", timeout=10.0)
+    await sink.wait_for(r"state:.*controller volume", timeout=10.0)
+    await sink.command("volume 40")
+    await sink.wait_for(r"^\[\d+\] volume 40$", timeout=10.0)
 
 
 async def wait_until(check: Callable[[], Any], what: str, timeout: float = 30.0) -> Any:
