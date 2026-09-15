@@ -30,7 +30,9 @@
 // ESP-IDF v6.1 accepted three- and five-slot frames at 16 and 24 bits and
 // clocked them 6.7% fast (a second of frames drained in 937 ms), where the
 // other accepted 16-bit and 24-bit shapes and two to four 32-bit slots
-// drained in 999.
+// drained in 999. The driver's i2s_tdm_calculate_clock divides MCLK by BCLK
+// in integers and only warns when that does not divide: three 16-bit slots
+// under the default 256x MCLK need 5.33 and get 5, a 51,200 Hz frame.
 //
 // Two lines only come into it once channels exceeds one line's ceiling: they
 // share one bit clock and word select (see the streaming example's
