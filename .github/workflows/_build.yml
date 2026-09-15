@@ -2156,6 +2156,72 @@ jobs:
             exit 1
           fi
 
+      # The same capture shape at 16-bit slots: the eight a TDM line carries at
+      # that width, through ac3forge::interleave_16in16 (sdkconfig.ci-tdm16).
+      # The checks are the step above's on 16-bit integers, where a slot has no
+      # low byte to leave clear: padding written as zeros, carried slots
+      # nonzero, and the converted level against the host's.
+      - name: Run the capture sink at 16-bit TDM slots under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-tdm;sdkconfig.ci-tdm16"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/stream_player
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          : > qemu-capture16.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-capture16.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-capture16.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
+
+          if ! grep -q '^result=pass' qemu-capture16.txt; then
+            echo "::error title=ESP32-S3 16-bit capture run::did not report result=pass" >&2
+            grep -E 'result=|error|Guru Meditation|assert failed' qemu-capture16.txt >&2 || true
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 16-bit capture run" qemu-capture16.txt
+
+          value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-capture16.txt | tail -1; }
+          if ! grep -q '^sink: capture .* 16-bit x2 in 8 slots' qemu-capture16.txt; then
+            echo "::error title=ESP32-S3 16-bit capture run::the sink did not open eight 16-bit slots" >&2
+            exit 1
+          fi
+          pad=$(value 'capture\.padding_nonzero')
+          carried=$(value 'capture\.carried_nonzero')
+          echo "padding_nonzero=$pad carried_nonzero=$carried"
+          if [ "${pad:-1}" != "0" ] || [ "${carried:-0}" -eq 0 ]; then
+            echo "::error title=ESP32-S3 16-bit capture run::TDM slot layout is wrong (padding_nonzero=$pad carried_nonzero=$carried)" >&2
+            exit 1
+          fi
+          rms=$(value 'capture\.rms')
+          expected=106803
+          slack=$(( expected / 20 + 200 ))
+          echo "capture rms=$rms (host $expected, tolerance +/-$slack)"
+          if [ -z "$rms" ] || [ "$rms" -lt $(( expected - slack )) ] || [ "$rms" -gt $(( expected + slack )) ]; then
+            echo "::error title=ESP32-S3 16-bit capture run::converted audio is at $rms, host says $expected" >&2
+            exit 1
+          fi
+
       # A height layout, rendered from the stream's objects: the footprint
       # probe's eac3_atmos_height fixture (stream/height.ec3, the same bytes as
       # fixture.hpp's kEac3AtmosHeightStream) played onto 7.1.4 through the
@@ -2667,6 +2733,27 @@ jobs:
           set -eu
           . "$IDF_PATH/export.sh"
           ./tools/checks/run_esp32c3_probe.sh
+
+      # The ESP32-C6 probe project, built and not run. ESP-IDF v6.1's
+      # qemu-system-riscv32 emulates the esp32c3 machine and no other RISC-V
+      # part, so this part's figures come from a board
+      # (docs/platforms/bare-metal/esp32-c6.md); what CI can hold is that both
+      # of its network loads still compile and link for the target, the WiFi
+      # one against IDF's radio and lwIP. Same container and toolchain as the
+      # C3 step above, so it costs two builds and no setup.
+      - name: Build the ESP32-C6 probe, both network loads (no emulator for this part)
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd apps/baremetal/platform/esp32c6
+          for load in none wifi; do
+            dir="$RUNNER_TEMP/esp32c6-$load"
+            defaults="sdkconfig.defaults"
+            if [ "$load" = wifi ]; then defaults="sdkconfig.defaults;sdkconfig.wifi"; fi
+            idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
+              "-DSDKCONFIG_DEFAULTS=$defaults" build
+          done
 
   build-footprint:
     name: Minimum-footprint decoder (arm-none-eabi, QEMU)
