@@ -124,6 +124,10 @@ struct PlayerSide final : PlayerListener {
     int paired = 0;
     bool ended = false;
 
+    bool on_activation(const Key32& /*server_key*/, const m::Activate& /*activate*/, bool /*first*/) override {
+        return true;
+    }
+    void on_pairing_attempt(bool /*in_progress*/) override {}
     void on_stream_start(const m::PlayerStream& /*stream*/) override {
         events->update([&] { ++starts; });
     }

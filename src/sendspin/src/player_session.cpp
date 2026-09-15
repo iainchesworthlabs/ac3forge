@@ -374,6 +374,7 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
         return set_ok && roles_ok;
     };
     if (!admissible(unpaired)) {
+        end_pairing();
         if (psk == PskCategory::kSentinel && !unpaired && admissible(true)) {
             return goodbye(m::GoodbyeReason::kPairingRequired);
         }
@@ -385,10 +386,21 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
     end_pairing();
     rehandshake_due_.reset();
 
+    // The owner arbitrates between its servers (connection.md, Multiple servers).
+    const bool first = activations_ == 0;
+    if (!listener_->on_activation(server_key_, activate, first)) {
+        if (pairing) {
+            seal(pairing_messages::write_pair_abort(pairing_messages::AbortReason::kConcurrentAttempt, dialect_), out);
+            phase_ = Phase::kClosed;
+            out.close = true;
+            return out;
+        }
+        return goodbye(m::GoodbyeReason::kConcurrentAttempt);
+    }
+
     const bool had_player = player_active();
     activities_ = activate.activities;
     active_roles_ = std::move(roles);
-    const bool first = activations_ == 0;
     ++activations_;
     phase_ = Phase::kActive;
 
@@ -478,6 +490,7 @@ SessionOutput PlayerSession::pairing_step(pairing_flow::Step step) {
             rehandshake_due_ = clock_source_->now_us() + kHandshakeTimeout;
             break;
     }
+    report_attempt();
     return out;
 }
 
@@ -490,6 +503,34 @@ void PlayerSession::end_pairing() {
         listener_->on_pairing_ended(std::nullopt);
     }
     attempt_.reset();
+    report_attempt();
+}
+
+void PlayerSession::report_attempt() {
+    const bool in_progress = pairing_attempt_in_progress();
+    if (in_progress != reported_attempt_) {
+        reported_attempt_ = in_progress;
+        listener_->on_pairing_attempt(in_progress);
+    }
+}
+
+SessionOutput PlayerSession::displace() {
+    if (phase_ == Phase::kClosed) {
+        return {};
+    }
+    if (!pairing()) {
+        end_pairing();
+        return goodbye(m::GoodbyeReason::kAnotherServer);
+    }
+    SessionOutput out;
+    if (attempt_ && !attempt_->finished()) {
+        out = pairing_step(attempt_->abort(pairing_messages::AbortReason::kConcurrentAttempt));
+    } else {
+        seal(pairing_messages::write_pair_abort(pairing_messages::AbortReason::kConcurrentAttempt, dialect_), out);
+    }
+    phase_ = Phase::kClosed;
+    out.close = true;
+    return out;
 }
 
 bool PlayerSession::pairing() const {

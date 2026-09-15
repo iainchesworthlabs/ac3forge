@@ -158,6 +158,8 @@ class ClientPairing {
     [[nodiscard]] Step resume(std::int64_t now);
     // The operator cancelled the attempt on the device.
     [[nodiscard]] Step cancel();
+    // Ends the attempt with pair/abort `reason`, as a client refusing a concurrent attempt does.
+    [[nodiscard]] Step abort(pairing_messages::AbortReason reason);
     // A server/activate ended the attempt: nothing is sent, and nothing persists.
     void abandon();
     // The attempt timeout (pairing.md, Entering and leaving pairing: two minutes).
@@ -167,6 +169,9 @@ class ClientPairing {
 
     [[nodiscard]] bool finished() const { return state_ == State::kDone; }
     [[nodiscard]] bool held_back() const { return state_ == State::kPending; }
+    // In progress from its first message until it ends (pairing.md, Entering and leaving
+    // pairing): neither held back nor finished.
+    [[nodiscard]] bool in_progress() const { return state_ != State::kDone && state_ != State::kPending; }
     // The pair/abort reason sent or received, once the attempt has ended with one.
     [[nodiscard]] std::optional<pairing_messages::AbortReason> aborted() const { return aborted_; }
 
@@ -183,7 +188,6 @@ class ClientPairing {
     [[nodiscard]] bool may_start(std::int64_t now) const;
     [[nodiscard]] Step hold_back();
     [[nodiscard]] Step begin_attempt(std::int64_t now);
-    [[nodiscard]] Step abort(pairing_messages::AbortReason reason);
     [[nodiscard]] Step protocol_error();
     [[nodiscard]] std::vector<std::uint8_t> prs() const;
 

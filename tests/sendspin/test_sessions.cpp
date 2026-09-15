@@ -104,7 +104,16 @@ struct PlayerEvents final : PlayerListener {
     std::vector<std::optional<AbortReason>> ended;
     // Where a pairing's record goes, for the re-handshake that follows it.
     ClientKeys* keys = nullptr;
+    // What on_activation answers, and what it was asked.
+    bool admit = true;
+    std::vector<bool> firsts;
+    std::vector<bool> attempts;
 
+    bool on_activation(const Key32& /*server_key*/, const m::Activate& /*activate*/, bool first) override {
+        firsts.push_back(first);
+        return admit;
+    }
+    void on_pairing_attempt(bool in_progress) override { attempts.push_back(in_progress); }
     void on_stream_start(const m::PlayerStream& stream) override { starts.push_back(stream); }
     void on_stream_clear() override { ++clears; }
     void on_stream_end() override { ++ends; }
@@ -671,5 +680,57 @@ TEST_CASE("sessions: the server's own pairing timeout, and a record it cannot st
         REQUIRE(rig.run_until([&] { return rig.player_closed; }, 1'000'000));
         CHECK(rig.player_events.paired.empty());
         CHECK(rig.server.phase() == ServerSession::Phase::kClosed);
+    }
+}
+
+TEST_CASE("sessions: the owner rejects an activation, or another server displaces the connection",
+          "[sendspin][sessions]") {
+    PlayerConfig config = player_config(true);
+    config.pair_methods.push_back(kDynamicDigits);
+
+    SECTION("a rejected playback activation") {
+        Rig rig(std::move(config), 0, hs::sentinel_choice(), {});
+        rig.player_events.admit = false;
+        REQUIRE(rig.run_until([&] { return !rig.server_events.hellos.empty(); }, 1'000'000));
+        rig.send(rig.server.activate(playback_activation()));
+        REQUIRE(rig.run_until([&] { return !rig.server_events.goodbyes.empty(); }, 100'000));
+        CHECK(rig.server_events.goodbyes[0] == m::GoodbyeReason::kConcurrentAttempt);
+        CHECK(rig.player_events.firsts == std::vector<bool>{true});
+        CHECK(rig.player.phase() == PlayerSession::Phase::kClosed);
+    }
+    SECTION("a rejected pairing activation") {
+        Rig rig(std::move(config), 0, hs::sentinel_choice(), {});
+        rig.player_events.admit = false;
+        REQUIRE(rig.run_until([&] { return !rig.server_events.hellos.empty(); }, 1'000'000));
+        rig.send(rig.server.activate(pairing_activation(m::PairMethod::kDynamicCode, m::CodeFormat::kDigits)));
+        REQUIRE(rig.run_until([&] { return !rig.server_events.ended.empty(); }, 100'000));
+        CHECK(rig.server_events.ended[0] == std::optional<AbortReason>(AbortReason::kConcurrentAttempt));
+        CHECK(rig.player_events.codes.empty());
+        CHECK(rig.server.phase() == ServerSession::Phase::kClosed);
+    }
+    SECTION("displaced while playing") {
+        Rig rig(std::move(config), 0, hs::sentinel_choice(), {});
+        REQUIRE(rig.run_until([&] { return !rig.server_events.hellos.empty(); }, 1'000'000));
+        rig.send(rig.server.activate(playback_activation()));
+        REQUIRE(rig.run_until([&] { return !rig.server_events.states.empty(); }, 1'000'000));
+        rig.send(rig.server.activate(playback_activation()));
+        REQUIRE(rig.run_until([&] { return rig.player_events.firsts.size() == 2; }, 100'000));
+        CHECK(rig.player_events.firsts == std::vector<bool>{true, false});
+        rig.from_player(rig.player.displace());
+        REQUIRE(rig.run_until([&] { return !rig.server_events.goodbyes.empty(); }, 100'000));
+        CHECK(rig.server_events.goodbyes[0] == m::GoodbyeReason::kAnotherServer);
+    }
+    SECTION("displaced during a pairing attempt") {
+        Rig rig(std::move(config), 0, hs::sentinel_choice(), {});
+        REQUIRE(rig.run_until([&] { return !rig.server_events.hellos.empty(); }, 1'000'000));
+        rig.send(rig.server.activate(pairing_activation(m::PairMethod::kDynamicCode, m::CodeFormat::kDigits)));
+        REQUIRE(rig.run_until([&] { return rig.server.pairing_wants_code(); }, 1'000'000));
+        CHECK(rig.player_events.attempts == std::vector<bool>{true});
+        CHECK(rig.player.pairing_attempt_in_progress());
+        rig.from_player(rig.player.displace());
+        REQUIRE(rig.run_until([&] { return !rig.server_events.ended.empty(); }, 100'000));
+        CHECK(rig.server_events.ended[0] == std::optional<AbortReason>(AbortReason::kConcurrentAttempt));
+        CHECK(rig.player_events.attempts == std::vector<bool>{true, false});
+        CHECK(rig.player_events.ended == std::vector<std::optional<AbortReason>>{AbortReason::kConcurrentAttempt});
     }
 }

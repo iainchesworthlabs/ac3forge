@@ -5,8 +5,8 @@
 # (planning/hearth-sendspin-extension.md).
 #
 # Two layers. The core needs nothing: JSON, base64url, the transport-mode framing, the
-# audio chunk formats, the handshake-phase messages, pairing tokens, and the transport
-# seam with its in-memory pair. The rest takes its dependencies from vcpkg's "hearth"
+# audio chunk formats, the handshake-phase and core messages, pairing tokens, admission
+# between servers, and the transport seam with its in-memory pair. The rest takes its dependencies from vcpkg's "hearth"
 # feature on a computer: mbedTLS for the crypto seam over the PSA Crypto API and the Noise,
 # PSK, CPace and pairing code above it, and cpp-httplib for the WebSocket transport.
 # AC3FORGE_SENDSPIN_CORE_ONLY builds the core alone, which is what fuzz/run.sh does so the
@@ -40,6 +40,7 @@ add_library(ac3::sendspin ALIAS ac3sendspin)
 
 target_sources(ac3sendspin
     PRIVATE
+        src/arbiter.cpp
         src/base64.cpp
         src/base64url.cpp
         src/chunks.cpp

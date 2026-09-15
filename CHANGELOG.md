@@ -239,6 +239,13 @@ and release packaging.
   that stops reading once a bounded queue fills. Over a loopback WebSocket a server pairs a
   player with its pairing PSK, activates it under the new long-term PSK and streams PCM that
   the player receives within 2 ms of each chunk's time.
+- **Admission between Sendspin servers**: `Arbiter` decides which server's connection a client
+  holds, as the specification ranks them (playback above pairing above nothing, equal or
+  higher displacing the holder), with its three exceptions: a pairing attempt in progress is
+  not displaced, the last-playback server wins when neither declares anything, and one pairing
+  connection is held beside a playback holder. The player session asks its owner about each
+  admissible activation, refuses a rejected one with `concurrent_attempt`, and leaves with
+  `another_server`, or `pair/abort concurrent_attempt` while pairing, when displaced.
 
 **Containers and encoding**
 

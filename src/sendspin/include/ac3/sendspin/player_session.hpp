@@ -36,8 +36,12 @@
 // sends only pairing messages: no clock exchanges and no client/state, which aiosendspin 9.1.1
 // requires (C6, C25).
 //
-// Not here yet: arbitration between servers (the owner of several sessions decides) and the
-// roles other than player@v1.
+// Admission between servers is the owner's (connection.md, Multiple servers; Arbiter in
+// arbiter.hpp decides it): the session asks its listener about every admissible activation
+// before acting on it, refuses one the owner rejects, and leaves when displace() says another
+// server has taken the client.
+//
+// Not here yet: the roles other than player@v1.
 
 namespace ac3::sendspin {
 
@@ -69,6 +73,17 @@ class PlayerListener {
     PlayerListener& operator=(const PlayerListener&) = delete;
     PlayerListener(PlayerListener&&) = delete;
     PlayerListener& operator=(PlayerListener&&) = delete;
+
+    // An admissible server/activate, before the session acts on it: the connection's first,
+    // which ends its provisional state, or a later one. Returns whether to admit it
+    // (connection.md, Multiple servers); an owner with one connection admits them all. The
+    // session answers a rejected one with client/goodbye concurrent_attempt, or pair/abort
+    // concurrent_attempt for a pairing activation, and closes.
+    [[nodiscard]] virtual bool on_activation(const crypto::Key32& server_key, const messages::Activate& activate,
+                                             bool first) = 0;
+    // A pairing attempt began or ended on this connection; the owner does not let another
+    // server displace one in progress.
+    virtual void on_pairing_attempt(bool in_progress) = 0;
 
     // player@v1's stream began, or changed format in place.
     virtual void on_stream_start(const messages::PlayerStream& stream) = 0;
@@ -134,6 +149,9 @@ class PlayerSession {
     [[nodiscard]] SessionOutput resume_pairing();
     // The operator cancelled the attempt on the device.
     [[nodiscard]] SessionOutput cancel_pairing();
+    // Another server's connection has taken the client: client/goodbye another_server, or
+    // pair/abort concurrent_attempt while pairing, then close.
+    [[nodiscard]] SessionOutput displace();
 
     enum class Phase : std::uint8_t {
         kHandshake,
@@ -160,6 +178,7 @@ class PlayerSession {
     // A pairing activity is declared: from its server/activate until the next, or until the
     // re-handshake after a pairing.
     [[nodiscard]] bool pairing() const;
+    [[nodiscard]] bool pairing_attempt_in_progress() const { return attempt_ && attempt_->in_progress(); }
 
    private:
     class PairingEvents;
@@ -173,6 +192,8 @@ class PlayerSession {
     [[nodiscard]] SessionOutput on_rehandshake(std::string_view text);
     [[nodiscard]] SessionOutput pairing_step(pairing_flow::Step step);
     void end_pairing();
+    // Tells the listener when pairing_attempt_in_progress() has changed.
+    void report_attempt();
     void send_state(SessionOutput& out);
     void send_clock(SessionOutput& out);
     [[nodiscard]] bool player_active() const;
@@ -203,6 +224,7 @@ class PlayerSession {
     std::uint32_t pairing_index_ = 0;
     std::unique_ptr<PairingEvents> pairing_events_;
     std::unique_ptr<pairing_flow::ClientPairing> attempt_;
+    bool reported_attempt_ = false;
     // Set once paired, until the server's re-handshake arrives or the wait times out.
     std::optional<std::int64_t> rehandshake_due_;
 
