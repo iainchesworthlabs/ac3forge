@@ -79,6 +79,11 @@ are the same on RISC-V as on the x86 host and the Cortex-M3 leg, and the runner 
 one pinned set (`tests/golden/fixed-probe-pcm-hashes.json`). `--scalar=float` builds the same part
 with the S3's tier, which is what the two arithmetics are compared with.
 
+Any other project built for this target against the component gets the fixed-point tier too:
+when a project leaves `AC3FORGE_DECODE_SCALAR` unset, the component sets it from the part, and a
+part with no FPU gets `fixed`
+([ESP32-S3 → The ESP-IDF component](esp32-s3.md#the-esp-idf-component)).
+
 ## Where to go next
 
 - [ESP32-S3](esp32-s3.md) — the primary, hardware-verified target this component was built for.

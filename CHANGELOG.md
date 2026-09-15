@@ -360,6 +360,13 @@ and release packaging.
   handler task has 4,096 bytes by default; parsing the layout there peaked at 4,596
   under QEMU, past the canary. `Control::start` now takes the stack size (6,144 bytes by
   default).
+- **The ESP-IDF component decoded in `float` on parts with no FPU.** Its manifest says the
+  decode arithmetic follows the part, but only the probe projects chose `fixed`:
+  `src/forge/minimal.cmake` builds `float` when `AC3FORGE_DECODE_SCALAR` is unset, so any
+  other project for an ESP32-C3 decoded in software floating point, which on an ESP32-C6
+  board is up to 3.1 times slower than the fixed-point tier. The component now sets the
+  option from ESP-IDF's `SOC_CPU_HAS_FPU` capability when the project has not: `fixed`
+  without an FPU, `float` with one. A value set above `project()` or passed with `-D` stays.
 
 **Codec correctness**
 

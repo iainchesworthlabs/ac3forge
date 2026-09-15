@@ -513,7 +513,9 @@ encoder's - and with it the last of the decode path is in `decode_scalar_t`.
 (`src/forge/src/core/fixed32.hpp`): a signed 32-bit integer read as Q7.24, products through 64
 bits and rounded once, sums wrapping, conversions saturating. It is the tier for an ESP32-C3 or
 a Cortex-M3, where even `float` is a compiled subroutine, and the minimum-footprint profile
-honours it (every other value of the option is `float` there). What the tier does, in the order
+honours it (every other value of the option is `float` there). The ESP-IDF component
+(`esp-idf/ac3forge/`) sets it for a part with no FPU when a project has not set the option
+itself, and `float` for a part with one. What the tier does, in the order
 the decode runs: dequantisation, dither, coordinates and decoupling in `Fixed32`; a coupling
 or spectral extension coordinate kept as its mantissa and its power of two, so the product with
 a coefficient is a shift; the §7.9.4 inverse pair as its own kernel
