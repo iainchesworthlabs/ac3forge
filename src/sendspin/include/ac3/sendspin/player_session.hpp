@@ -276,7 +276,13 @@ class PlayerSession {
     void end_pairing();
     // Tells the listener when pairing_attempt_in_progress() has changed.
     void report_attempt();
+    // The availability client/state reports now.
+    [[nodiscard]] bool available_now() const;
     void send_state(SessionOutput& out);
+    // Hands the listener one player@v1 chunk, unless it is a replay.
+    void deliver_audio(std::int64_t timestamp_us, std::span<const std::uint8_t> frame);
+    // Forgets the held chunks and the last timestamp: the stream began again, was cleared or ended.
+    void restart_audio();
     void send_clock(SessionOutput& out);
     [[nodiscard]] bool player_active() const;
     [[nodiscard]] bool ac3forge_active() const;
@@ -323,6 +329,11 @@ class PlayerSession {
     bool external_source_ = false;
     messages::PlayerState state_;
     std::optional<messages::PlayerStream> stream_;
+    // player@v1's chunks from an aiosendspin 9.1.1 server that came before the clock's first
+    // exchange, held for it, and the timestamp of the last chunk the listener had (C13).
+    std::vector<std::pair<std::int64_t, std::vector<std::uint8_t>>> held_audio_;
+    std::uint64_t held_audio_bytes_ = 0;
+    std::optional<std::int64_t> last_audio_timestamp_;
     ac3forge::State ac3forge_state_;
     std::optional<ac3forge::StreamStart> burst_stream_;
 

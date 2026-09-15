@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -10,15 +11,22 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "ac3/sendspin/ac3forge_player.hpp"
+#include "ac3/sendspin/base64url.hpp"
+#include "ac3/sendspin/channel.hpp"
 #include "ac3/sendspin/chunks.hpp"
+#include "ac3/sendspin/clock_sync.hpp"
 #include "ac3/sendspin/crypto.hpp"
+#include "ac3/sendspin/dialect.hpp"
+#include "ac3/sendspin/frames.hpp"
 #include "ac3/sendspin/handshake.hpp"
 #include "ac3/sendspin/handshake_session.hpp"
+#include "ac3/sendspin/json.hpp"
 #include "ac3/sendspin/messages.hpp"
 #include "ac3/sendspin/noise.hpp"
 #include "ac3/sendspin/pairing_flow.hpp"
@@ -1236,4 +1244,191 @@ TEST_CASE("sessions: a source streams only after the server's start", "[sendspin
     REQUIRE(rig.run_until([&] { return rig.server_events.source_ends == 1; }, 100'000));
     CHECK_FALSE(rig.player.source_streaming());
     CHECK(rig.player.send_source_audio(rig.now, std::vector<std::uint8_t>{5}).frames.empty());
+}
+
+namespace {
+
+// A server that speaks as aiosendspin 9.1.1 to a player session: it writes Noise message 1 without
+// a category, so the player takes the connection for 9.1.1's dialect, then seals whatever a test
+// sends and opens what the player sends back.
+struct LegacyServer {
+    std::int64_t now = 1'000'000;
+    TestClock clock{now, 0};
+    ClientKeys client_keys;
+    PlayerEvents events;
+    flow::ClientPairingState pairing_state;
+    PlayerSession player;
+    std::optional<ac3::sendspin::Channel> channel;
+    // The player's JSON messages in order, and how many of its client/time messages have had a reply.
+    std::vector<std::string> sent;
+    std::size_t answered = 0;
+
+    LegacyServer() : player(player_config(true), client_keys, pairing_state, events, clock) {
+        events.keys = &client_keys;
+        const SessionOutput opened = player.open();
+        REQUIRE(opened.frames.size() == 1);
+        const std::string client_init(opened.frames[0].text());
+        const std::expected<hs::ClientInit, hs::InitError> init = hs::parse_client_init(client_init);
+        REQUIRE(init.has_value());
+        const ac3::sendspin::noise::KeyPair identity = generated();
+        const std::string server_init = hs::write_server_init({.server_key = identity.public_key()});
+        std::vector<std::uint8_t> prologue(client_init.begin(), client_init.end());
+        prologue.insert(prologue.end(), server_init.begin(), server_init.end());
+        ac3::sendspin::noise::Handshake noise(init->suite, ac3::sendspin::noise::Role::kInitiator, identity,
+                                              init->client_key, prologue);
+        // aiosendspin 9.1.1's noise/driver.py names the PSK and no category.
+        const std::string named =
+            R"({"psk_id":")" + ac3::sendspin::base64url::encode(hs::sentinel_psk_id()) + R"("})";
+        std::vector<std::uint8_t> message_1;
+        REQUIRE(noise.write_message_1(std::vector<std::uint8_t>(named.begin(), named.end()), message_1));
+        CHECK(player.receive(text_frame(server_init)).frames.empty());
+        const SessionOutput reply = player.receive(text_frame(hs::write_noise_handshake(message_1)));
+        REQUIRE_FALSE(reply.frames.empty());
+        const std::optional<std::vector<std::uint8_t>> message_2 = hs::parse_noise_handshake(reply.frames[0].text());
+        REQUIRE(message_2.has_value());
+        std::vector<std::uint8_t> received;
+        REQUIRE(noise.read_message_2(hs::sentinel_psk(), *message_2, received));
+        std::optional<ac3::sendspin::noise::Handshake::Transport> keys = noise.split();
+        REQUIRE(keys.has_value());
+        channel.emplace(std::move(*keys), ac3::sendspin::Dialect::kAiosendspin911, 1 << 20);
+        take(reply, 1);
+        send_json(m::write_server_hello({.name = "Music Assistant", .languages = {}}));
+        send_json(m::write_activate({.activities = {m::Activity::kPlayback},
+                                     .active_roles = std::vector<std::string>{"player@v1"},
+                                     .pairing = std::nullopt},
+                                    ac3::sendspin::Dialect::kAiosendspin911));
+    }
+
+    static Frame text_frame(std::string_view text) {
+        return Frame{.kind = ac3::sendspin::transport::FrameKind::kText,
+                     .bytes = std::vector<std::uint8_t>(text.begin(), text.end())};
+    }
+
+    void take(const SessionOutput& out, std::size_t first = 0) {
+        for (std::size_t i = first; i < out.frames.size(); ++i) {
+            const ac3::sendspin::Channel::Opened message = channel->open(out.frames[i].bytes);
+            REQUIRE(message.error == ac3::sendspin::Channel::OpenError::kNone);
+            if (!message.message.empty() && message.message.front() == ac3::sendspin::message_id::kJson) {
+                sent.emplace_back(message.message.begin() + 1, message.message.end());
+            }
+        }
+    }
+
+    void send(std::span<const std::uint8_t> message) {
+        std::vector<std::vector<std::uint8_t>> sealed;
+        REQUIRE(channel->seal(message, sealed));
+        for (std::vector<std::uint8_t>& ciphertext : sealed) {
+            take(player.receive(Frame{.kind = ac3::sendspin::transport::FrameKind::kBinary, .bytes = std::move(ciphertext)}));
+        }
+    }
+
+    void send_json(std::string_view json_text) {
+        std::vector<std::uint8_t> message{ac3::sendspin::message_id::kJson};
+        message.insert(message.end(), json_text.begin(), json_text.end());
+        send(message);
+    }
+
+    // One player@v1 chunk in 9.1.1's form, [4][int64 timestamp][frame], its four frame bytes `fill`.
+    void send_audio(std::int64_t timestamp_us, std::uint8_t fill) {
+        const std::size_t header = ac3::sendspin::audio_chunk_header_bytes(ac3::sendspin::Dialect::kAiosendspin911);
+        std::vector<std::uint8_t> message(header + 4, fill);
+        REQUIRE(ac3::sendspin::write_player_chunk_header(message, timestamp_us, 0, ac3::sendspin::Dialect::kAiosendspin911));
+        send(message);
+    }
+
+    // The payload texts of the player's messages of `type`, in order.
+    [[nodiscard]] std::vector<std::string> of_type(std::string_view type) const {
+        std::vector<std::string> found;
+        const std::string quoted = "\"" + std::string(type) + "\"";
+        for (const std::string& text : sent) {
+            if (text.find(quoted) != std::string::npos) {
+                found.push_back(text);
+            }
+        }
+        return found;
+    }
+
+    // Answers each client/time not yet answered, and those the answers bring, up to `rounds` times.
+    void answer_time(int rounds) {
+        for (int round = 0; round < rounds; ++round) {
+            const std::vector<std::string> requests = of_type("client/time");
+            if (requests.size() == answered) {
+                return;
+            }
+            std::vector<std::int64_t> pending;
+            for (std::size_t i = answered; i < requests.size(); ++i) {
+                std::vector<ac3::sendspin::json::Token> tokens;
+                ac3::sendspin::json::Document document;
+                REQUIRE(document.parse(requests[i], tokens, 4096));
+                const std::optional<m::Envelope> envelope = m::read_envelope(document);
+                REQUIRE(envelope.has_value());
+                const std::expected<m::ClientTime, m::MessageError> time = m::read_client_time(envelope->payload);
+                REQUIRE(time.has_value());
+                pending.push_back(time->client_transmitted);
+            }
+            answered = requests.size();
+            for (const std::int64_t client_transmitted : pending) {
+                now += 500;
+                send_json(m::write_server_time(
+                    {.client_transmitted = client_transmitted, .server_received = now, .server_transmitted = now}));
+            }
+        }
+    }
+};
+
+}  // namespace
+
+TEST_CASE("sessions: to an aiosendspin 9.1.1 server a player is available from its activation",
+          "[sendspin][sessions]") {
+    // aiosendspin 9.1.1 takes available: false for an external source, and its own client reports
+    // available: true on activation (planning/hearth-sendspin-extension.md, C14).
+    LegacyServer server;
+    CHECK(server.player.dialect() == ac3::sendspin::Dialect::kAiosendspin911);
+    const std::vector<std::string> states = server.of_type("client/state");
+    REQUIRE(states.size() == 1);
+    std::vector<ac3::sendspin::json::Token> tokens;
+    ac3::sendspin::json::Document document;
+    REQUIRE(document.parse(states[0], tokens, 4096));
+    const std::optional<m::Envelope> envelope = m::read_envelope(document);
+    REQUIRE(envelope.has_value());
+    const std::expected<m::ClientState, m::MessageError> state =
+        m::read_client_state(envelope->payload, ac3::sendspin::Dialect::kAiosendspin911);
+    REQUIRE(state.has_value());
+    CHECK(state->available);
+    CHECK_FALSE(server.player.clock_converged());
+}
+
+TEST_CASE("sessions: from an aiosendspin 9.1.1 server a player holds audio for its clock and drops replays",
+          "[sendspin][sessions]") {
+    // aiosendspin 9.1.1 starts a stream with the activation, and replays it from its start on the
+    // activation's first client/state (planning/hearth-sendspin-extension.md, C13).
+    LegacyServer server;
+    server.send_json(m::write_stream_start(
+        {.server_transmitted = 0, .player = m::PlayerStream{.format = kPcm, .codec_header = {}}, .ac3forge = std::nullopt}));
+    REQUIRE(server.events.starts.size() == 1);
+
+    // Before the clock's first update, chunks wait for it.
+    server.send_audio(3'000'000, 1);
+    server.send_audio(3'010'000, 2);
+    CHECK(server.events.audio.empty());
+    server.answer_time(2 * static_cast<int>(ac3::sendspin::ClockSync::kBurstLength));
+    REQUIRE(server.events.audio.size() == 2);
+    CHECK(server.events.audio[0].frame[0] == 1);
+    CHECK(server.events.audio[1].frame[0] == 2);
+
+    // A chunk that does not start after the last one is a replay.
+    server.send_audio(3'020'000, 3);
+    server.send_audio(3'000'000, 1);
+    server.send_audio(3'020'000, 3);
+    server.send_audio(3'030'000, 4);
+    REQUIRE(server.events.audio.size() == 4);
+    CHECK(server.events.audio[2].frame[0] == 3);
+    CHECK(server.events.audio[3].frame[0] == 4);
+
+    // After stream/clear the stream may start earlier again.
+    server.send_json(m::write_stream_clear({.server_transmitted = 0, .roles = std::vector<std::string>{"player"}}));
+    CHECK(server.events.clears == 1);
+    server.send_audio(3'015'000, 5);
+    REQUIRE(server.events.audio.size() == 5);
+    CHECK(server.events.audio[4].frame[0] == 5);
 }

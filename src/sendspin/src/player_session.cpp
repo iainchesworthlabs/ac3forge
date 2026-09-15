@@ -203,15 +203,25 @@ SessionOutput PlayerSession::on_message(std::span<const std::uint8_t> message, s
     if (id == message_id::kPlayerAudio) {
         // Audio outside an active stream is the server's error; an unavailable player
         // discards it without closing (roles/player/v1.md, Audio Chunks).
-        if (!player_active() || !stream_ || external_source_ || clock_.updates() == 0) {
+        if (!player_active() || !stream_ || external_source_) {
             return {};
         }
         const auto chunk = parse_player_chunk(message, dialect_);
         if (!chunk) {
             return {};
         }
-        const std::int64_t delay = static_cast<std::int64_t>(state_.output_delay_ms.value_or(0)) * 1000;
-        listener_->on_audio(chunk->data, clock_.to_local(chunk->timestamp_us) - delay);
+        if (clock_.updates() == 0) {
+            // aiosendspin 9.1.1 starts a stream with the activation, so its first chunks can come
+            // before the clock's first exchange; they wait for it, within the buffer's capacity.
+            if (dialect_ == Dialect::kAiosendspin911 &&
+                held_audio_bytes_ + chunk->data.size() <= config_.player_support.buffer_capacity) {
+                held_audio_.emplace_back(chunk->timestamp_us,
+                                         std::vector<std::uint8_t>(chunk->data.begin(), chunk->data.end()));
+                held_audio_bytes_ += chunk->data.size();
+            }
+            return {};
+        }
+        deliver_audio(chunk->timestamp_us, chunk->data);
         return {};
     }
     if (id == message_id::kAc3forgeBurst) {
@@ -358,6 +368,14 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
         if (const auto time = m::read_server_time(payload)) {
             clock_.receive(*time, arrival);
             send_clock(out);
+            if (clock_.updates() > 0 && !held_audio_.empty()) {
+                std::vector<std::pair<std::int64_t, std::vector<std::uint8_t>>> held;
+                held.swap(held_audio_);
+                held_audio_bytes_ = 0;
+                for (const auto& [timestamp_us, frame] : held) {
+                    deliver_audio(timestamp_us, frame);
+                }
+            }
         }
         return out;
     }
@@ -370,7 +388,10 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
             // aiosendspin 9.1.1 changes a running stream's format expecting the player to
             // drop what it holds (C17).
             if (stream_ && dialect_ == Dialect::kAiosendspin911 && !(stream_->format == start->player->format)) {
+                restart_audio();
                 listener_->on_stream_clear();
+            } else if (!stream_) {
+                restart_audio();
             }
             stream_ = start->player;
             listener_->on_stream_start(*stream_);
@@ -402,6 +423,7 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
     if (type == "stream/clear") {
         const auto clear = m::read_stream_clear(payload);
         if (clear && stream_ && names(clear->roles, "player")) {
+            restart_audio();
             listener_->on_stream_clear();
         }
         if (clear && burst_stream_ && names(clear->roles, ac3forge::kObjectKey)) {
@@ -416,6 +438,7 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
         const auto end = m::read_stream_end(payload);
         if (end && stream_ && names(end->roles, "player")) {
             stream_.reset();
+            restart_audio();
             listener_->on_stream_end();
         }
         if (end && burst_stream_ && names(end->roles, ac3forge::kObjectKey)) {
@@ -587,6 +610,7 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
 
     if (had_player && !player_active() && stream_) {
         stream_.reset();
+        restart_audio();
         listener_->on_stream_end();
     }
     if (had_ac3forge && !ac3forge_active() && burst_stream_) {
@@ -766,9 +790,33 @@ bool PlayerSession::lists(const ac3forge::StreamStart& stream) const {
                support.sample_rates.end();
 }
 
+void PlayerSession::deliver_audio(std::int64_t timestamp_us, std::span<const std::uint8_t> frame) {
+    // A chunk that does not start after the last one is a replay. aiosendspin 9.1.1 holds back
+    // what it sends before an activation's first client/state, then sends it and replays the
+    // stream from its start as well (C13); no conformant server sends one.
+    if (last_audio_timestamp_ && timestamp_us <= *last_audio_timestamp_) {
+        return;
+    }
+    last_audio_timestamp_ = timestamp_us;
+    const std::int64_t delay = static_cast<std::int64_t>(state_.output_delay_ms.value_or(0)) * 1000;
+    listener_->on_audio(frame, clock_.to_local(timestamp_us) - delay);
+}
+
+void PlayerSession::restart_audio() {
+    held_audio_.clear();
+    held_audio_bytes_ = 0;
+    last_audio_timestamp_.reset();
+}
+
+bool PlayerSession::available_now() const {
+    // aiosendspin 9.1.1 takes available: false for an external source, and its own client reports
+    // available: true from activation on (C14).
+    return (clock_.converged() || dialect_ == Dialect::kAiosendspin911) && !external_source_;
+}
+
 void PlayerSession::send_state(SessionOutput& out) {
     m::ClientState state;
-    state.available = clock_.converged() && !external_source_;
+    state.available = available_now();
     if (player_active()) {
         state.player = state_;
     }
@@ -835,7 +883,7 @@ SessionOutput PlayerSession::tick() {
             }
             SessionOutput out;
             send_clock(out);
-            const bool available = clock_.converged() && !external_source_;
+            const bool available = available_now();
             if (sent_state_ && available != reported_available_) {
                 send_state(out);
             }

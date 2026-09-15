@@ -344,6 +344,22 @@ and release packaging.
   the programme's timeline puts it. The released client refuses to offer Opus, so the player adds
   it to the SDK's decodable codecs for that run (`planning/hearth-sendspin-extension.md`, decision
   5). `hearth-validate` runs the script.
+- **Hearth's player against Music Assistant's server**, found with the scripts above: to an
+  aiosendspin 9.1.1 server a player reports `available: true` from its activation, as 9.1.1's own
+  client does, because the server starts from `available: true` and takes `available: false` for an
+  external source, which would move the player out of its group whenever it connected. From such a
+  server the player also holds `player@v1` chunks that arrive before its first clock update, within
+  its `buffer_capacity`, and drops a chunk whose timestamp is not later than the last one it took:
+  Music Assistant starts a stream with the activation, holds back what it sends before the player's
+  first `client/state`, and then sends it and replays the stream from its start as well
+  (`planning/hearth-sendspin-extension.md`, C13 and C14).
+- **Music Assistant's server scripted on aiosendspin 9.1.1** (`tools/sendspin/aiosendspin_server.py`),
+  a rehearsal of A4's exit with Music Assistant: it starts `ac3hearth-testsink`, dials it, pairs by
+  the sink's `SP:0` token or by the dynamic code the sink shows, and plays it three seconds of two
+  tones in each codec, driving aiosendspin's `SendspinServer` as Music Assistant's provider does.
+  The sink's WAV file is the programme sample for sample in PCM and FLAC and within 20 dB in Opus,
+  less the chunks the server sends only in its replay and the FLAC block it keeps when a stream
+  stops. `hearth-validate` runs it for both pairing methods.
 - **Hearth's third-party notices** (`apps/hearth/notices/`): `NOTICES.txt` for cpp-httplib,
   Mbed TLS, mdns, libFLAC, libogg, Opus and Sendspin's time filter, generated at configure time
   with the versions and licence texts vcpkg installs with each port, ready for Hearth's About page
