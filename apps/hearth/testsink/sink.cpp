@@ -17,8 +17,12 @@
 #include <variant>
 #include <vector>
 
+#include "ac3/render/layout.hpp"
+#include "ac3/render/render.hpp"
+#include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/arbiter.hpp"
 #include "ac3/sendspin/base64url.hpp"
+#include "ac3/sendspin/chunks.hpp"
 #include "ac3/sendspin/discovery.hpp"
 #include "ac3/sendspin/handshake.hpp"
 #include "ac3/sendspin/mdns.hpp"
@@ -30,6 +34,7 @@
 #include "ac3/sendspin/session_driver.hpp"
 #include "ac3/sendspin/transport.hpp"
 #include "ac3/sendspin/websocket.hpp"
+#include "burst_output.hpp"
 #include "store.hpp"
 #include "wav_output.hpp"
 
@@ -37,6 +42,7 @@ namespace ac3::hearth::testsink {
 
 namespace {
 
+namespace ac = sendspin::ac3forge;
 namespace m = sendspin::messages;
 namespace flow = sendspin::pairing_flow;
 namespace pm = sendspin::pairing_messages;
@@ -103,7 +109,12 @@ class Connection final : public sendspin::PlayerListener, public std::enable_sha
     // Constructed with the session lock held: the session takes a number from the pairing state
     // its sessions share.
     Connection(Sink& sink, Arbiter::Id id, sendspin::PlayerConfig config)
-        : sink_(&sink), id_(id), state_(config.player_state), output_(sink.options_.output_directory, "stream-" + std::to_string(id)) {
+        : sink_(&sink),
+          id_(id),
+          state_(config.player_state),
+          ac3forge_state_(config.ac3forge_state),
+          output_(sink.options_.output_directory, "stream-" + std::to_string(id)),
+          bursts_(sink.options_.output_directory, "bursts-" + std::to_string(id), sink.layout_) {
         session_.emplace(std::move(config), *sink.store_, sink.pairing_state_, *this, sink.clock_);
     }
 
@@ -142,6 +153,7 @@ class Connection final : public sendspin::PlayerListener, public std::enable_sha
     [[nodiscard]] sendspin::SessionDriver& driver() { return *driver_; }
     [[nodiscard]] sendspin::PlayerSession& session() { return *session_; }
     [[nodiscard]] const WavOutput& output() const { return output_; }
+    [[nodiscard]] const BurstOutput& bursts() const { return bursts_; }
 
     // --- PlayerListener, called with the session lock held -------------------------------
 
@@ -233,14 +245,87 @@ class Connection final : public sendspin::PlayerListener, public std::enable_sha
         log("pairing " + std::string(abort_text(reason)));
     }
 
+    void on_burst_stream_start(const ac::StreamStart& stream) override {
+        const bool writing = bursts_.start(stream);
+        reported_decoder_.reset();
+        log("burst stream " + std::string(stream.data_type == ac::DataType::kAc3 ? "AC-3 " : "E-AC-3 ") +
+            std::to_string(stream.sample_rate) + " Hz to " + sink_->options_.layout +
+            (writing ? (bursts_.file().empty() ? std::string{} : " in " + bursts_.file().string())
+                     : std::string(" (not written)")));
+        post_ac3forge_state();
+    }
+    void on_burst_stream_clear() override {
+        bursts_.clear();
+        log("burst stream cleared");
+    }
+    void on_burst_stream_end() override {
+        bursts_.end();
+        log("burst stream ended after " + std::to_string(bursts_.bursts()) + " bursts");
+        post_ac3forge_state();
+    }
+    void on_burst(const sendspin::BurstChunk& chunk, std::int64_t local_time) override {
+        bursts_.write(chunk, local_time);
+        if (bursts_.decoder() != reported_decoder_) {
+            reported_decoder_ = bursts_.decoder();
+            post_ac3forge_state();
+        }
+    }
+    void on_invalid_burst() override { ++ac3forge_state_.counters.invalid_chunks; }
+
+    void on_ac3forge_command(const ac::CommandMessage& command) override {
+        switch (command.command) {
+            case ac::Command::kVolume:
+                ac3forge_state_.volume = command.volume;
+                log("volume " + std::to_string(command.volume));
+                break;
+            case ac::Command::kMute:
+                ac3forge_state_.muted = command.mute;
+                log(command.mute ? "muted" : "unmuted");
+                break;
+            case ac::Command::kSetOutputDelay:
+                ac3forge_state_.output_delay_ms = command.output_delay_ms;
+                log("output delay " + std::to_string(command.output_delay_ms) + " ms");
+                break;
+            case ac::Command::kSettings:
+            case ac::Command::kIdentify:
+                // Not listed, so not sent.
+                break;
+        }
+        post_ac3forge_state();
+    }
+
+    void on_settings_refused(const ac::SettingsError& error) override {
+        log("settings " + std::to_string(error.revision) + " refused: " + error.why);
+    }
+
    private:
     void log(std::string_view text) { sink_->log("[" + std::to_string(id_) + "] " + std::string(text)); }
+
+    // Reports the extension role's state from the sink's thread, outside the callback that
+    // changed it, with what the burst output has found.
+    void post_ac3forge_state() {
+        const std::weak_ptr<Connection> self = weak_from_this();
+        sink_->post([self] {
+            if (const std::shared_ptr<Connection> connection = self.lock()) {
+                connection->driver().call([&] {
+                    ac::State state = connection->ac3forge_state_;
+                    state.decoder = connection->bursts_.decoder();
+                    state.counters.bursts_played = connection->bursts_.bursts();
+                    return connection->session_->set_ac3forge_state(state);
+                });
+            }
+        });
+    }
 
     Sink* sink_;
     Arbiter::Id id_;
     std::string peer_;
     m::PlayerState state_;
+    ac::State ac3forge_state_;
     WavOutput output_;
+    BurstOutput bursts_;
+    // The decoder report last sent.
+    std::optional<ac::DecoderReport> reported_decoder_;
     std::optional<sendspin::PlayerSession> session_;
     std::unique_ptr<sendspin::SessionDriver> driver_;
 };
@@ -254,6 +339,10 @@ std::expected<std::unique_ptr<Sink>, std::string> Sink::start(SinkOptions option
          !std::all_of(options.static_code.begin(), options.static_code.end(), [](char c) { return c >= '0' && c <= '9'; }))) {
         return std::unexpected(std::string("a static pairing code is eight digits"));
     }
+    const std::optional<render::OutputLayout> layout = render::OutputLayout::parse(options.layout);
+    if (!layout) {
+        return std::unexpected("not a speaker layout: " + options.layout);
+    }
     std::expected<std::unique_ptr<Store>, std::string> store = Store::open(options.state_directory);
     if (!store) {
         return std::unexpected(store.error());
@@ -265,7 +354,7 @@ std::expected<std::unique_ptr<Sink>, std::string> Sink::start(SinkOptions option
             return std::unexpected("cannot create " + options.output_directory.string());
         }
     }
-    std::unique_ptr<Sink> sink(new Sink(std::move(options), log, std::move(*store)));
+    std::unique_ptr<Sink> sink(new Sink(std::move(options), *layout, log, std::move(*store)));
 
     websocket::ListenerOptions listening;
     listening.address = sink->options_.address;
@@ -292,8 +381,9 @@ std::expected<std::unique_ptr<Sink>, std::string> Sink::start(SinkOptions option
     return sink;
 }
 
-Sink::Sink(SinkOptions options, SinkLog& log, std::unique_ptr<Store> store)
+Sink::Sink(SinkOptions options, render::OutputLayout layout, SinkLog& log, std::unique_ptr<Store> store)
     : options_(std::move(options)),
+      layout_(layout),
       log_(&log),
       store_(std::move(store)),
       arbiter_(store_->last_playback()),
@@ -363,6 +453,26 @@ void Sink::accept(std::unique_ptr<sendspin::transport::Connection> transport) {
                            .supported_commands = std::vector<m::PlayerCommand>{m::PlayerCommand::kVolume,
                                                                                m::PlayerCommand::kMute},
                            .format = std::nullopt};
+    if (options_.extension_role) {
+        config.supported_roles = {std::string(ac::kRole), "player@v1"};
+        ac::Support support;
+        support.data_types = {ac::DataType::kAc3, ac::DataType::kEac3};
+        support.sample_rates = {48000};
+        support.outputs.count = static_cast<std::int32_t>(layout_.slots());
+        support.outputs.bit_depth = 32;
+        support.outputs.bit_depths = {32};
+        support.layout_grammar = 1;
+        // Nothing the server can manage: no routing, trims, delays, settings or identify tone.
+        support.management.crossover_hz = {render::LayoutRenderer::kMinCrossoverHz,
+                                           render::LayoutRenderer::kMaxCrossoverHz};
+        support.buffer_capacity = 32 * 1024 * 1024;
+        config.ac3forge_support = std::move(support);
+        config.ac3forge_state.volume = 100;
+        config.ac3forge_state.muted = false;
+        config.ac3forge_state.required_lead_time_ms = 500;
+        config.ac3forge_state.min_buffer_ms = 200;
+        config.ac3forge_state.supported_commands = {ac::Command::kVolume, ac::Command::kMute};
+    }
 
     Arbiter::Id id = 0;
     {
@@ -398,6 +508,9 @@ void Sink::remove(Arbiter::Id id) {
         counted.streams = ended->output().streams();
         counted.chunks = ended->output().chunks();
         counted.frames = ended->output().frames();
+        counted.burst_streams = ended->bursts().streams();
+        counted.bursts = ended->bursts().bursts();
+        counted.burst_frames = ended->bursts().frames();
         return 0;
     });
     {
@@ -405,6 +518,9 @@ void Sink::remove(Arbiter::Id id) {
         ended_totals_.streams += counted.streams;
         ended_totals_.chunks += counted.chunks;
         ended_totals_.frames += counted.frames;
+        ended_totals_.burst_streams += counted.burst_streams;
+        ended_totals_.bursts += counted.bursts;
+        ended_totals_.burst_frames += counted.burst_frames;
     }
     log("[" + std::to_string(id) + "] closed");
 }
@@ -519,6 +635,9 @@ Sink::Totals Sink::totals() const {
             totals.streams += connection->output().streams();
             totals.chunks += connection->output().chunks();
             totals.frames += connection->output().frames();
+            totals.burst_streams += connection->bursts().streams();
+            totals.bursts += connection->bursts().bursts();
+            totals.burst_frames += connection->bursts().frames();
             return 0;
         });
     }

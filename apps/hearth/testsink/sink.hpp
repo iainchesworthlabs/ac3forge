@@ -14,6 +14,7 @@
 #include <thread>
 #include <vector>
 
+#include "ac3/render/layout.hpp"
 #include "ac3/sendspin/arbiter.hpp"
 #include "ac3/sendspin/discovery.hpp"
 #include "ac3/sendspin/messages.hpp"
@@ -26,8 +27,9 @@
 // ac3hearth-testsink: src/sendspin's player half as a program (planning/hearth-reference-player.md,
 // The test sink). A Sendspin client that waits for servers: it listens on a WebSocket, advertises
 // _sendspin._tcp, pairs by its pairing PSK and a dynamic or static code, admits servers as the
-// specification ranks them, and decodes each player@v1 stream it plays, PCM, FLAC or Opus, to a
-// WAV file with a play-time log.
+// specification ranks them, and decodes each stream it plays to a WAV file with a play-time log:
+// PCM, FLAC or Opus over player@v1, and AC-3 or E-AC-3, objects included, over _ac3forge_player@v1
+// (planning/hearth-sendspin-extension.md), rendered to its speaker layout.
 //
 // Several sinks run side by side in one process or several, with distinct names, ports and state
 // directories.
@@ -53,6 +55,11 @@ struct SinkOptions {
     // also at 44.1 kHz 16-bit and 48 kHz 24-bit.
     std::vector<sendspin::messages::Codec> codecs{sendspin::messages::Codec::kPcm, sendspin::messages::Codec::kFlac,
                                                   sendspin::messages::Codec::kOpus};
+    // Offer _ac3forge_player@v1 before player@v1, as a Hearth sink does.
+    bool extension_role = true;
+    // The speaker layout the extension role's streams are rendered to, in ac3::render::OutputLayout's
+    // grammar.
+    std::string layout = "7.1.4";
     CodeMethod code_method = CodeMethod::kDynamic;
     // Eight digits, for CodeMethod::kStatic.
     std::string static_code;
@@ -103,13 +110,17 @@ class Sink {
         std::uint32_t streams = 0;
         std::uint64_t chunks = 0;
         std::uint64_t frames = 0;
+        // _ac3forge_player@v1's.
+        std::uint32_t burst_streams = 0;
+        std::uint64_t bursts = 0;
+        std::uint64_t burst_frames = 0;
     };
     [[nodiscard]] Totals totals() const;
 
    private:
     friend class Connection;
 
-    Sink(SinkOptions options, SinkLog& log, std::unique_ptr<Store> store);
+    Sink(SinkOptions options, render::OutputLayout layout, SinkLog& log, std::unique_ptr<Store> store);
     void accept(std::unique_ptr<sendspin::transport::Connection> transport);
     // Runs `work` on the sink's own thread, where connections may be called and destroyed.
     void post(std::function<void()> work);
@@ -122,6 +133,7 @@ class Sink {
     void log(std::string_view text);
 
     SinkOptions options_;
+    render::OutputLayout layout_;
     SinkLog* log_;
     std::unique_ptr<Store> store_;
     sendspin::SteadyClock clock_;

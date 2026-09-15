@@ -23,7 +23,9 @@ using namespace std::chrono_literals;
 
 constexpr std::string_view kUsage = R"(usage: ac3hearth-testsink [options]
 
-A Sendspin player that writes each player@v1 stream it plays to a WAV file.
+A Sendspin player that writes each stream it plays to a WAV file: PCM, FLAC or
+Opus over player@v1, and AC-3 or E-AC-3 over _ac3forge_player@v1, rendered to
+its speaker layout.
 
   --name NAME            the name servers show (default "Hearth test sink")
   --address ADDRESS      the address to listen on (default 0.0.0.0)
@@ -36,6 +38,9 @@ A Sendspin player that writes each player@v1 stream it plays to a WAV file.
   --static-code DIGITS   the eight-digit code for --pair static
   --codecs LIST          the codecs offered, most preferred first, from pcm,
                          flac and opus (default pcm,flac,opus)
+  --layout LAYOUT        the speaker layout AC-3 and E-AC-3 are rendered to,
+                         such as 5.1 or L,R,C,LFE,Ls,Rs (default 7.1.4)
+  --no-extension         offer player@v1 only, not _ac3forge_player@v1
   --unpaired-access      admit servers that have not paired
   --no-mdns              do not advertise _sendspin._tcp
   --mdns-interface ADDR  advertise on this IPv4 interface only; repeatable
@@ -103,6 +108,10 @@ int main(int argc, char** argv) {
             options.advertise = false;
             continue;
         }
+        if (argument == "--no-extension") {
+            options.extension_role = false;
+            continue;
+        }
         const std::optional<std::string_view> given = value();
         if (!given) {
             return EXIT_FAILURE;
@@ -157,6 +166,8 @@ int main(int argc, char** argv) {
                 std::cerr << "--codecs needs at least one codec\n";
                 return EXIT_FAILURE;
             }
+        } else if (argument == "--layout") {
+            options.layout = *given;
         } else if (argument == "--mdns-interface") {
             options.mdns_interfaces.emplace_back(*given);
         } else if (argument == "--run-for") {
@@ -201,7 +212,8 @@ int main(int argc, char** argv) {
             const testsink::Sink::Totals totals = (*sink)->totals();
             log.line(std::to_string(totals.connections) + " connections, " + std::to_string(totals.streams) +
                      " streams, " + std::to_string(totals.chunks) + " chunks, " + std::to_string(totals.frames) +
-                     " frames");
+                     " frames; " + std::to_string(totals.burst_streams) + " burst streams, " +
+                     std::to_string(totals.bursts) + " bursts, " + std::to_string(totals.burst_frames) + " frames");
         } else if (!command.empty()) {
             log.line("commands: window, reset, cancel, status, quit");
         }

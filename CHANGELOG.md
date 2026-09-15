@@ -295,6 +295,16 @@ and release packaging.
   The server session activates the role only for a client that offers it, and sends a stream
   only in a data type and sample rate the client listed, a burst only when its Pc and Pd fit its
   payload and the stream, and settings only when the client would read them back whole.
+- **E-AC-3 over `_ac3forge_player@v1`, from a group to test sinks**: `ServerHost` activates the
+  extension role instead of `player@v1` for a paired client that offers it, and a `Group`
+  programme can carry the coded stream beside its PCM. Members playing the role get its IEC 61937
+  bursts on the group's timeline, each timed by its first decoded sample, paced as `player@v1`'s
+  chunks are and never past a sink's `buffer_capacity`. The test sink offers the role, decodes
+  AC-3 and E-AC-3 with any object layer and renders them to a speaker layout (`--layout`, 7.1.4
+  by default) in its WAV file. Two test sinks paired to a host play the Dolby Encoding Engine's
+  E-AC-3 JOC fixture as one group: each WAV equals a local decode and render sample for sample,
+  every burst's play time agrees on both within 1 ms, and a hidden case, `[hearth-soak]`, does the
+  same over ten minutes.
 
 **Containers and encoding**
 

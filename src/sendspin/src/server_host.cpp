@@ -19,7 +19,9 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/base64url.hpp"
+#include "ac3/sendspin/chunks.hpp"
 #include "ac3/sendspin/codec.hpp"
 #include "ac3/sendspin/crypto.hpp"
 #include "ac3/sendspin/discovery.hpp"
@@ -54,6 +56,9 @@ constexpr std::int64_t kReadAhead = 1'500'000;
 constexpr std::int64_t kNetworkLead = 100'000;
 // A unit's longest play time, which a group counts each queued unit as lasting.
 constexpr std::int64_t kLongestUnit = 150'000;
+// The samples in every _ac3forge_player@v1 burst (planning/hearth-sendspin-extension.md, Burst
+// chunks).
+constexpr std::int64_t kSamplesPerBurst = 1536;
 constexpr std::chrono::seconds kRedialAfter{10};
 
 [[nodiscard]] bool contains(const std::vector<std::string>& roles, std::string_view role) {
@@ -182,13 +187,18 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
                     view.pair_methods.push_back(method.method);
                 }
                 view.player_support = session.hello()->player_support;
+                if (contains(session.hello()->supported_roles, ac3forge::kRole)) {
+                    view.ac3forge_support = session.hello()->ac3forge_support;
+                }
             }
             view.pairing = session.pairing();
             view.wants_code = session.pairing_wants_code();
-            view.playing = contains(session.active_roles(), kPlayerRole);
+            view.bursts = contains(session.active_roles(), ac3forge::kRole);
+            view.playing = view.bursts || contains(session.active_roles(), kPlayerRole);
             if (session.state()) {
                 view.available = session.state()->available;
                 view.player_state = session.state()->player;
+                view.ac3forge_state = session.state()->ac3forge;
             }
             return view;
         });
@@ -260,9 +270,14 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
                 }
                 break;
         }
-        if (!activate.activities.empty() && activate.activities.front() == m::Activity::kPlayback &&
-            client.player_support) {
-            activate.active_roles = std::vector<std::string>{std::string(kPlayerRole)};
+        if (!activate.activities.empty() && activate.activities.front() == m::Activity::kPlayback) {
+            // The extension role only on a long-term PSK connection, and never beside player@v1
+            // (planning/hearth-sendspin-extension.md, The role _ac3forge_player@v1).
+            if (client.psk == hs::PskCategory::kLongTerm && client.ac3forge_support) {
+                activate.active_roles = std::vector<std::string>{std::string(ac3forge::kRole)};
+            } else if (client.player_support) {
+                activate.active_roles = std::vector<std::string>{std::string(kPlayerRole)};
+            }
         }
         if (decision == last_decision_) {
             return;
@@ -665,7 +680,9 @@ struct Group::State {
     std::string name;
 
     mutable std::mutex mutex;
-    std::optional<m::AudioFormat> source;
+    std::optional<m::AudioFormat> pcm;
+    std::optional<ac3forge::StreamStart> bursts;
+    std::int64_t sample_rate = 0;
     bool buffered = false;
     std::optional<std::int64_t> start_time;
     std::int64_t lead = 0;
@@ -674,59 +691,138 @@ struct Group::State {
     struct Member {
         std::string client_id;
         bool started = false;
+        // Plays _ac3forge_player@v1's bursts rather than player@v1's PCM.
+        bool bursts = false;
         std::optional<m::AudioFormat> format;
         std::unique_ptr<codec::Encoder> encoder;
         std::int64_t joined_frame = 0;
         std::uint64_t capacity = 0;
+        // Each chunk sent and not yet played: when it has played, and its bytes.
         std::deque<std::pair<std::int64_t, std::size_t>> queued;
         std::size_t queued_bytes = 0;
         std::int64_t lead = 0;
     };
     std::vector<Member> members;
 
-    // Starts `member`'s stream if its client can play now.
+    [[nodiscard]] bool playing() const { return pcm || bursts; }
+
+    // The lead a player needs from the moment a chunk is sent: its minimum buffer, or for a
+    // buffered source its required lead time, beyond its output delay, and the network's.
+    [[nodiscard]] std::int64_t lead_for(std::int64_t output_delay_ms, std::int64_t min_buffer_ms,
+                                        std::int64_t required_lead_ms) const {
+        const std::int64_t minimum = min_buffer_ms + output_delay_ms;
+        const std::int64_t wanted = buffered ? required_lead_ms + output_delay_ms : 0;
+        return (std::max(minimum, wanted) * 1000) + kNetworkLead;
+    }
+
+    // Starts `member`'s stream if its client can play the programme now.
     void try_start(Member& member) {
         const std::shared_ptr<HostConnection> connection = host->find(member.client_id);
-        if (!connection || !source) {
+        if (!connection || !playing()) {
             return;
         }
         const ClientView client = connection->view();
-        if (!client.playing || !client.available || !client.player_support || !client.player_state) {
+        if (!client.playing || !client.available) {
             return;
         }
-        const auto chosen = std::find_if(client.player_support->supported_formats.begin(),
-                                         client.player_support->supported_formats.end(),
-                                         [&](const m::AudioFormat& format) { return producible(format, *source); });
-        if (chosen == client.player_support->supported_formats.end()) {
-            return;
-        }
-        std::unique_ptr<codec::Encoder> encoder = codec::make_encoder(*chosen);
-        if (!encoder) {
-            return;
-        }
-        const m::PlayerStream stream{.format = *chosen, .codec_header = encoder->codec_header()};
-        if (!connection->driver().call([&] { return connection->session().start_stream(stream); }).has_value()) {
-            return;
+        if (client.bursts) {
+            if (!bursts || !client.ac3forge_support || !client.ac3forge_state ||
+                !connection->driver()
+                     .call([&] { return connection->session().start_burst_stream(*bursts); })
+                     .has_value()) {
+                return;
+            }
+            const ac3forge::State& state = *client.ac3forge_state;
+            member.lead = lead_for(state.output_delay_ms, state.min_buffer_ms, state.required_lead_time_ms);
+            member.capacity = client.ac3forge_support->buffer_capacity;
+        } else {
+            if (!pcm || !client.player_support || !client.player_state) {
+                return;
+            }
+            const auto chosen = std::find_if(client.player_support->supported_formats.begin(),
+                                             client.player_support->supported_formats.end(),
+                                             [&](const m::AudioFormat& format) { return producible(format, *pcm); });
+            if (chosen == client.player_support->supported_formats.end()) {
+                return;
+            }
+            std::unique_ptr<codec::Encoder> encoder = codec::make_encoder(*chosen);
+            if (!encoder) {
+                return;
+            }
+            const m::PlayerStream stream{.format = *chosen, .codec_header = encoder->codec_header()};
+            if (!connection->driver().call([&] { return connection->session().start_stream(stream); }).has_value()) {
+                return;
+            }
+            const m::PlayerState& state = *client.player_state;
+            member.lead = lead_for(state.output_delay_ms.value_or(0), state.min_buffer_ms.value_or(0),
+                                   state.required_lead_time_ms.value_or(0));
+            member.format = *chosen;
+            member.encoder = std::move(encoder);
+            member.capacity = client.player_support->buffer_capacity;
+            member.joined_frame = frames_pushed;
         }
         (void)connection->driver().call([&] {
             return connection->session().update_group(
                 {.playback_state = m::PlaybackState::kPlaying, .group_id = id, .group_name = name});
         });
-        const m::PlayerState& state = *client.player_state;
-        const std::int64_t output_delay = state.output_delay_ms.value_or(0);
-        const std::int64_t minimum = state.min_buffer_ms.value_or(0) + output_delay;
-        const std::int64_t wanted = buffered ? state.required_lead_time_ms.value_or(0) + output_delay : 0;
-        member.lead = (std::max(minimum, wanted) * 1000) + kNetworkLead;
-        member.format = *chosen;
-        member.encoder = std::move(encoder);
-        member.capacity = client.player_support->buffer_capacity;
-        member.joined_frame = frames_pushed;
+        member.bursts = client.bursts;
         member.started = true;
         host->log(client.name + " joined group " + name);
     }
 
+    // Starts every member whose client can play, and the timeline once one has: the time now, or
+    // nothing while no member plays.
+    [[nodiscard]] std::optional<std::int64_t> begin() {
+        for (Member& member : members) {
+            if (!member.started) {
+                try_start(member);
+            }
+        }
+        if (std::none_of(members.begin(), members.end(), [](const Member& member) { return member.started; })) {
+            return std::nullopt;
+        }
+        const std::int64_t now = host->clock.now_us();
+        if (!start_time) {
+            // One timeline for every member, as far ahead as the member that needs the most lead.
+            for (const Member& member : members) {
+                lead = std::max(lead, member.lead);
+            }
+            start_time = now + lead;
+        }
+        return now;
+    }
+
+    // When programme frame `frame` plays, on the server clock.
+    [[nodiscard]] std::int64_t time_of(std::int64_t frame) const {
+        return *start_time + (frame * 1'000'000 / sample_rate);
+    }
+
+    // Whether a chunk of `bytes` bytes that plays from `frame` may go now to the members that play
+    // `to_bursts`' kind: within the read-ahead, and while none of them holds three quarters of its
+    // buffer capacity, nor a burst would take one past it.
+    [[nodiscard]] bool may_send(std::int64_t frame, std::int64_t now, bool to_bursts, std::size_t bytes) {
+        if (time_of(frame) > now + lead + (buffered ? kReadAhead : 0)) {
+            return false;
+        }
+        for (Member& member : members) {
+            if (!member.started || member.bursts != to_bursts) {
+                continue;
+            }
+            while (!member.queued.empty() && member.queued.front().first <= now) {
+                member.queued_bytes -= member.queued.front().second;
+                member.queued.pop_front();
+            }
+            if (member.capacity > 0 && (member.queued_bytes > (member.capacity / 4) * 3 ||
+                                        (to_bursts && member.queued_bytes + bytes > member.capacity))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     static void forget(Member& member) {
         member.started = false;
+        member.bursts = false;
         member.encoder.reset();
         member.queued.clear();
         member.queued_bytes = 0;
@@ -773,21 +869,30 @@ void Group::remove(const std::string& client_id) {
     }
     if (found->started) {
         if (const std::shared_ptr<HostConnection> connection = state_->host->find(client_id)) {
-            (void)connection->driver().call([&] { return connection->session().end_stream(); });
+            const bool bursts = found->bursts;
+            (void)connection->driver().call([&] {
+                return bursts ? connection->session().end_burst_stream() : connection->session().end_stream();
+            });
         }
     }
     state_->members.erase(found);
 }
 
-bool Group::start(const m::AudioFormat& source, bool buffered) {
-    if (source.codec != m::Codec::kPcm || source.channels < 1 || source.sample_rate < 1 ||
-        (source.bit_depth != 16 && source.bit_depth != 24 && source.bit_depth != 32)) {
+bool Group::start(const Programme& programme) {
+    const std::optional<m::AudioFormat>& pcm = programme.pcm;
+    const std::optional<ac3forge::StreamStart>& bursts = programme.bursts;
+    if ((!pcm && !bursts) ||
+        (pcm && (pcm->codec != m::Codec::kPcm || pcm->channels < 1 || pcm->sample_rate < 1 ||
+                 (pcm->bit_depth != 16 && pcm->bit_depth != 24 && pcm->bit_depth != 32))) ||
+        (bursts && bursts->sample_rate < 1) || (pcm && bursts && pcm->sample_rate != bursts->sample_rate)) {
         return false;
     }
     stop();
     const std::lock_guard lock(state_->mutex);
-    state_->source = source;
-    state_->buffered = buffered;
+    state_->pcm = pcm;
+    state_->bursts = bursts;
+    state_->sample_rate = pcm ? pcm->sample_rate : bursts->sample_rate;
+    state_->buffered = programme.buffered;
     state_->start_time.reset();
     state_->lead = 0;
     state_->frames_pushed = 0;
@@ -800,53 +905,22 @@ bool Group::start(const m::AudioFormat& source, bool buffered) {
 std::size_t Group::push(std::span<const std::int32_t> interleaved) {
     State& state = *state_;
     const std::lock_guard lock(state.mutex);
-    if (!state.source) {
+    if (!state.pcm) {
         return 0;
     }
-    const auto channels = static_cast<std::size_t>(state.source->channels);
+    const auto channels = static_cast<std::size_t>(state.pcm->channels);
     const std::size_t frames = interleaved.size() / channels;
     if (frames == 0) {
         return 0;
     }
-    for (State::Member& member : state.members) {
-        if (!member.started) {
-            state.try_start(member);
-        }
-    }
-    const bool any = std::any_of(state.members.begin(), state.members.end(),
-                                 [](const State::Member& member) { return member.started; });
-    if (!any) {
+    const std::optional<std::int64_t> now = state.begin();
+    if (!now || !state.may_send(state.frames_pushed, *now, false, 0)) {
         return 0;
-    }
-    const std::int64_t now = state.host->clock.now_us();
-    if (!state.start_time) {
-        // One timeline for every member, as far ahead as the member that needs the most lead.
-        for (const State::Member& member : state.members) {
-            state.lead = std::max(state.lead, member.lead);
-        }
-        state.start_time = now + state.lead;
-    }
-    const std::int64_t rate = state.source->sample_rate;
-    const std::int64_t next = *state.start_time + (state.frames_pushed * 1'000'000 / rate);
-    if (next > now + state.lead + (state.buffered ? kReadAhead : 0)) {
-        return 0;
-    }
-    for (State::Member& member : state.members) {
-        if (!member.started) {
-            continue;
-        }
-        while (!member.queued.empty() && member.queued.front().first <= now) {
-            member.queued_bytes -= member.queued.front().second;
-            member.queued.pop_front();
-        }
-        if (member.capacity > 0 && member.queued_bytes > (member.capacity / 4) * 3) {
-            return 0;
-        }
     }
 
     const std::span<const std::int32_t> taken = interleaved.first(frames * channels);
     for (State::Member& member : state.members) {
-        if (!member.started) {
+        if (!member.started || member.bursts) {
             continue;
         }
         const std::shared_ptr<HostConnection> connection = state.host->find(member.client_id);
@@ -857,9 +931,9 @@ std::size_t Group::push(std::span<const std::int32_t> interleaved) {
         }
         const std::int32_t depth = member.format->codec == m::Codec::kOpus ? 16 : member.format->bit_depth;
         std::vector<std::int32_t> samples(taken.begin(), taken.end());
-        if (depth != state.source->bit_depth) {
+        if (depth != state.pcm->bit_depth) {
             for (std::int32_t& sample : samples) {
-                sample = rescaled(sample, state.source->bit_depth, depth);
+                sample = rescaled(sample, state.pcm->bit_depth, depth);
             }
         }
         const std::optional<std::vector<codec::Unit>> units = member.encoder->encode(samples);
@@ -869,8 +943,8 @@ std::size_t Group::push(std::span<const std::int32_t> interleaved) {
         for (const codec::Unit& unit : *units) {
             // Each unit at its first frame's time on the group's timeline, earlier by its codec's
             // look-ahead.
-            const std::int64_t first = member.joined_frame + unit.first_frame - member.encoder->delay_frames();
-            const std::int64_t timestamp = *state.start_time + (first * 1'000'000 / rate);
+            const std::int64_t timestamp =
+                state.time_of(member.joined_frame + unit.first_frame - member.encoder->delay_frames());
             if (connection->driver().call([&] { return connection->session().send_audio(timestamp, unit.bytes); })) {
                 member.queued.emplace_back(timestamp + kLongestUnit, unit.bytes.size());
                 member.queued_bytes += unit.bytes.size();
@@ -881,27 +955,63 @@ std::size_t Group::push(std::span<const std::int32_t> interleaved) {
     return frames;
 }
 
+bool Group::push_burst(const Burst& burst) {
+    State& state = *state_;
+    const std::lock_guard lock(state.mutex);
+    if (!state.bursts || burst.payload.empty()) {
+        return false;
+    }
+    const std::size_t bytes = kBurstChunkHeaderBytes + burst.payload.size();
+    const std::optional<std::int64_t> now = state.begin();
+    if (!now || !state.may_send(burst.frame, *now, true, bytes)) {
+        return false;
+    }
+    const std::int64_t timestamp = state.time_of(burst.frame);
+    // A sink holds each chunk until its 1,536 samples have played.
+    const std::int64_t played = state.time_of(burst.frame + kSamplesPerBurst);
+    for (State::Member& member : state.members) {
+        if (!member.started || !member.bursts) {
+            continue;
+        }
+        const std::shared_ptr<HostConnection> connection = state.host->find(member.client_id);
+        if (!connection) {
+            State::forget(member);
+            continue;
+        }
+        if (connection->driver().call([&] {
+                return connection->session().send_burst(timestamp, burst.pc, burst.pd, burst.payload);
+            })) {
+            member.queued.emplace_back(played, bytes);
+            member.queued_bytes += bytes;
+        }
+    }
+    return true;
+}
+
 void Group::stop() {
     State& state = *state_;
     const std::lock_guard lock(state.mutex);
-    if (!state.source) {
+    if (!state.playing()) {
         return;
     }
-    const std::int64_t rate = state.source->sample_rate;
     for (State::Member& member : state.members) {
         if (!member.started) {
             continue;
         }
         if (const std::shared_ptr<HostConnection> connection = state.host->find(member.client_id)) {
-            if (std::optional<std::vector<codec::Unit>> units = member.encoder->finish()) {
-                for (const codec::Unit& unit : *units) {
-                    const std::int64_t first = member.joined_frame + unit.first_frame - member.encoder->delay_frames();
-                    const std::int64_t timestamp = *state.start_time + (first * 1'000'000 / rate);
-                    (void)connection->driver().call(
-                        [&] { return connection->session().send_audio(timestamp, unit.bytes); });
+            if (member.bursts) {
+                (void)connection->driver().call([&] { return connection->session().end_burst_stream(); });
+            } else {
+                if (std::optional<std::vector<codec::Unit>> units = member.encoder->finish()) {
+                    for (const codec::Unit& unit : *units) {
+                        const std::int64_t timestamp =
+                            state.time_of(member.joined_frame + unit.first_frame - member.encoder->delay_frames());
+                        (void)connection->driver().call(
+                            [&] { return connection->session().send_audio(timestamp, unit.bytes); });
+                    }
                 }
+                (void)connection->driver().call([&] { return connection->session().end_stream(); });
             }
-            (void)connection->driver().call([&] { return connection->session().end_stream(); });
             (void)connection->driver().call([&] {
                 return connection->session().update_group(
                     {.playback_state = m::PlaybackState::kStopped, .group_id = state.id, .group_name = state.name});
@@ -909,7 +1019,8 @@ void Group::stop() {
         }
         State::forget(member);
     }
-    state.source.reset();
+    state.pcm.reset();
+    state.bursts.reset();
     state.start_time.reset();
 }
 
