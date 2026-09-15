@@ -1,0 +1,8 @@
+cpp-httplib {{CPP_HTTPLIB_VERSION}}
+----------------------
+
+The cpp-httplib HTTP library, version {{CPP_HTTPLIB_VERSION}}, is compiled into
+Hearth's programs, which reach Sendspin servers and players over its
+WebSocket support. It is used under the MIT License.
+
+{{FILE:CPP_HTTPLIB_COPYRIGHT}}

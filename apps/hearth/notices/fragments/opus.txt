@@ -1,0 +1,8 @@
+Opus {{OPUS_VERSION}}
+-----------
+
+The Opus codec library, version {{OPUS_VERSION}}, is compiled into Hearth's
+programs, which encode and decode Sendspin's Opus streams with it. It is used
+under the BSD 3-Clause License.
+
+{{FILE:OPUS_COPYRIGHT}}

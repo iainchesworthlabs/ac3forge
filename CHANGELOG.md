@@ -305,6 +305,11 @@ and release packaging.
   E-AC-3 JOC fixture as one group: each WAV equals a local decode and render sample for sample,
   every burst's play time agrees on both within 1 ms, and a hidden case, `[hearth-soak]`, does the
   same over ten minutes.
+- **Hearth's third-party notices** (`apps/hearth/notices/`): `NOTICES.txt` for cpp-httplib,
+  Mbed TLS, mdns, libFLAC, libogg, Opus and Sendspin's time filter, generated at configure time
+  with the versions and licence texts vcpkg installs with each port, ready for Hearth's About page
+  and package. The threat model gains Sendspin: what a peer on the network can reach without a
+  key, what a key allows, what mDNS exposes, and the two parsers not yet fuzzed.
 
 **Containers and encoding**
 

@@ -32,6 +32,11 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 | MP4/ISOBMFF containers | `mp4::demux`, `mp4::Reader` | yes |
 | MPEG-TS containers | `mpegts::demux`, `mpegts::Reader` | yes |
 | OSC control packets (UDP), a live object-position source | `ac3::oba::parse_osc_packet` | yes — `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list alongside the other object/metadata-layer harnesses |
+| Sendspin's handshake messages from a network peer (Hearth build) | `ac3::sendspin::handshake` | yes — `fuzz_sendspin_handshake` |
+| Sendspin's messages after the handshake, JSON included (Hearth build) | `ac3::sendspin::json::Document::parse`, the readers in `ac3::sendspin::messages`, `pairing_messages` and `ac3forge` | yes — `fuzz_sendspin_json`, `fuzz_sendspin_messages` |
+| Sendspin's fragments and audio chunks, `player@v1`'s and `_ac3forge_player@v1`'s bursts (Hearth build) | `ac3::sendspin::Reassembler`, `parse_player_chunk`, `parse_burst_chunk` | yes — `fuzz_sendspin_frames` |
+| mDNS packets on the local network (Hearth build) | `ac3::sendspin::discovery::mdns_packets::parse`, over mjansson's `mdns` | **no** — see [Sendspin](#sendspin-hearths-server-and-its-sinks) |
+| WebSocket frames (Hearth build) | cpp-httplib, behind `ac3::sendspin::transport::websocket` | **no** — third-party; see [Sendspin](#sendspin-hearths-server-and-its-sinks) |
 
 **Trusted.** These are the caller's own inputs, and a caller that gets them wrong is a bug in the
 caller, not an attack:
@@ -346,6 +351,58 @@ existing placement, or releases it back to its authored automation (`/object/<n>
 there is no path from this input to encoder configuration, to the filesystem, or to anything
 outside the object placements themselves. The blast radius of a successful attack is "objects
 move to wherever the packet says," never a compromised process.
+
+### Sendspin: Hearth's server and its sinks
+
+`src/sendspin`, built only with `AC3FORGE_BUILD_HEARTH`, listens on the local network. A sink
+(`ac3hearth-testsink` today) accepts WebSocket connections on port 8928 and advertises
+`_sendspin._tcp`; Hearth's server listens on 8927, advertises `_sendspin-server._tcp`, and dials
+the players it finds. Anyone on the network can open a connection to either, and anyone can send
+them mDNS packets. The protocol, and where Hearth departs from it, is in
+[`planning/hearth-sendspin-extension.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-sendspin-extension.md).
+
+**A peer without a key reaches the handshake and little more.** After the handshake's text
+frames, every message is sealed with Noise `KKpsk2` under a PSK both ends hold: a pairing
+record's long-term PSK, a device's pairing PSK, or the Sentinel, whose value is public. Under the
+Sentinel a connection can pair; it can play only on a player that offers unpaired access (off by
+default on the test sink), and Hearth's server starts playback there only for a client its
+operator has approved. What such a peer can still do:
+
+- **Guess a pairing code, a bounded number of times.** Code pairing runs CPace over the
+  handshake's hash, so a wrong guess gives nothing to test further codes against offline. A
+  dynamic code allows at most 20 rounds before the device's operator resets the limit. A static
+  code is accepted only in a five-minute window a gesture on the device opens, for at most five
+  failures, and only on the connection that carried the window's first attempt.
+- **Show the server's operator a sentence.** A player's `client/pair-pending` message reaches the
+  operator as text from an unauthenticated device, cut to 800 bytes.
+- **Use connections, memory and time.** The server's listener takes 32 connections and the test
+  sink's 4; a handshake, or a wait for the first activation, that stalls is closed after 30
+  seconds; a message is refused at 4 MiB before anything is allocated for it; and a peer that
+  stops reading is disconnected once 8 MiB wait to be sent to it. There is no limit on
+  connection attempts from one address beyond these.
+
+**A key is the credential.** A device's pairing PSK token (`SP:0...`) pairs whoever enters it
+into a server; the test sink prints its own at start. A paired server can play audio and send
+the commands a player lists: volume, mute and output delay, and over `_ac3forge_player@v1` the
+settings a sink admits. What a sink decodes is an elementary stream from that server, and meets
+the decoder's posture above. The test sink keeps its identity key, pairing PSK and pairing
+records as files in its state directory, readable and writable by their owner only where the
+file system supports it.
+
+**mDNS is unauthenticated.** A host on the network can advertise a service pointing at any
+address and port, and Hearth's server dials it every ten seconds while it is advertised. The
+handshake fails unless that address holds a key the server accepts, but the connection attempt
+goes out. A browser remembers at most 64 instances and hosts, and reads packets of at most 9,000
+bytes.
+
+**Not fuzzed.** The mDNS packet reader and cpp-httplib's WebSocket framing sit outside
+`fuzz/run.sh`'s build, which keeps the Sendspin library's core free of vcpkg dependencies. The
+packet reader has unit tests over packets that end early and names that point at themselves; the
+WebSocket framing is cpp-httplib's own code.
+
+**Planned.** Hearth's boards will serve a status page and a REST API with no authentication;
+[`planning/esp32-device-ui.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-device-ui.md)
+records the cross-site exposure that brings.
 
 ## What a decode failure looks like
 
