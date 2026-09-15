@@ -53,6 +53,29 @@ bool frames_flow(const Engine& engine, std::chrono::milliseconds within) {
     return false;
 }
 
+// Frames flowing says nothing about the probe: engine.cpp encodes and
+// submits every frame regardless of output mode, so frames_flow() above can
+// answer true before the first probe has ever been applied. And start()
+// itself does not promise the probe is in - past kProbeDeadline (400 ms,
+// engine.cpp) it reports started anyway rather than block the caller on a
+// platform whose probe is slow, on the understanding that the mode reaches
+// the status snapshot once the probe lands, whenever that turns out to be
+// (test_engine.cpp:212 waits on the same status field for the same reason).
+// This polls rather than reading status() once, so a probe that is merely
+// running late - which is what the deadline exists to tolerate, and more
+// likely on a loaded host - is not read as this fixture never carrying
+// anything.
+bool mode_resolved(const Engine& engine, std::chrono::milliseconds within) {
+    const auto deadline = std::chrono::steady_clock::now() + within;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (engine.status().mode != OutputMode::kNone) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    return false;
+}
+
 }  // namespace
 
 TEST_CASE("engine start: a machine with no render endpoint is refused, not started",
@@ -87,7 +110,7 @@ TEST_CASE("engine start: an endpoint that can carry the stream starts and runs f
 
     REQUIRE(engine.start().has_value());
     CHECK(frames_flow(engine, std::chrono::milliseconds(2000)));
-    CHECK(engine.status().mode != OutputMode::kNone);
+    CHECK(mode_resolved(engine, std::chrono::milliseconds(2000)));
     engine.stop();
 }
 
