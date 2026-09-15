@@ -551,6 +551,41 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     if (!meta.dialnorm2_given && source_meta->dialnorm2.has_value()) {
         p.meta.dialnorm2 = *source_meta->dialnorm2;
     }
+    // dialnorm=auto/dialnorm2=auto ask for a measurement, not a carry.
+    // parse_options already set dialnorm_given for "auto", so the carry above
+    // was skipped - without this, plan::Metadata's default of 31 reached the
+    // encoder, unmeasured, labelled as if the operator had typed it. A
+    // transcode has exactly one source, so it is measured the same way
+    // run_normalize measures one: a BS.1770 pass over the stream as authored,
+    // before this command's own routing/folding, matching run_eac3_encode's
+    // single-source dialnorm=auto (the multi-source route_frame path is the
+    // one exception, measuring the rendered channels instead - it is
+    // combining several sources, so there is no single "the source" to
+    // measure pre-routing).
+    if (meta.p.measure_dialnorm || meta.p.measure_dialnorm2) {
+        const auto measured = measure_stream_loudness(loaded->bytes);
+        if (!measured.has_value()) {
+            return 1;
+        }
+        if (meta.p.measure_dialnorm) {
+            if (!measured->integrated_lkfs.has_value()) {
+                fmt::println(stderr, "error: no audio above the -70 LKFS absolute gate; "
+                                     "pass dialnorm=<1..31> explicitly");
+                return 1;
+            }
+            p.meta.dialnorm = ac3::meta::dialnorm_from_lkfs(*measured->integrated_lkfs);
+        }
+        if (meta.p.measure_dialnorm2) {
+            if (!measured->ch2_lkfs.has_value()) {
+                fmt::println(stderr,
+                             "error: {} is not 1+1, so there is no Ch2 to measure for "
+                             "dialnorm2=auto",
+                             in_path);
+                return 1;
+            }
+            p.meta.dialnorm2 = ac3::meta::dialnorm_from_lkfs(*measured->ch2_lkfs);
+        }
+    }
     carry_mix_metadata(*source_meta, p.meta);
     if (*target_codec == plan::Codec::kEac3 && source_meta->mix.has_value()) {
         p.meta.mixmeta = true;
@@ -645,8 +680,18 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
                    *target_codec == plan::Codec::kAc3 ? "AC-3" : "E-AC-3", bitrate, source_rate,
                    out_path);
     status_println(status, "  layout {} <- {} source channels", label, source_channels);
-    status_println(status, "  dialnorm {}{}", p.meta.dialnorm,
-                   meta.dialnorm_given ? " (from dialnorm=)" : " (carried from the source)");
+    // Three-way, not two: a measured value did set dialnorm_given (that is
+    // what tells run_metadata's own dialnorm=auto guard to refuse it further
+    // down this file), but it did not come from the operator typing a
+    // number - saying "(from dialnorm=)" for it would claim a number nobody
+    // gave.
+    std::string_view dialnorm_note = " (carried from the source)";
+    if (meta.p.measure_dialnorm) {
+        dialnorm_note = " (measured)";
+    } else if (meta.dialnorm_given) {
+        dialnorm_note = " (from dialnorm=)";
+    }
+    status_println(status, "  dialnorm {}{}", p.meta.dialnorm, dialnorm_note);
     if (compr_passthrough.has_value()) {
         status_println(status, "  compr    {:+.2f} dB carried across verbatim",
                        ac3::meta::to_db(ac3::meta::compr_gain(*compr_passthrough)));

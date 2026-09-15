@@ -418,6 +418,12 @@ and release packaging.
   had kept only the shape this project's own encoder writes. Both commands now report
   through one shared function, `print_object_summary`, tested against a 5.1.4 bed
   programme and objects with no LFE.
+- **`transcode dialnorm=auto` and `dialnorm2=auto` did not measure anything.**
+  `parse_options` marks the option as given, which skipped the carry from the source, but
+  nothing in `run_transcode` read the measurement flag it also sets — the encoder was
+  built from `plan::Metadata`'s unmeasured default of 31, printed as `(from dialnorm=)` as
+  if the operator had typed it. Both now run the same BS.1770 pass `normalize` makes over
+  the source and print `(measured)` instead.
 
 **Crucible desktop application**
 
