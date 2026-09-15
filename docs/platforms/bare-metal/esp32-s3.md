@@ -1159,4 +1159,4 @@ followed on 2026-09-10 — see [Folded to stereo](#folded-to-stereo).
 - [ESPHome](esphome.md) — the external component wrapping this decoder for ESPHome projects.
 - [Cortex-M3 (QEMU reference)](cortex-m3.md) — the first bare-metal target, with no hardware
   floating point.
-- [Bare metal overview](index.md) — how the four pages in this section relate.
+- [Bare metal overview](index.md) — how the pages in this section relate.
