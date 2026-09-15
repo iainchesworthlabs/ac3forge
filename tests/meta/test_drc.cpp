@@ -654,6 +654,104 @@ TEST_CASE("AC-3 compr holds its ceiling through the decoder", "[drc][encoder][de
     CHECK(would_have_breached);
 }
 
+TEST_CASE("AC-3 compr protects a compliant decoder's xbsi1 mono fold too",
+          "[drc][encoder][decoder][bsi]") {
+    // §D4.1.1: with the alternate bit stream syntax in use, overload protection
+    // "must account for potential overload in either legacy or compliant
+    // decoders, using any downmix mode" - and explicitly, "no assumption should
+    // be made that compliant decoders will necessarily use the preferred
+    // downmix mode" (Table D2.2's dmixmod), so this does not gate on it. A
+    // legacy decoder never parses xbsi1 and always folds mono from bsi's
+    // cmixlev/surmixlev; §D3.1.2 has a compliant decoder use
+    // lorocmixlev/lorosurmixlev instead once it has picked a Lo/Ro downmix
+    // (never assumed to be dmixmod's preference), and §7.8.2 defines mono as
+    // that downmix summed. Centre-heavy material makes the two folds
+    // concretely different: §7.8.2's M = L + 2*clev*C + R + slev*Ls + slev*Rs
+    // gives the centre channel a very different weight depending on which
+    // clev a decoder applies to it.
+    constexpr int kFrames = 8;
+    std::vector<std::vector<float>> audio(
+        5, std::vector<float>(static_cast<std::size_t>(kFrames) * ac3::kSamplesPerFrame));
+    for (int f = 0; f < kFrames; ++f) {
+        for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            const auto index = static_cast<std::size_t>(f) * ac3::kSamplesPerFrame +
+                               static_cast<std::size_t>(n);
+            const double phase =
+                2.0 * std::numbers::pi * 440.0 * static_cast<double>(index) / 48000.0;
+            // Coded order for 3/2 is L, C, R, Ls, Rs.
+            audio[1][index] = static_cast<float>(0.9 * std::sin(phase));  // C: loud
+            for (const int ch : {0, 2, 3, 4}) {                          // L, R, Ls, Rs: quiet
+                audio[static_cast<std::size_t>(ch)][index] =
+                    static_cast<float>(0.05 * std::sin(phase));
+            }
+        }
+    }
+    const std::array<std::span<const float>, 5> input_views{
+        std::span<const float>{audio[0]}, std::span<const float>{audio[1]},
+        std::span<const float>{audio[2]}, std::span<const float>{audio[3]},
+        std::span<const float>{audio[4]}};
+
+    constexpr auto kBsiCentre = ac3::meta::CentreMixLevel::kMinus6dB;
+    constexpr auto kBsiSurround = ac3::meta::SurroundMixLevel::kMinus6dB;  // encoder default
+    constexpr auto kXbsi1Centre = ac3::meta::MixLevel::kPlus3dB;
+    // MixMetadata's own default - the test is about clev, so lorosurmixlev is
+    // left untouched and is the only thing this and kBsiSurround do NOT share.
+    constexpr auto kXbsi1Surround = ac3::meta::MixLevel::kMinus3dB;
+
+    // Establish, on the raw input and via the function the encoder itself
+    // calls, that this material really does make the xbsi1 fold louder than
+    // the bsi one - and by how much - rather than asserting a hand-picked
+    // ceiling the rest of the test cannot check.
+    const double bsi_input_peak = ac3::meta::mono_downmix_peak_dbfs(
+        std::span<const std::span<const float>>{input_views}, ac3::Acmod::k3_2,
+        ac3::meta::coefficient(kBsiCentre), ac3::meta::coefficient(kBsiSurround));
+    const double xbsi1_input_peak = ac3::meta::mono_downmix_peak_dbfs(
+        std::span<const std::span<const float>>{input_views}, ac3::Acmod::k3_2,
+        ac3::meta::coefficient(kXbsi1Centre), ac3::meta::coefficient(kXbsi1Surround));
+    REQUIRE(xbsi1_input_peak > bsi_input_peak + 2.0);
+
+    ac3::meta::AlternateBsi alternate;
+    alternate.mix = ac3::meta::MixMetadata{.lorocmixlev = kXbsi1Centre};
+    // Below both peaks, so heavy compression engages either way; the point of
+    // this test is which peak it engages FOR.
+    const double ceiling = bsi_input_peak - 3.0;
+    ac3::FrameEncoder encoder{{.bitrate_kbps = 448,
+                               .dialnorm = 24,
+                               .acmod = ac3::Acmod::k3_2,
+                               .heavy = ac3::meta::HeavyConfig{.peak_ceiling_dbfs = ceiling},
+                               .cmixlev = kBsiCentre,
+                               .alternate_bsi = alternate}};
+    std::vector<std::vector<std::byte>> frames;
+    for (int frame = 0; frame < kFrames; ++frame) {
+        auto encoded = encoder.encode_frame(frame_views(audio, frame));
+        REQUIRE(encoded.has_value());
+        frames.push_back(std::move(*encoded));
+    }
+
+    ac3::FrameDecoder heavy{{.heavy_compression = true}};
+    constexpr double kCodingSlack = 0.5;
+    bool saw_word = false;
+    for (std::size_t i = 1; i < frames.size(); ++i) {  // skip the fade-in frame
+        const auto decoded = heavy.decode_frame(frames[i]);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->compr.has_value());
+        saw_word = true;
+        // The signal a compliant decoder that has picked a Lo/Ro downmix
+        // actually hears: its own §D3.1.2 fold of the reconstructed, compr-
+        // applied discrete channels - not the bsi fold compr was sized from
+        // before this fix.
+        const std::array<std::span<const float>, 5> views{
+            std::span<const float>{decoded->channels[0]}, std::span<const float>{decoded->channels[1]},
+            std::span<const float>{decoded->channels[2]}, std::span<const float>{decoded->channels[3]},
+            std::span<const float>{decoded->channels[4]}};
+        const double xbsi1_fold_peak = ac3::meta::mono_downmix_peak_dbfs(
+            std::span<const std::span<const float>>{views}, ac3::Acmod::k3_2,
+            ac3::meta::coefficient(kXbsi1Centre), ac3::meta::coefficient(kXbsi1Surround));
+        CHECK(xbsi1_fold_peak <= ceiling + kCodingSlack);
+    }
+    CHECK(saw_word);
+}
+
 TEST_CASE("AC-3 dual mono: Ch2's own DRC profile is not Ch1's, and is not assumed",
           "[drc][encoder][decoder][dual-mono]") {
     // Same audio on both channels (stepped_tone fills every channel
