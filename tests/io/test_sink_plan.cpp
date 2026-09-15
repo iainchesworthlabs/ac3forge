@@ -21,18 +21,25 @@ TEST_CASE("sink_ceiling matches the per-line ceiling plan_sink refuses past",
           "[io][sink_plan]") {
     CHECK(sink_ceiling(32, false) == 4);
     CHECK(sink_ceiling(32, true) == 8);
-    CHECK(sink_ceiling(16, false) == 2);
-    // 16-bit stays single-line even with a second line enabled - no TDM at
-    // this width for the overflow to spill into.
-    CHECK(sink_ceiling(16, true) == 2);
+    // 128 bits a frame: eight 16-bit slots on one line.
+    CHECK(sink_ceiling(16, false) == 8);
+    // 16-bit stays single-line even with a second line enabled - the sink
+    // writes no second 16-bit line yet for the overflow to spill into.
+    CHECK(sink_ceiling(16, true) == 8);
     CHECK(sink_ceiling(24, false) == 0);
     CHECK(sink_ceiling(0, true) == 0);
 
     CHECK(line_ceiling(32).slots == 4);
     CHECK(line_ceiling(32).second_line_usable);
-    CHECK(line_ceiling(16).slots == 2);
+    CHECK(line_ceiling(16).slots == 8);
     CHECK_FALSE(line_ceiling(16).second_line_usable);
     CHECK(line_ceiling(24).slots == 0);
+
+    // Usable in a constant expression, which is what lets a sink size a
+    // per-line buffer from it.
+    STATIC_REQUIRE(line_ceiling(16).slots * 16 == 128);
+    STATIC_REQUIRE(line_ceiling(32).slots * 32 == 128);
+    STATIC_REQUIRE(plan_sink(8, 16, false).has_value());
 }
 
 TEST_CASE("one line, 32-bit: standard mode for 1-2, TDM for 3-4, refused past 4",
@@ -59,7 +66,7 @@ TEST_CASE("one line, 32-bit: standard mode for 1-2, TDM for 3-4, refused past 4"
     REQUIRE_FALSE(plan_sink(0, 32, false).has_value());
 }
 
-TEST_CASE("one line, 16-bit: standard mode only, capped at 2 - no TDM interleave at this width",
+TEST_CASE("one line, 16-bit: standard mode for 1-2, TDM for 3-8, refused past 8",
           "[io][sink_plan]") {
     const auto mono = plan_sink(1, 16, false);
     REQUIRE(mono.has_value());
@@ -71,9 +78,21 @@ TEST_CASE("one line, 16-bit: standard mode only, capped at 2 - no TDM interleave
     REQUIRE(stereo->line0.slots == 2);
     REQUIRE_FALSE(stereo->line0.tdm);
 
-    // Three would need a 16-bit TDM interleave that does not exist yet -
-    // refused, not silently rounded up or down.
-    REQUIRE_FALSE(plan_sink(3, 16, false).has_value());
+    // 5.1 and 7.1 among them: six and eight channels fit one line at this
+    // width, where 32-bit slots stop at four.
+    for (std::size_t channels = 3; channels <= 8; ++channels) {
+        CAPTURE(channels);
+        const auto plan = plan_sink(channels, 16, false);
+        REQUIRE(plan.has_value());
+        REQUIRE(plan->line0.slots == channels);
+        REQUIRE(plan->line0.channels == channels);
+        REQUIRE(plan->line0.tdm);
+        REQUIRE(plan->line1.slots == 0);
+    }
+
+    // Nine would need a 136-bit frame - refused, not silently rounded down.
+    REQUIRE_FALSE(plan_sink(9, 16, false).has_value());
+    REQUIRE_FALSE(plan_sink(0, 16, false).has_value());
 }
 
 TEST_CASE("an unrecognised slot width is refused, not silently rounded", "[io][sink_plan]") {
@@ -125,14 +144,21 @@ TEST_CASE("two lines, 32-bit: line 0 fills to its ceiling before line 1 is used 
     REQUIRE_FALSE(plan_sink(8, 32, false).has_value());
 }
 
-TEST_CASE("two lines, 16-bit: the combined ceiling is still only 2 - no TDM at this width",
+TEST_CASE("two lines, 16-bit: the combined ceiling is one line's 8 - no second 16-bit line yet",
           "[io][sink_plan]") {
-    // Even with a second line enabled, 16-bit stays standard-only per line,
-    // so three channels still has nowhere to go: the second line would need
-    // to run TDM to carry the overflow, and 16-bit TDM does not exist.
-    REQUIRE_FALSE(plan_sink(3, 16, true).has_value());
+    // With a second line enabled, eight channels still go on line 0 alone,
+    // and nine have nowhere to go: the sink writes no second 16-bit line
+    // (SinkLineCeiling::second_line_usable is false at this width).
+    const auto eight = plan_sink(8, 16, true);
+    REQUIRE(eight.has_value());
+    REQUIRE(eight->line0.slots == 8);
+    REQUIRE(eight->line0.tdm);
+    REQUIRE(eight->line1.slots == 0);
+    REQUIRE_FALSE(plan_sink(9, 16, true).has_value());
+
     const auto two = plan_sink(2, 16, true);
     REQUIRE(two.has_value());
     REQUIRE(two->line0.slots == 2);
+    REQUIRE_FALSE(two->line0.tdm);
     REQUIRE(two->line1.slots == 0);
 }

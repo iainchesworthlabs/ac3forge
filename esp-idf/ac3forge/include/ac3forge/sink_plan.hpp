@@ -15,27 +15,23 @@
 // builds this on the host.
 //
 // Standard I2S is always exactly two slots (or one, a mono layout doubled
-// onto both); anything wider is TDM, and an ESP32-S3 TDM line carries at
-// most 128 bits a frame (I2S_LL_SLOT_FRAME_BIT_MAX, ESP-IDF v6.1's
-// i2s_tdm.c) - 4 slots at 32 bits. `ac3forge::interleave_24in32` is the
-// only padding-capable (TDM) conversion this codebase has, so a 16-bit
-// slot width - `AC3FORGE_EXAMPLE_I2S_SLOT_BITS`'s other value, which
-// standard mode has always supported for stereo - stays standard-only
-// here, capped at 2 slots rather than the 8 the frame-bit ceiling would
-// otherwise allow: TDM at 16 bits needs its own interleave_16in16-shaped
-// function, not built yet.
+// onto both); anything wider is TDM, and a TDM line carries at most 128 bits
+// a frame on both parts the component targets with I2S - the ESP32-S3 and
+// the ESP32-C6 have the same I2S_LL_SLOT_FRAME_BIT_MAX, which ESP-IDF v6.1's
+// i2s_tdm.c holds a slot configuration to. That is 4 slots at 32 bits
+// (ac3forge::interleave_24in32) or 8 at 16 (ac3forge::interleave_16in16).
 //
-// One line: sized exactly to `channels`, standard mode for 1-2 or TDM for
-// 3-4, no padding beyond what the layout itself needs. Two lines only come
-// into it once channels exceeds one line's ceiling: they share one bit
-// clock and word select (see the streaming example's sink/i2s/audio_sink.cpp
-// for why - line 1 is a slave taking its clock from line 0's output pins),
-// so both must present the SAME frame shape for a shared word-select
-// transition to mean the same thing to each. Both lines therefore run at
-// the full per-line ceiling width in TDM mode, real channels filling from
-// line 0 first; whatever is left over rides in line 1 with its remaining
-// slots zeroed - the same "fixed width, pad with zeros" rule
-// ac3forge::interleave_24in32 already applies within one line.
+// One line: sized exactly to `channels`, standard mode for 1-2 or TDM from 3
+// up to the line's ceiling, no padding beyond what the layout itself needs.
+// Two lines only come into it once channels exceeds one line's ceiling: they
+// share one bit clock and word select (see the streaming example's
+// sink/i2s/audio_sink.cpp for why - line 1 is a slave taking its clock from
+// line 0's output pins), so both must present the SAME frame shape for a
+// shared word-select transition to mean the same thing to each. Both lines
+// therefore run at the full per-line ceiling width in TDM mode, real channels
+// filling from line 0 first; whatever is left over rides in line 1 with its
+// remaining slots zeroed - the same "fixed width, pad with zeros" rule both
+// TDM interleaves already apply within one line.
 
 namespace ac3forge {
 
@@ -59,20 +55,25 @@ struct SinkPlan {
 // be brought in at all at that width - the arithmetic plan_sink and
 // sink_ceiling both stand on, so it exists once rather than twice. `slots`
 // is 0 for a width this codebase does not support (anything but 16 or 32).
+//
+// constexpr, so a sink can size its per-line buffers from it at compile time
+// rather than restating the numbers beside an array bound.
 struct SinkLineCeiling {
     std::size_t slots = 0;
-    // Whether a second line can actually carry the overflow at this width: it
-    // always runs TDM once it is needed at all (see the header comment on why
-    // both lines must share one frame shape), and TDM only exists at 32 bits.
+    // Whether a second line can carry the overflow at this width: it always
+    // runs TDM once it is needed at all (see the header comment on why both
+    // lines must share one frame shape). Only at 32 bits so far - the
+    // streaming example's sink writes a second 16-bit line nowhere yet, so
+    // sixteen 16-bit slots on two lines stay refused until it does.
     bool second_line_usable = false;
 };
 
-[[nodiscard]] inline SinkLineCeiling line_ceiling(int slot_bits) {
+[[nodiscard]] constexpr SinkLineCeiling line_ceiling(int slot_bits) {
     if (slot_bits == 32) {
         return {4, true};  // 128-bit frame / 32
     }
     if (slot_bits == 16) {
-        return {2, false};  // standard mode only - see the header comment
+        return {8, false};  // 128-bit frame / 16
     }
     return {0, false};
 }
@@ -83,7 +84,7 @@ struct SinkLineCeiling {
 // rather than a build-time slot count, and what accept_layout() validates a
 // requested layout against before plan_sink ever runs. 0 for a slot width
 // plan_sink also refuses.
-[[nodiscard]] inline std::size_t sink_ceiling(int slot_bits, bool second_line) {
+[[nodiscard]] constexpr std::size_t sink_ceiling(int slot_bits, bool second_line) {
     const SinkLineCeiling ceiling = line_ceiling(slot_bits);
     if (ceiling.slots == 0) {
         return 0;
@@ -92,12 +93,12 @@ struct SinkLineCeiling {
 }
 
 // `slot_bits` is 16 or 32 - anything else is refused. `second_line` says
-// whether one is wired and enabled at all; without one, or at 16 bits where
-// spilling to it would need the same not-yet-built TDM interleave a single
-// 16-bit line already lacks, anything past a single line's own ceiling is
-// refused exactly like `channels == 0`.
-[[nodiscard]] inline std::optional<SinkPlan> plan_sink(std::size_t channels, int slot_bits,
-                                                        bool second_line) {
+// whether one is wired and enabled at all; without one, or at a width whose
+// second line is not usable yet (SinkLineCeiling::second_line_usable),
+// anything past a single line's own ceiling is refused exactly like
+// `channels == 0`.
+[[nodiscard]] constexpr std::optional<SinkPlan> plan_sink(std::size_t channels, int slot_bits,
+                                                           bool second_line) {
     if (channels == 0) {
         return std::nullopt;
     }
