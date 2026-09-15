@@ -457,6 +457,14 @@ and release packaging.
   had kept only the shape this project's own encoder writes. Both commands now report
   through one shared function, `print_object_summary`, tested against a 5.1.4 bed
   programme and objects with no LFE.
+- **`transcode` crashed, printing nothing, when the encoder refused the configuration it
+  carried from the source.** A `dialnorm` or `dialnorm2` of 0, which §5.4.2.8 reserves and
+  a decoder reads as 31, is one such value. The E-AC-3 encoder refuses it when it is built,
+  by coding no channels, and `transcode` went on to render the decoded audio into a channel
+  list sized for none (`0xC0000005` on Windows). It now stops before decoding and prints the
+  encoder's reason. Transcoding the same stream to AC-3 reported
+  `bitrate must be a legal AC-3 rate` whatever the refusal was; both codecs now name the
+  cause, as in `dialnorm out of range 1..31`.
 
 **Crucible desktop application**
 
