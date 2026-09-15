@@ -315,6 +315,15 @@ and release packaging.
   contrast, reached by moving backgrounds and the colours on them towards black or white. The
   new JSON messages join `fuzz_sendspin_messages`, and the binary ones `fuzz_sendspin_frames`,
   which checks that each writes back to the bytes it was read from.
+- **The other roles in Sendspin's sessions**: the server session sends a role's state only while
+  the role is active, never a first state scheduled ahead, and a null state for a removed role that
+  had one; runs artwork as one transfer at a time, cancelling a transfer and clearing a channel the
+  client turns off before a new `stream/start`; keeps visualizer frames to their stream's types and
+  rates, in time order and within the client's buffer; passes on only the controller commands its
+  last state listed, and seeks within range; and opens a source's input stream only after its own
+  start, closing a connection that opens one unasked. It does not activate `source@v1`,
+  `artwork@v1` or `visualizer@v1` for an aiosendspin 9.1.1 client. The player session does the
+  client's half, closing on an artwork message the role calls malformed.
 - **Hearth's third-party notices** (`apps/hearth/notices/`): `NOTICES.txt` for cpp-httplib,
   Mbed TLS, mdns, libFLAC, libogg, Opus and Sendspin's time filter, generated at configure time
   with the versions and licence texts vcpkg installs with each port, ready for Hearth's About page

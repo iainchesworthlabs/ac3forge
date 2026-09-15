@@ -24,6 +24,8 @@
 #include "ac3/sendspin/pairing_flow.hpp"
 #include "ac3/sendspin/pairing_messages.hpp"
 #include "ac3/sendspin/session.hpp"
+#include "ac3/sendspin/state_roles.hpp"
+#include "ac3/sendspin/stream_roles.hpp"
 #include "ac3/sendspin/transport.hpp"
 
 namespace ac3::sendspin {
@@ -93,7 +95,10 @@ PlayerSession::PlayerSession(PlayerConfig config, const handshake::ClientKeyring
       connection_(pairing.next_connection++),
       pairing_events_(std::make_unique<PairingEvents>(*this)),
       state_(config_.player_state),
-      ac3forge_state_(config_.ac3forge_state) {}
+      ac3forge_state_(config_.ac3forge_state),
+      source_state_(config_.source_state),
+      artwork_state_(config_.artwork_state),
+      visualizer_state_(config_.visualizer_state) {}
 
 PlayerSession::~PlayerSession() {
     // The session goes with its connection: a pairing window bound to it closes.
@@ -223,9 +228,66 @@ SessionOutput PlayerSession::on_message(std::span<const std::uint8_t> message, s
         listener_->on_burst(*chunk, clock_.to_local(chunk->chunk.timestamp_us) - delay);
         return {};
     }
+    if (id >= message_id::kArtworkFirst && id <= message_id::kArtworkLast) {
+        return on_artwork(message) ? SessionOutput{} : close_silently();
+    }
+    if (id >= message_id::kVisualizerFirst && id <= message_id::kVisualizerLast) {
+        // As audio: outside a stream or while unavailable, a frame is discarded.
+        if (!role_active(visualizer::kRole) || !visualizer_stream_ || external_source_ || clock_.updates() == 0) {
+            return {};
+        }
+        const std::size_t bins =
+            visualizer_stream_->spectrum ? static_cast<std::size_t>(visualizer_stream_->spectrum->n_disp_bins) : 0;
+        if (const std::optional<visualizer::Frame> frame = visualizer::parse_frame(message, bins)) {
+            listener_->on_visualizer_frame(*frame, clock_.to_local(frame->timestamp));
+        }
+        return {};
+    }
     // No rule covers an unknown binary ID; it is ignored
     // (planning/hearth-sendspin-extension.md, Q2).
     return {};
+}
+
+bool PlayerSession::on_artwork(std::span<const std::uint8_t> message) {
+    const auto parsed = artwork::parse_message(message);
+    if (!parsed) {
+        return false;
+    }
+    if (!artwork_stream_ || !role_active(artwork::kRole)) {
+        return true;
+    }
+    // At most one transfer in flight, whose parts come on its channel and stop at its size
+    // (roles/artwork/v1.md, Malformed sequences).
+    switch (parsed->kind) {
+        case artwork::Kind::kAnnounce:
+            if (artwork_transfer_) {
+                return false;
+            }
+            if (parsed->total_size > 0) {
+                artwork_transfer_.emplace(parsed->channel, parsed->total_size);
+            }
+            break;
+        case artwork::Kind::kPart:
+            if (!artwork_transfer_ || artwork_transfer_->first != parsed->channel ||
+                parsed->data.size() > artwork_transfer_->second) {
+                return false;
+            }
+            artwork_transfer_->second -= static_cast<std::uint32_t>(parsed->data.size());
+            if (artwork_transfer_->second == 0) {
+                artwork_transfer_.reset();
+            }
+            break;
+        case artwork::Kind::kCancel:
+            if (artwork_transfer_ && artwork_transfer_->first == parsed->channel) {
+                artwork_transfer_.reset();
+            }
+            break;
+    }
+    // An unavailable client discards the images but keeps count.
+    if (!external_source_) {
+        listener_->on_artwork_message(*parsed);
+    }
+    return true;
 }
 
 SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival) {
@@ -263,6 +325,8 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
             .pair_methods = config_.pair_methods,
             .unpaired_access = config_.unpaired_access,
             .trusts_server = category_ == PskCategory::kLongTerm,
+            .source_support = config_.source_support,
+            .visualizer_support = config_.visualizer_support,
         };
         seal(m::write_client_hello(client_hello, dialect_), out);
         phase_ = Phase::kProvisional;
@@ -315,6 +379,20 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
             burst_stream_ = start->ac3forge;
             listener_->on_burst_stream_start(*burst_stream_);
         }
+        if (start->artwork && role_active(artwork::kRole)) {
+            // A channel whose configuration changes discards its pending image, and with it a
+            // transfer in flight on it.
+            if (artwork_stream_ && artwork_transfer_ &&
+                artwork_stream_->at(artwork_transfer_->first) != start->artwork->at(artwork_transfer_->first)) {
+                artwork_transfer_.reset();
+            }
+            artwork_stream_ = start->artwork;
+            listener_->on_artwork_stream_start(*artwork_stream_);
+        }
+        if (start->visualizer && role_active(visualizer::kRole)) {
+            visualizer_stream_ = start->visualizer;
+            listener_->on_visualizer_stream_start(*visualizer_stream_);
+        }
         return {};
     }
     // Whether a stream/clear or stream/end covers the role whose family is `family`.
@@ -329,6 +407,9 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
         if (clear && burst_stream_ && names(clear->roles, ac3forge::kObjectKey)) {
             listener_->on_burst_stream_clear();
         }
+        if (clear && visualizer_stream_ && names(clear->roles, "visualizer")) {
+            listener_->on_visualizer_stream_clear();
+        }
         return {};
     }
     if (type == "stream/end") {
@@ -340,6 +421,35 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
         if (end && burst_stream_ && names(end->roles, ac3forge::kObjectKey)) {
             burst_stream_.reset();
             listener_->on_burst_stream_end();
+        }
+        if (end && artwork_stream_ && names(end->roles, "artwork")) {
+            artwork_stream_.reset();
+            artwork_transfer_.reset();
+            listener_->on_artwork_stream_end();
+        }
+        if (end && visualizer_stream_ && names(end->roles, "visualizer")) {
+            visualizer_stream_.reset();
+            listener_->on_visualizer_stream_end();
+        }
+        return {};
+    }
+    if (type == "server/state") {
+        auto state = m::read_server_state(payload);
+        if (!state) {
+            return {};
+        }
+        // Only the objects of roles that are active.
+        if (!role_active(metadata::kRole)) {
+            state->metadata.reset();
+        }
+        if (!role_active(controller::kRole)) {
+            state->controller.reset();
+        }
+        if (!role_active(color::kRole)) {
+            state->color.reset();
+        }
+        if (state->metadata || state->controller || state->color) {
+            listener_->on_server_state(*state);
         }
         return {};
     }
@@ -377,6 +487,25 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
             if (command->ac3forge_refused && lists_command(ac3forge::Command::kSettings)) {
                 listener_->on_settings_refused(*command->ac3forge_refused);
             }
+        }
+        if (command->source && role_active(source::kRole)) {
+            // A start while unavailable is ignored, and each command is idempotent
+            // (roles/source/v1.md).
+            if (*command->source == source::Command::kStart) {
+                if (external_source_ || !clock_.converged() || source_started_) {
+                    return {};
+                }
+                source_started_ = true;
+                listener_->on_source_command(source::Command::kStart);
+                return {};
+            }
+            if (!source_started_) {
+                return {};
+            }
+            source_started_ = false;
+            SessionOutput out_stop = end_source_stream();
+            listener_->on_source_command(source::Command::kStop);
+            return out_stop;
         }
         return {};
     }
@@ -447,10 +576,14 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
 
     const bool had_player = player_active();
     const bool had_ac3forge = ac3forge_active();
+    const std::vector<std::string> previous = phase_ == Phase::kActive ? active_roles_ : std::vector<std::string>{};
     activities_ = activate.activities;
     active_roles_ = std::move(roles);
     ++activations_;
     phase_ = Phase::kActive;
+    const auto added = [&](std::string_view role) {
+        return role_active(role) && std::find(previous.begin(), previous.end(), role) == previous.end();
+    };
 
     if (had_player && !player_active() && stream_) {
         stream_.reset();
@@ -459,6 +592,21 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
     if (had_ac3forge && !ac3forge_active() && burst_stream_) {
         burst_stream_.reset();
         listener_->on_burst_stream_end();
+    }
+    if (!role_active(artwork::kRole) && artwork_stream_) {
+        artwork_stream_.reset();
+        artwork_transfer_.reset();
+        listener_->on_artwork_stream_end();
+    }
+    if (!role_active(visualizer::kRole) && visualizer_stream_) {
+        visualizer_stream_.reset();
+        listener_->on_visualizer_stream_end();
+    }
+    if (!role_active(source::kRole)) {
+        // The start authorisation goes with the role, and an open input stream ends
+        // (roles/source/v1.md).
+        source_started_ = false;
+        out.append(end_source_stream());
     }
     if (pairing) {
         // One attempt of the method named. A method the matched PSK disallows or this player
@@ -478,8 +626,11 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
                                                 clock_source_->now_us())));
         return out;
     }
-    if (!active_roles_.empty() &&
-        (first || (player_active() && !had_player) || (ac3forge_active() && !had_ac3forge) || !sent_state_)) {
+    // A role with a state object that becomes active owes the server that object (messaging.md,
+    // client/state).
+    if (!active_roles_.empty() && (first || (player_active() && !had_player) || (ac3forge_active() && !had_ac3forge) ||
+                                   added(artwork::kRole) || added(visualizer::kRole) || added(source::kRole) ||
+                                   !sent_state_)) {
         send_state(out);
     }
     send_clock(out);
@@ -600,6 +751,10 @@ bool PlayerSession::ac3forge_active() const {
            std::find(active_roles_.begin(), active_roles_.end(), ac3forge::kRole) != active_roles_.end();
 }
 
+bool PlayerSession::role_active(std::string_view role) const {
+    return phase_ == Phase::kActive && std::find(active_roles_.begin(), active_roles_.end(), role) != active_roles_.end();
+}
+
 bool PlayerSession::lists(const ac3forge::StreamStart& stream) const {
     if (!config_.ac3forge_support) {
         return false;
@@ -620,9 +775,34 @@ void PlayerSession::send_state(SessionOutput& out) {
     if (ac3forge_active()) {
         state.ac3forge = ac3forge_state_;
     }
+    if (role_active(source::kRole)) {
+        state.source = source_state_;
+    }
+    if (role_active(artwork::kRole)) {
+        state.artwork = artwork_state_;
+    }
+    if (role_active(visualizer::kRole)) {
+        state.visualizer = visualizer_state_;
+    }
     seal(m::write_client_state(state, dialect_), out);
     reported_available_ = state.available;
     sent_state_ = true;
+}
+
+void PlayerSession::seal_binary(std::span<const std::uint8_t> message, SessionOutput& out) {
+    if (!channel_) {
+        out.close = true;
+        return;
+    }
+    std::vector<std::vector<std::uint8_t>> sealed;
+    if (!channel_->seal(message, sealed)) {
+        phase_ = Phase::kClosed;
+        out.close = true;
+        return;
+    }
+    for (std::vector<std::uint8_t>& ciphertext : sealed) {
+        out.binary(std::move(ciphertext));
+    }
 }
 
 void PlayerSession::send_clock(SessionOutput& out) {
@@ -698,9 +878,79 @@ SessionOutput PlayerSession::set_ac3forge_state(const ac3forge::State& state) {
     return out;
 }
 
+SessionOutput PlayerSession::set_artwork_state(const artwork::Channels& channels) {
+    artwork_state_ = channels;
+    SessionOutput out;
+    if (role_active(artwork::kRole) && sent_state_) {
+        send_state(out);
+    }
+    return out;
+}
+
+SessionOutput PlayerSession::set_visualizer_state(const visualizer::State& state) {
+    visualizer_state_ = state;
+    SessionOutput out;
+    if (role_active(visualizer::kRole) && sent_state_) {
+        send_state(out);
+    }
+    return out;
+}
+
+SessionOutput PlayerSession::set_source_state(const source::State& state) {
+    source_state_ = state;
+    SessionOutput out;
+    if (role_active(source::kRole) && sent_state_) {
+        send_state(out);
+    }
+    return out;
+}
+
+SessionOutput PlayerSession::send_command(const controller::CommandMessage& command) {
+    SessionOutput out;
+    if (role_active(controller::kRole) && !pairing()) {
+        m::ClientCommand message;
+        message.controller = command;
+        seal(m::write_client_command(message), out);
+    }
+    return out;
+}
+
+SessionOutput PlayerSession::start_source_stream(const m::ClientStreamStart& start) {
+    SessionOutput out;
+    if (!role_active(source::kRole) || !source_started_ || external_source_ || !clock_.converged()) {
+        return out;
+    }
+    seal(m::write_client_stream_start(start), out);
+    source_stream_open_ = true;
+    return out;
+}
+
+SessionOutput PlayerSession::send_source_audio(std::int64_t timestamp_us, std::span<const std::uint8_t> frame) {
+    SessionOutput out;
+    if (source_stream_open_ && role_active(source::kRole)) {
+        seal_binary(source::write_chunk(timestamp_us, frame), out);
+    }
+    return out;
+}
+
+SessionOutput PlayerSession::end_source_stream() {
+    SessionOutput out;
+    if (source_stream_open_) {
+        source_stream_open_ = false;
+        seal(m::write_client_stream_end(), out);
+    }
+    return out;
+}
+
 SessionOutput PlayerSession::set_external_source(bool external) {
     external_source_ = external;
     SessionOutput out;
+    if (external) {
+        // A source ends its input stream before it reports itself unavailable, and needs a new
+        // start after (roles/source/v1.md).
+        out.append(end_source_stream());
+        source_started_ = false;
+    }
     // While pairing the change waits: tick() reports it once the activities change.
     if (phase_ == Phase::kActive && sent_state_ && !pairing()) {
         send_state(out);

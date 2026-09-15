@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <memory>
@@ -7,6 +9,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ac3/sendspin/ac3forge_player.hpp"
@@ -20,6 +23,8 @@
 #include "ac3/sendspin/pairing_flow.hpp"
 #include "ac3/sendspin/pairing_messages.hpp"
 #include "ac3/sendspin/session.hpp"
+#include "ac3/sendspin/state_roles.hpp"
+#include "ac3/sendspin/stream_roles.hpp"
 #include "ac3/sendspin/transport.hpp"
 
 // One connection from a Sendspin server to a client: the server half of src/sendspin
@@ -88,6 +93,17 @@ class ServerListener {
     // when the session's own timeout cancelled it, none on a protocol error, which closes the
     // connection.
     virtual void on_pairing_ended(std::optional<pairing_messages::AbortReason> reason) = 0;
+
+    // The other roles, which a server that does not activate them never hears from.
+    //
+    // controller@v1: a command the controller state last sent lists, a seek already checked
+    // against its seek_max_ms.
+    virtual void on_controller_command(const controller::CommandMessage& /*command*/) {}
+    // source@v1: the client opened its input stream after a start, or changed its format; one chunk
+    // of it, captured from `timestamp_us` on the server clock; and the stream's end.
+    virtual void on_source_stream_start(const messages::ClientStreamStart& /*start*/) {}
+    virtual void on_source_audio(std::int64_t /*timestamp_us*/, std::span<const std::uint8_t> /*frame*/) {}
+    virtual void on_source_stream_end() {}
 };
 
 enum class Refusal : std::uint8_t {
@@ -101,6 +117,11 @@ enum class Refusal : std::uint8_t {
     kCommandNotListed,  // a player command the client did not list
     kBadBurst,          // a burst whose Pc and Pd do not fit its payload or the running stream
     kBadSettings,       // settings the client's support object does not admit
+    kNoRole,            // the role is not active, or the client/state it needs has not arrived
+    kScheduled,         // a role's first state since its activation with a future timestamp
+    kTransfer,          // an artwork announce while a transfer is in flight, or a part outside one
+    kBadFrame,          // a visualizer frame of a type, time or size its stream does not take
+    kBufferFull,        // a visualizer frame past the client's buffer_capacity
     kNotPaired,         // server/unpair on a connection without a long-term PSK
     kNoAttempt,         // no pairing attempt is waiting for this
     kBadCode,           // not a code of the shape the attempt takes
@@ -146,6 +167,39 @@ class ServerSession {
     // A command the role's state lists; settings also checked against the support object
     // (ac3forge::check_settings).
     [[nodiscard]] std::expected<SessionOutput, Refusal> ac3forge_command(const ac3forge::CommandMessage& command);
+
+    // metadata@v1, controller@v1 and color@v1: each object present only for an active role. The
+    // first state of a role since its activation must not be scheduled in the future (messaging.md,
+    // server/state).
+    [[nodiscard]] std::expected<SessionOutput, Refusal> send_state(const messages::ServerState& state);
+
+    // artwork@v1: a stream in the channels the client's latest state declares. Starting it again
+    // after the client changed them cancels a transfer on a channel whose configuration changed and
+    // clears a channel whose source became none, before the new stream/start.
+    [[nodiscard]] std::expected<SessionOutput, Refusal> start_artwork_stream();
+    // One image as an announce, then parts, at most one transfer in flight across the channels:
+    // announce_artwork() with the image's size, then send_artwork_part() with the next bytes, of at
+    // most artwork::kMaxMessageBytes - 2 each, until the size is reached. A size of 0 clears the
+    // channel and completes at once.
+    [[nodiscard]] std::expected<SessionOutput, Refusal> announce_artwork(std::size_t channel, std::int64_t timestamp_us,
+                                                                         std::uint32_t total_size);
+    [[nodiscard]] std::expected<SessionOutput, Refusal> send_artwork_part(std::span<const std::uint8_t> data);
+    // Discards the channel's pending image, and ends a transfer in flight on it.
+    [[nodiscard]] std::expected<SessionOutput, Refusal> cancel_artwork(std::size_t channel);
+    [[nodiscard]] std::expected<SessionOutput, Refusal> end_artwork_stream();
+    // Whether an artwork transfer is in flight, and its channel.
+    [[nodiscard]] std::optional<std::size_t> artwork_transfer() const;
+
+    // visualizer@v1: a stream derived from the client's latest state; frames of the stream's types in
+    // non-decreasing timestamp order, each periodic type at no more than its rate, and within the
+    // client's buffer_capacity counting frames not yet due.
+    [[nodiscard]] std::expected<SessionOutput, Refusal> start_visualizer_stream(const visualizer::StreamStart& start);
+    [[nodiscard]] std::expected<SessionOutput, Refusal> send_visualizer_frame(const visualizer::Frame& frame);
+    [[nodiscard]] std::expected<SessionOutput, Refusal> clear_visualizer_stream();
+    [[nodiscard]] std::expected<SessionOutput, Refusal> end_visualizer_stream();
+
+    // source@v1: start only once the role's client/state has arrived and the client is available.
+    [[nodiscard]] std::expected<SessionOutput, Refusal> source_command(source::Command command);
     [[nodiscard]] std::expected<SessionOutput, Refusal> unpair();
     // Runs a new handshake inside the channel, naming `choice`: to the pairing PSK before a
     // pairing_psk activation, or to rotate keys. Refused while a pairing attempt is running.
@@ -208,6 +262,13 @@ class ServerSession {
     [[nodiscard]] bool attempt_running() const { return attempt_ && !attempt_->finished(); }
     [[nodiscard]] bool player_active() const;
     [[nodiscard]] bool ac3forge_active() const;
+    [[nodiscard]] bool role_active(std::string_view role) const;
+    [[nodiscard]] SessionOutput on_source_chunk(std::span<const std::uint8_t> message);
+    // What removing roles owes the client before the activation: each removed stream role's
+    // stream/end, a cancel before an artwork one, and a null state for each removed state role
+    // that has had one.
+    [[nodiscard]] bool end_removed_roles(const std::vector<std::string>& roles, SessionOutput& out);
+    [[nodiscard]] bool seal_binary(std::span<const std::uint8_t> message, SessionOutput& out);
     [[nodiscard]] std::expected<SessionOutput, Refusal> sent(SessionOutput out, bool ok);
 
     ServerConfig config_;
@@ -232,6 +293,31 @@ class ServerSession {
     std::vector<std::string> active_roles_;
     std::optional<messages::PlayerStream> stream_;
     std::optional<ac3forge::StreamStart> burst_stream_;
+
+    // The state roles: whether a state has gone out since each was activated, and the controller
+    // state last sent, whose commands and seek range a client's command is checked against.
+    bool metadata_sent_ = false;
+    bool controller_sent_ = false;
+    bool color_sent_ = false;
+    std::optional<controller::State> controller_state_;
+    bool artwork_state_received_ = false;
+    bool visualizer_state_received_ = false;
+    bool source_state_received_ = false;
+    std::optional<artwork::Channels> artwork_stream_;
+    struct ArtworkTransfer {
+        std::size_t channel = 0;
+        std::uint32_t remaining = 0;
+    };
+    std::optional<ArtworkTransfer> artwork_transfer_;
+    std::optional<visualizer::StreamStart> visualizer_stream_;
+    // Visualizer frames sent: the latest timestamp, each periodic type's last, and each frame not
+    // yet due with its size.
+    std::int64_t visualizer_last_ = 0;
+    std::array<std::optional<std::int64_t>, 5> visualizer_type_last_{};
+    std::vector<std::pair<std::int64_t, std::size_t>> visualizer_pending_;
+    // source@v1: a start sent and not stopped, and the client's input stream open.
+    bool source_started_ = false;
+    bool source_stream_open_ = false;
 
     // Pairing activations since the last handshake (pairing.md, Pairing index).
     std::uint32_t pairing_index_ = 0;

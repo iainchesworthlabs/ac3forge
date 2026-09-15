@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <span>
@@ -25,6 +26,8 @@
 #include "ac3/sendspin/pairing.hpp"
 #include "ac3/sendspin/pairing_flow.hpp"
 #include "ac3/sendspin/session.hpp"
+#include "ac3/sendspin/state_roles.hpp"
+#include "ac3/sendspin/stream_roles.hpp"
 #include "ac3/sendspin/transport.hpp"
 
 namespace ac3::sendspin {
@@ -120,6 +123,22 @@ bool ServerSession::seal_json(std::string_view json, SessionOutput& out) {
     return true;
 }
 
+bool ServerSession::seal_binary(std::span<const std::uint8_t> message, SessionOutput& out) {
+    if (!channel_) {
+        return false;
+    }
+    std::vector<std::vector<std::uint8_t>> sealed;
+    if (!channel_->seal(message, sealed)) {
+        phase_ = Phase::kClosed;
+        out.close = true;
+        return false;
+    }
+    for (std::vector<std::uint8_t>& ciphertext : sealed) {
+        out.binary(std::move(ciphertext));
+    }
+    return true;
+}
+
 std::expected<SessionOutput, Refusal> ServerSession::sent(SessionOutput out, bool ok) {
     if (!ok) {
         return refuse(Refusal::kCrypto);
@@ -145,8 +164,14 @@ SessionOutput ServerSession::receive(const transport::Frame& frame) {
     if (opened.error != Channel::OpenError::kNone) {
         return close_silently();
     }
-    if (opened.message.empty() || opened.message.front() != message_id::kJson) {
-        // No role this server activates sends binary data to it.
+    if (opened.message.empty()) {
+        return {};
+    }
+    if (opened.message.front() == message_id::kSourceFirst) {
+        return on_source_chunk(opened.message);
+    }
+    if (opened.message.front() != message_id::kJson) {
+        // No other role sends binary data to a server.
         return {};
     }
     return on_json(text_of(opened.message.subspan(1)), arrival);
@@ -196,6 +221,19 @@ SessionOutput ServerSession::established(handshake::Initiator& initiator) {
     active_roles_.clear();
     stream_.reset();
     burst_stream_.reset();
+    metadata_sent_ = false;
+    controller_sent_ = false;
+    color_sent_ = false;
+    controller_state_.reset();
+    artwork_state_received_ = false;
+    visualizer_state_received_ = false;
+    source_state_received_ = false;
+    artwork_stream_.reset();
+    artwork_transfer_.reset();
+    visualizer_stream_.reset();
+    visualizer_pending_.clear();
+    source_started_ = false;
+    source_stream_open_ = false;
     attempt_.reset();
     pairing_index_ = 0;
 
@@ -311,6 +349,27 @@ SessionOutput ServerSession::on_json(std::string_view text, std::int64_t arrival
         if (state->ac3forge && ac3forge_active()) {
             ac3forge_state_received_ = true;
         }
+        artwork_state_received_ = artwork_state_received_ || (state->artwork && role_active(artwork::kRole));
+        visualizer_state_received_ = visualizer_state_received_ || (state->visualizer && role_active(visualizer::kRole));
+        source_state_received_ = source_state_received_ || (state->source && role_active(source::kRole));
+        // Omitting a role object leaves that role's state as it was (messaging.md, client/state),
+        // for a role still active.
+        if (state_) {
+            const auto keep = [&]<class T>(std::optional<T>& next, const std::optional<T>& previous, std::string_view role) {
+                if (!next && role_active(role)) {
+                    next = previous;
+                }
+            };
+            keep(state->player, state_->player, kPlayerRole);
+            keep(state->ac3forge, state_->ac3forge, ac3forge::kRole);
+            keep(state->artwork, state_->artwork, artwork::kRole);
+            keep(state->visualizer, state_->visualizer, visualizer::kRole);
+            keep(state->source, state_->source, source::kRole);
+        }
+        if (!state->available) {
+            // A source that becomes unavailable has stopped streaming (roles/source/v1.md).
+            source_started_ = false;
+        }
         state_ = std::move(*state);
         listener_->on_state(*state_);
         return {};
@@ -318,6 +377,58 @@ SessionOutput ServerSession::on_json(std::string_view text, std::int64_t arrival
     if (type == "client/leave") {
         listener_->on_leave();
         return {};
+    }
+    if (type == "client/command") {
+        const auto command = m::read_client_command(payload);
+        if (!command || !command->controller || !role_active(controller::kRole) || !controller_state_) {
+            return {};
+        }
+        // Only a command the latest controller state lists, and a seek inside its range
+        // (roles/controller/v1.md).
+        const controller::CommandMessage& which = *command->controller;
+        const std::vector<controller::Command>& listed = controller_state_->supported_commands;
+        if (std::find(listed.begin(), listed.end(), which.command) == listed.end() ||
+            (which.command == controller::Command::kSeek &&
+             (!controller_state_->seek_max_ms || which.position_ms > *controller_state_->seek_max_ms))) {
+            return {};
+        }
+        listener_->on_controller_command(which);
+        return {};
+    }
+    if (type == "client-stream/start") {
+        if (!role_active(source::kRole)) {
+            return {};
+        }
+        // A stream the server did not start is a protocol error (roles/source/v1.md).
+        if (!source_started_) {
+            return close_silently();
+        }
+        const auto start = m::read_client_stream_start(payload);
+        if (!start) {
+            return {};
+        }
+        source_stream_open_ = true;
+        listener_->on_source_stream_start(*start);
+        return {};
+    }
+    if (type == "client-stream/end") {
+        if (source_stream_open_) {
+            source_stream_open_ = false;
+            listener_->on_source_stream_end();
+        }
+        return {};
+    }
+    return {};
+}
+
+SessionOutput ServerSession::on_source_chunk(std::span<const std::uint8_t> message) {
+    // Rejected with no open input stream or from an unavailable client; after a stop, chunks may
+    // still arrive until the client ends its stream, and are passed on while it is open.
+    if (!source_stream_open_ || !state_ || !state_->available || !role_active(source::kRole)) {
+        return {};
+    }
+    if (const std::optional<source::Chunk> chunk = source::parse_chunk(message)) {
+        listener_->on_source_audio(chunk->timestamp, chunk->frame);
     }
     return {};
 }
@@ -428,6 +539,53 @@ bool ServerSession::ac3forge_active() const {
            std::find(active_roles_.begin(), active_roles_.end(), ac3forge::kRole) != active_roles_.end();
 }
 
+bool ServerSession::role_active(std::string_view role) const {
+    return phase_ == Phase::kActive && std::find(active_roles_.begin(), active_roles_.end(), role) != active_roles_.end();
+}
+
+bool ServerSession::end_removed_roles(const std::vector<std::string>& roles, SessionOutput& out) {
+    const auto removed = [&](std::string_view role) {
+        return role_active(role) && std::find(roles.begin(), roles.end(), role) == roles.end();
+    };
+    if (artwork_stream_ && removed(artwork::kRole)) {
+        if (artwork_transfer_ && !seal_binary(artwork::cancel(artwork_transfer_->channel), out)) {
+            return false;
+        }
+        artwork_transfer_.reset();
+        artwork_stream_.reset();
+        if (!seal_json(m::write_stream_end({.roles = std::vector<std::string>{"artwork"}}), out)) {
+            return false;
+        }
+    }
+    if (visualizer_stream_ && removed(visualizer::kRole)) {
+        visualizer_stream_.reset();
+        visualizer_pending_.clear();
+        if (!seal_json(m::write_stream_end({.roles = std::vector<std::string>{"visualizer"}}), out)) {
+            return false;
+        }
+    }
+    m::ServerState cleared;
+    if (metadata_sent_ && removed(metadata::kRole)) {
+        cleared.metadata.emplace(std::nullopt);
+    }
+    if (controller_sent_ && removed(controller::kRole)) {
+        cleared.controller.emplace(std::nullopt);
+    }
+    if (color_sent_ && removed(color::kRole)) {
+        cleared.color.emplace(std::nullopt);
+    }
+    if ((cleared.metadata || cleared.controller || cleared.color) &&
+        !seal_json(m::write_server_state(cleared, dialect_), out)) {
+        return false;
+    }
+    if (source_stream_open_ && removed(source::kRole)) {
+        // The client ends its input stream on the activation; the stream is over for the server now.
+        source_stream_open_ = false;
+        listener_->on_source_stream_end();
+    }
+    return true;
+}
+
 std::optional<m::PairingActivation> ServerSession::pairing_parameters(
     const std::optional<m::PairingActivation>& requested) const {
     if (!requested || !requested->method || !hello_) {
@@ -507,15 +665,24 @@ std::expected<SessionOutput, Refusal> ServerSession::activate(const m::Activate&
         const bool listed = std::find(hello_->supported_roles.begin(), hello_->supported_roles.end(), role) !=
                             hello_->supported_roles.end();
         const std::string_view family = family_of(role);
-        if (!listed || std::find(families.begin(), families.end(), family) != families.end() ||
-            (role == kPlayerRole && !hello_->player_support) ||
-            (role == ac3forge::kRole && !hello_->ac3forge_support)) {
+        // A role whose support object is missing is never activated; nor, for an aiosendspin 9.1.1
+        // client, are the three roles whose 9.1.1 forms differ (C33 to C35).
+        const bool unsupported = (role == kPlayerRole && !hello_->player_support) ||
+                                 (role == ac3forge::kRole && !hello_->ac3forge_support) ||
+                                 (role == source::kRole && !hello_->source_support) ||
+                                 (role == visualizer::kRole && !hello_->visualizer_support);
+        const bool not_911 = dialect_ == Dialect::kAiosendspin911 &&
+                             (role == source::kRole || role == artwork::kRole || role == visualizer::kRole);
+        if (!listed || std::find(families.begin(), families.end(), family) != families.end() || unsupported || not_911) {
             return refuse(Refusal::kBadActivation);
         }
         families.push_back(family);
     }
 
     SessionOutput out;
+    if (!end_removed_roles(roles, out)) {
+        return refuse(Refusal::kCrypto);
+    }
     const bool keeps_player = std::find(roles.begin(), roles.end(), kPlayerRole) != roles.end();
     const bool keeps_ac3forge = std::find(roles.begin(), roles.end(), ac3forge::kRole) != roles.end();
     if (stream_ && !keeps_player) {
@@ -540,6 +707,7 @@ std::expected<SessionOutput, Refusal> ServerSession::activate(const m::Activate&
     }
     const bool had_player = player_active();
     const bool had_ac3forge = ac3forge_active();
+    const std::vector<std::string> previous = active_roles_;
     activities_ = activate.activities;
     active_roles_ = roles;
     phase_ = Phase::kActive;
@@ -549,6 +717,32 @@ std::expected<SessionOutput, Refusal> ServerSession::activate(const m::Activate&
     }
     if (!had_ac3forge || !keeps_ac3forge) {
         ac3forge_state_received_ = false;
+    }
+    // A role added or re-added starts again: a fresh client/state before its stream, and a state
+    // not yet sent (messaging.md, server/state and client/state).
+    const auto renewed = [&](std::string_view role) {
+        return std::find(previous.begin(), previous.end(), role) == previous.end() || !role_active(role);
+    };
+    if (renewed(metadata::kRole)) {
+        metadata_sent_ = false;
+    }
+    if (renewed(controller::kRole)) {
+        controller_sent_ = false;
+        controller_state_.reset();
+    }
+    if (renewed(color::kRole)) {
+        color_sent_ = false;
+    }
+    if (renewed(artwork::kRole)) {
+        artwork_state_received_ = false;
+    }
+    if (renewed(visualizer::kRole)) {
+        visualizer_state_received_ = false;
+    }
+    if (renewed(source::kRole)) {
+        source_state_received_ = false;
+        source_started_ = false;
+        source_stream_open_ = false;
     }
     // An activation ends the attempt in progress, whose messages still in flight are then
     // discarded, and a pairing activation admits a new one.
@@ -762,6 +956,272 @@ std::expected<SessionOutput, Refusal> ServerSession::ac3forge_command(const ac3f
     }
     SessionOutput out;
     const bool ok = seal_json(text, out);
+    return sent(std::move(out), ok);
+}
+
+// --- The other roles ---------------------------------------------------------------------------
+
+std::expected<SessionOutput, Refusal> ServerSession::send_state(const m::ServerState& state) {
+    // An aiosendspin 9.1.1 client fails a pairing attempt on any other message (C25).
+    if (phase_ != Phase::kActive || (dialect_ == Dialect::kAiosendspin911 && attempt_running())) {
+        return refuse(Refusal::kNotReady);
+    }
+    if ((state.metadata && !role_active(metadata::kRole)) || (state.controller && !role_active(controller::kRole)) ||
+        (state.color && !role_active(color::kRole))) {
+        return refuse(Refusal::kNoRole);
+    }
+    // A role's first state brings the client up to date before anything is scheduled.
+    const std::int64_t now = clock_->now_us();
+    if ((!metadata_sent_ && state.metadata && *state.metadata && (**state.metadata).timestamp > now) ||
+        (!color_sent_ && state.color && *state.color && (**state.color).timestamp > now)) {
+        return refuse(Refusal::kScheduled);
+    }
+    SessionOutput out;
+    const bool ok = seal_json(m::write_server_state(state, dialect_), out);
+    if (ok) {
+        metadata_sent_ = metadata_sent_ || state.metadata.has_value();
+        color_sent_ = color_sent_ || state.color.has_value();
+        if (state.controller) {
+            controller_sent_ = true;
+            controller_state_ = *state.controller;
+        }
+    }
+    return sent(std::move(out), ok);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::start_artwork_stream() {
+    if (!role_active(artwork::kRole) || !artwork_state_received_ || !state_ || !state_->artwork) {
+        return refuse(Refusal::kNoRole);
+    }
+    if (!state_->available) {
+        return refuse(Refusal::kUnavailable);
+    }
+    artwork::Channels channels = *state_->artwork;
+    SessionOutput out;
+    const std::int64_t now = clock_->now_us();
+    if (artwork_stream_) {
+        // A transfer on a channel whose configuration changes is cancelled, and a channel whose
+        // source becomes none is cleared, before the new stream/start (roles/artwork/v1.md).
+        if (artwork_transfer_ && artwork_stream_->at(artwork_transfer_->channel) != channels.at(artwork_transfer_->channel)) {
+            if (!seal_binary(artwork::cancel(artwork_transfer_->channel), out)) {
+                return refuse(Refusal::kCrypto);
+            }
+            artwork_transfer_.reset();
+        }
+        for (std::size_t channel = 0; channel < artwork::kMaxChannels; ++channel) {
+            if (artwork_stream_->at(channel).source == artwork::Source::kNone ||
+                channels.at(channel).source != artwork::Source::kNone) {
+                continue;
+            }
+            if (artwork_transfer_) {
+                if (!seal_binary(artwork::cancel(artwork_transfer_->channel), out)) {
+                    return refuse(Refusal::kCrypto);
+                }
+                artwork_transfer_.reset();
+            }
+            if (!seal_binary(artwork::announce(channel, now, 0), out)) {
+                return refuse(Refusal::kCrypto);
+            }
+        }
+    }
+    // Truncated after the last channel streamed.
+    while (!channels.channels.empty() && channels.channels.back().source == artwork::Source::kNone) {
+        channels.channels.pop_back();
+    }
+    m::StreamStart start;
+    start.server_transmitted = clock_->now_us();
+    start.artwork = channels;
+    if (!seal_json(m::write_stream_start(start), out)) {
+        return refuse(Refusal::kCrypto);
+    }
+    artwork_stream_ = std::move(channels);
+    return out;
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::announce_artwork(std::size_t channel, std::int64_t timestamp_us,
+                                                                      std::uint32_t total_size) {
+    if (!artwork_stream_ || !role_active(artwork::kRole) || channel >= artwork::kMaxChannels ||
+        artwork_stream_->at(channel).source == artwork::Source::kNone) {
+        return refuse(Refusal::kNoStream);
+    }
+    if (artwork_transfer_) {
+        return refuse(Refusal::kTransfer);
+    }
+    SessionOutput out;
+    const bool ok = seal_binary(artwork::announce(channel, timestamp_us, total_size), out);
+    if (ok && total_size > 0) {
+        artwork_transfer_ = ArtworkTransfer{.channel = channel, .remaining = total_size};
+    }
+    return sent(std::move(out), ok);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::send_artwork_part(std::span<const std::uint8_t> data) {
+    if (!artwork_stream_ || !artwork_transfer_ || data.empty() || data.size() > artwork_transfer_->remaining) {
+        return refuse(Refusal::kTransfer);
+    }
+    const std::optional<std::vector<std::uint8_t>> message = artwork::part(artwork_transfer_->channel, data);
+    if (!message) {
+        return refuse(Refusal::kTransfer);
+    }
+    SessionOutput out;
+    const bool ok = seal_binary(*message, out);
+    if (ok) {
+        artwork_transfer_->remaining -= static_cast<std::uint32_t>(data.size());
+        if (artwork_transfer_->remaining == 0) {
+            artwork_transfer_.reset();
+        }
+    }
+    return sent(std::move(out), ok);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::cancel_artwork(std::size_t channel) {
+    if (!artwork_stream_ || channel >= artwork::kMaxChannels) {
+        return refuse(Refusal::kNoStream);
+    }
+    SessionOutput out;
+    const bool ok = seal_binary(artwork::cancel(channel), out);
+    if (ok && artwork_transfer_ && artwork_transfer_->channel == channel) {
+        artwork_transfer_.reset();
+    }
+    return sent(std::move(out), ok);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::end_artwork_stream() {
+    if (!artwork_stream_) {
+        return refuse(Refusal::kNoStream);
+    }
+    SessionOutput out;
+    if (artwork_transfer_ && !seal_binary(artwork::cancel(artwork_transfer_->channel), out)) {
+        return refuse(Refusal::kCrypto);
+    }
+    artwork_transfer_.reset();
+    artwork_stream_.reset();
+    const bool ok = seal_json(m::write_stream_end({.roles = std::vector<std::string>{"artwork"}}), out);
+    return sent(std::move(out), ok);
+}
+
+std::optional<std::size_t> ServerSession::artwork_transfer() const {
+    return artwork_transfer_ ? std::optional<std::size_t>(artwork_transfer_->channel) : std::nullopt;
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::start_visualizer_stream(const visualizer::StreamStart& start) {
+    if (!role_active(visualizer::kRole) || !visualizer_state_received_ || !state_ || !state_->visualizer ||
+        !hello_->visualizer_support) {
+        return refuse(Refusal::kNoRole);
+    }
+    if (!state_->available) {
+        return refuse(Refusal::kUnavailable);
+    }
+    // Only what the client's latest state asks for (roles/visualizer/v1.md, stream/start).
+    const visualizer::State& asked = *state_->visualizer;
+    const auto has = [](const std::vector<visualizer::Type>& types, visualizer::Type type) {
+        return std::find(types.begin(), types.end(), type) != types.end();
+    };
+    const bool subset = std::all_of(start.types.begin(), start.types.end(),
+                                    [&](visualizer::Type type) { return has(asked.types, type); });
+    const bool beat = has(start.types, visualizer::Type::kBeat);
+    const bool spectrum = has(start.types, visualizer::Type::kSpectrum);
+    if (!subset || start.rate_max < 1 || start.rate_max > asked.rate_max || beat != start.tracks_downbeats.has_value() ||
+        spectrum != start.spectrum.has_value() || (spectrum && start.spectrum != asked.spectrum)) {
+        return refuse(Refusal::kFormatNotListed);
+    }
+    m::StreamStart message;
+    message.server_transmitted = clock_->now_us();
+    message.visualizer = start;
+    SessionOutput out;
+    const bool ok = seal_json(m::write_stream_start(message), out);
+    if (ok) {
+        if (!visualizer_stream_) {
+            visualizer_last_ = std::numeric_limits<std::int64_t>::min();
+            visualizer_type_last_.fill(std::nullopt);
+            visualizer_pending_.clear();
+        }
+        visualizer_stream_ = start;
+    }
+    return sent(std::move(out), ok);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::send_visualizer_frame(const visualizer::Frame& frame) {
+    if (!visualizer_stream_ || !role_active(visualizer::kRole) || !hello_->visualizer_support) {
+        return refuse(Refusal::kNoStream);
+    }
+    const visualizer::StreamStart& stream = *visualizer_stream_;
+    const auto index = static_cast<std::size_t>(frame.type);
+    const bool periodic = frame.type == visualizer::Type::kLoudness || frame.type == visualizer::Type::kFPeak ||
+                          frame.type == visualizer::Type::kSpectrum;
+    const bool listed = std::find(stream.types.begin(), stream.types.end(), frame.type) != stream.types.end();
+    const std::int64_t interval = 1'000'000 / std::max(stream.rate_max, 1);
+    if (!listed || frame.timestamp < visualizer_last_ ||
+        (frame.type == visualizer::Type::kSpectrum &&
+         (!stream.spectrum || frame.bins.size() != static_cast<std::size_t>(stream.spectrum->n_disp_bins))) ||
+        (periodic && visualizer_type_last_[index] && frame.timestamp - *visualizer_type_last_[index] < interval)) {
+        return refuse(Refusal::kBadFrame);
+    }
+    const std::vector<std::uint8_t> message = visualizer::write_frame(frame);
+    // Frames still to be shown count against the client's capacity (roles/visualizer/v1.md).
+    const std::int64_t now = clock_->now_us();
+    std::erase_if(visualizer_pending_, [&](const auto& pending) { return pending.first <= now; });
+    std::uint64_t held = 0;
+    for (const auto& pending : visualizer_pending_) {
+        held += pending.second;
+    }
+    if (held + message.size() > hello_->visualizer_support->buffer_capacity) {
+        return refuse(Refusal::kBufferFull);
+    }
+    SessionOutput out;
+    const bool ok = seal_binary(message, out);
+    if (ok) {
+        visualizer_last_ = frame.timestamp;
+        visualizer_type_last_[index] = frame.timestamp;
+        if (frame.timestamp > now) {
+            visualizer_pending_.emplace_back(frame.timestamp, message.size());
+        }
+    }
+    return sent(std::move(out), ok);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::clear_visualizer_stream() {
+    if (!visualizer_stream_) {
+        return refuse(Refusal::kNoStream);
+    }
+    SessionOutput out;
+    const bool ok = seal_json(m::write_stream_clear({.server_transmitted = clock_->now_us(),
+                                                     .roles = std::vector<std::string>{"visualizer"}}),
+                              out);
+    if (ok) {
+        // Timestamps may start again from earlier, and nothing is held.
+        visualizer_last_ = std::numeric_limits<std::int64_t>::min();
+        visualizer_type_last_.fill(std::nullopt);
+        visualizer_pending_.clear();
+    }
+    return sent(std::move(out), ok);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::end_visualizer_stream() {
+    if (!visualizer_stream_) {
+        return refuse(Refusal::kNoStream);
+    }
+    SessionOutput out;
+    const bool ok = seal_json(m::write_stream_end({.roles = std::vector<std::string>{"visualizer"}}), out);
+    visualizer_stream_.reset();
+    visualizer_pending_.clear();
+    return sent(std::move(out), ok);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::source_command(source::Command command) {
+    if (!role_active(source::kRole) || !source_state_received_ || !state_ || !state_->source) {
+        return refuse(Refusal::kNoRole);
+    }
+    if (command == source::Command::kStart && !state_->available) {
+        return refuse(Refusal::kUnavailable);
+    }
+    m::ServerCommand message;
+    message.source = command;
+    SessionOutput out;
+    const bool ok = seal_json(m::write_server_command(message, dialect_), out);
+    if (ok) {
+        source_started_ = command == source::Command::kStart;
+    }
     return sent(std::move(out), ok);
 }
 

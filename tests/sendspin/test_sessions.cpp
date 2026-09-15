@@ -161,6 +161,44 @@ struct PlayerEvents final : PlayerListener {
     void on_invalid_burst() override { ++invalid_bursts; }
     void on_ac3forge_command(const ac::CommandMessage& command) override { ac3forge_commands.push_back(command); }
     void on_settings_refused(const ac::SettingsError& error) override { refused_settings.push_back(error); }
+
+    // The other roles.
+    struct ArtworkEvent {
+        ac3::sendspin::artwork::Kind kind;
+        std::size_t channel;
+        std::uint32_t total_size;
+        std::vector<std::uint8_t> data;
+    };
+    std::vector<m::ServerState> server_states;
+    std::vector<ac3::sendspin::artwork::Channels> artwork_starts;
+    std::vector<ArtworkEvent> artwork;
+    int artwork_ends = 0;
+    std::vector<ac3::sendspin::visualizer::StreamStart> visualizer_starts;
+    std::vector<std::pair<ac3::sendspin::visualizer::Frame, std::int64_t>> frames;
+    int visualizer_clears = 0;
+    int visualizer_ends = 0;
+    std::vector<ac3::sendspin::source::Command> source_commands;
+
+    void on_server_state(const m::ServerState& state) override { server_states.push_back(state); }
+    void on_artwork_stream_start(const ac3::sendspin::artwork::Channels& channels) override {
+        artwork_starts.push_back(channels);
+    }
+    void on_artwork_message(const ac3::sendspin::artwork::Message& message) override {
+        artwork.push_back({.kind = message.kind,
+                           .channel = message.channel,
+                           .total_size = message.total_size,
+                           .data = {message.data.begin(), message.data.end()}});
+    }
+    void on_artwork_stream_end() override { ++artwork_ends; }
+    void on_visualizer_stream_start(const ac3::sendspin::visualizer::StreamStart& start) override {
+        visualizer_starts.push_back(start);
+    }
+    void on_visualizer_frame(const ac3::sendspin::visualizer::Frame& frame, std::int64_t local_time) override {
+        frames.emplace_back(frame, local_time);
+    }
+    void on_visualizer_stream_clear() override { ++visualizer_clears; }
+    void on_visualizer_stream_end() override { ++visualizer_ends; }
+    void on_source_command(ac3::sendspin::source::Command command) override { source_commands.push_back(command); }
 };
 
 struct ServerEvents final : ServerListener {
@@ -188,6 +226,21 @@ struct ServerEvents final : ServerListener {
         return stores;
     }
     void on_pairing_ended(std::optional<AbortReason> reason) override { ended.push_back(reason); }
+
+    // The other roles.
+    std::vector<ac3::sendspin::controller::CommandMessage> controller_commands;
+    std::vector<m::ClientStreamStart> source_starts;
+    std::vector<std::pair<std::int64_t, std::vector<std::uint8_t>>> source_audio;
+    int source_ends = 0;
+
+    void on_controller_command(const ac3::sendspin::controller::CommandMessage& command) override {
+        controller_commands.push_back(command);
+    }
+    void on_source_stream_start(const m::ClientStreamStart& start) override { source_starts.push_back(start); }
+    void on_source_audio(std::int64_t timestamp_us, std::span<const std::uint8_t> frame) override {
+        source_audio.emplace_back(timestamp_us, std::vector<std::uint8_t>(frame.begin(), frame.end()));
+    }
+    void on_source_stream_end() override { ++source_ends; }
 };
 
 ac3::sendspin::noise::KeyPair generated() {
@@ -946,4 +999,241 @@ TEST_CASE("sessions: _ac3forge_player@v1's commands and settings", "[sendspin][s
     rig.run_for(50'000);
     CHECK(rig.player_events.ac3forge_commands.size() == 2);
     CHECK(refusal(rig.server.ac3forge_command(settings)) == Refusal::kCommandNotListed);
+}
+
+namespace {
+
+namespace metadata = ac3::sendspin::metadata;
+namespace controller = ac3::sendspin::controller;
+namespace color = ac3::sendspin::color;
+namespace artwork = ac3::sendspin::artwork;
+namespace visualizer = ac3::sendspin::visualizer;
+namespace source = ac3::sendspin::source;
+
+// A client that lists `roles` beside player@v1, with unpaired access.
+PlayerConfig roles_config(std::vector<std::string> roles) {
+    PlayerConfig config = player_config(true);
+    config.supported_roles = std::move(roles);
+    config.supported_roles.insert(config.supported_roles.begin(), "player@v1");
+    return config;
+}
+
+m::Activate playback_with(std::vector<std::string> roles) {
+    return {.activities = {m::Activity::kPlayback}, .active_roles = std::move(roles), .pairing = std::nullopt};
+}
+
+}  // namespace
+
+TEST_CASE("sessions: metadata controller and color state with the controller's commands", "[sendspin][sessions][roles]") {
+    Rig rig(roles_config({"metadata@v1", "controller@v1", "color@v1"}), 0, hs::sentinel_choice(), {});
+    REQUIRE(rig.run_until([&] { return !rig.server_events.hellos.empty(); }, 1'000'000));
+    m::ServerState title;
+    metadata::State track;
+    track.timestamp = rig.now;
+    track.title = "Flamenco Sketches";
+    title.metadata = track;
+    CHECK(refusal(rig.server.send_state(title)) == Refusal::kNotReady);
+
+    rig.send(rig.server.activate(playback_with({"player@v1", "metadata@v1", "controller@v1", "color@v1"})));
+    REQUIRE(rig.run_until([&] { return rig.available(); }, 5'000'000));
+
+    // A role's first state is not scheduled ahead.
+    m::ServerState scheduled;
+    metadata::State later = track;
+    later.timestamp = rig.now + 5'000'000;
+    scheduled.metadata = later;
+    CHECK(refusal(rig.server.send_state(scheduled)) == Refusal::kScheduled);
+    track.timestamp = rig.now;
+    title.metadata = track;
+    rig.send(rig.server.send_state(title));
+    // Once brought up to date, the next may be.
+    rig.send(rig.server.send_state(scheduled));
+
+    controller::State controls;
+    controls.supported_commands = {controller::Command::kPlay, controller::Command::kSeek};
+    controls.volume = 60;
+    controls.seek_max_ms = 1000;
+    m::ServerState with_controls;
+    with_controls.controller = controls;
+    color::State colours;
+    colours.timestamp = rig.now;
+    colours.primary = color::Rgb{.r = 9, .g = 9, .b = 9};
+    with_controls.color = colours;
+    rig.send(rig.server.send_state(with_controls));
+    REQUIRE(rig.run_until([&] { return rig.player_events.server_states.size() == 3; }, 100'000));
+    CHECK(rig.player_events.server_states[0].metadata->value().title == "Flamenco Sketches");
+    CHECK(rig.player_events.server_states[1].metadata->value().timestamp == later.timestamp);
+    CHECK(rig.player_events.server_states[2].controller->value() == controls);
+    CHECK(rig.player_events.server_states[2].color->value() == colours);
+
+    // Commands the controller state lists pass; a volume it does not list and a seek past its
+    // range do not.
+    controller::CommandMessage play;
+    play.command = controller::Command::kPlay;
+    controller::CommandMessage volume;
+    volume.command = controller::Command::kVolume;
+    volume.volume = 10;
+    controller::CommandMessage far;
+    far.command = controller::Command::kSeek;
+    far.position_ms = 2000;
+    controller::CommandMessage near = far;
+    near.position_ms = 500;
+    for (const controller::CommandMessage& command : {play, volume, far, near}) {
+        rig.from_player(rig.player.send_command(command));
+    }
+    rig.run_for(50'000);
+    CHECK(rig.server_events.controller_commands == std::vector<controller::CommandMessage>{play, near});
+
+    // Dropping the metadata role clears its state first.
+    rig.send(rig.server.activate(playback_with({"player@v1", "controller@v1", "color@v1"})));
+    REQUIRE(rig.run_until([&] { return rig.player_events.server_states.size() == 4; }, 100'000));
+    REQUIRE(rig.player_events.server_states[3].metadata.has_value());
+    CHECK_FALSE(rig.player_events.server_states[3].metadata->has_value());
+    CHECK_FALSE(rig.player_events.server_states[3].controller.has_value());
+    CHECK(refusal(rig.server.send_state(title)) == Refusal::kNoRole);
+}
+
+TEST_CASE("sessions: artwork streams and transfers", "[sendspin][sessions][roles]") {
+    PlayerConfig config = roles_config({"artwork@v1"});
+    config.artwork_state.channels = {{.source = artwork::Source::kAlbum, .format = artwork::Format::kJpeg, .width = 64, .height = 64}};
+    Rig rig(std::move(config), 0, hs::sentinel_choice(), {});
+    REQUIRE(rig.run_until([&] { return !rig.server_events.hellos.empty(); }, 1'000'000));
+    CHECK(refusal(rig.server.start_artwork_stream()) == Refusal::kNoRole);
+    rig.send(rig.server.activate(playback_with({"artwork@v1"})));
+    REQUIRE(rig.run_until([&] { return rig.available(); }, 5'000'000));
+    CHECK(rig.server_events.states.back().artwork.has_value());
+
+    CHECK(refusal(rig.server.announce_artwork(0, rig.now, 10)) == Refusal::kNoStream);
+    rig.send(rig.server.start_artwork_stream());
+    REQUIRE(rig.run_until([&] { return !rig.player_events.artwork_starts.empty(); }, 100'000));
+    CHECK(rig.player_events.artwork_starts[0] == rig.server_events.states.back().artwork);
+
+    // One transfer at a time, on a channel that streams, part by part to its size.
+    CHECK(refusal(rig.server.announce_artwork(1, rig.now, 10)) == Refusal::kNoStream);
+    CHECK(refusal(rig.server.send_artwork_part(std::vector<std::uint8_t>{1})) == Refusal::kTransfer);
+    rig.send(rig.server.announce_artwork(0, rig.now + 1000, 10));
+    CHECK(rig.server.artwork_transfer() == std::optional<std::size_t>(0));
+    CHECK(refusal(rig.server.announce_artwork(0, rig.now, 5)) == Refusal::kTransfer);
+    CHECK(refusal(rig.server.send_artwork_part(std::vector<std::uint8_t>(11, 1))) == Refusal::kTransfer);
+    rig.send(rig.server.send_artwork_part(std::vector<std::uint8_t>{1, 2, 3, 4}));
+    rig.send(rig.server.send_artwork_part(std::vector<std::uint8_t>{5, 6, 7, 8, 9, 10}));
+    CHECK_FALSE(rig.server.artwork_transfer().has_value());
+    REQUIRE(rig.run_until([&] { return rig.player_events.artwork.size() == 3; }, 100'000));
+    CHECK(rig.player_events.artwork[0].kind == artwork::Kind::kAnnounce);
+    CHECK(rig.player_events.artwork[0].total_size == 10);
+    CHECK(rig.player_events.artwork[2].data == std::vector<std::uint8_t>{5, 6, 7, 8, 9, 10});
+
+    // The client turns channel 0 off while a transfer is in flight: the restart cancels the
+    // transfer and clears the channel before its stream/start.
+    rig.send(rig.server.announce_artwork(0, rig.now, 100));
+    rig.from_player(rig.player.set_artwork_state(artwork::Channels{.channels = {artwork::Channel{}}}));
+    REQUIRE(rig.run_until([&] { return rig.server_events.states.back().artwork->at(0).source == artwork::Source::kNone; },
+                          100'000));
+    rig.send(rig.server.start_artwork_stream());
+    REQUIRE(rig.run_until([&] { return rig.player_events.artwork_starts.size() == 2; }, 100'000));
+    REQUIRE(rig.player_events.artwork.size() == 6);
+    CHECK(rig.player_events.artwork[3].kind == artwork::Kind::kAnnounce);
+    CHECK(rig.player_events.artwork[4].kind == artwork::Kind::kCancel);
+    CHECK(rig.player_events.artwork[5].kind == artwork::Kind::kAnnounce);
+    CHECK(rig.player_events.artwork[5].total_size == 0);
+    CHECK(rig.player_events.artwork_starts[1].channels.empty());
+    CHECK(refusal(rig.server.announce_artwork(0, rig.now, 1)) == Refusal::kNoStream);
+
+    rig.send(rig.server.end_artwork_stream());
+    REQUIRE(rig.run_until([&] { return rig.player_events.artwork_ends == 1; }, 100'000));
+    CHECK_FALSE(rig.player.artwork_streaming());
+}
+
+TEST_CASE("sessions: visualizer frames by type rate and buffer", "[sendspin][sessions][roles]") {
+    PlayerConfig config = roles_config({"visualizer@v1"});
+    config.visualizer_support = visualizer::Support{.buffer_capacity = 30};
+    config.visualizer_state.types = {visualizer::Type::kLoudness, visualizer::Type::kBeat};
+    config.visualizer_state.rate_max = 10;
+    Rig rig(std::move(config), 0, hs::sentinel_choice(), {});
+    REQUIRE(rig.run_until([&] { return !rig.server_events.hellos.empty(); }, 1'000'000));
+    rig.send(rig.server.activate(playback_with({"visualizer@v1"})));
+    REQUIRE(rig.run_until([&] { return rig.available(); }, 5'000'000));
+
+    visualizer::StreamStart start;
+    start.types = {visualizer::Type::kLoudness, visualizer::Type::kPeak};
+    start.rate_max = 10;
+    CHECK(refusal(rig.server.start_visualizer_stream(start)) == Refusal::kFormatNotListed);
+    start.types = {visualizer::Type::kLoudness, visualizer::Type::kBeat};
+    start.rate_max = 20;
+    start.tracks_downbeats = false;
+    CHECK(refusal(rig.server.start_visualizer_stream(start)) == Refusal::kFormatNotListed);
+    start.rate_max = 10;
+    rig.send(rig.server.start_visualizer_stream(start));
+    REQUIRE(rig.run_until([&] { return !rig.player_events.visualizer_starts.empty(); }, 100'000));
+
+    const std::int64_t t = rig.now + 1'000'000;
+    visualizer::Frame loud;
+    loud.type = visualizer::Type::kLoudness;
+    loud.timestamp = t;
+    loud.value = 1000;
+    rig.send(rig.server.send_visualizer_frame(loud));
+    // Periodic types keep to the stream's rate; beats do not, but time never runs backwards.
+    visualizer::Frame too_soon = loud;
+    too_soon.timestamp = t + 50'000;
+    CHECK(refusal(rig.server.send_visualizer_frame(too_soon)) == Refusal::kBadFrame);
+    visualizer::Frame beat;
+    beat.type = visualizer::Type::kBeat;
+    beat.timestamp = t + 50'000;
+    rig.send(rig.server.send_visualizer_frame(beat));
+    visualizer::Frame earlier = beat;
+    earlier.timestamp = t;
+    CHECK(refusal(rig.server.send_visualizer_frame(earlier)) == Refusal::kBadFrame);
+    visualizer::Frame peak;
+    peak.type = visualizer::Type::kPeak;
+    peak.timestamp = t + 60'000;
+    CHECK(refusal(rig.server.send_visualizer_frame(peak)) == Refusal::kBadFrame);
+    // 11 and 10 bytes are held; another loudness frame would pass the 30 the client allows.
+    visualizer::Frame next = loud;
+    next.timestamp = t + 100'000;
+    CHECK(refusal(rig.server.send_visualizer_frame(next)) == Refusal::kBufferFull);
+
+    REQUIRE(rig.run_until([&] { return rig.player_events.frames.size() == 2; }, 100'000));
+    CHECK(rig.player_events.frames[0].first == loud);
+    CHECK(std::llabs(rig.player_events.frames[0].second - t) < 1'000);
+    CHECK(rig.player_events.frames[1].first == beat);
+
+    // A clear lets time start again, and empties what is held.
+    rig.send(rig.server.clear_visualizer_stream());
+    rig.send(rig.server.send_visualizer_frame(loud));
+    REQUIRE(rig.run_until([&] { return rig.player_events.visualizer_clears == 1 && rig.player_events.frames.size() == 3; },
+                          100'000));
+    rig.send(rig.server.end_visualizer_stream());
+    REQUIRE(rig.run_until([&] { return rig.player_events.visualizer_ends == 1; }, 100'000));
+    CHECK(refusal(rig.server.send_visualizer_frame(loud)) == Refusal::kNoStream);
+}
+
+TEST_CASE("sessions: a source streams only after the server's start", "[sendspin][sessions][roles]") {
+    PlayerConfig config = roles_config({"source@v1"});
+    config.source_support = source::Support{.line_sense = true};
+    config.source_state.signal = source::Signal::kPresent;
+    Rig rig(std::move(config), 0, hs::sentinel_choice(), {});
+    REQUIRE(rig.run_until([&] { return !rig.server_events.hellos.empty(); }, 1'000'000));
+    CHECK(refusal(rig.server.source_command(source::Command::kStart)) == Refusal::kNoRole);
+    rig.send(rig.server.activate(playback_with({"source@v1"})));
+    REQUIRE(rig.run_until([&] { return rig.available(); }, 5'000'000));
+
+    // Nothing opens before the start.
+    const m::ClientStreamStart pcm{.format = kPcm, .codec_header = {}};
+    CHECK(rig.player.start_source_stream(pcm).frames.empty());
+    rig.send(rig.server.source_command(source::Command::kStart));
+    REQUIRE(rig.run_until([&] { return !rig.player_events.source_commands.empty(); }, 100'000));
+    CHECK(rig.player.source_started());
+
+    rig.from_player(rig.player.start_source_stream(pcm));
+    rig.from_player(rig.player.send_source_audio(rig.now - 20'000, std::vector<std::uint8_t>{1, 2, 3, 4}));
+    REQUIRE(rig.run_until([&] { return rig.server_events.source_audio.size() == 1; }, 100'000));
+    REQUIRE(rig.server_events.source_starts.size() == 1);
+    CHECK(rig.server_events.source_starts[0].format == kPcm);
+    CHECK(rig.server_events.source_audio[0].second == std::vector<std::uint8_t>{1, 2, 3, 4});
+
+    // The stop ends the client's stream.
+    rig.send(rig.server.source_command(source::Command::kStop));
+    REQUIRE(rig.run_until([&] { return rig.server_events.source_ends == 1; }, 100'000));
+    CHECK_FALSE(rig.player.source_streaming());
+    CHECK(rig.player.send_source_audio(rig.now, std::vector<std::uint8_t>{5}).frames.empty());
 }

@@ -1,11 +1,13 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ac3/sendspin/ac3forge_player.hpp"
@@ -20,6 +22,8 @@
 #include "ac3/sendspin/pairing_flow.hpp"
 #include "ac3/sendspin/pairing_messages.hpp"
 #include "ac3/sendspin/session.hpp"
+#include "ac3/sendspin/state_roles.hpp"
+#include "ac3/sendspin/stream_roles.hpp"
 #include "ac3/sendspin/transport.hpp"
 
 // One connection from a Sendspin client with the player role to a server: the player half of
@@ -48,7 +52,11 @@
 // its commands and its state object. A chunk of a data type other than the stream's, or one
 // whose header does not fit its payload, goes to the listener to be counted in invalid_chunks.
 //
-// Not here yet: the roles other than these two.
+// The other roles run for a client that lists them, which Hearth's sinks do not: the server/state
+// objects of metadata@v1, controller@v1 and color@v1 and the controller's commands; artwork@v1's
+// stream and image messages, a malformed one closing the connection as the role requires;
+// visualizer@v1's stream and frames on the player's clock; and source@v1's commands, input stream
+// and chunks.
 
 namespace ac3::sendspin {
 
@@ -74,6 +82,13 @@ struct PlayerConfig {
     ac3forge::State ac3forge_state;
     // Bounds one reassembled message, ID included.
     std::size_t max_message_bytes = 4 * 1024 * 1024;
+    // The other roles' support objects, offered with the roles listed, and their states reported
+    // while each role is active.
+    std::optional<source::Support> source_support = std::nullopt;
+    std::optional<visualizer::Support> visualizer_support = std::nullopt;
+    source::State source_state{};
+    artwork::Channels artwork_state{};
+    visualizer::State visualizer_state{};
 };
 
 class PlayerListener {
@@ -146,6 +161,22 @@ class PlayerListener {
     virtual void on_ac3forge_command(const ac3forge::CommandMessage& /*command*/) {}
     // A settings command the reader refused, with the revision it named: report settings_error.
     virtual void on_settings_refused(const ac3forge::SettingsError& /*error*/) {}
+
+    // The other roles, for a client that lists them.
+    //
+    // server/state's objects for the roles that are active, as the message carries them.
+    virtual void on_server_state(const messages::ServerState& /*state*/) {}
+    // artwork@v1's stream began or changed; one of its messages, in order; and its end.
+    virtual void on_artwork_stream_start(const artwork::Channels& /*channels*/) {}
+    virtual void on_artwork_message(const artwork::Message& /*message*/) {}
+    virtual void on_artwork_stream_end() {}
+    // visualizer@v1's stream began or changed; one frame, to show at `local_time`; a clear; its end.
+    virtual void on_visualizer_stream_start(const visualizer::StreamStart& /*start*/) {}
+    virtual void on_visualizer_frame(const visualizer::Frame& /*frame*/, std::int64_t /*local_time*/) {}
+    virtual void on_visualizer_stream_clear() {}
+    virtual void on_visualizer_stream_end() {}
+    // source@v1: the server's start, which arrives only while the client is available, or stop.
+    virtual void on_source_command(source::Command /*command*/) {}
 };
 
 class PlayerSession {
@@ -173,6 +204,17 @@ class PlayerSession {
     [[nodiscard]] SessionOutput set_state(const messages::PlayerState& state);
     // The same for _ac3forge_player@v1. A sink sends fresh levels at most ten times a second.
     [[nodiscard]] SessionOutput set_ac3forge_state(const ac3forge::State& state);
+    // The other roles' states, reported at once while the role is active.
+    [[nodiscard]] SessionOutput set_artwork_state(const artwork::Channels& channels);
+    [[nodiscard]] SessionOutput set_visualizer_state(const visualizer::State& state);
+    [[nodiscard]] SessionOutput set_source_state(const source::State& state);
+    // controller@v1's command, sent only while the role is active.
+    [[nodiscard]] SessionOutput send_command(const controller::CommandMessage& command);
+    // source@v1's input stream: opened only after the server's start while available, its chunks,
+    // and its end.
+    [[nodiscard]] SessionOutput start_source_stream(const messages::ClientStreamStart& start);
+    [[nodiscard]] SessionOutput send_source_audio(std::int64_t timestamp_us, std::span<const std::uint8_t> frame);
+    [[nodiscard]] SessionOutput end_source_stream();
     // The player's output was taken by something outside Sendspin, or given back.
     [[nodiscard]] SessionOutput set_external_source(bool external);
     [[nodiscard]] SessionOutput goodbye(messages::GoodbyeReason reason);
@@ -210,6 +252,11 @@ class PlayerSession {
     [[nodiscard]] bool streaming() const { return stream_.has_value(); }
     // An _ac3forge_player@v1 stream is running.
     [[nodiscard]] bool burst_streaming() const { return burst_stream_.has_value(); }
+    [[nodiscard]] bool artwork_streaming() const { return artwork_stream_.has_value(); }
+    [[nodiscard]] bool visualizer_streaming() const { return visualizer_stream_.has_value(); }
+    // source@v1: the server has started the source, and the input stream is open.
+    [[nodiscard]] bool source_started() const { return source_started_; }
+    [[nodiscard]] bool source_streaming() const { return source_stream_open_; }
     // A pairing activity is declared: from its server/activate until the next, or until the
     // re-handshake after a pairing.
     [[nodiscard]] bool pairing() const;
@@ -233,8 +280,12 @@ class PlayerSession {
     void send_clock(SessionOutput& out);
     [[nodiscard]] bool player_active() const;
     [[nodiscard]] bool ac3forge_active() const;
+    [[nodiscard]] bool role_active(std::string_view role) const;
     // Whether the player listed `stream`'s data type and sample rate.
     [[nodiscard]] bool lists(const ac3forge::StreamStart& stream) const;
+    // An artwork message received: false for one the role says closes the connection.
+    [[nodiscard]] bool on_artwork(std::span<const std::uint8_t> message);
+    void seal_binary(std::span<const std::uint8_t> message, SessionOutput& out);
 
     PlayerConfig config_;
     const handshake::ClientKeyring* keyring_;
@@ -274,6 +325,16 @@ class PlayerSession {
     std::optional<messages::PlayerStream> stream_;
     ac3forge::State ac3forge_state_;
     std::optional<ac3forge::StreamStart> burst_stream_;
+
+    source::State source_state_;
+    artwork::Channels artwork_state_;
+    visualizer::State visualizer_state_;
+    std::optional<artwork::Channels> artwork_stream_;
+    // The artwork transfer in flight: its channel and the bytes still to come.
+    std::optional<std::pair<std::size_t, std::uint32_t>> artwork_transfer_;
+    std::optional<visualizer::StreamStart> visualizer_stream_;
+    bool source_started_ = false;
+    bool source_stream_open_ = false;
 };
 
 }  // namespace ac3::sendspin
