@@ -178,8 +178,8 @@ and release packaging.
   come back unseen — nothing had checked these five files before, and the only test that
   did (Homebrew's) passed for an unrelated reason.
 - **Fuzz harnesses for the two parsers of third-party files that had none**:
-  `fuzz_iab_parse` (IAB/MXF) and `fuzz_ac4_parse` (AC-4 scan/parse). IAB is clean over
-  1.5M executions, AC-4 over 6M once the findings below were fixed.
+  `fuzz_iab_parse` (IAB/MXF) and `fuzz_ac4_parse` (AC-4 scan/parse). Their first runs
+  fuzzed the parsers uninstrumented; see Fixed for what the instrumented runs found.
 - **The cross-platform bitstream-hash gate now pins `aarch64-neon`**, from real arm64
   CI: byte-identical to `x86_64-sse2`, proving the encoder is bit-exact across
   architectures and that the ~6.02 dB gold-reference gap is entirely decode-side.
@@ -371,8 +371,23 @@ and release packaging.
   (including the object-assignment loop, which reached 2^32 once the reader ran dry and
   kept reading phantom zeros) grew a vector without checking for exhaustion — one fuzzed
   frame allocated 1.8 GB and took 6.7 seconds; now 33 MB and 0.03 seconds. Found by the
-  new `fuzz_ac4_parse.cpp` within seconds of its first run; six million executions since
-  are clean.
+  new `fuzz_ac4_parse.cpp` within seconds of its first run.
+- **The AC-4 and IAB parsers read out of bounds, overflowed `int` and looped forever on
+  malformed input, unseen by their fuzz harnesses.** `fuzz_ac4_parse` and
+  `fuzz_iab_parse` linked their parser libraries without the ASan, UBSan and coverage
+  flags every other fuzzed library is built with, so their earlier clean runs could
+  catch a crash, a timeout or an oversized allocation and nothing inside the parsers.
+  Instrumented, the committed AC-4 corpus read past a six-entry count table (3-bit
+  `n_objects_code` and `isf_config` codes 6 and 7, now naming no objects);
+  `presentation_config_ext_info()` overflowed `int` within 9,000 executions; and the MXF
+  reader's KLV walk looped forever on a Length near 2^64 that wrapped back to offset 0. A
+  `parse_raw_frame()` bounds check that could wrap into a read past the frame, and six
+  more `int` additions on counts that escape through `variable_bits()`, are fixed
+  alongside. The table reads, the bounds-check wrap, the skip overflow and the KLV loop
+  each have a test that fails on the old code under ASan+UBSan, and the two found by
+  mutation have reproducers under `fuzz/regressions/`. Both harnesses now run clean for
+  300 seconds, and their corpora reach 1,270 (AC-4) and 711 (IAB) edges, against 1,064
+  and 564 for corpora grown uninstrumented in the same time.
 - Short E-AC-3 syncframes (`numblkscod` 0–2) were sized at the full six-block byte
   budget, so a short stream measured up to 6x its nominal bit rate. CBR frames now take
   `frame_words`' documented per-block scaling; six-block streams are unchanged.

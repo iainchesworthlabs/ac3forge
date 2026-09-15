@@ -212,6 +212,68 @@ The mutator's re-stamping half also has its own portable unit test
 ordinary test suite on every platform rather than only showing up as a
 coverage number that quietly stopped improving.
 
+## Status: the IAB and AC-4 harnesses, instrumented
+
+`fuzz_iab_parse` and `fuzz_ac4_parse` were added without their libraries in
+`fuzz/CMakeLists.txt`'s instrumented set: `ac3iab_objects` and `ac4_objects`
+compiled with no ASan, UBSan or coverage flags. The harness executable still
+carried the sanitizer runtime, so a segfault, a timeout or an oversized
+allocation stopped a run, but nothing the parser did within its own memory was
+checked, and libFuzzer's counters saw only the harness file itself - 102 of
+them in `fuzz_ac4_parse`, 183 in `fuzz_iab_parse`.
+
+The opt-in `fuzz_adm_parse` has the same gap and still does: instrumenting
+`ac3adm_objects` also instruments the header-only libbw64 code it compiles, and
+UBSan then stops that harness within a few hundred executions inside libbw64's
+`UnknownChunk` constructor (`&data[0]` of an empty vector, for a zero-length
+chunk). See `fuzz/CMakeLists.txt`.
+
+Measured on WSL2 Ubuntu 26.04, Clang 22.1.2, through `fuzz/run.sh`, 300 s per
+harness from an empty grown corpus, both builds running at once. "Before" is
+`main` without the instrumentation; "after" is instrumented, with the fixes
+below. The replay column feeds each grown corpus, plus the committed seeds and
+regressions, through the same instrumented binary with `-runs=0`, so the two
+rows of each pair are comparable:
+
+| Harness          | Build  | Executions | exec/s | `cov` / `ft` (own build) | Replay `cov` / `ft` |
+|------------------|--------|-----------:|-------:|--------------------------|---------------------|
+| `fuzz_ac4_parse` | before |  6,980,996 | 23,192 | 62 / 315                 | 1,064 / 4,399       |
+| `fuzz_ac4_parse` | after  |    377,064 |  1,252 | 1,270 / 6,424            | **1,270 / 6,423**   |
+| `fuzz_iab_parse` | before |  7,279,906 | 24,185 | 101 / 488                | 564 / 2,665         |
+| `fuzz_iab_parse` | after  |  4,130,921 | 13,723 | 711 / 3,425              | **711 / 3,424**     |
+
+The instrumented AC-4 run made about an eighteenth of the executions and still
+reached more of the parser. libFuzzer keeps an input only when it reaches
+something new, and without counters in the parser, new paths inside it did not
+count.
+
+### What instrumenting them found
+
+Each is fixed, with a test in `tests/ac4/` or `tests/ac3iab/` that fails on the
+old code under ASan+UBSan:
+
+- **Before any mutation**, replaying the committed AC-4 corpus: a
+  stack-buffer-overflow. `n_objects_code` and both `isf_config` fields are 3
+  bits wide and indexed six-entry count tables, so codes 6 and 7 read past
+  them. The input was `fuzz/regressions/fuzz_ac4_parse/ac4-substream-size-not-transmitted`,
+  committed for an earlier fix; the uninstrumented runs read whatever followed
+  the table and carried on.
+- **After 8,606 executions**, a UBSan signed overflow:
+  `presentation_config_ext_info()` computed its skip as `8 * n_skip_bytes` in
+  `int`, with `n_skip_bytes` escaping through `variable_bits()` to 2^32
+  (`fuzz/regressions/fuzz_ac4_parse/ac4-presentation-config-ext-skip-overflow`).
+- **After 1.67 million executions**, a timeout in `fuzz_iab_parse`:
+  `parse_mxf_iab`'s KLV walk bounded a Value with `value_offset + length`, and a
+  Length of `0xFFFFFFFFFFFFFFE7` at offset 25 wrapped that sum to 0, so the
+  walk returned to the start of the file forever
+  (`fuzz/regressions/fuzz_iab_parse/mxf-klv-length-wraps-to-start`). This one
+  hangs the uninstrumented build too; its runs never reached it.
+
+Reading the AC-4 code around those fixes turned up the same shapes elsewhere,
+fixed in the same change: `parse_raw_frame()`'s substream bound could wrap into
+a read past the end of the frame, and six more `int` additions on counts that
+escape through `variable_bits()` could overflow.
+
 ## Entry points covered
 
 | Harness              | Calls                                                              |

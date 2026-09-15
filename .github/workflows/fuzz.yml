@@ -81,14 +81,19 @@
 # infrastructure - see fuzz/README.md.
 #
 # fuzz-regress, fuzz-short and fuzz-nightly cover every harness in
-# fuzz/run.sh's default list, which as of roadmap UX4 is ten: the four
-# original entry points, fuzz_iec61937_unwrap (roadmap IO3),
-# fuzz_emdf_parse, fuzz_oamd_parse, fuzz_joc_parse, fuzz_signing_verify over
-# the object and metadata layer, and fuzz_osc_parse over the live
-# object-position listener's OSC 1.0 parser - this project's first
-# network-facing input rather than a bitstream one (docs/threat-model.md).
-# They need no per-job wiring - run.sh owns the list, and a new entry there
-# is picked up by all three at once.
+# fuzz/run.sh's default list, which is fifteen: the four original entry
+# points, fuzz_iec61937_unwrap (roadmap IO3), fuzz_emdf_parse,
+# fuzz_oamd_parse, fuzz_joc_parse, fuzz_signing_verify over the object and
+# metadata layer, fuzz_osc_parse over the live object-position listener's
+# OSC 1.0 parser - this project's first network-facing input rather than a
+# bitstream one (docs/threat-model.md) - the three container demuxers
+# (fuzz_matroska_demux, fuzz_mp4_demux, fuzz_mpegts_demux), and the IAB and
+# AC-4 readers (fuzz_iab_parse, fuzz_ac4_parse). They need no per-job
+# wiring - run.sh owns the list, and a new entry there is picked up by all
+# three at once. Instrumentation needs none either: which libraries are
+# built with ASan, UBSan and coverage counters is decided in
+# fuzz/CMakeLists.txt, and a harness whose library is not listed there still
+# builds and runs, with no sanitizer checks or coverage inside that library.
 #
 # All five run in the same ubuntu:26.04 + LLVM 22 container ci.yml's
 # linux-llvm leg uses. The harnesses build under the same strict `ac3::warnings`
@@ -113,8 +118,9 @@
 # gold_reference/sanitizer legs of .github/workflows/_build.yml already
 # install on Linux, and for the same reason (an independent decode oracle).
 # fuzz-adm-nightly additionally sets up vcpkg. The other three jobs have no
-# such dependency: their harnesses only ever call into ac3::forge and
-# ac3::signing, both of which are in-tree and dependency-free.
+# such dependency: their harnesses only ever call into ac3::forge,
+# ac3::signing, the three container libraries, ac3iab and ac4, all of which
+# are in-tree and dependency-free.
 #
 # VCPKG_ROOT: fuzz/run.sh reads it directly to place the toolchain file (see
 # its configure_and_build), rather than going through a CMake preset the way
