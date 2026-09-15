@@ -91,11 +91,31 @@ include(FetchContent)
 # arguments directly here, the same way FetchContent_MakeAvailable does internally, is the
 # CMP0169-unaffected form (see FetchContent.cmake's own FetchContent_Populate: it only warns/
 # errors when called with nothing but a name).
+#
+# PATCH_COMMAND: 0.10.0 takes &buffer[0] of a std::vector<char> that can be empty in three
+# places, which is undefined behaviour and which UBSan reports ("reference binding to null
+# pointer of type 'char'") the moment ac3adm_objects is built with sanitizers - see
+# fuzz/CMakeLists.txt's instrumented set, and patch_libbw64.cmake for the three sites and why
+# the fix is a token at each. The script runs in libbw64's own source directory (where the
+# patch step puts it), edits tokens rather than lines so a CRLF checkout patches the same way,
+# does nothing to an already-patched tree, and stops the configure if it finds a tree matching
+# neither form. Its own SHA256 goes on the command line so that editing the script re-runs the
+# step rather than leaving a stale patch behind in an existing build directory.
+#
+# Patching a dependency fetched at a pinned tag is the thing docs/library/adm.md's "PCM formats"
+# section says this module avoided for float support, where ac3adm could do the work itself
+# instead. There is no equivalent here: libbw64 reads the file, so nothing on this side can keep
+# a zero-length chunk away from the constructor that mishandles it, short of refusing files that
+# BS.2088-1 allows.
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/patch_libbw64.cmake" _ac3adm_libbw64_patch_sha)
 FetchContent_Populate(libbw64
     QUIET
     GIT_REPOSITORY https://github.com/ebu/libbw64.git
     GIT_TAG "0.10.0"
-    GIT_SHALLOW TRUE)
+    GIT_SHALLOW TRUE
+    PATCH_COMMAND "${CMAKE_COMMAND}" "-DAC3ADM_PATCH_SHA256=${_ac3adm_libbw64_patch_sha}"
+                  -P "${CMAKE_CURRENT_SOURCE_DIR}/patch_libbw64.cmake")
+unset(_ac3adm_libbw64_patch_sha)
 
 add_library(bw64 INTERFACE)
 # SYSTEM (via the include-directories SYSTEM keyword, FetchContent's own SYSTEM option is not

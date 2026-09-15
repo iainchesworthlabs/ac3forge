@@ -829,12 +829,17 @@ bool Player::start() {
                     static_cast<unsigned long>(im.config.ring_bytes));
         return false;
     }
+    // -1 for tskNO_AFFINITY, the spelling the example's Kconfig uses for "any
+    // core", rather than the constant's own 2147483647.
+    const auto core_number = [](BaseType_t core) {
+        return core == tskNO_AFFINITY ? -1 : static_cast<int>(core);
+    };
     std::printf("player: ring %lu bytes in %s, fetch on core %d at priority %u, decode on core %d "
                 "at priority %u\n",
                 static_cast<unsigned long>(im.config.ring_bytes),
                 im.ring_in_psram ? "PSRAM" : "internal SRAM",
-                static_cast<int>(im.config.fetch_core), static_cast<unsigned>(im.config.fetch_priority),
-                static_cast<int>(im.config.decode_core),
+                core_number(im.config.fetch_core), static_cast<unsigned>(im.config.fetch_priority),
+                core_number(im.config.decode_core),
                 static_cast<unsigned>(im.config.decode_priority));
     const char* how = "as coded, the bed placed";
     if (im.fold == ac3::DownmixTarget::kMono) {

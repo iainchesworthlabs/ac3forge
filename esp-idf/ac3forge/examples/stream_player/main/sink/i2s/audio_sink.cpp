@@ -8,9 +8,9 @@
 // line 0's bit clock and word select rather than free-run on its own.
 //
 // 1-2 channels: standard I2S, mono or stereo slot mode. 3 or more: TDM, up to
-// one line's own ceiling (4 slots at 32-bit slots, 2 at 16 - 16-bit TDM does
-// not exist in this codebase, see interleave.hpp). Past one line's ceiling,
-// a second line - AC3FORGE_EXAMPLE_I2S_SECOND_LINE - takes the overflow,
+// one line's own ceiling (4 slots at 32-bit slots, 8 at 16: a TDM frame holds
+// 128 bits). Past one line's ceiling, at 32-bit slots, a second line -
+// AC3FORGE_EXAMPLE_I2S_SECOND_LINE - takes the overflow,
 // sharing line 0's BCLK/WS pins as inputs (the GPIO matrix routes a pad's
 // input side per peripheral independently of who drives it as an output, so
 // this needs no external jumper) and running as a slave in TDM mode at the
@@ -68,17 +68,16 @@ static_assert(kSlotBits == 16 || kSlotBits == 32,
 constexpr bool kSlave = CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE != 0;
 constexpr bool kSecondLineEnabled = CONFIG_AC3FORGE_EXAMPLE_I2S_SECOND_LINE != 0;
 constexpr std::size_t kBytesPerSlot = static_cast<std::size_t>(kSlotBits) / 8;
+constexpr i2s_data_bit_width_t kDataBits =
+    kSlotBits == 32 ? I2S_DATA_BIT_WIDTH_32BIT : I2S_DATA_BIT_WIDTH_16BIT;
 
-// This line's own ceiling at this build's slot width, by hand: 4 at 32 bits,
-// 2 at 16, matching ac3forge::line_ceiling(kSlotBits).slots exactly - that
-// function cannot fill in for this, despite the duplication, because it
-// takes slot_bits at runtime and this needs a compile-time array bound.
-constexpr std::size_t kMaxLineSlots = kSlotBits == 32 ? 4 : 2;
+// This line's own ceiling at this build's slot width: 4 at 32 bits, 8 at 16.
+constexpr std::size_t kMaxLineSlots = ac3forge::line_ceiling(kSlotBits).slots;
 
 // The combined ceiling both lines together could ever carry - what
 // sink_slots() reports, and what accept_layout() (stream_player.cpp) checks
 // a requested layout against before any of this runs.
-const std::size_t kCeiling = ac3forge::sink_ceiling(kSlotBits, kSecondLineEnabled);
+constexpr std::size_t kCeiling = ac3forge::sink_ceiling(kSlotBits, kSecondLineEnabled);
 
 // One line's hardware state. GPIO numbers and role are fixed for the run
 // (Kconfig) and passed in rather than stored here - see kLine0Gpio/kLine1Gpio
@@ -117,15 +116,17 @@ Line g_line0;
 Line g_line1;
 ac3forge::DacQueueModel g_model;
 
-// One block of interleaved TDM per line, at that line's own ceiling width -
-// 4 slots of 32 bits, 1 KB - and one block of interleaved 16-bit stereo,
-// which is the only shape standard mode at 16 bits ever sends (see
-// sink_write). At namespace scope because the sink is the only thing that
-// needs them - the player hands over planar float and never sees this format
-// at all.
-std::array<std::int32_t, ac3::kSamplesPerBlock * kMaxLineSlots> g_wide0{};
-std::array<std::int32_t, ac3::kSamplesPerBlock * kMaxLineSlots> g_wide1{};
-std::array<std::int16_t, ac3::kSamplesPerBlock * 2> g_narrow{};
+// One block of interleaved samples per line, at that line's own ceiling width,
+// in the build's slot width only: 32-bit slots for lines 0 and 1 (4 slots,
+// 4 KB each), or 16-bit slots for line 0 (8 slots, 4 KB), where standard
+// mode's stereo pair uses the first two of them. The other width's arrays are
+// empty. At namespace scope because the sink is the only thing that needs
+// them - the player hands over planar float and never sees this format at all.
+constexpr std::size_t kWideSlots = kSlotBits == 32 ? kMaxLineSlots : 0;
+constexpr std::size_t kNarrowSlots = kSlotBits == 16 ? kMaxLineSlots : 0;
+std::array<std::int32_t, ac3::kSamplesPerBlock * kWideSlots> g_wide0{};
+std::array<std::int32_t, ac3::kSamplesPerBlock * kWideSlots> g_wide1{};
+std::array<std::int16_t, ac3::kSamplesPerBlock * kNarrowSlots> g_narrow0{};
 
 // The DMA queue, from Kconfig - see main/Kconfig.projbuild for why the
 // default is smaller than a frame. Computed once, from this line's ceiling
@@ -141,7 +142,7 @@ const DmaPlan g_dma_plan =
 
 // Standard mode's slot_mode for `slots` real channels. 16-bit slots always
 // run stereo - interleave_16 has no narrower or padded form, so a mono
-// layout at this width is duplicated onto both slots by hand in sink_write,
+// layout at this width is duplicated onto both slots by hand in write_line,
 // exactly as the pre-dynamic sink always sent it. 32-bit slots use
 // interleave_24in32, which supports one slot natively, so a mono layout
 // there is I2S_SLOT_MODE_MONO and the driver's own job to put it on the
@@ -196,12 +197,11 @@ bool configure_line(Line& line, const ac3forge::SinkLinePlan& plan, const LineGp
         esp_err_t err;
         if (plan.tdm) {
             i2s_tdm_slot_config_t slot_cfg = I2S_TDM_PHILIPS_SLOT_DEFAULT_CONFIG(
-                I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO, slot_mask(plan.slots));
+                kDataBits, I2S_SLOT_MODE_STEREO, slot_mask(plan.slots));
             err = i2s_channel_reconfig_tdm_slot(line.chan, &slot_cfg);
         } else {
-            i2s_std_slot_config_t slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
-                kSlotBits == 32 ? I2S_DATA_BIT_WIDTH_32BIT : I2S_DATA_BIT_WIDTH_16BIT,
-                std_slot_mode(plan.slots));
+            i2s_std_slot_config_t slot_cfg =
+                I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(kDataBits, std_slot_mode(plan.slots));
             err = i2s_channel_reconfig_std_slot(line.chan, &slot_cfg);
         }
         if (err != ESP_OK || i2s_channel_enable(line.chan) != ESP_OK) {
@@ -241,8 +241,8 @@ bool configure_line(Line& line, const ac3forge::SinkLinePlan& plan, const LineGp
     if (plan.tdm) {
         i2s_tdm_config_t tdm_cfg = {};
         tdm_cfg.clk_cfg = I2S_TDM_CLK_DEFAULT_CONFIG(sample_rate);
-        tdm_cfg.slot_cfg = I2S_TDM_PHILIPS_SLOT_DEFAULT_CONFIG(
-            I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO, slot_mask(plan.slots));
+        tdm_cfg.slot_cfg = I2S_TDM_PHILIPS_SLOT_DEFAULT_CONFIG(kDataBits, I2S_SLOT_MODE_STEREO,
+                                                               slot_mask(plan.slots));
         tdm_cfg.gpio_cfg.mclk = I2S_GPIO_UNUSED;
         tdm_cfg.gpio_cfg.bclk = gpio.bclk;
         tdm_cfg.gpio_cfg.ws = gpio.ws;
@@ -252,9 +252,7 @@ bool configure_line(Line& line, const ac3forge::SinkLinePlan& plan, const LineGp
     } else {
         i2s_std_config_t std_cfg = {};
         std_cfg.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sample_rate);
-        std_cfg.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(
-            kSlotBits == 32 ? I2S_DATA_BIT_WIDTH_32BIT : I2S_DATA_BIT_WIDTH_16BIT,
-            std_slot_mode(plan.slots));
+        std_cfg.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(kDataBits, std_slot_mode(plan.slots));
         std_cfg.gpio_cfg.mclk = I2S_GPIO_UNUSED;
         std_cfg.gpio_cfg.bclk = gpio.bclk;
         std_cfg.gpio_cfg.ws = gpio.ws;
@@ -269,6 +267,37 @@ bool configure_line(Line& line, const ac3forge::SinkLinePlan& plan, const LineGp
     line.tdm = plan.tdm;
     line.slots = plan.slots;
     return true;
+}
+
+// Converts one line's share of a block and writes it, in the build's slot
+// width: `channels` is already that line's (a second line's caller passes the
+// ones past line 0's), `wide` and `narrow` its buffers. Returns the bytes
+// written, which is what the queue model counts for line 0.
+std::size_t write_line(const Line& line, std::span<const std::span<const float>> channels,
+                       std::size_t frames, std::span<std::int32_t> wide,
+                       std::span<std::int16_t> narrow) {
+    std::size_t bytes = 0;
+    if (kSlotBits == 16 && line.tdm) {
+        ac3forge::interleave_16in16(channels, line.slots, frames, narrow.first(frames * line.slots));
+        bytes = frames * line.slots * sizeof(std::int16_t);
+        std::size_t written = 0;
+        (void)i2s_channel_write(line.chan, narrow.data(), bytes, &written, portMAX_DELAY);
+    } else if (kSlotBits == 16) {
+        // Standard mode's one physical shape at this width: two slots, a mono
+        // layout to both - see std_slot_mode's comment.
+        const std::array<std::span<const float>, 2> pair = {
+            channels[0], channels.size() > 1 ? channels[1] : channels[0]};
+        ac3forge::interleave_16(pair, frames, narrow.first(frames * 2));
+        bytes = frames * 2 * sizeof(std::int16_t);
+        std::size_t written = 0;
+        (void)i2s_channel_write(line.chan, narrow.data(), bytes, &written, portMAX_DELAY);
+    } else {
+        ac3forge::interleave_24in32(channels, line.slots, frames, wide.first(frames * line.slots));
+        bytes = frames * line.slots * sizeof(std::int32_t);
+        std::size_t written = 0;
+        (void)i2s_channel_write(line.chan, wide.data(), bytes, &written, portMAX_DELAY);
+    }
+    return bytes;
 }
 
 }  // namespace
@@ -291,10 +320,11 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
     // 16-bit standard mode has one physical shape - two slots, always -
     // regardless of whether the plan's logical slot count is one (a mono
     // layout) or two: interleave_16 has no narrower form, so this line
-    // always opens stereo at this width and sink_write duplicates a mono
-    // channel onto both by hand, as the pre-dynamic sink always did.
+    // always opens stereo at this width and write_line duplicates a mono
+    // channel onto both by hand, as the pre-dynamic sink always did. TDM at
+    // 16 bits opens at the plan's own width, as at 32.
     ac3forge::SinkLinePlan line0_plan = plan->line0;
-    if (kSlotBits == 16 && line0_plan.slots > 0) {
+    if (kSlotBits == 16 && !line0_plan.tdm && line0_plan.slots > 0) {
         line0_plan.slots = 2;
     }
 
@@ -331,39 +361,17 @@ void sink_write(std::span<const std::span<const float>> channels) {
     g_model.arriving(esp_timer_get_time());
     std::size_t bytes_for_model = 0;
 
-    if (kSlotBits == 16) {
-        // A mono layout to both slots - see std_slot_mode's comment.
-        const std::array<std::span<const float>, 2> pair = {
-            channels[0], channels.size() > 1 ? channels[1] : channels[0]};
-        ac3forge::interleave_16(pair, frames, std::span<std::int16_t>{g_narrow.data(), frames * 2});
-        std::size_t written = 0;
-        (void)i2s_channel_write(g_line0.chan, g_narrow.data(), frames * 2 * sizeof(std::int16_t),
-                                &written, portMAX_DELAY);
-        bytes_for_model = frames * 2 * sizeof(std::int16_t);
-    } else {
-        if (g_line0.slots > 0) {
-            const std::size_t used = std::min(g_line0.channels, channels.size());
-            ac3forge::interleave_24in32(
-                channels.subspan(0, used), g_line0.slots, frames,
-                std::span<std::int32_t>{g_wide0.data(), frames * g_line0.slots});
-            std::size_t written = 0;
-            (void)i2s_channel_write(g_line0.chan, g_wide0.data(),
-                                    frames * g_line0.slots * sizeof(std::int32_t), &written,
-                                    portMAX_DELAY);
-            bytes_for_model = frames * g_line0.slots * sizeof(std::int32_t);
-        }
-        if (g_line1.slots > 0) {
-            const std::size_t offset = g_line0.channels;
-            const std::size_t available = channels.size() > offset ? channels.size() - offset : 0;
-            const std::size_t used = std::min(g_line1.channels, available);
-            ac3forge::interleave_24in32(
-                channels.subspan(offset, used), g_line1.slots, frames,
-                std::span<std::int32_t>{g_wide1.data(), frames * g_line1.slots});
-            std::size_t written = 0;
-            (void)i2s_channel_write(g_line1.chan, g_wide1.data(),
-                                    frames * g_line1.slots * sizeof(std::int32_t), &written,
-                                    portMAX_DELAY);
-        }
+    // Per line, in either width. Line 1 gets no 16-bit buffer: a second line
+    // is only ever planned at 32 bits today (ac3forge::line_ceiling).
+    if (g_line0.slots > 0) {
+        const std::size_t used = std::min(g_line0.channels, channels.size());
+        bytes_for_model = write_line(g_line0, channels.subspan(0, used), frames, g_wide0, g_narrow0);
+    }
+    if (g_line1.slots > 0) {
+        const std::size_t offset = g_line0.channels;
+        const std::size_t available = channels.size() > offset ? channels.size() - offset : 0;
+        const std::size_t used = std::min(g_line1.channels, available);
+        (void)write_line(g_line1, channels.subspan(offset, used), frames, g_wide1, {});
     }
 
     g_model.queued(bytes_for_model, esp_timer_get_time());

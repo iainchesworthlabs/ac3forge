@@ -1,0 +1,9 @@
+# Overlay: the WiFi network load (main/Kconfig.projbuild). Layered on the
+# defaults with the credentials in a file of their own outside the repository:
+#
+#   idf.py -DSDKCONFIG=<build>/sdkconfig \
+#          "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.wifi;<path>/credentials" build
+#
+# where the credentials file holds CONFIG_AC3FORGE_PROBE_WIFI_SSID and
+# CONFIG_AC3FORGE_PROBE_WIFI_PASSWORD.
+CONFIG_AC3FORGE_PROBE_NETWORK_WIFI=y
