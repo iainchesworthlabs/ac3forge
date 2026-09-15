@@ -387,9 +387,9 @@ jobs:
   # AC3FORGE_BUILD_HEARTH defaults OFF like AC3FORGE_BUILD_ADM, because the library's later
   # parts take cpp-httplib, mdns, mbedTLS, libFLAC and Opus from vcpkg's "hearth" feature.
   # Until A7 brings it into every build-and-test leg, this is the one build that compiles it
-  # and runs its tests. One Linux leg, for adm-validate's reason: the module has no
-  # platform code. Only ac3tests is built and only its [sendspin] cases run; the rest of
-  # the suite is build-and-test's.
+  # and runs its tests. One Linux leg, for adm-validate's reason: the module has little
+  # platform code. Only ac3tests and ac3hearth-testsink are built, and only the [sendspin]
+  # and [hearth] cases run; the rest of the suite is build-and-test's.
   hearth-validate:
     name: Hearth Sendspin (Linux, GCC)
     runs-on: ${{ fromJSON(inputs.runner) }}
@@ -430,11 +430,11 @@ jobs:
 
       - name: Build
         shell: bash
-        run: cmake --build --preset build-linux-gcc --target ac3tests -- -k 0
+        run: cmake --build --preset build-linux-gcc --target ac3tests ac3hearth-testsink -- -k 0
 
       - name: Test
         shell: bash
-        run: ./build/config-linux-gcc/bin/ac3tests "[sendspin]"
+        run: ./build/config-linux-gcc/bin/ac3tests "[sendspin],[hearth]"
 
       # See adm-validate's identical step for why the result is recorded this way.
       - name: Record result
