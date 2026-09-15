@@ -43,6 +43,13 @@ and release packaging.
   PCM identical to the x86 host and Cortex-M3 legs; 7.1.4 needs more heap than the
   part's largest free block and is declared skipped rather than silently missing. Speed
   is unmeasured — QEMU isn't cycle-accurate.
+- **An ESP32-C6 target** (`apps/baremetal/platform/esp32c6/`), with `esp32c6` in the ESP-IDF
+  component's manifest, timed on a board with no network and with WiFi connected and a
+  1,536 kbit/s TCP stream arriving (a network load the probe project can build in). All
+  fourteen fixtures decode with PCM identical to the other fixed-tier legs. With the network up,
+  AC-3 and E-AC-3 stereo and mono decode in real time and no 5.1 stream does, and 7.1.4 fits
+  only with ESP-IDF's WiFi IRAM options off. QEMU does not emulate the part, so CI builds it
+  and runs nothing. See `docs/platforms/bare-metal/esp32-c6.md`.
 - **`delta_allocation`** on `EncoderConfig`/`eac3::FrameConfig` (`delta=off`): the first
   rung of an effort axis for parts with little time for the §7.2.2.6 search. Removes
   about 9 ms of an ESP32-S3 E-AC-3 5.1 frame for 0.01 dB on the worst channel of the

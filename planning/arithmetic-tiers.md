@@ -99,7 +99,7 @@ Platform to arithmetic to effort, with the state of each cell. "Real time" is a 
 | WASM | `double` | `double` | `reference` | Shipping ([the WASM page](../docs/platforms/wasm.md)) |
 | ESP32-S3 (LX7, single-precision FPU) | `float` | `float` | `reference` for 2/0; `reduced` is the candidate for 5.1 | Decode: every fixture in real time. Encode: AC-3 2/0 and E-AC-3 2/0 in real time, AC-3 5.1 at the line, E-AC-3 5.1 at 1.7x |
 | ESP32 (LX6, single-precision FPU) | `float` | `float` | as the S3 | Not measured; the S3's arithmetic without the PIE and with a smaller cache |
-| ESP32-C3 / C6 (RV32IMC, no FPU) | `Fixed32` | none at first | `reduced` | Built and gated: a probe target under `qemu-riscv32`, 12 of fourteen fixtures decoding to PCM identical to the host's and the Cortex-M3 leg's. The two 7.1.4 rows do not fit in the part's SRAM. Time on a board is unmeasured |
+| ESP32-C3 / C6 (RV32IMC / RV32IMAC, no FPU) | `Fixed32` | none at first | `reduced` | C3: built and gated, a probe target under `qemu-riscv32`, 12 of fourteen fixtures decoding to PCM identical to the host's and the Cortex-M3 leg's; the two 7.1.4 rows do not fit in the part's SRAM; time on a board unmeasured. C6: timed on a board ([its page](../docs/platforms/bare-metal/esp32-c6.md)), all fourteen fixtures on the same hashes; stereo and mono in real time with WiFi running, 5.1 at 1.09x to 1.21x with no network |
 | Cortex-M3 (the CI leg, QEMU) | `float`, soft | `float`, soft | `reference` | Correctness and instruction counts only; the soft-float proxy every embedded estimate rests on |
 | Cortex-M4F / M7 (single-precision FPU) | `float` | `float` | `reference` | Not targeted; would behave as the S3 without its vector loads |
 
@@ -270,6 +270,15 @@ keeps up. A 32 ms frame at 160 MHz is 5.12 M cycles; the Cortex-M3 leg's instruc
 AC-3 2/0 and mono comfortably inside that and E-AC-3 5.1 near it, but instructions are not cycles
 and no leg models this part's 16 KB flash cache. A board settles it.
 
+**2026-09-15: the first RISC-V board was an ESP32-C6**, the same kind of core at the same clock
+with 512 KB of SRAM ([its page](../docs/platforms/bare-metal/esp32-c6.md)). All fourteen fixtures
+decode there with every PCM hash on the pinned set, a fourth architecture on one set of hashes.
+The proxy was optimistic: AC-3 5.1 takes 34.7 ms a frame (5.56 M cycles against the M3's 3.8 M
+instructions) and E-AC-3 5.1 38.7 ms, so neither is in real time even with no network, while
+stereo and mono are. Stage timers put 73% of an AC-3 5.1 frame in the fixed-point IMDCT and
+overlap-add. The float tier on the same part is 2.1x to 3.5x slower. The C3 itself is still
+untimed.
+
 **Phase E (optional) - the encoder.** Not planned in this round. The encoder's analysis is
 more precision-sensitive than the decoder's synthesis, and the S3's float encoder is the shape
 a C3 encoder would take only after the decoder has shown what the fixed tier costs.
@@ -300,7 +309,8 @@ a C3 encoder would take only after the decoder has shown what the fixed tier cos
 ## What cannot be verified, and why
 
 - **The fixed tier's time on a C3** until there is a board; QEMU has no cache model. The M3
-  instruction count is a proxy for the arithmetic, not the memory system.
+  instruction count is a proxy for the arithmetic, not the memory system. An ESP32-C6 has been
+  timed instead, and its figures are the nearest available.
 - **The fixed tier's fidelity on material other than the sixteen streams measured.** The
   block exponent's bounds are stated in `block_norm.hpp` and each is on the side of never
   wrapping, but the SNR figures are those streams'; a stream whose tools push a channel to
