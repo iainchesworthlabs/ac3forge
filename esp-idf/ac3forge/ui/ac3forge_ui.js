@@ -48,7 +48,7 @@
   let status = {};
   let timer = 0;
   let polling = false;
-  let again = false;
+  let waiting = [];
   let failing = 0;
   let shown = '';
   let filled = false;
@@ -77,12 +77,13 @@
     if (document.visibilityState !== 'hidden') timer = setTimeout(poll, delay);
   }
 
+  // The promise settles once a poll begun by this call has rendered, or,
+  // with one already out, the next one, so that nothing read before the
+  // call renders after it settles.
   async function poll() {
-    if (polling) {
-      again = true;
-      return;
-    }
+    if (polling) return new Promise((resolve) => waiting.push(resolve));
     polling = true;
+    const asked = waiting.splice(0);
     clearTimeout(timer);
     let delay = POLL_MS;
     try {
@@ -106,8 +107,8 @@
       put('link', 'No status since ' + clock(failing) + ': ' + e.message + '.', true);
     }
     polling = false;
-    schedule(again ? 0 : delay);
-    again = false;
+    schedule(waiting.length ? 0 : delay);
+    asked.forEach((resolve) => resolve());
   }
 
   // "failed" with no failed run behind it: the source did not open.
@@ -220,18 +221,11 @@
 
   // One request per action. No retry: a play sent again could restart it.
   // `why` explains a 409 better than the firmware's words can, when given.
-  // `after` (default false) runs `done` after the poll this triggers rather
-  // than before it. Play and Stop want the original order: their own
-  // message is a transient "asked to X" that render()'s next state
-  // announcement is meant to supersede (Playing., Stopped.), and awaiting
-  // the poll first would let that announcement land before the transient
-  // message ever showed, then nothing ever re-announces the state again
-  // since it has not changed since. Layout's confirmation has no such
-  // handoff - nothing else ever re-announces it - so a state change landing
-  // in that same poll must not be left standing over the deliberate
-  // confirmation instead (found investigating a CI flake in
-  // `layouts.spec.js`: a play ending and a layout Apply landed in the same
-  // tick, and the automatic "Finished." silently overwrote it).
+  // Play and Stop say what they asked at once, and the state the poll that
+  // follows announces (Playing.) replaces it; said after that poll, their
+  // words would stand, as a state is announced only when it changes. Nothing
+  // replaces a layout's words, so with `after` they wait for that poll and
+  // follow what it announces.
   async function act(label, method, path, body, done, why, after) {
     try {
       const r = await call(method, path, body);
