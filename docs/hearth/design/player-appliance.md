@@ -1,4 +1,4 @@
-# The appliance plan
+# The Hearth plan
 
 This page points to the plan rather than reproducing it. Design proposals live in the
 repository's `planning/` directory and are deliberately not republished onto this site — see
@@ -8,29 +8,44 @@ feature.
 
 ## What's decided
 
-Written and decided 2026-09-07, then reframed the same day the project's source/transport/sink
-topology landed. **Hearth is the sink**: the reference implementation of that role on a machine
-with an operating system, plugged in next to a receiver, that plays a queue, follows what the
-sink will accept, and exposes a local web control page — building on `ac3cli play`'s
-already-proven passthrough logic and `PassthroughSink`, neither of which is a product on its own
-today. All ten of the plan's open decisions were taken on 2026-09-07, four of them against the
-document's own recommendation, including: all three desktop platforms (not Linux-only), both a
-headless daemon and an optional kiosk window, and `cpp-httplib` for the HTTP layer.
+Decided on 2026-09-15. Hearth has two forms that talk to each other:
+
+- **`ac3hearth`**, a desktop reference player for Windows, Linux and macOS. It plays AC-3, E-AC-3
+  and E-AC-3 JOC media with every decoder setting the library has, renders to a chosen speaker
+  layout, routes each channel to an output with trim, delay and bass management, and shows the
+  per-channel levels and the bitstream information. It plays to a local device, passes the
+  bitstream through to a receiver, or streams to sinks on the network. AC-4 is designed in and
+  waits for a decoder.
+- **`hearth_sink`**, firmware for ESP32-S3 (up to sixteen TDM outputs) and ESP32-C6 (up to
+  eight) boards. A sink is a Sendspin player: Music Assistant can play to it, and `ac3hearth`
+  sends it the undecoded bitstream through an extension role, which the board decodes and
+  renders to its own layout.
+
+Between them is Sendspin, with `ac3hearth` as a conformant server and the boards as conformant
+players, so groups, clock synchronisation, encryption and pairing come from that protocol.
+
+This replaced the plan decided on 2026-09-07 for a headless appliance: a daemon beside a
+receiver with a web control page, an optional kiosk window, and an HLS client. The name, Hearth's
+place as the family's fourth member, and its build identity carried over.
 
 ## What's built
 
 Nothing under this name. **There is no `apps/hearth` in the tree.** What exists and is
 hardware-verified is the embedded player documented on [Hearth's own overview](../index.md) and
-the [ESP32-S3 platform page](../../platforms/bare-metal/esp32-s3.md) — a different codebase that
-happens to share the role.
+the [ESP32-S3 platform page](../../platforms/bare-metal/esp32-s3.md), which the `hearth_sink`
+firmware grows from.
 
 ## The full record
 
+[`planning/hearth-reference-player.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md)
+has the complete plan: the application's features mapped to the library, the architecture, the
+Sendspin extension role, the sinks' memory and output limits per chip, the phases of its four
+parts with their exit criteria, what cannot be verified, and the twenty decisions with their
+reasoning.
+
 [`planning/player-appliance.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/player-appliance.md)
-has the complete design: the name and why it was chosen, what's shared with
-[Crucible](../../crucible/index.md) and what isn't, the scope (and what's deliberately excluded),
-the six gaps in today's sink-following logic that stand between it and an appliance, the build
-and packaging identities, the CI plan, and the ten decisions with their reasoning.
+keeps the 2026-09-07 appliance plan as a record, including the sink-following gaps in
+`ac3cli play` that the desktop player's passthrough mode closes.
 
 ## Where to go next
 
