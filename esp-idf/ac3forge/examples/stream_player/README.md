@@ -551,21 +551,24 @@ reason the QEMU shape runs an 8 KB ring.
 
 `i2s` is one sink, not a choice between a stereo one and a TDM one: it opens
 standard I2S for one or two channels and TDM for three or more, reconfiguring
-between them - and between slot counts within a mode - as the layout in force
-changes, rather than a build fixing one shape and staying there
+between them as the layout in force changes, rather than a build fixing one
+shape and staying there
 ([`ac3forge/sink_plan.hpp`](../../include/ac3forge/sink_plan.hpp) decides
 which). `PUT /layout` takes effect this way at the very next play: no rebuild,
-no reflash, just whatever the new layout needs.
+no reflash, just whatever the new layout needs. A TDM line always runs its full
+frame, four 32-bit slots or eight 16-bit ones, with the slots past the layout's
+channels written as zeros: a TDM DAC is set up for a fixed frame, and on an
+ESP32-C6 the driver clocked three- and five-slot frames 6.7% fast at 16 bits.
 
 **The hardware ceiling this cannot get past.** On an ESP32-S3 one I2S line's
 TDM frame holds at most 128 bits, because the peripheral's half-frame length
 is a 6-bit register field: four slots at 32 bits - a 6.1 MHz bit clock at 48
 kHz - or eight at 16, and ESP-IDF v6.1 refuses more, as does this sink before
-it ever asks the driver. 16-bit slots stay standard-mode-only here regardless
-(`CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS`, 32 by default, 16 for a DAC that
-insists): a padding-capable TDM interleave at that width does not exist in
-this codebase, so a layout past two slots at 16 bits is refused rather than
-attempted. `CONFIG_AC3FORGE_EXAMPLE_I2S_SECOND_LINE` brings up a second,
+it ever asks the driver. `CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS` chooses
+between them: 32 by default, carrying 24-bit samples in up to four slots, or
+16, carrying 16-bit samples in up to eight (`ac3forge::interleave_16in16`), so
+a 7.1 layout fits one line at 16 bits and not at 32.
+`CONFIG_AC3FORGE_EXAMPLE_I2S_SECOND_LINE` brings up a second,
 independent I2S peripheral at 32 bits to double the ceiling to eight, sharing
 line 0's BCLK and WS as inputs - through the GPIO matrix, which routes a pad's
 input side to a peripheral independently of whichever end drives it as an
@@ -581,11 +584,11 @@ and WS to line 0's other end instead of generating them - how an ADAU1452 or
 ADAU1467 that is the house's clock wants it; a second line is always a slave,
 since its only job is reading those same two pins.
 
-**Reconfiguring, not rebuilding.** A slot-count change that stays within one
-mode (say 2 channels to 4, both TDM) uses
-`i2s_channel_reconfig_std_slot`/`_tdm_slot` rather than tearing the channel
-down; crossing standard/TDM, or a line coming up or going down entirely, does
-tear it down and recreate it. Every channel this sink ever creates asks for
+**Reconfiguring, not rebuilding.** A change that stays within standard mode
+(mono to stereo at 32 bits) uses `i2s_channel_reconfig_std_slot` rather than
+tearing the channel down, and a change between TDM layouts reconfigures
+nothing, since the frame stays full width; crossing standard/TDM, or a line
+coming up or going down entirely, does tear it down and recreate it. Every channel this sink ever creates asks for
 the same DMA depth regardless of how many slots it is carrying at the time -
 sized once, from that line's own ceiling rather than from the layout in hand,
 the way both sinks used to size their descriptors from the bus width

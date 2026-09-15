@@ -43,6 +43,13 @@ and release packaging.
   PCM identical to the x86 host and Cortex-M3 legs; 7.1.4 needs more heap than the
   part's largest free block and is declared skipped rather than silently missing. Speed
   is unmeasured — QEMU isn't cycle-accurate.
+- **An ESP32-C6 target** (`apps/baremetal/platform/esp32c6/`), with `esp32c6` in the ESP-IDF
+  component's manifest, timed on a board with no network and with WiFi connected and a
+  1,536 kbit/s TCP stream arriving (a network load the probe project can build in). All
+  fourteen fixtures decode with PCM identical to the other fixed-tier legs. With the network up,
+  AC-3 and E-AC-3 stereo and mono decode in real time and no 5.1 stream does, and 7.1.4 fits
+  only with ESP-IDF's WiFi IRAM options off. QEMU does not emulate the part, so CI builds it
+  and runs nothing. See `docs/platforms/bare-metal/esp32-c6.md`.
 - **`delta_allocation`** on `EncoderConfig`/`eac3::FrameConfig` (`delta=off`): the first
   rung of an effort axis for parts with little time for the §7.2.2.6 search. Removes
   about 9 ms of an ESP32-S3 E-AC-3 5.1 frame for 0.01 dB on the worst channel of the
@@ -360,9 +367,26 @@ and release packaging.
   handler task has 4,096 bytes by default; parsing the layout there peaked at 4,596
   under QEMU, past the canary. `Control::start` now takes the stack size (6,144 bytes by
   default).
+- **The ESP-IDF component decoded in `float` on parts with no FPU.** Its manifest says the
+  decode arithmetic follows the part, but only the probe projects chose `fixed`:
+  `src/forge/minimal.cmake` builds `float` when `AC3FORGE_DECODE_SCALAR` is unset, so any
+  other project for an ESP32-C3 decoded in software floating point, which on an ESP32-C6
+  board is up to 3.1 times slower than the fixed-point tier. The component now sets the
+  option from ESP-IDF's `SOC_CPU_HAS_FPU` capability when the project has not: `fixed`
+  without an FPU, `float` with one. A value set above `project()` or passed with `-D` stays.
 
 **Codec correctness**
 
+- **The AC-4 parser misread everything after an EMDF-only presentation.** A presentation
+  with `presentation_config` 6 carries only additional EMDF substreams, whose count and
+  `emdf_info()` list TS 103 190-2 §6.2.1.3 reads after the config-6 branch. `ac4::`, and
+  so `ac3cli probe`, returned before that loop on both TOC paths, so later presentations,
+  the substream groups and `substream_index_table()` were read from the wrong bit. The
+  substream groups also took their frame-rate factor from the first presentation, which an
+  EMDF-only presentation does not transmit. No DEE encode writes this configuration, and
+  the Python reference parser shared the misreading on the `bitstream_version` 2 path.
+  Synthetic frames in `tests/ac4` now cover both paths; the committed DEE fixture parses
+  identically.
 - **The AC-4 parser dereferenced a null pointer on a legal bitstream, and could be made
   to ask for gigabytes.** A stream that clears `b_size_present` left
   `Toc::substream_sizes` empty while `n_substreams` was 1, and `parse_raw_frame()`
@@ -476,6 +500,14 @@ and release packaging.
   had kept only the shape this project's own encoder writes. Both commands now report
   through one shared function, `print_object_summary`, tested against a 5.1.4 bed
   programme and objects with no LFE.
+- **`transcode` crashed, printing nothing, when the encoder refused the configuration it
+  carried from the source.** A `dialnorm` or `dialnorm2` of 0, which §5.4.2.8 reserves and
+  a decoder reads as 31, is one such value. The E-AC-3 encoder refuses it when it is built,
+  by coding no channels, and `transcode` went on to render the decoded audio into a channel
+  list sized for none (`0xC0000005` on Windows). It now stops before decoding and prints the
+  encoder's reason. Transcoding the same stream to AC-3 reported
+  `bitrate must be a legal AC-3 rate` whatever the refusal was; both codecs now name the
+  cause, as in `dialnorm out of range 1..31`.
 
 **Crucible desktop application**
 
@@ -543,6 +575,14 @@ and release packaging.
   describes the host, not `CMAKE_OSX_ARCHITECTURES`'s target — building arm64 from an
   Intel Mac handed it SSE2/AVX2 intrinsics and failed outright. Both now follow the
   effective target architecture; a universal configure resolves `generic`.
+- **An installed {fmt} older than 11.1.0 was accepted, and the build then failed.**
+  `cmake/Fmt.cmake` looked {fmt} up with no version, so Ubuntu 26.04's `libfmt-dev`
+  10.1.1 satisfied it and compilation stopped at the first `#include <fmt/base.h>`, a
+  header fmt 11 introduced. The lookup now asks for 11.1.0 or newer, the first release
+  the tree builds against (11.0.x's `fmt/chrono.h` fails under Clang 22): an older copy
+  is skipped and named in the configure output, and the `FetchContent` fallback (or the
+  `AC3FORGE_FETCH_FMT=OFF` error) applies. A build directory that had already cached
+  the old copy recovers on its next configure.
 
 **Audio backend and object signing**
 

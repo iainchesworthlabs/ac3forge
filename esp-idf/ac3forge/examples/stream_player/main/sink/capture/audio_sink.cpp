@@ -13,11 +13,16 @@
 // target at all - the conversion was host-tested only, and the sinks' own use
 // of it (slot counts, buffer sizing, channel indexing) was not tested anywhere.
 //
+// Its TDM frame follows CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS as the i2s sink's
+// does: 24-in-32 slots through interleave_24in32 at 32, 16-bit slots through
+// interleave_16in16 at 16.
+//
 // WHAT IT CHECKS, and why each is worth a line:
 //
 //   * Every 24-in-32 slot has a clear low byte. The DAC takes the top 24 bits,
 //     so a sample scaled to 32-bit rather than shifted would sound correct in a
-//     host test comparing floats and be wrong on the wire.
+//     host test comparing floats and be wrong on the wire. (A 16-bit slot has
+//     no spare bits, so this count stays zero at that width.)
 //   * Padding slots are exactly zero. A 5.1 programme on an 8-slot bus leaves
 //     two, and skipping them rather than zeroing them plays whatever the
 //     previous block left in the DMA buffer.
@@ -44,12 +49,22 @@ std::uint64_t g_writes = 0;
 int g_channels = 0;
 std::size_t g_slots = 0;
 
-// Both shapes, because this sink stands in for both real ones and which it is
-// standing in for is a build option. One block each: 16 KB for the wider, at
-// namespace scope for the same reason the real sinks keep theirs there.
+constexpr bool kTdm = CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM != 0;
+constexpr bool kSlotBits16 = CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS == 16;
+// Standing in for the stereo sink, convert the way it is configured to: 32-bit
+// slots through the same 24-in-32 path the TDM bus uses, two slots wide, or
+// 16-bit. The default is 32, so the default CI shape checks the conversion
+// the default board shape runs.
+constexpr bool kWide = !kSlotBits16;
+
+// Both widths, because this sink stands in for both real shapes and which it
+// is standing in for is a build option - but only the configured width's
+// block has any size: 16 KB of 24-in-32 slots, or 8 KB of 16-bit ones (two
+// slots of them for the stereo pair outside TDM). At namespace scope for the
+// same reason the real sinks keep theirs there.
 constexpr std::size_t kMaxSlots = 16;
-std::array<std::int32_t, ac3::kSamplesPerBlock * kMaxSlots> g_tdm{};
-std::array<std::int16_t, ac3::kSamplesPerBlock * 2> g_stereo{};
+std::array<std::int32_t, ac3::kSamplesPerBlock * (kWide ? kMaxSlots : 0)> g_tdm{};
+std::array<std::int16_t, ac3::kSamplesPerBlock * (kWide ? 0 : (kTdm ? kMaxSlots : 2))> g_narrow{};
 
 // Accumulated over the run rather than checked per block: a fault that only
 // appears on one block in six still moves these, and reporting once keeps the
@@ -59,13 +74,6 @@ std::uint64_t g_padding_nonzero = 0;
 std::uint64_t g_carried_nonzero = 0;
 double g_sum_squares = 0.0;
 std::uint64_t g_samples = 0;
-
-constexpr bool kTdm = CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM != 0;
-// Standing in for the stereo sink, convert the way it is configured to: 32-bit
-// slots through the same 24-in-32 path the TDM bus uses, two slots wide, or
-// 16-bit. The default is 32, so the default CI shape checks the conversion
-// the default board shape runs.
-constexpr bool kWide = kTdm || CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS == 32;
 
 }  // namespace
 
@@ -108,7 +116,29 @@ void sink_write(std::span<const std::span<const float>> channels) {
     // called once instead of four times a sample - which cost more than the
     // decode on a 12-slot bus.
     std::int64_t block_sum = 0;
-    if (kTdm) {
+    if (kTdm && !kWide) {
+        // 16-bit TDM: the same padding and level checks on 16-bit slots.
+        const auto padding = ac3forge::interleave_16in16(
+            channels, g_slots, frames, std::span<std::int16_t>{g_narrow.data(), frames * g_slots});
+        for (std::size_t frame = 0; frame < frames; ++frame) {
+            const std::size_t base = frame * g_slots;
+            for (std::size_t slot = 0; slot < g_slots; ++slot) {
+                const std::int16_t value = g_narrow[base + slot];
+                const bool is_padding = slot >= g_slots - padding;
+                if (is_padding && value != 0) {
+                    ++g_padding_nonzero;
+                } else if (!is_padding && value != 0) {
+                    ++g_carried_nonzero;
+                }
+                if (!is_padding) {
+                    const std::int64_t sample = value;
+                    block_sum += sample * sample;
+                    ++g_samples;
+                }
+            }
+        }
+        g_sum_squares += static_cast<double>(block_sum) / (32767.0 * 32767.0);
+    } else if (kTdm) {
         const auto padding = ac3forge::interleave_24in32(
             channels, g_slots, frames, std::span<std::int32_t>{g_tdm.data(), frames * g_slots});
         for (std::size_t frame = 0; frame < frames; ++frame) {
@@ -162,9 +192,9 @@ void sink_write(std::span<const std::span<const float>> channels) {
             g_sum_squares += static_cast<double>(block_sum) / (kFullScale * kFullScale);
         } else {
             ac3forge::interleave_16(pair, frames,
-                                    std::span<std::int16_t>{g_stereo.data(), frames * 2});
+                                    std::span<std::int16_t>{g_narrow.data(), frames * 2});
             for (std::size_t i = 0; i < frames * 2; ++i) {
-                const std::int16_t value = g_stereo[i];
+                const std::int16_t value = g_narrow[i];
                 if (value != 0) {
                     ++g_carried_nonzero;
                 }
