@@ -464,11 +464,16 @@ Recorded here and not yet raised with the Sendspin project ([Decisions](#decisio
 - The Sentinel PSK and its `psk_id`, from `connection.md`.
 - The two pairing-token examples in `pairing.md`.
 - CPace draft-21 Appendix B.1 (X25519, SHA-512).
-- One recorded handshake and pairing exchange with aiosendspin 9.1.1 in each direction, with the
-  keys used, so the Music Assistant path is tested without a network.
 - For this role: a burst chunk from `wrap_frame` for `tests/golden`'s AC-3 fixture and one from
   `Eac3BurstPacker` for an E-AC-3 fixture with fewer than six blocks per syncframe, checked field by
   field against the table above.
+
+The Music Assistant path is tested against aiosendspin 9.1.1 itself instead of against recorded
+bytes, over loopback in both directions, by the scripts in `tools/sendspin` that `hearth-validate`
+runs: 9.1.1's client takes PCM, FLAC and Opus from Hearth's server, and 9.1.1's server pairs with
+`ac3hearth-testsink` by its token and by its dynamic code and plays it the same three. A recorded
+exchange would have to fix every key and nonce on both sides and would pin Hearth's own JSON
+spelling, and the differences it would catch are the ones these runs catch.
 
 ## Decisions
 
