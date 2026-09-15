@@ -16,6 +16,7 @@
 
 #include "ac3/sendspin/arbiter.hpp"
 #include "ac3/sendspin/discovery.hpp"
+#include "ac3/sendspin/messages.hpp"
 #include "ac3/sendspin/pairing_flow.hpp"
 #include "ac3/sendspin/session.hpp"
 #include "ac3/sendspin/session_driver.hpp"
@@ -25,8 +26,8 @@
 // ac3hearth-testsink: src/sendspin's player half as a program (planning/hearth-reference-player.md,
 // The test sink). A Sendspin client that waits for servers: it listens on a WebSocket, advertises
 // _sendspin._tcp, pairs by its pairing PSK and a dynamic or static code, admits servers as the
-// specification ranks them, and writes each player@v1 stream it plays to a WAV file with a
-// play-time log.
+// specification ranks them, and decodes each player@v1 stream it plays, PCM, FLAC or Opus, to a
+// WAV file with a play-time log.
 //
 // Several sinks run side by side in one process or several, with distinct names, ports and state
 // directories.
@@ -48,6 +49,10 @@ struct SinkOptions {
     // WAV files and play-time logs; empty to count what is played and write nothing.
     std::filesystem::path output_directory;
     bool unpaired_access = false;
+    // The codecs offered, most preferred first: each as stereo at 48 kHz 16-bit, and PCM and FLAC
+    // also at 44.1 kHz 16-bit and 48 kHz 24-bit.
+    std::vector<sendspin::messages::Codec> codecs{sendspin::messages::Codec::kPcm, sendspin::messages::Codec::kFlac,
+                                                  sendspin::messages::Codec::kOpus};
     CodeMethod code_method = CodeMethod::kDynamic;
     // Eight digits, for CodeMethod::kStatic.
     std::string static_code;

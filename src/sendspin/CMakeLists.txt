@@ -6,9 +6,10 @@
 #
 # Two layers. The core needs nothing: JSON, base64url, the transport-mode framing, the
 # audio chunk formats, the handshake-phase and core messages, pairing tokens, admission
-# between servers, and the transport seam with its in-memory pair. The rest takes its dependencies from vcpkg's "hearth"
-# feature on a computer: mbedTLS for the crypto seam over the PSA Crypto API and the Noise,
-# PSK, CPace and pairing code above it, and cpp-httplib for the WebSocket transport.
+# between servers, PCM, and the transport seam with its in-memory pair. The rest takes its
+# dependencies from vcpkg's "hearth" feature on a computer: mbedTLS for the crypto seam over
+# the PSA Crypto API and the Noise, PSK, CPace and pairing code above it, cpp-httplib for the
+# WebSocket transport, mdns for discovery, and libFLAC and Opus for player@v1's codecs.
 # AC3FORGE_SENDSPIN_CORE_ONLY builds the core alone, which is what fuzz/run.sh does so the
 # fuzz build keeps no vcpkg dependency.
 #
@@ -44,6 +45,7 @@ target_sources(ac3sendspin
         src/base64.cpp
         src/base64url.cpp
         src/chunks.cpp
+        src/codec/pcm.cpp
         src/clock_sync.cpp
         src/discovery.cpp
         src/frames.cpp
@@ -58,6 +60,8 @@ target_sources(ac3sendspin
 if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     find_package(MbedTLS CONFIG REQUIRED)
     find_package(httplib CONFIG REQUIRED)
+    find_package(FLAC CONFIG REQUIRED)
+    find_package(Opus CONFIG REQUIRED)
     # mdns is one C header. Its package's target asks for a C99 compiler, which this C++-only
     # project does not enable, so the header is found directly, as the port's usage says.
     find_path(AC3FORGE_MDNS_INCLUDE_DIR "mdns.h" REQUIRED)
@@ -69,6 +73,9 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     target_sources(ac3sendspin
         PRIVATE
             src/channel.cpp
+            src/codec/codec.cpp
+            src/codec/flac/flac.cpp
+            src/codec/opus/opus.cpp
             src/cpace.cpp
             src/crypto/psa/crypto.cpp
             src/discovery/mdns/mdns.cpp
@@ -98,7 +105,7 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
                 src/transport/httplib/listen_socket_posix.cpp)
     endif()
     target_include_directories(ac3sendspin SYSTEM PRIVATE "${AC3FORGE_MDNS_INCLUDE_DIR}")
-    target_link_libraries(ac3sendspin PRIVATE MbedTLS::mbedcrypto httplib::httplib)
+    target_link_libraries(ac3sendspin PRIVATE MbedTLS::mbedcrypto httplib::httplib FLAC::FLAC Opus::opus)
     # cpp-httplib is configured by macros, which reach every file here that includes it.
     # Code elsewhere in the same program that included cpp-httplib would need the same
     # values, since its inline functions would otherwise differ between the two.

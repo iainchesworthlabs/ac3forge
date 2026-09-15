@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <chrono>
 #include <cmath>
@@ -17,6 +18,7 @@
 
 #include "ac3/io/wav.hpp"
 #include "ac3/sendspin/base64url.hpp"
+#include "ac3/sendspin/codec.hpp"
 #include "ac3/sendspin/crypto.hpp"
 #include "ac3/sendspin/handshake.hpp"
 #include "ac3/sendspin/handshake_session.hpp"
@@ -30,15 +32,17 @@
 #include "sink.hpp"
 
 // ac3hearth-testsink in process, over a loopback WebSocket with mDNS off: a server session pairs
-// with it by the pairing token the sink prints, plays PCM, and finds the samples it sent in the
-// sink's WAV file with a play time logged for every chunk; then a sink restarted on the same state
-// directory is reached under the long-term PSK without pairing again.
+// with it by the pairing token the sink prints, plays a stream in PCM, FLAC or Opus, and finds in
+// the sink's WAV file exactly what a local decode of the same units gives, with a play time
+// logged for every unit; then a sink restarted on the same state directory is reached under the
+// long-term PSK without pairing again.
 //
 // It dials, so under ThreadSanitizer it needs what tests/sendspin/test_websocket.cpp says.
 
 namespace {
 
 namespace fs = std::filesystem;
+namespace codec = ac3::sendspin::codec;
 namespace m = ac3::sendspin::messages;
 namespace hs = ac3::sendspin::handshake;
 namespace testsink = ac3::hearth::testsink;
@@ -109,26 +113,23 @@ ac3::sendspin::noise::KeyPair generated() {
     return *pair;
 }
 
-const m::AudioFormat kPcm{.codec = m::Codec::kPcm, .channels = 2, .sample_rate = 48000, .bit_depth = 16};
-
-// 20 ms of a stereo tone as little-endian PCM16, different in each chunk and each channel.
-std::vector<std::uint8_t> chunk(int index) {
-    std::vector<std::uint8_t> bytes;
-    for (int frame = 0; frame < 960; ++frame) {
+// A second of a stereo tone at 16 bits, different in each channel, interleaved.
+std::vector<std::int32_t> tone() {
+    std::vector<std::int32_t> samples;
+    for (int frame = 0; frame < 48000; ++frame) {
         for (int channel = 0; channel < 2; ++channel) {
-            const double phase = static_cast<double>((index * 960) + frame) * (channel == 0 ? 0.01 : 0.023);
-            const auto sample = static_cast<std::int16_t>(std::lround(12000.0 * std::sin(phase)));
-            const auto bits = static_cast<std::uint16_t>(sample);
-            bytes.push_back(static_cast<std::uint8_t>(bits & 0xFFU));
-            bytes.push_back(static_cast<std::uint8_t>(bits >> 8U));
+            const double phase = static_cast<double>(frame) * (channel == 0 ? 0.0575 : 0.131);
+            samples.push_back(static_cast<std::int32_t>(std::lround(12000.0 * std::sin(phase))));
         }
     }
-    return bytes;
+    return samples;
 }
 
 }  // namespace
 
-TEST_CASE("test sink: paired by its token over loopback, it writes the PCM it plays", "[hearth][testsink][websocket]") {
+TEST_CASE("test sink: paired by its token over loopback, it writes what it plays", "[hearth][testsink][websocket]") {
+    const m::Codec kind = GENERATE(m::Codec::kPcm, m::Codec::kFlac, m::Codec::kOpus);
+    const m::AudioFormat format{.codec = kind, .channels = 2, .sample_rate = 48000, .bit_depth = 16};
     const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "hearth_testsink";
     fs::remove_all(scratch);
     testsink::SinkOptions options;
@@ -138,6 +139,16 @@ TEST_CASE("test sink: paired by its token over loopback, it writes the PCM it pl
     options.state_directory = scratch / "state";
     options.output_directory = scratch / "out";
     options.advertise = false;
+    options.codecs = {kind};
+
+    // What the server sends: the tone encoded as one stream.
+    const std::unique_ptr<codec::Encoder> encoder = codec::make_encoder(format);
+    REQUIRE(encoder != nullptr);
+    std::optional<std::vector<codec::Unit>> units = encoder->encode(tone());
+    REQUIRE(units.has_value());
+    const std::optional<std::vector<codec::Unit>> rest = encoder->finish();
+    REQUIRE(rest.has_value());
+    units->insert(units->end(), rest->begin(), rest->end());
 
     QuietLog log;
     const ac3::sendspin::SteadyClock clock;
@@ -189,46 +200,56 @@ TEST_CASE("test sink: paired by its token over loopback, it writes the PCM it pl
                                                   .pairing = std::nullopt});
                       }).has_value());
         REQUIRE(events.wait([&] { return events.available; }, 15s));
-        REQUIRE(driver.call([&] { return server.start_stream({.format = kPcm, .codec_header = {}}); }).has_value());
+        REQUIRE(driver.call([&] {
+                          return server.start_stream({.format = format, .codec_header = encoder->codec_header()});
+                      }).has_value());
+        // Each unit at its first frame's time, earlier by the codec's look-ahead.
         const std::int64_t first = clock.now_us() + 400'000;
-        for (int k = 0; k < 50; ++k) {
-            REQUIRE(driver.call([&] { return server.send_audio(first + (k * 20'000), chunk(k)); }).has_value());
+        for (const codec::Unit& unit : *units) {
+            const std::int64_t at = first + ((unit.first_frame - encoder->delay_frames()) * 1'000'000 / 48000);
+            REQUIRE(driver.call([&] { return server.send_audio(at, unit.bytes); }).has_value());
         }
         const auto deadline = std::chrono::steady_clock::now() + 10s;
-        while ((*sink)->totals().chunks < 50 && std::chrono::steady_clock::now() < deadline) {
+        while ((*sink)->totals().chunks < units->size() && std::chrono::steady_clock::now() < deadline) {
             std::this_thread::sleep_for(20ms);
         }
-        REQUIRE((*sink)->totals().chunks == 50);
+        REQUIRE((*sink)->totals().chunks == units->size());
         REQUIRE(driver.call([&] { return server.end_stream(); }).has_value());
         std::this_thread::sleep_for(200ms);
         driver.close();
         driver.join();
     }
 
-    // The WAV holds every sample that was sent, and the log a play time for every chunk.
+    // The WAV equals a local decode of the same units, sample for sample, and the log has a play
+    // time for every unit.
+    const std::unique_ptr<codec::Decoder> local = codec::make_decoder({.format = format, .codec_header = encoder->codec_header()});
+    REQUIRE(local != nullptr);
+    std::vector<std::int32_t> expected;
+    for (const codec::Unit& unit : *units) {
+        const std::optional<std::vector<std::int32_t>> decoded = local->decode(unit.bytes);
+        REQUIRE(decoded.has_value());
+        expected.insert(expected.end(), decoded->begin(), decoded->end());
+    }
     const auto wav = ac3::io::read_wav((options.output_directory / "stream-1-1.wav").string());
     REQUIRE(wav.has_value());
     CHECK(wav->sample_rate == 48000);
     REQUIRE(wav->channels.size() == 2);
-    REQUIRE(wav->frame_count() == 50 * 960);
-    for (int k = 0; k < 50; k += 7) {
-        const std::vector<std::uint8_t> sent = chunk(k);
-        for (int frame = 0; frame < 960; frame += 97) {
-            for (std::size_t channel = 0; channel < 2; ++channel) {
-                const std::size_t offset = static_cast<std::size_t>(frame) * 4U + (channel * 2U);
-                const auto sample = static_cast<std::int16_t>(sent[offset] | (sent[offset + 1] << 8U));
-                const float received = wav->channels[channel][static_cast<std::size_t>((k * 960) + frame)];
-                CHECK(received == static_cast<float>(sample) / 32768.0F);
-            }
+    REQUIRE(wav->frame_count() == expected.size() / 2);
+    std::size_t different = 0;
+    for (std::size_t frame = 0; frame < wav->frame_count(); ++frame) {
+        for (std::size_t channel = 0; channel < 2; ++channel) {
+            const float wanted = static_cast<float>(static_cast<double>(expected[(frame * 2) + channel]) / 32768.0);
+            different += wav->channels[channel][frame] == wanted ? 0U : 1U;
         }
     }
+    CHECK(different == 0);
     std::ifstream times(options.output_directory / "stream-1-1.times.csv");
     std::string line;
-    int lines = 0;
+    std::size_t lines = 0;
     while (std::getline(times, line)) {
         ++lines;
     }
-    CHECK(lines == 51);
+    CHECK(lines == units->size() + 1);
 
     // Restarted on the same state, the sink is reached under its long-term PSK, without pairing.
     auto again = testsink::Sink::start(options, log);

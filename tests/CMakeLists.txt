@@ -677,6 +677,7 @@ if(AC3FORGE_BUILD_HEARTH)
     # The parts that need vcpkg's "hearth" feature, which AC3FORGE_SENDSPIN_CORE_ONLY leaves out.
     if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
         target_sources(ac3tests PRIVATE
+            sendspin/test_codec.cpp
             sendspin/test_cpace.cpp
             sendspin/test_crypto.cpp
             sendspin/test_handshake_session.cpp

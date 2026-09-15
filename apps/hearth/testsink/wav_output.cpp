@@ -1,9 +1,11 @@
 #include "wav_output.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -11,33 +13,10 @@
 #include <vector>
 
 #include "ac3/io/wav.hpp"
+#include "ac3/sendspin/codec.hpp"
 #include "ac3/sendspin/messages.hpp"
 
 namespace ac3::hearth::testsink {
-
-namespace {
-
-namespace m = sendspin::messages;
-
-[[nodiscard]] bool writable(const m::AudioFormat& format) {
-    return format.codec == m::Codec::kPcm && format.channels > 0 && format.channels <= 32 && format.sample_rate > 0 &&
-           (format.bit_depth == 16 || format.bit_depth == 24 || format.bit_depth == 32);
-}
-
-// One little-endian signed sample of `bytes` bytes, as a float in [-1, 1).
-[[nodiscard]] float sample_at(std::span<const std::uint8_t> frame, std::size_t offset, std::size_t bytes) {
-    std::uint32_t value = 0;
-    for (std::size_t i = 0; i < bytes; ++i) {
-        value |= std::uint32_t{frame[offset + i]} << (8U * i);
-    }
-    // Sign-extend from the sample's width to 32 bits.
-    const unsigned shift = 32U - (8U * static_cast<unsigned>(bytes));
-    const auto extended = static_cast<std::int32_t>(value << shift) >> shift;
-    const double scale = static_cast<double>(std::uint64_t{1} << ((8U * bytes) - 1U));
-    return static_cast<float>(static_cast<double>(extended) / scale);
-}
-
-}  // namespace
 
 WavOutput::WavOutput(std::filesystem::path directory, std::string prefix)
     : directory_(std::move(directory)), prefix_(std::move(prefix)) {}
@@ -46,11 +25,13 @@ WavOutput::~WavOutput() {
     end();
 }
 
-bool WavOutput::start(const m::PlayerStream& stream) {
+bool WavOutput::start(const sendspin::messages::PlayerStream& stream) {
     end();
     ++streams_;
     stream_frames_ = 0;
-    if (!writable(stream.format)) {
+    decoder_ = sendspin::codec::make_decoder(stream);
+    if (!decoder_ || stream.format.channels < 1 || stream.format.sample_rate < 1) {
+        decoder_.reset();
         format_.reset();
         return false;
     }
@@ -61,6 +42,7 @@ bool WavOutput::start(const m::PlayerStream& stream) {
     file_ = directory_ / (prefix_ + "-" + std::to_string(streams_) + ".wav");
     if (!writer_.open(file_.string(), static_cast<std::uint32_t>(stream.format.sample_rate),
                       static_cast<std::uint16_t>(stream.format.channels))) {
+        decoder_.reset();
         format_.reset();
         return false;
     }
@@ -84,12 +66,16 @@ void WavOutput::end() {
 
 void WavOutput::write(std::span<const std::uint8_t> frame, std::int64_t local_time) {
     ++chunks_;
-    if (!format_) {
+    if (!decoder_ || !format_) {
+        return;
+    }
+    const std::optional<std::vector<std::int32_t>> decoded = decoder_->decode(frame);
+    if (!decoded) {
+        ++undecodable_;
         return;
     }
     const auto channels = static_cast<std::size_t>(format_->channels);
-    const auto bytes = static_cast<std::size_t>(format_->bit_depth / 8);
-    const std::size_t frame_count = frame.size() / (channels * bytes);
+    const std::size_t frame_count = decoded->size() / channels;
     frames_ += frame_count;
     if (log_.is_open()) {
         log_ << local_time << "," << stream_frames_ << "," << frame_count << "\n";
@@ -98,9 +84,10 @@ void WavOutput::write(std::span<const std::uint8_t> frame, std::int64_t local_ti
     if (!writer_.is_open()) {
         return;
     }
+    const double scale = std::ldexp(1.0, decoder_->bit_depth() - 1);
     samples_.resize(frame_count * channels);
     for (std::size_t i = 0; i < samples_.size(); ++i) {
-        samples_[i] = sample_at(frame, i * bytes, bytes);
+        samples_[i] = static_cast<float>(static_cast<double>((*decoded)[i]) / scale);
     }
     (void)writer_.write(samples_);
 }

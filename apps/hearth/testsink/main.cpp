@@ -34,6 +34,8 @@ A Sendspin player that writes each player@v1 stream it plays to a WAV file.
   --pair METHOD          the pairing code method offered: dynamic (default),
                          static or none; the pairing PSK is always offered
   --static-code DIGITS   the eight-digit code for --pair static
+  --codecs LIST          the codecs offered, most preferred first, from pcm,
+                         flac and opus (default pcm,flac,opus)
   --unpaired-access      admit servers that have not paired
   --no-mdns              do not advertise _sendspin._tcp
   --mdns-interface ADDR  advertise on this IPv4 interface only; repeatable
@@ -133,6 +135,28 @@ int main(int argc, char** argv) {
             }
         } else if (argument == "--static-code") {
             options.static_code = *given;
+        } else if (argument == "--codecs") {
+            options.codecs.clear();
+            std::string_view list = *given;
+            while (!list.empty()) {
+                const std::size_t comma = list.find(',');
+                const std::string_view name = list.substr(0, comma);
+                if (name == "pcm") {
+                    options.codecs.push_back(ac3::sendspin::messages::Codec::kPcm);
+                } else if (name == "flac") {
+                    options.codecs.push_back(ac3::sendspin::messages::Codec::kFlac);
+                } else if (name == "opus") {
+                    options.codecs.push_back(ac3::sendspin::messages::Codec::kOpus);
+                } else {
+                    std::cerr << "--codecs takes pcm, flac and opus, separated by commas\n";
+                    return EXIT_FAILURE;
+                }
+                list = comma == std::string_view::npos ? std::string_view{} : list.substr(comma + 1);
+            }
+            if (options.codecs.empty()) {
+                std::cerr << "--codecs needs at least one codec\n";
+                return EXIT_FAILURE;
+            }
         } else if (argument == "--mdns-interface") {
             options.mdns_interfaces.emplace_back(*given);
         } else if (argument == "--run-for") {

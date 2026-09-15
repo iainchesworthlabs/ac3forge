@@ -324,12 +324,17 @@ void Sink::accept(std::unique_ptr<sendspin::transport::Connection> transport) {
     config.name = options_.name;
     config.device_info = {.product_name = "ac3hearth-testsink", .manufacturer = "AC3Forge", .software_version = {}, .mac_address = {}};
     config.supported_roles = {"player@v1"};
-    config.player_support = {
-        .supported_formats = {{.codec = m::Codec::kPcm, .channels = 2, .sample_rate = 48000, .bit_depth = 16},
-                              {.codec = m::Codec::kPcm, .channels = 2, .sample_rate = 44100, .bit_depth = 16},
-                              {.codec = m::Codec::kPcm, .channels = 2, .sample_rate = 48000, .bit_depth = 24}},
-        .buffer_capacity = 32 * 1024 * 1024,
-        .commands = {m::PlayerCommand::kVolume, m::PlayerCommand::kMute}};
+    std::vector<m::AudioFormat> formats;
+    for (const m::Codec codec : options_.codecs) {
+        formats.push_back({.codec = codec, .channels = 2, .sample_rate = 48000, .bit_depth = 16});
+        if (codec != m::Codec::kOpus) {
+            formats.push_back({.codec = codec, .channels = 2, .sample_rate = 44100, .bit_depth = 16});
+            formats.push_back({.codec = codec, .channels = 2, .sample_rate = 48000, .bit_depth = 24});
+        }
+    }
+    config.player_support = {.supported_formats = std::move(formats),
+                             .buffer_capacity = 32 * 1024 * 1024,
+                             .commands = {m::PlayerCommand::kVolume, m::PlayerCommand::kMute}};
     config.pair_methods = {{.method = m::PairMethod::kPairingPsk,
                             .locations = {m::SecretLocation::kOperator},
                             .out_channels = {},

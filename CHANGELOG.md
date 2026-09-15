@@ -262,6 +262,13 @@ and release packaging.
   side with distinct names, ports and state. Not packaged; `ac3tests` runs one in process,
   pairs a server with it by its token over a loopback WebSocket, finds the PCM it sent in the
   WAV sample for sample, and reaches it again after a restart under the stored long-term PSK.
+- **`player@v1`'s codecs in `src/sendspin`**: encoders and decoders for PCM at 16, 24 and 32
+  bits, FLAC over libFLAC and Opus over Opus, both joining the `hearth` vcpkg feature. A FLAC
+  stream's `codec_header` is its `fLaC` marker and STREAMINFO block and each unit one frame; an
+  Opus unit is one 20 ms packet, and the encoder reports its look-ahead so a server can time
+  Opus players with the rest of a group. PCM and FLAC decode to exactly what was encoded at
+  every depth. The test sink now offers and decodes all three, and its loopback test finds in
+  its WAV exactly what a local decode of the same units gives, for each codec.
 
 **Containers and encoding**
 
