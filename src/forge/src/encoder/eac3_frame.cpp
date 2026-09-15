@@ -2926,17 +2926,23 @@ double whole_programme_mono_peak_dbfs(std::span<const FrameEncoder> substreams,
         // for why index i of one is always channel i of the other.
         assert(static_cast<std::size_t>(locations.count) == count);
         for (int i = 0; i < locations.count; ++i) {
-            const auto location = locations[static_cast<std::size_t>(i)];
+            const auto location = locations[i];
             if (location == chanmap::Location::kLfe || location == chanmap::Location::kLfe2) {
                 continue;  // §7.8's mono fold has no LFE term (mono_downmix_peak_dbfs's own contract)
             }
             const seat::SeatMix mix = seat::seat_of(location);
             const auto& source = channels[offset + static_cast<std::size_t>(i)];
+            // Narrowed once per call, not per sample: the gain is one number
+            // for the whole channel, so rounding it here costs a single
+            // rounding step instead of one every sample (see the same
+            // reasoning at gain.hpp's block_gain, this function's decode-side
+            // counterpart).
             const auto pour = [&](seat::Seat s, double gain) {
                 occupied[static_cast<std::size_t>(s)] = true;
                 auto& dest = seats[static_cast<std::size_t>(s)];
+                const auto fgain = static_cast<float>(gain);
                 for (std::size_t n = 0; n < source.size(); ++n) {
-                    dest[n] += static_cast<float>(source[n] * gain);
+                    dest[n] += source[n] * fgain;
                 }
             };
             pour(mix.first, mix.first_gain);
