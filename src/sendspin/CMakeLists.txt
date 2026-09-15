@@ -87,7 +87,9 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
             src/pairing_flow.cpp
             src/player_session.cpp
             src/psk.cpp
+            src/server_host.cpp
             src/server_session.cpp
+            src/server_store.cpp
             src/session_driver.cpp
             src/transport/httplib/websocket.cpp)
     # The listening socket's options and the mDNS sockets' system calls, which differ by

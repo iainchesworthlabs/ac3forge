@@ -269,6 +269,17 @@ and release packaging.
   Opus players with the rest of a group. PCM and FLAC decode to exactly what was encoded at
   every depth. The test sink now offers and decodes all three, and its loopback test finds in
   its WAV exactly what a local decode of the same units gives, for each codec.
+- **A Sendspin server host in `src/sendspin`**: `ServerHost` holds every connection to a
+  server's clients, listening and advertising `_sendspin-server._tcp`, and browsing for and
+  dialling players that advertise `_sendspin._tcp`. It activates each client from its
+  `ServerStore`: playback for a paired client or an approved unpaired one, pairing by the
+  pairing PSK once the operator has entered a client's token, pairing by a code on request, and
+  nothing otherwise. A `Group` plays one programme to several clients on one timeline, each in
+  the first of its formats the group can produce, started far enough ahead for the member that
+  needs the most lead and paced by what the members' buffers hold. Two test sinks in one group,
+  one taking PCM and the other FLAC, each write exactly the programme, and every chunk they log
+  puts its first frame at the same local time within 1 ms; a host pairs one sink by its token
+  and another by the dynamic code it shows.
 
 **Containers and encoding**
 

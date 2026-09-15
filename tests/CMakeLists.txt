@@ -691,7 +691,7 @@ if(AC3FORGE_BUILD_HEARTH)
         # test_mdns.cpp reads the mdns backend's packet layer, which is private to the library.
         target_include_directories(ac3tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src/sendspin/src")
         # Hearth's test sink, run in process (apps/hearth/testsink).
-        target_sources(ac3tests PRIVATE hearth/test_testsink.cpp)
+        target_sources(ac3tests PRIVATE hearth/test_group.cpp hearth/test_testsink.cpp)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
     endif()
     target_link_libraries(ac3tests PRIVATE ac3::sendspin)
