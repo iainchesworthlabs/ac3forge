@@ -47,9 +47,10 @@ and release packaging.
   component's manifest, timed on a board with no network and with WiFi connected and a
   1,536 kbit/s TCP stream arriving (a network load the probe project can build in). All
   fourteen fixtures decode with PCM identical to the other fixed-tier legs. With the network up,
-  AC-3 and E-AC-3 stereo and mono decode in real time and no 5.1 stream does, and 7.1.4 fits
-  only with ESP-IDF's WiFi IRAM options off. QEMU does not emulate the part, so CI builds it
-  and runs nothing. See `docs/platforms/bare-metal/esp32-c6.md`.
+  AC-3 and E-AC-3 5.1, stereo and mono decode in real time (after the fixed-point arithmetic
+  change under Changed), E-AC-3 7.1 does not, and 7.1.4 fits only with ESP-IDF's WiFi IRAM
+  options off. QEMU does not emulate the part, so CI builds it and runs nothing. See
+  `docs/platforms/bare-metal/esp32-c6.md`.
 - **`delta_allocation`** on `EncoderConfig`/`eac3::FrameConfig` (`delta=off`): the first
   rung of an effort axis for parts with little time for the §7.2.2.6 search. Removes
   about 9 ms of an ESP32-S3 E-AC-3 5.1 frame for 0.01 dB on the worst channel of the
@@ -203,6 +204,15 @@ and release packaging.
 
 **Minimum-footprint / ESP32 decode and encode profile**
 
+- **The fixed-point tier decodes 5.1 in real time on the ESP32-C6 with WiFi up**, with the
+  same PCM bit for bit: the fixed-tier hashes do not move. The IMDCT pair's products drop a
+  saturation they cannot reach, the overlap-add runs on 32 bits and builds its output floats
+  from the integers' bits, `Fixed32`'s product tests its saturation once, and its shifts,
+  small ratios and square root avoid 64-bit library calls on a 32-bit core, as do the AHT and
+  spectral extension products. On the board at 160 MHz with no network, AC-3 5.1 went from
+  34.7 ms a frame to 20.5 and E-AC-3 5.1 from 38.7 to 23.9; with WiFi and a 1,536 kbit/s
+  stream arriving, from 44.3 to 26.2 and from 46.4 to 30.6. See
+  `docs/platforms/bare-metal/esp32-c6.md`.
 - **E-AC-3 decodes in real time on the ESP32-S3** (roadmap PF7), the result of five
   successive profiling passes. The double-arithmetic bottleneck between the bitstream
   and the float32 coefficient store (mantissa dequantisation, dither, coordinates,
