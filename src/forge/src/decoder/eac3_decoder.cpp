@@ -104,6 +104,9 @@ struct Bsi {
     // parse_bsi's own comment on why a dependent's compre bit does not mean
     // this.
     std::optional<std::uint8_t> compr;
+    // §E3.8.5: the word a DEPENDENT substream's compre brings with it. It is
+    // the last dependent's, and it is the compr word of the whole program.
+    std::optional<std::uint8_t> program_compr;
     std::optional<std::uint16_t> chanmap;
     // Ch2's own dialnorm/compr, present only when acmod is kDualMono (1+1).
     std::optional<int> dialnorm2;
@@ -372,15 +375,19 @@ std::expected<Bsi, DecodeError> parse_bsi(BitReader& r, std::size_t frame_bytes)
     bsi.bsid = bsid;
     bsi.dialnorm = static_cast<int>(r.read(5));
     // §E3.8.5: in a DEPENDENT substream compre marks the last dependent of the
-    // program rather than announcing a compression word - though it still
-    // drags one in. Either way the 8 bits have to be consumed; only stored
-    // into bsi.compr when this substream is independent/convertible, where
-    // the word is actually what it says it is.
+    // program, and the word it brings is the program's own - only that
+    // substream may carry compr and dynrng, and its words apply to every
+    // substream of the program, the independent one included. So a
+    // dependent's word is kept apart from bsi.compr, which stays the
+    // substream's own - decode_access_unit_core applies it to the whole
+    // program.
     bsi.compre = r.read(1) != 0;
     if (bsi.compre) {
         const auto compr = static_cast<std::uint8_t>(r.read(8));
         if (bsi.strmtyp != StreamType::kDependent) {
             bsi.compr = compr;
+        } else {
+            bsi.program_compr = compr;
         }
     }
     // Annex E Table E1.2: unconditional on strmtyp, mirroring the encoder's
@@ -669,6 +676,12 @@ struct Eac3Decoder::Impl {
     // apply_output's and flush()'s own views onto whichever channels are
     // being folded. A member so a steady-state decode allocates nothing.
     std::vector<std::span<float>> au_views_;
+    // §E3.8.5, for the access unit decode_access_unit_core is decoding: the
+    // compr word of that unit's last dependent substream, which every Annex E
+    // substream of the unit applies in place of its own. Disengaged outside
+    // an access unit, and for a unit whose program has no dependent, where
+    // each substream keeps its own word.
+    std::optional<std::uint8_t> program_compr_;
 
     // §E2.3.1.2: "If an AC-3 bit stream is present in the E-AC-3 bit stream,
     // then the AC-3 bit stream shall be processed as an independent substream
@@ -1199,7 +1212,35 @@ Eac3Decoder::Eac3Decoder(const DecoderConfig& config) : impl_(std::make_unique<I
 std::expected<DecodedSubstream, DecodeError> Eac3Decoder::decode_ac3_core(
     std::span<const std::byte> frame) {
     if (!impl_->core_) {
-        impl_->core_ = std::make_unique<FrameDecoder>(impl_->config_);
+        // NOT impl_->config_ verbatim: that carries DecoderConfig::output,
+        // and §E3.8.2 assembles this substream's channels with every other
+        // one BEFORE apply_output() folds the whole program. A core that
+        // downmixed itself would hand a 2-channel Lo/Ro pair to an assembly
+        // expecting 3/2+LFE's six - decode_access_unit_core's own
+        // locations.count-vs-channels.size() check refuses exactly that
+        // mismatch - and a core that dialnorm-normalised itself would be
+        // normalised a second time once apply_output() does it again for the
+        // assembled program. drc_scale/heavy_compression are untouched: the
+        // §7.7 gain they drive is applied to the COEFFICIENTS inside
+        // FrameDecoder itself (gain.hpp's block_gain(), before the IMDCT),
+        // not by the output stage, and every other substream's channels take
+        // that same per-substream gain - the core is not special there, only
+        // in the fold that comes after every substream has one.
+        //
+        // heavy_compression's compr word is a further wrinkle this leaves
+        // alone: the core keeps its OWN AC-3 bsi's word, read and applied
+        // entirely inside FrameDecoder, with no view onto the E-AC-3
+        // dependents riding beside it or their own compr words. Whether an
+        // access unit's compr should instead be one word shared across every
+        // substream - the core included - the way §E3.8.5 already shares a
+        // program's dynrng/mixmdate at the DecodedAccessUnit level, is a
+        // question this fix does not answer: nothing here reads a dependent's
+        // compr into the core's decode, and a §E2.3.1.2 core is presented as
+        // substream (kIndependent, 0) like any other independent substream
+        // (see the class comment above), so it is not obviously exempt.
+        DecoderConfig core_config = impl_->config_;
+        core_config.output = {};
+        impl_->core_ = std::make_unique<FrameDecoder>(core_config);
     }
     auto decoded = impl_->core_->decode_frame(frame);
     if (!decoded) {
@@ -1208,6 +1249,13 @@ std::expected<DecodedSubstream, DecodeError> Eac3Decoder::decode_ac3_core(
     DecodedSubstream out;
     out.strmtyp = StreamType::kIndependent;
     out.substreamid = 0;
+    // The core's own bsid (6 or 8, per DecodedFrame::bsid's own comment) -
+    // not the DecodedSubstream default of eac3::kBsid, which would say this
+    // substream is a genuine E-AC-3 one. apply_output()/flush() key their
+    // downmix-level resolution off this: bsid <= 8 means the levels below are
+    // the ones to fold with, since a core has no mixmdate to read `mixing`
+    // from at all (§E2.3.1.2, §D3.1.2).
+    out.bsid = decoded->bsid;
     out.sample_rate = decoded->sample_rate;
     out.acmod = decoded->acmod;
     out.lfe = decoded->lfe;
@@ -1217,6 +1265,17 @@ std::expected<DecodedSubstream, DecodeError> Eac3Decoder::decode_ac3_core(
     out.dialnorm2 = decoded->dialnorm2;
     out.compr2 = decoded->compr2;
     out.dynrng2 = decoded->dynrng2;
+    // §5.4.2.4/§5.4.2.5's bsi levels, and Annex D's xbsi1 group when the core
+    // is bsid 6 - the AC-3-syntax equivalent of a genuine substream's
+    // `mixing` above, carried the same way every other field on this line is:
+    // straight off the core FrameDecoder's own read, unmodified. Resolving
+    // them into the coefficients the §7.8 fold needs is `ac3::mix_levels()`'s
+    // job (via resolve_mix_levels below), same as it always was for a bare
+    // AC-3 stream through FrameDecoder - only the plumbing to reach an
+    // assembled E-AC-3 programme's fold is new here.
+    out.cmixlev = decoded->cmixlev;
+    out.surmixlev = decoded->surmixlev;
+    out.alternate_bsi = decoded->alternate_bsi;
     // An AC-3 syncframe is always six audblks (§5.3.1), which Annex E spells
     // numblkscod 3. That is also what every dependent riding alongside a core
     // must carry - §E2.3.1.2 requires a dependent to have "the same number of
@@ -1505,7 +1564,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     out.acmod = bsi->acmod;
     out.lfe = bsi->lfe;
     out.dialnorm = bsi->dialnorm;
-    out.compr = bsi->compr;
+    // Inside an access unit whose program has a dependent, the independent
+    // substream reports the program's word (§E3.8.5), which is the one its
+    // channels take below - so DecodedAccessUnit::compr, read from this
+    // substream, names the word the program was decoded with.
+    out.compr = bsi->strmtyp != StreamType::kDependent && impl_->program_compr_.has_value()
+                    ? impl_->program_compr_
+                    : bsi->compr;
     out.dynrng.fill(meta::kDynrngUnity);
     out.dialnorm2 = bsi->dialnorm2;
     out.compr2 = bsi->compr2;
@@ -3471,12 +3536,20 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                         // §E3.6.4.3's thirty-two as one shift (block_norm.hpp).
                         const Scalar mantissa = tail.spxco[static_cast<std::size_t>(ch)][ubnd];
                         const int shift = 5 - tail.spxco_exp[static_cast<std::size_t>(ch)][ubnd];
+                        // The three products without the saturation test
+                        // (fixed32.hpp's product_unsaturated), which none of
+                        // them can reach: a stored coefficient times a scale
+                        // of at most one, a noise draw of at most sqrt(3)
+                        // times the band's RMS, below one half, and any value
+                        // times a coordinate mantissa below one.
                         for (int i = 0; i < size; ++i) {
                             const auto at = static_cast<std::size_t>(low + i);
+                            const Scalar blended =
+                                internal::scalar_product_unsaturated(tc[at], sscale) +
+                                internal::scalar_product_unsaturated(spx_noise.next_as<Scalar>(),
+                                                                     nscale);
                             tc[at] = internal::scalar_ldexp(
-                                (tc[at] * sscale + spx_noise.next_as<Scalar>() * nscale) *
-                                    mantissa,
-                                shift);
+                                internal::scalar_product_unsaturated(blended, mantissa), shift);
                         }
                     } else {
                         const Scalar coordinate =
@@ -3559,8 +3632,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
             return scale;
         };
+        // §E3.8.5: every substream of a program with dependents takes the
+        // last dependent's word, which a dependent's own out.compr never
+        // holds (see DecodedSubstream::compr) and the independent's already
+        // does (see where out.compr is set above).
         const internal::BlockScale first_programme = resolve(internal::block_gain(
-            impl_->config_, out.dynrng[static_cast<std::size_t>(blk)], out.compr));
+            impl_->config_, out.dynrng[static_cast<std::size_t>(blk)],
+            impl_->program_compr_.has_value() ? impl_->program_compr_ : out.compr));
         const internal::BlockScale second_programme =
             bsi->acmod == Acmod::kDualMono
                 ? resolve(internal::block_gain(impl_->config_,
@@ -3795,6 +3873,35 @@ int Eac3Decoder::latency_samples() const {
     return 0;
 }
 
+namespace {
+
+// The fold levels for one substream/access-unit's own bed, whichever syntax
+// stated them. A §E2.3.1.2 legacy core (bsid <= 8) has no mixmdate on the
+// wire at all - AC-3's bsi carries cmixlev/surmixlev instead, widened by
+// Annex D's xbsi1 group for a bsid-6 core (§D3.1.2) - so `mixing` and
+// `cmixlev`/`surmixlev`/`alternate_bsi` are never both meaningful for the
+// same bed; bsid says which one is. A genuine E-AC-3 bed always takes the
+// `mixing` branch, exactly as it did before this function existed.
+//
+// This is the same resolution FrameDecoder applies to a bare AC-3 stream
+// (ac3::mix_levels(), the acmod/cmixlev/surmixlev/alternate_bsi overload
+// PR #691 added); the only thing new here is reaching it from an assembled
+// E-AC-3 programme or a still-pending substream instead of a lone AC-3 frame.
+// A dependent's own `mixing`, if it sent one, is not consulted either way -
+// same rule DecodedAccessUnit::mixing's own comment already states for the
+// non-legacy-core case, extended rather than special-cased here.
+MixLevels resolve_mix_levels(int bsid, Acmod acmod, const std::optional<meta::MixMetadata>& mixing,
+                             std::optional<meta::CentreMixLevel> cmixlev,
+                             std::optional<meta::SurroundMixLevel> surmixlev,
+                             const std::optional<meta::AlternateBsi>& alternate_bsi) {
+    if (bsid <= 8) {
+        return mix_levels(acmod, cmixlev, surmixlev, alternate_bsi);
+    }
+    return mix_levels(mixing);
+}
+
+}  // namespace
+
 std::vector<DecodedSubstream> Eac3Decoder::flush() {
     std::vector<DecodedSubstream> ready;
     // Slot order is key order, so this drains in the same ascending
@@ -3833,7 +3940,10 @@ std::vector<DecodedSubstream> Eac3Decoder::flush() {
         }
         const auto layout = eac3::chanmap::expand(substream.location_map());
         impl_->output_.apply(views, layout, substream.acmod, substream.lfe,
-                             mix_levels(substream.mixing), substream.dialnorm);
+                             resolve_mix_levels(substream.bsid, substream.acmod, substream.mixing,
+                                                substream.cmixlev, substream.surmixlev,
+                                                substream.alternate_bsi),
+                             substream.dialnorm, substream.dialnorm2);
         substream.channels.resize(
             output_channel_count(impl_->config_.output, substream.acmod, substream.lfe));
     }
@@ -3897,7 +4007,9 @@ void Eac3Decoder::apply_output(DecodedAccessUnit& out, std::span<const std::span
         // finished program, not part of decoding one.
         AC3_ZONE_SCOPED_N("eac3_output");
         impl_->output_.apply(impl_->au_views_, out.layout, out.acmod, rendered_lfe,
-                             mix_levels(out.mixing), out.dialnorm);
+                             resolve_mix_levels(out.bsid, out.acmod, out.mixing, out.cmixlev,
+                                                out.surmixlev, out.alternate_bsi),
+                             out.dialnorm, out.dialnorm2);
     }
     if (!external.empty()) {
         return;
@@ -3961,6 +4073,40 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
                 lead_bsi->strmtyp == eac3::StreamType::kDependent) {
                 return std::optional<DecodedAccessUnit>(std::nullopt);
             }
+        }
+    }
+
+    // §E3.8.5: a program with dependent substreams takes its compr word from
+    // the last of them, and applies it to every substream, the independent
+    // one included - which comes first in the unit, so the word has to be
+    // found before anything is decoded. The last dependent is the one
+    // whose compre is set, and it is the only one carrying a word. Reset on
+    // every way out of this function, so a later decode_substream call on its
+    // own never inherits a program it is not part of. A §E2.3.1.2 AC-3 core
+    // is decoded by FrameDecoder with its own word; the dependents riding
+    // with it still take the program's.
+    struct ProgramComprScope {
+        std::optional<std::uint8_t>& word;
+        explicit ProgramComprScope(std::optional<std::uint8_t>& program_word)
+            : word(program_word) {}
+        ProgramComprScope(const ProgramComprScope&) = delete;
+        ProgramComprScope& operator=(const ProgramComprScope&) = delete;
+        ~ProgramComprScope() { word.reset(); }
+    };
+    impl_->program_compr_.reset();
+    const ProgramComprScope program_compr_scope{impl_->program_compr_};
+    for (std::size_t i = frames->size(); i-- > 1;) {
+        const auto& frame = (*frames)[i];
+        // A frame that will not parse is the key loop's to report, below.
+        const auto frame_bsid = stream_bsid(frame);
+        if (!frame_bsid.has_value() || *frame_bsid <= 8) {
+            continue;
+        }
+        BitReader peek{frame};
+        const auto bsi = parse_bsi(peek, frame.size());
+        if (bsi.has_value() && bsi->program_compr.has_value()) {
+            impl_->program_compr_ = bsi->program_compr;
+            break;
         }
     }
 
@@ -4108,10 +4254,18 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     out.sample_rate = lead.sample_rate;
     out.acmod = lead.acmod;
     out.dialnorm = lead.dialnorm;
+    out.dialnorm2 = lead.dialnorm2;
     out.compr = lead.compr;
     out.dynrng = lead.dynrng;
     out.numblkscod = lead.numblkscod;
     out.mixing = lead.mixing;
+    // The bed's own bsid, and its AC-3-syntax downmix levels when it is a
+    // §E2.3.1.2 legacy core - see DecodedAccessUnit::bsid's own comment.
+    // apply_output() below is where these actually get used.
+    out.bsid = lead.bsid;
+    out.cmixlev = lead.cmixlev;
+    out.surmixlev = lead.surmixlev;
+    out.alternate_bsi = lead.alternate_bsi;
     out.info = lead.info;
     // TS 103 420 §8.3.1's "whichever substream carries the EMDF container":
     // this project's own AtmosEncoder always makes that the bed, but a

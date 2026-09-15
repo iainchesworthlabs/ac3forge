@@ -104,7 +104,10 @@ std::string dynrng_note(const ac3cli::Options& meta) {
 std::string compr_note(const ac3cli::Options& meta) {
     switch (meta.output.mode) {
         case ac3::OperatingMode::kRf:
-            return ", applied (drcmode=rf)";
+            // RF mode's 11 dB go with each word (ac3::meta::kRfModeGainDb), which is
+            // what lifts dialogue from the -31 dBFS the dialnorm line reports to
+            // RF mode's -20 dBFS.
+            return ", applied with RF mode's +11 dB (drcmode=rf)";
         case ac3::OperatingMode::kLine:
             return ", not applied (drcmode=line uses dynrng)";
         case ac3::OperatingMode::kCustom:

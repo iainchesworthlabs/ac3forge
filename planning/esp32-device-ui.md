@@ -154,7 +154,7 @@ device's answers rather than work out the player's rules in the script.
 
 ### What a layout does
 
-From the code - `esp-idf/ac3forge/src/player.cpp`, `include/ac3forge/render.hpp` and the
+From the code - `esp-idf/ac3forge/src/player.cpp`, `src/forge/include/ac3/render/render.hpp` and the
 decoder's output stage, `src/forge/src/decoder/output.cpp` - and checked under QEMU with the
 [stream set](esp32-stream-set.md):
 
@@ -443,12 +443,13 @@ server stands in for the device (`device-ui/stub.js`), one per test: it serves t
 script with the headers Control sends, and implements the REST contract - routes, methods, status
 codes, reply texts, content types, and the state a play goes through. `contract.spec.js` compares
 its reply texts, headers and routes with the literals in `control.cpp`, and checks that every
-request the script makes is to a route the firmware registers. Seventy-seven tests drive every action
+request the script makes is to a route the firmware registers. Seventy-nine tests drive every action
 through the page and assert on the requests the stand-in received; every error path (`400` and
 `409` replies, a connection closed unanswered, a device that does not answer, a malformed or
 partial `/status`); the polling rules on Playwright's clock (one request in flight, none while
-hidden, the retry interval, a poll after an action); the volume coalescing; keyboard-only use,
-contrast in both colour schemes, focus and target size; and the page's rendering of `/status`
+hidden, the retry interval, a poll after an action); a layout's confirmation after the state change
+that a poll already out brings back; the volume coalescing; keyboard-only use, contrast in both
+colour schemes, focus and target size; and the page's rendering of `/status`
 bodies recorded from the emulated board (`device-ui/payloads/`) - playing, finished, failed in
 the decoder, a location that did not open, stopped, refused, objects carried and not - plus
 payloads with fields changed or left out, as an older firmware or one with fewer handlers would
@@ -463,7 +464,7 @@ the field's suggestions and its explanation of a refusal; and a check that the s
 **Coverage.** Chromium's V8 coverage of the script, collected by Playwright per test, written in
 the form Node's own coverage takes, and reported by c8 (`npm run coverage:device-ui`), which fails
 below 98% of statements, lines and functions and 90% of branches. The suite reaches 100, 100, 100
-and 93.6.
+and 94.5.
 
 **Budget.** A host test sums the two files, fails above 20,480 bytes, and fails on a carriage
 return.

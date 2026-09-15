@@ -496,7 +496,7 @@ as a name — `2.0` (the default), `5.1`, `7.1`, `5.1.4`, `7.1.4`, `9.2.4`,
 `L,R,C,LFE,Ls,Rs` for a 5.1 DAC wired in WAV order, `30/0,-30/0,lfe` by angles,
 `-` for a slot nothing is on. A name is Table E2.5's order with the LFE last, so
 `5.1` is L C R Ls Rs LFE; a list is whatever order the board is wired in. The
-grammar is [`ac3forge/layout.hpp`](../../include/ac3forge/layout.hpp)'s and
+grammar is [`ac3/render/layout.hpp`](../../../../src/forge/include/ac3/render/layout.hpp)'s and
 `PUT /layout` on the control surface takes the same text for the next play.
 
 What happens to a stream depends on the layout, not the stream:
@@ -531,11 +531,11 @@ with real time. The same stream decodes and renders onto twelve slots in about
 [`planning/esp32-stream-set.md`](../../../../planning/esp32-stream-set.md#on-a-board)
 and [Folded to stereo](../../../../docs/platforms/bare-metal/esp32-s3.md#folded-to-stereo).
 
-All of it is [`ac3forge/render.hpp`](../../include/ac3forge/render.hpp), one
-256-sample block at a time, which is why a 7.1.4 layout costs the player 16 KB
+All of it is [`ac3/render/render.hpp`](../../../../src/forge/include/ac3/render/render.hpp),
+one 256-sample block at a time, which is why a 7.1.4 layout costs the player 16 KB
 of block storage rather than 96 KB of frame. The geometry is the library's
 (`tests/spatial/`); what the header adds is indexing between coded channels,
-objects and slots, tested on the host in `tests/io/test_layout.cpp` because a
+objects and slots, tested on the host in `tests/render/test_layout.cpp` because a
 swapped subscript there puts the centre in the subwoofer and nothing complains.
 
 CI renders one under QEMU (`sdkconfig.ci-render`): the footprint probe's
@@ -559,6 +559,32 @@ no reflash, just whatever the new layout needs. A TDM line always runs its full
 frame, four 32-bit slots or eight 16-bit ones, with the slots past the layout's
 channels written as zeros: a TDM DAC is set up for a fixed frame, and on an
 ESP32-C6 the driver clocked three- and five-slot frames 6.7% fast at 16 bits.
+
+**A fixed frame for a TDM DAC.** `CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME=1`
+opens that full TDM frame for every layout, mono and stereo included
+(`ac3forge::SinkFrame::fixed`). A TDM DAC set up for one frame shape needs it:
+an ESS ES9080 has its slot count, slot width and channel map written over I2C,
+and its PLL can lock to the bit clock, so a 2.0 play opened as standard I2S
+would change the bit clock under it and put the samples in slots it does not
+read. A mono layout rides slot 0 alone, as in any TDM frame. With a second
+line, line 1 runs for every layout too, its slots zeroed while line 0 holds
+the whole layout, so a second DAC on its data pin always reads defined
+samples. Nothing is reconfigured between plays, since every layout gets the
+same frame. The DAC's own I2C setup is not part of this example. Leave it at 0
+for a stereo I2S DAC such as a PCM5102 or MAX98357A, which reads the two-slot
+frame.
+
+On an ESP32-C6 board with no DAC wired, playing `layout-20.ec3` from the FAT
+partition onto `2.0` at 16 bits, the option changed the sink's line from
+`line0 2 slots` to `line0 8 slots (tdm, fixed frame)`. Both channels' levels
+were unchanged to the digit, and a frame took 34,581 microseconds against
+34,583 without it: 1.08 times real time either way, so both runs had the
+same 127 underruns. The sink took 81 microseconds a frame
+longer, zeroing six more slots and handing the driver four times the bytes.
+The DMA buffers grow: the same depth of eight 16-bit slots is 16 KB where
+the stereo pair's is 4 KB, and the heap had 12,304 bytes less free during the
+play. A `1.0` layout at 32 bits opened `line0 4 slots (tdm, fixed frame)`
+with its one channel in slot 0.
 
 **The hardware ceiling this cannot get past.** On an ESP32-S3 one I2S line's
 TDM frame holds at most 128 bits, because the peripheral's half-frame length
@@ -660,6 +686,38 @@ converts up to sixteen slots with no peripheral behind it and no hardware
 ceiling to refuse against, which is how CI checks a twelve-slot conversion
 that no real line here could carry at all; `CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS`
 sets its emulated width, unrelated to the real sink's own ceiling.
+
+**How a sample becomes a slot depends on the part.** `ac3forge::to_pcm16` and
+`to_slot_24in32` scale, clip and truncate a sample in `float`: a handful of
+instructions on a part with a floating-point unit, such as the ESP32-S3. The
+ESP32-C6 has none, and each of those four operations is a call into the
+software floating-point routines. `to_pcm16_from_bits` and
+`to_slot_24in32_from_bits` compute the same integers from the sample's
+IEEE-754 bits with 32-bit integer arithmetic instead - equal to the float
+forms for every input that is not a NaN, checked exhaustively on the host and
+against a real decoded stream under QEMU (S3 in float, C3 in bits, identical
+converted slots). `ac3forge/interleave.hpp`'s interleaves take the conversion
+as a template argument and the component chooses it from
+`CONFIG_SOC_CPU_HAS_FPU`, so a sink's own code is unchanged either way.
+
+Measured on an ESP32-C6 at 160 MHz, one frame of six 256-sample blocks,
+`-Os`:
+
+| Conversion | In float | From the bits |
+|---|---:|---:|
+| Eight 16-bit slots (`interleave_16in16`) | 12,196 us | 4,541 us |
+| Four 24-in-32 slots (`interleave_24in32`) | 5,159 us | 2,092 us |
+| A stereo pair (`interleave_16`) | 2,879 us | 770 us |
+
+And on the same board, this example's own `i2s` sink playing a 7.1 stream
+onto eight 16-bit TDM slots (`sink_us_per_frame`, which also carries the
+level meter in front of the sink): 20,875 us in float, 12,689 us from the
+bits - `-Os` still calls the conversion once a sample rather than inlining
+it, which building the sink's source at `-O2`
+(`AC3FORGE_MINIMAL_HOT_O2`'s reasoning, applied to this file) brings to
+11,551. Levels are unchanged to the digit across all three. The ESP32-S3's
+own sink compiles to identical object code before and after - confirmed on a
+board, no difference outside measurement jitter.
 
 ## What it costs
 

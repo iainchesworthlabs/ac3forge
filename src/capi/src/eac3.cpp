@@ -367,6 +367,14 @@ uint8_t ac3forge_decoded_access_unit_dynrng(const ac3forge_decoded_access_unit_t
     return unit->data.dynrng[static_cast<size_t>(block_index)];
 }
 
+int ac3forge_decoded_access_unit_has_dialnorm2(const ac3forge_decoded_access_unit_t* unit) {
+    return unit != nullptr && unit->data.dialnorm2.has_value() ? 1 : 0;
+}
+
+int ac3forge_decoded_access_unit_dialnorm2(const ac3forge_decoded_access_unit_t* unit) {
+    return unit != nullptr && unit->data.dialnorm2.has_value() ? *unit->data.dialnorm2 : 0;
+}
+
 int ac3forge_decoded_access_unit_numblkscod(const ac3forge_decoded_access_unit_t* unit) {
     return unit == nullptr ? 0 : unit->data.numblkscod;
 }

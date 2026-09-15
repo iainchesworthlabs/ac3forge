@@ -87,7 +87,35 @@ config AC3FORGE_EXAMPLE_I2S_SLAVE
         peripheral is told to expect rather than what it makes. An int rather
         than a bool so it reaches C++ as a plain constant.
 
-# THE I2S DMA QUEUE: how much audio the peripheral holds between the player's
+# THE FRAME: whether a one- or two-channel layout opens standard I2S or the
+# full TDM frame every other layout gets. See ac3forge/sink_plan.hpp.
+config AC3FORGE_EXAMPLE_I2S_FIXED_FRAME
+    int "Every layout runs the full TDM frame (1), or 1-2 channels open standard I2S (0)"
+    default 0
+    range 0 1
+    help
+        0: one or two channels open standard I2S, the two-slot frame a stereo
+        I2S DAC such as a PCM5102 or MAX98357A reads, and three or more open
+        TDM at the line's full width. 1: every layout opens that full TDM
+        frame, eight 16-bit slots or four 32-bit ones, mono and stereo
+        included, with the slots past the layout zeroed. A TDM DAC set up for
+        one frame shape needs this: an ESS ES9080 has its slot count, slot
+        width and channel map written over I2C, and its PLL can lock to the
+        bit clock, so a stereo play opened as standard I2S would change the
+        bit clock under it and put the samples in slots it does not read. A
+        mono layout rides slot 0 alone; map two of the DAC's outputs to that
+        slot to hear it on both. A one- or two-channel play then holds the DMA
+        buffers of the full frame: 16 KB at the default depth where standard
+        I2S's stereo pair at 16 bits holds 4 KB, which an ESP32-C6 playing 2.0
+        showed as 12,304 bytes less free heap. With
+        AC3FORGE_EXAMPLE_I2S_SECOND_LINE, line 1
+        also runs for every layout, its slots zeroed while line 0 holds the
+        whole layout, so its DMA buffers stay allocated for every play (see
+        that option's note on internal RAM). The DAC's own I2C setup is not
+        part of this example. An int rather than a bool so it reaches C++ as a
+        plain constant.
+
+# THE I2S DMA QUEUE:how much audio the peripheral holds between the player's
 # writes, as descriptors of this many sample frames each. Four of 240 is 960
 # stereo 16-bit frames - 3,840 bytes, 20 ms at 48 kHz - which is LESS than one
 # coded frame (1,536 samples, 6,144 bytes). A write only completes as the DAC
@@ -138,7 +166,8 @@ choice AC3FORGE_EXAMPLE_SINK
     help
         Where decoded audio goes. The I2S sink reconfigures its own mode and
         slot count to whatever a layout needs, standard I2S for one or two
-        speakers or TDM beyond that (ac3forge/sink_plan.hpp), so a layout
+        speakers or TDM beyond that, or TDM for every layout with
+        AC3FORGE_EXAMPLE_I2S_FIXED_FRAME (ac3forge/sink_plan.hpp), so a layout
         change over the control surface never needs a rebuild. The capture
         sink is what CI runs: qemu-system-xtensa has no I2S peripheral, so a
         real write blocks on a DMA that never drains. It converts with the
@@ -295,9 +324,9 @@ config AC3FORGE_EXAMPLE_HTTP_URL
     depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
     default "http://example.invalid/sample.ac3"
 
-# THE OUTPUT LAYOUT - esp-idf/ac3forge/include/ac3forge/layout.hpp. The
+# THE OUTPUT LAYOUT - src/forge/include/ac3/render/layout.hpp. The
 # speakers the room has, one per output slot; the stream is rendered onto them
-# whatever it was coded as (ac3forge/render.hpp). A stereo or mono layout is
+# whatever it was coded as (ac3/render/render.hpp). A stereo or mono layout is
 # the decoder's own §7.8 fold; anything else is placed channel by channel, and
 # a layout with height speakers has the stream's objects reconstructed and
 # placed by their own positions.
@@ -326,7 +355,8 @@ config AC3FORGE_EXAMPLE_DRC_MODE
         §7.7's two consumer modes, or neither. Line mode normalises to the
         stream's dialnorm and applies the transmitted dynrng words - what a
         player feeding a wide-range system does, and the default. RF mode adds
-        compr and overload protection for a set-top box. 2 leaves the samples
+        compr, applied with 11 dB that put dialogue at -20 dBFS, and overload
+        protection for a set-top box. 2 leaves the samples
         as coded, which is what apps/baremetal/probe.cpp's references are
         measured against; sdkconfig.ci-render uses it so the rendered levels
         can be compared with the probe's to the digit.

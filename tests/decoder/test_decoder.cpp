@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -892,4 +893,67 @@ TEST_CASE("fast_imdct reconstructs the same PCM as the direct transform, long an
     // far tighter than audibility and far looser than the ~1e-12 expectation,
     // so it fails on a real defect and never on rounding.
     CHECK(max_diff < 1e-7f);
+}
+
+TEST_CASE("dual mono's output-stage dialnorm normalisation levels Ch2 by its own dialnorm2",
+          "[decoder][output][dual-mono]") {
+    // §5.4.2.16: dialnorm2 is Ch2's OWN reference, and 1+1's two channels are
+    // unrelated programmes (ac3/decoder/output.hpp's own class comment) - a
+    // stage that normalised both by Ch1's dialnorm (the bug this guards
+    // against) would leave Ch2 audibly off level whenever the two differ, as
+    // they do here (27 vs 18, an 11 dB gap). Both channels carry the SAME
+    // tone at the SAME amplitude, so any difference between their normalised
+    // peaks is attributable only to dialnorm/dialnorm2 - never to the two
+    // programmes carrying different signal levels of their own.
+    const ac3::EncoderConfig config{
+        .bitrate_kbps = 192, .dialnorm = 27, .dialnorm2 = 18, .acmod = ac3::Acmod::kDualMono};
+    ac3::FrameEncoder encoder{config};
+    std::vector<float> tone(ac3::kSamplesPerFrame);
+    std::uint64_t n0 = 0;
+    std::vector<std::byte> last_frame;
+    for (int f = 0; f < 3; ++f) {
+        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            const auto n = static_cast<double>(n0 + static_cast<std::uint64_t>(i));
+            tone[static_cast<std::size_t>(i)] =
+                static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 900.0 * n / 48000.0));
+        }
+        n0 += static_cast<std::uint64_t>(ac3::kSamplesPerFrame);
+        // Ch1 and Ch2 both get the SAME tone/amplitude - see the comment above.
+        const std::vector<std::span<const float>> views{tone, tone};
+        const auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        last_frame = *frame;
+    }
+
+    // Two fresh decoders over the SAME frame bytes: with no prior state to
+    // differ on, their pre-dialnorm PCM is identical, so `leveled`/`raw` at
+    // any one sample IS the gain the output stage actually applied there.
+    ac3::FrameDecoder raw;
+    const auto uncoded = raw.decode_frame(last_frame);
+    REQUIRE(uncoded.has_value());
+    REQUIRE(uncoded->channels.size() == 2);
+
+    ac3::FrameDecoder normalised{{.output = {.apply_dialnorm = true}}};
+    const auto leveled = normalised.decode_frame(last_frame);
+    REQUIRE(leveled.has_value());
+    REQUIRE(leveled->channels.size() == 2);
+    CHECK(leveled->dialnorm == 27);
+    REQUIRE(leveled->dialnorm2.has_value());
+    CHECK(*leveled->dialnorm2 == 18);
+
+    // The gain at the sample with the largest RAW magnitude, so the read-off
+    // isn't sensitive to where a near-zero crossing happens to fall.
+    const auto gain_at_peak = [](const std::vector<float>& coded, const std::vector<float>& out) {
+        std::size_t peak = 0;
+        for (std::size_t i = 1; i < coded.size(); ++i) {
+            if (std::abs(coded[i]) > std::abs(coded[peak])) {
+                peak = i;
+            }
+        }
+        return static_cast<double>(out[peak]) / static_cast<double>(coded[peak]);
+    };
+    CHECK(gain_at_peak(uncoded->channels[0], leveled->channels[0]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(27)).margin(1e-4));
+    CHECK(gain_at_peak(uncoded->channels[1], leveled->channels[1]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(18)).margin(1e-4));
 }

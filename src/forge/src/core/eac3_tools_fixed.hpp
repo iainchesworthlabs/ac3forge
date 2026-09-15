@@ -113,13 +113,17 @@ inline void spx_apply_notch(std::span<internal::Fixed32> synth, int startmant,
 // forms, over the same basis; six products of a mantissa by a value at most
 // sqrt(2), so the result stays inside the format for any legal input and the
 // decoder's own block exponent (block_norm.hpp) reads its peak afterwards.
+// No product can saturate for a coefficient below 90 in magnitude, and
+// every mantissa the AHT dequantisers produce is below 8/7 for any bits at
+// all (a vector entry over 2^15, a GAQ code over its level count), so the
+// products skip the saturation test (product_unsaturated): the same values.
 inline void aht_inverse(std::span<const internal::Fixed32, kBlocksPerFrameSize> coefficients,
                         std::span<internal::Fixed32, kBlocksPerFrameSize> out) {
     const auto& basis = fixed_detail::aht_basis();
     for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
         internal::Fixed32 sum{};
         for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
-            sum += coefficients[j] * basis.row[j][m];
+            sum += internal::Fixed32::product_unsaturated(coefficients[j], basis.row[j][m]);
         }
         out[m] = sum;
     }

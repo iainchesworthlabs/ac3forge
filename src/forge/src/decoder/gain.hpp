@@ -36,6 +36,8 @@ namespace ac3::internal {
             out.heavy_compression = false;
             break;
         case OperatingMode::kRf:
+            // block_gain() below adds RF mode's 11 dB to every compr word it
+            // applies; out.output.mode still says kRf, which is how it knows.
             out.heavy_compression = true;
             // §7.7.2.1's fallback for a syncframe carrying no compr word is
             // dynrng, and it is meant to be the whole of it - a partial scale
@@ -50,16 +52,23 @@ namespace ac3::internal {
 // The §7.7 gain for one block, resolving which of the two control signals
 // applies. §7.7.2.1: a decoder told to use compr falls back on dynrng for any
 // syncframe with no compr word, so heavy compression is a preference and not a
-// mode switch. A dependent E-AC-3 substream's compr is always std::nullopt
-// (see DecodedSubstream::compr's own comment), so this composes correctly
-// there too without any substream-type check.
+// mode switch. `compr` is whichever word governs the block's programme - an
+// E-AC-3 program with dependent substreams takes its last dependent's word for
+// every substream (§E3.8.5, resolved in Eac3Decoder::decode_access_unit_core),
+// and a dependent decoded on its own has none.
 [[nodiscard]] inline double block_gain(const DecoderConfig& config, std::uint8_t dynrng_word,
                                        std::optional<std::uint8_t> compr) {
     if (config.heavy_compression && compr) {
         // §7.7.2 states no partial-compression scaling: compr's whole purpose
         // is a hard ceiling, and a decoder that applied a fraction of it would
         // be promising a ceiling it does not deliver.
-        return meta::compr_gain(*compr);
+        const double gain = meta::compr_gain(*compr);
+        // RF mode's 11 dB are applied with the word, so a syncframe that falls
+        // back on dynrng below keeps line mode's level - what the Dolby
+        // Reference Player does frame by frame (see meta::kRfModeGainDb).
+        // kCustom's heavy_compression is the bare §7.7.2 gain, the same
+        // arithmetic FFmpeg's heavy_compr applies.
+        return config.output.mode == OperatingMode::kRf ? gain * meta::kRfModeGain : gain;
     }
     if (config.drc_scale == 0.0 || dynrng_word == meta::kDynrngUnity) {
         return 1.0;

@@ -677,7 +677,10 @@ TEST_CASE("E-AC-3 access units with a dependent substream cross the C API intact
         CHECK(ac3forge_decoded_access_unit_sample_rate(unit) == AC3FORGE_SAMPLE_RATE_48000);
         CHECK(ac3forge_decoded_access_unit_acmod(unit) == AC3FORGE_ACMOD_3_2);
         CHECK(ac3forge_decoded_access_unit_dialnorm(unit) == 31);
-        CHECK(ac3forge_decoded_access_unit_has_compr(unit) == 0);
+        // §E3.8.5: the dependent's compre marks the end of the program and
+        // brings the program's compr word with it - unity, since nothing asked
+        // for heavy compression - and that is the word the unit reports.
+        CHECK(ac3forge_decoded_access_unit_has_compr(unit) == 1);
         CHECK(ac3forge_decoded_access_unit_compr(unit) == 0);
         CHECK(ac3forge_decoded_access_unit_dynrng(unit, 0) == 0);  // no DRC profile configured
         CHECK(ac3forge_decoded_access_unit_numblkscod(unit) == 3);
@@ -770,9 +773,11 @@ TEST_CASE("E-AC-3 dual mono metadata crosses the C boundary on both decode surfa
           "[capi][eac3]") {
     // 1+1 with each programme's own dialnorm, DRC profile and heavy
     // compression - the configuration that populates every optional metadata
-    // field the substream accessors expose, Ch2's included. The tones sit
-    // well above the -20 dBFS dialogue target, so both compressors and both
-    // range controllers actually act rather than idle at unity.
+    // field the substream accessors expose, Ch2's included. The tones peak at
+    // -6 dBFS, which an RF-mode decode lifts by 7 dB for Ch1 (dialnorm 27)
+    // and 5 dB for Ch2 (dialnorm 25): past the default -0.5 dBFS ceiling for
+    // Ch1, and past the -3 dBFS one Ch2 is given here, so both compressors and
+    // both range controllers act rather than idle at unity.
     ac3::eac3::FrameEncoder encoder{
         {.bitrate_kbps = 192,
          .acmod = ac3::Acmod::kDualMono,
@@ -781,7 +786,7 @@ TEST_CASE("E-AC-3 dual mono metadata crosses the C boundary on both decode surfa
          .drc = ac3::meta::profile(ac3::meta::ProfileId::kFilmStandard),
          .heavy = ac3::meta::HeavyConfig{},
          .drc2 = ac3::meta::profile(ac3::meta::ProfileId::kMusicLight),
-         .heavy2 = ac3::meta::HeavyConfig{}}};
+         .heavy2 = ac3::meta::HeavyConfig{.peak_ceiling_dbfs = -3.0}}};
     const auto stream = encode_eac3_stream(encoder, {900.0, 500.0}, 3);
 
     ac3forge_decoder_config_t config;
@@ -837,6 +842,8 @@ TEST_CASE("E-AC-3 dual mono metadata crosses the C boundary on both decode surfa
         REQUIRE(unit != nullptr);
         CHECK(ac3forge_decoded_access_unit_acmod(unit) == AC3FORGE_ACMOD_DUAL_MONO);
         CHECK(ac3forge_decoded_access_unit_dialnorm(unit) == 27);
+        REQUIRE(ac3forge_decoded_access_unit_has_dialnorm2(unit) == 1);
+        CHECK(ac3forge_decoded_access_unit_dialnorm2(unit) == 25);
         CHECK(ac3forge_decoded_access_unit_substream_count(unit) == 1);
         CHECK(ac3forge_decoded_access_unit_channel_count(unit) == 2);
         // 1+1 has no Table E2.5 layout - two unrelated programmes - so the
@@ -1115,6 +1122,8 @@ TEST_CASE("C accessors take their documented defaults on null handles", "[capi]"
     CHECK(ac3forge_decoded_access_unit_has_compr(nullptr) == 0);
     CHECK(ac3forge_decoded_access_unit_compr(nullptr) == 0);
     CHECK(ac3forge_decoded_access_unit_dynrng(nullptr, 0) == 0);
+    CHECK(ac3forge_decoded_access_unit_has_dialnorm2(nullptr) == 0);
+    CHECK(ac3forge_decoded_access_unit_dialnorm2(nullptr) == 0);
     CHECK(ac3forge_decoded_access_unit_numblkscod(nullptr) == 0);
     CHECK(ac3forge_decoded_access_unit_substream_count(nullptr) == 0);
     CHECK(ac3forge_decoded_access_unit_channel_count(nullptr) == 0);
@@ -1423,6 +1432,10 @@ TEST_CASE("AC-3 dual mono metadata crosses the C boundary per channel", "[capi]"
     config.has_drc2 = 1;
     config.drc2_profile = AC3FORGE_DRC_MUSIC_LIGHT;
     config.has_heavy2 = 1;
+    // Ch2's -6 dBFS tone at dialnorm 25 lands at -1 dBFS in an RF-mode decode,
+    // under the default ceiling, so Ch2 gets a tighter one to make its word
+    // move - same reasoning as the E-AC-3 sibling above.
+    config.heavy2.peak_ceiling_dbfs = -3.0;
 
     ac3forge_encoder_t* encoder = nullptr;
     REQUIRE(ac3forge_encoder_create(&config, &encoder) == AC3FORGE_OK);

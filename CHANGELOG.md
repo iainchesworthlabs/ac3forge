@@ -47,9 +47,10 @@ and release packaging.
   component's manifest, timed on a board with no network and with WiFi connected and a
   1,536 kbit/s TCP stream arriving (a network load the probe project can build in). All
   fourteen fixtures decode with PCM identical to the other fixed-tier legs. With the network up,
-  AC-3 and E-AC-3 stereo and mono decode in real time and no 5.1 stream does, and 7.1.4 fits
-  only with ESP-IDF's WiFi IRAM options off. QEMU does not emulate the part, so CI builds it
-  and runs nothing. See `docs/platforms/bare-metal/esp32-c6.md`.
+  AC-3 and E-AC-3 5.1, stereo and mono decode in real time (after the fixed-point arithmetic
+  change under Changed), E-AC-3 7.1 does not, and 7.1.4 fits only with ESP-IDF's WiFi IRAM
+  options off. QEMU does not emulate the part, so CI builds it and runs nothing. See
+  `docs/platforms/bare-metal/esp32-c6.md`.
 - **`delta_allocation`** on `EncoderConfig`/`eac3::FrameConfig` (`delta=off`): the first
   rung of an effort axis for parts with little time for the §7.2.2.6 search. Removes
   about 9 ms of an ESP32-S3 E-AC-3 5.1 frame for 0.01 dB on the worst channel of the
@@ -83,6 +84,12 @@ and release packaging.
   speaker redirects its bass to the LFE through a matched Butterworth pair, and
   `:height`/`:top`/`:upfiring` distinguish how a height position is physically realized
   without changing the render.
+- **The ESP32 streaming example's I2S sink can hold every layout to the full TDM frame**
+  (`AC3FORGE_EXAMPLE_I2S_FIXED_FRAME`), mono and stereo included, for a TDM DAC set up
+  over I2C for one frame shape, such as an ESS ES9080; a second line then runs zeroed
+  slots for every layout. `ac3forge::plan_sink` takes the choice as a `SinkFrame`. On an
+  ESP32-C6 a 2.0 play opened eight 16-bit slots with levels and frame time unchanged, for
+  12 KB more DMA buffer.
 - **The ESP32 streaming example's I2S sink reconfigures itself** instead of needing a
   rebuild: `PUT /layout` takes effect at the next play via `i2s_channel_reconfig_*` or a
   channel recreate when it crosses standard/TDM modes, replacing the old build-time
@@ -90,6 +97,15 @@ and release packaging.
   sharing the first's clocks, doubling the slot ceiling to eight; verified on an
   ESP32-S3-DevKitC-1-N16R8, though a six-channel unfolded layout with both lines up left
   too little RAM for the decode task's stack.
+- **A part with no floating-point unit converts a sample to an I2S slot in integer
+  arithmetic** instead of `float`: `to_pcm16_from_bits`/`to_slot_24in32_from_bits`
+  (`ac3forge/interleave.hpp`) compute the float conversion's own result from the
+  sample's IEEE-754 bits, equal to it for every input that is not a NaN. The component
+  chooses the conversion from `CONFIG_SOC_CPU_HAS_FPU`; an ESP32-S3's sink is unchanged,
+  confirmed identical object code and, on a board, identical timing. On an ESP32-C6
+  playing a 7.1 stream onto eight 16-bit TDM slots, `sink_us_per_frame` drops from
+  20,875 to 12,689 microseconds a frame, 11,551 with the sink's source at `-O2`
+  (`AC3FORGE_MINIMAL_HOT_O2`); levels unchanged to the digit.
 
 **Crucible desktop application**
 
@@ -192,6 +208,22 @@ and release packaging.
   framing/scan helpers and the BS.1770 meter, each with real-signal round-trip tests.
   `build-rust` runs on all three desktop OSes; the first Windows build found a real
   portability bug (bindgen types C enums `i32` on MSVC, `u32` elsewhere).
+- **The AC-3 decoder folds an Annex D stream with that stream's own `xbsi1` levels**
+  (A/52 §D3.1.2, decoding that §D3 makes optional). Lt/Rt (`downmix=ltrt`) now uses
+  `ltrtcmixlev`/`ltrtsurmixlev`, and Lo/Ro and mono use `lorocmixlev`/`lorosurmixlev`,
+  where all three used to take bsi's `cmixlev`/`surmixlev`, with §7.8.2's −3 dB for
+  Lt/Rt. `MixLevels::preferred` carries `xbsi1`'s `dmixmod` from 3/0 up, and a surround
+  level Tables D2.4/D2.6 reserve now decodes and reports as −1.5 dB rather than as the
+  raw code. Callers folding for themselves use the new
+  `ac3::mix_levels(acmod, cmixlev, surmixlev, alternate_bsi)`. `bsid`-8 streams, and
+  `bsid`-6 streams without `xbsi1`, fold as before.
+- **Speaker management beside the renderer** (`src/forge/include/ac3/render/`, the first
+  step of `planning/hearth-reference-player.md`): `Routing` patches each rendered channel
+  to one device output or to none, `TrimDelay` applies a per-output trim in dB and delay in
+  samples over caller-owned storage, `IdentifyTone` plays pink noise at a stated level on
+  one output at a time (30-80 Hz for an LFE feed), and `LayoutRenderer::set_crossover_hz()`
+  makes the bass-management corner a setting between 40 and 250 Hz. All header-only and
+  allocation-free, so the boards can use them too.
 
 **Verification and CI**
 
@@ -225,6 +257,15 @@ and release packaging.
 
 **Minimum-footprint / ESP32 decode and encode profile**
 
+- **The fixed-point tier decodes 5.1 in real time on the ESP32-C6 with WiFi up**, with the
+  same PCM bit for bit: the fixed-tier hashes do not move. The IMDCT pair's products drop a
+  saturation they cannot reach, the overlap-add runs on 32 bits and builds its output floats
+  from the integers' bits, `Fixed32`'s product tests its saturation once, and its shifts,
+  small ratios and square root avoid 64-bit library calls on a 32-bit core, as do the AHT and
+  spectral extension products. On the board at 160 MHz with no network, AC-3 5.1 went from
+  34.7 ms a frame to 20.5 and E-AC-3 5.1 from 38.7 to 23.9; with WiFi and a 1,536 kbit/s
+  stream arriving, from 44.3 to 26.2 and from 46.4 to 30.6. See
+  `docs/platforms/bare-metal/esp32-c6.md`.
 - **E-AC-3 decodes in real time on the ESP32-S3** (roadmap PF7), the result of five
   successive profiling passes. The double-arithmetic bottleneck between the bitstream
   and the float32 coefficient store (mantissa dequantisation, dither, coordinates,
@@ -279,6 +320,13 @@ and release packaging.
   (`coupling.hpp`, `eac3_tools.hpp`), where the code they hold — used by both decoders
   on every frame — already lived. Source-breaking, deliberately landing before the v1.0
   API freeze with no compatibility shim; ABI unchanged.
+- **The ESP32 player's output layout and renderer moved into the library as
+  `ac3::render`** (`esp-idf/ac3forge/include/ac3forge/{layout,render}.hpp` to
+  `src/forge/include/ac3/render/`), with the player's fold-and-objects policy as
+  `ac3::render::serve()`, so the desktop player and its test sink render with the boards'
+  code. The arithmetic is unchanged: the QEMU render shape's twelve slot levels are the
+  same as main's. Source-breaking for the component's `ac3forge::OutputLayout` and
+  `ac3forge::LayoutRenderer`, which were never published to the component registry.
 
 **SonarCloud and code quality**
 
@@ -389,6 +437,10 @@ and release packaging.
   handler task has 4,096 bytes by default; parsing the layout there peaked at 4,596
   under QEMU, past the canary. `Control::start` now takes the stack size (6,144 bytes by
   default).
+- The minimum-footprint decode profile's ESP32-S3 build left only 8,096 bytes of main-task
+  stack free at high-water, 96 bytes under the CI runner's 8,192 floor — `DecodedSubstream`
+  and `DecodedAccessUnit` grew by `bsid`/`cmixlev`/`surmixlev`/`alternate_bsi` (see below).
+  `CONFIG_ESP_MAIN_TASK_STACK_SIZE` moves from 32,768 to 40,960.
 - **The ESP-IDF component decoded in `float` on parts with no FPU.** Its manifest says the
   decode arithmetic follows the part, but only the probe projects chose `fixed`:
   `src/forge/minimal.cmake` builds `float` when `AC3FORGE_DECODE_SCALAR` is unset, so any
@@ -399,6 +451,33 @@ and release packaging.
 
 **Codec correctness**
 
+- **RF mode decoded 11 dB below a Dolby decoder.** `OperatingMode::kRf` normalised
+  dialnorm onto −31 dBFS and applied `compr` with nothing on top, while the Dolby
+  Reference Player's RF mode applies each `compr` word with 11 dB that put dialogue at
+  −20 dBFS. DEE's own streams measured −30.90 LUFS here against −19.70 LUFS there; they
+  now measure −19.90 LUFS. As on the Reference Player, a syncframe with no `compr` word
+  stays at line mode's level, and `kCustom` with `heavy_compression` still applies the
+  word alone. An E-AC-3 program with dependent substreams now takes its `compr` word
+  from the last dependent for every substream (§E3.8.5), as the Reference Player does.
+  Before, the bed took the independent substream's word and the dependents' channels
+  took none, which the 11 dB would have set 11 dB apart. See `docs/library/decoding.md`.
+- **Heavy compression did nothing for a program's dependent substreams.** The encoder
+  wrote the last dependent's `compr` as unity regardless of `FrameConfig::heavy`, so a
+  program with dependents (7.1, 5.1.2, ...) carried no ceiling for the channels riding
+  on them, on top of the decoder gap above: an RF-mode decode applied the fixed 11 dB
+  with no cut at all. `AccessUnitEncoder` now measures the last dependent's word from
+  the complete rendered program - every dependent's channels folded in the way
+  `ac3::OutputStage`'s rendered-layout overload seats a wide layout - while the
+  independent substream keeps its own bed-only word, for a receiver that only ever
+  decodes the 5.1 downmix.
+- **Heavy compression's `compr` words played 11 dB hot on a Dolby decoder.** The
+  encoder put RF mode's 11 dB and the dialnorm offset into the word itself, so a stream
+  at dialnorm 31 decoded 22 dB above line mode on the Reference Player, which pushed
+  pink noise peaking at −20 dBFS past full scale. Words are now written for an RF-mode
+  decode that normalises dialnorm and adds the 11 dB itself, the way DEE writes them:
+  unity for dialogue-level material at any dialnorm, and cuts sized so the mono downmix
+  meets the ceiling after the decoder's own gain. `dialogue=`/`ceiling=` keep their
+  meaning and defaults.
 - **The AC-4 parser misread everything after a presentation with dialogue enhancement.**
   `presentation_config` 1 ("Main + DE") and 4 ("Main + DE + Associated Audio") read two
   and three substream group references (TS 103 190-2 §6.2.1.3) while counting one and
@@ -473,9 +552,46 @@ and release packaging.
   from `bsid`. FFmpeg's FATE fixture `the_great_wall_7.1.eac3` (an AC-3 core plus an
   Annex E extension to 7.1) now decodes all 157 access units; it had failed on its
   first.
+- **Dual mono's output-stage dialnorm normalisation levelled Ch2 by Ch1's dialnorm,
+  not its own.** `OutputStage::apply` took one `dialnorm` and scaled every channel by
+  it; acmod 0 (1+1) codes two unrelated programmes with independent dialnorm words
+  (§5.4.2.16's `dialnorm2` for Ch2), and an encoder sizes Ch2's `compr2` on the
+  assumption Ch2 is normalised by `dialnorm2`. A 1+1 stream with dialnorm 27 and
+  dialnorm2 20 played Ch2 7 dB too quiet under `kLine`/`kRf`/`apply_dialnorm`.
+  `apply()` now takes an optional second dialnorm and levels Ch2 by it alone;
+  `FrameDecoder`, `Eac3Decoder` (`decode_access_unit` and `flush()`) and the WASM
+  decode demo's own side fold all thread it through.
+- **A §E2.3.1.2 legacy core's own output stage ran a second time, ahead of the
+  programme it belongs to.** `decode_ac3_core` built the core's `FrameDecoder` from
+  the whole `DecoderConfig`, `output` included, so `OperatingMode::kLine` normalised
+  the bed's channels once inside that decoder and again over the eight-channel
+  programme `apply_output` assembles from it — measured at dialnorm 24, the bed came
+  out 14 dB down and the dependent's own channels, which never pass through the
+  core, 7. A downmix target folded the bed to two channels before the dependent's
+  could be laid over it, failing every access unit with `kInvalidStream`. The core
+  now decodes with `output` reset; `drc_scale`, `heavy_compression` and every other
+  field are unchanged.
+- **A §E2.3.1.2 legacy core folded with the AC-3 defaults instead of its own downmix
+  levels.** `decode_ac3_core` copied the core's acmod, `dialnorm`, `compr` and so on onto
+  `DecodedSubstream`, but not its `cmixlev`/`surmixlev` or, for a `bsid`-6 core, Annex
+  D's `xbsi1` group — a legacy core has no `mixmdate` to carry them in at all, and the
+  fields those needed did not exist on `DecodedSubstream`/`DecodedAccessUnit`. So
+  `apply_output()` and `flush()` always folded a legacy core's programme with §7.8's
+  −4.5 dB centre / −6 dB surround, whatever the core's own bsi or `xbsi1` actually said.
+  Both structs now carry `bsid` alongside `cmixlev`/`surmixlev`/`alternate_bsi`, and the
+  fold resolves them through the same `ac3::mix_levels(acmod, cmixlev, surmixlev,
+  alternate_bsi)` overload `FrameDecoder` already uses for a bare AC-3 stream.
 - `ac3cli` reports a decode failure in words (`decode failed: a header field holds a
   value A/52 reserves`) rather than as a bare enumerator — nine call sites across
   `decode`, `analysis` and `live` weren't using the existing `describe()`.
+- **The AC-3 encoder's heavy compression measured only bsi's downmix levels, leaving
+  no ceiling for a compliant Annex D decoder's own Lo/Ro fold.** §D4.1.1 requires
+  overload protection to hold for either kind of decoder, in any downmix mode; a
+  compliant decoder folding mono from xbsi1's `lorocmixlev`/`lorosurmixlev` (§D3.1.2)
+  instead of bsi's `cmixlev`/`surmixlev` can peak several dB louder, since
+  `lorocmixlev` runs up to +3 dB against `cmixlev`'s -6 dB floor. `compr` is now
+  driven by whichever of the two folds peaks louder whenever `alternate_bsi->mix` is
+  set.
 - **A reserved `dmixmod` read back as "not indicated".** A/52:2018 Table D2.2 and ETSI
   TS 102 366 V1.4.1 Table D.1.1 both list `'11'` as reserved, and Annex E gives
   E-AC-3's `mixmdate` field the same table, so neither codec defines a fourth preferred
@@ -515,6 +631,12 @@ and release packaging.
   had kept only the shape this project's own encoder writes. Both commands now report
   through one shared function, `print_object_summary`, tested against a 5.1.4 bed
   programme and objects with no LFE.
+- **`transcode dialnorm=auto` and `dialnorm2=auto` did not measure anything.**
+  `parse_options` marks the option as given, which skipped the carry from the source, but
+  nothing in `run_transcode` read the measurement flag it also sets — the encoder was
+  built from `plan::Metadata`'s unmeasured default of 31, printed as `(from dialnorm=)` as
+  if the operator had typed it. Both now run the same BS.1770 pass `normalize` makes over
+  the source and print `(measured)` instead.
 - **`transcode` crashed, printing nothing, when the encoder refused the configuration it
   carried from the source.** A `dialnorm` or `dialnorm2` of 0, which §5.4.2.8 reserves and
   a decoder reads as 31, is one such value. The E-AC-3 encoder refuses it when it is built,

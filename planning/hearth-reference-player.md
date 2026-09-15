@@ -334,7 +334,7 @@ A draft shape. [A4](#a4-sendspin)'s first deliverable is the normative page,
   Today they reach only the console, at the end of a play.
 - The page shows status and the settings only the board owns: name, network, slot width, output
   wiring and pairing. Playback control moves to the app and Music Assistant; `POST /play` with a
-  URL stays in the REST API for debugging. The page uses 20,438 of its 20,480-byte budget, so B2
+  URL stays in the REST API for debugging. The page uses 20,184 of its 20,480-byte budget, so B2
   re-derives the budget.
 - Improv Wi-Fi over USB serial on both chips, and over BLE only where memory allows. Credentials
   in NVS; the build-time SSID stays for CI.

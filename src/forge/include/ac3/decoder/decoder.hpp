@@ -161,10 +161,12 @@ struct DecoderConfig {
     // exactly the runs where bit-for-bit agreement with the spec's stated
     // arithmetic matters more than speed.
     bool fast_imdct = true;
-    // §7.7.2: prefer compr over dynrng wherever a compr word exists, which is
-    // what a set-top box's RF mode does. §7.7.2.1 requires falling back on
-    // dynrng for any syncframe that carries no compr, so this composes with
-    // drc_scale rather than replacing it.
+    // §7.7.2: prefer compr over dynrng wherever a compr word exists. §7.7.2.1
+    // requires falling back on dynrng for any syncframe that carries no compr,
+    // so this composes with drc_scale rather than replacing it. On its own it
+    // applies the word's §7.7.2 gain and nothing else; a set-top box's RF mode
+    // is OutputConfig::mode = OperatingMode::kRf, which also adds RF mode's
+    // 11 dB (meta::kRfModeGainDb) with every word it applies.
     bool heavy_compression = false;
     // --- output stage (ac3/decoder/output.hpp) -----------------------------
     // dialnorm normalisation, the §7.8 downmix and §7.7's two canonical
@@ -387,7 +389,10 @@ struct DecodedFrame {
     meta::BsiInfo info{};
     // Annex D's xbsi1/xbsi2, present exactly when bsid is 6. A bsid-8 frame
     // carries the time code in the same 28 bits instead, and reports it as
-    // info.timecod1/timecod2 above.
+    // info.timecod1/timecod2 above. When xbsi1 is present its Lt/Rt and Lo/Ro
+    // levels are the ones the §7.8 output stage folds with (§D3.1.2, through
+    // ac3::mix_levels()), and a surround level Tables D2.4/D2.6 reserve is
+    // reported as the -1.5 dB a decoder uses in its place.
     std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     int dialnorm = 31;
     // §5.4.2.4/§5.4.2.5, the two downmix levels bsi carries: std::nullopt for
@@ -395,7 +400,9 @@ struct DecodedFrame {
     // three front channels, surmixlev needs surrounds), which is a different
     // statement from "carried, and says the default". ac3::mix_levels() turns
     // the pair into the coefficients the §7.8 output stage needs, applying
-    // §7.8's own defaults where a field is absent.
+    // §7.8's own defaults where a field is absent. An Annex D frame's xbsi1
+    // levels take their place when it sends them (§D4.2.1); the pair is still
+    // reported, since a bsid-6 encoder has to send it for legacy decoders.
     std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;
     std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;
     // §5.4.2.9: std::nullopt when compre was clear, so "no word" and "a word
@@ -546,10 +553,12 @@ struct DecodedSubstream {
     bool lfe = false;
     int dialnorm = 31;
     // §5.4.2.9/§E3.8.5: std::nullopt when compre was clear OR this substream
-    // is a dependent one - a dependent's compre bit is repurposed to mark the
-    // LAST dependent of the program rather than announce a compression word
-    // (see parse_bsi's own comment), so there is no meaningful compr value to
-    // report there even though the 8 bits are still present on the wire.
+    // is a dependent one. A dependent's compre bit marks the LAST dependent of
+    // the program, and the word it brings is the compr word of the whole
+    // program: Eac3Decoder::decode_access_unit applies it to every substream
+    // of that program and reports it as DecodedAccessUnit::compr. A dependent
+    // decoded on its own by decode_substream has no program to apply it to,
+    // so it reports none; an independent one reports its own.
     std::optional<std::uint8_t> compr = std::nullopt;
     // §7.7.1.2: the EFFECTIVE word for each block, with the persistence rule
     // already resolved, same convention as DecodedFrame::dynrng - a block
@@ -575,6 +584,16 @@ struct DecodedSubstream {
     // ac3::mix_levels() turns the downmix levels alone into the coefficients
     // the §7.8 output stage needs.
     std::optional<meta::MixMetadata> mixing = std::nullopt;
+    // §E2.3.1.2's legacy core (bsid <= 8) has no mixmdate syntax to carry
+    // above - AC-3 states its downmix in bsi's cmixlev/surmixlev instead,
+    // widened by Annex D's xbsi1 group for a bsid-6 core (§D3.1.2). These stay
+    // std::nullopt for a genuine E-AC-3 substream, which reports its levels
+    // through `mixing` above; decode_ac3_core is the only place that sets
+    // them, copied straight off the core FrameDecoder's own
+    // DecodedFrame::cmixlev/surmixlev/alternate_bsi.
+    std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;
+    std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;
+    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     // Table E1.2's infomdat group, std::nullopt when infomdate was clear.
     // BsiInfo's langcod/langcod2 and timecod1/timecod2 have no Annex E field
     // and are never set here.
@@ -639,16 +658,26 @@ struct DecodedAccessUnit {
     SampleRate sample_rate = SampleRate::k48000;
     Acmod acmod = Acmod::k2_0;
     int dialnorm = 31;
-    // The independent substream's own compr, when it carries one - see
-    // DecodedSubstream::compr's own comment; a dependent substream's compre
-    // bit means something else entirely, so only the independent (bed)
-    // substream's word is ever meaningful at the access-unit level.
+    // Ch2's own dialnorm (§5.4.2.16), present only when acmod is kDualMono -
+    // the independent substream's own, same reasoning as dialnorm above. A
+    // 1+1 programme is always exactly one substream (this struct's own
+    // comment), so "the lead substream's dialnorm2" is unambiguous here in a
+    // way it would not be for a bed-plus-dependents programme.
+    std::optional<int> dialnorm2 = std::nullopt;
+    // The compr word the program was decoded with. §E3.8.5 gives a program
+    // with dependent substreams the word its last dependent carries, for
+    // every substream including the independent one, so that is the word
+    // here whenever there is one; otherwise it is the independent
+    // substream's own, when it carries one. A §E2.3.1.2 AC-3 core keeps its
+    // own word for its own channels, and that is what is reported for it.
     std::optional<std::uint8_t> compr = std::nullopt;
-    // The independent substream's own dynrng, same reasoning as compr above -
-    // every substream carries its own words and a decoder applies each to
-    // that substream's own channels (see Eac3Decoder's DecoderConfig-driven
-    // gain), but the bed's is the one figure worth surfacing at the
-    // access-unit level for a status report. Only entries below
+    // The independent substream's own dynrng. Each substream's dynrng is
+    // applied to that substream's own channels (see Eac3Decoder's
+    // DecoderConfig-driven gain) - §E3.8.5 gives a program with dependents
+    // its last dependent's dynrng, as it does its compr, but dynrng sits in
+    // the audio blocks and is not read ahead the way compr is - and the bed's
+    // is the one figure worth surfacing at the access-unit level for a status
+    // report. Only entries below
     // eac3::blocks_per_syncframe(numblkscod) were ever written - see
     // DecodedSubstream::dynrng's own comment on the fixed-size convention.
     std::array<std::uint8_t, kBlocksPerFrame> dynrng{};
@@ -658,11 +687,23 @@ struct DecodedAccessUnit {
     // eac3::blocks_per_syncframe.
     int numblkscod = 3;
     // The independent substream's own mixmdate and infomdat groups, same
-    // reasoning as compr and dynrng above: every substream carries its own,
-    // but only the bed's describes the programme. A dependent's mixmdate is
+    // reasoning as dynrng above: every substream carries its own, but only
+    // the bed's describes the programme. A dependent's mixmdate is
     // the levels alone anyway, and Table E1.2 gives a dependent no infomdat
     // gate of its own worth surfacing at this level.
     std::optional<meta::MixMetadata> mixing = std::nullopt;
+    // The independent substream's own bsid - eac3::kBsid (11-16) for a
+    // genuine E-AC-3 bed, 6 or 8 for a §E2.3.1.2 legacy core - copied
+    // straight from DecodedSubstream::bsid the same way dialnorm/compr/mixing
+    // above are. This is what tells the output stage whether to resolve the
+    // programme's fold from `mixing` above or from cmixlev/surmixlev/
+    // alternate_bsi below: a core has no mixmdate syntax to carry the former
+    // in at all, only bsi's own downmix fields, so the two are never both
+    // meaningful at once.
+    int bsid = eac3::kBsid;
+    std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;
+    std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;
+    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     std::optional<meta::BsiInfo> info = std::nullopt;
     // object_metadata/object_audio from whichever substream of the access
     // unit carries them, first one wins - see DecodedSubstream's own comments

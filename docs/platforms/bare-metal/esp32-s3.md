@@ -148,7 +148,7 @@ neither a partition nor I2S:
 
 Chosen under *ac3forge stream player* in `idf.py menuconfig`, along with the output layout — a
 name such as `5.1.4` or a speaker list — that the player renders every stream onto
-(`esp-idf/ac3forge/include/ac3forge/layout.hpp`, `render.hpp`).
+(`src/forge/include/ac3/render/layout.hpp`, `render.hpp`).
 
 It exists to exercise the incremental input path. `ac3::split_frames` takes a span over a whole
 stream, which nothing streaming can produce; `ac3::io::AccessUnitAccumulator` applies the same
@@ -243,10 +243,13 @@ fixtures.
 
 ### Stack
 
-The decode runs on the main task. `uxTaskGetStackHighWaterMark` leaves 11,280 bytes free of the
-32,768 `sdkconfig.defaults` sets, so the decode uses about 21,500; the encode direction leaves
-23,040. The runner holds a floor of 8,192 under it. That margin is the one to watch — it was
-14,000 before object reconstruction ran here.
+The decode runs on the main task. `uxTaskGetStackHighWaterMark` left 11,280 bytes free of the
+original 32,768 `sdkconfig.defaults` set, until PR #698 (legacy-core downmix levels) grew
+`DecodedSubstream`/`DecodedAccessUnit` by `bsid`/`cmixlev`/`surmixlev`/`alternate_bsi` and the
+runner measured that down to 8,096 — 96 bytes under its 8,192 floor.
+`sdkconfig.defaults` now sets 40,960; the encode direction, less affected, left 23,040 free of
+the original 32,768. That margin is the one to watch — it was 14,000 before object
+reconstruction ran here, then 11,280 before this fix.
 
 ## Timing
 
@@ -1093,11 +1096,13 @@ hold still - this fixture's do - takes the pan out of every unit but the first.
 `apps/baremetal/platform/esp32s3/sdkconfig.defaults` carries the settings and their reasoning. Two
 are repeated here because neither failure mode points at its cause:
 
-- **`CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768`.** IDF's default is 3,584 bytes, which suits an
-  application that configures peripherals and waits on queues and is far too small for a codec.
-  The overflow does not report as a stack overflow: it surfaces as a `LoadProhibited` panic on the
-  other core's idle task, because it corrupts a neighbouring structure. An integrator sizing a
-  real decoding task should measure with `uxTaskGetStackHighWaterMark()` rather than copy this.
+- **`CONFIG_ESP_MAIN_TASK_STACK_SIZE=40960`** (32,768 until PR #698 grew `DecodedSubstream`/
+  `DecodedAccessUnit` past the runner's floor — see the Stack section above). IDF's default is
+  3,584 bytes, which suits an application that configures peripherals and waits on queues and is
+  far too small for a codec. The overflow does not report as a stack overflow: it surfaces as a
+  `LoadProhibited` panic on the other core's idle task, because it corrupts a neighbouring
+  structure. An integrator sizing a real decoding task should measure with
+  `uxTaskGetStackHighWaterMark()` rather than copy this.
 - **`CONFIG_ESP_TASK_WDT_INIT=n`.** The probe is a batch computation that runs the CPU flat out
   without yielding, which is what the watchdog exists to catch. A decoder in a product should keep
   the watchdog and give the decode its own task with a bounded per-frame budget.

@@ -239,11 +239,20 @@ struct FrameConfig {
     // As in AC-3: std::nullopt keeps dynrnge clear in every block and compre
     // clear in bsi, so a metadata-free stream is bit-identical to before.
     std::optional<meta::Profile> drc = std::nullopt;
-    // §7.7.2 heavy compression. Only an INDEPENDENT substream can carry it:
-    // §E3.8.5 repurposes a dependent's compre as the end-of-programme marker,
-    // so the eight bits it drags in there are not a gain any decoder will use.
+    // §7.7.2 heavy compression. Only an INDEPENDENT substream can carry it
+    // here. §E3.8.5 sets a dependent's compre to mark the end of the program,
+    // and the word that comes with it is the whole program's compr word: a
+    // decoder applies it to every substream, the independent one included
+    // (the Dolby Reference Player does, in RF mode). With dependents present,
+    // AccessUnitEncoder writes that word itself, measured from the COMPLETE
+    // rendered program - every dependent's channels folded in the same way
+    // ac3::OutputStage's rendered-layout overload seats a wide layout - so a
+    // decoder reproducing all of it meets the same ceiling this field
+    // promises. This substream's own word, from its own channels alone,
+    // still goes out too: it is what a receiver decoding only the 5.1 bed
+    // (no dependents at all) uses.
     //
-    // This is the one part of the metadata layer with no external oracle.
+    // FFmpeg is no oracle for this part of the metadata layer.
     // FFmpeg's E-AC-3 header parser reads compre and then SKIPS the word, so
     // -heavy_compr changes nothing on an E-AC-3 stream however good the
     // metadata is - unlike -drc_scale, which honours dynrng here as it does in
@@ -548,7 +557,11 @@ using AuxPayload = std::span<const std::byte>;
 
 // The §7.7 words for one frame, separated from FrameConfig because they change
 // every frame and from the encoder because every substream of an access unit
-// has to carry the SAME ones - see AccessUnitEncoder.
+// has to carry the SAME dynrng - see AccessUnitEncoder. compr is the one
+// exception: with dependents present, AccessUnitEncoder gives the independent
+// substream its own bed-only word and the last dependent a second, different
+// FrameMetadata carrying the whole programme's (§E3.8.5 - see
+// FrameConfig::heavy); every other substream's stays unset.
 struct FrameMetadata {
     std::array<std::uint8_t, kBlocksPerFrame> dynrng{};
     std::optional<std::uint8_t> compr = std::nullopt;

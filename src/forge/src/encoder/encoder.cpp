@@ -491,11 +491,41 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         const double peak =
             dual_mono
                 ? meta::channel_peak_dbfs(std::span{impl_->history_[0]}, channels[0])
-                : meta::mono_downmix_peak_dbfs(
-                      std::span{impl_->history_}.first(static_cast<std::size_t>(nfchans)),
-                      channels.first(static_cast<std::size_t>(nfchans)), impl_->config_.acmod,
-                      meta::coefficient(impl_->config_.cmixlev),
-                      meta::coefficient(impl_->config_.surmixlev));
+                : [&] {
+                      const double bsi_peak = meta::mono_downmix_peak_dbfs(
+                          std::span{impl_->history_}.first(static_cast<std::size_t>(nfchans)),
+                          channels.first(static_cast<std::size_t>(nfchans)), impl_->config_.acmod,
+                          meta::coefficient(impl_->config_.cmixlev),
+                          meta::coefficient(impl_->config_.surmixlev));
+                      if (!impl_->config_.alternate_bsi || !impl_->config_.alternate_bsi->mix) {
+                          return bsi_peak;
+                      }
+                      // §D4.1.1: with the alternate bit stream syntax in use, overload
+                      // protection "must account for potential overload in either legacy
+                      // or compliant decoders, using any downmix mode" - and explicitly,
+                      // "no assumption should be made that compliant decoders will
+                      // necessarily use the preferred downmix mode", so this is not
+                      // gated on dmixmod. A legacy decoder never parses xbsi1 and always
+                      // folds mono from bsi's cmixlev/surmixlev; §D3.1.2 has a compliant
+                      // decoder use lorocmixlev/lorosurmixlev instead (if included) once
+                      // it has chosen a Lo/Ro downmix, and §7.8.2 defines the mono signal
+                      // as that downmix summed - so both are live possibilities on the
+                      // other end of this stream, and compr has to hold the ceiling for
+                      // whichever one peaks louder.
+                      //
+                      // Lt/Rt is not part of this: §7.7.2 states the ceiling only for "a
+                      // monophonic downmix", and §7.8.2 defines that signal from LoRo
+                      // ("The LoRo downmix is preferred when a mono signal is desired") -
+                      // ltrtcmixlev/ltrtsurmixlev never feed the M equation, on a legacy
+                      // or a compliant decoder alike, so there is no ceiling here for
+                      // them to hold.
+                      const auto& mix = *impl_->config_.alternate_bsi->mix;
+                      const double xbsi1_peak = meta::mono_downmix_peak_dbfs(
+                          std::span{impl_->history_}.first(static_cast<std::size_t>(nfchans)),
+                          channels.first(static_cast<std::size_t>(nfchans)), impl_->config_.acmod,
+                          meta::coefficient(mix.lorocmixlev), meta::coefficient(mix.lorosurmixlev));
+                      return std::max(bsi_peak, xbsi1_peak);
+                  }();
         compr = impl_->heavy_->next(peak, impl_->config_.dialnorm);
     }
     if (dual_mono && impl_->heavy2_.has_value()) {
