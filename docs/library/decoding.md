@@ -306,8 +306,9 @@ mix level. Both decoders now keep those and report them (`DecodedFrame::cmixlev`
 `ac3::mix_levels()` turns either into the coefficients the stage needs, applying §7.8's own
 fallbacks where a field is simply not there.
 
-`MixLevels::preferred` passes on `mixmdate`'s `dmixmod`, the fold the content was mixed for
-(Table D2.2), without acting on it: `target` is always what the caller asked for. A caller that
+`MixLevels::preferred` passes on `dmixmod`, the fold the content was mixed for (Table D2.2) —
+E-AC-3's `mixmdate`, or an Annex D stream's `xbsi1` (see below) — without acting on it: `target` is
+always what the caller asked for. A caller that
 wants to follow the stream uses `ac3::automatic_stereo_target(acmod, preferred)`, A/52 §D3.1.1's
 automatic selection: `kLtRt` when the stream prefers Lt/Rt, `kLoRo` for every other code —
 `kNotIndicated`, and `kReserved` (Table D2.2's `11`, which A/52:2018 and ETSI TS 102 366 V1.4.1
@@ -354,6 +355,21 @@ Verified against FFmpeg's `-ac 2` decode of the same stream: at 3/2 with `cmixle
 `surmixlev` −6 dB the two agree to 119–121 dB SNR at zero lag, differing only by a single scalar
 of 1/2.20711 — exactly §7.8.1's normalisation divisor for those levels (1 + 0.7071 + 0.5), which
 this decoder applies and FFmpeg does not.
+
+**Annex D streams (`bsid` 6).** An AC-3 stream written with Annex D's alternate syntax can carry
+an `xbsi1` group: separate Lt/Rt and Lo/Ro centre and surround levels (Tables D2.3–D2.6) and a
+preferred stereo downmix, `dmixmod` (Table D2.2). A/52 §D3 makes decoding them optional, and
+`FrameDecoder` does. Following §D3.1.2 (ETSI TS 102 366 clause D.2.1.2), the Lt/Rt fold uses
+`ltrtcmixlev`/`ltrtsurmixlev`, and the Lo/Ro and mono folds use `lorocmixlev`/`lorosurmixlev`, in
+place of bsi's `cmixlev`/`surmixlev`; mono takes the Lo/Ro pair because §7.8.2 defines it as Lo/Ro
+summed. A `bsid`-6 stream still carries the two bsi levels, for decoders that do not read `xbsi1`
+(§D4.2.1). A stream with no `xbsi1` group, whether `bsid` 8 or `bsid` 6 with `xbsi1e` clear, still
+folds with `cmixlev`/`surmixlev`. `MixLevels::preferred` takes `dmixmod` for 3/0 and wider only,
+the acmods Table D2.2 defines it for. A surround level Tables D2.4/D2.6 reserve reads as −1.5 dB,
+as §D2.3.1.4/§D2.3.1.6 direct, and `DecodedFrame::alternate_bsi` reports it that way. Annex D adds
+no LFE mix level, so `mix_lfe` folds the LFE in at §7.8's +10 dB for either `bsid`. A caller
+folding a `DecodedFrame` itself gets the same levels from
+`ac3::mix_levels(acmod, cmixlev, surmixlev, alternate_bsi)`.
 
 Not covered: Annex C's karaoke downmix rules for `bsmod` 7. The mode's `cmixlev`/`surmixlev` are
 re-purposed as vocal-channel levels there, so it is a different matrix rather than a variation on

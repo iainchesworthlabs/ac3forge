@@ -9,6 +9,7 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/export.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/mixing.hpp"
 
 // The decoder's output stage: what happens between "the coded channels have
@@ -27,8 +28,9 @@
 //      the difference, which is what makes two programmes cut together at a
 //      consistent loudness.
 //   2. The §7.8 downmix, to Lo/Ro stereo, Lt/Rt stereo or mono, driven by
-//      the stream's OWN mix levels (AC-3's cmixlev/surmixlev, E-AC-3's
-//      mixmdate group) rather than by constants chosen here.
+//      the stream's OWN mix levels (AC-3's cmixlev/surmixlev or Annex D's
+//      xbsi1 group, E-AC-3's mixmdate group) rather than by constants chosen
+//      here.
 //   3. RF mode's overload protection, which only exists because §7.7.2's
 //      compr guarantee is about the mono downmix and not about whichever
 //      fold this stage was actually asked for.
@@ -110,10 +112,11 @@ struct OutputConfig {
 
 // What the stream itself says about folding down, resolved from whichever
 // syntax carried it. AC-3 carries two coarse levels in bsi and nothing about
-// Lt/Rt or the LFE; E-AC-3 carries separate Lt/Rt and Lo/Ro levels plus an
-// LFE level inside mixmdate. Resolving both into one shape here is what lets
-// the output stage be written once - see mix_levels() below for the two
-// conversions, including what each generation's defaults are when a field is
+// the LFE, and an Annex D (bsid 6) stream can add separate Lt/Rt and Lo/Ro
+// levels in xbsi1; E-AC-3 carries separate Lt/Rt and Lo/Ro levels plus an LFE
+// level inside mixmdate. Resolving all of them into one shape here is what
+// lets the output stage be written once - see mix_levels() below for the
+// conversions, including what each syntax's defaults are when a field is
 // simply not present.
 struct MixLevels {
     double loro_clev = meta::level::kMinus4_5dB;
@@ -127,9 +130,10 @@ struct MixLevels {
     // through, when it says. Advisory: a caller asking for a specific
     // DownmixTarget gets that target. It is what a UI would offer as the
     // stream's own preference; automatic_stereo_target() below turns it into
-    // one. E-AC-3's mixmdate is the only source mix_levels() reads it from -
-    // AC-3's two bsi levels say nothing about it - and a reserved '11' is
-    // reported here as kReserved, as sent.
+    // one. mix_levels() reads it from E-AC-3's mixmdate, or from an Annex D
+    // (bsid 6) AC-3 stream's own xbsi1 group where the stream carries one -
+    // bsi's two coarse levels say nothing about it. Either source, a reserved
+    // '11' is reported here as kReserved, as sent.
     meta::DownmixMode preferred = meta::DownmixMode::kNotIndicated;
 };
 
@@ -178,10 +182,44 @@ struct MixLevels {
 // AC-3 (§5.4.2.4/§5.4.2.5). Both arguments are std::nullopt for any acmod
 // whose bsi does not carry that field, and the §7.8 defaults stand in: -4.5 dB
 // centre and -6 dB surround, the mid-range choices a decoder makes when it has
-// not been told. AC-3 has no Lt/Rt levels at all, so those keep §7.8.2's own
-// -3 dB; and no LFE mix level, so §7.8's stated +10 dB ideal stands.
+// not been told. bsi has no Lt/Rt levels at all, so those keep §7.8.2's own
+// -3 dB; and no LFE mix level, so §7.8's stated +10 dB ideal stands. That is
+// the whole of a bsid-8 stream's downmix information; the overload below adds
+// what an Annex D stream can say on top of it.
 [[nodiscard]] AC3FORGE_EXPORT MixLevels mix_levels(
     std::optional<meta::CentreMixLevel> cmixlev, std::optional<meta::SurroundMixLevel> surmixlev);
+
+// AC-3 including Annex D's xbsi1 group (bsid 6). `alternate` is
+// DecodedFrame::alternate_bsi, std::nullopt for bsid 8. §D3 makes compliant
+// decoding of the alternate syntax optional; this library implements it, and
+// FrameDecoder folds with this overload.
+//
+// Without xbsi1 (bsid 8, or bsid 6 with xbsi1e clear) the result is the
+// overload above, field for field: §D3.1.2 has a decoder downmix as the
+// original specification defines when the parameters are not in the stream.
+//
+// With xbsi1, §D3.1.2 has a compliant decoder use the levels associated with
+// the two-channel downmix it has selected: ltrtcmixlev/ltrtsurmixlev for Lt/Rt,
+// lorocmixlev/lorosurmixlev for Lo/Ro. They replace cmixlev/surmixlev, which
+// §D4.2.1 says they override (a bsid-6 encoder still has to send valid bsi
+// levels for legacy decoders). The mono fold takes the Lo/Ro pair, because
+// §7.8.2 defines mono as Lo/Ro summed. ETSI TS 102 366 V1.4.1 clause D.2.1.2
+// says the same.
+//
+// `preferred` is xbsi1's dmixmod for the acmods Table D2.2's note defines it
+// for: 3/0, 2/1, 3/1, 2/2 and 3/2. For 1+1, 1/0 and 2/0 the note leaves the
+// field's meaning reserved, so it stays kNotIndicated, which is also what
+// E-AC-3 gives those acmods by not sending dmixmod. The LFE keeps §7.8's
+// +10 dB ideal: Annex D has no LFE mix level, and reading an absent
+// lfemixlevcod as "LFE mixing disabled" is §E2.3.1.10's rule for Annex E.
+//
+// The four levels are converted as they are given. FrameDecoder has already
+// read a reserved surround level (Tables D2.4/D2.6) as -1.5 dB by then, the
+// same substitution the E-AC-3 reader makes for mixmdate.
+[[nodiscard]] AC3FORGE_EXPORT MixLevels mix_levels(
+    Acmod acmod, std::optional<meta::CentreMixLevel> cmixlev,
+    std::optional<meta::SurroundMixLevel> surmixlev,
+    const std::optional<meta::AlternateBsi>& alternate);
 
 // E-AC-3 (Table E1.2's mixmdate group). std::nullopt - no mixmdate on the
 // wire at all - falls back on the AC-3 defaults above rather than on zero, so
