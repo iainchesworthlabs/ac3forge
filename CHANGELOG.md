@@ -370,6 +370,16 @@ and release packaging.
 
 **Codec correctness**
 
+- **The AC-4 parser misread everything after an EMDF-only presentation.** A presentation
+  with `presentation_config` 6 carries only additional EMDF substreams, whose count and
+  `emdf_info()` list TS 103 190-2 §6.2.1.3 reads after the config-6 branch. `ac4::`, and
+  so `ac3cli probe`, returned before that loop on both TOC paths, so later presentations,
+  the substream groups and `substream_index_table()` were read from the wrong bit. The
+  substream groups also took their frame-rate factor from the first presentation, which an
+  EMDF-only presentation does not transmit. No DEE encode writes this configuration, and
+  the Python reference parser shared the misreading on the `bitstream_version` 2 path.
+  Synthetic frames in `tests/ac4` now cover both paths; the committed DEE fixture parses
+  identically.
 - **The AC-4 parser dereferenced a null pointer on a legal bitstream, and could be made
   to ask for gigabytes.** A stream that clears `b_size_present` left
   `Toc::substream_sizes` empty while `n_substreams` was 1, and `parse_raw_frame()`

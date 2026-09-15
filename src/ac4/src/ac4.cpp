@@ -340,6 +340,13 @@ void parse_hsf_ext_substream_info(Reader& r, bool b_substreams_present) {
 
 // --- §4.2.3.8 / §6.2.1.5 presentation_config_ext_info -----------------------
 
+// Skipped as n_skip_bytes whole bytes. For bitstream_version 1 with
+// presentation_config 7, §6.2.1.5 puts a nested ac4_presentation_v1_info() at
+// the start of those bytes and counts it inside n_skip_bytes, so skipping
+// keeps the TOC in step; such a presentation reports presentation_config 7
+// and no substreams. Table 4 of Part 2 allows that shape, and it is the only
+// route to ac4_sgi_specifier()'s inline ac4_substream_group_info() and its
+// sus_ver bit - neither parsed here. No stream observed writes it.
 void parse_presentation_config_ext_info(Reader& r) {
     std::uint32_t n_skip_bytes = r.bits(5);
     if (r.bits(1)) {  // b_more_skip_bytes
@@ -544,6 +551,30 @@ int parse_presentation_version(Reader& r) {
     return version;
 }
 
+// --- §4.2.3.2 / §6.2.1.2 / §6.2.1.3 n_add_emdf_substreams -------------------
+
+// The loop that ends both presentation info elements. It follows their
+// `presentation_config == 6` if/else, so both branches reach it: an EMDF-only
+// presentation sets b_add_emdf_substreams without transmitting it, then
+// transmits the count and every emdf_info() the same as any other.
+void parse_add_emdf_substreams(Reader& r) {
+    std::uint32_t n = r.bits(2);  // n_add_emdf_substreams
+    if (n == 0) {
+        n = variable_bits(r, 2) + 4;
+    }
+    for (std::uint32_t i = 0; i < n; ++i) {
+        parse_emdf_info(r);
+        // n reaches here through variable_bits() and so runs to 2^32.
+        // parse_emdf_info() does real work per iteration, so without
+        // this a 200-byte frame spends six seconds walking a count no
+        // data backs - the reader is the only thing that ends it.
+        // parse_toc() checks r.error() after every presentation it parses.
+        if (r.error()) {
+            break;
+        }
+    }
+}
+
 // --- §4.2.3.2 ac4_presentation_info (presentation_version 0 path) ----------
 
 constexpr std::array<std::array<std::string_view, 3>, 6> kPresentationConfigRoles = {{
@@ -569,57 +600,44 @@ PresentationInfoV0 parse_presentation_info_v0(Reader& r, int fs_index, int frame
     }
     pres.presentation_config = presentation_config;
     pres.presentation_version = parse_presentation_version(r);
+    bool b_add_emdf_substreams = false;
     if (!b_single_substream && presentation_config == 6) {
-        return pres;  // b_add_emdf_substreams = 1; the additional-EMDF loop
-                      // below runs on the caller's own n bits, same as any
-                      // other exit from this function - see parse_toc().
-    }
-    pres.md_compat = static_cast<int>(r.bits(3));
-    if (r.bits(1)) {  // b_belongs_to_presentation_id
-        pres.presentation_id = static_cast<int>(variable_bits(r, 2));
-    }
-    const int frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index);
-    parse_emdf_info(r);
-    if (b_single_substream) {
-        pres.substreams.emplace_back("main",
-                                     parse_substream_info_v0(r, fs_index, frame_rate_factor));
+        // An EMDF-only presentation: nothing but the loop below.
+        b_add_emdf_substreams = true;
     } else {
-        const bool b_hsf_ext = r.bits(1) != 0;
-        if (*presentation_config >= 0 && *presentation_config <= 5) {
-            const auto& roles =
-                kPresentationConfigRoles[static_cast<std::size_t>(*presentation_config)];
-            const int n_roles =
-                kPresentationConfigRoleCounts[static_cast<std::size_t>(*presentation_config)];
-            for (int i = 0; i < n_roles; ++i) {
-                pres.substreams.emplace_back(
-                    std::string(roles[static_cast<std::size_t>(i)]),
-                    parse_substream_info_v0(r, fs_index, frame_rate_factor));
-                if (i == 0 && b_hsf_ext) {
-                    parse_hsf_ext_substream_info(r, true);
-                }
-            }
+        pres.md_compat = static_cast<int>(r.bits(3));
+        if (r.bits(1)) {  // b_belongs_to_presentation_id
+            pres.presentation_id = static_cast<int>(variable_bits(r, 2));
+        }
+        const int frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index);
+        parse_emdf_info(r);
+        if (b_single_substream) {
+            pres.substreams.emplace_back("main",
+                                         parse_substream_info_v0(r, fs_index, frame_rate_factor));
         } else {
-            parse_presentation_config_ext_info(r);
-        }
-    }
-    r.skip(1);        // b_pre_virtualized
-    if (r.bits(1)) {  // b_add_emdf_substreams
-        std::uint32_t n = r.bits(2);
-        if (n == 0) {
-            n = variable_bits(r, 2) + 4;
-        }
-        for (std::uint32_t i = 0; i < n; ++i) {
-            parse_emdf_info(r);
-            // n reaches here through variable_bits() and so runs to 2^32.
-            // parse_emdf_info() does real work per iteration, so without
-            // this a 200-byte frame spends six seconds walking a count no
-            // data backs - the reader is the only thing that ends it.
-            // break, not return: parse_toc() checks r.error() after every
-            // presentation it parses.
-            if (r.error()) {
-                break;
+            const bool b_hsf_ext = r.bits(1) != 0;
+            if (*presentation_config >= 0 && *presentation_config <= 5) {
+                const auto& roles =
+                    kPresentationConfigRoles[static_cast<std::size_t>(*presentation_config)];
+                const int n_roles =
+                    kPresentationConfigRoleCounts[static_cast<std::size_t>(*presentation_config)];
+                for (int i = 0; i < n_roles; ++i) {
+                    pres.substreams.emplace_back(
+                        std::string(roles[static_cast<std::size_t>(i)]),
+                        parse_substream_info_v0(r, fs_index, frame_rate_factor));
+                    if (i == 0 && b_hsf_ext) {
+                        parse_hsf_ext_substream_info(r, true);
+                    }
+                }
+            } else {
+                parse_presentation_config_ext_info(r);
             }
         }
+        r.skip(1);  // b_pre_virtualized
+        b_add_emdf_substreams = r.bits(1) != 0;
+    }
+    if (b_add_emdf_substreams) {
+        parse_add_emdf_substreams(r);
     }
     return pres;
 }
@@ -948,8 +966,10 @@ constexpr std::array<int, 5> kV1ConfigGroupCounts = {2, 1, 2, 3, 2};  // present
 // reference) is unreachable here: parse_toc() only calls
 // parse_presentation_v1_info() - and so this - for bitstream_version >= 2,
 // per §6.2.1.1's own `if (bitstream_version <= 1) {legacy} else {v1}`
-// dispatch. Every group is referenced by index, resolved later against
-// Toc::substream_groups.
+// dispatch. The one bitstream_version 1 route, §6.2.1.5's nested
+// ac4_presentation_v1_info(), lies inside the bytes
+// parse_presentation_config_ext_info() skips. Every group is referenced by
+// index, resolved later against Toc::substream_groups.
 int parse_sgi_specifier(Reader& r) {
     std::uint32_t group_index = r.bits(3);
     if (group_index == 7) {
@@ -978,71 +998,61 @@ PresentationInfoV1 parse_presentation_v1_info(Reader& r, int bitstream_version,
     if (bitstream_version != 1) {
         pres.presentation_version = parse_presentation_version(r);
     }
+    bool b_add_emdf_substreams = false;
     if (!b_single_substream_group && presentation_config == 6) {
-        return pres;  // b_add_emdf_substreams = 1; nothing further this parser tracks.
-    }
-    if (bitstream_version != 1) {
-        pres.md_compat = static_cast<int>(r.bits(3));
-    }
-    if (r.bits(1)) {          // b_presentation_id
-        variable_bits(r, 2);  // presentation_id, unused downstream
-    }
-    pres.frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index);
-    parse_frame_rate_fractions_info(r, frame_rate_index, pres.frame_rate_factor);
-    parse_emdf_info(r);
-    if (r.bits(1)) {  // b_presentation_filter
-        pres.enable_presentation = r.bits(1) != 0;
-    }
-    if (b_single_substream_group) {
-        pres.group_refs.push_back(parse_sgi_specifier(r));
+        // An EMDF-only presentation: nothing but the loop below. It
+        // references no substream group and transmits no
+        // frame_rate_multiply_info(), so frame_rate_factor keeps its default.
+        b_add_emdf_substreams = true;
     } else {
-        r.skip(1);  // b_multi_pid
-        if (presentation_config && *presentation_config >= 0 && *presentation_config <= 4) {
-            const int n = kV1ConfigGroupCounts[static_cast<std::size_t>(*presentation_config)];
-            for (int i = 0; i < n; ++i) {
-                pres.group_refs.push_back(parse_sgi_specifier(r));
-            }
-        } else if (presentation_config == 5) {
-            std::uint32_t n = r.bits(2) + 2;
-            if (n == 5) {
-                n += variable_bits(r, 2);
-            }
-            for (std::uint32_t i = 0; i < n; ++i) {
-                pres.group_refs.push_back(parse_sgi_specifier(r));
-                // Same unbounded-count shape as substream_index_table(): n
-                // passes through variable_bits(), so the reader running out
-                // is the only thing that ends this loop.
-                if (r.error()) {
-                    return pres;
-                }
-            }
+        if (bitstream_version != 1) {
+            pres.md_compat = static_cast<int>(r.bits(3));
+        }
+        if (r.bits(1)) {          // b_presentation_id
+            variable_bits(r, 2);  // presentation_id, unused downstream
+        }
+        pres.frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index);
+        parse_frame_rate_fractions_info(r, frame_rate_index, pres.frame_rate_factor);
+        parse_emdf_info(r);
+        if (r.bits(1)) {  // b_presentation_filter
+            pres.enable_presentation = r.bits(1) != 0;
+        }
+        if (b_single_substream_group) {
+            pres.group_refs.push_back(parse_sgi_specifier(r));
         } else {
-            parse_presentation_config_ext_info(r);
-        }
-    }
-    r.skip(1);  // b_pre_virtualized
-    const bool b_add_emdf_substreams = r.bits(1) != 0;
-    // ac4_presentation_substream_info() (§6.2.1.12)
-    r.skip(1);  // b_alternative
-    r.skip(1);  // b_pres_ndot
-    parse_substream_index_ref(r);
-    if (b_add_emdf_substreams) {
-        std::uint32_t n = r.bits(2);
-        if (n == 0) {
-            n = variable_bits(r, 2) + 4;
-        }
-        for (std::uint32_t i = 0; i < n; ++i) {
-            parse_emdf_info(r);
-            // n reaches here through variable_bits() and so runs to 2^32.
-            // parse_emdf_info() does real work per iteration, so without
-            // this a 200-byte frame spends six seconds walking a count no
-            // data backs - the reader is the only thing that ends it.
-            // break, not return: parse_toc() checks r.error() after every
-            // presentation it parses.
-            if (r.error()) {
-                break;
+            r.skip(1);  // b_multi_pid
+            if (presentation_config && *presentation_config >= 0 && *presentation_config <= 4) {
+                const int n = kV1ConfigGroupCounts[static_cast<std::size_t>(*presentation_config)];
+                for (int i = 0; i < n; ++i) {
+                    pres.group_refs.push_back(parse_sgi_specifier(r));
+                }
+            } else if (presentation_config == 5) {
+                std::uint32_t n = r.bits(2) + 2;
+                if (n == 5) {
+                    n += variable_bits(r, 2);
+                }
+                for (std::uint32_t i = 0; i < n; ++i) {
+                    pres.group_refs.push_back(parse_sgi_specifier(r));
+                    // Same unbounded-count shape as substream_index_table(): n
+                    // passes through variable_bits(), so the reader running out
+                    // is the only thing that ends this loop.
+                    if (r.error()) {
+                        return pres;
+                    }
+                }
+            } else {
+                parse_presentation_config_ext_info(r);
             }
         }
+        r.skip(1);  // b_pre_virtualized
+        b_add_emdf_substreams = r.bits(1) != 0;
+        // ac4_presentation_substream_info() (§6.2.1.12)
+        r.skip(1);  // b_alternative
+        r.skip(1);  // b_pres_ndot
+        parse_substream_index_ref(r);
+    }
+    if (b_add_emdf_substreams) {
+        parse_add_emdf_substreams(r);
     }
     return pres;
 }
@@ -1099,6 +1109,22 @@ int total_substream_groups(const std::vector<PresentationInfoV1>& presentations)
     // when the reader runs out.
     return max_group_index == std::numeric_limits<int>::max() ? max_group_index
                                                               : max_group_index + 1;
+}
+
+// frame_rate_factor is frame-global in practice - see
+// parse_substream_group_info()'s own comment - so every substream group takes
+// it from the first presentation that transmits frame_rate_multiply_info().
+// An EMDF-only presentation transmits none, so it is passed over. Its
+// presentation_config is 6, a value no other presentation holds:
+// parse_presentation_v1_info() leaves the field unset when
+// b_single_substream_group is set.
+int substream_group_frame_rate_factor(const std::vector<PresentationInfoV1>& presentations) {
+    for (const auto& p : presentations) {
+        if (p.presentation_config != 6) {
+            return p.frame_rate_factor;
+        }
+    }
+    return 1;
 }
 
 std::expected<Toc, Error> parse_toc(Reader& r) {
@@ -1177,11 +1203,7 @@ std::expected<Toc, Error> parse_toc(Reader& r) {
             }
         }
         const int total_groups = total_substream_groups(toc.presentations_v1);
-        // frame_rate_factor is frame-global in practice - see
-        // parse_substream_group_info()'s own comment - so the first
-        // presentation's resolved value is what every group uses.
-        const int group_frame_rate_factor =
-            toc.presentations_v1.empty() ? 1 : toc.presentations_v1.front().frame_rate_factor;
+        const int group_frame_rate_factor = substream_group_frame_rate_factor(toc.presentations_v1);
         for (int i = 0; i < total_groups; ++i) {
             toc.substream_groups.push_back(
                 parse_substream_group_info(r, fs_index, group_frame_rate_factor));
