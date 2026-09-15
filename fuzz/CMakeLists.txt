@@ -320,3 +320,20 @@ ac3forge_add_fuzzer(fuzz_signing_verify ac3::signing)
 if(AC3FORGE_BUILD_ADM)
     ac3forge_add_fuzzer(fuzz_adm_parse ac3adm::ac3adm)
 endif()
+
+# ac4::Decoder::parse: every substream of an AC-4 frame below the table of
+# contents fuzz_ac4_parse presses (src/ac4dec) - section lengths, Huffman
+# codewords, A-SPX envelope counts, DRC gain sets and EMDF payloads, each
+# counted by the stream. ac4dec_objects is a library of its own, so it needs
+# its own instrumentation call, as fuzz_ac4_parse's parser does. Its seeds
+# are fuzz_ac4_parse's (fuzz/run.sh's seed_source_for).
+#
+# Its first run from short seeds (one to three frames of the committed DEE
+# streams) stopped 2,690 executions in: ext_code's escape, whose leading ones
+# Pseudocode 20 does not bound, shifted a 32-bit value by 32. Table 40 limits
+# the escape to 21 bits, which the decoder now enforces; the input is under
+# fuzz/regressions/fuzz_ac4_decode/.
+if(AC3FORGE_BUILD_AC4)
+    ac3forge_instrument_for_fuzzing(ac4dec_objects)
+    ac3forge_add_fuzzer(fuzz_ac4_decode ac4::decoder)
+endif()

@@ -174,6 +174,19 @@ and release packaging.
 - **`probe` reports `dmixmod`**, as a table line and as `metadata.dmixmod` plus a
   per-syncframe `dmixmod` in the `ac3forge.probe/1` JSON document.
 
+**AC-4 decoding**
+
+- **The first phase of an AC-4 decoder** (`src/ac4dec`, `ac4::Decoder`), written from
+  TS 103 190-1 and -2: it reads every syntax element of the presentation substream,
+  channel-coded audio substreams (ASF spectral data, stereo processing, companding,
+  A-SPX, A-CPL, and `metadata()` with DRC and dialogue enhancement) and EMDF payload
+  substreams, and produces no audio yet. The syntax is transcribed a second time in
+  Python (`tools/references/ac4_syntax.py`), and the two traces agree element for element
+  over the eleven committed DEE streams, ten of them new (SIMPLE, ASPX and A-CPL at 2.0
+  and 5.1, DRC curves, immersive stereo at three frame rates), checked in CI, and over
+  107 local census streams and the public DASH-IF, CTA WAVE and Chromium channel-based
+  streams. The readings taken where the text is ambiguous are in `src/ac4dec/ERRATA.md`.
+
 **Browser (WASM)**
 
 - The encode demo now covers the whole of roadmap UX6 — wide E-AC-3 layouts
@@ -465,6 +478,12 @@ and release packaging.
   unity for dialogue-level material at any dialnorm, and cuts sized so the mono downmix
   meets the ceiling after the decoder's own gain. `dialogue=`/`ceiling=` keep their
   meaning and defaults.
+- **The AC-4 parser misread everything after a presentation with dialogue enhancement.**
+  `presentation_config` 1 ("Main + DE") and 4 ("Main + DE + Associated Audio") read two
+  and three substream group references (TS 103 190-2 §6.2.1.3) while counting one and
+  two groups; `ac4::`, and so `ac3cli probe`, read by the count, one reference too few,
+  and the Python reference parser shared the misreading. No DEE encode writes either
+  configuration; synthetic frames in `tests/ac4` now cover both.
 - **The AC-4 parser misread everything after an EMDF-only presentation.** A presentation
   with `presentation_config` 6 carries only additional EMDF substreams, whose count and
   `emdf_info()` list TS 103 190-2 §6.2.1.3 reads after the config-6 branch. `ac4::`, and
