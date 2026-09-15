@@ -302,9 +302,20 @@ The matrix comes from the **stream's own** mix levels, never from constants chos
 carries two coarse levels in bsi (`cmixlev`, `surmixlev`; §5.4.2.4/§5.4.2.5) and E-AC-3 carries a
 richer group inside `mixmdate` — separate Lt/Rt and Lo/Ro centre and surround levels plus an LFE
 mix level. Both decoders now keep those and report them (`DecodedFrame::cmixlev`/`surmixlev`,
-`DecodedSubstream::mix`), distinguishing "absent" from "present, and says the default";
+`DecodedSubstream::mixing`), distinguishing "absent" from "present, and says the default";
 `ac3::mix_levels()` turns either into the coefficients the stage needs, applying §7.8's own
 fallbacks where a field is simply not there.
+
+`MixLevels::preferred` passes on `dmixmod`, the fold the content was mixed for (Table D2.2) —
+E-AC-3's `mixmdate`, or an Annex D stream's `xbsi1` (see below) — without acting on it: `target` is
+always what the caller asked for. A caller that
+wants to follow the stream uses `ac3::automatic_stereo_target(acmod, preferred)`, A/52 §D3.1.1's
+automatic selection: `kLtRt` when the stream prefers Lt/Rt, `kLoRo` for every other code —
+`kNotIndicated`, and `kReserved` (Table D2.2's `11`, which A/52:2018 and ETSI TS 102 366 V1.4.1
+both leave reserved for AC-3 and E-AC-3 alike, and which §D2.3.1.2 allows a decoder to read as
+"not indicated"). `acmod` gates the whole field the same way: Table D2.2's own note leaves
+dmixmod's meaning reserved below `3/0` — at `1+1`, `1/0` and `2/0` — whatever code it carries, so
+those acmods get `kLoRo` regardless of `preferred`. `ac3cli`'s `downmix=auto` is built on it.
 
 §7.8.1's normalisation — "attenuating all downmix coefficients equally, such that the sum of
 coefficients used to create any single output channel never exceeds 1" — means a fold of plain
@@ -394,6 +405,21 @@ Verified against FFmpeg's `-ac 2` decode of the same stream: at 3/2 with `cmixle
 of 1/2.20711 — exactly §7.8.1's normalisation divisor for those levels (1 + 0.7071 + 0.5), which
 this decoder applies and FFmpeg does not.
 
+**Annex D streams (`bsid` 6).** An AC-3 stream written with Annex D's alternate syntax can carry
+an `xbsi1` group: separate Lt/Rt and Lo/Ro centre and surround levels (Tables D2.3–D2.6) and a
+preferred stereo downmix, `dmixmod` (Table D2.2). A/52 §D3 makes decoding them optional, and
+`FrameDecoder` does. Following §D3.1.2 (ETSI TS 102 366 clause D.2.1.2), the Lt/Rt fold uses
+`ltrtcmixlev`/`ltrtsurmixlev`, and the Lo/Ro and mono folds use `lorocmixlev`/`lorosurmixlev`, in
+place of bsi's `cmixlev`/`surmixlev`; mono takes the Lo/Ro pair because §7.8.2 defines it as Lo/Ro
+summed. A `bsid`-6 stream still carries the two bsi levels, for decoders that do not read `xbsi1`
+(§D4.2.1). A stream with no `xbsi1` group, whether `bsid` 8 or `bsid` 6 with `xbsi1e` clear, still
+folds with `cmixlev`/`surmixlev`. `MixLevels::preferred` takes `dmixmod` for 3/0 and wider only,
+the acmods Table D2.2 defines it for. A surround level Tables D2.4/D2.6 reserve reads as −1.5 dB,
+as §D2.3.1.4/§D2.3.1.6 direct, and `DecodedFrame::alternate_bsi` reports it that way. Annex D adds
+no LFE mix level, so `mix_lfe` folds the LFE in at §7.8's +10 dB for either `bsid`. A caller
+folding a `DecodedFrame` itself gets the same levels from
+`ac3::mix_levels(acmod, cmixlev, surmixlev, alternate_bsi)`.
+
 Not covered: Annex C's karaoke downmix rules for `bsmod` 7. The mode's `cmixlev`/`surmixlev` are
 re-purposed as vocal-channel levels there, so it is a different matrix rather than a variation on
 this one, and nothing in this project emits a karaoke stream to check it against.
@@ -440,6 +466,12 @@ from its own words — Ch2 is never affected by Ch1's compression or vice versa.
 `Eac3Decoder::decode_access_unit`'s `layout` comes back empty for it (`DecodedAccessUnit::acmod ==
 kDualMono`), since there's no Table E2.5 location for "the second programme" to render onto — the
 two channels come back in coded order (Ch1, Ch2) instead.
+
+The output stage's own §5.4.2.8 normalisation follows the same rule: `OutputStage::apply`'s
+optional `dialnorm2` parameter, threaded through from `DecodedFrame`/`DecodedSubstream`/
+`DecodedAccessUnit`, levels Ch2 by its own reference under `kLine`/`kRf`/`apply_dialnorm` rather
+than by Ch1's `dialnorm` — the two programmes are unrelated, and an encoder sizes Ch2's `compr2`
+on the assumption Ch2 is normalised by `dialnorm2`.
 
 Delta bit allocation (§7.2.2.6) is decoded like any other transmitted parameter: both decoders
 carry per-channel state across a syncframe's blocks and apply it to the masking curve before

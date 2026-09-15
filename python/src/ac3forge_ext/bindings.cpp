@@ -1217,6 +1217,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_readonly("sample_rate", &ac3::DecodedAccessUnit::sample_rate)
         .def_readonly("acmod", &ac3::DecodedAccessUnit::acmod)
         .def_readonly("dialnorm", &ac3::DecodedAccessUnit::dialnorm)
+        .def_readonly("dialnorm2", &ac3::DecodedAccessUnit::dialnorm2)
         .def_readonly("compr", &ac3::DecodedAccessUnit::compr)
         .def_readonly("numblkscod", &ac3::DecodedAccessUnit::numblkscod)
         .def_readonly("object_metadata", &ac3::DecodedAccessUnit::object_metadata)

@@ -236,6 +236,15 @@ would decode as something else entirely.
 does; the decoder reports whatever it read, for a third-party stream that does otherwise.
 `encinfo` is the one bit here reserved for the encoder's own use (§D2.3.1.12).
 
+`dmixmod` has three defined codes and a reserved `11` (Table D2.2). E-AC-3's `mixmdate` carries
+the same field under the same table, since Annex E gives it no definition of its own (§E2.2);
+ETSI TS 102 366 V1.4.1 reads the same way (Table D.1.1, clause E.1.2.0). Neither standard assigns
+`11` a downmix. `DownmixMode::kReserved` names the code so that a decoded stream sending it
+reports it as sent, and `meta::describe()` calls it `"reserved"`. Both encoders refuse to write
+it (`meta::valid_downmix_mode()`), for the reason they refuse the reserved surround levels: a
+receiver may read it as "not indicated", so whatever it was meant to say would be lost. The
+Annex D path returns `FrameError::kInvalidBsi`; `mixmdate` returns `kInvalidMixLevel`.
+
 ### On decode
 
 `DecodedFrame` reports `bsid`, `cmixlev`, `surmixlev`, `info` and (for `bsid` 6)

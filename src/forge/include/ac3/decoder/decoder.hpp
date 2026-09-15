@@ -389,7 +389,10 @@ struct DecodedFrame {
     meta::BsiInfo info{};
     // Annex D's xbsi1/xbsi2, present exactly when bsid is 6. A bsid-8 frame
     // carries the time code in the same 28 bits instead, and reports it as
-    // info.timecod1/timecod2 above.
+    // info.timecod1/timecod2 above. When xbsi1 is present its Lt/Rt and Lo/Ro
+    // levels are the ones the §7.8 output stage folds with (§D3.1.2, through
+    // ac3::mix_levels()), and a surround level Tables D2.4/D2.6 reserve is
+    // reported as the -1.5 dB a decoder uses in its place.
     std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     int dialnorm = 31;
     // §5.4.2.4/§5.4.2.5, the two downmix levels bsi carries: std::nullopt for
@@ -397,7 +400,9 @@ struct DecodedFrame {
     // three front channels, surmixlev needs surrounds), which is a different
     // statement from "carried, and says the default". ac3::mix_levels() turns
     // the pair into the coefficients the §7.8 output stage needs, applying
-    // §7.8's own defaults where a field is absent.
+    // §7.8's own defaults where a field is absent. An Annex D frame's xbsi1
+    // levels take their place when it sends them (§D4.2.1); the pair is still
+    // reported, since a bsid-6 encoder has to send it for legacy decoders.
     std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;
     std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;
     // §5.4.2.9: std::nullopt when compre was clear, so "no word" and "a word
@@ -643,6 +648,12 @@ struct DecodedAccessUnit {
     SampleRate sample_rate = SampleRate::k48000;
     Acmod acmod = Acmod::k2_0;
     int dialnorm = 31;
+    // Ch2's own dialnorm (§5.4.2.16), present only when acmod is kDualMono -
+    // the independent substream's own, same reasoning as dialnorm above. A
+    // 1+1 programme is always exactly one substream (this struct's own
+    // comment), so "the lead substream's dialnorm2" is unambiguous here in a
+    // way it would not be for a bed-plus-dependents programme.
+    std::optional<int> dialnorm2 = std::nullopt;
     // The compr word the program was decoded with. §E3.8.5 gives a program
     // with dependent substreams the word its last dependent carries, for
     // every substream including the independent one, so that is the word

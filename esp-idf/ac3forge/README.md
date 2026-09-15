@@ -18,15 +18,6 @@ live in the library because it is made of FreeRTOS:
   whether it sits in PSRAM are `PlayerConfig`. It reports frames, decode time, the worst frame,
   how low the ring ran, and why a run ended. An integrator implements the two seams for their
   transport and their DAC and gets the rest.
-- **`ac3forge::OutputLayout`** ([`include/ac3forge/layout.hpp`](include/ac3forge/layout.hpp)):
-  the speakers a player has, one per slot, from a name (`2.0`, `5.1`, `7.1.4`, `9.2.4`) or a
-  speaker list (`L,R,C,LFE,Ls,Rs`, or angles). **`ac3forge::LayoutRenderer`**
-  ([`include/ac3forge/render.hpp`](include/ac3forge/render.hpp)) turns the decoder's block - the
-  coded channels and, when the stream has them, the objects with their positions - into one
-  block per slot: a stereo or mono layout is the decoder's own §7.8 fold; anything else has the
-  bed placed channel by channel through `ac3::spatial::pan_direction`, and a layout with height
-  speakers has the objects placed by their own positions instead. Both headers are free of
-  ESP-IDF and tested on the host (`tests/io/test_layout.cpp`).
 - **`ac3forge::Control`** ([`include/ac3forge/control.hpp`](include/ac3forge/control.hpp)): a REST
   surface over whatever owns a player - `GET /status`, `POST /play` with a location, `POST /stop`,
   `POST /volume`, `GET`/`PUT /layout` - on `esp_http_server`, with callbacks the owner supplies so
@@ -45,6 +36,19 @@ live in the library because it is made of FreeRTOS:
   how long the queue was dry, and the least that was left. The streaming example's `i2s` and
   `tdm` sinks keep one each for their `sink.*` line. Free of ESP-IDF and tested on the host
   against a simulated DMA (`tests/io/test_dac_queue_model.cpp`).
+
+The player renders through the library's `ac3::render` headers, which began in this component
+and moved to `src/forge/include/ac3/render/` so that the desktop player and its test sink render
+with the same code ([`planning/hearth-reference-player.md`](../../planning/hearth-reference-player.md)).
+**`ac3::render::OutputLayout`**
+([`layout.hpp`](../../src/forge/include/ac3/render/layout.hpp)) is the speakers a player has, one
+per slot, from a name (`2.0`, `5.1`, `7.1.4`, `9.2.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`, or
+angles). **`ac3::render::LayoutRenderer`** ([`render.hpp`](../../src/forge/include/ac3/render/render.hpp))
+turns the decoder's block - the coded channels and, when the stream has them, the objects with
+their positions - into one block per slot: a stereo or mono layout is the decoder's own §7.8
+fold; anything else has the bed placed channel by channel through `ac3::spatial::pan_direction`,
+and a layout with height speakers has the objects placed by their own positions instead. Both
+are tested on the host (`tests/render/test_layout.cpp`).
 
 `idf_component.yml` is the registry manifest, and it is not published yet — see
 [the CI workflow](../../.github/workflows/esp-component.yml) for why the publish job is gated.

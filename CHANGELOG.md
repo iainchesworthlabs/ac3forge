@@ -148,6 +148,15 @@ and release packaging.
   over §E2.3.1.4 short syncframes across 1/2/3-block frames — completing roadmap EQ11.
   Worst-object SNR at every short code matches the six-block control on stationary
   material.
+- **`downmix=auto` on `decode` and `monitor`**: A/52 §D3.1.1's automatic choice of
+  stereo fold, from the stream's own `dmixmod`. Lt/Rt when it prefers Lt/Rt at an
+  acmod Table D2.2 defines the field for (`3/0`, `2/1`, `3/1`, `2/2`, `3/2`); Lo/Ro
+  otherwise, including no preference, the reserved code, and every narrower acmod,
+  where the table's own note leaves the field's meaning reserved outright. The
+  choice is made once, from the programme's first `dmixmod`, and printed.
+  `ac3::automatic_stereo_target()` holds the rule for library callers.
+- **`probe` reports `dmixmod`**, as a table line and as `metadata.dmixmod` plus a
+  per-syncframe `dmixmod` in the `ac3forge.probe/1` JSON document.
 
 **Browser (WASM)**
 
@@ -170,6 +179,22 @@ and release packaging.
   framing/scan helpers and the BS.1770 meter, each with real-signal round-trip tests.
   `build-rust` runs on all three desktop OSes; the first Windows build found a real
   portability bug (bindgen types C enums `i32` on MSVC, `u32` elsewhere).
+- **The AC-3 decoder folds an Annex D stream with that stream's own `xbsi1` levels**
+  (A/52 §D3.1.2, decoding that §D3 makes optional). Lt/Rt (`downmix=ltrt`) now uses
+  `ltrtcmixlev`/`ltrtsurmixlev`, and Lo/Ro and mono use `lorocmixlev`/`lorosurmixlev`,
+  where all three used to take bsi's `cmixlev`/`surmixlev`, with §7.8.2's −3 dB for
+  Lt/Rt. `MixLevels::preferred` carries `xbsi1`'s `dmixmod` from 3/0 up, and a surround
+  level Tables D2.4/D2.6 reserve now decodes and reports as −1.5 dB rather than as the
+  raw code. Callers folding for themselves use the new
+  `ac3::mix_levels(acmod, cmixlev, surmixlev, alternate_bsi)`. `bsid`-8 streams, and
+  `bsid`-6 streams without `xbsi1`, fold as before.
+- **Speaker management beside the renderer** (`src/forge/include/ac3/render/`, the first
+  step of `planning/hearth-reference-player.md`): `Routing` patches each rendered channel
+  to one device output or to none, `TrimDelay` applies a per-output trim in dB and delay in
+  samples over caller-owned storage, `IdentifyTone` plays pink noise at a stated level on
+  one output at a time (30-80 Hz for an LFE feed), and `LayoutRenderer::set_crossover_hz()`
+  makes the bass-management corner a setting between 40 and 250 Hz. All header-only and
+  allocation-free, so the boards can use them too.
 
 **Verification and CI**
 
@@ -257,6 +282,13 @@ and release packaging.
   (`coupling.hpp`, `eac3_tools.hpp`), where the code they hold — used by both decoders
   on every frame — already lived. Source-breaking, deliberately landing before the v1.0
   API freeze with no compatibility shim; ABI unchanged.
+- **The ESP32 player's output layout and renderer moved into the library as
+  `ac3::render`** (`esp-idf/ac3forge/include/ac3forge/{layout,render}.hpp` to
+  `src/forge/include/ac3/render/`), with the player's fold-and-objects policy as
+  `ac3::render::serve()`, so the desktop player and its test sink render with the boards'
+  code. The arithmetic is unchanged: the QEMU render shape's twelve slot levels are the
+  same as main's. Source-breaking for the component's `ac3forge::OutputLayout` and
+  `ac3forge::LayoutRenderer`, which were never published to the component registry.
 
 **SonarCloud and code quality**
 
@@ -463,9 +495,36 @@ and release packaging.
   from `bsid`. FFmpeg's FATE fixture `the_great_wall_7.1.eac3` (an AC-3 core plus an
   Annex E extension to 7.1) now decodes all 157 access units; it had failed on its
   first.
+- **Dual mono's output-stage dialnorm normalisation levelled Ch2 by Ch1's dialnorm,
+  not its own.** `OutputStage::apply` took one `dialnorm` and scaled every channel by
+  it; acmod 0 (1+1) codes two unrelated programmes with independent dialnorm words
+  (§5.4.2.16's `dialnorm2` for Ch2), and an encoder sizes Ch2's `compr2` on the
+  assumption Ch2 is normalised by `dialnorm2`. A 1+1 stream with dialnorm 27 and
+  dialnorm2 20 played Ch2 7 dB too quiet under `kLine`/`kRf`/`apply_dialnorm`.
+  `apply()` now takes an optional second dialnorm and levels Ch2 by it alone;
+  `FrameDecoder`, `Eac3Decoder` (`decode_access_unit` and `flush()`) and the WASM
+  decode demo's own side fold all thread it through.
+- **A §E2.3.1.2 legacy core's own output stage ran a second time, ahead of the
+  programme it belongs to.** `decode_ac3_core` built the core's `FrameDecoder` from
+  the whole `DecoderConfig`, `output` included, so `OperatingMode::kLine` normalised
+  the bed's channels once inside that decoder and again over the eight-channel
+  programme `apply_output` assembles from it — measured at dialnorm 24, the bed came
+  out 14 dB down and the dependent's own channels, which never pass through the
+  core, 7. A downmix target folded the bed to two channels before the dependent's
+  could be laid over it, failing every access unit with `kInvalidStream`. The core
+  now decodes with `output` reset; `drc_scale`, `heavy_compression` and every other
+  field are unchanged.
 - `ac3cli` reports a decode failure in words (`decode failed: a header field holds a
   value A/52 reserves`) rather than as a bare enumerator — nine call sites across
   `decode`, `analysis` and `live` weren't using the existing `describe()`.
+- **A reserved `dmixmod` read back as "not indicated".** A/52:2018 Table D2.2 and ETSI
+  TS 102 366 V1.4.1 Table D.1.1 both list `'11'` as reserved, and Annex E gives
+  E-AC-3's `mixmdate` field the same table, so neither codec defines a fourth preferred
+  downmix. Both decoders, `io::read_frame_header` and `io::read_frame_metadata` used to
+  store `'11'` as `'00'`. `meta::DownmixMode::kReserved` now keeps it, and
+  `meta::describe()` names it. Both encoders refuse to write it, as they already refuse
+  reserved surround levels, and `transcode` carries a reserved source value across as
+  not indicated.
 
 **Robustness and diagnostics**
 

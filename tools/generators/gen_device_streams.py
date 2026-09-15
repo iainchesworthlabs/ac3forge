@@ -39,7 +39,7 @@ OUT = REPO / "esp-idf/ac3forge/examples/stream_player/www"
 RATE = 48000
 
 # The output layout the levels are for: "7.1.4" in the player's slot order
-# (esp-idf/ac3forge/include/ac3forge/layout.hpp - ring, heights, LFE).
+# (src/forge/include/ac3/render/layout.hpp - ring, heights, LFE).
 LAYOUT_714 = ["L", "C", "R", "Ls", "Rs", "Lrs", "Rrs", "Vhl", "Vhr", "Lts", "Rts", "LFE"]
 
 # One tone per speaker, a third of an octave apart, so that each slot can be

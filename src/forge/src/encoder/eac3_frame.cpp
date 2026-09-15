@@ -2513,10 +2513,13 @@ std::expected<void, FrameError> validate(const FrameConfig& config) {
         const auto& mix = *config.mixing;
         // Tables D2.4 / D2.6 reserve the three loudest surround codes, and a
         // decoder that receives one substitutes 0.841 - so writing one means
-        // the level applied is not the level asked for. valid_mix_metadata()
-        // makes that same check first, then every range the rest of Table
-        // E1.2's fields have to fit.
-        if (!meta::valid_surround_mix_level(mix.ltrtsurmixlev) ||
+        // the level applied is not the level asked for. Table D2.2's '11' is
+        // the same case for dmixmod: §D2.3.1.2 lets a decoder read it as "not
+        // indicated", so whatever preference it was meant to carry is lost.
+        // valid_mix_metadata() makes both checks first, then every range the
+        // rest of Table E1.2's fields have to fit.
+        if (!meta::valid_downmix_mode(mix.dmixmod) ||
+            !meta::valid_surround_mix_level(mix.ltrtsurmixlev) ||
             !meta::valid_surround_mix_level(mix.lorosurmixlev)) {
             return std::unexpected(FrameError::kInvalidMixLevel);
         }

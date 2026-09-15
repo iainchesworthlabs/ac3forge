@@ -375,6 +375,11 @@ struct Options {
     // own means stereo, channels=2 on its own means Lo/Ro, and the pair in
     // either order means what both said.
     bool downmix_named = false;
+    // downmix=auto (decode/monitor): the fold is the stream's own preference,
+    // which only the stream can say - `output.target` holds Lo/Ro until
+    // resolve_output() reads it. A later downmix=loro|ltrt|mono, channels=1 or
+    // channels=as-coded clears it, the same last-token-wins rule as the rest.
+    bool downmix_auto = false;
     // 'decode'/'monitor' only: §7.10 error concealment. Off by default, so a
     // damaged frame is still reported rather than papered over.
     ac3::ConcealmentPolicy concealment = ac3::ConcealmentPolicy::kNone;
@@ -538,6 +543,17 @@ std::string format_programme_ids(std::span<const int> ids);
 // ac3::programme_ids() returned and must not be empty. Shared by decode, qc
 // and levels so all three answer a bad programme= the same way.
 std::optional<int> choose_programme(std::span<const int> ids, std::optional<int> wanted);
+
+// The output stage a decode/monitor run actually uses: `meta.output`, with
+// downmix=auto settled into a concrete fold. §D3.1.1's automatic Lt/Rt-or-
+// Lo/Ro choice is made once, from the first dmixmod (and its acmod) the
+// programme's independent substream sends (`meta.programme`'s, or the
+// stream's first programme's) - ac3::automatic_stereo_target() holds the
+// rule, including what a reserved or absent dmixmod gets and which acmods
+// Table D2.2 leaves the field meaning nothing at - and the choice is reported
+// on `status`. Without downmix=auto this returns `meta.output` untouched.
+[[nodiscard]] ac3::OutputConfig resolve_output(const Options& meta,
+                                               std::span<const std::byte> stream, FILE* status);
 
 // fmt::println with a "nowhere" destination: a no-op when `out` is nullptr
 // (see status_stream above), an ordinary println otherwise. Every status line
