@@ -158,6 +158,12 @@ and release packaging.
   vcpkg's mbedTLS 3.6 and ESP-IDF's mbedTLS 4 provide, and comes in through vcpkg's new
   `hearth` feature. A third fuzz harness, `fuzz_sendspin_handshake`, reads the handshake
   messages.
+- **Sendspin's pairing values in `src/sendspin`**: CPace (CPACE-X25519-SHA512 from
+  draft-irtf-cfrg-cpace-21, matching the draft's test vectors byte for byte: Elligator 2 is
+  written in-tree, and the scalar multiplications go through the crypto seam's X25519), and
+  around it the pairing tokens, the dynamic pairing code, the commitment to `nonce_B`, the
+  CPace session id and the wrapping of the long-term PSK and `nonce_B`, each in both the
+  specification's form and aiosendspin 9.1.1's where the two differ.
 
 **Containers and encoding**
 

@@ -31,6 +31,7 @@ target_sources(ac3sendspin
         src/frames.cpp
         src/handshake.cpp
         src/json.cpp
+        src/pairing_token.cpp
         src/suite.cpp)
 
 if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
@@ -40,9 +41,11 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     # provide.
     target_sources(ac3sendspin
         PRIVATE
+            src/cpace.cpp
             src/crypto/psa/crypto.cpp
             src/hmac.cpp
             src/noise.cpp
+            src/pairing.cpp
             src/psk.cpp)
     target_link_libraries(ac3sendspin PRIVATE MbedTLS::mbedcrypto)
 endif()
