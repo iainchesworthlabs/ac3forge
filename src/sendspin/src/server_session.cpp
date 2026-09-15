@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/channel.hpp"
 #include "ac3/sendspin/chunks.hpp"
 #include "ac3/sendspin/crypto.hpp"
@@ -66,6 +67,25 @@ constexpr std::size_t kMaxTokens = 4096;
 
 // aiosendspin 9.1.1's dynamic code is never shorter than this on a Hearth server (C20).
 constexpr std::int32_t kMinimumCodeDigits = 6;
+
+// The _ac3forge_player settings a server/command's text carries, read back as a client reads
+// them; nothing when the reader refuses them.
+[[nodiscard]] std::optional<ac3forge::Settings> settings_read_back(std::string_view text, Dialect dialect) {
+    std::vector<json::Token> tokens;
+    json::Document document;
+    if (!document.parse(text, tokens, kMaxTokens)) {
+        return std::nullopt;
+    }
+    const std::optional<m::Envelope> envelope = m::read_envelope(document);
+    if (!envelope) {
+        return std::nullopt;
+    }
+    const std::expected<m::ServerCommand, m::MessageError> read = m::read_server_command(envelope->payload, dialect);
+    if (!read || !read->ac3forge) {
+        return std::nullopt;
+    }
+    return read->ac3forge->settings;
+}
 
 }  // namespace
 
@@ -171,9 +191,11 @@ SessionOutput ServerSession::established(handshake::Initiator& initiator) {
     hello_.reset();
     state_.reset();
     player_state_received_ = false;
+    ac3forge_state_received_ = false;
     activities_.clear();
     active_roles_.clear();
     stream_.reset();
+    burst_stream_.reset();
     attempt_.reset();
     pairing_index_ = 0;
 
@@ -285,6 +307,9 @@ SessionOutput ServerSession::on_json(std::string_view text, std::int64_t arrival
         }
         if (state->player && player_active()) {
             player_state_received_ = true;
+        }
+        if (state->ac3forge && ac3forge_active()) {
+            ac3forge_state_received_ = true;
         }
         state_ = std::move(*state);
         listener_->on_state(*state_);
@@ -398,6 +423,11 @@ bool ServerSession::player_active() const {
            std::find(active_roles_.begin(), active_roles_.end(), kPlayerRole) != active_roles_.end();
 }
 
+bool ServerSession::ac3forge_active() const {
+    return phase_ == Phase::kActive &&
+           std::find(active_roles_.begin(), active_roles_.end(), ac3forge::kRole) != active_roles_.end();
+}
+
 std::optional<m::PairingActivation> ServerSession::pairing_parameters(
     const std::optional<m::PairingActivation>& requested) const {
     if (!requested || !requested->method || !hello_) {
@@ -478,7 +508,8 @@ std::expected<SessionOutput, Refusal> ServerSession::activate(const m::Activate&
                             hello_->supported_roles.end();
         const std::string_view family = family_of(role);
         if (!listed || std::find(families.begin(), families.end(), family) != families.end() ||
-            (role == kPlayerRole && !hello_->player_support)) {
+            (role == kPlayerRole && !hello_->player_support) ||
+            (role == ac3forge::kRole && !hello_->ac3forge_support)) {
             return refuse(Refusal::kBadActivation);
         }
         families.push_back(family);
@@ -486,12 +517,20 @@ std::expected<SessionOutput, Refusal> ServerSession::activate(const m::Activate&
 
     SessionOutput out;
     const bool keeps_player = std::find(roles.begin(), roles.end(), kPlayerRole) != roles.end();
+    const bool keeps_ac3forge = std::find(roles.begin(), roles.end(), ac3forge::kRole) != roles.end();
     if (stream_ && !keeps_player) {
         // A role's stream ends before the role does (messaging.md, server/activate).
         if (!seal_json(m::write_stream_end({.roles = std::vector<std::string>{"player"}}), out)) {
             return refuse(Refusal::kCrypto);
         }
         stream_.reset();
+    }
+    if (burst_stream_ && !keeps_ac3forge) {
+        if (!seal_json(m::write_stream_end({.roles = std::vector<std::string>{std::string(ac3forge::kObjectKey)}}),
+                       out)) {
+            return refuse(Refusal::kCrypto);
+        }
+        burst_stream_.reset();
     }
     // aiosendspin 9.1.1 takes a missing active_roles as the persisted roles even where the
     // specification would clear them, so they always go out (C11).
@@ -500,12 +539,16 @@ std::expected<SessionOutput, Refusal> ServerSession::activate(const m::Activate&
         return refuse(Refusal::kCrypto);
     }
     const bool had_player = player_active();
+    const bool had_ac3forge = ac3forge_active();
     activities_ = activate.activities;
     active_roles_ = roles;
     phase_ = Phase::kActive;
     if (!had_player || !keeps_player) {
         // A newly activated player owes a fresh client/state before its stream starts.
         player_state_received_ = false;
+    }
+    if (!had_ac3forge || !keeps_ac3forge) {
+        ac3forge_state_received_ = false;
     }
     // An activation ends the attempt in progress, whose messages still in flight are then
     // discarded, and a pairing activation admits a new one.
@@ -618,6 +661,107 @@ std::expected<SessionOutput, Refusal> ServerSession::command(const m::PlayerComm
     const bool ok = seal_json(
         m::write_server_command({.player = command, .ac3forge = std::nullopt, .ac3forge_refused = std::nullopt}, dialect_),
         out);
+    return sent(std::move(out), ok);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::start_burst_stream(const ac3forge::StreamStart& stream) {
+    if (!ac3forge_active() || !ac3forge_state_received_ || !hello_ || !hello_->ac3forge_support) {
+        return refuse(Refusal::kNoPlayerState);
+    }
+    if (!state_ || !state_->available) {
+        return refuse(Refusal::kUnavailable);
+    }
+    const ac3forge::Support& support = *hello_->ac3forge_support;
+    if (std::find(support.data_types.begin(), support.data_types.end(), stream.data_type) == support.data_types.end() ||
+        std::find(support.sample_rates.begin(), support.sample_rates.end(), stream.sample_rate) ==
+            support.sample_rates.end()) {
+        return refuse(Refusal::kFormatNotListed);
+    }
+    m::StreamStart start;
+    start.server_transmitted = clock_->now_us();
+    start.ac3forge = stream;
+    SessionOutput out;
+    const bool ok = seal_json(m::write_stream_start(start), out);
+    if (ok) {
+        burst_stream_ = stream;
+    }
+    return sent(std::move(out), ok);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::send_burst(std::int64_t timestamp_us, std::uint16_t pc,
+                                                                std::uint16_t pd,
+                                                                std::span<const std::uint8_t> payload) {
+    if (!burst_stream_ || !ac3forge_active()) {
+        return refuse(Refusal::kNoStream);
+    }
+    std::vector<std::uint8_t> message(kBurstChunkHeaderBytes + payload.size());
+    std::copy(payload.begin(), payload.end(), message.begin() + static_cast<std::ptrdiff_t>(kBurstChunkHeaderBytes));
+    const std::uint32_t send_ahead = saturate_send_ahead(timestamp_us - clock_->now_us());
+    if (!write_burst_chunk_header(message, timestamp_us, send_ahead, pc, pd)) {
+        return refuse(Refusal::kBadBurst);
+    }
+    // What the player would reject is not sent (planning/hearth-sendspin-extension.md, Burst
+    // chunks).
+    const auto parsed = parse_burst_chunk(message);
+    if (!parsed || parsed->data_type() != ac3forge::burst_data_type(burst_stream_->data_type)) {
+        return refuse(Refusal::kBadBurst);
+    }
+    std::vector<std::vector<std::uint8_t>> sealed;
+    if (!channel_->seal(message, sealed)) {
+        phase_ = Phase::kClosed;
+        return refuse(Refusal::kCrypto);
+    }
+    SessionOutput out;
+    for (std::vector<std::uint8_t>& ciphertext : sealed) {
+        out.binary(std::move(ciphertext));
+    }
+    return out;
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::clear_burst_stream() {
+    if (!burst_stream_) {
+        return refuse(Refusal::kNoStream);
+    }
+    SessionOutput out;
+    const bool ok = seal_json(m::write_stream_clear({.server_transmitted = clock_->now_us(),
+                                                     .roles = std::vector<std::string>{std::string(ac3forge::kObjectKey)}}),
+                              out);
+    return sent(std::move(out), ok);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::end_burst_stream() {
+    if (!burst_stream_) {
+        return refuse(Refusal::kNoStream);
+    }
+    SessionOutput out;
+    const bool ok =
+        seal_json(m::write_stream_end({.roles = std::vector<std::string>{std::string(ac3forge::kObjectKey)}}), out);
+    burst_stream_.reset();
+    return sent(std::move(out), ok);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::ac3forge_command(const ac3forge::CommandMessage& command) {
+    if (!ac3forge_active() || !ac3forge_state_received_ || !state_ || !state_->ac3forge || !hello_ ||
+        !hello_->ac3forge_support) {
+        return refuse(Refusal::kNoPlayerState);
+    }
+    const std::vector<ac3forge::Command>& listed = state_->ac3forge->supported_commands;
+    if (std::find(listed.begin(), listed.end(), command.command) == listed.end()) {
+        return refuse(Refusal::kCommandNotListed);
+    }
+    m::ServerCommand message;
+    message.ac3forge = command;
+    const std::string text = m::write_server_command(message, dialect_);
+    if (command.command == ac3forge::Command::kSettings) {
+        // Settings go out only as the client reads them whole: inside the reader's ranges as
+        // written, and inside what its support object admits.
+        const std::optional<ac3forge::Settings> read = settings_read_back(text, dialect_);
+        if (!read || ac3forge::check_settings(*read, *hello_->ac3forge_support)) {
+            return refuse(Refusal::kBadSettings);
+        }
+    }
+    SessionOutput out;
+    const bool ok = seal_json(text, out);
     return sent(std::move(out), ok);
 }
 

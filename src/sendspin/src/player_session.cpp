@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/channel.hpp"
 #include "ac3/sendspin/chunks.hpp"
 #include "ac3/sendspin/dialect.hpp"
@@ -91,7 +92,8 @@ PlayerSession::PlayerSession(PlayerConfig config, const handshake::ClientKeyring
       clock_source_(&clock),
       connection_(pairing.next_connection++),
       pairing_events_(std::make_unique<PairingEvents>(*this)),
-      state_(config_.player_state) {}
+      state_(config_.player_state),
+      ac3forge_state_(config_.ac3forge_state) {}
 
 PlayerSession::~PlayerSession() {
     // The session goes with its connection: a pairing window bound to it closes.
@@ -207,6 +209,20 @@ SessionOutput PlayerSession::on_message(std::span<const std::uint8_t> message, s
         listener_->on_audio(chunk->data, clock_.to_local(chunk->timestamp_us) - delay);
         return {};
     }
+    if (id == message_id::kAc3forgeBurst) {
+        // As player@v1's audio (planning/hearth-sendspin-extension.md, Burst chunks).
+        if (!ac3forge_active() || !burst_stream_ || external_source_ || clock_.updates() == 0) {
+            return {};
+        }
+        const auto chunk = parse_burst_chunk(message);
+        if (!chunk || chunk->data_type() != ac3forge::burst_data_type(burst_stream_->data_type)) {
+            listener_->on_invalid_burst();
+            return {};
+        }
+        const std::int64_t delay = static_cast<std::int64_t>(ac3forge_state_.output_delay_ms) * 1000;
+        listener_->on_burst(*chunk, clock_.to_local(chunk->chunk.timestamp_us) - delay);
+        return {};
+    }
     // No rule covers an unknown binary ID; it is ignored
     // (planning/hearth-sendspin-extension.md, Q2).
     return {};
@@ -243,7 +259,7 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
             .device_info = config_.device_info,
             .supported_roles = config_.supported_roles,
             .player_support = config_.player_support,
-            .ac3forge_support = std::nullopt,
+            .ac3forge_support = config_.ac3forge_support,
             .pair_methods = config_.pair_methods,
             .unpaired_access = config_.unpaired_access,
             .trusts_server = category_ == PskCategory::kLongTerm,
@@ -283,7 +299,10 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
     }
     if (type == "stream/start") {
         const auto start = m::read_stream_start(payload);
-        if (start && start->player && player_active()) {
+        if (!start) {
+            return {};
+        }
+        if (start->player && player_active()) {
             // aiosendspin 9.1.1 changes a running stream's format expecting the player to
             // drop what it holds (C17).
             if (stream_ && dialect_ == Dialect::kAiosendspin911 && !(stream_->format == start->player->format)) {
@@ -292,45 +311,72 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
             stream_ = start->player;
             listener_->on_stream_start(*stream_);
         }
+        if (start->ac3forge && ac3forge_active() && lists(*start->ac3forge)) {
+            burst_stream_ = start->ac3forge;
+            listener_->on_burst_stream_start(*burst_stream_);
+        }
         return {};
     }
-    const auto names_player = [](const std::optional<std::vector<std::string>>& roles) {
-        return !roles || std::find(roles->begin(), roles->end(), "player") != roles->end();
+    // Whether a stream/clear or stream/end covers the role whose family is `family`.
+    const auto names = [](const std::optional<std::vector<std::string>>& roles, std::string_view family) {
+        return !roles || std::find(roles->begin(), roles->end(), family) != roles->end();
     };
     if (type == "stream/clear") {
         const auto clear = m::read_stream_clear(payload);
-        if (clear && stream_ && names_player(clear->roles)) {
+        if (clear && stream_ && names(clear->roles, "player")) {
             listener_->on_stream_clear();
+        }
+        if (clear && burst_stream_ && names(clear->roles, ac3forge::kObjectKey)) {
+            listener_->on_burst_stream_clear();
         }
         return {};
     }
     if (type == "stream/end") {
         const auto end = m::read_stream_end(payload);
-        if (end && stream_ && names_player(end->roles)) {
+        if (end && stream_ && names(end->roles, "player")) {
             stream_.reset();
             listener_->on_stream_end();
+        }
+        if (end && burst_stream_ && names(end->roles, ac3forge::kObjectKey)) {
+            burst_stream_.reset();
+            listener_->on_burst_stream_end();
         }
         return {};
     }
     if (type == "server/command") {
         const auto command = m::read_server_command(payload, dialect_);
-        if (!command || !command->player || !player_active()) {
+        if (!command) {
             return {};
         }
-        // Only commands the player listed are applied; aiosendspin 9.1.1 lists volume and
-        // mute in the hello's support object (C28).
-        const m::PlayerCommand which = command->player->command;
-        const std::vector<m::PlayerCommand> none;
-        const std::vector<m::PlayerCommand>& state_list =
-            state_.supported_commands ? *state_.supported_commands : none;
-        const bool listed_in_state = std::find(state_list.begin(), state_list.end(), which) != state_list.end();
-        const std::vector<m::PlayerCommand>& hello_list = config_.player_support.commands;
-        const bool listed_in_hello = std::find(hello_list.begin(), hello_list.end(), which) != hello_list.end();
-        const bool listed = dialect_ == Dialect::kSpecification || which == m::PlayerCommand::kSetOutputDelay
-                                ? listed_in_state
-                                : listed_in_hello;
-        if (listed) {
-            listener_->on_command(*command->player);
+        if (command->player && player_active()) {
+            // Only commands the player listed are applied; aiosendspin 9.1.1 lists volume and
+            // mute in the hello's support object (C28).
+            const m::PlayerCommand which = command->player->command;
+            const std::vector<m::PlayerCommand> none;
+            const std::vector<m::PlayerCommand>& state_list =
+                state_.supported_commands ? *state_.supported_commands : none;
+            const bool listed_in_state = std::find(state_list.begin(), state_list.end(), which) != state_list.end();
+            const std::vector<m::PlayerCommand>& hello_list = config_.player_support.commands;
+            const bool listed_in_hello = std::find(hello_list.begin(), hello_list.end(), which) != hello_list.end();
+            const bool listed = dialect_ == Dialect::kSpecification || which == m::PlayerCommand::kSetOutputDelay
+                                    ? listed_in_state
+                                    : listed_in_hello;
+            if (listed) {
+                listener_->on_command(*command->player);
+            }
+        }
+        if (ac3forge_active()) {
+            // As player@v1: a command the role's latest state does not list is ignored.
+            const std::vector<ac3forge::Command>& listed = ac3forge_state_.supported_commands;
+            const auto lists_command = [&](ac3forge::Command which) {
+                return std::find(listed.begin(), listed.end(), which) != listed.end();
+            };
+            if (command->ac3forge && lists_command(command->ac3forge->command)) {
+                listener_->on_ac3forge_command(*command->ac3forge);
+            }
+            if (command->ac3forge_refused && lists_command(ac3forge::Command::kSettings)) {
+                listener_->on_settings_refused(*command->ac3forge_refused);
+            }
         }
         return {};
     }
@@ -400,6 +446,7 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
     }
 
     const bool had_player = player_active();
+    const bool had_ac3forge = ac3forge_active();
     activities_ = activate.activities;
     active_roles_ = std::move(roles);
     ++activations_;
@@ -408,6 +455,10 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
     if (had_player && !player_active() && stream_) {
         stream_.reset();
         listener_->on_stream_end();
+    }
+    if (had_ac3forge && !ac3forge_active() && burst_stream_) {
+        burst_stream_.reset();
+        listener_->on_burst_stream_end();
     }
     if (pairing) {
         // One attempt of the method named. A method the matched PSK disallows or this player
@@ -427,7 +478,8 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
                                                 clock_source_->now_us())));
         return out;
     }
-    if (!active_roles_.empty() && (first || (player_active() && !had_player) || !sent_state_)) {
+    if (!active_roles_.empty() &&
+        (first || (player_active() && !had_player) || (ac3forge_active() && !had_ac3forge) || !sent_state_)) {
         send_state(out);
     }
     send_clock(out);
@@ -543,11 +595,30 @@ bool PlayerSession::player_active() const {
            std::find(active_roles_.begin(), active_roles_.end(), kPlayerRole) != active_roles_.end();
 }
 
+bool PlayerSession::ac3forge_active() const {
+    return phase_ == Phase::kActive && config_.ac3forge_support &&
+           std::find(active_roles_.begin(), active_roles_.end(), ac3forge::kRole) != active_roles_.end();
+}
+
+bool PlayerSession::lists(const ac3forge::StreamStart& stream) const {
+    if (!config_.ac3forge_support) {
+        return false;
+    }
+    const ac3forge::Support& support = *config_.ac3forge_support;
+    return std::find(support.data_types.begin(), support.data_types.end(), stream.data_type) !=
+               support.data_types.end() &&
+           std::find(support.sample_rates.begin(), support.sample_rates.end(), stream.sample_rate) !=
+               support.sample_rates.end();
+}
+
 void PlayerSession::send_state(SessionOutput& out) {
     m::ClientState state;
     state.available = clock_.converged() && !external_source_;
     if (player_active()) {
         state.player = state_;
+    }
+    if (ac3forge_active()) {
+        state.ac3forge = ac3forge_state_;
     }
     seal(m::write_client_state(state, dialect_), out);
     reported_available_ = state.available;
@@ -613,6 +684,15 @@ SessionOutput PlayerSession::set_state(const m::PlayerState& state) {
     state_ = state;
     SessionOutput out;
     if (player_active() && sent_state_) {
+        send_state(out);
+    }
+    return out;
+}
+
+SessionOutput PlayerSession::set_ac3forge_state(const ac3forge::State& state) {
+    ac3forge_state_ = state;
+    SessionOutput out;
+    if (ac3forge_active() && sent_state_) {
         send_state(out);
     }
     return out;

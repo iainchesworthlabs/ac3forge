@@ -216,7 +216,7 @@ and release packaging.
   and answer with frames, so a board can run the player's. The player checks each activation
   as the specification's admissibility rules say; the server refuses what the specification
   does not allow at that moment, such as a stream to an unavailable player or a command it
-  did not list. Arbitration between servers and the roles beyond `player@v1` come next.
+  did not list.
 - **Sendspin's pairing flows in `src/sendspin`**: the Pairing PSK Flow, the Dynamic Pairing
   Code Flow in digits or as a QR token with its retry rounds and round limit, and the Static
   Pairing Code Flow behind its gesture window, from both the client's side and the server's,
@@ -288,6 +288,13 @@ and release packaging.
   sink can report `settings_error` for it; what depends on the sink, such as one trim per output
   inside its range, is checked against the sink's own support object. The objects join
   `fuzz_sendspin_messages`.
+- **`_ac3forge_player@v1` in Sendspin's sessions**: a player that lists the role offers its
+  support object, reports its state, and hands its listener the role's stream, each burst chunk
+  at its time on the player's clock less the role's output delay, and the commands its state
+  lists; a chunk of another data type than the stream's is passed on to be counted as invalid.
+  The server session activates the role only for a client that offers it, and sends a stream
+  only in a data type and sample rate the client listed, a burst only when its Pc and Pd fit its
+  payload and the stream, and settings only when the client would read them back whole.
 
 **Containers and encoding**
 

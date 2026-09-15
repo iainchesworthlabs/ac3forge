@@ -14,6 +14,8 @@
 #include <variant>
 #include <vector>
 
+#include "ac3/sendspin/ac3forge_player.hpp"
+#include "ac3/sendspin/chunks.hpp"
 #include "ac3/sendspin/crypto.hpp"
 #include "ac3/sendspin/handshake.hpp"
 #include "ac3/sendspin/handshake_session.hpp"
@@ -30,10 +32,12 @@
 // to cross, both sides are ticked as time advances, and the player's clock can run at an
 // offset from the server's. From the handshake to audio chunks played at the right local
 // time, and the paths that change a session midway: commands, unpairing, re-handshakes and
-// pairing by each method, with its cancels and timeouts.
+// pairing by each method, with its cancels and timeouts. _ac3forge_player@v1's bursts, commands
+// and settings run over the same link.
 
 namespace {
 
+namespace ac = ac3::sendspin::ac3forge;
 namespace m = ac3::sendspin::messages;
 namespace hs = ac3::sendspin::handshake;
 namespace flow = ac3::sendspin::pairing_flow;
@@ -108,6 +112,20 @@ struct PlayerEvents final : PlayerListener {
     bool admit = true;
     std::vector<bool> firsts;
     std::vector<bool> attempts;
+    // _ac3forge_player@v1.
+    struct Burst {
+        std::uint16_t pc;
+        std::uint16_t pd;
+        std::vector<std::uint8_t> payload;
+        std::int64_t local_time;
+    };
+    std::vector<ac::StreamStart> burst_starts;
+    int burst_clears = 0;
+    int burst_ends = 0;
+    std::vector<Burst> bursts;
+    int invalid_bursts = 0;
+    std::vector<ac::CommandMessage> ac3forge_commands;
+    std::vector<ac::SettingsError> refused_settings;
 
     bool on_activation(const Key32& /*server_key*/, const m::Activate& /*activate*/, bool first) override {
         firsts.push_back(first);
@@ -130,6 +148,19 @@ struct PlayerEvents final : PlayerListener {
         keys->held.push_back({.psk = long_term_psk, .category = hs::PskCategory::kLongTerm, .server_key = server_key});
     }
     void on_pairing_ended(std::optional<AbortReason> reason) override { ended.push_back(reason); }
+
+    void on_burst_stream_start(const ac::StreamStart& stream) override { burst_starts.push_back(stream); }
+    void on_burst_stream_clear() override { ++burst_clears; }
+    void on_burst_stream_end() override { ++burst_ends; }
+    void on_burst(const ac3::sendspin::BurstChunk& chunk, std::int64_t local_time) override {
+        bursts.push_back({.pc = chunk.pc,
+                          .pd = chunk.pd,
+                          .payload = {chunk.chunk.data.begin(), chunk.chunk.data.end()},
+                          .local_time = local_time});
+    }
+    void on_invalid_burst() override { ++invalid_bursts; }
+    void on_ac3forge_command(const ac::CommandMessage& command) override { ac3forge_commands.push_back(command); }
+    void on_settings_refused(const ac::SettingsError& error) override { refused_settings.push_back(error); }
 };
 
 struct ServerEvents final : ServerListener {
@@ -192,6 +223,47 @@ PlayerConfig player_config(bool unpaired_access) {
                                                                                m::PlayerCommand::kMute},
                            .format = std::nullopt};
     return config;
+}
+
+// A Hearth sink's offer: _ac3forge_player@v1 before player@v1, with unpaired access.
+PlayerConfig extension_config() {
+    PlayerConfig config = player_config(true);
+    config.supported_roles = {"_ac3forge_player@v1", "player@v1"};
+    ac::Support support;
+    support.data_types = {ac::DataType::kAc3, ac::DataType::kEac3};
+    support.sample_rates = {48000};
+    support.outputs.count = 2;
+    support.outputs.bit_depth = 32;
+    support.outputs.bit_depths = {16, 32};
+    support.management.routing = true;
+    support.management.trim_db = {-12.0, 12.0};
+    support.management.max_delay_ms = 50.0;
+    support.management.crossover_hz = {40.0, 250.0};
+    support.management.identify = true;
+    support.decoder_settings = {"mode", "drc_cut", "drc_boost"};
+    support.buffer_capacity = 1 << 20;
+    config.ac3forge_support = support;
+    config.ac3forge_state.volume = 100;
+    config.ac3forge_state.muted = false;
+    config.ac3forge_state.required_lead_time_ms = 300;
+    config.ac3forge_state.min_buffer_ms = 150;
+    config.ac3forge_state.supported_commands = {ac::Command::kVolume, ac::Command::kMute,
+                                                ac::Command::kSetOutputDelay, ac::Command::kSettings};
+    return config;
+}
+
+// An E-AC-3 burst payload of `bytes` bytes that starts with a syncframe's sync word.
+std::vector<std::uint8_t> eac3_payload(std::size_t bytes, std::uint8_t fill) {
+    std::vector<std::uint8_t> payload(bytes, fill);
+    payload[0] = 0x0B;
+    payload[1] = 0x77;
+    return payload;
+}
+
+m::Activate extension_playback() {
+    return {.activities = {m::Activity::kPlayback},
+            .active_roles = std::vector<std::string>{"_ac3forge_player@v1"},
+            .pairing = std::nullopt};
 }
 
 // Both sessions over a simulated link.
@@ -733,4 +805,145 @@ TEST_CASE("sessions: the owner rejects an activation, or another server displace
         CHECK(rig.player_events.attempts == std::vector<bool>{true, false});
         CHECK(rig.player_events.ended == std::vector<std::optional<AbortReason>>{AbortReason::kConcurrentAttempt});
     }
+}
+
+TEST_CASE("sessions: _ac3forge_player@v1 streams bursts on the player's clock", "[sendspin][sessions][ac3forge]") {
+    const std::int64_t offset = GENERATE(as<std::int64_t>{}, 0, -45'000'000);
+    Rig rig(extension_config(), offset, hs::sentinel_choice(), {});
+    REQUIRE(rig.run_until([&] { return !rig.server_events.hellos.empty(); }, 1'000'000));
+    REQUIRE(rig.server_events.hellos[0].ac3forge_support.has_value());
+    CHECK(rig.server_events.hellos[0].supported_roles == std::vector<std::string>{"_ac3forge_player@v1", "player@v1"});
+
+    rig.send(rig.server.activate(extension_playback()));
+    REQUIRE(rig.run_until([&] { return rig.available(); }, 5'000'000));
+    // The state carries the role's object, and not player@v1's.
+    CHECK(rig.server_events.states.back().ac3forge.has_value());
+    CHECK_FALSE(rig.server_events.states.back().player.has_value());
+    CHECK(refusal(rig.server.start_stream({.format = kPcm, .codec_header = {}})) == Refusal::kNoPlayerState);
+    CHECK(refusal(rig.server.start_burst_stream({.data_type = ac::DataType::kEac3, .sample_rate = 44100})) ==
+          Refusal::kFormatNotListed);
+    CHECK(refusal(rig.server.send_burst(rig.now, 21, 8, eac3_payload(8, 0))) == Refusal::kNoStream);
+
+    rig.send(rig.server.start_burst_stream({.data_type = ac::DataType::kEac3, .sample_rate = 48000}));
+    REQUIRE(rig.run_until([&] { return !rig.player_events.burst_starts.empty(); }, 100'000));
+    CHECK(rig.player_events.burst_starts[0].data_type == ac::DataType::kEac3);
+    CHECK(rig.player.burst_streaming());
+    CHECK(rig.player_events.starts.empty());
+
+    // What the player would reject is refused before it goes: an AC-3 burst in an E-AC-3 stream, a
+    // Pd that disagrees with the payload, and a payload with no sync word.
+    CHECK(refusal(rig.server.send_burst(rig.now, 1, 8 * 8, eac3_payload(8, 0))) == Refusal::kBadBurst);
+    CHECK(refusal(rig.server.send_burst(rig.now, 21, 9, eac3_payload(8, 0))) == Refusal::kBadBurst);
+    CHECK(refusal(rig.server.send_burst(rig.now, 21, 8, std::vector<std::uint8_t>(8, 0))) == Refusal::kBadBurst);
+
+    const std::int64_t first = rig.now + 500'000;
+    for (int k = 0; k < 8; ++k) {
+        rig.send(rig.server.send_burst(first + (k * 32'000), 21, 1792, eac3_payload(1792, static_cast<std::uint8_t>(k))));
+    }
+    REQUIRE(rig.run_until([&] { return rig.player_events.bursts.size() == 8; }, 100'000));
+    for (int k = 0; k < 8; ++k) {
+        const PlayerEvents::Burst& burst = rig.player_events.bursts[static_cast<std::size_t>(k)];
+        CHECK(burst.pc == 21);
+        CHECK(burst.pd == 1792);
+        CHECK(burst.payload == eac3_payload(1792, static_cast<std::uint8_t>(k)));
+        // The burst's server timestamp, on the player's clock.
+        CHECK(std::llabs(burst.local_time - (first + (k * 32'000) + offset)) < 1'000);
+    }
+    CHECK(rig.player_events.invalid_bursts == 0);
+
+    // The role's output delay plays every burst earlier by as much.
+    ac::State delayed = extension_config().ac3forge_state;
+    delayed.output_delay_ms = 20;
+    rig.from_player(rig.player.set_ac3forge_state(delayed));
+    REQUIRE(rig.run_until(
+        [&] {
+            const m::ClientState& last = rig.server_events.states.back();
+            return last.ac3forge && last.ac3forge->output_delay_ms == 20;
+        },
+        100'000));
+    rig.send(rig.server.send_burst(first + (8 * 32'000), 21, 1792, eac3_payload(1792, 8)));
+    REQUIRE(rig.run_until([&] { return rig.player_events.bursts.size() == 9; }, 100'000));
+    CHECK(std::llabs(rig.player_events.bursts[8].local_time - (first + (8 * 32'000) + offset - 20'000)) < 1'000);
+
+    rig.send(rig.server.clear_burst_stream());
+    REQUIRE(rig.run_until([&] { return rig.player_events.burst_clears == 1; }, 100'000));
+    CHECK(rig.player_events.clears == 0);
+
+    // An activation without the role ends its stream first, and the state then carries
+    // player@v1's object.
+    rig.send(rig.server.activate(playback_activation()));
+    REQUIRE(rig.run_until([&] { return rig.player_events.burst_ends == 1; }, 100'000));
+    CHECK_FALSE(rig.player.burst_streaming());
+    CHECK_FALSE(rig.server.burst_streaming());
+    CHECK(refusal(rig.server.send_burst(rig.now, 21, 1792, eac3_payload(1792, 0))) == Refusal::kNoStream);
+    REQUIRE(rig.run_until([&] { return rig.server_events.states.back().player.has_value(); }, 100'000));
+    CHECK_FALSE(rig.server_events.states.back().ac3forge.has_value());
+    CHECK(rig.player_events.burst_ends == 1);
+}
+
+TEST_CASE("sessions: _ac3forge_player@v1's commands and settings", "[sendspin][sessions][ac3forge]") {
+    Rig rig(extension_config(), 0, hs::sentinel_choice(), {});
+    REQUIRE(rig.run_until([&] { return !rig.server_events.hellos.empty(); }, 1'000'000));
+    ac::CommandMessage volume;
+    volume.command = ac::Command::kVolume;
+    volume.volume = 30;
+    // Nothing before the role is active and its state has arrived.
+    CHECK(refusal(rig.server.ac3forge_command(volume)) == Refusal::kNoPlayerState);
+    rig.send(rig.server.activate(extension_playback()));
+    REQUIRE(rig.run_until([&] { return rig.available(); }, 5'000'000));
+
+    rig.send(rig.server.ac3forge_command(volume));
+    ac::CommandMessage identify;
+    identify.command = ac::Command::kIdentify;
+    identify.identify = ac::Identify{.output = 0, .level_db = -30.0};
+    CHECK(refusal(rig.server.ac3forge_command(identify)) == Refusal::kCommandNotListed);
+
+    ac::CommandMessage settings;
+    settings.command = ac::Command::kSettings;
+    settings.settings.revision = 1;
+    settings.settings.trim_db = std::vector<double>{0.0, -3.0};
+    settings.settings.decoder.drc_cut = 0.5;
+    // Settings the player would refuse do not go: one trim short, a decoder key it did not list,
+    // and a value outside the reader's range.
+    ac::CommandMessage short_trim = settings;
+    short_trim.settings.trim_db = std::vector<double>{0.0};
+    CHECK(refusal(rig.server.ac3forge_command(short_trim)) == Refusal::kBadSettings);
+    ac::CommandMessage unlisted = settings;
+    unlisted.settings.decoder.objects = ac::ObjectsPolicy::kNever;
+    CHECK(refusal(rig.server.ac3forge_command(unlisted)) == Refusal::kBadSettings);
+    ac::CommandMessage strong = settings;
+    strong.settings.decoder.drc_cut = 1.5;
+    CHECK(refusal(rig.server.ac3forge_command(strong)) == Refusal::kBadSettings);
+    rig.send(rig.server.ac3forge_command(settings));
+
+    REQUIRE(rig.run_until([&] { return rig.player_events.ac3forge_commands.size() == 2; }, 100'000));
+    CHECK(rig.player_events.ac3forge_commands[0].volume == 30);
+    CHECK(rig.player_events.ac3forge_commands[1].settings.revision == 1);
+    CHECK(rig.player_events.ac3forge_commands[1].settings.trim_db == settings.settings.trim_db);
+    CHECK(rig.player_events.ac3forge_commands[1].settings.decoder.drc_cut == 0.5);
+    CHECK(rig.player_events.commands.empty());
+    CHECK(rig.player_events.refused_settings.empty());
+
+    // The player applies them and reports the revision.
+    ac::State applied = extension_config().ac3forge_state;
+    applied.volume = 30;
+    applied.settings_revision = 1;
+    rig.from_player(rig.player.set_ac3forge_state(applied));
+    REQUIRE(rig.run_until(
+        [&] {
+            const m::ClientState& last = rig.server_events.states.back();
+            return last.ac3forge && last.ac3forge->settings_revision == 1;
+        },
+        100'000));
+    CHECK(rig.server_events.states.back().ac3forge->volume == 30);
+
+    // A command the player's latest state no longer lists is ignored, even from a server that has
+    // not heard yet.
+    applied.supported_commands = {ac::Command::kVolume};
+    rig.from_player(rig.player.set_ac3forge_state(applied));
+    settings.settings.revision = 2;
+    rig.send(rig.server.ac3forge_command(settings));
+    rig.run_for(50'000);
+    CHECK(rig.player_events.ac3forge_commands.size() == 2);
+    CHECK(refusal(rig.server.ac3forge_command(settings)) == Refusal::kCommandNotListed);
 }

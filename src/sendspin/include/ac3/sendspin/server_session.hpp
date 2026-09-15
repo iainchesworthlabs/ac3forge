@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/channel.hpp"
 #include "ac3/sendspin/dialect.hpp"
 #include "ac3/sendspin/handshake.hpp"
@@ -28,13 +29,15 @@
 // client's client/hello (and with it the client's dialect, planning/hearth-sendspin-extension.md,
 // Music Assistant and aiosendspin 9.1.1), answers client/time the moment it arrives, and
 // passes client/state, client/goodbye and client/leave to its listener. Everything else is the
-// engine's to decide and the session's to carry out: the activation, the player@v1 stream and
-// its chunks, group updates, commands, pairing, unpairing and re-handshakes.
+// engine's to decide and the session's to carry out: the activation, the streams of player@v1 and
+// _ac3forge_player@v1 (planning/hearth-sendspin-extension.md, The role _ac3forge_player@v1) and
+// their chunks, group updates, commands, pairing, unpairing and re-handshakes.
 //
 // The calls that send check what the specification requires of them at that moment - an
 // activation's roles and activities against the client and the PSK, no stream to an
 // unavailable client, no chunk before the player's state or outside a stream, only commands
-// the player listed - and refuse otherwise.
+// the player listed, and for the extension role only data types, sample rates and settings its
+// support object admits - and refuse otherwise.
 //
 // A pairing activation runs one attempt of the method it names (pairing_flow::ServerPairing):
 // the session hands the client's pairing messages to it, the operator's code through
@@ -91,11 +94,13 @@ enum class Refusal : std::uint8_t {
     kNotReady,          // the phase does not allow the call
     kBadActivation,     // roles or activities the client or the PSK does not allow
     kUnavailable,       // the client reports available: false
-    kNoPlayerState,     // player@v1 is not active, or its client/state has not arrived
-    kNoStream,          // no player stream is running
-    kFormatNotListed,   // a stream format the client did not list
+    kNoPlayerState,     // the player role is not active, or its client/state has not arrived
+    kNoStream,          // no stream of the role is running
+    kFormatNotListed,   // a stream format, or a data type and sample rate, the client did not list
     kFormatChange,      // aiosendspin 9.1.1 does not take a format change in place (C17)
     kCommandNotListed,  // a player command the client did not list
+    kBadBurst,          // a burst whose Pc and Pd do not fit its payload or the running stream
+    kBadSettings,       // settings the client's support object does not admit
     kNotPaired,         // server/unpair on a connection without a long-term PSK
     kNoAttempt,         // no pairing attempt is waiting for this
     kBadCode,           // not a code of the shape the attempt takes
@@ -127,6 +132,20 @@ class ServerSession {
     [[nodiscard]] std::expected<SessionOutput, Refusal> end_stream();
     [[nodiscard]] std::expected<SessionOutput, Refusal> update_group(const messages::GroupUpdate& update);
     [[nodiscard]] std::expected<SessionOutput, Refusal> command(const messages::PlayerCommandMessage& command);
+
+    // _ac3forge_player@v1's stream, as player@v1's: a data type and sample rate the client listed.
+    [[nodiscard]] std::expected<SessionOutput, Refusal> start_burst_stream(const ac3forge::StreamStart& stream);
+    // One burst of the running stream, to be played from `timestamp_us` on the server clock: its
+    // Pc and Pd as ac3::iec61937 writes them, and the payload they describe. send_ahead is taken
+    // just before the chunk is sealed.
+    [[nodiscard]] std::expected<SessionOutput, Refusal> send_burst(std::int64_t timestamp_us, std::uint16_t pc,
+                                                                   std::uint16_t pd,
+                                                                   std::span<const std::uint8_t> payload);
+    [[nodiscard]] std::expected<SessionOutput, Refusal> clear_burst_stream();
+    [[nodiscard]] std::expected<SessionOutput, Refusal> end_burst_stream();
+    // A command the role's state lists; settings also checked against the support object
+    // (ac3forge::check_settings).
+    [[nodiscard]] std::expected<SessionOutput, Refusal> ac3forge_command(const ac3forge::CommandMessage& command);
     [[nodiscard]] std::expected<SessionOutput, Refusal> unpair();
     // Runs a new handshake inside the channel, naming `choice`: to the pairing PSK before a
     // pairing_psk activation, or to rotate keys. Refused while a pairing attempt is running.
@@ -166,6 +185,7 @@ class ServerSession {
     [[nodiscard]] const std::optional<messages::ClientState>& state() const { return state_; }
     [[nodiscard]] const std::vector<std::string>& active_roles() const { return active_roles_; }
     [[nodiscard]] bool streaming() const { return stream_.has_value(); }
+    [[nodiscard]] bool burst_streaming() const { return burst_stream_.has_value(); }
     // A pairing activity is declared on the connection.
     [[nodiscard]] bool pairing() const;
     // A pairing attempt waits for the operator's code.
@@ -187,6 +207,7 @@ class ServerSession {
     void leave_pairing(SessionOutput& out);
     [[nodiscard]] bool attempt_running() const { return attempt_ && !attempt_->finished(); }
     [[nodiscard]] bool player_active() const;
+    [[nodiscard]] bool ac3forge_active() const;
     [[nodiscard]] std::expected<SessionOutput, Refusal> sent(SessionOutput out, bool ok);
 
     ServerConfig config_;
@@ -206,9 +227,11 @@ class ServerSession {
     std::optional<messages::ClientHello> hello_;
     std::optional<messages::ClientState> state_;
     bool player_state_received_ = false;
+    bool ac3forge_state_received_ = false;
     std::vector<messages::Activity> activities_;
     std::vector<std::string> active_roles_;
     std::optional<messages::PlayerStream> stream_;
+    std::optional<ac3forge::StreamStart> burst_stream_;
 
     // Pairing activations since the last handshake (pairing.md, Pairing index).
     std::uint32_t pairing_index_ = 0;
