@@ -12,13 +12,14 @@
 // access units come out a block at a time, renders each block onto the
 // configured layout and writes it to the sink.
 //
-// Both tasks, the ring, the decoders and the renderer are the component's
-// (esp-idf/ac3forge/include/ac3forge/player.hpp, layout.hpp, render.hpp), and
-// so is the control surface (control.hpp) that lets something on the network
-// say what to play and onto what. What is left here is what an integrator's
-// own firmware would have to write too: the seams, adapted; a level meter; a
-// command queue between the HTTP server's task and this one, which owns the
-// player; and the reporting.
+// Both tasks, the ring and the decoders are the component's
+// (esp-idf/ac3forge/include/ac3forge/player.hpp), and so is the control surface
+// (control.hpp) that lets something on the network say what to play and onto
+// what; the layout and the renderer are the library's
+// (src/forge/include/ac3/render/layout.hpp, render.hpp). What is left here is
+// what an integrator's own firmware would have to write too: the seams,
+// adapted; a level meter; a command queue between the HTTP server's task and
+// this one, which owns the player; and the reporting.
 //
 // BOTH ENDS ARE SEAMS, and CMake resolves both - see byte_source.hpp and
 // audio_sink.hpp. This file mentions neither a partition nor I2S.
@@ -55,8 +56,8 @@
 #include "freertos/task.h"
 
 #include "ac3/core/tables.hpp"
+#include "ac3/render/layout.hpp"
 #include "ac3forge/control.hpp"
-#include "ac3forge/layout.hpp"
 #include "ac3forge/player.hpp"
 
 #include "audio_sink.hpp"
@@ -79,7 +80,7 @@ namespace {
 
 constexpr std::uint32_t kSampleRate = 48000;
 constexpr std::uint64_t kFrameDurationUs = 32000;  // §5.3.2: 1,536 samples at 48 kHz
-constexpr std::size_t kMaxSlots = ac3forge::OutputLayout::kMaxSlots;
+constexpr std::size_t kMaxSlots = ac3::render::OutputLayout::kMaxSlots;
 
 // From Kconfig, ints so they arrive as plain constants rather than through
 // preprocessor conditionals - see main/Kconfig.projbuild. kMaxLaps of 0 plays
@@ -208,7 +209,7 @@ std::atomic<const char*> g_state{"stopped"};
 std::atomic<float> g_volume{1.0F};
 // The layout the next play uses, and its text for /layout and /status. Written
 // by app_main, read under the mutex by the control surface.
-ac3forge::OutputLayout g_layout;
+ac3::render::OutputLayout g_layout;
 // How many channels the sink is presently open for - 0 before the first
 // begin_play, which is always a reconfigure since a real layout needs at
 // least one. Written only from begin_play, on the task that owns the player.
@@ -378,7 +379,7 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
 // A layout for the next play, from the control surface: parsed here, on the
 // server's task, so a refusal is answered at once; applied by app_main.
 bool accept_layout(std::string_view text) {
-    const auto layout = ac3forge::OutputLayout::parse(text);
+    const auto layout = ac3::render::OutputLayout::parse(text);
     if (!layout.has_value() || layout->slots() > static_cast<std::size_t>(player::sink_slots())) {
         return false;
     }
@@ -496,7 +497,7 @@ void on_alloc_failed(std::size_t size, std::uint32_t caps, const char* function)
 
 extern "C" void app_main() {
     (void)heap_caps_register_failed_alloc_callback(on_alloc_failed);
-    const auto layout = ac3forge::OutputLayout::parse(kLayoutText);
+    const auto layout = ac3::render::OutputLayout::parse(kLayoutText);
     if (!layout.has_value()) {
         std::printf("error: CONFIG_AC3FORGE_EXAMPLE_LAYOUT \"%s\" is not a layout - a name like "
                     "5.1.4, or a speaker list like L,R,C,LFE,Ls,Rs\n",
@@ -568,7 +569,7 @@ extern "C" void app_main() {
                 case CommandKind::kLayout:
                     // Already validated by accept_layout; parsed again here
                     // because the queue carries text, not a layout.
-                    if (const auto next = ac3forge::OutputLayout::parse(cmd.text)) {
+                    if (const auto next = ac3::render::OutputLayout::parse(cmd.text)) {
                         xSemaphoreTake(g_player_mutex, portMAX_DELAY);
                         g_layout = *next;
                         xSemaphoreGive(g_player_mutex);

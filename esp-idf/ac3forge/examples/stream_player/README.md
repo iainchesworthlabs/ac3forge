@@ -496,7 +496,7 @@ as a name — `2.0` (the default), `5.1`, `7.1`, `5.1.4`, `7.1.4`, `9.2.4`,
 `L,R,C,LFE,Ls,Rs` for a 5.1 DAC wired in WAV order, `30/0,-30/0,lfe` by angles,
 `-` for a slot nothing is on. A name is Table E2.5's order with the LFE last, so
 `5.1` is L C R Ls Rs LFE; a list is whatever order the board is wired in. The
-grammar is [`ac3forge/layout.hpp`](../../include/ac3forge/layout.hpp)'s and
+grammar is [`ac3/render/layout.hpp`](../../../../src/forge/include/ac3/render/layout.hpp)'s and
 `PUT /layout` on the control surface takes the same text for the next play.
 
 What happens to a stream depends on the layout, not the stream:
@@ -531,11 +531,11 @@ with real time. The same stream decodes and renders onto twelve slots in about
 [`planning/esp32-stream-set.md`](../../../../planning/esp32-stream-set.md#on-a-board)
 and [Folded to stereo](../../../../docs/platforms/bare-metal/esp32-s3.md#folded-to-stereo).
 
-All of it is [`ac3forge/render.hpp`](../../include/ac3forge/render.hpp), one
-256-sample block at a time, which is why a 7.1.4 layout costs the player 16 KB
+All of it is [`ac3/render/render.hpp`](../../../../src/forge/include/ac3/render/render.hpp),
+one 256-sample block at a time, which is why a 7.1.4 layout costs the player 16 KB
 of block storage rather than 96 KB of frame. The geometry is the library's
 (`tests/spatial/`); what the header adds is indexing between coded channels,
-objects and slots, tested on the host in `tests/io/test_layout.cpp` because a
+objects and slots, tested on the host in `tests/render/test_layout.cpp` because a
 swapped subscript there puts the centre in the subwoofer and nothing complains.
 
 CI renders one under QEMU (`sdkconfig.ci-render`): the footprint probe's

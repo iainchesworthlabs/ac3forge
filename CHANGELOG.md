@@ -179,6 +179,13 @@ and release packaging.
   framing/scan helpers and the BS.1770 meter, each with real-signal round-trip tests.
   `build-rust` runs on all three desktop OSes; the first Windows build found a real
   portability bug (bindgen types C enums `i32` on MSVC, `u32` elsewhere).
+- **Speaker management beside the renderer** (`src/forge/include/ac3/render/`, the first
+  step of `planning/hearth-reference-player.md`): `Routing` patches each rendered channel
+  to one device output or to none, `TrimDelay` applies a per-output trim in dB and delay in
+  samples over caller-owned storage, `IdentifyTone` plays pink noise at a stated level on
+  one output at a time (30-80 Hz for an LFE feed), and `LayoutRenderer::set_crossover_hz()`
+  makes the bass-management corner a setting between 40 and 250 Hz. All header-only and
+  allocation-free, so the boards can use them too.
 
 **Verification and CI**
 
@@ -266,6 +273,13 @@ and release packaging.
   (`coupling.hpp`, `eac3_tools.hpp`), where the code they hold — used by both decoders
   on every frame — already lived. Source-breaking, deliberately landing before the v1.0
   API freeze with no compatibility shim; ABI unchanged.
+- **The ESP32 player's output layout and renderer moved into the library as
+  `ac3::render`** (`esp-idf/ac3forge/include/ac3forge/{layout,render}.hpp` to
+  `src/forge/include/ac3/render/`), with the player's fold-and-objects policy as
+  `ac3::render::serve()`, so the desktop player and its test sink render with the boards'
+  code. The arithmetic is unchanged: the QEMU render shape's twelve slot levels are the
+  same as main's. Source-breaking for the component's `ac3forge::OutputLayout` and
+  `ac3forge::LayoutRenderer`, which were never published to the component registry.
 
 **SonarCloud and code quality**
 
