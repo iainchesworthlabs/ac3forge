@@ -1,0 +1,31 @@
+# ESP-IDF configuration for the minimum-footprint decoder probe on ESP32-C6.
+#
+# Only settings that differ from IDF's own defaults, or that a comparison
+# depends on. The esp32s3 sibling's copy of this file carries the arguments
+# these share with it and the C3's.
+
+CONFIG_IDF_TARGET="esp32c6"
+
+# -Os, matching every other leg, so the footprint numbers compare.
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+
+# 160 MHz, the part's maximum: a 32 ms frame is 5.12 M cycles, as on the C3.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
+
+# 4 MB, which every C6 module has at least; the image is a fraction of it.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# The 1.5 MB factory partition. The probe and its fixtures take about half a
+# megabyte, and the WiFi shape adds the radio's libraries on top, which do not
+# fit IDF's default 1 MB partition. Set for both shapes so they differ only in
+# what main/Kconfig.projbuild chooses.
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# The task app_main runs on, and so the task the decode runs on: 32,768 bytes
+# as on the other two ESP32 shapes. The probe reports what it left free.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+
+# No task watchdog: the probe runs flat out and never yields. In the WiFi shape
+# the idle task never runs during a decode either, which is what the watchdog
+# would report.
+CONFIG_ESP_TASK_WDT_INIT=n

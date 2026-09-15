@@ -98,6 +98,96 @@ TEST_CASE("interleave never writes past the slot count", "[io][interleave]") {
     }
 }
 
+TEST_CASE("16-bit TDM lays channels out slot by slot and zeroes the rest", "[io][interleave]") {
+    // Seven-point-one-shaped: eight slots, distinct values per channel and per
+    // frame so a transposed index reads as a wrong value.
+    constexpr std::size_t kSlots = 8;
+    constexpr std::size_t kFrames = 3;
+    std::vector<std::vector<float>> planes;
+    for (std::size_t ch = 0; ch < kSlots; ++ch) {
+        std::vector<float> plane;
+        for (std::size_t frame = 0; frame < kFrames; ++frame) {
+            plane.push_back(0.05F * static_cast<float>(ch + 1) + 0.01F * static_cast<float>(frame));
+        }
+        planes.push_back(plane);
+    }
+    const auto channels = views(planes);
+
+    std::vector<std::int16_t> out(kSlots * kFrames, 0);
+    REQUIRE(ac3forge::interleave_16in16(channels, kSlots, kFrames, out) == 0);
+    for (std::size_t frame = 0; frame < kFrames; ++frame) {
+        for (std::size_t ch = 0; ch < kSlots; ++ch) {
+            CAPTURE(frame, ch);
+            REQUIRE(out[(frame * kSlots) + ch] == ac3forge::to_pcm16(planes[ch][frame]));
+        }
+    }
+
+    // A 5.1 programme on the same eight slots: the last two are written as
+    // zeros over whatever the reused buffer held, as interleave_24in32 does.
+    const auto six = std::span<const std::span<const float>>{channels}.subspan(0, 6);
+    std::vector<std::int16_t> padded(kSlots * kFrames, 0x7F00);
+    REQUIRE(ac3forge::interleave_16in16(six, kSlots, kFrames, padded) == 2);
+    for (std::size_t frame = 0; frame < kFrames; ++frame) {
+        CAPTURE(frame);
+        for (std::size_t slot = 0; slot < 6; ++slot) {
+            REQUIRE(padded[(frame * kSlots) + slot] == ac3forge::to_pcm16(planes[slot][frame]));
+        }
+        REQUIRE(padded[(frame * kSlots) + 6] == 0);
+        REQUIRE(padded[(frame * kSlots) + 7] == 0);
+    }
+}
+
+TEST_CASE("16-bit TDM takes a later line's channels from a subspan", "[io][interleave]") {
+    // How a second line would call it: the channels past line 0's, into a
+    // frame of the same width, the unused tail zeroed.
+    std::vector<std::vector<float>> planes;
+    for (int ch = 0; ch < 10; ++ch) {
+        planes.emplace_back(2, 0.1F * static_cast<float>(ch + 1));
+    }
+    const auto channels = views(planes);
+    const auto rest = std::span<const std::span<const float>>{channels}.subspan(8, 2);
+
+    std::array<std::int16_t, 16> out{};
+    out.fill(0x1234);
+    REQUIRE(ac3forge::interleave_16in16(rest, 8, 2, out) == 6);
+    for (std::size_t frame = 0; frame < 2; ++frame) {
+        CAPTURE(frame);
+        REQUIRE(out[frame * 8] == ac3forge::to_pcm16(planes[8][frame]));
+        REQUIRE(out[(frame * 8) + 1] == ac3forge::to_pcm16(planes[9][frame]));
+        for (std::size_t slot = 2; slot < 8; ++slot) {
+            REQUIRE(out[(frame * 8) + slot] == 0);
+        }
+    }
+}
+
+TEST_CASE("16-bit TDM never writes past the slot count", "[io][interleave]") {
+    std::vector<std::vector<float>> planes;
+    for (int ch = 0; ch < 8; ++ch) {
+        planes.emplace_back(2, 0.25F);
+    }
+    const auto channels = views(planes);
+
+    // Two slots of two frames, with a guard entry after them that must survive.
+    std::array<std::int16_t, 5> out{};
+    out[4] = 0x5A5A;
+    REQUIRE(ac3forge::interleave_16in16(channels, 2, 2, std::span<std::int16_t>{out.data(), 4}) ==
+            0);
+    for (std::size_t i = 0; i < 4; ++i) {
+        REQUIRE(out[i] == ac3forge::to_pcm16(0.25F));
+    }
+    REQUIRE(out[4] == 0x5A5A);
+}
+
+TEST_CASE("16-bit conversion is full scale at +-1 and clipped past it", "[io][interleave]") {
+    REQUIRE(ac3forge::to_pcm16(0.0F) == 0);
+    REQUIRE(ac3forge::to_pcm16(1.0F) == 32767);
+    REQUIRE(ac3forge::to_pcm16(-1.0F) == -32767);
+    REQUIRE(ac3forge::to_pcm16(4.0F) == 32767);
+    REQUIRE(ac3forge::to_pcm16(-4.0F) == -32767);
+    REQUIRE(ac3forge::to_pcm16(-0.5F) < 0);
+    REQUIRE(ac3forge::to_pcm16(0.25F) < ac3forge::to_pcm16(0.75F));
+}
+
 TEST_CASE("slot conversion is 24-bit left-justified in 32", "[io][interleave]") {
     // The low byte is always clear: a DAC takes the top 24 bits of the slot, so
     // the sample is scaled to 24-bit and shifted up rather than scaled to 32.

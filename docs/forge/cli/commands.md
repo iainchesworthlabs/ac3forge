@@ -686,7 +686,9 @@ ac3cli metadata programme.ac3 delivered.ac3 dialnorm=24 bsmod=2
 - **`dialnorm`** verbatim. §5.4.2.8 says it "shall affect the sound reproduction level", so a
   transcode that reset it to 31 would play a programme up to 30 dB loud on a levelled system.
   `dialnorm=<n>` or `dialnorm=auto` overrides it. `<n>` is written verbatim; `auto` measures the
-  source with the same BS.1770 pass `normalize` makes, not the routed or folded output.
+  source with the same BS.1770 pass `normalize` makes, not the routed or folded output. The
+  encoders do not write the value 0, which §5.4.2.8 reserves, so a source carrying it in
+  `dialnorm` or `dialnorm2` stops with an error until `dialnorm=` or `dialnorm2=` names a value.
 - **`compr`** verbatim — the source's own 8-bit word is stamped back onto each encoded frame
   rather than re-derived. §7.7.2's ceiling describes the *programme*, not this generation's
   coding. Passing `heavy` asks for a freshly derived one instead.

@@ -50,4 +50,4 @@ has the rest, including why PSRAM is worth having on a board that also runs WiFi
 ## Where to go next
 
 - [ESP32-S3](esp32-s3.md) — the component this wraps, and the board it targets by default.
-- [Bare metal overview](index.md) — how the four pages in this section relate.
+- [Bare metal overview](index.md) — how the pages in this section relate.

@@ -28,22 +28,59 @@
 # "v${AC3FORGE_FMT_VERSION}".
 set(AC3FORGE_FMT_VERSION 12.2.0)
 
+# The oldest {fmt} a local copy may be. fmt/base.h, which cpu_features.cpp and
+# most of apps/cli include, first shipped in 11.0.0, but no 11.0.x release
+# builds this tree with Clang 22: apps/common/fmp4_folder_writer.cpp formats a
+# system_clock time_point with "{:%FT%TZ}", and write_floating_seconds() in
+# 11.0.x's fmt/chrono.h then fails with "call to consteval function
+# 'fmt::basic_format_string<...>' ... is not a constant expression". 11.1.0 is
+# the first release the whole tree compiles against.
+set(AC3FORGE_FMT_MINIMUM_VERSION 11.1.0)
+
 option(AC3FORGE_FETCH_FMT "Fetch {fmt} from source via FetchContent when no local copy is found" ON)
 
-find_package(fmt CONFIG QUIET)
+# Without a version, find_package() takes whatever {fmt} it finds, and an older
+# one fails the build at the first #include <fmt/base.h> instead of here.
+# Ubuntu 26.04's libfmt-dev is 10.1.1 (its CMake package reports 10.1.0); a
+# fuzz/run.sh configure on a machine with it installed picked it up and stopped
+# compiling src/forge/src/internal/cpu/cpu_features.cpp. With the minimum,
+# find_package() passes over a copy like that, including one an existing build
+# directory has already cached in fmt_DIR, and the fallback below applies.
+#
+# A minimum still accepts newer major versions. fmt writes its version file with
+# AnyNewerVersion compatibility, vcpkg's port installs fmt's own, and
+# ConanCenter's recipe sets cmake_config_version_compat to AnyNewerVersion over
+# CMakeDeps' SameMajorVersion default, so 12.2.0 satisfies it by every route.
+find_package(fmt ${AC3FORGE_FMT_MINIMUM_VERSION} CONFIG QUIET)
 
 if(NOT fmt_FOUND)
+    # find_package() lists each copy it turned down; naming them keeps a machine
+    # with an old libfmt-dev installed from being told only "not found". The
+    # same file can be listed more than once - through a cached fmt_DIR, and
+    # through a merged-/usr distro's /lib -> /usr/lib symlink - hence REAL_PATH
+    # and REMOVE_DUPLICATES.
+    set(_ac3_fmt_skipped "")
+    foreach(_ac3_fmt_config _ac3_fmt_version IN ZIP_LISTS fmt_CONSIDERED_CONFIGS fmt_CONSIDERED_VERSIONS)
+        file(REAL_PATH "${_ac3_fmt_config}" _ac3_fmt_real_config)
+        list(APPEND _ac3_fmt_skipped "\n  skipped {fmt} ${_ac3_fmt_version} (${_ac3_fmt_real_config})")
+    endforeach()
+    list(REMOVE_DUPLICATES _ac3_fmt_skipped)
+    list(JOIN _ac3_fmt_skipped "" _ac3_fmt_skipped)
+    unset(_ac3_fmt_real_config)
+
     if(NOT AC3FORGE_FETCH_FMT)
         message(FATAL_ERROR
-            "{fmt} was not found and AC3FORGE_FETCH_FMT is OFF.\n"
+            "{fmt} ${AC3FORGE_FMT_MINIMUM_VERSION} or newer was not found and AC3FORGE_FETCH_FMT is OFF."
+            "${_ac3_fmt_skipped}\n"
             "Supply it with -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake "
             "or -DCMAKE_PREFIX_PATH=<prefix>, or allow the download by setting "
             "AC3FORGE_FETCH_FMT=ON.")
     endif()
 
     message(STATUS
-        "{fmt} not found locally; fetching v${AC3FORGE_FMT_VERSION} "
-        "(-DAC3FORGE_FETCH_FMT=OFF to require a local copy)")
+        "{fmt} ${AC3FORGE_FMT_MINIMUM_VERSION} or newer not found locally; fetching v${AC3FORGE_FMT_VERSION} "
+        "(-DAC3FORGE_FETCH_FMT=OFF to require a local copy)${_ac3_fmt_skipped}")
+    unset(_ac3_fmt_skipped)
 
     include(FetchContent)
     FetchContent_Declare(fmt
