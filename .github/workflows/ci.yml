@@ -1159,6 +1159,7 @@ jobs:
           # treats as a pass.
           R_COVERAGE: ${{ needs.core.outputs.coverage_result }}
           R_ADM: ${{ needs.core.outputs.adm_result }}
+          R_HEARTH: ${{ needs.core.outputs.hearth_result }}
           R_BUILD: ${{ needs.build-and-test.result }}
           R_FFMPEG: ${{ needs.core.outputs.ffmpeg_result }}
           # 'skipped' on a push and on a docs-only PR (performance-compare
@@ -1191,6 +1192,7 @@ jobs:
                       "script-lint:$R_SCRIPTLINT" \
                       "coverage:$R_COVERAGE" \
                       "adm-validate:$R_ADM" \
+                      "hearth-validate:$R_HEARTH" \
                       "build-and-test:$R_BUILD" "ffmpeg-validate:$R_FFMPEG" \
                       "performance-gate:$R_PERF_GATE" \
                       "memory-gate:$R_MEM_GATE" \

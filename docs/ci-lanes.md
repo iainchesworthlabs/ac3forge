@@ -48,7 +48,7 @@ job-level conditions.
 | `windows` | `build-windows` (windows-msvc, windows-llvm, windows-msvc-arm64), `windows-driver` |
 | `linux` | `build-linux` (linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan), `linux-appimage` |
 | `macos` | `build-macos` (macos-llvm, macos-llvm-x64), `package-macos-universal` (alongside `do_package`, which it already required) |
-| `core` | the whole `core` job-call (`_ci-core.yml`: coverage, ADM module, performance/memory compare+gate, ABI gate, FFmpeg validate, both quality-trend persisters) - see "The core lane" below |
+| `core` | the whole `core` job-call (`_ci-core.yml`: coverage, ADM module, Hearth's Sendspin library, performance/memory compare+gate, ABI gate, FFmpeg validate, both quality-trend persisters) - see "The core lane" below |
 | `python` | `ci.yml`'s `wheels` job-call (`.github/workflows/wheels.yml`: `build`, `python-coverage`) - see "The fold-satellites phase" below |
 | `npm` | `ci.yml`'s `npm` job-call (`.github/workflows/npm.yml`: `build`) - see "The fold-satellites phase" below |
 
@@ -111,9 +111,9 @@ their upstream compare job didn't produce a verdict, exactly as before.
 
 ### Keeping `CI Status`'s per-job breakdown
 
-`_ci-core.yml` threads each of the seven jobs `ci-status` needs
-(`coverage`, `adm-validate`, `ffmpeg-validate`, `performance-gate`,
-`memory-gate`, `persist-external-comparison-trend`,
+`_ci-core.yml` threads each of the eight jobs `ci-status` needs
+(`coverage`, `adm-validate`, `hearth-validate`, `ffmpeg-validate`,
+`performance-gate`, `memory-gate`, `persist-external-comparison-trend`,
 `persist-object-quality-trend`) out through its own `workflow_call.outputs`,
 rather than folding them into one aggregate result the way `build-and-test`
 already folds together ten-plus build jobs. `ci-status`'s script still
@@ -125,7 +125,7 @@ Getting there needed one more piece than expected: `${{ jobs.<job_id>.result
 }}` is **not** valid inside `workflow_call.outputs.<name>.value` -
 `actionlint` rejects it ("property 'result' is not defined in object type
 {outputs: {}}"), because that context only exposes a job's own declared
-`outputs`, not its pass/fail status. Each of the seven jobs instead ends
+`outputs`, not its pass/fail status. Each of the eight jobs instead ends
 with a "Record result" step - `if: always()`, so it still runs after an
 earlier step failed - that captures `job.status` (a real, documented
 context: "the current status of the job... success, failure, or cancelled")
@@ -398,7 +398,7 @@ needed. Both are now `esp`/`python` prefixes respectively; see
 `tools/ci/classify_changes.py`'s own comments.
 
 **`wheels`/`npm`/`esp-component` are each ONE required entry in `CI
-Status`**, not threaded per-sub-job the way `_ci-core.yml`'s seven are.
+Status`**, not threaded per-sub-job the way `_ci-core.yml`'s eight are.
 Unlike coverage/ADM/ABI/FFmpeg-validate/perf-gate/memory-gate - genuinely
 independent concerns a reviewer benefits from telling apart at a glance -
 each of these three workflows is already one coherent "does this package
