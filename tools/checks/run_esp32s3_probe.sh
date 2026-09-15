@@ -122,13 +122,15 @@ fi
 # nothing useful.
 : "${AC3FORGE_ESP32S3_MAX_RETAINED_BYTES:=1024}"
 # The decode runs on the main task, whose stack sdkconfig.defaults sets to
-# 32,768 bytes after an overflow that surfaced as a LoadProhibited panic on the
+# 40,960 bytes after an overflow that surfaced as a LoadProhibited panic on the
 # OTHER core - i.e. the failure mode here is not a clean error, it is corruption
-# somewhere unrelated. Measured high-water leaves 11,280 free in the decode
-# direction and 23,040 in the encode one, so the decode uses about 21,500 of the
-# 32,768. This floor is what turns "we picked 32 KB and hoped" into a number
-# that has to keep holding - and the decode margin is the one to watch: it was
-# 14,000 before object reconstruction ran on this target.
+# somewhere unrelated. This floor is what turns "we picked a stack size and
+# hoped" into a number that has to keep holding - and the decode margin is the
+# one to watch: it was 14,000 free before object reconstruction ran on this
+# target, then 11,280, then PR #698 (legacy-core downmix levels: bsid/
+# cmixlev/surmixlev/alternate_bsi added to DecodedSubstream/DecodedAccessUnit)
+# measured it down to 8,096 - 96 bytes under this floor - which is why the
+# stack size above is 40,960 rather than the original 32,768.
 : "${AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES:=8192}"
 
 # --- and the encode direction's own, where they differ ---------------------

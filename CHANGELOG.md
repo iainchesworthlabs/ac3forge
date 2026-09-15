@@ -369,6 +369,10 @@ and release packaging.
   handler task has 4,096 bytes by default; parsing the layout there peaked at 4,596
   under QEMU, past the canary. `Control::start` now takes the stack size (6,144 bytes by
   default).
+- The minimum-footprint decode profile's ESP32-S3 build left only 8,096 bytes of main-task
+  stack free at high-water, 96 bytes under the CI runner's 8,192 floor — `DecodedSubstream`
+  and `DecodedAccessUnit` grew by `bsid`/`cmixlev`/`surmixlev`/`alternate_bsi` (see below).
+  `CONFIG_ESP_MAIN_TASK_STACK_SIZE` moves from 32,768 to 40,960.
 
 **Codec correctness**
 
