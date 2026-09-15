@@ -21,6 +21,17 @@ option(AC3FORGE_SENDSPIN_CORE_ONLY
     "Build only ac3::sendspin's dependency-free core, leaving out the parts that need vcpkg's \"hearth\" feature"
     OFF)
 
+# Sendspin's reference time filter, vendored unmodified (third_party/time-filter/VENDORED.md).
+# A target of its own so the project's warning set, which upstream's code was not written
+# against, does not apply to it; its headers reach consumers as SYSTEM includes for the same
+# reason.
+add_library(ac3sendspin_time_filter STATIC third_party/time-filter/sendspin_time_filter.cpp)
+target_include_directories(ac3sendspin_time_filter SYSTEM
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/time-filter>")
+target_compile_features(ac3sendspin_time_filter PUBLIC cxx_std_17)
+set_target_properties(ac3sendspin_time_filter PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_library(ac3sendspin STATIC)
 add_library(ac3::sendspin ALIAS ac3sendspin)
 
@@ -56,6 +67,7 @@ target_include_directories(ac3sendspin
 
 target_compile_features(ac3sendspin PUBLIC cxx_std_23)
 
+target_link_libraries(ac3sendspin PUBLIC ac3sendspin_time_filter)
 target_link_libraries(ac3sendspin PRIVATE ac3::warnings ac3::coverage)
 
 set_target_properties(ac3sendspin PROPERTIES POSITION_INDEPENDENT_CODE ON)

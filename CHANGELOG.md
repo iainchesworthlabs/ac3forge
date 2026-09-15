@@ -164,6 +164,8 @@ and release packaging.
   around it the pairing tokens, the dynamic pairing code, the commitment to `nonce_B`, the
   CPace session id and the wrapping of the long-term PSK and `nonce_B`, each in both the
   specification's form and aiosendspin 9.1.1's where the two differ.
+- **Sendspin's reference time filter**, vendored unmodified into
+  `src/sendspin/third_party/time-filter` for the player half's clock synchronisation.
 
 **Containers and encoding**
 
