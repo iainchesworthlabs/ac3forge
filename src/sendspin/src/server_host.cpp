@@ -101,8 +101,10 @@ struct ServerHost::State {
         std::optional<m::CodeFormat> format;
     };
     std::map<Key32, Requested> requested;
-    // Services browsing found, by URL, and when to dial each again.
+    // Services browsing found, by URL, and when to dial each again; and each one's URL by instance
+    // name, so a service browsing loses is not dialled again.
     std::map<std::string, std::chrono::steady_clock::time_point> redial;
+    std::map<std::string, std::string> found_urls;
     std::uint64_t next_group = 1;
 
     std::mutex posted_mutex;
@@ -394,6 +396,11 @@ class HostBrowseListener final : public discovery::BrowseListener {
         host->post([host, url = *url, name] {
             {
                 const std::lock_guard lock(host->mutex);
+                if (const auto previous = host->found_urls.find(name);
+                    previous != host->found_urls.end() && previous->second != url) {
+                    host->redial.erase(previous->second);
+                }
+                host->found_urls[name] = url;
                 host->redial[url] = std::chrono::steady_clock::now();
             }
             host->log("found " + name + " at " + url);
@@ -402,7 +409,16 @@ class HostBrowseListener final : public discovery::BrowseListener {
 
     void on_lost(const std::string& instance) override {
         ServerHost::State* host = host_;
-        host->post([host, instance] { host->log("lost " + instance); });
+        host->post([host, instance] {
+            {
+                const std::lock_guard lock(host->mutex);
+                if (const auto lost = host->found_urls.find(instance); lost != host->found_urls.end()) {
+                    host->redial.erase(lost->second);
+                    host->found_urls.erase(lost);
+                }
+            }
+            host->log("lost " + instance);
+        });
     }
 
    private:
