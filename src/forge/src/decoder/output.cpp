@@ -589,6 +589,30 @@ MixLevels mix_levels(std::optional<meta::CentreMixLevel> cmixlev,
     return out;
 }
 
+MixLevels mix_levels(Acmod acmod, std::optional<meta::CentreMixLevel> cmixlev,
+                     std::optional<meta::SurroundMixLevel> surmixlev,
+                     const std::optional<meta::AlternateBsi>& alternate) {
+    // §D3.1.2: with no xbsi1 in the stream, the original specification's
+    // downmix - which is the bsid-8 conversion exactly, LFE ideal included.
+    MixLevels out = mix_levels(cmixlev, surmixlev);
+    if (!alternate.has_value() || !alternate->mix.has_value()) {
+        return out;
+    }
+    // §D3.1.2 again: each two-channel fold takes the pair xbsi1 carries for
+    // it. All four are replaced, so the carry-across of surmixlev '10' above
+    // does not survive either: xbsi1 states the Lt/Rt surround level itself.
+    const auto& xbsi1 = *alternate->mix;
+    out.loro_clev = meta::coefficient(xbsi1.lorocmixlev);
+    out.loro_slev = meta::coefficient(xbsi1.lorosurmixlev);
+    out.ltrt_clev = meta::coefficient(xbsi1.ltrtcmixlev);
+    out.ltrt_slev = meta::coefficient(xbsi1.ltrtsurmixlev);
+    // Table D2.2's note: dmixmod means something only above 2/0.
+    if (static_cast<std::uint8_t>(acmod) > static_cast<std::uint8_t>(Acmod::k2_0)) {
+        out.preferred = xbsi1.dmixmod;
+    }
+    return out;
+}
+
 MixLevels mix_levels(const std::optional<meta::MixMetadata>& mix) {
     MixLevels out;
     if (!mix.has_value()) {

@@ -163,6 +163,15 @@ and release packaging.
   framing/scan helpers and the BS.1770 meter, each with real-signal round-trip tests.
   `build-rust` runs on all three desktop OSes; the first Windows build found a real
   portability bug (bindgen types C enums `i32` on MSVC, `u32` elsewhere).
+- **The AC-3 decoder folds an Annex D stream with that stream's own `xbsi1` levels**
+  (A/52 §D3.1.2, decoding that §D3 makes optional). Lt/Rt (`downmix=ltrt`) now uses
+  `ltrtcmixlev`/`ltrtsurmixlev`, and Lo/Ro and mono use `lorocmixlev`/`lorosurmixlev`,
+  where all three used to take bsi's `cmixlev`/`surmixlev`, with §7.8.2's −3 dB for
+  Lt/Rt. `MixLevels::preferred` carries `xbsi1`'s `dmixmod` from 3/0 up, and a surround
+  level Tables D2.4/D2.6 reserve now decodes and reports as −1.5 dB rather than as the
+  raw code. Callers folding for themselves use the new
+  `ac3::mix_levels(acmod, cmixlev, surmixlev, alternate_bsi)`. `bsid`-8 streams, and
+  `bsid`-6 streams without `xbsi1`, fold as before.
 
 **Verification and CI**
 
