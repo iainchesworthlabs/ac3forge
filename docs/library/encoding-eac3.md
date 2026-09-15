@@ -392,6 +392,14 @@ measured on its own independent substream — because dialnorm and DRC are prope
 programme. Sharing one measurement across two would level a commentary by the main mix. Per
 programme, too: the §E3.8.2 16-channel cap, and the metadata a `FrameConfig` carries.
 
+A programme with dependents (`ProgrammeConfig::dependents`, or the top-level `dependents` above)
+gets a second, independent `HeavyCompressor` when `heavy` is set: §E3.8.5 gives the LAST
+dependent's `compr` to the whole programme, so that word has to answer for every rendered
+channel, not the independent substream's own five — `AccessUnitEncoder` measures it from the
+complete rendered programme, folded the way `ac3::OutputStage`'s rendered-layout overload seats a
+wide layout (see [Decoding](decoding.md#the-output-stage)). The independent's own word, from its
+own channels alone, still goes out too, for a receiver that decodes only the 5.1 bed.
+
 Constraints: at most 8 programmes; every substream of every programme must agree on the sample
 rate, since they all code the same frame period. An Atmos EMDF container still rides in the last
 substream of the **first** programme (TS 103 420 §8.2) — the objects belong to a programme, so a
