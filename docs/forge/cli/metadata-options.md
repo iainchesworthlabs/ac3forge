@@ -149,8 +149,12 @@ qc options (qc; any order, after the positional arguments):
 ```
 
 For `decode`, `drc=<scale>` instead applies §7.7.1 partial compression (`0` = ignore, `1` = as
-encoded), and bare `heavy` prefers `compr` where the stream carries it — the decode-time meaning
-of these two tokens is deliberately the mirror of their encode-time meaning. Both apply to
+encoded), and bare `heavy` prefers `compr` where the stream carries it, applying the word's own
+gain and nothing more (`drcmode=rf` adds RF mode's 11 dB with each word) — the decode-time
+meaning of these two tokens is deliberately the mirror of their encode-time meaning. On the
+encode side, `ceiling=` and `dialogue=` are levels at the output of an RF-mode decode, which
+normalises `dialnorm` and adds those 11 dB itself, so the default `dialogue=-20` asks the word
+for no make-up. Both apply to
 E-AC-3 decode too, matching the legacy AC-3 decoder — `.ec3` input no longer accepts and silently
 ignores them. `fast-imdct=off` and `mode=` select the inverse transform's evaluation and apply to
 both codecs' decode alike. `monitor` and `spatial` take the same four: all three commands build

@@ -360,6 +360,11 @@ ac3cli decode programme.ec3 out.wav channels=2 drcmode=line   # §7.7.1
 ac3cli decode programme.ec3 out.wav channels=2 drcmode=rf     # §7.7.2, overload-protected
 ```
 
+`drcmode=line` puts dialogue at −31 dBFS. `drcmode=rf` applies each `compr` word with 11 dB on
+top, which puts dialogue at −20 dBFS, and plays any syncframe without a `compr` word at line
+mode's level — the same as the Dolby Reference Player's RF mode (see
+[RF mode's level](../../library/decoding.md#rf-modes-level)).
+
 `monitor` takes all of the same tokens, and additionally folds on its own initiative when the
 output device renders fewer channels than the programme: playing 5.1 on a stereo endpoint
 otherwise means whatever the platform's shared-mode mixer averages together, with none of the

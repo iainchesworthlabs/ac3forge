@@ -31,7 +31,9 @@ wide source folds down to a narrower speaker layout.
 
 A checkbox that reveals a **ceiling** spin box (in tenths of a dB, so the −0.5 dBFS default
 survives) and a **dialogue** spin box — §7.7.2's peak-limited mono downmix, at syncframe
-resolution. A second, identically-shaped **Heavy compression — programme 2** card appears beside
+resolution. Both are levels at the output of an RF-mode decode, which normalises dialnorm and adds
+11 dB with each word, so the −20 dBFS dialogue default asks for no make-up. A second,
+identically-shaped **Heavy compression — programme 2** card appears beside
 it under a `1+1` dual-mono bed, for the same reason DRC gets its own programme-2 copy above: Ch2's
 own compr2 bounds Ch2's own signal, never Ch1's.
 

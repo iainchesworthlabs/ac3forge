@@ -292,7 +292,7 @@ whose targets have a single-precision FPU at best - and its gains and mix coeffi
 | `OutputConfig` | Default | Notes |
 |---|---|---|
 | `target` | `kAsCoded` | `kLoRo` (§7.8.1's plain stereo fold), `kLtRt` (§7.8.2's Dolby Surround compatible fold), `kMono` (§7.8's `output_mode == 1/0` branch), or no fold at all. |
-| `mode` | `kCustom` | `kLine` (§7.7.1: dialnorm plus the full transmitted `dynrng`) or `kRf` (§7.7.2: `compr`, falling back on `dynrng` per §7.7.2.1, plus downmix overload protection). Both **override** `drc_scale`/`heavy_compression` rather than composing with them — that is what makes them modes rather than two more switches. |
+| `mode` | `kCustom` | `kLine` (§7.7.1: dialnorm plus the full transmitted `dynrng`) or `kRf` (§7.7.2: `compr` with RF mode's 11 dB, falling back on `dynrng` per §7.7.2.1, plus downmix overload protection — see [RF mode's level](#rf-modes-level)). Both **override** `drc_scale`/`heavy_compression` rather than composing with them — that is what makes them modes rather than two more switches. |
 | `apply_dialnorm` | `false` | §5.4.2.8 normalisation onto the −31 dBFS reference. Both named modes imply it, so this only has to be set for `kCustom`. |
 | `mix_lfe` | `false` | §7.8 makes the LFE's contribution optional and this decoder drops it by default. |
 | `ltrt_phase_shift` | `true` | Whether Lt/Rt's surround sum is really phase shifted 90°, or only polarity-inverted. |
@@ -330,6 +330,55 @@ gain, ramped across the frame rather than stepped at its boundary so it cannot c
 clamp so the ceiling is true and not merely likely. `OutputStage::rf_protection_db()` reports the
 attenuation currently being held, so a test can assert the limiter engaged rather than only that
 the output stayed under the ceiling — which silence also satisfies.
+
+### RF mode's level
+
+A/52 describes what RF mode is for (§7.7.2.1) and how to read `compr` (§5.4.2.10, §7.7.2.2), but
+gives no output level for the mode and no offset anywhere; `dialnorm` itself is described only as
+the level a reproduction system uses to set its volume (§5.4.2.8, §7.6). The level decoders use
+comes from Dolby's own practice: line mode puts dialogue at −31 dBFS and RF mode at −20 dBFS,
+11 dB higher.
+
+The 11 dB are the decoder's. `kRf` normalises `dialnorm` onto −31 dBFS as `kLine` does, then
+applies each `compr` word with 11 dB on top of the word's own gain (`meta::kRfModeGainDb`). A
+syncframe with no `compr` word falls back on `dynrng` and gets no 11 dB, so a stream that carries
+no `compr` at all takes the same gains in `kRf` as in `kLine`. `kCustom` with `heavy_compression`
+applies the word's §7.7.2 gain alone, which is what FFmpeg's `heavy_compr` does too. For an
+E-AC-3 program with dependent substreams the `compr` word is the last dependent's, applied to
+every substream of the program (§E3.8.5); an §E2.3.1.2 AC-3 core keeps its own.
+
+All of this was measured against the Dolby Reference Player's decoder (`dlbac3dec`, `drc-mode=rf`
+against `drc-mode=line`):
+
+| Stream | Reference Player line / RF | this decoder line / RF |
+|---|---|---|
+| DEE AC-3 2.0 music, 192 kbit/s, dialnorm 19, `compr` 0xFF | −30.70 / −19.70 LUFS | −30.70 / −19.90 LUFS |
+| DEE E-AC-3 2.0 music, 96 kbit/s, dialnorm 19, `compr` 0xFF | −30.70 / −19.70 LUFS | −30.70 / −19.90 LUFS |
+| DEE AC-3 5.1, 448 kbit/s, dialnorm 11, `compr` 0xFF | −30.80 / −19.80 LUFS | −30.70 / −20.00 LUFS |
+| DEE E-AC-3 5.1, 256 kbit/s, dialnorm 11, `compr` 0xFF | −30.80 / −19.80 LUFS | −30.70 / −20.00 LUFS |
+
+Before RF mode carried the 11 dB this decoder's RF column read −30.90 and −31.00 LUFS. What the
+Reference Player showed besides:
+
+- Its RF output is line output plus 11 dB plus the word, in every syncframe that carries one, and
+  line output in every syncframe that does not; a stream spliced from the two switched between
+  +11.29 dB and 0.00 dB at the splice.
+- Dolby's encoder writes its words on that basis. With its RF profile set to `none`, DEE writes
+  0xFF (−0.28 dB) for dialogue-level material at dialnorm 31 and at dialnorm 20, and cuts only
+  where dialnorm normalisation plus 11 dB would put the mono downmix over full scale — by
+  6.6–7.2 dB for clicks peaking at −1.4 dBFS at dialnorm 28. A named RF profile adds its own
+  boost and cut around that. `meta::HeavyCompressor` writes its words the same way.
+- For a 7.1 stream it applied the last dependent substream's word to all eight channels, as
+  §E3.8.5 says, and the independent substream's word when asked for 5.1 or 2.0 output.
+- Its arithmetic lands within 0.3 dB of an exact 11 dB, depending on the word: the gains it applies
+  fit 2<sup>N</sup>·(1 + f), with N + f the word read as a signed 4.4 number of octaves plus 11/6.
+  That is 11.29 dB over line mode for a word of 0x00 and 10.98 dB for 0xFF, where this decoder
+  applies 11.00 and 10.72 dB.
+- Its `dialnorm` normalisation divides by 2<sup>n/6</sup> for a dialnorm n dB above the
+  reference, where this decoder divides by 10<sup>n/20</sup>, the dB A/52 states: −11.04 dB
+  against −11.00 dB for dialnorm 20.
+- Its Lo/Ro fold in line and RF mode leaves out §7.8.1's normalisation, so for a 3/2 stream with
+  −3 dB centre and surround levels it sits 7.66 dB above this decoder's fold in both modes.
 
 **Wide E-AC-3 layouts.** §7.8 defines folds *from* the eight AC-3 acmods and says nothing about
 the layouts Annex E's `chanmap` can express: a 7.1.4 programme has no §7.8 fold, because §7.8
