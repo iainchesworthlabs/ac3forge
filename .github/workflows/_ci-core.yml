@@ -389,8 +389,8 @@ jobs:
   # Until A7 brings it into every build-and-test leg, this is the one build that compiles it
   # and runs its tests. One Linux leg, for adm-validate's reason: the module has little
   # platform code. Only ac3tests and ac3hearth-testsink are built, and only the [sendspin]
-  # and [hearth] cases run, then A4's exit against a scripted aiosendspin 9.1.1 player; the
-  # rest of the suite is build-and-test's.
+  # and [hearth] cases run, then A4's exit against aiosendspin 9.1.1 scripted as a player and as
+  # Music Assistant's server; the rest of the suite is build-and-test's.
   hearth-validate:
     name: Hearth Sendspin (Linux, GCC)
     runs-on: ${{ fromJSON(inputs.runner) }}
@@ -441,7 +441,8 @@ jobs:
       # A4's exit with the stand-in for Sendspin's reference player
       # (planning/hearth-sendspin-extension.md, Decisions): a host pairs with a scripted
       # aiosendspin 9.1.1 player over loopback and plays it PCM, FLAC and Opus, which the script
-      # checks against the programme. The SDK and PyAV come from tools/sendspin/requirements.txt.
+      # checks against the programme. The SDK, PyAV, numpy and Pillow come from
+      # tools/sendspin/requirements.txt.
       - name: aiosendspin 9.1.1 player
         shell: bash
         run: |
@@ -451,6 +452,18 @@ jobs:
             -r tools/sendspin/requirements.txt
           /tmp/aiosendspin-venv/bin/python tools/sendspin/aiosendspin_exit.py \
             --ac3tests ./build/config-linux-gcc/bin/ac3tests
+
+      # Music Assistant's side of the same exit, rehearsed: aiosendspin 9.1.1's server, which Music
+      # Assistant runs, pairs with the test sink by its token and by its dynamic code, and plays it
+      # PCM, FLAC and Opus.
+      - name: aiosendspin 9.1.1 server
+        shell: bash
+        run: |
+          set -eu
+          for pair in token code; do
+            /tmp/aiosendspin-venv/bin/python tools/sendspin/aiosendspin_server.py \
+              --testsink ./build/config-linux-gcc/bin/ac3hearth-testsink --pair "$pair"
+          done
 
       # See adm-validate's identical step for why the result is recorded this way.
       - name: Record result
