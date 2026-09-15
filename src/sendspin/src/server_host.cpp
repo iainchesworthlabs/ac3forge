@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -106,6 +107,10 @@ struct ServerHost::State {
     std::map<std::string, std::chrono::steady_clock::time_point> redial;
     std::map<std::string, std::string> found_urls;
     std::uint64_t next_group = 1;
+    // The clients the operator has allowed source@v1, and every group made, which the host tells
+    // of a member's changes.
+    std::set<Key32> sources;
+    std::vector<std::weak_ptr<Group::State>> groups;
 
     std::mutex posted_mutex;
     std::condition_variable posted_changed;
@@ -134,6 +139,12 @@ struct ServerHost::State {
     void remove(std::uint64_t id);
     [[nodiscard]] std::shared_ptr<HostConnection> find(const std::string& client_id) const;
     [[nodiscard]] std::vector<std::shared_ptr<HostConnection>> all() const;
+    [[nodiscard]] std::vector<std::shared_ptr<Group::State>> live_groups();
+    // A client's state or roles changed: every group it belongs to brings its members' roles up to
+    // date. On the host's thread.
+    void member_changed(const std::string& client_id);
+    // A controller@v1 command from a client: volume and mute for its group, the rest for the engine.
+    void controller_command(const std::string& client_id, const controller::CommandMessage& command);
 };
 
 // One connection to a client, whichever side dialled.
@@ -171,6 +182,12 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
     [[nodiscard]] const std::string& url() const { return url_; }
     [[nodiscard]] std::uint64_t id() const { return id_; }
 
+    // Whether the client has said hello, and is `client_id`.
+    [[nodiscard]] bool said_hello_as(const std::string& client_id) {
+        return driver_->inspect(
+            [&] { return session_->hello().has_value() && base64url::encode(session_->client_key()) == client_id; });
+    }
+
     [[nodiscard]] ClientView view() {
         return driver_->inspect([&] {
             ClientView view;
@@ -192,15 +209,22 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
                 if (contains(session.hello()->supported_roles, ac3forge::kRole)) {
                     view.ac3forge_support = session.hello()->ac3forge_support;
                 }
+                view.supported_roles = session.hello()->supported_roles;
+                view.visualizer_support = session.hello()->visualizer_support;
+                view.source_support = session.hello()->source_support;
             }
             view.pairing = session.pairing();
             view.wants_code = session.pairing_wants_code();
             view.bursts = contains(session.active_roles(), ac3forge::kRole);
             view.playing = view.bursts || contains(session.active_roles(), kPlayerRole);
+            view.active_roles = session.active_roles();
             if (session.state()) {
                 view.available = session.state()->available;
                 view.player_state = session.state()->player;
                 view.ac3forge_state = session.state()->ac3forge;
+                view.artwork_state = session.state()->artwork;
+                view.visualizer_state = session.state()->visualizer;
+                view.source_state = session.state()->source;
             }
             return view;
         });
@@ -273,13 +297,39 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
                 break;
         }
         if (!activate.activities.empty() && activate.activities.front() == m::Activity::kPlayback) {
+            std::vector<std::string> roles;
             // The extension role only on a long-term PSK connection, and never beside player@v1
             // (planning/hearth-sendspin-extension.md, The role _ac3forge_player@v1).
             if (client.psk == hs::PskCategory::kLongTerm && client.ac3forge_support) {
-                activate.active_roles = std::vector<std::string>{std::string(ac3forge::kRole)};
-            } else if (client.player_support) {
-                activate.active_roles = std::vector<std::string>{std::string(kPlayerRole)};
+                roles.emplace_back(ac3forge::kRole);
+            } else if (client.player_support && contains(client.supported_roles, kPlayerRole)) {
+                roles.emplace_back(kPlayerRole);
             }
+            // The other roles by policy (planning/hearth-sendspin-extension.md, Other roles).
+            bool source_allowed = false;
+            {
+                const std::lock_guard lock(host_->mutex);
+                source_allowed = host_->sources.contains(client.client_key);
+            }
+            const bool spec = client.dialect == Dialect::kSpecification;
+            for (const std::string_view role : {controller::kRole, metadata::kRole, color::kRole}) {
+                if (contains(client.supported_roles, role)) {
+                    roles.emplace_back(role);
+                }
+            }
+            if (spec && contains(client.supported_roles, artwork::kRole)) {
+                roles.emplace_back(artwork::kRole);
+            }
+            if (spec && contains(client.supported_roles, visualizer::kRole) && client.visualizer_support) {
+                roles.emplace_back(visualizer::kRole);
+            }
+            if (spec && source_allowed && contains(client.supported_roles, source::kRole) && client.source_support) {
+                roles.emplace_back(source::kRole);
+            }
+            for (const std::string& role : roles) {
+                decision += " " + role;
+            }
+            activate.active_roles = std::move(roles);
         }
         if (decision == last_decision_) {
             return;
@@ -295,6 +345,8 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
             host_->requested.erase(client.client_key);
         }
         (void)driver_->call([&] { return session_->activate(activate); });
+        // The roles just activated get the state their groups hold, or none.
+        host_->member_changed(client.client_id);
     }
 
     // Forgets the last decision, so the next decide() acts again.
@@ -307,9 +359,38 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
 
     void on_hello(const m::ClientHello& /*hello*/) override { post_decision(); }
 
-    void on_state(const m::ClientState& /*state*/) override { post_view(); }
+    void on_state(const m::ClientState& /*state*/) override {
+        post_view();
+        const std::string client_id = base64url::encode(session_->client_key());
+        ServerHost::State* host = host_;
+        host->post([host, client_id] { host->member_changed(client_id); });
+    }
     void on_goodbye(m::GoodbyeReason /*reason*/) override {}
     void on_leave() override {}
+
+    void on_controller_command(const controller::CommandMessage& command) override {
+        const std::string client_id = base64url::encode(session_->client_key());
+        ServerHost::State* host = host_;
+        host->post([host, client_id, command] { host->controller_command(client_id, command); });
+    }
+
+    void on_source_stream_start(const m::ClientStreamStart& start) override {
+        const std::string client_id = base64url::encode(session_->client_key());
+        ServerHost::State* host = host_;
+        host->post([host, client_id, start] { host->events->on_source_stream_start(client_id, start); });
+    }
+    void on_source_audio(std::int64_t timestamp_us, std::span<const std::uint8_t> frame) override {
+        const std::string client_id = base64url::encode(session_->client_key());
+        ServerHost::State* host = host_;
+        host->post([host, client_id, timestamp_us, bytes = std::vector<std::uint8_t>(frame.begin(), frame.end())] {
+            host->events->on_source_audio(client_id, timestamp_us, bytes);
+        });
+    }
+    void on_source_stream_end() override {
+        const std::string client_id = base64url::encode(session_->client_key());
+        ServerHost::State* host = host_;
+        host->post([host, client_id] { host->events->on_source_stream_end(client_id); });
+    }
 
     void on_pairing_held_back(const std::optional<std::string>& /*message*/) override { post_view(); }
 
@@ -497,13 +578,14 @@ void ServerHost::State::remove(std::uint64_t id) {
     const ClientView client = gone->view();
     if (client.hello) {
         events->on_client_gone(client.client_id);
+        // Its player no longer counts towards its groups' volume and mute.
+        member_changed(client.client_id);
     }
 }
 
 std::shared_ptr<HostConnection> ServerHost::State::find(const std::string& client_id) const {
     for (const std::shared_ptr<HostConnection>& connection : all()) {
-        const ClientView client = connection->view();
-        if (client.hello && client.client_id == client_id) {
+        if (connection->said_hello_as(client_id)) {
             return connection;
         }
     }
@@ -688,6 +770,45 @@ bool ServerHost::unpair(const std::string& client_id) {
     return true;
 }
 
+bool ServerHost::allow_source(const std::string& client_id, bool allowed) {
+    const std::shared_ptr<HostConnection> connection = state_->find(client_id);
+    if (!connection) {
+        return false;
+    }
+    {
+        const std::lock_guard lock(state_->mutex);
+        if (allowed) {
+            state_->sources.insert(connection->view().client_key);
+        } else {
+            state_->sources.erase(connection->view().client_key);
+        }
+    }
+    State* state = state_.get();
+    const std::weak_ptr<HostConnection> weak = connection;
+    state->post([weak] {
+        if (const std::shared_ptr<HostConnection> held = weak.lock()) {
+            held->reconsider();
+        }
+    });
+    return true;
+}
+
+bool ServerHost::start_source(const std::string& client_id) {
+    const std::shared_ptr<HostConnection> connection = state_->find(client_id);
+    return connection &&
+           connection->driver()
+               .call([&] { return connection->session().source_command(source::Command::kStart); })
+               .has_value();
+}
+
+bool ServerHost::stop_source(const std::string& client_id) {
+    const std::shared_ptr<HostConnection> connection = state_->find(client_id);
+    return connection &&
+           connection->driver()
+               .call([&] { return connection->session().source_command(source::Command::kStop); })
+               .has_value();
+}
+
 // --- Group ------------------------------------------------------------------------------------
 
 struct Group::State {
@@ -717,10 +838,302 @@ struct Group::State {
         std::deque<std::pair<std::int64_t, std::size_t>> queued;
         std::size_t queued_bytes = 0;
         std::int64_t lead = 0;
+        // The other roles: the version of each state last sent, the controller state last sent,
+        // the artwork channels the images went to, and the visualizer stream started.
+        std::uint64_t metadata_sent = 0;
+        std::uint64_t colors_sent = 0;
+        std::optional<controller::State> controller_sent;
+        std::uint64_t artwork_sent = 0;
+        std::optional<artwork::Channels> artwork_channels;
+        std::optional<visualizer::StreamStart> visualizer_started;
     };
     std::vector<Member> members;
 
+    // What the other roles show, each state with a version that changes whenever it is set.
+    std::optional<metadata::State> metadata;
+    std::uint64_t metadata_version = 0;
+    std::optional<color::State> colors;
+    std::uint64_t colors_version = 0;
+    std::optional<Transport> transport;
+    ArtworkImage artwork;
+    std::int64_t artwork_timestamp = 0;
+    std::uint64_t artwork_version = 0;
+    std::vector<visualizer::Type> visualizer_types;
+    std::int32_t visualizer_rate = 0;
+    bool tracks_downbeats = false;
+
     [[nodiscard]] bool playing() const { return pcm || bursts; }
+
+    [[nodiscard]] Member* member_of(const std::string& client_id) {
+        const auto found = std::find_if(members.begin(), members.end(),
+                                        [&](const Member& member) { return member.client_id == client_id; });
+        return found == members.end() ? nullptr : &*found;
+    }
+
+    // A member's player as the group volume sees it, from whichever playback role is active.
+    [[nodiscard]] static std::optional<controller::Player> player_of(const ClientView& client) {
+        if (client.bursts && client.ac3forge_state) {
+            const ac3forge::State& state = *client.ac3forge_state;
+            const auto lists = [&](ac3forge::Command command) {
+                return std::find(state.supported_commands.begin(), state.supported_commands.end(), command) !=
+                       state.supported_commands.end();
+            };
+            return controller::Player{.volume = state.volume.value_or(100),
+                                      .muted = state.muted.value_or(false),
+                                      .volume_supported = lists(ac3forge::Command::kVolume),
+                                      .mute_supported = lists(ac3forge::Command::kMute)};
+        }
+        if (client.playing && client.player_state) {
+            const m::PlayerState& state = *client.player_state;
+            // aiosendspin 9.1.1 lists volume and mute in the hello's support object (C28).
+            const std::vector<m::PlayerCommand> none;
+            const std::vector<m::PlayerCommand>& listed =
+                client.dialect == Dialect::kAiosendspin911 && client.player_support ? client.player_support->commands
+                : state.supported_commands                                          ? *state.supported_commands
+                                                                                    : none;
+            const auto lists = [&](m::PlayerCommand command) {
+                return std::find(listed.begin(), listed.end(), command) != listed.end();
+            };
+            return controller::Player{.volume = state.volume.value_or(100),
+                                      .muted = state.muted.value_or(false),
+                                      .volume_supported = lists(m::PlayerCommand::kVolume),
+                                      .mute_supported = lists(m::PlayerCommand::kMute)};
+        }
+        return std::nullopt;
+    }
+
+    // The controller state for the group now: the engine's transport, with volume and mute while a
+    // player supports them and the group volume and mute its players give.
+    [[nodiscard]] controller::State controller_state() {
+        controller::State state;
+        std::vector<controller::Player> players;
+        for (const Member& member : members) {
+            if (const std::shared_ptr<HostConnection> connection = host->find(member.client_id)) {
+                if (const std::optional<controller::Player> player = player_of(connection->view())) {
+                    players.push_back(*player);
+                }
+            }
+        }
+        for (const controller::Command command : transport->commands) {
+            const bool ours = command == controller::Command::kVolume || command == controller::Command::kMute ||
+                              command == controller::Command::kSwitch;
+            const bool seekless = command == controller::Command::kSeek && !transport->seek_max_ms;
+            if (!ours && !seekless) {
+                state.supported_commands.push_back(command);
+            }
+        }
+        if (std::any_of(players.begin(), players.end(), [](const controller::Player& p) { return p.volume_supported; })) {
+            state.supported_commands.push_back(controller::Command::kVolume);
+        }
+        if (std::any_of(players.begin(), players.end(), [](const controller::Player& p) { return p.mute_supported; })) {
+            state.supported_commands.push_back(controller::Command::kMute);
+        }
+        state.volume = controller::group_volume(players);
+        state.muted = controller::group_muted(players);
+        state.repeat = transport->repeat;
+        state.shuffle = transport->shuffle;
+        state.seek_max_ms = transport->seek_max_ms;
+        return state;
+    }
+
+    // A controller's volume or mute, applied to the group's players (roles/controller/v1.md): the
+    // volume by set_group_volume, the mute to every player that supports it. Each player that
+    // changes gets one command; the controller state follows from the players' reports.
+    void apply(const controller::CommandMessage& command) {
+        std::vector<std::shared_ptr<HostConnection>> connections;
+        std::vector<bool> extension;
+        std::vector<controller::Player> players;
+        for (const Member& member : members) {
+            if (const std::shared_ptr<HostConnection> connection = host->find(member.client_id)) {
+                const ClientView client = connection->view();
+                if (const std::optional<controller::Player> player = player_of(client)) {
+                    connections.push_back(connection);
+                    extension.push_back(client.bursts);
+                    players.push_back(*player);
+                }
+            }
+        }
+        const std::vector<std::int32_t> volumes =
+            command.command == controller::Command::kVolume ? controller::set_group_volume(players, command.volume)
+                                                            : std::vector<std::int32_t>{};
+        for (std::size_t i = 0; i < players.size(); ++i) {
+            const bool volume = command.command == controller::Command::kVolume && players[i].volume_supported &&
+                                volumes[i] != players[i].volume;
+            const bool mute = command.command == controller::Command::kMute && players[i].mute_supported &&
+                              players[i].muted != command.mute;
+            if (!volume && !mute) {
+                continue;
+            }
+            HostConnection& connection = *connections[i];
+            if (extension[i]) {
+                ac3forge::CommandMessage message;
+                message.command = volume ? ac3forge::Command::kVolume : ac3forge::Command::kMute;
+                message.volume = volume ? volumes[i] : 0;
+                message.mute = command.mute;
+                (void)connection.driver().call([&] { return connection.session().ac3forge_command(message); });
+            } else {
+                const m::PlayerCommandMessage message{.command = volume ? m::PlayerCommand::kVolume : m::PlayerCommand::kMute,
+                                                      .volume = volume ? volumes[i] : 0,
+                                                      .mute = command.mute,
+                                                      .output_delay_ms = 0};
+                (void)connection.driver().call([&] { return connection.session().command(message); });
+            }
+        }
+    }
+
+    // Brings a member's other roles up to date with what the group shows. With the group's lock held.
+    void sync_member(Member& member) {
+        const std::shared_ptr<HostConnection> connection = host->find(member.client_id);
+        if (!connection) {
+            member.controller_sent.reset();
+            member.artwork_channels.reset();
+            member.visualizer_started.reset();
+            return;
+        }
+        const ClientView client = connection->view();
+        const auto active = [&](std::string_view role) { return contains(client.active_roles, role); };
+        const auto sent = [&](std::string_view role) {
+            return connection->driver().inspect([&] { return connection->session().state_sent(role); });
+        };
+
+        m::ServerState state;
+        if (active(metadata::kRole) && (member.metadata_sent != metadata_version || !sent(metadata::kRole))) {
+            state.metadata.emplace(metadata);
+            member.metadata_sent = metadata_version;
+        }
+        if (active(color::kRole) && (member.colors_sent != colors_version || !sent(color::kRole))) {
+            state.color.emplace(colors);
+            member.colors_sent = colors_version;
+        }
+        if (active(controller::kRole)) {
+            const std::optional<controller::State> wanted =
+                transport ? std::optional<controller::State>(controller_state()) : std::nullopt;
+            if (member.controller_sent != wanted || !sent(controller::kRole)) {
+                state.controller.emplace(wanted);
+                member.controller_sent = wanted;
+            }
+        }
+        if (state.metadata || state.color || state.controller) {
+            const auto sent_state = connection->driver().call([&] { return connection->session().send_state(state); });
+            if (!sent_state && sent_state.error() == Refusal::kScheduled) {
+                // A role's first state cannot wait for its time: what is scheduled shows now.
+                const std::int64_t now = host->clock.now_us();
+                if (state.metadata && *state.metadata) {
+                    (**state.metadata).timestamp = std::min((**state.metadata).timestamp, now);
+                }
+                if (state.color && *state.color) {
+                    (**state.color).timestamp = std::min((**state.color).timestamp, now);
+                }
+                (void)connection->driver().call([&] { return connection->session().send_state(state); });
+            }
+        }
+
+        sync_artwork(member, *connection, client);
+        sync_visualizer(member, *connection, client);
+    }
+
+    void sync_artwork(Member& member, HostConnection& connection, const ClientView& client) {
+        if (!contains(client.active_roles, artwork::kRole) || !client.artwork_state || !client.available) {
+            member.artwork_channels.reset();
+            return;
+        }
+        const bool streaming = connection.driver().inspect([&] { return connection.session().artwork_streaming(); });
+        if (!streaming || member.artwork_channels != client.artwork_state) {
+            if (!connection.driver().call([&] { return connection.session().start_artwork_stream(); }).has_value()) {
+                return;
+            }
+            member.artwork_channels = client.artwork_state;
+            member.artwork_sent = 0;
+        }
+        if (member.artwork_sent == artwork_version) {
+            return;
+        }
+        member.artwork_sent = artwork_version;
+        for (std::size_t channel = 0; channel < artwork::kMaxChannels; ++channel) {
+            const artwork::Channel wanted = client.artwork_state->at(channel);
+            if (wanted.source == artwork::Source::kNone) {
+                continue;
+            }
+            const std::optional<std::vector<std::uint8_t>> image =
+                artwork ? artwork(wanted.source, wanted.format, wanted.width, wanted.height) : std::nullopt;
+            send_image(connection, channel, image ? std::span<const std::uint8_t>(*image) : std::span<const std::uint8_t>{});
+        }
+    }
+
+    // One image, or a clear for none, replacing a transfer still in flight.
+    void send_image(HostConnection& connection, std::size_t channel, std::span<const std::uint8_t> image) {
+        if (const std::optional<std::size_t> in_flight =
+                connection.driver().inspect([&] { return connection.session().artwork_transfer(); })) {
+            (void)connection.driver().call([&] { return connection.session().cancel_artwork(*in_flight); });
+        }
+        if (!connection.driver()
+                 .call([&] {
+                     return connection.session().announce_artwork(channel, artwork_timestamp,
+                                                                  static_cast<std::uint32_t>(image.size()));
+                 })
+                 .has_value()) {
+            return;
+        }
+        constexpr std::size_t kPart = artwork::kMaxMessageBytes - 2;
+        for (std::size_t offset = 0; offset < image.size(); offset += kPart) {
+            const std::span<const std::uint8_t> part = image.subspan(offset, std::min(kPart, image.size() - offset));
+            if (!connection.driver().call([&] { return connection.session().send_artwork_part(part); }).has_value()) {
+                return;
+            }
+        }
+    }
+
+    void sync_visualizer(Member& member, HostConnection& connection, const ClientView& client) {
+        const bool active = contains(client.active_roles, visualizer::kRole);
+        // The types both the client asked for and the engine analyses, if any.
+        std::optional<visualizer::StreamStart> wanted;
+        if (active && client.visualizer_state && client.available) {
+            wanted = visualizer::derive(*client.visualizer_state, visualizer_types, visualizer_rate, tracks_downbeats);
+            if (wanted->types.empty() || wanted->rate_max < 1) {
+                wanted.reset();
+            }
+        }
+        if (!wanted) {
+            if (member.visualizer_started && active) {
+                (void)connection.driver().call([&] { return connection.session().end_visualizer_stream(); });
+            }
+            member.visualizer_started.reset();
+            return;
+        }
+        if (member.visualizer_started != wanted &&
+            connection.driver().call([&] { return connection.session().start_visualizer_stream(*wanted); }).has_value()) {
+            member.visualizer_started = wanted;
+        }
+    }
+
+    // A member leaves the group: what the group showed its state roles is cleared, and its artwork
+    // and visualizer streams end. With the group's lock held.
+    void leave(const Member& member) {
+        const std::shared_ptr<HostConnection> connection = host->find(member.client_id);
+        if (!connection) {
+            return;
+        }
+        const ClientView client = connection->view();
+        m::ServerState cleared;
+        if (contains(client.active_roles, metadata::kRole) && metadata) {
+            cleared.metadata.emplace(std::nullopt);
+        }
+        if (contains(client.active_roles, color::kRole) && colors) {
+            cleared.color.emplace(std::nullopt);
+        }
+        if (contains(client.active_roles, controller::kRole) && member.controller_sent) {
+            cleared.controller.emplace(std::nullopt);
+        }
+        if (cleared.metadata || cleared.color || cleared.controller) {
+            (void)connection->driver().call([&] { return connection->session().send_state(cleared); });
+        }
+        if (member.artwork_channels) {
+            (void)connection->driver().call([&] { return connection->session().end_artwork_stream(); });
+        }
+        if (member.visualizer_started) {
+            (void)connection->driver().call([&] { return connection->session().end_visualizer_stream(); });
+        }
+    }
 
     // The lead a player needs from the moment a chunk is sent: its minimum buffer, or for a
     // buffered source its required lead time, beyond its output delay, and the network's.
@@ -849,6 +1262,11 @@ Group::Group(std::shared_ptr<State> state) : state_(std::move(state)) {}
 
 Group::~Group() {
     stop();
+    const std::lock_guard lock(state_->mutex);
+    for (const State::Member& member : state_->members) {
+        state_->leave(member);
+    }
+    state_->members.clear();
 }
 
 std::shared_ptr<Group> ServerHost::make_group(std::string name) {
@@ -858,8 +1276,81 @@ std::shared_ptr<Group> ServerHost::make_group(std::string name) {
     {
         const std::lock_guard lock(state_->mutex);
         state->id = "group-" + std::to_string(state_->next_group++);
+        std::erase_if(state_->groups, [](const std::weak_ptr<Group::State>& group) { return group.expired(); });
+        state_->groups.push_back(state);
     }
     return std::shared_ptr<Group>(new Group(std::move(state)));
+}
+
+std::vector<std::shared_ptr<Group::State>> ServerHost::State::live_groups() {
+    std::vector<std::shared_ptr<Group::State>> result;
+    const std::lock_guard lock(mutex);
+    for (const std::weak_ptr<Group::State>& group : groups) {
+        if (std::shared_ptr<Group::State> held = group.lock()) {
+            result.push_back(std::move(held));
+        }
+    }
+    return result;
+}
+
+void ServerHost::State::member_changed(const std::string& client_id) {
+    bool grouped = false;
+    for (const std::shared_ptr<Group::State>& group : live_groups()) {
+        const std::lock_guard lock(group->mutex);
+        if (group->member_of(client_id) != nullptr) {
+            // Every member: a player's volume and mute are part of each controller's group state.
+            for (Group::State::Member& member : group->members) {
+                group->sync_member(member);
+            }
+            grouped = true;
+        }
+    }
+    if (grouped) {
+        return;
+    }
+    // A client in no group has no state for its state roles, which it is told promptly
+    // (messaging.md, server/state).
+    const std::shared_ptr<HostConnection> connection = find(client_id);
+    if (!connection) {
+        return;
+    }
+    m::ServerState nothing;
+    connection->driver().inspect([&] {
+        const ServerSession& session = connection->session();
+        if (session.role_active(metadata::kRole) && !session.state_sent(metadata::kRole)) {
+            nothing.metadata.emplace(std::nullopt);
+        }
+        if (session.role_active(controller::kRole) && !session.state_sent(controller::kRole)) {
+            nothing.controller.emplace(std::nullopt);
+        }
+        if (session.role_active(color::kRole) && !session.state_sent(color::kRole)) {
+            nothing.color.emplace(std::nullopt);
+        }
+        return 0;
+    });
+    if (nothing.metadata || nothing.controller || nothing.color) {
+        (void)connection->driver().call([&] { return connection->session().send_state(nothing); });
+    }
+}
+
+void ServerHost::State::controller_command(const std::string& client_id, const controller::CommandMessage& command) {
+    for (const std::shared_ptr<Group::State>& group : live_groups()) {
+        std::unique_lock lock(group->mutex);
+        if (group->member_of(client_id) == nullptr) {
+            continue;
+        }
+        if (command.command == controller::Command::kVolume || command.command == controller::Command::kMute) {
+            group->apply(command);
+            return;
+        }
+        const std::string group_id = group->id;
+        lock.unlock();
+        events->on_controller_command(group_id, client_id, command);
+        return;
+    }
+    if (command.command != controller::Command::kVolume && command.command != controller::Command::kMute) {
+        events->on_controller_command({}, client_id, command);
+    }
 }
 
 const std::string& Group::id() const {
@@ -868,11 +1359,74 @@ const std::string& Group::id() const {
 
 void Group::add(const std::string& client_id) {
     const std::lock_guard lock(state_->mutex);
-    if (std::none_of(state_->members.begin(), state_->members.end(),
-                     [&](const State::Member& member) { return member.client_id == client_id; })) {
+    if (state_->member_of(client_id) == nullptr) {
         State::Member member;
         member.client_id = client_id;
         state_->members.push_back(std::move(member));
+        // The newcomer's roles, and every controller's group volume and mute, which now count it.
+        for (State::Member& each : state_->members) {
+            state_->sync_member(each);
+        }
+    }
+}
+
+void Group::set_metadata(std::optional<metadata::State> state) {
+    const std::lock_guard lock(state_->mutex);
+    state_->metadata = std::move(state);
+    ++state_->metadata_version;
+    for (State::Member& member : state_->members) {
+        state_->sync_member(member);
+    }
+}
+
+void Group::set_colors(std::optional<color::State> state) {
+    const std::lock_guard lock(state_->mutex);
+    state_->colors = state ? std::optional<color::State>(color::with_contrast(*state)) : std::nullopt;
+    ++state_->colors_version;
+    for (State::Member& member : state_->members) {
+        state_->sync_member(member);
+    }
+}
+
+void Group::set_transport(std::optional<Transport> transport) {
+    const std::lock_guard lock(state_->mutex);
+    state_->transport = std::move(transport);
+    for (State::Member& member : state_->members) {
+        state_->sync_member(member);
+    }
+}
+
+void Group::set_artwork(std::int64_t timestamp_us, ArtworkImage image) {
+    const std::lock_guard lock(state_->mutex);
+    state_->artwork = std::move(image);
+    state_->artwork_timestamp = timestamp_us;
+    ++state_->artwork_version;
+    for (State::Member& member : state_->members) {
+        state_->sync_member(member);
+    }
+}
+
+void Group::set_visualizer(std::vector<visualizer::Type> types, std::int32_t rate_max, bool tracks_downbeats) {
+    const std::lock_guard lock(state_->mutex);
+    state_->visualizer_types = std::move(types);
+    state_->visualizer_rate = rate_max;
+    state_->tracks_downbeats = tracks_downbeats;
+    for (State::Member& member : state_->members) {
+        state_->sync_member(member);
+    }
+}
+
+void Group::push_visualizer(const visualizer::Frame& frame) {
+    const std::lock_guard lock(state_->mutex);
+    for (const State::Member& member : state_->members) {
+        if (!member.visualizer_started ||
+            std::find(member.visualizer_started->types.begin(), member.visualizer_started->types.end(), frame.type) ==
+                member.visualizer_started->types.end()) {
+            continue;
+        }
+        if (const std::shared_ptr<HostConnection> connection = state_->host->find(member.client_id)) {
+            (void)connection->driver().call([&] { return connection->session().send_visualizer_frame(frame); });
+        }
     }
 }
 
@@ -891,7 +1445,11 @@ void Group::remove(const std::string& client_id) {
             });
         }
     }
+    state_->leave(*found);
     state_->members.erase(found);
+    for (State::Member& member : state_->members) {
+        state_->sync_member(member);
+    }
 }
 
 bool Group::start(const Programme& programme) {

@@ -14,11 +14,14 @@
 #include <thread>
 #include <vector>
 
+#include "ac3/sendspin/state_roles.hpp"
+#include "ac3/sendspin/stream_roles.hpp"
 #include "sink.hpp"
 
 namespace {
 
 namespace testsink = ac3::hearth::testsink;
+namespace controller = ac3::sendspin::controller;
 using namespace std::chrono_literals;
 
 constexpr std::string_view kUsage = R"(usage: ac3hearth-testsink [options]
@@ -41,6 +44,10 @@ its speaker layout.
   --layout LAYOUT        the speaker layout AC-3 and E-AC-3 are rendered to,
                          such as 5.1 or L,R,C,LFE,Ls,Rs (default 7.1.4)
   --no-extension         offer player@v1 only, not _ac3forge_player@v1
+  --roles LIST           other roles to list, from controller, metadata, color,
+                         artwork and visualizer, separated by commas: artwork
+                         asks for the album's image as a 300x300 JPEG, and
+                         visualizer for loudness and beats
   --unpaired-access      admit servers that have not paired
   --no-mdns              do not advertise _sendspin._tcp
   --mdns-interface ADDR  advertise on this IPv4 interface only; repeatable
@@ -48,7 +55,8 @@ its speaker layout.
 
 Commands on standard input: window (open the static code's pairing window),
 reset (reset the dynamic code's round limit), cancel (cancel pairing),
-status, quit.
+status, quit; and with --roles controller, the controller commands play,
+pause, stop, next, previous, mute, unmute and volume N.
 )";
 
 class ConsoleLog final : public testsink::SinkLog {
@@ -77,6 +85,35 @@ class ConsoleLog final : public testsink::SinkLog {
         return std::nullopt;
     }
     return static_cast<std::uint16_t>(value);
+}
+
+// A controller@v1 command typed on standard input, or nothing for another line.
+[[nodiscard]] std::optional<controller::CommandMessage> controller_command(std::string_view text) {
+    controller::CommandMessage message;
+    if (text == "play") {
+        message.command = controller::Command::kPlay;
+    } else if (text == "pause") {
+        message.command = controller::Command::kPause;
+    } else if (text == "stop") {
+        message.command = controller::Command::kStop;
+    } else if (text == "next") {
+        message.command = controller::Command::kNext;
+    } else if (text == "previous") {
+        message.command = controller::Command::kPrevious;
+    } else if (text == "mute" || text == "unmute") {
+        message.command = controller::Command::kMute;
+        message.mute = text == "mute";
+    } else if (text.starts_with("volume ")) {
+        const std::optional<std::uint16_t> volume = parse_port(text.substr(7));
+        if (!volume || *volume > 100) {
+            return std::nullopt;
+        }
+        message.command = controller::Command::kVolume;
+        message.volume = *volume;
+    } else {
+        return std::nullopt;
+    }
+    return message;
 }
 
 }  // namespace
@@ -168,6 +205,31 @@ int main(int argc, char** argv) {
             }
         } else if (argument == "--layout") {
             options.layout = *given;
+        } else if (argument == "--roles") {
+            std::string_view list = *given;
+            while (!list.empty()) {
+                const std::size_t comma = list.find(',');
+                const std::string_view name = list.substr(0, comma);
+                if (name != "controller" && name != "metadata" && name != "color" && name != "artwork" &&
+                    name != "visualizer") {
+                    std::cerr << "--roles takes controller, metadata, color, artwork and visualizer, separated by "
+                                 "commas\n";
+                    return EXIT_FAILURE;
+                }
+                options.other_roles.push_back(std::string(name) + "@v1");
+                if (name == "artwork") {
+                    options.artwork_channels.channels = {{.source = ac3::sendspin::artwork::Source::kAlbum,
+                                                          .format = ac3::sendspin::artwork::Format::kJpeg,
+                                                          .width = 300,
+                                                          .height = 300}};
+                } else if (name == "visualizer") {
+                    options.visualizer_request = {
+                        .types = {ac3::sendspin::visualizer::Type::kLoudness, ac3::sendspin::visualizer::Type::kBeat},
+                        .rate_max = 30,
+                        .spectrum = std::nullopt};
+                }
+                list = comma == std::string_view::npos ? std::string_view{} : list.substr(comma + 1);
+            }
         } else if (argument == "--mdns-interface") {
             options.mdns_interfaces.emplace_back(*given);
         } else if (argument == "--run-for") {
@@ -202,7 +264,9 @@ int main(int argc, char** argv) {
         if (command == "quit" || command == "exit") {
             return EXIT_SUCCESS;
         }
-        if (command == "window") {
+        if (const std::optional<controller::CommandMessage> message = controller_command(command)) {
+            (*sink)->send_controller_command(*message);
+        } else if (command == "window") {
             (*sink)->open_window();
         } else if (command == "reset") {
             (*sink)->reset_rounds();
@@ -215,7 +279,8 @@ int main(int argc, char** argv) {
                      " frames; " + std::to_string(totals.burst_streams) + " burst streams, " +
                      std::to_string(totals.bursts) + " bursts, " + std::to_string(totals.burst_frames) + " frames");
         } else if (!command.empty()) {
-            log.line("commands: window, reset, cancel, status, quit");
+            log.line("commands: window, reset, cancel, status, quit; play, pause, stop, next, previous, mute, unmute, "
+                     "volume N");
         }
     }
     // Standard input closed, as it is when run in the background: keep playing until killed.

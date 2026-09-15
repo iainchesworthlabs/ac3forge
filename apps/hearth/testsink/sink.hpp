@@ -9,6 +9,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -21,6 +22,8 @@
 #include "ac3/sendspin/pairing_flow.hpp"
 #include "ac3/sendspin/session.hpp"
 #include "ac3/sendspin/session_driver.hpp"
+#include "ac3/sendspin/state_roles.hpp"
+#include "ac3/sendspin/stream_roles.hpp"
 #include "ac3/sendspin/websocket.hpp"
 #include "store.hpp"
 
@@ -29,7 +32,8 @@
 // _sendspin._tcp, pairs by its pairing PSK and a dynamic or static code, admits servers as the
 // specification ranks them, and decodes each stream it plays to a WAV file with a play-time log:
 // PCM, FLAC or Opus over player@v1, and AC-3 or E-AC-3, objects included, over _ac3forge_player@v1
-// (planning/hearth-sendspin-extension.md), rendered to its speaker layout.
+// (planning/hearth-sendspin-extension.md), rendered to its speaker layout. It can list the other
+// roles too, keeping what a server sends them and sending controller commands.
 //
 // Several sinks run side by side in one process or several, with distinct names, ports and state
 // directories.
@@ -60,6 +64,12 @@ struct SinkOptions {
     // The speaker layout the extension role's streams are rendered to, in ac3::render::OutputLayout's
     // grammar.
     std::string layout = "7.1.4";
+    // Roles beyond the playback roles to list, for testing a server's: any of controller@v1,
+    // metadata@v1, color@v1, artwork@v1 and visualizer@v1. What they receive is kept (Sink::roles).
+    std::vector<std::string> other_roles;
+    // artwork@v1's channels, and visualizer@v1's request, when those roles are listed.
+    sendspin::artwork::Channels artwork_channels;
+    sendspin::visualizer::State visualizer_request;
     CodeMethod code_method = CodeMethod::kDynamic;
     // Eight digits, for CodeMethod::kStatic.
     std::string static_code;
@@ -117,6 +127,23 @@ class Sink {
     };
     [[nodiscard]] Totals totals() const;
 
+    // What the other roles have received, over every connection: the server/state messages and the
+    // latest state of each state role, none once cleared; the last image on each artwork channel,
+    // empty once cleared; and the visualizer streams and frames.
+    struct Roles {
+        std::uint32_t states = 0;
+        std::optional<sendspin::metadata::State> metadata;
+        std::optional<sendspin::controller::State> controller;
+        std::optional<sendspin::color::State> colors;
+        std::uint32_t artwork_streams = 0;
+        std::map<std::size_t, std::vector<std::uint8_t>> images;
+        std::optional<sendspin::visualizer::StreamStart> visualizer;
+        std::uint64_t visualizer_frames = 0;
+    };
+    [[nodiscard]] Roles roles() const;
+    // A controller@v1 command, sent on every connection where the role is active.
+    void send_controller_command(const sendspin::controller::CommandMessage& command);
+
    private:
     friend class Connection;
 
@@ -146,6 +173,9 @@ class Sink {
     std::map<sendspin::Arbiter::Id, std::shared_ptr<Connection>> connections_;
     std::uint64_t next_id_ = 1;
     Totals ended_totals_;
+
+    mutable std::mutex roles_mutex_;
+    Roles roles_;
 
     std::mutex posted_mutex_;
     std::condition_variable posted_changed_;

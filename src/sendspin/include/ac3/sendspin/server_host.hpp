@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -18,6 +19,8 @@
 #include "ac3/sendspin/pairing_flow.hpp"
 #include "ac3/sendspin/pairing_messages.hpp"
 #include "ac3/sendspin/server_store.hpp"
+#include "ac3/sendspin/state_roles.hpp"
+#include "ac3/sendspin/stream_roles.hpp"
 #include "ac3/sendspin/websocket.hpp"
 
 // A Sendspin server on a computer: every connection to its clients, whichever side dialled, and
@@ -36,6 +39,13 @@
 // PCM in the first of its formats the group can produce from it (PCM or FLAC at any depth, Opus at
 // 48 kHz), and a member playing _ac3forge_player@v1 gets the coded stream's bursts, all on one
 // timeline started far enough ahead for the member that needs the most lead.
+//
+// The other roles are activated by policy (planning/hearth-sendspin-extension.md, Other roles):
+// controller@v1, metadata@v1 and color@v1 for any client that lists them, artwork@v1 and
+// visualizer@v1 for a client that lists them and is not aiosendspin 9.1.1, and source@v1 only for a
+// client the operator has allowed it. A group gives its members' roles the programme's metadata,
+// colours, transport, artwork and visualizer frames, and applies a controller's volume and mute to
+// its players.
 //
 // Thread-safe. Events arrive on the host's own thread.
 
@@ -78,6 +88,15 @@ struct ClientView {
     std::optional<messages::PlayerSupport> player_support;
     std::optional<ac3forge::State> ac3forge_state;
     std::optional<ac3forge::Support> ac3forge_support;
+    // The roles the client lists and the roles active on its connection, with the other roles'
+    // support and client/state objects.
+    std::vector<std::string> supported_roles;
+    std::vector<std::string> active_roles;
+    std::optional<visualizer::Support> visualizer_support;
+    std::optional<source::Support> source_support;
+    std::optional<artwork::Channels> artwork_state;
+    std::optional<visualizer::State> visualizer_state;
+    std::optional<source::State> source_state;
 };
 
 class ServerHostEvents {
@@ -97,6 +116,18 @@ class ServerHostEvents {
     virtual void on_paired(const std::string& client_id) = 0;
     virtual void on_pairing_ended(const std::string& client_id, std::optional<pairing_messages::AbortReason> reason) = 0;
     virtual void on_log(std::string_view line) = 0;
+
+    // A controller@v1 command from a member of group `group_id` that is the engine's to carry out:
+    // play, pause, stop, next, previous, repeat, shuffle and seeks. The group applies volume and
+    // mute itself.
+    virtual void on_controller_command(const std::string& /*group_id*/, const std::string& /*client_id*/,
+                                       const controller::CommandMessage& /*command*/) {}
+    // source@v1: a client's input stream began or changed format, one chunk captured from
+    // `timestamp_us` on the server clock, and its end.
+    virtual void on_source_stream_start(const std::string& /*client_id*/, const messages::ClientStreamStart& /*start*/) {}
+    virtual void on_source_audio(const std::string& /*client_id*/, std::int64_t /*timestamp_us*/,
+                                 std::span<const std::uint8_t> /*frame*/) {}
+    virtual void on_source_stream_end(const std::string& /*client_id*/) {}
 };
 
 class Group;
@@ -131,6 +162,12 @@ class ServerHost {
     // Approves a client for unpaired access, or withdraws the approval.
     bool approve(const std::string& client_id, bool approved);
     bool unpair(const std::string& client_id);
+    // Lets a client that lists source@v1 have the role, which the host activates for no client
+    // without this, paired or not (roles/source/v1.md, Unpaired access), or withdraws it.
+    bool allow_source(const std::string& client_id, bool allowed);
+    // Asks a source to stream, or to stop.
+    bool start_source(const std::string& client_id);
+    bool stop_source(const std::string& client_id);
 
     [[nodiscard]] std::shared_ptr<Group> make_group(std::string name);
 
@@ -190,6 +227,42 @@ class Group {
     [[nodiscard]] bool push_burst(const Burst& burst);
     // Ends the programme: the last units, then stream/end.
     void stop();
+
+    // What the group shows to members with the other roles. Each reaches the members whose role is
+    // active now, and a member when it joins or its role becomes active; a member that leaves, or is
+    // left when the group goes, has its state roles cleared and its artwork and visualizer streams
+    // ended.
+    //
+    // metadata@v1's state.
+    void set_metadata(std::optional<metadata::State> state);
+    // color@v1's state, moved to the contrast the role requires (color::with_contrast) first.
+    void set_colors(std::optional<color::State> state);
+
+    // What the engine can do with the programme, for controller@v1: the commands it carries out
+    // among play, pause, stop, next, previous, the repeat and shuffle commands and the seeks, with
+    // its repeat, shuffle and seek range. The group adds volume and mute while a member supports
+    // them, with the group volume and mute its players give, and carries out those two itself.
+    struct Transport {
+        std::vector<controller::Command> commands;
+        controller::Repeat repeat = controller::Repeat::kOff;
+        bool shuffle = false;
+        std::optional<std::int64_t> seek_max_ms;
+    };
+    void set_transport(std::optional<Transport> transport);
+
+    // artwork@v1: the image for a channel's source, encoded in its format at exactly its size,
+    // scaled to fit and padded with black, never cropped (roles/artwork/v1.md); nothing when there
+    // is none. Called with the group's lock held, on whichever thread set or needs the image.
+    using ArtworkImage =
+        std::function<std::optional<std::vector<std::uint8_t>>(artwork::Source, artwork::Format, std::int32_t, std::int32_t)>;
+    // The programme's artwork from `timestamp_us` on the server clock; an empty function clears it.
+    void set_artwork(std::int64_t timestamp_us, ArtworkImage image);
+
+    // visualizer@v1: the types the engine analyses the programme for, at up to `rate_max` frames a
+    // second, and whether its beats mark downbeats; then each frame, to the members that asked for
+    // its type. A frame a member's stream cannot take now is not sent to it.
+    void set_visualizer(std::vector<visualizer::Type> types, std::int32_t rate_max, bool tracks_downbeats);
+    void push_visualizer(const visualizer::Frame& frame);
 
     // For tests and the engine: when the first frame plays, on the server clock, once started.
     [[nodiscard]] std::optional<std::int64_t> start_time() const;

@@ -189,6 +189,11 @@ class ServerSession {
     [[nodiscard]] std::expected<SessionOutput, Refusal> end_artwork_stream();
     // Whether an artwork transfer is in flight, and its channel.
     [[nodiscard]] std::optional<std::size_t> artwork_transfer() const;
+    [[nodiscard]] bool artwork_streaming() const { return artwork_stream_.has_value(); }
+    // Whether `role` is active on the connection, and whether a server/state object has gone out for
+    // it since, for the three state roles.
+    [[nodiscard]] bool role_active(std::string_view role) const;
+    [[nodiscard]] bool state_sent(std::string_view role) const;
 
     // visualizer@v1: a stream derived from the client's latest state; frames of the stream's types in
     // non-decreasing timestamp order, each periodic type at no more than its rate, and within the
@@ -262,7 +267,6 @@ class ServerSession {
     [[nodiscard]] bool attempt_running() const { return attempt_ && !attempt_->finished(); }
     [[nodiscard]] bool player_active() const;
     [[nodiscard]] bool ac3forge_active() const;
-    [[nodiscard]] bool role_active(std::string_view role) const;
     [[nodiscard]] SessionOutput on_source_chunk(std::span<const std::uint8_t> message);
     // What removing roles owes the client before the activation: each removed stream role's
     // stream/end, a cancel before an artwork one, and a null state for each removed state role

@@ -1100,6 +1100,16 @@ std::expected<SessionOutput, Refusal> ServerSession::end_artwork_stream() {
     return sent(std::move(out), ok);
 }
 
+bool ServerSession::state_sent(std::string_view role) const {
+    if (role == metadata::kRole) {
+        return metadata_sent_;
+    }
+    if (role == controller::kRole) {
+        return controller_sent_;
+    }
+    return role == color::kRole && color_sent_;
+}
+
 std::optional<std::size_t> ServerSession::artwork_transfer() const {
     return artwork_transfer_ ? std::optional<std::size_t>(artwork_transfer_->channel) : std::nullopt;
 }

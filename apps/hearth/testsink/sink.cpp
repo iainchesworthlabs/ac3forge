@@ -32,6 +32,8 @@
 #include "ac3/sendspin/pairing_messages.hpp"
 #include "ac3/sendspin/player_session.hpp"
 #include "ac3/sendspin/session_driver.hpp"
+#include "ac3/sendspin/state_roles.hpp"
+#include "ac3/sendspin/stream_roles.hpp"
 #include "ac3/sendspin/transport.hpp"
 #include "ac3/sendspin/websocket.hpp"
 #include "burst_output.hpp"
@@ -298,6 +300,79 @@ class Connection final : public sendspin::PlayerListener, public std::enable_sha
         log("settings " + std::to_string(error.revision) + " refused: " + error.why);
     }
 
+    void on_server_state(const m::ServerState& state) override {
+        std::string text;
+        {
+            const std::lock_guard lock(sink_->roles_mutex_);
+            Sink::Roles& roles = sink_->roles_;
+            ++roles.states;
+            if (state.metadata) {
+                roles.metadata = *state.metadata;
+                text += roles.metadata ? " metadata \"" + roles.metadata->title.value_or("") + "\""
+                                       : std::string(" metadata cleared");
+            }
+            if (state.controller) {
+                roles.controller = *state.controller;
+                text += roles.controller ? " controller volume " + std::to_string(roles.controller->volume) +
+                                               (roles.controller->muted ? " muted" : "")
+                                         : std::string(" controller cleared");
+            }
+            if (state.color) {
+                roles.colors = *state.color;
+                text += roles.colors ? std::string(" colours") : std::string(" colours cleared");
+            }
+        }
+        log("state:" + text);
+    }
+
+    void on_artwork_stream_start(const sendspin::artwork::Channels& /*channels*/) override {
+        const std::lock_guard lock(sink_->roles_mutex_);
+        ++sink_->roles_.artwork_streams;
+        transfer_.reset();
+    }
+    void on_artwork_message(const sendspin::artwork::Message& message) override {
+        namespace artwork = sendspin::artwork;
+        switch (message.kind) {
+            case artwork::Kind::kAnnounce:
+                transfer_ = Transfer{.channel = message.channel, .size = message.total_size, .bytes = {}};
+                break;
+            case artwork::Kind::kPart:
+                if (transfer_ && transfer_->channel == message.channel) {
+                    transfer_->bytes.insert(transfer_->bytes.end(), message.data.begin(), message.data.end());
+                }
+                break;
+            case artwork::Kind::kCancel:
+                transfer_.reset();
+                return;
+        }
+        // A size of zero clears the channel; the session checks that parts stop at the size.
+        if (transfer_ && transfer_->bytes.size() == transfer_->size) {
+            const std::size_t channel = transfer_->channel;
+            const std::size_t bytes = transfer_->size;
+            {
+                const std::lock_guard lock(sink_->roles_mutex_);
+                sink_->roles_.images[channel] = std::move(transfer_->bytes);
+            }
+            transfer_.reset();
+            log("artwork channel " + std::to_string(channel) +
+                (bytes == 0 ? std::string(" cleared") : ": " + std::to_string(bytes) + " bytes"));
+        }
+    }
+    void on_artwork_stream_end() override { transfer_.reset(); }
+
+    void on_visualizer_stream_start(const sendspin::visualizer::StreamStart& start) override {
+        const std::lock_guard lock(sink_->roles_mutex_);
+        sink_->roles_.visualizer = start;
+    }
+    void on_visualizer_frame(const sendspin::visualizer::Frame& /*frame*/, std::int64_t /*local_time*/) override {
+        const std::lock_guard lock(sink_->roles_mutex_);
+        ++sink_->roles_.visualizer_frames;
+    }
+    void on_visualizer_stream_end() override {
+        const std::lock_guard lock(sink_->roles_mutex_);
+        sink_->roles_.visualizer.reset();
+    }
+
    private:
     void log(std::string_view text) { sink_->log("[" + std::to_string(id_) + "] " + std::string(text)); }
 
@@ -326,6 +401,13 @@ class Connection final : public sendspin::PlayerListener, public std::enable_sha
     BurstOutput bursts_;
     // The decoder report last sent.
     std::optional<ac::DecoderReport> reported_decoder_;
+    // The artwork transfer in flight.
+    struct Transfer {
+        std::size_t channel = 0;
+        std::size_t size = 0;
+        std::vector<std::uint8_t> bytes;
+    };
+    std::optional<Transfer> transfer_;
     std::optional<sendspin::PlayerSession> session_;
     std::unique_ptr<sendspin::SessionDriver> driver_;
 };
@@ -473,6 +555,14 @@ void Sink::accept(std::unique_ptr<sendspin::transport::Connection> transport) {
         config.ac3forge_state.min_buffer_ms = 200;
         config.ac3forge_state.supported_commands = {ac::Command::kVolume, ac::Command::kMute};
     }
+    for (const std::string& role : options_.other_roles) {
+        config.supported_roles.push_back(role);
+        if (role == sendspin::visualizer::kRole) {
+            config.visualizer_support = sendspin::visualizer::Support{.buffer_capacity = 1024 * 1024};
+        }
+    }
+    config.artwork_state = options_.artwork_channels;
+    config.visualizer_state = options_.visualizer_request;
 
     Arbiter::Id id = 0;
     {
@@ -642,6 +732,17 @@ Sink::Totals Sink::totals() const {
         });
     }
     return totals;
+}
+
+Sink::Roles Sink::roles() const {
+    const std::lock_guard lock(roles_mutex_);
+    return roles_;
+}
+
+void Sink::send_controller_command(const sendspin::controller::CommandMessage& command) {
+    for_each_connection([&](Connection& connection) {
+        connection.driver().call([&] { return connection.session().send_command(command); });
+    });
 }
 
 void Sink::log(std::string_view text) {

@@ -41,6 +41,8 @@
 #include "ac3/sendspin/pairing_messages.hpp"
 #include "ac3/sendspin/server_host.hpp"
 #include "ac3/sendspin/server_store.hpp"
+#include "ac3/sendspin/state_roles.hpp"
+#include "ac3/sendspin/stream_roles.hpp"
 #include "sink.hpp"
 
 // A ServerHost and two test sinks in process over loopback WebSockets, with mDNS off: the host
@@ -51,7 +53,9 @@
 // local decode and render of the programme gives, and every chunk's logged play time puts the
 // programme's first frame at the same local time on both sinks, within 1 ms: the group plays in
 // step (planning/hearth-reference-player.md, A4's exit). A hidden case, [hearth-soak], plays the
-// E-AC-3 programme for ten minutes.
+// E-AC-3 programme for ten minutes. Sinks that list the other roles get the group's metadata,
+// colours, transport, artwork and visualizer frames, and a controller's volume and mute reach every
+// player in the group.
 //
 // It dials, so under ThreadSanitizer it needs what tests/sendspin/test_websocket.cpp says.
 
@@ -105,17 +109,48 @@ class HostEvents final : public ac3::sendspin::ServerHostEvents {
                           std::optional<ac3::sendspin::pairing_messages::AbortReason> /*reason*/) override {}
     void on_log(std::string_view /*line*/) override {}
 
+    struct Command {
+        std::string group_id;
+        std::string client_id;
+        ac3::sendspin::controller::CommandMessage command;
+    };
+    void on_controller_command(const std::string& group_id, const std::string& client_id,
+                               const ac3::sendspin::controller::CommandMessage& command) override {
+        const std::lock_guard lock(mutex_);
+        commands_.push_back({.group_id = group_id, .client_id = client_id, .command = command});
+    }
+
     template <class Predicate>
     bool wait(Predicate&& predicate, std::chrono::milliseconds timeout) {
         std::unique_lock lock(mutex_);
         return changed_.wait_for(lock, timeout, [&] { return predicate(clients_); });
     }
 
+    // The controller commands the host has passed on, in order.
+    std::vector<Command> commands() {
+        const std::lock_guard lock(mutex_);
+        return commands_;
+    }
+
    private:
     std::mutex mutex_;
     std::condition_variable changed_;
     std::map<std::string, ac3::sendspin::ClientView> clients_;
+    std::vector<Command> commands_;
 };
+
+// Polls `predicate` until it holds or `timeout` passes.
+template <class Predicate>
+bool eventually(Predicate&& predicate, std::chrono::milliseconds timeout) {
+    const auto until = std::chrono::steady_clock::now() + timeout;
+    while (!predicate()) {
+        if (std::chrono::steady_clock::now() >= until) {
+            return false;
+        }
+        std::this_thread::sleep_for(20ms);
+    }
+    return true;
+}
 
 std::unique_ptr<testsink::Sink> start_sink(const fs::path& directory, std::string name, m::Codec codec, QuietLog& log,
                                           bool unpaired_access = true) {
@@ -574,6 +609,202 @@ TEST_CASE("group: a host pairs one test sink by its token and another by a dynam
     REQUIRE(entered);
     REQUIRE(events.wait(playing(by_code->client_id()), 20s));
 
+    host->reset();
+}
+
+TEST_CASE("group: test sinks' other roles get the group's metadata, colours, transport, artwork and visualizer",
+          "[hearth][group][websocket][roles]") {
+    namespace ss = ac3::sendspin;
+    namespace controller = ac3::sendspin::controller;
+    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "hearth_roles";
+    fs::remove_all(scratch);
+    QuietLog log;
+    const auto make_sink = [&](const fs::path& directory, std::string sink_name, std::vector<std::string> listed) {
+        testsink::SinkOptions options;
+        options.name = std::move(sink_name);
+        options.address = "127.0.0.1";
+        options.port = 0;
+        options.state_directory = directory / "state";
+        options.advertise = false;
+        options.unpaired_access = true;
+        options.codecs = {m::Codec::kPcm};
+        options.other_roles = std::move(listed);
+        options.artwork_channels.channels = {
+            {.source = ss::artwork::Source::kAlbum, .format = ss::artwork::Format::kJpeg, .width = 300, .height = 300}};
+        options.visualizer_request = {.types = {ss::visualizer::Type::kLoudness, ss::visualizer::Type::kBeat},
+                                      .rate_max = 30,
+                                      .spectrum = std::nullopt};
+        auto started = testsink::Sink::start(options, log);
+        REQUIRE(started.has_value());
+        return std::move(*started);
+    };
+    // The kitchen pairs and plays the extension role with every other role but source; the lounge,
+    // approved unpaired, plays player@v1 with a controller.
+    const std::unique_ptr<testsink::Sink> kitchen =
+        make_sink(scratch / "kitchen", "Kitchen", {"controller@v1", "metadata@v1", "color@v1", "artwork@v1", "visualizer@v1"});
+    const std::unique_ptr<testsink::Sink> lounge = make_sink(scratch / "lounge", "Lounge", {"controller@v1"});
+    const std::string kitchen_id = kitchen->client_id();
+    const std::string lounge_id = lounge->client_id();
+
+    std::optional<ss::noise::KeyPair> identity = ss::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    ss::MemoryServerStore store;
+    HostEvents events;
+    auto host = ss::ServerHost::start(
+        {.identity = *identity, .name = "Test host", .languages = {"en"}, .address = "127.0.0.1", .port = std::nullopt,
+         .advertise = false, .browse = false, .mdns_interfaces = {}},
+        store, events);
+    REQUIRE(host.has_value());
+    REQUIRE((*host)->enter_pairing_token(kitchen->pairing_token()));
+    (*host)->dial("ws://127.0.0.1:" + std::to_string(kitchen->port()) + "/sendspin");
+    (*host)->dial("ws://127.0.0.1:" + std::to_string(lounge->port()) + "/sendspin");
+    REQUIRE(events.wait([&](const auto& clients) { return clients.contains(lounge_id); }, 15s));
+    REQUIRE((*host)->approve(lounge_id, true));
+
+    const auto active = [](const ss::ClientView& client, std::string_view role) {
+        return std::find(client.active_roles.begin(), client.active_roles.end(), role) != client.active_roles.end();
+    };
+    REQUIRE(events.wait(
+        [&](const auto& clients) {
+            const auto k = clients.find(kitchen_id);
+            const auto l = clients.find(lounge_id);
+            return k != clients.end() && l != clients.end() && k->second.bursts && k->second.available &&
+                   k->second.artwork_state && k->second.visualizer_state && active(k->second, controller::kRole) &&
+                   active(k->second, ss::metadata::kRole) && active(k->second, ss::color::kRole) &&
+                   active(k->second, ss::artwork::kRole) && active(k->second, ss::visualizer::kRole) &&
+                   l->second.playing && !l->second.bursts && l->second.available && active(l->second, controller::kRole) &&
+                   !active(l->second, ss::metadata::kRole);
+        },
+        30s));
+
+    std::shared_ptr<ss::Group> group = (*host)->make_group("Downstairs");
+    group->add(kitchen_id);
+    group->add(lounge_id);
+
+    // Metadata reaches the member with the role, and no other.
+    ss::metadata::State metadata;
+    metadata.title = "Spring";
+    metadata.artist = "Hearth";
+    metadata.album = "Seasons";
+    metadata.year = 2026;
+    metadata.track = 3;
+    metadata.progress = ss::metadata::Progress{.track_progress_ms = 1000, .track_duration_ms = 180000, .playback_speed = 1000};
+    group->set_metadata(metadata);
+    REQUIRE(eventually([&] { return kitchen->roles().metadata == metadata; }, 10s));
+    CHECK_FALSE(lounge->roles().metadata.has_value());
+
+    // Colours go out at the contrast the role requires.
+    const ss::color::State colours{.timestamp = 0,
+                                   .background_dark = ss::color::Rgb{.r = 90, .g = 90, .b = 100},
+                                   .background_light = std::nullopt,
+                                   .primary = ss::color::Rgb{.r = 200, .g = 40, .b = 40},
+                                   .accent = std::nullopt,
+                                   .on_dark = ss::color::Rgb{.r = 120, .g = 120, .b = 120},
+                                   .on_light = std::nullopt};
+    REQUIRE_FALSE(ss::color::meets_contrast(colours));
+    group->set_colors(colours);
+    REQUIRE(eventually([&] { return kitchen->roles().colors == ss::color::with_contrast(colours); }, 10s));
+    CHECK(ss::color::meets_contrast(*kitchen->roles().colors));
+
+    // The transport, with the group's volume and mute from both players.
+    group->set_transport(ss::Group::Transport{
+        .commands = {controller::Command::kPlay, controller::Command::kPause, controller::Command::kNext,
+                     controller::Command::kPrevious},
+        .repeat = controller::Repeat::kOff,
+        .shuffle = false,
+        .seek_max_ms = std::nullopt});
+    const auto shows = [](const testsink::Sink& sink, std::int32_t volume, bool muted) {
+        const std::optional<controller::State> state = sink.roles().controller;
+        const auto lists = [&](controller::Command command) {
+            return std::find(state->supported_commands.begin(), state->supported_commands.end(), command) !=
+                   state->supported_commands.end();
+        };
+        return state && state->volume == volume && state->muted == muted && lists(controller::Command::kVolume) &&
+               lists(controller::Command::kMute) && lists(controller::Command::kNext) &&
+               !lists(controller::Command::kShuffle);
+    };
+    REQUIRE(eventually([&] { return shows(*kitchen, 100, false) && shows(*lounge, 100, false); }, 10s));
+
+    // A controller's volume and mute reach both players, over each one's playback role.
+    lounge->send_controller_command(
+        {.command = controller::Command::kVolume, .volume = 40, .mute = false, .position_ms = 0, .offset_ms = 0});
+    REQUIRE(eventually([&] { return shows(*kitchen, 40, false) && shows(*lounge, 40, false); }, 10s));
+    kitchen->send_controller_command(
+        {.command = controller::Command::kMute, .volume = 0, .mute = true, .position_ms = 0, .offset_ms = 0});
+    REQUIRE(eventually([&] { return shows(*kitchen, 40, true) && shows(*lounge, 40, true); }, 10s));
+    const std::optional<ss::ClientView> kitchen_view = (*host)->client(kitchen_id);
+    const std::optional<ss::ClientView> lounge_view = (*host)->client(lounge_id);
+    REQUIRE(kitchen_view.has_value());
+    REQUIRE(lounge_view.has_value());
+    REQUIRE(kitchen_view->ac3forge_state.has_value());
+    REQUIRE(lounge_view->player_state.has_value());
+    CHECK(kitchen_view->ac3forge_state->volume == 40);
+    CHECK(kitchen_view->ac3forge_state->muted == true);
+    CHECK(lounge_view->player_state->volume == 40);
+    CHECK(lounge_view->player_state->muted == true);
+
+    // The engine's commands go to the host's events; one the state does not list goes nowhere.
+    lounge->send_controller_command(
+        {.command = controller::Command::kShuffle, .volume = 0, .mute = false, .position_ms = 0, .offset_ms = 0});
+    lounge->send_controller_command(
+        {.command = controller::Command::kNext, .volume = 0, .mute = false, .position_ms = 0, .offset_ms = 0});
+    REQUIRE(eventually([&] { return !events.commands().empty(); }, 10s));
+    const std::vector<HostEvents::Command> commands = events.commands();
+    REQUIRE(commands.size() == 1);
+    CHECK(commands.front().group_id == group->id());
+    CHECK(commands.front().client_id == lounge_id);
+    CHECK(commands.front().command.command == controller::Command::kNext);
+
+    // Artwork at the channel's source, format and size, in more than one part; then cleared.
+    std::vector<std::uint8_t> image(100000);
+    for (std::size_t i = 0; i < image.size(); ++i) {
+        image[i] = static_cast<std::uint8_t>((i * 7U) & 0xFFU);
+    }
+    group->set_artwork(0, [image](ss::artwork::Source source, ss::artwork::Format format, std::int32_t width,
+                                  std::int32_t height) -> std::optional<std::vector<std::uint8_t>> {
+        if (source != ss::artwork::Source::kAlbum || format != ss::artwork::Format::kJpeg || width != 300 || height != 300) {
+            return std::nullopt;
+        }
+        return image;
+    });
+    const auto image_on = [&](std::size_t bytes) {
+        const testsink::Sink::Roles roles = kitchen->roles();
+        const auto found = roles.images.find(0);
+        return found != roles.images.end() && found->second.size() == bytes && (bytes == 0 || found->second == image);
+    };
+    REQUIRE(eventually([&] { return image_on(image.size()); }, 10s));
+    group->set_artwork(0, {});
+    REQUIRE(eventually([&] { return image_on(0); }, 10s));
+
+    // The visualizer streams the types both the sink asked for and the engine analyses, at the lower
+    // rate, and the frames of those types.
+    group->set_visualizer({ss::visualizer::Type::kLoudness, ss::visualizer::Type::kSpectrum}, 20, false);
+    REQUIRE(eventually([&] { return kitchen->roles().visualizer.has_value(); }, 10s));
+    CHECK(kitchen->roles().visualizer->types == std::vector<ss::visualizer::Type>{ss::visualizer::Type::kLoudness});
+    CHECK(kitchen->roles().visualizer->rate_max == 20);
+    for (std::int64_t i = 0; i < 10; ++i) {
+        group->push_visualizer({.type = ss::visualizer::Type::kLoudness,
+                                .timestamp = i * 50'000,
+                                .value = static_cast<std::uint16_t>(i * 1000),
+                                .frequency = 0,
+                                .downbeat = false,
+                                .strength = 0,
+                                .bins = {}});
+    }
+    REQUIRE(eventually([&] { return kitchen->roles().visualizer_frames == 10; }, 10s));
+
+    // Leaving the group clears what it showed; so does the group going.
+    const std::uint32_t states = kitchen->roles().states;
+    group->remove(kitchen_id);
+    REQUIRE(eventually(
+        [&] {
+            const testsink::Sink::Roles roles = kitchen->roles();
+            return roles.states > states && !roles.metadata && !roles.colors && !roles.controller && !roles.visualizer;
+        },
+        10s));
+    CHECK(lounge->roles().controller.has_value());
+    group.reset();
+    CHECK(eventually([&] { return !lounge->roles().controller.has_value(); }, 10s));
     host->reset();
 }
 

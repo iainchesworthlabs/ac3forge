@@ -324,6 +324,18 @@ and release packaging.
   start, closing a connection that opens one unasked. It does not activate `source@v1`,
   `artwork@v1` or `visualizer@v1` for an aiosendspin 9.1.1 client. The player session does the
   client's half, closing on an artwork message the role calls malformed.
+- **The other roles from a server host's groups**: `ServerHost` activates `controller@v1`,
+  `metadata@v1` and `color@v1` for a playing client that lists them, `artwork@v1` and
+  `visualizer@v1` only for one that is not aiosendspin 9.1.1, and `source@v1` only for a client
+  the operator allows. A `Group` gives its members' roles the programme's metadata, its colours at
+  the contrast the role requires, the engine's transport with the group's volume and mute, its
+  artwork at each channel's source, format and size, and visualizer frames of the types each member
+  asked for. A controller's volume or mute reaches every player in the group over its playback
+  role, the engine's commands arrive as host events, and a member that leaves the group has its
+  states cleared and its streams ended. The test sink lists the roles when asked (`--roles`) and
+  sends controller commands typed on its standard input; in `ac3tests`, two test sinks in one
+  group, one paired and one approved unpaired, get the group's metadata, colours, artwork and
+  visualizer frames, and a volume and mute set from either reaches both.
 - **Hearth's third-party notices** (`apps/hearth/notices/`): `NOTICES.txt` for cpp-httplib,
   Mbed TLS, mdns, libFLAC, libogg, Opus and Sendspin's time filter, generated at configure time
   with the versions and licence texts vcpkg installs with each port, ready for Hearth's About page
