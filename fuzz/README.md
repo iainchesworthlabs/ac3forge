@@ -222,11 +222,8 @@ allocation stopped a run, but nothing the parser did within its own memory was
 checked, and libFuzzer's counters saw only the harness file itself - 102 of
 them in `fuzz_ac4_parse`, 183 in `fuzz_iab_parse`.
 
-The opt-in `fuzz_adm_parse` has the same gap and still does: instrumenting
-`ac3adm_objects` also instruments the header-only libbw64 code it compiles, and
-UBSan then stops that harness within a few hundred executions inside libbw64's
-`UnknownChunk` constructor (`&data[0]` of an empty vector, for a zero-length
-chunk). See `fuzz/CMakeLists.txt`.
+The opt-in `fuzz_adm_parse` had the same gap; it is covered in its own section
+below, since closing it needed a change to a dependency first.
 
 Measured on WSL2 Ubuntu 26.04, Clang 22.1.2, through `fuzz/run.sh`, 300 s per
 harness from an empty grown corpus, both builds running at once. "Before" is
@@ -273,6 +270,77 @@ Reading the AC-4 code around those fixes turned up the same shapes elsewhere,
 fixed in the same change: `parse_raw_frame()`'s substream bound could wrap into
 a read past the end of the frame, and six more `int` additions on counts that
 escape through `variable_bits()` could overflow.
+
+## Status: the ADM harness, instrumented
+
+`fuzz_adm_parse` was the last harness whose library sat outside the instrumented
+set, and the only one that needed a change to a dependency before it could join.
+libbw64 is header-only, so instrumenting `ac3adm_objects` instruments the libbw64
+code it compiles, and UBSan stopped the harness a few hundred executions in,
+inside `UnknownChunk`'s constructor. `src/ac3adm/patch_libbw64.cmake` patches
+that and the sites like it when the dependency is populated; `src/ac3adm/CMakeLists.txt`
+records why a patch rather than an ignorelist scoped to libbw64.
+
+Same caveat as the sections above — a point-in-time result, not a standing
+guarantee. Measured on WSL2 Ubuntu 26.04, Clang 22.1.2, `RelWithDebInfo` +
+ASan/UBSan, 300 s per build from an empty grown corpus. "Before" is
+`ac3adm_objects` uninstrumented, as it shipped; "after" is instrumented, with the
+fixes below. The replay column feeds each grown corpus, plus the committed seeds
+and regressions, through the same instrumented binary with `-runs=0`:
+
+| Build    | Executions | exec/s | `cov` / `ft` (own build) | Replay `cov` / `ft` |
+|----------|-----------:|-------:|--------------------------|---------------------|
+| before   |     76,299 |    253 | 114 / 166                | 1,425 / 1,655       |
+| after    |    147,230 |    489 | 1,656 / 3,143            | **1,654 / 3,124**   |
+
+The committed seeds and regressions replay at 1,379 / 1,573 on their own, so that
+is the floor each grown corpus is adding to.
+
+The uninstrumented build's `cov` counts the harness translation unit alone: with
+no counters inside `ac3adm` or libbw64, an input reaching a new path in the reader
+did not register as new, and was not kept. Its execution rate was the higher one
+until the findings below were fixed — several of them cost whole seconds per
+execution, and the instrumented run reached 489 exec/s once they were gone.
+
+### What instrumenting it found
+
+Two in libbw64, patched there; the rest in `ac3adm`'s own code. Each has a
+reproducer under `fuzz/regressions/fuzz_adm_parse/`:
+
+- **`&buffer[0]` of an empty `std::vector<char>`**, in libbw64's `UnknownChunk`
+  constructor (any zero-length chunk of an id it has no class for) and in
+  `Bw64Reader::read()` (a zero-length `<data>`). Undefined behaviour, which UBSan
+  reports and a standard library with its bounds checks enabled aborts over.
+  (`zero-length-unknown-chunk`, `zero-length-data-chunk`, and `tests/adm/`.)
+- **A heap overread the length of a whole frame**, from a `<fmt >` whose channel
+  count and sample width overflow libbw64's `uint16_t` block alignment: the read
+  buffer is sized from the wrapped value and decoded against the real one. WAVE's
+  own `nBlockAlign` field is 16 bits too, so the file's declared value matches the
+  wrapped one and libbw64's sanity check passes. The 32,768-channel form divides
+  by the wrapped 0 instead. An uninstrumented `ac3adm` runs the overread as a
+  clean execution and returns it as audio. (`block-align-wraps-to-zero`.)
+- **A 1.7 GB allocation**, from an RF64 `<data>` declaring more bytes than the
+  file holds: `chunk_sizes_fit()` allows that, since a truncated recording is an
+  ordinary file, but stopped checking there — while libbw64 resolves `<data>`'s
+  real size through `<ds64>` and carries on into the chunks behind it.
+  (`oversized-chunk-after-escaped-data`.)
+- **A loop of 4.26 billion reads**, from a 28-byte `<ds64>` declaring that many
+  12-byte table entries. (`ds64-table-length-past-chunk-end`.)
+- **`malloc(4278190080)` out of a 19-byte file**, whose chunk table ends in a
+  fragment too short to hold a header: libbw64 reads one anyway, and its size
+  field keeps whatever was on the stack. (`truncated-chunk-header-fragment`.)
+- **A hang in this project's own code**, 265 s into the first full-budget run:
+  `float_pcm_bw64.cpp`'s `find_chunk()` stepped over each chunk in 32-bit
+  arithmetic, and a size of `0xFFFFFFF7` carries `8 + declared + pad` to exactly
+  2^32, which wraps to zero. Every file goes through that walk.
+  (`chunk-size-wraps-the-walk`.)
+
+Still open: `<ds64>`'s table can give any chunk id a 64-bit size, which libbw64
+prefers over the 32-bit header and which the pre-check reads only the length of.
+Crafted inputs reach a hang and a 1 TiB allocation through it; mutation has not.
+See `chunk_sizes_fit()`'s own comment in `src/ac3adm/src/adm.cpp`, and the note on
+the pin in `docs/threat-model.md` — libbw64 `0.10.0` is a January 2019 tag, and
+the upstream commits that fix this class are in no release.
 
 ## Entry points covered
 
