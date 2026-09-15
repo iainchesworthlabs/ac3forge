@@ -218,6 +218,22 @@ The 937 ms shapes play 6.7% fast, so a TDM line on this part runs correctly at t
 frame, eight 16-bit slots or four 32-bit ones, with the slots a layout leaves unused written as
 zeros. Nothing was connected to the pins; a DAC on the line is not part of this measurement.
 
+Getting samples onto those slots costs time here too. The decoder hands a sink planar `float`
+blocks, and the component's conversions (`esp-idf/ac3forge/include/ac3forge/interleave.hpp`)
+scale, clip and convert each sample in `float`, which on a part with no FPU is a call into the
+software floating-point routines for each operation. Timed on the board for one frame, six
+256-sample blocks, from a build at `-Os`:
+
+| Work per frame | Microseconds |
+|---|---:|
+| `to_pcm16` into eight interleaved 16-bit slots | 11,744 |
+| `to_slot_24in32` into four interleaved 32-bit slots (`interleave_24in32`) | 5,159 |
+| `to_pcm16` into a stereo pair (`interleave_16`) | 2,879 |
+| A float level meter over eight slots, squares summed sixteen at a time | 1,529 |
+
+About 0.9 microseconds a sample for the conversions, so eight 16-bit slots take more than a
+third of a frame before the decode is counted.
+
 ## QEMU
 
 ESP-IDF v6.1's `qemu-system-riscv32` (esp_develop_9.2.2_20260417) emulates one Espressif machine,
