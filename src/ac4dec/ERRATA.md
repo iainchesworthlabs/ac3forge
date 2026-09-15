@@ -57,9 +57,10 @@ Later phases add the readings their processing needs.
 - **Where:** Part 2 6.2.1.8, p. 118: `ac4_substream_info_chan()` loops `b_audio_ndot` over
   `frame_rate_factor`, which `frame_rate_multiply_info()` sets per presentation, while the substream
   groups are read after every presentation.
-- **Reading:** the Python parser takes the factor of the first presentation that references the group,
-  and the inspector one factor for every group from the presentations; they differ only for
-  presentations with different factors, which no stream here has. With a factor above 1,
+- **Reading:** every group takes the factor of the first presentation that transmits
+  `frame_rate_multiply_info()`; an EMDF-only presentation (configuration 6) transmits none and is passed
+  over. Both transcriptions read it so. The text leaves open which factor applies when presentations
+  carry different ones, and no stream here does. With a factor above 1,
   `substream_index` names the first of that many consecutive substreams (Part 1 4.3.3.7.9, p. 79),
   and both transcriptions read each as an instance of its own, with that instance's `b_audio_ndot`.
 - **Evidence:** Streams for factor 1 (every stream here); Text above it.

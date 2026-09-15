@@ -158,6 +158,45 @@ if(AC3FORGE_MINIMAL_HOT_O2)
     set_source_files_properties(src/player.cpp PROPERTIES COMPILE_OPTIONS "-O2")
 endif()
 
+# WHICH ARITHMETIC. idf_component.yml says the decode arithmetic follows the
+# part: single precision where there is a floating-point unit, the fixed-point
+# tier where there is not (planning/arithmetic-tiers.md). This is where a
+# project that has not chosen gets that. src/forge/minimal.cmake builds float32
+# for every value except `fixed`, including no value at all, so without this a
+# project for a part with no FPU decodes in float, where every floating-point
+# operation is a compiled subroutine.
+#
+# Whether the part has an FPU comes from SOC_CPU_HAS_FPU, one of the capability
+# symbols ESP-IDF's soc component writes into every target's sdkconfig.
+# ESP-IDF's own components/soc/project_include.cmake reads the same symbol to
+# give a RISC-V core -mabi=ilp32f, so the arithmetic chosen here and the ABI
+# the compiler is given come from one place, and a part added to
+# idf_component.yml's targets needs nothing added here. In ESP-IDF v6.1 the
+# ESP32, S3, P4, H4 and S31 set it, and no other target does.
+#
+# Not FORCEd, and skipped entirely when the project has chosen already - above
+# its project(), as apps/baremetal/platform/esp32c3/ does, or on the command
+# line:
+#
+#     idf.py -DAC3FORGE_DECODE_SCALAR=float build
+#
+# DEFINED rather than set(CACHE) alone, because a normal variable set above
+# project() is a choice too. The order that makes this work: the project's
+# CMakeLists.txt sets its variables above project(); project() loads sdkconfig
+# and then adds the components, which runs this file; and minimal.cmake reads
+# the value inside the add_subdirectory() below. ESP-IDF's earlier requirements
+# pass includes this file as well, and stops at idf_component_register().
+if(NOT DEFINED AC3FORGE_DECODE_SCALAR)
+    if(CONFIG_SOC_CPU_HAS_FPU)
+        set(AC3FORGE_DECODE_SCALAR "float" CACHE STRING
+            "Decode arithmetic: float (this part has an FPU) or fixed")
+    else()
+        set(AC3FORGE_DECODE_SCALAR "fixed" CACHE STRING
+            "Decode arithmetic: fixed (this part has no FPU) or float")
+    endif()
+    set_property(CACHE AC3FORGE_DECODE_SCALAR PROPERTY STRINGS fixed float)
+endif()
+
 # Tells apps/baremetal/CMakeLists.txt that an external build system owns the
 # application. Without it that file would see CMAKE_SYSTEM_NAME "Generic" -
 # which ESP-IDF's own toolchain.cmake sets, exactly as the arm-none-eabi one

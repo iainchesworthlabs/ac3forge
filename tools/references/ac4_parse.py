@@ -26,16 +26,12 @@ sync.
 
 Usage:  python tools/references/ac4_parse.py <file.ac4> [frame_index]
 
-Fixes and additions for ac4_syntax.py (the D1 syntax transcription, which
-imports this module for the TOC): presentation_config 6 reads its
-n_add_emdf_substreams loop in both presentation functions (Part 1 4.2.3.2,
-Part 2 6.2.1.2/6.2.1.3); sus_ver is read for bitstream_version 1 (6.2.1.6);
+tools/references/ac4_syntax.py, the Python transcription of the substream
+syntax, takes its table of contents from here. For it,
 presentation_config 1 and 4 read two and three ac4_sgi_specifier() elements
-(6.2.1.3) while n_substream_groups is 1 and 2; presentation_config_ext_info()
-reads the nested ac4_presentation_v1_info() for bitstream_version 1 (6.2.1.5);
-the returned dicts also carry b_iframe / b_audio_ndot, the presentation and
-EMDF payload substream indices, the HSF and OAMD indices, sus_ver and the
-per-group frame_rate_factor that the substream walk needs.
+(6.2.1.3) while n_substream_groups is 1 and 2, and the returned dicts carry
+b_iframe / b_audio_ndot, add_ch_base, the presentation and EMDF payload
+substream indices, the HSF and OAMD indices, sus_ver and n_substream_groups.
 """
 
 import sys
@@ -235,29 +231,19 @@ def parse_hsf_ext_substream_info(r, b_substreams_present=True):
 
 # --- §4.2.3.8 / §6.2.1.5 presentation_config_ext_info -----------------------
 
-def parse_presentation_config_ext_info(r, bitstream_version=None, presentation_config=None,
-                                       fs_index=None, frame_rate_index=None):
-    """Part 2 6.2.1.5. Returns the nested ac4_presentation_v1_info() dict for
-    bitstream_version 1 and presentation_config 7, else None."""
+def parse_presentation_config_ext_info(r):
+    """Skipped as n_skip_bytes whole bytes. For bitstream_version 1 with
+    presentation_config 7, §6.2.1.5 puts a nested ac4_presentation_v1_info()
+    at the start of those bytes and counts it inside n_skip_bytes, so the
+    skip keeps the TOC in step, but the nested presentation is not reported.
+    That nested element is the only way parse_presentation_v1_info() and
+    parse_sgi_specifier() could see bitstream_version 1, so their
+    bitstream_version 1 branches are not reached from parse_ac4_toc()."""
     n_skip_bytes = r.bits(5)
     if r.bits(1):  # b_more_skip_bytes
         n_skip_bytes += variable_bits(r, 2) << 5
-    inner = None
-    if bitstream_version == 1 and presentation_config == 7:
-        start = r.pos
-        inner = parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
-        n_bits_read = r.pos - start
-        if n_bits_read % 8:
-            n_skip_bits = 8 - (n_bits_read % 8)
-            r.bits(n_skip_bits)  # reserved
-            n_bits_read += n_skip_bits
-        n_skip_bytes -= n_bits_read // 8
-        if n_skip_bytes < 0:
-            raise ValueError('presentation_config_ext_info: nested presentation overruns '
-                             'n_skip_bytes')
     for _ in range(n_skip_bytes):
         r.bits(8)
-    return inner
 
 
 # --- §4.2.3.6 ac4_substream_info (presentation_version 0 channel_mode) -----
@@ -377,7 +363,7 @@ def parse_presentation_version(r):
     return version
 
 
-def parse_presentation_info(r, fs_index, frame_rate_index, bitstream_version=0):
+def parse_presentation_info(r, fs_index, frame_rate_index):
     b_single_substream = r.bits(1)
     presentation_config = None
     if not b_single_substream:
@@ -400,15 +386,13 @@ def parse_presentation_info(r, fs_index, frame_rate_index, bitstream_version=0):
             presentation_id = variable_bits(r, 2)
         frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index)
         emdf = parse_emdf_info(r)
-        v1_info = None
         if b_single_substream:
             substreams.append(('main', parse_substream_info_v0(r, fs_index, frame_rate_factor)))
         else:
             b_hsf_ext = r.bits(1)
             roles = _PRESENTATION_CONFIG_ROLES.get(presentation_config)
             if roles is None:
-                v1_info = parse_presentation_config_ext_info(
-                    r, bitstream_version, presentation_config, fs_index, frame_rate_index)
+                parse_presentation_config_ext_info(r)
             else:
                 for i, role in enumerate(roles):
                     info = parse_substream_info_v0(r, fs_index, frame_rate_factor)
@@ -427,7 +411,7 @@ def parse_presentation_info(r, fs_index, frame_rate_index, bitstream_version=0):
                 'presentation_config': presentation_config,
                 'md_compat': md_compat, 'presentation_id': presentation_id, 'emdf': emdf,
                 'substreams': substreams, 'emdf_substreams': emdf_substreams,
-                'frame_rate_factor': frame_rate_factor, 'v1_info': v1_info,
+                'frame_rate_factor': frame_rate_factor,
                 'b_pre_virtualized': bool(b_pre_virtualized)}
     n = r.bits(2)
     if n == 0:
@@ -457,6 +441,15 @@ def parse_oamd_substream_info(r, b_substreams_present):
 _BED_CHAN_ASSIGN_COUNT_AJOC = [2, 3, 5, 7, 9, 7, 9, 11]
 _BED_CHAN_ASSIGN_COUNT_DIRECT = [2, 3, 6, 8, 10, 8, 10, 12]
 _STD_BED_GROUP_SIZE = [2, 1, 1, 2, 2, 2, 2, 2, 2, 1]
+_ISF_COUNTS = [4, 8, 10, 14, 15, 30]  # isf_config, read in both elements below
+
+
+def _count_for_code(table, code):
+    """The object count a 3-bit code names in a table shorter than eight
+    entries. Codes past its end are reserved and name no count, so they
+    expand to no objects and parsing continues, as ac4.cpp's count_for_code()
+    does; indexing the list directly raised IndexError on them."""
+    return table[code] if code < len(table) else 0
 
 
 class OamdCommonDataPresent(Exception):
@@ -484,7 +477,7 @@ def parse_bed_dyn_obj_assignment(r, n_signals):
         return objects  # every object in this substream is dynamic and unlisted here
     if r.bits(1):  # b_isf
         isf_config = r.bits(3)
-        n_isf = [4, 8, 10, 14, 15, 30][isf_config]
+        n_isf = _count_for_code(_ISF_COUNTS, isf_config)
         for _ in range(n_isf):
             add('ISF', False)
         return objects
@@ -575,9 +568,9 @@ def parse_substream_info_obj(r, fs_index, frame_rate_factor, b_substreams_presen
     # 6-entry array regardless, and b_lfe is folded in separately below
     # rather than by this array, so a "reserved" code still parses (just
     # with a count this parser cannot cross-check against the semantics
-    # table's own account of it). Codes 6 and 7 have no array entry; the
-    # count is only informative here, so they parse as 0 objects.
-    num_objects = [0, 1, 2, 3, 5, 7][n_objects_code] if n_objects_code < 6 else 0
+    # table's own account of it). Codes 6 and 7 fall past the end of the
+    # array and name no objects - see _count_for_code().
+    num_objects = _count_for_code([0, 1, 2, 3, 5, 7], n_objects_code)
     b_dynamic_objects = r.bits(1)
     if b_dynamic_objects:
         # No early return: fs_index/bitrate/b_audio_ndot/substream_index
@@ -607,7 +600,7 @@ def parse_substream_info_obj(r, fs_index, frame_rate_factor, b_substreams_presen
     elif r.bits(1):  # b_isf
         if r.bits(1):  # b_isf_start
             isf_config = r.bits(3)
-            n_isf = [4, 8, 10, 14, 15, 30][isf_config]
+            n_isf = _count_for_code(_ISF_COUNTS, isf_config)
             for _ in range(n_isf):
                 add('ISF', False)
     else:
@@ -628,7 +621,7 @@ def parse_substream_info_obj(r, fs_index, frame_rate_factor, b_substreams_presen
 
 # --- §6.2.1.6 ac4_substream_group_info / §6.2.1.8 ac4_substream_info_chan --
 
-def parse_substream_group_info(r, fs_index, frame_rate_factor, bitstream_version=2):
+def parse_substream_group_info(r, bitstream_version, fs_index, frame_rate_factor):
     # frame_rate_factor is a frame-global quantity in the spec's own telling
     # (§6.3.2.1.3's b_iframe_global talks about "a series of 2 or 4
     # substreams" at the whole-FRAME level, not per presentation), even
@@ -655,9 +648,10 @@ def parse_substream_group_info(r, fs_index, frame_rate_factor, bitstream_version
     oamd = None
     if b_channel_coded:
         for _ in range(n_lf_substreams):
-            # §6.2.1.6: sus_ver is transmitted for bitstream_version == 1
-            # (reached inline through ac4_sgi_specifier()); for
-            # bitstream_version >= 2 it is implicitly 1.
+            # §6.2.1.6: sus_ver is transmitted only for bitstream_version == 1
+            # and is 1 (extended ac4_substream() syntax) otherwise. Only
+            # parse_sgi_specifier()'s inline form passes 1, and parse_ac4_toc()
+            # never reaches that - see parse_presentation_config_ext_info().
             sus_ver = r.bits(1) if bitstream_version == 1 else 1
             chan = parse_substream_info_chan(r, fs_index, frame_rate_factor, b_substreams_present)
             hsf_index = None
@@ -701,7 +695,7 @@ def parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor):
     """Returns a group_index (int) for bitstream_version >= 2, or an inline
     ac4_substream_group_info() dict for bitstream_version == 1."""
     if bitstream_version == 1:
-        return parse_substream_group_info(r, fs_index, frame_rate_factor, bitstream_version)
+        return parse_substream_group_info(r, bitstream_version, fs_index, frame_rate_factor)
     group_index = r.bits(3)
     if group_index == 7:
         group_index += variable_bits(r, 2)
@@ -719,63 +713,59 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
     if bitstream_version != 1:
         presentation_version = parse_presentation_version(r)
     group_refs = []
-    emdf_substreams = []
-    if not b_single_substream_group and presentation_config == 6:
-        # §6.2.1.3: b_add_emdf_substreams is implied; the n_add_emdf_substreams
-        # loop below is still read.
-        n = r.bits(2)
-        if n == 0:
-            n = variable_bits(r, 2) + 4
-        for _ in range(n):
-            emdf_substreams.append(parse_emdf_info(r))
-        return {'presentation_version': presentation_version,
-                'presentation_config': presentation_config, 'group_refs': group_refs,
-                'frame_rate_factor': 1, 'n_substream_groups': 0, 'emdf': None,
-                'presentation_substream': None, 'emdf_substreams': emdf_substreams}
     md_compat = None
-    if bitstream_version != 1:
-        md_compat = r.bits(3)
-    if r.bits(1):  # b_presentation_id
-        variable_bits(r, 2)  # presentation_id, unused downstream
-    frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index)
-    parse_frame_rate_fractions_info(r, frame_rate_index, frame_rate_factor)
-    emdf = parse_emdf_info(r)
     b_enable_presentation = None
-    if r.bits(1):  # b_presentation_filter
-        b_enable_presentation = bool(r.bits(1))
+    frame_rate_factor = 1
+    emdf = None
     n_substream_groups = 0
-    if b_single_substream_group:
-        group_refs.append(
-            parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
-        n_substream_groups = 1
+    b_pre_virtualized = 0
+    pres_sub = None
+    if not b_single_substream_group and presentation_config == 6:
+        # §6.2.1.3: an EMDF-only presentation. b_add_emdf_substreams is set
+        # without being transmitted, and the n_add_emdf_substreams loop after
+        # this if/else is read for it as for any other presentation. It sends
+        # no frame_rate_multiply_info(), so frame_rate_factor stays 1.
+        b_add_emdf_substreams = 1
     else:
-        r.bits(1)  # b_multi_pid
-        n_groups = _V1_CONFIG_GROUP_COUNTS.get(presentation_config)
-        if n_groups is not None:
-            for _ in range(n_groups):
-                group_refs.append(
-                    parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
-            n_substream_groups = _V1_N_SUBSTREAM_GROUPS[presentation_config]
-        elif presentation_config == 5:
-            n = r.bits(2) + 2
-            if n == 5:
-                n += variable_bits(r, 2)
-            n_substream_groups = n
-            for _ in range(n):
-                group_refs.append(
-                    parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
+        if bitstream_version != 1:
+            md_compat = r.bits(3)
+        if r.bits(1):  # b_presentation_id
+            variable_bits(r, 2)  # presentation_id, unused downstream
+        frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index)
+        parse_frame_rate_fractions_info(r, frame_rate_index, frame_rate_factor)
+        emdf = parse_emdf_info(r)
+        if r.bits(1):  # b_presentation_filter
+            b_enable_presentation = bool(r.bits(1))
+        if b_single_substream_group:
+            group_refs.append(
+                parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
+            n_substream_groups = 1
         else:
-            nested = parse_presentation_config_ext_info(
-                r, bitstream_version, presentation_config, fs_index, frame_rate_index)
-            if nested is not None:
-                group_refs.extend(nested['group_refs'])
-    b_pre_virtualized = r.bits(1)
-    b_add_emdf_substreams = r.bits(1)
-    # ac4_presentation_substream_info() (§6.2.1.12)
-    pres_sub = {'b_alternative': r.bits(1), 'b_pres_ndot': r.bits(1),
-                'substream_index': parse_substream_index_ref(r)}
+            r.bits(1)  # b_multi_pid
+            n_groups = _V1_CONFIG_GROUP_COUNTS.get(presentation_config)
+            if n_groups is not None:
+                for _ in range(n_groups):
+                    group_refs.append(
+                        parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
+                n_substream_groups = _V1_N_SUBSTREAM_GROUPS[presentation_config]
+            elif presentation_config == 5:
+                n = r.bits(2) + 2
+                if n == 5:
+                    n += variable_bits(r, 2)
+                n_substream_groups = n
+                for _ in range(n):
+                    group_refs.append(
+                        parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
+            else:
+                parse_presentation_config_ext_info(r)
+        b_pre_virtualized = r.bits(1)
+        b_add_emdf_substreams = r.bits(1)
+        # ac4_presentation_substream_info() (§6.2.1.12)
+        pres_sub = {'b_alternative': r.bits(1), 'b_pres_ndot': r.bits(1),
+                    'substream_index': parse_substream_index_ref(r)}
+    emdf_substreams = []
     if b_add_emdf_substreams:
-        n = r.bits(2)
+        n = r.bits(2)  # n_add_emdf_substreams
         if n == 0:
             n = variable_bits(r, 2) + 4
         for _ in range(n):
@@ -851,8 +841,7 @@ def parse_ac4_toc(r):
            'frame_rate_index': frame_rate_index, 'b_iframe_global': b_iframe_global,
            'n_presentations': n_presentations, 'payload_base': payload_base}
     if bitstream_version <= 1:
-        toc['presentations'] = [parse_presentation_info(r, fs_index, frame_rate_index,
-                                                        bitstream_version)
+        toc['presentations'] = [parse_presentation_info(r, fs_index, frame_rate_index)
                                  for _ in range(n_presentations)]
         toc['substream_groups'] = None
     else:
@@ -869,19 +858,22 @@ def parse_ac4_toc(r):
         # §6.3.2.1.8: total_n_substream_groups is derived, not transmitted -
         # 1 + the highest group_index any ac4_sgi_specifier() referenced.
         max_group_index = -1
-        group_frf = {}
         for p in presentations:
             for ref in p.get('group_refs', []):
                 if isinstance(ref, int):
                     max_group_index = max(max_group_index, ref)
-                    group_frf.setdefault(ref, p['frame_rate_factor'])
         total_groups = max_group_index + 1
-        # ac4_substream_info_chan()'s b_audio_ndot loop bounds itself on the
-        # frame_rate_factor of the presentation's frame_rate_multiply_info();
-        # a group takes the value of the first presentation that references it.
-        toc['substream_groups'] = [parse_substream_group_info(r, fs_index, group_frf.get(j, 1),
-                                                              bitstream_version)
-                                    for j in range(total_groups)]
+        # See parse_substream_group_info()'s own comment: frame_rate_factor
+        # is frame-global in practice, so every group's
+        # ac4_substream_info_chan() call uses the value from the first
+        # presentation that transmits frame_rate_multiply_info(). An
+        # EMDF-only presentation (presentation_config 6; it is None when
+        # b_single_substream_group is set) transmits none and is passed over.
+        group_frame_rate_factor = next(
+            (p['frame_rate_factor'] for p in presentations if p['presentation_config'] != 6), 1)
+        toc['substream_groups'] = [
+            parse_substream_group_info(r, bitstream_version, fs_index, group_frame_rate_factor)
+            for _ in range(total_groups)]
     n_substreams, substream_sizes = parse_substream_index_table(r)
     toc['n_substreams'] = n_substreams
     toc['substream_sizes'] = substream_sizes

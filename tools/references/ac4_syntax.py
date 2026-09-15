@@ -2113,14 +2113,6 @@ def _groups_of(toc, p):
     return out
 
 
-def _presentations(toc):
-    """Presentations with nested ac4_presentation_v1_info() flattened out."""
-    for p in toc['presentations']:
-        yield p
-        if p.get('v1_info'):
-            yield p['v1_info']
-
-
 def presentation_context(toc, p):
     """Part 2 6.3.3.1.13 and 6.3.3.1.27-31 helper variables."""
     pcm = -1
@@ -2187,7 +2179,7 @@ def substream_roles(toc):
             put(idx + i, ('audio', {'info': info, 'sus_ver': sus_ver, 'kind': kind,
                                     'b_iframe': ndot, 'owner': owner}))
 
-    pres = list(_presentations(toc))
+    pres = toc['presentations']
     for p in pres:
         for e in [p.get('emdf'), *(p.get('emdf_substreams') or [])]:
             if e:
@@ -2215,7 +2207,7 @@ def substream_roles(toc):
 def apply_ims_rule(toc):
     """The observed rule (src/ac4dec/ERRATA.md): in a presentation_version 2 presentation,
     channel_mode 0b1111000 is read as stereo (ch_mode 1)."""
-    for p in _presentations(toc):
+    for p in toc['presentations']:
         if p.get('presentation_version') != 2:
             continue
         for g in _groups_of(toc, p):

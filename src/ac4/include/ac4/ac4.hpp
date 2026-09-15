@@ -48,7 +48,11 @@
 // <= 1 path (legacy TS 103 190-1 ac4_toc()/ac4_presentation_info()) has no
 // such stream to test against - no encoder available to this project
 // writes it - so it is transcribed and page-verified against the published
-// spec text only.
+// spec text only. A bitstream_version 1 presentation can also nest a
+// presentation_version 1 description inside presentation_config_ext_info()
+// (TS 103 190-2 §6.2.1.5 and Table 4); that nested element is skipped as
+// bytes, so such a presentation reads as presentation_config 7 with no
+// substreams.
 //
 // A-JOC/direct-coded-object/OAMD framing has a narrower verification story
 // still: no real stream reaches it either - `dee_ac4ajoc_encoder.exe`
@@ -203,6 +207,9 @@ struct SubstreamGroupInfo {
 
 // --- §4.2.3.2 ac4_presentation_info (bitstream_version <= 1) ---------------
 
+// presentation_config 6 is an EMDF-only presentation: it carries additional
+// EMDF substreams and nothing else, so md_compat, presentation_id and
+// substreams stay empty.
 struct PresentationInfoV0 {
     int presentation_version = 0;
     std::optional<int>
@@ -218,6 +225,9 @@ struct PresentationInfoV0 {
 
 // --- §6.2.1.3 ac4_presentation_v1_info (bitstream_version >= 2) ------------
 
+// presentation_config 6 is an EMDF-only presentation (Table 53): md_compat,
+// enable_presentation and group_refs stay empty, and frame_rate_factor stays
+// 1 because the presentation does not transmit one.
 struct PresentationInfoV1 {
     int presentation_version = 0;
     std::optional<int> presentation_config;  // Table 53
