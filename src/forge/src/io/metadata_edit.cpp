@@ -69,12 +69,6 @@ void write_bits(std::span<std::byte> frame, std::size_t bit_at, std::uint32_t va
     return raw <= 2 ? std::optional{static_cast<meta::SurroundMixLevel>(raw)} : std::nullopt;
 }
 
-// Table D2.2: '11' is reserved and reads as "not indicated", which the enum
-// does have a member for.
-[[nodiscard]] meta::DownmixMode downmix_mode(std::uint32_t raw) {
-    return raw <= 2 ? static_cast<meta::DownmixMode>(raw) : meta::DownmixMode::kNotIndicated;
-}
-
 // --- AC-3 ------------------------------------------------------------------
 
 std::expected<Parsed, EditError> parse_ac3(std::span<const std::byte> frame) {
@@ -160,7 +154,10 @@ void read_mixing_metadata(BitReader& r, const FrameMetadata& meta, int nblks,
                           WireMixMetadata& mix) {
     const auto acmod = static_cast<std::uint8_t>(meta.acmod);
     if (acmod > 0x2) {
-        mix.dmixmod = downmix_mode(r.read(2));
+        // Table D2.2. Unlike cmixlev/surmixlev (centre_mix_level() above),
+        // every 2-bit code here has an enumerator - the reserved '11' is
+        // DownmixMode::kReserved - so the code is kept as sent.
+        mix.dmixmod = static_cast<meta::DownmixMode>(r.read(2));
     }
     if ((acmod & 0x1) != 0 && acmod > 0x2) {
         mix.ltrtcmixlev = static_cast<meta::MixLevel>(r.read(3));

@@ -27,6 +27,8 @@
 #include "ac3/emdf/emdf.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/probe.hpp"
+#include "ac3/meta/bsi.hpp"
+#include "ac3/meta/mixing.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/version.hpp"
@@ -218,6 +220,13 @@ void print_table(std::string_view path, const io::ProbeReport& report) {
     if (report.dynrng2.seen) {
         print_range("dynrng2", report.dynrng2, "");
     }
+    // Table D2.2's code and its name, in the same "code (name)" shape as bsmod.
+    if (report.dmixmod.has_value()) {
+        fmt::println("{:<16}{} ({})", "dmixmod", static_cast<int>(*report.dmixmod),
+                     ac3::meta::describe(*report.dmixmod));
+    } else {
+        fmt::println("{:<16}absent", "dmixmod");
+    }
 
     if (report.emdf_payload_ids.empty()) {
         fmt::println("{:<16}none", "EMDF");
@@ -392,6 +401,11 @@ void write_syncframe(JsonWriter& json, const io::ProbeSyncframe& frame, Detail d
         json.member("compr", static_cast<std::int64_t>(*frame.header.compr));
     } else {
         json.member_null("compr");
+    }
+    if (frame.header.dmixmod.has_value()) {
+        json.member("dmixmod", static_cast<std::int64_t>(*frame.header.dmixmod));
+    } else {
+        json.member_null("dmixmod");
     }
     if (frame.header.chanmap.has_value()) {
         json.member("chanmap", static_cast<std::int64_t>(*frame.header.chanmap));
@@ -571,6 +585,19 @@ void write_stream(JsonWriter& json, const io::ProbeReport& report) {
     write_range(json, "compr2", report.compr2, false);
     write_range(json, "dynrng", report.dynrng, false);
     write_range(json, "dynrng2", report.dynrng2, false);
+    // A code and its Table D2.2 name rather than a range - see
+    // ProbeReport::dmixmod - with both null when the field was never sent.
+    json.key("dmixmod");
+    json.begin_object();
+    json.member("present", report.dmixmod.has_value());
+    if (report.dmixmod.has_value()) {
+        json.member("code", static_cast<std::int64_t>(*report.dmixmod));
+        json.member("label", ac3::meta::describe(*report.dmixmod));
+    } else {
+        json.member_null("code");
+        json.member_null("label");
+    }
+    json.end_object();
     json.end_object();
 
     json.key("objects");

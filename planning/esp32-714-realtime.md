@@ -465,7 +465,8 @@ decode's, and the levels would stop matching the host's to the digit. J would al
     per-source option, and a project that needs the flash back has to opt out, as
     `AC3FORGE_MINIMAL_HOT_O2` already allows for the decoder.
 
-    **Measured:** the renderer is header-only (`include/ac3forge/render.hpp`) and compiles into
+    **Measured:** the renderer is header-only (`include/ac3forge/render.hpp` then, since moved to
+    `src/forge/include/ac3/render/render.hpp`) and compiles into
     `player.cpp`, so it runs at `-O2` with it. Onto twelve slots the render took 2.1 to 2.7 ms a
     frame in the base image and 1.5 to 2.2 ms with `player.cpp` at `-O2` (#654 does not touch the
     render).

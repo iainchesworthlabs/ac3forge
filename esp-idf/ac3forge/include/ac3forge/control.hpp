@@ -28,7 +28,7 @@
 //   POST /volume      body: a number 0.0 to 1.0. 200, or 409 if the sink has
 //                     no volume to set.
 //   GET  /layout      the output layout, as text: a name or a speaker list
-//                     (ac3forge/layout.hpp)
+//                     (ac3/render/layout.hpp)
 //   PUT  /layout      body: a name or a speaker list. Takes effect at the next
 //                     play. 200, 400 when it is not a layout, 409 when the
 //                     sink's bus has fewer slots than it needs.

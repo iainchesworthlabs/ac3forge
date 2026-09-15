@@ -314,6 +314,9 @@ bool valid_pan(const std::optional<PanInfo>& value) {
 }  // namespace
 
 bool valid_mix_metadata(const MixMetadata& value) {
+    if (!valid_downmix_mode(value.dmixmod)) {
+        return false;
+    }
     if (!valid_surround_mix_level(value.ltrtsurmixlev) ||
         !valid_surround_mix_level(value.lorosurmixlev)) {
         return false;

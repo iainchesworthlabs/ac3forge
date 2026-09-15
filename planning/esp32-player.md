@@ -16,6 +16,13 @@
     100 ms wait, and the network shape did not fit without PSRAM for the decoder. All five are
     fixed. Nothing from Phase 3 onward exists in the tree.
 
+    **On 2026-09-15 [the reference player plan](hearth-reference-player.md) replaced
+    [Sendspin](#sendspin), Phases 6 and 7, and decisions 11 and 12.** The streaming example
+    becomes `hearth_sink`, a conformant Sendspin player that also takes the E-AC-3 bitstream
+    through an extension role; whether the player comes from `sendspin-cpp` or from the
+    repository's own Sendspin library is measured and decided in that plan's phase B3. Slot width
+    becomes a runtime setting there, which settles decision 5.
+
     Shape follows [the topology](topology.md) and [the appliance plan](player-appliance.md):
     design sections say what changes and why, phases carry exit criteria and how each is
     verified, [Decisions](#decisions) lists what is open with a recommendation and a cost, and
@@ -538,7 +545,10 @@ decode alone.
 **Verified by:** `tests/io/test_interleave.cpp` for the layout and the probe's render row for the
 levels; hardware for the role and the timing, which have no substitute.
 
-**Built 2026-09-10, everything but what needs a board.** `include/ac3forge/layout.hpp` holds
+**Built 2026-09-10, everything but what needs a board.** (Both headers and their tests have since
+moved into the library, as `src/forge/include/ac3/render/` and `tests/render/test_layout.cpp`,
+for [Hearth](hearth-reference-player.md#a1-the-renderer-moves-into-the-library).)
+`include/ac3forge/layout.hpp` holds
 `OutputLayout` - a name (`7.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`, or angles), one speaker
 per slot, sixteen at most - and `render.hpp` holds `LayoutRenderer`, which turns a `PcmBlock`
 into one block per slot: unit gain to a slot whose location matches, `pan_direction` for one that

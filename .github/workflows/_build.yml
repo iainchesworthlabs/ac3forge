@@ -2734,6 +2734,27 @@ jobs:
           . "$IDF_PATH/export.sh"
           ./tools/checks/run_esp32c3_probe.sh
 
+      # The ESP32-C6 probe project, built and not run. ESP-IDF v6.1's
+      # qemu-system-riscv32 emulates the esp32c3 machine and no other RISC-V
+      # part, so this part's figures come from a board
+      # (docs/platforms/bare-metal/esp32-c6.md); what CI can hold is that both
+      # of its network loads still compile and link for the target, the WiFi
+      # one against IDF's radio and lwIP. Same container and toolchain as the
+      # C3 step above, so it costs two builds and no setup.
+      - name: Build the ESP32-C6 probe, both network loads (no emulator for this part)
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd apps/baremetal/platform/esp32c6
+          for load in none wifi; do
+            dir="$RUNNER_TEMP/esp32c6-$load"
+            defaults="sdkconfig.defaults"
+            if [ "$load" = wifi ]; then defaults="sdkconfig.defaults;sdkconfig.wifi"; fi
+            idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
+              "-DSDKCONFIG_DEFAULTS=$defaults" build
+          done
+
   build-footprint:
     name: Minimum-footprint decoder (arm-none-eabi, QEMU)
     # Leg 5 of check-runners' Linux fan-out: everything here runs inside the

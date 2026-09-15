@@ -221,6 +221,9 @@ struct AlternateBsi {
 [[nodiscard]] AC3FORGE_EXPORT std::string_view describe(HeadphoneMode value);
 [[nodiscard]] AC3FORGE_EXPORT std::string_view describe(AdConverterType value);
 [[nodiscard]] AC3FORGE_EXPORT std::string_view describe(RoomType value);
+// Table D2.2's indication for either codec - "reserved" for '11', which
+// neither A/52 nor TS 102 366 assigns (see DownmixMode's own comment).
+[[nodiscard]] AC3FORGE_EXPORT std::string_view describe(DownmixMode value);
 
 // The CLI token vocabularies, shared with the help text so the two cannot
 // drift. Each parse function returns false on anything unrecognised and
