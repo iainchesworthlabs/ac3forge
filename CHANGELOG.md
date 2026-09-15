@@ -524,6 +524,14 @@ and release packaging.
   describes the host, not `CMAKE_OSX_ARCHITECTURES`'s target — building arm64 from an
   Intel Mac handed it SSE2/AVX2 intrinsics and failed outright. Both now follow the
   effective target architecture; a universal configure resolves `generic`.
+- **An installed {fmt} older than 11.1.0 was accepted, and the build then failed.**
+  `cmake/Fmt.cmake` looked {fmt} up with no version, so Ubuntu 26.04's `libfmt-dev`
+  10.1.1 satisfied it and compilation stopped at the first `#include <fmt/base.h>`, a
+  header fmt 11 introduced. The lookup now asks for 11.1.0 or newer, the first release
+  the tree builds against (11.0.x's `fmt/chrono.h` fails under Clang 22): an older copy
+  is skipped and named in the configure output, and the `FetchContent` fallback (or the
+  `AC3FORGE_FETCH_FMT=OFF` error) applies. A build directory that had already cached
+  the old copy recovers on its next configure.
 
 **Audio backend and object signing**
 
