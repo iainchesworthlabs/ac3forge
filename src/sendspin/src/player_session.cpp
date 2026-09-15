@@ -20,6 +20,8 @@
 #include "ac3/sendspin/handshake_session.hpp"
 #include "ac3/sendspin/json.hpp"
 #include "ac3/sendspin/messages.hpp"
+#include "ac3/sendspin/pairing_flow.hpp"
+#include "ac3/sendspin/pairing_messages.hpp"
 #include "ac3/sendspin/session.hpp"
 #include "ac3/sendspin/transport.hpp"
 
@@ -58,27 +60,44 @@ constexpr std::size_t kMaxTokens = 4096;
     return false;
 }
 
-// {"type":"pair/abort","payload":{"reason":"method_not_supported"}}: the same in both
-// dialects.
-[[nodiscard]] std::string method_not_supported() {
-    std::string out;
-    json::Writer w(out);
-    w.begin_object().member("type", "pair/abort").key("payload").begin_object();
-    w.member("reason", "method_not_supported").end_object().end_object();
-    return out;
+// The messages pairing.md defines that a server sends.
+[[nodiscard]] bool is_pairing_message(std::string_view type) {
+    return type.starts_with("server/pair-") || type == "pair/abort";
 }
 
 }  // namespace
 
+// The pairing flow's events, carried to the listener with the server they concern.
+class PlayerSession::PairingEvents final : public pairing_flow::ClientPairingEvents {
+   public:
+    explicit PairingEvents(PlayerSession& session) : session_(&session) {}
+
+    void on_code(const pairing_flow::Code& code) override { session_->listener_->on_pairing_code(code); }
+    void on_held_back() override { session_->listener_->on_pairing_held_back(); }
+    void on_paired(const crypto::Key32& long_term_psk) override {
+        session_->listener_->on_paired(session_->server_key_, long_term_psk);
+    }
+
+   private:
+    PlayerSession* session_;
+};
+
 PlayerSession::PlayerSession(PlayerConfig config, const handshake::ClientKeyring& keyring,
-                             PlayerListener& listener, const Clock& clock)
+                             pairing_flow::ClientPairingState& pairing, PlayerListener& listener, const Clock& clock)
     : config_(std::move(config)),
       keyring_(&keyring),
+      pairing_state_(&pairing),
       listener_(&listener),
       clock_source_(&clock),
+      connection_(pairing.next_connection++),
+      pairing_events_(std::make_unique<PairingEvents>(*this)),
       state_(config_.player_state) {}
 
-PlayerSession::~PlayerSession() = default;
+PlayerSession::~PlayerSession() {
+    // The session goes with its connection: a pairing window bound to it closes.
+    attempt_.reset();
+    pairing_state_->dropped(connection_);
+}
 
 SessionOutput PlayerSession::close_silently() {
     phase_ = Phase::kClosed;
@@ -245,6 +264,15 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
         return {};
     }
 
+    if (is_pairing_message(type)) {
+        if (!attempt_) {
+            // Messages from an attempt that has ended are discarded until the next activation
+            // (pairing.md, Entering and leaving pairing); with no pairing activation since the
+            // handshake, one is out of sequence, a protocol error.
+            return pairing_index_ > 0 ? SessionOutput{} : close_silently();
+        }
+        return pairing_step(attempt_->receive(type, payload, clock_source_->now_us()));
+    }
     if (type == "server/time") {
         if (const auto time = m::read_server_time(payload)) {
             clock_.receive(*time, arrival);
@@ -351,12 +379,11 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
         }
         return goodbye(m::GoodbyeReason::kUnauthorized);
     }
-    if (pairing) {
-        // Pairing is not implemented in this session yet: every method is one it does not
-        // currently offer, which leaves the connection open.
-        seal(method_not_supported(), out);
-        return out;
-    }
+
+    // An admissible activation ends any attempt in progress, and any wait for the re-handshake
+    // after a pairing (pairing.md, Entering and leaving pairing).
+    end_pairing();
+    rehandshake_due_.reset();
 
     const bool had_player = player_active();
     activities_ = activate.activities;
@@ -368,6 +395,24 @@ SessionOutput PlayerSession::on_activate(const m::Activate& activate) {
     if (had_player && !player_active() && stream_) {
         stream_.reset();
         listener_->on_stream_end();
+    }
+    if (pairing) {
+        // One attempt of the method named. A method the matched PSK disallows or this player
+        // does not offer is answered with pair/abort method_not_supported, and the connection
+        // stays open.
+        ++pairing_index_;
+        attempt_ = std::make_unique<pairing_flow::ClientPairing>(
+            pairing_flow::ClientPairingConfig{.suite = config_.suite,
+                                              .dialect = dialect_,
+                                              .handshake_hash = channel_->handshake_hash(),
+                                              .matched = psk,
+                                              .offered = config_.pair_methods,
+                                              .static_code = config_.static_code,
+                                              .connection = connection_},
+            *pairing_state_, *pairing_events_);
+        out.append(pairing_step(attempt_->start(activate.pairing.value_or(m::PairingActivation{}), pairing_index_,
+                                                clock_source_->now_us())));
+        return out;
     }
     if (!active_roles_.empty() && (first || (player_active() && !had_player) || !sent_state_)) {
         send_state(out);
@@ -398,11 +443,57 @@ SessionOutput PlayerSession::on_rehandshake(std::string_view text) {
     channel_->rekey(std::move(*keys));
     category_ = responder.category();
     // The connection continues as after a first handshake: server/hello, client/hello,
-    // server/activate; roles from before do not carry into the new session.
+    // server/activate; roles, activities and pairing from before do not carry into the new
+    // session.
+    end_pairing();
+    rehandshake_due_.reset();
+    pairing_index_ = 0;
     activations_ = 0;
+    activities_.clear();
+    active_roles_.clear();
     phase_ = Phase::kHello;
     phase_started_ = clock_source_->now_us();
     return out;
+}
+
+SessionOutput PlayerSession::pairing_step(pairing_flow::Step step) {
+    SessionOutput out;
+    for (const std::string& message : step.messages) {
+        seal(message, out);
+    }
+    switch (step.after) {
+        case pairing_flow::After::kContinue:
+            break;
+        case pairing_flow::After::kEnded:
+            listener_->on_pairing_ended(attempt_ ? attempt_->aborted() : std::nullopt);
+            break;
+        case pairing_flow::After::kClose:
+            listener_->on_pairing_ended(attempt_ ? attempt_->aborted() : std::nullopt);
+            phase_ = Phase::kClosed;
+            out.close = true;
+            break;
+        case pairing_flow::After::kPaired:
+            // The record is persisted. Nothing more goes out until the server's re-handshake
+            // arrives, which a Music Assistant server expects as the next frame (C6).
+            rehandshake_due_ = clock_source_->now_us() + kHandshakeTimeout;
+            break;
+    }
+    return out;
+}
+
+void PlayerSession::end_pairing() {
+    if (!attempt_) {
+        return;
+    }
+    if (!attempt_->finished()) {
+        attempt_->abandon();
+        listener_->on_pairing_ended(std::nullopt);
+    }
+    attempt_.reset();
+}
+
+bool PlayerSession::pairing() const {
+    return phase_ == Phase::kActive && contains(activities_, m::Activity::kPairing);
 }
 
 bool PlayerSession::player_active() const {
@@ -442,6 +533,13 @@ SessionOutput PlayerSession::tick() {
             }
             return {};
         case Phase::kActive: {
+            if (pairing()) {
+                // No clock exchanges or state reports while pairing (C25).
+                if (rehandshake_due_ && now > *rehandshake_due_) {
+                    return close_silently();
+                }
+                return attempt_ ? pairing_step(attempt_->tick(now)) : SessionOutput{};
+            }
             SessionOutput out;
             send_clock(out);
             const bool available = clock_.converged() && !external_source_;
@@ -458,7 +556,7 @@ SessionOutput PlayerSession::tick() {
 
 std::int64_t PlayerSession::next_tick_us() const {
     constexpr std::int64_t kIdle = 1'000'000;
-    if (phase_ != Phase::kActive) {
+    if (phase_ != Phase::kActive || pairing()) {
         return kIdle;
     }
     const std::int64_t now = clock_source_->now_us();
@@ -481,10 +579,25 @@ SessionOutput PlayerSession::set_state(const m::PlayerState& state) {
 SessionOutput PlayerSession::set_external_source(bool external) {
     external_source_ = external;
     SessionOutput out;
-    if (phase_ == Phase::kActive && sent_state_) {
+    // While pairing the change waits: tick() reports it once the activities change.
+    if (phase_ == Phase::kActive && sent_state_ && !pairing()) {
         send_state(out);
     }
     return out;
+}
+
+SessionOutput PlayerSession::resume_pairing() {
+    if (!attempt_ || !pairing()) {
+        return {};
+    }
+    return pairing_step(attempt_->resume(clock_source_->now_us()));
+}
+
+SessionOutput PlayerSession::cancel_pairing() {
+    if (!attempt_ || !pairing()) {
+        return {};
+    }
+    return pairing_step(attempt_->cancel());
 }
 
 SessionOutput PlayerSession::goodbye(m::GoodbyeReason reason) {

@@ -216,14 +216,23 @@ and release packaging.
   and answer with frames, so a board can run the player's. The player checks each activation
   as the specification's admissibility rules say; the server refuses what the specification
   does not allow at that moment, such as a stream to an unavailable player or a command it
-  did not list. Pairing, arbitration between servers and the roles beyond `player@v1` come
-  next.
+  did not list. Arbitration between servers and the roles beyond `player@v1` come next.
 - **Sendspin's pairing flows in `src/sendspin`**: the Pairing PSK Flow, the Dynamic Pairing
   Code Flow in digits or as a QR token with its retry rounds and round limit, and the Static
   Pairing Code Flow behind its gesture window, from both the client's side and the server's,
   in the specification's form and aiosendspin 9.1.1's. The server checks the client's tag,
   the commitment to `nonce_B` and the binding of the typed code to the handshake in the order
   each dialect uses, and two ends of different handshakes cannot pair whatever code is typed.
+- **Pairing in Sendspin's sessions**: a pairing activation on either session runs one attempt
+  of the method it names. The server session checks the method against the client's offer and
+  the matched PSK, takes the operator's code, and once its listener has stored the record
+  acknowledges and re-handshakes to the new long-term PSK in the same output; the player
+  session emits the code, waits for a gesture or the round limit's reset where the method
+  says, and sends nothing but pairing messages until the re-handshake, which Music Assistant
+  expects. Cancels from either side, a new activation that supersedes the attempt, the
+  player's two-minute attempt timeout and the server's own timeouts are covered, and a
+  static code's window admits attempts only on the connection that carried its first. The
+  pairing messages join `fuzz_sendspin_messages`.
 
 **Containers and encoding**
 

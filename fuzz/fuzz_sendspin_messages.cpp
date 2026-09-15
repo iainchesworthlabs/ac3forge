@@ -9,12 +9,15 @@
 #include "ac3/sendspin/dialect.hpp"
 #include "ac3/sendspin/json.hpp"
 #include "ac3/sendspin/messages.hpp"
+#include "ac3/sendspin/pairing_messages.hpp"
 
-// The core messages' readers (src/sendspin/src/messages.cpp): what a server reads from a
-// client once the handshake is done (client/hello, client/state, client/time,
-// client/goodbye) and what a player reads from a server (server/hello, server/activate,
-// server/time, server/command, stream/start, stream/clear, stream/end, group/update), each
-// in both dialects. Every reader sees the payload of every input, whatever its type says.
+// The core and pairing messages' readers (src/sendspin/src/messages.cpp and
+// pairing_messages.cpp): what a server reads from a client once the handshake is done
+// (client/hello, client/state, client/time, client/goodbye, and the client's pairing
+// messages) and what a player reads from a server (server/hello, server/activate,
+// server/time, server/command, stream/start, stream/clear, stream/end, group/update, and the
+// server's pairing messages), each in both dialects. Every reader sees the payload of every
+// input, whatever its type says.
 //
 // Whatever reads must write back out, and that text must read and write back to itself: one
 // pass settles what the writer leaves out, such as an activity or a codec it does not
@@ -25,6 +28,7 @@
 namespace {
 
 namespace m = ac3::sendspin::messages;
+namespace pm = ac3::sendspin::pairing_messages;
 namespace json = ac3::sendspin::json;
 using ac3::sendspin::Dialect;
 
@@ -81,8 +85,25 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     settle(payload, m::read_stream_clear, m::write_stream_clear);
     settle(payload, m::read_stream_end, m::write_stream_end);
     settle(payload, m::read_client_goodbye, m::write_client_goodbye);
+    settle(payload, pm::read_client_pair_init, pm::write_client_pair_init);
+    settle(payload, pm::read_server_pair_auth, pm::write_server_pair_auth);
+    settle(payload, pm::read_client_pair_auth, pm::write_client_pair_auth);
+    settle(payload, pm::read_server_pair_confirm, pm::write_server_pair_confirm);
+    settle(payload, pm::read_client_pair_finalize, pm::write_client_pair_finalize);
 
     for (const Dialect dialect : {Dialect::kSpecification, Dialect::kAiosendspin911}) {
+        settle(
+            payload, [](json::Value p) { return pm::read_pair_pending(p); },
+            [dialect](const pm::PairPending& pending) { return pm::write_pair_pending(pending, dialect); });
+        settle(
+            payload, [dialect](json::Value p) { return pm::read_server_pair_init(p, dialect); },
+            [](const pm::ServerPairInit& init) { return pm::write_server_pair_init(init); });
+        settle(
+            payload, [dialect](json::Value p) { return pm::read_client_pair_confirm(p, dialect); },
+            [dialect](const pm::ClientPairConfirm& confirm) { return pm::write_client_pair_confirm(confirm, dialect); });
+        settle(
+            payload, [dialect](json::Value p) { return pm::read_pair_abort(p, dialect); },
+            [dialect](pm::AbortReason reason) { return pm::write_pair_abort(reason, dialect); });
         settle(
             payload, [dialect](json::Value p) { return m::read_client_hello(p, dialect); },
             [dialect](const m::ClientHello& hello) { return m::write_client_hello(hello, dialect); });

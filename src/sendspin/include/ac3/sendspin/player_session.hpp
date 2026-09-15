@@ -15,6 +15,8 @@
 #include "ac3/sendspin/handshake_session.hpp"
 #include "ac3/sendspin/messages.hpp"
 #include "ac3/sendspin/noise.hpp"
+#include "ac3/sendspin/pairing_flow.hpp"
+#include "ac3/sendspin/pairing_messages.hpp"
 #include "ac3/sendspin/session.hpp"
 #include "ac3/sendspin/transport.hpp"
 
@@ -29,9 +31,13 @@
 // recognises from Noise message 1, it speaks 9.1.1's forms
 // (planning/hearth-sendspin-extension.md, Music Assistant and aiosendspin 9.1.1).
 //
-// Not here yet, and answered as the specification allows meanwhile: pairing (an activation
-// that asks for it gets pair/abort reason method_not_supported), arbitration between servers
-// (the owner of several sessions decides), and the roles other than player@v1.
+// A pairing activation runs one attempt of the method it names (pairing_flow::ClientPairing).
+// From that activation until the next, or until the re-handshake after a pairing, the session
+// sends only pairing messages: no clock exchanges and no client/state, which aiosendspin 9.1.1
+// requires (C6, C25).
+//
+// Not here yet: arbitration between servers (the owner of several sessions decides) and the
+// roles other than player@v1.
 
 namespace ac3::sendspin {
 
@@ -43,7 +49,10 @@ struct PlayerConfig {
     // Written to client/hello as they are, in order; player@v1 must be among them.
     std::vector<std::string> supported_roles{"player@v1"};
     messages::PlayerSupport player_support;
+    // The pairing methods offered: pairing_psk, and at most one code method.
     std::vector<messages::PairMethodDescriptor> pair_methods;
+    // The static pairing code, eight ASCII digits, when pair_methods offers static_code.
+    std::string static_code;
     bool unpaired_access = false;
     // The player state reported while nothing has changed it: volume, mute, delay, timing
     // and commands.
@@ -76,12 +85,29 @@ class PlayerListener {
     // The server unpaired this player: the listener removes the pairing record for
     // `server_key`.
     virtual void on_unpaired(const crypto::Key32& server_key) = 0;
+
+    // Pairing (pairing.md). Show or speak the dynamic code; called again on each round.
+    virtual void on_pairing_code(const pairing_flow::Code& code) = 0;
+    // The attempt waits for the operator: a gesture opening the static code's window, or an
+    // action at the round limit. After changing the shared pairing state, the owner calls
+    // PlayerSession::resume_pairing().
+    virtual void on_pairing_held_back() = 0;
+    // Persist the pairing record binding `long_term_psk` to `server_key`, replacing any record
+    // for that server, and hold the PSK among the key ring's candidates: the server
+    // re-handshakes to it next.
+    virtual void on_paired(const crypto::Key32& server_key, const crypto::Key32& long_term_psk) = 0;
+    // The attempt ended without pairing, with the pair/abort reason sent or received; none when
+    // a server/activate or a re-handshake superseded it, or a protocol error closed the
+    // connection.
+    virtual void on_pairing_ended(std::optional<pairing_messages::AbortReason> reason) = 0;
 };
 
 class PlayerSession {
    public:
-    PlayerSession(PlayerConfig config, const handshake::ClientKeyring& keyring, PlayerListener& listener,
-                  const Clock& clock);
+    // `pairing` is shared by every session of the same client and outlives them. Destroying
+    // a session is the drop of its connection, which closes a pairing window bound to it.
+    PlayerSession(PlayerConfig config, const handshake::ClientKeyring& keyring,
+                  pairing_flow::ClientPairingState& pairing, PlayerListener& listener, const Clock& clock);
     ~PlayerSession();
     PlayerSession(const PlayerSession&) = delete;
     PlayerSession& operator=(const PlayerSession&) = delete;
@@ -102,6 +128,12 @@ class PlayerSession {
     // The player's output was taken by something outside Sendspin, or given back.
     [[nodiscard]] SessionOutput set_external_source(bool external);
     [[nodiscard]] SessionOutput goodbye(messages::GoodbyeReason reason);
+
+    // The owner changed the shared pairing state for the operator (a gesture, or a reset of
+    // the round limit): an attempt this session holds back starts if it now may.
+    [[nodiscard]] SessionOutput resume_pairing();
+    // The operator cancelled the attempt on the device.
+    [[nodiscard]] SessionOutput cancel_pairing();
 
     enum class Phase : std::uint8_t {
         kHandshake,
@@ -125,8 +157,13 @@ class PlayerSession {
     [[nodiscard]] const std::vector<std::string>& active_roles() const { return active_roles_; }
     [[nodiscard]] bool clock_converged() const { return clock_.converged(); }
     [[nodiscard]] bool streaming() const { return stream_.has_value(); }
+    // A pairing activity is declared: from its server/activate until the next, or until the
+    // re-handshake after a pairing.
+    [[nodiscard]] bool pairing() const;
 
    private:
+    class PairingEvents;
+
     [[nodiscard]] SessionOutput close_silently();
     void seal(std::string_view json, SessionOutput& out);
     [[nodiscard]] SessionOutput on_handshake_text(std::string_view text);
@@ -134,14 +171,18 @@ class PlayerSession {
     [[nodiscard]] SessionOutput on_json(std::string_view text, std::int64_t arrival);
     [[nodiscard]] SessionOutput on_activate(const messages::Activate& activate);
     [[nodiscard]] SessionOutput on_rehandshake(std::string_view text);
+    [[nodiscard]] SessionOutput pairing_step(pairing_flow::Step step);
+    void end_pairing();
     void send_state(SessionOutput& out);
     void send_clock(SessionOutput& out);
     [[nodiscard]] bool player_active() const;
 
     PlayerConfig config_;
     const handshake::ClientKeyring* keyring_;
+    pairing_flow::ClientPairingState* pairing_state_;
     PlayerListener* listener_;
     const Clock* clock_source_;
+    std::uint64_t connection_;
 
     Phase phase_ = Phase::kHandshake;
     std::int64_t phase_started_ = 0;
@@ -157,6 +198,13 @@ class PlayerSession {
     std::vector<messages::Activity> activities_;
     std::vector<std::string> active_roles_;
     std::size_t activations_ = 0;
+
+    // Pairing activations since the last handshake (pairing.md, Pairing index).
+    std::uint32_t pairing_index_ = 0;
+    std::unique_ptr<PairingEvents> pairing_events_;
+    std::unique_ptr<pairing_flow::ClientPairing> attempt_;
+    // Set once paired, until the server's re-handshake arrives or the wait times out.
+    std::optional<std::int64_t> rehandshake_due_;
 
     ClockSync clock_;
     bool reported_available_ = false;

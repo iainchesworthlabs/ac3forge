@@ -22,7 +22,8 @@
 // The pairing flows run between ClientPairing and ServerPairing directly, message by message:
 // the Pairing PSK Flow, the dynamic code in digits and as a QR token with a mistyped code and
 // its retry round, aiosendspin 9.1.1's dynamic code with no rounds, the static code behind its
-// window, the round limit, and the attempt timeout.
+// window and the connection the window binds to, the round limit, the attempt timeout and
+// cancels from either side.
 
 namespace {
 
@@ -95,7 +96,8 @@ struct Pairing {
     flow::After server_after = flow::After::kContinue;
 
     Pairing(Dialect d, hs::PskCategory matched, std::vector<m::PairMethodDescriptor> offered,
-            std::string static_code = "12345678", Digest32 client_hash = hash_of(1), Digest32 server_hash = hash_of(1))
+            std::string static_code = "12345678", Digest32 client_hash = hash_of(1), Digest32 server_hash = hash_of(1),
+            std::uint64_t connection = 1)
         : dialect(d) {
         client = std::make_unique<flow::ClientPairing>(
             flow::ClientPairingConfig{.suite = suite,
@@ -103,7 +105,8 @@ struct Pairing {
                                       .handshake_hash = client_hash,
                                       .matched = matched,
                                       .offered = std::move(offered),
-                                      .static_code = std::move(static_code)},
+                                      .static_code = std::move(static_code),
+                                      .connection = connection},
             state, events);
         server = std::make_unique<flow::ServerPairing>(flow::ServerPairingConfig{
             .suite = suite, .dialect = dialect, .handshake_hash = server_hash, .matched = matched});
@@ -208,7 +211,8 @@ TEST_CASE("pairing flow: the dynamic code in digits, with a mistyped code and a 
     REQUIRE(pairing.server->wants_code());
     REQUIRE(pairing.events.codes.size() == 2);
     CHECK(digits_of(pairing.events.codes[1]) == code);
-    CHECK(pairing.state.rounds_since_verified == 1);
+    // Two rounds have begun, the failed one and the one now emitting the code.
+    CHECK(pairing.state.rounds_since_verified == 2);
 
     pairing.from_server(pairing.server->enter_code(code));
     CHECK(pairing.server_after == flow::After::kPaired);
@@ -272,7 +276,8 @@ TEST_CASE("pairing flow: two different handshakes cannot pair, whatever code is 
         pairing.from_server(pairing.server->enter_code(code));
         CHECK_FALSE(pairing.events.paired.has_value());
     }
-    CHECK(pairing.state.rounds_since_verified == 3);
+    // Three failed rounds, and a fourth emitting the code.
+    CHECK(pairing.state.rounds_since_verified == 4);
 }
 
 TEST_CASE("pairing flow: the static code behind its window", "[sendspin][pairing_flow]") {
@@ -282,24 +287,27 @@ TEST_CASE("pairing flow: the static code behind its window", "[sendspin][pairing
     pairing.start({.method = m::PairMethod::kStaticCode, .format = std::nullopt, .pin_length = 0, .languages = {}});
     // No window yet: the client holds the attempt back and says so.
     CHECK(pairing.events.held_back == 1);
+    CHECK(pairing.client->held_back());
     CHECK_FALSE(pairing.server->wants_code());
+    CHECK(pairing.client->resume(pairing.now).messages.empty());
 
-    flow::Step opened = pairing.client->operator_action(pairing.now);
+    pairing.state.open_window(pairing.now);
+    flow::Step opened = pairing.client->resume(pairing.now);
     pairing.to_server(std::move(opened.messages));
     REQUIRE(pairing.server->wants_code());
-    CHECK(pairing.state.window_open(pairing.now));
+    CHECK(pairing.state.window_open(pairing.now, 1));
 
     pairing.from_server(pairing.server->enter_code(std::string("20260915")));
     CHECK(pairing.server_after == flow::After::kPaired);
     CHECK(pairing.client_after == flow::After::kPaired);
     CHECK(*pairing.events.paired == pairing.server->long_term_psk());
     // A completed pairing closes the window.
-    CHECK_FALSE(pairing.state.window_open(pairing.now));
+    CHECK_FALSE(pairing.state.window_open(pairing.now, 1));
 }
 
 TEST_CASE("pairing flow: five wrong static codes close the window", "[sendspin][pairing_flow]") {
     flow::ClientPairingState shared;
-    shared.window_opened_at = 0;
+    shared.open_window(0);
     for (int attempt = 0; attempt < 5; ++attempt) {
         Pairing pairing(Dialect::kSpecification, hs::PskCategory::kSentinel, {kPskDescriptor, kStaticDescriptor}, "20260915");
         pairing.state = shared;
@@ -308,10 +316,43 @@ TEST_CASE("pairing flow: five wrong static codes close the window", "[sendspin][
         REQUIRE(pairing.server->wants_code());
         pairing.from_server(pairing.server->enter_code(std::string("00000000")));
         CHECK(pairing.client_after == flow::After::kEnded);
+        CHECK(pairing.client->aborted() == ac3::sendspin::pairing_messages::AbortReason::kCodeMismatch);
         shared = pairing.state;
     }
     CHECK(shared.window_failures == 5);
-    CHECK_FALSE(shared.window_open(1'000));
+    CHECK_FALSE(shared.window_open(1'000, 1));
+}
+
+TEST_CASE("pairing flow: a window admits attempts only on the connection of its first", "[sendspin][pairing_flow]") {
+    flow::ClientPairingState shared;
+    shared.open_window(0);
+    const m::PairingActivation activation{
+        .method = m::PairMethod::kStaticCode, .format = std::nullopt, .pin_length = 0, .languages = {}};
+
+    Pairing first(Dialect::kSpecification, hs::PskCategory::kSentinel, {kPskDescriptor, kStaticDescriptor}, "20260915",
+                  hash_of(1), hash_of(1), 7);
+    first.state = shared;
+    first.start(activation);
+    REQUIRE(first.server->wants_code());
+    // The attempt times out, which leaves the window open, bound to connection 7.
+    CHECK(first.client->tick(flow::ClientPairing::kAttemptTimeout).after == flow::After::kEnded);
+    CHECK(first.state.window_open(1'000, 7));
+    CHECK_FALSE(first.state.window_open(1'000, 8));
+
+    Pairing second(Dialect::kSpecification, hs::PskCategory::kSentinel, {kPskDescriptor, kStaticDescriptor}, "20260915",
+                   hash_of(2), hash_of(2), 8);
+    second.state = first.state;
+    second.start(activation);
+    CHECK(second.client->held_back());
+    CHECK_FALSE(second.server->wants_code());
+
+    // Connection 7 drops: its window closes, and connection 8 needs a new gesture.
+    second.state.dropped(7);
+    CHECK(second.client->resume(1'000).messages.empty());
+    second.state.open_window(2'000);
+    second.to_server(second.client->resume(2'000).messages);
+    CHECK(second.server->wants_code());
+    CHECK(second.state.window_connection == std::optional<std::uint64_t>(8));
 }
 
 TEST_CASE("pairing flow: the round limit holds attempts back until the operator acts", "[sendspin][pairing_flow]") {
@@ -322,7 +363,7 @@ TEST_CASE("pairing flow: the round limit holds attempts back until the operator 
     wrong[0] = wrong[0] == '1' ? '2' : '1';
     pairing.from_server(pairing.server->enter_code(wrong));
     CHECK(pairing.client_after == flow::After::kEnded);
-    CHECK(pairing.state.held_back);
+    CHECK(pairing.state.holding_back());
 
     // The next attempt waits for the operator.
     Pairing next(Dialect::kSpecification, hs::PskCategory::kSentinel, {kPskDescriptor, kDynamicDescriptor});
@@ -330,14 +371,15 @@ TEST_CASE("pairing flow: the round limit holds attempts back until the operator 
     next.start({.method = m::PairMethod::kDynamicCode, .format = m::CodeFormat::kDigits, .pin_length = 0, .languages = {}}, 2);
     CHECK(next.events.held_back == 1);
     CHECK(next.events.codes.empty());
-    flow::Step resumed = next.client->operator_action(0);
+    next.state.reset_rounds();
+    flow::Step resumed = next.client->resume(0);
     next.to_server(std::move(resumed.messages));
     REQUIRE(next.events.codes.size() == 1);
     next.from_server(next.server->enter_code(next.events.codes[0]));
     CHECK(next.client_after == flow::After::kPaired);
 }
 
-TEST_CASE("pairing flow: the attempt timeout, a cancel, and a leftover pairing_index", "[sendspin][pairing_flow]") {
+TEST_CASE("pairing flow: the attempt timeout, cancels, and a leftover pairing_index", "[sendspin][pairing_flow]") {
     Pairing pairing(Dialect::kSpecification, hs::PskCategory::kSentinel, {kPskDescriptor, kDynamicDescriptor});
     pairing.start({.method = m::PairMethod::kDynamicCode, .format = m::CodeFormat::kDigits, .pin_length = 0, .languages = {}}, 3);
     CHECK(pairing.client->tick(flow::ClientPairing::kAttemptTimeout - 1).messages.empty());
@@ -351,6 +393,15 @@ TEST_CASE("pairing flow: the attempt timeout, a cancel, and a leftover pairing_i
     cancelled.from_server(cancelled.server->cancel());
     CHECK(cancelled.client_after == flow::After::kEnded);
     CHECK(cancelled.client->finished());
+    CHECK(cancelled.client->aborted() == ac3::sendspin::pairing_messages::AbortReason::kUserCancelled);
+
+    // Cancelled on the device instead, while the code is emitted: the round still counts.
+    Pairing on_device(Dialect::kSpecification, hs::PskCategory::kSentinel, {kPskDescriptor, kDynamicDescriptor});
+    on_device.start({.method = m::PairMethod::kDynamicCode, .format = m::CodeFormat::kDigits, .pin_length = 0, .languages = {}});
+    on_device.to_server(on_device.client->cancel().messages);
+    CHECK(on_device.server->aborted() == ac3::sendspin::pairing_messages::AbortReason::kUserCancelled);
+    CHECK(on_device.server_after == flow::After::kEnded);
+    CHECK(on_device.state.rounds_since_verified == 1);
 
     // A client/pair-init from an earlier activation is ignored; one from a later is an error.
     flow::ServerPairing server({.suite = ac3::sendspin::noise::Suite::kChaChaPolySha256,

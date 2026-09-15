@@ -68,6 +68,7 @@ ClientPairing::~ClientPairing() {
 
 Step ClientPairing::abort(pm::AbortReason reason) {
     state_ = State::kDone;
+    aborted_ = reason;
     return {.after = reason == pm::AbortReason::kConcurrentAttempt ? After::kClose : After::kEnded,
             .messages = {pm::write_pair_abort(reason, config_.dialect)}};
 }
@@ -121,27 +122,30 @@ Step ClientPairing::start(const m::PairingActivation& activation, std::uint32_t 
                 format_ = m::CodeFormat::kDigits;
                 digits_ = activation.pin_length;
             }
-            if (shared_->held_back) {
-                state_ = State::kPending;
-                events_->on_held_back();
-                return {.after = After::kContinue,
-                        .messages = {pm::write_pair_pending({.pairing_index = pairing_index_, .message = {}}, config_.dialect)}};
-            }
-            return begin_attempt(now);
+            break;
 
         case m::PairMethod::kStaticCode:
             if (!all_digits(config_.static_code, 8)) {
                 return abort(pm::AbortReason::kMethodNotSupported);
             }
-            if (!shared_->window_open(now)) {
-                state_ = State::kPending;
-                events_->on_held_back();
-                return {.after = After::kContinue,
-                        .messages = {pm::write_pair_pending({.pairing_index = pairing_index_, .message = {}}, config_.dialect)}};
-            }
-            return begin_attempt(now);
+            break;
     }
-    return abort(pm::AbortReason::kMethodNotSupported);
+    return may_start(now) ? begin_attempt(now) : hold_back();
+}
+
+bool ClientPairing::may_start(std::int64_t now) const {
+    if (method_ == m::PairMethod::kStaticCode) {
+        return shared_->window_open(now, config_.connection);
+    }
+    return !shared_->holding_back();
+}
+
+Step ClientPairing::hold_back() {
+    state_ = State::kPending;
+    events_->on_held_back();
+    // One client/pair-pending an attempt: Music Assistant disconnects on a second (C26).
+    return {.after = After::kContinue,
+            .messages = {pm::write_pair_pending({.pairing_index = pairing_index_, .message = {}}, config_.dialect)}};
 }
 
 Step ClientPairing::begin_attempt(std::int64_t now) {
@@ -157,24 +161,34 @@ Step ClientPairing::begin_attempt(std::int64_t now) {
         return {.after = After::kContinue,
                 .messages = {pm::write_client_pair_init({.pairing_index = pairing_index_, .commit_b = *commitment})}};
     }
+    // The window's first attempt binds it to this connection.
+    if (!shared_->window_connection) {
+        shared_->window_connection = config_.connection;
+    }
     code_ = config_.static_code;
     state_ = State::kAuth;
     return {.after = After::kContinue,
             .messages = {pm::write_client_pair_init({.pairing_index = pairing_index_, .commit_b = std::nullopt})}};
 }
 
-Step ClientPairing::operator_action(std::int64_t now) {
-    if (method_ == m::PairMethod::kDynamicCode) {
-        shared_->held_back = false;
-        shared_->rounds_since_verified = 0;
-    } else if (method_ == m::PairMethod::kStaticCode) {
-        shared_->window_opened_at = now;
-        shared_->window_failures = 0;
+Step ClientPairing::resume(std::int64_t now) {
+    if (state_ != State::kPending || !may_start(now)) {
+        return {};
     }
-    if (state_ == State::kPending) {
-        return begin_attempt(now);
+    return begin_attempt(now);
+}
+
+Step ClientPairing::cancel() {
+    if (state_ == State::kDone) {
+        return {};
     }
-    return {};
+    return abort(pm::AbortReason::kUserCancelled);
+}
+
+void ClientPairing::abandon() {
+    // A round already counted when its server/pair-init arrived, which is the spec's "only
+    // when the code was already being emitted".
+    state_ = State::kDone;
 }
 
 Step ClientPairing::tick(std::int64_t now) {
@@ -196,6 +210,9 @@ Step ClientPairing::receive(std::string_view type, json::Value payload, std::int
     if (type == "pair/abort") {
         const auto reason = pm::read_pair_abort(payload, dialect);
         state_ = State::kDone;
+        if (reason) {
+            aborted_ = *reason;
+        }
         return {.after = reason && *reason == pm::AbortReason::kConcurrentAttempt ? After::kClose : After::kEnded,
                 .messages = {}};
     }
@@ -228,6 +245,9 @@ Step ClientPairing::receive(std::string_view type, json::Value payload, std::int
                     code_ = std::move(*digits);
                 }
             }
+            // The round begins, and the code is emitted: it counts toward the round limit
+            // however it ends.
+            ++shared_->rounds_since_verified;
             events_->on_code(*code_);
             state_ = State::kAuth;
             return {};
@@ -266,13 +286,9 @@ Step ClientPairing::receive(std::string_view type, json::Value payload, std::int
                     ++shared_->window_failures;
                     return abort(pm::AbortReason::kCodeMismatch);
                 }
-                ++shared_->rounds_since_verified;
-                if (shared_->rounds_since_verified >= ClientPairingState::kRoundLimit) {
-                    shared_->held_back = true;
-                    return abort(pm::AbortReason::kCodeMismatch);
-                }
+                // At the round limit the attempt ends, and later ones wait for the operator.
                 // aiosendspin 9.1.1 has no rounds: a failed round ends the attempt (C22).
-                if (dialect == Dialect::kAiosendspin911) {
+                if (shared_->holding_back() || dialect == Dialect::kAiosendspin911) {
                     return abort(pm::AbortReason::kCodeMismatch);
                 }
                 ++round_;
@@ -280,7 +296,9 @@ Step ClientPairing::receive(std::string_view type, json::Value payload, std::int
                 state_ = State::kServerInit;
                 return {.after = After::kContinue, .messages = {pm::write_client_pair_retry()}};
             }
-            shared_->rounds_since_verified = 0;
+            if (method_ == m::PairMethod::kDynamicCode) {
+                shared_->rounds_since_verified = 0;
+            }
 
             const std::optional<crypto::Digest64> tb = party_->tag();
             const std::optional<Key32> psk_key =
@@ -321,7 +339,7 @@ Step ClientPairing::receive(std::string_view type, json::Value payload, std::int
             }
             events_->on_paired(long_term_psk_);
             if (method_ == m::PairMethod::kStaticCode) {
-                shared_->window_opened_at.reset();
+                shared_->close_window();
             }
             state_ = State::kDone;
             return {.after = After::kPaired, .messages = {}};
@@ -440,13 +458,24 @@ Step ServerPairing::receive(std::string_view type, json::Value payload) {
             return protocol_error();
         }
         if (pending->pairing_index == pairing_index_) {
-            pending_ = pending->message;
+            held_back_ = true;
+            if (pending->message.empty()) {
+                pending_.reset();
+            } else {
+                pending_ = pending->message;
+            }
         }
         return {};
     }
 
     switch (state_) {
         case State::kInit: {
+            if (method_ != m::PairMethod::kPairingPsk && pairing_index_ > 1 && type != "client/pair-init") {
+                // Until this activation's client/pair-init, a code flow's other messages can
+                // only be ones the client sent in the attempt this activation superseded, which
+                // are discarded (pairing.md, Entering and leaving pairing).
+                return {};
+            }
             if (method_ == m::PairMethod::kPairingPsk) {
                 if (type != "client/pair-finalize") {
                     return protocol_error();
@@ -469,6 +498,7 @@ Step ServerPairing::receive(std::string_view type, json::Value payload) {
                 // A leftover from a superseded pairing (pairing.md, Pairing index).
                 return {};
             }
+            held_back_ = false;
             pending_.reset();
             round_ = 1;
             if (method_ == m::PairMethod::kDynamicCode) {

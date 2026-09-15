@@ -97,9 +97,14 @@ std::expected<PairPending, MessageError> read_pair_pending(json::Value payload) 
         if (!text) {
             return malformed();
         }
-        // An unauthenticated peer's text: kept to the 200 characters a server shows.
+        // An unauthenticated peer's text: kept to the 200 characters a server shows, at most
+        // 800 bytes of UTF-8, cut where a character starts.
         if (text->size() > 800) {
-            text->resize(800);
+            std::size_t cut = 800;
+            while (cut > 0 && (static_cast<unsigned char>((*text)[cut]) & 0xC0U) == 0x80U) {
+                --cut;
+            }
+            text->resize(cut);
         }
         pending.message = std::move(*text);
     }

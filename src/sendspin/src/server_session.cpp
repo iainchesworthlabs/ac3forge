@@ -14,12 +14,15 @@
 
 #include "ac3/sendspin/channel.hpp"
 #include "ac3/sendspin/chunks.hpp"
+#include "ac3/sendspin/crypto.hpp"
 #include "ac3/sendspin/dialect.hpp"
 #include "ac3/sendspin/frames.hpp"
 #include "ac3/sendspin/handshake.hpp"
 #include "ac3/sendspin/handshake_session.hpp"
 #include "ac3/sendspin/json.hpp"
 #include "ac3/sendspin/messages.hpp"
+#include "ac3/sendspin/pairing.hpp"
+#include "ac3/sendspin/pairing_flow.hpp"
 #include "ac3/sendspin/session.hpp"
 #include "ac3/sendspin/transport.hpp"
 
@@ -48,6 +51,21 @@ constexpr std::size_t kMaxTokens = 4096;
 [[nodiscard]] std::unexpected<Refusal> refuse(Refusal refusal) {
     return std::unexpected(refusal);
 }
+
+// The messages pairing.md defines that a client sends.
+[[nodiscard]] bool is_pairing_message(std::string_view type) {
+    return type.starts_with("client/pair-") || type == "pair/abort";
+}
+
+[[nodiscard]] const m::PairMethodDescriptor* offered(const std::vector<m::PairMethodDescriptor>& methods,
+                                                     m::PairMethod method) {
+    const auto found = std::find_if(methods.begin(), methods.end(),
+                                    [method](const m::PairMethodDescriptor& d) { return d.method == method; });
+    return found == methods.end() ? nullptr : &*found;
+}
+
+// aiosendspin 9.1.1's dynamic code is never shorter than this on a Hearth server (C20).
+constexpr std::int32_t kMinimumCodeDigits = 6;
 
 }  // namespace
 
@@ -156,6 +174,8 @@ SessionOutput ServerSession::established(handshake::Initiator& initiator) {
     activities_.clear();
     active_roles_.clear();
     stream_.reset();
+    attempt_.reset();
+    pairing_index_ = 0;
 
     SessionOutput out;
     if (!seal_json(m::write_server_hello({.name = config_.name, .languages = config_.languages}), out)) {
@@ -217,6 +237,9 @@ SessionOutput ServerSession::on_json(std::string_view text, std::int64_t arrival
     if (phase_ != Phase::kReady && phase_ != Phase::kActive) {
         return {};
     }
+    if (is_pairing_message(type)) {
+        return on_pairing_message(type, payload, arrival);
+    }
     if (type == "client/time") {
         const auto time = m::read_client_time(payload);
         if (!time) {
@@ -274,9 +297,146 @@ SessionOutput ServerSession::on_json(std::string_view text, std::int64_t arrival
     return {};
 }
 
+SessionOutput ServerSession::on_pairing_message(std::string_view type, json::Value payload, std::int64_t arrival) {
+    if (!attempt_) {
+        // Messages still in flight from an attempt that ended are discarded (pairing.md,
+        // Entering and leaving pairing); with no pairing activation since the handshake, one
+        // is out of sequence, a protocol error.
+        return pairing_index_ > 0 ? SessionOutput{} : close_silently();
+    }
+    const bool started = attempt_->started();
+    const bool held_back = attempt_->held_back();
+    const bool wanted = attempt_->wants_code();
+    SessionOutput out = pairing_step(attempt_->receive(type, payload), wanted);
+    if (attempt_ && !started && attempt_->started()) {
+        attempt_since_ = arrival;
+    }
+    if (attempt_ && !held_back && attempt_->held_back()) {
+        listener_->on_pairing_held_back(attempt_->pending());
+    }
+    return out;
+}
+
+SessionOutput ServerSession::pairing_step(pairing_flow::Step step, bool wanted) {
+    if (step.after == pairing_flow::After::kPaired) {
+        return paired(std::move(step));
+    }
+    SessionOutput out;
+    for (const std::string& message : step.messages) {
+        if (!seal_json(message, out)) {
+            return out;
+        }
+    }
+    switch (step.after) {
+        case pairing_flow::After::kContinue:
+            break;
+        case pairing_flow::After::kEnded:
+            listener_->on_pairing_ended(attempt_->aborted());
+            break;
+        case pairing_flow::After::kClose:
+            listener_->on_pairing_ended(attempt_->aborted());
+            phase_ = Phase::kClosed;
+            out.close = true;
+            return out;
+        case pairing_flow::After::kPaired:
+            break;
+    }
+    if (!wanted && attempt_->wants_code()) {
+        listener_->on_pairing_code_wanted();
+    }
+    return out;
+}
+
+SessionOutput ServerSession::paired(pairing_flow::Step step) {
+    crypto::Key32 psk = attempt_->long_term_psk();
+    // server/pair-finalize says the record is persisted, so it is persisted first (pairing.md).
+    if (!listener_->on_paired(client_key_, psk)) {
+        crypto::wipe(psk);
+        return close_silently();
+    }
+    attempt_.reset();
+    SessionOutput out;
+    for (const std::string& message : step.messages) {
+        if (!seal_json(message, out)) {
+            crypto::wipe(psk);
+            return out;
+        }
+    }
+    // Noise message 1 of the re-handshake to the new PSK follows at once: Music Assistant's
+    // client reads it as the next message (C6).
+    std::expected<SessionOutput, Refusal> rehandshake =
+        begin_rehandshake({.psk = psk, .category = PskCategory::kLongTerm});
+    crypto::wipe(psk);
+    if (!rehandshake) {
+        return close_silently();
+    }
+    out.append(std::move(*rehandshake));
+    return out;
+}
+
+void ServerSession::leave_pairing(SessionOutput& out) {
+    attempt_.reset();
+    if (dialect_ == Dialect::kAiosendspin911 && category_ == PskCategory::kPairing) {
+        // aiosendspin 9.1.1 refuses an activation declaring nothing on the pairing PSK (C11).
+        phase_ = Phase::kClosed;
+        out.close = true;
+        return;
+    }
+    const m::Activate none{.activities = {}, .active_roles = std::vector<std::string>{}, .pairing = std::nullopt};
+    if (seal_json(m::write_activate(none, dialect_), out)) {
+        activities_.clear();
+        active_roles_.clear();
+    }
+}
+
+bool ServerSession::pairing() const {
+    return phase_ == Phase::kActive && contains(activities_, m::Activity::kPairing);
+}
+
 bool ServerSession::player_active() const {
     return phase_ == Phase::kActive &&
            std::find(active_roles_.begin(), active_roles_.end(), kPlayerRole) != active_roles_.end();
+}
+
+std::optional<m::PairingActivation> ServerSession::pairing_parameters(
+    const std::optional<m::PairingActivation>& requested) const {
+    if (!requested || !requested->method || !hello_) {
+        return std::nullopt;
+    }
+    const m::PairMethod method = *requested->method;
+    // pairing_psk exactly when the pairing PSK matched, and code pairing on the Sentinel; the
+    // long-term PSK allows no pairing (messaging.md, server/activate).
+    if (category_ == PskCategory::kLongTerm ||
+        (method == m::PairMethod::kPairingPsk) != (category_ == PskCategory::kPairing)) {
+        return std::nullopt;
+    }
+    const m::PairMethodDescriptor* descriptor = offered(hello_->pair_methods, method);
+    // A client listing both code methods is taken to offer only the dynamic one (pairing.md,
+    // client/hello pair-method descriptor).
+    if (descriptor == nullptr ||
+        (method == m::PairMethod::kStaticCode && offered(hello_->pair_methods, m::PairMethod::kDynamicCode))) {
+        return std::nullopt;
+    }
+    m::PairingActivation parameters{.method = method, .format = std::nullopt, .pin_length = 0, .languages = {}};
+    if (method == m::PairMethod::kDynamicCode) {
+        if (dialect_ == Dialect::kSpecification) {
+            const std::vector<m::CodeFormat>& formats = descriptor->formats;
+            if (!requested->format ||
+                std::find(formats.begin(), formats.end(), *requested->format) == formats.end()) {
+                return std::nullopt;
+            }
+            parameters.format = requested->format;
+        } else {
+            // The client's minimum, never under six digits (C20), and the language order for a
+            // spoken code, which 9.1.1 reads from here (C9).
+            parameters.pin_length = std::max({requested->pin_length, descriptor->min_pin_length, kMinimumCodeDigits});
+            if (parameters.pin_length > pairing::kMaximumCodeDigits) {
+                return std::nullopt;
+            }
+            parameters.languages = requested->languages.empty() ? config_.languages : requested->languages;
+        }
+    }
+    return parameters;
 }
 
 std::expected<SessionOutput, Refusal> ServerSession::activate(const m::Activate& activate) {
@@ -285,11 +445,26 @@ std::expected<SessionOutput, Refusal> ServerSession::activate(const m::Activate&
     }
     const bool playback = contains(activate.activities, m::Activity::kPlayback);
     const bool pairing = contains(activate.activities, m::Activity::kPairing);
-    if (contains(activate.activities, m::Activity::kOther) || (playback && pairing) || pairing) {
-        // Pairing is not implemented in this session yet.
+    if (contains(activate.activities, m::Activity::kOther) || (playback && pairing)) {
         return refuse(Refusal::kBadActivation);
     }
-    const std::vector<std::string> roles = activate.active_roles.value_or(active_roles_);
+    m::Activate written = activate;
+    std::vector<std::string> roles;
+    if (pairing) {
+        // No roles while pairing, and a method the client offers and the PSK allows.
+        std::optional<m::PairingActivation> parameters = pairing_parameters(activate.pairing);
+        if ((activate.active_roles && !activate.active_roles->empty()) || !parameters) {
+            return refuse(Refusal::kBadActivation);
+        }
+        written.pairing = std::move(parameters);
+    } else {
+        written.pairing.reset();
+        // aiosendspin 9.1.1 takes the pairing PSK for pairing only (C11): cancel_pairing() closes.
+        if (dialect_ == Dialect::kAiosendspin911 && category_ == PskCategory::kPairing) {
+            return refuse(Refusal::kBadActivation);
+        }
+        roles = activate.active_roles.value_or(active_roles_);
+    }
     // Playback-capable: the sets messaging.md allows per matched PSK, with unpaired access
     // on the Sentinel only when the client offers it. The engine decides operator approval.
     const bool capable = category_ == PskCategory::kLongTerm ||
@@ -318,7 +493,6 @@ std::expected<SessionOutput, Refusal> ServerSession::activate(const m::Activate&
         }
         stream_.reset();
     }
-    m::Activate written = activate;
     // aiosendspin 9.1.1 takes a missing active_roles as the persisted roles even where the
     // specification would clear them, so they always go out (C11).
     written.active_roles = roles;
@@ -332,6 +506,16 @@ std::expected<SessionOutput, Refusal> ServerSession::activate(const m::Activate&
     if (!had_player || !keeps_player) {
         // A newly activated player owes a fresh client/state before its stream starts.
         player_state_received_ = false;
+    }
+    // An activation ends the attempt in progress, whose messages still in flight are then
+    // discarded, and a pairing activation admits a new one.
+    attempt_.reset();
+    if (pairing) {
+        ++pairing_index_;
+        attempt_ = std::make_unique<pairing_flow::ServerPairing>(pairing_flow::ServerPairingConfig{
+            .suite = suite_, .dialect = dialect_, .handshake_hash = channel_->handshake_hash(), .matched = category_});
+        attempt_->activated(*written.pairing, pairing_index_);
+        attempt_since_ = clock_->now_us();
     }
     return out;
 }
@@ -405,7 +589,8 @@ std::expected<SessionOutput, Refusal> ServerSession::end_stream() {
 }
 
 std::expected<SessionOutput, Refusal> ServerSession::update_group(const m::GroupUpdate& update) {
-    if (phase_ != Phase::kActive) {
+    // An aiosendspin 9.1.1 client fails a pairing attempt on any other message (C25).
+    if (phase_ != Phase::kActive || (dialect_ == Dialect::kAiosendspin911 && attempt_running())) {
         return refuse(Refusal::kNotReady);
     }
     SessionOutput out;
@@ -447,9 +632,40 @@ std::expected<SessionOutput, Refusal> ServerSession::unpair() {
 }
 
 std::expected<SessionOutput, Refusal> ServerSession::rehandshake(const handshake::PskChoice& choice) {
-    if ((phase_ != Phase::kReady && phase_ != Phase::kActive) || !channel_) {
+    if ((phase_ != Phase::kReady && phase_ != Phase::kActive) || !channel_ || attempt_running()) {
         return refuse(Refusal::kNotReady);
     }
+    return begin_rehandshake(choice);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::enter_code(const pairing_flow::Code& code) {
+    if (!pairing() || !attempt_ || !attempt_->wants_code()) {
+        return refuse(Refusal::kNoAttempt);
+    }
+    pairing_flow::Step step = attempt_->enter_code(code);
+    if (attempt_->wants_code()) {
+        return refuse(Refusal::kBadCode);
+    }
+    return pairing_step(std::move(step), true);
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::cancel_pairing() {
+    if (!pairing()) {
+        return refuse(Refusal::kNoAttempt);
+    }
+    SessionOutput out;
+    if (attempt_) {
+        for (const std::string& message : attempt_->cancel().messages) {
+            if (!seal_json(message, out)) {
+                return refuse(Refusal::kCrypto);
+            }
+        }
+    }
+    leave_pairing(out);
+    return out;
+}
+
+std::expected<SessionOutput, Refusal> ServerSession::begin_rehandshake(const handshake::PskChoice& choice) {
     initiator_ = std::make_unique<handshake::Initiator>(config_.identity, client_key_, suite_,
                                                          channel_->handshake_hash(), choice);
     const handshake::Step step = initiator_->start();
@@ -477,8 +693,18 @@ SessionOutput ServerSession::tick() {
                 return close_silently();
             }
             return {};
-        case Phase::kReady:
         case Phase::kActive:
+            if (attempt_running()) {
+                const std::int64_t limit = attempt_->started() ? kPairingAttemptTimeout : kPairingStartTimeout;
+                if (now - attempt_since_ > limit) {
+                    SessionOutput out;
+                    leave_pairing(out);
+                    listener_->on_pairing_ended(pairing_messages::AbortReason::kAttemptTimeout);
+                    return out;
+                }
+            }
+            return {};
+        case Phase::kReady:
         case Phase::kClosed:
             return {};
     }

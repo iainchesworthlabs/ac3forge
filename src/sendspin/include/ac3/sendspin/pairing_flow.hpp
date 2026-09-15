@@ -54,22 +54,53 @@ using Code = std::variant<std::string, std::array<std::uint8_t, 24>>;
 
 // What outlives one attempt on the client (pairing.md, Rounds and Pairing Window): the rounds
 // since the last verified server_kc, counted across attempts and servers, and the static
-// code's window. One per client, shared by its connections.
+// code's window. One per client, shared by its connections, which the client's owner
+// serialises as it does every call on them.
 struct ClientPairingState {
-    // The Dynamic Pairing Code Flow's round limit.
+    // The Dynamic Pairing Code Flow's round limit. A round counts from its server/pair-init,
+    // when the code is emitted, whether it ends in a failed server_kc, with the attempt or
+    // abandoned; a verified server_kc resets the count.
     static constexpr std::uint32_t kRoundLimit = 20;
     std::uint32_t rounds_since_verified = 0;
-    bool held_back = false;  // until an operator action
 
     // The static code's window: open from a gesture until kWindowLifetime passes, five
-    // failed attempts, a completed pairing or a cancel.
+    // failed attempts, a completed pairing, the operator closing it, or the drop of the
+    // connection that carried its first attempt, which alone may carry more.
     static constexpr std::int64_t kWindowLifetime = 300'000'000;
     static constexpr std::uint32_t kWindowFailures = 5;
     std::optional<std::int64_t> window_opened_at;
     std::uint32_t window_failures = 0;
+    std::optional<std::uint64_t> window_connection;
 
-    [[nodiscard]] bool window_open(std::int64_t now) const {
-        return window_opened_at && now - *window_opened_at < kWindowLifetime && window_failures < kWindowFailures;
+    // The identifier the next connection takes (ClientPairingConfig::connection).
+    std::uint64_t next_connection = 1;
+
+    // The round limit holds attempts back until the operator acts.
+    [[nodiscard]] bool holding_back() const { return rounds_since_verified >= kRoundLimit; }
+
+    // Whether an attempt on `connection` may start now.
+    [[nodiscard]] bool window_open(std::int64_t now, std::uint64_t connection) const {
+        return window_opened_at && now - *window_opened_at < kWindowLifetime && window_failures < kWindowFailures &&
+               (!window_connection || *window_connection == connection);
+    }
+
+    // The operator's gesture: a new window, bound to no connection yet.
+    void open_window(std::int64_t now) {
+        window_opened_at = now;
+        window_failures = 0;
+        window_connection.reset();
+    }
+    void close_window() {
+        window_opened_at.reset();
+        window_connection.reset();
+    }
+    // The operator's action at the round limit.
+    void reset_rounds() { rounds_since_verified = 0; }
+    // `connection` dropped.
+    void dropped(std::uint64_t connection) {
+        if (window_connection == connection) {
+            close_window();
+        }
     }
 };
 
@@ -84,6 +115,8 @@ struct ClientPairingConfig {
     std::vector<messages::PairMethodDescriptor> offered;
     // The static pairing code, eight ASCII digits, when static_code is offered.
     std::string static_code;
+    // This connection, as ClientPairingState::next_connection numbered it.
+    std::uint64_t connection = 0;
 };
 
 class ClientPairingEvents {
@@ -98,7 +131,7 @@ class ClientPairingEvents {
     // Show or speak the dynamic code; called again on each round, which uses the same code.
     virtual void on_code(const Code& code) = 0;
     // The attempt is held back until the operator acts: a gesture for the static code, a reset
-    // of the round limit for the dynamic one.
+    // of the round limit for the dynamic one. ClientPairing::resume() follows the action.
     virtual void on_held_back() = 0;
     // Persist the pairing record (pairing.md, Pairing Records), and hold the PSK among the
     // key ring's candidates for the re-handshake that follows.
@@ -120,14 +153,22 @@ class ClientPairing {
                              std::int64_t now);
     // A pairing message from the server: `type` and its payload.
     [[nodiscard]] Step receive(std::string_view type, json::Value payload, std::int64_t now);
-    // The operator gesture opened a window, or reset the round limit.
-    [[nodiscard]] Step operator_action(std::int64_t now);
+    // The operator acted on the shared state (a gesture, or a reset of the round limit): a
+    // held-back attempt starts if it now may.
+    [[nodiscard]] Step resume(std::int64_t now);
+    // The operator cancelled the attempt on the device.
+    [[nodiscard]] Step cancel();
+    // A server/activate ended the attempt: nothing is sent, and nothing persists.
+    void abandon();
     // The attempt timeout (pairing.md, Entering and leaving pairing: two minutes).
     [[nodiscard]] Step tick(std::int64_t now);
 
     static constexpr std::int64_t kAttemptTimeout = 120'000'000;
 
     [[nodiscard]] bool finished() const { return state_ == State::kDone; }
+    [[nodiscard]] bool held_back() const { return state_ == State::kPending; }
+    // The pair/abort reason sent or received, once the attempt has ended with one.
+    [[nodiscard]] std::optional<pairing_messages::AbortReason> aborted() const { return aborted_; }
 
    private:
     enum class State : std::uint8_t {
@@ -139,6 +180,8 @@ class ClientPairing {
         kDone,
     };
 
+    [[nodiscard]] bool may_start(std::int64_t now) const;
+    [[nodiscard]] Step hold_back();
     [[nodiscard]] Step begin_attempt(std::int64_t now);
     [[nodiscard]] Step abort(pairing_messages::AbortReason reason);
     [[nodiscard]] Step protocol_error();
@@ -148,6 +191,7 @@ class ClientPairing {
     ClientPairingState* shared_;
     ClientPairingEvents* events_;
     State state_ = State::kDone;
+    std::optional<pairing_messages::AbortReason> aborted_;
     messages::PairMethod method_ = messages::PairMethod::kPairingPsk;
     std::optional<messages::CodeFormat> format_;
     std::int32_t digits_ = 6;
@@ -192,7 +236,12 @@ class ServerPairing {
 
     // Waiting for the operator to enter the code.
     [[nodiscard]] bool wants_code() const { return state_ == State::kCode; }
-    // The client said it is holding the attempt back, with its message if any.
+    // The attempt's first message has arrived (pairing.md, Entering and leaving pairing).
+    [[nodiscard]] bool started() const { return state_ != State::kInit; }
+    [[nodiscard]] bool finished() const { return state_ == State::kDone; }
+    // The client said it is holding the attempt back, and has not started it yet.
+    [[nodiscard]] bool held_back() const { return held_back_ && state_ == State::kInit; }
+    // The sentence the client sent with client/pair-pending, if any.
     [[nodiscard]] const std::optional<std::string>& pending() const { return pending_; }
     // Once kPaired: the long-term PSK to persist with the client's key, then re-handshake to.
     [[nodiscard]] const Key32& long_term_psk() const { return long_term_psk_; }
@@ -225,6 +274,7 @@ class ServerPairing {
     std::optional<Code> code_;
     std::unique_ptr<cpace::Party> party_;
     std::vector<std::uint8_t> sid_;
+    bool held_back_ = false;
     std::optional<std::string> pending_;
     std::optional<pairing_messages::AbortReason> aborted_;
     Key32 long_term_psk_{};
