@@ -351,6 +351,26 @@ matrix comes from the stream's own `cmixlev`/`surmixlev` or `mixmdate` levels, a
 normalisation means the fold can never be louder than the loudest coded sample. `mix-lfe` folds
 the LFE in as well — §7.8 makes that optional and this decoder drops it by default.
 
+`downmix=auto` lets the stream choose between the two stereo folds, the third option A/52
+§D3.1.1 describes. The stream's preference is its `dmixmod` (Table D2.2): in AC-3's Annex D
+`xbsi1`, or in E-AC-3's `mixmdate`. It is read once, from the first `dmixmod` the programme's
+independent substream sends, and the choice is printed:
+
+```bash
+ac3cli decode surround.ec3 stereo.wav downmix=auto
+```
+
+```text
+  downmix=auto: dmixmod 3 (reserved) -> Lo/Ro stereo (§D3.1.1)
+```
+
+A stream that prefers Lt/Rt gets Lt/Rt. Everything else gets Lo/Ro: a stated Lo/Ro preference,
+a stream that states none (`00`, or no `dmixmod` at all), and the reserved code `11`. A/52:2018
+Table D2.2 and ETSI TS 102 366 V1.4.1 Table D.1.1 both list `11` as reserved, and Annex E gives
+E-AC-3's field the same table, so neither standard defines a further downmix for it; §D2.3.1.2
+allows a decoder to read it as "not indicated". A later `downmix=`, `channels=1` or
+`channels=as-coded` on the same command line replaces `auto`.
+
 `drcmode=` selects §7.7's two named consumer modes, each of which sets dialnorm normalisation
 *and* which of `dynrng`/`compr` applies — unlike `drc=` and `heavy`, which are the individual
 switches:
@@ -409,6 +429,7 @@ rate control    constant (1792 .. 1792 bytes per access unit)
 dialnorm        -31 dB
 compr           absent
 dynrng          absent
+dmixmod         absent
 EMDF            payload id(s) 11 (OAMD), 14 (JOC)
 object audio    5 object(s): bed LFE only, 4 dynamic, in 63 frame(s)
 complexity      5
@@ -524,7 +545,7 @@ Top level:
 | `nominal_bitrate_kbps` | int or null | AC-3's declared rate; `null` for E-AC-3 |
 | `variable_bitrate` | bool | Access units differ in size |
 | `access_unit_bytes` | `{min, max}` | The spread behind that flag |
-| `metadata` | object | `dialnorm_db`, `dialnorm2_db`, `compr`, `compr2`, `dynrng`, `dynrng2`, each `{present, min, max}` with `min`/`max` `null` when `present` is false |
+| `metadata` | object | `dialnorm_db`, `dialnorm2_db`, `compr`, `compr2`, `dynrng`, `dynrng2`, each `{present, min, max}` with `min`/`max` `null` when `present` is false; and `dmixmod`, `{present, code, label}`: the first Table D2.2 preferred downmix the lead programme's independent substream sends, as its 0–3 code and its name (`"not indicated"`, `"Lt/Rt"`, `"Lo/Ro"` or `"reserved"`), with `code`/`label` `null` when no syncframe sent one |
 | `objects` | object | `complexity_index` (TS 103 420 §8.3.2.2, from `addbsi`), `oamd`, `joc`, `emdf_payload_ids`, and the program the first OAMD payload described: `total`, `dynamic`, `bed`, `bed_mask`, `lfe`, plus the `frames` that carried one |
 | `authenticity` | `{present, tagged_syncframes}` | Whether frames carry an authenticity tag. Answered **without a key** — where the tag lives is fixed by the container, and only whether it *matches* needs the key (that is `decode ... verify-objects`) |
 | `integrity` | object | `crc_valid`, `crc_failures`, `parse_failures`, `first_parse_error` |
@@ -532,7 +553,7 @@ Top level:
 
 `access_units[]` (with `detail=`): `index`, `byte_offset`, `bytes`, `start_seconds`, and
 `syncframes[]` — each with its own `byte_offset`, `bytes`, `stream_type`, `substream_id`,
-`bsid`, `bsmod`, `acmod`, `lfeon`, `numblkscod`, `dialnorm_db`, `compr`, `chanmap`, `crc_valid`,
+`bsid`, `bsmod`, `acmod`, `lfeon`, `numblkscod`, `dialnorm_db`, `compr`, `dmixmod`, `chanmap`, `crc_valid`,
 `authenticity_tag`, `parse_error` and `objects`. With `detail=blocks` each syncframe also carries
 `frame_tools` (Table E1.3's frame-level gates, `aht_streams`, `snroffststr`,
 `per_block_exp_strategy`) and `blocks[]` — per block: `parsed`, `coupling`,

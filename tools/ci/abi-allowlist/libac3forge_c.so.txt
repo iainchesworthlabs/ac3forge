@@ -213,6 +213,7 @@ ac3::meta::channel_peak_dbfs(std::span<double const, 18446744073709551615ul>, st
 ac3::meta::channel_peak_dbfs(std::span<float const, 18446744073709551615ul>, std::span<float const, 18446744073709551615ul>)
 ac3::meta::describe(ac3::meta::AdConverterType)
 ac3::meta::describe(ac3::meta::BitstreamMode, ac3::Acmod)
+ac3::meta::describe(ac3::meta::DownmixMode)
 ac3::meta::describe(ac3::meta::HeadphoneMode)
 ac3::meta::describe(ac3::meta::RoomType)
 ac3::meta::describe(ac3::meta::SurroundExMode)
