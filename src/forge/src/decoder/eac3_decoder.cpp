@@ -3472,12 +3472,20 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                         // §E3.6.4.3's thirty-two as one shift (block_norm.hpp).
                         const Scalar mantissa = tail.spxco[static_cast<std::size_t>(ch)][ubnd];
                         const int shift = 5 - tail.spxco_exp[static_cast<std::size_t>(ch)][ubnd];
+                        // The three products without the saturation test
+                        // (fixed32.hpp's product_unsaturated), which none of
+                        // them can reach: a stored coefficient times a scale
+                        // of at most one, a noise draw of at most sqrt(3)
+                        // times the band's RMS, below one half, and any value
+                        // times a coordinate mantissa below one.
                         for (int i = 0; i < size; ++i) {
                             const auto at = static_cast<std::size_t>(low + i);
+                            const Scalar blended =
+                                internal::scalar_product_unsaturated(tc[at], sscale) +
+                                internal::scalar_product_unsaturated(spx_noise.next_as<Scalar>(),
+                                                                     nscale);
                             tc[at] = internal::scalar_ldexp(
-                                (tc[at] * sscale + spx_noise.next_as<Scalar>() * nscale) *
-                                    mantissa,
-                                shift);
+                                internal::scalar_product_unsaturated(blended, mantissa), shift);
                         }
                     } else {
                         const Scalar coordinate =

@@ -5,6 +5,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -159,6 +161,147 @@ TEST_CASE("Fixed32 sums wrap and products round half up and saturate", "[fixed32
     STATIC_CHECK(Fixed32{0.75}.scaled_by_pow2(-40).raw == 0);
     STATIC_CHECK(Fixed32{100}.scaled_by_pow2(3).raw == std::numeric_limits<std::int32_t>::max());
     STATIC_CHECK(ac3::internal::scalar_ldexp(Fixed32{0.5}, 2).raw == Fixed32{2}.raw);
+}
+
+TEST_CASE("Fixed32's product and shifts are their 64-bit definitions, on 32 bits", "[fixed32]") {
+    // The product saturates behind one test and the power-of-two scalings
+    // shift on 32 bits (fixed32.hpp); these are the 64-bit forms each one is
+    // defined by, on the saturation boundaries and at random.
+    const auto saturate = [](std::int64_t v) {
+        return static_cast<std::int32_t>(std::clamp<std::int64_t>(
+            v, std::numeric_limits<std::int32_t>::min(), std::numeric_limits<std::int32_t>::max()));
+    };
+    const auto product = [&](std::int32_t a, std::int32_t b) {
+        return saturate(((static_cast<std::int64_t>(a) * b) + (std::int64_t{1} << 23)) >> 24);
+    };
+    const auto scaled = [&](std::int32_t raw, int n) -> std::int32_t {
+        if (n >= 31) {
+            return raw == 0 ? 0
+                            : saturate(raw < 0 ? std::numeric_limits<std::int64_t>::min()
+                                               : std::numeric_limits<std::int64_t>::max());
+        }
+        if (n >= 0) {
+            return saturate(static_cast<std::int64_t>(raw) * (std::int64_t{1} << n));
+        }
+        if (n <= -32) {
+            return 0;
+        }
+        const std::int64_t half = std::int64_t{1} << (-n - 1);
+        return static_cast<std::int32_t>((static_cast<std::int64_t>(raw) + half) >> -n);
+    };
+    const auto integer_scaled = [&](std::int32_t value, int power) -> std::int32_t {
+        const int shift = 24 + power;
+        if (shift >= 32) {
+            return value == 0 ? 0
+                              : saturate(value < 0 ? std::numeric_limits<std::int64_t>::min()
+                                                   : std::numeric_limits<std::int64_t>::max());
+        }
+        if (shift >= 0) {
+            return saturate(static_cast<std::int64_t>(value) * (std::int64_t{1} << shift));
+        }
+        if (shift <= -32) {
+            return value < 0 ? -1 : 0;
+        }
+        return value >> -shift;
+    };
+    const std::array<std::int32_t, 16> edges{0, 1, -1, 3, -3, Fixed32::kOne, -Fixed32::kOne,
+                                             Fixed32::kOne / 2, 0x40000000, -0x40000000,
+                                             0x3FFFFFFF, -0x40000001,
+                                             std::numeric_limits<std::int32_t>::max(),
+                                             std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max() - 1,
+                                             std::numeric_limits<std::int32_t>::min() + 1};
+    std::mt19937_64 rng(0x5a7);
+    int mismatches = 0;
+    const auto check_value = [&](std::int32_t a, std::int32_t b, int n) {
+        mismatches += (Fixed32::from_raw(a) * Fixed32::from_raw(b)).raw != product(a, b) ? 1 : 0;
+        mismatches += Fixed32::from_raw(a).scaled_by_pow2(n).raw != scaled(a, n) ? 1 : 0;
+        const auto got = Fixed32::from_integer_scaled(a, n - 24).raw;
+        mismatches += got != integer_scaled(a, n - 24) ? 1 : 0;
+    };
+    for (int n = -34; n <= 34; ++n) {
+        for (const auto a : edges) {
+            for (const auto b : edges) {
+                check_value(a, b, n);
+            }
+        }
+        for (int i = 0; i < 3000; ++i) {
+            const auto a = static_cast<std::int32_t>(rng());
+            // Half the second operands put the product within a few units of
+            // the format's edge, where the saturation test decides.
+            const auto near = static_cast<std::int64_t>(std::int64_t{1} << 55) /
+                              (a == 0 ? 1 : static_cast<std::int64_t>(a));
+            const bool fits = near <= std::numeric_limits<std::int32_t>::max() &&
+                              near >= std::numeric_limits<std::int32_t>::min();
+            const auto jitter = static_cast<std::int64_t>(rng() % 5) - 2;
+            const auto b = (i % 2 == 0 || !fits) ? static_cast<std::int32_t>(rng())
+                                                 : static_cast<std::int32_t>(near + jitter);
+            check_value(a, b, n);
+        }
+    }
+    CHECK(mismatches == 0);
+}
+
+TEST_CASE("Fixed32's integer ratio, unsaturated product and integer root are exact", "[fixed32]") {
+    // from_integer_ratio divides small operands in two 32-bit steps,
+    // product_unsaturated drops the saturation test, and isqrt64 starts its
+    // Newton iteration from the root of the top bits (fixed32.hpp): each
+    // against the definition it has to equal.
+    const auto ratio = [](std::int64_t num, std::int64_t den) {
+        if (den == 0) {
+            return num < 0 ? std::numeric_limits<std::int32_t>::min()
+                           : std::numeric_limits<std::int32_t>::max();
+        }
+        return static_cast<std::int32_t>(std::clamp<std::int64_t>(
+            (num * Fixed32::kOne) / den, std::numeric_limits<std::int32_t>::min(),
+            std::numeric_limits<std::int32_t>::max()));
+    };
+    const auto root = [](std::uint64_t n) {
+        auto r = static_cast<std::uint64_t>(std::sqrt(static_cast<double>(n)));
+        while (r * r > n) {
+            --r;
+        }
+        while ((r + 1) * (r + 1) <= n) {
+            ++r;
+        }
+        return r;
+    };
+    std::mt19937_64 rng(0x7a71);
+    int mismatches = 0;
+    constexpr std::int64_t kSmall = std::int64_t{1} << 19;
+    const std::array<std::int64_t, 11> numerators{0,          1,      -1,         127,  128, -128,
+                                                  4096,       kSmall - 1, kSmall, -kSmall + 1,
+                                                  std::int64_t{1} << 31};
+    const std::array<std::int64_t, 8> denominators{1, -1, 3, 32, 4095, kSmall - 1, kSmall, 0};
+    for (const auto num : numerators) {
+        for (const auto den : denominators) {
+            mismatches += Fixed32::from_integer_ratio(num, den).raw != ratio(num, den) ? 1 : 0;
+        }
+    }
+    for (int i = 0; i < 100000; ++i) {
+        const auto num_bits = static_cast<unsigned>(rng() % 21U);
+        const auto den_bits = 1U + static_cast<unsigned>(rng() % 20U);
+        const auto sign = (rng() & 1U) != 0 ? 1 : -1;
+        const auto num = static_cast<std::int64_t>(rng() >> (64U - num_bits)) * sign;
+        const auto den = static_cast<std::int64_t>(rng() >> (64U - den_bits)) + 1;
+        mismatches += Fixed32::from_integer_ratio(num, den).raw != ratio(num, den) ? 1 : 0;
+
+        // |b| below one past -1, so every product fits and the two agree.
+        const auto a = Fixed32::from_raw(static_cast<std::int32_t>(rng()));
+        const auto b = Fixed32::from_raw(static_cast<std::int32_t>(rng() % (2U * Fixed32::kOne)) -
+                                         (Fixed32::kOne - 1));
+        mismatches += Fixed32::product_unsaturated(a, b).raw != (a * b).raw ? 1 : 0;
+
+        const auto width = 1U + static_cast<unsigned>(rng() % 62U);
+        const std::uint64_t n = rng() >> (64U - width);
+        mismatches += ac3::internal::isqrt64(n) != root(n) ? 1 : 0;
+        const std::uint64_t k = rng() >> (64U - ((width + 1U) / 2U));
+        if (k > 0 && k * k < (std::uint64_t{1} << 62U)) {
+            mismatches += ac3::internal::isqrt64(k * k) != k ? 1 : 0;
+            mismatches += ac3::internal::isqrt64(k * k - 1) != k - 1 ? 1 : 0;
+        }
+    }
+    CHECK(mismatches == 0);
 }
 
 TEST_CASE("Fixed32 square root is the rounded-down root of the double value", "[fixed32]") {

@@ -90,7 +90,7 @@ struct Fixed32 {
                                 : value < 0 ? std::numeric_limits<std::int32_t>::min()
                                             : std::numeric_limits<std::int32_t>::max());
             }
-            return from_raw(saturate(static_cast<std::int64_t>(value) << shift));
+            return from_raw(shift_left_saturated(value, shift));
         }
         if (shift <= -32) {
             return from_raw(value < 0 ? -1 : 0);
@@ -106,7 +106,41 @@ struct Fixed32 {
             return from_raw(numerator < 0 ? std::numeric_limits<std::int32_t>::min()
                                           : std::numeric_limits<std::int32_t>::max());
         }
+        constexpr std::int64_t kSmall = std::int64_t{1} << 19;
+        if (denominator > 0 && denominator < kSmall && numerator > -kSmall && numerator < kSmall) {
+            // Every ratio the dequantisers and the spectral extension form:
+            // the same truncated quotient as long division in two 32-bit
+            // steps of twelve bits, (n << 12) / d and then the remainder's
+            // (r << 12) / d. A 64-bit division is a library call on a 32-bit
+            // part, and the AHT dequantiser makes one per mantissa.
+            const auto magnitude =
+                static_cast<std::uint32_t>(numerator < 0 ? -numerator : numerator);
+            const auto divisor = static_cast<std::uint32_t>(denominator);
+            const std::uint32_t high = (magnitude << 12U) / divisor;
+            const std::uint32_t rest = (magnitude << 12U) - (high * divisor);
+            if (high >= (std::uint32_t{1} << 19U)) {  // the quotient is 2^31 or more
+                return from_raw(numerator < 0 ? std::numeric_limits<std::int32_t>::min()
+                                              : std::numeric_limits<std::int32_t>::max());
+            }
+            const auto quotient =
+                static_cast<std::int32_t>((high << 12U) | ((rest << 12U) / divisor));
+            return from_raw(numerator < 0 ? -quotient : quotient);
+        }
         return from_raw(saturate((numerator << kFractionBits) / denominator));
+    }
+
+    // The product's rounded value kept to 32 bits, for a product its caller
+    // has bounded below the format's edge: operator*'s value without the
+    // saturation test (equal to it whenever |a * b| < 128). The rounding bit
+    // is added on 32 bits, as ((bits 23..31 of the low word) + 1) >> 1 above
+    // the high word shifted up by eight, which is the same sum as adding 2^23
+    // to the 64-bit product and one instruction fewer on RV32 than the carry
+    // that form compiles to.
+    [[nodiscard]] static constexpr Fixed32 product_unsaturated(Fixed32 a, Fixed32 b) {
+        const std::int64_t product = static_cast<std::int64_t>(a.raw) * b.raw;
+        const auto low = static_cast<std::uint32_t>(product);
+        const auto high = static_cast<std::uint32_t>(static_cast<std::uint64_t>(product) >> 32U);
+        return from_raw(static_cast<std::int32_t>((high << 8U) + (((low >> 23U) + 1U) >> 1U)));
     }
 
     // A noise generator's 32-bit state as a value in [0, 1): the top
@@ -144,11 +178,21 @@ struct Fixed32 {
         return from_raw(static_cast<std::int32_t>(0U - static_cast<std::uint32_t>(a.raw)));
     }
     // The product through 64 bits, rounded half up on the way back, saturated.
-    // One rounding rule, everywhere.
+    // One rounding rule, everywhere. The saturation is saturate()'s, written
+    // as one test of whether the result's low 32 bits are the whole of it,
+    // with that case marked likely: saturate()'s two comparisons compile on
+    // RV32 to four branches on the high word, two of them taken on every
+    // product that fits.
     friend constexpr Fixed32 operator*(Fixed32 a, Fixed32 b) {
         const std::int64_t product = static_cast<std::int64_t>(a.raw) * b.raw;
-        return from_raw(saturate((product + (std::int64_t{1} << (kFractionBits - 1))) >>
-                                 kFractionBits));
+        const std::int64_t rounded =
+            (product + (std::int64_t{1} << (kFractionBits - 1))) >> kFractionBits;
+        const auto low = static_cast<std::int32_t>(rounded);
+        if (rounded == low) [[likely]] {
+            return from_raw(low);
+        }
+        return from_raw(rounded < 0 ? std::numeric_limits<std::int32_t>::min()
+                                    : std::numeric_limits<std::int32_t>::max());
     }
     // Truncating division; a zero divisor saturates in the dividend's
     // direction rather than trapping. Rare on the decode path (a band's RMS,
@@ -169,6 +213,9 @@ struct Fixed32 {
 
     // Scaling by 2^n: a shift. Left is exact until the value leaves the
     // format and saturates there; right rounds half up, the product's rule.
+    // Both on 32 bits: a shift of a 64-bit value by a variable count is a
+    // library call on a 32-bit part, and this runs once per coefficient in
+    // decoupling, spectral extension and the AHT exponent.
     [[nodiscard]] constexpr Fixed32 scaled_by_pow2(int n) const {
         if (n >= 0) {
             if (n >= 31) {
@@ -176,16 +223,32 @@ struct Fixed32 {
                                 : raw < 0 ? std::numeric_limits<std::int32_t>::min()
                                           : std::numeric_limits<std::int32_t>::max());
             }
-            return from_raw(saturate(static_cast<std::int64_t>(raw) << n));
+            return from_raw(shift_left_saturated(raw, n));
         }
         if (n <= -32) {
             return from_raw(0);
         }
-        const std::int64_t half = std::int64_t{1} << (-n - 1);
-        return from_raw(static_cast<std::int32_t>((static_cast<std::int64_t>(raw) + half) >> -n));
+        // (raw + 2^(s-1)) >> s is raw >> s plus bit s-1 of raw.
+        const int s = -n;
+        const auto rounding =
+            (static_cast<std::uint32_t>(raw) >> static_cast<unsigned>(s - 1)) & 1U;
+        return from_raw(static_cast<std::int32_t>(static_cast<std::uint32_t>(raw >> s) + rounding));
     }
 
    private:
+    // saturate(value << shift) for a shift in [0, 31]: the shifted 32 bits
+    // are the whole of it exactly when shifting them back gives value.
+    [[nodiscard]] static constexpr std::int32_t shift_left_saturated(std::int32_t value,
+                                                                     int shift) {
+        const auto shifted = static_cast<std::int32_t>(static_cast<std::uint32_t>(value)
+                                                       << static_cast<unsigned>(shift));
+        if ((shifted >> shift) == value) [[likely]] {
+            return shifted;
+        }
+        return value < 0 ? std::numeric_limits<std::int32_t>::min()
+                         : std::numeric_limits<std::int32_t>::max();
+    }
+
     // sign, biased exponent, mantissa with the implicit bit restored, and
     // the shift from the mantissa's own scale (2^(exponent - mantissa bits))
     // to raw units (2^-24): raw = mantissa x 2^(exponent - mantissa_bits + 24).
@@ -254,18 +317,44 @@ struct Fixed32 {
 
 [[nodiscard]] inline double scalar_sqrt(double x) { return std::sqrt(x); }
 [[nodiscard]] inline float scalar_sqrt(float x) { return std::sqrt(x); }
-// floor(sqrt(n)) for a 64-bit n below 2^62 (which is every value the tier
-// forms: a raw value times 2^24, or a band's summed squares). Newton from a
-// power-of-two start, which converges in a handful of steps at these widths.
-[[nodiscard]] constexpr std::uint64_t isqrt64(std::uint64_t n) {
+// floor(sqrt(n)) for a 32-bit n: integer Newton from a power-of-two start at
+// or above the root, floor((r + n / r) / 2) until it stops falling, which is
+// where it reaches the root itself.
+[[nodiscard]] constexpr std::uint32_t isqrt32(std::uint32_t n) {
     if (n == 0) {
         return 0;
     }
-    // Start at 2^ceil(bits/2), never below the root.
-    const int bits = 64 - std::countl_zero(n);
-    std::uint64_t r = std::uint64_t{1} << ((bits + 1) / 2);
+    const int bits = 32 - std::countl_zero(n);
+    std::uint32_t r = std::uint32_t{1} << static_cast<unsigned>((bits + 1) / 2);
     while (true) {
-        const std::uint64_t next = (r + n / r) / 2;
+        const std::uint32_t next = (r + (n / r)) / 2;
+        if (next >= r) {
+            break;
+        }
+        r = next;
+    }
+    return r;
+}
+
+// floor(sqrt(n)) for a 64-bit n below 2^62 (which is every value the tier
+// forms: a raw value times 2^24, or a band's summed squares). The same Newton
+// iteration, started just above the root from the root of n's top 31 or 32
+// bits: from there it takes two or three 64-bit divisions, each a library call
+// on a 32-bit part, where a power-of-two start took about six. A value that
+// fits 32 bits never leaves them.
+[[nodiscard]] constexpr std::uint64_t isqrt64(std::uint64_t n) {
+    if (n < (std::uint64_t{1} << 32U)) {
+        return isqrt32(static_cast<std::uint32_t>(n));
+    }
+    // An even shift, so the root of the top bits scales by a whole power of
+    // two, and (root + 1) << (shift / 2) is above the root of n.
+    const int bits = 64 - std::countl_zero(n);
+    const int shift = (bits - 31) & ~1;
+    const auto top = static_cast<std::uint32_t>(n >> static_cast<unsigned>(shift));
+    std::uint64_t r = (static_cast<std::uint64_t>(isqrt32(top)) + 1U)
+                      << static_cast<unsigned>(shift / 2);
+    while (true) {
+        const std::uint64_t next = (r + (n / r)) / 2;
         if (next >= r) {
             break;
         }
@@ -299,5 +388,13 @@ struct Fixed32 {
 [[nodiscard]] inline double scalar_ldexp(double x, int n) { return std::ldexp(x, n); }
 [[nodiscard]] inline float scalar_ldexp(float x, int n) { return std::ldexp(x, n); }
 [[nodiscard]] constexpr Fixed32 scalar_ldexp(Fixed32 x, int n) { return x.scaled_by_pow2(n); }
+
+// A product its caller has bounded below the format's edge: the plain product
+// for the floating types, Fixed32::product_unsaturated here.
+[[nodiscard]] inline double scalar_product_unsaturated(double a, double b) { return a * b; }
+[[nodiscard]] inline float scalar_product_unsaturated(float a, float b) { return a * b; }
+[[nodiscard]] constexpr Fixed32 scalar_product_unsaturated(Fixed32 a, Fixed32 b) {
+    return Fixed32::product_unsaturated(a, b);
+}
 
 }  // namespace ac3::internal
