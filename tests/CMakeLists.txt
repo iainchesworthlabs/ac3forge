@@ -667,6 +667,7 @@ if(AC3FORGE_BUILD_HEARTH)
         sendspin/test_base64url.cpp
         sendspin/test_chunks.cpp
         sendspin/test_clock_sync.cpp
+        sendspin/test_discovery.cpp
         sendspin/test_frames.cpp
         sendspin/test_handshake.cpp
         sendspin/test_json.cpp
@@ -679,12 +680,15 @@ if(AC3FORGE_BUILD_HEARTH)
             sendspin/test_cpace.cpp
             sendspin/test_crypto.cpp
             sendspin/test_handshake_session.cpp
+            sendspin/test_mdns.cpp
             sendspin/test_noise.cpp
             sendspin/test_pairing.cpp
             sendspin/test_pairing_flow.cpp
             sendspin/test_session_driver.cpp
             sendspin/test_sessions.cpp
             sendspin/test_websocket.cpp)
+        # test_mdns.cpp reads the mdns backend's packet layer, which is private to the library.
+        target_include_directories(ac3tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src/sendspin/src")
     endif()
     target_link_libraries(ac3tests PRIVATE ac3::sendspin)
 endif()

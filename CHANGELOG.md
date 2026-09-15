@@ -246,6 +246,14 @@ and release packaging.
   connection is held beside a playback holder. The player session asks its owner about each
   admissible activation, refuses a rejected one with `concurrent_attempt`, and leaves with
   `another_server`, or `pair/abort concurrent_attempt` while pairing, when displaced.
+- **Sendspin discovery over mDNS**: a discovery seam in `src/sendspin` and its backend on a
+  computer over mjansson's `mdns`, which joins the `hearth` vcpkg feature. An advertiser
+  answers DNS-SD questions for `_sendspin._tcp` or `_sendspin-server._tcp` on every IPv4
+  interface with that interface's own address, announces itself twice and says goodbye when it
+  stops; a browser queries at a lengthening interval, asks for the SRV, TXT and address records
+  a response left out, and reports each service with the `ws://` URL to dial once complete and
+  when it goes. The packets are tested without a network, and an advertiser and a browser find
+  each other on the loopback interface.
 
 **Containers and encoding**
 
