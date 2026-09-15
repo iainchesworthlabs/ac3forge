@@ -113,8 +113,9 @@ class ServerSession {
     ServerSession& operator=(ServerSession&&) = delete;
 
     [[nodiscard]] SessionOutput receive(const transport::Frame& frame);
-    // Handshake and hello timeouts. Call at least once a second.
+    // Handshake, hello and pairing timeouts. Call at least every next_tick_us() microseconds.
     [[nodiscard]] SessionOutput tick();
+    [[nodiscard]] std::int64_t next_tick_us() const { return 1'000'000; }
 
     [[nodiscard]] std::expected<SessionOutput, Refusal> activate(const messages::Activate& activate);
     [[nodiscard]] std::expected<SessionOutput, Refusal> start_stream(const messages::PlayerStream& stream);

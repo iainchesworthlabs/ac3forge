@@ -233,6 +233,12 @@ and release packaging.
   player's two-minute attempt timeout and the server's own timeouts are covered, and a
   static code's window admits attempts only on the connection that carried its first. The
   pairing messages join `fuzz_sendspin_messages`.
+- **A session driver for Sendspin on a computer**: `SessionDriver` runs a server or player
+  session over one connection with a reader thread and a writer thread, which sends the
+  session's frames in order outside its lock and ticks it when due, and disconnects a peer
+  that stops reading once a bounded queue fills. Over a loopback WebSocket a server pairs a
+  player with its pairing PSK, activates it under the new long-term PSK and streams PCM that
+  the player receives within 2 ms of each chunk's time.
 
 **Containers and encoding**
 

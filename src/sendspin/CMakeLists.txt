@@ -73,6 +73,7 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
             src/player_session.cpp
             src/psk.cpp
             src/server_session.cpp
+            src/session_driver.cpp
             src/transport/httplib/websocket.cpp)
     # The listening socket's options, which differ by platform (listen_socket.hpp).
     if(WIN32)
