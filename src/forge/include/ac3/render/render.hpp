@@ -12,9 +12,8 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/render/layout.hpp"
 #include "ac3/spatial/spatial.hpp"
-
-#include "ac3forge/layout.hpp"
 
 // From what the decoder rendered to what the speakers want, one 256-sample
 // block at a time.
@@ -49,10 +48,10 @@
 // which is where an ESP32-S3 spends its time well. Nothing here allocates
 // except describe_objects' own vector of descriptions, once per unit.
 //
-// Free of ESP-IDF, and tested on the host in tests/io/test_layout.cpp: the
-// geometry has its own tests under tests/spatial/, so what is checked here is
-// the indexing between coded channels, objects and slots - the part where a
-// swapped subscript is silent.
+// Moved from the ESP-IDF component with layout.hpp, and tested on the host in
+// tests/render/test_layout.cpp: the geometry has its own tests under
+// tests/spatial/, so what is checked here is the indexing between coded
+// channels, objects and slots - the part where a swapped subscript is silent.
 //
 // Bass management. A slot marked ":small" (OutputLayout::listed()) cannot
 // reproduce the bottom two octaves, so its bass is redirected to the LFE
@@ -79,7 +78,7 @@
 // caller with different precision needs, matches the coefficient
 // functions' own reasoning below.
 
-namespace ac3forge {
+namespace ac3::render {
 
 class LayoutRenderer {
    public:
@@ -559,4 +558,4 @@ class LayoutRenderer {
     std::vector<CrossoverBiquad> crossover_lp_;
 };
 
-}  // namespace ac3forge
+}  // namespace ac3::render

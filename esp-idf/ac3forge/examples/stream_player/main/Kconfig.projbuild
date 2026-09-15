@@ -293,9 +293,9 @@ config AC3FORGE_EXAMPLE_HTTP_URL
     depends on AC3FORGE_EXAMPLE_SOURCE_HTTP
     default "http://example.invalid/sample.ac3"
 
-# THE OUTPUT LAYOUT - esp-idf/ac3forge/include/ac3forge/layout.hpp. The
+# THE OUTPUT LAYOUT - src/forge/include/ac3/render/layout.hpp. The
 # speakers the room has, one per output slot; the stream is rendered onto them
-# whatever it was coded as (ac3forge/render.hpp). A stereo or mono layout is
+# whatever it was coded as (ac3/render/render.hpp). A stereo or mono layout is
 # the decoder's own §7.8 fold; anything else is placed channel by channel, and
 # a layout with height speakers has the stream's objects reconstructed and
 # placed by their own positions.

@@ -18,10 +18,13 @@
 //
 // A player is configured for the room it is in, not for the stream it is sent:
 // the stream says what was coded, this says where it should come out, and
-// ac3forge/render.hpp turns one into the other a block at a time. Free of
-// ESP-IDF, like interleave.hpp beside it and for the same reason - this is the
-// part that can be tested on the host (tests/io/test_layout.cpp), and the part
-// where a wrong index puts the centre channel in a subwoofer.
+// ac3/render/render.hpp turns one into the other a block at a time. It came
+// from the ESP-IDF component's player, and lives in the library so that the
+// desktop player and the test sink render with the boards' own code
+// (planning/hearth-reference-player.md, A1). It includes nothing
+// platform-specific, allocates nothing, and is tested on the host
+// (tests/render/test_layout.cpp) - the part where a wrong index puts the
+// centre channel in a subwoofer.
 //
 // Two ways to say it, both in one string, because planning/esp32-player.md's
 // decision 7 wants names for the installations that have one and a list for
@@ -102,7 +105,7 @@
 // way ITU-R BS.2051 lays 7.1 out. That is why the directions are resolved
 // once, over the whole layout, rather than per slot as the tokens arrive.
 
-namespace ac3forge {
+namespace ac3::render {
 
 struct Speaker {
     enum class Kind : std::uint8_t {
@@ -364,7 +367,7 @@ class OutputLayout {
     // When the decoder's own §7.8 output stage serves this layout: two
     // full-bandwidth speakers and nothing else is `stereo` (kLoRo or kLtRt,
     // the caller's choice), one is kMono. Anything wider, or anything with an
-    // LFE or a height, is rendered as coded through ac3forge/render.hpp,
+    // LFE or a height, is rendered as coded through ac3/render/render.hpp,
     // because §7.8 has no fold that keeps an LFE or places a height.
     [[nodiscard]] std::optional<ac3::DownmixTarget> fold(ac3::DownmixTarget stereo) const {
         if (lfe_count() != 0 || has_height()) {
@@ -698,4 +701,4 @@ class OutputLayout {
     std::array<char, kTextBytes> text_{};
 };
 
-}  // namespace ac3forge
+}  // namespace ac3::render

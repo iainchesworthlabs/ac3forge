@@ -12,8 +12,7 @@
 
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
-
-#include "ac3forge/layout.hpp"
+#include "ac3/render/layout.hpp"
 
 // The player: bytes in, sound out, on two cores.
 //
@@ -28,7 +27,7 @@
 // ac3::io::AccessUnitAccumulator, decodes each access unit a block at a time
 // (decode_access_unit_by_block: 256 samples of every channel, and the objects
 // beside them when there are any), renders each block onto the configured
-// speaker layout (ac3forge/render.hpp) and writes it to the sink. The sink
+// speaker layout (ac3/render/render.hpp) and writes it to the sink. The sink
 // blocks until the DAC has taken the block, which is what paces the player at
 // real time. A source that blocks - a socket waiting on the network - blocks
 // the fetch task and nothing else: the decode keeps draining the ring, and the
@@ -67,7 +66,7 @@ class ByteSource {
 };
 
 // Where decoded audio goes. One BLOCK per call: one planar span of float per
-// slot of the configured OutputLayout, in slot order, each ac3::kSamplesPerBlock
+// slot of the configured ac3::render::OutputLayout, in slot order, each ac3::kSamplesPerBlock
 // samples long or fewer, nominally in [-1, 1). Called from the decode task
 // only, six times per frame at 48 kHz.
 //
@@ -85,9 +84,9 @@ class PcmSink {
 };
 
 struct PlayerConfig {
-    // The speakers, one per output slot - ac3forge/layout.hpp. What the sink is
+    // The speakers, one per output slot - ac3/render/layout.hpp. What the sink is
     // handed is one span per slot of this, whatever the stream was coded as.
-    OutputLayout layout = OutputLayout::stereo();
+    ac3::render::OutputLayout layout = ac3::render::OutputLayout::stereo();
     // Which §7.8 fold a two-speaker layout gets: kLoRo, or kLtRt for a Dolby
     // Surround decoder downstream. A one-speaker layout folds to mono; every
     // other layout is rendered as coded (see `objects`) and this is unused.
@@ -178,7 +177,7 @@ struct StreamInfo {
     // location, comma-separated in the decoder's order ("Ch1,Ch2" for dual
     // mono); `silent` names the layout's speakers this play has sent nothing
     // to so far, and is empty when every one has had something.
-    std::array<char, OutputLayout::kTextBytes> layout{};
+    std::array<char, ac3::render::OutputLayout::kTextBytes> layout{};
     const char* render = "";
     std::array<char, 96> coded{};
     std::array<char, 160> silent{};

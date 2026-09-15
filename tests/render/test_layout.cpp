@@ -1,11 +1,12 @@
-// The player's output layouts and the block renderer over them, on the host.
+// The output layouts and the block renderer over them (ac3/render/), on the
+// host.
 //
-// Both headers live in the ESP-IDF component and include nothing from ESP-IDF,
-// which is what makes this possible - the same arrangement test_interleave.cpp
-// has. The panner's geometry is tests/spatial/'s business; what is checked
-// here is the indexing between coded channels, objects and slots, where a
-// swapped subscript puts the centre channel in the subwoofer and nothing
-// complains.
+// Both headers came from the ESP-IDF component's player and moved into the
+// library with these tests; the boards, the desktop player and the test sink
+// all render through them. The panner's geometry is tests/spatial/'s business;
+// what is checked here is the indexing between coded channels, objects and
+// slots, where a swapped subscript puts the centre channel in the subwoofer
+// and nothing complains.
 
 #include <array>
 #include <catch2/catch_approx.hpp>
@@ -21,15 +22,14 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/oba/oamd.hpp"
-
-#include "ac3forge/layout.hpp"
-#include "ac3forge/render.hpp"
+#include "ac3/render/layout.hpp"
+#include "ac3/render/render.hpp"
 
 namespace {
 
-using ac3forge::LayoutRenderer;
-using ac3forge::OutputLayout;
-using ac3forge::Speaker;
+using ac3::render::LayoutRenderer;
+using ac3::render::OutputLayout;
+using ac3::render::Speaker;
 using Location = ac3::eac3::chanmap::Location;
 using Catch::Approx;
 

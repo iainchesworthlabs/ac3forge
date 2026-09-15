@@ -349,7 +349,7 @@ channels leave an S3, and what that costs in time and internal RAM, is still ope
    recorded in the manifest**; (b) the target's own first run, recorded. **Recommend (a)**, which
    is independent of the thing it checks. Cost: every stream in the set has to place exactly on
    7.1.4, so none has a channel 7.1.4 lacks (Lw, Rw, Vhc, Ts, Cs, LFE2); those are spread by the
-   renderer, which `tests/io/test_layout.cpp` covers on the host.
+   renderer, which `tests/render/test_layout.cpp` covers on the host.
 
 4. **Objects in CI's network shape.** (a) **played as their bed**; (b) placed, with the object
    streams left out of the plays; (c) placed, with room made - a smaller ring, a larger decode

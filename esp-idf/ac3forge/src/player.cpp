@@ -23,12 +23,15 @@
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/stream_accumulator.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/render/render.hpp"
 
-#include "ac3forge/render.hpp"
 #include "ac3forge/unit_hold.hpp"
 
 namespace ac3forge {
 namespace {
+
+using ac3::render::LayoutRenderer;
+using ac3::render::OutputLayout;
 
 // One block per slot is what the player holds of the audio: sixteen slots of
 // 256 samples, 16 KB, against the 96 KB a frame of them would be. Sixteen is
