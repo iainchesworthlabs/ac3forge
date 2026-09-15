@@ -74,8 +74,14 @@ struct Klv {
     if (!length) {
         return std::unexpected(length.error());
     }
+    // value_offset is inside `data`: the Key and the whole Length field were just read from it.
+    // The Length's value is the file's own 8-byte number, so it is compared against what is left
+    // rather than added to value_offset. The sum used to wrap: a Length of 0xFFFFFFFFFFFFFFE7 at
+    // value_offset 25 summed to exactly 0, passed a `data.size() < value_offset + length` check,
+    // and set `next` back to offset 0, so find_iab_essence() walked the same Key forever. Found by
+    // fuzz_iab_parse once ac3iab_objects was built with coverage instrumentation.
     const std::size_t value_offset = offset + kKeyLength + length->consumed;
-    if (data.size() < value_offset + length->value) {
+    if (length->value > data.size() - value_offset) {
         return std::unexpected(IabError::kTruncated);
     }
     return Klv{.key = key,

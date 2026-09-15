@@ -424,6 +424,15 @@ def parse_oamd_substream_info(r, b_substreams_present):
 _BED_CHAN_ASSIGN_COUNT_AJOC = [2, 3, 5, 7, 9, 7, 9, 11]
 _BED_CHAN_ASSIGN_COUNT_DIRECT = [2, 3, 6, 8, 10, 8, 10, 12]
 _STD_BED_GROUP_SIZE = [2, 1, 1, 2, 2, 2, 2, 2, 2, 1]
+_ISF_COUNTS = [4, 8, 10, 14, 15, 30]  # isf_config, read in both elements below
+
+
+def _count_for_code(table, code):
+    """The object count a 3-bit code names in a table shorter than eight
+    entries. Codes past its end are reserved and name no count, so they
+    expand to no objects and parsing continues, as ac4.cpp's count_for_code()
+    does; indexing the list directly raised IndexError on them."""
+    return table[code] if code < len(table) else 0
 
 
 class OamdCommonDataPresent(Exception):
@@ -451,7 +460,7 @@ def parse_bed_dyn_obj_assignment(r, n_signals):
         return objects  # every object in this substream is dynamic and unlisted here
     if r.bits(1):  # b_isf
         isf_config = r.bits(3)
-        n_isf = [4, 8, 10, 14, 15, 30][isf_config]
+        n_isf = _count_for_code(_ISF_COUNTS, isf_config)
         for _ in range(n_isf):
             add('ISF', False)
         return objects
@@ -543,8 +552,9 @@ def parse_substream_info_obj(r, fs_index, frame_rate_factor, b_substreams_presen
     # 6-entry array regardless, and b_lfe is folded in separately below
     # rather than by this array, so a "reserved" code still parses (just
     # with a count this parser cannot cross-check against the semantics
-    # table's own account of it).
-    num_objects = [0, 1, 2, 3, 5, 7][n_objects_code]
+    # table's own account of it). Codes 6 and 7 fall past the end of the
+    # array and name no objects - see _count_for_code().
+    num_objects = _count_for_code([0, 1, 2, 3, 5, 7], n_objects_code)
     b_dynamic_objects = r.bits(1)
     if b_dynamic_objects:
         # No early return: fs_index/bitrate/b_audio_ndot/substream_index
@@ -574,7 +584,7 @@ def parse_substream_info_obj(r, fs_index, frame_rate_factor, b_substreams_presen
     elif r.bits(1):  # b_isf
         if r.bits(1):  # b_isf_start
             isf_config = r.bits(3)
-            n_isf = [4, 8, 10, 14, 15, 30][isf_config]
+            n_isf = _count_for_code(_ISF_COUNTS, isf_config)
             for _ in range(n_isf):
                 add('ISF', False)
     else:
