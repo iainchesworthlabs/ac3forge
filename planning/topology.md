@@ -5,6 +5,11 @@
     on this page has been written, and the applications it frames — a plugin, a player, a
     reporter — remain unstarted.
 
+    **On 2026-09-15 [the reference player plan](hearth-reference-player.md) replaced decision 1
+    for Hearth's own sinks:** `ac3hearth` reaches them as a conformant Sendspin server, with the
+    IEC 61937 bitstream in an extension role, and Sendspin's groups replace this page's Phase 4
+    for them. HLS/CMAF remains this page's answer for any other source and sink.
+
     Four plans are in flight, each scoped as an application — a plugin, a player, a reporter,
     an embedded port. This page is the frame they are missing: the roles those applications
     occupy, and the transport between them. The transport question was settled on 2026-09-07

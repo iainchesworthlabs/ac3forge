@@ -18,6 +18,14 @@
     the design sections below are the reframed version and [Decisions](#decisions) records what
     was asked and what was answered.
 
+    **On 2026-09-15 [the reference player plan](hearth-reference-player.md) replaced this page's
+    form.** The headless daemon, the web control page, the kiosk window and the HLS client are
+    dropped; Hearth becomes a desktop application, `ac3hearth`, and ESP32 firmware that plays
+    as a Sendspin player. Decisions 1, 2 and 10 here (the name, the fourth member, the
+    sink-capability helper) carry over, and so do the sink-following gaps in
+    [What UX9 needs](#what-ux9-needs-before-it-can-carry-this). The rest of this page is kept as
+    the record of what was decided on 2026-09-07.
+
 ## What Hearth is, in one paragraph
 
 [The topology](topology.md) names three roles: a **source** that produces an encoded stream, a
