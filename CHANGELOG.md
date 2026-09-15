@@ -254,6 +254,14 @@ and release packaging.
   a response left out, and reports each service with the `ws://` URL to dial once complete and
   when it goes. The packets are tested without a network, and an advertiser and a browser find
   each other on the loopback interface.
+- **`ac3hearth-testsink`**, the first of Hearth's applications (`apps/hearth/testsink`): a
+  Sendspin player that listens on its port, advertises `_sendspin._tcp`, keeps its identity,
+  pairing PSK and pairing records in a state directory, pairs by its `SP:0` token or a dynamic
+  or static code, admits servers as the specification ranks them, and writes each `player@v1`
+  PCM stream to a WAV file with a play time logged for every chunk. Several can run side by
+  side with distinct names, ports and state. Not packaged; `ac3tests` runs one in process,
+  pairs a server with it by its token over a loopback WebSocket, finds the PCM it sent in the
+  WAV sample for sample, and reaches it again after a restart under the stored long-term PSK.
 
 **Containers and encoding**
 

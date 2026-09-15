@@ -30,8 +30,11 @@ std::int64_t SteadyClock::now_us() const {
 }
 
 SessionDriver::SessionDriver(std::unique_ptr<transport::Connection> connection, DrivenSession session,
-                             std::size_t max_queued_bytes)
-    : connection_(std::move(connection)), session_(std::move(session)), max_queued_bytes_(max_queued_bytes) {}
+                             std::size_t max_queued_bytes, std::shared_ptr<std::mutex> lock)
+    : connection_(std::move(connection)),
+      session_(std::move(session)),
+      max_queued_bytes_(max_queued_bytes),
+      mutex_(lock ? std::move(lock) : std::make_shared<std::mutex>()) {}
 
 SessionDriver::~SessionDriver() {
     close();
@@ -40,7 +43,7 @@ SessionDriver::~SessionDriver() {
 
 void SessionDriver::start(SessionOutput first) {
     {
-        const std::unique_lock lock(mutex_);
+        const std::unique_lock lock(*mutex_);
         deliver(std::move(first), lock);
     }
     writer_ = std::thread([this] { write_loop(); });
@@ -77,7 +80,7 @@ void SessionDriver::end_locked() {
 
 void SessionDriver::close() {
     {
-        const std::lock_guard lock(mutex_);
+        const std::lock_guard lock(*mutex_);
         end_locked();
     }
     connection_->close();
@@ -93,19 +96,19 @@ void SessionDriver::join() {
 }
 
 bool SessionDriver::ended() const {
-    const std::lock_guard lock(mutex_);
+    const std::lock_guard lock(*mutex_);
     return ended_;
 }
 
 std::size_t SessionDriver::queued_bytes() const {
-    const std::lock_guard lock(mutex_);
+    const std::lock_guard lock(*mutex_);
     return queued_bytes_;
 }
 
 void SessionDriver::read_loop() {
     while (true) {
         std::optional<transport::Frame> frame = connection_->receive();
-        std::unique_lock lock(mutex_);
+        std::unique_lock lock(*mutex_);
         if (!frame) {
             end_locked();
             break;
@@ -120,7 +123,7 @@ void SessionDriver::read_loop() {
 }
 
 void SessionDriver::write_loop() {
-    std::unique_lock lock(mutex_);
+    std::unique_lock lock(*mutex_);
     Steady::time_point due = after(session_.next_tick_us());
     while (!ended_) {
         if (!queue_.empty()) {

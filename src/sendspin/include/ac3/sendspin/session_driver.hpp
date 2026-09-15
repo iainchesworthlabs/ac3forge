@@ -30,6 +30,10 @@
 // an owner that answers an event, such as activating a client once its hello arrives, does so
 // from a thread of its own.
 //
+// Drivers can share one lock. A client's sessions share its pairing state, which the owner
+// serialises every call on them for, so a player gives all its drivers the same lock; a callback
+// then must not call call() on any of them.
+//
 // A board has no driver: its WebSocket handler calls the session directly.
 
 namespace ac3::sendspin {
@@ -55,8 +59,9 @@ class SessionDriver {
    public:
     static constexpr std::size_t kDefaultMaxQueuedBytes = 8 * 1024 * 1024;
 
+    // `lock` is the session's lock, which other drivers may share; a new one when null.
     SessionDriver(std::unique_ptr<transport::Connection> connection, DrivenSession session,
-                  std::size_t max_queued_bytes = kDefaultMaxQueuedBytes);
+                  std::size_t max_queued_bytes = kDefaultMaxQueuedBytes, std::shared_ptr<std::mutex> lock = nullptr);
     // Ends the connection and waits for both threads; never from a listener callback.
     ~SessionDriver();
     SessionDriver(const SessionDriver&) = delete;
@@ -73,7 +78,7 @@ class SessionDriver {
     // the refusal, if any, for the second.
     template <class Call>
     auto call(Call&& call) {
-        std::unique_lock lock(mutex_);
+        std::unique_lock lock(*mutex_);
         return deliver(std::forward<Call>(call)(), lock);
     }
 
@@ -81,7 +86,7 @@ class SessionDriver {
     // session's state.
     template <class Read>
     auto inspect(Read&& read) const {
-        const std::lock_guard lock(mutex_);
+        const std::lock_guard lock(*mutex_);
         return std::forward<Read>(read)();
     }
 
@@ -114,7 +119,7 @@ class SessionDriver {
     std::size_t max_queued_bytes_;
 
     // The session's lock, which also guards everything below it.
-    mutable std::mutex mutex_;
+    std::shared_ptr<std::mutex> mutex_;
     std::condition_variable wake_;
     std::deque<transport::Frame> queue_;
     std::size_t queued_bytes_ = 0;
