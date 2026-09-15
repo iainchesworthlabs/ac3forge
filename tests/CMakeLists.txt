@@ -207,8 +207,14 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 # includes anything from ESP-IDF, which is what makes building them here
 # possible and is worth keeping true. (The layout and the renderer were here
 # too, and moved into the library as ac3/render/ with render/test_layout.cpp.)
+#
+# interleave.hpp also needs ac3forge/slot_conversion.hpp, which the component
+# takes from conversion/float/ or conversion/bits/ by whether the part has a
+# floating-point unit. A host has one, so the float directory; the tests name
+# both conversions explicitly wherever the choice matters.
 target_include_directories(ac3tests PRIVATE
-    "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/include")
+    "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/include"
+    "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/conversion/float")
 
 # test_simd_kernels.cpp's CPU-feature-detection cases (ROADMAP PF5's
 # dynamic-dispatch follow-on) need cpu_features.cpp compiled a SECOND time,

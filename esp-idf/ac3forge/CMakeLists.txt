@@ -54,6 +54,32 @@ idf_component_register(
     REQUIRES freertos esp_timer heap esp_http_server
     EMBED_FILES "ui/ac3forge_ui.html" "ui/ac3forge_ui.js")
 
+# How the interleave converts a float sample to an integer slot is chosen by
+# part, as a header directory: conversion/float/ where the CPU has a
+# floating-point unit, conversion/bits/ where it does not. Each holds
+# ac3forge/slot_conversion.hpp, naming the conversion interleave.hpp's
+# interleaves default to. On a part without an FPU each float operation is a
+# call into the software floating-point routines, four a sample, and the bits
+# form computes the same integers with integer operations; on a part with one,
+# the float form is the few instructions it looks like. The choice is read from
+# CONFIG_SOC_CPU_HAS_FPU, the capability ESP-IDF's own soc component picks the
+# RISC-V float ABI by.
+#
+# Below the registration rather than in its INCLUDE_DIRS. IDF's requirements
+# pass also runs this file, before any sdkconfig exists, and its
+# idf_component_register returns: everything above the registration runs there
+# with the flag unset on every part, so the directory it recorded for the
+# component would be conversion/bits/ on an ESP32-S3 too. Nothing below the
+# registration runs in that pass. PUBLIC, as INCLUDE_DIRS would be, because
+# interleave.hpp is a header the sinks in a consuming project include.
+if(CONFIG_SOC_CPU_HAS_FPU)
+    target_include_directories(${COMPONENT_LIB} PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/conversion/float")
+else()
+    target_include_directories(${COMPONENT_LIB} PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/conversion/bits")
+endif()
+
 # Where the library's own CMake lives, which depends on how this component was
 # obtained.
 #

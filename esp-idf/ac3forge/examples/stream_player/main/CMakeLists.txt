@@ -108,3 +108,15 @@ target_compile_definitions(${COMPONENT_LIB}
 # Defined for every build even though only the partition source reads it: an SD
 # file and an HTTP body report their own length, and a definition that appears
 # and disappears with the source choice is one more way the builds can differ.
+
+# The chosen sink's own source, under the same switch the component's
+# CMakeLists.txt puts player.cpp behind: AC3FORGE_MINIMAL_HOT_O2, a cache
+# variable set there and so visible here too. Measured on an ESP32-C6 playing
+# a 7.1 stream onto eight 16-bit TDM slots: sink_us_per_frame 12,689 to
+# 11,551, because -Os calls the bits conversion once a sample rather than
+# inlining it (ac3forge/interleave.hpp). i2s and capture both convert through
+# it; null has nothing to gain and stays untouched.
+if(AC3FORGE_MINIMAL_HOT_O2)
+    set_source_files_properties("${AC3FORGE_SINK_DIR}/audio_sink.cpp" PROPERTIES
+        COMPILE_OPTIONS "-O2")
+endif()

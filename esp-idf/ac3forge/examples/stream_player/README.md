@@ -661,6 +661,38 @@ ceiling to refuse against, which is how CI checks a twelve-slot conversion
 that no real line here could carry at all; `CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS`
 sets its emulated width, unrelated to the real sink's own ceiling.
 
+**How a sample becomes a slot depends on the part.** `ac3forge::to_pcm16` and
+`to_slot_24in32` scale, clip and truncate a sample in `float`: a handful of
+instructions on a part with a floating-point unit, such as the ESP32-S3. The
+ESP32-C6 has none, and each of those four operations is a call into the
+software floating-point routines. `to_pcm16_from_bits` and
+`to_slot_24in32_from_bits` compute the same integers from the sample's
+IEEE-754 bits with 32-bit integer arithmetic instead - equal to the float
+forms for every input that is not a NaN, checked exhaustively on the host and
+against a real decoded stream under QEMU (S3 in float, C3 in bits, identical
+converted slots). `ac3forge/interleave.hpp`'s interleaves take the conversion
+as a template argument and the component chooses it from
+`CONFIG_SOC_CPU_HAS_FPU`, so a sink's own code is unchanged either way.
+
+Measured on an ESP32-C6 at 160 MHz, one frame of six 256-sample blocks,
+`-Os`:
+
+| Conversion | In float | From the bits |
+|---|---:|---:|
+| Eight 16-bit slots (`interleave_16in16`) | 12,196 us | 4,541 us |
+| Four 24-in-32 slots (`interleave_24in32`) | 5,159 us | 2,092 us |
+| A stereo pair (`interleave_16`) | 2,879 us | 770 us |
+
+And on the same board, this example's own `i2s` sink playing a 7.1 stream
+onto eight 16-bit TDM slots (`sink_us_per_frame`, which also carries the
+level meter in front of the sink): 20,875 us in float, 12,689 us from the
+bits - `-Os` still calls the conversion once a sample rather than inlining
+it, which building the sink's source at `-O2`
+(`AC3FORGE_MINIMAL_HOT_O2`'s reasoning, applied to this file) brings to
+11,551. Levels are unchanged to the digit across all three. The ESP32-S3's
+own sink compiles to identical object code before and after - confirmed on a
+board, no difference outside measurement jitter.
+
 ## What it costs
 
 `idf.py size`, IDF v6.1, `-Os`, the default shape (`partition` to `i2s`, `2.0`)
