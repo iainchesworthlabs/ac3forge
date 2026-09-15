@@ -302,9 +302,17 @@ The matrix comes from the **stream's own** mix levels, never from constants chos
 carries two coarse levels in bsi (`cmixlev`, `surmixlev`; §5.4.2.4/§5.4.2.5) and E-AC-3 carries a
 richer group inside `mixmdate` — separate Lt/Rt and Lo/Ro centre and surround levels plus an LFE
 mix level. Both decoders now keep those and report them (`DecodedFrame::cmixlev`/`surmixlev`,
-`DecodedSubstream::mix`), distinguishing "absent" from "present, and says the default";
+`DecodedSubstream::mixing`), distinguishing "absent" from "present, and says the default";
 `ac3::mix_levels()` turns either into the coefficients the stage needs, applying §7.8's own
 fallbacks where a field is simply not there.
+
+`MixLevels::preferred` passes on `mixmdate`'s `dmixmod`, the fold the content was mixed for
+(Table D2.2), without acting on it: `target` is always what the caller asked for. A caller that
+wants to follow the stream uses `ac3::automatic_stereo_target()`, A/52 §D3.1.1's automatic
+selection: `kLtRt` when the stream prefers Lt/Rt, `kLoRo` for every other code. That includes
+`kNotIndicated` and `kReserved`, Table D2.2's `11`, which A/52:2018 and ETSI TS 102 366 V1.4.1
+both leave reserved for AC-3 and E-AC-3 alike, and which §D2.3.1.2 allows a decoder to read as
+"not indicated". `ac3cli`'s `downmix=auto` is built on it.
 
 §7.8.1's normalisation — "attenuating all downmix coefficients equally, such that the sum of
 coefficients used to create any single output channel never exceeds 1" — means a fold of plain
