@@ -14,8 +14,8 @@ WiFi connected and a TCP stream arriving while the decoder ran.
 | | |
 |---|---|
 | Decode | Correct: all fourteen fixtures, every channel's level within the probe's tolerance, and every fixed-tier PCM hash equal to the values the x86-64 host, the Cortex-M3 leg and the ESP32-C3 leg are held to (`tests/golden/fixed-probe-pcm-hashes.json`). A fourth architecture on one set of hashes |
-| Real time, no network | AC-3 stereo and mono, E-AC-3 stereo, and the 5.1 bed of an Atmos stream at 0.93x. AC-3 5.1 takes 1.09x a frame, E-AC-3 5.1 with AHT, spectral extension and coupling 1.21x |
-| Real time, with WiFi and a stream | The stereo and mono rows only, 0.26x to 0.64x. No 5.1 stream: 1.15x to 1.45x |
+| Real time, no network | AC-3 stereo and mono, E-AC-3 stereo, and E-AC-3 5.1 without AHT or spectral extension: 0.93x for an Atmos stream's bed, 0.86x for a 192 kbit/s stream. AC-3 5.1 takes 1.09x a frame, E-AC-3 5.1 with AHT, spectral extension and coupling 1.21x, E-AC-3 7.1 1.45x |
+| Real time, with WiFi and a stream | The stereo and mono rows only, 0.26x to 0.64x. No 5.1 stream: 1.07x to 1.45x. E-AC-3 7.1: 1.79x |
 | Memory, no network | Every fixture fits: 383,416 bytes free before the decode, largest block 352,256, against a largest peak of 234,070 (7.1.4 folded to stereo) |
 | Memory, with WiFi and a stream | About 235,000 bytes free before the decode, largest block 217,088 to 221,184. Everything up to the Atmos objects rows (212,253 bytes of peak) fits, and leaves 17,920 bytes free at the lowest; 7.1.4 (227,662) runs out of heap. With ESP-IDF's WiFi IRAM options off every fixture fits, 7.1.4 included, and 5.1 decodes about a fifth slower |
 | Encode | Not measured. Both encoders are floating-point, which on this part is software floating point |
@@ -31,17 +31,27 @@ With WiFi connected and a 1,536 kbit/s TCP stream arriving, in the fixed-point t
 | AC-3 2/0 and 1/0 | Yes: 0.49x and 0.26x | Yes: 49,328 and 47,608 bytes of peak |
 | E-AC-3 2/0 | Yes: 0.64x | Yes: 108,094 |
 | AC-3 5.1 | No: 1.39x, and 1.87x folded to stereo | Yes: 56,685 |
-| E-AC-3 5.1 | No: 1.45x with AHT, spectral extension and coupling; 1.15x for an Atmos stream's bed, which uses no AHT or spectral extension | Yes: 164,066 and 121,139 |
-| E-AC-3 7.1 | No, by the 5.1 rows (below) | Not measured |
+| E-AC-3 5.1 | No: 1.45x with AHT, spectral extension and coupling; 1.15x for an Atmos stream's bed and 1.07x for a 192 kbit/s stream, neither using AHT or spectral extension | Yes: 164,066, 121,139 and 120,978 |
+| E-AC-3 7.1 | No: 1.79x for a 288 kbit/s stream with no Annex E tools | Yes: 152,926 |
 | E-AC-3 7.1.4 | No: 3.03x with no network | Not with ESP-IDF's default WiFi configuration: 227,662 bytes, where the run that tried it had a largest free block of 217,088. Yes with WiFi's code kept in flash, [below](#wifis-code-kept-in-flash) |
 | Atmos objects, reconstructed or placed onto 7.1.4 | No: 6.97x and 7.16x | Yes, 17,920 bytes left at the lowest |
 
-The 7.1 row is an inference. The probe has no 7.1 fixture. An E-AC-3 7.1 stream is a 5.1
-independent substream and a dependent substream with two more channels, so decoding it decodes a
-5.1 substream first, and the cheapest 5.1 decode measured here, an Atmos stream's bed at
-448 kbit/s with no AHT or spectral extension, takes 1.15x a frame with the network up.
-
 In the float tier, with the network up, mono is the only row in real time (0.53x).
+
+### 2/0, 5.1 and 7.1 from one generator
+
+The probe has no 7.1 fixture, so the stream set's three layout streams,
+`esp-idf/ac3forge/examples/stream_player/www/layout-20.ec3`, `layout-51.ec3` and `layout-71.ec3`,
+were decoded on the same board by a copy of the probe with them added as rows. They come from one
+generator, use no Annex E tools and hold 32 access units each; 2/0 and 5.1 are 192 kbit/s, and
+7.1, a 5.1 substream and a dependent one, is 288 kbit/s. That copy measured time and heap, and did
+not check levels. Fixed-point tier; the WiFi column is the slower of two runs.
+
+| Stream | No network | WiFi and a stream | Peak heap |
+|---|---:|---:|---:|
+| `layout-20.ec3` 2/0 | 11,553 (0.36x) | 14,885 (0.47x) | 93,270 |
+| `layout-51.ec3` 5.1 | 27,643 (0.86x) | 34,144 (1.07x) | 120,978 |
+| `layout-71.ec3` 7.1 | 46,318 (1.45x) | 57,201 (1.79x) | 152,926 |
 
 ## Measured, on a board
 
@@ -238,7 +248,8 @@ with socket.create_connection((host, port)) as s:
 
 ## What was not measured
 
-- A 7.1 stream: the probe has no 7.1 fixture, see [What the part carries](#what-the-part-carries).
+- Levels for the three stream-set rows, which ran in a copy of the probe with no reference
+  levels for them.
 - Playback: the probe decodes six frames a fixture into no output. I2S, a DMA queue and
   underruns belong to the sink.
 - WiFi 6, stream rates other than 1,536 kbit/s, and modem sleep on.
