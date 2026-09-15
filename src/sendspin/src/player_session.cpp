@@ -243,6 +243,7 @@ SessionOutput PlayerSession::on_json(std::string_view text, std::int64_t arrival
             .device_info = config_.device_info,
             .supported_roles = config_.supported_roles,
             .player_support = config_.player_support,
+            .ac3forge_support = std::nullopt,
             .pair_methods = config_.pair_methods,
             .unpaired_access = config_.unpaired_access,
             .trusts_server = category_ == PskCategory::kLongTerm,

@@ -662,6 +662,7 @@ endif()
 # AC3FORGE_BUILD_ADM block above.
 if(AC3FORGE_BUILD_HEARTH)
     target_sources(ac3tests PRIVATE
+        sendspin/test_ac3forge_player.cpp
         sendspin/test_arbiter.cpp
         sendspin/test_base64.cpp
         sendspin/test_base64url.cpp

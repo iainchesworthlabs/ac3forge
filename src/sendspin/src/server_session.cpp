@@ -536,7 +536,7 @@ std::expected<SessionOutput, Refusal> ServerSession::start_stream(const m::Playe
     }
     SessionOutput out;
     const bool ok = seal_json(
-        m::write_stream_start({.server_transmitted = clock_->now_us(), .player = stream}), out);
+        m::write_stream_start({.server_transmitted = clock_->now_us(), .player = stream, .ac3forge = std::nullopt}), out);
     if (ok) {
         stream_ = stream;
     }
@@ -615,7 +615,9 @@ std::expected<SessionOutput, Refusal> ServerSession::command(const m::PlayerComm
         return refuse(Refusal::kCommandNotListed);
     }
     SessionOutput out;
-    const bool ok = seal_json(m::write_server_command({.player = command}, dialect_), out);
+    const bool ok = seal_json(
+        m::write_server_command({.player = command, .ac3forge = std::nullopt, .ac3forge_refused = std::nullopt}, dialect_),
+        out);
     return sent(std::move(out), ok);
 }
 

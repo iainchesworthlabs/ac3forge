@@ -41,6 +41,7 @@ add_library(ac3::sendspin ALIAS ac3sendspin)
 
 target_sources(ac3sendspin
     PRIVATE
+        src/ac3forge_player.cpp
         src/arbiter.cpp
         src/base64.cpp
         src/base64url.cpp

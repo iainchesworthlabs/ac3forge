@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 
+#include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/dialect.hpp"
 #include "ac3/sendspin/json.hpp"
 #include "ac3/sendspin/messages.hpp"
@@ -361,6 +362,7 @@ TEST_CASE("messages: client/state's player object in both dialects", "[sendspin]
                                                           .channels = 2,
                                                           .sample_rate = 48000,
                                                           .bit_depth = 24}},
+        .ac3forge = std::nullopt,
     };
 
     SECTION("specification") {
@@ -426,7 +428,8 @@ TEST_CASE("messages: client/state's player object in both dialects", "[sendspin]
 
 TEST_CASE("messages: server/command's player object in both dialects", "[sendspin][messages]") {
     const auto round_trip = [](const m::PlayerCommandMessage& player, Dialect dialect, std::string_view expected) {
-        const std::string text = m::write_server_command({.player = player}, dialect);
+        const std::string text = m::write_server_command(
+            {.player = player, .ac3forge = std::nullopt, .ac3forge_refused = std::nullopt}, dialect);
         CHECK(text == expected);
         const auto read = m::read_server_command(Parsed(text).payload(), dialect);
         REQUIRE(read.has_value());
@@ -469,6 +472,7 @@ TEST_CASE("messages: stream/start, stream/clear and stream/end", "[sendspin][mes
         .server_transmitted = 123456789,
         .player = m::PlayerStream{.format = {.codec = m::Codec::kFlac, .channels = 2, .sample_rate = 48000, .bit_depth = 16},
                                   .codec_header = header},
+        .ac3forge = std::nullopt,
     };
     const std::string text = m::write_stream_start(start);
     CHECK(text ==
@@ -501,6 +505,114 @@ TEST_CASE("messages: stream/start, stream/clear and stream/end", "[sendspin][mes
             .payload());
     REQUIRE(end.has_value());
     CHECK(end->roles == std::vector<std::string>{"player", "_ac3forge_player"});
+}
+
+TEST_CASE("messages: the extension role's objects in the messages that carry them", "[sendspin][messages][ac3forge]") {
+    namespace ac = ac3::sendspin::ac3forge;
+
+    // client/hello carries the support object in both dialects; one the reader refuses leaves the
+    // hello standing without it.
+    m::ClientHello hello = sample_hello();
+    ac::Support support;
+    support.data_types = {ac::DataType::kEac3};
+    support.sample_rates = {48000};
+    support.outputs.count = 2;
+    support.outputs.bit_depth = 32;
+    support.outputs.bit_depths = {32};
+    support.management.trim_db = {-12.0, 12.0};
+    support.management.max_delay_ms = 20.0;
+    support.management.crossover_hz = {40.0, 250.0};
+    support.decoder_settings = {"mode"};
+    support.buffer_capacity = 262144;
+    hello.ac3forge_support = support;
+    for (const Dialect dialect : {Dialect::kSpecification, Dialect::kAiosendspin911}) {
+        const std::string text = m::write_client_hello(hello, dialect);
+        CHECK(text.find(R"("_ac3forge_player@v1_support":{"data_types":["eac3"],"sample_rates":[48000],)") !=
+              std::string::npos);
+        const auto read = m::read_client_hello(Parsed(text).payload(), dialect);
+        REQUIRE(read.has_value());
+        REQUIRE(read->ac3forge_support.has_value());
+        CHECK(read->ac3forge_support->buffer_capacity == 262144);
+        CHECK(read->player_support.has_value());
+    }
+    const auto without = m::read_client_hello(
+        Parsed(R"({"type":"client/hello","payload":{"name":"x","supported_roles":["_ac3forge_player@v1"],)"
+               R"("_ac3forge_player@v1_support":{"data_types":["ac4"]},"supported_pair_methods":{},)"
+               R"("unpaired_access":{"enabled":false}}})")
+            .payload(),
+        Dialect::kSpecification);
+    REQUIRE(without.has_value());
+    CHECK_FALSE(without->ac3forge_support.has_value());
+
+    // client/state
+    m::ClientState state;
+    state.available = true;
+    ac::State extension;
+    extension.output_delay_ms = 10;
+    extension.required_lead_time_ms = 300;
+    extension.min_buffer_ms = 150;
+    extension.supported_commands = {ac::Command::kSettings};
+    extension.settings_revision = 2;
+    state.ac3forge = extension;
+    const std::string state_text = m::write_client_state(state, Dialect::kSpecification);
+    CHECK(state_text ==
+          R"({"type":"client/state","payload":{"available":true,"_ac3forge_player":{"output_delay_ms":10,)"
+          R"("required_lead_time_ms":300,"min_buffer_ms":150,"supported_commands":["settings"],"settings_revision":2,)"
+          R"("counters":{"bursts_played":0,"underruns":0,"late_chunks":0,"dropped_chunks":0,"invalid_chunks":0}}}})");
+    const auto state_read = m::read_client_state(Parsed(state_text).payload(), Dialect::kSpecification);
+    REQUIRE(state_read.has_value());
+    REQUIRE(state_read->ac3forge.has_value());
+    CHECK(state_read->ac3forge->settings_revision == 2);
+    CHECK_FALSE(state_read->player.has_value());
+    CHECK_FALSE(m::read_client_state(
+        Parsed(R"({"type":"client/state","payload":{"available":true,"_ac3forge_player":{}}})").payload(),
+        Dialect::kSpecification));
+
+    // server/command, where a refused settings object leaves the message standing with the
+    // revision it named.
+    m::ServerCommand command;
+    ac::CommandMessage settings;
+    settings.command = ac::Command::kSettings;
+    settings.settings.revision = 5;
+    settings.settings.layout = "2.0";
+    command.ac3forge = settings;
+    const std::string command_text = m::write_server_command(command, Dialect::kSpecification);
+    CHECK(command_text == R"({"type":"server/command","payload":{"_ac3forge_player":{"command":"settings",)"
+                          R"("settings":{"revision":5,"layout":"2.0","decoder":{}}}}})");
+    const auto command_read = m::read_server_command(Parsed(command_text).payload(), Dialect::kSpecification);
+    REQUIRE(command_read.has_value());
+    REQUIRE(command_read->ac3forge.has_value());
+    CHECK(command_read->ac3forge->settings.layout == "2.0");
+    CHECK_FALSE(command_read->ac3forge_refused.has_value());
+    const auto refused = m::read_server_command(
+        Parsed(R"({"type":"server/command","payload":{"_ac3forge_player":{"command":"settings",)"
+               R"("settings":{"revision":6,"decoder":{"drc_cut":2}}}}})")
+            .payload(),
+        Dialect::kSpecification);
+    REQUIRE(refused.has_value());
+    CHECK_FALSE(refused->ac3forge.has_value());
+    REQUIRE(refused->ac3forge_refused.has_value());
+    CHECK(refused->ac3forge_refused->revision == 6);
+    CHECK_FALSE(m::read_server_command(
+        Parsed(R"({"type":"server/command","payload":{"_ac3forge_player":{"command":"volume"}}})").payload(),
+        Dialect::kSpecification));
+
+    // stream/start
+    m::StreamStart start;
+    start.server_transmitted = 42;
+    start.ac3forge = ac::StreamStart{.data_type = ac::DataType::kAc3, .sample_rate = 48000};
+    const std::string start_text = m::write_stream_start(start);
+    CHECK(start_text == R"({"type":"stream/start","payload":{"server_transmitted":42,)"
+                        R"("_ac3forge_player":{"data_type":"ac3","sample_rate":48000}}})");
+    const auto start_read = m::read_stream_start(Parsed(start_text).payload());
+    REQUIRE(start_read.has_value());
+    REQUIRE(start_read->ac3forge.has_value());
+    CHECK(start_read->ac3forge->data_type == ac::DataType::kAc3);
+    CHECK_FALSE(start_read->player.has_value());
+    CHECK_FALSE(m::read_stream_start(
+        Parsed(R"({"type":"stream/start","payload":{"server_transmitted":1,)"
+               R"("_ac3forge_player":{"data_type":"mp3","sample_rate":48000}}})")
+            .payload()));
 }
 
 TEST_CASE("messages: group/update in both dialects", "[sendspin][messages]") {

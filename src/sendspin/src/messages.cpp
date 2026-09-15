@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/base64.hpp"
 #include "ac3/sendspin/dialect.hpp"
 #include "ac3/sendspin/json.hpp"
@@ -482,6 +483,10 @@ std::string write_client_hello(const ClientHello& hello, Dialect dialect) {
             }
             w.end_object();
         }
+        if (hello.ac3forge_support) {
+            w.key(ac3forge::kSupportKey);
+            ac3forge::write_support(w, *hello.ac3forge_support);
+        }
         if (dialect == Dialect::kSpecification) {
             w.key("supported_pair_methods").begin_object();
             for (const PairMethodDescriptor& descriptor : hello.pair_methods) {
@@ -536,6 +541,9 @@ std::expected<ClientHello, MessageError> read_client_hello(json::Value payload, 
             return malformed();
         }
         hello.player_support = std::move(player);
+    }
+    if (const json::Value support = payload[ac3forge::kSupportKey]; support.exists()) {
+        hello.ac3forge_support = ac3forge::read_support(support);
     }
 
     // Required in the specification; aiosendspin 9.1.1 leaves it out when it offers none.
@@ -688,38 +696,41 @@ std::expected<ServerTime, MessageError> read_server_time(json::Value payload) {
 std::string write_client_state(const ClientState& state, Dialect dialect) {
     return envelope("client/state", [&](json::Writer& w) {
         w.member("available", state.available);
-        if (!state.player) {
-            return;
-        }
-        const PlayerState& player = *state.player;
-        const bool spec = dialect == Dialect::kSpecification;
-        const auto timing = [&](std::int32_t value) {
-            return spec ? value : std::min(value, kMaxTiming911);
-        };
-        w.key("player").begin_object();
-        if (player.volume) {
-            w.member("volume", *player.volume);
-        }
-        if (player.muted) {
-            w.member("muted", *player.muted);
-        }
-        w.member(spec ? "output_delay_ms" : "static_delay_ms", player.output_delay_ms.value_or(0))
-            .member("required_lead_time_ms", timing(player.required_lead_time_ms.value_or(0)))
-            .member("min_buffer_ms", timing(player.min_buffer_ms.value_or(0)));
-        w.key("supported_commands").begin_array();
-        if (player.supported_commands) {
-            for (const PlayerCommand command : *player.supported_commands) {
-                if (spec || command == PlayerCommand::kSetOutputDelay) {
-                    w.string(find_name(player_commands(dialect), command));
+        if (state.player) {
+            const PlayerState& player = *state.player;
+            const bool spec = dialect == Dialect::kSpecification;
+            const auto timing = [&](std::int32_t value) {
+                return spec ? value : std::min(value, kMaxTiming911);
+            };
+            w.key("player").begin_object();
+            if (player.volume) {
+                w.member("volume", *player.volume);
+            }
+            if (player.muted) {
+                w.member("muted", *player.muted);
+            }
+            w.member(spec ? "output_delay_ms" : "static_delay_ms", player.output_delay_ms.value_or(0))
+                .member("required_lead_time_ms", timing(player.required_lead_time_ms.value_or(0)))
+                .member("min_buffer_ms", timing(player.min_buffer_ms.value_or(0)));
+            w.key("supported_commands").begin_array();
+            if (player.supported_commands) {
+                for (const PlayerCommand command : *player.supported_commands) {
+                    if (spec || command == PlayerCommand::kSetOutputDelay) {
+                        w.string(find_name(player_commands(dialect), command));
+                    }
                 }
             }
+            w.end_array();
+            if (spec && player.format) {
+                w.key("format");
+                write_format(w, *player.format);
+            }
+            w.end_object();
         }
-        w.end_array();
-        if (spec && player.format) {
-            w.key("format");
-            write_format(w, *player.format);
+        if (state.ac3forge) {
+            w.key(ac3forge::kObjectKey);
+            ac3forge::write_state(w, *state.ac3forge);
         }
-        w.end_object();
     });
 }
 
@@ -732,6 +743,12 @@ std::expected<ClientState, MessageError> read_client_state(json::Value payload, 
     }
     state.available = available.value_or(false);
 
+    if (const json::Value extension = payload[ac3forge::kObjectKey]; extension.exists()) {
+        state.ac3forge = ac3forge::read_state(extension);
+        if (!state.ac3forge) {
+            return malformed();
+        }
+    }
     const json::Value object = payload["player"];
     if (!object.exists()) {
         return state;
@@ -792,30 +809,43 @@ std::expected<ClientState, MessageError> read_client_state(json::Value payload, 
 
 std::string write_server_command(const ServerCommand& command, Dialect dialect) {
     return envelope("server/command", [&](json::Writer& w) {
-        if (!command.player) {
-            return;
+        if (command.player) {
+            const PlayerCommandMessage& player = *command.player;
+            w.key("player").begin_object().member("command",
+                                                   find_name(player_commands(dialect), player.command));
+            switch (player.command) {
+                case PlayerCommand::kVolume:
+                    w.member("volume", player.volume);
+                    break;
+                case PlayerCommand::kMute:
+                    w.member("mute", player.mute);
+                    break;
+                case PlayerCommand::kSetOutputDelay:
+                    w.member(dialect == Dialect::kSpecification ? "output_delay_ms" : "static_delay_ms",
+                             player.output_delay_ms);
+                    break;
+            }
+            w.end_object();
         }
-        const PlayerCommandMessage& player = *command.player;
-        w.key("player").begin_object().member("command",
-                                               find_name(player_commands(dialect), player.command));
-        switch (player.command) {
-            case PlayerCommand::kVolume:
-                w.member("volume", player.volume);
-                break;
-            case PlayerCommand::kMute:
-                w.member("mute", player.mute);
-                break;
-            case PlayerCommand::kSetOutputDelay:
-                w.member(dialect == Dialect::kSpecification ? "output_delay_ms" : "static_delay_ms",
-                         player.output_delay_ms);
-                break;
+        if (command.ac3forge) {
+            w.key(ac3forge::kObjectKey);
+            ac3forge::write_command(w, *command.ac3forge);
         }
-        w.end_object();
     });
 }
 
 std::expected<ServerCommand, MessageError> read_server_command(json::Value payload, Dialect dialect) {
     ServerCommand command;
+    if (const json::Value extension = payload[ac3forge::kObjectKey]; extension.exists()) {
+        std::expected<ac3forge::CommandMessage, ac3forge::CommandFailure> read = ac3forge::read_command(extension);
+        if (read) {
+            command.ac3forge = std::move(*read);
+        } else if (read.error().error == ac3forge::CommandError::kSettingsRefused) {
+            command.ac3forge_refused = std::move(read.error().settings);
+        } else {
+            return malformed();
+        }
+    }
     const json::Value object = payload["player"];
     if (!object.exists()) {
         return command;
@@ -875,6 +905,10 @@ std::string write_stream_start(const StreamStart& start) {
             }
             w.end_object();
         }
+        if (start.ac3forge) {
+            w.key(ac3forge::kObjectKey);
+            ac3forge::write_stream_start(w, *start.ac3forge);
+        }
     });
 }
 
@@ -885,6 +919,12 @@ std::expected<StreamStart, MessageError> read_stream_start(json::Value payload) 
     }
     StreamStart start;
     start.server_transmitted = *transmitted;
+    if (const json::Value extension = payload[ac3forge::kObjectKey]; extension.exists()) {
+        start.ac3forge = ac3forge::read_stream_start(extension);
+        if (!start.ac3forge) {
+            return malformed();
+        }
+    }
     const json::Value object = payload["player"];
     if (!object.exists()) {
         return start;

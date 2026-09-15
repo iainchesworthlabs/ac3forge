@@ -280,6 +280,14 @@ and release packaging.
   one taking PCM and the other FLAC, each write exactly the programme, and every chunk they log
   puts its first frame at the same local time within 1 ms; a host pairs one sink by its token
   and another by the dynamic code it shows.
+- **`_ac3forge_player@v1`'s objects in `src/sendspin`**: the support object in `client/hello`,
+  the state object in `client/state`, the object in `stream/start` and the role's commands in
+  `server/command` (volume, mute, output delay, settings and identify), each with a writer and a
+  reader, as `planning/hearth-sendspin-extension.md` defines them. A settings object with a
+  known key out of range is refused whole, and the reader names the revision it refused so a
+  sink can report `settings_error` for it; what depends on the sink, such as one trim per output
+  inside its range, is checked against the sink's own support object. The objects join
+  `fuzz_sendspin_messages`.
 
 **Containers and encoding**
 

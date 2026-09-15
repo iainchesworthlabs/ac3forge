@@ -16,8 +16,9 @@
 // (client/hello, client/state, client/time, client/goodbye, and the client's pairing
 // messages) and what a player reads from a server (server/hello, server/activate,
 // server/time, server/command, stream/start, stream/clear, stream/end, group/update, and the
-// server's pairing messages), each in both dialects. Every reader sees the payload of every
-// input, whatever its type says.
+// server's pairing messages), each in both dialects, with the objects of _ac3forge_player@v1 that
+// client/hello, client/state, server/command and stream/start carry (ac3forge_player.cpp). Every
+// reader sees the payload of every input, whatever its type says.
 //
 // Whatever reads must write back out, and that text must read and write back to itself: one
 // pass settles what the writer leaves out, such as an activity or a codec it does not
