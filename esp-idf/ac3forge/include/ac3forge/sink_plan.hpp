@@ -21,23 +21,31 @@
 // i2s_tdm.c holds a slot configuration to. That is 4 slots at 32 bits
 // (ac3forge::interleave_24in32) or 8 at 16 (ac3forge::interleave_16in16).
 //
-// One line: sized exactly to `channels`, standard mode for 1-2 or TDM from 3
-// up to the line's ceiling, no padding beyond what the layout itself needs.
+// One line: standard mode for 1-2 channels, sized to them. TDM from 3, and a
+// TDM line always runs at its full ceiling width - four 32-bit slots or eight
+// 16-bit ones, a 128-bit frame either way - with the slots past the layout's
+// channels zeroed by the interleave. Two reasons. A TDM DAC or DSP is set up
+// for a fixed frame (TDM4, TDM8), whatever the programme carries. And the
+// driver's clock does not reach every shape: on an ESP32-C6 on 2026-09-15,
+// ESP-IDF v6.1 accepted three- and five-slot frames at 16 and 24 bits and
+// clocked them 6.7% fast (a second of frames drained in 937 ms), where the
+// other accepted 16-bit and 24-bit shapes and two to four 32-bit slots
+// drained in 999.
+//
 // Two lines only come into it once channels exceeds one line's ceiling: they
 // share one bit clock and word select (see the streaming example's
 // sink/i2s/audio_sink.cpp for why - line 1 is a slave taking its clock from
 // line 0's output pins), so both must present the SAME frame shape for a
-// shared word-select transition to mean the same thing to each. Both lines
-// therefore run at the full per-line ceiling width in TDM mode, real channels
-// filling from line 0 first; whatever is left over rides in line 1 with its
-// remaining slots zeroed - the same "fixed width, pad with zeros" rule both
-// TDM interleaves already apply within one line.
+// shared word-select transition to mean the same thing to each - the full
+// width again, real channels filling from line 0 first and whatever is left
+// over riding in line 1 with its remaining slots zeroed.
 
 namespace ac3forge {
 
 struct SinkLinePlan {
     // The frame width this line is opened for - the TDM slot mask's size,
-    // or 1/2 in standard mode. Zero means this line is not used at all.
+    // always the line's ceiling in TDM, or 1/2 in standard mode. Zero means
+    // this line is not used at all.
     std::size_t slots = 0;
     // How many of those slots carry real audio, always <= slots; the rest
     // are zeroed by the interleave, not left with a previous frame's data.
@@ -113,8 +121,10 @@ struct SinkLineCeiling {
     }
 
     SinkPlan plan;
-    if (channels <= ceiling.slots) {
-        plan.line0 = {channels, channels, channels > 2};
+    if (channels <= 2) {
+        plan.line0 = {channels, channels, false};
+    } else if (channels <= ceiling.slots) {
+        plan.line0 = {ceiling.slots, channels, true};
     } else {
         plan.line0 = {ceiling.slots, ceiling.slots, true};
         plan.line1 = {ceiling.slots, channels - ceiling.slots, true};

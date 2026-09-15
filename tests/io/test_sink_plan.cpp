@@ -42,7 +42,7 @@ TEST_CASE("sink_ceiling matches the per-line ceiling plan_sink refuses past",
     STATIC_REQUIRE(plan_sink(8, 16, false).has_value());
 }
 
-TEST_CASE("one line, 32-bit: standard mode for 1-2, TDM for 3-4, refused past 4",
+TEST_CASE("one line, 32-bit: standard mode for 1-2, a full four-slot TDM frame for 3-4, refused past 4",
           "[io][sink_plan]") {
     for (const std::size_t channels : {std::size_t{1}, std::size_t{2}}) {
         CAPTURE(channels);
@@ -53,11 +53,14 @@ TEST_CASE("one line, 32-bit: standard mode for 1-2, TDM for 3-4, refused past 4"
         REQUIRE_FALSE(plan->line0.tdm);
         REQUIRE(plan->line1.slots == 0);
     }
+    // A TDM line runs its full width, the channels past the layout zeroed: a
+    // DAC is set up for a fixed frame, and odd slot counts are shapes the
+    // driver clocks wrongly at some widths (see sink_plan.hpp).
     for (const std::size_t channels : {std::size_t{3}, std::size_t{4}}) {
         CAPTURE(channels);
         const auto plan = plan_sink(channels, 32, false);
         REQUIRE(plan.has_value());
-        REQUIRE(plan->line0.slots == channels);
+        REQUIRE(plan->line0.slots == 4);
         REQUIRE(plan->line0.channels == channels);
         REQUIRE(plan->line0.tdm);
         REQUIRE(plan->line1.slots == 0);
@@ -66,7 +69,7 @@ TEST_CASE("one line, 32-bit: standard mode for 1-2, TDM for 3-4, refused past 4"
     REQUIRE_FALSE(plan_sink(0, 32, false).has_value());
 }
 
-TEST_CASE("one line, 16-bit: standard mode for 1-2, TDM for 3-8, refused past 8",
+TEST_CASE("one line, 16-bit: standard mode for 1-2, a full eight-slot TDM frame for 3-8, refused past 8",
           "[io][sink_plan]") {
     const auto mono = plan_sink(1, 16, false);
     REQUIRE(mono.has_value());
@@ -79,12 +82,14 @@ TEST_CASE("one line, 16-bit: standard mode for 1-2, TDM for 3-8, refused past 8"
     REQUIRE_FALSE(stereo->line0.tdm);
 
     // 5.1 and 7.1 among them: six and eight channels fit one line at this
-    // width, where 32-bit slots stop at four.
+    // width, where 32-bit slots stop at four. Three and five are the slot
+    // counts the ESP32-C6 clocked 6.7% fast when opened as frames of their
+    // own, so every count opens the full eight.
     for (std::size_t channels = 3; channels <= 8; ++channels) {
         CAPTURE(channels);
         const auto plan = plan_sink(channels, 16, false);
         REQUIRE(plan.has_value());
-        REQUIRE(plan->line0.slots == channels);
+        REQUIRE(plan->line0.slots == 8);
         REQUIRE(plan->line0.channels == channels);
         REQUIRE(plan->line0.tdm);
         REQUIRE(plan->line1.slots == 0);
@@ -110,7 +115,8 @@ TEST_CASE("two lines, 32-bit: line 0 fills to its ceiling before line 1 is used 
         CAPTURE(channels);
         const auto plan = plan_sink(channels, 32, true);
         REQUIRE(plan.has_value());
-        REQUIRE(plan->line0.slots == channels);
+        REQUIRE(plan->line0.slots == (channels <= 2 ? channels : std::size_t{4}));
+        REQUIRE(plan->line0.channels == channels);
         REQUIRE(plan->line1.slots == 0);
     }
 
