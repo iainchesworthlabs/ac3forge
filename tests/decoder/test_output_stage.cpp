@@ -2,11 +2,14 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
 #include <optional>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "ac3/core/eac3_tables.hpp"
@@ -14,6 +17,8 @@
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
 #include "ac3/encoder/encoder.hpp"
+#include "ac3/io/metadata_edit.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/mixing.hpp"
 
 // The §7.8 output stage (ac3/decoder/output.hpp): dialnorm normalisation, the
@@ -304,6 +309,38 @@ TEST_CASE("dialnorm normalises onto the -31 dBFS reference and never boosts",
           Catch::Approx(ac3::meta::dialnorm_gain(20)).margin(1e-6));
 }
 
+TEST_CASE("dual mono normalises Ch2 by its own dialnorm2, not Ch1's", "[decoder][output][dual-mono]") {
+    // §5.4.2.16: dialnorm2 is Ch2's OWN reference. Dual mono's two channels
+    // are unrelated programmes (this file's own class comment on apply()), so
+    // a stage that scaled both by Ch1's dialnorm - the bug this guards
+    // against - would leave Ch2 audibly off level whenever the two differ, as
+    // they do here.
+    ac3::OutputStage stage{{.apply_dialnorm = true}};
+    std::vector<std::vector<float>> channels(2, std::vector<float>(64, 1.0F));
+    stage.apply(channels, ac3::Acmod::kDualMono, false, ac3::MixLevels{}, 27, 18);
+    // Dual mono is never folded (OutputStage refuses it outright - see
+    // apply()'s own comment), so the channel count is untouched and only the
+    // level moved, on each channel by its own reference.
+    REQUIRE(channels.size() == 2);
+    CHECK(static_cast<double>(channels[0][0]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(27)).margin(1e-6));
+    CHECK(static_cast<double>(channels[1][0]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(18)).margin(1e-6));
+    // The two gains actually differ - proof this isn't passing by coincidence
+    // because dialnorm_gain(27) and dialnorm_gain(18) happen to agree.
+    CHECK(ac3::meta::dialnorm_gain(27) != ac3::meta::dialnorm_gain(18));
+
+    // Without a dialnorm2 to give, Ch2 falls back to Ch1's dialnorm - the
+    // pre-existing behaviour every other acmod already relies on, and the
+    // only sane default for a caller with no second word.
+    std::vector<std::vector<float>> fallback(2, std::vector<float>(64, 1.0F));
+    stage.apply(fallback, ac3::Acmod::kDualMono, false, ac3::MixLevels{}, 27);
+    CHECK(static_cast<double>(fallback[0][0]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(27)).margin(1e-6));
+    CHECK(static_cast<double>(fallback[1][0]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(27)).margin(1e-6));
+}
+
 TEST_CASE("the LFE joins a fold only when asked, and never against the stream's wishes",
           "[decoder][output]") {
     const auto fold = [](bool mix_lfe, std::optional<double> lfe_level) {
@@ -397,6 +434,42 @@ TEST_CASE("mix_levels resolves both generations' downmix syntax", "[decoder][out
     // No mixmdate at all falls back on the AC-3 defaults rather than zero.
     CHECK(ac3::mix_levels(std::optional<ac3::meta::MixMetadata>{}).loro_clev ==
           ac3::meta::level::kMinus4_5dB);
+
+    // Table D2.2's reserved '11' is passed on as sent, not folded into '00'.
+    mix.dmixmod = ac3::meta::DownmixMode::kReserved;
+    CHECK(ac3::mix_levels(std::optional{mix}).preferred == ac3::meta::DownmixMode::kReserved);
+}
+
+TEST_CASE("automatic_stereo_target follows Lt/Rt and folds everything else Lo/Ro",
+          "[decoder][output]") {
+    // §D3.1.1's automatic selection between the two folds dmixmod can name,
+    // at an acmod Table D2.2 defines the field for.
+    CHECK(ac3::automatic_stereo_target(ac3::Acmod::k3_2, ac3::meta::DownmixMode::kLtRt) ==
+          ac3::DownmixTarget::kLtRt);
+    CHECK(ac3::automatic_stereo_target(ac3::Acmod::k3_2, ac3::meta::DownmixMode::kLoRo) ==
+          ac3::DownmixTarget::kLoRo);
+    // No preference, and the reserved code §D2.3.1.2 lets a decoder read as
+    // "not indicated", both take the plain fold.
+    CHECK(ac3::automatic_stereo_target(ac3::Acmod::k3_2, ac3::meta::DownmixMode::kNotIndicated) ==
+          ac3::DownmixTarget::kLoRo);
+    CHECK(ac3::automatic_stereo_target(ac3::Acmod::k3_2, ac3::meta::DownmixMode::kReserved) ==
+          ac3::DownmixTarget::kLoRo);
+    // A MixLevels nobody filled in says nothing, so it folds Lo/Ro as well.
+    CHECK(ac3::automatic_stereo_target(ac3::Acmod::k3_2, ac3::MixLevels{}.preferred) ==
+          ac3::DownmixTarget::kLoRo);
+
+    // Table D2.2's own note leaves dmixmod's meaning reserved below acmod
+    // 3/0 - at 1+1, 1/0 and 2/0 the field is reserved whatever code it
+    // carries, so a preference that would choose Lt/Rt at a wider acmod
+    // still folds Lo/Ro at each of these three.
+    for (const auto acmod : {ac3::Acmod::kDualMono, ac3::Acmod::k1_0, ac3::Acmod::k2_0}) {
+        CHECK(ac3::automatic_stereo_target(acmod, ac3::meta::DownmixMode::kLtRt) ==
+              ac3::DownmixTarget::kLoRo);
+    }
+    // k3_0 is the narrowest acmod the note DOES define the field for - the
+    // sharp edge of that boundary, not just one more wide case.
+    CHECK(ac3::automatic_stereo_target(ac3::Acmod::k3_0, ac3::meta::DownmixMode::kLtRt) ==
+          ac3::DownmixTarget::kLtRt);
 }
 
 TEST_CASE("a plain 5.1 layout folds identically through the acmod and the layout forms",
@@ -542,4 +615,274 @@ TEST_CASE("a folded decode of real coded audio keeps every channel's content",
     // R goes to Ro and not to Lo, so its near-absence here is what says the
     // two outputs are not simply the same sum twice.
     CHECK(energy_at(800.0) < 0.2 * energy_at(200.0));
+}
+
+// --- Annex D: the xbsi1 group's own downmix levels ---------------------------
+//
+// §D3.1.2: once a two-channel downmix is selected, a compliant decoder uses
+// the xbsi1 levels for that downmix - ltrtcmixlev/ltrtsurmixlev for Lt/Rt,
+// lorocmixlev/lorosurmixlev for Lo/Ro - and without them downmixes as the
+// original specification defines.
+
+namespace {
+
+// Four xbsi1 levels that differ from bsi's -3 dB pair in annex_d_config() and
+// from §7.8.2's Lt/Rt -3 dB, so a fold that takes a level from the wrong
+// place cannot match by coincidence.
+ac3::meta::MixMetadata annex_d_levels() {
+    return ac3::meta::MixMetadata{
+        .dmixmod = ac3::meta::DownmixMode::kLtRt,
+        .ltrtcmixlev = ac3::meta::MixLevel::kUnity,
+        .lorocmixlev = ac3::meta::MixLevel::kMinus6dB,
+        .ltrtsurmixlev = ac3::meta::MixLevel::kMinus6dB,
+        .lorosurmixlev = ac3::meta::MixLevel::kMinus1_5dB,
+    };
+}
+
+// The same levels as coefficients, written out from Tables D2.3-D2.6 rather
+// than through mix_levels(), so a wrong conversion there cannot pass by
+// agreeing with itself.
+const ac3::MixLevels kAnnexDLevels{.loro_clev = ac3::meta::level::kMinus6dB,
+                                   .loro_slev = ac3::meta::level::kMinus1_5dB,
+                                   .ltrt_clev = ac3::meta::level::kUnity,
+                                   .ltrt_slev = ac3::meta::level::kMinus6dB};
+
+// What a decoder that ignored xbsi1 folds this programme with: bsi's two
+// -3 dB levels for Lo/Ro and mono, §7.8.2's -3 dB for Lt/Rt.
+const ac3::MixLevels kBsiLevels{.loro_clev = ac3::meta::level::kMinus3dB,
+                                .loro_slev = ac3::meta::level::kMinus3dB};
+
+// 3/2 at bsid 6: bsi carries -3 dB for both levels, as §D4.2.1 requires a
+// bsid-6 encoder to keep sending for legacy decoders, and xbsi1 carries `mix`.
+ac3::EncoderConfig annex_d_config(const ac3::meta::MixMetadata& mix) {
+    ac3::EncoderConfig config;
+    config.acmod = ac3::Acmod::k3_2;
+    config.lfe = false;
+    config.bitrate_kbps = 448;
+    config.cmixlev = ac3::meta::CentreMixLevel::kMinus3dB;
+    config.surmixlev = ac3::meta::SurroundMixLevel::kMinus3dB;
+    config.alternate_bsi = ac3::meta::AlternateBsi{.mix = mix};
+    return config;
+}
+
+// `count` syncframes of a distinct tone per channel, as the round-trip test
+// above encodes them.
+std::vector<std::vector<std::byte>> encode_tones(const ac3::EncoderConfig& config, int count) {
+    const std::array<double, 5> hz = {200.0, 400.0, 800.0, 1600.0, 3200.0};
+    ac3::FrameEncoder encoder{config};
+    std::vector<std::vector<std::byte>> frames;
+    std::uint64_t n0 = 0;
+    for (int f = 0; f < count; ++f) {
+        const auto pcm = tones(hz, n0, ac3::kSamplesPerFrame);
+        n0 += ac3::kSamplesPerFrame;
+        std::vector<std::span<const float>> views;
+        for (const auto& channel : pcm) {
+            views.emplace_back(channel);
+        }
+        auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        frames.push_back(std::move(*frame));
+    }
+    return frames;
+}
+
+struct FoldCheck {
+    std::size_t matched = 0;    // frames whose fold was the hand fold, sample for sample
+    std::size_t concealed = 0;  // frames the folding decoder concealed
+};
+
+// Decodes `frames` through a FrameDecoder folding to `target`, and through a
+// plain one whose coded channels are then folded by hand with `levels`.
+// `concealment` goes to both decoders, so a frame they conceal is concealed
+// the same way before either fold sees it.
+FoldCheck check_fold(std::span<const std::vector<std::byte>> frames, ac3::DownmixTarget target,
+                     const ac3::MixLevels& levels,
+                     ac3::ConcealmentPolicy concealment = ac3::ConcealmentPolicy::kNone) {
+    ac3::FrameDecoder folding{{.output = {.target = target}, .concealment = concealment}};
+    ac3::FrameDecoder plain{{.concealment = concealment}};
+    ac3::OutputStage by_hand{{.target = target}};
+    FoldCheck check;
+    for (const auto& frame : frames) {
+        const auto folded = folding.decode_frame(frame);
+        auto coded = plain.decode_frame(frame);
+        REQUIRE(folded.has_value());
+        REQUIRE(coded.has_value());
+        by_hand.apply(coded->channels, coded->acmod, coded->lfe, levels, coded->dialnorm);
+        if (folded->channels == coded->channels) {
+            ++check.matched;
+        }
+        if (folded->concealed.has_value()) {
+            ++check.concealed;
+        }
+    }
+    return check;
+}
+
+// Every bit two syncframes of one size disagree on, past crc1 and short of
+// crc2, as offsets from the start of the frame.
+std::vector<std::size_t> differing_bits(std::span<const std::byte> a,
+                                        std::span<const std::byte> b) {
+    REQUIRE(a.size() == b.size());
+    std::vector<std::size_t> out;
+    for (std::size_t byte = 4; byte + 2 < a.size(); ++byte) {
+        const auto diff = std::to_integer<unsigned>(a[byte] ^ b[byte]);
+        for (std::size_t bit = 0; bit < 8; ++bit) {
+            if ((diff & (0x80U >> bit)) != 0) {
+                out.push_back(byte * 8 + bit);
+            }
+        }
+    }
+    return out;
+}
+
+// `frame` with the 3-bit field starting at bit `first` set to `code`, and its
+// CRC words re-stamped.
+std::vector<std::byte> with_field(std::vector<std::byte> frame, std::size_t first,
+                                  unsigned code) {
+    for (std::size_t i = 0; i < 3; ++i) {
+        const std::size_t bit = first + i;
+        const auto mask = static_cast<std::byte>(0x80U >> (bit % 8));
+        if (((code >> (2 - i)) & 1U) != 0) {
+            frame[bit / 8] |= mask;
+        } else {
+            frame[bit / 8] &= ~mask;
+        }
+    }
+    REQUIRE(ac3::io::restamp_crc(frame).has_value());
+    return frame;
+}
+
+}  // namespace
+
+TEST_CASE("mix_levels takes Annex D's xbsi1 levels in place of bsi's", "[decoder][output]") {
+    const ac3::meta::AlternateBsi annex_d{.mix = annex_d_levels()};
+    // bsi's surmixlev '10' would silence the Lt/Rt surrounds on its own (see
+    // the bsid-8 case above); xbsi1 states that level itself, so it is xbsi1's.
+    const auto levels = ac3::mix_levels(ac3::Acmod::k3_2, ac3::meta::CentreMixLevel::kMinus3dB,
+                                        ac3::meta::SurroundMixLevel::kSilent, annex_d);
+    CHECK(levels.loro_clev == kAnnexDLevels.loro_clev);
+    CHECK(levels.loro_slev == kAnnexDLevels.loro_slev);
+    CHECK(levels.ltrt_clev == kAnnexDLevels.ltrt_clev);
+    CHECK(levels.ltrt_slev == kAnnexDLevels.ltrt_slev);
+    CHECK(levels.preferred == ac3::meta::DownmixMode::kLtRt);
+    // Annex D has no LFE mix level, and an AC-3 fold keeps §7.8's +10 dB
+    // ideal. mixmdate's reading of an absent lfemixlevcod as "disabled" is
+    // Annex E's rule and does not carry over.
+    CHECK(levels.lfe_mix_level_db == ac3::MixLevels{}.lfe_mix_level_db);
+
+    // Table D2.2's note defines dmixmod for 3/0 and wider only.
+    CHECK(ac3::mix_levels(ac3::Acmod::k3_0, std::nullopt, std::nullopt, annex_d).preferred ==
+          ac3::meta::DownmixMode::kLtRt);
+    for (const auto acmod : {ac3::Acmod::kDualMono, ac3::Acmod::k1_0, ac3::Acmod::k2_0}) {
+        INFO("acmod " << static_cast<int>(acmod));
+        CHECK(ac3::mix_levels(acmod, std::nullopt, std::nullopt, annex_d).preferred ==
+              ac3::meta::DownmixMode::kNotIndicated);
+    }
+
+    // No xbsi1 group - bsid 8, or bsid 6 with xbsi1e clear - is the bsid-8
+    // conversion, field for field, the surmixlev '10' carry-across included.
+    const auto same = [](const ac3::MixLevels& a, const ac3::MixLevels& b) {
+        return a.loro_clev == b.loro_clev && a.loro_slev == b.loro_slev &&
+               a.ltrt_clev == b.ltrt_clev && a.ltrt_slev == b.ltrt_slev &&
+               a.lfe_mix_level_db == b.lfe_mix_level_db && a.preferred == b.preferred;
+    };
+    const auto bsid8 = ac3::mix_levels(ac3::meta::CentreMixLevel::kMinus3dB,
+                                       ac3::meta::SurroundMixLevel::kSilent);
+    CHECK(same(ac3::mix_levels(ac3::Acmod::k3_2, ac3::meta::CentreMixLevel::kMinus3dB,
+                               ac3::meta::SurroundMixLevel::kSilent, std::nullopt),
+               bsid8));
+    CHECK(same(ac3::mix_levels(ac3::Acmod::k3_2, ac3::meta::CentreMixLevel::kMinus3dB,
+                               ac3::meta::SurroundMixLevel::kSilent, ac3::meta::AlternateBsi{}),
+               bsid8));
+}
+
+TEST_CASE("an Annex D stream folds to Lt/Rt with its own Lt/Rt levels", "[decoder][output]") {
+    // Five frames, so the MDCT overlap and the phase shifter's history are
+    // both carrying real audio by the end.
+    const auto frames = encode_tones(annex_d_config(annex_d_levels()), 5);
+    const auto stream = check_fold(frames, ac3::DownmixTarget::kLtRt, kAnnexDLevels);
+    CHECK(stream.matched == frames.size());
+    // And the levels a decoder ignoring xbsi1 would use give a different fold
+    // on every frame, which is what makes the match above mean something.
+    CHECK(check_fold(frames, ac3::DownmixTarget::kLtRt, kBsiLevels).matched == 0);
+}
+
+TEST_CASE("an Annex D stream folds to Lo/Ro and mono with its own Lo/Ro levels",
+          "[decoder][output]") {
+    // Mono is included because §7.8.2 defines it as Lo/Ro summed, so it takes
+    // lorocmixlev/lorosurmixlev too.
+    const auto frames = encode_tones(annex_d_config(annex_d_levels()), 5);
+    for (const auto target : {ac3::DownmixTarget::kLoRo, ac3::DownmixTarget::kMono}) {
+        INFO("target " << static_cast<int>(target));
+        CHECK(check_fold(frames, target, kAnnexDLevels).matched == frames.size());
+        CHECK(check_fold(frames, target, kBsiLevels).matched == 0);
+    }
+}
+
+TEST_CASE("a concealed Annex D frame folds with the last good frame's xbsi1 levels",
+          "[decoder][output]") {
+    // §7.10's repeat-and-fade reports the last good frame's metadata, so the
+    // fold of the frame it reconstructs takes that frame's xbsi1 levels too.
+    auto frames = encode_tones(annex_d_config(annex_d_levels()), 6);
+    frames[3][frames[3].size() / 2] ^= std::byte{0xFF};  // so its CRC fails
+    const auto stream = check_fold(frames, ac3::DownmixTarget::kLtRt, kAnnexDLevels,
+                                   ac3::ConcealmentPolicy::kRepeatFade);
+    CHECK(stream.concealed == 1);
+    CHECK(stream.matched == frames.size());
+}
+
+TEST_CASE("xbsi1's reserved surround levels fold as -1.5 dB", "[decoder][output]") {
+    // Tables D2.4/D2.6 reserve '000'..'010' for both surround levels, and
+    // §D2.3.1.4/§D2.3.1.6 have a decoder use 0.841 for one. The encoder
+    // refuses to write a reserved code, so these frames are made the way a
+    // third-party stream would arrive. Encoded once at -1.5 dB ('011') and
+    // once at -inf ('111'), the two differ in each field's first bit alone,
+    // which says where to patch.
+    auto mix = annex_d_levels();
+    mix.ltrtsurmixlev = ac3::meta::MixLevel::kMinus1_5dB;
+    mix.lorosurmixlev = ac3::meta::MixLevel::kMinus1_5dB;
+    const auto frames = encode_tones(annex_d_config(mix), 5);
+    mix.ltrtsurmixlev = ac3::meta::MixLevel::kSilent;
+    mix.lorosurmixlev = ac3::meta::MixLevel::kSilent;
+    const auto silent = encode_tones(annex_d_config(mix), 1);
+    const auto fields = differing_bits(frames.front(), silent.front());
+    // Table D2.1's order: ltrtsurmixlev first, then lorosurmixlev six bits
+    // on, past the three of lorocmixlev.
+    REQUIRE(fields.size() == 2);
+    REQUIRE(fields[1] == fields[0] + 6);
+
+    std::vector<std::vector<std::byte>> reserved;
+    for (const auto& frame : frames) {
+        reserved.push_back(with_field(with_field(frame, fields[0], 0b000), fields[1], 0b010));
+    }
+
+    // The patches moved nothing else: the coded audio is the original's.
+    ac3::FrameDecoder original;
+    ac3::FrameDecoder patched;
+    for (std::size_t i = 0; i < frames.size(); ++i) {
+        const auto a = original.decode_frame(frames[i]);
+        const auto b = patched.decode_frame(reserved[i]);
+        REQUIRE(a.has_value());
+        REQUIRE(b.has_value());
+        const bool same_audio = a->channels == b->channels;
+        CHECK(same_audio);
+    }
+
+    // The report gives the level a decoder uses in place of each code...
+    ac3::FrameDecoder decoder;
+    const auto decoded = decoder.decode_frame(reserved.front());
+    REQUIRE(decoded.has_value());
+    REQUIRE(decoded->alternate_bsi.has_value());
+    REQUIRE(decoded->alternate_bsi->mix.has_value());
+    CHECK(decoded->alternate_bsi->mix->ltrtsurmixlev == ac3::meta::MixLevel::kMinus1_5dB);
+    CHECK(decoded->alternate_bsi->mix->lorosurmixlev == ac3::meta::MixLevel::kMinus1_5dB);
+
+    // ...and both folds use it.
+    auto levels = kAnnexDLevels;
+    levels.ltrt_slev = ac3::meta::level::kMinus1_5dB;
+    levels.loro_slev = ac3::meta::level::kMinus1_5dB;
+    for (const auto target : {ac3::DownmixTarget::kLtRt, ac3::DownmixTarget::kLoRo}) {
+        INFO("target " << static_cast<int>(target));
+        CHECK(check_fold(reserved, target, levels).matched == reserved.size());
+    }
 }

@@ -245,7 +245,7 @@ platform/compiler fragment matches your machine.
 |---|---|---|
 | `AC3FORGE_BUILD_CLI` | `ON` | Build `ac3cli`. |
 | `AC3FORGE_BUILD_GUI` | `ON` on the two Windows presets, `OFF` on Linux and macOS | Build `ac3gui`. Requires Qt. Off by default outside Windows because a Qt kit isn't assumed present there — see [Building on Linux](#building-on-linux). |
-| `AC3FORGE_FETCH_FMT` | `ON` | When no local {fmt} is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v12.2.0 from source via `FetchContent` instead of failing. Turn off to insist on a package-manager copy — see `cmake/Fmt.cmake`. Unlike the other `AC3FORGE_FETCH_*` options, this one is never irrelevant: {fmt} is a base dependency needed by every build. |
+| `AC3FORGE_FETCH_FMT` | `ON` | When no local {fmt} 11.1.0 or newer is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v12.2.0 from source via `FetchContent` instead of failing. An older local copy, such as Ubuntu 26.04's `libfmt-dev` 10.1.1, is skipped and named in the configure output. Turn off to insist on a package-manager copy — see `cmake/Fmt.cmake`. Unlike the other `AC3FORGE_FETCH_*` options, this one is never irrelevant: {fmt} is a base dependency needed by every build. |
 | `AC3FORGE_BUILD_TESTS` | `ON` | Build the Catch2 suite. Requires Catch2. |
 | `AC3FORGE_FETCH_CATCH2` | `ON` | When no local Catch2 3 is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v3.15.3 from source via `FetchContent` instead of failing. Turn off to insist on a package-manager copy — see `tests/CMakeLists.txt`. Irrelevant when `AC3FORGE_BUILD_TESTS` is off. |
 | `AC3FORGE_BUILD_EXAMPLES` | `ON` | Build `examples/`, and register them as tests. |

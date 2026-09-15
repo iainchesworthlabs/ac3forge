@@ -94,13 +94,22 @@ endforeach()
 # stopped those runs; an out-of-bounds read or undefined behaviour inside the
 # parser did not, and the mutation engine got no coverage from it.
 #
-# ac3adm_objects, which fuzz_adm_parse links, has the same gap and is not in
-# the set yet. libbw64 is header-only, so instrumenting ac3adm instruments
-# the libbw64 code it compiles too, and UBSan then stops fuzz_adm_parse
-# within a few hundred executions inside libbw64's UnknownChunk constructor,
-# which takes &data[0] of an empty vector for a zero-length chunk. That is
-# third-party code, and whether to patch it, filter such chunks before
-# libbw64 sees them or ignore the report is its own decision.
+# ac3adm_objects, which fuzz_adm_parse links, was the last one left out, and
+# for a reason the other two did not have: libbw64 is header-only, so
+# instrumenting ac3adm instruments the libbw64 code it compiles too. UBSan then
+# stopped the harness within a few hundred executions inside libbw64's
+# UnknownChunk constructor, which takes &data_[0] of an empty vector for a
+# zero-length chunk, and does the same in Bw64Reader::read() for a <data> chunk
+# of zero length. Both are patched in the dependency itself at populate time
+# (src/ac3adm/patch_libbw64.cmake, wired up in src/ac3adm/CMakeLists.txt), which
+# is what let this call join the set.
+#
+# An ignorelist scoped to libbw64 was the alternative, and would have hidden
+# more than it suppressed: a <fmt > whose channel count and width overflow
+# libbw64's uint16_t block alignment gets its read buffer sized from the wrapped
+# value and decoded against the real one, which ASan reports as a heap overread
+# against ac3adm's own read_pcm. That one is guarded in src/ac3adm/src/adm.cpp,
+# and an uninstrumented ac3adm reads it as a clean execution.
 #
 # Each call is guarded on the option that decides whether its library exists,
 # and each harness below sits under the same guard, so turning one of those
@@ -110,6 +119,9 @@ if(AC3FORGE_BUILD_AC4)
 endif()
 if(AC3FORGE_BUILD_IAB)
     ac3forge_instrument_for_fuzzing(ac3iab_objects)
+endif()
+if(AC3FORGE_BUILD_ADM)
+    ac3forge_instrument_for_fuzzing(ac3adm_objects)
 endif()
 
 add_custom_target(ac3forge_fuzzers)

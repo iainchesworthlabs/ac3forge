@@ -91,7 +91,8 @@ constexpr std::array<OptionToken, 60> kOptionTokens{{
     {"objects=", "live mode=atmos: the object-slot budget, 1..15"},
     {"positions=", "live mode=atmos: osc:[<bind>:]<port> - a real live object-position source"},
     {"downmix=", "live: off refuses an AC-3-only receiver instead of capping to 5.1 - "
-                "decode/monitor: loro, ltrt or mono fold the §7.8 output stage"},
+                "decode/monitor: loro, ltrt or mono fold the §7.8 output stage, auto follows "
+                "the stream's dmixmod"},
     {"follow=", "play: off refuses a sink that rejects the source format instead of "
                "transcoding to AC-3 or falling back to decoded PCM"},
     {"preset=", "qc: gate the measurement against a named delivery spec"},
@@ -335,7 +336,9 @@ void print_decode_topic() {
     fmt::println("       by default so a plain invocation still emits the coded channels");
     fmt::println("       untouched: channels=2|1 applies dialnorm normalisation and folds down");
     fmt::println("       to that many channels (as-coded, the default, does nothing); downmix=");
-    fmt::println("       loro|ltrt|mono picks the fold (naming one implies channels=); ltrt-");
+    fmt::println("       loro|ltrt|mono picks the fold (naming one implies channels=), and");
+    fmt::println("       downmix=auto takes the stream's own dmixmod (§D3.1.1): Lt/Rt when it");
+    fmt::println("       prefers Lt/Rt, otherwise Lo/Ro (reserved and absent included); ltrt-");
     fmt::println("       phase=off takes §7.8.2's sign-only matrix instead of the real 90°");
     fmt::println("       surround phase shift; mix-lfe folds the LFE in too. drcmode=line|rf");
     fmt::println("       applies §7.7's two named consumer DRC modes, both with dialnorm");

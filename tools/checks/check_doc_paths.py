@@ -149,6 +149,9 @@ PROSE_PATHS_UNCHECKED = {
     "planning/hearth-reference-player.md": (
         "plan; proposes an apps tree, a Sendspin library and firmware that do not exist yet"
     ),
+    "planning/hearth-sendspin-extension.md": (
+        "specification; names the Sendspin library and test tools it defines"
+    ),
     "docs/crucible/design/promotion.md": (
         "phase record; names the pre-promotion apps/windows layout"
     ),

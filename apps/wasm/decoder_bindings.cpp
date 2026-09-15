@@ -371,9 +371,10 @@ class PushDecoder {
         const bool has_lfe = unit.layout.count > 0 &&
                              unit.layout.index_of(ac3::eac3::chanmap::Location::kLfe) >= 0;
         if (unit.layout.count > 0) {
-            fold_.apply(fold_views_, unit.layout, unit.acmod, has_lfe, levels, unit.dialnorm);
+            fold_.apply(fold_views_, unit.layout, unit.acmod, has_lfe, levels, unit.dialnorm,
+                       unit.dialnorm2);
         } else {
-            fold_.apply(fold_views_, unit.acmod, has_lfe, levels, unit.dialnorm);
+            fold_.apply(fold_views_, unit.acmod, has_lfe, levels, unit.dialnorm, unit.dialnorm2);
         }
         fold_channel_count_ =
             static_cast<int>(ac3::output_channel_count(fold_.config(), unit.acmod, has_lfe));

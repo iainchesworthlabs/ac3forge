@@ -6,6 +6,7 @@
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -13,6 +14,7 @@
 #include <iterator>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -22,6 +24,8 @@
 #endif
 
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/decoder.hpp"
+#include "ac3/io/metadata_edit.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/qc.hpp"
 #include "ac3/oba/scene.hpp"
@@ -706,6 +710,7 @@ TEST_CASE("the bit stream information tokens reach the wire and round trip",
         CHECK(text.find("not the original bit stream") != std::string::npos);
         CHECK(text.find("Dolby Surround EX") != std::string::npos);
         CHECK(text.find("A/D converter: HDCD") != std::string::npos);
+        CHECK(text.find("xbsi1: preferred downmix Lt/Rt") != std::string::npos);
     }
 
     SECTION("AC-3: a time code and Annex D are refused together") {
@@ -778,6 +783,159 @@ TEST_CASE("the bit stream information tokens reach the wire and round trip",
                           log) != 0);
             CHECK_FALSE(fs::exists(out_path));
         }
+    }
+}
+
+TEST_CASE("decode downmix=auto folds the way the stream's own dmixmod asks", "[cli][output]") {
+    // §D3.1.1's automatic choice between Lt/Rt and Lo/Ro. The case this test
+    // exists for is Table D2.2's reserved '11' (TS 102 366 Table D.1.1), which
+    // neither standard assigns a downmix: downmix=auto reads it as "not
+    // indicated" (§D2.3.1.2) and takes Lo/Ro. Each automatic decode is compared
+    // byte for byte with a decode that names the fold it reported, so the
+    // status line and the audio cannot disagree.
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "auto_downmix_in.wav";
+    const auto channels = make_tone_channels(6, 4800, 48000);
+    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+
+    const auto read_bytes = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        REQUIRE(in.is_open());
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+    const auto encode = [&](const std::string& command, const fs::path& out,
+                            const std::string& args) {
+        fs::remove(out);
+        REQUIRE(run_cli(command + " \"" + wav_path.string() + "\" \"" + out.string() + "\" " +
+                            args,
+                        dir / "auto_downmix_encode.log") == 0);
+    };
+    // Decodes `in` to <stem>.wav and returns what the command printed.
+    const auto decode = [&](const fs::path& in, const std::string& stem,
+                            const std::string& tokens) {
+        const auto log = dir / (stem + ".log");
+        REQUIRE(run_cli("decode \"" + in.string() + "\" \"" + (dir / (stem + ".wav")).string() +
+                            "\" " + tokens,
+                        log) == 0);
+        return read_log(log);
+    };
+    // The encoder will not write '11', so a stream carrying it is made from
+    // the '01' and '10' encodes of the same audio: ORed byte by byte, '01' |
+    // '10' is '11' and every other bit meets an identical copy of itself, and
+    // each syncframe's CRCs are re-stamped afterwards. tests/meta/test_bsi.cpp
+    // checks that this changes nothing but dmixmod.
+    const auto make_reserved = [&](const fs::path& ltrt, const fs::path& loro,
+                                   const fs::path& out) {
+        const auto first = read_bytes(ltrt);
+        const auto second = read_bytes(loro);
+        REQUIRE(first.size() == second.size());
+        std::vector<std::byte> merged(first.size());
+        for (std::size_t i = 0; i < merged.size(); ++i) {
+            merged[i] = static_cast<std::byte>(static_cast<unsigned char>(first[i]) |
+                                               static_cast<unsigned char>(second[i]));
+        }
+        const auto frames = ac3::split_frames(merged);
+        REQUIRE(frames.has_value());
+        for (const auto frame : *frames) {
+            const auto at = static_cast<std::size_t>(frame.data() - merged.data());
+            REQUIRE(ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
+        }
+        std::ofstream file{out, std::ios::binary};
+        file.write(reinterpret_cast<const char*>(merged.data()),
+                   static_cast<std::streamsize>(merged.size()));
+        REQUIRE(file.good());
+    };
+
+    SECTION("AC-3: an Lt/Rt preference gets the Lt/Rt fold") {
+        const auto stream = dir / "auto_ltrt.ac3";
+        encode("encode", stream, "384 51 dmixmod=ltrt");
+        const auto text = decode(stream, "auto_ltrt_auto", "downmix=auto");
+        INFO(text);
+        CHECK(text.find("downmix=auto: dmixmod 1 (Lt/Rt) -> Lt/Rt stereo") != std::string::npos);
+        CHECK(text.find("3/2 + LFE -> Lt/Rt stereo") != std::string::npos);
+        decode(stream, "auto_ltrt_named", "downmix=ltrt");
+        const bool same = read_bytes(dir / "auto_ltrt_auto.wav") ==
+                          read_bytes(dir / "auto_ltrt_named.wav");
+        CHECK(same);
+    }
+
+    SECTION("AC-3: dmixmod means nothing below acmod 3/0, so a 2/0 preference is not followed") {
+        // Table D2.2's own note: dmixmod's meaning "is only defined ... if the
+        // audio coding mode is 3/0, 2/1, 3/1, 2/2 or 3/2 ... [otherwise] the
+        // meaning of this field is reserved". xbsi1 still carries whatever
+        // code was asked for - Table D2.1's fixed layout has no acmod gate of
+        // its own, unlike mixmdate's own acmod > 0x2 condition - but a 2/0
+        // stream preferring Lt/Rt has no preference downmix=auto can act on.
+        const auto stereo_wav = dir / "auto_stereo_in.wav";
+        const auto stereo_channels = make_tone_channels(2, 4800, 48000);
+        REQUIRE(ac3::io::write_wav_f32(stereo_wav.string(), stereo_channels, 48000).has_value());
+        const auto stream = dir / "auto_narrow.ac3";
+        fs::remove(stream);
+        REQUIRE(run_cli("encode \"" + stereo_wav.string() + "\" \"" + stream.string() +
+                            "\" 192 stereo dmixmod=ltrt",
+                        dir / "auto_narrow_encode.log") == 0);
+        const auto text = decode(stream, "auto_narrow_auto", "downmix=auto");
+        INFO(text);
+        // The transmitted code is still named honestly - it is only the
+        // RESOLUTION that treats it as unusable at this acmod.
+        CHECK(text.find("downmix=auto: dmixmod 1 (Lt/Rt) -> Lo/Ro stereo") != std::string::npos);
+        decode(stream, "auto_narrow_named", "downmix=loro");
+        const bool same = read_bytes(dir / "auto_narrow_auto.wav") ==
+                          read_bytes(dir / "auto_narrow_named.wav");
+        CHECK(same);
+    }
+
+    SECTION("AC-3: Annex D's reserved code is named and folds Lo/Ro") {
+        const auto ltrt = dir / "auto_reserved_ltrt.ac3";
+        const auto loro = dir / "auto_reserved_loro.ac3";
+        const auto stream = dir / "auto_reserved.ac3";
+        encode("encode", ltrt, "384 51 dmixmod=ltrt");
+        encode("encode", loro, "384 51 dmixmod=loro");
+        make_reserved(ltrt, loro, stream);
+        const auto text = decode(stream, "auto_reserved_auto", "downmix=auto");
+        INFO(text);
+        CHECK(text.find("downmix=auto: dmixmod 3 (reserved) -> Lo/Ro stereo") !=
+              std::string::npos);
+        CHECK(text.find("xbsi1: preferred downmix reserved") != std::string::npos);
+        decode(stream, "auto_reserved_named", "downmix=loro");
+        const bool same = read_bytes(dir / "auto_reserved_auto.wav") ==
+                          read_bytes(dir / "auto_reserved_named.wav");
+        CHECK(same);
+    }
+
+    SECTION("E-AC-3: mixmdate's reserved code folds Lo/Ro") {
+        const auto ltrt = dir / "auto_reserved_ltrt.ec3";
+        const auto loro = dir / "auto_reserved_loro.ec3";
+        const auto stream = dir / "auto_reserved.ec3";
+        encode("eac3-encode", ltrt, "448 none 51 mixmeta dmixmod=ltrt");
+        encode("eac3-encode", loro, "448 none 51 mixmeta dmixmod=loro");
+        make_reserved(ltrt, loro, stream);
+        const auto text = decode(stream, "auto_reserved_ec3_auto", "downmix=auto");
+        INFO(text);
+        CHECK(text.find("downmix=auto: dmixmod 3 (reserved) -> Lo/Ro stereo") !=
+              std::string::npos);
+        decode(stream, "auto_reserved_ec3_named", "downmix=loro");
+        const bool same = read_bytes(dir / "auto_reserved_ec3_auto.wav") ==
+                          read_bytes(dir / "auto_reserved_ec3_named.wav");
+        CHECK(same);
+    }
+
+    SECTION("a stream that sends no dmixmod folds Lo/Ro") {
+        const auto stream = dir / "auto_absent.ac3";
+        encode("encode", stream, "384 51");  // bsid 8: no xbsi1 to carry one
+        const auto text = decode(stream, "auto_absent_auto", "downmix=auto");
+        INFO(text);
+        CHECK(text.find("downmix=auto: dmixmod absent -> Lo/Ro stereo") != std::string::npos);
+    }
+
+    SECTION("a later channels=1 overrides auto, as any later token does") {
+        const auto stream = dir / "auto_override.ac3";
+        encode("encode", stream, "384 51 dmixmod=ltrt");
+        const auto text = decode(stream, "auto_override", "downmix=auto channels=1");
+        INFO(text);
+        CHECK(text.find("downmix=auto:") == std::string::npos);
+        CHECK(text.find("3/2 + LFE -> mono") != std::string::npos);
     }
 }
 

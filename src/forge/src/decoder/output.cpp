@@ -514,6 +514,30 @@ MixLevels mix_levels(std::optional<meta::CentreMixLevel> cmixlev,
     return out;
 }
 
+MixLevels mix_levels(Acmod acmod, std::optional<meta::CentreMixLevel> cmixlev,
+                     std::optional<meta::SurroundMixLevel> surmixlev,
+                     const std::optional<meta::AlternateBsi>& alternate) {
+    // §D3.1.2: with no xbsi1 in the stream, the original specification's
+    // downmix - which is the bsid-8 conversion exactly, LFE ideal included.
+    MixLevels out = mix_levels(cmixlev, surmixlev);
+    if (!alternate.has_value() || !alternate->mix.has_value()) {
+        return out;
+    }
+    // §D3.1.2 again: each two-channel fold takes the pair xbsi1 carries for
+    // it. All four are replaced, so the carry-across of surmixlev '10' above
+    // does not survive either: xbsi1 states the Lt/Rt surround level itself.
+    const auto& xbsi1 = *alternate->mix;
+    out.loro_clev = meta::coefficient(xbsi1.lorocmixlev);
+    out.loro_slev = meta::coefficient(xbsi1.lorosurmixlev);
+    out.ltrt_clev = meta::coefficient(xbsi1.ltrtcmixlev);
+    out.ltrt_slev = meta::coefficient(xbsi1.ltrtsurmixlev);
+    // Table D2.2's note: dmixmod means something only above 2/0.
+    if (static_cast<std::uint8_t>(acmod) > static_cast<std::uint8_t>(Acmod::k2_0)) {
+        out.preferred = xbsi1.dmixmod;
+    }
+    return out;
+}
+
 MixLevels mix_levels(const std::optional<meta::MixMetadata>& mix) {
     MixLevels out;
     if (!mix.has_value()) {
@@ -555,7 +579,7 @@ void OutputStage::reset() {
 }
 
 void OutputStage::apply(std::vector<std::vector<float>>& channels, Acmod acmod, bool lfe,
-                        const MixLevels& levels, int dialnorm) {
+                        const MixLevels& levels, int dialnorm, std::optional<int> dialnorm2) {
     // The span form below is the whole implementation; this one only lends it
     // views of the vectors and then trims them to what the fold left behind.
     views_.clear();
@@ -563,14 +587,14 @@ void OutputStage::apply(std::vector<std::vector<float>>& channels, Acmod acmod, 
     for (auto& channel : channels) {
         views_.emplace_back(channel);
     }
-    apply(views_, acmod, lfe, levels, dialnorm);
+    apply(views_, acmod, lfe, levels, dialnorm, dialnorm2);
     if (!channels.empty()) {
         channels.resize(output_channel_count(config_, acmod, lfe));
     }
 }
 
 void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod, bool lfe,
-                        const MixLevels& levels, int dialnorm) {
+                        const MixLevels& levels, int dialnorm, std::optional<int> dialnorm2) {
     const bool downmixing =
         config_.target != DownmixTarget::kAsCoded && acmod != Acmod::kDualMono;
     const bool normalising = config_.apply_dialnorm || config_.mode != OperatingMode::kCustom;
@@ -587,12 +611,25 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
     // but not once RF mode's limiter is in the chain, which reacts to level.
     // Doing it here means the limiter sees the levels a listener would, which
     // is the only order in which its ceiling means anything.
+    //
+    // Dual mono is two unrelated programmes sharing one syncframe, and
+    // §5.4.2.16's dialnorm2 is Ch2's OWN reference - an encoder sizes Ch2's
+    // compr2 on the assumption Ch2 is levelled by dialnorm2, not by Ch1's
+    // dialnorm, so the two channels take different gains here whenever a
+    // dialnorm2 was supplied. Every other acmod has one channel set with one
+    // dialnorm, which is exactly what dialnorm2 defaulting to `dialnorm`
+    // reduces to.
+    const bool dual_mono_ch2 = acmod == Acmod::kDualMono && dialnorm2.has_value();
     const double dialnorm_gain = normalising ? meta::dialnorm_gain(dialnorm) : 1.0;
-    if (dialnorm_gain != 1.0) {
+    const double dialnorm2_gain =
+        normalising && dual_mono_ch2 ? meta::dialnorm_gain(*dialnorm2) : dialnorm_gain;
+    if (dialnorm_gain != 1.0 || dialnorm2_gain != 1.0) {
         AC3_ZONE_SCOPED_N("output_dialnorm");
         const auto gain = static_cast<Scalar>(dialnorm_gain);
-        for (const auto& channel : channels) {
-            scale(channel.data(), gain, channel.size());
+        const auto gain2 = static_cast<Scalar>(dialnorm2_gain);
+        for (std::size_t ch = 0; ch < channels.size(); ++ch) {
+            const auto& channel = channels[ch];
+            scale(channel.data(), (dual_mono_ch2 && ch == 1) ? gain2 : gain, channel.size());
         }
     }
     if (!downmixing) {
@@ -644,18 +681,20 @@ void OutputStage::apply(std::span<const std::span<float>> channels, Acmod acmod,
 
 void OutputStage::apply(std::span<const std::span<float>> channels,
                         const eac3::chanmap::Layout& layout, Acmod acmod, bool lfe,
-                        const MixLevels& levels, int dialnorm) {
+                        const MixLevels& levels, int dialnorm, std::optional<int> dialnorm2) {
     if (channels.empty() || channels.front().empty()) {
         return;
     }
     // Dual mono has no layout to reduce and no fold to apply (OutputStage
     // refuses it outright); a caller asking only for dialnorm normalisation
-    // still gets it, which is what passing straight through does. `lfe` is
-    // only consulted on this path - past it, what matters is which seat the
-    // rendered layout actually filled, not what the bed's lfeon said.
+    // still gets it, which is what passing straight through does - dialnorm2
+    // and all, since that overload is where dual mono's per-channel gain is
+    // actually applied. `lfe` is only consulted on this path - past it, what
+    // matters is which seat the rendered layout actually filled, not what
+    // the bed's lfeon said.
     if (config_.target == DownmixTarget::kAsCoded || acmod == Acmod::kDualMono ||
         layout.count == 0) {
-        apply(channels, acmod, lfe, levels, dialnorm);
+        apply(channels, acmod, lfe, levels, dialnorm, dialnorm2);
         return;
     }
 

@@ -144,7 +144,10 @@ implementation. It is a thin translation layer over two vendored third-party lib
 via CMake `FetchContent` (see [`src/ac3adm/CMakeLists.txt`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/CMakeLists.txt)):
 
 - **[libbw64](https://github.com/ebu/libbw64)** (Apache-2.0, header-only, no dependency of its
-  own) — the BW64/RF64 chunk-walking and PCM-decoding layer.
+  own) — the BW64/RF64 chunk-walking and PCM-decoding layer. Pinned at `0.10.0`, and patched at
+  populate time by [`src/ac3adm/patch_libbw64.cmake`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/patch_libbw64.cmake)
+  for undefined behaviour on zero-length chunks — see that script, and
+  [the threat model](../threat-model.md#adm-xml-and-bw64) for what is and is not covered.
 - **[libadm](https://github.com/ebu/libadm)** (Apache-2.0) — the ADM XML object model: parsing,
   schema validation, and the full element graph.
 
@@ -196,8 +199,10 @@ The two arrive by different routes. Integer PCM goes through the vendored libbw6
 this module's reference for the container itself. libbw64's own `<fmt >` parsing rejects any
 other `formatTag` outright at open time (`"format unsupported: <tag>"`), IEEE float included, so
 a float master never reaches any of its accessors and there is nothing to widen from the
-outside. Rather than patch a dependency fetched from upstream at a pinned tag, a float file is
-detected up front and read by this module's own container walk instead
+outside. Teaching it that format would mean carrying a feature of this project's own as a patch
+against a pinned tag, which is a standing maintenance cost the module's one patch (undefined
+behaviour on zero-length chunks, see above) does not carry. A float file is detected up front and
+read by this module's own container walk instead
 ([`src/ac3adm/src/float_pcm_bw64.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/src/float_pcm_bw64.hpp)) —
 which re-implements the chunk walk and the `<chna>` record table and nothing else: the `<axml>`
 bytes go through the identical libadm parse the ordinary path uses, so the ADM metadata cannot

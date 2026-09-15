@@ -5,16 +5,15 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <numbers>
 #include <span>
 #include <vector>
 
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/render/float_biquad.hpp"
+#include "ac3/render/layout.hpp"
 #include "ac3/spatial/spatial.hpp"
-
-#include "ac3forge/layout.hpp"
 
 // From what the decoder rendered to what the speakers want, one 256-sample
 // block at a time.
@@ -49,10 +48,10 @@
 // which is where an ESP32-S3 spends its time well. Nothing here allocates
 // except describe_objects' own vector of descriptions, once per unit.
 //
-// Free of ESP-IDF, and tested on the host in tests/io/test_layout.cpp: the
-// geometry has its own tests under tests/spatial/, so what is checked here is
-// the indexing between coded channels, objects and slots - the part where a
-// swapped subscript is silent.
+// Moved from the ESP-IDF component with layout.hpp, and tested on the host in
+// tests/render/test_layout.cpp: the geometry has its own tests under
+// tests/spatial/, so what is checked here is the indexing between coded
+// channels, objects and slots - the part where a swapped subscript is silent.
 //
 // Bass management. A slot marked ":small" (OutputLayout::listed()) cannot
 // reproduce the bottom two octaves, so its bass is redirected to the LFE
@@ -63,23 +62,12 @@
 // the crossover. Only ever reached through render(): fold() never returns a
 // target for a layout with an LFE feed, and a small speaker is rejected
 // unless the layout has one, so a layout with any small speaker can never
-// reach render_folded() - nothing to branch on there.
-//
-// CrossoverBiquad, below, is float throughout - state, coefficients, the
-// arithmetic itself - deliberately NOT ac3::dsp::Biquad (ac3/dsp/biquad.hpp),
-// the second-order section bundle C's explicit-LFE-assignment feature
-// already has: that one accumulates in double even though its interface is
-// float, which is free on the desktop-class hardware its one caller runs
-// on and expensive here. Every double operation on the S3's PIE is a
-// software call, and Direct Form II Transposed is nine of them a sample (5
-// multiplies, 4 adds); the example's own level meter once cost twice the
-// decode it was measuring by squaring every sample in double
-// (docs/platforms/bare-metal/esp32-s3.md), which is the same trap at a larger scale. A
-// small duplicated type, rather than templating the shared one onto a
-// caller with different precision needs, matches the coefficient
-// functions' own reasoning below.
+// reach render_folded() - nothing to branch on there. The filters are
+// FloatBiquad (ac3/render/float_biquad.hpp), which says why they are float
+// rather than ac3::dsp::Biquad. The corner is a setting (set_crossover_hz),
+// in the range an AVR's speaker setup offers.
 
-namespace ac3forge {
+namespace ac3::render {
 
 class LayoutRenderer {
    public:
@@ -93,6 +81,10 @@ class LayoutRenderer {
     // (ac3::OutputConfig::mix_lfe) or bundle C's ~120 Hz LFE-channel
     // low-pass (ac3::dsp::LfeLowpass), both different questions.
     static constexpr double kDefaultCrossoverHz = 80.0;
+    // What set_crossover_hz() accepts: the span an AVR's speaker setup offers
+    // (40 to 250 Hz is typical), well inside the rates the renderer runs at.
+    static constexpr double kMinCrossoverHz = 40.0;
+    static constexpr double kMaxCrossoverHz = 250.0;
 
     // sample_rate_hz and crossover_hz only matter when `layout` has a
     // ":small" speaker (OutputLayout::has_small()); with none, small_slots_
@@ -102,10 +94,11 @@ class LayoutRenderer {
     // with under 1 KB free during a 7.1.4 play (planning/esp32-714-realtime.md),
     // and a fixed per-instance cost paid by every layout regardless of
     // whether it is small-aware would eat straight into that. sample_rate_hz
-    // defaults to this player's only rate (stream_player.cpp's kSampleRate).
+    // defaults to the boards' only rate. crossover_hz is taken as given here;
+    // set_crossover_hz() is the checked way to change it.
     explicit LayoutRenderer(const OutputLayout& layout, std::uint32_t sample_rate_hz = 48000,
                             double crossover_hz = kDefaultCrossoverHz)
-        : layout_(layout) {
+        : layout_(layout), sample_rate_hz_(sample_rate_hz), crossover_hz_(crossover_hz) {
         int lfe_slot = -1;
         int any_lfe_slot = -1;
         for (std::size_t slot = 0; slot < layout_.slots(); ++slot) {
@@ -133,14 +126,28 @@ class LayoutRenderer {
         if (has_small_) {
             crossover_hp_.resize(small_slots_.size());
             crossover_lp_.resize(small_slots_.size());
-            for (std::size_t i = 0; i < small_slots_.size(); ++i) {
-                configure_highpass(crossover_hp_[i], crossover_hz, sample_rate_hz);
-                configure_lowpass(crossover_lp_[i], crossover_hz, sample_rate_hz);
-            }
+            configure_crossover();
         }
     }
 
     [[nodiscard]] const OutputLayout& layout() const { return layout_; }
+
+    [[nodiscard]] double crossover_hz() const { return crossover_hz_; }
+
+    // A new bass-management corner for the small speakers, from the next block.
+    // The filters keep their state, so a change while playing is a change of
+    // response rather than a click. False, changing nothing, outside
+    // [kMinCrossoverHz, kMaxCrossoverHz]. Kept, and reported by
+    // crossover_hz(), for a layout with no small speaker, which has no filter
+    // to change.
+    bool set_crossover_hz(double hz) {
+        if (!(hz >= kMinCrossoverHz && hz <= kMaxCrossoverHz)) {
+            return false;
+        }
+        crossover_hz_ = hz;
+        configure_crossover();
+        return true;
+    }
 
     // The coded layout of the units about to arrive: the channels a PcmBlock
     // will carry, in its order. Recomputes every bed gain. Call when it
@@ -351,10 +358,10 @@ class LayoutRenderer {
     // ac3::OutputStage::reset() has for its own Lt/Rt phase-shift history.
     // A no-op when nothing is small.
     void reset() {
-        for (CrossoverBiquad& hp : crossover_hp_) {
+        for (FloatBiquad& hp : crossover_hp_) {
             hp.reset();
         }
-        for (CrossoverBiquad& lp : crossover_lp_) {
+        for (FloatBiquad& lp : crossover_lp_) {
             lp.reset();
         }
     }
@@ -401,63 +408,14 @@ class LayoutRenderer {
     }
 
    private:
-    // A second-order IIR section, float throughout - see the header comment
-    // on why this duplicates ac3::dsp::Biquad's shape rather than reusing
-    // it. Direct Form II Transposed: two state variables, no separate
-    // input/output delay lines to keep in sync, the same structure
-    // ac3::dsp::Biquad uses.
-    struct CrossoverBiquad {
-        float b0 = 1.0F, b1 = 0.0F, b2 = 0.0F, a1 = 0.0F, a2 = 0.0F;
-        float z1 = 0.0F, z2 = 0.0F;
-
-        float process(float x) {
-            const float y = b0 * x + z1;
-            z1 = b1 * x - a1 * y + z2;
-            z2 = b2 * x - a2 * y;
-            return y;
+    // Every small slot's filter pair at the current corner: a matched
+    // high-pass and low-pass, same frequency and Q, as the header comment
+    // says. Their state is left alone.
+    void configure_crossover() {
+        for (std::size_t i = 0; i < crossover_hp_.size(); ++i) {
+            crossover_hp_[i].set_highpass(crossover_hz_, sample_rate_hz_);
+            crossover_lp_[i].set_lowpass(crossover_hz_, sample_rate_hz_);
         }
-
-        void reset() {
-            z1 = 0.0F;
-            z2 = 0.0F;
-        }
-    };
-
-    // Butterworth Q for a single second-order section - the standard
-    // maximally-flat choice, and what gives a matched low-pass/high-pass
-    // pair a flat combined response through the crossover.
-    static constexpr double kCrossoverQ = 0.70710678118654752;  // 1/sqrt(2)
-
-    // RBJ Audio EQ Cookbook low-pass/high-pass biquad (public-domain DSP,
-    // not sourced from any particular codebase), computed in double - this
-    // runs once per stream at construction, not per sample - and narrowed to
-    // the float coefficients CrossoverBiquad::process() actually uses.
-    static void configure_lowpass(CrossoverBiquad& biquad, double corner_hz,
-                                  double sample_rate_hz) {
-        const double omega = 2.0 * std::numbers::pi * corner_hz / sample_rate_hz;
-        const double cos_omega = std::cos(omega);
-        const double alpha = std::sin(omega) / (2.0 * kCrossoverQ);
-        const double a0 = 1.0 + alpha;
-        const double b0 = (1.0 - cos_omega) / 2.0;
-        biquad.b0 = static_cast<float>(b0 / a0);
-        biquad.b1 = static_cast<float>((1.0 - cos_omega) / a0);
-        biquad.b2 = biquad.b0;
-        biquad.a1 = static_cast<float>((-2.0 * cos_omega) / a0);
-        biquad.a2 = static_cast<float>((1.0 - alpha) / a0);
-    }
-
-    static void configure_highpass(CrossoverBiquad& biquad, double corner_hz,
-                                   double sample_rate_hz) {
-        const double omega = 2.0 * std::numbers::pi * corner_hz / sample_rate_hz;
-        const double cos_omega = std::cos(omega);
-        const double alpha = std::sin(omega) / (2.0 * kCrossoverQ);
-        const double a0 = 1.0 + alpha;
-        const double b0 = (1.0 + cos_omega) / 2.0;
-        biquad.b0 = static_cast<float>(b0 / a0);
-        biquad.b1 = static_cast<float>(-(1.0 + cos_omega) / a0);
-        biquad.b2 = biquad.b0;
-        biquad.a1 = static_cast<float>((-2.0 * cos_omega) / a0);
-        biquad.a2 = static_cast<float>((1.0 - alpha) / a0);
     }
 
     // Whether the bed's own gains reach any small slot at all - the
@@ -491,8 +449,8 @@ class LayoutRenderer {
                 continue;
             }
             float* const dst = out[slot].data();
-            CrossoverBiquad& hp = crossover_hp_[i];
-            CrossoverBiquad& lp = crossover_lp_[i];
+            FloatBiquad& hp = crossover_hp_[i];
+            FloatBiquad& lp = crossover_lp_[i];
             for (std::size_t k = 0; k < n; ++k) {
                 const float x = dst[k];
                 dst[k] = hp.process(x);
@@ -537,6 +495,8 @@ class LayoutRenderer {
     }
 
     OutputLayout layout_;
+    std::uint32_t sample_rate_hz_ = 48000;
+    double crossover_hz_ = kDefaultCrossoverHz;
     std::array<ac3::spatial::Direction, kMaxSlots> target_directions_{};
     std::array<std::size_t, kMaxSlots> target_slots_{};
     std::size_t targets_ = 0;
@@ -555,8 +515,8 @@ class LayoutRenderer {
     bool has_small_ = false;
     int lfe_slot_ = -1;
     std::vector<std::size_t> small_slots_;
-    std::vector<CrossoverBiquad> crossover_hp_;
-    std::vector<CrossoverBiquad> crossover_lp_;
+    std::vector<FloatBiquad> crossover_hp_;
+    std::vector<FloatBiquad> crossover_lp_;
 };
 
-}  // namespace ac3forge
+}  // namespace ac3::render

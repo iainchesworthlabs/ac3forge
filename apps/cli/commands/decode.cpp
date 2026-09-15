@@ -801,12 +801,17 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
 
 }  // namespace
 
-int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli::Options& meta,
-               std::string_view objects_dir, std::string_view adm_out) {
+int run_decode(std::string_view in_path, std::string_view out_path,
+               const ac3cli::Options& requested, std::string_view objects_dir,
+               std::string_view adm_out) {
     const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
         return kExitInput;
     }
+    // downmix=auto becomes a concrete fold here, once, from what the stream
+    // itself prefers; everything below sees only the fold it settled on.
+    auto meta = requested;
+    meta.output = resolve_output(requested, stream, status_stream(out_path));
     if (!apply_object_verification(stream, meta, status_stream(out_path))) {
         return kExitInput;
     }
@@ -1003,9 +1008,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         const auto& mix = *first.alternate_bsi->mix;
         status_println(status, "  xbsi1: preferred downmix {}, Lt/Rt {:+.1f}/{:+.1f} dB, "
                                "Lo/Ro {:+.1f}/{:+.1f} dB (centre/surround)",
-                       mix.dmixmod == ac3::meta::DownmixMode::kLtRt   ? "Lt/Rt"
-                       : mix.dmixmod == ac3::meta::DownmixMode::kLoRo ? "Lo/Ro"
-                                                                     : "not indicated",
+                       ac3::meta::describe(mix.dmixmod),
                        ac3::meta::to_db(ac3::meta::coefficient(mix.ltrtcmixlev)),
                        ac3::meta::to_db(ac3::meta::coefficient(mix.ltrtsurmixlev)),
                        ac3::meta::to_db(ac3::meta::coefficient(mix.lorocmixlev)),

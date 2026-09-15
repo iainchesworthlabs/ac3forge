@@ -205,10 +205,9 @@ meta::MixMetadata read_mixing_metadata(BitReader& r, const Bsi& bsi, int nblks) 
     const auto acmod = static_cast<std::uint8_t>(bsi.acmod);
     meta::MixMetadata mix;
     if (acmod > 0x2) {
-        const auto mode = r.read(2);  // dmixmod
-        if (mode < 3) {               // Table D2.2's '11' reads as "not indicated"
-            mix.dmixmod = static_cast<meta::DownmixMode>(mode);
-        }
+        // dmixmod, kept as sent: Table D2.2's reserved '11' has an enumerator
+        // of its own (see DownmixMode), so a report can say it was there.
+        mix.dmixmod = static_cast<meta::DownmixMode>(r.read(2));
     }
     if ((acmod & 0x1) != 0 && acmod > 0x2) {
         mix.ltrtcmixlev = static_cast<meta::MixLevel>(r.read(3));
@@ -1213,7 +1212,35 @@ Eac3Decoder::Eac3Decoder(const DecoderConfig& config) : impl_(std::make_unique<I
 std::expected<DecodedSubstream, DecodeError> Eac3Decoder::decode_ac3_core(
     std::span<const std::byte> frame) {
     if (!impl_->core_) {
-        impl_->core_ = std::make_unique<FrameDecoder>(impl_->config_);
+        // NOT impl_->config_ verbatim: that carries DecoderConfig::output,
+        // and §E3.8.2 assembles this substream's channels with every other
+        // one BEFORE apply_output() folds the whole program. A core that
+        // downmixed itself would hand a 2-channel Lo/Ro pair to an assembly
+        // expecting 3/2+LFE's six - decode_access_unit_core's own
+        // locations.count-vs-channels.size() check refuses exactly that
+        // mismatch - and a core that dialnorm-normalised itself would be
+        // normalised a second time once apply_output() does it again for the
+        // assembled program. drc_scale/heavy_compression are untouched: the
+        // §7.7 gain they drive is applied to the COEFFICIENTS inside
+        // FrameDecoder itself (gain.hpp's block_gain(), before the IMDCT),
+        // not by the output stage, and every other substream's channels take
+        // that same per-substream gain - the core is not special there, only
+        // in the fold that comes after every substream has one.
+        //
+        // heavy_compression's compr word is a further wrinkle this leaves
+        // alone: the core keeps its OWN AC-3 bsi's word, read and applied
+        // entirely inside FrameDecoder, with no view onto the E-AC-3
+        // dependents riding beside it or their own compr words. Whether an
+        // access unit's compr should instead be one word shared across every
+        // substream - the core included - the way §E3.8.5 already shares a
+        // program's dynrng/mixmdate at the DecodedAccessUnit level, is a
+        // question this fix does not answer: nothing here reads a dependent's
+        // compr into the core's decode, and a §E2.3.1.2 core is presented as
+        // substream (kIndependent, 0) like any other independent substream
+        // (see the class comment above), so it is not obviously exempt.
+        DecoderConfig core_config = impl_->config_;
+        core_config.output = {};
+        impl_->core_ = std::make_unique<FrameDecoder>(core_config);
     }
     auto decoded = impl_->core_->decode_frame(frame);
     if (!decoded) {
@@ -3858,7 +3885,8 @@ std::vector<DecodedSubstream> Eac3Decoder::flush() {
         }
         const auto layout = eac3::chanmap::expand(substream.location_map());
         impl_->output_.apply(views, layout, substream.acmod, substream.lfe,
-                             mix_levels(substream.mixing), substream.dialnorm);
+                             mix_levels(substream.mixing), substream.dialnorm,
+                             substream.dialnorm2);
         substream.channels.resize(
             output_channel_count(impl_->config_.output, substream.acmod, substream.lfe));
     }
@@ -3922,7 +3950,7 @@ void Eac3Decoder::apply_output(DecodedAccessUnit& out, std::span<const std::span
         // finished program, not part of decoding one.
         AC3_ZONE_SCOPED_N("eac3_output");
         impl_->output_.apply(impl_->au_views_, out.layout, out.acmod, rendered_lfe,
-                             mix_levels(out.mixing), out.dialnorm);
+                             mix_levels(out.mixing), out.dialnorm, out.dialnorm2);
     }
     if (!external.empty()) {
         return;
@@ -4167,6 +4195,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     out.sample_rate = lead.sample_rate;
     out.acmod = lead.acmod;
     out.dialnorm = lead.dialnorm;
+    out.dialnorm2 = lead.dialnorm2;
     out.compr = lead.compr;
     out.dynrng = lead.dynrng;
     out.numblkscod = lead.numblkscod;
