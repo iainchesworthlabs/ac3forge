@@ -199,6 +199,25 @@ The WiFi code then runs from flash, as the decoder's does. The decode is slower 
 between runs, up to 32% on the mono row where the defaults varied by up to 16%; each time is the
 slowest run. Stereo stays in real time either way.
 
+## I2S
+
+The part has one I2S controller. ESP-IDF v6.1 holds a TDM slot configuration to
+`I2S_LL_SLOT_FRAME_BIT_MAX`, 128 bits a frame on this part as on the ESP32-S3
+(`components/esp_driver_i2s/i2s_tdm.c`), so one line carries eight 16-bit slots or four 32-bit
+ones and nothing wider. On the board, a scratch application opened a master TDM channel for
+every slot count from 2 to 16 at 16, 24 and 32 bits and wrote a second of 48 kHz frames to each
+one the driver accepted, timing how long the writes took to drain:
+
+| Slot width | Accepted | Drained a second of frames in 999 ms | 937 ms |
+|---|---|---|---|
+| 16 bits | 2 to 8 slots; 9 to 16 refused (`ESP_ERR_INVALID_ARG`) | 2, 4, 6, 7 and 8 slots | 3 and 5 slots |
+| 24 bits | 2 to 5 slots; 6 to 16 refused | 2 and 4 slots | 3 and 5 slots |
+| 32 bits | 2 to 4 slots; 5 to 16 refused | 2, 3 and 4 slots | - |
+
+The 937 ms shapes play 6.7% fast, so a TDM line on this part runs correctly at the full 128-bit
+frame, eight 16-bit slots or four 32-bit ones, with the slots a layout leaves unused written as
+zeros. Nothing was connected to the pins; a DAC on the line is not part of this measurement.
+
 ## QEMU
 
 ESP-IDF v6.1's `qemu-system-riscv32` (esp_develop_9.2.2_20260417) emulates one Espressif machine,
