@@ -1,8 +1,10 @@
 #include "ac3/sendspin/channel.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -33,6 +35,15 @@ bool Channel::seal(std::span<const std::uint8_t> message, std::vector<std::vecto
         out.push_back(std::move(ciphertext));
     }
     return true;
+}
+
+bool Channel::seal_json(std::string_view json, std::vector<std::vector<std::uint8_t>>& out) {
+    // Built from its ID and then the text: GCC 15 misreads a reserve() followed by push_back()
+    // here as freeing a pointer that is not the allocation's start, and a vector sized
+    // json.size() + 1 as possibly empty.
+    std::vector<std::uint8_t> message(1, message_id::kJson);
+    message.insert(message.end(), json.begin(), json.end());
+    return seal(message, out);
 }
 
 Channel::Opened Channel::open(std::span<const std::uint8_t> ciphertext) {

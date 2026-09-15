@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "ac3/sendspin/crypto.hpp"
@@ -31,6 +32,10 @@ class Channel {
     Channel(noise::Handshake::Transport keys, Dialect dialect, std::size_t max_message_bytes);
 
     [[nodiscard]] Dialect dialect() const { return dialect_; }
+    // A server learns its client's dialect only from client/hello, after the channel exists.
+    // The dialect decides only how outgoing messages are fragmented; incoming ones are
+    // reassembled in either form.
+    void set_dialect(Dialect dialect) { dialect_ = dialect; }
     // h at the end of the handshake that made the current keys: the next re-handshake's
     // prologue.
     [[nodiscard]] const crypto::Digest32& handshake_hash() const { return handshake_hash_; }
@@ -39,6 +44,8 @@ class Channel {
     // only when the cipher fails, after which nothing more can be sent.
     [[nodiscard]] bool seal(std::span<const std::uint8_t> message,
                             std::vector<std::vector<std::uint8_t>>& out);
+    // Seals one JSON message: ID 0, then the text.
+    [[nodiscard]] bool seal_json(std::string_view json, std::vector<std::vector<std::uint8_t>>& out);
 
     enum class OpenError : std::uint8_t {
         kNone,

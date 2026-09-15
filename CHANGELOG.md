@@ -209,6 +209,15 @@ and release packaging.
   every ten seconds after, with convergence taken as the filter's error staying under 1 ms
   for eight updates in a row. Against a simulated server 35 ppm fast over a 0.5 to 3 ms
   network it converges in under two seconds and stays within 1 ms.
+- **Sendspin's server and player sessions in `src/sendspin`**: one connection each, from the
+  handshake through `server/hello`, `client/hello` and `server/activate` to a `player@v1`
+  stream whose chunks the player receives on its own clock, with commands, group updates,
+  unpairing and re-handshakes. Like the handshake machines they are fed frames and the time
+  and answer with frames, so a board can run the player's. The player checks each activation
+  as the specification's admissibility rules say; the server refuses what the specification
+  does not allow at that moment, such as a stream to an unavailable player or a command it
+  did not list. Pairing, arbitration between servers and the roles beyond `player@v1` come
+  next.
 
 **Containers and encoding**
 
