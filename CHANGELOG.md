@@ -384,6 +384,16 @@ and release packaging.
   from `bsid`. FFmpeg's FATE fixture `the_great_wall_7.1.eac3` (an AC-3 core plus an
   Annex E extension to 7.1) now decodes all 157 access units; it had failed on its
   first.
+- **A §E2.3.1.2 legacy core's own output stage ran a second time, ahead of the
+  programme it belongs to.** `decode_ac3_core` built the core's `FrameDecoder` from
+  the whole `DecoderConfig`, `output` included, so `OperatingMode::kLine` normalised
+  the bed's channels once inside that decoder and again over the eight-channel
+  programme `apply_output` assembles from it — measured at dialnorm 24, the bed came
+  out 14 dB down and the dependent's own channels, which never pass through the
+  core, 7. A downmix target folded the bed to two channels before the dependent's
+  could be laid over it, failing every access unit with `kInvalidStream`. The core
+  now decodes with `output` reset; `drc_scale`, `heavy_compression` and every other
+  field are unchanged.
 - `ac3cli` reports a decode failure in words (`decode failed: a header field holds a
   value A/52 reserves`) rather than as a bare enumerator — nine call sites across
   `decode`, `analysis` and `live` weren't using the existing `describe()`.

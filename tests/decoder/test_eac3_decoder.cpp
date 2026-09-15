@@ -16,6 +16,7 @@
 #include "ac3/encoder/encoder.hpp"  // the AC-3 FrameEncoder, for the §E2.3.1.2 legacy-core tests
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/mixing.hpp"  // dialnorm_gain, for the OperatingMode::kLine legacy-core test
 
 // The in-repo E-AC-3 decoder is 7.1.4's only oracle. FFmpeg refuses any frame
 // with substreamid != 0 in ff_ac3_parse_header, and no container works around
@@ -2336,6 +2337,181 @@ TEST_CASE("an AC-3 core plus an E-AC-3 dependent decodes to 7.1", "[eac3][decode
         CAPTURE(ch, ac3::eac3::chanmap::name(speakers[ch].location));
         CHECK(layout[static_cast<int>(ch)] == speakers[ch].location);
         CHECK(std::abs(dominant_freq_hz(rendered[ch]) - speakers[ch].tone_hz) < 10.0);
+    }
+}
+
+// decode_ac3_core used to build its core FrameDecoder from the WHOLE
+// DecoderConfig, DecoderConfig::output included, so the output stage ran
+// TWICE on a legacy core's channels - once inside that FrameDecoder, on the
+// core's own six channels, and again in Eac3Decoder::apply_output, on the
+// eight-channel program §E3.8.2 assembles from it - while the dependent's
+// own channels, which never pass through the core, only ever saw the second
+// application. Fixed by giving the core FrameDecoder a config with `output`
+// reset, so only the assembled program is ever folded.
+TEST_CASE(
+    "OperatingMode::kLine gives a legacy core plus dependent one gain, not the core's channels two",
+    "[eac3][decoder]") {
+    using ac3::Acmod;
+    namespace cm = ac3::eac3::chanmap;
+
+    constexpr int kDialnorm = 24;
+    ac3::FrameEncoder core{
+        {.bitrate_kbps = 448, .dialnorm = kDialnorm, .acmod = Acmod::k3_2, .lfe = true}};
+    ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+                                  .acmod = Acmod::k2_2,
+                                  .strmtyp = ac3::eac3::StreamType::kDependent,
+                                  .substreamid = 0,
+                                  .chanmap = cm::k71Rear,
+                                  .last_dependent = true}};
+
+    // Tones only matter for split_access_units to have something plausible
+    // to decode here - unlike the 7.1 layout test above, this one measures a
+    // GAIN, not which speaker a tone lands on.
+    const std::vector<double> bed_tones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
+    const std::vector<double> rear_tones = {500.0, 1600.0, 400.0, 1800.0};
+
+    constexpr int kFrames = 4;
+    std::vector<std::byte> stream;
+    std::uint64_t n0 = 0;
+    for (int f = 0; f < kFrames; ++f) {
+        std::vector<std::vector<float>> bed_block(6, std::vector<float>(ac3::kSamplesPerFrame));
+        std::vector<std::vector<float>> rear_block(4, std::vector<float>(ac3::kSamplesPerFrame));
+        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            const double t = static_cast<double>(n0 + static_cast<std::uint64_t>(i)) / 48000.0;
+            for (std::size_t ch = 0; ch < 6; ++ch) {
+                bed_block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                    kAmplitude * std::sin(2.0 * std::numbers::pi * bed_tones[ch] * t));
+            }
+            for (std::size_t ch = 0; ch < 4; ++ch) {
+                rear_block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                    kAmplitude * std::sin(2.0 * std::numbers::pi * rear_tones[ch] * t));
+            }
+        }
+        n0 += ac3::kSamplesPerFrame;
+
+        const std::vector<std::span<const float>> bed_views(bed_block.begin(), bed_block.end());
+        const auto core_frame = core.encode_frame(bed_views);
+        REQUIRE(core_frame.has_value());
+        stream.insert(stream.end(), core_frame->begin(), core_frame->end());
+
+        const std::vector<std::span<const float>> rear_views(rear_block.begin(),
+                                                              rear_block.end());
+        const auto dep_frame = rear.encode_frame(rear_views);
+        REQUIRE(dep_frame.has_value());
+        stream.insert(stream.end(), dep_frame->begin(), dep_frame->end());
+    }
+
+    const auto units = ac3::split_access_units(stream);
+    REQUIRE(units.has_value());
+    REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
+
+    // §5.4.2.8's normalisation onto -31 dBFS: dialnorm 24 is 7 dB down. No
+    // dynrng word is transmitted (neither encoder sets a drc profile), so
+    // block_gain() reads every one as unity regardless of kLine's own
+    // drc_scale=1.0 - the ONLY gain either decoder below ever applies is
+    // this one, which is exactly what makes "a plain decode scaled by this
+    // constant" the correct expectation for every channel.
+    const double expected_gain = ac3::meta::dialnorm_gain(kDialnorm);
+    REQUIRE(expected_gain < 1.0);
+
+    ac3::Eac3Decoder plain;
+    ac3::Eac3Decoder line{{.output = {.mode = ac3::OperatingMode::kLine}}};
+    std::vector<std::vector<float>> reference(8);
+    std::vector<std::vector<float>> rendered(8);
+    for (const auto& unit : *units) {
+        const auto plain_decoded = plain.decode_access_unit(unit);
+        REQUIRE(plain_decoded.has_value());
+        REQUIRE(plain_decoded->has_value());
+        const auto line_decoded = line.decode_access_unit(unit);
+        REQUIRE(line_decoded.has_value());
+        REQUIRE(line_decoded->has_value());
+        REQUIRE((*plain_decoded)->channels.size() == 8);
+        REQUIRE((*line_decoded)->channels.size() == 8);
+        for (std::size_t ch = 0; ch < 8; ++ch) {
+            reference[ch].insert(reference[ch].end(), (*plain_decoded)->channels[ch].begin(),
+                                 (*plain_decoded)->channels[ch].end());
+            rendered[ch].insert(rendered[ch].end(), (*line_decoded)->channels[ch].begin(),
+                                (*line_decoded)->channels[ch].end());
+        }
+    }
+
+    // Before the fix, the four channels §E3.8.2 renders straight from the
+    // bed (L, C, R, LFE - the ones the dependent's chanmap never overwrites,
+    // see the tone comment on the 7.1 layout test above) came out at
+    // expected_gain SQUARED: normalised once inside the core's own
+    // FrameDecoder, a second time over the assembled program. The other
+    // four (Ls, Rs, Lrs, Rrs) are the dependent's own and never passed
+    // through the core at all, so they only ever saw the single, correct
+    // gain - which is exactly why comparing every channel catches this where
+    // a whole-program loudness figure would not.
+    for (std::size_t ch = 0; ch < 8; ++ch) {
+        double signal = 0.0;
+        double error = 0.0;
+        for (std::size_t i = 0; i < reference[ch].size(); ++i) {
+            const double expect = static_cast<double>(reference[ch][i]) * expected_gain;
+            const double got = static_cast<double>(rendered[ch][i]);
+            signal += expect * expect;
+            error += (got - expect) * (got - expect);
+        }
+        CAPTURE(ch);
+        // -80 dB of residual against the single-gain expectation - loose
+        // enough for float rounding, far tighter than the ~14 dB the
+        // squared-gain bug left behind on the bed-derived channels.
+        CHECK(error < signal * 1e-8);
+    }
+}
+
+// The other half of the same defect: with the core's own OutputStage folding
+// its 5.1 down to two channels before §E3.8.2 ever sees it, the core's
+// location_map() (3/2+LFE's six positions) stopped matching its own
+// channels.size() (two, post-fold), and decode_access_unit_core's per-
+// substream agreement check refused the unit outright - every unit, not just
+// some, since the core folds on every frame.
+TEST_CASE("a legacy core plus dependent still folds to Lo/Ro instead of refusing the unit",
+          "[eac3][decoder]") {
+    using ac3::Acmod;
+    namespace cm = ac3::eac3::chanmap;
+
+    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = Acmod::k3_2, .lfe = true}};
+    ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+                                  .acmod = Acmod::k2_2,
+                                  .strmtyp = ac3::eac3::StreamType::kDependent,
+                                  .substreamid = 0,
+                                  .chanmap = cm::k71Rear,
+                                  .last_dependent = true}};
+
+    std::vector<std::vector<float>> bed_block(6, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::vector<float>> rear_block(4, std::vector<float>(ac3::kSamplesPerFrame));
+    for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+        bed_block[0][static_cast<std::size_t>(i)] = static_cast<float>(
+            kAmplitude * std::sin(2.0 * std::numbers::pi * 1000.0 * i / 48000.0));
+        rear_block[0][static_cast<std::size_t>(i)] = static_cast<float>(
+            kAmplitude * std::sin(2.0 * std::numbers::pi * 500.0 * i / 48000.0));
+    }
+    const std::vector<std::span<const float>> bed_views(bed_block.begin(), bed_block.end());
+    const auto core_frame = core.encode_frame(bed_views);
+    REQUIRE(core_frame.has_value());
+    const std::vector<std::span<const float>> rear_views(rear_block.begin(), rear_block.end());
+    const auto dep_frame = rear.encode_frame(rear_views);
+    REQUIRE(dep_frame.has_value());
+
+    constexpr int kFrames = 3;
+    std::vector<std::byte> stream;
+    for (int f = 0; f < kFrames; ++f) {
+        stream.insert(stream.end(), core_frame->begin(), core_frame->end());
+        stream.insert(stream.end(), dep_frame->begin(), dep_frame->end());
+    }
+
+    const auto units = ac3::split_access_units(stream);
+    REQUIRE(units.has_value());
+    REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
+
+    ac3::Eac3Decoder decoder{{.output = {.target = ac3::DownmixTarget::kLoRo}}};
+    for (const auto& unit : *units) {
+        const auto decoded = decoder.decode_access_unit(unit);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->has_value());
+        CHECK((*decoded)->channels.size() == 2);
     }
 }
 
