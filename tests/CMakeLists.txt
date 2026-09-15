@@ -680,6 +680,7 @@ if(AC3FORGE_BUILD_HEARTH)
             sendspin/test_handshake_session.cpp
             sendspin/test_noise.cpp
             sendspin/test_pairing.cpp
+            sendspin/test_pairing_flow.cpp
             sendspin/test_sessions.cpp
             sendspin/test_websocket.cpp)
     endif()

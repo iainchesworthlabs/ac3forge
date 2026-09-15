@@ -69,6 +69,7 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
             src/hmac.cpp
             src/noise.cpp
             src/pairing.cpp
+            src/pairing_flow.cpp
             src/player_session.cpp
             src/psk.cpp
             src/server_session.cpp

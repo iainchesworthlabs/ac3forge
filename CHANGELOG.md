@@ -218,6 +218,12 @@ and release packaging.
   does not allow at that moment, such as a stream to an unavailable player or a command it
   did not list. Pairing, arbitration between servers and the roles beyond `player@v1` come
   next.
+- **Sendspin's pairing flows in `src/sendspin`**: the Pairing PSK Flow, the Dynamic Pairing
+  Code Flow in digits or as a QR token with its retry rounds and round limit, and the Static
+  Pairing Code Flow behind its gesture window, from both the client's side and the server's,
+  in the specification's form and aiosendspin 9.1.1's. The server checks the client's tag,
+  the commitment to `nonce_B` and the binding of the typed code to the handshake in the order
+  each dialect uses, and two ends of different handshakes cannot pair whatever code is typed.
 
 **Containers and encoding**
 
