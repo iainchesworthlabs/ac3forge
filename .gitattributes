@@ -42,3 +42,6 @@ esp-idf/ac3forge/ui/** text eol=lf
 # (esp-idf/ac3forge/examples/stream_player/www/) is several dozen of them.
 *.ec3 -text
 *.ec3 -text
+# And AC-4: the DEE streams under tests/golden/external-baseline/ that the
+# decoder's syntax digests are taken over.
+*.ac4 -text

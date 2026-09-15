@@ -432,13 +432,13 @@ ChannelSubstreamInfo parse_substream_info_v0(Reader& r, int fs_index, int frame_
         info.bitrate_kbps = bitrate_kbps(read_bitrate_indicator(r));
     }
     if (cm == 0b1111010 || cm == 0b1111011 || cm == 0b1111100 || cm == 0b1111101) {
-        r.skip(1);  // add_ch_base
+        info.add_ch_base = r.bits(1) != 0;
     }
     if (r.bits(1)) {  // b_content_type
         info.content_type = parse_content_type(r);
     }
     for (int i = 0; i < frame_rate_factor; ++i) {
-        r.skip(1);  // b_iframe
+        info.b_iframe.push_back(r.bits(1) != 0);
     }
     info.substream_index = parse_substream_index_ref(r);
     return info;
@@ -497,10 +497,10 @@ ChannelSubstreamInfo parse_substream_info_chan(Reader& r, int fs_index, int fram
         info.bitrate_kbps = bitrate_kbps(read_bitrate_indicator(r));
     }
     if (cm == 0b1111010 || cm == 0b1111011 || cm == 0b1111100 || cm == 0b1111101) {
-        r.skip(1);  // add_ch_base
+        info.add_ch_base = r.bits(1) != 0;
     }
     for (int i = 0; i < frame_rate_factor; ++i) {
-        r.skip(1);  // b_audio_ndot
+        info.b_iframe.push_back(r.bits(1) != 0);  // b_audio_ndot
     }
     if (b_substreams_present) {
         info.substream_index = parse_substream_index_ref(r);
@@ -553,7 +553,9 @@ PresentationInfoV0 parse_presentation_info_v0(Reader& r, int fs_index, int frame
         pres.presentation_id = static_cast<int>(variable_bits(r, 2));
     }
     const int frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index);
-    parse_emdf_info(r);
+    if (const EmdfInfo emdf = parse_emdf_info(r); emdf.payloads_substream_index) {
+        pres.emdf_payloads_substream_indices.push_back(*emdf.payloads_substream_index);
+    }
     if (b_single_substream) {
         pres.substreams.emplace_back("main",
                                      parse_substream_info_v0(r, fs_index, frame_rate_factor));
@@ -576,14 +578,16 @@ PresentationInfoV0 parse_presentation_info_v0(Reader& r, int fs_index, int frame
             parse_presentation_config_ext_info(r);
         }
     }
-    r.skip(1);        // b_pre_virtualized
+    pres.b_pre_virtualized = r.bits(1) != 0;
     if (r.bits(1)) {  // b_add_emdf_substreams
         std::uint32_t n = r.bits(2);
         if (n == 0) {
             n = variable_bits(r, 2) + 4;
         }
         for (std::uint32_t i = 0; i < n; ++i) {
-            parse_emdf_info(r);
+            if (const EmdfInfo emdf = parse_emdf_info(r); emdf.payloads_substream_index) {
+                pres.emdf_payloads_substream_indices.push_back(*emdf.payloads_substream_index);
+            }
             // n reaches here through variable_bits() and so runs to 2^32.
             // parse_emdf_info() does real work per iteration, so without
             // this a 200-byte frame spends six seconds walking a count no
@@ -896,7 +900,11 @@ SubstreamGroupInfo parse_substream_group_info(Reader& r, int fs_index, int frame
 
 // --- §6.2.1.3 ac4_presentation_v1_info / §6.2.1.7 ac4_sgi_specifier --------
 
-constexpr std::array<int, 5> kV1ConfigGroupCounts = {2, 1, 2, 3, 2};  // presentation_config 0-4
+// How many ac4_sgi_specifier() elements §6.2.1.3 reads for presentation_config
+// 0 to 4. Not the n_substream_groups it assigns: "Main + DE" (1) reads two
+// specifiers and sets n_substream_groups to 1, and "Main + DE + Associated
+// Audio" (4) reads three and sets 2 (verified on the rendered page 115).
+constexpr std::array<int, 5> kV1ConfigGroupCounts = {2, 2, 2, 3, 3};  // presentation_config 0-4
 
 // §6.2.1.7. `ac4_sgi_specifier()`'s own bitstream_version == 1 branch
 // (inlining a whole ac4_substream_group_info() rather than a group_index
@@ -939,12 +947,14 @@ PresentationInfoV1 parse_presentation_v1_info(Reader& r, int bitstream_version,
     if (bitstream_version != 1) {
         pres.md_compat = static_cast<int>(r.bits(3));
     }
-    if (r.bits(1)) {          // b_presentation_id
-        variable_bits(r, 2);  // presentation_id, unused downstream
+    if (r.bits(1)) {  // b_presentation_id
+        pres.presentation_id = static_cast<int>(variable_bits(r, 2));
     }
     pres.frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index);
     parse_frame_rate_fractions_info(r, frame_rate_index, pres.frame_rate_factor);
-    parse_emdf_info(r);
+    if (const EmdfInfo emdf = parse_emdf_info(r); emdf.payloads_substream_index) {
+        pres.emdf_payloads_substream_indices.push_back(*emdf.payloads_substream_index);
+    }
     if (r.bits(1)) {  // b_presentation_filter
         pres.enable_presentation = r.bits(1) != 0;
     }
@@ -975,19 +985,21 @@ PresentationInfoV1 parse_presentation_v1_info(Reader& r, int bitstream_version,
             parse_presentation_config_ext_info(r);
         }
     }
-    r.skip(1);  // b_pre_virtualized
+    pres.b_pre_virtualized = r.bits(1) != 0;
     const bool b_add_emdf_substreams = r.bits(1) != 0;
     // ac4_presentation_substream_info() (§6.2.1.12)
-    r.skip(1);  // b_alternative
-    r.skip(1);  // b_pres_ndot
-    parse_substream_index_ref(r);
+    pres.b_alternative = r.bits(1) != 0;
+    pres.b_pres_ndot = r.bits(1) != 0;
+    pres.presentation_substream_index = parse_substream_index_ref(r);
     if (b_add_emdf_substreams) {
         std::uint32_t n = r.bits(2);
         if (n == 0) {
             n = variable_bits(r, 2) + 4;
         }
         for (std::uint32_t i = 0; i < n; ++i) {
-            parse_emdf_info(r);
+            if (const EmdfInfo emdf = parse_emdf_info(r); emdf.payloads_substream_index) {
+                pres.emdf_payloads_substream_indices.push_back(*emdf.payloads_substream_index);
+            }
             // n reaches here through variable_bits() and so runs to 2^32.
             // parse_emdf_info() does real work per iteration, so without
             // this a 200-byte frame spends six seconds walking a count no
