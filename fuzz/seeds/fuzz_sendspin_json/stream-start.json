@@ -1,0 +1,1 @@
+{"type":"stream/start","payload":{"server_transmitted":1234567890,"player":{"codec":"opus","sample_rate":48000,"channels":2,"bit_depth":16},"_ac3forge_player":{"data_type":"eac3","sample_rate":48000}}}

@@ -155,6 +155,42 @@ and release packaging.
   configure time from the actual component list and versions, so the window and the
   package cannot disagree; `check_crucible_package.py` enforces it.
 
+**Hearth**
+
+- **`src/sendspin`, the first part of Hearth's Sendspin implementation**
+  (`planning/hearth-sendspin-extension.md`): an in-tree JSON reader and writer, strict
+  base64url, transport-mode fragments and the `player@v1` audio chunk in both the
+  specification's forms and those of aiosendspin 9.1.1 (Music Assistant's server), and the
+  `_ac3forge_player@v1` burst chunk. Built with `-DAC3FORGE_BUILD_HEARTH=ON`. The
+  JSON reader parses into caller-owned storage without recursing, and refuses invalid
+  UTF-8 and duplicate keys. Two fuzz harnesses (`fuzz_sendspin_json`,
+  `fuzz_sendspin_frames`) and a CI job, `Hearth Sendspin (Linux, GCC)`, cover it.
+- **Sendspin's encryption in `src/sendspin`**: Noise `KKpsk2` for both of the
+  specification's suites (`25519_ChaChaPoly_SHA256` and `25519_AESGCM_SHA256`), matching the
+  cacophony test vectors byte for byte, with the PSK bound late as Sendspin needs and the
+  Sentinel retry; the handshake messages (`client/init`, `server/init`, `server/error`,
+  `noise/handshake`) with the specification's order of `server/error` reasons; and PSK
+  identities. The cryptography sits behind a seam over the PSA Crypto API, which both
+  vcpkg's mbedTLS 3.6 and ESP-IDF's mbedTLS 4 provide, and comes in through vcpkg's new
+  `hearth` feature. A third fuzz harness, `fuzz_sendspin_handshake`, reads the handshake
+  messages.
+- **Sendspin's pairing values in `src/sendspin`**: CPace (CPACE-X25519-SHA512 from
+  draft-irtf-cfrg-cpace-21, matching the draft's test vectors byte for byte: Elligator 2 is
+  written in-tree, and the scalar multiplications go through the crypto seam's X25519), and
+  around it the pairing tokens, the dynamic pairing code, the commitment to `nonce_B`, the
+  CPace session id and the wrapping of the long-term PSK and `nonce_B`, each in both the
+  specification's form and aiosendspin 9.1.1's where the two differ.
+- **Sendspin's reference time filter**, vendored unmodified into
+  `src/sendspin/third_party/time-filter` for the player half's clock synchronisation.
+- **Sendspin's WebSocket transport in `src/sendspin`**: the seam every session runs over,
+  with an in-memory pair for tests and loopback groups, and plain `ws://` over cpp-httplib in
+  both directions the specification allows, a listener and a dialler. A close from any thread
+  reaches a waiting reader within 100 ms whether or not the peer answers it, a message longer
+  than one Noise message ends the connection, and a second listener on a port that one
+  already holds fails to start, where cpp-httplib's default socket options would let it share
+  the port. cpp-httplib joins the `hearth` feature at 0.56.0 through an overlay port, ahead of
+  the vcpkg baseline's 0.52.0, for the read timeout that makes the close possible.
+
 **Containers and encoding**
 
 - **AC-4 container carriage** (roadmap IM4): `ac3cli mp4`/`ts` read and write an AC-4
