@@ -1,0 +1,25 @@
+# Overlay for an ESP32-C6: one 160 MHz RISC-V core with no FPU and no PSRAM.
+#
+#   idf.py -DIDF_TARGET=esp32c6 -DAC3FORGE_DECODE_SCALAR=fixed \
+#          "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.c6" build
+#
+# The fixed-point tier is a CMake option rather than a setting here, and the
+# component does not choose it from the target, so it goes on the command line:
+# in float, a part with no FPU decodes two to three times slower. See
+# docs/platforms/bare-metal/esp32-c6.md for what the part decodes in real
+# time, which with WiFi running is stereo and mono and no 5.1 stream.
+#
+# One I2S controller: its TDM frame holds 128 bits, eight 16-bit slots or four
+# 32-bit ones, and there is no second line (AC3FORGE_EXAMPLE_I2S_SECOND_LINE
+# stays 0).
+CONFIG_IDF_TARGET="esp32c6"
+
+# The part's maximum. The defaults' 240 MHz is an ESP32-S3 setting.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
+
+# partitions.csv ends at 2.1 MB; every C6 module has at least 4 MB.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# One core: the player's two tasks go wherever the scheduler puts them.
+CONFIG_AC3FORGE_EXAMPLE_FETCH_CORE=-1
+CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE=-1

@@ -43,6 +43,13 @@ and release packaging.
   PCM identical to the x86 host and Cortex-M3 legs; 7.1.4 needs more heap than the
   part's largest free block and is declared skipped rather than silently missing. Speed
   is unmeasured — QEMU isn't cycle-accurate.
+- **An ESP32-C6 target** (`apps/baremetal/platform/esp32c6/`), with `esp32c6` in the ESP-IDF
+  component's manifest, timed on a board with no network and with WiFi connected and a
+  1,536 kbit/s TCP stream arriving (a network load the probe project can build in). All
+  fourteen fixtures decode with PCM identical to the other fixed-tier legs. With the network up,
+  AC-3 and E-AC-3 stereo and mono decode in real time and no 5.1 stream does, and 7.1.4 fits
+  only with ESP-IDF's WiFi IRAM options off. QEMU does not emulate the part, so CI builds it
+  and runs nothing. See `docs/platforms/bare-metal/esp32-c6.md`.
 - **`delta_allocation`** on `EncoderConfig`/`eac3::FrameConfig` (`delta=off`): the first
   rung of an effort axis for parts with little time for the §7.2.2.6 search. Removes
   about 9 ms of an ESP32-S3 E-AC-3 5.1 frame for 0.01 dB on the worst channel of the
@@ -187,8 +194,8 @@ and release packaging.
   come back unseen — nothing had checked these five files before, and the only test that
   did (Homebrew's) passed for an unrelated reason.
 - **Fuzz harnesses for the two parsers of third-party files that had none**:
-  `fuzz_iab_parse` (IAB/MXF) and `fuzz_ac4_parse` (AC-4 scan/parse). IAB is clean over
-  1.5M executions, AC-4 over 6M once the findings below were fixed.
+  `fuzz_iab_parse` (IAB/MXF) and `fuzz_ac4_parse` (AC-4 scan/parse). Their first runs
+  fuzzed the parsers uninstrumented; see Fixed for what the instrumented runs found.
 - **The cross-platform bitstream-hash gate now pins `aarch64-neon`**, from real arm64
   CI: byte-identical to `x86_64-sse2`, proving the encoder is bit-exact across
   architectures and that the ~6.02 dB gold-reference gap is entirely decode-side.
@@ -373,9 +380,26 @@ and release packaging.
   stack free at high-water, 96 bytes under the CI runner's 8,192 floor — `DecodedSubstream`
   and `DecodedAccessUnit` grew by `bsid`/`cmixlev`/`surmixlev`/`alternate_bsi` (see below).
   `CONFIG_ESP_MAIN_TASK_STACK_SIZE` moves from 32,768 to 40,960.
+- **The ESP-IDF component decoded in `float` on parts with no FPU.** Its manifest says the
+  decode arithmetic follows the part, but only the probe projects chose `fixed`:
+  `src/forge/minimal.cmake` builds `float` when `AC3FORGE_DECODE_SCALAR` is unset, so any
+  other project for an ESP32-C3 decoded in software floating point, which on an ESP32-C6
+  board is up to 3.1 times slower than the fixed-point tier. The component now sets the
+  option from ESP-IDF's `SOC_CPU_HAS_FPU` capability when the project has not: `fixed`
+  without an FPU, `float` with one. A value set above `project()` or passed with `-D` stays.
 
 **Codec correctness**
 
+- **The AC-4 parser misread everything after an EMDF-only presentation.** A presentation
+  with `presentation_config` 6 carries only additional EMDF substreams, whose count and
+  `emdf_info()` list TS 103 190-2 §6.2.1.3 reads after the config-6 branch. `ac4::`, and
+  so `ac3cli probe`, returned before that loop on both TOC paths, so later presentations,
+  the substream groups and `substream_index_table()` were read from the wrong bit. The
+  substream groups also took their frame-rate factor from the first presentation, which an
+  EMDF-only presentation does not transmit. No DEE encode writes this configuration, and
+  the Python reference parser shared the misreading on the `bitstream_version` 2 path.
+  Synthetic frames in `tests/ac4` now cover both paths; the committed DEE fixture parses
+  identically.
 - **The AC-4 parser dereferenced a null pointer on a legal bitstream, and could be made
   to ask for gigabytes.** A stream that clears `b_size_present` left
   `Toc::substream_sizes` empty while `n_substreams` was 1, and `parse_raw_frame()`
@@ -384,8 +408,23 @@ and release packaging.
   (including the object-assignment loop, which reached 2^32 once the reader ran dry and
   kept reading phantom zeros) grew a vector without checking for exhaustion — one fuzzed
   frame allocated 1.8 GB and took 6.7 seconds; now 33 MB and 0.03 seconds. Found by the
-  new `fuzz_ac4_parse.cpp` within seconds of its first run; six million executions since
-  are clean.
+  new `fuzz_ac4_parse.cpp` within seconds of its first run.
+- **The AC-4 and IAB parsers read out of bounds, overflowed `int` and looped forever on
+  malformed input, unseen by their fuzz harnesses.** `fuzz_ac4_parse` and
+  `fuzz_iab_parse` linked their parser libraries without the ASan, UBSan and coverage
+  flags every other fuzzed library is built with, so their earlier clean runs could
+  catch a crash, a timeout or an oversized allocation and nothing inside the parsers.
+  Instrumented, the committed AC-4 corpus read past a six-entry count table (3-bit
+  `n_objects_code` and `isf_config` codes 6 and 7, now naming no objects);
+  `presentation_config_ext_info()` overflowed `int` within 9,000 executions; and the MXF
+  reader's KLV walk looped forever on a Length near 2^64 that wrapped back to offset 0. A
+  `parse_raw_frame()` bounds check that could wrap into a read past the frame, and six
+  more `int` additions on counts that escape through `variable_bits()`, are fixed
+  alongside. The table reads, the bounds-check wrap, the skip overflow and the KLV loop
+  each have a test that fails on the old code under ASan+UBSan, and the two found by
+  mutation have reproducers under `fuzz/regressions/`. Both harnesses now run clean for
+  300 seconds, and their corpora reach 1,270 (AC-4) and 711 (IAB) edges, against 1,064
+  and 564 for corpora grown uninstrumented in the same time.
 - Short E-AC-3 syncframes (`numblkscod` 0–2) were sized at the full six-block byte
   budget, so a short stream measured up to 6x its nominal bit rate. CBR frames now take
   `frame_words`' documented per-block scaling; six-block streams are unchanged.

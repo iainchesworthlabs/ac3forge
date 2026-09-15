@@ -84,6 +84,34 @@ foreach(container_target IN ITEMS matroska_objects mp4_objects mpegts_objects)
         -fsanitize=address,undefined,fuzzer-no-link)
 endforeach()
 
+# ac4_objects and ac3iab_objects, for the same reason: fuzz_ac4_parse and
+# fuzz_iab_parse below mutate parsers that take their counts and lengths from
+# the file. Each is a library of its own rather than part of ac3::forge (see
+# src/ac4/ and src/ac3iab/), so nothing ac3::forge carries reaches their
+# sources, and until these calls existed both harnesses ran against
+# uninstrumented parsers. A harness executable still carries the ASan
+# runtime, so a segfault, a timeout or an allocation over -rss_limit_mb
+# stopped those runs; an out-of-bounds read or undefined behaviour inside the
+# parser did not, and the mutation engine got no coverage from it.
+#
+# ac3adm_objects, which fuzz_adm_parse links, has the same gap and is not in
+# the set yet. libbw64 is header-only, so instrumenting ac3adm instruments
+# the libbw64 code it compiles too, and UBSan then stops fuzz_adm_parse
+# within a few hundred executions inside libbw64's UnknownChunk constructor,
+# which takes &data[0] of an empty vector for a zero-length chunk. That is
+# third-party code, and whether to patch it, filter such chunks before
+# libbw64 sees them or ignore the report is its own decision.
+#
+# Each call is guarded on the option that decides whether its library exists,
+# and each harness below sits under the same guard, so turning one of those
+# options off drops its harness instead of failing the configure.
+if(AC3FORGE_BUILD_AC4)
+    ac3forge_instrument_for_fuzzing(ac4_objects)
+endif()
+if(AC3FORGE_BUILD_IAB)
+    ac3forge_instrument_for_fuzzing(ac3iab_objects)
+endif()
+
 add_custom_target(ac3forge_fuzzers)
 
 # One executable per untrusted-input entry point. Each adds -fsanitize=fuzzer
@@ -99,10 +127,14 @@ add_custom_target(ac3forge_fuzzers)
 # reshape the input a fuzzer thinks it is passing in.
 #
 # Anything after `name` is an extra library that harness needs beyond
-# ac3::forge - ac3::signing for fuzz_signing_verify, ac3adm::ac3adm for
-# fuzz_adm_parse. Both are separate targets rather than part of ac3::forge
-# (see src/signing/CMakeLists.txt and src/ac3adm/CMakeLists.txt for why), and
-# neither is needed by the six harnesses that only call into the codec.
+# ac3::forge - ac3::signing for fuzz_signing_verify, ac3iab::ac3iab for
+# fuzz_iab_parse, ac4::ac4 for fuzz_ac4_parse, ac3adm::ac3adm for
+# fuzz_adm_parse. Each is a separate target rather than part of ac3::forge
+# (see its own CMakeLists.txt for why), and none is needed by the harnesses
+# that only call into the codec. Naming a library here does not instrument
+# it: its OBJECT library needs its own ac3forge_instrument_for_fuzzing() call
+# above, or the harness links it without coverage counters or sanitizer
+# checks.
 function(ac3forge_add_fuzzer name)
     add_executable(${name} "${name}.cpp")
     target_link_libraries(${name} PRIVATE ac3::forge ac3::warnings ${ARGN})
@@ -163,7 +195,14 @@ ac3forge_add_container_fuzzer(fuzz_mpegts_demux mpegts::mpegts)
 # a shared corpus serves them better than three split ones. Includes
 # BitReader::read_plex, whose §5.2 escape bound is exactly the sort of clause
 # worth pressing on.
-ac3forge_add_fuzzer(fuzz_iab_parse ac3iab::ac3iab)
+#
+# Its first instrumented run, 1.67 million executions in, found parse_mxf_iab's
+# KLV walk looping forever on a Length that wrapped back to offset 0 - an
+# input the uninstrumented runs never reached. Fixed, with the input under
+# fuzz/regressions/fuzz_iab_parse/.
+if(AC3FORGE_BUILD_IAB)
+    ac3forge_add_fuzzer(fuzz_iab_parse ac3iab::ac3iab)
+endif()
 
 # ac4::scan + ac4::parse_raw_frame: sync search, then the TOC - a presentation
 # list whose count, per-presentation substream group counts and
@@ -174,9 +213,17 @@ ac3forge_add_fuzzer(fuzz_iab_parse ac3iab::ac3iab)
 # pressed without a valid 0xAC40/0xAC41 syncframe having to be guessed first.
 #
 # Its first runs found a null dereference and five loops that ran on an
-# attacker's count after the data behind it was gone; all are fixed, and six
-# million executions since are clean.
-ac3forge_add_fuzzer(fuzz_ac4_parse ac4::ac4)
+# attacker's count after the data behind it was gone; all are fixed. The six
+# million clean executions reported after those fixes ran before ac4_objects
+# was instrumented (see above), so they could catch a segfault, a timeout or
+# an oversized allocation, and nothing the parser did within its own memory.
+# Instrumented, the committed regression corpus read past a six-entry count
+# table with no mutation at all, and 8,606 executions in,
+# presentation_config_ext_info() overflowed an int. Both are fixed, with
+# reproducers under fuzz/regressions/fuzz_ac4_parse/.
+if(AC3FORGE_BUILD_AC4)
+    ac3forge_add_fuzzer(fuzz_ac4_parse ac4::ac4)
+endif()
 
 # split_frames + FrameDecoder::decode_frame, driven the way ac3cli's 'decode'
 # drives them (src/forge/src/decoder/decoder.cpp).

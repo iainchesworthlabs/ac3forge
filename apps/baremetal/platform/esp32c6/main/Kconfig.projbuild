@@ -1,0 +1,70 @@
+menu "ac3forge probe (ESP32-C6)"
+
+# What else the part is doing while the probe decodes. A choice in Kconfig
+# rather than a -D cache variable, because main/CMakeLists.txt picks a source
+# file from it and IDF evaluates that file in a requirements pass that does not
+# inherit the project's cache variables (the stream_player example found this
+# the hard way; see its main/CMakeLists.txt).
+choice AC3FORGE_PROBE_NETWORK
+    prompt "Network load during the decode"
+    default AC3FORGE_PROBE_NETWORK_NONE
+
+config AC3FORGE_PROBE_NETWORK_NONE
+    bool "None"
+    help
+        The probe alone, as on the C3 and the S3.
+
+config AC3FORGE_PROBE_NETWORK_WIFI
+    bool "WiFi station, with a TCP stream arriving"
+    help
+        Join an access point, listen for one TCP connection, and read what
+        arrives on it from a task of its own while the probe decodes. The
+        probe starts once the stream is arriving, and reports the bytes
+        received and the internal heap the network left.
+
+        The load a Sendspin player carries: the server connects to the
+        player and sends it timestamped chunks. A host sends the bytes; the
+        C6 page in docs/platforms/bare-metal/ says how.
+
+endchoice
+
+config AC3FORGE_PROBE_WIFI_SSID
+    string "WiFi SSID"
+    depends on AC3FORGE_PROBE_NETWORK_WIFI
+    default "my-network"
+    help
+        Build-time credentials, kept in an overlay outside the repository.
+        The probe never prints either value.
+
+config AC3FORGE_PROBE_WIFI_PASSWORD
+    string "WiFi password"
+    depends on AC3FORGE_PROBE_NETWORK_WIFI
+    default ""
+
+config AC3FORGE_PROBE_TCP_PORT
+    int "TCP port the stream arrives on"
+    depends on AC3FORGE_PROBE_NETWORK_WIFI
+    range 1 65535
+    default 4953
+
+config AC3FORGE_PROBE_STREAM_WAIT_S
+    int "Seconds to wait for the stream before failing"
+    depends on AC3FORGE_PROBE_NETWORK_WIFI
+    range 1 3600
+    default 120
+    help
+        The probe does not start without the stream: a figure labelled "with
+        the network" that was measured without it would be wrong.
+
+config AC3FORGE_PROBE_HEAP_BUDGET_BYTES
+    int "Largest fixture peak to attempt, in bytes (0: every fixture)"
+    default 215000 if AC3FORGE_PROBE_NETWORK_WIFI
+    default 0
+    help
+        probe.cpp's AC3FORGE_PROBE_HEAP_BUDGET_BYTES. A fixture whose measured
+        peak is above it is skipped and named instead of aborting the run on
+        an allocation the part cannot satisfy. What a part can hold is what
+        it was observed to manage, since its heap is regioned; set this from
+        a run, as the C3's value was.
+
+endmenu
