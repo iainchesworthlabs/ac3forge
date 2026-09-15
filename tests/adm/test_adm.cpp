@@ -96,10 +96,9 @@ Bytes build_fmt_chunk(std::uint16_t channels, std::uint32_t sample_rate, std::ui
     return fmt;
 }
 
-// A WAVE_FORMAT_IEEE_FLOAT (formatTag 3) <fmt > chunk - used only by the "parses a float32"
-// test below. Not accepted by anything this project's own encoder/decoder writes or reads
-// elsewhere; exists purely to exercise src/ac3adm/src/float_pcm_bw64.hpp's container walk,
-// the one path in this module that reads a float master at all (see that test's own comment).
+// A WAVE_FORMAT_IEEE_FLOAT (formatTag 3) <fmt > chunk - used by the float32/float64 tests below.
+// Not accepted by anything this project's own encoder/decoder writes or reads elsewhere; exists
+// purely to exercise the one shape ac3adm's own read/write paths never produce.
 Bytes build_float_fmt_chunk(std::uint16_t channels, std::uint32_t sample_rate, std::uint16_t bits_per_sample) {
     Bytes fmt;
     put_u16le(fmt, 3);  // WAVE_FORMAT_IEEE_FLOAT
@@ -136,11 +135,22 @@ Bytes build_pcm16_data(int frames) {
 }
 
 // Raw IEEE-754 samples for build_float_fmt_chunk's WAVE_FORMAT_IEEE_FLOAT fixtures - written
-// bit-for-bit, not scaled, matching float_pcm_bw64.cpp's own std::bit_cast read.
+// bit-for-bit, not scaled, matching libbw64's own decodeFloatSamples (utils.hpp).
 Bytes build_float32_data(std::initializer_list<float> samples) {
     Bytes data;
     for (const float sample : samples) {
         put_u32le(data, std::bit_cast<std::uint32_t>(sample));
+    }
+    return data;
+}
+
+// The 64-bit-per-sample counterpart - libbw64's decodeFloatSamples switches on bitsPerSample
+// (only 32 and 64 decode as float at all; 64 reads a double bit-for-bit and narrows to float),
+// so this exercises a distinct branch from build_float32_data's, not just a wider one.
+Bytes build_float64_data(std::initializer_list<double> samples) {
+    Bytes data;
+    for (const double sample : samples) {
+        put_u64le(data, std::bit_cast<std::uint64_t>(sample));
     }
     return data;
 }
@@ -439,16 +449,12 @@ TEST_CASE("rejects a file that is not RIFF/RF64/BW64", "[adm]") {
     CHECK(doc.error() == ac3adm::AdmError::kCannotOpen);
 }
 
-TEST_CASE("parses a float32 (IEEE-float) fmt chunk via the float container walk", "[adm]") {
-    // libbw64's own parseFormatInfoChunk (parser.hpp) rejects any formatTag other than 1
-    // (PCM) or 0xFFFE (WAVE_FORMAT_EXTENSIBLE, itself further checked for a PCM subformat)
-    // outright, during bw64::readFile() - confirmed by reading it directly, not assumed - so
-    // this exercises src/ac3adm/src/float_pcm_bw64.hpp's own container walk instead:
-    // parse_bw64_path (src/ac3adm/src/adm.cpp) checks is_ieee_float_wave() BEFORE ever calling
-    // bw64::readFile(), and routes a float master to parse_float_pcm_bw64() rather than to
-    // libbw64 at all (roadmap DC8 - see docs/library/adm.md's "PCM formats" section). The
-    // <axml> bytes still go through the identical libadm parse the ordinary integer-PCM path
-    // uses, so the ADM metadata below is unaffected by which sample format the file carries.
+TEST_CASE("parses a float32 (IEEE-float) fmt chunk through the ordinary libbw64 path", "[adm]") {
+    // Confirmed by reading parser.hpp directly, not assumed: the pinned libbw64 accepts a bare
+    // WAVE_FORMAT_IEEE_FLOAT formatTag the same way it accepts WAVE_FORMAT_PCM, and
+    // Bw64Reader::read() decodes it via its own decodeFloatSamples - no ac3adm-side routing
+    // around libbw64 for this case any more (see model.hpp's PcmAudio comment for what this
+    // module used to do here and why it no longer needs to).
     const auto fmt = build_float_fmt_chunk(1, 48000, 32);
     const auto chna = build_chna_chunk();
     const Bytes axml(kCarAdmXml);
@@ -461,17 +467,38 @@ TEST_CASE("parses a float32 (IEEE-float) fmt chunk via the float container walk"
     CHECK(doc->audio.bits_per_sample == 32);
     REQUIRE(doc->audio.channels.size() == 1);
     REQUIRE(doc->audio.frame_count() == 2);
-    // Read back bit-for-bit, not rescaled - float_pcm_bw64.cpp's own std::bit_cast, checked
-    // independently of that arithmetic to actually exercise it.
+    // Read back bit-for-bit, not rescaled - checked against the exact bytes written, not just
+    // that SOME value came back.
     CHECK(doc->audio.channels[0][0] == Catch::Approx(-0.5F));
     CHECK(doc->audio.channels[0][1] == Catch::Approx(0.0F));
 
-    // Same <chna>/<axml> fixtures the integer-PCM tests use, so the "identical libadm parse"
-    // claim above is checked, not just asserted.
+    // Same <chna>/<axml> fixtures the integer-PCM tests use, so "the ADM metadata is unaffected
+    // by which sample format the file carries" is checked, not just asserted.
     REQUIRE(doc->chna.size() == 1);
     CHECK(doc->chna[0].uid == "ATU_00000001");
     REQUIRE(doc->model.programmes.size() == 1);
     CHECK(doc->model.programmes[0].id == "APR_1001");
+}
+
+// The 64-bit-per-sample counterpart - a distinct branch in libbw64's own decodeFloatSamples, not
+// exercised by the 32-bit case above, and not something the retired float_pcm_bw64.hpp ever
+// covered with its own test either (it supported both widths, per model.hpp's own doc comment,
+// but only the 32-bit one was ever actually run here). Needs patch_libbw64.cmake's second patch
+// to reach that decode at all: FormatInfoChunk's constructor (chunks.hpp) otherwise refuses any
+// 64-bit <fmt >, PCM or float, before decodeFloatSamples is ever called - found by this test
+// itself failing (kCannotOpen) the first time it ran, against the pinned fork unpatched for this.
+TEST_CASE("parses a float64 (double-precision) fmt chunk", "[adm]") {
+    const auto fmt = build_float_fmt_chunk(1, 48000, 64);
+    const auto data = build_float64_data({-0.25, 0.75});
+    std::istringstream stream(build_riff(fmt, Bytes{}, Bytes{}, data));
+    auto doc = ac3adm::parse_bw64(stream);
+    REQUIRE(doc.has_value());
+
+    CHECK(doc->audio.bits_per_sample == 64);
+    REQUIRE(doc->audio.channels.size() == 1);
+    REQUIRE(doc->audio.frame_count() == 2);
+    CHECK(doc->audio.channels[0][0] == Catch::Approx(-0.25));
+    CHECK(doc->audio.channels[0][1] == Catch::Approx(0.75));
 }
 
 TEST_CASE("malformed XML in axml surfaces as kMalformedXml", "[adm]") {
@@ -695,14 +722,65 @@ TEST_CASE("a non-data chunk declaring more than the file holds is refused", "[ad
 }
 
 // The other half of that check: a recording cut off part-way through <data>
-// is an ordinary file, not an attack, and must still read. <data> is exempt
-// from chunk_sizes_fit() precisely so this keeps working.
+// is an ordinary file, not an attack, and must still read. Two independent
+// layers have to agree on that for this to hold: chunk_sizes_fit() exempts
+// <data> from its own pre-scan (immediately above), AND libbw64's own
+// internal chunk-table walk has to as well - which the pinned commit refuses
+// outright unless patched (src/ac3adm/patch_libbw64.cmake's whole reason for
+// existing; see its own comment for why upstream doesn't do this itself).
 TEST_CASE("a file truncated inside its data chunk still parses", "[adm]") {
     Bytes file = minimal_fixture_bytes(false);
     file.resize(file.size() - 3);  // lose the tail of <data>, keep every header
     std::istringstream stream(file);
     const auto doc = ac3adm::parse_bw64(stream);
-    CHECK(doc.has_value());
+    REQUIRE(doc.has_value());
+    // Not just "didn't error" - the frames actually present are the ones
+    // that survive the truncation, confirming libbw64's own DataChunk size
+    // was clamped (patch_libbw64.cmake) rather than the read merely not
+    // crashing on a declared size it didn't honour.
+    CHECK(doc->audio.frame_count() < 4);
+}
+
+// The exemption above is deliberately narrow: only <data> may run past the end of the file once
+// libbw64 resolves its size. A plain oversized 32-bit header on any OTHER chunk is already
+// covered by "a non-data chunk declaring more than the file holds is refused" above (caught by
+// chunk_sizes_fit() before libbw64 is ever reached, so it says nothing about libbw64's own
+// behaviour) - what that test can't reach is a <ds64> table entry giving some other chunk an
+// oversized 64-bit size while its own 32-bit header stays honest, since chunk_sizes_fit()
+// deliberately does not read the table's entries (see its own comment). That shape passes our
+// pre-check untouched and reaches libbw64's real internal chunk walk, which is what this pins:
+// the patched carve-out still throws for anything but <data>. This is the same shape
+// fuzz_adm_parse's mutation reached (an uncommitted probe during development, not one of the
+// regressions above) once instrumenting ac3adm_objects exposed the library's own chunk-table
+// resolution rather than only chunk_sizes_fit()'s narrower one.
+TEST_CASE("a ds64 table entry oversizing a non-data chunk is still refused", "[adm]") {
+    const auto fmt = build_fmt_chunk(1, 48000, 16);
+    const auto data = build_pcm16_data(4);
+    const Bytes axml(kCarAdmXml);
+
+    Bytes ds64_content;
+    put_u64le(ds64_content, 0);            // bw64Size - unused by this check
+    put_u64le(ds64_content, data.size());  // dataSize - honest
+    put_u64le(ds64_content, 0);            // dummy, §4.2
+    put_u32le(ds64_content, 1);            // tableLength: one entry
+    put_fourcc(ds64_content, "axml");
+    put_u64le(ds64_content, std::uint64_t{1} << 40);  // 1 TiB - <axml>'s real size is a few hundred bytes
+
+    Bytes body;
+    append_chunk(body, "ds64", ds64_content);
+    append_chunk(body, "fmt ", fmt);
+    append_chunk(body, "axml", axml);  // real, honest 32-bit header - only the ds64 table lies
+    append_chunk(body, "data", data);
+
+    Bytes file;
+    put_fourcc(file, "RF64");
+    put_u32le(file, 0xFFFFFFFFu);
+    put_fourcc(file, "WAVE");
+    file += body;
+
+    std::istringstream stream(file);
+    const auto doc = ac3adm::parse_bw64(stream);
+    REQUIRE_FALSE(doc.has_value());
 }
 
 // libbw64 materialises any chunk id it has no class of its own for into an
@@ -760,27 +838,37 @@ TEST_CASE("a zero-length data chunk parses with no frames", "[adm]") {
 }
 
 // Found while auditing libbw64 for the pattern above, and confirmed by running
-// both shapes through fuzz_adm_parse against an instrumented ac3adm.
-// nBlockAlign is a 16-bit field, and libbw64's own blockAlignment() returns
-// uint16_t, so a <fmt > whose channel count times its sample width runs past
-// 65,535 wraps BOTH of them to the same wrong value - which is why the "should
-// be" check inside libbw64's own fmt parsing compares the two and passes.
+// both shapes through fuzz_adm_parse against an instrumented ac3adm, against
+// the pinned 0.10.0. nBlockAlign is a 16-bit field, and libbw64's own
+// blockAlignment() returned a bare uint16_t, so a <fmt > whose channel count
+// times its sample width ran past 65,535 wrapped BOTH the reader's and the
+// file's own declared value to the same wrong number - which is why the
+// "should be" check inside libbw64's own fmt parsing compared the two and
+// passed. 32,768 channels at 16 bits wrapped to 0, and numberOfFrames()
+// divided by it (a SIGFPE, on an uninstrumented build too). 32,769 wrapped to
+// 2, which sized the read buffer at two bytes a frame while the decode loop
+// read 65,538 of them - a heap overread the length of a whole frame, which an
+// uninstrumented ac3adm ran as a clean execution and returned as audio.
+// adm.cpp's own read_pcm() guard (still there, see its own comment) refused
+// both by comparing libbw64's value against one this module computes itself
+// in a width that cannot wrap.
 //
-// 32,768 channels at 16 bits wraps to 0, and numberOfFrames() divides by it
-// (a SIGFPE, on an uninstrumented build too). 32,769 wraps to 2, which sizes
-// the read buffer at two bytes a frame while the decode loop reads 65,538 of
-// them - a heap overread the length of a whole frame, which an uninstrumented
-// ac3adm runs as a clean execution and returns as audio. read_pcm refuses both
-// now: no file can state a block alignment this large, so there is nothing to
-// read on the file's own terms.
-TEST_CASE("a fmt whose block alignment overflows 16 bits reads no PCM", "[adm]") {
+// The pinned fork closes the same case one layer further in: its
+// blockAlignment() is utils::safeCast<uint16_t>, which THROWS on overflow
+// rather than wrapping - and that call happens inside parseFormatInfoChunk's
+// own sanity check, before a Bw64Reader is ever constructed, so the whole
+// open now fails with kCannotOpen and adm.cpp's guard never gets a chance to
+// run. Confirmed by re-running this exact fixture after the re-pin: it used
+// to read successfully with `channels` empty; now `parse_bw64` itself fails.
+TEST_CASE("a fmt whose block alignment overflows 16 bits is refused outright", "[adm]") {
     const auto channels = GENERATE(std::uint16_t{32768}, std::uint16_t{32769});
     CAPTURE(channels);
 
     Bytes body;
     append_chunk(body, "fmt ", build_fmt_chunk(channels, 48000, 16));
-    // 65,538 bytes, so that the file is long enough for the wrapped-to-2 case
-    // to compute a non-zero frame count and reach the read.
+    // 65,538 bytes - large enough that, on the OLD libbw64 this fixture was
+    // written against, the wrapped-to-2 case would have computed a non-zero
+    // frame count and reached the (now-refused) read.
     append_chunk(body, "data", build_pcm16_data(32769));
     Bytes file;
     put_fourcc(file, "RIFF");
@@ -790,25 +878,28 @@ TEST_CASE("a fmt whose block alignment overflows 16 bits reads no PCM", "[adm]")
 
     std::istringstream stream(file);
     const auto doc = ac3adm::parse_bw64(stream);
-    REQUIRE(doc.has_value());
-    CHECK(doc->audio.channels.empty());
+    REQUIRE_FALSE(doc.has_value());
+    CHECK(doc.error() == ac3adm::AdmError::kCannotOpen);
 }
 
-// Found by fuzz_adm_parse 265 seconds into its first full-budget instrumented
-// run, and in this project's own code rather than the vendored reader's:
-// float_pcm_bw64.cpp's find_chunk() stepped over each chunk with
-// `at += 8 + declared + (declared & 1)`, computed in the uint32_t that
-// `declared` is. A chunk declaring 0xFFFFFFF7 carries that sum to exactly 2^32,
-// which wraps to zero, so the walk sat on the same chunk and never ended.
-//
-// Every file reaches that walk: is_ieee_float_wave() runs ahead of libbw64 to
-// spot a float master, and chunk_sizes_fit() ahead of THAT allows an oversized
-// <data> on purpose, for the truncated-recording case just above. This fixture
-// carries no <fmt > chunk, which is what makes find_chunk() walk past <data>
-// instead of stopping at the chunk it was looking for; the input the fuzzer
-// produced reaches the same loop past a mutated "fmp " and is committed as
-// fuzz/regressions/fuzz_adm_parse/chunk-size-wraps-the-walk.
-TEST_CASE("a chunk size that wraps the chunk walk does not hang the reader", "[adm]") {
+// Found by fuzz_adm_parse 265 seconds into its first full-budget instrumented run, and at the
+// time, in this project's own code rather than the vendored reader's: the module used to detect
+// a float master by walking the chunk table itself, ahead of libbw64, in its own
+// find_chunk() (retired since - see model.hpp's PcmAudio comment for why libbw64 now reads float
+// directly and that walk no longer exists). find_chunk() stepped over each chunk with
+// `at += 8 + declared + (declared & 1)`, computed in the uint32_t that `declared` is - a chunk
+// declaring 0xFFFFFFF7 carried that sum to exactly 2^32, which wraps to zero, so the walk sat on
+// the same chunk and never ended. Every file reached that walk: the float-detection pass ran
+// ahead of libbw64 on all of them, and chunk_sizes_fit() ahead of THAT allows an oversized
+// <data> on purpose, for the truncated-recording case just above - this fixture carries no
+// <fmt > chunk, which is what made the old find_chunk() walk past <data> instead of stopping at
+// the chunk it was looking for. Kept as a regression against the code that replaced it: this
+// exact fixture (and the one the fuzzer produced, past a mutated "fmp ",
+// fuzz/regressions/fuzz_adm_parse/chunk-size-wraps-the-walk) now reaches libbw64's own reader
+// instead, missing its mandatory <fmt > chunk, and should fail cleanly rather than hang either
+// way.
+TEST_CASE("a chunk size that once wrapped the retired float-detection walk still parses cleanly",
+          "[adm]") {
     Bytes body;
     append_chunk(body, "data", Bytes{}, 0xFFFFFFF7u);
     Bytes file;
@@ -894,8 +985,7 @@ TEST_CASE("ADM sample-based time format matches the equivalent decimal form", "[
 
 TEST_CASE("describe() returns a non-empty string for every AdmError", "[adm]") {
     using ac3adm::AdmError;
-    for (const auto error : {AdmError::kCannotOpen, AdmError::kNotRiff, AdmError::kMissingFmt,
-                              AdmError::kMissingData, AdmError::kUnsupportedFormat, AdmError::kMalformedXml,
+    for (const auto error : {AdmError::kCannotOpen, AdmError::kNotRiff, AdmError::kMalformedXml,
                               AdmError::kMalformedAdm, AdmError::kOther}) {
         CHECK_FALSE(ac3adm::describe(error).empty());
     }
