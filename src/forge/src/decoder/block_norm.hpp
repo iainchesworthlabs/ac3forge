@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -237,6 +238,66 @@ template <typename Scalar>
     return (static_cast<std::int64_t>(raw) + (std::int64_t{1} << (shift - 1))) >> shift;
 }
 
+// The same value for a shift in [0, 31], on 32 bits: raw >> shift plus the
+// bit below it, which is bit `shift` of raw << 1 (and no bit at all for a
+// shift of zero). A variable 64-bit shift is a library call on a 32-bit part.
+[[nodiscard]] constexpr std::int32_t shift_right_rounded32(std::int32_t raw, int shift) {
+    const auto rounding = ((static_cast<std::uint32_t>(raw) << 1U) >> shift) & 1U;
+    return static_cast<std::int32_t>(static_cast<std::uint32_t>(raw >> shift) + rounding);
+}
+
+// a + b clamped to the int32 range, on 32 bits.
+[[nodiscard]] constexpr std::int32_t add_saturated(std::int32_t a, std::int32_t b) {
+    const auto sum = static_cast<std::int32_t>(static_cast<std::uint32_t>(a) +
+                                               static_cast<std::uint32_t>(b));
+    if (((a ^ sum) & (b ^ sum)) < 0) {
+        return a < 0 ? std::numeric_limits<std::int32_t>::min()
+                     : std::numeric_limits<std::int32_t>::max();
+    }
+    return sum;
+}
+
+// The powers of two float_bits_scaled applies exactly: the float of an int32
+// is zero or has a biased exponent in [127, 158], and times 2^power it is
+// still a normal float - the same significand under an exponent field moved
+// by power - while that field stays in [1, 254].
+inline constexpr int kExponentStepPowerMin = -126;
+inline constexpr int kExponentStepPowerMax = 96;
+
+// The bits of static_cast<float>(value) * 2^power for a power in that range,
+// in integer arithmetic, given exponent_base = 158 + power. The magnitude's
+// leading one is moved to bit 31 in five branch-free steps, the 24 bits from
+// it are the significand, rounded to nearest with ties to even on the eight
+// below as the conversion rounds, and a carry out of the significand moves
+// the exponent up one. Zero gives zero's bits.
+[[nodiscard]] constexpr std::uint32_t float_bits_scaled(std::int32_t value,
+                                                        std::uint32_t exponent_base) {
+    const auto negative = static_cast<std::uint32_t>(value >> 31);  // all ones or zero
+    const std::uint32_t sign = negative & 0x80000000U;
+    std::uint32_t top = (static_cast<std::uint32_t>(value) ^ negative) - negative;
+    std::uint32_t exponent = exponent_base;
+    // Written out, not looped over a table of the five: GCC keeps a loop's
+    // table and a branch per step, and turns each of these into a compare
+    // and two shifts.
+    const auto step = [&top, &exponent](std::uint32_t below, std::uint32_t log2_by) {
+        const std::uint32_t shift = static_cast<std::uint32_t>(top < below) << log2_by;
+        top <<= shift;
+        exponent -= shift;
+    };
+    step(0x00010000U, 4U);
+    step(0x01000000U, 3U);
+    step(0x10000000U, 2U);
+    step(0x40000000U, 1U);
+    step(0x80000000U, 0U);
+    std::uint32_t significand = top >> 8U;
+    // Up when the eight bits below are more than half, or exactly half and
+    // the significand odd: their sum with its low bit is then 129 or more.
+    significand += ((top & 0xFFU) + (significand & 1U) + 0x7FU) >> 8U;
+    exponent += significand >> 24U;
+    const std::uint32_t bits = sign | (exponent << 23U) | (significand & 0x7FFFFFU);
+    return top != 0U ? bits : 0U;
+}
+
 // §7.9.5's overlap-add, pcm = 2 (x + delay), for a channel whose transform
 // output `x` is stored under `x_norm` and whose delay half under
 // `delay_norm`. The two are aligned to the smaller exponent (the louder
@@ -254,15 +315,34 @@ inline void overlap_add_normalised(const std::array<Scalar, 512>& x,
         const int aligned = std::min(x_norm, delay_norm);
         const int x_shift = x_norm - aligned;
         const int delay_shift = delay_norm - aligned;
-        const float scale = std::ldexp(1.0F, -(Fixed32::kFractionBits - 1) - aligned);
-        for (std::size_t n = 0; n < 256; ++n) {
-            const std::int64_t sum = shift_right_rounded(x[n].raw, x_shift) +
-                                     shift_right_rounded(delay[n].raw, delay_shift);
-            const auto clipped = static_cast<std::int32_t>(
-                std::clamp<std::int64_t>(sum, std::numeric_limits<std::int32_t>::min(),
-                                         std::numeric_limits<std::int32_t>::max()));
-            pcm[n] = static_cast<float>(clipped) * scale;
-            delay[n] = x[n + 256];
+        const int power = -(Fixed32::kFractionBits - 1) - aligned;
+        if (x_shift < 32 && delay_shift < 32 && power >= kExponentStepPowerMin &&
+            power <= kExponentStepPowerMax) {
+            // Every block a stream's exponents produce: the loop below's
+            // values, bit for bit, in 32-bit integer arithmetic. On a part
+            // with no FPU the loop below costs a software int-to-float
+            // conversion and a software float multiply for every sample, and
+            // a 64-bit shift's two library calls whenever the halves'
+            // exponents differ.
+            const auto exponent_base = static_cast<std::uint32_t>(158 + power);
+            for (std::size_t n = 0; n < 256; ++n) {
+                const std::int32_t clipped =
+                    add_saturated(shift_right_rounded32(x[n].raw, x_shift),
+                                  shift_right_rounded32(delay[n].raw, delay_shift));
+                pcm[n] = std::bit_cast<float>(float_bits_scaled(clipped, exponent_base));
+                delay[n] = x[n + 256];
+            }
+        } else {
+            const float scale = std::ldexp(1.0F, power);
+            for (std::size_t n = 0; n < 256; ++n) {
+                const std::int64_t sum = shift_right_rounded(x[n].raw, x_shift) +
+                                         shift_right_rounded(delay[n].raw, delay_shift);
+                const auto clipped = static_cast<std::int32_t>(
+                    std::clamp<std::int64_t>(sum, std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max()));
+                pcm[n] = static_cast<float>(clipped) * scale;
+                delay[n] = x[n + 256];
+            }
         }
         delay_norm = x_norm;
     } else {
