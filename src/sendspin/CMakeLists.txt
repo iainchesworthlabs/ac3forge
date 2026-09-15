@@ -48,6 +48,7 @@ target_sources(ac3sendspin
         src/handshake.cpp
         src/json.cpp
         src/messages.cpp
+        src/pairing_messages.cpp
         src/pairing_token.cpp
         src/suite.cpp
         src/transport_memory.cpp)

@@ -670,6 +670,7 @@ if(AC3FORGE_BUILD_HEARTH)
         sendspin/test_handshake.cpp
         sendspin/test_json.cpp
         sendspin/test_messages.cpp
+        sendspin/test_pairing_messages.cpp
         sendspin/test_transport.cpp)
     # The parts that need vcpkg's "hearth" feature, which AC3FORGE_SENDSPIN_CORE_ONLY leaves out.
     if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
