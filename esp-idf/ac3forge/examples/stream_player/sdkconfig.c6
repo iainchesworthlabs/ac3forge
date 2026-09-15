@@ -1,11 +1,11 @@
 # Overlay for an ESP32-C6: one 160 MHz RISC-V core with no FPU and no PSRAM.
 #
-#   idf.py -DIDF_TARGET=esp32c6 -DAC3FORGE_DECODE_SCALAR=fixed \
-#          "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.c6" build
+#   idf.py -DIDF_TARGET=esp32c6 "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.c6" build
 #
-# The fixed-point tier is a CMake option rather than a setting here, and the
-# component does not choose it from the target, so it goes on the command line:
-# in float, a part with no FPU decodes two to three times slower. See
+# Nothing here chooses the fixed-point tier: esp-idf/ac3forge/CMakeLists.txt sets
+# AC3FORGE_DECODE_SCALAR from the target's CONFIG_SOC_CPU_HAS_FPU when a project has not, and
+# this part has none. `idf.py -DAC3FORGE_DECODE_SCALAR=float build` measures the float tier on
+# the same part instead - a part with no FPU decodes two to three times slower in it. See
 # docs/platforms/bare-metal/esp32-c6.md for what the part decodes in real
 # time, which with WiFi running is stereo and mono and no 5.1 stream.
 #

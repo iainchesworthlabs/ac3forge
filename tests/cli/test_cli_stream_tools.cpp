@@ -466,6 +466,37 @@ TEST_CASE("transcode also goes the other way, DD into DD+", "[cli][transcode]") 
     CHECK(after->dialnorm == 27);
 }
 
+TEST_CASE("transcode measures dialnorm when told dialnorm=auto", "[cli][transcode]") {
+    const auto dir = scratch_dir();
+    // dialnorm=23 on the source is a value the fix must not fall back to:
+    // dialnorm=auto asks for a fresh measurement, not a carry, and this
+    // tone's own loudness is nowhere near what dialnorm 23 implies.
+    const auto source = make_stream("tx_auto.ec3", "eac3-encode", "none 51 off dialnorm=23");
+    const auto out = dir / "tx_auto.ac3";
+    const auto log = dir / "tx_auto.log";
+
+    REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(out) + " 448 \"\" dialnorm=auto",
+                    log) == 0);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(text.find("(measured)") != std::string::npos);
+    CHECK(text.find("(from dialnorm=)") == std::string::npos);
+
+    // `normalize` measures the same source independently; transcode's
+    // dialnorm=auto must agree with it rather than carrying the source's own
+    // 23 or leaving plan::Metadata's unmeasured default of 31.
+    const auto norm_out = dir / "tx_auto_norm.ec3";
+    const auto norm_log = dir / "tx_auto_norm.log";
+    REQUIRE(run_cli("normalize " + quoted(source) + " " + quoted(norm_out), norm_log) == 0);
+    const auto normalized = ac3::io::read_frame_metadata(read_bytes(norm_out));
+    const auto after = ac3::io::read_frame_metadata(read_bytes(out));
+    REQUIRE(normalized.has_value());
+    REQUIRE(after.has_value());
+    CHECK(after->dialnorm == normalized->dialnorm);
+    CHECK(after->dialnorm != 23);
+    CHECK(after->dialnorm != 31);
+}
+
 // §5.4.2.8 reserves a dialnorm of 0. A decoder reads it as 31, so a stream
 // carrying one decodes, but neither encoder writes it, and transcode carries
 // the source's dialnorm across unless dialnorm= replaces it. The E-AC-3
