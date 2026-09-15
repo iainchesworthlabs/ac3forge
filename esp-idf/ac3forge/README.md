@@ -95,5 +95,5 @@ one machine, give each its own build directory and its own `-DSDKCONFIG=<build d
 [`planning/esp32-player.md`](../../planning/esp32-player.md) is the plan for what the component
 should carry beyond the library for a player — buffering and tasks, the source and sink seams,
 a control surface — and for the ESPHome component that sits on it. The platform page,
-[`docs/platforms/esp32.md`](../../docs/platforms/esp32.md), has the footprint and timing figures
+[`docs/platforms/bare-metal/esp32-s3.md`](../../docs/platforms/bare-metal/esp32-s3.md), has the footprint and timing figures
 and what the port required from the library.

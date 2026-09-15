@@ -257,7 +257,7 @@ luxurious mantissa budgets. Fixed at all three call sites (encode budget, `acces
 consequence for objects: the OAMD+JOC container repeats per syncframe whatever its length, so
 its fixed cost is a six-times share of a one-block frame — four objects at 640 kbit/s fit a
 six-block frame and are correctly refused at one block, where ~2 Mbit/s is the realistic
-floor. That envelope is now stated in `docs/cli/metadata-options.md` rather than discovered.
+floor. That envelope is now stated in `docs/forge/cli/metadata-options.md` rather than discovered.
 </details>
 
 **EQ7 (M)** — Content-adaptive bandwidth and rate-dependent `fgaincod`, complete. The
@@ -717,7 +717,7 @@ audio the decoder refuses) plus the real decoders under a new
 `DecoderConfig::skip_reconstruction` (the parse tier). Per-block tool usage and exponent
 strategies come from a new `ac3::FrameSyntax` trace; `detail=blocks` dumps them. The JSON
 document is versioned `ac3forge.probe/1` and documented as a contract in
-docs/cli/commands.md. An HLS/DASH manifest check is NOT part of it and stays open: it is a
+docs/forge/cli/commands.md. An HLS/DASH manifest check is NOT part of it and stays open: it is a
 consumer of this document rather than part of it, and IO5 already owns the `ceao`/JOC
 signalling half of the same question.
 </details>
@@ -875,7 +875,7 @@ band) and `apple-music-atmos` from Apple's Immersive Audio Source Profile (a −
 document version and date. EBU R 128 s4, Netflix's Atmos Home Mix v2.3 and Amazon were checked
 and deliberately left out — the first two are numerically identical to presets already present
 and the third has no primary source that could be read; `qc.hpp` and
-`docs/cli/metadata-options.md` record why for each.
+`docs/forge/cli/metadata-options.md` record why for each.
 </details>
 
 **IO12 (M)** — Object-based loudness, ITU-R BS.1770-5 Annex 4 — re-renders a dynamic-object-only
@@ -1898,7 +1898,7 @@ ordinary build always called, so nothing moved there) and compiling five decode-
 every fixture's RMS unchanged to the digit. The second core was not needed. Enhanced coupling
 followed in a second pass, its shared-with-the-encoder routines given float forms beside the double
 ones: 217 ms to 23.8 ms, so every E-AC-3 configuration this profile decodes now runs in real
-time on the part. `docs/platforms/esp32.md`'s Timing section has the stage tables and what would
+time on the part. `docs/platforms/bare-metal/esp32-s3.md`'s Timing section has the stage tables and what would
 move the objects and enhanced-coupling fixtures further.
 
 A third pass, bit-exact for the double build and to the digit on the probe's levels, took the
@@ -1921,7 +1921,20 @@ sink holds a block where it held a frame (73,728 bytes for 7.1.4), and the probe
 PCM at all.
 
 See `docs/building.md`'s Gaps section, `docs/performance-trend.md` for the current table, and
-`docs/platforms/esp32.md`.
+`docs/platforms/bare-metal/esp32-s3.md`.
+
+**Design record:** the fixed-point arithmetic tier this profile also builds under (for parts with
+no FPU at all, such as the ESP32-C3) and the platform-selection matrix behind it are in
+[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md).
+The example players built on this profile — an I2S loop and a streaming player with a small HTTP
+control surface — and their own design work are in
+[`planning/esp32-player.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-player.md),
+[`planning/esp32-device-ui.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-device-ui.md),
+[`planning/esp32-stream-set.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-stream-set.md)
+and
+[`planning/esp32-714-realtime.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-714-realtime.md).
+This profile is also Hearth's only real implementation today, ahead of its planned appliance
+form — see `docs/hearth/index.md`.
 </details>
 
 **PF8 (S)** — The decoder's JOC bed analysis was still running direct forward transforms — now
@@ -2292,7 +2305,7 @@ German, Spanish, Arabic, Hebrew, Yiddish — matches the one the sibling Countdo
 already ships, rather than inventing a second one. Coverage when this item landed was 98 of
 758 extracted messages per language — window chrome, tab names, the Guided wizard's step
 titles, all of Preferences — with the rest left in English and tracked in
-`docs/gui/localisation.md`. The catalogues were filled on 2026-09-06: each of the six now
+`docs/forge/gui/localisation.md`. The catalogues were filled on 2026-09-06: each of the six now
 carries 795 messages, every one of them translated but a single entry per file whose source
 string is itself empty (`QcDialog.qml` line 276). Those translations are machine-made and have
 not been read by a speaker of any of the six languages, which is what CR1 is for.
@@ -2322,13 +2335,13 @@ shared between the two windows and claimed every size in both came from its scal
 scale now, behind the same five-value Text size control Crucible offers, and at scale 1.0 every
 token equals the literal it replaced, so the window is pixel-identical by default. Type size is
 only half of it: the Guided wizard, the Objects and Live session tabs and the dialogs still take
-their heights from literals and can clip at 175%, which `docs/gui/accessibility.md` lists. The
+their heights from literals and can clip at 175%, which `docs/forge/gui/accessibility.md` lists. The
 controls also gained accessible names and roles, a visible focus ring (`qml/FocusRing.qml`) and
 a tab order meant to reach what a mouse reaches, and there is a diagnostics export
 (`gui_diagnostics.cpp`) carrying versions, settings and the last errors, and no file contents
 and no key material. What is asserted is narrower than that list reads: the suites cover a few
 named tab stops and the accessible names beside them, and the rest of the chain is in the
-documentation by reading rather than by assertion, which `docs/gui/accessibility.md` separates
+documentation by reading rather than by assertion, which `docs/forge/gui/accessibility.md` separates
 row by row. No screen reader has been through the window, on either platform, and it has not
 been driven by keyboard alone at 175%.
 </details>
@@ -2419,6 +2432,13 @@ dialnorm/compr/mix metadata still carry across), and a sink that bitstreams neit
 falls back to decoded PCM (`monitor`'s own §7.8-aware path). `follow=off` restores the plain
 refusal `play` always gave. Not verified against real EDID/ELD hardware this round (no Linux
 box in the loop) - see `docs/platforms/linux.md`.
+
+**Design record:** this sink-following logic is what a planned playback appliance, Hearth
+(`docs/hearth/index.md`), would build on, and six specific
+gaps in it are enumerated in
+[`planning/player-appliance.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/player-appliance.md#what-ux9-needs-before-it-can-carry-this).
+The project's source/transport/sink framing this and Hearth both sit inside is
+[`planning/topology.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/topology.md).
 </details>
 
 **UX6 (XL, the library)** — In-browser encoding, shipped end to end: the encode module and
@@ -2597,7 +2617,7 @@ reached the install rules, where it failed on a `MACOSX_BUNDLE` target given no
 half compiles is unknown as this is written; running it needs a Mac (DR9), and the tap's
 consent prompt needs code signing (DR6). Still open, then: macOS, and the reading of the six
 mechanically translated languages, now carried as CR1. Plan and phase record in
-`docs/crucible/promotion.md`.
+`docs/crucible/design/promotion.md`.
 <details markdown="1">
 <summary>Full record</summary>
 
@@ -2700,7 +2720,7 @@ three separate processes, parked in `mach_msg2_trap` inside
 process's HAL client was unusable, so an unrelated property read on another thread blocked
 behind it. So `audio_backend.cpp` now reports `process_loopback` **not** available on macOS and
 `start_process_loopback()` refuses before that call, with `AC3FORGE_MACOS_PROCESS_TAP` as the
-opt-in for whoever has a Mac. `docs/crucible/promotion.md`'s Phase 5 record carries the stack.
+opt-in for whoever has a Mac. `docs/crucible/design/promotion.md`'s Phase 5 record carries the stack.
 
 Two assumptions in this entry turned out to be wrong and are worth keeping visible. The TCC
 consent prompt was **not** what stopped it: an unsigned binary declaring no
@@ -2728,7 +2748,7 @@ split, a QML test leg, and docs once IM5 lands.
 <summary>Full record</summary>
 
 The lossless-lab dialog, its QML test, the CLI rows get their own PR split, a QML test leg and
-`docs/gui`/`docs/cli` pages.
+`docs/forge/gui`/`docs/forge/cli` pages.
 </details>
 
 ## CR. Crucible
@@ -2841,8 +2861,8 @@ provisioned; `releasing.md` and `README.md` now call the Homebrew tap published/
 than pending/unpublished; `README.md` no longer says macOS builds the CLI only (the GUI leg has
 run since 0.8.0-beta.2); `docs/index.md` now says `ac3::admbridge` wires the ADM object/bed
 graph onto `ac3::oba::AtmosEncoder`, driven end to end by `ac3cli atmos-adm`, rather than "not
-wired up yet"; `docs/cli/metadata-options.md` now says the E-AC-3 decode-time DRC tokens apply
-(0.6.0 fixed that) rather than "silently inert"; `docs/gui/format-and-channels.md` now lists
+wired up yet"; `docs/forge/cli/metadata-options.md` now says the E-AC-3 decode-time DRC tokens apply
+(0.6.0 fixed that) rather than "silently inert"; `docs/forge/gui/format-and-channels.md` now lists
 MPEG-TS beside fragmented MP4/CMAF as carrying over to a live session (0.9.0 added
 `mpegts::Writer`) rather than falling back to the plain elementary stream; the two pages that
 pointed at `run_live` in `apps/cli/main.cpp` (`docs/history.md`, `docs/platforms/windows.md`)
@@ -2971,7 +2991,7 @@ hardware, the one backend left.
   (UX7, UX12), and Crucible's Qt Quick suites drive the platform seams there for real. The tap
   itself got as far as `AudioDeviceCreateIOProcID`, which never returned and wedged the
   process's whole HAL client, so the path is refused by default now
-  (`docs/crucible/promotion.md`, Phase 5). No Mac has taken a sample through a tap, and no Mac
+  (`docs/crucible/design/promotion.md`, Phase 5). No Mac has taken a sample through a tap, and no Mac
   has launched the application. Also outstanding: a Pi 5 and a second Android TV device.
 </details>
 
@@ -3039,7 +3059,7 @@ installer. GPG and Sigstore satisfy neither OS. Blocked on the certificates, not
   workflows could be copied from if one were ever wanted; the previous roadmap's "ruled out"
   overstated it.
 - **An ESP32-P4 decoder target** — assessed 2026-09-08 and not taken;
-  `docs/platforms/esp32.md` has the evidence. Its vector extension is `Xesppie`, vendor-custom
+  `docs/platforms/bare-metal/esp32-s3.md` has the evidence. Its vector extension is `Xesppie`, vendor-custom
   rather than RISC-V Vector, and integer-only across all 360 instructions in ESP-IDF's own
   decoder test — so the float32 decode path stays scalar there, and Espressif's own float
   kernels for the part are scalar too. It also has no wide float load, which the ESP32-S3 does

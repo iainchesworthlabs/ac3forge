@@ -69,7 +69,7 @@ struct RawResult {
 // ac3::FrameDecoder/ac3::Eac3Decoder EncoderController's own monitor path
 // already uses, measures it with ac3::meta::LoudnessMeter (the same meter
 // `dialnorm=auto` uses) and reports it against ac3::meta::qc's three named
-// delivery presets. See docs/gui/qc.md for where this surfaces in the
+// delivery presets. See docs/forge/gui/qc.md for where this surfaces in the
 // window and why.
 class QcController : public QObject {
     Q_OBJECT

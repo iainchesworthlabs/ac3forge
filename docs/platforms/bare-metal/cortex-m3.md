@@ -6,7 +6,7 @@ none of the direct-form transform tables.
 
 The reference target is `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine — a
 Cortex-M3 with no floating-point unit, where every floating-point operation is software-emulated.
-It is the target CI measures the profile on. The [ESP32-S3](esp32.md) is the second bare-metal
+It is the target CI measures the profile on. The [ESP32-S3](esp32-s3.md) is the second bare-metal
 target and the first with hardware floating point.
 
 ## Status
@@ -16,13 +16,13 @@ target and the first with hardware floating point.
 | AC-3 decode | Correct. Mono, stereo and 5.1, and 5.1 folded to Lo/Ro stereo in line mode by the §7.8 output stage, every channel level exact against `apps/baremetal/fixture.hpp` |
 | E-AC-3 decode | Correct. 5.1, 2/0 and 7.1.4 (a bed and two dependent substreams), including AHT, spectral extension and §7.5.4 rematrixing; 5.1 and 7.1.4 folded to Lo/Ro stereo in line mode; and 5.1 in line mode from a stream carrying dynrng words and dialnorm 24 |
 | E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture |
-| Atmos bed and objects | Correct. Objects reconstruct here, and are placed onto 7.1.4 by their positions (`eac3_atmos_render`, through the block form's object views); the flat newlib heap makes it easier than on the [ESP32-S3](esp32.md#objects) |
+| Atmos bed and objects | Correct. Objects reconstruct here, and are placed onto 7.1.4 by their positions (`eac3_atmos_render`, through the block form's object views); the flat newlib heap makes it easier than on the [ESP32-S3](esp32-s3.md#objects) |
 | Fixed-point decode | `-DAC3FORGE_DECODE_SCALAR=fixed` builds every decode row above in Q7.24 integers under a per-block exponent, for a part with no FPU at all - the plan is [arithmetic-tiers.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md). CI runs the probe twice on this leg, and the fixed build's PCM is identical to the x86 host's and to an ESP32-C3's under `qemu-riscv32` - three architectures, one pinned set of hashes (`tests/golden/fixed-probe-pcm-hashes.json`). It costs 0.37x the instructions the default build spends on the same frame: `eac3.instructions_per_frame=4827000` against 12,948,000, integer arithmetic where that one's is software floating point |
-| Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER`: six rows (5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, 2/0 §E3.5), each hashed against `encode_fixture.hpp` with its peak and its time per frame; 242,589-byte image, 202,760 peak, 10.3 M to 80.7 M instructions a frame under `--encoder --icount` - see [Building](../building.md#what-the-encode-direction-costs) |
+| Encode | A separate encode-only profile, `AC3FORGE_MINIMAL_ENCODER`: six rows (5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, 2/0 §E3.5), each hashed against `encode_fixture.hpp` with its peak and its time per frame; 242,589-byte image, 202,760 peak, 10.3 M to 80.7 M instructions a frame under `--encoder --icount` - see [Building](../../building.md#what-the-encode-direction-costs) |
 | Image size | 338,793 bytes — 276,188 `.text`, 400 `.data`, 62,205 `.bss` |
 | Peak heap | 237,206 bytes, the 7.1.4 fixture folded to stereo (230,798 as coded, 211,371 with Atmos objects) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record; the enhanced-coupling scratch (23,552 bytes while §E3.5 is in use) is handed back between fixtures |
-| Allocations per frame | 1 to 35, by fixture — see [the footprint table](../performance-trend.md#minimum-footprint-decoder) |
+| Allocations per frame | 1 to 35, by fixture — see [the footprint table](../../performance-trend.md#minimum-footprint-decoder) |
 | Audio output | None. The probe decodes built-in fixtures and prints levels |
 | Real silicon | None. Correctness is established under emulation |
 | CI | `build-footprint` in `.github/workflows/_build.yml`, on every push |
@@ -51,15 +51,15 @@ directory) follows it. Every microsecond the probe then prints is a thousand Thu
 identical on every host and every run — `eac3.instructions_per_frame=12948000` — gated per fixture
 with the same headroom rule as the other ceilings, and with `--stage-timers` counted per stage. It
 is not cycles on any real part; it is a number that moves when the code does, which the host-time
-figure never was, and it is what the [ESP32-C3](esp32.md#other-esp32-variants) row's speed estimate rests on. That part now runs the fixed tier's probe under `qemu-riscv32` for correctness, but its time still comes from here, and instructions are not cycles on either part.
+figure never was, and it is what the [ESP32-C3](esp32-c3.md) row's speed estimate rests on. That part now runs the fixed tier's probe under `qemu-riscv32` for correctness, but its time still comes from here, and instructions are not cycles on either part.
 
 Both drive the presets, which you can also use directly: `config-arm-none-eabi-minimal` /
 `build-arm-none-eabi-minimal`, and `config-linux-gcc-minimal` or `config-linux-llvm-minimal` for
 the host. GCC and Clang only.
 
-[Building from source](../building.md#minimum-footprint-decoder-profile) covers what the profile
+[Building from source](../../building.md#minimum-footprint-decoder-profile) covers what the profile
 changes and the gaps it has not closed. The measured figures are in
-[the footprint table](../performance-trend.md#minimum-footprint-decoder).
+[the footprint table](../../performance-trend.md#minimum-footprint-decoder).
 
 ## What you give up
 
@@ -98,4 +98,4 @@ linker script and startup for the board. Nothing in `src/` branches on the targe
 Whether a part is viable comes down to floating point. Every operation the decoder does in
 `double` is software-emulated without an FPU, and `decode_scalar_t` is `float` under this profile
 precisely because that is what the parts with hardware floating point actually have. The
-[ESP32-S3 page](esp32.md#other-esp32-variants) works that argument through one vendor's range.
+[ESP32-C3 page](esp32-c3.md) works that argument through one vendor's range.

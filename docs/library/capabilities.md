@@ -150,7 +150,7 @@ exponent strategy each stream carried — the in-repo counterpart of
 and shipped with nothing.
 
 `json=1` emits a versioned JSON document instead of the table; its schema is a stable contract,
-documented in [Commands](../cli/commands.md). Memory is flat in the length of the stream on both
+documented in [Commands](../forge/cli/commands.md). Memory is flat in the length of the stream on both
 sides — the input is pulled through a fixed window and the per-frame dump is written as the walk
 produces it.
 
@@ -218,7 +218,7 @@ load-bearing enough to flag up front:
     backend reached the same receiver on 2026-09-05, on the same Pi: a pre-encoded 5.1 fixture
     that the receiver's front panel read as "5.1 DD+", and Crucible's own live engine with a
     placed object, read as "Atmos/DD+" at 7.1 — see
-    [the promotion record](../crucible/promotion.md). PipeWire needs a compressed codec enabled
+    [the promotion record](../crucible/design/promotion.md). PipeWire needs a compressed codec enabled
     on the target node by the session manager first, which WirePlumber filled there from the
     receiver's EDID. No other Linux machine, sound card or receiver has been tried: treat this as
     two confirmed configurations on one box, not as Linux generally.

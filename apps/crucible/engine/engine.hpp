@@ -29,7 +29,7 @@ class DiagnosticLog;  // diagnostics.hpp, which includes this header
 struct EngineConfig {
     // Still "Desktop Atmos", not "Crucible": this matches the endpoint the
     // driver actually advertises, and apps/windows/driver/ keeps its device
-    // identity until attestation signing lands (docs/crucible/promotion.md,
+    // identity until attestation signing lands (docs/crucible/design/promotion.md,
     // "Coordination with the driver-signing session"). It moves to "Crucible"
     // in the same change that renames the INF, so the name is signed once.
     std::string null_sink_substring = "Desktop Atmos";

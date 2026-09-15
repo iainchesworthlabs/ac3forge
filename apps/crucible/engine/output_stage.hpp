@@ -46,7 +46,7 @@ struct OutputStageConfig {
     // such as FxSound's idle endpoint during development).
     // Still "Desktop Atmos", not "Crucible": this matches the endpoint the
     // driver actually advertises, and apps/windows/driver/ keeps its device
-    // identity until attestation signing lands (docs/crucible/promotion.md,
+    // identity until attestation signing lands (docs/crucible/design/promotion.md,
     // "Coordination with the driver-signing session"). It moves to "Crucible"
     // in the same change that renames the INF, so the name is signed once.
     std::string null_sink_substring = "Desktop Atmos";
@@ -98,7 +98,7 @@ public:
     // Instant on Windows (IsFormatSupported); on PipeWire every answer is a
     // real connect with a timeout, and on a machine with two endpoints that
     // is several seconds - which, run on the frame thread, was a seven-second
-    // first frame on the Raspberry Pi (docs/crucible/promotion.md, Phase 4).
+    // first frame on the Raspberry Pi (docs/crucible/design/promotion.md, Phase 4).
     // Touches nothing the frame thread owns.
     [[nodiscard]] std::vector<EndpointFacts> enumerate() const;
 

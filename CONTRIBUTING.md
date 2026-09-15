@@ -290,6 +290,22 @@ are the authority and must be updated with it. README.md's own summary of the sa
 should stay a summary, not grow back into a second copy. [docs/history.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/history.md) is a
 record of past work and is not maintained against the current state.
 
+**Each product page set follows one shape.** An `index.md` opens with a status callout (what's
+built, what isn't, what's verified on real hardware versus under emulation or in CI only),
+sub-pages carry plain topic titles rather than repeating the product's binary name, and a
+`design/` subfolder holds phase records and promotion plans — evidence a reference page cites,
+not a guide a user reads first. [docs/crucible/design/promotion.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/crucible/design/promotion.md)
+and [docs/hearth/design/player-appliance.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/design/player-appliance.md)
+are the pattern to follow for a new one.
+
+**Non-trivial design work starts in `planning/`, not `docs/`.** A phase plan, a naming decision,
+or a proposal that touches more than a page or two belongs in
+[`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning) first —
+see [`planning/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/README.md)
+for why these stay out of the published site. `docs/` describes what exists; `planning/` is
+where what might exist gets argued out first, and a page only moves (or a `design/` record
+gets written) once the work has actually landed.
+
 ## Commits
 
 **Never use a `Co-Authored-By` trailer.** This is absolute, and applies whatever tooling you

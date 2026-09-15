@@ -7,7 +7,7 @@ Two of the forty-one (`atmos-adm` and `atmos-iab`) only *run* in a build configu
 `-DAC3FORGE_BUILD_ADM=ON`, but are always *listed* — the same "shown, not hidden" treatment
 this page's own live-audio commands get when the platform can't run them either (see
 [Commands](commands.md)'s own ADM section). Every command it can run is backed by the same public
-library documented under [Library](../library/index.md); every codec and format decision lives in
+library documented under [Library](../../library/index.md); every codec and format decision lives in
 the library, and the CLI keeps only small local helpers of its own (the DASH MPD document wrapper
 `fmp4` writes; the scene files behind `atmos-path`/`atmos-encode` are parsed by the library's
 own `ac3::oba::read_scene`).
@@ -23,9 +23,9 @@ ac3cli
 
 ## Installing
 
-`ac3cli` installs as part of [Forge](../forge/index.md), the `ac3cli` + `ac3gui` pair — that
+`ac3cli` installs as part of [Forge](../index.md), the `ac3cli` + `ac3gui` pair — that
 page carries the same three paths in one place. Building from source
-([Quick start](../quickstart.md)) always works (see [Releasing](../releasing.md) for the
+([Quick start](../../quickstart.md)) always works (see [Releasing](../../releasing.md) for the
 per-tool submission status):
 
 - **winget** (Windows) — once
@@ -37,13 +37,13 @@ per-tool submission status):
   [`packaging/homebrew/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/homebrew)
   is published to the live personal tap `iainchesworthlabs/homebrew-ac3forge`, so
   `brew install iainchesworthlabs/ac3forge/ac3forge` installs `ac3cli` from source; the GUI
-  has a cask of its own, with the caveats on the [Forge page](../forge/index.md#installing).
+  has a cask of its own, with the caveats on the [Forge page](../index.md#installing).
   `brew install --build-from-source ./packaging/homebrew/Formula/ac3forge.rb` from a clone
   builds the same formula locally.
 - **A prebuilt archive** — every [release](https://github.com/iainchesworthlabs/ac3forge/releases)
   already publishes a `.zip`/`.tar.gz`/`.dmg` per platform with `ac3cli` (and `ac3gui` where
   built) inside, no package manager or local clone needed — see [What gets
-  published](../releasing.md#what-gets-published).
+  published](../../releasing.md#what-gets-published).
 
 ## Version
 
@@ -53,7 +53,7 @@ ac3cli --version
 
 Prints the semantic version plus git provenance — commit, branch, and a dirty flag. The version
 itself is derived from the nearest reachable `v*` git tag at configure time, so it tracks the
-latest release tag (see [Releasing](../releasing.md) and `cmake/GitVersionDerivation.cmake`);
+latest release tag (see [Releasing](../../releasing.md) and `cmake/GitVersionDerivation.cmake`);
 the rest is stamped in at build time by `cmake/GenerateVersion.cmake`:
 
 ```
@@ -78,7 +78,7 @@ command's own help (or the full listing when no command was named).
 - **Layouts** (`mono | stereo | 1+1 | 51 | 71 | 512 | 514 | 714`) name a channel bed by
   ear-friendly shorthand. AC-3 only reaches `mono | stereo | 1+1 | 51`; anything wider needs
   the dependent substreams that only E-AC-3 has. A layout can also be a comma-separated
-  [Table E2.5](../library/channel-plans-and-routing.md) location list
+  [Table E2.5](../../library/channel-plans-and-routing.md) location list
   (e.g. `L,C,R,LFE,Vhl,Vhr`) for a channel set none of the named layouts cover — AC-3 accepts
   one too, as long as it needs no dependent substream — see
   [Options & grammars](metadata-options.md) for the full grammar.
@@ -117,9 +117,9 @@ command's own help (or the full listing when no command was named).
 - **Commands needing audio hardware** (`devices`, `record`, `monitor`, `live`, `outputs`, `play`,
   `spatial`) report themselves unavailable on a build with no capture, passthrough, monitor or
   spatial backend, rather than failing to link — see the per-OS Platform notes pages
-  ([Windows](../platforms/windows.md), [Linux](../platforms/linux.md),
-  [Raspberry Pi](../platforms/raspberry-pi.md), [macOS](../platforms/macos.md),
-  [Android](../platforms/android.md)) for what's actually hardware-confirmed on each OS.
+  ([Windows](../../platforms/windows.md), [Linux](../../platforms/linux.md),
+  [Raspberry Pi](../../platforms/raspberry-pi.md), [macOS](../../platforms/macos.md),
+  [Android](../../platforms/android.md)) for what's actually hardware-confirmed on each OS.
 - **`play` follows the sink**: given a `device_index`, it reads that endpoint's own
   advertised capabilities before committing to a format. That read is itself backend-specific —
   real today only on ALSA, a live probe everywhere else, same per-OS pages above — see
@@ -132,4 +132,4 @@ command's own help (or the full listing when no command was named).
   way), plus the exit-code table.
 - [Options & grammars](metadata-options.md) — the `drc=`/`heavy`/`dialnorm=`/… options grammar,
   the `tools` argument grammar, and the full layout/location-list grammar.
-- [Concepts](../concepts/index.md) — if `bsid`, `syncframe`, or `JOC` aren't already familiar.
+- [Concepts](../../concepts/index.md) — if `bsid`, `syncframe`, or `JOC` aren't already familiar.

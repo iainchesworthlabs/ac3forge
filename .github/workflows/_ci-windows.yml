@@ -580,7 +580,7 @@ jobs:
       # `crucible-ui` labels itself under LLVM_PROFILE_FILE, merges the
       # profiles, gates apps/crucible's line and branch figures against the
       # floors in its own header, and prints a per-file breakdown under them.
-      # It is shared verbatim with a local run (docs/crucible/promotion.md),
+      # It is shared verbatim with a local run (docs/crucible/design/promotion.md),
       # so CI and a developer machine cannot drift onto different thresholds -
       # the same rule coverage_report.sh follows for the library.
       #

@@ -609,7 +609,7 @@ theme, and under `share/doc/ac3forge-crucible/` the notices (`NOTICES.txt`, once
 (`wireplumber | pipewire-media-session`) explicitly, since those are running services rather
 than libraries shlibdeps could see; everything else it depends on is resolved from the binary.
 Two things to know. The component is packaged only from a PipeWire build, which is the only
-build Crucible accepts on Linux ([why](crucible/promotion.md#alsa-or-pipewire)), so the
+build Crucible accepts on Linux ([why](crucible/design/promotion.md#alsa-or-pipewire)), so the
 Linux release legs - which build ALSA - do not produce it. The Crucible pass runs on both Linux
 LLVM legs instead - x86_64 on linux-llvm, aarch64 on linux-llvm-arm64 since 2026-09-06 - and each
 builds, packages and uploads its own pair as `packages-crucible-<preset>`, which is the

@@ -1852,7 +1852,7 @@ jobs:
     # NOTHING about speed: QEMU is not cycle-accurate and reports a CPU clock
     # that disagrees with its own boot log. The probe's us_per_frame lines are
     # printed here for shape, and the real-time number has to come from
-    # hardware - see docs/platforms/esp32.md.
+    # hardware - see docs/platforms/bare-metal/esp32-s3.md.
     needs: check-runners
     if: inputs.run_esp
     runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_6) }}

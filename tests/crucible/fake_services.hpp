@@ -15,7 +15,7 @@
 #include "virtual_device.hpp"
 
 // Scriptable stand-ins for the four platform seams, beside fake_devices.hpp's
-// AudioDevices (docs/crucible/promotion.md, Phase 2). Between them the engine,
+// AudioDevices (docs/crucible/design/promotion.md, Phase 2). Between them the engine,
 // the output stage and the UI controller's rules run in a plain Catch2 process
 // on any platform, including a Linux CI leg with no audio hardware and no
 // window manager.

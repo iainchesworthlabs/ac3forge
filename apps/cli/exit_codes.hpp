@@ -50,7 +50,7 @@
 // nothing else from a shared header - and because misc-include-cleaner (a CI
 // gate) wants the file that uses a name to include the file that declares it.
 //
-// Documented for users in docs/cli/commands.md#exit-codes; `ac3cli help
+// Documented for users in docs/forge/cli/commands.md#exit-codes; `ac3cli help
 // exit-codes` prints the same table.
 namespace ac3cli {
 

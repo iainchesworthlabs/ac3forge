@@ -15,7 +15,7 @@
 //
 // tests/io/test_probe.cpp already holds the library's own contract - what the
 // walk concludes about a stream. What is checked HERE is the part a library
-// test cannot see: that the JSON document matches the schema docs/cli/
+// test cannot see: that the JSON document matches the schema docs/forge/cli/
 // commands.md publishes, that the exit code is usable as a gate, and that both
 // output forms agree with each other about the same file. A sibling chip is
 // told to build an HLS/DASH manifest check on this document, so the fields it
@@ -150,7 +150,7 @@ fs::path make_ac3(const std::string& name, const std::string& args) {
 
 }  // namespace
 
-TEST_CASE("probe's JSON document carries the schema docs/cli/commands.md publishes",
+TEST_CASE("probe's JSON document carries the schema docs/forge/cli/commands.md publishes",
           "[cli][probe]") {
     const auto input = baseline("ac3-51-448", "ffmpeg.ac3");
     REQUIRE(fs::exists(input));

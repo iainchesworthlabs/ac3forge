@@ -26,7 +26,7 @@
 // The stop case is the one with a bug behind it. The probe runs
 // `output->enumerate()` on its own thread and was never joined, so a stop
 // that landed while an enumeration was in flight destroyed the OutputStage
-// out from under the thread inside it (docs/crucible/promotion.md, "the
+// out from under the thread inside it (docs/crucible/design/promotion.md, "the
 // probe thread outlived what it was enumerating"). `loop()` now joins the
 // probe before it stops the watcher or the output, which makes the ordering
 // observable from here: with an enumeration parked, `stop()` must not

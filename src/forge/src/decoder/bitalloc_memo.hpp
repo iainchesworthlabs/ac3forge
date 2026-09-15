@@ -19,7 +19,7 @@
 // channel's exponents once a frame and reuses them, so five of its six
 // blocks would derive the same allocation again. Measured on an ESP32-S3
 // before this existed, bit allocation was 1.6 to 2.1 ms of a 14 ms 5.1
-// frame (docs/platforms/esp32.md).
+// frame (docs/platforms/bare-metal/esp32-s3.md).
 //
 // Only the untraced call consults it: a syntax trace wants the mask, which
 // the memo does not keep, so the traced form always recomputes and marks the

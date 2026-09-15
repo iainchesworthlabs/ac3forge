@@ -206,8 +206,8 @@ Atmos-in-E-AC-3 stream that plays as 5.1 on that decoder. See
 !!! example "See it in code"
     - [Spatial & Atmos objects](../library/spatial-and-atmos.md)
     - [Object signing](object-signing.md) — the EMDF protection tag and how to provision a key
-    - [CLI commands](../cli/commands.md) — see the `atmos` and `atmos-encode` commands
-    - [Objects & motion (GUI)](../gui/objects-and-motion.md)
+    - [CLI commands](../forge/cli/commands.md) — see the `atmos` and `atmos-encode` commands
+    - [Objects & motion (GUI)](../forge/gui/objects-and-motion.md)
 
 ---
 

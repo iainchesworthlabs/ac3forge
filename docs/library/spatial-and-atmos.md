@@ -384,7 +384,7 @@ channel labels — `"lr"`, `"c"`, `"lfe"`, `"ls_rs"`, `"lb_rb"`, `"tfl_tfr"`, `"
 
 `scene_objects_from_keyframe_text()` / `to_keyframe_text()` read and write the older
 whitespace-column grammar `ac3cli atmos-path` has always taken, unchanged including its
-diagnostics — see [CLI → Commands](../cli/commands.md). `read_scene()` and `scene_from_text()`
+diagnostics — see [CLI → Commands](../forge/cli/commands.md). `read_scene()` and `scene_from_text()`
 take either, told apart by whether the first non-whitespace character is `{`, so a path argument
 keeps working whichever form the file is in.
 

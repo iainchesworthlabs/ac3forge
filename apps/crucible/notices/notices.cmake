@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# This build's NOTICES.txt (docs/crucible/promotion.md, Phase 6).
+# This build's NOTICES.txt (docs/crucible/design/promotion.md, Phase 6).
 #
 # include()d from ../CMakeLists.txt once the two build facts that change the
 # file are known - whether a Qt kit was found, and whether it has Quick 3D -

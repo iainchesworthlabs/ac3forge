@@ -241,7 +241,7 @@ DEPENDENTS = {"mono": 0, "stereo": 0, "1+1": 0, "51": 0,
               "71": 1, "512": 1, "514": 1, "714": 2}
 
 # Annex E coding tools, as the `[tools]` positional's own grammar spells them
-# (plan::kToolsSyntax, docs/cli/metadata-options.md).
+# (plan::kToolsSyntax, docs/forge/cli/metadata-options.md).
 #
 # `ecpl` is never drawn alone: it "only takes effect alongside cpl", so a lone
 # `ecpl` would silently be a `none` case wearing an interesting name, and the

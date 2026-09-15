@@ -66,7 +66,7 @@ anything first.
 |---|---|
 | `silence` | Silent AC-3 |
 | `sine` | A tone, one per speaker, AC-3. Append `c` to `[layout]` (e.g. `stereoc`) to turn on channel coupling. |
-| `orbit` | AC-3 with a synthetic panned source circling the room (exercises the [spatial layer](../library/spatial-and-atmos.md) — plain bed panning, no object metadata) |
+| `orbit` | AC-3 with a synthetic panned source circling the room (exercises the [spatial layer](../../library/spatial-and-atmos.md) — plain bed panning, no object metadata) |
 | `atmos` | E-AC-3 with synthetic orbiting Atmos objects — a 5.1 bed plus JOC + OAMD side data (TS 103 420) |
 | `atmos-path` | Same, but object motion comes from an authored scene file (keyframe columns or JSON) instead of the built-in orbit |
 
@@ -81,7 +81,7 @@ so either works wherever the other does:
 - **An object scene in JSON**, the `ac3::oba::ObjectScene` form: named objects, a bed
   assignment, per-segment interpolation (`hold`, `linear`, `smooth`) and a scene orientation,
   none of which the columns have anywhere to put. Documented in
-  [Library → Spatial & Atmos](../library/spatial-and-atmos.md#the-serialised-form); the GUI
+  [Library → Spatial & Atmos](../../library/spatial-and-atmos.md#the-serialised-form); the GUI
   writes it when you save the export under a `.json` name.
 
 Positions are room-anchored per TS 103 420 §4.2.1: `x` runs 0 at the left wall to 1 at the
@@ -148,7 +148,7 @@ row as `UNAVAILABLE HERE` instead of the description below, and running it print
 (`ac3cli atmos-adm ...` → `error: 'atmos-adm' is unavailable on this platform: this build was not
 configured with -DAC3FORGE_BUILD_ADM=ON ...`) rather than "unknown command". Three things in the
 tool need `ac3adm::ac3adm`/`ac3::admbridge`, this project's sole opt-in, Boost-requiring module
-(default **off** — see [ADM / BW64 reading](../library/adm.md#why-opt-in)): this command,
+(default **off** — see [ADM / BW64 reading](../../library/adm.md#why-opt-in)): this command,
 `atmos-iab` below, and `decode`'s optional `adm_out` argument. Everything else builds and works
 identically whether that flag is on or off. What the row looks like in a build configured
 with the flag on (the usage block at the top of this page is from a *default* build, where
@@ -160,7 +160,7 @@ this row instead reads `UNAVAILABLE HERE`):
 
 | Command | What it does |
 |---|---|
-| `atmos-adm` | A real ADM BWF master (professional delivery format Netflix's and Apple's own Atmos ingest pipelines require) straight to DD+ JOC E-AC-3 — no WAV, no hand-authored keyframe file: [`ac3::admbridge::build`](../library/adm-bridge.md) classifies every channel as a bed speaker feed or a dynamic object and builds its own `ac3::oba::ObjectPath` straight from the file's authored BS.2076-2 §10.3 position/gain automation, driven frame by frame the same way `atmos-encode` drives an authored `[paths.txt]` |
+| `atmos-adm` | A real ADM BWF master (professional delivery format Netflix's and Apple's own Atmos ingest pipelines require) straight to DD+ JOC E-AC-3 — no WAV, no hand-authored keyframe file: [`ac3::admbridge::build`](../../library/adm-bridge.md) classifies every channel as a bed speaker feed or a dynamic object and builds its own `ac3::oba::ObjectPath` straight from the file's authored BS.2076-2 §10.3 position/gain automation, driven frame by frame the same way `atmos-encode` drives an authored `[paths.txt]` |
 
 ```bash
 ac3cli atmos-adm master.wav out.ec3 448
@@ -183,7 +183,7 @@ Every failure — a container/XML parse error (`ac3adm::AdmError`) or a graph-re
 pack type) — prints a real diagnosis via that error's own `describe()`, never an opaque crash or a
 bare non-zero exit.
 
-See [ADM / BW64 reading](../library/adm.md) and [ADM → Atmos bridging](../library/adm-bridge.md)
+See [ADM / BW64 reading](../../library/adm.md) and [ADM → Atmos bridging](../../library/adm-bridge.md)
 for the parser and the mapping layer this command drives, and
 [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp)
 for the same pipeline as a minimal, standalone, self-fixturing program.
@@ -193,9 +193,9 @@ for the same pipeline as a minimal, standalone, self-fixturing program.
 **Only *runnable* in a build with `-DAC3FORGE_BUILD_ADM=ON`** — the identical gate and the same
 `UNAVAILABLE HERE`/clear-error treatment `atmos-adm` above gets, and for the same underlying
 reason even though `ac3iab::ac3iab` itself is on by default: this command needs
-[`ac3::admbridge`'s own IAB mapping](../library/adm-bridge.md#bridging-iab)
+[`ac3::admbridge`'s own IAB mapping](../../library/adm-bridge.md#bridging-iab)
 (`build_iab()`), and that whole module rides `AC3FORGE_BUILD_ADM` (see
-[ADM / BW64 reading](../library/adm.md#why-opt-in)) since it PUBLIC-links `ac3adm::ac3adm`
+[ADM / BW64 reading](../../library/adm.md#why-opt-in)) since it PUBLIC-links `ac3adm::ac3adm`
 alongside `ac3iab::ac3iab`. What the row looks like in a build configured with the flag on (the
 usage block at the top of this page is from a *default* build, where this row instead reads
 `UNAVAILABLE HERE`):
@@ -206,7 +206,7 @@ usage block at the top of this page is from a *default* build, where this row in
 
 | Command | What it does |
 |---|---|
-| `atmos-iab` | A real Immersive Audio Bitstream (SMPTE ST 2098-2) master — a bare elementary `.iab` file or a real MXF Track File alike, sniffed automatically by its first byte — straight to DD+ JOC E-AC-3: [`ac3::admbridge::build_iab`](../library/adm-bridge.md#bridging-iab) classifies every Bed channel/Object and builds its own `ac3::oba::ObjectPath` from the file's own per-frame panning, driven frame by frame the same way `atmos-adm` drives an ADM master |
+| `atmos-iab` | A real Immersive Audio Bitstream (SMPTE ST 2098-2) master — a bare elementary `.iab` file or a real MXF Track File alike, sniffed automatically by its first byte — straight to DD+ JOC E-AC-3: [`ac3::admbridge::build_iab`](../../library/adm-bridge.md#bridging-iab) classifies every Bed channel/Object and builds its own `ac3::oba::ObjectPath` from the file's own per-frame panning, driven frame by frame the same way `atmos-adm` drives an ADM master |
 
 ```bash
 ac3cli atmos-iab master.iab out.ec3 448
@@ -228,8 +228,8 @@ Every failure — a bitstream/MXF parse error (`ac3iab::IabError`) or a graph-re
 essence that never resolved) — prints a real diagnosis via that error's own `describe()`, never an
 opaque crash or a bare non-zero exit.
 
-See [IAB reading](../library/iab.md) and
-[ADM → Atmos bridging](../library/adm-bridge.md#bridging-iab) for the parser
+See [IAB reading](../../library/iab.md) and
+[ADM → Atmos bridging](../../library/adm-bridge.md#bridging-iab) for the parser
 and the mapping layer this command drives, and
 [`examples/encode_iab.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_iab.cpp)
 for the same pipeline as a minimal, standalone, self-fixturing program.
@@ -254,7 +254,7 @@ Atmos DD+ stream play on an Atmos-unaware decoder at all. So the 5.1 rendition o
 needs no re-encode, only the object layer removed: the EMDF container in the per-block skip
 fields and TS 103 420 §8.3.1's `addbsi` marker come out, `frmsiz` and `crc2` are re-derived
 around what is left, and every exponent and mantissa is copied bit for bit. Decoding the result
-gives sample-identical PCM. See [Object-layer strip](../library/decoding.md#object-layer-strip)
+gives sample-identical PCM. See [Object-layer strip](../../library/decoding.md#object-layer-strip)
 for what it does and does not touch.
 
 The container is removed, not emptied — an empty container would still tell every downstream
@@ -294,7 +294,7 @@ ac3cli decode - - < out.ac3 > out.wav
 
 It decodes on the fast (FFT) inverse-transform path by default; `mode=reference` or
 `fast-imdct=off` selects the spec's direct evaluation instead — see
-[Validation → Performance and reference modes](../verification.md#performance-and-reference-modes)
+[Validation → Performance and reference modes](../../verification.md#performance-and-reference-modes)
 for what each mode is for, and [Options & grammars](metadata-options.md) for the token rules.
 
 A stream carrying more than one programme (a second independent substream — a second language,
@@ -379,7 +379,7 @@ ac3cli decode recovered.ac3 out.wav conceal=mute     # window-ramped silence
 
 Either way the run reports how many frames or access units were concealed. Off by default: a
 decode that hides a damaged frame looks exactly like one that had nothing to hide. See
-[Decoding → Concealing it instead](../library/decoding.md#concealing-it-instead-decoderconfigconcealment).
+[Decoding → Concealing it instead](../../library/decoding.md#concealing-it-instead-decoderconfigconcealment).
 
 #### `probe` — what the stream says about itself
 
@@ -548,7 +548,7 @@ same way. It reads the sync frame, table of contents, presentation and substream
 channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike; audio content is
 reported by byte range, never decoded, and there is no `detail=frames`/`detail=blocks`
 equivalent — there is no per-block audio-layer walk to show, by scope (see
-[Verification](../verification.md#ac-4) for exactly what that does and does not cover, including
+[Verification](../../verification.md#ac-4) for exactly what that does and does not cover, including
 the narrower evidence behind the A-JOC/object/OAMD path).
 
 ```bash
@@ -778,9 +778,9 @@ ac3cli ts commentary.ac3 commentary.ts atsc asvc=0x05
 ### Live & hardware
 
 Needs the platform's capture, passthrough, monitor or spatial backend — see the per-OS Platform
-notes pages ([Windows](../platforms/windows.md), [Linux](../platforms/linux.md),
-[Raspberry Pi](../platforms/raspberry-pi.md), [macOS](../platforms/macos.md),
-[Android](../platforms/android.md)) for what's actually confirmed against real hardware on
+notes pages ([Windows](../../platforms/windows.md), [Linux](../../platforms/linux.md),
+[Raspberry Pi](../../platforms/raspberry-pi.md), [macOS](../../platforms/macos.md),
+[Android](../../platforms/android.md)) for what's actually confirmed against real hardware on
 each OS.
 
 | Command | What it does |
@@ -845,7 +845,7 @@ Once bound, the listener understands one address space, `<n>` 0-based and matchi
 
 | Address | OSC type tag | Arguments |
 |---|---|---|
-| `/object/<n>/xyz` | `,fff` | x, y, z (float32) — the same room-anchored axes `atmos-path`'s own scene grammar uses (see [x/y/z above](#synthesis-generate-a-stream-from-nothing) and [Library → Spatial & Atmos](../library/spatial-and-atmos.md)) |
+| `/object/<n>/xyz` | `,fff` | x, y, z (float32) — the same room-anchored axes `atmos-path`'s own scene grammar uses (see [x/y/z above](#synthesis-generate-a-stream-from-nothing) and [Library → Spatial & Atmos](../../library/spatial-and-atmos.md)) |
 | `/object/<n>/gain` | `,f` | linear gain (float32), not dB |
 | `/object/<n>/lfe` | `,f` | linear `lfe_send` (float32) |
 | `/object/<n>/release` | `,` | no arguments — hands the object back to the orbit's own starting point |
@@ -953,7 +953,7 @@ that list with its own output. What such a run actually submits has not been che
 both tokens off this command.
 
 What is confirmed against hardware and what is not is set out on the
-[Windows](../platforms/windows.md#audio-backend-wasapi) page: the sink has activated and rendered
+[Windows](../../platforms/windows.md#audio-backend-wasapi) page: the sink has activated and rendered
 this project's own Atmos stream against an endpoint with Windows Sonic enabled, and the
 no-spatial-format refusal was confirmed against two endpoints. Nobody has yet listened and
 confirmed that the objects arrive from where their positions say they should.
@@ -963,7 +963,7 @@ confirmed that the objects arrive from where their positions say they should.
 When `play` is given a `device_index`, it first asks what that sink actually
 accepts before committing to a format — its own EDID/ELD-carried CEA-861 Short Audio
 Descriptors where a backend can read them (real today only on ALSA — see
-[Linux](../platforms/linux.md)), the same live probe `outputs` uses everywhere else, noted on
+[Linux](../../platforms/linux.md)), the same live probe `outputs` uses everywhere else, noted on
 stderr when that fallback happens. A source format the sink rejects then gets an automatic
 fallback instead of a plain refusal:
 
@@ -1028,7 +1028,7 @@ each session, and act on what they find:
 For a capture already saved to disk, `unspdif` does the same job offline.
 
 None of this has been confirmed against a real HDMI or S/PDIF capture device — see
-[Windows](../platforms/windows.md#audio-backend-wasapi) for exactly what is and is not verified
+[Windows](../../platforms/windows.md#audio-backend-wasapi) for exactly what is and is not verified
 against hardware. What is verified is the framing itself, both ways, against FFmpeg's `spdif`
 muxer as an independent oracle.
 

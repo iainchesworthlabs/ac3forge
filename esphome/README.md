@@ -52,7 +52,7 @@ independent substream plus three dependents, which covers Atmos.
 single-precision FPU, which the decode path needs; the original ESP32 and the S2
 would software-emulate every floating-point operation, and the ESP32-P4's vector
 unit is integer-only so it inherits nothing (see
-[`docs/platforms/esp32.md`](../docs/platforms/esp32.md)). The C3 and C6 are
+[`docs/platforms/bare-metal/esp32-c3.md`](../docs/platforms/bare-metal/esp32-c3.md)). The C3 and C6 are
 RISC-V and a different port.
 
 ## Memory

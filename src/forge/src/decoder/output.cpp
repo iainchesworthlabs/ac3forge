@@ -93,7 +93,7 @@ using Scalar = internal::decode_scalar_t;
 
 // The folds work through a frame this many samples at a time, and their
 // working storage is this long rather than a frame long. Measured on an
-// ESP32-S3 (docs/platforms/esp32.md, "Folded to stereo"), the frame-long
+// ESP32-S3 (docs/platforms/bare-metal/esp32-s3.md, "Folded to stereo"), the frame-long
 // version spent a third of a 7.1.4 fold copying finished frames between
 // buffers, and its six seats and two outputs were 49 KB of heap at 1,536
 // samples. A block is also what the decoders' own output already comes in.

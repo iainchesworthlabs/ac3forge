@@ -2901,7 +2901,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // double and narrowed: on the single-precision FPU the
         // minimum-footprint profile targets, the double divide per mantissa
         // this used to do was a software routine, and this loop was costing
-        // more than the inverse transform (docs/platforms/esp32.md). The
+        // more than the inverse transform (docs/platforms/bare-metal/esp32-s3.md). The
         // value is the same - dequantize_mantissa_as says why - and the
         // exponent's 2^-exp is an exact scale in either type.
         const auto read_stream = [&](int s, int begin) {

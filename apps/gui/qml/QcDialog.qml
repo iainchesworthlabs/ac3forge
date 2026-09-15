@@ -10,7 +10,7 @@ import Ac3Forge
 // different shape to every other surface in this window: open → decode →
 // measure → report, with no source, no plan and no encoder anywhere in the
 // path. It lives here, as its own modal reachable from the header, rather
-// than as a tab beside Format/Coding tools/Metadata — see docs/gui/qc.md
+// than as a tab beside Format/Coding tools/Metadata — see docs/forge/gui/qc.md
 // for the full reasoning. Modelled directly on PreferencesDialog's own
 // shape (a Dialog on the standard backdrop, driving a singleton controller
 // exactly the way every other panel drives EncoderController), so this

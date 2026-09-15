@@ -21,7 +21,7 @@ struct LanguageInfo {
 // then every language apps/gui/translations/ ships - the same set, same
 // order, as CountdownSolver's own kLanguages (roadmap UX3: build to that
 // project's already-shipped canonical set rather than invent a second one).
-// Real translation coverage is partial today (see docs/gui/localisation.md);
+// Real translation coverage is partial today (see docs/forge/gui/localisation.md);
 // a language appears here once its .ts exists, whether or not every string
 // in it is finished yet.
 constexpr std::array<LanguageInfo, 7> kLanguages{{

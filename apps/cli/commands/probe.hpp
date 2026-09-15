@@ -5,7 +5,7 @@
 #include "../support.hpp"
 
 // `ac3cli probe` (roadmap IO1): what an elementary stream declares about
-// itself, as a human-readable table or as the JSON document docs/cli/
+// itself, as a human-readable table or as the JSON document docs/forge/cli/
 // commands.md documents as a stable contract.
 //
 // Its own file rather than another entry in commands/analysis.cpp, which is

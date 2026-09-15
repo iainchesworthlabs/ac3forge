@@ -165,7 +165,7 @@ AC3FORGE_EXPORT void spx_apply_notch(std::span<float> synth, int startmant,
 // spx_noise_ratio in the caller's scalar; the exported form is this at
 // double. The decoder evaluates it once per band per channel per block in
 // its coefficient store's type, where at double it was two software divides
-// per band on a single-precision FPU (docs/platforms/esp32.md).
+// per band on a single-precision FPU (docs/platforms/bare-metal/esp32-s3.md).
 template <typename Scalar>
 [[nodiscard]] constexpr Scalar spx_noise_ratio_as(int band_start, int band_size, int endmant,
                                                   int blend) {
@@ -366,7 +366,7 @@ template <typename Scalar>
 // 233,522 bytes on a clean heap and fits, and at 267,754 after an
 // enhanced-coupling decode has left this behind, where it fails outright on a
 // 6,144-byte request. The two differ by this scratch. See
-// docs/platforms/esp32.md.
+// docs/platforms/bare-metal/esp32-s3.md.
 //
 // Safe at any time: the next ecpl_channel_spectrum call rebuilds what it
 // needs, at the cost of one allocation. Affects only the calling thread. A
@@ -388,7 +388,7 @@ AC3FORGE_EXPORT void ecpl_channel_spectrum(std::span<const double, 256> prev_man
 // double ones. Not the double result narrowed; the transforms round in
 // float. Measured on an ESP32-S3 the double form was 13.8 ms per block, all
 // of it software floating point on that single-precision FPU
-// (docs/platforms/esp32.md).
+// (docs/platforms/bare-metal/esp32-s3.md).
 AC3FORGE_EXPORT void ecpl_channel_spectrum(std::span<const float, 256> prev_mant,
                                            std::span<const float, 256> curr_mant,
                                            std::span<const float, 256> next_mant,
@@ -562,7 +562,7 @@ AC3FORGE_EXPORT void aht_inverse(std::span<const double, kBlocksPerFrameSize> co
 // Thirty-six multiply-adds per bin against a kernel narrowed once from the
 // double one: at double, on a single-precision FPU, those were seventy-two
 // software routines per bin and a quarter of an E-AC-3 decode
-// (docs/platforms/esp32.md). Not the double result narrowed - the sums round
+// (docs/platforms/bare-metal/esp32-s3.md). Not the double result narrowed - the sums round
 // in float - which is the same class of difference the float coefficient
 // store already accepted at the transform.
 AC3FORGE_EXPORT void aht_inverse(std::span<const float, kBlocksPerFrameSize> coefficients,

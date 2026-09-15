@@ -211,7 +211,7 @@ class EncoderController : public QObject {
     // Capped at two (the clock-master model's own limit): row 0 is always
     // the MASTER, whose delivery paces the session's frame loop exactly as a
     // single-device session always has; row 1, when present, is the SLAVE,
-    // resampled to track the master (see docs/gui/live-session.md). One row
+    // resampled to track the master (see docs/forge/gui/live-session.md). One row
     // per selection - {slotIndex, deviceIndex, name, channels, rateText,
     // isMaster} - deviceIndex is captureDevices()'s own numbering, the same
     // ac3::audio::enumerate_devices() index startLiveSession/
@@ -648,7 +648,7 @@ public:
     void setKeepPartialOutput(bool keep);
     [[nodiscard]] QString status() const { return status_; }
     [[nodiscard]] QString diagnosticsMessage() const { return diagnostics_message_; }
-    // The support file, as text (docs/gui/accessibility.md, "Saving a
+    // The support file, as text (docs/forge/gui/accessibility.md, "Saving a
     // diagnostics file"). The rule it holds - no signing key, no environment
     // value, no byte of anything loaded - lives in gui_diagnostics.hpp, not here;
     // this composes the named facts that module renders. Invokable so the
@@ -1443,7 +1443,7 @@ private:
     // write_to_disk false, null) - see openLiveOutputWriters.
     // `device2` is the slave, when a second device was selected and opened
     // successfully - nullopt for an ordinary single-device session, which
-    // then behaves exactly as it always has. See docs/gui/live-session.md
+    // then behaves exactly as it always has. See docs/forge/gui/live-session.md
     // for the clock-master model this implements.
     void runLiveSession(ac3::audio::DeviceInfo device,
                         std::optional<ac3::audio::DeviceInfo> device2, bool monitor,

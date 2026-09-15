@@ -746,7 +746,7 @@ fold.
 
 `.bss` fell from 237,592 bytes in two steps. Moving `ecpl_channel_spectrum`'s 32 KB scratch off
 thread-local storage — it made the library unlinkable into any FreeRTOS application, see
-[the ESP32-S3 page](platforms/esp32.md) — took
+[the ESP32-S3 page](platforms/bare-metal/esp32-s3.md) — took
 `.tbss` from 32,784 bytes to 24, and `tls.cpp`'s block was resized from 64 KiB to 4 KiB to
 match. The decode path then moved to float32 under this profile, halving every coefficient
 buffer. `.text` rose 5,680 bytes over the same span, which is the float32 transform
@@ -939,7 +939,7 @@ each and not a frame: for AC-3 a block of the two outputs (2,048 bytes), and for
 of the six seats its layout fold stages the substreams' channels into (6,144), the fold itself
 going straight into the caller's first two channels. Until 2026-09-11 both were frame-long, and
 the fold rows peaked at 68,709, 217,574 and 280,214 bytes.
- [The ESP32-S3 page](platforms/esp32.md#objects) has what each step was worth.
+ [The ESP32-S3 page](platforms/bare-metal/esp32-s3.md#objects) has what each step was worth.
 
 **Retained after teardown** is bytes still live when the probe finishes, after every decoder it
 made has been destroyed — so not per-frame growth and not a leak. It is 12 bytes now: one
@@ -999,7 +999,7 @@ Not cycles on any real part: a Cortex-M3 would take more, an ESP32-S3 with its F
 of a 5.1 frame's count in cycles. What the column is for is that it is deterministic — two runs
 agree to the instruction — so a change that adds one per cent of work to a fixture shows in the
 run's own lines, and the ceilings above hold the same headroom the other gates do. The
-[ESP32-S3 page](platforms/esp32.md#other-esp32-variants) reads the ESP32-C3's prospects off it.
+[ESP32-C3 page](platforms/bare-metal/esp32-c3.md) reads the ESP32-C3's prospects off it.
 
 ### Instructions per frame, fixed-point tier
 

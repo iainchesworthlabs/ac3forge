@@ -208,7 +208,7 @@ target_include_directories(forge_minimal
         # profile's bare-metal targets still resolve to it - an arm-none-eabi
         # Cortex-M3 has no vector unit at all, and the ESP32-S3's PIE is
         # fixed-point, so its float32 path is the scalar FPU either way
-        # (docs/platforms/esp32.md) - and both get there through
+        # (docs/platforms/bare-metal/esp32-s3.md) - and both get there through
         # AC3FORGE_SIMD's own "anything else lands on generic" arm rather than
         # by being spelled out here. What the literal cost was a
         # minimum-footprint build for aarch64, whose float32 decode path NEON
@@ -233,7 +233,7 @@ target_compile_features(forge_minimal PUBLIC cxx_std_23)
 # the arm-none-eabi leg's image figure is only comparable across builds that
 # optimise for the same thing. A target that has to keep up with real time
 # and has flash to spare turns it on - apps/baremetal/platform/esp32s3 does,
-# and docs/platforms/esp32.md's Timing section has the measurement behind
+# and docs/platforms/bare-metal/esp32-s3.md's Timing section has the measurement behind
 # the list below.
 #
 # Each file is here because a board run showed the optimiser paying for it,

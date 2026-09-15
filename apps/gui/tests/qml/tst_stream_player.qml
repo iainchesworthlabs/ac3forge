@@ -102,7 +102,7 @@ TestCase {
     }
 
     // A finished run's own "More…" menu (Main.qml's runMoreMenu) is the run-
-    // chip shortcut docs/gui/qc.md and docs/gui/inspect-objects.md used to
+    // chip shortcut docs/forge/gui/qc.md and docs/forge/gui/inspect-objects.md used to
     // both say did not exist yet. The menu itself is a Popup, so its
     // MenuItems are not Item-derived and findChild - which only walks
     // Item.children, the same reason every OTHER findChild in this suite

@@ -148,7 +148,7 @@ inline constexpr std::array<std::uint16_t, 19> kBitratesKbps = {
 // safe floor). Used where a plan's own bitrate - possibly an E-AC-3-only
 // rung like 768, or simply not on the table at all - has to be reduced to
 // something plain AC-3 can carry, such as the live session's parallel 5.1
-// downmix receiver leg (see docs/gui/live-session.md).
+// downmix receiver leg (see docs/forge/gui/live-session.md).
 [[nodiscard]] constexpr std::uint32_t clamp_to_legal_ac3_bitrate(std::uint32_t requested_kbps) {
     const std::uint32_t capped = std::min<std::uint32_t>(requested_kbps, kBitratesKbps.back());
     std::uint32_t best = kBitratesKbps.front();

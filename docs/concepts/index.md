@@ -4,8 +4,8 @@ This section explains the ideas behind ac3forge in plain language — no code, n
 no prior knowledge of audio codecs assumed. If you have ever seen "Dolby Digital" or "Dolby
 Atmos" on a disc case or a TV settings menu and wondered what it actually means, start here.
 
-The rest of the documentation ([Library](../library/index.md), [CLI](../cli/index.md),
-[GUI](../gui/index.md)) shows you how ac3forge implements these ideas in software. This
+The rest of the documentation ([Library](../library/index.md), [CLI](../forge/cli/index.md),
+[GUI](../forge/gui/index.md)) shows you how ac3forge implements these ideas in software. This
 section only explains what the ideas *are*.
 
 ## Why compress multichannel audio at all?

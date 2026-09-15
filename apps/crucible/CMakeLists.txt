@@ -1,4 +1,4 @@
-# AC3Forge Crucible (roadmap UX11 and UX12): docs/crucible/promotion.md, and
+# AC3Forge Crucible (roadmap UX11 and UX12): docs/crucible/design/promotion.md, and
 # docs/platforms/windows-demo.md for the demo it grew out of. Windows, Linux
 # and macOS - the third arrived on 2026-09-06. It compiles: the first CI
 # attempt stopped at the install() rule below for want of a BUNDLE
@@ -51,7 +51,7 @@ target_link_libraries(ac3crucible_engine
 # The macOS arm compiles and has never run: both macOS CI legs built every
 # file under engine/platform/macos/ on 2026-09-06, and no Mac has executed a
 # line of any of them - the seam tests link the stub and the QML tests drive
-# fakes. That is what docs/crucible/promotion.md's "What cannot be verified,
+# fakes. That is what docs/crucible/design/promotion.md's "What cannot be verified,
 # and why" table says and what every file under engine/platform/macos/
 # repeats at its head.
 if(WIN32)
@@ -85,7 +85,7 @@ elseif(UNIX AND NOT APPLE)
             "-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON, or turn the application "
             "off with -DAC3FORGE_BUILD_CRUCIBLE=OFF. Note that this trades away the "
             "passthrough path confirmed against a real receiver (ALSA iec958) for one that "
-            "is not yet - see docs/crucible/promotion.md, \"ALSA or PipeWire\".")
+            "is not yet - see docs/crucible/design/promotion.md, \"ALSA or PipeWire\".")
     endif()
     target_sources(ac3crucible_engine PRIVATE
         engine/platform/linux/session_monitor.cpp
@@ -100,7 +100,7 @@ elseif(UNIX AND NOT APPLE)
     target_include_directories(ac3crucible_engine
         PRIVATE "${CMAKE_SOURCE_DIR}/src/audio/src/backend/pipewire")
     target_link_libraries(ac3crucible_engine PRIVATE PkgConfig::AC3CRUCIBLE_PIPEWIRE)
-    # X11 full-screen detection (docs/crucible/promotion.md, Phase 4's X11
+    # X11 full-screen detection (docs/crucible/design/promotion.md, Phase 4's X11
     # addendum). libxcb, not libX11: thread-safe, no global error handler,
     # and already on every machine that runs Qt's xcb platform plugin, so
     # the .deb's shlibdeps add nothing new. Optional the way the audio
@@ -135,7 +135,7 @@ elseif(UNIX AND NOT APPLE)
     # This platform's notices directory (notices/notices.cmake).
     set(AC3CRUCIBLE_PLATFORM_DIR linux)
 elseif(APPLE)
-    # macOS (roadmap UX12, docs/crucible/promotion.md's Phase 5). The four
+    # macOS (roadmap UX12, docs/crucible/design/promotion.md's Phase 5). The four
     # seams are the CoreAudio HAL's process object list, NSWorkspace, the HAL's
     # default output device, and a silent device that does not exist because
     # this platform silences at the tap instead. Read the header of each file

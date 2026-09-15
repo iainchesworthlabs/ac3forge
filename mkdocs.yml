@@ -125,23 +125,23 @@ nav:
   - Forge:
       - Overview: forge/index.md
       - CLI reference:
-          - Overview: cli/index.md
-          - Commands: cli/commands.md
-          - Options & grammars: cli/metadata-options.md
+          - Overview: forge/cli/index.md
+          - Commands: forge/cli/commands.md
+          - Options & grammars: forge/cli/metadata-options.md
       - GUI guide:
-          - Window layout: gui/index.md
-          - Loading a source: gui/loading-a-source.md
-          - Format & channels: gui/format-and-channels.md
-          - Objects & motion: gui/objects-and-motion.md
-          - Live capture & session: gui/live-session.md
-          - Multi-source & assignment: gui/source-assignment.md
-          - Coding tools: gui/coding-tools.md
-          - Metadata: gui/metadata.md
-          - QC a stream: gui/qc.md
-          - Inspect objects: gui/inspect-objects.md
-          - Open stream: gui/open-stream.md
-          - Localisation: gui/localisation.md
-          - Keyboard & text size: gui/accessibility.md
+          - Window layout: forge/gui/index.md
+          - Loading a source: forge/gui/loading-a-source.md
+          - Format & channels: forge/gui/format-and-channels.md
+          - Objects & motion: forge/gui/objects-and-motion.md
+          - Live capture & session: forge/gui/live-session.md
+          - Multi-source & assignment: forge/gui/source-assignment.md
+          - Coding tools: forge/gui/coding-tools.md
+          - Metadata: forge/gui/metadata.md
+          - QC a stream: forge/gui/qc.md
+          - Inspect objects: forge/gui/inspect-objects.md
+          - Open stream: forge/gui/open-stream.md
+          - Localisation: forge/gui/localisation.md
+          - Keyboard & text size: forge/gui/accessibility.md
   - Crucible:
       - Overview: crucible/index.md
       - Install & first run: crucible/install.md
@@ -151,8 +151,12 @@ nav:
       - Keyboard & screen readers: crucible/accessibility.md
       - Languages: crucible/localisation.md
       - Troubleshooting: crucible/troubleshooting.md
-      - Promotion plan and record: crucible/promotion.md
-      - The Windows demo it grew from: platforms/windows-demo.md
+      - Design record:
+          - Promotion plan and record: crucible/design/promotion.md
+          - The Windows demo it grew from: platforms/windows-demo.md
+  - Hearth:
+      - Overview: hearth/index.md
+      - Design record: hearth/design/player-appliance.md
   - Platforms:
       - Which platform: platforms/index.md
       - Windows: platforms/windows.md
@@ -161,8 +165,12 @@ nav:
       - macOS: platforms/macos.md
       - Android (Shield demo): platforms/android.md
       - WebAssembly (browser): platforms/wasm.md
-      - ESP32-S3 (ESP-IDF): platforms/esp32.md
-      - Bare metal: platforms/bare-metal.md
+      - Bare metal:
+          - Overview: platforms/bare-metal/index.md
+          - Cortex-M3 (QEMU reference): platforms/bare-metal/cortex-m3.md
+          - ESP32-S3: platforms/bare-metal/esp32-s3.md
+          - ESP32-C3: platforms/bare-metal/esp32-c3.md
+          - ESPHome: platforms/bare-metal/esphome.md
       - Windows null-sink driver: platforms/windows-driver-acx.md
   - Project:
       - Contributing: contributing.md

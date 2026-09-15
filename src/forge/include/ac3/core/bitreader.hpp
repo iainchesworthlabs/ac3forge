@@ -17,7 +17,7 @@ namespace ac3 {
 // thousand fields a frame for a 5.1 stream — and the bit-at-a-time form
 // cost about eight cycles per BIT of each: on an ESP32-S3 that was most of
 // the mantissa stage of a decode that had nothing else left in it
-// (docs/platforms/esp32.md). The values, the position and the overflow
+// (docs/platforms/bare-metal/esp32-s3.md). The values, the position and the overflow
 // behaviour are exactly what they were; only the number of instructions
 // between them changed.
 class BitReader {

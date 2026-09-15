@@ -6,13 +6,13 @@
 #include "platform_services.hpp"
 
 // The macOS VirtualDevice: there is no silent device here, and the seam says
-// so rather than being absent (docs/crucible/promotion.md, "The silent device,
+// so rather than being absent (docs/crucible/design/promotion.md, "The silent device,
 // per platform").
 //
 // **THIS RUNS ON CI, AND ON NOBODY'S DESK.** Written 2026-09-06 without a
 // Mac; since the same day the Crucible Qt Quick suites reach it for real on
 // both macOS legs, through the controller's refreshDriver()
-// (docs/crucible/promotion.md, Phase 5). It is also the file here with least
+// (docs/crucible/design/promotion.md, Phase 5). It is also the file here with least
 // to be wrong about: it calls nothing, so what it says is what it does.
 //
 // The three platforms answer the same question three ways, and only this one

@@ -124,7 +124,7 @@ std::string bed_label(const ac3::oba::Program& program) {
 // dialnorm is transmitted as 1..31 meaning -1..-31 dB LKFS (§5.4.2.8); 0 is
 // reserved. Reporting the dB is what every other tool shows and what a
 // delivery spec is written in, so that is what both output forms carry - see
-// docs/cli/commands.md, which documents the JSON field as dB for exactly this
+// docs/forge/cli/commands.md, which documents the JSON field as dB for exactly this
 // reason.
 int dialnorm_db(int code) { return -code; }
 
@@ -671,7 +671,7 @@ void write_stream(JsonWriter& json, const io::ProbeReport& report) {
 // fields meaningful across any codec plus a dedicated `stream.ac4` object -
 // additive to the documented schema, not a violation of its "never
 // omitted" rule, which is about a stream's own optional fields within one
-// codec family. See docs/cli/commands.md.
+// codec family. See docs/forge/cli/commands.md.
 //
 // No detail=frames/detail=blocks equivalent exists here: there is no
 // per-block audio-layer walk to show, by scope. The first sync frame's TOC
@@ -1018,7 +1018,7 @@ void write_ac4_stream(JsonWriter& json, std::string_view path, const Ac4Summary&
 
 int run_probe_ac4(std::string_view in_path, std::istream& in, const Options& meta) {
     // Reads the whole input into memory - unlike the AC-3/E-AC-3 path above,
-    // which pulls forward through a fixed window (see docs/cli/commands.md's
+    // which pulls forward through a fixed window (see docs/forge/cli/commands.md's
     // "Memory is flat" claim, which is specific to that path and not
     // extended here). ac4::scan()/parse_raw_frame() operate on a
     // std::span - a deliberate parse-and-inspect design, not a streaming
@@ -1092,7 +1092,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     // every unit has been seen. Object member order carries no meaning in
     // JSON, so this costs a consumer nothing and is what lets a per-frame
     // dump of an arbitrarily long stream run in constant memory. See
-    // docs/cli/commands.md, which states the ordering as part of the
+    // docs/forge/cli/commands.md, which states the ordering as part of the
     // contract so nothing comes to depend on the opposite.
     JsonWriter json{stdout};
     if (meta.json) {

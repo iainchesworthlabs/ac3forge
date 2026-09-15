@@ -7,7 +7,7 @@
 
 // Small, real-time-safe IIR filtering for bundle C's explicit LFE routing:
 // when a caller uses the assignment table (ac3::plan::Assignment - see
-// docs/gui/source-assignment.md's LFE row) to send a full-bandwidth source
+// docs/forge/gui/source-assignment.md's LFE row) to send a full-bandwidth source
 // channel onto the LFE or LFE2 position by hand, that content is not a
 // file's own dedicated LFE channel - the automatic routing that carries one
 // of those is a separate concern and passes it through untouched, nothing
@@ -67,7 +67,7 @@ private:
 
 // Two cascaded Biquad sections realizing a 4th-order Butterworth low-pass -
 // the filter bundle C's LFE handling applies to a full-bandwidth channel
-// explicitly assigned onto LFE/LFE2 (see docs/gui/source-assignment.md's LFE
+// explicitly assigned onto LFE/LFE2 (see docs/forge/gui/source-assignment.md's LFE
 // note): sending full-range content there unfiltered would put energy well
 // above what an LFE channel and a real subwoofer are meant to carry.
 //

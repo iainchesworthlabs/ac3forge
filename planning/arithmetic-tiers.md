@@ -22,7 +22,7 @@ specified in real arithmetic; the reference decoder is floating point; certified
 phones and televisions are fixed point. Between them sit every microcontroller this project has
 looked at: an ESP32-S3 with a single-precision FPU, where `double` is a call into the mask ROM's
 software routines and a 5.1 E-AC-3 frame decoded at 2.46x real time until the arithmetic moved
-to `float` ([the ESP32-S3 page](../docs/platforms/esp32.md#timing)); an ESP32-C3 with no FPU at
+to `float` ([the ESP32-S3 page](../docs/platforms/bare-metal/esp32-s3.md#timing)); an ESP32-C3 with no FPU at
 all, where even `float` is a compiled subroutine and the same frame is
 [12.9 M soft-float instructions](../docs/performance-trend.md#instructions-per-frame) against a
 5.1 M-cycle budget at 160 MHz.
@@ -55,7 +55,7 @@ trade the choice matrix below is for.
 Arithmetic is the cost of each operation; the search decides how many there are. An E-AC-3 5.1
 frame on the ESP32-S3, with the encoder in `float` end to end, spent 84 ms self time of which
 28 was exponent-run planning, 13 bit-allocation calls and 9 mantissa bit counts - integer work,
-and a count of candidates rather than an arithmetic type ([the Encoding section](../docs/platforms/esp32.md#encoding)).
+and a count of candidates rather than an arithmetic type ([the Encoding section](../docs/platforms/bare-metal/esp32-s3.md#encoding)).
 
 Two kinds of change apply to that count, and the distinction matters for the guarantees above:
 

@@ -383,7 +383,7 @@ private:
     // The machine, behind the engine's seams: the system default output
     // and the silent device applications play into. Both are resolved
     // from platform_services.hpp, so nothing in this file names an
-    // operating system (docs/crucible/promotion.md, Phase 2).
+    // operating system (docs/crucible/design/promotion.md, Phase 2).
     std::shared_ptr<ac3::crucible::DefaultDevice> default_device_;
     QSettings settings_;
     std::unique_ptr<ac3::crucible::Engine> engine_;

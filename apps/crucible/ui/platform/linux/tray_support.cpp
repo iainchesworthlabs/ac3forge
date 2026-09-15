@@ -48,7 +48,7 @@
 // The fix is therefore in the menu's shape rather than here: Main.qml's tray
 // menu is flat, and must stay flat while this Qt bug stands. That constraint
 // is the reason this file is worth reading; there is nothing else to it.
-// docs/crucible/promotion.md carries the measurements and the report.
+// docs/crucible/design/promotion.md carries the measurements and the report.
 
 namespace ac3::crucible::ui {
 

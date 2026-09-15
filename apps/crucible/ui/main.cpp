@@ -186,7 +186,7 @@ int main(int argc, char** argv) {
     QQmlApplicationEngine engine;
     // The GUI's own language manager, pointed at this app's translation
     // files: system locale by default, a saved override when the user chose
-    // one (docs/gui/localisation.md).
+    // one (docs/forge/gui/localisation.md).
     LanguageManager language_manager(app, engine, QStringLiteral("ac3crucible"));
     language_manager.applyInitialLanguage();
     // A singleton instance rather than a context property: QML compiled

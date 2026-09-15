@@ -9,13 +9,13 @@
 #include "platform_services.hpp"
 
 // The macOS DefaultDevice: the system output, read and never moved
-// (docs/crucible/promotion.md, Phase 5).
+// (docs/crucible/design/promotion.md, Phase 5).
 //
 // **THIS RUNS ON CI, AND ON NOBODY'S DESK.** Written 2026-09-06 without a
 // Mac; since the same day the Crucible Qt Quick suites drive it for real on
 // both macOS legs, and it is the file whose endpoints() showed up in the
 // stack of the first hang this platform half produced
-// (docs/crucible/promotion.md, Phase 5). What has still never happened is a
+// (docs/crucible/design/promotion.md, Phase 5). What has still never happened is a
 // launch on a desktop Mac, so nothing here is a report of how it behaves
 // beside real hardware.
 //
@@ -67,7 +67,7 @@
 //   - SignalPath.qml's station 1 is NOT gated on movesDefault and would still
 //     be drawn, with a warning telling the reader to "Send applications to the
 //     silent device instead" - advice that is wrong on this platform. Recorded
-//     in docs/crucible/promotion.md's Phase 5 "Not done" list rather than fixed
+//     in docs/crucible/design/promotion.md's Phase 5 "Not done" list rather than fixed
 //     here: it is a QML change, and nobody can run the window to see the
 //     result of one.
 //

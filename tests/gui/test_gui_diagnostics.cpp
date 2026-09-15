@@ -12,7 +12,7 @@
 // the newest lines in order and counts what it dropped, a note is one line no
 // longer than the cap, and the report never carries the signing key, the path
 // to a key file, or one byte of a loaded source - the rule
-// docs/gui/accessibility.md promises under "Saving a diagnostics file".
+// docs/forge/gui/accessibility.md promises under "Saving a diagnostics file".
 //
 // Deliberately the plain Catch2 suite rather than the Qt Quick one: the module
 // is Qt-free so this runs on every CI leg, including the ones that build no

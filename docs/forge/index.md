@@ -13,10 +13,10 @@ entry. Downloading Forge gets you both.
 
 - `ac3cli` covers synthesis, file encoding and decoding, container wrapping, inspection, QC, and
   live capture and playback across forty-one commands — see the
-  [CLI reference](../cli/index.md).
+  [CLI reference](cli/index.md).
 - `ac3gui` is a two-pane workbench over the same work: loading a source, choosing format and
   channels, placing and moving objects in a plan view, live capture, metadata, QC, and
-  channel-level metering — see the [GUI guide](../gui/index.md).
+  channel-level metering — see the [GUI guide](gui/index.md).
 
 ## About the word "forge"
 
@@ -62,8 +62,8 @@ beside it; [What it is](../library/index.md) covers consuming it.
 
 ## Where to go next
 
-- [CLI reference](../cli/index.md) — `ac3cli`'s commands, option grammars and JSON contracts.
-- [GUI guide](../gui/index.md) — `ac3gui` screen by screen, with screenshots.
+- [CLI reference](cli/index.md) — `ac3cli`'s commands, option grammars and JSON contracts.
+- [GUI guide](gui/index.md) — `ac3gui` screen by screen, with screenshots.
 - [Capabilities](../library/capabilities.md) — what the codec underneath both of them does.
 - [Crucible](../crucible/index.md) — the family's third member, a desktop application rather
   than a tool.

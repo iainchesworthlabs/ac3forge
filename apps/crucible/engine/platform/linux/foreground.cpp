@@ -14,7 +14,7 @@
 #include "x11_foreground.hpp"
 
 // The Linux Foreground: an answer under X11, and under everything else the
-// reason there is none (docs/crucible/promotion.md, Phase 4 and its X11
+// reason there is none (docs/crucible/design/promotion.md, Phase 4 and its X11
 // addendum).
 //
 // This is the one seam a platform can be unable to implement, and the two

@@ -3346,8 +3346,8 @@
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="185"/>
-        <source>Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too. Some panels still hold their controls at a fixed height and can clip the largest sizes — docs/gui/accessibility.md says which.</source>
-        <translation>كل حجم في النافذة يتبع هذا؛ و100% هو الحجم الذي تُرسم به. ويأخذ خيار النظام حجم النص الذي يبلّغ عنه سطح المكتب ويعدّ 9 pt مساويًا لـ100%، فعلى سطح مكتب حجمه الأساسي أكبر تبدأ النافذة أكبر أيضًا. ولا تزال بعض اللوحات تثبّت عناصر تحكمها على ارتفاع ثابت وقد تقتطع أكبر الأحجام — وملف docs/gui/accessibility.md يبيّن أيّها.</translation>
+        <source>Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too. Some panels still hold their controls at a fixed height and can clip the largest sizes — docs/forge/gui/accessibility.md says which.</source>
+        <translation>كل حجم في النافذة يتبع هذا؛ و100% هو الحجم الذي تُرسم به. ويأخذ خيار النظام حجم النص الذي يبلّغ عنه سطح المكتب ويعدّ 9 pt مساويًا لـ100%، فعلى سطح مكتب حجمه الأساسي أكبر تبدأ النافذة أكبر أيضًا. ولا تزال بعض اللوحات تثبّت عناصر تحكمها على ارتفاع ثابت وقد تقتطع أكبر الأحجام — وملف docs/forge/gui/accessibility.md يبيّن أيّها.</translation>
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="190"/>

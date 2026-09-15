@@ -6,7 +6,7 @@
 
 // Which application is full-screen in the foreground, if any: the seam
 // between the engine and the platform's window manager
-// (docs/crucible/promotion.md, "The seams to extract").
+// (docs/crucible/design/promotion.md, "The seams to extract").
 //
 // The rule it serves is the demo's: a full-screen application is the bed
 // whatever the user asked, because a full-screen game rendering 7.1 is the

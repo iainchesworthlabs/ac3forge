@@ -63,7 +63,7 @@ constexpr std::size_t kMinSinkQueueBound = 1440;
 //   headroom. A worker that has not got here has stopped inside a platform
 //   call that is not coming back, and saying so is the point: a window that
 //   hangs on start is worse than one that says it could not start
-//   (docs/crucible/promotion.md, Phase 5, where a macOS platform call that
+//   (docs/crucible/design/promotion.md, Phase 5, where a macOS platform call that
 //   never returned became a frozen window rather than a refusal).
 //
 //   kProbeDeadline covers the first probe's verdict, which is what says
@@ -859,7 +859,7 @@ struct Engine::Impl {
         // long as one `enumerate()` does, which is the second reason that
         // call should not be unbounded: on macOS it is a round trip to
         // coreaudiod, and Phase 5 has already met one Core Audio call on an
-        // engine thread that did not come back (docs/crucible/promotion.md).
+        // engine thread that did not come back (docs/crucible/design/promotion.md).
         if (probe_thread.joinable()) {
             probe_thread.join();
         }

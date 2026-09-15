@@ -28,7 +28,7 @@ import Ac3ForgeCrucibleLanguage
 // suite can hold without a machine; nothing here has been executed on a Mac,
 // and passing on the macOS CI leg would say that the seams say what they were
 // written to say and nothing about whether any of it works
-// (docs/crucible/promotion.md, "What cannot be verified, and why").
+// (docs/crucible/design/promotion.md, "What cannot be verified, and why").
 //
 // Nothing here starts the engine or touches an audio device, and nothing
 // installs or creates anything: install()/create is what puts a real node in

@@ -184,7 +184,7 @@ it, so there is no silent device to install and no default output to move. What 
 a Mac with a desktop and an audio device to run it on, and a Developer ID certificate to sign it,
 since the tap's consent prompt does not fire for an unsigned binary.
 
-[The plan](promotion.md) has the detail.
+[The plan](design/promotion.md) has the detail.
 
 ## First run
 

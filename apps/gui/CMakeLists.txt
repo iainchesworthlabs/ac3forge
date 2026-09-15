@@ -100,7 +100,7 @@ set(AC3_QML_FILES
 # tests/CMakeLists.txt below for the same reason AC3_QML_FILES is: that file
 # is include()d into this one's own scope, not a separate directory, so a
 # plain variable set here is already visible there. See
-# docs/gui/localisation.md for how to update or add to this list, and
+# docs/forge/gui/localisation.md for how to update or add to this list, and
 # translations/ac3gui_xx.ts (tools/generators/gen_pseudo_locale.py) for the
 # separate pseudo-locale QA fixture, which is intentionally NOT part of this
 # list - it is loaded only through the AC3GUI_LOCALE test override, never

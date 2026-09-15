@@ -373,7 +373,7 @@ void print_probe_topic() {
     fmt::println("       ranges, EMDF payload ids, OAMD/JOC with complexity_index and the");
     fmt::println("       object/bed configuration, whether an authenticity tag is present,");
     fmt::println("       per-frame CRC validity and how often each coding tool was used.");
-    fmt::println("       json=1 emits the ac3forge.probe/1 document instead (docs/cli/");
+    fmt::println("       json=1 emits the ac3forge.probe/1 document instead (docs/forge/cli/");
     fmt::println("       commands.md documents it as a stable contract); detail=frames adds");
     fmt::println("       a per-access-unit dump and detail=blocks adds each block's Annex E");
     fmt::println("       tools and exponent strategies. Exit code is non-zero if any frame");
@@ -532,7 +532,7 @@ void print_option_blocks(std::uint32_t mask) {
                      "is a MEMORY option, not a quality one: reconstruction needs an "
                      "oba::joc::ReconstructionState (147,504 bytes in one block) plus a QMF "
                      "pair, ~233 KB together, which does not fit on every target the library "
-                     "builds for (see docs/platforms/esp32.md). Harmless on a stream with no "
+                     "builds for (see docs/platforms/bare-metal/esp32-s3.md). Harmless on a stream with no "
                      "object layer");
         fmt::println("  numblkscod=<N>    atmos* encode: 0-3 (default 3), section E2.3.1.4's short "
                      "syncframes of 1/2/3/6 blocks (5.3/10.7/16/32 ms). The object layer scales "
@@ -656,7 +656,7 @@ void print_option_blocks(std::uint32_t mask) {
         fmt::println("");
         fmt::println("probe options (probe; any order, after the positional arguments):");
         fmt::println("  json=1            emit the JSON document instead of the human table");
-        fmt::println("                    (schema ac3forge.probe/1 - docs/cli/commands.md)");
+        fmt::println("                    (schema ac3forge.probe/1 - docs/forge/cli/commands.md)");
         fmt::println("  detail=frames     add a per-access-unit dump: offsets, sizes, CRC,");
         fmt::println("                    substream headers and each frame's object layer");
         fmt::println("  detail=blocks     the same, plus every block's coding tools and");

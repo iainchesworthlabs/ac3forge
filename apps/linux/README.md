@@ -1,7 +1,7 @@
 # apps/linux: the Linux-only pieces of AC3Forge Crucible
 
 Crucible itself is in [`apps/crucible/`](../crucible/), one application with a platform tree
-under it ([docs/crucible/promotion.md](../../docs/crucible/promotion.md), "The platform tree").
+under it ([docs/crucible/design/promotion.md](../../docs/crucible/design/promotion.md), "The platform tree").
 What lives here is the part that is not the application: a machine, built to answer one question
 about it.
 

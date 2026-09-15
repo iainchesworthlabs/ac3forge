@@ -287,7 +287,7 @@ QtObject {
     // stops a layout feedback loop), so they multiply their lane height by
     // this scale instead. The Guided wizard, the Objects and Live session
     // tabs and the dialogs do neither yet, and can clip at 175%.
-    // docs/gui/accessibility.md carries that list.
+    // docs/forge/gui/accessibility.md carries that list.
     property real fontScale: 1.0
     readonly property int fontTitle: Math.round(22 * fontScale)
     readonly property int fontArrow: Math.round(18 * fontScale)

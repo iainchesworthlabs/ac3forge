@@ -159,7 +159,7 @@ jobs:
             # aarch64 is the only hardware the Linux half is on record as
             # having run on: it was written and verified against a receiver
             # on a Raspberry Pi 4B on 2026-09-05, in Phase 4 of
-            # docs/crucible/promotion.md - a run that built the window,
+            # docs/crucible/design/promotion.md - a run that built the window,
             # passed all five Qt Quick suites and produced the aarch64
             # tarball and the arm64 .deb by hand. CI meanwhile built
             # Crucible on x86_64 alone, so the architecture the whole
@@ -758,7 +758,7 @@ jobs:
           cmake --build build/no-alsa -- -k 0
           ctest --test-dir build/no-alsa
 
-      # AC3Forge Crucible on Linux (roadmap UX12, docs/crucible/promotion.md).
+      # AC3Forge Crucible on Linux (roadmap UX12, docs/crucible/design/promotion.md).
       # One extra pass inside this leg rather than a matrix entry, the same
       # shape as the ALSA fallback above, because it needs a different audio
       # backend rather than a different compiler.

@@ -4,7 +4,7 @@ This page is what ac3gui offers a person who is not using a mouse, or who needs 
 or who is writing a bug report. It also says what is still missing, because most of this landed in
 one pass on 2026-09-06 and the window is large.
 
-Crucible's equivalent page is [Keyboard and screen readers](../crucible/accessibility.md). The two
+Crucible's equivalent page is [Keyboard and screen readers](../../crucible/accessibility.md). The two
 windows share `Theme.qml`, `SegmentedControl.qml` and `FocusRing.qml`, so the type scale, the
 palettes and the focus ring are the same thing in both; the rest of this page is ac3gui's own.
 
@@ -144,7 +144,7 @@ from what the window is actually showing.
 
 The palettes are `Theme.qml`'s, shared with Crucible and checked by the test suite rather than by
 eye. The measured numbers, including the one that does not reach 4.5:1, are on
-[Crucible's page](../crucible/accessibility.md#colour-and-contrast); they apply here unchanged
+[Crucible's page](../../crucible/accessibility.md#colour-and-contrast); they apply here unchanged
 because they are the same tokens.
 
 ## What is still mouse-only

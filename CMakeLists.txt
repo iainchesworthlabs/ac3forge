@@ -517,7 +517,7 @@ if(AC3FORGE_BUILD_GUI)
     add_subdirectory(apps/gui)
 endif()
 
-# AC3Forge Crucible (roadmap UX11 and UX12, docs/crucible/promotion.md).
+# AC3Forge Crucible (roadmap UX11 and UX12, docs/crucible/design/promotion.md).
 # In-tree like the GUI rather than wrapping the root the way the Android app
 # does, because it shares this toolchain. All three desktop platforms now have
 # a half under apps/crucible/engine/platform/ and apps/crucible/ui/platform/,
@@ -527,7 +527,7 @@ endif()
 #
 # macOS was excluded here until 2026-09-06 and is now included on the strength
 # of the code compiling and nothing more: no Mac has run any part of this
-# application, and docs/crucible/promotion.md's "What cannot be verified, and
+# application, and docs/crucible/design/promotion.md's "What cannot be verified, and
 # why" table still says so. The engine core is tested everywhere regardless
 # (tests/crucible).
 if(AC3FORGE_BUILD_CRUCIBLE AND (WIN32 OR APPLE OR LINUX))
@@ -613,7 +613,7 @@ message(STATUS "  Build Python   : ${AC3FORGE_BUILD_PYTHON}")
 # src/audio/CMakeLists.txt. 'posix' is the one that means no.
 message(STATUS "  Audio backend  : ${AC3FORGE_AUDIO_BACKEND}")
 # Which of apps/crucible/engine/platform/linux/'s two X11 readers Crucible
-# compiled (docs/crucible/promotion.md, "X11 full-screen detection"): 'xcb'
+# compiled (docs/crucible/design/promotion.md, "X11 full-screen detection"): 'xcb'
 # reads the active window through libxcb; 'none' says so at runtime and
 # leaves the full-screen rule off. Linux only, since only Linux has the
 # choice; the Linux Crucible CI leg asserts on this line.

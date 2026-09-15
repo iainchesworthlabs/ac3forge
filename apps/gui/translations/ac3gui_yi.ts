@@ -3346,8 +3346,8 @@
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="185"/>
-        <source>Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too. Some panels still hold their controls at a fixed height and can clip the largest sizes — docs/gui/accessibility.md says which.</source>
-        <translation>יעדע גרייס אינעם פֿענצטער גייט נאָך דעם; 100% איז די גרייס אין וועלכער עס ווערט געצייכנט. סיסטעם נעמט די טעקסט־גרייס וואָס דער דעסקטאָפּ מעלדט און רעכנט 9 pt ווי 100%, אַזוי אַז אויף אַ דעסקטאָפּ וואָס זײַן גרונט־גרייס איז גרעסער הייבט זיך אויך דאָס פֿענצטער אָן גרעסער. עטלעכע פּאַנעלן האַלטן נאָך אַלץ זייערע קאָנטראָלן אויף אַ פֿעסטער הייך און קענען אָפּשנײַדן די גרעסטע גרייסן — docs/gui/accessibility.md זאָגט וועלכע.</translation>
+        <source>Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too. Some panels still hold their controls at a fixed height and can clip the largest sizes — docs/forge/gui/accessibility.md says which.</source>
+        <translation>יעדע גרייס אינעם פֿענצטער גייט נאָך דעם; 100% איז די גרייס אין וועלכער עס ווערט געצייכנט. סיסטעם נעמט די טעקסט־גרייס וואָס דער דעסקטאָפּ מעלדט און רעכנט 9 pt ווי 100%, אַזוי אַז אויף אַ דעסקטאָפּ וואָס זײַן גרונט־גרייס איז גרעסער הייבט זיך אויך דאָס פֿענצטער אָן גרעסער. עטלעכע פּאַנעלן האַלטן נאָך אַלץ זייערע קאָנטראָלן אויף אַ פֿעסטער הייך און קענען אָפּשנײַדן די גרעסטע גרייסן — docs/forge/gui/accessibility.md זאָגט וועלכע.</translation>
     </message>
     <message>
         <location filename="../qml/PreferencesDialog.qml" line="190"/>

@@ -8,7 +8,7 @@
 
 // The silent device: whether this machine has one, whether applications are
 // playing into it, and how one is installed or removed
-// (docs/crucible/promotion.md, "The silent device, per platform").
+// (docs/crucible/design/promotion.md, "The silent device, per platform").
 //
 // This is the seam whose Windows shape most needed generalising. It was
 // `driver_tools.hpp` and it spoke about drivers, test signing and elevated

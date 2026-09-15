@@ -342,7 +342,7 @@ the command on the direct evaluations — for regenerating fixtures, comparing s
 against an external decoder, or isolating a suspected transform defect — and `mode=performance`
 (the default state) names the fast paths. The per-transform escape hatches `fast-mdct=off` and
 `fast-imdct=off` adjust one half at a time; see
-[Options & grammars](cli/metadata-options.md#command-specific-notes) for the full token
+[Options & grammars](forge/cli/metadata-options.md#command-specific-notes) for the full token
 semantics. At the library level the same pair is `EncoderConfig::fast_mdct` /
 `eac3::FrameConfig::fast_mdct` for the forward transform and `DecoderConfig::fast_imdct` for the
 inverse.

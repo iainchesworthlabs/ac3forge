@@ -8,7 +8,7 @@
     This page plans a **delivery-shaped QC report** — the artefact someone attaches when handing
     a file to a broadcaster or a streaming platform. It keeps the shape of
     [the recasting plan](recasting.md) and
-    [the promotion plan](../docs/crucible/promotion.md): design sections say what changes and why,
+    [the promotion plan](../docs/crucible/design/promotion.md): design sections say what changes and why,
     each phase carries an exit criterion and says how it is verified,
     [Decisions](#decisions) lists the open questions, each with a recommendation and its
     cost, and [What cannot be verified](#what-cannot-be-verified-and-why) says where the plan
@@ -555,8 +555,8 @@ states.
   this inherits rather than adds.
 - **Accessibility.** `Accessible.role`, `.name` and `.description` on the new button and on any new
   custom control, matching what `QcDialog.qml` and `QcGateMeter.qml` already carry.
-  [`docs/gui/accessibility.md`](../docs/gui/accessibility.md) and
-  [`docs/gui/localisation.md`](../docs/gui/localisation.md) are the pages that record this.
+  [`docs/forge/gui/accessibility.md`](../docs/forge/gui/accessibility.md) and
+  [`docs/forge/gui/localisation.md`](../docs/forge/gui/localisation.md) are the pages that record this.
 - **The report itself is not localised.** It is a delivery document quoting ATSC, EBU, Netflix and
   Apple specifications by their English titles and clause numbers, sent to a recipient who may not
   share the operator's locale. Its `<html lang="en">` says so. Translating the chrome around

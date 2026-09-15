@@ -32,7 +32,7 @@
 #include "desktop_entries.hpp"
 
 // The Linux AppIconProvider: an application's icon from the freedesktop
-// icon theme and its .desktop entry (docs/crucible/promotion.md, Phase 4).
+// icon theme and its .desktop entry (docs/crucible/design/promotion.md, Phase 4).
 //
 // Linux has no single call for "the icon this executable has", so the
 // answer is assembled from what the platform does give, in four rungs, the

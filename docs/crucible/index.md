@@ -17,7 +17,7 @@ does to the sounds on a desk.
     run over it there, and that is the whole record — no Mac has run the application, no macOS
     code has captured or played a sound, and there is no macOS package.
     [Where each platform stands](#where-each-platform-stands) is exact about this, and
-    [the promotion plan](promotion.md) carries the full record.
+    [the promotion plan](design/promotion.md) carries the full record.
 
 ## What it does
 
@@ -73,7 +73,7 @@ path with a key loaded and an application placed showed **Atmos/DD+**, rendered 
 bed plus objects. That reading matters more than it sounds, because Crucible **cannot** use the
 ALSA backend
 (no per-application tap), so it is forced onto the one passthrough path this project had not
-confirmed before. [The plan](promotion.md#alsa-or-pipewire) is blunt about that. Application
+confirmed before. [The plan](design/promotion.md#alsa-or-pipewire) is blunt about that. Application
 icons come from the icon theme and the `.desktop` entries. One thing the Linux window does not
 have: the full-screen rule under Wayland, which cannot be answered there, though under X11 the
 rule is on. It publishes a tray icon wherever the desktop has a StatusNotifier host for it, and
@@ -144,4 +144,4 @@ the path to it. See [Object signing](../concepts/object-signing.md).
 - [Keyboard and screen readers](accessibility.md) — the key map, the focus order, and what is announced
 - [Languages](localisation.md) — the seven the window ships in, and what changes when one reads right to left
 - [Troubleshooting](troubleshooting.md) — when you hear nothing, or hear everything twice
-- [The promotion plan](promotion.md) — the design record, phase by phase, and what is unverified
+- [The promotion plan](design/promotion.md) — the design record, phase by phase, and what is unverified

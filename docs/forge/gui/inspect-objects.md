@@ -51,7 +51,7 @@ ordinary output — the same shared-mode playback path (`ac3::audio::MonitorSink
 own motion preview uses — so it can be judged by ear, not just by position. Only one object
 auditions at a time; **Audition** on the row already playing becomes **Stop**. This is a parametric
 reconstruction, not the original source audio recovered losslessly — see
-[Spatial audio & Dolby Atmos](../library/spatial-and-atmos.md) for what JOC can and cannot pull
+[Spatial audio & Dolby Atmos](../../library/spatial-and-atmos.md) for what JOC can and cannot pull
 apart.
 
 ## What it does not do

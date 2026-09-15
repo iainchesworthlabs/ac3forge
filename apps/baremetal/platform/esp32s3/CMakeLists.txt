@@ -57,7 +57,7 @@ set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
 # this is the part real-time decode is measured on, the code lives in flash
 # of which the module has 16 MB, and the internal SRAM the footprint ceilings
 # guard is untouched by it. What it costs and buys is measured in
-# docs/platforms/esp32.md's Timing section, and the Atmos objects fixture
+# docs/platforms/bare-metal/esp32-s3.md's Timing section, and the Atmos objects fixture
 # reaches real time only with it.
 set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
     "Decode-critical sources at -O2; see src/forge/minimal.cmake")

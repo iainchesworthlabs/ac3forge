@@ -11,7 +11,7 @@ reads a `QWidgetPlatformMenu` as a `QDBusPlatformMenu` and refcounts whatever is
 The tray's menu is flat now and the tray is back.
 [`apps/crucible/ui/platform/linux/tray_support.cpp`](../../crucible/ui/platform/linux/tray_support.cpp)
 carries the finding and
-[docs/crucible/promotion.md](../../../docs/crucible/promotion.md) the measurements, under
+[docs/crucible/design/promotion.md](../../../docs/crucible/design/promotion.md) the measurements, under
 Phase 4.
 
 The crash was found on a Raspberry Pi 4B with 1844 MB of usable RAM. That machine cannot run an

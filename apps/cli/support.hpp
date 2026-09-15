@@ -313,7 +313,7 @@ struct Options {
     // the 5.1 bed an Atmos stream carries and do not reconstruct its objects.
     // Not a quality option - the bed is bit-identical either way - but a memory
     // one, and it matters where the object state does not fit at all (see
-    // docs/platforms/esp32.md). Harmless on a stream with no object layer,
+    // docs/platforms/bare-metal/esp32-s3.md). Harmless on a stream with no object layer,
     // which is why it needs no interaction with 'objects='.
     bool bed_only = false;
     // §E2.3.1.4 short syncframes for the atmos* encode commands

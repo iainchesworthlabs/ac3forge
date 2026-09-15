@@ -34,7 +34,7 @@
 # rest of this file. minimal.cmake used to name generic/ literally for want
 # of somewhere to read this from, which was right for as long as the
 # profile's targets were an FPU-less Cortex-M3 and an Xtensa LX7 whose
-# vector unit is fixed-point (docs/platforms/esp32.md), and stopped being
+# vector unit is fixed-point (docs/platforms/bare-metal/esp32-s3.md), and stopped being
 # right when f32x4 arrived: a minimum-footprint decoder built for aarch64
 # carries a float32 decode path NEON holds four lanes of.
 # ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ Mapping the graph this module parses onto `ac3::oba::AtmosEncoder` (ADM → enco
 from a decoded `ac3::Eac3Decoder` programme (decode → ADM) is a separate module,
 [`ac3::admbridge`](adm-bridge.md); driving the read direction end to end — a real ADM BWF master
 straight to a DD+ JOC E-AC-3 stream — is `ac3cli atmos-adm`, and the write direction is
-`ac3cli decode ... adm_out` (see [Commands](../cli/commands.md)) and
+`ac3cli decode ... adm_out` (see [Commands](../forge/cli/commands.md)) and
 [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp). This page and
 [`examples/read_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) only demonstrate this module's own read-side API — opening a file and walking the
 parsed graph; `encode_adm.cpp` is the one that shows the full read-direction pipeline. See

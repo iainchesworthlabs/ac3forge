@@ -262,7 +262,7 @@ TEST_CASE("mkv warns and keeps only the first programme a stream carries", "[cli
     const auto log = dir / "multi_programme.log";
 
     // eac3-encode needs real WAV sources, one per programme - see
-    // docs/cli/metadata-options.md's "Programme options" section for the
+    // docs/forge/cli/metadata-options.md's "Programme options" section for the
     // programme2=/-layout=/-bitrate= tokens this builds with.
     const auto primary_wav = dir / "programme0.wav";
     const auto commentary_wav = dir / "programme1.wav";

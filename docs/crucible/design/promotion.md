@@ -1,5 +1,9 @@
 # Promoting the demo to AC3Forge Crucible
 
+**This is a design record, not a guide.** It documents *why* and *how* Crucible was built, phase
+by phase — for using the application today, see [What it is](../index.md) and
+[Install and first run](../install.md) instead.
+
 !!! success "Status as of 2026-09-08: largely a record of work done"
     Written 2026-09-04 as a plan; twenty-one of its phases now carry a completion record and
     five remain open. Crucible exists, runs on Windows and Linux, and reached a real receiver
@@ -7,7 +11,7 @@
     compiles and has never been launched, and at the driver, which is test-signed only.
 
     The page plans the promotion of the Windows Desktop Atmos Demo
-    ([`docs/platforms/windows-demo.md`](../platforms/windows-demo.md)) into **AC3Forge
+    ([`docs/platforms/windows-demo.md`](../../platforms/windows-demo.md)) into **AC3Forge
     Crucible**, a desktop application on Windows, Linux and macOS. Design sections say what
     changes and why, each phase carries an exit criterion and its progress record, and
     [What cannot be verified](#what-cannot-be-verified-and-why) says which claims this work
@@ -83,7 +87,7 @@ application's output node the way `pw-record --target` and OBS's per-application
 and the silent device is `support.null-audio-sink`, a module load rather than a kernel driver,
 so the entire signing problem that gates Windows does not exist. Passthrough over ALSA `iec958`
 is the one part of this project already confirmed against a real Atmos receiver
-([Raspberry Pi](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver), 2026-08-20).
+([Raspberry Pi](../../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver), 2026-08-20).
 
 **macOS needs no driver either, which was not obvious.** `CATapDescription` carries a
 `muteBehavior`, and `.mutedWhenTapped` routes a process's audio through the tap instead of to
@@ -132,7 +136,7 @@ The single largest difference between the platforms, and the reason Windows was 
 do first rather than the easy one.
 
 **Windows** keeps the `Ac3ForgeNullSink` ACX driver
-([its own page](../platforms/windows-driver-acx.md)). It is built, test-signed and Code-Analysed
+([its own page](../../platforms/windows-driver-acx.md)). It is built, test-signed and Code-Analysed
 in CI, and verified in a throwaway guest. It loads only where test signing is on until an EV
 certificate and attestation submission exist. Nothing in this plan changes that; the driver's
 device name changes with the rename, which is [a coordination
@@ -187,7 +191,7 @@ That default is right for the library, whose discriminating feature is passthrou
 expresses the IEC 60958 non-audio bit as arguments on a device name and works the moment the
 hardware does, while a PipeWire sink only offers a compressed codec once WirePlumber's
 `iec958Codecs` has been populated, which the library cannot do on a caller's behalf
-([Why ALSA still comes first](../building.md#why-alsa-still-comes-first)).
+([Why ALSA still comes first](../../building.md#why-alsa-still-comes-first)).
 
 It is the wrong default for **Crucible**, and not by a little. The application's whole premise is
 tapping each application separately, and ALSA has no per-application concept — its
@@ -947,7 +951,7 @@ run by anyone here**; see below.
       built every source of both halves — the three `.mm` files among them — and linked
       `bin/ac3crucible.app/Contents/MacOS/ac3crucible`. The universal merge that follows needs
       both legs green, which they are again since the Qt Quick timeouts were traced and fixed
-      (see [macOS](../platforms/macos.md#ci-what-has-and-has-not-been-verified)).
+      (see [macOS](../../platforms/macos.md#ci-what-has-and-has-not-been-verified)).
     - **Run**, more of it than this note first claimed, and that is how the hang was found. The
       eleven Crucible Qt Quick suites run on both macOS legs, and eight of them drive the real
       platform seams: `Main.qml` starts the engine whenever the window is built, so the session
@@ -1060,7 +1064,7 @@ run by anyone here**; see below.
     `process_loopback` **available** unless the machine is older than the 14.2 floor. So the room
     no longer lists applications the build cannot capture *for want of a tap*. What it may still
     fail on, and none of which anyone here can try, is set out in
-    [macOS → Per-application capture](../platforms/macos.md#per-application-capture-the-core-audio-process-tap):
+    [macOS → Per-application capture](../../platforms/macos.md#per-application-capture-the-core-audio-process-tap):
     the TCC consent prompt is keyed to a code-signing identity Crucible does not have (DR6); the
     `NSAudioCaptureUsageDescription` key that drives that prompt is declared by no bundle in this
     tree, `apps/crucible`'s included; and the backend refuses a sample rate its tap does not
@@ -1554,7 +1558,7 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
     The right-to-left half of that item is done, and this note said otherwise until 2026-09-06:
     `ui/qml/Main.qml` took a `LayoutMirroring` root on 2026-09-05, two cases in
     `ui/tests/qml/tst_shell.qml` hold it - the header title crosses the window under Arabic, the
-    plan's L speaker does not under Hebrew - and [Languages](localisation.md) is the record for
+    plan's L speaker does not under Hebrew - and [Languages](../localisation.md) is the record for
     what mirrors and what deliberately does not.
 
     No screen reader has been run against this window by anyone. The suites assert that every
@@ -1576,9 +1580,9 @@ keeps its records. `mkdocs.yml` gains a "Crucible guide" section beside "CLI ref
 "GUI guide"; the three desktop platform pages link into it instead of owning it.
 
 !!! success "Done 2026-09-05, first cut"
-    `docs/crucible/` is a guide now, not a plan: [What it is](index.md),
-    [Install and first run](install.md), [The signal path](signal-path.md) and
-    [Troubleshooting](troubleshooting.md), with this page kept beside them as the record. The nav
+    `docs/crucible/` is a guide now, not a plan: [What it is](../index.md),
+    [Install and first run](../install.md), [The signal path](../signal-path.md) and
+    [Troubleshooting](../troubleshooting.md), with this page kept beside them as the record. The nav
     carries all five under "Crucible guide", and the demo page's entry under Platform notes is
     relabelled as the record it is. `windows.md` links to the guide instead of the demo page, and
     `linux.md` gained the one thing a Linux reader has to know before anything else — that
@@ -1592,9 +1596,9 @@ keeps its records. `mkdocs.yml` gains a "Crucible guide" section beside "CLI ref
 
 !!! success "Done 2026-09-06: the room and the settings pages"
     The window runs on two platforms now and its Linux half has been read off a receiver, so the
-    two pages were written from the source rather than from this plan: [The room](room.md) and
-    [Settings](settings.md). There is no output-modes page and there will not be one —
-    [The signal path](signal-path.md) already carries the mode table, the no-key refusal and the
+    two pages were written from the source rather than from this plan: [The room](../room.md) and
+    [Settings](../settings.md). There is no output-modes page and there will not be one —
+    [The signal path](../signal-path.md) already carries the mode table, the no-key refusal and the
     pin and endpoint controls, and a second page over the same ground would be one more thing to
     keep true. Where the two platforms differ the pages say which is which, and where something
     is Windows-only today they say that too.

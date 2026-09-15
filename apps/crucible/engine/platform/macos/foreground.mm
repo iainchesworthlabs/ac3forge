@@ -11,12 +11,12 @@
 #include "platform_services.hpp"
 
 // The macOS Foreground: what NSWorkspace can say, and the reason it is not
-// enough (docs/crucible/promotion.md, Phase 5).
+// enough (docs/crucible/design/promotion.md, Phase 5).
 //
 // **THIS RUNS ON CI, AND ON NOBODY'S DESK.** Written 2026-09-06 without a
 // Mac; since the same day the Crucible Qt Quick suites start the engine on
 // both macOS legs, so the session-monitor thread calls fullscreen_pid() below
-// and the NSWorkspace call in it returns (docs/crucible/promotion.md, Phase
+// and the NSWorkspace call in it returns (docs/crucible/design/promotion.md, Phase
 // 5). That is the whole of what is known: it does not hang and it does not
 // crash off the main thread. What it reports on a machine with a real seat in
 // front of it is still unobserved.

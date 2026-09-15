@@ -43,7 +43,7 @@ if (-not $marker) { throw "provisioning did not finish within $TimeoutMin minute
 # The precondition the whole exercise rests on, asserted here rather than
 # assumed: a desktop that owns org.kde.StatusNotifierWatcher. Reading a clean
 # run on a session with no host as "it does not reproduce" is the first
-# mistake this crash caused (docs/crucible/promotion.md).
+# mistake this crash caused (docs/crucible/design/promotion.md).
 Write-Host ''
 Write-Host 'StatusNotifier host on the guest session:'
 & ssh @(Get-TraySshArgs $vm) "$($vm.User)@$address" 'set -a; . ~/.crucible-session-env 2>/dev/null; set +a; busctl --user list --no-pager --no-legend | grep -i statusnotifier || echo "  NONE - the panel has no tray plugin loaded"'

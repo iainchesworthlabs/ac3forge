@@ -164,7 +164,7 @@ foreach(test_file IN LISTS AC3DESK_QML_TEST_FILES)
     # frame thread was inside AudioDeviceCreateIOProcID on a Core Audio
     # process tap that never returned, and the window's own thread was
     # blocked behind it. Two hangs, one symptom. See
-    # docs/crucible/promotion.md's Phase 5 record.
+    # docs/crucible/design/promotion.md's Phase 5 record.
     set_tests_properties(ac3crucible_qml_tests_${suite} PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
         TIMEOUT 300

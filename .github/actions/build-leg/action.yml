@@ -171,7 +171,7 @@ runs:
         # CI - a hosted runner has no audio device, no desktop session and
         # no way to grant the tap's consent prompt - so what these legs
         # establish is that it compiles and links, which is exactly what
-        # docs/crucible/promotion.md's Phase 5 sets as the exit condition
+        # docs/crucible/design/promotion.md's Phase 5 sets as the exit condition
         # and exactly as far as its "What cannot be verified" table lets
         # anyone claim.
         if [ "$LEG_CRUCIBLE" = "true" ] && { [ "$RUNNER_OS" = "Windows" ] || [ "$RUNNER_OS" = "macOS" ]; }; then

@@ -23,7 +23,7 @@
 // platform gets this same file, and a platform that cannot do one of these
 // gets the refusal from the library rather than from here: a Linux build has
 // no spatial backend, so the object sink simply fails to start and the
-// output policy never chooses the headphone route (docs/crucible/promotion.md,
+// output policy never chooses the headphone route (docs/crucible/design/promotion.md,
 // Phase 4).
 
 namespace ac3::crucible {

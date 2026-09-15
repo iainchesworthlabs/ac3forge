@@ -40,7 +40,7 @@ own compr2 bounds Ch2's own signal, never Ch1's.
 E-AC-3 only. A checkbox reveals a preferred stereo downmix mode and an LFE mix level — the
 `mixmdate` group, Table E1.2.
 
-Every field on this tab maps directly onto the [Metadata](../library/metadata.md) library page's
+Every field on this tab maps directly onto the [Metadata](../../library/metadata.md) library page's
 config structs, and onto the [CLI's metadata options](../cli/metadata-options.md)
 (`drc=`, `dialnorm=`, `cmixlev=`, `heavy`, `mixmeta`, …) — the values entered here and the tokens
 on the command line are the same data, just two ways to set it.

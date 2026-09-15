@@ -14,7 +14,7 @@ sdkconfig.old
 # Sibling build directories (`idf.py -B build-qemu ...`), for a machine that
 # builds the hardware and QEMU shapes side by side. Give each its own
 # -DSDKCONFIG=<dir>/sdkconfig, or they share the one above - see
-# docs/platforms/esp32.md's Timing section for how that goes wrong.
+# docs/platforms/bare-metal/esp32-s3.md's Timing section for how that goes wrong.
 build-*/
 
 # The IDF component manager's lockfile and download cache. Nothing here

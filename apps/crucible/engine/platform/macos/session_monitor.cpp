@@ -17,7 +17,7 @@
 #include "process_facts.hpp"
 
 // The macOS SessionMonitor: who is playing sound, from Core Audio's own list
-// of the processes using the HAL (docs/crucible/promotion.md, Phase 5).
+// of the processes using the HAL (docs/crucible/design/promotion.md, Phase 5).
 //
 // **THIS RUNS ON CI, AND ON NOBODY'S DESK.** Written 2026-09-06 against
 // Apple's documentation for the AudioProcess object class, with no Mac to
@@ -26,7 +26,7 @@
 // macOS legs, so refresh() below is called every 500 ms there and the HAL
 // really does hand back a process list - it listed at least one process on a
 // hosted runner, which is how the engine got as far as asking for a tap and
-// finding the hang recorded in docs/crucible/promotion.md's Phase 5.
+// finding the hang recorded in docs/crucible/design/promotion.md's Phase 5.
 //
 // What that does NOT establish is anything about the LIST. Nobody has looked
 // at what it contained, whether the names are right, whether a paused player

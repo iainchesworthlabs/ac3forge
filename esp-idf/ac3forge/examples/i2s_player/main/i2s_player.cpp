@@ -15,7 +15,7 @@
 //
 // IT ALSO ANSWERS THE OPEN QUESTION. Whether this part decodes in real time is
 // unmeasured, and QEMU cannot say: it is not cycle-accurate and reports a CPU
-// clock that disagrees with its own boot log (docs/platforms/esp32.md). On
+// clock that disagrees with its own boot log (docs/platforms/bare-metal/esp32-s3.md). On
 // hardware, I2S is a clock - the DMA drains at exactly 48,000 frames a second
 // whatever the CPU is doing - so a decode that cannot keep up underruns
 // audibly, and the numbers this prints are from silicon rather than from an
@@ -120,7 +120,7 @@ bool start_i2s() {
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
     // Four descriptors of 256 frames each: 4,096 bytes of DMA buffer holding
     // 21 ms of audio. Small on purpose. The decode peaks at 233,546 bytes of a
-    // part with 277,400 free (docs/platforms/esp32.md), so what is left for
+    // part with 277,400 free (docs/platforms/bare-metal/esp32-s3.md), so what is left for
     // buffering is about 43,000 - and every millisecond of I2S buffer is also a
     // millisecond of latency. 21 ms rides out the jitter between one frame's
     // decode and the next without hiding a decoder that is genuinely too slow,
