@@ -135,6 +135,23 @@ PcmAudio read_pcm(bw64::Bw64Reader& reader, std::uint64_t file_bytes) {
     if (block_align == 0) {
         return audio;
     }
+    // libbw64's own copy of that same figure is a uint16_t, so a <fmt > whose
+    // channel count and sample width multiply past 65,535 wraps it - and
+    // WAVE's nBlockAlign field is 16 bits wide as well, so the file's declared
+    // value matches the wrapped one and libbw64's "blockAlignment is X but
+    // should be Y" check passes. 32,768 channels at 16 bits wraps to 0, and
+    // numberOfFrames() - the call immediately below - then divides by it;
+    // 32,769 wraps to 2, which sizes read()'s buffer at two bytes a frame
+    // while its decodePcmSamples call reads 65,538 of them, a heap overread
+    // the length of the whole frame. Confirmed by running both shapes through
+    // fuzz_adm_parse against an instrumented ac3adm: a SIGFPE (uninstrumented
+    // too) and an ASan heap-buffer-overflow reported against the read below.
+    // Neither file can be read on its own terms, since the container has no
+    // way to state a block alignment this large, so the PCM is left empty the
+    // way the two degenerate cases above leave it.
+    if (reader.blockAlignment() != block_align) {
+        return audio;
+    }
     // numberOfFrames() is the <data> chunk's DECLARED size over that
     // alignment - what the file claims, not what it holds. A sixty-byte file
     // is free to claim four gigabytes of PCM (or, in RF64, sixteen exabytes
@@ -249,22 +266,41 @@ std::expected<AdmModel, AdmError> read_adm_model(const bw64::Bw64Reader& reader)
 // allocator as its bounds check.
 //
 // One rule: a chunk whose declared size runs past the end of the file is
-// refused, unless it is <data>. Nothing about RF64's 0xFFFFFFFF "resolve
-// through <ds64>" escape (BS.2088-1 §4) needs special handling under that
-// rule, which is why none is here - an escape IS a size past the end of the
-// file, so it is allowed on <data> (where RF64 actually uses it, and where
-// read_pcm's own clamp bounds the result) and refused anywhere else.
+// refused, unless it is <data>.
 //
-// <data> is exempt for a real reason, not to dodge the escape: a recording
-// truncated mid-<data> is an ordinary file, libbw64 reads it as far as it
-// goes, and refusing it here would break a working case.
+// <data> is exempt for a real reason: a recording truncated mid-<data> is an
+// ordinary file, libbw64 reads it as far as it goes, and refusing it here
+// would break a working case. RF64's 0xFFFFFFFF "resolve through <ds64>"
+// escape (BS.2088-1 §4) lands in the same branch, since an escape IS a size
+// past the end of the file.
 //
-// The residual gap, stated rather than papered over: in an RF64 file <ds64>
-// can carry a 64-bit size for a chunk whose own 32-bit header is perfectly
-// plausible, and libbw64 prefers the <ds64> value (reader.hpp's
-// getChunkSize64). Following that means parsing <ds64>'s table here, which
-// is the parsing this function is deliberately not doing. Closing it belongs
-// upstream in libbw64, where the allocation is.
+// Stopping the walk there was not enough, though, and two of <ds64>'s own
+// fields are read on the way past because of it:
+//
+//   - <data>'s 64-bit size, so the walk can step over an escaped <data> and
+//     go on checking the chunks after it. Returning at <data> left those
+//     unchecked, while libbw64 - which resolves the same 64-bit size through
+//     reader.hpp's getChunkSize64 - stepped over <data> and allocated them.
+//     fuzz_adm_parse reached a 1.7 GB <UnknownChunk> that way, behind an
+//     RF64 <data> declaring 1.8 GB in its 32-bit header.
+//   - <ds64>'s own tableLength, which is refused when the chunk is too short
+//     to hold the table it declares. libbw64 reads that many 12-byte entries
+//     with no bound of its own (parser.hpp's parseDataSize64Chunk), so a
+//     28-byte <ds64> claiming 4.26 billion entries is a loop of 4.26 billion
+//     reads against a stream that ended - a hang rather than an allocation,
+//     and the first thing mutation found once ac3adm was instrumented.
+//
+// The table must also END on a chunk boundary, for a reason of the same kind:
+// a trailing fragment too short to be a header is one libbw64 reads regardless,
+// with the size field left holding whatever was on the stack. See the return
+// at the bottom.
+//
+// The residual gap, stated rather than papered over: <ds64>'s table can also
+// carry a 64-bit size for any OTHER chunk id, whose own 32-bit header is then
+// perfectly plausible, and libbw64 prefers that value. Following it means
+// reading the table's entries and not just its length, which is the parsing
+// this function is deliberately not doing. Closing it belongs upstream in
+// libbw64, where the allocation is.
 bool chunk_sizes_fit(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
@@ -282,7 +318,21 @@ bool chunk_sizes_fit(const std::string& path) {
     if (file_size < kRiffHeaderBytes) {
         return true;
     }
+    // §4's own layout for the chunk <ds64> is: riffSize, dataSize, sampleCount,
+    // then tableLength - four fields ahead of the table itself.
+    constexpr std::size_t kDs64PrefixBytes = 28;
+    constexpr std::uint64_t kDs64TableEntryBytes = 12;
+    const auto little_endian = [](const unsigned char* bytes, std::size_t width) {
+        std::uint64_t value = 0;
+        for (std::size_t byte = 0; byte < width; ++byte) {
+            value |= static_cast<std::uint64_t>(bytes[byte]) << (8 * byte);
+        }
+        return value;
+    };
+
     std::uint64_t offset = kRiffHeaderBytes;
+    bool data_size_known = false;
+    std::uint64_t ds64_data_size = 0;
     in.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
     while (offset + 8 <= file_size) {
         std::array<char, 4> id{};
@@ -293,19 +343,57 @@ bool chunk_sizes_fit(const std::string& path) {
             return true;
         }
         offset += 8;
-        const std::uint64_t declared = static_cast<std::uint64_t>(length[0]) |
-                                       (static_cast<std::uint64_t>(length[1]) << 8) |
-                                       (static_cast<std::uint64_t>(length[2]) << 16) |
-                                       (static_cast<std::uint64_t>(length[3]) << 24);
+        std::uint64_t declared = little_endian(length.data(), length.size());
+        const std::string_view chunk_id(id.data(), id.size());
+
+        // <ds64> is mandatory and first in an RF64/BW64 file, so its own two
+        // useful fields are read here, while the stream is sitting on them -
+        // see this function's own comment for what each is for.
+        if (chunk_id == "ds64" && !data_size_known && declared >= kDs64PrefixBytes &&
+            declared <= file_size - offset) {
+            std::array<unsigned char, kDs64PrefixBytes> prefix{};
+            in.read(reinterpret_cast<char*>(prefix.data()), kDs64PrefixBytes);
+            if (!in) {
+                return true;
+            }
+            ds64_data_size = little_endian(prefix.data() + 8, 8);
+            data_size_known = true;
+            const auto table_length = little_endian(prefix.data() + 24, 4);
+            if (declared - kDs64PrefixBytes < table_length * kDs64TableEntryBytes) {
+                return false;
+            }
+        }
+
         if (declared > file_size - offset) {
             // Past the end of the file: only a trailing <data> can honestly
             // be that, and only <data> is not buffered whole.
-            return std::string_view(id.data(), id.size()) == "data";
+            if (chunk_id != "data") {
+                return false;
+            }
+            // Truncated mid-<data>, with no <ds64> saying otherwise: nothing
+            // after it is reachable anyway, since libbw64's own walk runs off
+            // the end of the file at the same point.
+            if (!data_size_known || ds64_data_size > file_size - offset) {
+                return true;
+            }
+            declared = ds64_data_size;  // §4's escape, resolved: keep checking
         }
         offset += declared + (declared % 2);  // §4's pad byte
         in.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
     }
-    return true;
+    // Landing short of the end leaves between one and seven bytes where
+    // libbw64 expects a chunk header, and its own walk reads one anyway: it
+    // continues while peek() is not EOF, and parseHeader() takes the id and
+    // the 32-bit size through a readValue() that does not check whether the
+    // read succeeded (parser/reader.hpp). A partial header leaves that size
+    // holding whatever was on the stack, and the chunk is then allocated at
+    // that size - fuzz_adm_parse reached malloc(4278190080) from a 19-byte
+    // file this way, the first byte of the size being the only part of it
+    // that came from the stack rather than the file. A table that ends on a
+    // chunk boundary cannot do this; one that ends past the boundary (a final
+    // odd-length chunk written without §4's pad byte, which real writers do)
+    // is fine too, since libbw64 seeks past the end and stops.
+    return offset >= file_size;
 }
 
 std::expected<AdmDocument, AdmError> parse_bw64_path(const std::string& path) {

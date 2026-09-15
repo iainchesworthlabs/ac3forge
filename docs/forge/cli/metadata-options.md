@@ -175,7 +175,8 @@ The two gate tokens exist because the two formats carry the group differently:
   `dheadphonmod`, `adconvtyp`). It is implied by `dmixmod=`, by any of the four level tokens, and
   by the three `xbsi2` tokens — so `ac3cli encode in.wav out.ac3 384 51 dmixmod=ltrt` writes a
   `bsid`-6 stream without being asked twice. `timecode=` and `annexd` are refused together: they
-  are the same 28 bits.
+  are the same 28 bits. `dmixmod=` offers Table D2.2's three defined codes; its reserved `11`
+  has no token, and the library will not write it.
 - **`infomdat`** (E-AC-3 only) opens Table E1.2's `infomdat` element. It is implied by every
   informational token — `bsmod=`, `dsurmod=`, `dsurexmod=`, `dheadphonmod=`, `adconvtyp=`,
   `mixlevel=`, `roomtyp=`, `copyright`, `origbs=`, `sourcefscod`. AC-3 needs no such gate: those

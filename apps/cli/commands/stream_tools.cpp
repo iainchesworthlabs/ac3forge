@@ -27,6 +27,7 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/plan.hpp"
+#include "ac3/encoder/silent_frame.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/metadata_edit.hpp"
 #include "ac3/io/wav.hpp"
@@ -165,7 +166,12 @@ void carry_mix_metadata(const ac3::io::FrameMetadata& source, plan::Metadata& ta
         target.surmixlev = nearest_level(*surround, kSurround);
     }
     if (source.mix->dmixmod.has_value()) {
-        target.dmixmod = *source.mix->dmixmod;
+        // A reserved '11' is carried as "not indicated", §D2.3.1.2's reading
+        // of it: the encoder will not write the reserved code itself (see
+        // meta::valid_downmix_mode), and there is no preference to keep.
+        target.dmixmod = ac3::meta::valid_downmix_mode(*source.mix->dmixmod)
+                             ? *source.mix->dmixmod
+                             : ac3::meta::DownmixMode::kNotIndicated;
     }
     // §E2.3.1.10: absent means LFE mixing is DISABLED, which is a decision in
     // its own right - so an absent lfemixlevcod is carried across as absent,
@@ -258,8 +264,27 @@ class TranscodeEncoder {
             ac3_ = std::make_unique<ac3::FrameEncoder>(plan::ac3_config(p));
             coded_channels_ = static_cast<std::size_t>(ac3_->channel_count());
         } else {
-            eac3_ = std::make_unique<ac3::eac3::AccessUnitEncoder>(plan::eac3_config(p));
+            const auto config = plan::eac3_config(p);
+            eac3_ = std::make_unique<ac3::eac3::AccessUnitEncoder>(config);
             coded_channels_ = static_cast<std::size_t>(eac3_->channel_count());
+            // AccessUnitEncoder refuses a configuration by building no
+            // substreams, which leaves channel_count() at 0 - the check
+            // encode.cpp's eac3_config_accepted() makes for eac3-encode.
+            // plan::validate() does not check metadata, and here part of it
+            // comes from the source, which can carry a value neither encoder
+            // writes: §5.4.2.8 reserves a dialnorm of 0, and a decoder reads
+            // it as 31. Unchecked, decode_and_render() would size its channel
+            // list from the 0 while plan::render() still filled every channel
+            // the plan codes. build_silent_access_unit() starts with the
+            // checks the constructor made, so it fails on the same one and
+            // names it.
+            if (coded_channels_ == 0) {
+                const auto check = ac3::eac3::build_silent_access_unit(config);
+                fmt::println(stderr, "error: the encoder cannot express this configuration: {}",
+                             check.has_value() ? std::string_view{"no substreams were built"}
+                                               : ac3::describe(check.error()));
+                return false;
+            }
         }
         return sink_.open(out_path, keep_partial);
     }
@@ -269,9 +294,13 @@ class TranscodeEncoder {
     [[nodiscard]] bool encode(std::span<const std::span<const float>> channels) {
         std::vector<std::byte> frame;
         if (ac3_) {
+            // An illegal AC-3 rate never gets this far (run_transcode's
+            // plan::validate() refuses it), so the refusal is named from the
+            // FrameError rather than assumed.
             auto encoded = ac3_->encode_frame(channels);
             if (!encoded.has_value()) {
-                fmt::println(stderr, "error: encode failed - bitrate must be a legal AC-3 rate");
+                fmt::println(stderr, "error: the encoder cannot express this configuration: {}",
+                             ac3::describe(encoded.error()));
                 sink_.abort();
                 return false;
             }
@@ -279,7 +308,8 @@ class TranscodeEncoder {
         } else {
             auto unit = eac3_->encode_access_unit(channels);
             if (!unit.has_value()) {
-                fmt::println(stderr, "error: the encoder cannot express this configuration");
+                fmt::println(stderr, "error: the encoder cannot express this configuration: {}",
+                             ac3::describe(unit.error()));
                 sink_.abort();
                 return false;
             }

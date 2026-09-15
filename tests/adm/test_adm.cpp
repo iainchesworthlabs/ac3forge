@@ -705,6 +705,123 @@ TEST_CASE("a file truncated inside its data chunk still parses", "[adm]") {
     CHECK(doc.has_value());
 }
 
+// libbw64 materialises any chunk id it has no class of its own for into an
+// UnknownChunk, whose 0.10.0 constructor resizes a std::vector<char> to the
+// declared size and then hands stream.read() `&data_[0]` - undefined behaviour
+// when that size is zero, and the report that kept `ac3adm_objects` out of
+// fuzz/CMakeLists.txt's instrumented set until src/ac3adm/patch_libbw64.cmake
+// existed. A zero-length chunk is ordinary content: BS.2088-1 §4 puts no floor
+// under a chunk's size, and an empty JUNK is a normal thing for a producer to
+// leave behind. The same shape is committed as
+// fuzz/regressions/fuzz_adm_parse/zero-length-unknown-chunk.
+//
+// An unpatched libbw64 fails this under UBSan ("reference binding to null
+// pointer of type 'char'") and on any standard library with its bounds checks
+// turned on (_GLIBCXX_ASSERTIONS, MSVC's debug iterators); an optimised
+// libstdc++ build without them passes a null pointer and a zero length to
+// istream::read and survives, which is why it went unseen for so long.
+TEST_CASE("a zero-length chunk of an id libbw64 does not know still parses", "[adm]") {
+    Bytes body;
+    append_chunk(body, "fmt ", build_fmt_chunk(1, 48000, 16));
+    append_chunk(body, "JUNK", Bytes{});
+    append_chunk(body, "data", build_pcm16_data(4));
+    Bytes file;
+    put_fourcc(file, "RIFF");
+    put_u32le(file, static_cast<std::uint32_t>(4 + body.size()));
+    put_fourcc(file, "WAVE");
+    file += body;
+
+    std::istringstream stream(file);
+    const auto doc = ac3adm::parse_bw64(stream);
+    REQUIRE(doc.has_value());
+    CHECK(doc->audio.frame_count() == 4);
+}
+
+// The same defect one layer down, and the reason the patch covers
+// Bw64Reader::read() as well as the chunk constructor: an empty <data> chunk
+// asks read_pcm for zero frames, and 0.10.0 takes `&rawDataBuffer_[0]` of the
+// buffer it just resized to zero. A file carrying ADM metadata and no audio
+// yet is a real shape - BS.2088-1 §9 makes <axml> optional, not <data>'s
+// content - so this reads as an empty PcmAudio rather than an error.
+TEST_CASE("a zero-length data chunk parses with no frames", "[adm]") {
+    Bytes body;
+    append_chunk(body, "fmt ", build_fmt_chunk(1, 48000, 16));
+    append_chunk(body, "data", Bytes{});
+    Bytes file;
+    put_fourcc(file, "RIFF");
+    put_u32le(file, static_cast<std::uint32_t>(4 + body.size()));
+    put_fourcc(file, "WAVE");
+    file += body;
+
+    std::istringstream stream(file);
+    const auto doc = ac3adm::parse_bw64(stream);
+    REQUIRE(doc.has_value());
+    CHECK(doc->audio.frame_count() == 0);
+}
+
+// Found while auditing libbw64 for the pattern above, and confirmed by running
+// both shapes through fuzz_adm_parse against an instrumented ac3adm.
+// nBlockAlign is a 16-bit field, and libbw64's own blockAlignment() returns
+// uint16_t, so a <fmt > whose channel count times its sample width runs past
+// 65,535 wraps BOTH of them to the same wrong value - which is why the "should
+// be" check inside libbw64's own fmt parsing compares the two and passes.
+//
+// 32,768 channels at 16 bits wraps to 0, and numberOfFrames() divides by it
+// (a SIGFPE, on an uninstrumented build too). 32,769 wraps to 2, which sizes
+// the read buffer at two bytes a frame while the decode loop reads 65,538 of
+// them - a heap overread the length of a whole frame, which an uninstrumented
+// ac3adm runs as a clean execution and returns as audio. read_pcm refuses both
+// now: no file can state a block alignment this large, so there is nothing to
+// read on the file's own terms.
+TEST_CASE("a fmt whose block alignment overflows 16 bits reads no PCM", "[adm]") {
+    const auto channels = GENERATE(std::uint16_t{32768}, std::uint16_t{32769});
+    CAPTURE(channels);
+
+    Bytes body;
+    append_chunk(body, "fmt ", build_fmt_chunk(channels, 48000, 16));
+    // 65,538 bytes, so that the file is long enough for the wrapped-to-2 case
+    // to compute a non-zero frame count and reach the read.
+    append_chunk(body, "data", build_pcm16_data(32769));
+    Bytes file;
+    put_fourcc(file, "RIFF");
+    put_u32le(file, static_cast<std::uint32_t>(4 + body.size()));
+    put_fourcc(file, "WAVE");
+    file += body;
+
+    std::istringstream stream(file);
+    const auto doc = ac3adm::parse_bw64(stream);
+    REQUIRE(doc.has_value());
+    CHECK(doc->audio.channels.empty());
+}
+
+// Found by fuzz_adm_parse 265 seconds into its first full-budget instrumented
+// run, and in this project's own code rather than the vendored reader's:
+// float_pcm_bw64.cpp's find_chunk() stepped over each chunk with
+// `at += 8 + declared + (declared & 1)`, computed in the uint32_t that
+// `declared` is. A chunk declaring 0xFFFFFFF7 carries that sum to exactly 2^32,
+// which wraps to zero, so the walk sat on the same chunk and never ended.
+//
+// Every file reaches that walk: is_ieee_float_wave() runs ahead of libbw64 to
+// spot a float master, and chunk_sizes_fit() ahead of THAT allows an oversized
+// <data> on purpose, for the truncated-recording case just above. This fixture
+// carries no <fmt > chunk, which is what makes find_chunk() walk past <data>
+// instead of stopping at the chunk it was looking for; the input the fuzzer
+// produced reaches the same loop past a mutated "fmp " and is committed as
+// fuzz/regressions/fuzz_adm_parse/chunk-size-wraps-the-walk.
+TEST_CASE("a chunk size that wraps the chunk walk does not hang the reader", "[adm]") {
+    Bytes body;
+    append_chunk(body, "data", Bytes{}, 0xFFFFFFF7u);
+    Bytes file;
+    put_fourcc(file, "RIFF");
+    put_u32le(file, static_cast<std::uint32_t>(4 + body.size()));
+    put_fourcc(file, "WAVE");
+    file += body;
+
+    std::istringstream stream(file);
+    const auto doc = ac3adm::parse_bw64(stream);
+    CHECK_FALSE(doc.has_value());
+}
+
 TEST_CASE("parses a DirectSpeakers channel's speakerLabel and polar position", "[adm][model]") {
     std::istringstream stream(wrap_axml_only(kDirectSpeakersAdmXml));
     auto doc = ac3adm::parse_bw64(stream);

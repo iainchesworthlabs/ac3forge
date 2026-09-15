@@ -70,11 +70,11 @@ constexpr int kBsidBitOffset = 40;
 
 // --- AC-3 ------------------------------------------------------------------
 
-// syncinfo (§5.4.1) plus the whole of bsi (Table 5.2) up to and including
-// Ch2's dual-mono metadata - everything FrameHeader reports for an AC-3
-// frame, and no further: the timecode and addbsi fields past it say nothing
-// this reader surfaces, and AC-3 has no counterpart to Annex E's object-audio
-// addbsi marker (TS 103 420 §8.3.1 is E-AC-3 only).
+// syncinfo (§5.4.1) plus bsi (Table 5.2) as far as origbs, and on an Annex D
+// (bsid 6) frame into xbsi1 as far as dmixmod - everything FrameHeader reports
+// for an AC-3 frame, and no further: the rest of xbsi1/xbsi2, the time code
+// and addbsi say nothing this reader surfaces, and AC-3 has no counterpart to
+// Annex E's object-audio addbsi marker (TS 103 420 §8.3.1 is E-AC-3 only).
 //
 // bsid/bsmod are captured rather than skipped because multiple separate
 // consumers need them off the wire: build_codec_config_box()
@@ -138,6 +138,18 @@ std::expected<FrameHeader, ScanError> read_ac3_header(std::span<const std::byte>
         if (r.read(1) != 0) {  // compr2e
             h.compr2 = static_cast<std::uint8_t>(r.read(8));
         }
+        if (r.read(1) != 0) {
+            r.skip(8);  // langcod2e -> langcod2
+        }
+        if (r.read(1) != 0) {
+            r.skip(5 + 2);  // audprodi2e -> mixlevel2, roomtyp2
+        }
+    }
+    r.skip(1 + 1);  // copyrightb, origbs
+    // §D2.2: bsid 6 spends timecod1e and timecod1 on xbsi1e and xbsi1, which
+    // opens with dmixmod (Table D2.1).
+    if (h.bsid == 6 && r.read(1) != 0) {  // xbsi1e
+        h.dmixmod = static_cast<meta::DownmixMode>(r.read(2));
     }
     return r.overflowed() ? std::unexpected(ScanError::kTruncated)
                           : std::expected<FrameHeader, ScanError>{h};
@@ -184,7 +196,8 @@ std::expected<Ac3Syncinfo, ScanError> read_ac3_syncinfo(std::span<const std::byt
 // programme's own units - two consumers of one walk, not two walks.
 // bsmod_present, dsurmod and mix_metadata ride along the same way, for the
 // MPEG-TS PMT descriptors (mpegts::ServiceInfo) that need them one level
-// further out still.
+// further out still, and dmixmod for probe's report and ac3cli's
+// downmix=auto.
 //
 // Table E1.2's mixing-metadata payload, walked (not interpreted) purely to
 // reach addbsi at the right bit offset - every field here mirrors
@@ -197,7 +210,8 @@ std::expected<Ac3Syncinfo, ScanError> read_ac3_syncinfo(std::span<const std::byt
 void skip_mixing_metadata(BitReader& r, FrameHeader& s, int nblks) {
     const auto acmod = static_cast<std::uint8_t>(s.acmod);
     if (acmod > 0x2) {
-        r.skip(2);  // dmixmod
+        // Read rather than skipped - see FrameHeader::dmixmod.
+        s.dmixmod = static_cast<meta::DownmixMode>(r.read(2));
     }
     if ((acmod & 0x1) != 0 && acmod > 0x2) {
         r.skip(3 + 3);  // ltrtcmixlev, lorocmixlev

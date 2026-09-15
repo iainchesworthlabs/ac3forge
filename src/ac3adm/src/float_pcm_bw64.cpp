@@ -79,7 +79,15 @@ struct Chunk {
         if (declared == kSizeSentinel) {
             break;
         }
-        at += 8 + declared + (declared & 1u);  // RIFF chunks are word-aligned
+        // The step is taken in std::size_t. In the uint32_t `declared` is
+        // itself, 8 + declared + its pad byte reaches exactly 2^32 for a chunk
+        // declaring 0xFFFFFFF7 (or 0xFFFFFFF8) and wraps to zero, leaving `at`
+        // where it was and this loop with no end. Every file reaches this walk,
+        // since is_ieee_float_wave() runs ahead of libbw64 on all of them, and
+        // the chunk-table pre-check ahead of that allows an oversized <data> on
+        // purpose - which is the shape fuzz_adm_parse arrived at
+        // (fuzz/regressions/fuzz_adm_parse/chunk-size-wraps-the-walk).
+        at += std::size_t{8} + declared + (declared & 1u);  // RIFF chunks are word-aligned
     }
     return std::nullopt;
 }

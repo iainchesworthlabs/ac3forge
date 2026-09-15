@@ -221,6 +221,26 @@ class BitWriter {
     std::vector<bool> bits_;
 };
 
+// Table 3's variable_bits(n_bits) encoding of `value`, written from the
+// syntax rather than from ac4.cpp's reader: every group but the last is
+// followed by a continuation bit of 1, and each continuation adds
+// 2^n_bits before the next group is read, so k continuations offset the
+// groups' own base-2^n_bits value by the sum of 2^(n_bits*j), j = 1..k.
+void put_variable_bits(BitWriter& w, int n_bits, std::uint32_t value) {
+    int continuations = 0;
+    std::uint64_t offset = 0;
+    while (value - offset >= (std::uint64_t{1} << (n_bits * (continuations + 1)))) {
+        ++continuations;
+        offset += std::uint64_t{1} << (n_bits * continuations);
+    }
+    const std::uint64_t groups = value - offset;
+    const std::uint64_t mask = (std::uint64_t{1} << n_bits) - 1;
+    for (int i = continuations; i >= 0; --i) {
+        w.put(static_cast<std::uint32_t>((groups >> (n_bits * i)) & mask), n_bits);
+        w.put(i > 0 ? 1u : 0u, 1);
+    }
+}
+
 // Every field up through ac4_presentation_v1_info() for a single
 // presentation referencing a single substream group (group_index 0):
 // bitstream_version 2, fs_index 0 (so every b_sf_multiplier field
@@ -539,6 +559,120 @@ TEST_CASE("parse_substream_info_obj: std bed flags include LFE, unlike bed_dyn_o
     CHECK_FALSE(obj.b_dynamic_objects);
 }
 
+// Regression: n_objects_code and both isf_config fields are 3 bits wide, and
+// each indexed a six-entry count table directly, so codes 6 and 7 read past
+// the end of it. Found by fuzz/fuzz_ac4_parse.cpp once ac4_objects was built
+// with AddressSanitizer, as a stack-buffer-overflow on the committed
+// ac4-substream-size-not-transmitted regression input; the uninstrumented runs
+// before that read whatever followed the table and carried on. Each vector
+// ends in substream_index = 2, which only comes back if the parse stayed in
+// sync past the reserved code, and code 5 - the last entry each table has -
+// pins the boundary.
+namespace {
+
+struct ReservedCountCase {
+    std::uint32_t code;
+    std::size_t objects;
+};
+
+}  // namespace
+
+TEST_CASE("parse_substream_info_obj: a reserved n_objects_code names no objects", "[ac4]") {
+    for (const ReservedCountCase tc : {ReservedCountCase{5, 7}, ReservedCountCase{6, 0},
+                                       ReservedCountCase{7, 0}}) {
+        CAPTURE(tc.code);
+        const auto frame = parse_wrapped_object_coded_group([tc](BitWriter& w) {
+            w.put(0, 1);        // b_oamd_substream = 0
+            w.put(0, 1);        // b_ajoc = 0 -> ac4_substream_info_obj()
+            w.put(tc.code, 3);  // n_objects_code
+            w.put(1, 1);        // b_dynamic_objects
+            w.put(1, 1);        // b_lfe
+            w.put(0, 1);        // b_bitrate_info
+            w.put(0, 1);        // b_audio_ndot
+            w.put(2, 2);        // substream_index = 2
+        });
+
+        REQUIRE(frame.toc.substream_groups.size() == 1);
+        REQUIRE(frame.toc.substream_groups[0].substreams.size() == 1);
+        REQUIRE(frame.toc.substream_groups[0].substreams[0].obj.has_value());
+        const auto& obj = *frame.toc.substream_groups[0].substreams[0].obj;
+        CHECK(obj.b_dynamic_objects);
+        CHECK(obj.objects.size() == tc.objects);
+        REQUIRE(obj.substream_index.has_value());
+        CHECK(*obj.substream_index == 2);
+    }
+}
+
+TEST_CASE("parse_substream_info_obj: a reserved isf_config names no objects", "[ac4]") {
+    for (const ReservedCountCase tc : {ReservedCountCase{5, 30}, ReservedCountCase{6, 0},
+                                       ReservedCountCase{7, 0}}) {
+        CAPTURE(tc.code);
+        const auto frame = parse_wrapped_object_coded_group([tc](BitWriter& w) {
+            w.put(0, 1);        // b_oamd_substream = 0
+            w.put(0, 1);        // b_ajoc = 0 -> ac4_substream_info_obj()
+            w.put(0, 3);        // n_objects_code (unused: b_dynamic_objects=0 below)
+            w.put(0, 1);        // b_dynamic_objects
+            w.put(0, 1);        // b_bed_objects
+            w.put(1, 1);        // b_isf
+            w.put(1, 1);        // b_isf_start
+            w.put(tc.code, 3);  // isf_config
+            w.put(0, 1);        // b_bitrate_info
+            w.put(0, 1);        // b_audio_ndot
+            w.put(2, 2);        // substream_index = 2
+        });
+
+        REQUIRE(frame.toc.substream_groups.size() == 1);
+        REQUIRE(frame.toc.substream_groups[0].substreams.size() == 1);
+        REQUIRE(frame.toc.substream_groups[0].substreams[0].obj.has_value());
+        const auto& obj = *frame.toc.substream_groups[0].substreams[0].obj;
+        CHECK(obj.objects.size() == tc.objects);
+        for (const auto& object : obj.objects) {
+            CHECK(object.kind == ac4::ObjectKind::kIsf);
+        }
+        REQUIRE(obj.substream_index.has_value());
+        CHECK(*obj.substream_index == 2);
+    }
+}
+
+TEST_CASE("parse_bed_dyn_obj_assignment: a reserved isf_config names no objects", "[ac4]") {
+    for (const ReservedCountCase tc : {ReservedCountCase{5, 30}, ReservedCountCase{6, 0},
+                                       ReservedCountCase{7, 0}}) {
+        CAPTURE(tc.code);
+        const auto frame = parse_wrapped_object_coded_group([tc](BitWriter& w) {
+            w.put(0, 1);  // b_oamd_substream = 0
+            w.put(1, 1);  // b_ajoc = 1
+            w.put(0, 1);  // b_lfe
+            w.put(0, 1);  // b_static_dmx = 0 -> dmx assignment is read
+            w.put(0, 4);  // n_fullband_dmx_signals_minus1 = 0 -> n_signals = 1
+            // bed_dyn_obj_assignment(1):
+            w.put(0, 1);        // b_dyn_objects_only
+            w.put(1, 1);        // b_isf
+            w.put(tc.code, 3);  // isf_config
+            w.put(0, 1);        // b_oamd_common_data_present
+            w.put(0, 4);        // n_fullband_upmix_signals_minus1 = 0 -> 1 signal
+            w.put(1, 1);        // bed_dyn_obj_assignment(1): b_dyn_objects_only = 1
+            w.put(0, 1);        // b_bitrate_info
+            w.put(0, 1);        // b_audio_ndot
+            w.put(2, 2);        // substream_index = 2
+        });
+
+        REQUIRE(frame.toc.substream_groups.size() == 1);
+        REQUIRE(frame.toc.substream_groups[0].substreams.size() == 1);
+        REQUIRE(frame.toc.substream_groups[0].substreams[0].ajoc.has_value());
+        const auto& ajoc = *frame.toc.substream_groups[0].substreams[0].ajoc;
+        CHECK(ajoc.n_fullband_dmx_signals == 1);
+        CHECK(ajoc.static_objects.size() == tc.objects);
+        for (const auto& object : ajoc.static_objects) {
+            CHECK(object.kind == ac4::ObjectKind::kIsf);
+            CHECK(object.ajoc_coded);
+        }
+        CHECK(ajoc.n_fullband_upmix_signals == 1);
+        CHECK(ajoc.upmix_objects.empty());
+        REQUIRE(ajoc.substream_index.has_value());
+        CHECK(*ajoc.substream_index == 2);
+    }
+}
+
 TEST_CASE("parse_oamd_substream_info via ac4_substream_group_info's b_oamd_substream", "[ac4]") {
     const auto frame = parse_wrapped_object_coded_group([](BitWriter& w) {
         w.put(1, 1);  // b_oamd_substream = 1
@@ -618,16 +752,398 @@ TEST_CASE("parse_raw_frame refuses bitstream_version above 2", "[ac4]") {
     CHECK(result.error() == ac4::Error::kUnsupportedBitstreamVersion);
 }
 
+// --- EMDF-only presentations (presentation_config 6) ------------------------
+//
+// TS 103 190-1 §4.2.3.2 and TS 103 190-2 §6.2.1.2/§6.2.1.3 set
+// b_add_emdf_substreams for a presentation_config 6 presentation without
+// transmitting it, and read the n_add_emdf_substreams loop after the
+// if/else, so an EMDF-only presentation still carries a count and that many
+// emdf_info() elements. No DEE encode writes one. Each frame below puts an
+// EMDF-only presentation ahead of an ordinary one: the ordinary presentation,
+// the substream groups and substream_index_table() come back as written only
+// if that loop was read. The same frames were built with a separate Python
+// bit writer and parsed by tools/references/ac4_parse.py before being
+// written out here.
+namespace {
+
+// ac4_toc() for bitstream_version 2 up to its first presentation, announcing
+// two: fs_index 0 (so no b_sf_multiplier is read anywhere), b_payload_base 0
+// and b_program_id 0.
+void write_v1_two_presentation_toc_preamble(BitWriter& w, std::uint32_t frame_rate_index) {
+    w.put(2, 2);                 // bitstream_version = 2
+    w.put(0, 10);                // sequence_counter
+    w.put(0, 1);                 // b_wait_frames
+    w.put(0, 1);                 // fs_index = 0 (44100 Hz)
+    w.put(frame_rate_index, 4);  // frame_rate_index
+    w.put(0, 1);                 // b_iframe_global
+    w.put(0, 1);                 // b_single_presentation = 0
+    w.put(1, 1);                 // b_more_presentations = 1
+    w.put(0, 2);                 // variable_bits(2): chunk 0
+    w.put(0, 1);                 //   no continuation -> n_presentations = 0 + 2
+    w.put(0, 1);                 // b_payload_base = 0
+    w.put(0, 1);                 // b_program_id = 0
+}
+
+// An EMDF-only ac4_presentation_v1_info(): presentation_config 6, then the
+// n_add_emdf_substreams loop and nothing else. The count takes the
+// variable_bits() escape to 4, and the four emdf_info() elements differ in
+// length, so a parser that reads the wrong number of them, or none, loses
+// its place before the next presentation.
+void write_v1_emdf_only_presentation(BitWriter& w) {
+    w.put(0, 1);  // b_single_substream_group = 0
+    w.put(6, 3);  // presentation_config = 6
+    w.put(1, 1);  // presentation_version: one 1 bit,
+    w.put(0, 1);  //   then the terminator -> 1
+    w.put(0, 2);  // n_add_emdf_substreams = 0 -> variable_bits(2) + 4
+    w.put(0, 2);  //   variable_bits(2): chunk 0
+    w.put(0, 1);  //   no continuation -> 4 emdf_info() elements
+    // emdf_info() 1: escaped emdf_version and key_id, and an
+    // emdf_payloads_substream() at substream_index 2.
+    w.put(3, 2);  // emdf_version = 3 -> += variable_bits(2)
+    w.put(0, 2);  //   chunk 0
+    w.put(0, 1);  //   no continuation -> 3
+    w.put(7, 3);  // key_id = 7 -> += variable_bits(3)
+    w.put(1, 3);  //   chunk 1
+    w.put(0, 1);  //   no continuation -> 8
+    w.put(1, 1);  // b_emdf_payloads_substream_info
+    w.put(2, 2);  // substream_index = 2
+    w.put(0, 2);  // emdf_reserved: primary
+    w.put(0, 2);  // emdf_reserved: secondary
+    // emdf_info() 2: four bytes of emdf_reserved() data.
+    w.put(0, 2);            // emdf_version
+    w.put(0, 3);            // key_id
+    w.put(0, 1);            // b_emdf_payloads_substream_info
+    w.put(0, 2);            // emdf_reserved: primary
+    w.put(2, 2);            // emdf_reserved: secondary = 2 -> 4 bytes
+    w.put(0xDEADBEEF, 32);  // the reserved bytes
+    // emdf_info() 3: every field 0.
+    w.put(0, 2);
+    w.put(0, 3);
+    w.put(0, 1);
+    w.put(0, 2);
+    w.put(0, 2);
+    // emdf_info() 4:
+    w.put(1, 2);  // emdf_version = 1
+    w.put(2, 3);  // key_id = 2
+    w.put(0, 1);  // b_emdf_payloads_substream_info
+    w.put(0, 2);  // emdf_reserved: primary
+    w.put(0, 2);  // emdf_reserved: secondary
+}
+
+}  // namespace
+
+TEST_CASE("parse_raw_frame: a v0 EMDF-only presentation followed by an ordinary one", "[ac4]") {
+    BitWriter w;
+    w.put(0, 2);   // bitstream_version = 0 (the v0 TOC path, <= 1)
+    w.put(0, 10);  // sequence_counter
+    w.put(0, 1);   // b_wait_frames
+    w.put(0, 1);   // fs_index = 0 (44100 Hz)
+    w.put(5, 4);   // frame_rate_index = 5 (frame_rate_multiply_info reads 0 bits)
+    w.put(0, 1);   // b_iframe_global
+    w.put(0, 1);   // b_single_presentation = 0
+    w.put(1, 1);   // b_more_presentations = 1
+    w.put(0, 2);   // variable_bits(2): chunk 0
+    w.put(0, 1);   //   no continuation -> n_presentations = 0 + 2
+    w.put(0, 1);   // b_payload_base = 0
+    // Presentation 0, EMDF-only:
+    w.put(0, 1);  // b_single_substream = 0
+    w.put(6, 3);  // presentation_config = 6
+    w.put(0, 1);  // presentation_version terminator (unary 0 -> version 0)
+    w.put(2, 2);  // n_add_emdf_substreams = 2
+    // emdf_info() 1, naming an emdf_payloads_substream() at substream_index 2:
+    w.put(0, 2);  // emdf_version
+    w.put(0, 3);  // key_id
+    w.put(1, 1);  // b_emdf_payloads_substream_info
+    w.put(2, 2);  // substream_index = 2
+    w.put(0, 2);  // emdf_reserved: primary
+    w.put(0, 2);  // emdf_reserved: secondary
+    // emdf_info() 2, with one byte of emdf_reserved() data:
+    w.put(1, 2);     // emdf_version = 1
+    w.put(5, 3);     // key_id = 5
+    w.put(0, 1);     // b_emdf_payloads_substream_info
+    w.put(1, 2);     // emdf_reserved: primary = 1 -> 1 byte
+    w.put(0, 2);     // emdf_reserved: secondary
+    w.put(0xA5, 8);  // the reserved byte
+    // Presentation 1, presentation_config 2 (Main + Associate):
+    w.put(0, 1);  // b_single_substream = 0
+    w.put(2, 3);  // presentation_config = 2
+    w.put(0, 1);  // presentation_version terminator (unary 0 -> version 0)
+    w.put(3, 3);  // md_compat = 3
+    w.put(1, 1);  // b_belongs_to_presentation_id
+    w.put(1, 2);  //   variable_bits(2): chunk 1
+    w.put(0, 1);  //   no continuation -> presentation_id = 1
+    // frame_rate_multiply_info(frame_rate_index=5): 0 bits.
+    // emdf_info(): every field 0.
+    w.put(0, 2);
+    w.put(0, 3);
+    w.put(0, 1);
+    w.put(0, 2);
+    w.put(0, 2);
+    w.put(0, 1);  // b_hsf_ext
+    // ac4_substream_info(), Main (fs_index 0, so no b_sf_multiplier):
+    w.put(0b10, 2);  // channel_mode = Stereo
+    w.put(0, 1);     // b_bitrate_info
+    w.put(0, 1);     // b_content_type
+    w.put(1, 1);     // b_iframe (frame_rate_factor 1)
+    w.put(0, 2);     // substream_index = 0
+    // ac4_substream_info(), Associate:
+    w.put(0, 1);  // channel_mode = Mono
+    w.put(0, 1);  // b_bitrate_info
+    w.put(0, 1);  // b_content_type
+    w.put(1, 1);  // b_iframe
+    w.put(1, 2);  // substream_index = 1
+    w.put(1, 1);  // b_pre_virtualized
+    w.put(0, 1);  // b_add_emdf_substreams = 0
+    // substream_index_table(): three substreams of 4, 2 and 1 bytes.
+    w.put(3, 2);   // n_substreams = 3 (b_size_present is read only for 1)
+    w.put(0, 1);   // b_more_bits
+    w.put(4, 10);  // substream_size[0] = 4
+    w.put(0, 1);   // b_more_bits
+    w.put(2, 10);  // substream_size[1] = 2
+    w.put(0, 1);   // b_more_bits
+    w.put(1, 10);  // substream_size[2] = 1
+    auto data = w.bytes();
+    const std::size_t toc_bytes = data.size();
+    // Substream 0: ac4_substream() with audio_size 0x123 (15 bits), b_more_bits 0.
+    data.insert(data.end(), {std::byte{0x02}, std::byte{0x46}, std::byte{0}, std::byte{0}});
+    data.insert(data.end(), 3, std::byte{0});  // substreams 1 and 2
+
+    const auto result = ac4::parse_raw_frame(data);
+    REQUIRE(result.has_value());
+    const auto& toc = result->toc;
+    CHECK(toc.bitstream_version == 0);
+    CHECK(toc.n_presentations == 2);
+    REQUIRE(toc.presentations_v0.size() == 2);
+
+    const auto& emdf_only = toc.presentations_v0[0];
+    REQUIRE(emdf_only.presentation_config.has_value());
+    CHECK(*emdf_only.presentation_config == 6);
+    CHECK(emdf_only.presentation_version == 0);
+    CHECK_FALSE(emdf_only.md_compat.has_value());
+    CHECK_FALSE(emdf_only.presentation_id.has_value());
+    CHECK(emdf_only.substreams.empty());
+
+    const auto& ordinary = toc.presentations_v0[1];
+    REQUIRE(ordinary.presentation_config.has_value());
+    CHECK(*ordinary.presentation_config == 2);
+    CHECK(ordinary.presentation_version == 0);
+    REQUIRE(ordinary.md_compat.has_value());
+    CHECK(*ordinary.md_compat == 3);
+    REQUIRE(ordinary.presentation_id.has_value());
+    CHECK(*ordinary.presentation_id == 1);
+    REQUIRE(ordinary.substreams.size() == 2);
+    CHECK(ordinary.substreams[0].first == "Main");
+    CHECK(ordinary.substreams[0].second.channel_mode_name == "Stereo");
+    REQUIRE(ordinary.substreams[0].second.substream_index.has_value());
+    CHECK(*ordinary.substreams[0].second.substream_index == 0);
+    CHECK(ordinary.substreams[1].first == "Associate");
+    CHECK(ordinary.substreams[1].second.channel_mode_name == "Mono");
+    REQUIRE(ordinary.substreams[1].second.substream_index.has_value());
+    CHECK(*ordinary.substreams[1].second.substream_index == 1);
+
+    CHECK(toc.n_substreams == 3);
+    CHECK(toc.substream_sizes == std::vector<int>{4, 2, 1});
+    REQUIRE(result->substreams.size() == 3);
+    CHECK(result->substreams[0].offset == toc_bytes);
+    CHECK(result->substreams[0].is_audio);
+    REQUIRE(result->substreams[0].audio_size.has_value());
+    CHECK(*result->substreams[0].audio_size == 0x123);
+    CHECK(result->substreams[1].is_audio);
+    CHECK_FALSE(result->substreams[2].is_audio);  // the EMDF payloads substream
+}
+
+TEST_CASE("parse_raw_frame: a v1 EMDF-only presentation followed by an ordinary one", "[ac4]") {
+    BitWriter w;
+    write_v1_two_presentation_toc_preamble(w, 5);  // frame_rate_multiply_info reads 0 bits
+    write_v1_emdf_only_presentation(w);
+    // Presentation 1, a single substream group:
+    w.put(1, 1);  // b_single_substream_group = 1
+    w.put(1, 1);  // presentation_version: one 1 bit,
+    w.put(0, 1);  //   then the terminator -> 1
+    w.put(2, 3);  // md_compat = 2
+    w.put(1, 1);  // b_presentation_id
+    w.put(2, 2);  //   variable_bits(2): chunk 2
+    w.put(0, 1);  //   no continuation -> presentation_id = 2
+    // frame_rate_multiply_info(frame_rate_index=5): 0 bits.
+    w.put(0, 1);  // frame_rate_fractions_info: b_frame_rate_fraction
+    // emdf_info(): every field 0.
+    w.put(0, 2);
+    w.put(0, 3);
+    w.put(0, 1);
+    w.put(0, 2);
+    w.put(0, 2);
+    w.put(1, 1);  // b_presentation_filter
+    w.put(1, 1);  // b_enable_presentation
+    w.put(0, 3);  // ac4_sgi_specifier(): group_index = 0
+    w.put(0, 1);  // b_pre_virtualized
+    w.put(0, 1);  // b_add_emdf_substreams = 0
+    w.put(0, 1);  // b_alternative
+    w.put(0, 1);  // b_pres_ndot
+    w.put(1, 2);  // ac4_presentation_substream_info(): substream_index = 1
+    // ac4_substream_group_info() 0, one channel-coded substream:
+    w.put(1, 1);       // b_substreams_present
+    w.put(0, 1);       // b_hsf_ext
+    w.put(1, 1);       // b_single_substream
+    w.put(1, 1);       // b_channel_coded
+    w.put(0b1110, 4);  // channel_mode = 5.1
+    w.put(0, 1);       // b_bitrate_info
+    w.put(0, 1);       // b_audio_ndot (frame_rate_factor 1)
+    w.put(0, 2);       // substream_index = 0
+    w.put(0, 1);       // b_content_type
+    // substream_index_table(): three substreams of 4, 1 and 2 bytes.
+    w.put(3, 2);   // n_substreams = 3
+    w.put(0, 1);   // b_more_bits
+    w.put(4, 10);  // substream_size[0] = 4
+    w.put(0, 1);   // b_more_bits
+    w.put(1, 10);  // substream_size[1] = 1
+    w.put(0, 1);   // b_more_bits
+    w.put(2, 10);  // substream_size[2] = 2
+    auto data = w.bytes();
+    const std::size_t toc_bytes = data.size();
+    // Substream 0: ac4_substream() with audio_size 0x155 (15 bits), b_more_bits 0.
+    data.insert(data.end(), {std::byte{0x02}, std::byte{0xAA}, std::byte{0}, std::byte{0}});
+    data.insert(data.end(), 3, std::byte{0});  // substreams 1 and 2
+
+    const auto result = ac4::parse_raw_frame(data);
+    REQUIRE(result.has_value());
+    const auto& toc = result->toc;
+    CHECK(toc.bitstream_version == 2);
+    CHECK(toc.n_presentations == 2);
+    REQUIRE(toc.presentations_v1.size() == 2);
+
+    const auto& emdf_only = toc.presentations_v1[0];
+    REQUIRE(emdf_only.presentation_config.has_value());
+    CHECK(*emdf_only.presentation_config == 6);
+    CHECK(emdf_only.presentation_version == 1);
+    CHECK_FALSE(emdf_only.md_compat.has_value());
+    CHECK_FALSE(emdf_only.enable_presentation.has_value());
+    CHECK(emdf_only.group_refs.empty());
+    CHECK(emdf_only.frame_rate_factor == 1);
+
+    const auto& ordinary = toc.presentations_v1[1];
+    CHECK_FALSE(ordinary.presentation_config.has_value());
+    CHECK(ordinary.presentation_version == 1);
+    REQUIRE(ordinary.md_compat.has_value());
+    CHECK(*ordinary.md_compat == 2);
+    REQUIRE(ordinary.enable_presentation.has_value());
+    CHECK(*ordinary.enable_presentation);
+    CHECK(ordinary.group_refs == std::vector<int>{0});
+
+    REQUIRE(toc.substream_groups.size() == 1);
+    const auto& group = toc.substream_groups[0];
+    CHECK(group.b_substreams_present);
+    CHECK(group.b_channel_coded);
+    REQUIRE(group.substreams.size() == 1);
+    REQUIRE(group.substreams[0].chan.has_value());
+    const auto& chan = *group.substreams[0].chan;
+    CHECK(chan.channel_mode_name == "5.1");
+    REQUIRE(chan.substream_index.has_value());
+    CHECK(*chan.substream_index == 0);
+    CHECK_FALSE(group.content_type.has_value());
+
+    CHECK(toc.n_substreams == 3);
+    CHECK(toc.substream_sizes == std::vector<int>{4, 1, 2});
+    REQUIRE(result->substreams.size() == 3);
+    CHECK(result->substreams[0].offset == toc_bytes);
+    CHECK(result->substreams[0].is_audio);
+    REQUIRE(result->substreams[0].audio_size.has_value());
+    CHECK(*result->substreams[0].audio_size == 0x155);
+    CHECK_FALSE(result->substreams[1].is_audio);  // the presentation substream
+    CHECK_FALSE(result->substreams[2].is_audio);  // the EMDF payloads substream
+}
+
+TEST_CASE("parse_raw_frame: substream groups take frame_rate_factor past an EMDF-only presentation",
+          "[ac4]") {
+    // frame_rate_index 1 (24 fps) makes frame_rate_multiply_info() read a
+    // b_multiplier bit. Presentation 1 sets it, so its frame_rate_factor is 2
+    // and the group's ac4_substream_info_chan() reads two b_audio_ndot bits.
+    // The EMDF-only presentation ahead of it sends no
+    // frame_rate_multiply_info() and keeps the default of 1; a group that took
+    // its factor from that presentation would read one b_audio_ndot bit and
+    // substream_index 1 as 2.
+    BitWriter w;
+    write_v1_two_presentation_toc_preamble(w, 1);
+    write_v1_emdf_only_presentation(w);
+    // Presentation 1, a single substream group:
+    w.put(1, 1);  // b_single_substream_group = 1
+    w.put(1, 1);  // presentation_version: one 1 bit,
+    w.put(0, 1);  //   then the terminator -> 1
+    w.put(2, 3);  // md_compat = 2
+    w.put(1, 1);  // b_presentation_id
+    w.put(2, 2);  //   variable_bits(2): chunk 2
+    w.put(0, 1);  //   no continuation -> presentation_id = 2
+    w.put(1, 1);  // frame_rate_multiply_info(frame_rate_index=1): b_multiplier -> 2
+    // frame_rate_fractions_info(frame_rate_index=1): 0 bits.
+    // emdf_info(): every field 0.
+    w.put(0, 2);
+    w.put(0, 3);
+    w.put(0, 1);
+    w.put(0, 2);
+    w.put(0, 2);
+    w.put(1, 1);  // b_presentation_filter
+    w.put(1, 1);  // b_enable_presentation
+    w.put(0, 3);  // ac4_sgi_specifier(): group_index = 0
+    w.put(0, 1);  // b_pre_virtualized
+    w.put(0, 1);  // b_add_emdf_substreams = 0
+    w.put(0, 1);  // b_alternative
+    w.put(0, 1);  // b_pres_ndot
+    w.put(0, 2);  // ac4_presentation_substream_info(): substream_index = 0
+    // ac4_substream_group_info() 0, one channel-coded substream:
+    w.put(1, 1);       // b_substreams_present
+    w.put(0, 1);       // b_hsf_ext
+    w.put(1, 1);       // b_single_substream
+    w.put(1, 1);       // b_channel_coded
+    w.put(0b1110, 4);  // channel_mode = 5.1
+    w.put(0, 1);       // b_bitrate_info
+    w.put(0, 1);       // b_audio_ndot 1 of frame_rate_factor 2
+    w.put(1, 1);       // b_audio_ndot 2 of frame_rate_factor 2
+    w.put(1, 2);       // substream_index = 1
+    w.put(0, 1);       // b_content_type
+    // substream_index_table(): three substreams of 1, 4 and 4 bytes.
+    w.put(3, 2);   // n_substreams = 3
+    w.put(0, 1);   // b_more_bits
+    w.put(1, 10);  // substream_size[0] = 1
+    w.put(0, 1);   // b_more_bits
+    w.put(4, 10);  // substream_size[1] = 4
+    w.put(0, 1);   // b_more_bits
+    w.put(4, 10);  // substream_size[2] = 4
+    auto data = w.bytes();
+    data.insert(data.end(), 1, std::byte{0});  // substream 0
+    // Substream 1: ac4_substream() with audio_size 0x15 (15 bits), b_more_bits 0.
+    data.insert(data.end(), {std::byte{0x00}, std::byte{0x2A}, std::byte{0}, std::byte{0}});
+    data.insert(data.end(), 4, std::byte{0});  // substream 2
+
+    const auto result = ac4::parse_raw_frame(data);
+    REQUIRE(result.has_value());
+    const auto& toc = result->toc;
+    REQUIRE(toc.presentations_v1.size() == 2);
+    CHECK(toc.presentations_v1[0].frame_rate_factor == 1);
+    CHECK(toc.presentations_v1[1].frame_rate_factor == 2);
+    REQUIRE(toc.substream_groups.size() == 1);
+    const auto& group = toc.substream_groups[0];
+    REQUIRE(group.substreams.size() == 1);
+    REQUIRE(group.substreams[0].chan.has_value());
+    REQUIRE(group.substreams[0].chan->substream_index.has_value());
+    CHECK(*group.substreams[0].chan->substream_index == 1);
+    CHECK_FALSE(group.content_type.has_value());
+    CHECK(toc.n_substreams == 3);
+    CHECK(toc.substream_sizes == std::vector<int>{1, 4, 4});
+    REQUIRE(result->substreams.size() == 3);
+    CHECK(result->substreams[1].is_audio);
+    REQUIRE(result->substreams[1].audio_size.has_value());
+    CHECK(*result->substreams[1].audio_size == 0x15);
+}
+
 TEST_CASE("parse_raw_frame: a v0 presentation's runaway EMDF-substream count stops at truncation",
           "[ac4]") {
-    // Regression vector for parse_presentation_info_v0()'s b_add_emdf_substreams
-    // loop (ac4.cpp): n escapes through variable_bits() with no upper bound,
-    // and the comment beside the loop's `if (r.error()) break;` describes what
-    // used to happen without it - "a 200-byte frame spends six seconds walking
-    // a count no data backs". This is also the only test in this suite that
-    // exercises bitstream_version 0/1 at all - every other frame here is
-    // version 2, so parse_presentation_info_v0() itself was otherwise dead
-    // from ac3tests' point of view.
+    // Regression vector for the n_add_emdf_substreams loop
+    // (parse_add_emdf_substreams() in ac4.cpp), reached here through
+    // parse_presentation_info_v0(): n escapes through variable_bits() with no
+    // upper bound, and the comment beside the loop's `if (r.error()) break;`
+    // describes what used to happen without it - "a 200-byte frame spends six
+    // seconds walking a count no data backs". This and the v0 EMDF-only
+    // presentation test above are the only frames in this suite that take
+    // the bitstream_version 0/1 path.
     BitWriter w;
     w.put(0, 2);   // bitstream_version = 0 (the v0 TOC path, <= 1)
     w.put(0, 10);  // sequence_counter
@@ -661,21 +1177,22 @@ TEST_CASE("parse_raw_frame: a v0 presentation's runaway EMDF-substream count sto
     w.put(0, 1);  // b_pre_virtualized
     w.put(1, 1);  // b_add_emdf_substreams = 1
     w.put(0, 2);  // n = 0 -> escapes via variable_bits(2)
-    // Escape n to a real (not phantom-zero) 89,478,487 via 12 rounds of
+    // Escape n to a real (not phantom-zero) 22,369,623 via 12 rounds of
     // variable_bits(2): 11 continuations of the maximal 2-bit chunk (3), then
     // one terminating round - value = ((((...(3*4+4)...)*4+4)+3), landing on
-    // 89,478,483 (+4 -> n). Large enough that actually walking it - each
-    // iteration a full emdf_info() - takes many seconds; the escape itself is
-    // 36 bits.
+    // 22,369,619 (+4 -> n; the "put_variable_bits round-trips" test below
+    // checks that value against these exact bits). Large enough that actually
+    // walking it - each iteration a full emdf_info() - takes many seconds; the
+    // escape itself is 36 bits.
     for (int round = 0; round < 11; ++round) {
         w.put(0b11, 2);  // value chunk = 3
         w.put(1, 1);     // continuation
     }
     w.put(0b11, 2);  // final chunk = 3
-    w.put(0, 1);     // terminate: n = 89,478,483 + 4 = 89,478,487
+    w.put(0, 1);     // terminate: n = 22,369,619 + 4 = 22,369,623
     // No further data at all: the loop's first parse_emdf_info() call runs
     // off the end immediately, and the guard has to notice on THIS iteration,
-    // not the 89-millionth.
+    // not the 22-millionth.
 
     const auto data = w.bytes();
     const auto start = std::chrono::steady_clock::now();
@@ -685,7 +1202,7 @@ TEST_CASE("parse_raw_frame: a v0 presentation's runaway EMDF-substream count sto
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error() == ac4::Error::kTruncated);
     // The guard's whole job is to notice on the first iteration rather than
-    // the 89-millionth - generous even against a loaded shared runner, since
+    // the 22-millionth - generous even against a loaded shared runner, since
     // the guarded path is a handful of reads, not a loop bound by the
     // escaped count.
     CHECK(elapsed < std::chrono::seconds(2));
@@ -694,7 +1211,7 @@ TEST_CASE("parse_raw_frame: a v0 presentation's runaway EMDF-substream count sto
 TEST_CASE("parse_raw_frame: a v1 presentation's runaway EMDF-substream count stops at truncation",
           "[ac4]") {
     // The v1 counterpart of the v0 case above: parse_presentation_v1_info()
-    // has its own b_add_emdf_substreams loop, guarded the same way. Follows
+    // reaches the same guarded n_add_emdf_substreams loop. Follows
     // write_ac4_object_coded_preamble()'s own field values up to
     // b_add_emdf_substreams (not reused directly - that helper hard-codes the
     // bit clear, and every other test relies on that), then sets it instead
@@ -728,7 +1245,7 @@ TEST_CASE("parse_raw_frame: a v1 presentation's runaway EMDF-substream count sto
     w.put(0, 1);  // b_pres_ndot
     w.put(0, 2);  // ac4_presentation_substream_info()'s substream_index_ref
     // Same escape as the v0 test: n = 0 -> variable_bits(2), 12 rounds
-    // landing on 89,478,487, then no further data.
+    // landing on 22,369,623, then no further data.
     w.put(0, 2);  // n = 0
     for (int round = 0; round < 11; ++round) {
         w.put(0b11, 2);
@@ -745,6 +1262,157 @@ TEST_CASE("parse_raw_frame: a v1 presentation's runaway EMDF-substream count sto
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error() == ac4::Error::kTruncated);
     CHECK(elapsed < std::chrono::seconds(2));
+}
+
+TEST_CASE("put_variable_bits round-trips through the reader's own escapes", "[ac4]") {
+    // The helper the two regression vectors below depend on, checked against
+    // a value this suite already derives by hand: the v0 EMDF test's 11
+    // continuations of the maximal 2-bit chunk, then a final one. Each round
+    // is 3 bits, and the value comes back as the substream_index of the
+    // simplest object-coded substream once the helper is swapped in for the
+    // index's own escape.
+    BitWriter by_hand;
+    for (int round = 0; round < 11; ++round) {
+        by_hand.put(0b11, 2);
+        by_hand.put(1, 1);
+    }
+    by_hand.put(0b11, 2);
+    by_hand.put(0, 1);
+    BitWriter helper;
+    put_variable_bits(helper, 2, 22'369'619);
+    CHECK(helper.bytes() == by_hand.bytes());
+
+    for (const std::uint32_t value : {0u, 3u, 4u, 19u, 20u, 1000u, 22'369'619u, 0xFFFF'FFFFu}) {
+        CAPTURE(value);
+        const auto frame = parse_wrapped_object_coded_group([value](BitWriter& w) {
+            w.put(0, 1);  // b_oamd_substream = 0
+            w.put(0, 1);  // b_ajoc = 0 -> ac4_substream_info_obj()
+            w.put(0, 3);  // n_objects_code (unused)
+            w.put(0, 1);  // b_dynamic_objects
+            w.put(0, 1);  // b_bed_objects
+            w.put(0, 1);  // b_isf
+            w.put(0, 4);  // res_bytes = 0
+            w.put(0, 1);  // b_bitrate_info
+            w.put(0, 1);  // b_audio_ndot
+            w.put(3, 2);  // substream_index = 3 -> += variable_bits(2)
+            put_variable_bits(w, 2, value);
+        });
+        REQUIRE(frame.toc.substream_groups[0].substreams[0].obj.has_value());
+        REQUIRE(frame.toc.substream_groups[0].substreams[0].obj->substream_index.has_value());
+        CHECK(static_cast<std::uint32_t>(
+                  *frame.toc.substream_groups[0].substreams[0].obj->substream_index) ==
+              3u + value);
+    }
+}
+
+// Regression: presentation_config_ext_info() skipped `8 * n_skip_bytes` bits
+// with n_skip_bytes converted to int, and n_skip_bytes escapes through
+// variable_bits() to 2^32. Found by fuzz/fuzz_ac4_parse.cpp as a UBSan
+// signed-overflow report once ac4_objects was built with sanitizers. The
+// count here is 2^29 + 1 bytes, whose 8x product (2^32 + 8) overflows int.
+// One byte and every field the rest of a v0 TOC needs follow it, so the
+// frame parses if that product is taken as the 8 bits it wraps to; read as
+// the count that was sent, it runs 2^29 bytes past a frame of a few.
+TEST_CASE("parse_raw_frame: presentation_config_ext_info's skip count runs past the frame",
+          "[ac4]") {
+    BitWriter w;
+    w.put(0, 2);   // bitstream_version = 0 (the v0 TOC path)
+    w.put(0, 10);  // sequence_counter
+    w.put(0, 1);   // b_wait_frames
+    w.put(0, 1);   // fs_index = 0
+    w.put(5, 4);   // frame_rate_index = 5 (frame_rate_multiply_info reads 0 bits)
+    w.put(0, 1);   // b_iframe_global
+    w.put(1, 1);   // b_single_presentation -> n_presentations = 1
+    w.put(0, 1);   // b_payload_base = 0
+    // parse_presentation_info_v0():
+    w.put(0, 1);  // b_single_substream = 0
+    w.put(7, 3);  // presentation_config = 7 -> += variable_bits(2)
+    put_variable_bits(w, 2, 0);
+    w.put(0, 1);  // presentation_version terminator
+    w.put(0, 3);  // md_compat
+    w.put(0, 1);  // b_belongs_to_presentation_id = 0
+    // emdf_info(): version(2), key_id(3), b_payloads_substream_info(1),
+    // emdf_reserved primary(2)/secondary(2), all zero.
+    w.put(0, 10);
+    w.put(0, 1);  // b_hsf_ext
+    // presentation_config 7 is not 0-5 -> presentation_config_ext_info():
+    w.put(1, 5);  // n_skip_bytes = 1
+    w.put(1, 1);  // b_more_skip_bytes -> += variable_bits(2) << 5
+    put_variable_bits(w, 2, 1u << 24);  // n_skip_bytes = 2^29 + 1
+    w.put(0, 8);  // the byte a wrapped count of 8 bits would skip
+    w.put(0, 1);  // b_pre_virtualized
+    w.put(0, 1);  // b_add_emdf_substreams = 0
+    write_ac4_single_empty_substream_index_table(w);
+
+    const auto data = w.bytes();
+    const auto start = std::chrono::steady_clock::now();
+    const auto result = ac4::parse_raw_frame(data);
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == ac4::Error::kTruncated);
+    // Skipping 2^32 bits one at a time takes seconds; moving the position
+    // does not. Same generous bound as the runaway-count tests above.
+    CHECK(elapsed < std::chrono::seconds(2));
+}
+
+// Regression: parse_raw_frame() bounded each substream with
+// `offset + size > frame size` on size_t, reading payload_base and
+// substream_size[] back from their int fields - so a size above INT_MAX
+// sign-extended to nearly 2^64. A payload_base of 1032 bytes past a frame of
+// a few, plus a size of 2^32 - 1032, wrapped that sum back to the TOC's own
+// length: the check passed, and the audio substream's header was read from a
+// subspan starting 1032 bytes past the end of the data. Found reading the
+// code while fixing the overflow above.
+TEST_CASE("parse_raw_frame: a payload_base and substream size that wrap are truncated", "[ac4]") {
+    BitWriter w;
+    w.put(2, 2);   // bitstream_version = 2
+    w.put(0, 10);  // sequence_counter
+    w.put(0, 1);   // b_wait_frames
+    w.put(0, 1);   // fs_index = 0
+    w.put(5, 4);   // frame_rate_index = 5
+    w.put(0, 1);   // b_iframe_global
+    w.put(1, 1);   // b_single_presentation -> n_presentations = 1
+    w.put(1, 1);   // b_payload_base = 1
+    w.put(31, 5);  // payload_base_minus1 = 31 -> 32 -> += variable_bits(3)
+    put_variable_bits(w, 3, 1000);  // payload_base = 1032
+    w.put(0, 1);  // b_program_id = 0
+    // ac4_presentation_v1_info(), as write_ac4_object_coded_preamble() writes it:
+    w.put(1, 1);   // b_single_substream_group = 1
+    w.put(0, 1);   // presentation_version terminator
+    w.put(0, 3);   // md_compat
+    w.put(0, 1);   // b_presentation_id = 0
+    w.put(0, 1);   // frame_rate_fractions_info
+    w.put(0, 10);  // emdf_info(), all zero
+    w.put(0, 1);   // b_presentation_filter = 0
+    w.put(0, 3);   // ac4_sgi_specifier(): group_index = 0
+    w.put(0, 1);   // b_pre_virtualized
+    w.put(0, 1);   // b_add_emdf_substreams = 0
+    w.put(0, 1);   // b_alternative
+    w.put(0, 1);   // b_pres_ndot
+    w.put(0, 2);   // ac4_presentation_substream_info()'s substream_index_ref
+    write_ac4_object_coded_group_preamble(w);
+    w.put(0, 1);  // b_oamd_substream = 0
+    w.put(0, 1);  // b_ajoc = 0 -> ac4_substream_info_obj()
+    w.put(0, 3);  // n_objects_code = 0
+    w.put(1, 1);  // b_dynamic_objects
+    w.put(0, 1);  // b_lfe
+    w.put(0, 1);  // b_bitrate_info
+    w.put(0, 1);  // b_audio_ndot
+    w.put(0, 2);  // substream_index = 0 -> substream 0 is audio
+    w.put(0, 1);  // b_content_type = 0
+    // substream_index_table(): one substream of 2^32 - 1032 bytes.
+    w.put(1, 2);                          // n_substreams = 1
+    w.put(1, 1);                          // b_size_present
+    w.put(1, 1);                          // b_more_bits
+    w.put(0x3F8, 10);                     // substream_size low bits
+    put_variable_bits(w, 2, 0x3F'FFFE);  // << 10 -> 0xFFFFF800 + 0x3F8 = 2^32 - 1032
+    auto data = w.bytes();
+    data.resize(data.size() + 4, std::byte{0});
+
+    const auto result = ac4::parse_raw_frame(data);
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == ac4::Error::kTruncated);
 }
 
 TEST_CASE("describe returns a distinct, non-empty string for every Error", "[ac4]") {
