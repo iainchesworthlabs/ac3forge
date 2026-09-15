@@ -25,7 +25,10 @@
 //   1. dialnorm normalisation (§5.4.2.8). The stream says where its dialogue
 //      sits; a decoder normalising to the -31 dBFS reference attenuates by
 //      the difference, which is what makes two programmes cut together at a
-//      consistent loudness.
+//      consistent loudness. Dual mono (acmod 0) codes two UNRELATED
+//      programmes in one syncframe, each with its own dialnorm - §5.4.2.16's
+//      dialnorm2 for Ch2 - so this step takes an optional second dialnorm
+//      and normalises Ch2 by its own reference rather than by Ch1's.
 //   2. The §7.8 downmix, to Lo/Ro stereo, Lt/Rt stereo or mono, driven by
 //      the stream's OWN mix levels (AC-3's cmixlev/surmixlev, E-AC-3's
 //      mixmdate group) rather than by constants chosen here.
@@ -168,16 +171,27 @@ class AC3FORGE_EXPORT OutputStage {
     // anything - §7.8's own dual-mono branch is a choice of WHICH programme
     // to listen to, which is a routing decision above this layer rather than
     // a matrix. output_channel_count() reports 2 for it for the same reason.
+    // Dual mono IS still normalised, though, whenever kLine/kRf/apply_dialnorm
+    // ask for it - which is what `dialnorm2` is for.
+    //
+    // `dialnorm2` is §5.4.2.16's own dialnorm for Ch2, meaningful only under
+    // acmod kDualMono: channels[1] (Ch2) is normalised by its own reference
+    // rather than by `dialnorm` (Ch1's) - the two programmes are unrelated,
+    // and an encoder sizes Ch2's compr2 on the assumption Ch2 IS levelled by
+    // dialnorm2. Left at std::nullopt, Ch2 falls back to `dialnorm` like
+    // every other channel - the pre-existing behaviour, wrong for 1+1 but the
+    // only sane default when a caller has no dialnorm2 to give.
     void apply(std::vector<std::vector<float>>& channels, Acmod acmod, bool lfe,
-               const MixLevels& levels, int dialnorm);
+               const MixLevels& levels, int dialnorm, std::optional<int> dialnorm2 = std::nullopt);
 
     // The same fold over caller-owned planar storage, for the decoders'
     // *_into forms. Writes the fold into the first output_channel_count()
     // spans and leaves the rest untouched - it does not zero the channels a
     // fold has consumed, because the caller owns that storage and knows from
-    // the same function how much of it is now meaningful.
+    // the same function how much of it is now meaningful. `dialnorm2` is as
+    // above.
     void apply(std::span<const std::span<float>> channels, Acmod acmod, bool lfe,
-               const MixLevels& levels, int dialnorm);
+               const MixLevels& levels, int dialnorm, std::optional<int> dialnorm2 = std::nullopt);
 
     // The fold over a RENDERED E-AC-3 program: `channels` parallel to
     // `layout` (Table E2.5 order), rather than in an acmod's Table 5.8 coded
@@ -192,10 +206,11 @@ class AC3FORGE_EXPORT OutputStage {
     //
     // Writes the fold into the first spans exactly as the overload above
     // does. A layout with no locations at all (dual mono, which
-    // DecodedAccessUnit leaves empty) falls through to that overload.
+    // DecodedAccessUnit leaves empty) falls through to that overload, and
+    // `dialnorm2` reaches it unchanged - see that overload's own comment.
     void apply(std::span<const std::span<float>> channels,
                const eac3::chanmap::Layout& layout, Acmod acmod, bool lfe,
-               const MixLevels& levels, int dialnorm);
+               const MixLevels& levels, int dialnorm, std::optional<int> dialnorm2 = std::nullopt);
 
     // Samples of delay the stage adds, all of it the Lt/Rt phase shift's -
     // zero for every other target, and zero for Lt/Rt with the shift off.

@@ -40,9 +40,9 @@ ac3::MantissaBlockWriter::add_raw(unsigned int, int)
 ac3::MantissaBlockWriter::finish_block()
 ac3::MantissaBlockWriter::pack_group(ac3::MantissaBlockWriter::PendingGroup const&, int)
 ac3::MantissaBlockWriter::reset()
-ac3::OutputStage::apply(std::span<std::span<float, 18446744073709551615ul> const, 18446744073709551615ul>, ac3::Acmod, bool, ac3::MixLevels const&, int)
-ac3::OutputStage::apply(std::span<std::span<float, 18446744073709551615ul> const, 18446744073709551615ul>, ac3::eac3::chanmap::Layout const&, ac3::Acmod, bool, ac3::MixLevels const&, int)
-ac3::OutputStage::apply(std::vector<std::vector<float, std::allocator<float> >, std::allocator<std::vector<float, std::allocator<float> > > >&, ac3::Acmod, bool, ac3::MixLevels const&, int)
+ac3::OutputStage::apply(std::span<std::span<float, 18446744073709551615ul> const, 18446744073709551615ul>, ac3::Acmod, bool, ac3::MixLevels const&, int, std::optional<int>)
+ac3::OutputStage::apply(std::span<std::span<float, 18446744073709551615ul> const, 18446744073709551615ul>, ac3::eac3::chanmap::Layout const&, ac3::Acmod, bool, ac3::MixLevels const&, int, std::optional<int>)
+ac3::OutputStage::apply(std::vector<std::vector<float, std::allocator<float> >, std::allocator<std::vector<float, std::allocator<float> > > >&, ac3::Acmod, bool, ac3::MixLevels const&, int, std::optional<int>)
 ac3::OutputStage::latency_samples() const
 ac3::OutputStage::reset()
 ac3::OutputStage::rf_protection_db() const
@@ -340,9 +340,11 @@ ac3forge_decoded_access_unit_channel_samples
 ac3forge_decoded_access_unit_compr
 ac3forge_decoded_access_unit_destroy
 ac3forge_decoded_access_unit_dialnorm
+ac3forge_decoded_access_unit_dialnorm2
 ac3forge_decoded_access_unit_dynamic_object
 ac3forge_decoded_access_unit_dynrng
 ac3forge_decoded_access_unit_has_compr
+ac3forge_decoded_access_unit_has_dialnorm2
 ac3forge_decoded_access_unit_has_object_metadata
 ac3forge_decoded_access_unit_layout_count
 ac3forge_decoded_access_unit_layout_location

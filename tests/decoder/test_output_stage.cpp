@@ -304,6 +304,38 @@ TEST_CASE("dialnorm normalises onto the -31 dBFS reference and never boosts",
           Catch::Approx(ac3::meta::dialnorm_gain(20)).margin(1e-6));
 }
 
+TEST_CASE("dual mono normalises Ch2 by its own dialnorm2, not Ch1's", "[decoder][output][dual-mono]") {
+    // §5.4.2.16: dialnorm2 is Ch2's OWN reference. Dual mono's two channels
+    // are unrelated programmes (this file's own class comment on apply()), so
+    // a stage that scaled both by Ch1's dialnorm - the bug this guards
+    // against - would leave Ch2 audibly off level whenever the two differ, as
+    // they do here.
+    ac3::OutputStage stage{{.apply_dialnorm = true}};
+    std::vector<std::vector<float>> channels(2, std::vector<float>(64, 1.0F));
+    stage.apply(channels, ac3::Acmod::kDualMono, false, ac3::MixLevels{}, 27, 18);
+    // Dual mono is never folded (OutputStage refuses it outright - see
+    // apply()'s own comment), so the channel count is untouched and only the
+    // level moved, on each channel by its own reference.
+    REQUIRE(channels.size() == 2);
+    CHECK(static_cast<double>(channels[0][0]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(27)).margin(1e-6));
+    CHECK(static_cast<double>(channels[1][0]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(18)).margin(1e-6));
+    // The two gains actually differ - proof this isn't passing by coincidence
+    // because dialnorm_gain(27) and dialnorm_gain(18) happen to agree.
+    CHECK(ac3::meta::dialnorm_gain(27) != ac3::meta::dialnorm_gain(18));
+
+    // Without a dialnorm2 to give, Ch2 falls back to Ch1's dialnorm - the
+    // pre-existing behaviour every other acmod already relies on, and the
+    // only sane default for a caller with no second word.
+    std::vector<std::vector<float>> fallback(2, std::vector<float>(64, 1.0F));
+    stage.apply(fallback, ac3::Acmod::kDualMono, false, ac3::MixLevels{}, 27);
+    CHECK(static_cast<double>(fallback[0][0]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(27)).margin(1e-6));
+    CHECK(static_cast<double>(fallback[1][0]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(27)).margin(1e-6));
+}
+
 TEST_CASE("the LFE joins a fold only when asked, and never against the stream's wishes",
           "[decoder][output]") {
     const auto fold = [](bool mix_lfe, std::optional<double> lfe_level) {

@@ -556,10 +556,10 @@ std::optional<DecodedFrame> FrameDecoder::conceal(DecodeError error,
 
     const auto levels = mix_levels(out.cmixlev, out.surmixlev);
     if (external.empty()) {
-        impl_->output_.apply(out.channels, out.acmod, out.lfe, levels, out.dialnorm);
+        impl_->output_.apply(out.channels, out.acmod, out.lfe, levels, out.dialnorm, out.dialnorm2);
     } else {
         impl_->output_.apply(external.first(static_cast<std::size_t>(nchans)), out.acmod, out.lfe,
-                      levels, out.dialnorm);
+                      levels, out.dialnorm, out.dialnorm2);
     }
     return out;
 }
@@ -1791,10 +1791,10 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
         AC3_ZONE_SCOPED_N("ac3_output");
         const auto levels = mix_levels(cmixlev, surmixlev);
         if (external.empty()) {
-            impl_->output_.apply(out.channels, acmod, lfe, levels, dialnorm);
+            impl_->output_.apply(out.channels, acmod, lfe, levels, dialnorm, dialnorm2);
         } else {
             impl_->output_.apply(external.first(static_cast<std::size_t>(nchans)), acmod, lfe, levels,
-                          dialnorm);
+                          dialnorm, dialnorm2);
         }
     }
     return out;

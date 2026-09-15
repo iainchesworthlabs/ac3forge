@@ -837,6 +837,8 @@ TEST_CASE("E-AC-3 dual mono metadata crosses the C boundary on both decode surfa
         REQUIRE(unit != nullptr);
         CHECK(ac3forge_decoded_access_unit_acmod(unit) == AC3FORGE_ACMOD_DUAL_MONO);
         CHECK(ac3forge_decoded_access_unit_dialnorm(unit) == 27);
+        REQUIRE(ac3forge_decoded_access_unit_has_dialnorm2(unit) == 1);
+        CHECK(ac3forge_decoded_access_unit_dialnorm2(unit) == 25);
         CHECK(ac3forge_decoded_access_unit_substream_count(unit) == 1);
         CHECK(ac3forge_decoded_access_unit_channel_count(unit) == 2);
         // 1+1 has no Table E2.5 layout - two unrelated programmes - so the
@@ -1115,6 +1117,8 @@ TEST_CASE("C accessors take their documented defaults on null handles", "[capi]"
     CHECK(ac3forge_decoded_access_unit_has_compr(nullptr) == 0);
     CHECK(ac3forge_decoded_access_unit_compr(nullptr) == 0);
     CHECK(ac3forge_decoded_access_unit_dynrng(nullptr, 0) == 0);
+    CHECK(ac3forge_decoded_access_unit_has_dialnorm2(nullptr) == 0);
+    CHECK(ac3forge_decoded_access_unit_dialnorm2(nullptr) == 0);
     CHECK(ac3forge_decoded_access_unit_numblkscod(nullptr) == 0);
     CHECK(ac3forge_decoded_access_unit_substream_count(nullptr) == 0);
     CHECK(ac3forge_decoded_access_unit_channel_count(nullptr) == 0);
