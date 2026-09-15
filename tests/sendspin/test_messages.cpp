@@ -615,6 +615,128 @@ TEST_CASE("messages: the extension role's objects in the messages that carry the
             .payload()));
 }
 
+TEST_CASE("messages: server/state and client/command", "[sendspin][messages][roles]") {
+    ac3::sendspin::metadata::State metadata;
+    metadata.timestamp = 12;
+    metadata.title = "Blue in Green";
+    m::ServerState state;
+    state.metadata = metadata;
+    // Null: the controller state cleared.
+    state.controller.emplace(std::nullopt);
+    ac3::sendspin::color::State colours;
+    colours.timestamp = 12;
+    colours.accent = ac3::sendspin::color::Rgb{.r = 1, .g = 2, .b = 3};
+    state.color = colours;
+    const std::string spec = m::write_server_state(state, Dialect::kSpecification);
+    CHECK(spec == R"({"type":"server/state","payload":{"metadata":{"timestamp":12,"title":"Blue in Green"},)"
+                  R"("controller":null,"color":{"timestamp":12,"accent":[1,2,3]}}})");
+    const std::string aio = m::write_server_state(state, Dialect::kAiosendspin911);
+    CHECK(aio == R"({"type":"server/state","payload":{"metadata":{"timestamp":12,"title":"Blue in Green","artist":null,)"
+                 R"("album_artist":null,"album":null,"artwork_url":null,"year":null,"track":null,"progress":null},)"
+                 R"("controller":null,"color":{"timestamp":12,"background_dark":null,"background_light":null,)"
+                 R"("primary":null,"accent":[1,2,3],"on_dark":null,"on_light":null}}})");
+    for (const std::string& text : {spec, aio}) {
+        const auto read = m::read_server_state(Parsed(text).payload());
+        REQUIRE(read.has_value());
+        REQUIRE(read->metadata.has_value());
+        CHECK(read->metadata->value() == metadata);
+        REQUIRE(read->controller.has_value());
+        CHECK_FALSE(read->controller->has_value());
+        REQUIRE(read->color.has_value());
+        CHECK(read->color->value() == colours);
+    }
+    const auto partial = m::read_server_state(Parsed(R"({"type":"server/state","payload":{}})").payload());
+    REQUIRE(partial.has_value());
+    CHECK_FALSE(partial->metadata.has_value());
+    CHECK_FALSE(m::read_server_state(Parsed(R"({"type":"server/state","payload":{"color":{"accent":[1,2,3]}}})").payload()));
+
+    m::ClientCommand command;
+    command.controller = ac3::sendspin::controller::CommandMessage{};
+    command.controller->command = ac3::sendspin::controller::Command::kSwitch;
+    const std::string command_text = m::write_client_command(command);
+    CHECK(command_text == R"({"type":"client/command","payload":{"controller":{"command":"switch"}}})");
+    const auto command_read = m::read_client_command(Parsed(command_text).payload());
+    REQUIRE(command_read.has_value());
+    CHECK(command_read->controller == command.controller);
+    CHECK_FALSE(m::read_client_command(Parsed(R"({"type":"client/command","payload":{"controller":{"command":"louder"}}})").payload()));
+}
+
+TEST_CASE("messages: the source@v1 artwork@v1 and visualizer@v1 objects in the core messages", "[sendspin][messages][roles]") {
+    namespace artwork = ac3::sendspin::artwork;
+    namespace visualizer = ac3::sendspin::visualizer;
+    namespace source = ac3::sendspin::source;
+
+    m::ClientHello hello = sample_hello();
+    hello.supported_roles = {"source@v1", "visualizer@v1"};
+    hello.player_support.reset();
+    hello.source_support = source::Support{.line_sense = true};
+    hello.visualizer_support = visualizer::Support{.buffer_capacity = 8192};
+    const std::string hello_text = m::write_client_hello(hello, Dialect::kSpecification);
+    CHECK(hello_text.find(R"("source@v1_support":{"features":{"line_sense":true}},"visualizer@v1_support":{"buffer_capacity":8192},)") !=
+          std::string::npos);
+    const auto hello_read = m::read_client_hello(Parsed(hello_text).payload(), Dialect::kSpecification);
+    REQUIRE(hello_read.has_value());
+    REQUIRE(hello_read->source_support.has_value());
+    CHECK(hello_read->source_support->line_sense);
+    REQUIRE(hello_read->visualizer_support.has_value());
+    CHECK(hello_read->visualizer_support->buffer_capacity == 8192);
+
+    m::ClientState state;
+    state.available = true;
+    state.source = source::State{.signal = source::Signal::kPresent};
+    state.artwork = artwork::Channels{};
+    state.artwork->channels = {{.source = artwork::Source::kAlbum, .format = artwork::Format::kPng, .width = 64, .height = 64}};
+    state.visualizer = visualizer::State{};
+    state.visualizer->types = {visualizer::Type::kPeak};
+    state.visualizer->rate_max = 10;
+    const std::string state_text = m::write_client_state(state, Dialect::kSpecification);
+    CHECK(state_text == R"({"type":"client/state","payload":{"available":true,"source":{"signal":"present"},)"
+                        R"("artwork":{"channels":[{"source":"album","format":"png","width":64,"height":64}]},)"
+                        R"("visualizer":{"types":["peak"],"rate_max":10}}})");
+    const auto state_read = m::read_client_state(Parsed(state_text).payload(), Dialect::kSpecification);
+    REQUIRE(state_read.has_value());
+    CHECK(state_read->artwork == state.artwork);
+    CHECK(state_read->visualizer == state.visualizer);
+    REQUIRE(state_read->source.has_value());
+    CHECK(state_read->source->signal == source::Signal::kPresent);
+    CHECK_FALSE(m::read_client_state(
+        Parsed(R"({"type":"client/state","payload":{"available":true,"visualizer":{"types":["spectrum"],"rate_max":10}}})").payload(),
+        Dialect::kSpecification));
+
+    m::ServerCommand command;
+    command.source = source::Command::kStart;
+    const std::string command_text = m::write_server_command(command, Dialect::kSpecification);
+    CHECK(command_text == R"({"type":"server/command","payload":{"source":{"command":"start"}}})");
+    CHECK(m::read_server_command(Parsed(command_text).payload(), Dialect::kSpecification)->source == source::Command::kStart);
+
+    m::StreamStart start;
+    start.server_transmitted = 3;
+    start.artwork = state.artwork;
+    start.visualizer = visualizer::StreamStart{};
+    start.visualizer->types = {visualizer::Type::kPeak};
+    start.visualizer->rate_max = 10;
+    const std::string start_text = m::write_stream_start(start);
+    CHECK(start_text == R"({"type":"stream/start","payload":{"server_transmitted":3,)"
+                        R"("artwork":{"channels":[{"source":"album","format":"png","width":64,"height":64}]},)"
+                        R"("visualizer":{"types":["peak"],"rate_max":10}}})");
+    const auto start_read = m::read_stream_start(Parsed(start_text).payload());
+    REQUIRE(start_read.has_value());
+    CHECK(start_read->artwork == start.artwork);
+    CHECK(start_read->visualizer == start.visualizer);
+
+    const std::vector<std::uint8_t> header{'f', 'L', 'a', 'C'};
+    const std::string client_start = m::write_client_stream_start(
+        {.format = {.codec = m::Codec::kFlac, .channels = 2, .sample_rate = 44100, .bit_depth = 24}, .codec_header = header});
+    CHECK(client_start == R"({"type":"client-stream/start","payload":{"source":{"codec":"flac","channels":2,)"
+                          R"("sample_rate":44100,"bit_depth":24,"codec_header":"ZkxhQw=="}}})");
+    const auto client_read = m::read_client_stream_start(Parsed(client_start).payload());
+    REQUIRE(client_read.has_value());
+    CHECK(client_read->format.sample_rate == 44100);
+    CHECK(client_read->codec_header == header);
+    CHECK_FALSE(m::read_client_stream_start(Parsed(R"({"type":"client-stream/start","payload":{}})").payload()));
+    CHECK(m::write_client_stream_end() == R"({"type":"client-stream/end","payload":{}})");
+}
+
 TEST_CASE("messages: group/update in both dialects", "[sendspin][messages]") {
     const std::string text = m::write_group_update(
         {.playback_state = m::PlaybackState::kPlaying, .group_id = "g1", .group_name = "Downstairs"});

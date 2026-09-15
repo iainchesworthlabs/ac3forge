@@ -55,6 +55,8 @@ target_sources(ac3sendspin
         src/messages.cpp
         src/pairing_messages.cpp
         src/pairing_token.cpp
+        src/state_roles.cpp
+        src/stream_roles.cpp
         src/suite.cpp
         src/transport_memory.cpp)
 

@@ -1,0 +1,1 @@
+{"type":"client-stream/start","payload":{"source":{"codec":"flac","channels":2,"sample_rate":44100,"bit_depth":24,"codec_header":"ZkxhQwAAACI="}}}

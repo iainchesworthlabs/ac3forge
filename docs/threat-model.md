@@ -33,8 +33,8 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 | MPEG-TS containers | `mpegts::demux`, `mpegts::Reader` | yes |
 | OSC control packets (UDP), a live object-position source | `ac3::oba::parse_osc_packet` | yes — `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list alongside the other object/metadata-layer harnesses |
 | Sendspin's handshake messages from a network peer (Hearth build) | `ac3::sendspin::handshake` | yes — `fuzz_sendspin_handshake` |
-| Sendspin's messages after the handshake, JSON included (Hearth build) | `ac3::sendspin::json::Document::parse`, the readers in `ac3::sendspin::messages`, `pairing_messages` and `ac3forge` | yes — `fuzz_sendspin_json`, `fuzz_sendspin_messages` |
-| Sendspin's fragments and audio chunks, `player@v1`'s and `_ac3forge_player@v1`'s bursts (Hearth build) | `ac3::sendspin::Reassembler`, `parse_player_chunk`, `parse_burst_chunk` | yes — `fuzz_sendspin_frames` |
+| Sendspin's messages after the handshake, JSON included (Hearth build) | `ac3::sendspin::json::Document::parse`, the readers in `ac3::sendspin::messages`, `pairing_messages`, `ac3forge` and the other roles' namespaces | yes — `fuzz_sendspin_json`, `fuzz_sendspin_messages` |
+| Sendspin's fragments and binary messages: `player@v1`'s audio chunks, `_ac3forge_player@v1`'s bursts, and the artwork, visualizer and source messages (Hearth build) | `ac3::sendspin::Reassembler`, `parse_player_chunk`, `parse_burst_chunk`, `artwork::parse_message`, `visualizer::parse_frame`, `source::parse_chunk` | yes — `fuzz_sendspin_frames` |
 | mDNS packets on the local network (Hearth build) | `ac3::sendspin::discovery::mdns_packets::parse`, over mjansson's `mdns` | **no** — see [Sendspin](#sendspin-hearths-server-and-its-sinks) |
 | WebSocket frames (Hearth build) | cpp-httplib, behind `ac3::sendspin::transport::websocket` | **no** — third-party; see [Sendspin](#sendspin-hearths-server-and-its-sinks) |
 

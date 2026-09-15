@@ -305,6 +305,16 @@ and release packaging.
   E-AC-3 JOC fixture as one group: each WAV equals a local decode and render sample for sample,
   every burst's play time agrees on both within 1 ms, and a hidden case, `[hearth-soak]`, does the
   same over ten minutes.
+- **Sendspin's other six roles in `src/sendspin`**: the objects and binary messages of
+  `metadata@v1`, `controller@v1`, `color@v1`, `artwork@v1`, `visualizer@v1` and `source@v1`, and
+  the messages that carry them (`server/state`, `client/command`, `client-stream/start` and
+  `client-stream/end`), in the specification's form and, for the three state roles, aiosendspin
+  9.1.1's, where a cleared field goes out as `null`. Beside them, the arithmetic the roles ask of a
+  server: the controller's group volume, which applies a change to every player that supports
+  volume and shares what clamping loses among the rest, its group mute, and the colours' 4.5:1
+  contrast, reached by moving backgrounds and the colours on them towards black or white. The
+  new JSON messages join `fuzz_sendspin_messages`, and the binary ones `fuzz_sendspin_frames`,
+  which checks that each writes back to the bytes it was read from.
 - **Hearth's third-party notices** (`apps/hearth/notices/`): `NOTICES.txt` for cpp-httplib,
   Mbed TLS, mdns, libFLAC, libogg, Opus and Sendspin's time filter, generated at configure time
   with the versions and licence texts vcpkg installs with each port, ready for Hearth's About page

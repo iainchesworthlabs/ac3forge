@@ -16,6 +16,8 @@
 #include "ac3/sendspin/base64.hpp"
 #include "ac3/sendspin/dialect.hpp"
 #include "ac3/sendspin/json.hpp"
+#include "ac3/sendspin/state_roles.hpp"
+#include "ac3/sendspin/stream_roles.hpp"
 
 namespace ac3::sendspin::messages {
 
@@ -487,6 +489,14 @@ std::string write_client_hello(const ClientHello& hello, Dialect dialect) {
             w.key(ac3forge::kSupportKey);
             ac3forge::write_support(w, *hello.ac3forge_support);
         }
+        if (hello.source_support) {
+            w.key(source::kSupportKey);
+            source::write_support(w, *hello.source_support);
+        }
+        if (hello.visualizer_support) {
+            w.key(visualizer::kSupportKey);
+            visualizer::write_support(w, *hello.visualizer_support);
+        }
         if (dialect == Dialect::kSpecification) {
             w.key("supported_pair_methods").begin_object();
             for (const PairMethodDescriptor& descriptor : hello.pair_methods) {
@@ -544,6 +554,12 @@ std::expected<ClientHello, MessageError> read_client_hello(json::Value payload, 
     }
     if (const json::Value support = payload[ac3forge::kSupportKey]; support.exists()) {
         hello.ac3forge_support = ac3forge::read_support(support);
+    }
+    if (const json::Value support = payload[source::kSupportKey]; support.exists()) {
+        hello.source_support = source::read_support(support);
+    }
+    if (const json::Value support = payload[visualizer::kSupportKey]; support.exists()) {
+        hello.visualizer_support = visualizer::read_support(support);
     }
 
     // Required in the specification; aiosendspin 9.1.1 leaves it out when it offers none.
@@ -727,6 +743,18 @@ std::string write_client_state(const ClientState& state, Dialect dialect) {
             }
             w.end_object();
         }
+        if (state.source) {
+            w.key("source");
+            source::write_state(w, *state.source);
+        }
+        if (state.artwork) {
+            w.key("artwork");
+            artwork::write_channels(w, *state.artwork);
+        }
+        if (state.visualizer) {
+            w.key("visualizer");
+            visualizer::write_state(w, *state.visualizer);
+        }
         if (state.ac3forge) {
             w.key(ac3forge::kObjectKey);
             ac3forge::write_state(w, *state.ac3forge);
@@ -746,6 +774,24 @@ std::expected<ClientState, MessageError> read_client_state(json::Value payload, 
     if (const json::Value extension = payload[ac3forge::kObjectKey]; extension.exists()) {
         state.ac3forge = ac3forge::read_state(extension);
         if (!state.ac3forge) {
+            return malformed();
+        }
+    }
+    if (const json::Value object = payload["source"]; object.exists()) {
+        state.source = source::read_state(object);
+        if (!state.source) {
+            return malformed();
+        }
+    }
+    if (const json::Value object = payload["artwork"]; object.exists()) {
+        state.artwork = artwork::read_channels(object);
+        if (!state.artwork) {
+            return malformed();
+        }
+    }
+    if (const json::Value object = payload["visualizer"]; object.exists()) {
+        state.visualizer = visualizer::read_state(object);
+        if (!state.visualizer) {
             return malformed();
         }
     }
@@ -827,6 +873,10 @@ std::string write_server_command(const ServerCommand& command, Dialect dialect) 
             }
             w.end_object();
         }
+        if (command.source) {
+            w.key("source");
+            source::write_command(w, *command.source);
+        }
         if (command.ac3forge) {
             w.key(ac3forge::kObjectKey);
             ac3forge::write_command(w, *command.ac3forge);
@@ -843,6 +893,12 @@ std::expected<ServerCommand, MessageError> read_server_command(json::Value paylo
         } else if (read.error().error == ac3forge::CommandError::kSettingsRefused) {
             command.ac3forge_refused = std::move(read.error().settings);
         } else {
+            return malformed();
+        }
+    }
+    if (const json::Value object = payload["source"]; object.exists()) {
+        command.source = source::read_command(object);
+        if (!command.source) {
             return malformed();
         }
     }
@@ -888,6 +944,83 @@ std::expected<ServerCommand, MessageError> read_server_command(json::Value paylo
     return command;
 }
 
+// --- server/state and client/command ----------------------------------------------------
+
+std::string write_server_state(const ServerState& state, Dialect dialect) {
+    return envelope("server/state", [&](json::Writer& w) {
+        if (state.metadata) {
+            w.key("metadata");
+            if (*state.metadata) {
+                metadata::write_state(w, **state.metadata, dialect);
+            } else {
+                w.null();
+            }
+        }
+        if (state.controller) {
+            w.key("controller");
+            if (*state.controller) {
+                controller::write_state(w, **state.controller);
+            } else {
+                w.null();
+            }
+        }
+        if (state.color) {
+            w.key("color");
+            if (*state.color) {
+                color::write_state(w, **state.color, dialect);
+            } else {
+                w.null();
+            }
+        }
+    });
+}
+
+std::expected<ServerState, MessageError> read_server_state(json::Value payload) {
+    ServerState state;
+    // Each object: left out, null, or one its reader accepts.
+    const auto read = [&]<class T>(std::string_view key, RoleObject<T>& out, std::optional<T> (*reader)(json::Value)) {
+        const json::Value object = payload[key];
+        if (!object.exists()) {
+            return true;
+        }
+        if (object.is_null()) {
+            out.emplace(std::nullopt);
+            return true;
+        }
+        std::optional<T> parsed = reader(object);
+        if (!parsed) {
+            return false;
+        }
+        out.emplace(std::move(parsed));
+        return true;
+    };
+    if (!read("metadata", state.metadata, metadata::read_state) ||
+        !read("controller", state.controller, controller::read_state) || !read("color", state.color, color::read_state)) {
+        return malformed();
+    }
+    return state;
+}
+
+std::string write_client_command(const ClientCommand& command) {
+    return envelope("client/command", [&](json::Writer& w) {
+        if (command.controller) {
+            w.key("controller");
+            controller::write_command(w, *command.controller);
+        }
+    });
+}
+
+std::expected<ClientCommand, MessageError> read_client_command(json::Value payload) {
+    ClientCommand command;
+    if (const json::Value object = payload["controller"]; object.exists()) {
+        command.controller = controller::read_command(object);
+        if (!command.controller) {
+            return malformed();
+        }
+    }
+    return command;
+}
+
 // --- stream/start, stream/clear and stream/end ------------------------------------------
 
 std::string write_stream_start(const StreamStart& start) {
@@ -904,6 +1037,14 @@ std::string write_stream_start(const StreamStart& start) {
                 w.member("codec_header", std::string_view{base64::encode(player.codec_header)});
             }
             w.end_object();
+        }
+        if (start.artwork) {
+            w.key("artwork");
+            artwork::write_channels(w, *start.artwork);
+        }
+        if (start.visualizer) {
+            w.key("visualizer");
+            visualizer::write_stream_start(w, *start.visualizer);
         }
         if (start.ac3forge) {
             w.key(ac3forge::kObjectKey);
@@ -922,6 +1063,18 @@ std::expected<StreamStart, MessageError> read_stream_start(json::Value payload) 
     if (const json::Value extension = payload[ac3forge::kObjectKey]; extension.exists()) {
         start.ac3forge = ac3forge::read_stream_start(extension);
         if (!start.ac3forge) {
+            return malformed();
+        }
+    }
+    if (const json::Value object = payload["artwork"]; object.exists()) {
+        start.artwork = artwork::read_channels(object);
+        if (!start.artwork) {
+            return malformed();
+        }
+    }
+    if (const json::Value object = payload["visualizer"]; object.exists()) {
+        start.visualizer = visualizer::read_stream_start(object);
+        if (!start.visualizer) {
             return malformed();
         }
     }
@@ -991,6 +1144,47 @@ std::expected<StreamEnd, MessageError> read_stream_end(json::Value payload) {
         }
     }
     return end;
+}
+
+// --- client-stream/start and client-stream/end ------------------------------------------
+
+std::string write_client_stream_start(const ClientStreamStart& start) {
+    return envelope("client-stream/start", [&](json::Writer& w) {
+        w.key("source")
+            .begin_object()
+            .member("codec", codec_name(start.format.codec))
+            .member("channels", start.format.channels)
+            .member("sample_rate", start.format.sample_rate)
+            .member("bit_depth", start.format.bit_depth);
+        if (!start.codec_header.empty()) {
+            w.member("codec_header", std::string_view{base64::encode(start.codec_header)});
+        }
+        w.end_object();
+    });
+}
+
+std::expected<ClientStreamStart, MessageError> read_client_stream_start(json::Value payload) {
+    const json::Value object = payload["source"];
+    bool bad = false;
+    const std::optional<AudioFormat> format = read_format(object, bad);
+    if (bad || !format) {
+        return malformed();
+    }
+    ClientStreamStart start;
+    start.format = *format;
+    if (const json::Value header = object["codec_header"]; header.exists()) {
+        const std::optional<std::string> text = header.as_string();
+        std::optional<std::vector<std::uint8_t>> bytes = text ? base64::decode(*text) : std::nullopt;
+        if (!bytes) {
+            return malformed();
+        }
+        start.codec_header = std::move(*bytes);
+    }
+    return start;
+}
+
+std::string write_client_stream_end() {
+    return empty_envelope("client-stream/end");
 }
 
 // --- group/update -----------------------------------------------------------------------

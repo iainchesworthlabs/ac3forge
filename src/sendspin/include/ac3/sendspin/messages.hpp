@@ -10,12 +10,15 @@
 #include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/dialect.hpp"
 #include "ac3/sendspin/json.hpp"
+#include "ac3/sendspin/state_roles.hpp"
+#include "ac3/sendspin/stream_roles.hpp"
 
 // Sendspin's JSON messages after the Noise handshake (messaging.md, Core messages;
 // roles/player/v1.md), each a struct with a writer and a reader, in both dialects where
 // they differ (planning/hearth-sendspin-extension.md, Music Assistant and aiosendspin
-// 9.1.1). The pairing messages have a header of their own, and so do the objects of
-// `_ac3forge_player@v1` (ac3forge_player.hpp), which the messages here carry.
+// 9.1.1). The pairing messages have a header of their own, and so do the objects of the other
+// roles (state_roles.hpp, stream_roles.hpp) and of `_ac3forge_player@v1` (ac3forge_player.hpp),
+// which the messages here carry.
 //
 // Every message is {"type": "<type>", "payload": {...}}. A session parses the text into a
 // json::Document, reads the type with read_envelope(), and hands the payload to that type's
@@ -149,6 +152,10 @@ struct ClientHello {
     // aiosendspin 9.1.1's `trust_level`: "user" on a long-term PSK connection, "none"
     // otherwise. Written and read in that dialect only.
     bool trusts_server = false;
+    // The support objects of source@v1 and visualizer@v1, read as nothing when absent or refused,
+    // as ac3forge_support is.
+    std::optional<source::Support> source_support = std::nullopt;
+    std::optional<visualizer::Support> visualizer_support = std::nullopt;
 };
 
 // The specification writes `supported_pair_methods` as an object keyed by method;
@@ -245,6 +252,9 @@ struct ClientState {
     bool available = false;
     std::optional<PlayerState> player;
     std::optional<ac3forge::State> ac3forge;
+    std::optional<source::State> source = std::nullopt;
+    std::optional<artwork::Channels> artwork = std::nullopt;
+    std::optional<visualizer::State> visualizer = std::nullopt;
 };
 
 // In aiosendspin 9.1.1's dialect, kVolume and kMute are left out of the player's
@@ -270,6 +280,7 @@ struct ServerCommand {
     // Read only: a settings command ac3forge::read_command refused, with the revision it named,
     // for the sink's settings_error. The message is not malformed.
     std::optional<ac3forge::SettingsError> ac3forge_refused;
+    std::optional<source::Command> source = std::nullopt;
 };
 
 [[nodiscard]] std::string write_server_command(const ServerCommand& command, Dialect dialect);
@@ -277,6 +288,31 @@ struct ServerCommand {
 // `_ac3forge_player` command ac3forge::read_command finds malformed.
 [[nodiscard]] std::expected<ServerCommand, MessageError> read_server_command(json::Value payload,
                                                                             Dialect dialect);
+
+// --- server/state and client/command ----------------------------------------------------
+
+// A role object in server/state: left out, which leaves the role's state as it is and any
+// scheduled update in place; null, which clears the state; or a state.
+template <class T>
+using RoleObject = std::optional<std::optional<T>>;
+
+struct ServerState {
+    RoleObject<metadata::State> metadata = std::nullopt;
+    RoleObject<controller::State> controller = std::nullopt;
+    RoleObject<color::State> color = std::nullopt;
+};
+
+[[nodiscard]] std::string write_server_state(const ServerState& state, Dialect dialect);
+// Malformed when a role object is neither null nor one its reader accepts.
+[[nodiscard]] std::expected<ServerState, MessageError> read_server_state(json::Value payload);
+
+struct ClientCommand {
+    std::optional<controller::CommandMessage> controller = std::nullopt;
+};
+
+[[nodiscard]] std::string write_client_command(const ClientCommand& command);
+// Malformed when the controller object is present and controller::read_command refuses it.
+[[nodiscard]] std::expected<ClientCommand, MessageError> read_client_command(json::Value payload);
 
 // --- stream/start, stream/clear and stream/end ------------------------------------------
 
@@ -290,6 +326,8 @@ struct StreamStart {
     std::int64_t server_transmitted = 0;
     std::optional<PlayerStream> player;
     std::optional<ac3forge::StreamStart> ac3forge;
+    std::optional<artwork::Channels> artwork = std::nullopt;
+    std::optional<visualizer::StreamStart> visualizer = std::nullopt;
 };
 
 // `roles` absent means every role the message covers.
@@ -308,6 +346,18 @@ struct StreamEnd {
 [[nodiscard]] std::expected<StreamClear, MessageError> read_stream_clear(json::Value payload);
 [[nodiscard]] std::string write_stream_end(const StreamEnd& end);
 [[nodiscard]] std::expected<StreamEnd, MessageError> read_stream_end(json::Value payload);
+
+// --- client-stream/start and client-stream/end (source@v1) ------------------------------
+
+struct ClientStreamStart {
+    AudioFormat format;
+    // Decoded from standard Base64; empty when absent.
+    std::vector<std::uint8_t> codec_header;
+};
+
+[[nodiscard]] std::string write_client_stream_start(const ClientStreamStart& start);
+[[nodiscard]] std::expected<ClientStreamStart, MessageError> read_client_stream_start(json::Value payload);
+[[nodiscard]] std::string write_client_stream_end();
 
 // --- group/update -----------------------------------------------------------------------
 

@@ -13,12 +13,13 @@
 
 // The core and pairing messages' readers (src/sendspin/src/messages.cpp and
 // pairing_messages.cpp): what a server reads from a client once the handshake is done
-// (client/hello, client/state, client/time, client/goodbye, and the client's pairing
-// messages) and what a player reads from a server (server/hello, server/activate,
-// server/time, server/command, stream/start, stream/clear, stream/end, group/update, and the
-// server's pairing messages), each in both dialects, with the objects of _ac3forge_player@v1 that
-// client/hello, client/state, server/command and stream/start carry (ac3forge_player.cpp). Every
-// reader sees the payload of every input, whatever its type says.
+// (client/hello, client/state, client/time, client/command, client-stream/start, client/goodbye,
+// and the client's pairing messages) and what a client reads from a server (server/hello,
+// server/activate, server/time, server/state, server/command, stream/start, stream/clear,
+// stream/end, group/update, and the server's pairing messages), each in both dialects, with the
+// objects of the other roles (state_roles.cpp, stream_roles.cpp) and of _ac3forge_player@v1
+// (ac3forge_player.cpp) that they carry. Every reader sees the payload of every input, whatever
+// its type says.
 //
 // Whatever reads must write back out, and that text must read and write back to itself: one
 // pass settles what the writer leaves out, such as an activity or a codec it does not
@@ -86,6 +87,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     settle(payload, m::read_stream_clear, m::write_stream_clear);
     settle(payload, m::read_stream_end, m::write_stream_end);
     settle(payload, m::read_client_goodbye, m::write_client_goodbye);
+    settle(payload, m::read_client_command, m::write_client_command);
+    settle(payload, m::read_client_stream_start, m::write_client_stream_start);
     settle(payload, pm::read_client_pair_init, pm::write_client_pair_init);
     settle(payload, pm::read_server_pair_auth, pm::write_server_pair_auth);
     settle(payload, pm::read_client_pair_auth, pm::write_client_pair_auth);
@@ -120,6 +123,9 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         settle(
             payload, [dialect](json::Value p) { return m::read_group_update(p, dialect); },
             [](const m::GroupUpdate& update) { return m::write_group_update(update); });
+        settle(
+            payload, [](json::Value p) { return m::read_server_state(p); },
+            [dialect](const m::ServerState& state) { return m::write_server_state(state, dialect); });
     }
     return 0;
 }

@@ -1,0 +1,1 @@
+{"type":"stream/start","payload":{"server_transmitted":5,"artwork":{"channels":[{"source":"album","format":"jpeg","width":480,"height":480}]},"visualizer":{"types":["beat","spectrum"],"rate_max":20,"tracks_downbeats":false,"spectrum":{"n_disp_bins":8,"scale":"mel","f_min":40,"f_max":8000}}}}
