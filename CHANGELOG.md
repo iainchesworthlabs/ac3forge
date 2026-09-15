@@ -196,6 +196,14 @@ and release packaging.
   Readers ignore what they do not recognise where the specification says to. Standard Base64
   for `codec_header`, and a fourth fuzz harness, `fuzz_sendspin_messages`, which reads every
   message in both dialects and checks that what it writes back reads back the same.
+- **Sendspin's handshake as two state machines in `src/sendspin`**: the server's and the
+  client's side of `client/init` through Noise message 2, fed the frames they receive and
+  answering with the frames to send, so a thread on a computer and a board's WebSocket handler
+  drive the same code. They choose the PSK as the specification says, including the client's
+  Sentinel fallback and the credential-mismatch signal it gives the server, tell an
+  aiosendspin 9.1.1 server apart by its message 1, and run re-handshakes. A transport-mode
+  channel seals messages into Noise ciphertexts, one per frame in the connection's dialect,
+  and opens them again.
 
 **Containers and encoding**
 

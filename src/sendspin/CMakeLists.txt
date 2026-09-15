@@ -60,8 +60,10 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     # computer (a board brings its own over esp_http_server).
     target_sources(ac3sendspin
         PRIVATE
+            src/channel.cpp
             src/cpace.cpp
             src/crypto/psa/crypto.cpp
+            src/handshake_session.cpp
             src/hmac.cpp
             src/noise.cpp
             src/pairing.cpp

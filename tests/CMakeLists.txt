@@ -675,6 +675,7 @@ if(AC3FORGE_BUILD_HEARTH)
         target_sources(ac3tests PRIVATE
             sendspin/test_cpace.cpp
             sendspin/test_crypto.cpp
+            sendspin/test_handshake_session.cpp
             sendspin/test_noise.cpp
             sendspin/test_pairing.cpp
             sendspin/test_websocket.cpp)
