@@ -16,6 +16,12 @@
 // this needs no external jumper) and running as a slave in TDM mode at the
 // same width line 0 runs, real channels filling from line 0 first.
 //
+// CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME=1 opens TDM at the full width for
+// 1-2 channels too, for a TDM DAC set up for one frame shape (an ES9080), and
+// keeps a second line, when there is one, running zeroed slots for every
+// layout (ac3forge::SinkFrame::fixed). Every play then finds its lines
+// already in the shape it needs, and the bit clock does not stop between plays.
+//
 // Slot width and sample rate are 32-bit-slots-at-32-bit-samples by default
 // (CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS; 16 is the other answer): 32-bit
 // slots carry the 24-bit samples every DAC here accepts and a SigmaDSP
@@ -67,6 +73,9 @@ static_assert(kSlotBits == 16 || kSlotBits == 32,
               "CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS is 16 or 32");
 constexpr bool kSlave = CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE != 0;
 constexpr bool kSecondLineEnabled = CONFIG_AC3FORGE_EXAMPLE_I2S_SECOND_LINE != 0;
+constexpr ac3forge::SinkFrame kFrame = CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME != 0
+                                           ? ac3forge::SinkFrame::fixed
+                                           : ac3forge::SinkFrame::follow_layout;
 constexpr std::size_t kBytesPerSlot = static_cast<std::size_t>(kSlotBits) / 8;
 constexpr i2s_data_bit_width_t kDataBits =
     kSlotBits == 32 ? I2S_DATA_BIT_WIDTH_32BIT : I2S_DATA_BIT_WIDTH_16BIT;
@@ -308,7 +317,7 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
         return false;
     }
     const auto plan = ac3forge::plan_sink(static_cast<std::size_t>(channels), kSlotBits,
-                                          kSecondLineEnabled);
+                                          kSecondLineEnabled, kFrame);
     if (!plan.has_value()) {
         std::printf("error: %d channels do not fit this sink's %u-slot ceiling (%d-bit slots, "
                     "%s line)\n",
@@ -338,11 +347,19 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
                                   static_cast<std::size_t>(g_dma_plan.frames) * bytes_per_frame;
     g_model.open(sample_rate * static_cast<std::uint32_t>(bytes_per_frame), dma_bytes);
 
+    const bool fixed = kFrame == ac3forge::SinkFrame::fixed;
+    const char* line0_mode = "";
+    if (g_line0.tdm) {
+        line0_mode = fixed ? " (tdm, fixed frame)" : " (tdm)";
+    }
+    const char* line1_state = "";
+    if (g_line1.slots > 0) {
+        line1_state = g_line1.channels > 0 ? ", line1 in use (tdm)" : ", line1 zeroed (tdm)";
+    }
     std::printf("sink: i2s %lu Hz %d-bit, %d channels: line0 %u slots%s%s, %s, bclk=%d ws=%d "
                 "dout=%d, dma=%dx%d frames (%ld ms)\n",
                 static_cast<unsigned long>(sample_rate), kSlotBits, channels,
-                static_cast<unsigned>(g_line0.slots), g_line0.tdm ? " (tdm)" : "",
-                g_line1.slots > 0 ? ", line1 in use (tdm)" : "",
+                static_cast<unsigned>(g_line0.slots), line0_mode, line1_state,
                 kSlave ? "slave (the DAC clocks)" : "master", kLine0Gpio.bclk, kLine0Gpio.ws,
                 kLine0Gpio.dout, g_dma_plan.descriptors, g_dma_plan.frames,
                 static_cast<long>(g_model.capacity_ms()));
@@ -362,13 +379,15 @@ void sink_write(std::span<const std::span<const float>> channels) {
     std::size_t bytes_for_model = 0;
 
     // Per line, in either width. Line 1 gets no 16-bit buffer: a second line
-    // is only ever planned at 32 bits today (ac3forge::line_ceiling).
+    // is only ever planned at 32 bits today (ac3forge::line_ceiling). In a
+    // fixed frame line 1 is written for every layout, with no channels at all
+    // while line 0 holds the whole layout, which writes a block of zeroed slots.
     if (g_line0.slots > 0) {
         const std::size_t used = std::min(g_line0.channels, channels.size());
         bytes_for_model = write_line(g_line0, channels.subspan(0, used), frames, g_wide0, g_narrow0);
     }
     if (g_line1.slots > 0) {
-        const std::size_t offset = g_line0.channels;
+        const std::size_t offset = std::min(g_line0.channels, channels.size());
         const std::size_t available = channels.size() > offset ? channels.size() - offset : 0;
         const std::size_t used = std::min(g_line1.channels, available);
         (void)write_line(g_line1, channels.subspan(offset, used), frames, g_wide1, {});

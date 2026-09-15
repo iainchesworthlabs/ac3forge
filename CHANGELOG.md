@@ -84,6 +84,12 @@ and release packaging.
   speaker redirects its bass to the LFE through a matched Butterworth pair, and
   `:height`/`:top`/`:upfiring` distinguish how a height position is physically realized
   without changing the render.
+- **The ESP32 streaming example's I2S sink can hold every layout to the full TDM frame**
+  (`AC3FORGE_EXAMPLE_I2S_FIXED_FRAME`), mono and stereo included, for a TDM DAC set up
+  over I2C for one frame shape, such as an ESS ES9080; a second line then runs zeroed
+  slots for every layout. `ac3forge::plan_sink` takes the choice as a `SinkFrame`. On an
+  ESP32-C6 a 2.0 play opened eight 16-bit slots with levels and frame time unchanged, for
+  12 KB more DMA buffer.
 - **The ESP32 streaming example's I2S sink reconfigures itself** instead of needing a
   rebuild: `PUT /layout` takes effect at the next play via `i2s_channel_reconfig_*` or a
   channel recreate when it crosses standard/TDM modes, replacing the old build-time

@@ -34,13 +34,27 @@
 // in integers and only warns when that does not divide: three 16-bit slots
 // under the default 256x MCLK need 5.33 and get 5, a 51,200 Hz frame.
 //
+// A fixed frame (SinkFrame::fixed): TDM at the full width for every channel
+// count from one, for a TDM DAC set up for one frame shape. An ESS ES9080 is
+// the case in hand: its slot count, slot width and channel map are written
+// over I2C once, and its PLL can lock to the bit clock, so a 2.0 play opened
+// as standard I2S would change the bit clock under it and put the samples in
+// slots it does not read. A mono layout in a fixed frame rides slot 0 alone
+// with the rest zeroed, as in any TDM frame; a DAC that should play it on two
+// outputs maps both to that slot. SinkFrame::follow_layout, standard I2S for
+// one or two channels, is what a stereo I2S DAC such as a PCM5102 needs.
+//
 // Two lines only come into it once channels exceeds one line's ceiling: they
 // share one bit clock and word select (see the streaming example's
 // sink/i2s/audio_sink.cpp for why - line 1 is a slave taking its clock from
 // line 0's output pins), so both must present the SAME frame shape for a
 // shared word-select transition to mean the same thing to each - the full
 // width again, real channels filling from line 0 first and whatever is left
-// over riding in line 1 with its remaining slots zeroed.
+// over riding in line 1 with its remaining slots zeroed. In a fixed frame a
+// usable second line runs for every layout, all of its slots zeroed while
+// line 0 holds the whole layout: a second DAC on line 1's data pin keeps its
+// PLL locked to the shared bit clock whatever plays, and a data pin nobody
+// drives gives it no defined samples.
 
 namespace ac3forge {
 
@@ -51,6 +65,7 @@ struct SinkLinePlan {
     std::size_t slots = 0;
     // How many of those slots carry real audio, always <= slots; the rest
     // are zeroed by the interleave, not left with a previous frame's data.
+    // Zero on a second line a fixed frame holds open with nothing to carry.
     std::size_t channels = 0;
     // false: standard (Philips) I2S. true: TDM.
     bool tdm = false;
@@ -102,13 +117,24 @@ struct SinkLineCeiling {
     return (second_line && ceiling.second_line_usable) ? ceiling.slots * 2 : ceiling.slots;
 }
 
+// Whether a line's frame follows the layout or holds one shape for every
+// layout - see the header comment. An enum rather than a second bool beside
+// plan_sink's `second_line`, so a call site cannot swap the two.
+enum class SinkFrame {
+    // Standard I2S sized to one or two channels, TDM at the full width from three.
+    follow_layout,
+    // TDM at the full width for every channel count, on every usable line.
+    fixed,
+};
+
 // `slot_bits` is 16 or 32 - anything else is refused. `second_line` says
 // whether one is wired and enabled at all; without one, or at a width whose
 // second line is not usable yet (SinkLineCeiling::second_line_usable),
 // anything past a single line's own ceiling is refused exactly like
-// `channels == 0`.
+// `channels == 0`. `frame` says whether one or two channels open standard
+// I2S (SinkFrame::follow_layout) or the full TDM frame (SinkFrame::fixed).
 [[nodiscard]] constexpr std::optional<SinkPlan> plan_sink(std::size_t channels, int slot_bits,
-                                                           bool second_line) {
+                                                           bool second_line, SinkFrame frame) {
     if (channels == 0) {
         return std::nullopt;
     }
@@ -122,11 +148,15 @@ struct SinkLineCeiling {
         return std::nullopt;
     }
 
+    const bool fixed = frame == SinkFrame::fixed;
     SinkPlan plan;
-    if (channels <= 2) {
+    if (channels <= 2 && !fixed) {
         plan.line0 = {channels, channels, false};
     } else if (channels <= ceiling.slots) {
         plan.line0 = {ceiling.slots, channels, true};
+        if (fixed && use_second_line) {
+            plan.line1 = {ceiling.slots, 0, true};
+        }
     } else {
         plan.line0 = {ceiling.slots, ceiling.slots, true};
         plan.line1 = {ceiling.slots, channels - ceiling.slots, true};
