@@ -43,7 +43,8 @@ target_sources(ac3sendspin
         src/handshake.cpp
         src/json.cpp
         src/pairing_token.cpp
-        src/suite.cpp)
+        src/suite.cpp
+        src/transport_memory.cpp)
 
 if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     find_package(MbedTLS CONFIG REQUIRED)
