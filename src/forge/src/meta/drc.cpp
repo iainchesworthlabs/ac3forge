@@ -9,6 +9,8 @@
 #include <span>
 #include <string_view>
 
+#include "ac3/meta/mixing.hpp"  // kReferenceDialnorm
+
 namespace ac3::meta {
 
 namespace {
@@ -199,11 +201,22 @@ HeavyCompressor& HeavyCompressor::operator=(HeavyCompressor&&) noexcept = defaul
 double HeavyCompressor::gain_db() const { return impl_->gain_db_; }
 
 std::uint8_t HeavyCompressor::next(double peak, int dialnorm) {
-    // Two constraints, and the tighter one wins. The make-up brings dialogue
-    // to the line-up level heavy compression exists to hit; the ceiling is the
-    // guarantee, so it can only ever reduce the make-up, never raise it.
-    const double makeup = static_cast<double>(dialnorm) + impl_->config_.dialogue_target_dbfs;
-    const double allowed = impl_->config_.peak_ceiling_dbfs - peak;
+    // Both constraints are stated at the output of the decode compr is written
+    // for: an RF-mode decoder normalises dialnorm onto -31 dBFS and adds
+    // kRfModeGainDb before it applies the word, so `fixed` is gain the word
+    // must not repeat. Dialogue sits at -dialnorm dBFS here and must land at
+    // the target, which leaves the word dialogue_target_dbfs - kRfDialogueDbfs
+    // whatever the dialnorm; the peak must land under the ceiling. The tighter
+    // one wins - the ceiling is the guarantee, so it can only ever reduce the
+    // make-up, never raise it. The reserved dialnorm 0 is read the way the
+    // decoder reads it (§5.4.2.8: as 31). Whole dB in, so a word of exactly
+    // 0 dB comes out as exactly 0 dB rather than one step below it.
+    const int decoded_dialnorm =
+        dialnorm > 0 && dialnorm <= kReferenceDialnorm ? dialnorm : kReferenceDialnorm;
+    const double fixed = static_cast<double>(decoded_dialnorm - kReferenceDialnorm) + kRfModeGainDb;
+    const double makeup =
+        impl_->config_.dialogue_target_dbfs + static_cast<double>(decoded_dialnorm) - fixed;
+    const double allowed = impl_->config_.peak_ceiling_dbfs - peak - fixed;
     const double target = std::min(makeup, allowed);
 
     if (!impl_->primed_) {

@@ -104,6 +104,9 @@ struct Bsi {
     // parse_bsi's own comment on why a dependent's compre bit does not mean
     // this.
     std::optional<std::uint8_t> compr;
+    // §E3.8.5: the word a DEPENDENT substream's compre brings with it. It is
+    // the last dependent's, and it is the compr word of the whole program.
+    std::optional<std::uint8_t> program_compr;
     std::optional<std::uint16_t> chanmap;
     // Ch2's own dialnorm/compr, present only when acmod is kDualMono (1+1).
     std::optional<int> dialnorm2;
@@ -372,15 +375,19 @@ std::expected<Bsi, DecodeError> parse_bsi(BitReader& r, std::size_t frame_bytes)
     bsi.bsid = bsid;
     bsi.dialnorm = static_cast<int>(r.read(5));
     // §E3.8.5: in a DEPENDENT substream compre marks the last dependent of the
-    // program rather than announcing a compression word - though it still
-    // drags one in. Either way the 8 bits have to be consumed; only stored
-    // into bsi.compr when this substream is independent/convertible, where
-    // the word is actually what it says it is.
+    // program, and the word it brings is the program's own - only that
+    // substream may carry compr and dynrng, and its words apply to every
+    // substream of the program, the independent one included. So a
+    // dependent's word is kept apart from bsi.compr, which stays the
+    // substream's own - decode_access_unit_core applies it to the whole
+    // program.
     bsi.compre = r.read(1) != 0;
     if (bsi.compre) {
         const auto compr = static_cast<std::uint8_t>(r.read(8));
         if (bsi.strmtyp != StreamType::kDependent) {
             bsi.compr = compr;
+        } else {
+            bsi.program_compr = compr;
         }
     }
     // Annex E Table E1.2: unconditional on strmtyp, mirroring the encoder's
@@ -669,6 +676,12 @@ struct Eac3Decoder::Impl {
     // apply_output's and flush()'s own views onto whichever channels are
     // being folded. A member so a steady-state decode allocates nothing.
     std::vector<std::span<float>> au_views_;
+    // §E3.8.5, for the access unit decode_access_unit_core is decoding: the
+    // compr word of that unit's last dependent substream, which every Annex E
+    // substream of the unit applies in place of its own. Disengaged outside
+    // an access unit, and for a unit whose program has no dependent, where
+    // each substream keeps its own word.
+    std::optional<std::uint8_t> program_compr_;
 
     // §E2.3.1.2: "If an AC-3 bit stream is present in the E-AC-3 bit stream,
     // then the AC-3 bit stream shall be processed as an independent substream
@@ -1533,7 +1546,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     out.acmod = bsi->acmod;
     out.lfe = bsi->lfe;
     out.dialnorm = bsi->dialnorm;
-    out.compr = bsi->compr;
+    // Inside an access unit whose program has a dependent, the independent
+    // substream reports the program's word (§E3.8.5), which is the one its
+    // channels take below - so DecodedAccessUnit::compr, read from this
+    // substream, names the word the program was decoded with.
+    out.compr = bsi->strmtyp != StreamType::kDependent && impl_->program_compr_.has_value()
+                    ? impl_->program_compr_
+                    : bsi->compr;
     out.dynrng.fill(meta::kDynrngUnity);
     out.dialnorm2 = bsi->dialnorm2;
     out.compr2 = bsi->compr2;
@@ -3587,8 +3606,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
             return scale;
         };
+        // §E3.8.5: every substream of a program with dependents takes the
+        // last dependent's word, which a dependent's own out.compr never
+        // holds (see DecodedSubstream::compr) and the independent's already
+        // does (see where out.compr is set above).
         const internal::BlockScale first_programme = resolve(internal::block_gain(
-            impl_->config_, out.dynrng[static_cast<std::size_t>(blk)], out.compr));
+            impl_->config_, out.dynrng[static_cast<std::size_t>(blk)],
+            impl_->program_compr_.has_value() ? impl_->program_compr_ : out.compr));
         const internal::BlockScale second_programme =
             bsi->acmod == Acmod::kDualMono
                 ? resolve(internal::block_gain(impl_->config_,
@@ -3990,6 +4014,40 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
                 lead_bsi->strmtyp == eac3::StreamType::kDependent) {
                 return std::optional<DecodedAccessUnit>(std::nullopt);
             }
+        }
+    }
+
+    // §E3.8.5: a program with dependent substreams takes its compr word from
+    // the last of them, and applies it to every substream, the independent
+    // one included - which comes first in the unit, so the word has to be
+    // found before anything is decoded. The last dependent is the one
+    // whose compre is set, and it is the only one carrying a word. Reset on
+    // every way out of this function, so a later decode_substream call on its
+    // own never inherits a program it is not part of. A §E2.3.1.2 AC-3 core
+    // is decoded by FrameDecoder with its own word; the dependents riding
+    // with it still take the program's.
+    struct ProgramComprScope {
+        std::optional<std::uint8_t>& word;
+        explicit ProgramComprScope(std::optional<std::uint8_t>& program_word)
+            : word(program_word) {}
+        ProgramComprScope(const ProgramComprScope&) = delete;
+        ProgramComprScope& operator=(const ProgramComprScope&) = delete;
+        ~ProgramComprScope() { word.reset(); }
+    };
+    impl_->program_compr_.reset();
+    const ProgramComprScope program_compr_scope{impl_->program_compr_};
+    for (std::size_t i = frames->size(); i-- > 1;) {
+        const auto& frame = (*frames)[i];
+        // A frame that will not parse is the key loop's to report, below.
+        const auto frame_bsid = stream_bsid(frame);
+        if (!frame_bsid.has_value() || *frame_bsid <= 8) {
+            continue;
+        }
+        BitReader peek{frame};
+        const auto bsi = parse_bsi(peek, frame.size());
+        if (bsi.has_value() && bsi->program_compr.has_value()) {
+            impl_->program_compr_ = bsi->program_compr;
+            break;
         }
     }
 

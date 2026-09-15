@@ -41,8 +41,10 @@
 // §7.7's dynrng/compr gain itself is NOT here: both decoders apply it to the
 // COEFFICIENTS, before the IMDCT, so the overlap-add window cross-fades a
 // per-block gain change instead of stepping it (see decoder.cpp's own comment
-// at that site). OperatingMode below selects which of the two words is used;
-// the arithmetic stays where it belongs.
+// at that site). OperatingMode below selects which of the two words is used,
+// and whether a compr word comes with RF mode's 11 dB; the arithmetic stays
+// where it belongs. So an RF-mode decode's level is only partly this stage's:
+// the dialnorm normalisation is, the 11 dB above it are the decoders'.
 
 namespace ac3 {
 
@@ -69,6 +71,14 @@ enum class OperatingMode : std::uint8_t {
     // any syncframe carrying no compr word, per §7.7.2.1), and the downmix
     // overload protection below. What a set-top box feeding an RF modulator
     // does, where the whole point is that nothing ever clips.
+    //
+    // Every compr word is applied with RF mode's 11 dB (meta::kRfModeGainDb),
+    // which puts dialogue at -20 dBFS against line mode's -31. A syncframe
+    // that falls back on dynrng gets no 11 dB and plays at line mode's level,
+    // so a stream with no compr words at all takes the same gains as kLine,
+    // the overload protection aside. The Dolby Reference Player's RF mode
+    // does both, measured frame by frame, and Dolby's encoder writes its
+    // compr words for this decode, as meta::HeavyCompressor does.
     kRf,
 };
 
@@ -77,7 +87,9 @@ struct OutputConfig {
     OperatingMode mode = OperatingMode::kCustom;
     // §5.4.2.8 normalisation onto the -31 dBFS reference. kLine and kRf both
     // imply it (that is what makes them the canonical modes rather than two
-    // more knobs), so this only has to be set for kCustom.
+    // more knobs), so this only has to be set for kCustom. kRf's -20 dBFS
+    // dialogue level is this normalisation plus the 11 dB its compr words
+    // are applied with (see kRf above).
     bool apply_dialnorm = false;
     // §7.8 makes the LFE's contribution to a downmix optional, and decoders
     // drop it by default - it is the channel most likely to overload a fold

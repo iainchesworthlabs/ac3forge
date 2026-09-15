@@ -409,6 +409,24 @@ and release packaging.
 
 **Codec correctness**
 
+- **RF mode decoded 11 dB below a Dolby decoder.** `OperatingMode::kRf` normalised
+  dialnorm onto −31 dBFS and applied `compr` with nothing on top, while the Dolby
+  Reference Player's RF mode applies each `compr` word with 11 dB that put dialogue at
+  −20 dBFS. DEE's own streams measured −30.90 LUFS here against −19.70 LUFS there; they
+  now measure −19.90 LUFS. As on the Reference Player, a syncframe with no `compr` word
+  stays at line mode's level, and `kCustom` with `heavy_compression` still applies the
+  word alone. An E-AC-3 program with dependent substreams now takes its `compr` word
+  from the last dependent for every substream (§E3.8.5), as the Reference Player does.
+  Before, the bed took the independent substream's word and the dependents' channels
+  took none, which the 11 dB would have set 11 dB apart. See `docs/library/decoding.md`.
+- **Heavy compression's `compr` words played 11 dB hot on a Dolby decoder.** The
+  encoder put RF mode's 11 dB and the dialnorm offset into the word itself, so a stream
+  at dialnorm 31 decoded 22 dB above line mode on the Reference Player, which pushed
+  pink noise peaking at −20 dBFS past full scale. Words are now written for an RF-mode
+  decode that normalises dialnorm and adds the 11 dB itself, the way DEE writes them:
+  unity for dialogue-level material at any dialnorm, and cuts sized so the mono downmix
+  meets the ceiling after the decoder's own gain. `dialogue=`/`ceiling=` keep their
+  meaning and defaults.
 - **The AC-4 parser misread everything after an EMDF-only presentation.** A presentation
   with `presentation_config` 6 carries only additional EMDF substreams, whose count and
   `emdf_info()` list TS 103 190-2 §6.2.1.3 reads after the config-6 branch. `ac4::`, and

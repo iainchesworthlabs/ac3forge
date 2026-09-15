@@ -6,15 +6,20 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <numbers>
 #include <optional>
 #include <span>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "ac3/core/bitreader.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
+#include "ac3/io/metadata_edit.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/mixing.hpp"
@@ -268,10 +273,14 @@ TEST_CASE("the heavy compressor keeps its ceiling", "[drc]") {
     // quiet to nearly full scale - the case an attack-smoothed limiter misses.
     constexpr std::array<double, 10> peaks = {-40.0, -38.0, -0.2,  -0.1, -30.0,
                                               -0.5,  -20.0, -10.0, -0.05, -45.0};
+    // The ceiling is a promise about an RF-mode decode, which normalises
+    // dialnorm 24 by -7 dB and adds RF mode's 11 dB before the word.
+    const double rf_decode =
+        static_cast<double>(24 - ac3::meta::kReferenceDialnorm) + ac3::meta::kRfModeGainDb;
     for (const double peak : peaks) {
         const auto word = compressor.next(peak, 24);
         const double applied = ac3::meta::to_db(compr_gain(word));
-        CHECK(peak + applied <= config.peak_ceiling_dbfs + 1e-9);
+        CHECK(peak + rf_decode + applied <= config.peak_ceiling_dbfs + 1e-9);
     }
 }
 
@@ -280,13 +289,45 @@ TEST_CASE("the heavy compressor releases slowly and attacks at once", "[drc]") {
                                        .release_db_per_second = 10.0};
     ac3::meta::HeavyCompressor compressor{config, ac3::SampleRate::k48000};
     (void)compressor.next(-40.0, 24);
-    const double quiet_gain = compressor.gain_db();
-    CHECK(quiet_gain == Catch::Approx(4.0));  // dialnorm 24 with a -20 dBFS target
+    // The default -20 dBFS target is where an RF-mode decode already puts
+    // dialogue, so there is no make-up for the word to carry.
+    CHECK(compressor.gain_db() == 0.0);
     (void)compressor.next(-1.0, 24);
-    CHECK(compressor.gain_db() == Catch::Approx(-1.0));  // instantaneous
+    // The decode adds 4 dB (dialnorm 24's -7 and RF mode's +11), so a -1 dBFS
+    // peak needs 5 dB off to meet the -2 dBFS ceiling - all of it at once.
+    CHECK(compressor.gain_db() == Catch::Approx(-5.0));
     // A frame is 32 ms, so 10 dB/s is 0.32 dB of release per frame.
     (void)compressor.next(-40.0, 24);
-    CHECK(compressor.gain_db() == Catch::Approx(-1.0 + 0.32).margin(0.001));
+    CHECK(compressor.gain_db() == Catch::Approx(-5.0 + 0.32).margin(0.001));
+}
+
+TEST_CASE("heavy compression writes its words for an RF-mode decode", "[drc][rf]") {
+    // An RF-mode decoder normalises dialnorm and adds 11 dB itself, so the word
+    // only says how far a syncframe sits from that line-up. Dolby's encoder
+    // writes 0xFF (-0.28 dB) for dialogue-level material at dialnorm 31 and at
+    // dialnorm 20 alike; the same material gets unity here, whatever its
+    // dialnorm, and the -20 dBFS dialogue level is the decoder's to reach.
+    for (const int dialnorm : {1, 20, 24, 31}) {
+        ac3::meta::HeavyCompressor compressor{{}, ac3::SampleRate::k48000};
+        INFO("dialnorm " << dialnorm);
+        CHECK(compressor.next(-60.0, dialnorm) == ac3::meta::kComprUnity);
+    }
+
+    // A dialogue target above RF mode's own -20 dBFS is make-up the word does
+    // carry - rounded down, so it arrives a fraction of a step short.
+    ac3::meta::HeavyCompressor louder{{.dialogue_target_dbfs = -14.0}, ac3::SampleRate::k48000};
+    const double makeup = ac3::meta::to_db(compr_gain(louder.next(-60.0, 24)));
+    CHECK(makeup <= 6.0);
+    CHECK(makeup > 6.0 - 0.3);
+
+    // The ceiling counts the decoder's gain too. At dialnorm 31 an RF decode
+    // adds the whole 11 dB, so a -6 dBFS peak has to come down 5.5 dB to meet
+    // the default -0.5 dBFS ceiling. The nearest word at or under that is
+    // 0xF0, -6.02 dB: one mantissa step (0.53 dB) below.
+    ac3::meta::HeavyCompressor hot{{}, ac3::SampleRate::k48000};
+    const auto word = hot.next(-6.0, 31);
+    CHECK(ac3::meta::to_db(compr_gain(word)) <= -5.5);
+    CHECK(word == 0xF0);
 }
 
 // --- loudness -------------------------------------------------------------
@@ -577,8 +618,11 @@ TEST_CASE("AC-3 compr holds its ceiling through the decoder", "[drc][encoder][de
         frames.push_back(std::move(*encoded));
     }
 
-    ac3::FrameDecoder plain;
-    ac3::FrameDecoder heavy{{.heavy_compression = true}};
+    // The ceiling is a promise about an RF-mode decode, so that is the decode
+    // it is checked on; line mode is the same decode without the word or its
+    // 11 dB.
+    ac3::FrameDecoder line{{.output = {.mode = ac3::OperatingMode::kLine}}};
+    ac3::FrameDecoder rf{{.output = {.mode = ac3::OperatingMode::kRf}}};
     // The ceiling is measured on the encoder's INPUT downmix, so a decoder's
     // reconstruction can sit a hair above it: the difference is the coding
     // error, not a metadata fault. See HeavyConfig::peak_ceiling_dbfs.
@@ -586,13 +630,14 @@ TEST_CASE("AC-3 compr holds its ceiling through the decoder", "[drc][encoder][de
     bool saw_word = false;
     bool would_have_breached = false;
     for (std::size_t i = 0; i < frames.size(); ++i) {
-        const auto a = plain.decode_frame(frames[i]);
-        const auto b = heavy.decode_frame(frames[i]);
+        const auto a = line.decode_frame(frames[i]);
+        const auto b = rf.decode_frame(frames[i]);
         REQUIRE(a.has_value());
         REQUIRE(b.has_value());
         REQUIRE(a->compr.has_value());
         saw_word = true;
-        if (peak_db(a->channels[0]) > ceiling + kCodingSlack) {
+        // Where RF mode's 11 dB would put this frame if the word cut nothing.
+        if (peak_db(a->channels[0]) + ac3::meta::kRfModeGainDb > ceiling + kCodingSlack) {
             would_have_breached = true;
         }
         if (i >= 1) {  // skip the fade-in frame
@@ -695,7 +740,9 @@ TEST_CASE("AC-3 dual mono: Ch2's own heavy compression is not Ch1's, and is not 
         frames.push_back(std::move(*encoded));
     }
 
-    ac3::FrameDecoder heavy{{.heavy_compression = true}};
+    // RF mode, where both ceilings are promised. dialnorm and dialnorm2 are
+    // equal here, so both programmes take the same normalisation.
+    ac3::FrameDecoder heavy{{.output = {.mode = ac3::OperatingMode::kRf}}};
     // Looser than the sibling "AC-3 compr holds its ceiling" test's 0.1 dB:
     // that test alternates loud/quiet, where this one holds a steady
     // near-full-scale tone across every checked frame, so std::max below is
@@ -1120,8 +1167,7 @@ TEST_CASE("E-AC-3 heavy compression holds its ceiling through the decoder",
           "[drc][eac3][decoder]") {
     // The E-AC-3 sibling of "AC-3 compr holds its ceiling through the
     // decoder" above, through the real Eac3Decoder rather than a bitstream
-    // probe - and using DecodedSubstream::compr, which used to be reported
-    // but never had anywhere to apply to.
+    // probe.
     const auto audio = stepped_tone(8, 2, 0.95, 0.004, 2);
     constexpr double ceiling = -1.0;
     ac3::eac3::FrameEncoder encoder{
@@ -1136,21 +1182,24 @@ TEST_CASE("E-AC-3 heavy compression holds its ceiling through the decoder",
         frames.push_back(std::move(*encoded));
     }
 
-    ac3::Eac3Decoder plain;
-    ac3::Eac3Decoder heavy{{.heavy_compression = true}};
+    // Through decode_access_unit, which is where the output stage normalises
+    // dialnorm - an RF-mode decode is that normalisation plus the word and its
+    // 11 dB, and the ceiling is promised for the whole of it.
+    ac3::Eac3Decoder line{{.output = {.mode = ac3::OperatingMode::kLine}}};
+    ac3::Eac3Decoder rf{{.output = {.mode = ac3::OperatingMode::kRf}}};
     constexpr double kCodingSlack = 0.1;
     bool saw_word = false;
     bool would_have_breached = false;
     for (std::size_t i = 0; i < frames.size(); ++i) {
-        const auto a = plain.decode_substream(frames[i]);
-        const auto b = heavy.decode_substream(frames[i]);
+        const auto a = line.decode_access_unit(frames[i]);
+        const auto b = rf.decode_access_unit(frames[i]);
         REQUIRE(a.has_value());
         REQUIRE(b.has_value());
         REQUIRE(a->has_value());
         REQUIRE(b->has_value());
         REQUIRE((*a)->compr.has_value());
         saw_word = true;
-        if (peak_db((*a)->channels[0]) > ceiling + kCodingSlack) {
+        if (peak_db((*a)->channels[0]) + ac3::meta::kRfModeGainDb > ceiling + kCodingSlack) {
             would_have_breached = true;
         }
         if (i >= 1) {  // skip the fade-in frame
@@ -1160,4 +1209,274 @@ TEST_CASE("E-AC-3 heavy compression holds its ceiling through the decoder",
     }
     CHECK(saw_word);
     CHECK(would_have_breached);
+}
+
+// --- RF mode's level ---------------------------------------------------------
+
+namespace {
+
+// Least-squares gain of one decode against another, in dB: sum(r*o)/sum(r*r)
+// over every sample added. Two decodes of the same frames that differ by a
+// gain alone give that gain to many decimal places - the dither generator is
+// deterministic per decoder instance, and every §7.7 gain is applied to the
+// coefficients before the transform.
+struct GainFit {
+    double cross = 0.0;
+    double power = 0.0;
+
+    void add(std::span<const float> reference, std::span<const float> other) {
+        const auto n = std::min(reference.size(), other.size());
+        for (std::size_t i = 0; i < n; ++i) {
+            const auto r = static_cast<double>(reference[i]);
+            cross += r * static_cast<double>(other[i]);
+            power += r * r;
+        }
+    }
+    void add(const std::vector<std::vector<float>>& reference,
+             const std::vector<std::vector<float>>& other) {
+        for (std::size_t ch = 0; ch < std::min(reference.size(), other.size()); ++ch) {
+            add(reference[ch], other[ch]);
+        }
+    }
+    [[nodiscard]] double db() const {
+        REQUIRE(power > 0.0);
+        return 20.0 * std::log10(cross / power);
+    }
+};
+
+std::vector<std::vector<std::byte>> encode_ac3(const std::vector<std::vector<float>>& audio,
+                                               int frames,
+                                               std::optional<ac3::meta::HeavyConfig> heavy) {
+    ac3::FrameEncoder encoder{{.bitrate_kbps = 192, .dialnorm = 24, .heavy = heavy}};
+    std::vector<std::vector<std::byte>> out;
+    for (int frame = 0; frame < frames; ++frame) {
+        auto encoded = encoder.encode_frame(frame_views(audio, frame));
+        REQUIRE(encoded.has_value());
+        out.push_back(std::move(*encoded));
+    }
+    return out;
+}
+
+std::vector<std::byte> read_bytes(const std::string& path) {
+    std::ifstream in{path, std::ios::binary};
+    REQUIRE(in.good());
+    const std::string bytes{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+    std::vector<std::byte> out(bytes.size());
+    std::ranges::transform(bytes, out.begin(), [](char c) { return static_cast<std::byte>(c); });
+    return out;
+}
+
+const ac3::DecoderConfig kLineMode{.output = {.mode = ac3::OperatingMode::kLine}};
+const ac3::DecoderConfig kRfMode{.output = {.mode = ac3::OperatingMode::kRf}};
+
+}  // namespace
+
+TEST_CASE("RF mode applies 11 dB with every compr word it applies, and nowhere else",
+          "[drc][decoder][rf]") {
+    // A steady tone far under any ceiling, which the heavy compressor gives a
+    // unity word: whatever RF mode adds on top of line mode is its own gain.
+    // Measured on the Dolby Reference Player's decoder, RF mode sat 11.29 dB
+    // above line mode for a unity word and 0.00 dB for a syncframe with no
+    // word at all; this decoder's figure is an exact 11 dB, and the same zero.
+    const auto audio = stepped_tone(8, 2, 0.05, 0.05, 8);
+    const auto heavy = encode_ac3(audio, 8, ac3::meta::HeavyConfig{});
+    const auto plain = encode_ac3(audio, 8, std::nullopt);
+
+    const auto fit = [](const std::vector<std::vector<std::byte>>& frames,
+                        const ac3::DecoderConfig& reference_config,
+                        const ac3::DecoderConfig& other_config, std::size_t first,
+                        std::size_t last) {
+        ac3::FrameDecoder reference{reference_config};
+        ac3::FrameDecoder other{other_config};
+        GainFit gain;
+        for (std::size_t i = 0; i < frames.size(); ++i) {
+            const auto r = reference.decode_frame(frames[i]);
+            const auto o = other.decode_frame(frames[i]);
+            REQUIRE(r.has_value());
+            REQUIRE(o.has_value());
+            if (i >= first && i <= last) {
+                gain.add(r->channels, o->channels);
+            }
+        }
+        return gain.db();
+    };
+
+    SECTION("a unity word: RF mode is line mode plus 11 dB") {
+        for (const auto& frame : heavy) {
+            const auto metadata = ac3::io::read_frame_metadata(frame);
+            REQUIRE(metadata.has_value());
+            REQUIRE(metadata->compr == std::optional<std::uint8_t>{ac3::meta::kComprUnity});
+        }
+        CHECK(fit(heavy, kLineMode, kRfMode, 1, 7) == Catch::Approx(11.0).margin(1e-6));
+    }
+
+    SECTION("a word that cuts: the 11 dB and the word's own gain add") {
+        auto cut = heavy;
+        for (auto& frame : cut) {
+            REQUIRE(ac3::io::edit_frame_metadata(frame, {.compr = std::uint8_t{0xF0}}).has_value());
+        }
+        const double expected = 11.0 + ac3::meta::to_db(compr_gain(0xF0));  // 11 - 6.02
+        CHECK(fit(cut, kLineMode, kRfMode, 1, 7) == Catch::Approx(expected).margin(1e-6));
+    }
+
+    SECTION("no word: RF mode falls back on dynrng at line mode's level") {
+        CHECK(fit(plain, kLineMode, kRfMode, 1, 7) == Catch::Approx(0.0).margin(1e-6));
+    }
+
+    SECTION("per syncframe: the 11 dB follow the word in and out") {
+        // Four syncframes with a word, then four without - the shape a stream
+        // that inserts compr only when it needs one has (§7.7.2.1). The frame
+        // straddling the change holds both gains in its overlap and is not
+        // checked, as it was not on the Reference Player either.
+        std::vector<std::vector<std::byte>> spliced(heavy.begin(), heavy.begin() + 4);
+        spliced.insert(spliced.end(), plain.begin() + 4, plain.end());
+        CHECK(fit(spliced, kLineMode, kRfMode, 1, 3) == Catch::Approx(11.0).margin(1e-6));
+        CHECK(fit(spliced, kLineMode, kRfMode, 5, 7) == Catch::Approx(0.0).margin(1e-6));
+    }
+
+    SECTION("kCustom's heavy_compression is the word alone") {
+        CHECK(fit(heavy, ac3::DecoderConfig{}, ac3::DecoderConfig{.heavy_compression = true}, 1,
+                  7) == Catch::Approx(0.0).margin(1e-6));
+    }
+}
+
+TEST_CASE("E-AC-3 RF mode applies the same 11 dB with its compr word", "[drc][eac3][decoder][rf]") {
+    const auto audio = stepped_tone(6, 2, 0.05, 0.05, 6);
+    ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 192,
+                                     .acmod = ac3::Acmod::k2_0,
+                                     .dialnorm = 24,
+                                     .heavy = ac3::meta::HeavyConfig{}}};
+    ac3::Eac3Decoder line{kLineMode};
+    ac3::Eac3Decoder rf{kRfMode};
+    GainFit gain;
+    for (int frame = 0; frame < 6; ++frame) {
+        auto encoded = encoder.encode_frame(frame_views(audio, frame));
+        REQUIRE(encoded.has_value());
+        const auto a = line.decode_access_unit(*encoded);
+        const auto b = rf.decode_access_unit(*encoded);
+        REQUIRE(a.has_value());
+        REQUIRE(b.has_value());
+        REQUIRE(a->has_value());
+        REQUIRE(b->has_value());
+        REQUIRE((*b)->compr == std::optional<std::uint8_t>{ac3::meta::kComprUnity});
+        if (frame >= 1) {
+            gain.add((*a)->channels, (*b)->channels);
+        }
+    }
+    CHECK(gain.db() == Catch::Approx(11.0).margin(1e-6));
+}
+
+TEST_CASE("every substream of an E-AC-3 program takes its last dependent's compr word",
+          "[drc][eac3][decoder][rf]") {
+    // §E3.8.5: only the last dependent substream of a program carries compr
+    // and dynrng, and its words apply to every substream of the program, the
+    // independent one included. A loud bed gives
+    // the independent substream a heavy-compression word of its own well
+    // below unity, and the dependent's compre - the end-of-program marker -
+    // brings a unity word. Every rendered channel has to take the dependent's:
+    // one gain for the whole program, 11 dB over line mode. The Dolby
+    // Reference Player's RF mode did exactly that with a 7.1 stream built the
+    // same way - the same 11.29 dB on all eight channels.
+    ac3::eac3::AccessUnitConfig config;
+    config.independent = {.bitrate_kbps = 448,
+                          .acmod = ac3::Acmod::k3_2,
+                          .lfe = true,
+                          .dialnorm = 24,
+                          .heavy = ac3::meta::HeavyConfig{}};
+    config.dependents.push_back({.bitrate_kbps = 224,
+                                 .acmod = ac3::Acmod::k2_0,
+                                 .chanmap = ac3::eac3::chanmap::k512Height});
+    ac3::eac3::AccessUnitEncoder encoder{config};
+    REQUIRE(encoder.channel_count() == 8);
+
+    const auto bed = stepped_tone(4, 6, 0.95, 0.95, 4);
+    const auto height = stepped_tone(4, 2, 0.1, 0.1, 4);
+    ac3::Eac3Decoder line{kLineMode};
+    ac3::Eac3Decoder rf{kRfMode};
+    std::vector<GainFit> per_channel;
+    for (int frame = 0; frame < 4; ++frame) {
+        auto views = frame_views(bed, frame);
+        for (auto& view : frame_views(height, frame)) {
+            views.push_back(view);
+        }
+        const auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+        REQUIRE(unit->substream_count() == 2);
+        // The two words differ, or one gain everywhere would prove nothing
+        // about which of them was used.
+        const auto independent = probe_eac3(unit->substream(0));
+        const auto dependent = probe_eac3(unit->substream(1));
+        REQUIRE(independent.compr.has_value());
+        REQUIRE(dependent.compr == std::optional<std::uint8_t>{ac3::meta::kComprUnity});
+        CHECK(compr_gain(*independent.compr) < 0.7);
+
+        const auto a = line.decode_access_unit(unit->bytes);
+        const auto b = rf.decode_access_unit(unit->bytes);
+        REQUIRE(a.has_value());
+        REQUIRE(b.has_value());
+        REQUIRE(a->has_value());
+        REQUIRE(b->has_value());
+        // Reported as the word the program was decoded with.
+        CHECK((*b)->compr == std::optional<std::uint8_t>{ac3::meta::kComprUnity});
+        const auto& reference = (*a)->channels;
+        const auto& other = (*b)->channels;
+        REQUIRE(reference.size() == 8);
+        REQUIRE(other.size() == 8);
+        per_channel.resize(reference.size());
+        if (frame >= 1) {
+            for (std::size_t ch = 0; ch < reference.size(); ++ch) {
+                per_channel[ch].add(reference[ch], other[ch]);
+            }
+        }
+    }
+    for (std::size_t ch = 0; ch < per_channel.size(); ++ch) {
+        INFO("rendered channel " << ch);
+        CHECK(per_channel[ch].db() == Catch::Approx(11.0).margin(1e-6));
+    }
+}
+
+TEST_CASE("a Dolby-encoded stream's RF decode sits 11 dB and its word above line mode",
+          "[drc][decoder][rf][fixture]") {
+    // DEE's own AC-3, 192 kbit/s stereo music at dialnorm 19, with compr 0xFF
+    // (-0.28 dB) in every syncframe: the word Dolby's encoder writes where its
+    // RF profile leaves the audio alone. On the Dolby Reference Player this file
+    // measured -30.70 LUFS in line mode and -19.70 LUFS in RF mode, RF 10.98 dB
+    // over line by least squares - that decoder's own arithmetic for the same
+    // 11 dB and the same word. An exact 11 dB puts this decoder 0.26 dB under
+    // that, which is the bound pinned below; before RF mode carried the 11 dB,
+    // it was 11.26 dB under.
+    constexpr std::uint8_t kDeeWord = 0xFF;
+    constexpr double kReferencePlayerRfOverLineDb = 10.984;
+    const auto bytes =
+        read_bytes(AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac3-music-stereo-192/dee.ac3");
+    const auto units = ac3::split_access_units(bytes);
+    REQUIRE(units.has_value());
+    // Two seconds of it is plenty for a gain this steady, and keeps a debug
+    // build's three decodes quick.
+    constexpr std::size_t kFrames = 64;
+    REQUIRE(units->size() > kFrames);
+
+    ac3::FrameDecoder plain;
+    ac3::FrameDecoder line{kLineMode};
+    ac3::FrameDecoder rf{kRfMode};
+    GainFit line_over_plain;
+    GainFit rf_over_line;
+    for (std::size_t i = 0; i < kFrames; ++i) {
+        const auto p = plain.decode_frame((*units)[i]);
+        const auto a = line.decode_frame((*units)[i]);
+        const auto b = rf.decode_frame((*units)[i]);
+        REQUIRE(p.has_value());
+        REQUIRE(a.has_value());
+        REQUIRE(b.has_value());
+        REQUIRE(b->dialnorm == 19);
+        REQUIRE(b->compr == std::optional<std::uint8_t>{kDeeWord});
+        line_over_plain.add(p->channels, a->channels);
+        rf_over_line.add(a->channels, b->channels);
+    }
+    // Line mode: dialnorm 19 comes down 12 dB onto the -31 dBFS reference.
+    CHECK(line_over_plain.db() == Catch::Approx(-12.0).margin(1e-6));
+    // RF mode: the word's -0.28 dB with 11 dB on top.
+    const double rf_db = rf_over_line.db();
+    CHECK(rf_db == Catch::Approx(11.0 + ac3::meta::to_db(compr_gain(kDeeWord))).margin(1e-6));
+    CHECK(std::abs(rf_db - kReferencePlayerRfOverLineDb) < 0.3);
 }
