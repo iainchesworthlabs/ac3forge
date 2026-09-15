@@ -11,9 +11,12 @@
 #include <array>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -682,4 +685,66 @@ TEST_CASE("bass management: a small speaker's bass moves to the LFE feed",
     plain.render(plain_source.block(), false, 1.0F, plain_out.spans);
     REQUIRE(plain_out.at(0) == Approx(1.0F));
     REQUIRE(plain_out.at(5) == 0.0F);
+}
+
+TEST_CASE("the crossover frequency is a setting, inside an AVR's range", "[render][layout]") {
+    LayoutRenderer renderer{*OutputLayout::parse("L:small,C,R,Ls,Rs,LFE")};
+    REQUIRE(renderer.crossover_hz() == LayoutRenderer::kDefaultCrossoverHz);
+    REQUIRE_FALSE(renderer.set_crossover_hz(LayoutRenderer::kMinCrossoverHz - 1.0));
+    REQUIRE_FALSE(renderer.set_crossover_hz(LayoutRenderer::kMaxCrossoverHz + 1.0));
+    REQUIRE_FALSE(renderer.set_crossover_hz(std::numeric_limits<double>::quiet_NaN()));
+    REQUIRE(renderer.crossover_hz() == LayoutRenderer::kDefaultCrossoverHz);
+    REQUIRE(renderer.set_crossover_hz(LayoutRenderer::kMaxCrossoverHz));
+    REQUIRE(renderer.crossover_hz() == LayoutRenderer::kMaxCrossoverHz);
+
+    // A layout with nothing small keeps the setting for when it matters.
+    LayoutRenderer plain{*OutputLayout::parse("5.1")};
+    REQUIRE(plain.set_crossover_hz(120.0));
+    REQUIRE(plain.crossover_hz() == 120.0);
+}
+
+TEST_CASE("moving the crossover moves a small speaker's bass", "[render][layout]") {
+    // A 120 Hz tone on a small L: with the corner at 60 Hz most of it stays on
+    // L; with the corner at 250 Hz most of it goes to the LFE feed.
+    constexpr std::size_t kBlockSamples = 256;
+    constexpr double kToneHz = 120.0;
+    const auto layout = *OutputLayout::parse("L:small,C,R,Ls,Rs,LFE");
+    const auto measure = [&](double crossover_hz) {
+        LayoutRenderer renderer{layout};
+        REQUIRE(renderer.set_crossover_hz(crossover_hz));
+        renderer.set_bed(coded(k51));
+        std::vector<float> tone(kBlockSamples);
+        std::vector<float> silence(kBlockSamples, 0.0F);
+        Out out(6, kBlockSamples, 0.0F);
+        double left_energy = 0.0;
+        double lfe_energy = 0.0;
+        for (std::size_t block = 0; block < 100; ++block) {
+            for (std::size_t k = 0; k < kBlockSamples; ++k) {
+                const double t = static_cast<double>((block * kBlockSamples) + k) / 48000.0;
+                tone[k] = static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * kToneHz * t));
+            }
+            const std::array<std::span<const float>, 6> channels = {tone, silence, silence,
+                                                                     silence, silence, silence};
+            const ac3::PcmBlock pcm{.index = 0,
+                                    .blocks = 6,
+                                    .channels = channels,
+                                    .objects = {},
+                                    .object_indices = {},
+                                    .object_metadata = nullptr};
+            renderer.render(pcm, false, 1.0F, out.spans);
+            if (block >= 20) {  // past the filters' settling
+                for (std::size_t k = 0; k < kBlockSamples; ++k) {
+                    const auto left = static_cast<double>(out.storage[0][k]);
+                    const auto lfe = static_cast<double>(out.storage[5][k]);
+                    left_energy += left * left;
+                    lfe_energy += lfe * lfe;
+                }
+            }
+        }
+        return std::array<double, 2>{left_energy, lfe_energy};
+    };
+    const auto low_corner = measure(60.0);
+    const auto high_corner = measure(250.0);
+    REQUIRE(low_corner[0] > 2.0 * low_corner[1]);
+    REQUIRE(high_corner[1] > 2.0 * high_corner[0]);
 }

@@ -13,6 +13,7 @@
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
 #include "ac3/render/layout.hpp"
+#include "ac3/render/serving.hpp"
 
 // The player: bytes in, sound out, on two cores.
 //
@@ -95,11 +96,11 @@ struct PlayerConfig {
     // the speakers by their own positions, or play the bed (the objects' 5.1
     // fold, which is the complete mix for a stereo or 5.1 room). Costs this
     // part about 10 ms of every 32 ms frame and, under the QMF domain, about
-    // 233 KB of heap - PSRAM territory. kAuto reconstructs exactly when the
-    // layout has height speakers, which is the case the bed cannot serve;
-    // kAlways does so for any rendered layout; kNever plays the bed. A layout
-    // that folds never reconstructs.
-    enum class Objects : std::uint8_t { kAuto, kNever, kAlways };
+    // 233 KB of heap - PSRAM territory. The policy is the library's
+    // (ac3/render/serving.hpp): kAuto reconstructs exactly when the layout has
+    // height speakers, kAlways for any rendered layout, kNever plays the bed,
+    // and a layout that folds never reconstructs.
+    using Objects = ac3::render::ObjectsPolicy;
     Objects objects = Objects::kAuto;
 
     // The decoder's own knobs: operating mode, DRC, the JOC domain, the

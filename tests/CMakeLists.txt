@@ -81,6 +81,10 @@ add_executable(ac3tests
     io/test_block_ring.cpp
     io/test_unit_hold.cpp
     render/test_layout.cpp
+    render/test_identify.cpp
+    render/test_routing.cpp
+    render/test_serving.cpp
+    render/test_trim_delay.cpp
     io/test_dac_queue_model.cpp
     io/test_metadata_edit.cpp
     io/test_probe.cpp

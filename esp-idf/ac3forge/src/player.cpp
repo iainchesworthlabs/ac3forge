@@ -24,6 +24,7 @@
 #include "ac3/io/stream_accumulator.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/render/render.hpp"
+#include "ac3/render/serving.hpp"
 
 #include "ac3forge/unit_hold.hpp"
 
@@ -794,20 +795,15 @@ bool Player::start() {
     // How the layout is served: the decoder's own §7.8 stage for a stereo or
     // mono room, the renderer for everything else, with the objects
     // reconstructed when the layout asks for what the bed cannot give.
-    im.fold = im.config.layout.fold(im.config.stereo_fold);
+    const ac3::render::Serving serving =
+        ac3::render::serve(im.config.layout, im.config.stereo_fold, im.config.objects);
+    im.fold = serving.fold;
     im.fold_word = im.fold == ac3::DownmixTarget::kMono   ? "mono"
                    : im.fold == ac3::DownmixTarget::kLtRt ? "ltrt"
                    : im.fold.has_value()                  ? "loro"
                                                           : nullptr;
-    im.config.decoder.output.target = im.fold.value_or(ac3::DownmixTarget::kAsCoded);
-    switch (im.config.objects) {
-        case PlayerConfig::Objects::kNever: im.reconstruct = false; break;
-        case PlayerConfig::Objects::kAlways: im.reconstruct = !im.fold.has_value(); break;
-        case PlayerConfig::Objects::kAuto:
-            im.reconstruct = !im.fold.has_value() && im.config.layout.has_height();
-            break;
-    }
-    im.config.decoder.skip_object_reconstruction = !im.reconstruct;
+    im.reconstruct = serving.reconstruct;
+    ac3::render::configure_decoder(serving, im.config.decoder);
     im.renderer = LayoutRenderer{im.config.layout};
 
     im.events = xEventGroupCreate();
