@@ -387,6 +387,14 @@ and release packaging.
 - `ac3cli` reports a decode failure in words (`decode failed: a header field holds a
   value A/52 reserves`) rather than as a bare enumerator — nine call sites across
   `decode`, `analysis` and `live` weren't using the existing `describe()`.
+- **The AC-3 encoder's heavy compression measured only bsi's downmix levels, leaving
+  no ceiling for a compliant Annex D decoder's own Lo/Ro fold.** §D4.1.1 requires
+  overload protection to hold for either kind of decoder, in any downmix mode; a
+  compliant decoder folding mono from xbsi1's `lorocmixlev`/`lorosurmixlev` (§D3.1.2)
+  instead of bsi's `cmixlev`/`surmixlev` can peak several dB louder, since
+  `lorocmixlev` runs up to +3 dB against `cmixlev`'s -6 dB floor. `compr` is now
+  driven by whichever of the two folds peaks louder whenever `alternate_bsi->mix` is
+  set.
 
 **Robustness and diagnostics**
 
