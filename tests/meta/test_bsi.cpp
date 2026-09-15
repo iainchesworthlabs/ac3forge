@@ -686,7 +686,8 @@ TEST_CASE("E-AC-3: mixmdate's reserved dmixmod is kept as sent and never written
         // as "not indicated" (§D2.3.1.2) and takes the plain fold.
         const auto levels = ac3::mix_levels(substream.mixing);
         CHECK(levels.preferred == ac3::meta::DownmixMode::kReserved);
-        CHECK(ac3::automatic_stereo_target(levels.preferred) == ac3::DownmixTarget::kLoRo);
+        CHECK(ac3::automatic_stereo_target(substream.acmod, levels.preferred) ==
+              ac3::DownmixTarget::kLoRo);
 
         const auto header = ac3::io::read_frame_header(reserved);
         REQUIRE(header.has_value());

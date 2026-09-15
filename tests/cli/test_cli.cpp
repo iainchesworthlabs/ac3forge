@@ -860,6 +860,32 @@ TEST_CASE("decode downmix=auto folds the way the stream's own dmixmod asks", "[c
         CHECK(same);
     }
 
+    SECTION("AC-3: dmixmod means nothing below acmod 3/0, so a 2/0 preference is not followed") {
+        // Table D2.2's own note: dmixmod's meaning "is only defined ... if the
+        // audio coding mode is 3/0, 2/1, 3/1, 2/2 or 3/2 ... [otherwise] the
+        // meaning of this field is reserved". xbsi1 still carries whatever
+        // code was asked for - Table D2.1's fixed layout has no acmod gate of
+        // its own, unlike mixmdate's own acmod > 0x2 condition - but a 2/0
+        // stream preferring Lt/Rt has no preference downmix=auto can act on.
+        const auto stereo_wav = dir / "auto_stereo_in.wav";
+        const auto stereo_channels = make_tone_channels(2, 4800, 48000);
+        REQUIRE(ac3::io::write_wav_f32(stereo_wav.string(), stereo_channels, 48000).has_value());
+        const auto stream = dir / "auto_narrow.ac3";
+        fs::remove(stream);
+        REQUIRE(run_cli("encode \"" + stereo_wav.string() + "\" \"" + stream.string() +
+                            "\" 192 stereo dmixmod=ltrt",
+                        dir / "auto_narrow_encode.log") == 0);
+        const auto text = decode(stream, "auto_narrow_auto", "downmix=auto");
+        INFO(text);
+        // The transmitted code is still named honestly - it is only the
+        // RESOLUTION that treats it as unusable at this acmod.
+        CHECK(text.find("downmix=auto: dmixmod 1 (Lt/Rt) -> Lo/Ro stereo") != std::string::npos);
+        decode(stream, "auto_narrow_named", "downmix=loro");
+        const bool same = read_bytes(dir / "auto_narrow_auto.wav") ==
+                          read_bytes(dir / "auto_narrow_named.wav");
+        CHECK(same);
+    }
+
     SECTION("AC-3: Annex D's reserved code is named and folds Lo/Ro") {
         const auto ltrt = dir / "auto_reserved_ltrt.ac3";
         const auto loro = dir / "auto_reserved_loro.ac3";

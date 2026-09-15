@@ -144,9 +144,26 @@ struct MixLevels {
 // one, it gets an enumerator of its own and -Wswitch flags the switch below
 // until the new code is given a fold.
 //
-// ac3cli's downmix=auto is this function applied to the dmixmod of the first
-// syncframe of the programme it decodes.
-[[nodiscard]] constexpr DownmixTarget automatic_stereo_target(meta::DownmixMode preferred) {
+// `acmod` gates the whole field, not just the reserved code: Table D2.2's own
+// NOTE says dmixmod's meaning "is only defined ... if the audio coding mode is
+// 3/0, 2/1, 3/1, 2/2 or 3/2. If the audio coding mode is 1+1, 1/0 or 2/0 then
+// the meaning of this field is reserved" - whatever code it carries. That is
+// the same acmod > 0x2 boundary Table E1.2 already gates mixmdate's own
+// dmixmod on (E-AC-3 simply never transmits the field below it), so this only
+// changes behaviour for AC-3's Annex D xbsi1, whose fixed Table D2.1 layout
+// carries all five levels unconditionally and has no wire-level gate of its
+// own - FrameHeader::dmixmod reports whatever xbsi1 said even at a narrow
+// acmod, exactly as transmitted, and it is this function's job to then treat
+// that as no preference rather than act on a code the standard does not
+// define there.
+//
+// ac3cli's downmix=auto is this function applied to the dmixmod and acmod of
+// the first syncframe of the programme it decodes.
+[[nodiscard]] constexpr DownmixTarget automatic_stereo_target(Acmod acmod,
+                                                               meta::DownmixMode preferred) {
+    if (static_cast<std::uint8_t>(acmod) <= 0x2) {
+        return DownmixTarget::kLoRo;
+    }
     switch (preferred) {
         case meta::DownmixMode::kLtRt:
             return DownmixTarget::kLtRt;

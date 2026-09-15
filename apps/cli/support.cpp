@@ -1729,14 +1729,22 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
 
 namespace {
 
-// The first dmixmod a programme's independent substream sends - the same
-// value `ac3cli probe` reports for the lead programme. Headers only, and it
-// stops at the first answer, which is the stream's first syncframe for
-// ordinary content. An unset `programme` follows choose_programme(): the
-// first programme the stream carries. Dependents are passed over, since the
-// independent substream is the one every decoder of the programme reads.
-std::optional<ac3::meta::DownmixMode> preferred_downmix(std::span<const std::byte> stream,
-                                                        std::optional<int> programme) {
+// The first dmixmod a programme's independent substream sends, and the acmod
+// it rode in on - ac3::automatic_stereo_target() needs both, since Table
+// D2.2's own note leaves dmixmod's meaning reserved below acmod 3/0 (see that
+// function's comment). Same value `ac3cli probe` reports for the lead
+// programme. Headers only, and it stops at the first answer, which is the
+// stream's first syncframe for ordinary content. An unset `programme` follows
+// choose_programme(): the first programme the stream carries. Dependents are
+// passed over, since the independent substream is the one every decoder of
+// the programme reads.
+struct PreferredDownmix {
+    ac3::meta::DownmixMode dmixmod;
+    ac3::Acmod acmod;
+};
+
+std::optional<PreferredDownmix> preferred_downmix(std::span<const std::byte> stream,
+                                                   std::optional<int> programme) {
     std::size_t offset = 0;
     while (offset < stream.size()) {
         const auto header = ac3::io::read_frame_header(stream.subspan(offset));
@@ -1748,7 +1756,7 @@ std::optional<ac3::meta::DownmixMode> preferred_downmix(std::span<const std::byt
                 programme = header->substreamid;
             }
             if (header->substreamid == *programme && header->dmixmod.has_value()) {
-                return header->dmixmod;
+                return PreferredDownmix{*header->dmixmod, header->acmod};
             }
         }
         offset += header->bytes;
@@ -1765,12 +1773,16 @@ ac3::OutputConfig resolve_output(const Options& meta, std::span<const std::byte>
         return output;
     }
     const auto preferred = preferred_downmix(stream, meta.programme);
-    output.target = ac3::automatic_stereo_target(
-        preferred.value_or(ac3::meta::DownmixMode::kNotIndicated));
+    // No dmixmod found at all is the same "no preference" case
+    // automatic_stereo_target() answers Lo/Ro to for any acmod, so there is no
+    // acmod to invent one for here.
+    output.target = preferred.has_value()
+                        ? ac3::automatic_stereo_target(preferred->acmod, preferred->dmixmod)
+                        : ac3::DownmixTarget::kLoRo;
     status_println(status, "  downmix=auto: dmixmod {} -> {} (§D3.1.1)",
                    preferred.has_value()
-                       ? fmt::format("{} ({})", static_cast<int>(*preferred),
-                                     ac3::meta::describe(*preferred))
+                       ? fmt::format("{} ({})", static_cast<int>(preferred->dmixmod),
+                                     ac3::meta::describe(preferred->dmixmod))
                        : std::string{"absent"},
                    output.target == ac3::DownmixTarget::kLtRt ? "Lt/Rt stereo" : "Lo/Ro stereo");
     return output;

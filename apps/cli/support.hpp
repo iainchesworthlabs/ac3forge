@@ -546,11 +546,12 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
 
 // The output stage a decode/monitor run actually uses: `meta.output`, with
 // downmix=auto settled into a concrete fold. §D3.1.1's automatic Lt/Rt-or-
-// Lo/Ro choice is made once, from the first dmixmod the programme's
-// independent substream sends (`meta.programme`'s, or the stream's first
-// programme's) - ac3::automatic_stereo_target() holds the rule, including
-// what a reserved or absent dmixmod gets - and the choice is reported on
-// `status`. Without downmix=auto this returns `meta.output` untouched.
+// Lo/Ro choice is made once, from the first dmixmod (and its acmod) the
+// programme's independent substream sends (`meta.programme`'s, or the
+// stream's first programme's) - ac3::automatic_stereo_target() holds the
+// rule, including what a reserved or absent dmixmod gets and which acmods
+// Table D2.2 leaves the field meaning nothing at - and the choice is reported
+// on `status`. Without downmix=auto this returns `meta.output` untouched.
 [[nodiscard]] ac3::OutputConfig resolve_output(const Options& meta,
                                                std::span<const std::byte> stream, FILE* status);
 

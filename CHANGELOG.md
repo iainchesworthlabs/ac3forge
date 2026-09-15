@@ -142,8 +142,10 @@ and release packaging.
   Worst-object SNR at every short code matches the six-block control on stationary
   material.
 - **`downmix=auto` on `decode` and `monitor`**: A/52 §D3.1.1's automatic choice of
-  stereo fold, from the stream's own `dmixmod`. Lt/Rt when it prefers Lt/Rt; Lo/Ro
-  otherwise, including when it states no preference or sends the reserved code. The
+  stereo fold, from the stream's own `dmixmod`. Lt/Rt when it prefers Lt/Rt at an
+  acmod Table D2.2 defines the field for (`3/0`, `2/1`, `3/1`, `2/2`, `3/2`); Lo/Ro
+  otherwise, including no preference, the reserved code, and every narrower acmod,
+  where the table's own note leaves the field's meaning reserved outright. The
   choice is made once, from the programme's first `dmixmod`, and printed.
   `ac3::automatic_stereo_target()` holds the rule for library callers.
 - **`probe` reports `dmixmod`**, as a table line and as `metadata.dmixmod` plus a
