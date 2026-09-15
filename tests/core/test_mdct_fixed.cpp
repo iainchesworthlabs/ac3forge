@@ -9,6 +9,8 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <random>
 #include <span>
 
@@ -137,6 +139,43 @@ TEST_CASE("the fixed inverse pair does not wrap on the coherent worst case", "[f
         CHECK(d.peak < 128.0);
         CHECK(d.snr_db > 120.0);
     }
+}
+
+TEST_CASE("the pair's product is Fixed32's wherever Fixed32's does not saturate", "[fixed32]") {
+    // ImdctValue drops the saturate the pair's growth bound makes unreachable
+    // (mdct_fixed.hpp); everywhere Fixed32's product fits, including the
+    // rounding edges and a factor of exactly one or minus one, it has to be
+    // the same raw value.
+    using ac3::internal::ImdctValue;
+    std::mt19937_64 rng(0x7e11);
+    int checked = 0;
+    int mismatches = 0;
+    const auto check = [&](std::int32_t a, std::int32_t w) {
+        const std::int64_t rounded = ((static_cast<std::int64_t>(a) * w) + (1 << 23)) >> 24;
+        if (rounded > std::numeric_limits<std::int32_t>::max() ||
+            rounded < std::numeric_limits<std::int32_t>::min()) {
+            return;
+        }
+        ++checked;
+        const auto want = (Fixed32::from_raw(a) * Fixed32::from_raw(w)).raw;
+        mismatches += (ImdctValue{a} * Fixed32::from_raw(w)).raw != want ? 1 : 0;
+    };
+    for (const std::int32_t a : {0, 1, -1, 127, -128, Fixed32::kOne / 2, -(Fixed32::kOne / 2),
+                                 std::numeric_limits<std::int32_t>::max(),
+                                 std::numeric_limits<std::int32_t>::min()}) {
+        for (const std::int32_t w : {0, 1, -1, Fixed32::kOne, -Fixed32::kOne, Fixed32::kOne - 1,
+                                     Fixed32::kOne / 2, -(Fixed32::kOne / 2)}) {
+            check(a, w);
+        }
+    }
+    for (int i = 0; i < 200000; ++i) {
+        const auto a = static_cast<std::int32_t>(rng());
+        check(a, static_cast<std::int32_t>(rng() % (2U * Fixed32::kOne + 1U)) - Fixed32::kOne);
+        check(a, static_cast<std::int32_t>(rng() % 256) - 128);
+    }
+    INFO(checked << " products");
+    CHECK(checked > 400000);
+    CHECK(mismatches == 0);
 }
 
 TEST_CASE("the fixed inverse is linear in the block exponent", "[fixed32]") {

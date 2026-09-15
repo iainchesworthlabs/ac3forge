@@ -99,7 +99,7 @@ Platform to arithmetic to effort, with the state of each cell. "Real time" is a 
 | WASM | `double` | `double` | `reference` | Shipping ([the WASM page](../docs/platforms/wasm.md)) |
 | ESP32-S3 (LX7, single-precision FPU) | `float` | `float` | `reference` for 2/0; `reduced` is the candidate for 5.1 | Decode: every fixture in real time. Encode: AC-3 2/0 and E-AC-3 2/0 in real time, AC-3 5.1 at the line, E-AC-3 5.1 at 1.7x |
 | ESP32 (LX6, single-precision FPU) | `float` | `float` | as the S3 | Not measured; the S3's arithmetic without the PIE and with a smaller cache |
-| ESP32-C3 / C6 (RV32IMC / RV32IMAC, no FPU) | `Fixed32` | none at first | `reduced` | C3: built and gated, a probe target under `qemu-riscv32`, 12 of fourteen fixtures decoding to PCM identical to the host's and the Cortex-M3 leg's; the two 7.1.4 rows do not fit in the part's SRAM; time on a board unmeasured. C6: timed on a board ([its page](../docs/platforms/bare-metal/esp32-c6.md)), all fourteen fixtures on the same hashes; stereo and mono in real time with WiFi running, 5.1 at 1.09x to 1.21x with no network |
+| ESP32-C3 / C6 (RV32IMC / RV32IMAC, no FPU) | `Fixed32` | none at first | `reduced` | C3: built and gated, a probe target under `qemu-riscv32`, 12 of fourteen fixtures decoding to PCM identical to the host's and the Cortex-M3 leg's; the two 7.1.4 rows do not fit in the part's SRAM; time on a board unmeasured. C6: timed on a board ([its page](../docs/platforms/bare-metal/esp32-c6.md)), all fourteen fixtures on the same hashes; AC-3 and E-AC-3 5.1, stereo and mono in real time with WiFi running (5.1 at 0.82x and 0.96x) |
 | Cortex-M3 (the CI leg, QEMU) | `float`, soft | `float`, soft | `reference` | Correctness and instruction counts only; the soft-float proxy every embedded estimate rests on |
 | Cortex-M4F / M7 (single-precision FPU) | `float` | `float` | `reference` | Not targeted; would behave as the S3 without its vector loads |
 
@@ -278,6 +278,17 @@ instructions) and E-AC-3 5.1 38.7 ms, so neither is in real time even with no ne
 stereo and mono are. Stage timers put 73% of an AC-3 5.1 frame in the fixed-point IMDCT and
 overlap-add. The float tier on the same part is 2.1x to 3.5x slower. The C3 itself is still
 untimed.
+
+**Later the same day, the tier's arithmetic on that core.** Disassembled, the transform's cost
+was not its multiplies: each Q7.24 product carried four branches for the saturation, two of them
+taken, and the overlap-add a software float conversion and multiply per sample. The products the
+transform's growth bound keeps below the format's edge now skip the saturation test, the
+overlap-add runs on 32 bits and builds its floats from the integers' bits, `Fixed32`'s product
+tests for saturation once, and its shifts, small ratios and square root no longer call 64-bit
+library routines. The pinned hashes do not move. AC-3 5.1 takes 20.5 ms a frame and E-AC-3 5.1
+23.9 ms with no network, 26.2 and 30.6 ms with WiFi and a stream arriving, so both are in real
+time with the network up; the float tier is now 2.3x to 4.6x slower. The C6 page has the per-change
+table.
 
 **Phase E (optional) - the encoder.** Not planned in this round. The encoder's analysis is
 more precision-sensitive than the decoder's synthesis, and the S3's float encoder is the shape

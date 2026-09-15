@@ -6,9 +6,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <random>
 #include <span>
 #include <vector>
@@ -148,6 +152,84 @@ TEST_CASE("the overlap-add aligns two exponents and applies the result exactly",
     bn::overlap_add_normalised(xw, dw, wide_norm, 0, pcm_wide);
     CHECK(pcm_wide[0] == 0.75F);
     CHECK(dw[0] == 0.5);
+}
+
+TEST_CASE("the overlap-add's 32-bit path gives the 64-bit form's bits", "[fixed32]") {
+    // The loop block_norm.hpp runs for every block a stream's exponents
+    // produce, against the definition it replaced: halves aligned in 64 bits,
+    // clipped, converted to float and multiplied by the power of two. The
+    // float bits, the delay and its exponent have to be identical, over norms
+    // wide enough to reach the fallback too.
+    const auto reference = [](const std::array<Fixed32, 512>& x, std::array<Fixed32, 256>& delay,
+                              int& delay_norm, int x_norm, std::span<float> pcm) {
+        const int aligned = std::min(x_norm, delay_norm);
+        const float scale = std::ldexp(1.0F, -23 - aligned);
+        for (std::size_t n = 0; n < 256; ++n) {
+            const std::int64_t sum = bn::shift_right_rounded(x[n].raw, x_norm - aligned) +
+                                     bn::shift_right_rounded(delay[n].raw, delay_norm - aligned);
+            const auto clipped = static_cast<std::int32_t>(
+                std::clamp<std::int64_t>(sum, std::numeric_limits<std::int32_t>::min(),
+                                         std::numeric_limits<std::int32_t>::max()));
+            pcm[n] = static_cast<float>(clipped) * scale;
+            delay[n] = x[n + 256];
+        }
+        delay_norm = x_norm;
+    };
+    std::mt19937_64 rng(0x01ad);
+    int mismatches = 0;
+    for (int trial = 0; trial < 3000; ++trial) {
+        std::array<Fixed32, 512> x{};
+        std::array<Fixed32, 256> delay{};
+        const unsigned width = 1U + static_cast<unsigned>(trial % 32);
+        for (auto& v : x) {
+            v = Fixed32::from_raw(static_cast<std::int32_t>(rng()) >> (32U - width));
+        }
+        for (auto& v : delay) {
+            v = Fixed32::from_raw(static_cast<std::int32_t>(rng()) >> (32U - width));
+        }
+        auto delay_ref = delay;
+        const bool wide = trial % 7 == 0;
+        const int x_norm = static_cast<int>(rng() % (wide ? 301U : 41U)) - (wide ? 150 : 12);
+        const int delay_norm = static_cast<int>(rng() % (wide ? 301U : 41U)) - (wide ? 150 : 12);
+        int norm_new = delay_norm;
+        int norm_ref = delay_norm;
+        std::array<float, 256> pcm{};
+        std::array<float, 256> pcm_ref{};
+        bn::overlap_add_normalised(x, delay, norm_new, x_norm, pcm);
+        reference(x, delay_ref, norm_ref, x_norm, pcm_ref);
+        mismatches += norm_new != norm_ref ? 1 : 0;
+        for (std::size_t n = 0; n < 256; ++n) {
+            const auto bits = std::bit_cast<std::uint32_t>(pcm[n]);
+            mismatches += bits != std::bit_cast<std::uint32_t>(pcm_ref[n]) ? 1 : 0;
+            mismatches += delay[n].raw != delay_ref[n].raw ? 1 : 0;
+        }
+    }
+    CHECK(mismatches == 0);
+    // The conversion on its own, on the ties and the carries.
+    const std::array<int, 6> powers{bn::kExponentStepPowerMin, -46, -23, -16, 0,
+                                    bn::kExponentStepPowerMax};
+    const std::array<std::int32_t, 14> values{0,
+                                              1,
+                                              -1,
+                                              3,
+                                              -3,
+                                              (1 << 24) + 1,
+                                              (1 << 24) + 3,
+                                              -((1 << 24) + 3),
+                                              (1 << 25) - 1,
+                                              0x7FFFFF80,
+                                              0x7FFFFFC0,
+                                              std::numeric_limits<std::int32_t>::max(),
+                                              std::numeric_limits<std::int32_t>::min(),
+                                              std::numeric_limits<std::int32_t>::min() + 1};
+    for (const int power : powers) {
+        const auto base = static_cast<std::uint32_t>(158 + power);
+        for (const std::int32_t v : values) {
+            CAPTURE(power, v);
+            CHECK(bn::float_bits_scaled(v, base) ==
+                  std::bit_cast<std::uint32_t>(static_cast<float>(v) * std::ldexp(1.0F, power)));
+        }
+    }
 }
 
 TEST_CASE("a fresh delay half and a widened value", "[fixed32]") {
