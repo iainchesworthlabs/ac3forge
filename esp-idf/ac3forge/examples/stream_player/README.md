@@ -560,6 +560,32 @@ frame, four 32-bit slots or eight 16-bit ones, with the slots past the layout's
 channels written as zeros: a TDM DAC is set up for a fixed frame, and on an
 ESP32-C6 the driver clocked three- and five-slot frames 6.7% fast at 16 bits.
 
+**A fixed frame for a TDM DAC.** `CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME=1`
+opens that full TDM frame for every layout, mono and stereo included
+(`ac3forge::SinkFrame::fixed`). A TDM DAC set up for one frame shape needs it:
+an ESS ES9080 has its slot count, slot width and channel map written over I2C,
+and its PLL can lock to the bit clock, so a 2.0 play opened as standard I2S
+would change the bit clock under it and put the samples in slots it does not
+read. A mono layout rides slot 0 alone, as in any TDM frame. With a second
+line, line 1 runs for every layout too, its slots zeroed while line 0 holds
+the whole layout, so a second DAC on its data pin always reads defined
+samples. Nothing is reconfigured between plays, since every layout gets the
+same frame. The DAC's own I2C setup is not part of this example. Leave it at 0
+for a stereo I2S DAC such as a PCM5102 or MAX98357A, which reads the two-slot
+frame.
+
+On an ESP32-C6 board with no DAC wired, playing `layout-20.ec3` from the FAT
+partition onto `2.0` at 16 bits, the option changed the sink's line from
+`line0 2 slots` to `line0 8 slots (tdm, fixed frame)`. Both channels' levels
+were unchanged to the digit, and a frame took 34,581 microseconds against
+34,583 without it: 1.08 times real time either way, so both runs had the
+same 127 underruns. The sink took 81 microseconds a frame
+longer, zeroing six more slots and handing the driver four times the bytes.
+The DMA buffers grow: the same depth of eight 16-bit slots is 16 KB where
+the stereo pair's is 4 KB, and the heap had 12,304 bytes less free during the
+play. A `1.0` layout at 32 bits opened `line0 4 slots (tdm, fixed frame)`
+with its one channel in slot 0.
+
 **The hardware ceiling this cannot get past.** On an ESP32-S3 one I2S line's
 TDM frame holds at most 128 bits, because the peripheral's half-frame length
 is a 6-bit register field: four slots at 32 bits - a 6.1 MHz bit clock at 48
