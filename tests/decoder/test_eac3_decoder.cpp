@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -577,6 +578,77 @@ TEST_CASE("E-AC-3 dual mono codes two independent programmes, never one into the
     REQUIRE(order.size() == 2);
     CHECK(order[0] == 0);
     CHECK(order[1] == 1);
+}
+
+TEST_CASE("E-AC-3 dual mono's output-stage dialnorm normalisation levels Ch2 by its own dialnorm2",
+          "[eac3][decoder][output][dual-mono]") {
+    using ac3::Acmod;
+    // Same claim as the AC-3 version of this test
+    // (tests/decoder/test_decoder.cpp): §5.4.2.16's dialnorm2 is Ch2's OWN
+    // reference, and Eac3Decoder::apply_output - the only place
+    // decode_access_unit's output stage actually runs - has to normalise Ch2
+    // by it rather than by Ch1's dialnorm (27 vs 18, an 11 dB gap). Both
+    // channels carry the SAME tone at the SAME amplitude, so any difference
+    // between their normalised peaks is attributable only to
+    // dialnorm/dialnorm2, never to the two programmes carrying different
+    // signal levels of their own.
+    const ac3::eac3::AccessUnitConfig config{.independent = {.bitrate_kbps = 192,
+                                                             .acmod = Acmod::kDualMono,
+                                                             .dialnorm = 27,
+                                                             .dialnorm2 = 18}};
+    ac3::eac3::AccessUnitEncoder encoder{config};
+    REQUIRE(encoder.channel_count() == 2);
+
+    std::vector<float> tone(ac3::kSamplesPerFrame);
+    std::uint64_t n0 = 0;
+    std::vector<std::byte> last_unit;
+    for (int f = 0; f < 3; ++f) {
+        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            const auto n = static_cast<double>(n0 + static_cast<std::uint64_t>(i));
+            tone[static_cast<std::size_t>(i)] =
+                static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 900.0 * n / 48000.0));
+        }
+        n0 += static_cast<std::uint64_t>(ac3::kSamplesPerFrame);
+        // Ch1 and Ch2 both get the SAME tone/amplitude - see the comment above.
+        const std::vector<std::span<const float>> views{tone, tone};
+        auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+        last_unit = unit->bytes;
+    }
+
+    // Two fresh decoders over the SAME unit bytes: with no prior state to
+    // differ on, their pre-dialnorm PCM is identical, so `leveled`/`raw` at
+    // any one sample IS the gain apply_output actually applied there.
+    ac3::Eac3Decoder raw;
+    const auto uncoded = raw.decode_access_unit(last_unit);
+    REQUIRE(uncoded.has_value());
+    REQUIRE(uncoded->has_value());
+    REQUIRE((*uncoded)->channels.size() == 2);
+
+    ac3::Eac3Decoder normalised{{.output = {.apply_dialnorm = true}}};
+    const auto leveled = normalised.decode_access_unit(last_unit);
+    REQUIRE(leveled.has_value());
+    REQUIRE(leveled->has_value());
+    REQUIRE((*leveled)->channels.size() == 2);
+    CHECK((*leveled)->dialnorm == 27);
+    REQUIRE((*leveled)->dialnorm2.has_value());
+    CHECK(*(*leveled)->dialnorm2 == 18);
+
+    // The gain at the sample with the largest RAW magnitude, so the read-off
+    // isn't sensitive to where a near-zero crossing happens to fall.
+    const auto gain_at_peak = [](const std::vector<float>& coded, const std::vector<float>& out) {
+        std::size_t peak = 0;
+        for (std::size_t i = 1; i < coded.size(); ++i) {
+            if (std::abs(coded[i]) > std::abs(coded[peak])) {
+                peak = i;
+            }
+        }
+        return static_cast<double>(out[peak]) / static_cast<double>(coded[peak]);
+    };
+    CHECK(gain_at_peak((*uncoded)->channels[0], (*leveled)->channels[0]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(27)).margin(1e-4));
+    CHECK(gain_at_peak((*uncoded)->channels[1], (*leveled)->channels[1]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(18)).margin(1e-4));
 }
 
 TEST_CASE("E-AC-3 dual mono: Ch2's own heavy compression is not Ch1's, and is not assumed",

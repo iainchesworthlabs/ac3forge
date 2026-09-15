@@ -3861,7 +3861,8 @@ std::vector<DecodedSubstream> Eac3Decoder::flush() {
         }
         const auto layout = eac3::chanmap::expand(substream.location_map());
         impl_->output_.apply(views, layout, substream.acmod, substream.lfe,
-                             mix_levels(substream.mixing), substream.dialnorm);
+                             mix_levels(substream.mixing), substream.dialnorm,
+                             substream.dialnorm2);
         substream.channels.resize(
             output_channel_count(impl_->config_.output, substream.acmod, substream.lfe));
     }
@@ -3925,7 +3926,7 @@ void Eac3Decoder::apply_output(DecodedAccessUnit& out, std::span<const std::span
         // finished program, not part of decoding one.
         AC3_ZONE_SCOPED_N("eac3_output");
         impl_->output_.apply(impl_->au_views_, out.layout, out.acmod, rendered_lfe,
-                             mix_levels(out.mixing), out.dialnorm);
+                             mix_levels(out.mixing), out.dialnorm, out.dialnorm2);
     }
     if (!external.empty()) {
         return;
@@ -4136,6 +4137,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     out.sample_rate = lead.sample_rate;
     out.acmod = lead.acmod;
     out.dialnorm = lead.dialnorm;
+    out.dialnorm2 = lead.dialnorm2;
     out.compr = lead.compr;
     out.dynrng = lead.dynrng;
     out.numblkscod = lead.numblkscod;
