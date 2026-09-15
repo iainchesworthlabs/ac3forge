@@ -793,6 +793,16 @@ observed writes `bitstream_version == 2`, so no sample exercises this branch. It
 kind of gap tier 3 above exists to narrow and tier 1/2 cannot: two transcriptions can share a
 misreading neither catches.
 
+**EMDF-only presentations** (`presentation_config` 6) have no real stream either: no DEE encode
+writes one. `ac4::` used to stop reading such a presentation before the `n_add_emdf_substreams`
+loop that TS 103 190-1 §4.2.3.2 and TS 103 190-2 §6.2.1.3 place after the config-6 branch, on both
+TOC paths. `tools/references/ac4_parse.py` did the same on the `bitstream_version` 2 path. Every
+later presentation, the substream groups and `substream_index_table()` were then read from the
+wrong bit, and on that path the two transcriptions agreed: the shared-misreading case described
+above. `tests/ac4/test_ac4.cpp` now builds an EMDF-only presentation ahead of an ordinary one on
+both paths, and the same frames, built again with a separate Python bit writer, parse the same way
+in `tools/references/ac4_parse.py`.
+
 ## What untrusted input is checked against
 
 Correctness and robustness are different questions, and this page answers only the first. What

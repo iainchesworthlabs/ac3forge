@@ -202,3 +202,28 @@ TEST_CASE("parse_mxf_iab rejects the reserved indefinite-length BER token", "[ac
     CHECK(frames.error() == ac3iab::IabError::kMxfBadKlv);
     CHECK(ac3iab::describe(frames.error()) != "unknown ac3iab error");
 }
+
+// Regression: read_klv() bounded the Value with `data.size() < value_offset + length`, and an
+// 8-byte long-form Length near 2^64 wraps that sum. Here the Value would start at byte 25 and the
+// Length is 0xFFFFFFFFFFFFFFE7, so the sum wrapped to exactly 0: the check passed, the next KLV was
+// placed back at offset 0, and find_iab_essence() re-read this same Fill Item forever. Found by
+// fuzz/fuzz_iab_parse.cpp, as a timeout, once ac3iab_objects was built with coverage
+// instrumentation; this is that input's shape with a real Fill Item Key in place of fuzzed bytes.
+TEST_CASE("parse_mxf_iab reports a Length that wraps past the end of the file as truncated",
+          "[ac3iab][mxf]") {
+    std::vector<std::byte> file;
+    for (auto b : kFillItemKey) {
+        put_u8(file, b);
+    }
+    put_u8(file, 0x88);  // long form, 8 length bytes follow
+    for (int i = 0; i < 7; ++i) {
+        put_u8(file, 0xFF);
+    }
+    put_u8(file, 0xE7);  // Length = 0xFFFFFFFFFFFFFFE7 = 2^64 - 25
+    REQUIRE(file.size() == 25);
+    put_bytes(file, {std::byte{0x00}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00}});
+
+    auto frames = parse(file);
+    REQUIRE_FALSE(frames.has_value());
+    CHECK(frames.error() == ac3iab::IabError::kTruncated);
+}

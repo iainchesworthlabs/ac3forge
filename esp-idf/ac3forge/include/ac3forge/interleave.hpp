@@ -78,7 +78,7 @@ inline std::size_t interleave_24in32(std::span<const std::span<const float>> cha
     return slots - used;
 }
 
-// --- 16-bit stereo, which is what standard I2S carries ---------------------
+// --- 16-bit slots: standard I2S's stereo pair, and TDM -----------------------
 
 // 32767 rather than 32768 as the scale, so +1.0 maps to full scale and does not
 // need the clamp to catch it. Clipped rather than wrapped, for the same reason
@@ -100,7 +100,7 @@ inline std::size_t interleave_24in32(std::span<const std::span<const float>> cha
 //
 // Two channels exactly, because standard I2S carries two slots - there is no
 // padding case here and nothing to zero. A caller with more channels than that
-// wants interleave_24in32 and a TDM bus.
+// wants a TDM bus: interleave_16in16 or interleave_24in32.
 inline void interleave_16(std::span<const std::span<const float>> channels, std::size_t frames,
                           std::span<std::int16_t> out) {
     const auto left = channels[0];
@@ -109,6 +109,34 @@ inline void interleave_16(std::span<const std::span<const float>> channels, std:
         out[frame * 2] = to_pcm16(left[frame]);
         out[(frame * 2) + 1] = to_pcm16(right[frame]);
     }
+}
+
+// interleave_24in32's TDM layout at 16 bits a slot: `frames` frames of `slots`
+// samples each into `out`, the first channels.size() slots from `channels` and
+// the rest zeroed, for the reason the top of this file gives.
+//
+// The width that puts eight channels on one line. An ESP32-S3 or ESP32-C6 TDM
+// frame holds at most 128 bits (ac3forge/sink_plan.hpp), which is four 32-bit
+// slots or eight of these, at 16 bits a sample where the 32-bit slots carry 24.
+//
+// `out` must hold frames * slots entries and each span in `channels` at least
+// `frames`. Returns the number of slots zeroed per frame, as interleave_24in32
+// does, so a second line's caller can pass it the channels past the first
+// line's and assert on the padding the same way.
+inline std::size_t interleave_16in16(std::span<const std::span<const float>> channels,
+                                     std::size_t slots, std::size_t frames,
+                                     std::span<std::int16_t> out) {
+    const std::size_t used = channels.size() < slots ? channels.size() : slots;
+    for (std::size_t frame = 0; frame < frames; ++frame) {
+        const std::size_t base = frame * slots;
+        for (std::size_t slot = 0; slot < used; ++slot) {
+            out[base + slot] = to_pcm16(channels[slot][frame]);
+        }
+        for (std::size_t slot = used; slot < slots; ++slot) {
+            out[base + slot] = 0;
+        }
+    }
+    return slots - used;
 }
 
 }  // namespace ac3forge
