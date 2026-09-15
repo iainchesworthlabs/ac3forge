@@ -220,7 +220,8 @@ divide: with the default MCLK of 256 times the sample rate, three 16-bit slots n
 5, and the frame runs at 51,200 Hz. A divider of 2 or less is raised to 3 with the MCLK adjusted
 to match, which is why six, seven and eight slots come out exact. So a TDM line on this part runs
 correctly at the full 128-bit frame, eight 16-bit slots or four 32-bit ones, with the slots a
-layout leaves unused written as zeros. Nothing was connected to the pins; a DAC on the line is not part of this measurement.
+layout leaves unused written as zeros. Nothing was connected to the pins; a DAC on the line is
+not part of this measurement.
 
 Getting samples onto those slots costs time here too. The decoder hands a sink planar `float`
 blocks, and the component's conversions (`esp-idf/ac3forge/include/ac3forge/interleave.hpp`)
@@ -233,10 +234,10 @@ software floating-point routines for each operation. Timed on the board for one 
 | `to_pcm16` into eight interleaved 16-bit slots | 11,744 |
 | `to_slot_24in32` into four interleaved 32-bit slots (`interleave_24in32`) | 5,159 |
 | `to_pcm16` into a stereo pair (`interleave_16`) | 2,879 |
-| A float level meter over eight slots, squares summed sixteen at a time | 1,529 |
+| A float level meter over eight slots, squares summed sixteen at a time | 9,621 |
 
-About 0.9 microseconds a sample for the conversions, so eight 16-bit slots take more than a
-third of a frame before the decode is counted.
+About 0.9 microseconds a sample for the conversions and 0.8 for the meter, so eight 16-bit slots
+and a level meter on them take two thirds of a frame before the decode is counted.
 
 ## QEMU
 
