@@ -161,10 +161,12 @@ struct DecoderConfig {
     // exactly the runs where bit-for-bit agreement with the spec's stated
     // arithmetic matters more than speed.
     bool fast_imdct = true;
-    // §7.7.2: prefer compr over dynrng wherever a compr word exists, which is
-    // what a set-top box's RF mode does. §7.7.2.1 requires falling back on
-    // dynrng for any syncframe that carries no compr, so this composes with
-    // drc_scale rather than replacing it.
+    // §7.7.2: prefer compr over dynrng wherever a compr word exists. §7.7.2.1
+    // requires falling back on dynrng for any syncframe that carries no compr,
+    // so this composes with drc_scale rather than replacing it. On its own it
+    // applies the word's §7.7.2 gain and nothing else; a set-top box's RF mode
+    // is OutputConfig::mode = OperatingMode::kRf, which also adds RF mode's
+    // 11 dB (meta::kRfModeGainDb) with every word it applies.
     bool heavy_compression = false;
     // --- output stage (ac3/decoder/output.hpp) -----------------------------
     // dialnorm normalisation, the §7.8 downmix and §7.7's two canonical
@@ -546,10 +548,12 @@ struct DecodedSubstream {
     bool lfe = false;
     int dialnorm = 31;
     // §5.4.2.9/§E3.8.5: std::nullopt when compre was clear OR this substream
-    // is a dependent one - a dependent's compre bit is repurposed to mark the
-    // LAST dependent of the program rather than announce a compression word
-    // (see parse_bsi's own comment), so there is no meaningful compr value to
-    // report there even though the 8 bits are still present on the wire.
+    // is a dependent one. A dependent's compre bit marks the LAST dependent of
+    // the program, and the word it brings is the compr word of the whole
+    // program: Eac3Decoder::decode_access_unit applies it to every substream
+    // of that program and reports it as DecodedAccessUnit::compr. A dependent
+    // decoded on its own by decode_substream has no program to apply it to,
+    // so it reports none; an independent one reports its own.
     std::optional<std::uint8_t> compr = std::nullopt;
     // §7.7.1.2: the EFFECTIVE word for each block, with the persistence rule
     // already resolved, same convention as DecodedFrame::dynrng - a block
@@ -639,16 +643,20 @@ struct DecodedAccessUnit {
     SampleRate sample_rate = SampleRate::k48000;
     Acmod acmod = Acmod::k2_0;
     int dialnorm = 31;
-    // The independent substream's own compr, when it carries one - see
-    // DecodedSubstream::compr's own comment; a dependent substream's compre
-    // bit means something else entirely, so only the independent (bed)
-    // substream's word is ever meaningful at the access-unit level.
+    // The compr word the program was decoded with. §E3.8.5 gives a program
+    // with dependent substreams the word its last dependent carries, for
+    // every substream including the independent one, so that is the word
+    // here whenever there is one; otherwise it is the independent
+    // substream's own, when it carries one. A §E2.3.1.2 AC-3 core keeps its
+    // own word for its own channels, and that is what is reported for it.
     std::optional<std::uint8_t> compr = std::nullopt;
-    // The independent substream's own dynrng, same reasoning as compr above -
-    // every substream carries its own words and a decoder applies each to
-    // that substream's own channels (see Eac3Decoder's DecoderConfig-driven
-    // gain), but the bed's is the one figure worth surfacing at the
-    // access-unit level for a status report. Only entries below
+    // The independent substream's own dynrng. Each substream's dynrng is
+    // applied to that substream's own channels (see Eac3Decoder's
+    // DecoderConfig-driven gain) - §E3.8.5 gives a program with dependents
+    // its last dependent's dynrng, as it does its compr, but dynrng sits in
+    // the audio blocks and is not read ahead the way compr is - and the bed's
+    // is the one figure worth surfacing at the access-unit level for a status
+    // report. Only entries below
     // eac3::blocks_per_syncframe(numblkscod) were ever written - see
     // DecodedSubstream::dynrng's own comment on the fixed-size convention.
     std::array<std::uint8_t, kBlocksPerFrame> dynrng{};
@@ -658,8 +666,8 @@ struct DecodedAccessUnit {
     // eac3::blocks_per_syncframe.
     int numblkscod = 3;
     // The independent substream's own mixmdate and infomdat groups, same
-    // reasoning as compr and dynrng above: every substream carries its own,
-    // but only the bed's describes the programme. A dependent's mixmdate is
+    // reasoning as dynrng above: every substream carries its own, but only
+    // the bed's describes the programme. A dependent's mixmdate is
     // the levels alone anyway, and Table E1.2 gives a dependent no infomdat
     // gate of its own worth surfacing at this level.
     std::optional<meta::MixMetadata> mixing = std::nullopt;
