@@ -139,6 +139,17 @@ and release packaging.
   configure time from the actual component list and versions, so the window and the
   package cannot disagree; `check_crucible_package.py` enforces it.
 
+**Hearth**
+
+- **`src/sendspin`, the first part of Hearth's Sendspin implementation**
+  (`planning/hearth-sendspin-extension.md`): an in-tree JSON reader and writer, strict
+  base64url, transport-mode fragments and the `player@v1` audio chunk in both the
+  specification's forms and those of aiosendspin 9.1.1 (Music Assistant's server), and the
+  `_ac3forge_player@v1` burst chunk. Built with `-DAC3FORGE_BUILD_HEARTH=ON`. The
+  JSON reader parses into caller-owned storage without recursing, and refuses invalid
+  UTF-8 and duplicate keys. Two fuzz harnesses (`fuzz_sendspin_json`,
+  `fuzz_sendspin_frames`) and a CI job, `Hearth Sendspin (Linux, GCC)`, cover it.
+
 **Containers and encoding**
 
 - **AC-4 container carriage** (roadmap IM4): `ac3cli mp4`/`ts` read and write an AC-4

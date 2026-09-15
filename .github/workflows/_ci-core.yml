@@ -59,6 +59,8 @@ on:
         value: ${{ jobs.coverage.outputs.result }}
       adm_result:
         value: ${{ jobs.adm-validate.outputs.result }}
+      hearth_result:
+        value: ${{ jobs.hearth-validate.outputs.result }}
       ffmpeg_result:
         value: ${{ jobs.ffmpeg-validate.outputs.result }}
       performance_gate_result:
@@ -374,6 +376,60 @@ jobs:
       # VERSION_TAG_INPUT) - even though job.status can only ever be one of
       # a fixed enum (success/failure/cancelled), zizmor does not special-case
       # that and flags any `${{ }}` expansion inside run: on principle.
+      - name: Record result
+        id: record-result
+        if: always()
+        shell: bash
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+  # ac3::sendspin (src/sendspin, planning/hearth-reference-player.md A4) is opt-in:
+  # AC3FORGE_BUILD_HEARTH defaults OFF like AC3FORGE_BUILD_ADM, because the library's later
+  # parts take cpp-httplib, mdns, mbedTLS, libFLAC and Opus from vcpkg's "hearth" feature.
+  # Until A7 brings it into every build-and-test leg, this is the one build that compiles it
+  # and runs its tests. One Linux leg, for adm-validate's reason: the module has no
+  # platform code. Only ac3tests is built and only its [sendspin] cases run; the rest of
+  # the suite is build-and-test's.
+  hearth-validate:
+    name: Hearth Sendspin (Linux, GCC)
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    container: ubuntu:26.04
+    outputs:
+      result: ${{ steps.record-result.outputs.status }}
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+
+      - name: Configure
+        shell: bash
+        run: cmake --preset config-linux-gcc -DAC3FORGE_BUILD_HEARTH=ON -DAC3FORGE_BUILD_EXAMPLES=OFF
+
+      - name: Build
+        shell: bash
+        run: cmake --build --preset build-linux-gcc --target ac3tests -- -k 0
+
+      - name: Test
+        shell: bash
+        run: ./build/config-linux-gcc/bin/ac3tests "[sendspin]"
+
+      # See adm-validate's identical step for why the result is recorded this way.
       - name: Record result
         id: record-result
         if: always()

@@ -320,3 +320,20 @@ ac3forge_add_fuzzer(fuzz_signing_verify ac3::signing)
 if(AC3FORGE_BUILD_ADM)
     ac3forge_add_fuzzer(fuzz_adm_parse ac3adm::ac3adm)
 endif()
+
+# --- Sendspin (planning/hearth-reference-player.md, A4) ----------------------
+# ac3::sendspin's parsers are the first code a network peer's bytes reach, on
+# ac3hearth's server and on a sink. Gated on AC3FORGE_BUILD_HEARTH like the
+# library; fuzz/run.sh turns it on. What is built so far has no vcpkg
+# dependency.
+if(TARGET ac3sendspin)
+    ac3forge_instrument_for_fuzzing(ac3sendspin)
+
+    # ac3::sendspin::json::Document::parse, with a write-and-reparse check
+    # (src/sendspin/src/json.cpp).
+    ac3forge_add_container_fuzzer(fuzz_sendspin_json ac3::sendspin)
+
+    # ac3::sendspin::Reassembler in both fragment forms, and the player@v1 and
+    # _ac3forge_player@v1 chunk parsers (src/sendspin/src/frames.cpp, chunks.cpp).
+    ac3forge_add_container_fuzzer(fuzz_sendspin_frames ac3::sendspin)
+endif()

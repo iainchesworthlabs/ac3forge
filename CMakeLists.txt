@@ -355,6 +355,12 @@ option(AC3FORGE_BUILD_CAPI "Build the C API over the encode/decode core (src/cap
 # drives the configure for `pip install`/cibuildwheel - see python/CMakeLists.txt.
 option(AC3FORGE_BUILD_PYTHON "Build the pybind11 Python extension module (python/)" OFF)
 
+# Hearth, the desktop reference player (planning/hearth-reference-player.md): src/sendspin now,
+# apps/hearth as its phases land. Off by default like AC3FORGE_BUILD_ADM, for the same reason:
+# its dependencies (cpp-httplib, mdns, mbedTLS, libFLAC, Opus) come through vcpkg's "hearth"
+# feature, which a normal build never pulls in, and nothing outside it links it.
+option(AC3FORGE_BUILD_HEARTH "Build Hearth: src/sendspin, and apps/hearth as it lands - see vcpkg.json's \"hearth\" feature" OFF)
+
 # enable_testing() has to run before ANY add_subdirectory() that might contain
 # an add_test() call, not merely before tests/ itself - CTest silently drops
 # an add_test() registered from a directory processed earlier in the same
@@ -481,6 +487,12 @@ endif()
 # theirs.
 if(AC3FORGE_BUILD_CAPI)
     add_subdirectory(src/capi)
+endif()
+
+# ac3::sendspin (planning/hearth-sendspin-extension.md) - gated by AC3FORGE_BUILD_HEARTH, the
+# option above. Never installed or exported, like ac3::audio.
+if(AC3FORGE_BUILD_HEARTH)
+    add_subdirectory(src/sendspin)
 endif()
 
 # install()/find_package(ac3forge) support for ac3::forge, matroska::matroska,
