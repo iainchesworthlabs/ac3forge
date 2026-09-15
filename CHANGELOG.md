@@ -204,6 +204,11 @@ and release packaging.
   aiosendspin 9.1.1 server apart by its message 1, and run re-handshakes. A transport-mode
   channel seals messages into Noise ciphertexts, one per frame in the connection's dialect,
   and opens them again.
+- **Sendspin's clock synchronisation for the player half**: `client/time` exchanges in bursts
+  of eight over the vendored time filter, one after another until the clock converges and
+  every ten seconds after, with convergence taken as the filter's error staying under 1 ms
+  for eight updates in a row. Against a simulated server 35 ppm fast over a 0.5 to 3 ms
+  network it converges in under two seconds and stays within 1 ms.
 
 **Containers and encoding**
 

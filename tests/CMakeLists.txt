@@ -665,6 +665,7 @@ if(AC3FORGE_BUILD_HEARTH)
         sendspin/test_base64.cpp
         sendspin/test_base64url.cpp
         sendspin/test_chunks.cpp
+        sendspin/test_clock_sync.cpp
         sendspin/test_frames.cpp
         sendspin/test_handshake.cpp
         sendspin/test_json.cpp

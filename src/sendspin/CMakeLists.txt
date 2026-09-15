@@ -43,6 +43,7 @@ target_sources(ac3sendspin
         src/base64.cpp
         src/base64url.cpp
         src/chunks.cpp
+        src/clock_sync.cpp
         src/frames.cpp
         src/handshake.cpp
         src/json.cpp
