@@ -133,6 +133,28 @@ test.describe('with the clock running', () => {
         await expect(page.locator('#next')).toHaveText('1.0');
     });
 
+    test("a layout's confirmation comes after a play's end that a poll already out brings", async ({ page, stub }) => {
+        stub.device.framesPerPoll = 1;
+        await page.getByRole('button', { name: 'Play' }).click();
+        await expect(page.getByRole('status')).toHaveText('Playing.');
+        // A poll out while Apply is answered, whose answer then brings the
+        // play's end: board/layouts.spec.js on CI, where the test reads a
+        // play's end from the device before the page has.
+        const release = stub.hold('GET /status');
+        const polls = stub.sent('GET /status').length;
+        await expect.poll(() => stub.sent('GET /status').length).toBe(polls + 1);
+        stub.device.framesPerPoll = 250;
+        await page.getByLabel('Output layout').fill('1.0');
+        const answered = page.waitForEvent('requestfinished', (request) => request.url().endsWith('/layout'));
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await answered;
+        // Time for the page to take Apply's answer in before the poll's comes.
+        await page.waitForTimeout(300);
+        release();
+        await expect(page.locator('#state')).toHaveText('Finished (end of stream)');
+        await expect(page.getByRole('status')).toHaveText('Output layout 1.0 from the next play.');
+    });
+
     test('a speaker list is a layout too', async ({ page, stub }) => {
         await page.getByLabel('Output layout').fill('L,R');
         await page.getByLabel('Output layout').press('Enter');
