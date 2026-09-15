@@ -4,10 +4,11 @@
 # the ESP32 sinks use, with the _ac3forge_player@v1 role on both
 # (planning/hearth-sendspin-extension.md).
 #
-# What is here so far is the part with no dependency at all: JSON, base64url, the
-# transport-mode framing and the audio chunk formats. Noise, CPace, the time filter,
-# the WebSocket and mDNS seams and the sessions follow, each with the dependency it
-# needs behind vcpkg's "hearth" feature.
+# Two layers. The core needs nothing: JSON, base64url, the transport-mode framing, the
+# audio chunk formats and the handshake-phase messages. The rest - the crypto seam over
+# the PSA Crypto API, Noise and PSK identities - needs mbedTLS, which a computer build
+# takes from vcpkg's "hearth" feature. AC3FORGE_SENDSPIN_CORE_ONLY builds the core
+# alone, which is what fuzz/run.sh does so the fuzz build keeps no vcpkg dependency.
 #
 # Written for the player half's hardest host, an ESP32 inside an HTTP server task:
 # no thread_local, no recursion over input, no large stack frames, and allocations
@@ -16,6 +17,10 @@
 # Always STATIC and never installed, like ac3::audio: no export annotations, and not
 # part of the ac3forge-dev package.
 # ---------------------------------------------------------------------------
+option(AC3FORGE_SENDSPIN_CORE_ONLY
+    "Build only ac3::sendspin's dependency-free core, leaving out the parts that need vcpkg's \"hearth\" feature"
+    OFF)
+
 add_library(ac3sendspin STATIC)
 add_library(ac3::sendspin ALIAS ac3sendspin)
 
@@ -24,7 +29,23 @@ target_sources(ac3sendspin
         src/base64url.cpp
         src/chunks.cpp
         src/frames.cpp
-        src/json.cpp)
+        src/handshake.cpp
+        src/json.cpp
+        src/suite.cpp)
+
+if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
+    find_package(MbedTLS CONFIG REQUIRED)
+    # The crypto seam's backend: one directory per backend, chosen here rather than by
+    # a preprocessor branch. psa/ is the PSA Crypto API, which mbedTLS 3.6 and 4 both
+    # provide.
+    target_sources(ac3sendspin
+        PRIVATE
+            src/crypto/psa/crypto.cpp
+            src/hmac.cpp
+            src/noise.cpp
+            src/psk.cpp)
+    target_link_libraries(ac3sendspin PRIVATE MbedTLS::mbedcrypto)
+endif()
 
 target_include_directories(ac3sendspin
     PUBLIC

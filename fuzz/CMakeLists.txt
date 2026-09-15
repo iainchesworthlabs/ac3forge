@@ -324,8 +324,8 @@ endif()
 # --- Sendspin (planning/hearth-reference-player.md, A4) ----------------------
 # ac3::sendspin's parsers are the first code a network peer's bytes reach, on
 # ac3hearth's server and on a sink. Gated on AC3FORGE_BUILD_HEARTH like the
-# library; fuzz/run.sh turns it on. What is built so far has no vcpkg
-# dependency.
+# library; fuzz/run.sh turns it on with AC3FORGE_SENDSPIN_CORE_ONLY, which
+# builds the library's dependency-free core and keeps this build free of vcpkg.
 if(TARGET ac3sendspin)
     ac3forge_instrument_for_fuzzing(ac3sendspin)
 
@@ -336,4 +336,9 @@ if(TARGET ac3sendspin)
     # ac3::sendspin::Reassembler in both fragment forms, and the player@v1 and
     # _ac3forge_player@v1 chunk parsers (src/sendspin/src/frames.cpp, chunks.cpp).
     ac3forge_add_container_fuzzer(fuzz_sendspin_frames ac3::sendspin)
+
+    # The handshake phase's messages - client/init, server/init, server/error,
+    # noise/handshake and the two Noise payloads - read and written back
+    # (src/sendspin/src/handshake.cpp).
+    ac3forge_add_container_fuzzer(fuzz_sendspin_handshake ac3::sendspin)
 endif()

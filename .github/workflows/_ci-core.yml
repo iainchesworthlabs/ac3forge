@@ -416,10 +416,17 @@ jobs:
       - uses: ./.github/actions/setup-vcpkg
         with:
           vcpkg-commit: ${{ inputs.vcpkg_commit }}
+          # This job's install set adds the hearth feature's ports; see
+          # adm-validate's same input for why it needs a key of its own.
+          cache-key-suffix: hearth
 
       - name: Configure
         shell: bash
-        run: cmake --preset config-linux-gcc -DAC3FORGE_BUILD_HEARTH=ON -DAC3FORGE_BUILD_EXAMPLES=OFF
+        run: >-
+          cmake --preset config-linux-gcc
+          -DVCPKG_MANIFEST_FEATURES=hearth
+          -DAC3FORGE_BUILD_HEARTH=ON
+          -DAC3FORGE_BUILD_EXAMPLES=OFF
 
       - name: Build
         shell: bash

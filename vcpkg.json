@@ -29,6 +29,12 @@
         "boost-integer",
         "boost-rational"
       ]
+    },
+    "hearth": {
+      "description": "Hearth's dependencies (AC3FORGE_BUILD_HEARTH, planning/hearth-reference-player.md) - opt-in via -DVCPKG_MANIFEST_FEATURES=hearth, off by default so a library-only build pulls none of them. mbedTLS provides the PSA Crypto API behind src/sendspin's Noise and CPace; cpp-httplib, mdns, libFLAC and Opus join this list with the parts of src/sendspin that use them.",
+      "dependencies": [
+        "mbedtls"
+      ]
     }
   }
 }

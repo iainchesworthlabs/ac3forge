@@ -659,7 +659,14 @@ if(AC3FORGE_BUILD_HEARTH)
         sendspin/test_base64url.cpp
         sendspin/test_chunks.cpp
         sendspin/test_frames.cpp
+        sendspin/test_handshake.cpp
         sendspin/test_json.cpp)
+    # The parts that need vcpkg's "hearth" feature, which AC3FORGE_SENDSPIN_CORE_ONLY leaves out.
+    if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
+        target_sources(ac3tests PRIVATE
+            sendspin/test_crypto.cpp
+            sendspin/test_noise.cpp)
+    endif()
     target_link_libraries(ac3tests PRIVATE ac3::sendspin)
 endif()
 

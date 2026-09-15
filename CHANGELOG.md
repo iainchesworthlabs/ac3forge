@@ -149,6 +149,15 @@ and release packaging.
   JSON reader parses into caller-owned storage without recursing, and refuses invalid
   UTF-8 and duplicate keys. Two fuzz harnesses (`fuzz_sendspin_json`,
   `fuzz_sendspin_frames`) and a CI job, `Hearth Sendspin (Linux, GCC)`, cover it.
+- **Sendspin's encryption in `src/sendspin`**: Noise `KKpsk2` for both of the
+  specification's suites (`25519_ChaChaPoly_SHA256` and `25519_AESGCM_SHA256`), matching the
+  cacophony test vectors byte for byte, with the PSK bound late as Sendspin needs and the
+  Sentinel retry; the handshake messages (`client/init`, `server/init`, `server/error`,
+  `noise/handshake`) with the specification's order of `server/error` reasons; and PSK
+  identities. The cryptography sits behind a seam over the PSA Crypto API, which both
+  vcpkg's mbedTLS 3.6 and ESP-IDF's mbedTLS 4 provide, and comes in through vcpkg's new
+  `hearth` feature. A third fuzz harness, `fuzz_sendspin_handshake`, reads the handshake
+  messages.
 
 **Containers and encoding**
 
