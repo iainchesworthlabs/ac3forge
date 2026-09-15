@@ -83,6 +83,15 @@ and release packaging.
   sharing the first's clocks, doubling the slot ceiling to eight; verified on an
   ESP32-S3-DevKitC-1-N16R8, though a six-channel unfolded layout with both lines up left
   too little RAM for the decode task's stack.
+- **A part with no floating-point unit converts a sample to an I2S slot in integer
+  arithmetic** instead of `float`: `to_pcm16_from_bits`/`to_slot_24in32_from_bits`
+  (`ac3forge/interleave.hpp`) compute the float conversion's own result from the
+  sample's IEEE-754 bits, equal to it for every input that is not a NaN. The component
+  chooses the conversion from `CONFIG_SOC_CPU_HAS_FPU`; an ESP32-S3's sink is unchanged,
+  confirmed identical object code and, on a board, identical timing. On an ESP32-C6
+  playing a 7.1 stream onto eight 16-bit TDM slots, `sink_us_per_frame` drops from
+  20,875 to 12,689 microseconds a frame, 11,551 with the sink's source at `-O2`
+  (`AC3FORGE_MINIMAL_HOT_O2`); levels unchanged to the digit.
 
 **Crucible desktop application**
 
