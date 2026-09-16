@@ -1,8 +1,11 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -12,8 +15,11 @@
 #include <string>
 #include <vector>
 
+#include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/encoder/plan.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/metadata_edit.hpp"
 #include "ac3/io/wav.hpp"
@@ -464,6 +470,130 @@ TEST_CASE("transcode also goes the other way, DD into DD+", "[cli][transcode]") 
     REQUIRE(after.has_value());
     CHECK(after->kind == ac3::io::StreamKind::kEac3);
     CHECK(after->dialnorm == 27);
+}
+
+// Regression for the same bug apps/cli/commands/decode.cpp's own
+// "decode plays a legacy core's held-back last unit..." case guards
+// (tests/cli/test_cli.cpp): decode_and_render's flush() tail used to push
+// each flushed substream's channels into the SampleQueue by calling
+// SampleQueue::push once per substream per Table E2.5 location, so a bed and
+// the dependent that held the last unit back could both push into slots the
+// same slot_to_wav position maps to within one flush - the queue's per-
+// channel append grows unevenly rather than just mismatching lengths, since
+// it has no per-call slot tracking of its own. decode_and_render now builds
+// the whole held-back unit first via ac3::apps::held_back_unit
+// (apps/common/stream_playback.hpp) and pushes it exactly once per slot,
+// same as every other unit. A genuine E-AC-3 bed (not a legacy core - see
+// the separately-flagged decode_and_render dispatch gap for
+// kAc3CoreEac3Extension) so this exercises transcode's own eac3_source path
+// rather than a dispatch question.
+TEST_CASE("transcode carries a held-back last unit's samples through, not just the ones "
+          "that arrived on time",
+          "[cli][transcode]") {
+    namespace cm = ac3::eac3::chanmap;
+    constexpr auto kFrame = static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    constexpr std::size_t kOnsetSample = 960;
+    constexpr int kUnits = 5;
+    constexpr int kOnsetUnit = 2;
+    constexpr std::array<double, 6> kBedTones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
+    constexpr std::array<double, 4> kRearTones = {500.0, 1600.0, 400.0, 1800.0};
+
+    const auto unit_pcm = [&](std::span<const double> tones, int unit) {
+        const auto onset = static_cast<std::size_t>(kOnsetUnit) * kFrame + kOnsetSample;
+        std::vector<std::vector<float>> pcm(tones.size(), std::vector<float>(kFrame, 0.0F));
+        for (std::size_t ch = 0; ch < tones.size(); ++ch) {
+            for (std::size_t i = 0; i < kFrame; ++i) {
+                const auto n = static_cast<std::size_t>(unit) * kFrame + i;
+                if (n < onset) {
+                    continue;
+                }
+                const double t = static_cast<double>(n - onset) / 48000.0;
+                pcm[ch][i] =
+                    static_cast<float>(0.4 * std::cos(2.0 * std::numbers::pi * tones[ch] * t));
+            }
+        }
+        return pcm;
+    };
+
+    // A genuine E-AC-3 5.1 bed (transient-pre-noise held) with a k71Rear
+    // dependent - same shape as tests/cli/test_cli.cpp's own legacy-core
+    // case, except the bed itself is Annex E from the start (strmtyp 0,
+    // bsid 16), so ac3::io::scan reports StreamKind::kEac3 rather than
+    // kAc3CoreEac3Extension and decode_and_render's eac3_source check
+    // routes it through Eac3Decoder as intended.
+    ac3::eac3::AccessUnitEncoder encoder{
+        {.independent = {.bitrate_kbps = 448,
+                         .acmod = ac3::Acmod::k3_2,
+                         .lfe = true,
+                         .transient_prenoise = true},
+         .dependents = {{.bitrate_kbps = 320, .acmod = ac3::Acmod::k2_2, .chanmap = cm::k71Rear}}}};
+    std::vector<std::byte> stream;
+    for (int unit = 0; unit < kUnits; ++unit) {
+        auto pcm = unit_pcm(kBedTones, unit);
+        auto rear = unit_pcm(kRearTones, unit);
+        pcm.insert(pcm.end(), rear.begin(), rear.end());
+        const std::vector<std::span<const float>> views{pcm.begin(), pcm.end()};
+        const auto encoded = encoder.encode_access_unit(views);
+        REQUIRE(encoded.has_value());
+        stream.insert(stream.end(), encoded->bytes.begin(), encoded->bytes.end());
+    }
+
+    const auto dir = scratch_dir();
+    const auto source = dir / "tx_held_source.ec3";
+    {
+        std::ofstream out{source, std::ios::binary};
+        out.write(reinterpret_cast<const char*>(stream.data()),
+                  static_cast<std::streamsize>(stream.size()));
+        REQUIRE(out.good());
+    }
+
+    const auto out = dir / "tx_held_out.ec3";
+    const auto log = dir / "tx_held.log";
+    REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(out) + " 448", log) == 0);
+    INFO(read_log(log));
+
+    // Every real unit made it through, including the one only flush()
+    // returns - a pre-fix build's uneven queue growth would have left this
+    // short (or, depending on which slot grew, silently wrong rather than
+    // short - see the WAV-level check below either way).
+    const auto out_scan = ac3::io::scan(read_bytes(out));
+    REQUIRE(out_scan.has_value());
+    CHECK(ac3::io::stream_duration_samples(*out_scan) == static_cast<std::uint64_t>(kUnits) * kFrame);
+
+    // Decode the transcoded output back and check the last unit's audio
+    // directly, the same way test_cli.cpp's legacy-core case does: Ls (the
+    // dependent's, per k71Rear's own comment - it replaces the bed's Ls/Rs)
+    // must carry the dependent's tone, not the bed's now-superseded one.
+    const auto wav_out = dir / "tx_held_out.wav";
+    const auto decode_log = dir / "tx_held_decode.log";
+    REQUIRE(run_cli("decode " + quoted(out) + " " + quoted(wav_out), decode_log) == 0);
+    const auto decoded = ac3::io::read_wav(wav_out.string());
+    REQUIRE(decoded.has_value());
+    REQUIRE(decoded->channels.size() == 8);
+    CHECK(decoded->frame_count() == static_cast<std::size_t>(kUnits) * kFrame);
+
+    const auto layout =
+        cm::expand(static_cast<std::uint16_t>(cm::acmod_map(ac3::Acmod::k3_2, true) | cm::k71Rear));
+    const auto order =
+        ac3::plan::wav_order(std::span{layout.items}.first(static_cast<std::size_t>(layout.count)));
+    const auto ls_slot = layout.index_of(cm::Location::kLeftSurround);
+    REQUIRE(ls_slot >= 0);
+    const auto ls_at = std::find(order.begin(), order.end(), static_cast<std::size_t>(ls_slot));
+    REQUIRE(ls_at != order.end());
+    const auto ls_wav = static_cast<std::size_t>(std::distance(order.begin(), ls_at));
+
+    const auto tone_power = [&](std::span<const float> x, double hz) {
+        double re = 0.0;
+        double im = 0.0;
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            const double phase = 2.0 * std::numbers::pi * hz * static_cast<double>(i) / 48000.0;
+            re += static_cast<double>(x[i]) * std::cos(phase);
+            im += static_cast<double>(x[i]) * std::sin(phase);
+        }
+        return re * re + im * im;
+    };
+    const auto last_unit = std::span{decoded->channels[ls_wav]}.last(kFrame);
+    CHECK(tone_power(last_unit, kRearTones[0]) > 100.0 * tone_power(last_unit, kBedTones[3]));
 }
 
 TEST_CASE("transcode measures dialnorm when told dialnorm=auto", "[cli][transcode]") {

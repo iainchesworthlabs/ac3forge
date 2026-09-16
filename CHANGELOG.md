@@ -794,6 +794,15 @@ and release packaging.
   `spatial` now shares `run_monitor`'s own `ac3::apps::reads_as_access_units` test, so a
   legacy-core stream that does carry an object layer decodes and plays instead of being
   turned away.
+- **`ac3cli decode` and `transcode` could misplace a stream's held-back last unit.** Both
+  already drained `flush()`, but placed each flushed substream's channels by appending it
+  straight into the WAV sink or the transcode sample queue - once per substream per Table
+  E2.5 location, rather than assembling the whole unit first. A last unit that released a
+  bed together with the dependent that had been holding it back could then land both
+  substreams' channels in the same location, growing some channels past others instead of
+  merely leaving stale audio behind. Both now build the held-back unit once through the same
+  `ac3::apps::held_back_unit` `monitor`/`spatial` use above, and append it exactly once per
+  slot, like every other unit.
 - **The GUI offered E-AC-3 bitrates a source's sample rate couldn't frame.**
   `bitrates()` branched on codec but not on the loaded source's rate, so a 16 kHz file
   offered rungs no `frmsiz` could carry; encoding was refused only at the encode button.
