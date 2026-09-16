@@ -561,6 +561,27 @@ and release packaging.
   the arithmetic over them is shared and tested against a fake device's clock. ALSA
   hardware that cannot pause is dropped and prepared again instead, which loses what the
   device held.
+  - On PipeWire the frames played are the stream's own, counted as they are handed over,
+    rather than the graph's clock, which runs on through a pause.
+  - A flush that a device does not reach in time is made when it next runs. It drops only
+    what was submitted before the flush.
+- **Passthrough reports its position, and can flush and pause**
+  (`ac3::audio::PassthroughSink`): the same figures, flush and pause as monitor playback,
+  counted in the content's frames. A burst is 1536 of them for AC-3 and for E-AC-3, whose
+  link runs four times as fast.
+  - A receiver loses its lock while the link is stopped, so the first moments after a
+    resume can be silent.
+  - On Android, the Shield app's AudioTrack bridge reports the head position and does the
+    pause and flush. A bridge without those methods still bitstreams.
+  - `ac3tests "[passthrough-live]"` runs all three against a receiver.
+- **macOS passthrough fills device buffers shorter than a burst**: the output callback
+  wrote only whole bursts into each buffer, so the usual 512-frame buffer went out as
+  silence. It now streams the bytes, and writes to the buffer of the stream it opened
+  rather than to the device's first. Not yet tried on a Mac.
+- **PipeWire reads which codecs a sink takes** (`ac3::audio::read_sink_capabilities`),
+  where it used to report no backend. It reads the `iec958.codecs` property the session
+  manager sets on a digital node from the sink's ELD. The property names the codecs only,
+  so it gives no PCM channel count or rates.
 - **A PCM output at the device's own width** (`ac3::audio::PcmOutput`): the stream opens
   at the endpoint's channel count rather than the programme's, and each rendered channel
   is placed at the output a routing patch names (`ac3::render::Routing`), silence in the

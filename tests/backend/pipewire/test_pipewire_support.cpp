@@ -21,6 +21,8 @@
 
 using ac3::pipewire::carrier_rate;
 using ac3::pipewire::client_api_is_relay;
+using ac3::pipewire::codec_listed;
+using ac3::pipewire::unplayed_frames;
 using ac3::pipewire::iec958_codec_for;
 using ac3::pipewire::is_audio_sink;
 using ac3::pipewire::is_audio_source;
@@ -52,6 +54,56 @@ TEST_CASE("E-AC-3 runs the link four times as fast as its content, same as ALSA"
     CHECK(carrier_rate(BitstreamFormat::kEac3, 48000) == 192000);
     CHECK(carrier_rate(BitstreamFormat::kEac3, 44100) == 176400);
     CHECK(carrier_rate(BitstreamFormat::kEac3, 32000) == 128000);
+}
+
+TEST_CASE("an iec958.codecs list is read name by name") {
+    // WirePlumber writes the property from the sink's ELD, in SPA's codec
+    // names, and serialises it either with quotes or without.
+    const std::string quoted = R"(["PCM","AC3","EAC3","DTS-HD"])";
+    CHECK(codec_listed(quoted, "PCM"));
+    CHECK(codec_listed(quoted, "AC3"));
+    CHECK(codec_listed(quoted, "EAC3"));
+    const std::string bare = "[ PCM EAC3 TrueHD MPEG2-AAC ]";
+    CHECK(codec_listed(bare, "EAC3"));
+    // AC3 is not found inside EAC3, nor DTS inside DTS-HD, nor MPEG inside
+    // MPEG2-AAC.
+    CHECK_FALSE(codec_listed(bare, "AC3"));
+    CHECK_FALSE(codec_listed(quoted, "DTS"));
+    CHECK_FALSE(codec_listed(bare, "MPEG"));
+    CHECK_FALSE(codec_listed(bare, "AAC"));
+    // A name inside another, earlier in the list, does not hide the name itself.
+    CHECK(codec_listed("[ EAC3 AC3 ]", "AC3"));
+    CHECK(codec_listed("[ DTS-HD DTS ]", "DTS"));
+    CHECK(codec_listed("AC3", "AC3"));
+    CHECK_FALSE(codec_listed("", "PCM"));
+    CHECK_FALSE(codec_listed("[ PCMX ]", "PCM"));
+}
+
+TEST_CASE("a stream's unplayed frames add its queue, its converter and the graph's delay") {
+    // The graph's clock at 48 kHz: 1024 frames of delay, 480 queued, 64 in
+    // the converter.
+    pw_time time{};
+    time.rate.num = 1;
+    time.rate.denom = 48000;
+    time.delay = 1024;
+    time.queued = 480;
+    time.buffered = 64;
+    CHECK(unplayed_frames(time, 48000) == 1024 + 480 + 64);
+    // A stream at four times the graph's rate, as an E-AC-3 link can be, has
+    // four of its frames in each frame of delay.
+    CHECK(unplayed_frames(time, 192000) == 4 * 1024 + 480 + 64);
+    // A 44.1 kHz stream on a 48 kHz graph: 1024 / 48000 s is 940.8 frames.
+    CHECK(unplayed_frames(time, 44100) == 940 + 480 + 64);
+
+    // A user's offset can take the delay below zero, which counts as none.
+    time.delay = -300;
+    CHECK(unplayed_frames(time, 48000) == 480 + 64);
+
+    // A clock with no rate leaves the delay as it is.
+    time.delay = 100;
+    time.rate.num = 0;
+    time.rate.denom = 0;
+    CHECK(unplayed_frames(time, 48000) == 100 + 480 + 64);
 }
 
 TEST_CASE("the codec sent over IEC958 matches the bitstream format asked for") {

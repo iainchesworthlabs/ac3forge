@@ -4,10 +4,13 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include "ac3/audio/monitor.hpp"
 
 // Exclusive-mode IEC 61937 passthrough: hand already-packed AC-3 or E-AC-3
 // bursts to an S/PDIF or HDMI endpoint so the AV receiver on the other end
@@ -43,6 +46,12 @@ enum class PassthroughError : std::uint8_t {
 // for IEC 61937 Transmissions") - and different burst sizes
 // (ac3::iec61937::kBurstBytes vs kEac3BurstBytes).
 enum class BitstreamFormat : std::uint8_t { kAc3, kEac3 };
+
+// Link frames per content frame: 4 for E-AC-3, whose link runs at four times
+// the content rate, and 1 for AC-3. A burst is 1536 content frames either way.
+[[nodiscard]] constexpr std::uint32_t carrier_ratio(BitstreamFormat format) {
+    return format == BitstreamFormat::kEac3 ? 4U : 1U;
+}
 
 struct RenderDeviceInfo {
     std::string id;
@@ -131,6 +140,31 @@ public:
 
     // Room for at least one more burst without blocking.
     [[nodiscard]] bool can_submit() const;
+
+    // Where the device has got to, as MonitorSink::position() reports it and
+    // with the same meaning, but in frames of the CONTENT: 1536 to a burst in
+    // either format, the E-AC-3 link's four frames counting as one
+    // (carrier_ratio()). Nothing while stopped. Underrun silence counts as
+    // played, as a device's own clock counts it.
+    [[nodiscard]] std::optional<MonitorPosition> position() const;
+
+    // Drops the bursts not yet played, here and in the device, and carries on
+    // from the next submit(); position() then counts from zero again. Harmless
+    // when nothing is running. As MonitorSink::flush(), a device that has
+    // stopped answering is not waited for past a moment, and its flush drops
+    // only what was submitted before this call.
+    void flush();
+
+    // Stops the device without closing it, and starts it again: the format,
+    // the device and the queue survive, and submit() goes on taking bursts.
+    // What a pause button needs - closing and reopening would let another
+    // application take the exclusive hold in between. The link stops with the
+    // device, and a receiver drops its lock when it does, so the first moments
+    // after resume() can be silent while it finds the stream again. Repeating
+    // either call is harmless; both refuse only when nothing is running.
+    [[nodiscard]] std::expected<void, PassthroughError> pause();
+    [[nodiscard]] std::expected<void, PassthroughError> resume();
+    [[nodiscard]] bool paused() const;
 
     void stop();
 

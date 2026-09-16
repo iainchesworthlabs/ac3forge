@@ -646,6 +646,12 @@ whole session of it.
 Windows, ALSA on Linux, CoreAudio on macOS — the path an AV receiver needs to see the raw
 compressed bitstream rather than decoded PCM.
 
+Like `MonitorSink` below, it reports where the device has got to (`position()`), and can
+`flush()`, `pause()` and `resume()`. The position counts the content's frames, 1536 to a burst in
+either format, although an E-AC-3 link runs at four times the content's rate. A pause stops the
+link, and a receiver drops its lock when that happens, so the first moments after a resume can
+be silent.
+
 Stated plainly, because this project's docs don't soften verification gaps: of the desktop
 platforms, only **Windows** has this sink confirmed against real bitstreaming hardware — an
 Onkyo TX-RZ740 over an Nvidia GPU's HDMI output locks AC-3, E-AC-3 and signed Atmos through
@@ -668,18 +674,24 @@ uses it, EDID first and the probe as the documented fallback, to decide whether 
 needs the automatic AC-3/PCM fallback described in
 [Commands → Following the sink](../forge/cli/commands.md#following-the-sink).
 
-Real on exactly one backend today: ALSA, reading the HD-audio kernel driver's own
-`/proc/asound/<card>/eld#<dev>.<port>` text interface (already decoded from the raw CEA-861
-bytes, so there is no byte layout for this project to get wrong — only the driver's own field
-names to read). **Not verified against real HDMI/ELD hardware** — the development environment
-this shipped from has no Linux box with a bitstream-capable receiver attached; see
-[Linux](../platforms/linux.md) for the current status. Every other backend (Windows, macOS,
-Android, PipeWire, and Linux without ALSA) reports `kNoBackend` rather than guessing: none has a
-documented user-mode API for reading a sink's raw SADs (Windows' WASAPI and macOS' CoreAudio
-both expose negotiated-format questions, the same kind `enumerate_render_devices()` already
-answers, not the sink's own raw descriptor; PipeWire's node properties might carry enough to
-reach the same ALSA ELD file, but no confirmed, version-stable property name was found to code
-against without a live daemon to verify it on).
+Real on two backends today:
+
+- **ALSA** reads the HD-audio kernel driver's own `/proc/asound/<card>/eld#<dev>.<port>` text
+  interface. It is already decoded from the raw CEA-861 bytes, so there is no byte layout for
+  this project to get wrong, only the driver's own field names to read.
+- **PipeWire** reads the session manager's reading of the same descriptor: the `iec958.codecs`
+  property WirePlumber sets on a digital node from the sink's ELD. That gives the codecs (AC-3,
+  E-AC-3, PCM) but no LPCM channel count or rates, which the property does not carry. A node
+  without the property reports `kNoEdid`.
+
+**Neither is verified against real HDMI/ELD hardware.** The development environment this shipped
+from has no Linux box with a bitstream-capable receiver attached; see
+[Linux](../platforms/linux.md) for the current status.
+
+Every other backend (Windows, macOS, Android, and Linux with neither ALSA nor PipeWire) reports
+`kNoBackend` rather than guessing. None has a documented user-mode API for reading a sink's raw
+SADs: Windows' WASAPI and macOS' CoreAudio both answer negotiated-format questions, the kind
+`enumerate_render_devices()` already answers, not the sink's own descriptor.
 
 ### `ac3::audio::MonitorSink` — shared-mode monitor playback
 

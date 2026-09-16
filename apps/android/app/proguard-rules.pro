@@ -48,10 +48,19 @@
 #    `PassthroughBridge()` by that exact class name and would otherwise hit
 #    ClassNotFoundException the moment either test APK runs against a
 #    minified release build.
+#
+#    The last four are optional on the native side, which looks each one up
+#    and carries on without it. So a rule that missed one would not stop the
+#    bridge registering: that sink's position, pause or flush would simply
+#    never work in a release build.
 -keep class com.ac3forge.shield.PassthroughBridge {
     boolean isDirectPlaybackSupported(int, boolean);
     boolean isPcmSupported(int);
     boolean open(int, boolean);
     int submit(java.nio.ByteBuffer, int);
     void close();
+    long playbackHeadPosition();
+    boolean pause();
+    boolean resume();
+    boolean flush();
 }

@@ -110,7 +110,10 @@ public:
     // thread has done it, so nothing submitted beforehand is heard
     // afterwards, and position() then counts from zero again. A frame already
     // past the device's own buffer - inside whatever mixer or DAC sits beyond
-    // it, latency_frames' worth - cannot be recalled by anyone.
+    // it, latency_frames' worth - cannot be recalled by anyone. A device that
+    // has stopped answering is not waited for past a moment. Its flush is
+    // then made when the render thread next runs, and it drops only what was
+    // submitted before this call.
     void flush();
 
     // Stops the device without closing the stream: the format, the device and
