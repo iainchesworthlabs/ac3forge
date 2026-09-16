@@ -345,9 +345,30 @@ jobs:
       # matrix step below (matrix.sanitizer) runs tools/ci/run_codec_matrix.sh,
       # which also uses ffmpeg as its independent oracle regardless of the
       # gold-reference gate being skipped on this leg.
+      #
+      # A fresh package index before each try, and three tries. ffmpeg pulls in
+      # a long list of codec libraries, and the arm64 mirror
+      # (ports.ubuntu.com) has served an index naming a file it did not have:
+      # on 2026-09-16 libaom3 3.13.1-2ubuntu0.1 came back 404 here, minutes
+      # after the bootstrap step's update, and failed the Linux GCC (arm64)
+      # leg before anything was built. A later index, or the same one a
+      # minute later, names a file the mirror has.
       - name: Install ffmpeg (Linux)
         if: (matrix.gold_reference || matrix.sanitizer) && runner.os == 'Linux'
-        run: apt-get install -y -qq --no-install-recommends ffmpeg
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          for attempt in 1 2 3; do
+            if apt-get update -qq && apt-get install -y -qq --no-install-recommends ffmpeg; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning title=Install ffmpeg::attempt $attempt did not complete; retrying in 30 s with a fresh package index"
+              sleep 30
+            fi
+          done
+          echo "::error title=Install ffmpeg::apt could not install ffmpeg in three attempts"
+          exit 1
 
       # CMakePresets.json declares the project's real minimum (cmakeMinimumRequired);
       # this asserts the RUNNER actually meets it rather than letting a stale image

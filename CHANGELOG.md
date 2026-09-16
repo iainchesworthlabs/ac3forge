@@ -763,6 +763,17 @@ and release packaging.
   stack free at high-water, 96 bytes under the CI runner's 8,192 floor — `DecodedSubstream`
   and `DecodedAccessUnit` grew by `bsid`/`cmixlev`/`surmixlev`/`alternate_bsi` (see below).
   `CONFIG_ESP_MAIN_TASK_STACK_SIZE` moves from 32,768 to 40,960.
+- **An E-AC-3 decode kept two or three copies of its result on the stack.** `Eac3Decoder`
+  returned each substream and access unit through a `std::optional` temporary, and
+  `decode_substream` held a concealed substream beside the decoded one, so a field added to
+  `DecodedSubstream` or `DecodedAccessUnit` cost the decode path several times its size: the
+  four fields above cost the ESP32-S3 streaming player's decode task about 1.9 KB. The results
+  are now built in place, in the caller's storage. The three stack frames live while a
+  substream decodes shrink from 12,352 to 9,040 bytes on the ESP32-S3. Under QEMU, every
+  E-AC-3 stream of the 7.1.4 stream set leaves the decode task at least 3,312 bytes more of
+  its 24,576: 9,344 at the least, against 6,032 before, and 10,368 for `714-walk`, which
+  left about 9,000 before those four fields. The footprint probe's decode leaves 19,344 bytes
+  of its 40,960-byte main-task stack, against 16,064.
 - **The ESP-IDF component decoded in `float` on parts with no FPU.** Its manifest says the
   decode arithmetic follows the part, but only the probe projects chose `fixed`:
   `src/forge/minimal.cmake` builds `float` when `AC3FORGE_DECODE_SCALAR` is unset, so any
