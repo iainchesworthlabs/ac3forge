@@ -124,18 +124,40 @@ unset(_ac3_qt_test_files)
 # component's files per install pass, so file(GLOB) finds whichever *.app is
 # there without hard-coding "ac3crucible.app", and this needs no second edit
 # if apps/gui's own call above is ever extended to APPLE.
+#
+# EXISTS alone is not enough here, and this is not theoretical: the first
+# real CI run of this section (PR #731) left libquicktestplugin.dylib behind
+# while correctly removing qml/QtTest/ around it, and the difference was
+# EXISTS itself. Homebrew's Qt6 stages every QML plugin this project deploys
+# as a symlink into Homebrew's own Cellar (macos-qt-packaging-homebrew-
+# symlinks fix, PR #728, not yet merged) - and CPack's archive-component
+# staging copies that symlink into a separate directory the Cellar path was
+# never relative to, so it lands dangling. EXISTS calls stat(), which follows
+# a symlink and reports false for one whose target does not resolve - so
+# `if(EXISTS .../libquicktestplugin.dylib)` skipped a file that was sitting
+# right there, and file(REMOVE) never ran. file(REMOVE_RECURSE) on the
+# qml/QtTest directory itself does not have this problem - the directory is
+# real, EXISTS finds it, and recursive removal deletes what is inside without
+# needing to stat each entry - which is why that half worked on the same run.
+# Reproduced directly: a real dangling symlink at this path, `cmake -P` this
+# script, EXISTS false, file left behind - fixed by adding IS_SYMLINK, which
+# uses lstat() and sees the link regardless of where it points. Once PR #728
+# lands these will be real files again and IS_SYMLINK will simply never be
+# the reason this branch is taken - worth keeping anyway, since a dangling
+# symlink is exactly the shape a broken deploy leaves and this check should
+# catch that too.
 file(GLOB _ac3_macos_bundles LIST_DIRECTORIES true "${_ac3_prefix}/*.app")
 foreach(_ac3_bundle IN LISTS _ac3_macos_bundles)
-    if(EXISTS "${_ac3_bundle}/Contents/Resources/qml/QtTest")
+    if(EXISTS "${_ac3_bundle}/Contents/Resources/qml/QtTest" OR IS_SYMLINK "${_ac3_bundle}/Contents/Resources/qml/QtTest")
         message(STATUS "Removing Qt Test from the package: ${_ac3_bundle}/Contents/Resources/qml/QtTest")
         file(REMOVE_RECURSE "${_ac3_bundle}/Contents/Resources/qml/QtTest")
     endif()
-    if(EXISTS "${_ac3_bundle}/Contents/PlugIns/libquicktestplugin.dylib")
+    if(EXISTS "${_ac3_bundle}/Contents/PlugIns/libquicktestplugin.dylib" OR IS_SYMLINK "${_ac3_bundle}/Contents/PlugIns/libquicktestplugin.dylib")
         message(STATUS "Removing Qt Test from the package: ${_ac3_bundle}/Contents/PlugIns/libquicktestplugin.dylib")
         file(REMOVE "${_ac3_bundle}/Contents/PlugIns/libquicktestplugin.dylib")
     endif()
     foreach(_ac3_framework IN ITEMS QtTest QtQuickTest)
-        if(EXISTS "${_ac3_bundle}/Contents/Frameworks/${_ac3_framework}.framework")
+        if(EXISTS "${_ac3_bundle}/Contents/Frameworks/${_ac3_framework}.framework" OR IS_SYMLINK "${_ac3_bundle}/Contents/Frameworks/${_ac3_framework}.framework")
             message(STATUS "Removing Qt Test from the package: ${_ac3_bundle}/Contents/Frameworks/${_ac3_framework}.framework")
             file(REMOVE_RECURSE "${_ac3_bundle}/Contents/Frameworks/${_ac3_framework}.framework")
         endif()
