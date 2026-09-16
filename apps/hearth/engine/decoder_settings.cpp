@@ -114,4 +114,18 @@ std::string describe(const DecoderSettings& settings) {
     return joined(parts);
 }
 
+DecoderSettings transcode_settings(const DecoderSettings& listener) {
+    DecoderSettings neutral;
+    neutral.mode = OperatingMode::kCustom;
+    neutral.drc_cut = 0.0;
+    neutral.drc_boost = 0.0;
+    neutral.heavy_compression = false;
+    neutral.normalise_dialogue = false;
+    neutral.objects = render::ObjectsPolicy::kNever;
+    neutral.dual_mono = listener.dual_mono;
+    neutral.concealment = listener.concealment;
+    neutral.programme = listener.programme;
+    return neutral;
+}
+
 }  // namespace ac3::hearth

@@ -81,4 +81,13 @@ struct DecoderSetup {
 // stereo fold Lo/Ro, no LFE in folds, the stream's mix levels, ...".
 [[nodiscard]] std::string describe(const DecoderSettings& settings);
 
+// What a decode for re-encoding uses: the programme as coded, with no dynamic
+// range gain, no dialogue normalisation and no objects - the receiver applies
+// its own from the metadata carried across, and a JOC stream's bed is the
+// mix its objects were coded against. Only the listener's choices a receiver
+// cannot make are kept: which half of a dual mono programme is heard, how a
+// damaged frame is concealed, and the programme, which is the session's
+// choice of units in any case.
+[[nodiscard]] DecoderSettings transcode_settings(const DecoderSettings& listener);
+
 }  // namespace ac3::hearth

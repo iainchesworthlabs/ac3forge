@@ -12,6 +12,7 @@
 
 #include "ac3/iec61937/iec61937.hpp"
 #include "ac3/render/layout.hpp"
+#include "ac3_transcoder.hpp"
 #include "bitstream_sink.hpp"
 #include "decoder_settings.hpp"
 #include "diagnostic_log.hpp"
@@ -60,6 +61,15 @@
 // sent, so a bitstreamed item plays every sample of the units its part of
 // the stream touches (Session::play_whole_units()), and the decoder settings
 // reach the meters but not the receiver, which decodes with its own.
+//
+// An item transcoded to AC-3 for a receiver that takes nothing newer is
+// decoded onto 5.1 with neutral settings instead, and those blocks are what
+// the meters measure and what Ac3Transcoder encodes. The link carries the
+// encoder's frames, whose output runs its 256-sample delay behind the decode,
+// so everything on the link is placed that much later; the decode can cut,
+// so the item plays exactly its part and a join is seamless through the one
+// encoder. What the encoder still holds when the output plays out or reopens
+// is padded out and sent first.
 
 namespace ac3::hearth {
 
@@ -291,8 +301,12 @@ private:
     [[nodiscard]] std::uint64_t heard_frames() const;
     // Where the next frame the decode delivers goes in the output's
     // timeline: everything submitted, queued, and - for a bitstream - packed
-    // into a burst not yet complete.
+    // into a burst not yet complete, or for a transcode taken by the encoder
+    // and heard its delay later.
     [[nodiscard]] std::uint64_t timeline_end() const;
+    // Where the first sample decoded after an open or a flush is heard: a
+    // transcode's delay in, or straight away.
+    [[nodiscard]] std::uint64_t link_start() const;
     // For a bitstream, whose units are packed before they are decoded: where
     // the last frame the decode delivered sits on the link, from the
     // session's own position in its stream.
@@ -311,6 +325,11 @@ private:
     void send_unit(std::span<const std::byte> unit, std::uint32_t samples);
     // Forgets what the packer holds: a flush, or a new output.
     void reset_packer();
+    // A transcode's whole frames into the pending ring as bursts, or with
+    // `last`, everything it holds, padded out.
+    void encode_transcoded(bool last);
+    // A transcode that failed stops playback; true when it did.
+    bool stop_for_transcode(PumpReport& report);
 
     // The pending blocks, oldest first, as a ring whose blocks are never
     // freed: each keeps its buffer for the next block to reuse, so steady
@@ -323,8 +342,11 @@ private:
     // Takes the report of the unit whose last `frames` frames were just
     // taken.
     void take_report(const UnitReport& report, std::size_t frames);
-    // Builds the decoder for `rate` from the current settings.
-    void build_decoder(std::uint32_t rate);
+    // Builds the decoder for `rate` from the current settings, or a
+    // transcode's from its own.
+    void build_decoder(std::uint32_t rate, bool transcode);
+    // Whether the decoder there is is the one build_decoder() would build.
+    [[nodiscard]] bool decoder_fits(std::uint32_t rate, bool transcode) const;
     // Decodes into the pending blocks until they hold at least `frames`.
     void fill(std::size_t frames);
     // Submits pending blocks while the sink takes them.
@@ -371,6 +393,9 @@ private:
     std::optional<iec61937::Eac3BurstPacker> packer_;
     std::uint64_t packed_frames_ = 0;
     std::vector<Span> packed_spans_;
+    // A transcoding output's encoder, and why it failed, if it did.
+    std::optional<Ac3Transcoder> transcoder_;
+    std::optional<std::string> transcode_error_;
     ItemLoader loader_;
     render::OutputLayout layout_;
     DecoderSettings settings_;
@@ -409,6 +434,8 @@ private:
     // Built for the output's layout and rate; the history entry whose blocks
     // were metered last, so a new item restarts the programme measurements.
     std::optional<PlayMeters> meters_;
+    // Whether meters_ was built for a transcode's layout.
+    bool meters_transcoding_ = false;
     std::size_t metered_record_ = Queue::kNone;
     // Each unit's report, stamped like the meters' snapshots.
     UnitReports reports_;

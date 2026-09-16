@@ -38,6 +38,13 @@ constexpr std::size_t kInitialPendingBlocks = 32;
     return "it could not be packed";
 }
 
+// What a transcode decodes onto: 5.1, whose slots are in the order the AC-3
+// encoder takes its channels.
+[[nodiscard]] const render::OutputLayout& transcode_layout() {
+    static const render::OutputLayout layout = render::OutputLayout::named("5.1").value();
+    return layout;
+}
+
 }  // namespace
 
 Player::Player(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout,
@@ -80,7 +87,16 @@ std::uint64_t Player::heard_frames() const {
 }
 
 std::uint64_t Player::timeline_end() const {
-    return submitted_since_open_ + pending_frames_ + (bitstreaming() ? packed_frames_ : 0);
+    const std::uint64_t queued = submitted_since_open_ + pending_frames_;
+    if (transcoder_) {
+        // A sample the encoder has taken is heard its delay after its place.
+        return queued + transcoder_->buffered() + Ac3Transcoder::kDelay;
+    }
+    return queued + (bitstreaming() ? packed_frames_ : 0);
+}
+
+std::uint64_t Player::link_start() const {
+    return transcoder_ ? Ac3Transcoder::kDelay : 0;
 }
 
 std::uint64_t Player::decoded_end() const {
@@ -137,7 +153,13 @@ std::string Player::join_blocked(const OutputChoice& next, std::string_view titl
         return fmt::format("\"{}\" plays on \"{}\", so the output reopens there - there is a gap.",
                            title, next.endpoint_name);
     }
-    if (!bitstreaming() || packed_frames_ == 0 || !prepared_) {
+    if (transcoder_ && prepared_ &&
+        Ac3Transcoder::fold_levels(prepared_->first_unit()) != transcoder_->fold()) {
+        return fmt::format("\"{}\" folds to stereo at other levels, which an AC-3 encoder sets "
+                           "once, so the output reopens - there is a gap.",
+                           title);
+    }
+    if (mode_ != OutputMode::kBitstream || packed_frames_ == 0 || !prepared_) {
         return {};
     }
     // The packer holds part of a burst. It is made whole only by units that
@@ -158,6 +180,10 @@ std::string Player::join_blocked(const OutputChoice& next, std::string_view titl
 }
 
 std::string_view Player::settings_note() const {
+    if (transcoder_) {
+        return "The receiver decodes what is transcoded for it with its own settings, and the "
+               "meters show what is sent, so these are not used.";
+    }
     if (!bitstreaming()) {
         return {};
     }
@@ -226,6 +252,50 @@ void Player::send_unit(std::span<const std::byte> unit, std::uint32_t samples) {
     pending_frames_ += block.frames;
     packed_frames_ = 0;
     packed_spans_.clear();
+}
+
+void Player::encode_transcoded(bool last) {
+    if (!transcoder_ || transcode_error_) {
+        return;
+    }
+    const Ac3Transcoder::FrameFn queue = [this](std::span<const std::byte> frame,
+                                                std::span<const Ac3Transcoder::Span> spans) {
+        std::uint64_t samples = 0;
+        for (const Ac3Transcoder::Span& span : spans) {
+            samples += span.frames;
+        }
+        auto wrapped = iec61937::wrap_frame(frame);
+        if (!wrapped) {
+            // The frame's samples are not on the link, and what follows them
+            // is that much sooner.
+            if (!segments_.empty()) {
+                segments_.back().unsent += samples;
+            }
+            note_unit_error(fmt::format("a transcoded frame could not be sent over IEC 61937, as {}",
+                                        describe(wrapped.error())));
+            return;
+        }
+        Pending& block = push_block();
+        block.samples.clear();
+        block.burst = std::move(*wrapped);
+        block.spans.clear();
+        for (const Ac3Transcoder::Span& span : spans) {
+            block.spans.push_back(Span{.record = span.record, .frames = span.frames});
+        }
+        // A frame is a whole burst period on the link, padding and all.
+        block.frames = static_cast<std::size_t>(kSamplesPerFrame);
+        block.record = spans.empty() ? history_.size() - 1 : spans.back().record;
+        pending_frames_ += block.frames;
+    };
+    const auto encoded = last ? transcoder_->finish(queue) : transcoder_->encode_ready(queue);
+    if (!encoded) {
+        note(fmt::format("the transcode failed: {}", encoded.error()));
+        // Nothing more can be sent. pump() stops playback once the decode
+        // that got here has returned; at the end, what was sent plays out.
+        if (!last) {
+            transcode_error_ = encoded.error();
+        }
+    }
 }
 
 void Player::note(std::string_view line) const {
@@ -324,6 +394,11 @@ void Player::set_decoder_settings(const DecoderSettings& settings) {
         decoder_.reset();
         return;
     }
+    if (decoder_fits(decoder_rate_, transcoder_.has_value())) {
+        // A transcode's decode keeps its own settings, which few of these
+        // reach.
+        return;
+    }
     const StreamDecoder::BlockFn deliver =
         [this](std::span<const std::span<const float>> rendered, std::size_t n) {
             take_block(rendered, n);
@@ -332,12 +407,29 @@ void Player::set_decoder_settings(const DecoderSettings& settings) {
         take_report(report, frames);
     };
     session_->hand_over(*decoder_, deliver, reported);
-    build_decoder(decoder_rate_);
+    build_decoder(decoder_rate_, transcoder_.has_value());
 }
 
-void Player::build_decoder(std::uint32_t rate) {
-    decoder_.emplace(layout_, rate, settings_);
+void Player::build_decoder(std::uint32_t rate, bool transcode) {
+    if (transcode) {
+        decoder_.emplace(transcode_layout(), rate, transcode_settings(settings_),
+                         Substreams::kIndependent);
+    } else {
+        decoder_.emplace(layout_, rate, settings_);
+    }
     decoder_rate_ = rate;
+}
+
+bool Player::decoder_fits(std::uint32_t rate, bool transcode) const {
+    if (!decoder_ || decoder_rate_ != rate) {
+        return false;
+    }
+    // Only a transcode's decoder takes the independent substream alone, and
+    // it is built on the transcode's layout.
+    return transcode ? decoder_->substreams() == Substreams::kIndependent &&
+                           decoder_->settings() == transcode_settings(settings_)
+                     : decoder_->substreams() == Substreams::kAll &&
+                           decoder_->settings() == settings_;
 }
 
 void Player::after_edit() {
@@ -474,11 +566,20 @@ void Player::take_report(const UnitReport& report, std::size_t frames) {
     }
     // The unit's frames are the last ones decoded, so it starts being heard
     // that far back from where the decode has got to: the end of the queue
-    // for a PCM output, and the session's place on the link for a
-    // bitstream, whose units are packed before they are decoded.
-    const std::uint64_t end =
-        bitstreaming() ? decoded_end() : submitted_since_open_ + pending_frames_;
+    // for a PCM output or a transcode, and the session's place on the link
+    // for a bitstream, whose units are packed before they are decoded.
+    const std::uint64_t end = transcoder_     ? timeline_end()
+                              : bitstreaming() ? decoded_end()
+                                               : submitted_since_open_ + pending_frames_;
     reports_.add(report, end > frames ? end - frames : 0);
+    if (transcoder_) {
+        // What the unit says goes into the frames its samples complete. The
+        // decoder that made them says which dual mono channel they are.
+        transcoder_->describe_source(report, frames, history_.size() - 1,
+                                     decoder_ ? decoder_->settings().dual_mono
+                                              : settings_.dual_mono);
+        encode_transcoded(false);
+    }
 }
 
 PlayPosition Player::position() const {
@@ -590,9 +691,13 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
                 // What was decoded and submitted for the old position must
                 // not be heard after the new one; the sink's counts restart
                 // with the flush, and so do ours. Units packed toward a
-                // burst belong to the old position too.
+                // burst, and samples a transcode has taken, belong to the old
+                // position too.
                 clear_pending();
                 reset_packer();
+                if (transcoder_) {
+                    transcoder_->reset();
+                }
                 if (output_open()) {
                     if (bitstreaming()) {
                         bitstream_->flush();
@@ -603,7 +708,7 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
                 submitted_since_open_ = 0;
                 if (!history_.empty()) {
                     segments_.assign(1, Segment{.record = history_.size() - 1,
-                                                .output_start = 0,
+                                                .output_start = link_start(),
                                                 .item_start = session_->position_samples()});
                 }
                 if (meters_) {
@@ -761,6 +866,7 @@ Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
             }
             break;
         case OutputMode::kBitstream:
+        case OutputMode::kBitstreamAsAc3:
             if (!bitstream_) {
                 return refuse(OpenFailure::kOutput, "This player has no passthrough output.",
                               "could not start");
@@ -769,9 +875,18 @@ Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
                 return refuse(OpenFailure::kItem, "It carries nothing IEC 61937 can wrap.",
                               "cannot be played");
             }
-            // Before anything is decoded, so the decode and the bursts cover
-            // the same units.
-            session_->play_whole_units();
+            if (choice_.mode == OutputMode::kBitstream) {
+                // Before anything is decoded, so the decode and the bursts
+                // cover the same units. A transcode can cut its decode, so
+                // it plays exactly the item's part.
+                session_->play_whole_units();
+            } else if (!Ac3Transcoder::carries(rate)) {
+                // The decision's to avoid; the item decodes as it is.
+                return refuse(OpenFailure::kOutput,
+                              fmt::format("AC-3 has no {} Hz, so this cannot be transcoded to it.",
+                                          rate),
+                              "could not start");
+            }
             break;
         case OutputMode::kNone:
             // The outputs, not the item, are in the way - no output at all,
@@ -779,7 +894,6 @@ Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
             // stops with the reason rather than marking the queue unplayable
             // item by item.
             return refuse(OpenFailure::kOutput, choice_.reason, "could not start");
-        case OutputMode::kBitstreamAsAc3:
         case OutputMode::kNetworkGroup:
             return refuse(OpenFailure::kOutput,
                           fmt::format("Playing as {} is not part of this engine yet.",
@@ -787,14 +901,18 @@ Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
                           "could not start");
     }
 
-    if (!decoder_ || decoder_rate_ != rate) {
-        build_decoder(rate);
+    const bool transcode = choice_.mode == OutputMode::kBitstreamAsAc3;
+    const bool bitstream = choice_.mode == OutputMode::kBitstream || transcode;
+    if (!decoder_fits(rate, transcode)) {
+        build_decoder(rate, transcode);
     } else {
         decoder_->reset();
     }
-    const bool bitstream = choice_.mode == OutputMode::kBitstream;
+    // What the link carries: the item's own stream, or the transcode's AC-3.
+    const std::optional<audio::BitstreamFormat> link =
+        transcode ? std::optional{audio::BitstreamFormat::kAc3} : facts.stream;
     const auto opened =
-        bitstream ? bitstream_->open(BitstreamSink::Format{.format = *facts.stream,
+        bitstream ? bitstream_->open(BitstreamSink::Format{.format = *link,
                                                            .sample_rate = rate,
                                                            .endpoint_id = choice_.endpoint_id})
                   : sink_->open(PcmSink::Format{.sample_rate = rate,
@@ -807,11 +925,15 @@ Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
     OpenOutputFormat format = *opened;
     format.mode = choice_.mode;
     if (bitstream) {
-        format.stream = facts.stream;
+        format.stream = link;
     }
     mode_ = choice_.mode;
     ++opens_;
-    if (bitstream) {
+    if (transcode) {
+        note(fmt::format("output opened: {} ({} transcoded), {} Hz (open {})",
+                         describe(format.mode), stream_name(*facts.stream), format.sample_rate,
+                         opens_));
+    } else if (bitstream) {
         note(fmt::format("output opened: {} ({}), {} Hz (open {})", describe(format.mode),
                          stream_name(*facts.stream), format.sample_rate, opens_));
     } else {
@@ -820,10 +942,17 @@ Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
     }
     submitted_since_open_ = 0;
     reset_packer();
+    // close_output() let go of any transcoder before this open. Its fold
+    // levels are the item's, and hold for the link.
+    if (transcode) {
+        transcoder_.emplace(rate, Ac3Transcoder::fold_levels(session_->first_unit()));
+    }
     transport_.set_open_format(format);
     clear_pending();
-    if (!meters_ || meters_->sample_rate() != rate) {
-        meters_.emplace(layout_, rate);
+    // A transcode meters what it sends, on the transcode's layout.
+    if (!meters_ || meters_->sample_rate() != rate || meters_transcoding_ != transcode) {
+        meters_.emplace(transcode ? transcode_layout() : layout_, rate);
+        meters_transcoding_ = transcode;
     } else {
         meters_->restart_timeline();
     }
@@ -837,7 +966,7 @@ Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
                                   .expected_frames = session_->total_samples(),
                                   .output_opens = opens_});
     segments_.assign(1, Segment{.record = history_.size() - 1,
-                                .output_start = 0,
+                                .output_start = link_start(),
                                 .item_start = session_->position_samples()});
     note_started(item, false);
     if (report != nullptr) {
@@ -865,6 +994,8 @@ void Player::close_output() {
     transport_.clear_open_format();
     clear_pending();
     reset_packer();
+    transcoder_.reset();
+    transcode_error_.reset();
     drain_target_.reset();
     submitted_since_open_ = 0;
     segments_.clear();
@@ -902,10 +1033,12 @@ void Player::take_block(std::span<const std::span<const float>> rendered, std::s
     const std::size_t slots = layout_.slots();
     const std::size_t record = history_.size() - 1;
     // Where the block's end will be heard: after everything submitted and
-    // queued ahead of it, or for a bitstream, whose bursts carry the audio,
-    // at the session's place on the link.
-    const std::uint64_t heard_at =
-        bitstreaming() ? decoded_end() : submitted_since_open_ + pending_frames_ + n;
+    // queued ahead of it - for a transcode, the samples it has taken too - or
+    // for a bitstream, whose bursts carry the audio, at the session's place
+    // on the link.
+    const std::uint64_t heard_at = transcoder_     ? timeline_end() + n
+                                   : bitstreaming() ? decoded_end()
+                                                    : submitted_since_open_ + pending_frames_ + n;
     if (meters_) {
         // Metered as it is queued, stamped with where it will be heard. An
         // item's programme measurements start with its first block; after an
@@ -915,6 +1048,11 @@ void Player::take_block(std::span<const std::span<const float>> rendered, std::s
             metered_record_ = record;
         }
         meters_->meter(rendered, n, heard_at);
+    }
+    if (transcoder_) {
+        // Encoded once the unit's report has said what goes with it.
+        transcoder_->take(rendered, n, record);
+        return;
     }
     if (bitstreaming()) {
         return;
@@ -951,10 +1089,12 @@ void Player::fill(std::size_t frames) {
     };
     // A bitstream output is sent each unit as it is decoded.
     const Session::SentFn sent =
-        bitstreaming() ? Session::SentFn{[this](std::span<const std::byte> unit,
-                                                std::uint32_t samples) { send_unit(unit, samples); }}
-                       : Session::SentFn{};
-    while (pending_frames_ < frames && !session_->finished()) {
+        mode_ == OutputMode::kBitstream
+            ? Session::SentFn{[this](std::span<const std::byte> unit, std::uint32_t samples) {
+                  send_unit(unit, samples);
+              }}
+            : Session::SentFn{};
+    while (pending_frames_ < frames && !session_->finished() && !transcode_error_) {
         const auto got =
             session_->render(*decoder_, deliver, frames - pending_frames_, reported, sent);
         if (!got) {
@@ -963,6 +1103,8 @@ void Player::fill(std::size_t frames) {
             last_error_ = got.error();
             note_unit_error(last_error_);
         }
+        // Frames a unit completed without a report of its own.
+        encode_transcoded(false);
     }
 }
 
@@ -979,13 +1121,13 @@ std::size_t Player::drain(std::size_t budget) {
             // Each item's units in the burst count towards it now they are
             // on their way, and not before: a burst dropped by a seek, a
             // reopen or a stop, or units that never made a whole burst, were
-            // not played.
+            // not played. A transcode's samples are heard its delay later.
             std::uint64_t offset = 0;
             for (const Span& span : block.spans) {
                 if (span.record < history_.size()) {
                     PlayedItem& played = history_[span.record];
                     if (played.frames == 0) {
-                        played.first_frame = submitted_since_open_ + offset;
+                        played.first_frame = submitted_since_open_ + link_start() + offset;
                     }
                     played.frames += span.frames;
                 }
@@ -1116,6 +1258,7 @@ void Player::item_ended(PumpReport& report) {
             // reset by the finished session's last render(); the output, and
             // everything already queued for it, carries on.
             const std::uint32_t rate = transport_.open_format().sample_rate;
+            const bool transcode = transcoder_.has_value();
             if (!start_session(outcome.item)) {
                 // Prepared above, so this is a queue edited in between and
                 // an item that no longer opens. Marked, and the transport is
@@ -1137,13 +1280,13 @@ void Player::item_ended(PumpReport& report) {
                 item_ended(report);
                 return;
             }
-            if (!decoder_ || decoder_rate_ != rate) {
-                build_decoder(rate);
+            if (!decoder_fits(rate, transcode)) {
+                build_decoder(rate, transcode);
             }
             if (next_choice) {
                 choice_ = *next_choice;
             }
-            if (bitstreaming()) {
+            if (mode_ == OutputMode::kBitstream) {
                 session_->play_whole_units();
             }
             apply_seek_on_start(outcome.item);
@@ -1180,6 +1323,9 @@ void Player::play_out_then(const TransportOutcome& outcome, PumpReport& report) 
     if (!outcome.note.empty()) {
         report.note = outcome.note;
     }
+    // A transcode's last frame, padded, and the samples its encoder still
+    // holds go out ahead of the wait.
+    encode_transcoded(true);
     // A stop's note can say why an item cannot be played, which can quote
     // its path: the item it is about is the outcome's.
     if (outcome.action == TransportAction::kReopenForItem) {
@@ -1220,6 +1366,9 @@ PumpReport Player::pump(std::size_t budget) {
         }
     }
     fill(budget);
+    if (stop_for_transcode(report)) {
+        return report;
+    }
     report.frames_submitted += drain(budget);
     if (session_ && session_->finished()) {
         item_ended(report);
@@ -1228,12 +1377,27 @@ PumpReport Player::pump(std::size_t budget) {
             // item's tail straight away, so the sink never waits on a gap
             // the output does not have.
             fill(budget);
+            if (stop_for_transcode(report)) {
+                return report;
+            }
             report.frames_submitted += drain(budget > report.frames_submitted
                                                  ? budget - report.frames_submitted
                                                  : 0);
         }
     }
     return report;
+}
+
+bool Player::stop_for_transcode(PumpReport& report) {
+    if (!transcode_error_) {
+        return false;
+    }
+    // The encoder refused a frame: nothing after it can be sent, and the
+    // output, not the item, is at fault.
+    last_error_ = fmt::format("The transcode to AC-3 failed: {}", *transcode_error_);
+    perform(transport_.stop(), &report);
+    report.note = last_error_;
+    return true;
 }
 
 }  // namespace ac3::hearth

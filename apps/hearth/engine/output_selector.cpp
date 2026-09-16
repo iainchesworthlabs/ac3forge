@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <utility>
 
+#include "ac3_transcoder.hpp"
+
 // See output_selector.hpp.
 
 namespace ac3::hearth {
@@ -153,9 +155,9 @@ OutputChoice OutputSelector::choose(const ItemFacts& item, const HeldOutput& hel
     request.pinned = preferences_.pinned;
     request.preferred_endpoint_id = preferences_.endpoint_id;
     request.follow_sink = preferences_.follow_sink;
-    // The streaming transcode to AC-3 is not in the engine yet, so a sink
-    // that takes only AC-3 is decoded for rather than offered it.
-    request.transcode_available = false;
+    // The player transcodes over its passthrough output, at a rate AC-3 has;
+    // with no such output, no row takes AC-3 in the first place.
+    request.transcode_available = Ac3Transcoder::carries(rate);
     return choose_output(request);
 }
 

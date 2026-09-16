@@ -703,6 +703,7 @@ if(AC3FORGE_BUILD_HEARTH)
     # src/sendspin's player half: a core-only build still builds and tests it,
     # unlike the test sink further down.
     target_sources(ac3tests PRIVATE
+        hearth/test_ac3_transcoder.cpp
         hearth/test_decoder_settings.cpp
         hearth/test_diagnostics.cpp
         hearth/test_engine.cpp

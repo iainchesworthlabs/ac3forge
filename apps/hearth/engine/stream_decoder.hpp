@@ -95,6 +95,17 @@ struct UnitReport {
     std::optional<oba::DecodedProgram> objects = std::nullopt;
 };
 
+// Which of an access unit's substreams are decoded.
+enum class Substreams : std::uint8_t {
+    // All of them: the programme as a listener hears it.
+    kAll,
+    // The first syncframe alone - the independent substream, or an AC-3
+    // core. For a 7.1 stream that is the 5.1 its own encoder made, which is
+    // what an encoder of a narrower format wants rather than a fold of the
+    // extra channels.
+    kIndependent,
+};
+
 class StreamDecoder {
 public:
     // One rendered block: a span per slot of the output layout, each
@@ -107,7 +118,7 @@ public:
     // `layout` is what the output renders onto; `sample_rate` is the
     // stream's own, which only the renderer's small-speaker crossover uses.
     StreamDecoder(const render::OutputLayout& layout, std::uint32_t sample_rate,
-                  const DecoderSettings& settings = {});
+                  const DecoderSettings& settings = {}, Substreams substreams = Substreams::kAll);
 
     // Decodes `unit` and hands each of its rendered blocks to `deliver`
     // during the call, then the unit's report to `reported`. A unit held back
@@ -133,6 +144,7 @@ public:
     [[nodiscard]] const render::OutputLayout& layout() const { return layout_; }
     [[nodiscard]] const DecoderSettings& settings() const { return settings_; }
     [[nodiscard]] std::uint32_t sample_rate() const { return sample_rate_; }
+    [[nodiscard]] Substreams substreams() const { return substreams_; }
 
 private:
     // What a unit's headers say about how to place it, read before it is
@@ -149,6 +161,7 @@ private:
     render::OutputLayout layout_;
     std::uint32_t sample_rate_;
     DecoderSettings settings_;
+    Substreams substreams_;
     render::Serving serving_;
     DecoderConfig config_;
     render::LayoutRenderer renderer_;

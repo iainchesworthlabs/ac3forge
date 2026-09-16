@@ -1,8 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -14,11 +16,17 @@
 #include <vector>
 
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
+#include "ac3/encoder/plan.hpp"
 #include "ac3/iec61937/iec61937.hpp"
+#include "ac3/io/elementary.hpp"
+#include "ac3/io/metadata_edit.hpp"
 #include "ac3/render/layout.hpp"
+#include "ac3_transcoder.hpp"
 #include "bitstream_sink.hpp"
+#include "decoder_settings.hpp"
 #include "diagnostic_log.hpp"
 #include "engine_thread.hpp"
 #include "pcm_sink.hpp"
@@ -100,9 +108,10 @@ public:
         std::vector<std::uint32_t> rates{};
         std::vector<std::string> endpoints{};
         // Every burst, in order, over the link's whole life, and how many
-        // there were at each flush.
+        // there were at each flush and each open.
         std::vector<Bytes> bursts{};
         std::vector<std::size_t> bursts_at_flush{};
+        std::vector<std::size_t> bursts_at_open{};
         std::size_t capacity_bursts = 6;
         std::optional<BitstreamFormat> format{};
         bool wrong_size = false;
@@ -112,6 +121,7 @@ public:
 
     std::expected<OpenOutputFormat, std::string> open(const Format& format) override {
         ++log_->opens;
+        log_->bursts_at_open.push_back(log_->bursts.size());
         log_->formats.push_back(format.format);
         log_->rates.push_back(format.sample_rate);
         log_->endpoints.push_back(format.endpoint_id);
@@ -316,7 +326,8 @@ Units numbered_ac3_units(int count) {
     return out;
 }
 
-// The same for E-AC-3 units of `numblkscod`'s length.
+// The same for E-AC-3 units of `numblkscod`'s length, the numbers starting
+// again after twenty since dialnorm stops at 31.
 Units numbered_eac3_units(int count, int numblkscod) {
     Units out;
     for (int f = 0; f < count; ++f) {
@@ -324,7 +335,7 @@ Units numbered_eac3_units(int count, int numblkscod) {
         config.bitrate_kbps = 192;
         config.acmod = ac3::Acmod::k2_0;
         config.numblkscod = numblkscod;
-        config.dialnorm = 10 + f;
+        config.dialnorm = 10 + (f % 20);
         ac3::eac3::FrameEncoder encoder{config};
         const std::vector<float> samples(static_cast<std::size_t>(encoder.samples_per_frame()),
                                          0.05F);
@@ -387,6 +398,150 @@ std::vector<Bytes> expected_bursts(const Units& units, BitstreamFormat format) {
     return out;
 }
 
+// The samples one unit codes.
+std::uint64_t unit_samples(const Bytes& unit) {
+    const auto header = ac3::io::read_frame_header(unit);
+    REQUIRE(header.has_value());
+    if (header->kind != ac3::io::StreamKind::kEac3) {
+        return ac3::kSamplesPerFrame;
+    }
+    constexpr std::array<std::uint64_t, 4> kBlocks{1, 2, 3, 6};
+    return kBlocks[static_cast<std::size_t>(header->numblkscod)] * ac3::kSamplesPerBlock;
+}
+
+using Slots = std::array<std::vector<float>, ac3::hearth::Ac3Transcoder::kChannels>;
+
+// One item of a transcode worked out by hand: its units, the part of its
+// stream it plays, and - as after a seek - the unit it starts at, primed with
+// the one before.
+struct ItemPart {
+    const Units* units = nullptr;
+    std::uint64_t skip = 0;
+    std::optional<std::uint64_t> play{};
+    std::size_t from_unit = 0;
+};
+
+// What a transcode of `items`, one after another, sends, and the decode it
+// was encoded from - worked out apart from the player, the way the player's
+// session cuts and reports each item.
+struct Transcoded {
+    std::vector<Bytes> frames;
+    Slots decoded;
+};
+
+Transcoded reference_transcode(const std::vector<ItemPart>& items) {
+    const auto layout = ac3::render::OutputLayout::named("5.1");
+    REQUIRE(layout.has_value());
+    ac3::hearth::StreamDecoder decoder{*layout, 48000, ac3::hearth::transcode_settings({}),
+                                       ac3::hearth::Substreams::kIndependent};
+    REQUIRE_FALSE(items.empty());
+    ac3::hearth::Ac3Transcoder transcoder{
+        48000, ac3::hearth::Ac3Transcoder::fold_levels(items.front().units->front())};
+    Transcoded out;
+    const ac3::hearth::Ac3Transcoder::FrameFn collect =
+        [&out](std::span<const std::byte> frame,
+               std::span<const ac3::hearth::Ac3Transcoder::Span> /*spans*/) {
+            out.frames.emplace_back(frame.begin(), frame.end());
+        };
+    for (std::size_t record = 0; record < items.size(); ++record) {
+        const ItemPart& part = items[record];
+        std::vector<std::uint64_t> starts{0};
+        for (const Bytes& unit : *part.units) {
+            starts.push_back(starts.back() + unit_samples(unit));
+        }
+        const std::uint64_t from = std::max(part.skip, starts[part.from_unit]);
+        const std::uint64_t to = part.play ? part.skip + *part.play : starts.back();
+        std::size_t unit = part.from_unit > 0 ? part.from_unit - 1 : 0;
+        std::uint64_t next = starts[unit];
+        std::uint64_t taken = 0;
+        const ac3::hearth::StreamDecoder::BlockFn take =
+            [&](std::span<const std::span<const float>> slots, std::size_t n) {
+                const std::uint64_t begin = next;
+                next += n;
+                const std::uint64_t lo = std::max(begin, from);
+                const std::uint64_t hi = std::min(begin + n, to);
+                if (lo >= hi) {
+                    return;
+                }
+                std::array<std::span<const float>, ac3::hearth::Ac3Transcoder::kChannels> cut{};
+                for (std::size_t slot = 0; slot < cut.size() && slot < slots.size(); ++slot) {
+                    cut[slot] = slots[slot].subspan(static_cast<std::size_t>(lo - begin),
+                                                    static_cast<std::size_t>(hi - lo));
+                    out.decoded[slot].insert(out.decoded[slot].end(), cut[slot].begin(),
+                                             cut[slot].end());
+                }
+                transcoder.take(cut, static_cast<std::size_t>(hi - lo), record);
+                taken += hi - lo;
+            };
+        // Units the item plays nothing of are not reported.
+        const ac3::hearth::StreamDecoder::UnitFn reported =
+            [&](const ac3::hearth::UnitReport& report) {
+                if (taken == 0) {
+                    return;
+                }
+                transcoder.describe_source(report, taken, record);
+                taken = 0;
+                REQUIRE(transcoder.encode_ready(collect).has_value());
+            };
+        for (; unit < part.units->size() && next < to; ++unit) {
+            REQUIRE(decoder.decode((*part.units)[unit], take, reported).has_value());
+        }
+        decoder.finish(take, reported);
+    }
+    REQUIRE(transcoder.finish(collect).has_value());
+    return out;
+}
+
+std::vector<Bytes> wrapped(const std::vector<Bytes>& frames) {
+    std::vector<Bytes> out;
+    for (const Bytes& frame : frames) {
+        auto burst = ac3::iec61937::wrap_frame(frame);
+        REQUIRE(burst.has_value());
+        out.push_back(std::move(*burst));
+    }
+    return out;
+}
+
+// What a receiver with no settings of its own hears from `bursts`.
+Slots link_audio(const std::vector<Bytes>& bursts) {
+    const auto stream = ac3::iec61937::unwrap_stream(joined(bursts));
+    REQUIRE(stream.has_value());
+    const auto frames = ac3::split_frames(*stream);
+    REQUIRE(frames.has_value());
+    const auto layout = ac3::render::OutputLayout::named("5.1");
+    REQUIRE(layout.has_value());
+    ac3::hearth::StreamDecoder decoder{*layout, 48000, ac3::hearth::transcode_settings({})};
+    Slots out;
+    const ac3::hearth::StreamDecoder::BlockFn deliver =
+        [&out](std::span<const std::span<const float>> slots, std::size_t n) {
+            for (std::size_t slot = 0; slot < out.size() && slot < slots.size(); ++slot) {
+                const auto part = slots[slot].first(n);
+                out[slot].insert(out[slot].end(), part.begin(), part.end());
+            }
+        };
+    for (const auto frame : *frames) {
+        REQUIRE(decoder.decode(frame, deliver).has_value());
+    }
+    decoder.finish(deliver);
+    return out;
+}
+
+// dB of `reference` to the error of `heard` against it, `heard` read
+// `shift` samples later.
+double snr_db(const std::vector<float>& reference, const std::vector<float>& heard,
+              std::uint64_t shift) {
+    REQUIRE(heard.size() >= reference.size() + shift);
+    double signal = 0.0;
+    double error = 0.0;
+    for (std::size_t n = 0; n < reference.size(); ++n) {
+        const auto want = static_cast<double>(reference[n]);
+        const auto got = static_cast<double>(heard[n + static_cast<std::size_t>(shift)]);
+        signal += want * want;
+        error += (got - want) * (got - want);
+    }
+    return 10.0 * std::log10(signal / std::max(error, 1e-30));
+}
+
 // Items in memory, as raw elementary streams, with an optional part to play.
 struct Library {
     struct File {
@@ -418,10 +573,12 @@ QueueItem item(const std::string& path) {
 }
 
 // The decision a test sets: bitstream a stream at 48 kHz to "hdmi", unless
-// told not to for one format; decode anything else.
+// told not to for one format - and then transcode E-AC-3 if told to; decode
+// anything else.
 struct Policy {
     bool bitstream_ac3 = true;
     bool bitstream_eac3 = true;
+    bool transcode_eac3 = false;
     std::string endpoint = "hdmi";
     // When set, every decision is this.
     std::optional<OutputChoice> fixed{};
@@ -447,6 +604,13 @@ struct Policy {
                                 .endpoint_id = endpoint,
                                 .endpoint_name = "HDMI",
                                 .reason = "Bitstreaming to \"HDMI\" over IEC 61937, untouched."};
+        }
+        if (transcode_eac3 && facts.stream == BitstreamFormat::kEac3 &&
+            facts.sample_rate == 48000) {
+            return OutputChoice{.mode = OutputMode::kBitstreamAsAc3,
+                                .endpoint_id = endpoint,
+                                .endpoint_name = "HDMI",
+                                .reason = "Transcoding to AC-3 for \"HDMI\"."};
         }
         return OutputChoice{.mode = OutputMode::kLocalPcm,
                             .endpoint_id = "speakers",
@@ -1210,4 +1374,578 @@ TEST_CASE("bitstream: the engine publishes the stream, the reason and the settin
     CHECK(status.output.stream == BitstreamFormat::kEac3);
     CHECK(status.output_reason == "Bitstreaming to \"HDMI\" over IEC 61937, untouched.");
     CHECK_FALSE(status.settings_note.empty());
+}
+
+TEST_CASE("transcode: E-AC-3 goes out as AC-3, and items join through one encoder",
+          "[hearth][player][bitstream][transcode]") {
+    // Units of different lengths: nothing to pack, so they join all the same.
+    const Units a = eac3_units(5, /*numblkscod=*/2);
+    const Units b = eac3_units(7, /*numblkscod=*/3);
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(a)};
+    library.files["b.ec3"] = {.bytes = joined(b)};
+    Rig rig{library};
+    rig.policy->bitstream_eac3 = false;
+    rig.policy->transcode_eac3 = true;
+    rig.player->queue().add(item("a.ec3"));
+    rig.player->queue().add(item("b.ec3"));
+
+    rig.player->play();
+    CHECK(rig.player->transport().open_format().mode == OutputMode::kBitstreamAsAc3);
+    CHECK(rig.player->transport().open_format().stream == BitstreamFormat::kAc3);
+    REQUIRE(rig.play_out());
+
+    // One AC-3 link, never the PCM device, heard out before it closed.
+    CHECK(rig.link->opens == 1);
+    CHECK(rig.link->formats == std::vector<BitstreamFormat>{BitstreamFormat::kAc3});
+    CHECK(rig.link->rates == std::vector<std::uint32_t>{48000});
+    CHECK(rig.pcm->opens == 0);
+    CHECK(rig.link->unheard_at_close == std::vector<std::uint64_t>{0});
+
+    // Byte for byte what one decoder and one encoder make of the two items
+    // back to back, the samples the encoder held at the end included.
+    const Transcoded reference =
+        reference_transcode({ItemPart{.units = &a}, ItemPart{.units = &b}});
+    CHECK(rig.link->bursts == wrapped(reference.frames));
+    // What a receiver hears is that decode, the encoder's delay late, with
+    // nothing between the items: the stereo source's left and right. The
+    // source is a sawtooth, whose top octaves the coding costs about 30 dB of;
+    // a sample out of place anywhere would cost all of it.
+    const Slots heard = link_audio(rig.link->bursts);
+    for (const std::size_t slot : {std::size_t{0}, std::size_t{2}}) {
+        CAPTURE(slot);
+        CHECK(snr_db(reference.decoded[slot], heard[slot], ac3::hearth::Ac3Transcoder::kDelay) >
+              25.0);
+    }
+
+    const std::uint64_t delay = ac3::hearth::Ac3Transcoder::kDelay;
+    const std::uint64_t a_samples = 5 * 3 * ac3::kSamplesPerBlock;
+    const auto& history = rig.player->history();
+    REQUIRE(history.size() == 2);
+    CHECK(history[0].first_frame == delay);
+    CHECK(history[0].frames == a_samples);
+    CHECK(history[1].first_frame == a_samples + delay);
+    CHECK(history[1].frames == 7 * ac3::kSamplesPerFrame);
+    CHECK(history[1].output_opens == history[0].output_opens);
+
+    const auto notes = rig.notes();
+    CHECK(has_note(notes, "output chosen: Transcoding to AC-3 for \"HDMI\"."));
+    CHECK(has_note(notes,
+                   "output opened: bitstream as AC-3 (E-AC-3 transcoded), 48000 Hz (open 1)"));
+    CHECK(has_note(notes, "item 2 \"b.ec3\" joined the open output: E-AC-3, 48000 Hz, 2 channels, "
+                          "0.224 s"));
+}
+
+TEST_CASE("transcode: the position, the meters and the reports run the encoder's delay late",
+          "[hearth][player][bitstream][transcode]") {
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(numbered_eac3_units(30, /*numblkscod=*/3))};
+    Rig rig{library};
+    rig.policy->bitstream_eac3 = false;
+    rig.policy->transcode_eac3 = true;
+    rig.player->queue().add(item("a.ec3"));
+    rig.player->play();
+    rig.player->pump();
+
+    const std::uint64_t delay = ac3::hearth::Ac3Transcoder::kDelay;
+    MeterSnapshot meters;
+    UnitReport report;
+    // Until the delay has passed, nothing of the item has been heard.
+    rig.advance(delay);
+    CHECK_FALSE(rig.player->unit_report(report));
+    CHECK(rig.player->position().heard == std::chrono::milliseconds{0});
+    rig.advance(1);
+    REQUIRE(rig.player->unit_report(report));
+    CHECK(report.dialnorm == 10);
+
+    // The first snapshot is stamped with the end of the block its interval
+    // ends in, 2560, and heard the delay after that.
+    rig.advance(2560 - 2);
+    CHECK_FALSE(rig.player->meters(meters));
+    rig.advance(1);
+    REQUIRE(rig.player->meters(meters));
+    CHECK(meters.output_frame == 2560 + delay);
+    // What is sent is metered: 5.1, not the room's two speakers.
+    CHECK(meters.levels.size() == 6);
+
+    // Two frames heard: 64 ms, and the second unit is the newest reported.
+    rig.advance((2 * ac3::kSamplesPerFrame) - 2560);
+    rig.player->pump();
+    CHECK(rig.player->position().heard == std::chrono::milliseconds{64});
+    REQUIRE(rig.player->unit_report(report));
+    CHECK(report.dialnorm == 11);
+
+    // What is sent is decoded by the receiver, and metered here as sent.
+    CHECK(std::string{rig.player->settings_note()}.find("transcoded") != std::string::npos);
+    // Each frame carries its own unit's dialnorm.
+    REQUIRE(rig.link->bursts.size() >= 3);
+    const auto stream = ac3::iec61937::unwrap_stream(joined(
+        std::vector<Bytes>(rig.link->bursts.begin(), std::next(rig.link->bursts.begin(), 3))));
+    REQUIRE(stream.has_value());
+    const auto frames = ac3::split_frames(*stream);
+    REQUIRE(frames.has_value());
+    REQUIRE(frames->size() == 3);
+    for (std::size_t frame = 0; frame < frames->size(); ++frame) {
+        CAPTURE(frame);
+        const auto meta = ac3::io::read_frame_metadata((*frames)[frame]);
+        REQUIRE(meta.has_value());
+        CHECK(meta->dialnorm == 10 + static_cast<int>(frame));
+    }
+
+    rig.player->pause();
+    CHECK(rig.link->paused);
+    rig.advance(ac3::kSamplesPerFrame);
+    CHECK(rig.player->position().heard == std::chrono::milliseconds{64});
+    rig.player->play();
+    CHECK_FALSE(rig.link->paused);
+    REQUIRE(rig.play_out());
+}
+
+TEST_CASE("transcode: an edit list is cut to the sample, and a seek starts the encoder again",
+          "[hearth][player][bitstream][transcode]") {
+    SECTION("the item's part, and nothing of the units around it") {
+        const Units a = eac3_units(4, /*numblkscod=*/3);
+        const std::uint64_t play = (3 * ac3::kSamplesPerFrame) - 200;
+        Library library;
+        library.files["a.ec3"] = {.bytes = joined(a), .skip = 100, .play = play};
+        Rig rig{library};
+        rig.policy->bitstream_eac3 = false;
+        rig.policy->transcode_eac3 = true;
+        rig.player->queue().add(item("a.ec3"));
+        rig.player->play();
+        REQUIRE(rig.play_out());
+
+        const Transcoded reference =
+            reference_transcode({ItemPart{.units = &a, .skip = 100, .play = play}});
+        REQUIRE(reference.decoded[0].size() == play);
+        CHECK(rig.link->bursts == wrapped(reference.frames));
+        const auto& history = rig.player->history();
+        REQUIRE(history.size() == 1);
+        CHECK(history[0].frames == play);
+        CHECK(history[0].expected_frames == play);
+    }
+
+    SECTION("a seek") {
+        // Long enough to be still decoding when the seek comes.
+        const Units a = eac3_units(30, /*numblkscod=*/3);
+        Library library;
+        library.files["a.ec3"] = {.bytes = joined(a)};
+        Rig rig{library};
+        rig.policy->bitstream_eac3 = false;
+        rig.policy->transcode_eac3 = true;
+        rig.player->queue().add(item("a.ec3"));
+        rig.player->play();
+        for (int i = 0; i < 2; ++i) {
+            rig.player->pump();
+            rig.advance(480);
+        }
+        REQUIRE_FALSE(rig.link->bursts.empty());
+
+        // 100 ms is in the fourth unit, which the new encoder starts from.
+        rig.player->seek(std::chrono::milliseconds{100});
+        REQUIRE(rig.link->flushes == 1);
+        const std::size_t from = rig.link->bursts_at_flush.front();
+        CHECK(rig.player->position().heard == std::chrono::milliseconds{96});
+        REQUIRE(rig.play_out());
+
+        const std::vector<Bytes> sent(
+            std::next(rig.link->bursts.begin(), static_cast<std::ptrdiff_t>(from)),
+            rig.link->bursts.end());
+        const Transcoded reference = reference_transcode({ItemPart{.units = &a, .from_unit = 3}});
+        CHECK(sent == wrapped(reference.frames));
+    }
+}
+
+TEST_CASE("transcode: a reopen plays out everything the encoder holds first",
+          "[hearth][player][bitstream][transcode]") {
+    // A part-frame at the end of the transcoded item, then AC-3, which goes
+    // out untouched on a link of its own.
+    const Units a = eac3_units(5, /*numblkscod=*/2);
+    const Units b = ac3_units(3);
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(a)};
+    library.files["b.ac3"] = {.bytes = joined(b)};
+    Rig rig{library};
+    rig.policy->bitstream_eac3 = false;
+    rig.policy->transcode_eac3 = true;
+    rig.player->queue().add(item("a.ec3"));
+    rig.player->queue().add(item("b.ac3"));
+    rig.player->play();
+    REQUIRE(rig.play_out());
+
+    CHECK(rig.link->opens == 2);
+    CHECK(rig.link->formats ==
+          std::vector<BitstreamFormat>{BitstreamFormat::kAc3, BitstreamFormat::kAc3});
+    CHECK(rig.link->unheard_at_close == std::vector<std::uint64_t>{0, 0});
+    auto expected = wrapped(reference_transcode({ItemPart{.units = &a}}).frames);
+    const auto second = expected_bursts(b, BitstreamFormat::kAc3);
+    expected.insert(expected.end(), second.begin(), second.end());
+    CHECK(rig.link->bursts == expected);
+
+    const auto& history = rig.player->history();
+    REQUIRE(history.size() == 2);
+    CHECK(history[0].frames == 5 * 3 * ac3::kSamplesPerBlock);
+    CHECK(history[1].first_frame == 0);
+    CHECK(has_note(rig.notes(),
+                   "item 2 \"b.ac3\" is next, once the output has played out and reopened: "
+                   "\"b.ac3\" plays as bitstream, and the output is open for bitstream as AC-3, "
+                   "so it reopens - there is a gap."));
+}
+
+TEST_CASE("transcode: a receiver that stops taking E-AC-3 is followed into a transcode",
+          "[hearth][player][bitstream][transcode]") {
+    const Units a = eac3_units(30, /*numblkscod=*/3);
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(a)};
+    Rig rig{library};
+    rig.policy->transcode_eac3 = true;
+    rig.player->queue().add(item("a.ec3"));
+    rig.player->play();
+    rig.player->pump();
+    rig.advance(2 * ac3::kSamplesPerFrame);
+    rig.player->pump();
+    REQUIRE(rig.player->position().heard == std::chrono::milliseconds{64});
+    CHECK(rig.player->transport().open_format().mode == OutputMode::kBitstream);
+    MeterSnapshot meters;
+    REQUIRE(rig.player->meters(meters));
+    CHECK(meters.levels.size() == 2);
+
+    rig.policy->bitstream_eac3 = false;
+    CHECK(rig.player->refollow() == "The output changed: Transcoding to AC-3 for \"HDMI\".");
+    CHECK(rig.link->closes == 1);
+    CHECK(rig.link->formats ==
+          std::vector<BitstreamFormat>{BitstreamFormat::kEac3, BitstreamFormat::kAc3});
+    CHECK(rig.player->transport().open_format().mode == OutputMode::kBitstreamAsAc3);
+    CHECK(rig.player->position().heard == std::chrono::milliseconds{64});
+    REQUIRE(rig.play_out());
+
+    // The transcode starts at the unit being heard, primed with the one
+    // before, and meters what it sends.
+    REQUIRE(rig.link->bursts_at_open.size() == 2);
+    const std::vector<Bytes> sent(
+        std::next(rig.link->bursts.begin(),
+                  static_cast<std::ptrdiff_t>(rig.link->bursts_at_open[1])),
+        rig.link->bursts.end());
+    CHECK(sent == wrapped(reference_transcode({ItemPart{.units = &a, .from_unit = 2}}).frames));
+}
+
+TEST_CASE("transcode: the meters follow a move into a transcode",
+          "[hearth][player][bitstream][transcode]") {
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(eac3_units(30, /*numblkscod=*/3))};
+    Rig rig{library};
+    rig.policy->transcode_eac3 = true;
+    rig.player->queue().add(item("a.ec3"));
+    rig.player->play();
+    rig.player->pump();
+    rig.advance(ac3::kSamplesPerFrame);
+    rig.player->pump();
+    rig.policy->bitstream_eac3 = false;
+    REQUIRE_FALSE(rig.player->refollow().empty());
+    rig.player->pump();
+    rig.advance(4 * ac3::kSamplesPerFrame);
+    MeterSnapshot meters;
+    REQUIRE(rig.player->meters(meters));
+    CHECK(meters.levels.size() == 6);
+    REQUIRE(rig.play_out());
+}
+
+TEST_CASE("transcode: a 7.1 item is transcoded from its own 5.1",
+          "[hearth][player][bitstream][transcode]") {
+    ac3::plan::Plan plan;
+    plan.codec = ac3::plan::Codec::kEac3;
+    plan.layout = ac3::plan::LayoutId::k71;
+    plan.bitrate_kbps = 384;
+    ac3::eac3::AccessUnitEncoder encoder{ac3::plan::eac3_config(plan)};
+    const auto coded = static_cast<std::size_t>(encoder.channel_count());
+    Units a;
+    for (int f = 0; f < 6; ++f) {
+        std::vector<std::vector<float>> channels(coded, std::vector<float>(ac3::kSamplesPerFrame));
+        for (std::size_t c = 0; c < coded; ++c) {
+            for (std::size_t n = 0; n < channels[c].size(); ++n) {
+                channels[c][n] = 0.02F * static_cast<float>(
+                                             (static_cast<int>(n + (c * 7)) + f * 11) % 50 - 25);
+            }
+        }
+        const std::vector<std::span<const float>> views(channels.begin(), channels.end());
+        auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+        REQUIRE(unit->substream_count() > 1);
+        a.push_back(std::move(unit->bytes));
+    }
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(a)};
+    Rig rig{library};
+    rig.policy->bitstream_eac3 = false;
+    rig.policy->transcode_eac3 = true;
+    rig.player->queue().add(item("a.ec3"));
+    rig.player->play();
+    REQUIRE(rig.play_out());
+    // The reference decodes each unit's first substream alone.
+    CHECK(rig.link->bursts == wrapped(reference_transcode({ItemPart{.units = &a}}).frames));
+}
+
+TEST_CASE("transcode: a rate AC-3 does not have stops playback and says why",
+          "[hearth][player][bitstream][transcode]") {
+    ac3::eac3::FrameConfig config;
+    config.bitrate_kbps = 96;
+    config.acmod = ac3::Acmod::k2_0;
+    config.sample_rate = ac3::SampleRate::k24000;
+    ac3::eac3::FrameEncoder encoder{config};
+    Units a;
+    const std::vector<float> samples(static_cast<std::size_t>(encoder.samples_per_frame()), 0.05F);
+    const std::vector<std::span<const float>> views(2, samples);
+    for (int f = 0; f < 4; ++f) {
+        auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        a.push_back(std::move(*frame));
+    }
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(a)};
+    Rig rig{library};
+    rig.policy->fixed = OutputChoice{.mode = OutputMode::kBitstreamAsAc3,
+                                     .endpoint_id = "hdmi",
+                                     .endpoint_name = "HDMI",
+                                     .reason = "Transcoding to AC-3 for \"HDMI\"."};
+    rig.player->queue().add(item("a.ec3"));
+    rig.player->play();
+    CHECK(rig.player->transport().state() == TransportState::kStopped);
+    CHECK(rig.player->last_error() == "AC-3 has no 24000 Hz, so this cannot be transcoded to it.");
+    // The decision was at fault, not the item.
+    CHECK(rig.player->queue().items()[0].playable());
+    CHECK(rig.link->opens == 0);
+}
+
+TEST_CASE("transcode: the listener's decoder settings do not change what is sent",
+          "[hearth][player][bitstream][transcode]") {
+    const Units a = eac3_units(8, /*numblkscod=*/3);
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(a)};
+    Rig rig{library};
+    rig.policy->bitstream_eac3 = false;
+    rig.policy->transcode_eac3 = true;
+    rig.player->queue().add(item("a.ec3"));
+    rig.player->play();
+    rig.player->pump();
+    const Transcoded reference = reference_transcode({ItemPart{.units = &a}});
+
+    SECTION("the ones a receiver makes for itself change nothing") {
+        DecoderSettings rf;
+        rf.mode = ac3::OperatingMode::kRf;
+        rf.objects = ac3::render::ObjectsPolicy::kAlways;
+        rig.player->set_decoder_settings(rf);
+        CHECK(rig.player->decoder_settings() == rf);
+        REQUIRE(rig.play_out());
+        CHECK(rig.link->bursts == wrapped(reference.frames));
+    }
+
+    SECTION("concealment hands over to a new transcode decoder, seamlessly") {
+        DecoderSettings muting;
+        muting.concealment = ac3::ConcealmentPolicy::kMute;
+        rig.player->set_decoder_settings(muting);
+        REQUIRE(rig.play_out());
+        // Dither aside, what the new decoder gives is what the old would
+        // have: the stereo source's left and right, in place.
+        const Slots heard = link_audio(rig.link->bursts);
+        for (const std::size_t slot : {std::size_t{0}, std::size_t{2}}) {
+            CAPTURE(slot);
+            CHECK(snr_db(reference.decoded[slot], heard[slot],
+                         ac3::hearth::Ac3Transcoder::kDelay) > 25.0);
+        }
+    }
+}
+
+TEST_CASE("transcode: a concealment chosen mid-item reaches what is sent",
+          "[hearth][player][bitstream][transcode]") {
+    // A unit late in the item that will not decode: repeated and faded by
+    // default, silent once muting is chosen.
+    Units a = eac3_units(12, /*numblkscod=*/3);
+    a[9][a[9].size() / 2] ^= std::byte{0x5A};
+    const auto energy_of_unit_9 = [&a](const std::optional<DecoderSettings>& change) {
+        Library library;
+        library.files["a.ec3"] = {.bytes = joined(a)};
+        Rig rig{library};
+        rig.policy->bitstream_eac3 = false;
+        rig.policy->transcode_eac3 = true;
+        rig.player->queue().add(item("a.ec3"));
+        rig.player->play();
+        rig.player->pump();
+        if (change) {
+            rig.player->set_decoder_settings(*change);
+        }
+        REQUIRE(rig.play_out());
+        const Slots heard = link_audio(rig.link->bursts);
+        // The unit's own samples, a block in from either end, where the
+        // link has them.
+        const std::uint64_t from =
+            (9 * ac3::kSamplesPerFrame) + ac3::hearth::Ac3Transcoder::kDelay + ac3::kSamplesPerBlock;
+        const std::uint64_t to = from + ac3::kSamplesPerFrame - (2 * ac3::kSamplesPerBlock);
+        REQUIRE(heard[0].size() >= to);
+        double energy = 0.0;
+        for (std::uint64_t n = from; n < to; ++n) {
+            const auto v = static_cast<double>(heard[0][static_cast<std::size_t>(n)]);
+            energy += v * v;
+        }
+        return energy;
+    };
+    DecoderSettings muting;
+    muting.concealment = ac3::ConcealmentPolicy::kMute;
+    const double repeated = energy_of_unit_9(std::nullopt);
+    const double muted = energy_of_unit_9(muting);
+    // Repeated and fading out, the unit still carries a good part of the
+    // item's level.
+    CHECK(repeated > 0.1);
+    CHECK(muted < repeated * 1e-3);
+}
+
+TEST_CASE("transcode: an item that folds at other levels reopens, other dialnorm joins",
+          "[hearth][player][bitstream][transcode]") {
+    // 5.1: a stream with no centre or surrounds sends no levels for them.
+    const auto units = [](int count, ac3::meta::MixLevel centre, int dialnorm,
+                          std::optional<ac3::meta::BitstreamMode> service = std::nullopt) {
+        ac3::eac3::FrameConfig config;
+        config.bitrate_kbps = 192;
+        config.acmod = ac3::Acmod::k3_2;
+        config.lfe = true;
+        config.dialnorm = dialnorm;
+        if (service) {
+            ac3::meta::BsiInfo info;
+            info.bsmod = *service;
+            config.info = info;
+        }
+        ac3::meta::MixMetadata mixing;
+        mixing.dmixmod = ac3::meta::DownmixMode::kLoRo;
+        mixing.lorocmixlev = centre;
+        mixing.lorosurmixlev = ac3::meta::MixLevel::kMinus3dB;
+        config.mixing = mixing;
+        ac3::eac3::FrameEncoder encoder{config};
+        Units out;
+        const std::vector<float> samples(ac3::kSamplesPerFrame, 0.05F);
+        const std::vector<std::span<const float>> views(6, samples);
+        for (int f = 0; f < count; ++f) {
+            auto frame = encoder.encode_frame(views);
+            REQUIRE(frame.has_value());
+            out.push_back(std::move(*frame));
+        }
+        return out;
+    };
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(units(4, ac3::meta::MixLevel::kMinus3dB, 31,
+                                                    ac3::meta::BitstreamMode::kVisuallyImpaired))};
+    library.files["b.ec3"] = {.bytes = joined(units(4, ac3::meta::MixLevel::kMinus3dB, 24))};
+    library.files["c.ec3"] = {.bytes = joined(units(4, ac3::meta::MixLevel::kMinus6dB, 24))};
+    Rig rig{library};
+    rig.policy->bitstream_eac3 = false;
+    rig.policy->transcode_eac3 = true;
+    rig.player->queue().add(item("a.ec3"));
+    rig.player->queue().add(item("b.ec3"));
+    rig.player->queue().add(item("c.ec3"));
+    rig.player->play();
+    REQUIRE(rig.play_out());
+
+    // a and b share a link; c has one of its own.
+    CHECK(rig.link->opens == 2);
+    const auto& history = rig.player->history();
+    REQUIRE(history.size() == 3);
+    CHECK(history[1].output_opens == history[0].output_opens);
+    CHECK(history[2].output_opens == history[1].output_opens + 1);
+    CHECK(has_note(rig.notes(),
+                   "item 3 \"c.ec3\" is next, once the output has played out and reopened: "
+                   "\"c.ec3\" folds to stereo at other levels, which an AC-3 encoder sets once, "
+                   "so the output reopens - there is a gap."));
+
+    // On the first link, each frame is levelled as the item that fills it,
+    // and says only that item's service.
+    REQUIRE(rig.link->bursts_at_open.size() == 2);
+    const std::vector<Bytes> first(
+        rig.link->bursts.begin(),
+        std::next(rig.link->bursts.begin(),
+                  static_cast<std::ptrdiff_t>(rig.link->bursts_at_open[1])));
+    const auto stream = ac3::iec61937::unwrap_stream(joined(first));
+    REQUIRE(stream.has_value());
+    const auto frames = ac3::split_frames(*stream);
+    REQUIRE(frames.has_value());
+    REQUIRE(frames->size() == 9);
+    for (std::size_t frame = 0; frame < frames->size(); ++frame) {
+        CAPTURE(frame);
+        const auto meta = ac3::io::read_frame_metadata((*frames)[frame]);
+        REQUIRE(meta.has_value());
+        CHECK(meta->dialnorm == (frame < 4 ? 31 : 24));
+        CHECK(meta->bsmod == (frame < 4 ? 2 : 0));
+        CHECK(meta->cmixlev == ac3::meta::CentreMixLevel::kMinus3dB);
+    }
+}
+
+TEST_CASE("transcode: dual mono heard as its second channel is sent levelled as that one",
+          "[hearth][player][bitstream][transcode]") {
+    ac3::eac3::FrameConfig config;
+    config.bitrate_kbps = 192;
+    config.acmod = ac3::Acmod::kDualMono;
+    config.dialnorm = 31;
+    config.dialnorm2 = 20;
+    ac3::eac3::FrameEncoder encoder{config};
+    Units a;
+    const std::vector<float> first(ac3::kSamplesPerFrame, 0.05F);
+    const std::vector<float> second(ac3::kSamplesPerFrame, -0.05F);
+    const std::vector<std::span<const float>> views{first, second};
+    for (int f = 0; f < 6; ++f) {
+        auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        a.push_back(std::move(*frame));
+    }
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(a)};
+    DecoderSettings settings;
+    settings.dual_mono = ac3::hearth::DualMonoChoice::kSecond;
+    Rig rig{library, /*with_link=*/true, settings};
+    rig.policy->bitstream_eac3 = false;
+    rig.policy->transcode_eac3 = true;
+    rig.player->queue().add(item("a.ec3"));
+    rig.player->play();
+    REQUIRE(rig.play_out());
+
+    const auto stream = ac3::iec61937::unwrap_stream(joined(rig.link->bursts));
+    REQUIRE(stream.has_value());
+    const auto frames = ac3::split_frames(*stream);
+    REQUIRE(frames.has_value());
+    REQUIRE_FALSE(frames->empty());
+    for (const auto frame : *frames) {
+        const auto meta = ac3::io::read_frame_metadata(frame);
+        REQUIRE(meta.has_value());
+        CHECK(meta->dialnorm == 20);
+    }
+}
+
+TEST_CASE("transcode: an engine transcodes for a receiver that takes AC-3 only",
+          "[hearth][player][bitstream][transcode][concurrency]") {
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(eac3_units(30))};
+    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    REQUIRE(layout.has_value());
+
+    ac3::hearth::EngineOutputs outputs;
+    outputs.pcm = std::make_unique<FakePcm>(std::make_shared<FakePcm::Log>());
+    outputs.bitstream = std::make_unique<FakeLink>(std::make_shared<FakeLink::Log>());
+    outputs.endpoints = [](std::uint32_t) {
+        ac3::hearth::EndpointReading reading;
+        reading.device.id = "hdmi";
+        reading.device.name = "HDMI";
+        reading.device.supports_ac3_passthrough = true;
+        reading.device.supports_eac3_passthrough = true;
+        reading.device.channels = 2;
+        ac3::audio::SinkAudioCapabilities sink;
+        sink.pcm = true;
+        sink.ac3 = true;
+        reading.descriptor = sink;
+        return std::vector<ac3::hearth::EndpointReading>{reading};
+    };
+    ac3::hearth::Engine engine{std::move(outputs), library.loader(), *layout};
+    engine.add({item("a.ec3")});
+    engine.play();
+    engine.sync();
+    const auto status = engine.status();
+    CHECK(status.output.mode == OutputMode::kBitstreamAsAc3);
+    CHECK(status.output.stream == BitstreamFormat::kAc3);
+    CHECK(status.output_reason.find("transcoded to AC-3 and bitstreamed") != std::string::npos);
+    CHECK(status.settings_note.find("transcoded") != std::string::npos);
 }
