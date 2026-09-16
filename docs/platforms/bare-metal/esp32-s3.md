@@ -1050,7 +1050,10 @@ Four changes, each measured on its own:
 | + per-object scratches sized to the stream | 267,754 | 43,008 |
 | + handing back the enhanced-coupling scratch | **233,546** | 43,008 |
 
-The largest allocation is now the E-AC-3 decoder's own AHT buffer rather than anything JOC owns.
+The largest allocation was then the E-AC-3 decoder's own AHT buffer rather than anything JOC owns.
+That buffer was split into one 6,144-byte buffer per stream on 2026-09-12, and since 2026-09-16
+an AHT stream decodes straight into the per-block coefficient store instead, with no buffer of
+its own.
 
 That last row is the one that is easy to miss. 267,754 against 280,792 free looks like 13,038
 spare, but the order of fixtures decided the result: objects run after an enhanced-coupling decode
