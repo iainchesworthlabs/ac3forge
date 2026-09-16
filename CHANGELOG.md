@@ -29,6 +29,15 @@ and release packaging.
 
 **Minimum-footprint / ESP32 decode profile**
 
+- **Sixteen channels out of an ESP32-S3, and the slot width as a setting.** An I2S
+  line carries 128 bits a frame, so the two the part has reach sixteen 16-bit slots or
+  eight 32-bit ones — a 7.1.4 layout leaves through the `i2s` sink for the first time,
+  where eight channels was the ceiling before. The width is no longer fixed when the
+  image is built: `GET` and `PUT /slot-width` beside `/layout` change it between plays,
+  `/status` reports it as `slot_bits`, and the sink's ceiling moves with it, since which
+  width a board wants is a property of the DACs it is wired to rather than of the
+  firmware. A change is refused while a play is running, and takes effect at the next
+  one. Kconfig still sets the width the sink starts at.
 - **A fixed-point decode tier** (`-DAC3FORGE_DECODE_SCALAR=fixed`), a Q7.24 integer
   scalar path for parts with no FPU (an ESP32-C3, a Cortex-M3), joining `double` and
   `float` on the decode-scalar axis. Measured at 121 dB+ on the gold streams and 111 dB+
