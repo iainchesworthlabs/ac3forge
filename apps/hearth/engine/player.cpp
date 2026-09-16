@@ -208,6 +208,9 @@ Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report
     if (report != nullptr) {
         report->item_started = true;
         report->output_reopened = opens_ > 1;
+        if (!session_->facts().note.empty()) {
+            report->note = session_->facts().note;
+        }
     }
     return OpenFailure::kNone;
 }
@@ -247,16 +250,18 @@ void Player::fill(std::size_t frames) {
     if (!session_ || !decoder_ || history_.empty()) {
         return;
     }
-    const std::size_t slots = layout_.slots();
-    const std::size_t record = history_.size() - 1;
-    const auto deliver = [this, slots, record](std::span<const std::span<const float>> rendered,
-                                               std::size_t n) {
+    // Built once per call, capturing one pointer, so the std::function holds
+    // it without allocating; the width and the item's record are read as each
+    // block arrives.
+    const StreamDecoder::BlockFn deliver = [this](std::span<const std::span<const float>> rendered,
+                                                  std::size_t n) {
         if (n == 0) {
             return;
         }
+        const std::size_t slots = layout_.slots();
         Pending& block = push_block();
         block.frames = n;
-        block.record = record;
+        block.record = history_.size() - 1;
         // A reused buffer is as large as the largest block it has held, so
         // this only allocates while the ring is new.
         block.samples.resize(slots * n);
@@ -405,6 +410,9 @@ void Player::item_ended(PumpReport& report) {
                                           .expected_frames = session_->total_samples(),
                                           .output_opens = opens_});
             report.item_started = true;
+            if (!session_->facts().note.empty()) {
+                report.note = session_->facts().note;
+            }
             break;
         }
         case TransportAction::kReopenForItem:

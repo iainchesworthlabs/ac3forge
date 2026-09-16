@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <limits>
+#include <string>
 #include <string_view>
+#include <utility>
 
 #include "ac3/io/elementary.hpp"
 #include "mp4/mp4.hpp"
@@ -99,7 +102,66 @@ constexpr std::size_t kContainerSniffBytes = 64 * 1024;
     return out;
 }
 
+// `value` counted in 1/`from` seconds, as a count in 1/`to` seconds, to the
+// nearest. Whole seconds first and the remainder after, so no step
+// overflows for any value a file can hold; a result past 64 bits saturates.
+[[nodiscard]] std::uint64_t rescale(std::uint64_t value, std::uint32_t to, std::uint32_t from) {
+    constexpr std::uint64_t kMax = std::numeric_limits<std::uint64_t>::max();
+    const std::uint64_t whole = value / from;
+    const std::uint64_t part = ((value % from) * to + (from / 2)) / from;
+    if (whole > (kMax - part) / to) {
+        return kMax;
+    }
+    return (whole * to) + part;
+}
+
 }  // namespace
+
+StreamTrim trim_from_edit_list(const mp4::ReadTrack& track, std::string& note) {
+    StreamTrim trim;
+    note.clear();
+    const mp4::EditListEntry* media = nullptr;
+    std::size_t with_media = 0;
+    for (const mp4::EditListEntry& edit : track.edits) {
+        if (edit.media_time < 0) {
+            continue;  // an empty edit
+        }
+        ++with_media;
+        if (media == nullptr) {
+            media = &edit;
+        }
+    }
+    if (media == nullptr) {
+        return trim;
+    }
+    constexpr std::int32_t kNormalSpeed = 0x00010000;
+    constexpr std::string_view kUntrimmed =
+        ", so it is not applied and every sample of the track plays.";
+    if (with_media > 1) {
+        note = "The file's edit list has " + std::to_string(with_media) +
+               " edits with audio in them" + std::string{kUntrimmed};
+        return trim;
+    }
+    if (media->media_rate != kNormalSpeed) {
+        note = "The file's edit list plays the audio at another speed" + std::string{kUntrimmed};
+        return trim;
+    }
+    // The rate the stream's samples are counted at: the sample entry's field,
+    // which holds every rate AC-3 and E-AC-3 code, and mdhd's timescale
+    // otherwise, which is normally the same number.
+    const std::uint32_t rate = track.sample_rate != 0 ? track.sample_rate : track.timescale;
+    if (rate == 0 || track.timescale == 0) {
+        note = "The file's edit list has no timescale to be read in" + std::string{kUntrimmed};
+        return trim;
+    }
+    trim.start = rescale(static_cast<std::uint64_t>(media->media_time), rate, track.timescale);
+    // A zero duration runs to the end of the media, as a fragmented file
+    // writes it; without a movie timescale there is nothing to count one in.
+    if (media->segment_duration != 0 && track.movie_timescale != 0) {
+        trim.length = rescale(media->segment_duration, rate, track.movie_timescale);
+    }
+    return trim;
+}
 
 ContainerKind sniff_container(std::span<const std::byte> head) {
     const auto sniffed = head.first(std::min(head.size(), kContainerSniffBytes));
@@ -176,7 +238,12 @@ ElementaryStreamResult elementary_stream_from_bytes(std::span<const std::byte> f
                 }
                 return {.bytes = std::move(out), .error = {}};
             }
-            return {.bytes = concat_frames(demuxed->samples), .error = {}};
+            std::string note;
+            const StreamTrim trim = trim_from_edit_list(demuxed->track, note);
+            return {.bytes = concat_frames(demuxed->samples),
+                    .error = {},
+                    .trim = trim,
+                    .trim_note = std::move(note)};
         }
         case ContainerKind::kMpegTs: {
             const auto demuxed = mpegts::demux(file);

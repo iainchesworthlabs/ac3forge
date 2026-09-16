@@ -382,6 +382,12 @@ and release packaging.
   E-AC-3 in MP4, AC-3 in Matroska and raw AC-3 play through one output to a fake device: each
   item delivers exactly the frames its access units code, starting where the one before ended,
   and the output is sample for sample what the same queue gives with an output per item.
+- **Hearth's player applies an MP4 item's edit list**: the priming and padding it names are
+  decoded but not played. Two such items join with nothing from either encoder between them, a
+  seek counts from the first sample the item plays, and the queue shows the edited duration. An
+  edit list of any other shape plays untrimmed, with a note beside the item. In `ac3tests`, an
+  edited item, and a join of two, play sample for sample the matching stretches of an untrimmed
+  decode.
 
 **Audio outputs**
 
@@ -439,6 +445,14 @@ and release packaging.
   `ac3::automatic_stereo_target()` holds the rule for library callers.
 - **`probe` reports `dmixmod`**, as a table line and as `metadata.dmixmod` plus a
   per-syncframe `dmixmod` in the `ac3forge.probe/1` JSON document.
+- **MP4 edit lists, read and written**: `mp4::demux` and `mp4::Reader` report a track's `elst`
+  entries as stored (`ReadTrack::edits`), with the `mvhd` timescale their durations are counted
+  in (`ReadTrack::movie_timescale`). `MuxOptions::edit` makes `mp4::mux` write one edit (the
+  samples to skip and the samples to play) and sets the movie and track durations to it. An edit
+  list or movie header too short to read, or declaring more entries than it holds, is left out,
+  and the file still reads. `apps/common`'s container input turns the edit list an audio encoder
+  writes into the part of the stream to play. Hearth's player applies it; `ac3cli` and the GUI
+  do not yet.
 
 **AC-4 decoding**
 

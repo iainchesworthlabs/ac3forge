@@ -73,8 +73,8 @@ struct Element {
 // same way would misparse their leading fields as a box header, so they are
 // read with their own dedicated helpers below instead.
 bool is_container(const std::string& type) {
-    return type == "moov" || type == "trak" || type == "mdia" || type == "minf" ||
-           type == "stbl" || type == "dinf";
+    return type == "moov" || type == "trak" || type == "edts" || type == "mdia" ||
+           type == "minf" || type == "stbl" || type == "dinf";
 }
 
 void walk(std::span<const std::byte> file, std::size_t pos, std::size_t end,
@@ -324,6 +324,74 @@ TEST_CASE("MP4 muxer rejects what it cannot describe", "[mp4]") {
     auto no_config = track;
     no_config.codec_config.clear();
     CHECK(mp4::mux(no_config, one).error() == mp4::MuxError::kInvalidTrack);
+}
+
+TEST_CASE("MP4 muxer writes one edit, and presents the edit's duration", "[mp4]") {
+    const std::vector<Bytes> frames(4, frame_of(512, 0x5A));
+    mp4::MuxOptions options;
+    options.edit = mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = 5000};
+    const auto file = mp4::mux(sample_track(), frames, options);
+    REQUIRE(file.has_value());
+    const auto elements = parse(*file);
+
+    // §8.6.6's elst, version 0: entry_count, then segment_duration,
+    // media_time and the rate's two halves.
+    const auto* elst = find(elements, "elst");
+    REQUIRE(elst != nullptr);
+    CHECK(byte_at(*file, elst->payload) == 0);
+    CHECK(u32_at(*file, elst->payload + 4) == 1);
+    CHECK(u32_at(*file, elst->payload + 8) == 5000);
+    CHECK(u32_at(*file, elst->payload + 12) == 256);
+    CHECK(u16_at(*file, elst->payload + 16) == 1);
+    CHECK(u16_at(*file, elst->payload + 18) == 0);
+
+    // In the trak between tkhd and mdia, the order §8.3.1 gives.
+    std::vector<std::string> order;
+    for (const auto& element : elements) {
+        if (element.type == "tkhd" || element.type == "edts" || element.type == "mdia") {
+            order.push_back(element.type);
+        }
+    }
+    CHECK(order == std::vector<std::string>{"tkhd", "edts", "mdia"});
+
+    // The movie and the track last as long as the edit; the media as long as
+    // its samples. mvhd: version+flags, creation, modification, timescale,
+    // then duration; tkhd: version+flags, creation, modification, track_ID,
+    // reserved, then duration.
+    const auto* mvhd = find(elements, "mvhd");
+    const auto* tkhd = find(elements, "tkhd");
+    const auto* mdhd = find(elements, "mdhd");
+    REQUIRE(mvhd != nullptr);
+    REQUIRE(tkhd != nullptr);
+    REQUIRE(mdhd != nullptr);
+    CHECK(u32_at(*file, mvhd->payload + 16) == 5000);
+    CHECK(u32_at(*file, tkhd->payload + 20) == 5000);
+    CHECK(read_mdhd(*file, *mdhd).duration == 4U * 1536U);
+
+    // Without the option there is no edit list, and every duration is the
+    // media's.
+    const auto plain = mp4::mux(sample_track(), frames);
+    REQUIRE(plain.has_value());
+    const auto plain_elements = parse(*plain);
+    CHECK(find(plain_elements, "edts") == nullptr);
+    const auto* plain_mvhd = find(plain_elements, "mvhd");
+    REQUIRE(plain_mvhd != nullptr);
+    CHECK(u32_at(*plain, plain_mvhd->payload + 16) == 4U * 1536U);
+}
+
+TEST_CASE("MP4 muxer refuses an edit outside the frames", "[mp4]") {
+    const std::vector<Bytes> two(2, frame_of(64, 0));  // 3,072 samples
+    const auto with = [&two](std::uint64_t start, std::uint64_t duration) {
+        mp4::MuxOptions options;
+        options.edit = mp4::MuxOptions::Edit{.start_samples = start, .duration_samples = duration};
+        return mp4::mux(sample_track(), two, options);
+    };
+    CHECK(with(0, 3072).has_value());
+    CHECK(with(3071, 1).has_value());
+    CHECK(with(0, 3073).error() == mp4::MuxError::kInvalidOptions);
+    CHECK(with(1, 3072).error() == mp4::MuxError::kInvalidOptions);
+    CHECK(with(3072, 1).error() == mp4::MuxError::kInvalidOptions);
+    CHECK(with(100, 0).error() == mp4::MuxError::kInvalidOptions);
 }
 
 // --- ac3::io::build_codec_config_box: the dec3/dac3 payload itself ---------

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -23,6 +24,10 @@
 // already does for RecordingSink (ac3/io/wav.hpp, ac3/iec61937/iec61937.hpp) -
 // since disambiguating a container from a bare elementary stream is exactly
 // where knowing both sides earns its keep (see ContainerKind's own comment).
+
+namespace mp4 {
+struct ReadTrack;
+}  // namespace mp4
 
 namespace ac3::apps {
 
@@ -48,6 +53,16 @@ enum class ContainerKind : std::uint8_t { kUnknown, kMatroska, kMp4, kMpegTs };
 
 [[nodiscard]] ContainerKind sniff_container(std::span<const std::byte> head);
 
+// The part of a decoded stream its container says to play, in samples at the
+// stream's rate: skip `start`, then play `length`, or to the end when that is
+// unset. What an encoder's priming and a last frame's padding look like from
+// the outside - the default, all of it, is what a container that says nothing
+// means.
+struct StreamTrim {
+    std::uint64_t start = 0;
+    std::optional<std::uint64_t> length = std::nullopt;
+};
+
 // `file`'s elementary stream: `file` itself, unchanged, if it does not sniff
 // as one of the three containers this build reads, or the first AC-3/E-AC-3
 // track demuxed out of one - the same three readers `ac3cli demux` already
@@ -62,8 +77,25 @@ struct ElementaryStreamResult {
     // "malformed MP4" and "no AC-3 track" want different messages than "file
     // not found" does.
     std::string error;
+    // From an MP4 track's edit list, when it has the shape an audio encoder
+    // writes: any empty edits (a delay before the track, which is not audio),
+    // then one edit at normal speed. Decoding does not apply it; a player
+    // does. Only the player does so far - ac3cli and the GUI still decode
+    // every sample.
+    StreamTrim trim{};
+    // Set, with `trim` left at its default, when the file has an edit list
+    // of another shape: more than one edit with media in it, or one played
+    // at other than normal speed. A sentence for whoever shows the file.
+    std::string trim_note{};
 };
 
 [[nodiscard]] ElementaryStreamResult elementary_stream_from_bytes(std::span<const std::byte> file);
+
+// The trim an MP4 track's edit list describes, as elementary_stream_from_bytes
+// reads it: whole, with `note` empty, for a track with no edit list or only
+// empty edits; the one edit with media in it, counted in samples at the
+// track's rate, when it plays at normal speed; and whole, with `note` saying
+// why, for any other shape.
+[[nodiscard]] StreamTrim trim_from_edit_list(const mp4::ReadTrack& track, std::string& note);
 
 }  // namespace ac3::apps
