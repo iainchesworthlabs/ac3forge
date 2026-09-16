@@ -1,0 +1,9 @@
+# What this example needs from the component registry, on top of what ESP-IDF
+# itself ships. The library is not here: it comes through
+# EXTRA_COMPONENT_DIRS from the repository, or as the packed component
+# (tools/packaging/pack_esp_component.py).
+dependencies:
+  # mDNS, so a server finds this sink by name rather than by address
+  # (main/discovery.cpp). Espressif moved it out of esp-idf at v5.0, so it is
+  # a managed dependency rather than a component in the IDF tree.
+  espressif/mdns: "^1.8.0"

@@ -360,6 +360,11 @@ configurations set 80; the default is 0, none), the component's
 | `POST /volume` | body: `0.0` to `1.0`, a linear gain the decode task applies before the sink |
 | `GET /layout` | the output layout, as text |
 | `PUT /layout` | body: a name (`5.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`), the same grammar as `CONFIG_AC3FORGE_EXAMPLE_LAYOUT`. Takes effect at the next play - the `i2s` sink reconfigures its mode and slot count to match, so this never needs a rebuild. `400` for text that is not a layout, `409` for one with more slots than the sink's ceiling. |
+| `GET /name` | what the board calls itself, as text |
+| `PUT /name` | body: a name, up to 32 bytes. Stored on the board, so it survives a reflash; it is the mDNS instance name and what a server lists the sink under. `409` if it does not fit or NVS refused it. |
+| `GET /wiring` | `1` if a second I2S line is wired, `0` if not |
+| `PUT /wiring` | body: `1` or `0`. Moves the sink's ceiling with it - two lines carry twice one line's slots - and takes effect at the next play. `409` while a play is running. |
+| `PUT /network` | body: an SSID, a newline, then the passphrase. Stored for the next boot; the station stays on the network it is already associated with. Improv over the serial port is the other way in, and the one a board with no network at all needs. |
 | `GET /slot-width` | the slot width in bits, 16 or 32 |
 | `PUT /slot-width` | body: `16` or `32`. Takes effect at the next play, and moves the sink's ceiling with it: an I2S line carries 128 bits a frame, so two lines reach sixteen slots at 16 bits and eight at 32. `400` for a body that is not a number, `409` while a play is running, for a width the sink does not have, or on the `capture` and `null` sinks, which keep the width they were built for. A layout already set may be too wide after a change to 32; the next play says so. |
 

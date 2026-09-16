@@ -2665,12 +2665,19 @@ jobs:
           # --min-heap-free: this is the widest shape the part runs - twelve
           # channels out of three substreams, with the Ethernet driver and the
           # HTTP server in the same internal RAM - so it is where a decoder or
-          # player that starts holding more is seen first. The floor is set
-          # below what this shape measures (about 33-35 KB) and well above
-          # both the 18-21 KB it ran at before PR #698 and the 7-9.5 KB that
-          # merge left it at, so a change that spends ten kilobytes fails here
-          # rather than in whichever later run happens to abort.
-          python3 "$console" --title "ESP32-S3 stream set" --min-heap-free 24576 qemu-set.txt
+          # player that starts holding more is seen first.
+          #
+          # The floor moved from 24,576 to 20,480 when B2 put mDNS on the
+          # board: being findable costs about 8 KB of internal RAM in every
+          # shape, which took the measured floor from about 35 KB to 25,036
+          # bytes. That is a cost the plan asks for rather than a regression,
+          # and the gate caught it the same afternoon it arrived, which is the
+          # gate working. 20,480 still leaves 4.5 KB of slack under what the
+          # shape measures, and still fails on a change of the size that put
+          # this step in the ground: PR #698 spent 10 KB and left the play
+          # running on 7-9.5 KB. The Improv listener's own 4 KB is not in
+          # this figure - a board with a network does not start it.
+          python3 "$console" --title "ESP32-S3 stream set" --min-heap-free 20480 qemu-set.txt
           kill "$qemu" 2>/dev/null || true
 
       # BUILD ONLY, for the four combinations no step above runs: i2s, sd,

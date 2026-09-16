@@ -67,6 +67,25 @@ struct ControlHandlers {
     std::function<int()> slot_bits;
     std::function<bool(int bits)> set_slot_bits;
 
+    // GET and PUT /name: what the board calls itself, on the network and in a
+    // server's list of sinks. Stored on the board (its settings), so it
+    // survives a reflash.
+    std::function<std::string()> name;
+    std::function<bool(std::string_view text)> set_name;
+
+    // GET and PUT /wiring: whether the second I2S line is connected to
+    // anything. It moves sink_slots with it, the same way the slot width
+    // does, because two lines carry twice one line's slots.
+    std::function<bool()> second_line;
+    std::function<bool(bool wired)> set_second_line;
+
+    // PUT /network: the access point the board joins, as an SSID and a
+    // passphrase. Improv over the serial port is the other way in
+    // (the board's own provisioning); this is the one the page offers to
+    // someone already on the network who wants to move the board to another.
+    // Takes effect at the next boot: the station is already associated.
+    std::function<bool(std::string_view ssid, std::string_view password)> set_network;
+
     // GET /status draws on these. Any may be left empty; the field is then
     // omitted or reported as null.
     std::function<PlayerStats()> stats;

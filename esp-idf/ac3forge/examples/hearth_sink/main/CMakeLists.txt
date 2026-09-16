@@ -34,18 +34,19 @@ else()
     set(AC3FORGE_SOURCE_DIR "source/partition")
 endif()
 
-# The HTTP source has a seam of its own underneath it: which network. WiFi on a
-# board; the OpenCores Ethernet MAC under QEMU, which is what lets CI run this
-# source end to end. See main/source/http/network.hpp. Only the HTTP source
-# compiles a network at all - the other sources have no use for one, and a
-# file that is compiled and never called is one more thing to keep building.
-set(AC3FORGE_NETWORK_SRCS "")
-if(CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP)
-    if(CONFIG_AC3FORGE_EXAMPLE_NETWORK_OPENETH)
-        set(AC3FORGE_NETWORK_SRCS "source/http/net/openeth/network.cpp")
-    else()
-        set(AC3FORGE_NETWORK_SRCS "source/http/net/wifi/network.cpp")
-    endif()
+# And which network, which is now every build's question rather than the HTTP
+# source's alone: WiFi on a board; the OpenCores Ethernet MAC under QEMU, which
+# is what lets CI run this end to end with no board and no access point; and
+# none at all for a build that plays from flash, FAT or an SD card. See
+# main/network.hpp. A sink is FOUND before it is played to - mDNS answering and
+# the control surface reachable while the board sits idle - so the network
+# comes up at boot, and a build with no network says so once and costs nothing.
+if(CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP AND CONFIG_AC3FORGE_EXAMPLE_NETWORK_OPENETH)
+    set(AC3FORGE_NETWORK_SRCS "net/openeth/network.cpp")
+elseif(CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP)
+    set(AC3FORGE_NETWORK_SRCS "net/wifi/network.cpp")
+else()
+    set(AC3FORGE_NETWORK_SRCS "net/none/network.cpp")
 endif()
 
 # esp_driver_i2s is required whichever sink is chosen. The capture and null
@@ -82,6 +83,9 @@ endif()
 
 idf_component_register(
     SRCS "hearth_sink.cpp"
+         "settings.cpp"
+         "provision.cpp"
+         "discovery.cpp"
          "${AC3FORGE_SINK_DIR}/audio_sink.cpp"
          "${AC3FORGE_SOURCE_DIR}/byte_source.cpp"
          ${AC3FORGE_NETWORK_SRCS}
@@ -90,7 +94,8 @@ idf_component_register(
     REQUIRES ac3forge esp_driver_i2s esp_timer freertos
              esp_partition
              esp_driver_sdmmc sdmmc fatfs wear_levelling
-             esp_wifi esp_eth esp_http_client esp_netif esp_event nvs_flash)
+             esp_wifi esp_eth esp_http_client esp_netif esp_event nvs_flash
+             esp_app_format espressif__mdns)
 
 # How long the audio actually is. The partition is 256 KB and the sample is
 # 10,752 bytes, so without this the player reads a quarter of a megabyte of
