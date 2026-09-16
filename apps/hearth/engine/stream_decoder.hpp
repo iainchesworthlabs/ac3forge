@@ -16,6 +16,7 @@
 #include "ac3/render/layout.hpp"
 #include "ac3/render/render.hpp"
 #include "ac3/render/serving.hpp"
+#include "decoder_settings.hpp"
 
 // Access units in, rendered blocks out (planning/hearth-reference-player.md,
 // A3: "a session per item: ... decoder, renderer ...").
@@ -35,7 +36,12 @@
 //     first block takes the oldest bed not yet placed. That keeps a unit held
 //     back for transient pre-noise processing (§3.7) matched to its own bed
 //     when it is finally released, one call later.
-//   * One programme: the first unit's.
+//   * One programme: the first unit's. Which programme that is, is the
+//     session's choice of units (Session::open), not this decoder's.
+//
+// Everything else a listener can choose comes from DecoderSettings: the
+// library configuration decoder_setup() makes of it, and dual mono's choice
+// of programme, applied here to each unit that codes 1+1 before it is placed.
 //
 // What the test sink never needed and a player does is the end of a stream.
 // A unit still held back when the stream ends is released by
@@ -59,7 +65,8 @@ public:
 
     // `layout` is what the output renders onto; `sample_rate` is the
     // stream's own, which only the renderer's small-speaker crossover uses.
-    StreamDecoder(const render::OutputLayout& layout, std::uint32_t sample_rate);
+    StreamDecoder(const render::OutputLayout& layout, std::uint32_t sample_rate,
+                  const DecoderSettings& settings = {});
 
     // Decodes `unit` and hands each of its rendered blocks to `deliver`
     // during the call. A unit held back for transient pre-noise processing
@@ -81,21 +88,33 @@ public:
 
     [[nodiscard]] const render::Serving& serving() const { return serving_; }
     [[nodiscard]] const render::OutputLayout& layout() const { return layout_; }
+    [[nodiscard]] const DecoderSettings& settings() const { return settings_; }
+    [[nodiscard]] std::uint32_t sample_rate() const { return sample_rate_; }
 
 private:
+    // What a unit's headers say about how to place it, read before it is
+    // decoded: its bed, and whether it codes dual mono.
+    struct UnitBed {
+        eac3::chanmap::Layout layout{};
+        bool dual_mono = false;
+    };
+
     void place(const PcmBlock& block, const BlockFn& deliver);
     std::size_t render_flushed(std::span<DecodedSubstream> substreams, const BlockFn& deliver);
 
     render::OutputLayout layout_;
     std::uint32_t sample_rate_;
+    DecoderSettings settings_;
     render::Serving serving_;
     DecoderConfig config_;
     render::LayoutRenderer renderer_;
     std::optional<FrameDecoder> ac3_decoder_;
     std::optional<Eac3Decoder> eac3_decoder_;
     std::optional<int> programme_;
-    std::deque<eac3::chanmap::Layout> beds_;
+    std::deque<UnitBed> beds_;
     std::optional<eac3::chanmap::Layout> renderer_bed_;
+    // Whether the unit being placed codes dual mono.
+    bool dual_mono_ = false;
     std::array<std::array<float, kSamplesPerBlock>, render::OutputLayout::kMaxSlots> block_{};
     std::size_t delivered_ = 0;
 };
