@@ -59,28 +59,35 @@
 # surgical fix. tools/ci/check_crucible_package.py asserts the absence on the
 # Crucible zip in CI, so this staying wired is checked rather than assumed.
 #
-# Windows only in effect: it is the platform whose packages carry their own Qt
-# at all (Linux finds the system's), and a macOS .app keeps its deployed Qt
-# inside the bundle - Contents/Frameworks/ and Contents/Resources/qml/ - which
-# is not where any path below looks. apps/gui narrows its call to WIN32 for
-# exactly that reason.
+# Windows and, below, macOS: the two platforms whose packages carry their own
+# Qt at all (Linux finds the system's). A macOS .app keeps its deployed Qt
+# inside the bundle - Contents/Frameworks/, Contents/PlugIns/ and
+# Contents/Resources/qml/ - so the macOS removals are a second, separate
+# section below, keyed to whatever *.app CPack just staged, rather than a
+# path added to the Windows list above.
 #
-# apps/crucible's is NOT narrowed, and now reaches macOS: the top-level
-# CMakeLists.txt adds Crucible under WIN32 OR APPLE OR LINUX since the macOS
-# platform half landed on 2026-09-06, so this script's install(SCRIPT) sits
-# inside a WIN32 OR APPLE deploy block whose APPLE arm both macOS CI legs have
-# now configured through. Neither has reached an install step yet, so this file
-# has never executed on macOS, and what it would do there is nothing: every
-# path below is the Windows package layout, so each if(EXISTS) is false and a
-# .app keeps its deployed Qt Test, the same way ac3gui's .dmg does. That is a
-# gap rather than a hazard - it
-# removes nothing it should not - and it stays open for the same reason
-# apps/gui's does: nobody here has a Mac to check where those files land in a
-# bundle. It is also not reachable through CPack yet, since
-# cmake/Packaging.cmake still adds the crucible component only under
-# WIN32 OR LINUX. Narrowing this call to WIN32 would match apps/gui and lose
-# nothing; leaving it is what lets a macOS bundle be fixed here once someone
-# can see one.
+# The macOS paths are not a guess: ac3gui.app already ships Qt Test on macOS
+# today (apps/gui's own call to this script stays WIN32-only, so nothing has
+# ever removed it there), confirmed by downloading a real packages-macos-llvm
+# CI artifact and reading ac3forge-<version>-Darwin.zip directly -
+# Contents/Resources/qml/QtTest/{qmldir,libquicktestplugin.dylib}, and a
+# second, flat copy at Contents/PlugIns/libquicktestplugin.dylib (the
+# ADDITIONAL_MODULES plugin qt6_deploy_runtime_dependencies() hands to the
+# platform's own deploy step, the same mechanism the Windows header above
+# describes for quicktestplugin.dll landing beside the .exe). Neither
+# Qt6Test.framework nor Qt6QuickTest.framework appeared in that same archive -
+# at least not as anything a non-macOS unzip could see past the Homebrew Qt6
+# Cellar-symlink bug that archive also carries - so both are removed
+# defensively below, the same if(EXISTS)/if(GLOB) no-op safety the Windows
+# list above already relies on.
+#
+# apps/gui's own call stays WIN32-only: fixing ac3gui.app's macOS Qt Test leak
+# is a separate, already-flagged gap, not this change's. This section runs
+# today only through apps/crucible's WIN32 OR APPLE deploy block, now that
+# cmake/Packaging.cmake's Crucible component has an APPLE arm for it to
+# package into - tools/ci/check_crucible_package.py's check_macos() is what
+# asserts the result stays clean. Like the rest of the macOS platform half,
+# it has still never executed on real Apple hardware, only in CI.
 # ---------------------------------------------------------------------------
 
 # $ENV{DESTDIR} the way every hand-written install script has to: install(FILES)
@@ -112,4 +119,29 @@ endif()
 
 unset(_ac3_file)
 unset(_ac3_qt_test_files)
+
+# macOS: no fixed bundle name to key off - CPack stages exactly one
+# component's files per install pass, so file(GLOB) finds whichever *.app is
+# there without hard-coding "ac3crucible.app", and this needs no second edit
+# if apps/gui's own call above is ever extended to APPLE.
+file(GLOB _ac3_macos_bundles LIST_DIRECTORIES true "${_ac3_prefix}/*.app")
+foreach(_ac3_bundle IN LISTS _ac3_macos_bundles)
+    if(EXISTS "${_ac3_bundle}/Contents/Resources/qml/QtTest")
+        message(STATUS "Removing Qt Test from the package: ${_ac3_bundle}/Contents/Resources/qml/QtTest")
+        file(REMOVE_RECURSE "${_ac3_bundle}/Contents/Resources/qml/QtTest")
+    endif()
+    if(EXISTS "${_ac3_bundle}/Contents/PlugIns/libquicktestplugin.dylib")
+        message(STATUS "Removing Qt Test from the package: ${_ac3_bundle}/Contents/PlugIns/libquicktestplugin.dylib")
+        file(REMOVE "${_ac3_bundle}/Contents/PlugIns/libquicktestplugin.dylib")
+    endif()
+    foreach(_ac3_framework IN ITEMS QtTest QtQuickTest)
+        if(EXISTS "${_ac3_bundle}/Contents/Frameworks/${_ac3_framework}.framework")
+            message(STATUS "Removing Qt Test from the package: ${_ac3_bundle}/Contents/Frameworks/${_ac3_framework}.framework")
+            file(REMOVE_RECURSE "${_ac3_bundle}/Contents/Frameworks/${_ac3_framework}.framework")
+        endif()
+    endforeach()
+endforeach()
+unset(_ac3_framework)
+unset(_ac3_bundle)
+unset(_ac3_macos_bundles)
 unset(_ac3_prefix)

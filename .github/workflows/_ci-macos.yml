@@ -368,6 +368,34 @@ jobs:
         shell: bash
         run: cpack --preset pack-${{ matrix.preset }}
 
+      # The macOS counterpart to _ci-windows.yml's own "Assert the AC3Forge
+      # Crucible was packaged" step. Same cpack pass as the Package step just
+      # above, not a second invocation: cmake/Packaging.cmake's Crucible
+      # component now reaches APPLE, so the one `cpack --preset
+      # pack-<leg>` call above already writes ac3forge-crucible-*.zip
+      # alongside the runtime/dev zips and the monolithic .dmg, exactly the
+      # way it already writes ac3forge-crucible-*.zip on windows-msvc - this
+      # just asserts that it did. Same `if:` as Package, since that is what
+      # decides whether packages/ exists at all to look in.
+      - name: Assert the AC3Forge Crucible was packaged (macOS)
+        if: >-
+          matrix.packageable &&
+          (matrix.preset == 'windows-msvc' ||
+           (inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(packages/ac3forge-crucible-*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "::error::cpack produced no ac3forge-crucible-*.zip - the crucible component did not reach CPACK_COMPONENTS_ALL on macOS (cmake/Packaging.cmake) or its install rules produced nothing (apps/crucible/CMakeLists.txt)."
+            ls -1 packages/ || true
+            exit 1
+          fi
+          printf 'packaged: %s\n' "${zips[@]}"
+          python3 tools/ci/check_crucible_package.py "${zips[0]}"
+
       # The counterpart to the two Windows asserts above, for the files that
       # had no assertion at all: ac3cli's generated man page and its four
       # shell completions (apps/cli/CMakeLists.txt, roadmap IO8). Those are

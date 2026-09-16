@@ -648,6 +648,20 @@ if(WIN32)
     # layout tools/ci/check_crucible_package.py asserts and reads.
     install(FILES "${AC3CRUCIBLE_NOTICES_FILE}" DESTINATION "." COMPONENT crucible)
     install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" DESTINATION "." RENAME "LICENSE.txt" COMPONENT crucible)
+elseif(APPLE)
+    # The notices and the licence at the archive root, beside ac3crucible.app -
+    # notices/platform/macos/components.cmake's own AC3CRUCIBLE_NOTICES_LOCATION
+    # string already promised this layout, and it is the same place
+    # apps/notices/notices.cmake puts the runtime component's own pair beside
+    # ac3gui.app. Harmless in the one place these two pairs share a
+    # destination - the monolithic macOS .dmg (cmake/CPackProjectConfig.cmake) -
+    # since add_subdirectory(apps/crucible) in the top-level CMakeLists.txt runs
+    # before that file's include(), so its copy installs last and wins there;
+    # the standalone crucible zip this component actually ships as
+    # (cmake/Packaging.cmake) never shares a destination with the runtime
+    # component's files at all.
+    install(FILES "${AC3CRUCIBLE_NOTICES_FILE}" DESTINATION "." COMPONENT crucible)
+    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" DESTINATION "." RENAME "LICENSE.txt" COMPONENT crucible)
 elseif(LINUX)
     # What a freedesktop menu needs: the launcher, the AppStream record a
     # software centre reads, and the icon in the hicolor theme at the two
