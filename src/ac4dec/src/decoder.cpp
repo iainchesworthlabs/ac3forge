@@ -1,5 +1,6 @@
 #include "ac4dec/decoder.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -45,16 +46,6 @@ using detail::PresentationContext;
 using detail::PresentationSubstream;
 using detail::PresentationSubstreamState;
 using detail::SubstreamContext;
-
-// Part 1 Tables 83 and 84: frame_len_base by frame_rate_index. Index 13 is
-// the only one defined at 44.1 kHz, with the same 2048 samples.
-[[nodiscard]] int frame_len_base(int frame_rate_index) noexcept {
-    static constexpr std::array<int, 14> kFrameLenBase = {1920, 1920, 2048, 1536, 1536, 960, 960,
-                                                          1024, 768,  768,  512,  384,  384, 2048};
-    return frame_rate_index >= 0 && frame_rate_index < 14
-               ? kFrameLenBase[static_cast<std::size_t>(frame_rate_index)]
-               : 0;
-}
 
 enum class Role : std::uint8_t { kMain, kMusicAndEffects, kDialogue, kDialogueEnhancement, kAssociated };
 
@@ -157,7 +148,7 @@ void assign_audio(const Toc& toc, const ChannelSubstreamInfo& chan, int index, b
     if (out.contains(index)) {
         return;
     }
-    if (frame_len_base(toc.frame_rate_index) == 0) {
+    if (detail::frame_len_base(toc.frame_rate_index, toc.sample_rate_hz) == 0) {
         refuse(out, index, DecodeError::kInvalidStream, "a reserved frame_rate_index");
         return;
     }
@@ -172,7 +163,7 @@ void assign_audio(const Toc& toc, const ChannelSubstreamInfo& chan, int index, b
     ctx.presentation_version = presentation_version;
     ctx.fs_index = toc.sample_rate_hz == 44100 ? 0 : 1;
     ctx.frame_rate_index = toc.frame_rate_index;
-    ctx.frame_len_base = frame_len_base(toc.frame_rate_index);
+    ctx.frame_len_base = detail::frame_len_base(toc.frame_rate_index, toc.sample_rate_hz);
     ctx.b_iframe = b_iframe;
     ctx.sus_ver = sus_ver;
     ctx.ch_mode = *chan.ch_mode;
@@ -226,6 +217,14 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                 a.kind = SubstreamReport::Kind::kEmdfPayloads;
                 out.emplace(index, std::move(a));
             }
+        }
+        if (p.presentation_substream_index && !out.contains(*p.presentation_substream_index) &&
+            detail::frame_len_base(toc.frame_rate_index, toc.sample_rate_hz) == 0) {
+            // No frame length, so nothing in the substream that derives from
+            // one can be read - the same refusal assign_audio() makes, rather
+            // than reading on until channel-dependent DRC gains need it.
+            refuse(out, *p.presentation_substream_index, DecodeError::kInvalidStream,
+                   "a reserved frame_rate_index");
         }
         if (p.presentation_substream_index && !out.contains(*p.presentation_substream_index)) {
             Assignment a;
@@ -342,6 +341,23 @@ std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte
     report.b_iframe_global = toc.b_iframe_global;
 
     std::map<int, Assignment> assignments;
+    // Part 2 clause 5.1.3: above a frame rate of 30 fps a presentation can
+    // spread one coded frame over 2 or 4 transmission frames, each carrying
+    // fragments of its substreams rather than whole ones. Assembling them
+    // needs a queue of partial frames this phase does not keep, so every
+    // substream of such a frame is refused by name, before anything claims it
+    // - reading a fragment as a whole substream reports a legal stream as a
+    // damaged one.
+    const bool fragmented =
+        std::ranges::any_of(toc.presentations_v1, [](const PresentationInfoV1& presentation) {
+            return presentation.frame_rate_fraction != 1;
+        });
+    if (fragmented) {
+        for (std::size_t index = 0; index < frame->substreams.size(); ++index) {
+            refuse(assignments, static_cast<int>(index), DecodeError::kUnsupported,
+                   "a frame of the efficient high frame rate mode, whose substreams are fragments");
+        }
+    }
     if (toc.bitstream_version >= 2) {
         assign_v1(toc, assignments);
     } else {

@@ -120,7 +120,10 @@ class Reader:
 
     def vb(self, n_bits, name):
         """variable_bits(n_bits) (Part 1 4.2.2) as one record, whose value is
-        kept modulo 2^64 as the trace packs it."""
+        kept modulo 2^64 as the trace packs it. A record's width is 16 bits, so
+        an element wider than 65535 bits is recorded as consecutive 65535-bit
+        records, the last shorter, each valued at its own last 64 bits - the
+        rule _wide() follows, and the decoder's emit_element() with it."""
         pos = self.pos
         value = 0
         while True:
@@ -129,7 +132,18 @@ class Reader:
                 break
             value <<= n_bits
             value += 1 << n_bits
-        self.recs.append((pos, self.pos - pos, value & _MASK64, name))
+        width = self.pos - pos
+        if width <= 65535:
+            self.recs.append((pos, width, value & _MASK64, name))
+            return value
+        end = self.pos
+        at = pos
+        while at < end:
+            chunk = min(65535, end - at)
+            self.pos = at
+            self.recs.append((at, chunk, self._get(chunk) & _MASK64, name))
+            at += chunk
+        self.pos = end
         return value
 
     def vb_u(self, n_bits):
@@ -259,7 +273,15 @@ def superset(a, b, sets=_CH_SETS):
     for m in sorted(sets):
         if need <= sets[m]:
             return m
-    return max(a, b)
+    # Six pairs have no mode holding both - 5/2/0(.1) brings Lw/Rw and 9.X.4
+    # brings Lscr/Rscr, 22.2 has the first pair and not the second - and
+    # 6.3.3.1.27 gives no result for them. -1, the way the decoder reads it:
+    # the presentation has no single channel mode, and the presentation
+    # substream reads the fields that answer to that. Returning the larger mode
+    # would name a layout the presentation does not have, dropping the LFE of
+    # 5/2/0.1 against 9.0.4 (src/ac4dec/ERRATA.md, "The presentation
+    # substream").
+    return -1
 
 
 def contains_lfe(m):
@@ -330,13 +352,27 @@ class SfInfo:
         return max(self.tl_len)
 
 
+def _full_frame_index(flb):
+    """The transform index whose transform covers the whole frame (Table 103):
+    4 at 1536 samples and above, 3 for 1024, 960 and 768, 2 for 512 and 384.
+    It decides the widths Table 39 takes from the index, not only the length."""
+    if flb >= 1536:
+        return 4
+    return 2 if flb in (512, 384) else 3
+
+
 def sf_info_lfe(r, ctx):
     """Part 1 Table 35."""
     flb = ctx.flb
     s = SfInfo()
     s.flb = flb
     s.long_frame = 1
-    s.tl = (4, 4)
+    # Table 35 gives the LFE no transf_length: its transform covers the frame,
+    # so the index is the whole-frame one. This used to be 4 whatever the frame
+    # length, which reads sect_len_incr 5 bits wide at 512 and 384 samples where
+    # Table 39 takes 3 (src/ac4dec/ERRATA.md, "sf_info_lfe() below 1536 samples"
+    # and "n_sect_bits below 1536 samples").
+    s.tl = (_full_frame_index(flb),) * 2
     s.tl_len = (flb, flb)
     bits = T.N_MSFB_BITS_48[flb][2]
     s.max_sfb = [r.f(bits, 'max_sfb[0]'), 0]
@@ -347,7 +383,7 @@ def sf_info_lfe(r, ctx):
     s.num_window_groups = 1
     s.window_to_group = [0]
     s.num_win_in_group = [1]
-    s.group_tl = [4]
+    s.group_tl = [s.tl[0]]
     s.group_len = [flb]
     s.group_idx = [0]
     s.master_override = None
@@ -689,6 +725,12 @@ def _aspx_bands(cfg, xover):
     sbx = master[xover]
     n_low = n_high - n_high // 2
     n_noise = max(1, math.floor(cfg['aspx_noise_sbg'] * math.log2(sbz / sbx) + 0.5))
+    # 5.7.6.3.1.3 caps num_sbg_noise at 5. Five of the 1,808 legal A-SPX
+    # settings give more, all with aspx_noise_sbg 3 on the low-resolution
+    # master scale, and reading on there would take a noise envelope per band
+    # the syntax does not have (src/ac4dec/ERRATA.md, "num_sbg_noise above 5").
+    if n_noise > 5:
+        raise SyntaxFail(f'num_sbg_noise {n_noise} exceeds 5 (5.7.6.3.1.3)')
     return n_high, n_low, n_noise
 
 
@@ -1650,6 +1692,12 @@ def _nr_drc_channels(ch_mode):
 
 def drc_frame(r, b_iframe, state, ch_mode, flb):
     if not r.f(1, 'b_drc_present'):
+        # An I-frame that carries no drc_frame() clears the configuration a
+        # previous one sent, so a later frame that needs one fails as missing
+        # its I-frame (src/ac4dec/ERRATA.md, "Dialogue enhancement and DRC
+        # configuration across I-frames").
+        if b_iframe:
+            state.pop('drc_config', None)
         return
     if b_iframe:
         state['drc_config'] = drc_config(r)
@@ -1729,6 +1777,9 @@ def de_data(r, cfg, b_iframe, b_de_simulcast):
 
 def dialog_enhancement(r, b_iframe, ch_mode, state):
     if not r.f(1, 'b_de_data_present'):
+        # Same I-frame rule as drc_frame() above.
+        if b_iframe:
+            state.pop('de_config', None)
         return
     # de_config() in I-frames, else when b_de_config_flag (read only outside I-frames)
     if b_iframe or r.f(1, 'b_de_config_flag'):
@@ -2258,10 +2309,21 @@ class StreamWalker:
                                          or (counter == 1 and previous == 1020)
                                          or (counter != 0 and previous == 0)):
             self.state.clear()
-        self.previous_counter = counter
         if self.ims_rule:
             apply_ims_rule(toc)
-        flb = T.FRAME_LEN_BASE.get(toc['frame_rate_index'])
+        # Tables 83 and 84: index 13 is the only frame rate Table 84 defines at
+        # 44.1 kHz, so every other index there has no frame length, the way the
+        # decoder's frame_len_base() reads the pair.
+        if toc['fs_index'] == 0 and toc['frame_rate_index'] != 13:
+            flb = None
+        else:
+            flb = T.FRAME_LEN_BASE.get(toc['frame_rate_index'])
+        # Part 2 5.1.3: with frame_rate_fraction above 1 a coded frame is spread
+        # over 2 or 4 transmission frames, so this frame holds fragments rather
+        # than whole substreams. Assembling them is out of scope, and reading a
+        # fragment as a substream would report a legal stream as a damaged one,
+        # so every substream of such a frame is refused, as the decoder does.
+        fragmented = any(p.get('frame_rate_fraction', 1) != 1 for p in toc['presentations'])
         roles = substream_roles(toc)
         out = []
         offset = toc['toc_bytes'] + toc['payload_base']
@@ -2274,6 +2336,13 @@ class StreamWalker:
             if end > len(raw):
                 raise ValueError(
                     f'substreams run past the end of the frame ({end} > {len(raw)} bytes)')
+        # Only a frame that parses this far counts as the predecessor of the
+        # next one: the decoder takes its counter from ac4::parse_raw_frame(),
+        # which reports no table of contents at all when the substreams overrun,
+        # so a frame rejected here leaves the counter where it was and the next
+        # frame reads as a change of source (src/ac4dec/ERRATA.md, "A change of
+        # source").
+        self.previous_counter = counter
         for idx, size in enumerate(sizes):
             data = raw[offset:offset + size]
             offset += size
@@ -2285,7 +2354,19 @@ class StreamWalker:
                 if len(data) != size:
                     raise SyntaxFail(f'substream {idx} ({size} bytes) runs past the end of '
                                      'the frame')
+                if fragmented:
+                    raise Refused('a frame of the efficient high frame rate mode, whose '
+                                  'substreams are fragments')
                 if kind == 'presentation':
+                    # The same reserved-frame-rate check the audio branch
+                    # makes below: without it a frame length of None reaches
+                    # the DRC subframe table as a key, and the KeyError is
+                    # caught by neither handler - it ends the whole walk
+                    # instead of this one substream. The decoder refuses it
+                    # per substream (nr_drc_subframes of a frame length
+                    # Table 169 does not list).
+                    if flb is None:
+                        raise SyntaxFail(f'frame_rate_index {toc["frame_rate_index"]} is reserved')
                     pc = presentation_context(toc, role[1])
                     st = self.state.setdefault(('presentation', idx), {})
                     parse_presentation_substream(data, pc, flb, st, recs)
