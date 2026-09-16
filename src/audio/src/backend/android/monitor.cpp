@@ -13,10 +13,14 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <cstring>
+#include <ctime>
 #include <thread>
 #include <vector>
 
+#include "ac3/audio/playback_counter.hpp"
 #include "ac3/audio/ring_buffer.hpp"
 
 namespace ac3::audio {
@@ -29,6 +33,46 @@ namespace {
 // the timeout below elapses.
 constexpr std::int32_t kFramesPerWrite = 480;
 constexpr std::int64_t kWriteTimeoutNanos = 20'000'000;  // 20ms
+
+// How long to give AAudio to reach the state a pause or flush asked for.
+// Every transition here is asynchronous - requestPause() returns while the
+// stream is still PAUSING - and requestFlush() is only legal once the stream
+// has actually reached PAUSED, so the worker has to wait for each one.
+constexpr std::int64_t kStateChangeTimeoutNanos = 200'000'000;  // 200ms
+
+// waitForStateChange() returns as soon as the stream is no longer in the
+// transient state the request put it in, and reports where it ended up; a
+// stream already at the destination returns immediately, so repeating a
+// request is harmless. Each of these returns whether it got there.
+bool pause_stream(AAudioStream* stream) {
+    if (AAudioStream_requestPause(stream) != AAUDIO_OK) {
+        return false;
+    }
+    aaudio_stream_state_t state = AAUDIO_STREAM_STATE_UNKNOWN;
+    AAudioStream_waitForStateChange(stream, AAUDIO_STREAM_STATE_PAUSING, &state,
+                                    kStateChangeTimeoutNanos);
+    return state == AAUDIO_STREAM_STATE_PAUSED;
+}
+
+bool flush_stream(AAudioStream* stream) {
+    if (AAudioStream_requestFlush(stream) != AAUDIO_OK) {
+        return false;
+    }
+    aaudio_stream_state_t state = AAUDIO_STREAM_STATE_UNKNOWN;
+    AAudioStream_waitForStateChange(stream, AAUDIO_STREAM_STATE_FLUSHING, &state,
+                                    kStateChangeTimeoutNanos);
+    return state == AAUDIO_STREAM_STATE_FLUSHED;
+}
+
+bool start_stream(AAudioStream* stream) {
+    if (AAudioStream_requestStart(stream) != AAUDIO_OK) {
+        return false;
+    }
+    aaudio_stream_state_t state = AAUDIO_STREAM_STATE_UNKNOWN;
+    AAudioStream_waitForStateChange(stream, AAUDIO_STREAM_STATE_STARTING, &state,
+                                    kStateChangeTimeoutNanos);
+    return state == AAUDIO_STREAM_STATE_STARTED;
+}
 
 }  // namespace
 
@@ -58,6 +102,20 @@ struct MonitorSink::Impl {
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
     std::uint16_t channels = 0;
+    // What the worker last saw of the stream's own counters, for position().
+    // Only the worker calls AAudio - a stream is explicitly not thread-safe -
+    // so a position() on the caller's thread reads the counter instead.
+    PlaybackCounter counter;
+    // Frame counters survive a flush ("not reset by a flush; they may be
+    // advanced", AAudio.h), so position() counting from the last flush needs
+    // a baseline of its own rather than the raw counter.
+    std::atomic<std::int64_t> frame_baseline{0};
+    // Set by pause()/resume() and flush(); acted on by the worker, which owns
+    // the stream and the queue's read side. `flushes` counts the flushes it
+    // has completed, which is what flush() waits for.
+    std::atomic_bool paused{false};
+    std::atomic_bool flushing{false};
+    std::atomic<std::uint64_t> flushes{0};
 };
 
 MonitorSink::MonitorSink() : impl_(std::make_unique<Impl>()) {}
@@ -74,6 +132,57 @@ MonitorStats MonitorSink::stats() const {
     return {.frames_submitted = impl_->submitted.load(std::memory_order_relaxed),
             .frames_rendered = impl_->rendered.load(std::memory_order_relaxed),
             .underruns = impl_->underruns.load(std::memory_order_relaxed)};
+}
+
+std::optional<MonitorPosition> MonitorSink::position() const {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
+        return std::nullopt;
+    }
+    const std::uint64_t queued_here = impl_->queue->available() / impl_->channels;
+    // AAudio publishes no output-latency figure of its own, and none is
+    // missing from the figures the counter holds: the played count comes from
+    // the stream's presentation timestamp, which already counts the path to
+    // the speaker. 0 latency here says there is nothing further to add, the
+    // same value the field takes wherever a platform cannot say.
+    return impl_->counter.position(queued_here, /*latency=*/0);
+}
+
+void MonitorSink::flush() {
+    if (!running()) {
+        return;
+    }
+    // The worker owns the stream and the queue's read side, so it does the
+    // work and this waits for it - long enough for a pause, a flush and the
+    // state changes between them, and giving up after that rather than
+    // blocking a caller on a stream that has stopped answering.
+    const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flushing.store(true, std::memory_order_release);
+    for (int waited = 0; waited < 600; ++waited) {
+        if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+std::expected<void, MonitorError> MonitorSink::pause() {
+    if (!running()) {
+        return std::unexpected(MonitorError::kNotRunning);
+    }
+    impl_->paused.store(true, std::memory_order_release);
+    return {};
+}
+
+std::expected<void, MonitorError> MonitorSink::resume() {
+    if (!running()) {
+        return std::unexpected(MonitorError::kNotRunning);
+    }
+    impl_->paused.store(false, std::memory_order_release);
+    return {};
+}
+
+bool MonitorSink::paused() const {
+    return impl_->paused.load(std::memory_order_acquire);
 }
 
 bool MonitorSink::can_submit() const {
@@ -113,6 +222,9 @@ void MonitorSink::stop() {
         AAudioStream_close(impl_->stream);
         impl_->stream = nullptr;
     }
+    // A pause is a property of a running stream, so it does not outlive one.
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
     impl_->running.store(false, std::memory_order_release);
 }
 
@@ -162,6 +274,11 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
     impl_->submitted.store(0, std::memory_order_relaxed);
     impl_->rendered.store(0, std::memory_order_relaxed);
     impl_->underruns.store(0, std::memory_order_relaxed);
+    impl_->counter.restart();
+    impl_->frame_baseline.store(0, std::memory_order_relaxed);
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
+    impl_->flushes.store(0, std::memory_order_relaxed);
 
     if (AAudioStream_requestStart(stream) != AAUDIO_OK) {
         AAudioStream_close(stream);
@@ -173,7 +290,47 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
 
     impl_->worker = std::thread([this, channels] {
         std::vector<float> chunk(static_cast<std::size_t>(kFramesPerWrite) * channels);
+        bool device_running = true;
         while (!impl_->worker_stop_requested.load(std::memory_order_acquire)) {
+            // A pause stops the stream and leaves everything else standing:
+            // the queue keeps what it holds and goes on taking frames. A
+            // paused AAudio stream accepts no writes, so the loop sleeps
+            // instead - and lets a flush through, which is only legal here.
+            if (impl_->paused.load(std::memory_order_acquire)) {
+                if (device_running) {
+                    pause_stream(impl_->stream);
+                    device_running = false;
+                }
+                if (!impl_->flushing.load(std::memory_order_acquire)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    continue;
+                }
+            }
+            // A flush drops both buffers. AAudio will only flush a paused
+            // stream, so pause first whatever the caller asked for, and
+            // start again below unless they had also asked for a pause.
+            if (impl_->flushing.exchange(false, std::memory_order_acq_rel)) {
+                if (device_running) {
+                    pause_stream(impl_->stream);
+                    device_running = false;
+                }
+                flush_stream(impl_->stream);
+                impl_->queue->reset();
+                // The frame counters carry on across a flush, so the new
+                // zero is where they stand once the discarded frames have
+                // been accounted for.
+                impl_->frame_baseline.store(AAudioStream_getFramesWritten(impl_->stream),
+                                            std::memory_order_relaxed);
+                impl_->counter.restart();
+                impl_->rendered.store(0, std::memory_order_relaxed);
+                impl_->submitted.store(0, std::memory_order_relaxed);
+                impl_->flushes.fetch_add(1, std::memory_order_release);
+                continue;
+            }
+            if (!device_running) {
+                start_stream(impl_->stream);
+                device_running = true;
+            }
             const auto got = impl_->queue->read(chunk);
             if (got < chunk.size()) {
                 // Nothing queued: emit silence for the remainder, counted
@@ -188,6 +345,25 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
                 impl_->rendered.fetch_add(static_cast<std::uint64_t>(written),
                                           std::memory_order_relaxed);
             }
+
+            // The stream's own clock: the presentation timestamp, which is
+            // the frame reaching the speaker now, and the same counter
+            // getFramesWritten() reports against - so the difference is what
+            // has been handed over and not yet heard. A stream that has just
+            // started (or has just been flushed) has no timestamp to give
+            // yet, and the frames its mixer has consumed are the closest
+            // thing available until it does.
+            std::int64_t position = 0;
+            std::int64_t nanos = 0;
+            if (AAudioStream_getTimestamp(impl_->stream, CLOCK_MONOTONIC, &position, &nanos) !=
+                AAUDIO_OK) {
+                position = AAudioStream_getFramesRead(impl_->stream);
+            }
+            const std::int64_t handed_over = AAudioStream_getFramesWritten(impl_->stream);
+            const std::int64_t baseline = impl_->frame_baseline.load(std::memory_order_relaxed);
+            impl_->counter.report(
+                static_cast<std::uint64_t>(std::max<std::int64_t>(0, handed_over - baseline)),
+                static_cast<std::uint64_t>(std::max<std::int64_t>(0, handed_over - position)));
         }
     });
 

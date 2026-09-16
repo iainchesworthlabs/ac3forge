@@ -33,6 +33,7 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/audio/playback_counter.hpp"
 #include "ac3/audio/ring_buffer.hpp"
 #include "alsa_support.hpp"
 
@@ -100,6 +101,10 @@ struct Opened {
     Pcm pcm;
     FormatChoice format;
     snd_pcm_uframes_t period = 0;
+    // Whether the hardware can pause and resume without losing what it
+    // holds; read from the parameter space that was accepted, since
+    // nothing can be asked of the handle once the worker owns it.
+    bool can_pause = false;
 };
 
 // Open `name` and configure it for `channels` of PCM at `sample_rate`, or
@@ -117,7 +122,7 @@ std::optional<Opened> open_configured(const std::string& name, std::uint32_t sam
     if (snd_pcm_open(&handle, name.c_str(), SND_PCM_STREAM_PLAYBACK, 0) < 0) {
         return std::nullopt;
     }
-    Opened opened{.pcm = Pcm{handle}, .format = {}, .period = 0};
+    Opened opened{.pcm = Pcm{handle}, .format = {}, .period = 0, .can_pause = false};
 
     HwParams params;
     if (!params || snd_pcm_hw_params_any(handle, params.get()) < 0 ||
@@ -150,6 +155,7 @@ std::optional<Opened> open_configured(const std::string& name, std::uint32_t sam
         return std::nullopt;
     }
     opened.period = period;
+    opened.can_pause = snd_pcm_hw_params_can_pause(params.get()) == 1;
 
     SwParams software;
     if (software && snd_pcm_sw_params_current(handle, software.get()) >= 0) {
@@ -194,6 +200,19 @@ struct MonitorSink::Impl {
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
     std::uint16_t channels = 0;
+    // What the render thread last read from the device, for position():
+    // snd_pcm_delay() is the frames it still has to play, against the frames
+    // handed over. Only the render thread touches the handle - alsa-lib's PCM
+    // object is not for two threads at once - so a position() on the caller's
+    // thread reads the counter.
+    PlaybackCounter counter;
+    // Whether the hardware can pause without losing what it holds
+    // (snd_pcm_hw_params_can_pause); see pause() for what happens when it
+    // cannot.
+    bool can_pause = false;
+    std::atomic_bool paused{false};
+    std::atomic_bool flushing{false};
+    std::atomic<std::uint64_t> flushes{0};
 };
 
 MonitorSink::MonitorSink() : impl_(std::make_unique<Impl>()) {}
@@ -210,6 +229,56 @@ MonitorStats MonitorSink::stats() const {
     return {.frames_submitted = impl_->submitted.load(),
             .frames_rendered = impl_->rendered.load(),
             .underruns = impl_->underruns.load()};
+}
+
+std::optional<MonitorPosition> MonitorSink::position() const {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
+        return std::nullopt;
+    }
+    const std::uint64_t queued_here = impl_->queue->available() / impl_->channels;
+    // snd_pcm_delay() already counts the whole path to the speaker, and it is
+    // reported as the device's queue; ALSA offers no separate figure beyond
+    // it, so there is no latency left to add.
+    return impl_->counter.position(queued_here, /*latency=*/0);
+}
+
+void MonitorSink::flush() {
+    if (!running()) {
+        return;
+    }
+    const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flushing.store(true, std::memory_order_release);
+    for (int waited = 0; waited < 200; ++waited) {
+        if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+std::expected<void, MonitorError> MonitorSink::pause() {
+    if (!running()) {
+        return std::unexpected(MonitorError::kNotRunning);
+    }
+    // A device whose hardware cannot pause is stopped and prepared again
+    // instead, which drops the frames it was holding - up to a buffer's worth,
+    // the same frames a flush() would drop. The queue survives either way, so
+    // playback resumes from where the caller's stream had got to rather than
+    // from silence.
+    impl_->paused.store(true, std::memory_order_release);
+    return {};
+}
+
+std::expected<void, MonitorError> MonitorSink::resume() {
+    if (!running()) {
+        return std::unexpected(MonitorError::kNotRunning);
+    }
+    impl_->paused.store(false, std::memory_order_release);
+    return {};
+}
+
+bool MonitorSink::paused() const {
+    return impl_->paused.load(std::memory_order_acquire);
 }
 
 bool MonitorSink::can_submit() const {
@@ -252,6 +321,9 @@ void MonitorSink::stop() {
         snd_pcm_close(impl_->pcm);
         impl_->pcm = nullptr;
     }
+    // A pause is a property of a running stream, so it does not outlive one.
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
     impl_->running.store(false, std::memory_order_release);
 }
 
@@ -295,6 +367,11 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     impl_->submitted.store(0);
     impl_->rendered.store(0);
     impl_->underruns.store(0);
+    impl_->counter.restart();
+    impl_->paused.store(false);
+    impl_->flushing.store(false);
+    impl_->flushes.store(0);
+    impl_->can_pause = opened->can_pause;
     impl_->running.store(true, std::memory_order_release);
     impl_->pcm = opened->pcm.release();
 
@@ -307,8 +384,58 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
 
         std::vector<float> chunk(samples_per_period);
         std::vector<std::byte> raw;
+        std::uint64_t handed_over = 0;
+        bool device_paused = false;
 
         while (!stop.stop_requested()) {
+            // The device and the queue belong to this thread; pause() and
+            // flush() only raise a flag. A hardware pause keeps what the
+            // device holds; a device that cannot pause is dropped and
+            // prepared again, which loses it (see pause()).
+            const bool wanted_pause = impl_->paused.load(std::memory_order_acquire);
+            if (wanted_pause != device_paused) {
+                if (wanted_pause) {
+                    if (impl_->can_pause) {
+                        snd_pcm_pause(pcm, 1);
+                    } else {
+                        snd_pcm_drop(pcm);
+                        snd_pcm_prepare(pcm);
+                        // The dropped frames will never be heard, so what
+                        // the device was given is what it played, and it now
+                        // holds nothing.
+                        handed_over = impl_->counter.played();
+                        impl_->counter.report(handed_over, 0);
+                    }
+                } else if (impl_->can_pause) {
+                    snd_pcm_pause(pcm, 0);
+                } else {
+                    snd_pcm_prepare(pcm);
+                }
+                device_paused = wanted_pause;
+            }
+            if (device_paused && !impl_->flushing.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+            if (impl_->flushing.exchange(false, std::memory_order_acq_rel)) {
+                // drop discards what the device holds; prepare puts the stream
+                // back in a state that can be written to.
+                snd_pcm_drop(pcm);
+                snd_pcm_prepare(pcm);
+                impl_->queue->reset();
+                handed_over = 0;
+                impl_->counter.restart();
+                impl_->rendered.store(0, std::memory_order_relaxed);
+                impl_->submitted.store(0, std::memory_order_relaxed);
+                impl_->flushes.fetch_add(1, std::memory_order_release);
+                if (device_paused) {
+                    continue;
+                }
+            }
+            snd_pcm_sframes_t delay = 0;
+            if (snd_pcm_delay(pcm, &delay) == 0 && delay >= 0) {
+                impl_->counter.report(handed_over, static_cast<std::uint64_t>(delay));
+            }
             const int ready = snd_pcm_wait(pcm, kWaitMs);
             if (ready < 0) {
                 if (snd_pcm_recover(pcm, ready, /*silent=*/1) < 0) {
@@ -336,6 +463,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                 }
                 continue;
             }
+            handed_over += static_cast<std::uint64_t>(written);
             impl_->rendered.fetch_add(got / channels);
         }
 
