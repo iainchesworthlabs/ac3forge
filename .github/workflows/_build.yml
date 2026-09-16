@@ -386,6 +386,7 @@ jobs:
       persist_quality_trend: ${{ inputs.persist_quality_trend }}
       llvm_version: ${{ needs.toolchain-versions.outputs.llvm_version }}
       cmake_min: ${{ needs.toolchain-versions.outputs.cmake_min }}
+      qt_version: ${{ needs.toolchain-versions.outputs.qt_version }}
       vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
   package-macos-universal:
@@ -2556,7 +2557,7 @@ jobs:
             local slack=$(( expected / 20 + 200 ))
             echo "rms[$channel] = $got (a quarter of the host's, $expected, tolerance +/-$slack)"
             if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
-              fail "channel $channel decoded to $got at the page's volume, expected $expected"
+              fail "channel $channel decoded to $got at the volume the test set, expected $expected"
             fi
           }
 
@@ -2567,16 +2568,17 @@ jobs:
           grep -q '^result=pass' qemu-ui.txt || fail "the boot play did not report result=pass"
           echo "served: GET / $(curl -s -m 10 -o /dev/null -w '%{size_download}' http://127.0.0.1:8080/) bytes, GET /ui.js $(curl -s -m 10 -o /dev/null -w '%{size_download}' http://127.0.0.1:8080/ui.js) bytes"
 
-          # The page loads from the firmware and shows the boot play; the
-          # volume set with its slider reads back through GET /status; a
-          # layout the capture sink cannot carry is refused in the firmware's
-          # words; a play started from its form finishes; its Stop reads back
-          # as stopped. device-ui/board/smoke.spec.js has the details.
+          # The page loads from the firmware and shows the boot play; a name
+          # saved from it reads back through GET /status; a layout the capture
+          # sink cannot carry is refused in the firmware's words; a volume set
+          # over REST reads back, and a play started over REST finishes at it;
+          # Stop reads back as stopped, on the page too.
+          # device-ui/board/smoke.spec.js has the details.
           (cd "$GITHUB_WORKSPACE/apps/wasm/tests" && AC3FORGE_DEVICE_URL=http://127.0.0.1:8080/ CI=1 npm run test:board) || fail "the page did not drive the board (Playwright's output is above)"
 
-          # The play the page started, at the volume the page set: a quarter of
-          # the boot play's levels, 56,673 and 47,346.
-          [ "$(grep -c '^result=pass' qemu-ui.txt)" -ge 2 ] || fail "the play the page started did not report result=pass"
+          # The play the test started, at the volume it set: a quarter of the
+          # boot play's levels, 56,673 and 47,346.
+          [ "$(grep -c '^result=pass' qemu-ui.txt)" -ge 2 ] || fail "the play the test started did not report result=pass"
           check_rms 0 14168
           check_rms 1 11837
 

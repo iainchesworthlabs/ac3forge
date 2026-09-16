@@ -306,7 +306,14 @@ cmake --preset config-macos-llvm-debug -DAC3FORGE_BUILD_GUI=ON
 
 Homebrew's `qt` formula is the umbrella Qt6 package — one install pulls in QtDeclarative/QtQuick
 and their build-time tooling (`qmlcachegen`) alongside QtCore/QtGui, unlike apt's split
-`qt6-base-dev`/`qt6-declarative-dev` packages. The built app is a bundle,
+`qt6-base-dev`/`qt6-declarative-dev` packages. Fine for local iteration, where nothing leaves the
+machine that built it. CI itself no longer uses it: Homebrew's Qt6 stages its QML plugins as
+symlinks back into its own Cellar, computed as though the app were being installed under
+`/usr/local`, which is dangling the moment `cpack` stages the bundle anywhere else — every
+QtQuick/Controls plugin in a Homebrew-Qt-packaged `.app`, `Fusion` included, so the app cannot
+load QML at all once shipped. CI installs the official Qt kit instead (`_ci-macos.yml`'s
+"Install Qt (prebuilt)" step has the full story, including the upstream Homebrew issues this
+matches). The built app is a bundle,
 `build/config-macos-llvm/bin/ac3gui.app` (or `build/config-macos-llvm-x64/...` on Intel);
 `ac3gui --smoke` (the same headless check the other platforms run — see
 [Verified configuration](../building.md#verified-configuration)) lives at
@@ -362,7 +369,7 @@ same ~6.0 dB offset from every x86 leg regardless of OS or C library, which rule
 macOS-specific explanation; the gap tracks CPU architecture, and the actual mechanism is still
 open pending real hardware access neither this project nor `qemu-user` emulation can substitute
 for. `macos-llvm-x64` turned out to be new, confirmed data for exactly this question: same OS,
-same Homebrew Qt/LLVM stack as `macos-llvm`, x86_64 instead of arm64, and its real gold-reference
+same toolchain stack as `macos-llvm`, x86_64 instead of arm64, and its real gold-reference
 numbers land with the other x86 legs — 67.80/67.82/67.76 dB across three separate real runs — not
 with the ~61.8 dB every arm64/aarch64 leg (`macos-llvm` included) reports. That is further
 evidence the offset is architecture-bound rather than OS-bound: two macOS legs on the same

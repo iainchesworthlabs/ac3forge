@@ -130,7 +130,9 @@ fi
 # target, then 11,280, then PR #698 (legacy-core downmix levels: bsid/
 # cmixlev/surmixlev/alternate_bsi added to DecodedSubstream/DecodedAccessUnit)
 # measured it down to 8,096 - 96 bytes under this floor - which is why the
-# stack size above is 40,960 rather than the original 32,768.
+# stack size above is 40,960 rather than the original 32,768. It read 16,064
+# free of the 40,960 after that, and 19,344 once the decoder built its results
+# in place rather than holding copies of those structs on the stack.
 : "${AC3FORGE_ESP32S3_MIN_STACK_FREE_BYTES:=8192}"
 
 # --- and the encode direction's own, where they differ ---------------------

@@ -32,24 +32,27 @@ namespace ac3::hearth {
 struct ItemFacts {
     // What it carries, and nullopt for anything IEC 61937 cannot wrap - a
     // WAV, or an AC-4 stream, which is listed but not playable until chip D.
-    std::optional<audio::BitstreamFormat> stream;
+    std::optional<audio::BitstreamFormat> stream = std::nullopt;
     std::uint32_t sample_rate = 0;
     std::uint16_t channels = 0;
     bool has_objects = false;
     // From the access-unit count and the samples each one carries - NOT a
     // fixed 1536, which is wrong for an E-AC-3 frame with fewer than six
     // blocks (the plan's own note on apps/gui/stream_player_controller.cpp).
-    std::optional<std::chrono::milliseconds> duration;
+    std::optional<std::chrono::milliseconds> duration = std::nullopt;
     // Set when the item was recognised but cannot be played here: AC-4
     // today. It stays in the queue and is skipped, with the reason shown.
-    std::string unplayable_because;
+    std::string unplayable_because{};
+    // Something to show beside an item that does play: that its edit list
+    // could not be applied, say.
+    std::string note{};
 };
 
 struct QueueItem {
-    std::string path;
+    std::string path{};
     // What to show. The file's own name until metadata has been read.
-    std::string title;
-    ItemFacts facts;
+    std::string title{};
+    ItemFacts facts{};
 
     [[nodiscard]] bool playable() const { return facts.unplayable_because.empty(); }
 };

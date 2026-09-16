@@ -29,9 +29,8 @@ does `POST /play`.
   7.1.4. `sdkconfig.ci-http714` is the capture shape under QEMU, and CI plays the set on it.
 - On a two-slot sink every stream plays too, folded to 2.0 by the decoder.
 - `streams.json` marks `"psram": true` the streams measured to need more internal RAM than a
-  network shape has without PSRAM: 7.1.4 with AHT, enhanced coupling or TPN, and the Dolby
-  Encoding Engine's 5.1, which uses AHT. A board with PSRAM (`sdkconfig.psram`) is where they
-  play.
+  network shape has without PSRAM: 7.1.4 with enhanced coupling or TPN. A board with PSRAM
+  (`sdkconfig.psram`) is where they play.
 - Objects are placed when the layout has height speakers and the firmware reconstructs them
   (`CONFIG_AC3FORGE_EXAMPLE_OBJECTS`). `objects-mdct.ec3` and `height.ec3` are in the
   MDCT-band domain (`CONFIG_AC3FORGE_EXAMPLE_JOC_DOMAIN=1`); `demo.ec3` and

@@ -256,9 +256,12 @@ The decode runs on the main task. `uxTaskGetStackHighWaterMark` left 11,280 byte
 original 32,768 `sdkconfig.defaults` set, until PR #698 (legacy-core downmix levels) grew
 `DecodedSubstream`/`DecodedAccessUnit` by `bsid`/`cmixlev`/`surmixlev`/`alternate_bsi` and the
 runner measured that down to 8,096 — 96 bytes under its 8,192 floor.
-`sdkconfig.defaults` now sets 40,960; the encode direction, less affected, left 23,040 free of
-the original 32,768. That margin is the one to watch — it was 14,000 before object
-reconstruction ran here, then 11,280 before this fix.
+`sdkconfig.defaults` now sets 40,960, which left 16,064. The decoder has since stopped keeping
+extra copies of those two structs on the stack (it builds its results in place), and the decode
+leaves 19,344 of the 40,960: 11,152 in terms of the original 32,768, close to the figure before
+PR #698. The encode direction, less affected, left 23,040 free of the original 32,768. The decode
+margin is the one to watch — it was 14,000 before object reconstruction ran here, then 11,280
+before PR #698.
 
 ## Timing
 
@@ -1050,7 +1053,10 @@ Four changes, each measured on its own:
 | + per-object scratches sized to the stream | 267,754 | 43,008 |
 | + handing back the enhanced-coupling scratch | **233,546** | 43,008 |
 
-The largest allocation is now the E-AC-3 decoder's own AHT buffer rather than anything JOC owns.
+The largest allocation was then the E-AC-3 decoder's own AHT buffer rather than anything JOC owns.
+That buffer was split into one 6,144-byte buffer per stream on 2026-09-12, and since 2026-09-16
+an AHT stream decodes straight into the per-block coefficient store instead, with no buffer of
+its own.
 
 That last row is the one that is easy to miss. 267,754 against 280,792 free looks like 13,038
 spare, but the order of fixtures decided the result: objects run after an enhanced-coupling decode

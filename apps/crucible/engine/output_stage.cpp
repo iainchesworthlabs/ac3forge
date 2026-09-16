@@ -6,6 +6,8 @@
 #include <chrono>
 #include <cmath>
 #include <cwctype>
+#include <deque>
+#include <optional>
 #include <thread>
 #include <utility>
 
@@ -14,6 +16,7 @@
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/iec61937/iec61937.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 
 namespace ac3::crucible {
@@ -52,6 +55,32 @@ SpatialXyz to_windows_spatial(const ac3::oba::Position& p) {
             .z = (static_cast<float>(p.y) - 0.5F) * kHalfDepthM};
 }
 
+// The bed's LFE is not an object, so it never goes through JOC reconstruction
+// - but the dynamic objects submit()'s kHeadphones branch places beside it
+// did, and that costs ac3::oba::joc::reconstruction_delay(domain) samples the
+// LFE does not pay (docs/library/decoding.md, "Atmos objects lag the bed").
+// Submitted to the spatial sink as soon as each unit decodes, the LFE would
+// reach the room that far ahead of the objects beside it, so it goes through
+// a delay line of that length first. Same class, same reasoning, as
+// ac3cli's identical run_spatial - see live_audio.cpp's own LfeDelayLine.
+class LfeDelayLine {
+public:
+    explicit LfeDelayLine(std::size_t delay_samples) : pending_(delay_samples, 0.0F) {}
+
+    std::vector<float> process(std::span<const float> in) {
+        pending_.insert(pending_.end(), in.begin(), in.end());
+        std::vector<float> out(in.size());
+        for (float& sample : out) {
+            sample = pending_.front();
+            pending_.pop_front();
+        }
+        return out;
+    }
+
+private:
+    std::deque<float> pending_;
+};
+
 template <typename Sink, typename... Args>
 bool submit_with_patience(Sink& sink, std::uint64_t& underruns, Args&&... args) {
     const auto deadline = std::chrono::steady_clock::now() + kSubmitPatience;
@@ -82,6 +111,12 @@ struct OutputStage::Impl {
     std::vector<float> interleaved;
     std::vector<ac3::audio::DynamicObjectUpdate> dynamic_updates;
     std::vector<ac3::audio::StaticObjectUpdate> static_updates;
+    // kHeadphones only - see LfeDelayLine's own comment. Re-armed alongside
+    // `decoder` whenever that mode (re)starts (apply()), so a later mode
+    // switch back to headphones never plays a stale tail left over from an
+    // earlier session through it.
+    std::optional<LfeDelayLine> lfe_delay;
+    std::vector<float> delayed_lfe;
 
     void teardown() {
         if (passthrough) {
@@ -100,6 +135,7 @@ struct OutputStage::Impl {
         packer.reset();
         ac3_encoder.reset();
         decoder.reset();
+        lfe_delay.reset();
     }
 };
 
@@ -230,7 +266,14 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
             // The spatial sink is started on the first decoded unit, which
             // is when the object count and the LFE's presence are known.
             impl_->spatial = impl_->devices->object_sink();
-            impl_->decoder = std::make_unique<ac3::Eac3Decoder>(ac3::DecoderConfig{});
+            // Named rather than a temporary passed straight to the decoder:
+            // lfe_delay below reads .joc_domain back off it, so the two can
+            // never disagree on which domain this session actually decodes
+            // with.
+            const ac3::DecoderConfig decoder_config{};
+            impl_->decoder = std::make_unique<ac3::Eac3Decoder>(decoder_config);
+            impl_->lfe_delay.emplace(static_cast<std::size_t>(
+                ac3::oba::joc::reconstruction_delay(decoder_config.joc_domain)));
             break;
         }
         case OutputMode::kNone: return status_;
@@ -386,7 +429,11 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
         impl.static_updates.clear();
         if (out.object_metadata && ac3::oba::has_lfe(out.object_metadata->program) &&
             !out.channels.empty()) {
-            impl.static_updates.push_back({.pcm = out.channels.back(), .channel = kSpeakerLowFrequency});
+            // Delayed to arrive with the dynamic objects above, not ahead of
+            // them - see LfeDelayLine's own comment.
+            impl.delayed_lfe = impl.lfe_delay->process(out.channels.back());
+            impl.static_updates.push_back(
+                {.pcm = impl.delayed_lfe, .channel = kSpeakerLowFrequency});
         }
         submit_with_patience(*impl.spatial, status_.underruns,
                              std::span<const ac3::audio::DynamicObjectUpdate>(impl.dynamic_updates),
