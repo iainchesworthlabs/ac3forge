@@ -395,11 +395,14 @@ TEST_CASE("engine: the position moves with the device's clock and stands while p
     // thread is kept waiting before it pauses and plays again.
     const ClockThread clock{state, 480};
 
+    CHECK_FALSE(engine->meters().has_value());
     engine->add({item("long")});
     engine->play();
     REQUIRE(eventually([&] { return engine->position().heard > 50ms; }));
     CHECK(engine->position().item == 0);
     CHECK(engine->position().duration.count() == 200 * 1536 * 1000 / 48000);
+    REQUIRE(eventually([&] { return engine->meters().has_value(); }));
+    CHECK(engine->meters()->levels.size() == 2);
 
     engine->pause();
     engine->sync();
@@ -411,6 +414,11 @@ TEST_CASE("engine: the position moves with the device's clock and stands while p
 
     engine->play();
     REQUIRE(eventually([&] { return engine->position().heard > paused + 20ms; }));
+
+    // Stopped, there is nothing to meter.
+    engine->stop();
+    engine->sync();
+    CHECK_FALSE(engine->meters().has_value());
 }
 
 TEST_CASE("engine: changes are reported on the engine's thread, every one, in order",

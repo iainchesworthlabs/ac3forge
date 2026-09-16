@@ -157,6 +157,20 @@ TransportOutcome Player::play_item(std::size_t index) {
     return play();
 }
 
+bool Player::meters(MeterSnapshot& latest) {
+    if (!meters_) {
+        return false;
+    }
+    const auto device = sink_->position();
+    if (!device) {
+        return false;
+    }
+    const std::uint64_t heard = device->frames_played > device->latency_frames
+                                    ? device->frames_played - device->latency_frames
+                                    : 0;
+    return meters_->release(heard, latest);
+}
+
 PlayPosition Player::position() const {
     PlayPosition out;
     if (segments_.empty() || decoder_rate_ == 0) {
@@ -296,6 +310,9 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
                                                 .output_start = 0,
                                                 .item_start = session_->position_samples()});
                 }
+                if (meters_) {
+                    meters_->restart_timeline();
+                }
             } else if (outcome.item != Queue::kNone) {
                 seek_on_start_ = SeekOnStart{.item = outcome.item, .to = outcome.seek_to};
             }
@@ -368,6 +385,12 @@ Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report
     submitted_since_open_ = 0;
     transport_.set_open_format(*opened);
     clear_pending();
+    if (!meters_ || meters_->sample_rate() != rate) {
+        meters_.emplace(layout_, rate);
+    } else {
+        meters_->restart_timeline();
+    }
+    metered_record_ = Queue::kNone;
     apply_seek_on_start(item);
     history_.push_back(PlayedItem{.queue_index = item,
                                   .title = queue_.items()[item].title,
@@ -397,6 +420,9 @@ void Player::close_output() {
     drain_target_.reset();
     submitted_since_open_ = 0;
     segments_.clear();
+    if (meters_) {
+        meters_->restart_timeline();
+    }
 }
 
 Player::Pending& Player::push_block() {
@@ -425,9 +451,21 @@ void Player::take_block(std::span<const std::span<const float>> rendered, std::s
         return;
     }
     const std::size_t slots = layout_.slots();
+    const std::size_t record = history_.size() - 1;
+    if (meters_) {
+        // Metered as it is queued, stamped with where it will be heard:
+        // after everything submitted and everything queued ahead of it. An
+        // item's programme measurements start with its first block; after an
+        // open, the meters have started again already.
+        if (record != metered_record_) {
+            meters_->restart_programme();
+            metered_record_ = record;
+        }
+        meters_->meter(rendered, n, submitted_since_open_ + pending_frames_ + n);
+    }
     Pending& block = push_block();
     block.frames = n;
-    block.record = history_.size() - 1;
+    block.record = record;
     // A reused buffer is as large as the largest block it has held, so this
     // only allocates while the ring is new.
     block.samples.resize(slots * n);

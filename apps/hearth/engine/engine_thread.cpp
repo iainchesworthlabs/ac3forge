@@ -131,6 +131,14 @@ PlayPosition Engine::position() const {
     return position_;
 }
 
+std::optional<MeterSnapshot> Engine::meters() const {
+    const std::scoped_lock lock(mutex_);
+    if (!has_meters_) {
+        return std::nullopt;
+    }
+    return meters_;
+}
+
 void Engine::on_change(std::function<void(const EngineStatus&)> callback) {
     const std::scoped_lock lock(mutex_);
     on_change_ = std::move(callback);
@@ -195,6 +203,22 @@ void Engine::run(const std::stop_token& stop) {
         const bool active = player_.active();
         if (active) {
             report = player_.pump(timing_.budget);
+        }
+        const bool metered = active && player_.meters(meter_scratch_);
+        {
+            const std::scoped_lock meter_lock(mutex_);
+            if (metered) {
+                meters_.output_frame = meter_scratch_.output_frame;
+                meters_.levels.assign(meter_scratch_.levels.begin(), meter_scratch_.levels.end());
+                meters_.momentary_lkfs = meter_scratch_.momentary_lkfs;
+                meters_.short_term_lkfs = meter_scratch_.short_term_lkfs;
+                meters_.integrated_lkfs = meter_scratch_.integrated_lkfs;
+                meters_.loudness_range = meter_scratch_.loudness_range;
+                meters_.true_peak_dbtp = meter_scratch_.true_peak_dbtp;
+                has_meters_ = true;
+            } else if (!player_.active()) {
+                has_meters_ = false;
+            }
         }
         if (ran || report.item_started || report.output_reopened || report.stopped ||
             !report.note.empty()) {
