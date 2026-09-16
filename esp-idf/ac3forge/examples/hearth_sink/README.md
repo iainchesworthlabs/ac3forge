@@ -518,7 +518,14 @@ its own operator approves the board.
 
 A server stamps each chunk with the time its first sample should play, on
 its own clock, and the player follows that clock with Sendspin's time
-filter. The I2S sink says when each buffer it is given will play, from the
+filter
+([`clock_sync.hpp`](../../../../src/sendspin/include/ac3/sendspin/clock_sync.hpp)):
+bursts of eight exchanges, one after another until the filter has converged,
+then thirty a second apart, then one every ten seconds. A burst whose replies
+all came back late, as they do behind a stream's chunks, is left out. A
+chunk's local time is worked out when it arrives, which may be seconds before
+it plays, and it is moved by as much as the clock has moved by the time it
+does. The I2S sink says when each buffer it is given will play, from the
 channel's own end-of-frame interrupts
 ([`ac3forge/playout.hpp`](../../include/ac3forge/playout.hpp)). The player
 pads the start of a stream with silence, or leaves out the frames already
@@ -549,16 +556,80 @@ When a stream ends, the console prints its figures and each output's RMS
 over the whole stream:
 
 ```
-sendspin.stream=bursts bursts=315 late=0 dropped=0 invalid=0 underruns=0 resyncs=0 silence_frames=256 skipped_frames=0 dropped_frames=0 repeated_frames=0 worst_error_us=0 burst_us=3350 sink_us=148 ring_high=0 heap_free=47768
+sendspin.stream=bursts bursts=315 late=0 dropped=0 invalid=0 underruns=0 resyncs=0 silence_frames=256 skipped_frames=0 dropped_frames=0 repeated_frames=0 worst_error_us=0 burst_us=3940 sink_us=182 ring_high=0 heap_free=43700
 sendspin.rms[0]=7891
 sendspin.rms[1]=7414
 ```
 
 `heap_free` is the least free internal heap while the stream played, and
 `ring_high` the most the ring between the network and the decoder held.
+`burst_us` and `sink_us` are the average time per chunk spent decoding and
+rendering, and inside the sink's write.
+
+While a stream plays, a `sendspin.progress` line gives the same figures so
+far every `CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES` chunks (125, about
+four seconds, in `sdkconfig.sendspin`), with the internal heap free now, its
+largest block, and the least since the stream began:
+
+```
+sendspin.progress chunks=18750 late=0 underruns=0 resyncs=0 burst_us=20074 worst_burst_us=41083 sink_us=11410 ring_high=117504 heap_free=723 heap_largest=108 heap_least=43
+```
 
 The player's buffers, stacks, lead and ring are under *Sendspin player* in
 `idf.py menuconfig`.
+
+### On two boards
+
+On 2026-09-16 two ESP32-S3-DevKitC-1-N16R8 boards on the same Wi-Fi, with no
+DAC wired, played the E-AC-3 JOC fixture
+(`tests/golden/object-fixture/dee_joc_514.ec3`) for ten minutes as one group
+from `ac3hearth-testserver`, beside a test sink of its own. One played 2.0 on
+32-bit standard I2S, the other 5.1 on eight 16-bit TDM slots
+(`CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS=16`: one line carries four 32-bit
+slots). Each board already held an unpaired connection from another server
+on the network, which runs Music Assistant, and displaced it when the test
+server's connection came.
+
+| | 2.0 board | 5.1 board |
+|---|---|---|
+| Bursts played | 18,774 of 18,774 | 18,774 of 18,774 |
+| Underruns, late, dropped | 0, 0, 0 | 0, 0, 0 |
+| Decode and render per burst, average (worst) | 20.9 ms (40.3 ms) | 24.3 ms (48.8 ms) |
+| Least internal heap free | 139 bytes | 23 bytes |
+| Decode task's stack unused, of 32,768 bytes | 13,916 bytes | 13,840 bytes |
+| Sendspin server's stack unused, of 8,192 bytes | 2,960 bytes | 2,960 bytes |
+
+At each of the 602 seconds the test server read both boards' `/status`, their
+`origin_server_us` were within 549 µs of each other; read four times a second,
+99% of the readings were within 386 µs. The 2.0 board's RMS was the test
+sink's to the digit, 7,891 and 7,414.
+
+Four things were found on the boards before that held, and each is now in the
+firmware or the library:
+
+- Modem sleep is off (`main/net/wifi/network.cpp`). With it on, the access
+  point holds what it sends the board until the board next wakes: a clock
+  exchange reads that as an offset that moves by milliseconds, and a server's
+  read-ahead stalled the stream's start on retransmissions for up to 700 ms.
+- Nagle's algorithm is off on the player's sockets, and a WebSocket frame goes
+  out in one write. With Nagle on, a frame's second segment waited for the
+  server's delayed acknowledgement of the first, the server's read gave up in
+  that gap, and pairing failed.
+- lwIP's task is pinned to core 0 in `sdkconfig.sendspin`, with the network and
+  the sessions, so it does not take core 1 from the decoder.
+- The clock's learning bursts, the bursts it leaves out, and chunks moved by
+  the clock as it stands, all under [When a sample plays](#when-a-sample-plays).
+
+Internal RAM is what the network shape is short of. While a stream plays, the
+decoder's allocations of up to 16 KB go to internal RAM first
+(`CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL` in `sdkconfig.psram`) and take nearly
+all the network leaves. Nothing failed in the ten minutes; in a one-minute run
+before it a 108-byte internal allocation did, with no effect on the stream.
+Two changes were tried and not kept. Sending allocations over 4 KB to PSRAM
+first left 80 KB free, but a burst then took 28 ms rather than 20, and the
+board underran. A larger `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL` changed
+nothing: ESP-IDF v6.1 lets ordinary small allocations take that reserve once
+the rest of internal RAM is full.
 
 ### Under QEMU
 
@@ -571,8 +642,9 @@ to it and to a test sink of its own, in one group. The board's RMS lines are
 then held to the test sink's WAV file by `tools/checks/check_sendspin_levels.py`,
 and its console to one clean boot and a heap floor. On 2026-09-16, paired
 by its token and then, on a fresh board, by the code it printed, all 315
-bursts played each time, with each output's RMS equal to the test sink's
-and at least 47,768 bytes of internal heap free.
+bursts played each time, with each output's RMS equal to the test sink's;
+with the firmware the two boards above ran, at least 43,700 bytes of internal
+heap were free.
 
 ## The sources
 

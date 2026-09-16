@@ -359,8 +359,14 @@ A draft shape. [A4](#a4-sendspin)'s first deliverable is the normative page,
 ### Memory and time on each part
 
 - **ESP32-S3**: PSRAM, and 7.1.4 in real time measured on a board
-  ([esp32-714-realtime.md](esp32-714-realtime.md)). What Noise, the WebSocket buffers and the
-  Sendspin ring add is measured in B3 with the heap monitor API.
+  ([esp32-714-realtime.md](esp32-714-realtime.md)). B3 measured the Sendspin player with the
+  heap monitor API. Under QEMU, with no PSRAM and a 16 KB ring in internal RAM, at least
+  43,700 bytes of internal heap stayed free while a stream played. On a board the 256 KB ring is
+  in PSRAM, and the decoder's allocations of up to 16 KB take nearly all the internal RAM the
+  network leaves: 23 and 139 bytes at the least on two boards over ten minutes, with nothing
+  failing. The decode task used about 18.9 KB of its 32 KB stack, the WebSocket server's task
+  5.2 KB of 8 KB, and starting the player 7.3 KB of the 16 KB it is given
+  ([the sink's README](../esp-idf/ac3forge/examples/hearth_sink/README.md#on-two-boards)).
 - **ESP32-C6**: no PSRAM (ESP-IDF has no external-RAM support for the part), 512 KB of SRAM shared
   with WiFi, and one 160 MHz core with no FPU, so the fixed-point tier. On the C3 the tier's
   largest fixture that fit peaked at 225,038 bytes and the 7.1.4 fixtures did not fit
