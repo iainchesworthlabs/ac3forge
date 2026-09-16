@@ -989,6 +989,24 @@ and release packaging.
   `meta::describe()` names it. Both encoders refuse to write it, as they already refuse
   reserved surround levels, and `transcode` carries a reserved source value across as
   not indicated.
+- **The renderer played a JOC programme's LFE ahead of its objects.** A reconstructed
+  object comes out `oba::joc::reconstruction_delay()` samples after the bed it was pulled
+  from: 576 (12 ms) in the QMF domain the decoder uses by default, 256 in the MDCT-band
+  one. `ac3::render::LayoutRenderer::render()` played the bed's LFE beside the objects as
+  it arrived, so on the ESP32 player and Hearth's test sink the LFE led the objects by
+  that much. While objects are placed, the LFE now goes through a delay line of that
+  length. `set_joc_domain()` sets the length, and the ESP32 player passes its decoder's
+  domain. The line takes 2,304 bytes for a 5.1 bed, allocated when a unit's objects are
+  first placed, so a player that only plays the bed pays nothing. Measured end to end on
+  a stream this project's encoder writes, with one pulse sent to both an object and the
+  LFE (`tests/render/test_object_lfe_timing.cpp`): the LFE feed had it 576 samples before
+  the object's speaker, and now both have it at 832. In the MDCT-band domain the LFE was
+  256 samples early, and both are now at 512. The QEMU 7.1.4 render run's twelve slot
+  levels are unchanged. `set_bed()` stays idempotent for an unchanged bed, as it was
+  before: only a genuine change of which coded channels are LFE empties the delay line,
+  so a caller that re-announces the same bed every unit (as Hearth's own local decode
+  reference does) still agrees with one that calls `set_bed()` only when the bed changes
+  (as the players do).
 
 **Robustness and diagnostics**
 

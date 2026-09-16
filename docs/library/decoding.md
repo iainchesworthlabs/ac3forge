@@ -726,6 +726,13 @@ other** — anything mixing the two has to delay the bed by 576 samples. `oba::A
 reports the object path's budget and `bed_latency()` the bed's; the 832 is measured end to end in
 [`tests/decoder/test_latency.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/decoder/test_latency.cpp).
 
+With `DecoderConfig::joc_domain` set to `kMdctBand`, the reconstruction costs 256 samples rather
+than 576, so objects lag their input by 512 and the bed has to be delayed by 256.
+`ac3::render::LayoutRenderer` does this delaying for the one bed channel it plays beside placed
+objects, the LFE, once `set_joc_domain()` has told it the decoder's domain;
+[`tests/render/test_object_lfe_timing.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/render/test_object_lfe_timing.cpp)
+measures the rendered feeds.
+
 ## Streams with more than one programme
 
 §E2.3.1.2 allows eight independent substreams (I0–I7) in one elementary stream, and broadcast

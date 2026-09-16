@@ -85,6 +85,7 @@ add_executable(ac3tests
     io/test_block_ring.cpp
     io/test_unit_hold.cpp
     render/test_layout.cpp
+    render/test_object_lfe_timing.cpp
     render/test_identify.cpp
     render/test_routing.cpp
     render/test_serving.cpp
