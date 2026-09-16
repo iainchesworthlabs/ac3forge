@@ -1362,8 +1362,9 @@ void Eac3Decoder::conceal(std::size_t slot, SubstreamResult& decoded) {
     // Nothing retained for this identity means the loss is at the head of it:
     // there is no previous block to reconstruct from, and inventing one would
     // be substituting audio rather than concealing a gap in it. The error
-    // stands.
-    if (!retained) {
+    // stands. A result that decoded has nothing to conceal, and no error to
+    // read below.
+    if (!retained || decoded.has_value()) {
         return;
     }
     const DecodeError error = decoded.error();
