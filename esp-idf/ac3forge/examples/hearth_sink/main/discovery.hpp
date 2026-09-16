@@ -4,7 +4,7 @@
 // (planning/hearth-reference-player.md B2, planning/hearth-sendspin-extension.md
 // row T4).
 //
-//   _sendspin._tcp on port 8927, TXT path=/sendspin and name=<the board's>
+//   _sendspin._tcp on port 8928, TXT path=/sendspin and name=<the board's>
 //
 // `path` is required of a player by the specification - it is where the server
 // opens the WebSocket - and `name` should match what the player will say in

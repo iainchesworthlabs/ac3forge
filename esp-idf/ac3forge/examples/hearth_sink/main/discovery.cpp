@@ -17,12 +17,16 @@ namespace {
 
 // planning/hearth-sendspin-extension.md, row T4: a player advertises
 // _sendspin._tcp with the path the server opens its WebSocket on. The port is
-// the one that page fixes for a player, and B3 is what answers on it - until
-// then this board is found and then found wanting, which is the order the plan
-// puts these phases in.
+// the PLAYER column's, 8928 - the table reads Server then Player, and 8927 is
+// the server's - which is ac3::sendspin::kClientPort in
+// src/sendspin/include/ac3/sendspin/websocket.hpp and the test sink's default.
+// This example does not link src/sendspin yet; B3 does, and shares the one
+// constant then. B3 is also what answers on the port - until then this board
+// is found and then found wanting, which is the order the plan puts these
+// phases in.
 constexpr const char* kService = "_sendspin";
 constexpr const char* kProtocol = "_tcp";
-constexpr std::uint16_t kSendspinPort = 8927;
+constexpr std::uint16_t kSendspinPort = 8928;
 constexpr const char* kPath = "/sendspin";
 
 // mDNS hostnames take letters, digits and hyphens. A name someone typed into

@@ -37,7 +37,7 @@ and release packaging.
   Wi-Fi** over the same USB serial port the console uses, which is how a board with no
   network at all is told about one; and `PUT /name`, `/wiring`, `/network` and
   `/slot-width` over the REST surface for a board already on one. Once it has a
-  network it advertises **`_sendspin._tcp` over mDNS**, port 8927 with `path=/sendspin`,
+  network it advertises **`_sendspin._tcp` over mDNS**, port 8928 with `path=/sendspin`,
   which is what a Sendspin server looks for. The network now comes up at boot rather
   than at the first play, because a sink is found before it is played to. Costs about
   8 KB of internal RAM for mDNS on every shape; the Improv listener's 4 KB is only
