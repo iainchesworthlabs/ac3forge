@@ -728,7 +728,13 @@ struct Eac3Decoder::Impl {
     // A substream identity's slot engages the first time one of its frames
     // sets transproce, and stays engaged (buffering one frame at a time)
     // for the rest of the stream - see decode_substream's own doc comment.
-    std::array<std::optional<DecodedSubstream>, kSubstreamSlots> pending_;
+    // Behind a unique_ptr for the same reason delay_ and joc_state_ above
+    // are: a DecodedSubstream is 840 bytes held by value on the ESP32-S3, so
+    // 32 by-value slots pinned 26,880 bytes in every decoder whatever the
+    // stream, and a stream has one to three identities. An engaged slot is
+    // allocated once and written THROUGH for the rest of the stream, so a
+    // steady-state decode still allocates nothing.
+    std::array<std::unique_ptr<DecodedSubstream>, kSubstreamSlots> pending_;
     // decode_access_unit's own assembly cache: a substream identity's
     // RELEASED (by decode_substream) results, oldest first, waiting for
     // every other identity the same call's frames named to also have one -
@@ -3827,12 +3833,12 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 return std::unexpected(DecodeError::kUnsupported);
             }
             combined.assign(static_cast<std::size_t>(kSamplesPerFrame) * 2, 0.0f);
-            if (pending_slot.has_value()) {
+            if (pending_slot != nullptr) {
                 std::ranges::copy(pending_slot->channels[uch], combined.begin());
             }
             std::ranges::copy(out.channels[uch], combined.begin() + kSamplesPerFrame);
             apply_transient_prenoise(combined, kSamplesPerFrame + transloc, translen);
-            if (pending_slot.has_value()) {
+            if (pending_slot != nullptr) {
                 std::ranges::copy(combined.begin(), combined.begin() + kSamplesPerFrame,
                                   pending_slot->channels[uch].begin());
             }
@@ -3841,18 +3847,19 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         }
     }
 
-    if (pending_slot.has_value()) {
+    if (pending_slot != nullptr) {
         DecodedSubstream ready = std::move(*pending_slot);
-        // Assign the optional, not through it - `*opt = v` needs the optional
-        // engaged, which here is only true because of the has_value() above.
-        pending_slot = std::move(out);
+        // Written THROUGH the pointer, so an engaged identity reuses the one
+        // allocation it made below for every frame after it.
+        *pending_slot = std::move(out);
         return std::optional<DecodedSubstream>(std::move(ready));
     }
     if (frm->transproce) {
         // First frame to use the tool for this substream identity: hold it
         // back, nothing is ready to return yet - see decode_substream's own
-        // doc comment.
-        pending_slot = std::move(out);
+        // doc comment. This is the slot's one allocation, made here rather
+        // than pinned for all 32 identities - see pending_'s own comment.
+        pending_slot = std::make_unique<DecodedSubstream>(std::move(out));
         return std::optional<DecodedSubstream>(std::nullopt);
     }
     return std::optional<DecodedSubstream>(std::move(out));
@@ -3866,7 +3873,7 @@ int Eac3Decoder::latency_samples() const {
     // only waiting on a sibling identity, so whatever delay it represents is
     // the impl_->pending_ slot of that sibling, already counted here.
     for (const auto& slot : impl_->pending_) {
-        if (slot.has_value()) {
+        if (slot != nullptr) {
             return kSamplesPerFrame;
         }
     }
@@ -3907,7 +3914,7 @@ std::vector<DecodedSubstream> Eac3Decoder::flush() {
     // Slot order is key order, so this drains in the same ascending
     // identity order the maps this replaced iterated in.
     for (auto& slot : impl_->pending_) {
-        if (slot.has_value()) {
+        if (slot != nullptr) {
             ready.push_back(std::move(*slot));
             slot.reset();
         }
