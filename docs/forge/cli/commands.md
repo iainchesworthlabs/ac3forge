@@ -618,12 +618,19 @@ other two `null`:
 - Every object list entry (`static_objects`/`upmix_objects`/`objects`) is `{kind: "bed"|"dyn"|
   "isf", lfe, ajoc_coded}`.
 
-`stream.integrity` (`crc_valid`, `crc_failures`, `parse_failures`, `first_parse_error`) is shared
-with the AC-3/E-AC-3 shape. The one payload this parser still refuses rather than reads is
-`oamd_common_data()` (§6.2.8.1, reachable only via an A-JOC substream's own
-`b_oamd_common_data_present` flag) — `first_parse_error` names it
-(`oamd_common_data_present`) when hit; **exit code** follows the same rule as AC-3/E-AC-3: 0 only
-when every sync frame's CRC passed and every frame parsed.
+An A-JOC substream's `oamd_common_data()` (§6.2.8.1), present when its
+`b_oamd_common_data_present` flag is set, is read as part of the table of contents: the fields
+that follow it can only be found by reading it. `probe` does not report its contents. Like audio
+content, an OAMD substream's payload (`oamd_substream()`, §6.2.2.4) is not parsed, including the
+second `oamd_common_data()` it can carry.
+
+`stream.integrity` has the same four members as the AC-3/E-AC-3 shape: `crc_valid`,
+`crc_failures`, `parse_failures` and `first_parse_error`. Two of them hold something different
+here. `crc_valid` is a boolean, true when no sync frame failed its CRC, where AC-3/E-AC-3 give the
+number of syncframes that passed. `parse_failures` is 0 or 1, because the walk keeps only the
+first error; `first_parse_error` names that error (`truncated`, `lost_sync` or
+`unsupported_bitstream_version`) and is `null` when there was none. **Exit code** follows the same
+rule as AC-3/E-AC-3: 0 only when every sync frame's CRC passed and every frame parsed.
 
 `qc` is `loudness`'s bitstream-aware counterpart: `loudness` measures a *source* WAV before encoding, `qc` measures what a stream actually *delivers* after encoding and decoding it back, and checks that against what the stream's own metadata claims:
 
