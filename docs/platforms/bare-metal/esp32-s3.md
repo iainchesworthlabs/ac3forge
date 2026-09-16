@@ -256,9 +256,12 @@ The decode runs on the main task. `uxTaskGetStackHighWaterMark` left 11,280 byte
 original 32,768 `sdkconfig.defaults` set, until PR #698 (legacy-core downmix levels) grew
 `DecodedSubstream`/`DecodedAccessUnit` by `bsid`/`cmixlev`/`surmixlev`/`alternate_bsi` and the
 runner measured that down to 8,096 — 96 bytes under its 8,192 floor.
-`sdkconfig.defaults` now sets 40,960; the encode direction, less affected, left 23,040 free of
-the original 32,768. That margin is the one to watch — it was 14,000 before object
-reconstruction ran here, then 11,280 before this fix.
+`sdkconfig.defaults` now sets 40,960, which left 16,064. The decoder has since stopped keeping
+extra copies of those two structs on the stack (it builds its results in place), and the decode
+leaves 19,344 of the 40,960: 11,152 in terms of the original 32,768, close to the figure before
+PR #698. The encode direction, less affected, left 23,040 free of the original 32,768. The decode
+margin is the one to watch — it was 14,000 before object reconstruction ran here, then 11,280
+before PR #698.
 
 ## Timing
 

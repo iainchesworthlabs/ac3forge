@@ -64,6 +64,15 @@ namespace {
 
 using eac3::StreamType;
 
+// What decode_substream and the access-unit forms return. Their return
+// statements build the value inside the result (std::in_place) rather than
+// through a std::optional temporary: on a part with a small decode stack, a
+// temporary DecodedSubstream or DecodedAccessUnit is a second copy of one
+// (840 bytes and more each on an ESP32-S3) in a frame that is live for the
+// whole of a substream's decode.
+using SubstreamResult = std::expected<std::optional<DecodedSubstream>, DecodeError>;
+using UnitResult = std::expected<std::optional<DecodedAccessUnit>, DecodeError>;
+
 // A substream codes at most 3/2 plus LFE (Table 5.8).
 constexpr int kMaxSubstreamChannels = 6;
 
@@ -1308,11 +1317,11 @@ std::expected<DecodedSubstream, DecodeError> Eac3Decoder::decode_ac3_core(
 
 std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_substream(
     std::span<const std::byte> frame) {
+    // Every path returns `decoded` itself, so it is the caller's storage and
+    // this frame holds no DecodedSubstream of its own while
+    // decode_substream_core runs beneath it; conceal() builds into it too.
     auto decoded = decode_substream_core(frame);
-    if (decoded) {
-        return decoded;
-    }
-    if (impl_->config_.concealment == ConcealmentPolicy::kNone) {
+    if (decoded || impl_->config_.concealment == ConcealmentPolicy::kNone) {
         return decoded;
     }
     // Which identity's history to reconstruct from. strmtyp and substreamid
@@ -1344,24 +1353,28 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     } else {
         return decoded;
     }
-    if (auto concealed = conceal(decoded.error(), slot)) {
-        return concealed;
-    }
+    conceal(slot, decoded);
     return decoded;
 }
 
-std::optional<DecodedSubstream> Eac3Decoder::conceal(DecodeError error, std::size_t slot) {
+void Eac3Decoder::conceal(std::size_t slot, SubstreamResult& decoded) {
     const auto& retained = impl_->retained_[slot];
     // Nothing retained for this identity means the loss is at the head of it:
     // there is no previous block to reconstruct from, and inventing one would
-    // be substituting audio rather than concealing a gap in it.
+    // be substituting audio rather than concealing a gap in it. The error
+    // stands.
     if (!retained) {
-        return std::nullopt;
+        return;
     }
+    const DecodeError error = decoded.error();
     const bool repeat = impl_->config_.concealment == ConcealmentPolicy::kRepeatFade;
     const int nchans = retained->nchans;
 
-    DecodedSubstream out = retained->shape;
+    // The error gives way to the retained shape, copied straight into the
+    // result: an empty optional first, since std::expected::emplace takes
+    // only a construction that cannot throw, then the substream inside it.
+    decoded.emplace();
+    DecodedSubstream& out = decoded->emplace(retained->shape);
     out.dynrng.fill(meta::kDynrngUnity);
     out.dynrng2.fill(meta::kDynrngUnity);
     // A concealed frame carries no object layer: OAMD and JOC describe THIS
@@ -1424,7 +1437,6 @@ std::optional<DecodedSubstream> Eac3Decoder::conceal(DecodeError error, std::siz
     out.concealed =
         Concealment{.error = error,
                     .action = repeat ? ConcealmentAction::kRepeatFade : ConcealmentAction::kMute};
-    return out;
 }
 
 std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_substream_core(
@@ -1459,7 +1471,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         if (!core.has_value()) {
             return std::unexpected(core.error());
         }
-        return std::optional<DecodedSubstream>(std::move(*core));
+        return SubstreamResult(std::in_place, std::in_place, std::move(*core));
     }
     // There is no crc1 in E-AC-3 and no 5/8 checkpoint to protect, so crc2 is
     // the whole error check: the register reads zero over the frame past the
@@ -3392,7 +3404,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // audio. A parse has no such dependency and a caller walking a file
     // wants one report per syncframe, in order.
     if (impl_->config_.skip_reconstruction) {
-        return std::optional<DecodedSubstream>(std::move(out));
+        return SubstreamResult(std::in_place, std::in_place, std::move(out));
     }
 
     // Second pass: finish every block in order. Standard-coupled, plain and
@@ -3852,7 +3864,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // Written THROUGH the pointer, so an engaged identity reuses the one
         // allocation it made below for every frame after it.
         *pending_slot = std::move(out);
-        return std::optional<DecodedSubstream>(std::move(ready));
+        return SubstreamResult(std::in_place, std::in_place, std::move(ready));
     }
     if (frm->transproce) {
         // First frame to use the tool for this substream identity: hold it
@@ -3860,9 +3872,9 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // doc comment. This is the slot's one allocation, made here rather
         // than pinned for all 32 identities - see pending_'s own comment.
         pending_slot = std::make_unique<DecodedSubstream>(std::move(out));
-        return std::optional<DecodedSubstream>(std::nullopt);
+        return SubstreamResult(std::in_place, std::nullopt);
     }
-    return std::optional<DecodedSubstream>(std::move(out));
+    return SubstreamResult(std::in_place, std::in_place, std::move(out));
 }
 
 int Eac3Decoder::latency_samples() const {
@@ -4068,7 +4080,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             // §E2.3.1.2 assigns the core the identity (independent, 0), so it
             // is programme 0 and never a dependent.
             if (*impl_->config_.programme != 0) {
-                return std::optional<DecodedAccessUnit>(std::nullopt);
+                return UnitResult(std::in_place, std::nullopt);
             }
         } else {
             BitReader peek{frames->front()};
@@ -4078,7 +4090,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             }
             if (lead_bsi->substreamid != *impl_->config_.programme ||
                 lead_bsi->strmtyp == eac3::StreamType::kDependent) {
-                return std::optional<DecodedAccessUnit>(std::nullopt);
+                return UnitResult(std::in_place, std::nullopt);
             }
         }
     }
@@ -4196,7 +4208,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // every substream releases every call, so this is never false for it.
     for (const int key : keys) {
         if (impl_->pending_au_parts_[static_cast<std::size_t>(key)].empty()) {
-            return std::optional<DecodedAccessUnit>(std::nullopt);
+            return UnitResult(std::in_place, std::nullopt);
         }
     }
     AC3_ZONE_BEGIN(assemble_zone, "eac3_au_assemble");
@@ -4423,7 +4435,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
             }
             AC3_ZONE_END(assemble_zone);
             emit_blocks(std::span<std::span<float>>(views).first(count));
-            return std::optional<DecodedAccessUnit>(std::move(out));
+            return UnitResult(std::in_place, std::in_place, std::move(out));
         }
         if (external.empty()) {
             out.channels.resize(lead.channels.size());
@@ -4433,7 +4445,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         }
         AC3_ZONE_END(assemble_zone);
         apply_output(out, external);
-        return std::optional<DecodedAccessUnit>(std::move(out));
+        return UnitResult(std::in_place, std::in_place, std::move(out));
     }
 
     // §E3.8.2: the bed's locations, then every dependent's unioned in. A
@@ -4455,7 +4467,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // optimisation: that loop checks each substream's channel count against
     // its own location map, which an empty `channels` would fail.
     if (impl_->config_.skip_reconstruction) {
-        return std::optional<DecodedAccessUnit>(std::move(out));
+        return UnitResult(std::in_place, std::in_place, std::move(out));
     }
     if (sink != nullptr) {
         std::array<std::span<float>, kMaxSlots> views{};
@@ -4475,7 +4487,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         AC3_ZONE_END(assemble_zone);
         emit_blocks(std::span<std::span<float>>(views).first(
             static_cast<std::size_t>(out.layout.count)));
-        return std::optional<DecodedAccessUnit>(std::move(out));
+        return UnitResult(std::in_place, std::in_place, std::move(out));
     }
     const std::size_t samples = lead.channels.empty() ? 0 : lead.channels.front().size();
     if (external.empty()) {
@@ -4507,7 +4519,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     }
     AC3_ZONE_END(assemble_zone);
     apply_output(out, external);
-    return std::optional<DecodedAccessUnit>(std::move(out));
+    return UnitResult(std::in_place, std::in_place, std::move(out));
 }
 
 }  // namespace ac3
