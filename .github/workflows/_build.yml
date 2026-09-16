@@ -2584,7 +2584,15 @@ jobs:
             sleep 1
           done
           [ -n "$settled" ] || fail "/status did not report the play as ended"
-          python3 "$console" --title "ESP32-S3 stream set" qemu-set.txt
+          # --min-heap-free: this is the widest shape the part runs - twelve
+          # channels out of three substreams, with the Ethernet driver and the
+          # HTTP server in the same internal RAM - so it is where a decoder or
+          # player that starts holding more is seen first. The floor is set
+          # below what this shape measures (about 33-35 KB) and well above
+          # both the 18-21 KB it ran at before PR #698 and the 7-9.5 KB that
+          # merge left it at, so a change that spends ten kilobytes fails here
+          # rather than in whichever later run happens to abort.
+          python3 "$console" --title "ESP32-S3 stream set" --min-heap-free 24576 qemu-set.txt
           kill "$qemu" 2>/dev/null || true
 
       # BUILD ONLY, for the four combinations no step above runs: i2s, sd,
