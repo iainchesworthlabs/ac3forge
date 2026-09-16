@@ -72,8 +72,18 @@
 # 2026-09-16 against a real packages-macos-llvm CI artifact built from main
 # (ac3forge-0.0.0-Darwin.zip): both paths were there, and nothing under
 # Contents/Frameworks/ was named Test or QuickTest - the QML plugin is the
-# only carrier, unlike Windows where windeployqt also resolves the plugin's
-# own Qt6Test.dll/Qt6QuickTest.dll dependencies into bin/.
+# only carrier on THAT build, unlike Windows where windeployqt also resolves
+# the plugin's own Qt6Test.dll/Qt6QuickTest.dll dependencies into bin/.
+#
+# Contents/Frameworks/QtTest.framework and QtQuickTest.framework are removed
+# below anyway, despite neither existing in the artifact above: that artifact
+# is a Homebrew Qt6 build (the macOS legs' Qt source is changing under PR
+# #728, unmerged as of this writing), and a framework-style Qt build resolving
+# the plugin's own linked dependencies the way windeployqt does is not
+# something this repo's macOS CI has exercised yet to say never happens. The
+# check costs nothing when the path is not there - same EXISTS-is-false,
+# file(REMOVE_RECURSE)-no-ops shape as everything else here - so it stays in
+# rather than waiting for a build that proves it necessary.
 #
 # WHERE THE BUNDLE NAME COMES FROM
 #
@@ -180,6 +190,19 @@ if(APPLE AND DEFINED _ac3_macos_bundle_name)
         message(STATUS "Removing Qt Test from the package: ${_ac3_macos_bundle}/Contents/Resources/qml/QtTest")
         file(REMOVE_RECURSE "${_ac3_macos_bundle}/Contents/Resources/qml/QtTest")
     endif()
+
+    # Belt-and-braces, not measured against any artifact this repo has
+    # produced yet - see the header comment. EXISTS OR IS_SYMLINK for the
+    # same reason as the PlugIns file above: a framework bundle deployed the
+    # way a dangling Homebrew Cellar symlink deploys everything else here
+    # would otherwise read as absent too.
+    foreach(_ac3_macos_framework IN ITEMS QtTest QtQuickTest)
+        set(_ac3_macos_framework_path "${_ac3_macos_bundle}/Contents/Frameworks/${_ac3_macos_framework}.framework")
+        if(EXISTS "${_ac3_macos_framework_path}" OR IS_SYMLINK "${_ac3_macos_framework_path}")
+            message(STATUS "Removing Qt Test from the package: ${_ac3_macos_framework_path}")
+            file(REMOVE_RECURSE "${_ac3_macos_framework_path}")
+        endif()
+    endforeach()
 endif()
 
 # unset(_ac3_macos_bundle_name) here is not just the same tidiness as the
@@ -200,5 +223,7 @@ unset(_ac3_file)
 unset(_ac3_qt_test_files)
 unset(_ac3_macos_bundle)
 unset(_ac3_macos_plugin)
+unset(_ac3_macos_framework)
+unset(_ac3_macos_framework_path)
 unset(_ac3_macos_bundle_name)
 unset(_ac3_prefix)
