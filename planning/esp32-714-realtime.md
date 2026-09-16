@@ -439,7 +439,7 @@ decode's, and the levels would stop matching the host's to the digit. J would al
 
    **Recommend (a).** The next question about where a player's frame goes then needs one build
    flag, where this one needed a patched worktree. Cost: a few lines of CMake and about twenty in
-   `stream_player.cpp`. A plain build is unchanged, because nothing calls the backend and the
+   `hearth_sink.cpp`. A plain build is unchanged, because nothing calls the backend and the
    linker drops it.
 
 10. **A 7.1.4 fold row in the bare-metal probe.**

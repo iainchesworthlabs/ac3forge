@@ -24,8 +24,8 @@ import check_esp_console
 
 # What `idf.py qemu` prints before QEMU starts: its build step, then the command.
 BUILD = [
-    "[1/5] cd /__w/ac3forge/ac3forge/esp-idf/ac3forge/examples/stream_player/build",
-    "ac3forge_stream_player.bin binary size 0x60400 bytes.",
+    "[1/5] cd /__w/ac3forge/ac3forge/esp-idf/ac3forge/examples/hearth_sink/build",
+    "ac3forge_hearth_sink.bin binary size 0x60400 bytes.",
     "Running qemu (fg): qemu-system-xtensa -M esp32s3 -m 32M -nographic -serial mon:stdio",
     "Adding SPI flash device",
 ]

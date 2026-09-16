@@ -85,8 +85,8 @@ enum class CapabilitySource : std::uint8_t {
 // What a caller found out about one local render endpoint. The booleans are
 // what it will CARRY; `source` is how confidently that is known.
 struct EndpointFacts {
-    std::string id;
-    std::string name;
+    std::string id{};
+    std::string name{};
     // Applications render here, and on Windows an exclusive-mode open of this
     // endpoint can be refused outright while they do (and invalidates their
     // streams when it succeeds). It is not a reason to refuse a bitstream -
@@ -105,24 +105,24 @@ struct EndpointFacts {
 };
 
 struct OutputRequest {
-    std::span<const EndpointFacts> endpoints;
+    std::span<const EndpointFacts> endpoints{};
     // What the item carries, and std::nullopt for anything that cannot be
     // bitstreamed at all - a WAV, or an AC-4 stream, which no IEC 61937
     // format covers.
-    std::optional<audio::BitstreamFormat> stream;
+    std::optional<audio::BitstreamFormat> stream = std::nullopt;
     // Object audio (E-AC-3 JOC). It rides inside the ordinary Annex E
     // bitstream, so it changes no capability question - it only changes what
     // is LOST by not bitstreaming, which the reason text says.
     bool has_objects = false;
     // The user's choice of mode, honoured when it can be; otherwise the
     // reason says what stopped it.
-    std::optional<OutputMode> pinned;
+    std::optional<OutputMode> pinned = std::nullopt;
     // The user's choice of endpoint (its id; empty for automatic), taken with
     // the best mode it can carry.
-    std::string preferred_endpoint_id;
+    std::string preferred_endpoint_id{};
     // A group of network sinks the user has selected, and whether it is ready
     // to take a stream (paired, and not held by another server).
-    std::string group_name;
+    std::string group_name{};
     bool group_ready = false;
     // The CLI's `follow=off`: refuse rather than fall back, so that a sink
     // which will not take the stream is reported instead of quietly played
@@ -136,11 +136,11 @@ struct OutputRequest {
 
 struct OutputChoice {
     OutputMode mode = OutputMode::kNone;
-    std::string endpoint_id;
-    std::string endpoint_name;
+    std::string endpoint_id{};
+    std::string endpoint_name{};
     // One line for the Output screen and the log: why this, or why not
     // something better. Never empty.
-    std::string reason;
+    std::string reason{};
 };
 
 [[nodiscard]] OutputChoice choose_output(const OutputRequest& request);

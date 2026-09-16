@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# ac3forge's streaming player example: decode AC-3 or E-AC-3 from a flash
+# ac3forge's Hearth sink example: decode AC-3 or E-AC-3 from a flash
 # partition (the default), a FAT volume in flash, an SD card or an HTTP body.
 #
 #   . $IDF_PATH/export.sh
@@ -14,7 +14,7 @@
 # That one decodes a bitstream linked into its own image; this one reads the
 # stream a piece at a time, through a ring between the player's fetch and
 # decode tasks (32 KB by default, CONFIG_AC3FORGE_EXAMPLE_RING_BYTES) and a
-# 16 KB framing buffer. See main/stream_player.cpp and
+# 16 KB framing buffer. See main/hearth_sink.cpp and
 # esp-idf/ac3forge/include/ac3forge/player.hpp.
 #
 # WITHOUT A BOARD:
@@ -36,7 +36,7 @@ set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING "")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-project(ac3forge_stream_player LANGUAGES C CXX)
+project(ac3forge_hearth_sink LANGUAGES C CXX)
 
 # The audio, into the partition named in partitions.csv. Done here rather than
 # through a separate esptool invocation so `idf.py flash` puts everything the

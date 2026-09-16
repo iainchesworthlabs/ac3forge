@@ -63,7 +63,44 @@ Later phases add the readings their processing needs.
   carry different ones, and no stream here does. With a factor above 1,
   `substream_index` names the first of that many consecutive substreams (Part 1 4.3.3.7.9, p. 79),
   and both transcriptions read each as an instance of its own, with that instance's `b_audio_ndot`.
-- **Evidence:** Streams for factor 1 (every stream here); Text above it.
+- **The series, not the instance, is what carries state.** 4.3.3.5.3, p. 78, has the substreams of a
+  series decoded consecutively, and 4.3.3.2.7, p. 74, fulfils `b_iframe_global` when the **first**
+  `b_iframe` of a series of 2 or 4 is true, so a stream whose I-frames set only that first flag is legal.
+  The configuration an I-frame of the series sends therefore serves the instances after it, and each
+  instance predicts from the one before: one slot of carried state per series, the first instance's. A
+  slot per instance leaves every instance after the first with a configuration no I-frame ever sent, and
+  every frame of such a stream fails as missing its I-frame.
+- **Each instance covers `frame_len_base / frame_rate_factor` samples.** Tables 83 and 87 leave no other
+  reading: every (index, factor) pair Table 87 permits lands on another index's listed length - 2048 at
+  25 fps doubled is 1024, the 50 fps entry; 1536 quadrupled is 384 - and the base length would put two
+  or four frames' samples into one frame period. The length sets transform lengths and the widths taken
+  from them (`max_sfb` among them), so an instance read at the base length is misread, not mis-scaled.
+- **Evidence:** Streams for factor 1 (every stream here); Text above it. The differential check's
+  synthetic frames carry factor 2 and 4, which is where the two transcriptions meet this path at all:
+  with one side reading an instance at the base length, that check reports the `max_sfb` width
+  differing.
+
+### A frame rate the sample rate does not define
+
+- **Where:** Part 1 Table 83, p. 76, gives `frame_len_base` for each `frame_rate_index` at 48 kHz;
+  Table 84, p. 76, covers 44.1 kHz and defines index 13 alone, leaving every other index reserved there.
+- **Reading:** such a frame has no frame length, so nothing in it that derives from one is read: every
+  audio substream and the presentation substream are refused for a reserved `frame_rate_index`, rather
+  than read with the 48 kHz length or read until a field that needs the length is reached.
+  `ac4::samples_per_frame()` reads the pair the same way. Both transcriptions derive the length in one
+  place, which is what keeps the audio and presentation substreams of a frame on the same value.
+- **Evidence:** Text; every stream here is 48 kHz.
+
+### The efficient high frame rate mode is refused
+
+- **Where:** Part 2 5.1.3, p. 30, and Table 18: above 30 fps a presentation may transmit
+  `frame_rate_fraction` 2 or 4, spreading one coded frame over that many `raw_ac4_frame()`s, each
+  carrying fragments of the substreams; a decoder holds the partial frames and concatenates them.
+- **Reading:** this phase reads no fragments, so a frame whose presentation carries a fraction above 1
+  has every substream refused as unsupported, naming the mode. Reading a fragment as a whole substream
+  reports a legal stream as a damaged one, which is what the decoder did before the fraction was carried
+  out of the table of contents at all.
+- **Evidence:** Text; no stream here uses the mode.
 
 ### A substream named by several elements
 
@@ -96,9 +133,14 @@ Later phases add the readings their processing needs.
   the next independently decodable frame".
 - **Reading:** at a change of source, everything carried between frames is forgotten: I-frame
   configuration, A-SPX offsets and borders, DRC and dialogue enhancement state. A frame that needs
-  configuration before the next I-frame fails as missing its I-frame.
+  configuration before the next I-frame fails as missing its I-frame. Only a frame whose table of
+  contents holds together counts as the predecessor of the next: a frame whose substream sizes run past
+  it leaves the counter where it was, so the frame after it reads as a change of source. The text does
+  not say whether a counter transmitted in an unreadable frame still counts, and forgetting what such a
+  frame might have carried is the safer half of the choice.
 - **Evidence:** Streams: DEE starts counting at 1019, so every stream here passes the wrap to 1 in its
-  third frame. `tests/ac4dec/test_ac4dec_decoder.cpp` checks a jump and a 0.
+  third frame. `tests/ac4dec/test_ac4dec_decoder.cpp` checks a jump and a 0. Text for the frame that
+  does not parse.
 
 ## Substream framing
 
@@ -414,8 +456,14 @@ Later phases add the readings their processing needs.
 
 - **Where:** Part 2 6.2.2.3 to 6.2.2.5 and 6.3.3.1, pp. 124 to 172; 6.2.9, p. 152.
 - **Readings:**
-  - `superset(0, 1)` is 1, as 6.3.3.1.27 says, although its own rule would give 3.0; 9.X.4 with 22.2 has
-    no superset.
+  - `superset(0, 1)` is 1, as 6.3.3.1.27 says, although its own rule would give 3.0. Six unordered pairs
+    have no mode holding both: 5/2/0 and 5/2/0.1 each with 9.0.4 and 9.1.4, and 9.0.4 and 9.1.4 each with
+    22.2 - the first of each pair brings Lw/Rw, the second Lscr/Rscr, and 22.2 has Lw/Rw without Lscr/Rscr.
+    6.3.3.1.27 gives no result for them, and the reading taken is that there is none: `pres_ch_mode` is
+    -1, so the presentation substream reads the fields that answer to a presentation with no single
+    channel mode (`b_oamd_common_timing`, `custom_dmx_data()`'s `bs_ch_config` branch, `b_obj_loud_corr`).
+    Naming the larger of the two instead would claim a layout the presentation does not have, and would
+    drop the LFE of 5/2/0.1 against 9.0.4.
   - Table 72's conditions overlap; 2 wins when both hold.
   - `n_substreams_in_presentation` counts one per `ac4_substream_info_chan/_ajoc/_obj()`, whatever the
     frame rate factor; HSF extension substreams are not counted.
@@ -455,7 +503,9 @@ Decisions about what a record holds, which both transcriptions share (the full c
 - `aspx_int_class` is one record whose value is the code read (0, 2, 6 or 7).
 - A field whose width the stream sets and whose bits the syntax does not interpret (`add_data`,
   `extensions_bits`, `drc2_bits`) is one record valued at its last 64 bits, split into 65535-bit records
-  when longer; `variable_bits()` records its value modulo 2^64.
+  when longer; `variable_bits()` records its value modulo 2^64, and splits the same way when its groups
+  run past 65535 bits, each record then valued at its own last 64 bits. A record's width is 16 bits, so
+  an element wider than that has no single record to sit in.
 - An element that runs past the end of its substream is not recorded.
 
 ## The differential check

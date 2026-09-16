@@ -92,7 +92,7 @@ def stage(destination: pathlib.Path) -> None:
     # The streaming example's stream set - the repository's streams for a
     # device to fetch, some 2.7 MB (planning/esp32-stream-set.md) - is not part
     # of the component. The example's own stream/ stays.
-    shutil.rmtree(destination / "examples" / "stream_player" / "www", ignore_errors=True)
+    shutil.rmtree(destination / "examples" / "hearth_sink" / "www", ignore_errors=True)
 
     library = destination / "lib"
     for tree in STAGED_TREES:

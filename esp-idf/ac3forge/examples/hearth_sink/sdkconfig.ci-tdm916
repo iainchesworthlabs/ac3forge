@@ -1,0 +1,13 @@
+# The capture shape at the widest frame the part reaches: sixteen 16-bit TDM
+# slots, two lines of eight (ac3forge::sink_ceiling(16, true)), rendered onto a
+# sixteen-speaker layout so every slot carries a real channel rather than
+# padding. Layered on sdkconfig.ci-tdm, which chooses the capture sink and the
+# fatfs source.
+#
+# The i2s sink itself cannot run here - QEMU emulates no I2S - so this checks
+# what the sink hands the peripheral: the planner's two-line split, the 16-bit
+# interleave across sixteen slots, and the levels the renderer puts in them.
+CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS=16
+CONFIG_AC3FORGE_EXAMPLE_I2S_SECOND_LINE=1
+CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS=16
+CONFIG_AC3FORGE_EXAMPLE_LAYOUT="9.1.6"

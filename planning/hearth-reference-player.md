@@ -79,7 +79,7 @@ for end users.
 - AC-4 (`.ac4`, and AC-4 in MP4 or TS) is listed with its bitstream information from `src/ac4`
   and marked as not playable until [chip D](#chip-d-the-ac-4-decoder) delivers a decoder.
 - Duration and seek come from each stream's samples per access unit. The GUI's stream player
-  assumes 1,536 (`apps/gui/stream_player_controller.cpp:147`), which is wrong for E-AC-3 with
+  assumes 1,536 (`apps/gui/hearth_sink_controller.cpp:147`), which is wrong for E-AC-3 with
   fewer than six blocks per frame.
 
 ### Playback configuration
@@ -310,7 +310,7 @@ A draft shape. [A4](#a4-sendspin)'s first deliverable is the normative page,
 
 ### The firmware
 
-- The `stream_player` example becomes `hearth_sink` by `git mv`, and its CI shapes and docs
+- The `hearth_sink` example becomes `hearth_sink` by `git mv`, and its CI shapes and docs
   follow.
 - A Sendspin player: `player@v1` for Music Assistant, with PCM always and FLAC or Opus where
   memory and time allow, measured; `_ac3forge_player@v1` for the bitstream; the Noise responder;
@@ -569,7 +569,7 @@ merged. Proven on the S3 development boards with TDM DACs.
 
 ### B1: the firmware and its outputs
 
-`stream_player` becomes `hearth_sink`. Slot width becomes a setting, extending the one-line
+`hearth_sink` becomes `hearth_sink`. Slot width becomes a setting, extending the one-line
 16-bit TDM support that [C2](#c2-i2s-on-the-c6) adds to two lines on the S3, or adding it here if
 B1 starts first. The sink reports the slot count for its current setting.
 

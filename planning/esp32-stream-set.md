@@ -40,7 +40,7 @@ reports differ, and a test on a board needs something to point a device at.
 | Streams | Where | What they carry, checked with `ac3cli probe` |
 |---|---|---|
 | The WASM page's demo | `apps/wasm/assets/demo.ec3` | E-AC-3 5.1, JOC objects in the QMF domain, 8 s. What CI's HTTP step serves. |
-| The example's own | `esp-idf/ac3forge/examples/stream_player/stream/` | `sample.ac3` (AC-3 5.1, six frames), flashed to a partition; `height.ec3` (the probe's height fixture: five objects over a 5.1 bed, three on the ceiling, MDCT-band domain, six access units), which `sdkconfig.ci-render` plays from FAT onto 7.1.4 |
+| The example's own | `esp-idf/ac3forge/examples/hearth_sink/stream/` | `sample.ac3` (AC-3 5.1, six frames), flashed to a partition; `height.ec3` (the probe's height fixture: five objects over a 5.1 bed, three on the ceiling, MDCT-band domain, six access units), which `sdkconfig.ci-render` plays from FAT onto 7.1.4 |
 | The fuzz seeds | `fuzz/seeds/fuzz_eac3_decode/` | One-second streams from `fuzz/generate-seeds.sh`: a tone per speaker at every layout the encoder names, the Annex E tool combinations at 5.1 and 7.1.4, objects, two external streams |
 | The external baseline | `tests/golden/external-baseline/` | Dolby Encoding Engine and FFmpeg streams: AC-3 and E-AC-3, stereo and 5.1, music and speech |
 | A licensed encoder's objects | `tests/golden/object-fixture/dee_joc_514.ec3` | 5.1.4 carried as JOC objects, QMF domain |
@@ -54,7 +54,7 @@ the levels below are what the decoder makes of them, so a check is not affected,
 
 ## The set
 
-`esp-idf/ac3forge/examples/stream_player/www/`, served as it is. **No PSRAM** is whether CI's
+`esp-idf/ac3forge/examples/hearth_sink/www/`, served as it is. **No PSRAM** is whether CI's
 twelve-slot network shape, which has none, plays the stream to its end; see [What the network
 shape holds at 7.1.4](#what-the-network-shape-holds-at-714).
 
@@ -137,7 +137,7 @@ repository nothing, since git keeps one copy of identical content whatever its p
 Beside the example that plays it. Any static HTTP server will do:
 
 ```bash
-python3 -m http.server 8000 --bind 0.0.0.0 --directory esp-idf/ac3forge/examples/stream_player/www
+python3 -m http.server 8000 --bind 0.0.0.0 --directory esp-idf/ac3forge/examples/hearth_sink/www
 ```
 
 and a device plays `http://<host>:8000/714-walk.ec3` - `10.0.2.2` from QEMU's user-mode network,
@@ -207,8 +207,8 @@ boot in the two-slot shape, on the decoder's own frame-long channel buffers
 (`Eac3Decoder::decode_substream_core`), 6,144 bytes with 17,088 free and no block over 5,632.
 
 The allocations that failed are the decoder's, which are the same whatever the output layout:
-the player's block storage is sixteen slots at every layout, and the capture sink converts one
-block at a time. A board with PSRAM puts allocations of 16 KB and over there
+the player's block storage was sixteen slots at every layout (it is sized from the layout
+now), and the capture sink converts one block at a time. A board with PSRAM puts allocations of 16 KB and over there
 (`sdkconfig.psram`), which is where the streams marked "no" are meant to play. Each 1-second
 play took about two seconds of wall clock under QEMU.
 

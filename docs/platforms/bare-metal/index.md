@@ -25,7 +25,7 @@ wider ESP32 family, and why the ESP32-P4 was assessed and declined, is on
   [Cortex-M3](cortex-m3.md) — it's the reference leg CI measures the profile on, and the page
   that explains what the profile gives up.
 - **Have an ESP32-S3 board?** [ESP32-S3](esp32-s3.md) is real time on real hardware, with two
-  example players (`i2s_player`, `stream_player`) that drive I2S.
+  example players (`i2s_player`, `hearth_sink`) that drive I2S.
 - **Have an ESP32-C3 (or another part with no FPU)?** [ESP32-C3](esp32-c3.md) covers the
   fixed-point tier and what has and hasn't been measured on it.
 - **Have an ESP32-C6?** [ESP32-C6](esp32-c6.md) has the fixed-point and float tiers timed on a

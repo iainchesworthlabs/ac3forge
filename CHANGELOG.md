@@ -29,6 +29,15 @@ and release packaging.
 
 **Minimum-footprint / ESP32 decode profile**
 
+- **Sixteen channels out of an ESP32-S3, and the slot width as a setting.** An I2S
+  line carries 128 bits a frame, so the two the part has reach sixteen 16-bit slots or
+  eight 32-bit ones — a 7.1.4 layout leaves through the `i2s` sink for the first time,
+  where eight channels was the ceiling before. The width is no longer fixed when the
+  image is built: `GET` and `PUT /slot-width` beside `/layout` change it between plays,
+  `/status` reports it as `slot_bits`, and the sink's ceiling moves with it, since which
+  width a board wants is a property of the DACs it is wired to rather than of the
+  firmware. A change is refused while a play is running, and takes effect at the next
+  one. Kconfig still sets the width the sink starts at.
 - **A fixed-point decode tier** (`-DAC3FORGE_DECODE_SCALAR=fixed`), a Q7.24 integer
   scalar path for parts with no FPU (an ESP32-C3, a Cortex-M3), joining `double` and
   `float` on the decode-scalar axis. Measured at 121 dB+ on the gold streams and 111 dB+
@@ -367,6 +376,21 @@ and release packaging.
   with the versions and licence texts vcpkg installs with each port, ready for Hearth's About page
   and package. The threat model gains Sendspin: what a peer on the network can reach without a
   key, what a key allows, what mDNS exposes, and the two parsers not yet fuzzed.
+- **`ac3hearth_engine`, the start of Hearth's player engine** (`apps/hearth/engine`, no Qt): an
+  output decision in the shape of Crucible's `output_policy` (a mode, an endpoint and a reason,
+  from capability facts that can each be unknown), the play queue, and a transport that answers
+  each command with the one action to carry out. A player puts them together with a session per
+  item and a PCM sink, one of which drives A2's `PcmOutput`. Each item's AC-3 or E-AC-3 access
+  units are decoded and rendered to the output layout 256 frames at a time, including the unit
+  the E-AC-3 decoder is still holding for transient pre-noise processing when a stream ends. An
+  item at the open output's rate joins it with nothing between the two; a rate change, or gapless
+  turned off, reopens the output once the device's own clock says everything submitted has been
+  heard, however much silence an underrun put in between. An item that cannot be read is marked
+  with the reason and skipped, a device that will not open stops playback without marking the
+  item, and a seek made while stopped applies when that item starts. In `ac3tests`, raw E-AC-3,
+  E-AC-3 in MP4, AC-3 in Matroska and raw AC-3 play through one output to a fake device: each
+  item delivers exactly the frames its access units code, starting where the one before ended,
+  and the output is sample for sample what the same queue gives with an output per item.
 
 **Audio outputs**
 
@@ -508,6 +532,14 @@ and release packaging.
 
 **Minimum-footprint / ESP32 decode and encode profile**
 
+- **The ESP-IDF streaming-player example is now `hearth_sink`.** It becomes Hearth's
+  ESP32 sink (`planning/hearth-reference-player.md`), so it takes the name before the
+  work starts: `esp-idf/ac3forge/examples/hearth_sink/`, the CMake project
+  `ac3forge_hearth_sink`, and the *ac3forge hearth sink* menu in `idf.py menuconfig`.
+  Its `CONFIG_AC3FORGE_EXAMPLE_*` options, sinks, sources, web page and stream set are
+  unchanged, and the image it builds behaves as it did. Anyone pointing a script at the
+  old path or flashing `ac3forge_stream_player.bin` needs the new name; the GUI's own
+  stream player is a different thing and keeps its.
 - **The fixed-point tier decodes 5.1 in real time on the ESP32-C6 with WiFi up**, with the
   same PCM bit for bit: the fixed-tier hashes do not move. The IMDCT pair's products drop a
   saturation they cannot reach, the overlap-add runs on 32 bits and builds its output floats
@@ -687,6 +719,15 @@ and release packaging.
   digit, decode time no higher. The ESP32 QEMU legs now also fail on a failed allocation
   anywhere in the console — one can be survived, so a run could print hundreds and still
   report `result=pass` — and the stream set's free heap is held to a floor.
+- **The ESP32 player kept block storage for sixteen output slots whatever the layout.**
+  `ac3forge::Player` held 256 samples for each of sixteen slots inside its own
+  allocation, 16 KB, so a 7.1.4 play carried 4 KB it never read and a stereo play 14 KB,
+  in internal RAM on a part without PSRAM, where the twelve-channel shape runs short
+  first. The storage is now sized from the play's layout at `start()`, placed in PSRAM
+  when the part has it, and released at `stop()` with the ring and the hold. On the
+  7.1.4 stream set under QEMU, the least free internal RAM during a play is 41,456 bytes
+  against 36,904 on main's last CI run, and every stream's slot levels are still the
+  host's.
 - **The ESP32 streaming example's `tdm` sink claimed sixteen 32-bit slots on one data
   line; an ESP32-S3 carries four.** An S3 TDM frame holds at most 128 bits (ESP-IDF v6.1
   enforces it); the sink had never run on hardware before a 2026-09-11 board run found
