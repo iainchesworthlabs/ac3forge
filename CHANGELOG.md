@@ -388,6 +388,20 @@ and release packaging.
   edit list of any other shape plays untrimmed, with a note beside the item. In `ac3tests`, an
   edited item, and a join of two, play sample for sample the matching stretches of an untrimmed
   decode.
+- **Hearth's decoder settings** (`apps/hearth/engine/decoder_settings.hpp`): the plan's decoder
+  controls, turned into the library configuration.
+  - The controls are the operating mode, the custom mode's cut, boost, `compr` and
+    normalisation switches, the stereo fold, the Lt/Rt phase shift, LFE mixing, fold levels,
+    the dual-mono choice, the programme, the object policy and concealment.
+  - The engine applies the dual-mono choice itself: channel 1, channel 2, or one each side.
+    A multi-programme E-AC-3 stream plays the programme the setting names, when an item
+    starts.
+  - A change of settings reaches the playing item at its next unit, through a new decoder
+    primed with the unit before. Nothing is lost or repeated, and a unit the old decoder was
+    holding back for transient pre-noise processing is released first. Seeks are primed the
+    same way, so a seek no longer starts with a block missing its overlap.
+  - Two differences from an unbroken decode remain: the settings change itself, and the
+    §7.3.4 dither, whose generator a new decoder restarts, some 95 dB down.
 
 **Audio outputs**
 
@@ -488,6 +502,16 @@ and release packaging.
   framing/scan helpers and the BS.1770 meter, each with real-signal round-trip tests.
   `build-rust` runs on all three desktop OSes; the first Windows build found a real
   portability bug (bindgen types C enums `i32` on MSVC, `u32` elsewhere).
+- **Decoding: cut and boost scaled apart, and fold levels a caller can set.**
+  - `DecoderConfig::drc_boost_scale` gives a `dynrng` word above unity its own share of
+    §7.7.1's partial compression. Unset, boost follows `drc_scale` as before.
+  - `OutputConfig::mix_override` replaces the stream's Lo/Ro, Lt/Rt and LFE levels in any
+    fold, one field at a time. An LFE level applies only where the stream allows LFE
+    mixing.
+  - Both default to what every decode did before. In `ac3tests`, cut and boost each move
+    only the frames they govern, in both decoders, and an overridden fold is sample for
+    sample the fold of a stream that sent those levels, through the coded and the
+    rendered-layout forms.
 - **The AC-3 decoder folds an Annex D stream with that stream's own `xbsi1` levels**
   (A/52 §D3.1.2, decoding that §D3 makes optional). Lt/Rt (`downmix=ltrt`) now uses
   `ltrtcmixlev`/`ltrtsurmixlev`, and Lo/Ro and mono use `lorocmixlev`/`lorosurmixlev`,

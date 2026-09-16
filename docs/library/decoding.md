@@ -211,6 +211,7 @@ decoder as a check on the encoder: a test can assert on the `dynrng` words the e
 | `DecoderConfig` | Default | Notes |
 |---|---|---|
 | `drc_scale` | 0.0 | §7.7.1 partial compression. 0 ignores `dynrng`; 1 applies it as encoded. A/52 says a consumer decoder should default to applying it — this one defaults to 0 because a reference that silently rescales its output is not a reference. |
+| `drc_boost_scale` | none | `std::optional<double>`: the same scaling for boost alone (a `dynrng` word above unity), where it should differ from the cut's. For example, boost 0 keeps quiet passages quiet while `drc_scale` 1 still brings loud ones down. Unset, boost is scaled by `drc_scale` too. Like `drc_scale`, it applies under `OperatingMode::kCustom` only. |
 | `fast_imdct` | `true` | The fast inverse MDCT — the same fold the encoder's forward fast path uses — instead of the pseudocode's direct O(N²) sum against a 320 KiB tabulated matrix. Covers every inverse a decode runs: both decoders' PCM reconstruction, the three per-block inverses inside `eac3::ecpl_channel_spectrum`, and `oba::joc::reconstruct`'s per-object synthesis. Decodes 4.5–4.7× faster, agreeing with the direct form to 214.9 dB SNR (AC-3) / 284.7 dB (E-AC-3) over 180 s of stream. It never reaches an encoder — the encoder-internal inverses read `eac3::FrameConfig`'s own `fast_mdct` — so nothing about *encoded* output depends on it. `false` selects the direct reference form, the oracle the fast path's tests validate against; `ac3cli` exposes the pair as `mode=performance` / `mode=reference`. |
 | `heavy_compression` | `false` | §7.7.2: prefer `compr` where it exists, falling back on `dynrng` for syncframes that carry none. |
 | `output` | all off | The §7.8 output stage — dialnorm, downmix, operating mode. See below. |
@@ -297,8 +298,10 @@ whose targets have a single-precision FPU at best - and its gains and mix coeffi
 | `mix_lfe` | `false` | §7.8 makes the LFE's contribution optional and this decoder drops it by default. |
 | `ltrt_phase_shift` | `true` | Whether Lt/Rt's surround sum is really phase shifted 90°, or only polarity-inverted. |
 | `rf_ceiling` | `1.0` | What `kRf` holds the fold under, as a linear sample magnitude. |
+| `mix_override` | all unset | `MixLevelOverride`: levels to fold with in place of the stream's, one field at a time, in `MixLevels`' fields and units. A set field replaces what the stream carried, or the default that stood in for it. An LFE level is honoured only where the stream allows LFE mixing at all. |
 
-The matrix comes from the **stream's own** mix levels, never from constants chosen here. AC-3
+The matrix comes from the **stream's own** mix levels unless `mix_override` replaces them, and
+never from constants chosen here. AC-3
 carries two coarse levels in bsi (`cmixlev`, `surmixlev`; §5.4.2.4/§5.4.2.5) and E-AC-3 carries a
 richer group inside `mixmdate` — separate Lt/Rt and Lo/Ro centre and surround levels plus an LFE
 mix level. Both decoders now keep those and report them (`DecodedFrame::cmixlev`/`surmixlev`,
