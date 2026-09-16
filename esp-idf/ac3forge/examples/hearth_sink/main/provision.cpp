@@ -84,7 +84,10 @@ void answer(const improv::Rpc& rpc) {
                 return;
             }
             // The credentials are stored before the association is tried, so a
-            // board that is reset mid-attempt comes back with them.
+            // board that is reset mid-attempt comes back with them. A board
+            // whose last attempt failed - a mistyped passphrase, a network
+            // that has gone - tries these now, and a client that got
+            // cannot_connect can send another pair straight away.
             if (!network_up()) {
                 send_error(improv::Error::cannot_connect);
                 send_state(improv::State::ready);

@@ -28,6 +28,13 @@ namespace player {
 // straight away if it already does. False means there is no network - no
 // build with one, nothing stored to join, or the association failed - and the
 // implementation has already said which on the console.
+//
+// Safe to call again after it returns false, from any task: the next call
+// tries whatever is stored by then. That is how Improv moves a board that
+// could not join onto the network it has just been given, without a restart.
+// Whatever it returns, a build with a network has its IP stack running once it
+// has been called, so a server can listen before there is an address to
+// reach it at.
 [[nodiscard]] bool network_up();
 
 // Whether network_up() has succeeded. Asked by anything that wants to know
