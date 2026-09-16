@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -197,11 +198,11 @@ void advance(FakeDevice::Log& log, std::uint64_t frames) {
     log.clock += frames;
 }
 
-std::vector<float> tone(double hz, std::uint32_t rate, std::size_t offset) {
+std::vector<float> tone(double hz, std::uint32_t rate, std::size_t offset, double level = 0.3) {
     std::vector<float> out(ac3::kSamplesPerFrame);
     for (std::size_t n = 0; n < out.size(); ++n) {
         out[n] = static_cast<float>(
-            0.3 * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(n + offset) / rate));
+            level * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(n + offset) / rate));
     }
     return out;
 }
@@ -212,7 +213,7 @@ std::vector<float> tone(double hz, std::uint32_t rate, std::size_t offset) {
 // decoder that starts late draws different values for the same bins; the
 // difference is some 95 dB down, but it is not zero.
 std::vector<std::byte> eac3_stream(int frames, ac3::SampleRate rate = ac3::SampleRate::k48000,
-                                   bool dither = true) {
+                                   bool dither = true, double level = 0.3) {
     ac3::eac3::FrameConfig config;
     config.sample_rate = rate;
     config.bitrate_kbps = 384;
@@ -224,7 +225,7 @@ std::vector<std::byte> eac3_stream(int frames, ac3::SampleRate rate = ac3::Sampl
     std::vector<std::byte> out;
     for (int f = 0; f < frames; ++f) {
         const auto samples = tone(440.0, ac3::sample_rate_hz(rate),
-                                  static_cast<std::size_t>(f) * ac3::kSamplesPerFrame);
+                                  static_cast<std::size_t>(f) * ac3::kSamplesPerFrame, level);
         const std::vector<std::span<const float>> views(channels, samples);
         const auto frame = encoder.encode_frame(views);
         REQUIRE(frame.has_value());
@@ -1285,4 +1286,77 @@ TEST_CASE("player: choosing an item plays it from its start, and clearing the qu
 
     // Out of range is said, not done.
     CHECK_FALSE(player->play_item(5).note.empty());
+}
+
+TEST_CASE("player: a meter reading waits until the device has played what it describes",
+          "[hearth][player]") {
+    // A 5.1 tone, the same in every channel, folded to two speakers: the fold
+    // keeps its level, 0.3 of full scale.
+    Library library;
+    library.files["tone.ec3"] = eac3_stream(20);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log, 8192, "2.0");
+    player->add(item("tone.ec3"));
+    ac3::hearth::MeterSnapshot latest;
+    CHECK_FALSE(player->meters(latest));
+
+    player->play();
+    player->pump();
+    // Decoded and queued, but nothing heard.
+    CHECK_FALSE(player->meters(latest));
+    // The first reading describes the audio up to the end of the tenth block.
+    advance(*log, 2400);
+    CHECK_FALSE(player->meters(latest));
+    advance(*log, 480);
+    REQUIRE(player->meters(latest));
+    CHECK(latest.output_frame == 2560);
+    REQUIRE(latest.levels.size() == 2);
+    CHECK(latest.levels[0].hold_db == Catch::Approx(-10.46).margin(1.0));
+    CHECK(latest.levels[1].hold_db == Catch::Approx(-10.46).margin(1.0));
+
+    // A seek throws away what was waiting: with nothing decoded since, the
+    // clock can pass every frame the old readings were stamped with and
+    // release none of them.
+    player->pump();
+    player->seek(std::chrono::milliseconds{200});
+    advance(*log, 16384);
+    CHECK_FALSE(player->meters(latest));
+}
+
+TEST_CASE("player: a join starts the next item's loudness, and momentary loudness runs on",
+          "[hearth][player]") {
+    // A tone, then silence, joined.
+    Library library;
+    library.files["tone.ec3"] = eac3_stream(60);
+    library.files["silence.ec3"] = eac3_stream(60, ac3::SampleRate::k48000, /*dither=*/false, 0.0);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log, 8192, "2.0");
+    player->add(item("tone.ec3"));
+    player->add(item("silence.ec3"));
+    player->play();
+    const std::uint64_t join = 60 * ac3::kSamplesPerFrame;
+    const auto play_until = [&](std::uint64_t frame) {
+        while (log->clock < frame) {
+            player->pump();
+            advance(*log, 480);
+        }
+    };
+
+    // 200 ms into the silence, half the momentary window is still the tone.
+    ac3::hearth::MeterSnapshot latest;
+    play_until(join + 9600);
+    REQUIRE(log->opens == 1);
+    REQUIRE(player->meters(latest));
+    REQUIRE(latest.output_frame > join);
+    REQUIRE(latest.momentary_lkfs.has_value());
+    CHECK(*latest.momentary_lkfs > -20.0);
+    CHECK_FALSE(latest.integrated_lkfs.has_value());
+
+    // Over a second in, the programme readings are the silence's own: no
+    // integrated loudness, and no true peak to speak of.
+    play_until(join + 57600);
+    REQUIRE(player->meters(latest));
+    CHECK_FALSE(latest.integrated_lkfs.has_value());
+    CHECK((!latest.true_peak_dbtp || *latest.true_peak_dbtp < -60.0));
+    CHECK(log->opens == 1);
 }

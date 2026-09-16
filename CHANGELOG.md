@@ -439,6 +439,26 @@ and release packaging.
     device's clock and the test's own thread all run at once. Commands from five threads all
     take effect, each thread's in its order, and a playing engine that goes away closes its
     output.
+- **Hearth's meters, released at play time** (`apps/hearth/engine/play_meters.hpp`): a level
+  meter per output slot (peak, hold, RMS and a clip latch) and the programme's loudness
+  (momentary, short-term, integrated, loudness range and true peak), measured as the player
+  renders each block.
+  - Each reading is stamped with the output frame its audio ends on, and handed out only once
+    the device's clock, less the output's latency, has reached that frame. The meters move with
+    the sound, not ahead of it by what the device holds.
+  - Loudness is measured over the slots with a Table E2.5 location; a slot placed only by angle
+    has a level meter but no loudness weighting.
+  - Each item's integrated loudness, loudness range and true peak are its own. Momentary and
+    short-term loudness run on through a gapless join, read from the item before's meter until
+    the new item has filled the 3 s window. A seek, a stop or a reopen starts every meter again
+    and drops the readings still waiting, since their audio will not be heard.
+  - Integrated loudness and loudness range are read once a second. The library works both out
+    over the whole programme at each read; at 20 readings a second, that measured some 15% of a
+    core three hours into an item.
+  - The engine publishes the latest reading beside the play position, and none while nothing
+    plays. In `ac3tests`, tagged `[play-meters]`, a reading comes out when the clock reaches it
+    and not before, readings come out in order however many wait, each describes its audio's
+    level and loudness, and a join, a flush and the once-a-second reads each behave as above.
 
 **Audio outputs**
 

@@ -705,6 +705,7 @@ if(AC3FORGE_BUILD_HEARTH)
         hearth/test_decoder_settings.cpp
         hearth/test_engine.cpp
         hearth/test_output_decision.cpp
+        hearth/test_play_meters.cpp
         hearth/test_player.cpp
         hearth/test_queue.cpp
         hearth/test_session.cpp

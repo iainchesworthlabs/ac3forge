@@ -9,6 +9,7 @@ add_library(ac3hearth_engine STATIC
     device_sink.cpp
     engine_thread.cpp
     output_decision.cpp
+    play_meters.cpp
     player.cpp
     queue.cpp
     session.cpp

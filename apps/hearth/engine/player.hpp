@@ -12,6 +12,7 @@
 #include "ac3/render/layout.hpp"
 #include "decoder_settings.hpp"
 #include "pcm_sink.hpp"
+#include "play_meters.hpp"
 #include "queue.hpp"
 #include "session.hpp"
 #include "stream_decoder.hpp"
@@ -113,6 +114,11 @@ public:
     // Where the item the device is playing has got to. Follows the device's
     // own clock across joins and seeks.
     [[nodiscard]] PlayPosition position() const;
+
+    // The newest meter snapshot the device's clock has reached since the last
+    // call, copied into `latest`; false when there is none. The meters run on
+    // the output's slots; see play_meters.hpp for what starts again when.
+    [[nodiscard]] bool meters(MeterSnapshot& latest);
     [[nodiscard]] const Transport& transport() const { return transport_; }
     void set_gapless(bool on) { transport_.set_gapless(on); }
     void set_repeat(bool on) { transport_.set_repeat(on); }
@@ -249,6 +255,10 @@ private:
     std::uint32_t opens_ = 0;
     std::vector<PlayedItem> history_;
     std::vector<Segment> segments_;
+    // Built for the output's layout and rate; the history entry whose blocks
+    // were metered last, so a new item restarts the programme measurements.
+    std::optional<PlayMeters> meters_;
+    std::size_t metered_record_ = Queue::kNone;
     std::string last_error_;
 };
 
