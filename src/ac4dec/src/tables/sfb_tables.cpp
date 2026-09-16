@@ -12,6 +12,12 @@ namespace ac4::detail::tables {
 
 namespace {
 
+struct TransformLength {
+    int transform_length;
+    int num_sfb;                             // Table B.1, B.2 or B.3
+    std::span<const std::uint16_t> offsets;  // num_sfb + 1 entries
+};
+
 // Table B.4, the 2 048@48 column: sfb_offset for sfb 0 to 63.
 constexpr std::array<std::uint16_t, 64> kSfbOffset2048 = {{
     0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
@@ -133,12 +139,6 @@ constexpr std::array<std::uint16_t, 13> kSfbOffset96 = {{
     68, 80, 96,                                                 // sfb 10 to 12
 }};
 
-struct TransformLength {
-    int transform_length;
-    int num_sfb;                             // Table B.1
-    std::span<const std::uint16_t> offsets;  // num_sfb + 1 entries
-};
-
 constexpr std::array<TransformLength, 15> kTransformLengths = {{
     {2048, 63, kSfbOffset2048},
     {1920, 61, kSfbOffset1920},
@@ -155,6 +155,331 @@ constexpr std::array<TransformLength, 15> kTransformLengths = {{
     {128, 14, kSfbOffset128},
     {120, 14, kSfbOffset120},
     {96, 12, kSfbOffset96},
+}};
+
+// Table B.4, the 4 096@96 column: sfb_offset for sfb 0 to 79.
+constexpr std::array<std::uint16_t, 80> kSfbOffset964096 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 44, 52, 60, 68, 76, 84, 92, 100, 108,                   // sfb 10 to 19
+    116, 124, 136, 148, 160, 172, 188, 204, 220, 240,           // sfb 20 to 29
+    260, 284, 308, 336, 364, 396, 432, 468, 508, 552,           // sfb 30 to 39
+    600, 652, 704, 768, 832, 896, 960, 1024, 1088, 1152,        // sfb 40 to 49
+    1216, 1280, 1344, 1408, 1472, 1536, 1600, 1664, 1728, 1792, // sfb 50 to 59
+    1856, 1920, 1984, 2048, 2176, 2304, 2432, 2560, 2688, 2816, // sfb 60 to 69
+    2944, 3072, 3200, 3328, 3456, 3584, 3712, 3840, 3968, 4096, // sfb 70 to 79
+}};
+
+// Table B.4, the 3 840@96 column: sfb_offset for sfb 0 to 76.
+constexpr std::array<std::uint16_t, 77> kSfbOffset963840 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 44, 52, 60, 68, 76, 84, 92, 100, 108,                   // sfb 10 to 19
+    116, 124, 136, 148, 160, 172, 188, 204, 220, 240,           // sfb 20 to 29
+    260, 284, 308, 336, 364, 396, 432, 468, 508, 552,           // sfb 30 to 39
+    600, 652, 704, 768, 832, 896, 960, 1024, 1088, 1152,        // sfb 40 to 49
+    1216, 1280, 1344, 1408, 1472, 1536, 1600, 1664, 1728, 1792, // sfb 50 to 59
+    1856, 1920, 2048, 2176, 2304, 2432, 2560, 2688, 2816, 2944, // sfb 60 to 69
+    3072, 3200, 3328, 3456, 3584, 3712, 3840,                   // sfb 70 to 76
+}};
+
+// Table B.4, the 3 072@96 column: sfb_offset for sfb 0 to 67.
+constexpr std::array<std::uint16_t, 68> kSfbOffset963072 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 44, 52, 60, 68, 76, 84, 92, 100, 108,                   // sfb 10 to 19
+    116, 124, 136, 148, 160, 172, 188, 204, 220, 240,           // sfb 20 to 29
+    260, 284, 308, 336, 364, 396, 432, 468, 508, 552,           // sfb 30 to 39
+    600, 652, 704, 768, 832, 896, 960, 1024, 1088, 1152,        // sfb 40 to 49
+    1216, 1280, 1344, 1408, 1472, 1536, 1664, 1792, 1920, 2048, // sfb 50 to 59
+    2176, 2304, 2432, 2560, 2688, 2816, 2944, 3072,             // sfb 60 to 67
+}};
+
+// Table B.5, the 2 048@96 column: sfb_offset for sfb 0 to 57.
+constexpr std::array<std::uint16_t, 58> kSfbOffset962048 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 48, 56, 64, 72, 80, 88, 96, 108, 120,                   // sfb 10 to 19
+    132, 144, 160, 176, 196, 216, 240, 264, 292, 320,           // sfb 20 to 29
+    352, 384, 416, 448, 480, 512, 544, 576, 608, 640,           // sfb 30 to 39
+    672, 704, 736, 768, 800, 832, 864, 896, 928, 1024,          // sfb 40 to 49
+    1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048,             // sfb 50 to 57
+}};
+
+// Table B.5, the 1 920@96 column: sfb_offset for sfb 0 to 57.
+constexpr std::array<std::uint16_t, 58> kSfbOffset961920 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 48, 56, 64, 72, 80, 88, 96, 108, 120,                   // sfb 10 to 19
+    132, 144, 160, 176, 196, 216, 240, 264, 292, 320,           // sfb 20 to 29
+    352, 384, 416, 448, 480, 512, 544, 576, 608, 640,           // sfb 30 to 39
+    672, 704, 736, 768, 800, 832, 864, 896, 928, 960,           // sfb 40 to 49
+    1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920,             // sfb 50 to 57
+}};
+
+// Table B.5, the 1 536@96 column: sfb_offset for sfb 0 to 49.
+constexpr std::array<std::uint16_t, 50> kSfbOffset961536 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 48, 56, 64, 72, 80, 88, 96, 108, 120,                   // sfb 10 to 19
+    132, 144, 160, 176, 196, 216, 240, 264, 292, 320,           // sfb 20 to 29
+    352, 384, 416, 448, 480, 512, 544, 576, 608, 640,           // sfb 30 to 39
+    672, 704, 736, 768, 896, 1024, 1152, 1280, 1408, 1536,      // sfb 40 to 49
+}};
+
+// Table B.6, the 1 024@96 column: sfb_offset for sfb 0 to 44.
+constexpr std::array<std::uint16_t, 45> kSfbOffset961024 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 44, 48, 52, 56, 60, 68, 76, 84, 92,                     // sfb 10 to 19
+    100, 112, 124, 136, 148, 164, 184, 208, 236, 268,           // sfb 20 to 29
+    300, 332, 364, 396, 428, 460, 512, 576, 640, 704,           // sfb 30 to 39
+    768, 832, 896, 960, 1024,                                   // sfb 40 to 44
+}};
+
+// Table B.6, the 960@96 column: sfb_offset for sfb 0 to 44.
+constexpr std::array<std::uint16_t, 45> kSfbOffset96960 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 44, 48, 52, 56, 60, 68, 76, 84, 92,                     // sfb 10 to 19
+    100, 112, 124, 136, 148, 164, 184, 208, 236, 268,           // sfb 20 to 29
+    300, 332, 364, 396, 428, 460, 480, 512, 576, 640,           // sfb 30 to 39
+    704, 768, 832, 896, 960,                                    // sfb 40 to 44
+}};
+
+// Table B.6, the 768@96 column: sfb_offset for sfb 0 to 39.
+constexpr std::array<std::uint16_t, 40> kSfbOffset96768 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 44, 48, 52, 56, 60, 68, 76, 84, 92,                     // sfb 10 to 19
+    100, 112, 124, 136, 148, 164, 184, 208, 236, 268,           // sfb 20 to 29
+    300, 332, 364, 384, 448, 512, 576, 640, 704, 768,           // sfb 30 to 39
+}};
+
+// Table B.7, the 512@96 column: sfb_offset for sfb 0 to 28.
+constexpr std::array<std::uint16_t, 29> kSfbOffset96512 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 36, 44,                        // sfb 0 to 9
+    52, 64, 76, 92, 108, 128, 148, 172, 196, 224,               // sfb 10 to 19
+    256, 288, 320, 352, 384, 416, 448, 480, 512,                // sfb 20 to 28
+}};
+
+// Table B.7, the 480@96 column: sfb_offset for sfb 0 to 28.
+constexpr std::array<std::uint16_t, 29> kSfbOffset96480 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 36, 44,                        // sfb 0 to 9
+    52, 64, 76, 92, 108, 128, 148, 172, 196, 224,               // sfb 10 to 19
+    240, 256, 288, 320, 352, 384, 416, 448, 480,                // sfb 20 to 28
+}};
+
+// Table B.7, the 384@96 column: sfb_offset for sfb 0 to 24.
+constexpr std::array<std::uint16_t, 25> kSfbOffset96384 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 36, 44,                        // sfb 0 to 9
+    52, 64, 76, 92, 108, 128, 148, 172, 192, 224,               // sfb 10 to 19
+    256, 288, 320, 352, 384,                                    // sfb 20 to 24
+}};
+
+// Table B.7, the 256@96 column: sfb_offset for sfb 0 to 22.
+constexpr std::array<std::uint16_t, 23> kSfbOffset96256 = {{
+    0, 4, 8, 12, 16, 20, 28, 36, 44, 56,                        // sfb 0 to 9
+    68, 80, 96, 112, 128, 144, 160, 176, 192, 208,              // sfb 10 to 19
+    224, 240, 256,                                              // sfb 20 to 22
+}};
+
+// Table B.7, the 240@96 column: sfb_offset for sfb 0 to 22.
+constexpr std::array<std::uint16_t, 23> kSfbOffset96240 = {{
+    0, 4, 8, 12, 16, 20, 28, 36, 44, 56,                        // sfb 0 to 9
+    68, 80, 96, 112, 120, 128, 144, 160, 176, 192,              // sfb 10 to 19
+    208, 224, 240,                                              // sfb 20 to 22
+}};
+
+// Table B.7, the 192@96 column: sfb_offset for sfb 0 to 18.
+constexpr std::array<std::uint16_t, 19> kSfbOffset96192 = {{
+    0, 4, 8, 12, 16, 20, 28, 36, 44, 56,                        // sfb 0 to 9
+    68, 80, 96, 112, 128, 144, 160, 176, 192,                   // sfb 10 to 18
+}};
+
+constexpr std::array<TransformLength, 15> kTransformLengths96 = {{
+    {4096, 79, kSfbOffset964096},
+    {3840, 76, kSfbOffset963840},
+    {3072, 67, kSfbOffset963072},
+    {2048, 57, kSfbOffset962048},
+    {1920, 57, kSfbOffset961920},
+    {1536, 49, kSfbOffset961536},
+    {1024, 44, kSfbOffset961024},
+    {960, 44, kSfbOffset96960},
+    {768, 39, kSfbOffset96768},
+    {512, 28, kSfbOffset96512},
+    {480, 28, kSfbOffset96480},
+    {384, 24, kSfbOffset96384},
+    {256, 22, kSfbOffset96256},
+    {240, 22, kSfbOffset96240},
+    {192, 18, kSfbOffset96192},
+}};
+
+// Table B.4, the 8 192@192 column: sfb_offset for sfb 0 to 111.
+constexpr std::array<std::uint16_t, 112> kSfbOffset1928192 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 44, 52, 60, 68, 76, 84, 92, 100, 108,                   // sfb 10 to 19
+    116, 124, 136, 148, 160, 172, 188, 204, 220, 240,           // sfb 20 to 29
+    260, 284, 308, 336, 364, 396, 432, 468, 508, 552,           // sfb 30 to 39
+    600, 652, 704, 768, 832, 896, 960, 1024, 1088, 1152,        // sfb 40 to 49
+    1216, 1280, 1344, 1408, 1472, 1536, 1600, 1664, 1728, 1792, // sfb 50 to 59
+    1856, 1920, 1984, 2048, 2176, 2304, 2432, 2560, 2688, 2816, // sfb 60 to 69
+    2944, 3072, 3200, 3328, 3456, 3584, 3712, 3840, 3968, 4096, // sfb 70 to 79
+    4224, 4352, 4480, 4608, 4736, 4864, 4992, 5120, 5248, 5376, // sfb 80 to 89
+    5504, 5632, 5760, 5888, 6016, 6144, 6272, 6400, 6528, 6656, // sfb 90 to 99
+    6784, 6912, 7040, 7168, 7296, 7424, 7552, 7680, 7808, 7936, // sfb 100 to 109
+    8064, 8192,                                                 // sfb 110 to 111
+}};
+
+// Table B.4, the 7 680@192 column: sfb_offset for sfb 0 to 106.
+constexpr std::array<std::uint16_t, 107> kSfbOffset1927680 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 44, 52, 60, 68, 76, 84, 92, 100, 108,                   // sfb 10 to 19
+    116, 124, 136, 148, 160, 172, 188, 204, 220, 240,           // sfb 20 to 29
+    260, 284, 308, 336, 364, 396, 432, 468, 508, 552,           // sfb 30 to 39
+    600, 652, 704, 768, 832, 896, 960, 1024, 1088, 1152,        // sfb 40 to 49
+    1216, 1280, 1344, 1408, 1472, 1536, 1600, 1664, 1728, 1792, // sfb 50 to 59
+    1856, 1920, 2048, 2176, 2304, 2432, 2560, 2688, 2816, 2944, // sfb 60 to 69
+    3072, 3200, 3328, 3456, 3584, 3712, 3840, 3968, 4096, 4224, // sfb 70 to 79
+    4352, 4480, 4608, 4736, 4864, 4992, 5120, 5248, 5376, 5504, // sfb 80 to 89
+    5632, 5760, 5888, 6016, 6144, 6272, 6400, 6528, 6656, 6784, // sfb 90 to 99
+    6912, 7040, 7168, 7296, 7424, 7552, 7680,                   // sfb 100 to 106
+}};
+
+// Table B.4, the 6 144@192 column: sfb_offset for sfb 0 to 91.
+constexpr std::array<std::uint16_t, 92> kSfbOffset1926144 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 44, 52, 60, 68, 76, 84, 92, 100, 108,                   // sfb 10 to 19
+    116, 124, 136, 148, 160, 172, 188, 204, 220, 240,           // sfb 20 to 29
+    260, 284, 308, 336, 364, 396, 432, 468, 508, 552,           // sfb 30 to 39
+    600, 652, 704, 768, 832, 896, 960, 1024, 1088, 1152,        // sfb 40 to 49
+    1216, 1280, 1344, 1408, 1472, 1536, 1664, 1792, 1920, 2048, // sfb 50 to 59
+    2176, 2304, 2432, 2560, 2688, 2816, 2944, 3072, 3200, 3328, // sfb 60 to 69
+    3456, 3584, 3712, 3840, 3968, 4096, 4224, 4352, 4480, 4608, // sfb 70 to 79
+    4736, 4864, 4992, 5120, 5248, 5376, 5504, 5632, 5760, 5888, // sfb 80 to 89
+    6016, 6144,                                                 // sfb 90 to 91
+}};
+
+// Table B.5, the 4 096@192 column: sfb_offset for sfb 0 to 73.
+constexpr std::array<std::uint16_t, 74> kSfbOffset1924096 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 48, 56, 64, 72, 80, 88, 96, 108, 120,                   // sfb 10 to 19
+    132, 144, 160, 176, 196, 216, 240, 264, 292, 320,           // sfb 20 to 29
+    352, 384, 416, 448, 480, 512, 544, 576, 608, 640,           // sfb 30 to 39
+    672, 704, 736, 768, 800, 832, 864, 896, 928, 1024,          // sfb 40 to 49
+    1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048, 2176, 2304, // sfb 50 to 59
+    2432, 2560, 2688, 2816, 2944, 3072, 3200, 3328, 3456, 3584, // sfb 60 to 69
+    3712, 3840, 3968, 4096,                                     // sfb 70 to 73
+}};
+
+// Table B.5, the 3 840@192 column: sfb_offset for sfb 0 to 72.
+constexpr std::array<std::uint16_t, 73> kSfbOffset1923840 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 48, 56, 64, 72, 80, 88, 96, 108, 120,                   // sfb 10 to 19
+    132, 144, 160, 176, 196, 216, 240, 264, 292, 320,           // sfb 20 to 29
+    352, 384, 416, 448, 480, 512, 544, 576, 608, 640,           // sfb 30 to 39
+    672, 704, 736, 768, 800, 832, 864, 896, 928, 960,           // sfb 40 to 49
+    1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048, 2176, // sfb 50 to 59
+    2304, 2432, 2560, 2688, 2816, 2944, 3072, 3200, 3328, 3456, // sfb 60 to 69
+    3584, 3712, 3840,                                           // sfb 70 to 72
+}};
+
+// Table B.5, the 3 072@192 column: sfb_offset for sfb 0 to 61.
+constexpr std::array<std::uint16_t, 62> kSfbOffset1923072 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 48, 56, 64, 72, 80, 88, 96, 108, 120,                   // sfb 10 to 19
+    132, 144, 160, 176, 196, 216, 240, 264, 292, 320,           // sfb 20 to 29
+    352, 384, 416, 448, 480, 512, 544, 576, 608, 640,           // sfb 30 to 39
+    672, 704, 736, 768, 896, 1024, 1152, 1280, 1408, 1536,      // sfb 40 to 49
+    1664, 1792, 1920, 2048, 2176, 2304, 2432, 2560, 2688, 2816, // sfb 50 to 59
+    2944, 3072,                                                 // sfb 60 to 61
+}};
+
+// Table B.6, the 2 048@192 column: sfb_offset for sfb 0 to 60.
+constexpr std::array<std::uint16_t, 61> kSfbOffset1922048 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 44, 48, 52, 56, 60, 68, 76, 84, 92,                     // sfb 10 to 19
+    100, 112, 124, 136, 148, 164, 184, 208, 236, 268,           // sfb 20 to 29
+    300, 332, 364, 396, 428, 460, 512, 576, 640, 704,           // sfb 30 to 39
+    768, 832, 896, 960, 1024, 1088, 1152, 1216, 1280, 1344,     // sfb 40 to 49
+    1408, 1472, 1536, 1600, 1664, 1728, 1792, 1856, 1920, 1984, // sfb 50 to 59
+    2048,                                                       // sfb 60
+}};
+
+// Table B.6, the 1 920@192 column: sfb_offset for sfb 0 to 59.
+constexpr std::array<std::uint16_t, 60> kSfbOffset1921920 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 44, 48, 52, 56, 60, 68, 76, 84, 92,                     // sfb 10 to 19
+    100, 112, 124, 136, 148, 164, 184, 208, 236, 268,           // sfb 20 to 29
+    300, 332, 364, 396, 428, 460, 480, 512, 576, 640,           // sfb 30 to 39
+    704, 768, 832, 896, 960, 1024, 1088, 1152, 1216, 1280,      // sfb 40 to 49
+    1344, 1408, 1472, 1536, 1600, 1664, 1728, 1792, 1856, 1920, // sfb 50 to 59
+}};
+
+// Table B.6, the 1 536@192 column: sfb_offset for sfb 0 to 51.
+constexpr std::array<std::uint16_t, 52> kSfbOffset1921536 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36,                        // sfb 0 to 9
+    40, 44, 48, 52, 56, 60, 68, 76, 84, 92,                     // sfb 10 to 19
+    100, 112, 124, 136, 148, 164, 184, 208, 236, 268,           // sfb 20 to 29
+    300, 332, 364, 384, 448, 512, 576, 640, 704, 768,           // sfb 30 to 39
+    832, 896, 960, 1024, 1088, 1152, 1216, 1280, 1344, 1408,    // sfb 40 to 49
+    1472, 1536,                                                 // sfb 50 to 51
+}};
+
+// Table B.7, the 1 024@192 column: sfb_offset for sfb 0 to 36.
+constexpr std::array<std::uint16_t, 37> kSfbOffset1921024 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 36, 44,                        // sfb 0 to 9
+    52, 64, 76, 92, 108, 128, 148, 172, 196, 224,               // sfb 10 to 19
+    256, 288, 320, 352, 384, 416, 448, 480, 512, 576,           // sfb 20 to 29
+    640, 704, 768, 832, 896, 960, 1024,                         // sfb 30 to 36
+}};
+
+// Table B.7, the 960@192 column: sfb_offset for sfb 0 to 36.
+constexpr std::array<std::uint16_t, 37> kSfbOffset192960 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 36, 44,                        // sfb 0 to 9
+    52, 64, 76, 92, 108, 128, 148, 172, 196, 224,               // sfb 10 to 19
+    240, 256, 288, 320, 352, 384, 416, 448, 480, 512,           // sfb 20 to 29
+    576, 640, 704, 768, 832, 896, 960,                          // sfb 30 to 36
+}};
+
+// Table B.7, the 768@192 column: sfb_offset for sfb 0 to 30.
+constexpr std::array<std::uint16_t, 31> kSfbOffset192768 = {{
+    0, 4, 8, 12, 16, 20, 24, 28, 36, 44,                        // sfb 0 to 9
+    52, 64, 76, 92, 108, 128, 148, 172, 192, 224,               // sfb 10 to 19
+    256, 288, 320, 352, 384, 448, 512, 576, 640, 704,           // sfb 20 to 29
+    768,                                                        // sfb 30
+}};
+
+// Table B.7, the 512@192 column: sfb_offset for sfb 0 to 30.
+constexpr std::array<std::uint16_t, 31> kSfbOffset192512 = {{
+    0, 4, 8, 12, 16, 20, 28, 36, 44, 56,                        // sfb 0 to 9
+    68, 80, 96, 112, 128, 144, 160, 176, 192, 208,              // sfb 10 to 19
+    224, 240, 256, 288, 320, 352, 384, 416, 448, 480,           // sfb 20 to 29
+    512,                                                        // sfb 30
+}};
+
+// Table B.7, the 480@192 column: sfb_offset for sfb 0 to 30.
+constexpr std::array<std::uint16_t, 31> kSfbOffset192480 = {{
+    0, 4, 8, 12, 16, 20, 28, 36, 44, 56,                        // sfb 0 to 9
+    68, 80, 96, 112, 120, 128, 144, 160, 176, 192,              // sfb 10 to 19
+    208, 224, 240, 256, 288, 320, 352, 384, 416, 448,           // sfb 20 to 29
+    480,                                                        // sfb 30
+}};
+
+// Table B.7, the 384@192 column: sfb_offset for sfb 0 to 24.
+constexpr std::array<std::uint16_t, 25> kSfbOffset192384 = {{
+    0, 4, 8, 12, 16, 20, 28, 36, 44, 56,                        // sfb 0 to 9
+    68, 80, 96, 112, 128, 144, 160, 176, 192, 224,              // sfb 10 to 19
+    256, 288, 320, 352, 384,                                    // sfb 20 to 24
+}};
+
+constexpr std::array<TransformLength, 15> kTransformLengths192 = {{
+    {8192, 111, kSfbOffset1928192},
+    {7680, 106, kSfbOffset1927680},
+    {6144, 91, kSfbOffset1926144},
+    {4096, 73, kSfbOffset1924096},
+    {3840, 72, kSfbOffset1923840},
+    {3072, 61, kSfbOffset1923072},
+    {2048, 60, kSfbOffset1922048},
+    {1920, 59, kSfbOffset1921920},
+    {1536, 51, kSfbOffset1921536},
+    {1024, 36, kSfbOffset1921024},
+    {960, 36, kSfbOffset192960},
+    {768, 30, kSfbOffset192768},
+    {512, 30, kSfbOffset192512},
+    {480, 30, kSfbOffset192480},
+    {384, 24, kSfbOffset192384},
 }};
 
 // Table B.8: max_sfb_master[2 048], by row, to n_sfb_side[1 024], [512], [256], [128].
@@ -539,8 +864,9 @@ constexpr std::array<MasterTable, 12> kMasterTables = {{
     {192, {{96, 0, 0, 0}}, 1, kSfbSide192},
 }};
 
-const TransformLength* find_length(int transform_length) noexcept {
-    for (const TransformLength& entry : kTransformLengths) {
+const TransformLength* find_length(std::span<const TransformLength> table,
+                                   int transform_length) noexcept {
+    for (const TransformLength& entry : table) {
         if (entry.transform_length == transform_length) {
             return &entry;
         }
@@ -551,12 +877,32 @@ const TransformLength* find_length(int transform_length) noexcept {
 }  // namespace
 
 int num_sfb_48(int transform_length) noexcept {
-    const TransformLength* entry = find_length(transform_length);
+    const TransformLength* entry = find_length(kTransformLengths, transform_length);
     return entry != nullptr ? entry->num_sfb : 0;
 }
 
 std::span<const std::uint16_t> sfb_offsets_48(int transform_length) noexcept {
-    const TransformLength* entry = find_length(transform_length);
+    const TransformLength* entry = find_length(kTransformLengths, transform_length);
+    return entry != nullptr ? entry->offsets : std::span<const std::uint16_t>{};
+}
+
+int num_sfb_96(int transform_length) noexcept {
+    const TransformLength* entry = find_length(kTransformLengths96, transform_length);
+    return entry != nullptr ? entry->num_sfb : 0;
+}
+
+std::span<const std::uint16_t> sfb_offsets_96(int transform_length) noexcept {
+    const TransformLength* entry = find_length(kTransformLengths96, transform_length);
+    return entry != nullptr ? entry->offsets : std::span<const std::uint16_t>{};
+}
+
+int num_sfb_192(int transform_length) noexcept {
+    const TransformLength* entry = find_length(kTransformLengths192, transform_length);
+    return entry != nullptr ? entry->num_sfb : 0;
+}
+
+std::span<const std::uint16_t> sfb_offsets_192(int transform_length) noexcept {
+    const TransformLength* entry = find_length(kTransformLengths192, transform_length);
     return entry != nullptr ? entry->offsets : std::span<const std::uint16_t>{};
 }
 
