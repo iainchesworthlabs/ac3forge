@@ -662,8 +662,10 @@ either way: there is no DAC or DSP here that drives the clocks.
 that it compiles and links.** qemu-system-xtensa has no I2S, so every CI run
 that decodes and checks samples plays them through `capture` instead: eight
 slots for the padding check (`sdkconfig.ci-tdm`), twelve for a rendered 7.1.4
-(`sdkconfig.ci-render`, `sdkconfig.ci-http714`) - both wider than the real
-sink's own ceiling on any board this project has, one line or two. The build
+(`sdkconfig.ci-render`, `sdkconfig.ci-http714`), and sixteen 16-bit ones onto
+a 9.1.6 layout (`sdkconfig.ci-tdm916`), which is the widest frame the part
+reaches - two lines of eight - and so checks the planner's split and the
+16-bit interleave across a full sixteen slots. The build
 matrix (`main/CMakeLists.txt`'s sink choice) compiles `i2s` as well, so an IDF
 component rename or a driver API change is caught there, but nothing under
 QEMU runs it. The exceptions are the parts worth testing without a board at

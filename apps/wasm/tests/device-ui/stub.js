@@ -162,6 +162,7 @@ function statusJson(d) {
         ['source', JSON.stringify(d.source)],
         ['sink', JSON.stringify(d.sink)],
         ['sink_slots', String(d.sinkSlots)],
+        ['slot_bits', String(d.slotBits)],
         ['layout', JSON.stringify(d.layout)],
         ['volume', d.volume.toFixed(3)],
         ['stream', stream ? JSON.stringify(stream) : 'null'],
@@ -179,6 +180,7 @@ async function startStub() {
         source: 'http',
         sink: 'capture-i2s',
         sinkSlots: 2,
+        slotBits: 32,
         layout: '2.0',
         volume: 1,
         player: null, // the play in progress: {stream, stats, total, fails}
