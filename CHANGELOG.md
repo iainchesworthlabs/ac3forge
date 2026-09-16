@@ -886,6 +886,13 @@ and release packaging.
     whether or not there is a network to join.
   - The QEMU Ethernet network set itself up again on a second call too, and is now
     set up once as well.
+- **Over an ESP32-S3's USB console, a Hearth sink's Improv answers waited for the next
+  line it printed.** ESP-IDF's driverless USB-Serial-JTAG console sends its buffer to
+  the host only at a newline, and an Improv packet has none. On an idle board, or after
+  `cannot_connect`, nothing followed, and the client never got its answer. Each packet
+  is now synced to the host as it is written; on a board, a `current_state` request is
+  answered in 0.5 s, where before its answer arrived 10 s later with the next request's
+  output.
 
 **Codec correctness**
 
