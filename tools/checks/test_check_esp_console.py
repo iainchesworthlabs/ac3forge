@@ -73,6 +73,30 @@ RESET = [
 PANICKED = "panic output after boot: assert failed, Backtrace:, Rebooting"
 REBOOTED = "the part booted 2 times, so it reset; a clean run boots once"
 
+# The failed-allocation hook's line, from run 35035085512's stream-set step -
+# the 2,508-byte one that aborted, and the Ethernet driver's 1,522-byte one
+# that did not.
+STARVED = (
+    "heap: heap_caps_malloc could not allocate 2508 bytes (caps 0x1800); "
+    "internal free 6492, largest 1920"
+)
+STARVED_RX = (
+    "heap: heap_caps_malloc could not allocate 1522 bytes (caps 0x1800); "
+    "internal free 5520, largest 3072"
+)
+STARVED_MESSAGE = (
+    "1 failed allocation(s) after boot; a clean run has none, and a run can print them "
+    "and still reach result=pass"
+)
+
+# A progress line of the same play, which --min-heap-free reads heap_free= from.
+def progress(heap_free: int) -> str:
+    return (
+        f"progress=1 frames=55 us_per_frame=14459 worst_frame_us=19201 realtime_permille=451 "
+        f"render_us_per_frame=251 sink_us_per_frame=3775 resync=0 ring_low=6144 "
+        f"heap_free={heap_free}"
+    )
+
 
 class Examine(unittest.TestCase):
     def test_one_clean_boot_passes(self) -> None:
@@ -138,6 +162,41 @@ class Examine(unittest.TestCase):
         self.assertIn("no boot banner", problems[0])
         self.assertEqual(listing, [])
 
+    def test_a_failed_allocation_fails_even_where_the_run_played_on(self) -> None:
+        # No panic and one boot: this is the case a verdict check and the panic
+        # markers both pass, and the stream set printed it for months.
+        problems, listing = check_esp_console.examine([*BOOT, STARVED, *TAIL])
+        self.assertEqual(problems, [STARVED_MESSAGE])
+        self.assertEqual([[*BOOT, STARVED, *TAIL][i] for i in listing], ["result=pass", STARVED])
+
+    def test_only_the_first_few_failed_allocations_are_listed(self) -> None:
+        # One run logged 176,207 of them; they all say the same thing.
+        capture = [*BOOT, *([STARVED_RX] * 40), *TAIL]
+        problems, listing = check_esp_console.examine(capture)
+        self.assertIn("40 failed allocation(s) after boot", problems[0])
+        self.assertEqual(len(listing), 6)  # the verdict and five failures
+
+    def test_min_heap_free_holds_the_lowest_figure_to_a_floor(self) -> None:
+        healthy = [*BOOT, progress(21260), progress(41648), *TAIL]
+        self.assertEqual(check_esp_console.examine(healthy, 18000), ([], []))
+        thin = [*BOOT, progress(9772), progress(41648), *TAIL]
+        problems, listing = check_esp_console.examine(thin, 18000)
+        self.assertEqual(
+            problems, ["free heap fell to 9772 bytes while playing, under the 18000 this shape "
+                       "is held to"]
+        )
+        self.assertEqual([thin[i] for i in listing], ["result=pass", progress(9772)])
+
+    def test_min_heap_free_without_the_option_reads_nothing(self) -> None:
+        self.assertEqual(check_esp_console.examine([*BOOT, progress(64), *TAIL]), ([], []))
+
+    def test_min_heap_free_on_a_shape_that_prints_none_fails(self) -> None:
+        # Asking a capture for a figure it never prints is a mistake in the
+        # step, not a pass.
+        problems, _ = check_esp_console.examine(CLEAN, 18000)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("no heap_free= line", problems[0])
+
 
 class ReadCapture(unittest.TestCase):
     def test_crlf_and_bytes_that_are_not_utf8(self) -> None:
@@ -171,7 +230,18 @@ class Main(unittest.TestCase):
         code, out = self.run_main(CLEAN)
         self.assertEqual(code, 0)
         self.assertEqual(len(out), 1)
-        self.assertTrue(out[0].endswith("console.txt: one boot, no panic output"))
+        self.assertTrue(out[0].endswith("one boot, no panic output, no failed allocation"))
+
+    def test_a_clean_capture_under_a_floor_reports_the_figure_it_held(self) -> None:
+        code, out = self.run_main([*BOOT, progress(33120), *TAIL], "--min-heap-free", "24576")
+        self.assertEqual(code, 0)
+        self.assertTrue(out[0].endswith("free heap no lower than 33120 bytes"))
+
+    def test_a_floor_broken_exits_one(self) -> None:
+        code, out = self.run_main([*BOOT, progress(9772), *TAIL], "--min-heap-free", "24576")
+        self.assertEqual(code, 1)
+        self.assertTrue(out[0].startswith("::error title=ESP32 console::"))
+        self.assertIn("free heap fell to 9772 bytes", out[0])
 
     def test_a_finding_is_an_annotation_per_rule_and_a_listing(self) -> None:
         code, out = self.run_main(BOOT + PANIC + RESET, "--title", "ESP32-S3 HTTP source")
