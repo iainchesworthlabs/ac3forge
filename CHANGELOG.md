@@ -376,6 +376,21 @@ and release packaging.
   with the versions and licence texts vcpkg installs with each port, ready for Hearth's About page
   and package. The threat model gains Sendspin: what a peer on the network can reach without a
   key, what a key allows, what mDNS exposes, and the two parsers not yet fuzzed.
+- **`ac3hearth_engine`, the start of Hearth's player engine** (`apps/hearth/engine`, no Qt): an
+  output decision in the shape of Crucible's `output_policy` (a mode, an endpoint and a reason,
+  from capability facts that can each be unknown), the play queue, and a transport that answers
+  each command with the one action to carry out. A player puts them together with a session per
+  item and a PCM sink, one of which drives A2's `PcmOutput`. Each item's AC-3 or E-AC-3 access
+  units are decoded and rendered to the output layout 256 frames at a time, including the unit
+  the E-AC-3 decoder is still holding for transient pre-noise processing when a stream ends. An
+  item at the open output's rate joins it with nothing between the two; a rate change, or gapless
+  turned off, reopens the output once the device's own clock says everything submitted has been
+  heard, however much silence an underrun put in between. An item that cannot be read is marked
+  with the reason and skipped, a device that will not open stops playback without marking the
+  item, and a seek made while stopped applies when that item starts. In `ac3tests`, raw E-AC-3,
+  E-AC-3 in MP4, AC-3 in Matroska and raw AC-3 play through one output to a fake device: each
+  item delivers exactly the frames its access units code, starting where the one before ended,
+  and the output is sample for sample what the same queue gives with an output per item.
 
 **Audio outputs**
 

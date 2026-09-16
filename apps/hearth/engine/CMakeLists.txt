@@ -4,7 +4,14 @@
 # apps/crucible/{engine,ui} already keeps - and the same reason: everything
 # here can then be tested by ac3tests on every CI leg, including the legs
 # with no display and no sound card.
-add_library(ac3hearth_engine STATIC output_decision.cpp queue.cpp transport.cpp)
+add_library(ac3hearth_engine STATIC
+    device_sink.cpp
+    output_decision.cpp
+    player.cpp
+    queue.cpp
+    session.cpp
+    stream_decoder.cpp
+    transport.cpp)
 target_include_directories(ac3hearth_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_features(ac3hearth_engine PUBLIC cxx_std_23)
 
