@@ -643,6 +643,13 @@ protocol failure.
 **Verified by:** the step failing when a deliberate mismatch is introduced, and passing without
 it.
 
+**As built:** `hearth-esp32s3` in `.github/workflows/_build.yml`, a job of its own that runs
+after the ESP32-S3 job and takes that job's QEMU image as an artifact. The server is a host build
+with GCC 16 and vcpkg's `hearth` feature, and Espressif's image carries neither. The engine has
+no Sendspin server yet, so `ac3hearth-testserver`, on `src/sendspin`'s `ServerHost`, plays in its
+place. `tools/checks/run_sendspin_qemu.sh` runs the step, and its `--board-trim-db` option makes
+the deliberate mismatch.
+
 ### B5: docs
 
 The sink guide (flashing, Improv, pairing, groups, wiring and slot widths), the ESP32-S3 platform
