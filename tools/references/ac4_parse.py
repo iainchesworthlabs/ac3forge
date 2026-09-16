@@ -25,6 +25,13 @@ substream-group loop stops there, cleanly, rather than silently going out of
 sync.
 
 Usage:  python tools/references/ac4_parse.py <file.ac4> [frame_index]
+
+tools/references/ac4_syntax.py, the Python transcription of the substream
+syntax, takes its table of contents from here. For it,
+presentation_config 1 and 4 read two and three ac4_sgi_specifier() elements
+(6.2.1.3) while n_substream_groups is 1 and 2, and the returned dicts carry
+b_iframe / b_audio_ndot, add_ch_base, the presentation and EMDF payload
+substream indices, the HSF and OAMD indices, sus_ver and n_substream_groups.
 """
 
 import sys
@@ -261,15 +268,16 @@ def parse_substream_info_v0(r, fs_index, frame_rate_factor):
     if r.bits(1):  # b_bitrate_info
         bitrate_indicator = _read_bitrate_indicator(r)
         bitrate_kbps = BITRATE_KBPS.get(bitrate_indicator, 'unlimited')
+    add_ch_base = 0
     if channel_mode in (0b1111010, 0b1111011, 0b1111100, 0b1111101):
-        r.bits(1)  # add_ch_base
+        add_ch_base = r.bits(1)  # add_ch_base
     content_type = parse_content_type(r) if r.bits(1) else None  # b_content_type
-    for _ in range(frame_rate_factor):
-        r.bits(1)  # b_iframe
+    b_iframe = [r.bits(1) for _ in range(frame_rate_factor)]
     substream_index = parse_substream_index_ref(r)
     return {'channel_mode': channel_mode, 'channel_mode_name': name, 'ch_mode': ch_mode,
             'sf_multiplier': sf_multiplier, 'bitrate_kbps': bitrate_kbps,
-            'content_type': content_type, 'substream_index': substream_index}
+            'add_ch_base': add_ch_base,
+            'content_type': content_type, 'b_iframe': b_iframe, 'substream_index': substream_index}
 
 
 def _read_bitrate_indicator(r):
@@ -328,14 +336,15 @@ def parse_substream_info_chan(r, fs_index, frame_rate_factor, b_substreams_prese
     if r.bits(1):
         bitrate_indicator = _read_bitrate_indicator(r)
         bitrate_kbps = BITRATE_KBPS.get(bitrate_indicator, 'unlimited')
+    add_ch_base = 0
     if channel_mode in (0b1111010, 0b1111011, 0b1111100, 0b1111101):
-        r.bits(1)  # add_ch_base
-    for _ in range(frame_rate_factor):
-        r.bits(1)  # b_audio_ndot
+        add_ch_base = r.bits(1)  # add_ch_base
+    b_audio_ndot = [r.bits(1) for _ in range(frame_rate_factor)]
     substream_index = parse_substream_index_ref(r) if b_substreams_present else None
     return {'channel_mode': channel_mode, 'channel_mode_name': name, 'ch_mode': ch_mode,
             'original_content': original, 'sf_multiplier': sf_multiplier,
-            'bitrate_kbps': bitrate_kbps, 'substream_index': substream_index}
+            'bitrate_kbps': bitrate_kbps, 'add_ch_base': add_ch_base,
+            'b_audio_ndot': b_audio_ndot, 'substream_index': substream_index}
 
 
 # --- §4.2.3.2 ac4_presentation_info (presentation_version 0 path) ----------
@@ -386,10 +395,10 @@ def parse_presentation_info(r, fs_index, frame_rate_index):
                 parse_presentation_config_ext_info(r)
             else:
                 for i, role in enumerate(roles):
-                    substreams.append(
-                        (role, parse_substream_info_v0(r, fs_index, frame_rate_factor)))
+                    info = parse_substream_info_v0(r, fs_index, frame_rate_factor)
+                    substreams.append((role, info))
                     if i == 0 and b_hsf_ext:
-                        parse_hsf_ext_substream_info(r)
+                        info['hsf_ext_substream_index'] = parse_hsf_ext_substream_info(r)
         b_pre_virtualized = r.bits(1)
         b_add_emdf_substreams = r.bits(1)
         if b_add_emdf_substreams:
@@ -402,6 +411,7 @@ def parse_presentation_info(r, fs_index, frame_rate_index):
                 'presentation_config': presentation_config,
                 'md_compat': md_compat, 'presentation_id': presentation_id, 'emdf': emdf,
                 'substreams': substreams, 'emdf_substreams': emdf_substreams,
+                'frame_rate_factor': frame_rate_factor,
                 'b_pre_virtualized': bool(b_pre_virtualized)}
     n = r.bits(2)
     if n == 0:
@@ -409,7 +419,7 @@ def parse_presentation_info(r, fs_index, frame_rate_index):
     for _ in range(n):
         emdf_substreams.append(parse_emdf_info(r))
     return {'presentation_version': presentation_version,
-            'presentation_config': presentation_config,
+            'presentation_config': presentation_config, 'emdf': None, 'frame_rate_factor': 1,
             'substreams': [], 'emdf_substreams': emdf_substreams}
 
 
@@ -535,14 +545,13 @@ def parse_substream_info_ajoc(r, fs_index, frame_rate_factor, b_substreams_prese
     bitrate_kbps = None
     if r.bits(1):  # b_bitrate_info
         bitrate_kbps = BITRATE_KBPS.get(_read_bitrate_indicator(r))
-    for _ in range(frame_rate_factor):
-        r.bits(1)  # b_audio_ndot
+    b_audio_ndot = [r.bits(1) for _ in range(frame_rate_factor)]
     substream_index = parse_substream_index_ref(r) if b_substreams_present else None
     return {'b_lfe': b_lfe, 'b_static_dmx': b_static_dmx,
             'n_fullband_dmx_signals': n_fullband_dmx_signals, 'static_objects': static_objects,
             'n_fullband_upmix_signals': n_fullband_upmix_signals, 'upmix_objects': upmix_objects,
             'sf_multiplier': sf_multiplier, 'bitrate_kbps': bitrate_kbps,
-            'substream_index': substream_index}
+            'b_audio_ndot': b_audio_ndot, 'substream_index': substream_index}
 
 
 # --- §6.2.1.11 ac4_substream_info_obj ---------------------------------------
@@ -603,12 +612,11 @@ def parse_substream_info_obj(r, fs_index, frame_rate_factor, b_substreams_presen
     bitrate_kbps = None
     if r.bits(1):  # b_bitrate_info
         bitrate_kbps = BITRATE_KBPS.get(_read_bitrate_indicator(r))
-    for _ in range(frame_rate_factor):
-        r.bits(1)  # b_audio_ndot
+    b_audio_ndot = [r.bits(1) for _ in range(frame_rate_factor)]
     substream_index = parse_substream_index_ref(r) if b_substreams_present else None
     return {'objects': objects, 'b_dynamic_objects': bool(b_dynamic_objects),
             'sf_multiplier': sf_multiplier, 'bitrate_kbps': bitrate_kbps,
-            'substream_index': substream_index}
+            'b_audio_ndot': b_audio_ndot, 'substream_index': substream_index}
 
 
 # --- §6.2.1.6 ac4_substream_group_info / §6.2.1.8 ac4_substream_info_chan --
@@ -644,12 +652,13 @@ def parse_substream_group_info(r, bitstream_version, fs_index, frame_rate_factor
             # and is 1 (extended ac4_substream() syntax) otherwise. Only
             # parse_sgi_specifier()'s inline form passes 1, and parse_ac4_toc()
             # never reaches that - see parse_presentation_config_ext_info().
-            if bitstream_version == 1:
-                r.bits(1)  # sus_ver
+            sus_ver = r.bits(1) if bitstream_version == 1 else 1
             chan = parse_substream_info_chan(r, fs_index, frame_rate_factor, b_substreams_present)
+            hsf_index = None
             if b_hsf_ext:
-                parse_hsf_ext_substream_info(r, b_substreams_present)
-            substreams.append({'kind': 'chan', 'info': chan})
+                hsf_index = parse_hsf_ext_substream_info(r, b_substreams_present)
+            substreams.append({'kind': 'chan', 'info': chan, 'sus_ver': sus_ver,
+                               'hsf_ext_substream_index': hsf_index})
     else:
         if r.bits(1):  # b_oamd_substream
             oamd = parse_oamd_substream_info(r, b_substreams_present)
@@ -662,17 +671,24 @@ def parse_substream_group_info(r, bitstream_version, fs_index, frame_rate_factor
                 info = parse_substream_info_obj(
                     r, fs_index, frame_rate_factor, b_substreams_present)
                 kind = 'obj'
+            hsf_index = None
             if b_hsf_ext:
-                parse_hsf_ext_substream_info(r, b_substreams_present)
-            substreams.append({'kind': kind, 'info': info})
+                hsf_index = parse_hsf_ext_substream_info(r, b_substreams_present)
+            substreams.append({'kind': kind, 'info': info, 'sus_ver': 1,
+                               'hsf_ext_substream_index': hsf_index})
     content_type = parse_content_type(r) if r.bits(1) else None  # b_content_type
-    return {'b_substreams_present': b_substreams_present, 'b_channel_coded': bool(b_channel_coded),
+    return {'b_substreams_present': b_substreams_present, 'b_hsf_ext': b_hsf_ext,
+            'b_channel_coded': bool(b_channel_coded), 'frame_rate_factor': frame_rate_factor,
             'oamd': oamd, 'substreams': substreams, 'content_type': content_type}
 
 
 # --- §6.2.1.3 ac4_presentation_v1_info / §6.2.1.7 ac4_sgi_specifier --------
 
-_V1_CONFIG_GROUP_COUNTS = {0: 2, 1: 1, 2: 2, 3: 3, 4: 2}
+# §6.2.1.3: ac4_sgi_specifier() elements the syntax reads per presentation_config
+# (Main + DE and Main + DE + Associated read one more specifier than the
+# n_substream_groups value the syntax assigns, _V1_N_SUBSTREAM_GROUPS).
+_V1_CONFIG_GROUP_COUNTS = {0: 2, 1: 2, 2: 2, 3: 3, 4: 3}
+_V1_N_SUBSTREAM_GROUPS = {0: 2, 1: 1, 2: 2, 3: 3, 4: 2}
 
 
 def parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor):
@@ -700,6 +716,10 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
     md_compat = None
     b_enable_presentation = None
     frame_rate_factor = 1
+    emdf = None
+    n_substream_groups = 0
+    b_pre_virtualized = 0
+    pres_sub = None
     if not b_single_substream_group and presentation_config == 6:
         # §6.2.1.3: an EMDF-only presentation. b_add_emdf_substreams is set
         # without being transmitted, and the n_add_emdf_substreams loop after
@@ -713,12 +733,13 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
             variable_bits(r, 2)  # presentation_id, unused downstream
         frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index)
         parse_frame_rate_fractions_info(r, frame_rate_index, frame_rate_factor)
-        parse_emdf_info(r)
+        emdf = parse_emdf_info(r)
         if r.bits(1):  # b_presentation_filter
             b_enable_presentation = bool(r.bits(1))
         if b_single_substream_group:
             group_refs.append(
                 parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
+            n_substream_groups = 1
         else:
             r.bits(1)  # b_multi_pid
             n_groups = _V1_CONFIG_GROUP_COUNTS.get(presentation_config)
@@ -726,21 +747,22 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
                 for _ in range(n_groups):
                     group_refs.append(
                         parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
+                n_substream_groups = _V1_N_SUBSTREAM_GROUPS[presentation_config]
             elif presentation_config == 5:
                 n = r.bits(2) + 2
                 if n == 5:
                     n += variable_bits(r, 2)
+                n_substream_groups = n
                 for _ in range(n):
                     group_refs.append(
                         parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
             else:
                 parse_presentation_config_ext_info(r)
-        r.bits(1)  # b_pre_virtualized
+        b_pre_virtualized = r.bits(1)
         b_add_emdf_substreams = r.bits(1)
         # ac4_presentation_substream_info() (§6.2.1.12)
-        r.bits(1)  # b_alternative
-        r.bits(1)  # b_pres_ndot
-        parse_substream_index_ref(r)
+        pres_sub = {'b_alternative': r.bits(1), 'b_pres_ndot': r.bits(1),
+                    'substream_index': parse_substream_index_ref(r)}
     emdf_substreams = []
     if b_add_emdf_substreams:
         n = r.bits(2)  # n_add_emdf_substreams
@@ -751,7 +773,9 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
     return {'presentation_version': presentation_version,
             'presentation_config': presentation_config, 'group_refs': group_refs,
             'md_compat': md_compat, 'enable_presentation': b_enable_presentation,
-            'frame_rate_factor': frame_rate_factor, 'emdf_substreams': emdf_substreams}
+            'frame_rate_factor': frame_rate_factor, 'n_substream_groups': n_substream_groups,
+            'emdf': emdf, 'b_pre_virtualized': b_pre_virtualized,
+            'presentation_substream': pres_sub, 'emdf_substreams': emdf_substreams}
 
 
 # --- §4.2.3.11 substream_index_table ----------------------------------------
@@ -813,6 +837,7 @@ def parse_ac4_toc(r):
             payload_base += variable_bits(r, 3)
     toc = {'bitstream_version': bitstream_version, 'sequence_counter': sequence_counter,
            'wait_frames': wait_frames, 'sample_rate': BASE_SAMP_FREQ[fs_index],
+           'fs_index': fs_index,
            'frame_rate_index': frame_rate_index, 'b_iframe_global': b_iframe_global,
            'n_presentations': n_presentations, 'payload_base': payload_base}
     if bitstream_version <= 1:
@@ -852,7 +877,9 @@ def parse_ac4_toc(r):
     n_substreams, substream_sizes = parse_substream_index_table(r)
     toc['n_substreams'] = n_substreams
     toc['substream_sizes'] = substream_sizes
+    toc['b_size_present'] = bool(substream_sizes) or n_substreams != 1
     r.byte_align()
+    toc['toc_bytes'] = r.pos // 8
     return toc
 
 

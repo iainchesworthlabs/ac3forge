@@ -47,6 +47,7 @@ Usage:
   ac3cli remux         <in.mkv|in.mp4|in.ts> <out.mkv|out.mp4|out.ts> [dvb|atsc] (container-to-container: the input is identified by its magic bytes, the output by its extension, and everything either declares is re-derived from the bitstream - the dec3-repair case)
   ac3cli devices                                              (input and loopback capture endpoints)
   ac3cli outputs                                              (render endpoints + AC-3/E-AC-3 passthrough support)
+  ac3cli identify      [device_index] [layout] [seconds] [routing] [level_db] (walk the identify tone across an output's speakers - pink noise on one rendered channel at a time, placed by the routing patch, so a room's wiring can be heard (layout "-" is the device's own speakers; routing 1,0,2,3,4,5 swaps the front pair))
   ac3cli play          <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index] (exclusive-mode IEC 61937 passthrough, following the sink (bsid decides the source format; a named device that rejects it gets an automatic AC-3/PCM fallback - follow=off for the plain refusal))
   ac3cli monitor       <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index] (decode and play on an ordinary (non-bitstreamed) output)
   ac3cli spatial       <in.ec3> [device_index]                (decode the object layer onto Windows Spatial Sound - dynamic objects at their OAMD positions, the bed's LFE static)
@@ -816,6 +817,7 @@ each OS.
 |---|---|
 | `devices` | Lists capture endpoints (microphones, playback-device loopbacks) |
 | `outputs` | Lists render endpoints and whether each supports AC-3/E-AC-3 passthrough |
+| `identify` | Walks the identify tone across an output's speakers: pink noise on one rendered channel at a time, placed by the routing patch, so which speaker each channel reaches can be heard rather than assumed. The stream is opened at the device's own channel count and each rendered channel placed by the patch — see [`identify`](#identify-hearing-which-speaker-a-channel-reaches) below |
 | `record` | Captures from a device straight to a file, metering live. `layout=`/`codec=` choose the shape (any layout up to 7.1.4, AC-3 or E-AC-3), `container=` the wrapper (`raw`, `mkv`, `ts`, `spdif`, `fmp4`), `watchdog=` how long a silent device is tolerated. If the endpoint turns out to be bitstreaming IEC 61937 rather than delivering PCM (an HDMI/S/PDIF capture card, or a loopback of a player set to bitstream), `record` recognises that within about a quarter of a second and writes the **elementary stream** instead of encoding the bursts as if they were audio — see [passthrough capture](#passthrough-capture) below |
 | `play` | Exclusive-mode IEC 61937 passthrough of an existing file, bare or inside a container — `bsid` decides AC-3 vs. E-AC-3. When a `device_index` is named, `play` follows the sink: a source format it rejects gets transcoded to AC-3 or decoded to PCM automatically instead of refused — see [Following the sink](#following-the-sink) below |
 | `monitor` | Decodes an existing file, bare or inside a container, and plays it on an ordinary, non-bitstreamed output — the shared-mode preview path. For an Atmos-mode stream, this plays the 5.1 **bed** and reports the object count found: the decoder reads TS 103 420's object layer (OAMD/JOC) but this path does not render or export objects, so this is what a legacy decoder hears, not unmixed objects — use `decode` with `objects_dir` for the object audio itself. |
@@ -935,6 +937,38 @@ runs.
 `passthrough_device` only bitstreams plain AC-3, `live` sends it a parallel 5.1 AC-3 encode of the
 bed the main plan already computed, while the file and the monitor still carry the full stream.
 `downmix=off` restores the plain refusal.
+
+### `identify` — hearing which speaker a channel reaches
+
+Every other playback command hands audio to an output and trusts that the channels arrive where
+they are meant to. `identify` is the one that checks. It plays pink noise on one rendered channel
+at a time — the level an AVR's own test tone uses, and band-limited to 30–80 Hz for an LFE feed so
+a subwoofer is not asked for midrange — and prints which channel and which output each burst went
+to:
+
+```bash
+ac3cli identify                       # the default endpoint, its own speakers, 2 s each
+ac3cli identify 0 7.1.4 3             # endpoint 0 from 'outputs', a 7.1.4 layout, 3 s each
+ac3cli identify 0 - 2 1,0,2,3,4,5     # the same, with the front pair swapped
+ac3cli identify 0 5.1 2 - -30         # quieter: -30 dB RMS instead of -20
+```
+
+The stream is opened at the **device's own** channel count rather than the programme's, and each
+rendered channel is placed at the output a routing patch names
+(`ac3::audio::PcmOutput`, `ac3::render::Routing`). That is what makes the check meaningful: an
+eight-channel HDMI endpoint is driven as eight outputs, not as six channels for a mixer to
+spread, and a channel with nowhere to go is reported as `not patched` instead of vanishing
+silently.
+
+The patch is built from the endpoint's speaker mask where the backend reports one, so a 5.1
+programme on a 7.1 device lands on its front, centre, LFE and **side** pair and leaves the rear
+pair silent — which is what the mask says those outputs are, and not what counting outputs from
+zero would give. `layout` of `-` walks the device's own speakers; a named layout walks that
+instead, which is how a narrower device shows what it cannot place.
+
+A tone heard from a speaker other than the one the line names means the room is wired
+differently from the patch. Pass a patch of your own to match it: one token per rendered channel,
+each an output index or `-`.
 
 ### `spatial` — objects on the platform renderer
 

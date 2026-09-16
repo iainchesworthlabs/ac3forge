@@ -197,6 +197,12 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
             .supports_exclusive_pcm =
                 find_stream(device, kAudioFormatLinearPCM, static_cast<Float64>(sample_rate))
                     .has_value(),
+            // The same figure the filter above already read: the width of the
+            // device's output scope, which is what it renders.
+            .channels = static_cast<std::uint16_t>(
+                coreaudio::channel_count(device, kAudioDevicePropertyScopeOutput)),
+            .speakers = coreaudio::output_speakers(device),
+            .sample_rates = coreaudio::available_sample_rates(device),
         });
     }
     return devices;

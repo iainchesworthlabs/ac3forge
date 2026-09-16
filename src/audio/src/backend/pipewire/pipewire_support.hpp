@@ -669,6 +669,14 @@ struct SinkInfo {
     std::string name;          // node.name, this backend's device id
     std::string description;   // node.description, else node.name
     std::string codecs;        // iec958.codecs, verbatim, or empty
+    // audio.channels, audio.position and audio.rate: what the node is
+    // configured as, which for a device sink is what the device itself
+    // renders. `position` is SPA's channel list ("[ FL FR FC LFE RL RR ]" or
+    // "FL,FR"), whose names are the ones ALSA's channel maps use; 0 and empty
+    // mean the node did not say.
+    std::uint16_t channels = 0;
+    std::string position;
+    std::uint32_t rate = 0;
 };
 
 // Every Audio/Sink in the graph with its info properties. Two round trips:
@@ -739,6 +747,28 @@ struct SinkInfo {
             if (const char* codecs = spa_dict_lookup(info->props, "iec958.codecs");
                 codecs != nullptr) {
                 b->info.codecs = codecs;
+            }
+            const auto number = [&](const char* key) -> std::uint32_t {
+                const char* text = spa_dict_lookup(info->props, key);
+                if (text == nullptr) {
+                    return 0;
+                }
+                const std::string_view digits{text};
+                std::uint32_t parsed = 0;
+                const auto result =
+                    std::from_chars(digits.data(), digits.data() + digits.size(), parsed);
+                return result.ec == std::errc{} ? parsed : 0;
+            };
+            if (const std::uint32_t channels = number("audio.channels");
+                channels > 0 && channels <= 64) {
+                b->info.channels = static_cast<std::uint16_t>(channels);
+            }
+            if (const char* position = spa_dict_lookup(info->props, "audio.position");
+                position != nullptr) {
+                b->info.position = position;
+            }
+            if (const std::uint32_t rate = number("audio.rate"); rate > 0 && rate <= 768000) {
+                b->info.rate = rate;
             }
         };
         pw_proxy_add_object_listener(proxy, &bound->listener, &bound->events, bound.get());

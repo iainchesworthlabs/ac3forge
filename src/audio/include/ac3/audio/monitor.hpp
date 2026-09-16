@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -42,6 +43,28 @@ struct MonitorStats {
     std::uint64_t underruns = 0;
 };
 
+// Where the device has got to in what it has been given, as it says rather
+// than as the submitting side counts: what a meter released at play time needs
+// (planning/hearth-reference-player.md, Monitor), and what tells a caller
+// running slightly ahead of real time how far ahead it is.
+//
+// Every figure is in sample-frames and counts from the last start() or
+// flush(); a frame submitted and dropped by flush() is in none of them.
+struct MonitorPosition {
+    // Frames the device itself has played, from its own clock: the frames
+    // handed to it less the ones it still holds unplayed.
+    std::uint64_t frames_played = 0;
+    // Frames handed over and not yet played - the device's own buffer - plus
+    // the ones still waiting in this sink's queue. frames_played +
+    // frames_queued is everything submit() has taken since the last flush,
+    // less what an underrun replaced with silence.
+    std::uint64_t frames_queued = 0;
+    // What the platform says its output path adds beyond the buffer above:
+    // the further delay between a frame leaving the device buffer and being
+    // heard. 0 where the platform does not say, which is not "no latency".
+    std::uint32_t latency_frames = 0;
+};
+
 class MonitorSink {
 public:
     MonitorSink();
@@ -76,6 +99,29 @@ public:
     [[nodiscard]] bool can_submit() const;
 
     void stop();
+
+    // Where playback has got to, while it is running; nothing when it is not,
+    // or on a platform whose backend cannot ask.
+    [[nodiscard]] std::optional<MonitorPosition> position() const;
+
+    // Drops what has been submitted and not yet played, here and in the
+    // device, and carries on from the next submit(): a seek, or the end of a
+    // track a caller has decided not to finish. Blocks until the render
+    // thread has done it, so nothing submitted beforehand is heard
+    // afterwards, and position() then counts from zero again. A frame already
+    // past the device's own buffer - inside whatever mixer or DAC sits beyond
+    // it, latency_frames' worth - cannot be recalled by anyone.
+    void flush();
+
+    // Stops the device without closing the stream: the format, the device and
+    // the queue survive, submit() goes on taking frames, and nothing is
+    // rendered until resume(). What a pause button needs - closing and
+    // reopening would drop the queue and let another application take an
+    // exclusive hold of the device in between. Repeating either call is
+    // harmless; both refuse only when nothing is running.
+    [[nodiscard]] std::expected<void, MonitorError> pause();
+    [[nodiscard]] std::expected<void, MonitorError> resume();
+    [[nodiscard]] bool paused() const;
 
     [[nodiscard]] bool running() const;
     [[nodiscard]] MonitorStats stats() const;

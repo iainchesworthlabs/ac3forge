@@ -368,6 +368,44 @@ and release packaging.
   and package. The threat model gains Sendspin: what a peer on the network can reach without a
   key, what a key allows, what mDNS exposes, and the two parsers not yet fuzzed.
 
+**Audio outputs**
+
+- **Render device records say which speakers a device has, and at what rates**
+  (`ac3::audio::RenderDeviceInfo`): a WAVEFORMATEXTENSIBLE speaker mask and a rate list
+  beside the channel count, filled from WASAPI's `dwChannelMask`, ALSA's channel maps,
+  PipeWire's `audio.position` and Core Audio's channel labels, with
+  `ac3/audio/speakers.hpp` mapping those positions to the renderer's own locations.
+  `ac3cli outputs` prints both. Either can be "not reported", which is not the same as
+  none.
+- **Monitor playback reports its position, and can flush and pause**
+  (`ac3::audio::MonitorSink`): frames played from the device's own clock, frames still
+  queued here and in the device, and the further latency the platform admits to; a flush
+  that drops both buffers and counts from zero again; and a pause that stops the device
+  with the stream, the format and the queue intact. Each backend reads the same two
+  figures from its own platform — `GetCurrentPadding`, `snd_pcm_delay`,
+  `pw_stream_get_time_n`, the Core Audio timestamps, AAudio's presentation position — and
+  the arithmetic over them is shared and tested against a fake device's clock. ALSA
+  hardware that cannot pause is dropped and prepared again instead, which loses what the
+  device held.
+- **A PCM output at the device's own width** (`ac3::audio::PcmOutput`): the stream opens
+  at the endpoint's channel count rather than the programme's, and each rendered channel
+  is placed at the output a routing patch names (`ac3::render::Routing`), silence in the
+  rest. The platform is never asked to widen anything, and Core Audio's requirement that
+  the stream be exactly as wide as the device is met by construction. The patch starts
+  from the endpoint's speaker mask, which matters because a rendered programme's slots
+  are in the coded channel order while a device's outputs are in
+  WAVEFORMATEXTENSIBLE's — counting outputs off from zero would put the centre on the
+  right speaker.
+- **`ac3cli identify`**: walks pink noise across an output's speakers, one rendered
+  channel at a time at an AVR test tone's level and band-limited to 30–80 Hz for an LFE
+  feed, printing which channel and which output each burst went to. Takes a layout and a
+  routing patch, so a room wired differently from the patch can be heard and corrected.
+- **A render-device list that keeps itself current**
+  (`ac3::audio::RenderDeviceWatch`): endpoint notifications where the platform has them
+  (Windows, PipeWire, Core Audio) and a re-probe timer where it does not (ALSA), behind
+  one list with a generation to compare. A failed enumeration keeps the last good list,
+  so a device held exclusively or a restarting audio service does not empty a picker.
+
 **Containers and encoding**
 
 - **AC-4 container carriage** (roadmap IM4): `ac3cli mp4`/`ts` read and write an AC-4
@@ -386,6 +424,19 @@ and release packaging.
   `ac3::automatic_stereo_target()` holds the rule for library callers.
 - **`probe` reports `dmixmod`**, as a table line and as `metadata.dmixmod` plus a
   per-syncframe `dmixmod` in the `ac3forge.probe/1` JSON document.
+
+**AC-4 decoding**
+
+- **The first phase of an AC-4 decoder** (`src/ac4dec`, `ac4::Decoder`), written from
+  TS 103 190-1 and -2: it reads every syntax element of the presentation substream,
+  channel-coded audio substreams (ASF spectral data, stereo processing, companding,
+  A-SPX, A-CPL, and `metadata()` with DRC and dialogue enhancement) and EMDF payload
+  substreams, and produces no audio yet. The syntax is transcribed a second time in
+  Python (`tools/references/ac4_syntax.py`), and the two traces agree element for element
+  over the eleven committed DEE streams, ten of them new (SIMPLE, ASPX and A-CPL at 2.0
+  and 5.1, DRC curves, immersive stereo at three frame rates), checked in CI, and over
+  107 local census streams and the public DASH-IF, CTA WAVE and Chromium channel-based
+  streams. The readings taken where the text is ambiguous are in `src/ac4dec/ERRATA.md`.
 
 **Browser (WASM)**
 
@@ -621,6 +672,21 @@ and release packaging.
 
 **ESP32 / bare-metal**
 
+- **A twelve-channel play aborted on the ESP32-S3 for want of internal RAM.** The E-AC-3
+  decoder held all 32 substream-identity slots (`strmtyp * 8 + substreamid`) by value, so
+  every byte added to `DecodedSubstream` cost 32 bytes of heap in every decoder whatever
+  the stream — and a stream has one to three identities. The three downmix-level fields
+  added for a legacy-core fold grew that struct by 284 bytes and so the array by 9.1 KB,
+  which was most of what the widest shape had left: a 7.1.4 play of a three-substream
+  stream had been running on about 10 KB of free internal RAM, and an Ethernet buffer
+  arriving at the wrong moment took the rest. The slots are now allocated per engaged
+  identity, as the overlap-add and JOC states beside them already were, and an engaged
+  slot is written through for the rest of the stream, so a steady-state decode still
+  allocates nothing. Measured under QEMU on the 7.1.4 stream set: least free internal RAM
+  during a play 9,540 → 35,332 bytes, each of the twelve slot levels unchanged to the
+  digit, decode time no higher. The ESP32 QEMU legs now also fail on a failed allocation
+  anywhere in the console — one can be survived, so a run could print hundreds and still
+  report `result=pass` — and the stream set's free heap is held to a floor.
 - **The ESP32 streaming example's `tdm` sink claimed sixteen 32-bit slots on one data
   line; an ESP32-S3 carries four.** An S3 TDM frame holds at most 128 bits (ESP-IDF v6.1
   enforces it); the sink had never run on hardware before a 2026-09-11 board run found
@@ -678,6 +744,12 @@ and release packaging.
   unity for dialogue-level material at any dialnorm, and cuts sized so the mono downmix
   meets the ceiling after the decoder's own gain. `dialogue=`/`ceiling=` keep their
   meaning and defaults.
+- **The AC-4 parser misread everything after a presentation with dialogue enhancement.**
+  `presentation_config` 1 ("Main + DE") and 4 ("Main + DE + Associated Audio") read two
+  and three substream group references (TS 103 190-2 §6.2.1.3) while counting one and
+  two groups; `ac4::`, and so `ac3cli probe`, read by the count, one reference too few,
+  and the Python reference parser shared the misreading. No DEE encode writes either
+  configuration; synthetic frames in `tests/ac4` now cover both.
 - **The AC-4 parser misread everything after an EMDF-only presentation.** A presentation
   with `presentation_config` 6 carries only additional EMDF substreams, whose count and
   `emdf_info()` list TS 103 190-2 §6.2.1.3 reads after the config-6 branch. `ac4::`, and

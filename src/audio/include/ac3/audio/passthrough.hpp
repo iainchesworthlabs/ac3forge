@@ -72,6 +72,26 @@ struct RenderDeviceInfo {
     // not refused - which is exactly why the narrowing has to be noticed
     // here instead of being discovered as an error later.
     std::uint16_t channels = 0;
+    // Which speakers those channels are, as WAVEFORMATEXTENSIBLE's channel
+    // mask (speakers.hpp), when the backend can say. 0 means it cannot - not
+    // "no speakers" - and speakers.hpp's default_speakers() is then the most a
+    // caller can assume, from the width alone. With a mask, a routing patch
+    // from the renderer's slots to this device's channels can be built rather
+    // than guessed: locations_of() gives the location of each channel, in the
+    // order an interleaved stream carries them.
+    std::uint32_t speakers = 0;
+    // The sample rates the endpoint itself takes, ascending, when the backend
+    // can say; empty when it cannot. A rate this list omits may still play,
+    // since a shared-mode engine resamples - the list is what the device does
+    // without help, which is what a caller needs to decide whether to resample
+    // before it or leave that to the engine.
+    std::vector<std::uint32_t> sample_rates;
+
+    // Every member, so that two enumerations can be compared for "has
+    // anything changed" - which is how RenderDeviceWatch decides whether a
+    // re-probe found a hot-plug (render_devices.hpp). A device renegotiating
+    // its rates or its speakers is a change as much as one arriving is.
+    friend bool operator==(const RenderDeviceInfo&, const RenderDeviceInfo&) = default;
 };
 
 // Every active render endpoint, each probed for AC-3 passthrough support at

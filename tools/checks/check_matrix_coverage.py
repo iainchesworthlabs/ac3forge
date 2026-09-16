@@ -89,11 +89,19 @@ REPO = Path(__file__).resolve().parent.parent.parent
 FAILURES: list[str] = []
 
 # Commands this matrix cannot reasonably drive headlessly: real capture/
-# playback hardware (record, live, devices, outputs, play, monitor, spatial)
-# or the CLI's own meta-flag (--version). Anything else that writes a stream
-# is expected to appear in the matrix.
+# playback hardware (record, live, devices, outputs, play, monitor, spatial,
+# identify) or the CLI's own meta-flag (--version). Anything else that writes
+# a stream is expected to appear in the matrix.
+#
+# identify writes no file at all - it plays a tone through an output and
+# prints which speaker each rendered channel reached, so there is nothing for
+# a matrix to check and nothing to check it with on a runner with no sound
+# card. What can be checked without one is in tests/audio/test_pcm_output.cpp
+# (the width and the patch it chooses, against fake device records); the
+# playing itself is the hidden [.][monitor-live] case and real hardware.
 EXCLUDED_COMMANDS = {
     "--version", "record", "live", "devices", "outputs", "play", "monitor", "spatial",
+    "identify",
 }
 
 # No CLI introspection exists for this one - see the module docstring.

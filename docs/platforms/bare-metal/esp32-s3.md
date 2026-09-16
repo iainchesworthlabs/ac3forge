@@ -197,7 +197,16 @@ satisfied by a stream decoding to silence.
 Nor does `result=pass` say the run was clean. QEMU runs on until a timeout, the HTTP step plays the
 stream a second time, and a panic at any point resets the chip into a new run that can print
 `result=pass` again. So every QEMU leg, the probes included, also fails if the console shows panic
-output or a second boot after the first boot banner (`tools/checks/check_esp_console.py`).
+output, a second boot after the first boot banner, or a failed allocation
+(`tools/checks/check_esp_console.py`). An allocation can fail without being fatal — the Ethernet
+driver drops a frame and the play goes on — so a run may print hundreds and still report
+`result=pass`, which is how one that did abort went unnoticed for a day.
+
+The stream set, the widest shape the part runs, is held to a floor on free internal RAM as well:
+twelve channels out of three substreams share internal RAM with the Ethernet driver and the HTTP
+server, so it is where a decoder or player that starts holding more is seen first. The step passes
+`--min-heap-free` to the same check, and the step's own comment records what the shape measures
+and why the floor sits where it does.
 
 ## Memory
 

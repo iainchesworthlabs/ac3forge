@@ -132,6 +132,15 @@ struct ChannelSubstreamInfo {
     std::optional<int> bitrate_kbps;          // nullopt if unmapped ("unlimited" or reserved)
     std::optional<ContentType> content_type;  // presentation_version 0 only
     std::optional<int> substream_index;       // index into Toc::substream_sizes
+    // §4.3.3.7.6: which channel pair the additional channels of a 5/2/0 or
+    // 3/2/2 7.X mode are based on. Set only for those four channel modes.
+    std::optional<bool> add_ch_base;
+    // §4.3.3.7.8 b_iframe (presentation_version 0) or §6.3.2.7.6
+    // b_audio_ndot (presentation_version 1): one entry per
+    // frame_rate_factor, true where that substream instance depends on no
+    // earlier frame. A decoder needs it to know whether I-frame-only
+    // configuration is present.
+    std::vector<bool> b_iframe;
 };
 
 // --- §6.2.1.10 bed_dyn_obj_assignment / §6.3.2.10.8 -------------------------
@@ -208,6 +217,10 @@ struct PresentationInfoV0 {
     std::optional<int> md_compat;  // Table 86
     std::optional<int> presentation_id;
     std::vector<std::pair<std::string, ChannelSubstreamInfo>> substreams;  // role, info
+    bool b_pre_virtualized = false;  // §4.3.3.3.5
+    // Substreams holding emdf_payloads_substream() (§4.2.4.4), from the
+    // presentation's emdf_info() and its additional EMDF substream list.
+    std::vector<int> emdf_payloads_substream_indices;
 };
 
 // --- §6.2.1.3 ac4_presentation_v1_info (bitstream_version >= 2) ------------
@@ -222,6 +235,16 @@ struct PresentationInfoV1 {
     std::optional<int> md_compat;            // Table 55
     std::optional<bool> enable_presentation;
     int frame_rate_factor = 1;  // Table 87; threaded into this frame's substream groups
+    std::optional<int> presentation_id;
+    bool b_pre_virtualized = false;  // §4.3.3.3.5
+    // §6.2.1.12 ac4_presentation_substream_info(). Unset for an EMDF-only
+    // presentation (presentation_config 6), which carries none.
+    std::optional<int> presentation_substream_index;
+    bool b_alternative = false;
+    bool b_pres_ndot = false;
+    // Substreams holding emdf_payloads_substream() (§4.2.4.4), from the
+    // presentation's emdf_info() and its additional EMDF substream list.
+    std::vector<int> emdf_payloads_substream_indices;
 };
 
 // --- §4.2.1 / §6.2.1.1 ac4_toc ---------------------------------------------

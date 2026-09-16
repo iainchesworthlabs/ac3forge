@@ -50,6 +50,24 @@ target_include_directories(ac3audio
 # backend files, below.
 target_sources(ac3audio PRIVATE src/sink_capabilities.cpp)
 
+# speakers.cpp is platform-independent for the same reason: WAVEFORMATEXTENSIBLE's
+# channel mask is the vocabulary all four real backends already report their
+# speaker positions in, and mapping it to the renderer's locations is arithmetic
+# over a table, with no platform call in it (see speakers.hpp's header).
+target_sources(ac3audio PRIVATE src/speakers.cpp)
+
+# pcm_output.cpp likewise: it is MonitorSink, the render-device enumeration
+# both halves already share, and arithmetic over a routing patch - no platform
+# call of its own. It is what opens a stream at the device's own width instead
+# of the caller's, so see pcm_output.hpp's header for why that matters.
+target_sources(ac3audio PRIVATE src/pcm_output.cpp)
+
+# render_devices.cpp too: DeviceWatcher and the enumeration are the parts that
+# differ per platform, and both are already behind their own interfaces - what
+# is left is a list, a worker thread and a timer, which are the same
+# everywhere (and are what ALSA has instead of a watcher at all).
+target_sources(ac3audio PRIVATE src/render_devices.cpp)
+
 target_compile_features(ac3audio PUBLIC cxx_std_23)
 
 # ac3::coverage is a no-op unless AC3FORGE_ENABLE_COVERAGE is on (see
