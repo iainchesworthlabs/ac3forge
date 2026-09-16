@@ -330,10 +330,19 @@ std::string_view describe(PassthroughError error) {
 std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_devices(
     std::uint32_t sample_rate) {
     const int preferred_card = alsa::default_card();
+    // Which entry gets is_default, decided after the walk: the first DIGITAL
+    // output on the configured default card, since this list's default is
+    // what 'play' aims a bitstream at, and an analogue jack cannot carry one.
+    // A machine with no digital output at all falls back to its first entry.
+    // (A player asking for the default DECODED output passes no device name
+    // at all and gets ALSA's own "default" PCM, which is a different
+    // question and the user's own configuration to answer.)
+    std::size_t default_index = 0;
     bool marked_default = false;
+    bool any_digital = false;
 
     std::vector<RenderDeviceInfo> devices;
-    for (const auto& candidate : find_candidates()) {
+    for (const auto& candidate : find_candidates(alsa::Include::kEveryPlaybackPcm)) {
         EndpointFacts facts = endpoint_facts(candidate.hw_name);
         RenderDeviceInfo info{
             .id = candidate.name,
@@ -353,16 +362,23 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
             .sample_rates = std::move(facts.sample_rates),
         };
 
-        if (!marked_default && candidate.card == preferred_card) {
-            info.is_default = true;
-            marked_default = true;
+        // A digital output on the configured default card wins; failing that,
+        // the first digital output anywhere; failing that, entry zero, which
+        // is what default_index starts as.
+        if (candidate.kind != DigitalOutput::kNone && !marked_default) {
+            const bool preferred = candidate.card == preferred_card;
+            if (preferred || !any_digital) {
+                default_index = devices.size();
+            }
+            any_digital = true;
+            marked_default = preferred;
         }
         devices.push_back(std::move(info));
     }
-    // Nothing on the configured default card, or no configuration to read:
-    // the first digital output found is as good a default as exists.
-    if (!marked_default && !devices.empty()) {
-        devices.front().is_default = true;
+    // Nothing digital on the configured default card, or no configuration to
+    // read: the first output found is as good a default as exists.
+    if (!devices.empty()) {
+        devices[default_index].is_default = true;
     }
     return devices;
 }
