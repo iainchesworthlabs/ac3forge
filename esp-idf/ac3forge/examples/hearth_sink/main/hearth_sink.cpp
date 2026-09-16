@@ -573,6 +573,20 @@ void on_alloc_failed(std::size_t size, std::uint32_t caps, const char* function)
                 static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
 }
 
+// The Sendspin player, on a board that is on a network. A play that has the
+// sink when the player starts keeps it: the player starts held, as
+// begin_play leaves one that was already running, and end_play hands it the
+// sink.
+void start_sendspin() {
+    player::sendspin_start(g_layout);
+    xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+    const bool playing = g_player != nullptr;
+    xSemaphoreGive(g_player_mutex);
+    if (playing) {
+        player::sendspin_set_external(true);
+    }
+}
+
 }  // namespace
 
 extern "C" void app_main() {
@@ -653,15 +667,34 @@ extern "C" void app_main() {
         g_state.store("stopped");
     }
 
+    // The boot play's source asks for the network too, and can be what brings
+    // it up when the call above could not; mDNS then starts here.
+    if (player::network_ready()) {
+        player::discovery_start();
+    }
+
     // The Sendspin player after the control surface, whose server's stack
     // has to come from internal RAM in one piece, and after the boot play has
-    // started, which it waits behind (sendspin.hpp).
-    player::sendspin_start(g_layout);
+    // started, which holds the sink until it ends.
+    start_sendspin();
+    // Whether the calls above had a network to start on. One that comes up
+    // later - over Improv, on a board that had none stored or could not join
+    // the one it had - gets the same calls from the loop below, in the same
+    // order; the control surface is already listening.
+    bool networked = player::network_ready();
     player::provisioning_start(player::sendspin_running() ? &player::sendspin_console : nullptr);
 
     // Everything from here is reporting and command handling. The player runs
     // on its own two tasks; this task wakes ten times a second.
     for (;;) {
+        if (!networked && player::network_ready()) {
+            networked = true;
+            player::discovery_start();
+            start_sendspin();
+            if (player::sendspin_running()) {
+                player::provisioning_start(&player::sendspin_console);
+            }
+        }
         player::sendspin_poll();
         Command cmd;
         while (xQueueReceive(g_commands, &cmd, 0) == pdTRUE) {

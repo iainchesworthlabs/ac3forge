@@ -17,7 +17,8 @@
 namespace player {
 
 // Starts mDNS and advertises the board under its stored name. Does nothing
-// without a network. Safe to call once, after network_up().
+// without a network, or once it has started. app_main calls it at boot, and
+// again when a network joined after boot comes up.
 void discovery_start();
 
 }  // namespace player

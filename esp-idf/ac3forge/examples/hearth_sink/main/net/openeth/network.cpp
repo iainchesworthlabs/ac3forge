@@ -14,8 +14,10 @@
 #include "network.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <mutex>
 #include <string>
 
 #include "esp_eth.h"
@@ -29,11 +31,19 @@
 namespace player {
 namespace {
 
+// Where the driver stands. It is started once: a second default event loop is
+// an error, which ESP_ERROR_CHECK makes a reboot, and a MAC that could not be
+// created will not appear on a later call.
+enum class Driver { not_started, started, unavailable };
+
+// app_main asks at boot and the HTTP source asks again when it opens, so the
+// callers take turns. Held for everything from here down to g_netif.
+std::mutex g_mutex;
+Driver g_driver = Driver::not_started;
 EventGroupHandle_t g_events = nullptr;
-// Up once, however many callers ask: app_main brings it up at boot and the
-// HTTP source asks again when it opens.
-bool g_up = false;
 esp_netif_t* g_netif = nullptr;
+// Up once, however many callers ask. Read from any task.
+std::atomic<bool> g_up{false};
 constexpr int kGotIpBit = BIT0;
 
 void on_got_ip(void*, esp_event_base_t, std::int32_t, void* data) {
@@ -43,12 +53,8 @@ void on_got_ip(void*, esp_event_base_t, std::int32_t, void* data) {
     xEventGroupSetBits(g_events, kGotIpBit);
 }
 
-}  // namespace
-
-bool network_up() {
-    if (g_up) {
-        return true;
-    }
+// False, having said why, when there is no MAC to drive - which is any board.
+bool start_driver() {
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
@@ -77,9 +83,27 @@ bool network_up() {
     ESP_ERROR_CHECK(
         esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &on_got_ip, nullptr));
     ESP_ERROR_CHECK(esp_eth_start(eth));
+    return true;
+}
+
+}  // namespace
+
+bool network_up() {
+    const std::lock_guard lock(g_mutex);
+    if (g_up) {
+        return true;
+    }
+    if (g_driver == Driver::not_started) {
+        g_driver = start_driver() ? Driver::started : Driver::unavailable;
+    }
+    if (g_driver != Driver::started) {
+        return false;
+    }
 
     // QEMU's DHCP answers well inside a second. Bounded so a model that does
-    // not answer says so rather than hanging a CI job to its timeout.
+    // not answer says so rather than hanging a CI job to its timeout. The
+    // client goes on asking after a call gives up, so a later call waits for
+    // the same address again rather than starting anything a second time.
     const auto bits =
         xEventGroupWaitBits(g_events, kGotIpBit, pdFALSE, pdFALSE, pdMS_TO_TICKS(30000));
     if ((bits & kGotIpBit) == 0) {
