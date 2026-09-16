@@ -890,6 +890,34 @@ and release packaging.
   board is up to 3.1 times slower than the fixed-point tier. The component now sets the
   option from ESP-IDF's `SOC_CPU_HAS_FPU` capability when the project has not: `fixed`
   without an FPU, `float` with one. A value set above `project()` or passed with `-D` stays.
+- **A Hearth sink restarted when Improv gave it a network after a failed join.**
+  `hearth_sink`'s `network_up()` ran the whole network setup on every call that had not
+  yet joined, and ESP-IDF refuses a second default event loop. The call Improv makes
+  after storing new credentials therefore aborted whenever an earlier join had failed:
+  a mistyped passphrase followed by the right one, or a board whose stored or built-in
+  network could not be joined at boot. The build's placeholder network, `my-network`,
+  puts every freshly flashed board in the second case. The board came back on the new
+  network, but the Improv client saw the port vanish instead of an answer.
+  - The setup now runs once. Each later attempt stops the station, waits until the
+    stop is reported, and starts it on the new network with a fresh retry count.
+  - A board that joins after boot now starts mDNS and the Sendspin player without a
+    restart. Before, only boot started them. The same applies when the boot play's
+    source is what brings the network up.
+  - An attempt no longer waits forever. A network that associates but gives no
+    address is left after 30 s; once stored, it used to hang the board at boot before
+    Improv started. A connect the driver refuses now fails the attempt.
+  - A build with no network stored and none built in used to restart in a loop: its
+    control surface opened a socket before lwIP was initialised. lwIP now comes up
+    whether or not there is a network to join.
+  - The QEMU Ethernet network set itself up again on a second call too, and is now
+    set up once as well.
+- **Over an ESP32-S3's USB console, a Hearth sink's Improv answers waited for the next
+  line it printed.** ESP-IDF's driverless USB-Serial-JTAG console sends its buffer to
+  the host only at a newline, and an Improv packet has none. On an idle board, or after
+  `cannot_connect`, nothing followed, and the client never got its answer. Each packet
+  is now synced to the host as it is written; on a board, a `current_state` request is
+  answered in 0.5 s, where before its answer arrived 10 s later with the next request's
+  output.
 
 **Codec correctness**
 

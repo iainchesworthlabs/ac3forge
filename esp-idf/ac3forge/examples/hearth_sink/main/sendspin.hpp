@@ -32,7 +32,9 @@ inline constexpr std::uint16_t kSendspinPort = 8928;
 [[nodiscard]] bool sendspin_built();
 
 // Starts the player on a board that is on a network, playing streams that no
-// server has given a layout onto `layout`. Nothing without either.
+// server has given a layout onto `layout`. Nothing without either, or while
+// the player runs. app_main calls it at boot, and again when a network joined
+// after boot comes up.
 void sendspin_start(const ac3::render::OutputLayout& layout);
 
 // Whether this build has a player, running.
