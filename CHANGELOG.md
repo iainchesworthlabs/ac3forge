@@ -607,6 +607,25 @@ and release packaging.
     - a concealment chosen mid-item reaching what is sent;
     - an output change into a transcode;
     - the engine choosing one.
+- **Hearth's player plays the end of the queue as part of the queue.** The last item used to
+  be taken as finished once its last unit was decoded, up to a second before it had been
+  heard, so a pause or a seek in that time was refused.
+  - Now, when what comes next cannot follow gapless, the player waits until the item's tail
+    has been heard before asking the transport what is next. That covers the end of the
+    queue, and an item needing another output.
+  - Until then the item is still playing: a pause holds it, and a seek plays it again from
+    the new place. A reopen decided just before a pause waits for the resume.
+  - An item added meanwhile joins it where it can, and is heard to its end. Once the device
+    has played everything, an added item reopens instead, since it would follow silence.
+  - A transcode sends what its encoder holds first.
+  - A tail on a link stays there through an output change. A seek back gives the item more
+    to play, and then it moves.
+  - Under the stop-at-failure policy, an item that will not open is remembered while the tail
+    plays, and marked only when playback stops at it. An item put before it meanwhile plays
+    first; a stop, or a change to passing over, forgets it.
+  - `Transport::would_join()` answers the join question without deciding anything.
+  - In `ac3tests`: pause, seek, an added item, and the stop, in the last moment of the queue,
+    for a PCM output, a link and a transcode.
 
 **Audio outputs**
 

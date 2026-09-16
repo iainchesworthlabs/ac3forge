@@ -292,6 +292,51 @@ TEST_CASE("transport: the end of the queue stops, and repeat makes the ends meet
     CHECK(outcome.item == 0);
 }
 
+TEST_CASE("transport: whether the next item would join can be asked without deciding it",
+          "[hearth][transport-state]") {
+    Queue queue;
+    queue.add(item("a"));
+    queue.add(item("b"));
+    queue.add(item("c", 44100));
+    Transport transport{queue};
+
+    // Stopped, nothing joins anything.
+    CHECK_FALSE(transport.would_join());
+    REQUIRE(transport.play().action == TransportAction::kStartItem);
+    transport.set_open_format(open_at(48000));
+
+    // b follows a at a's rate: it would - and asking changed nothing.
+    CHECK(transport.would_join());
+    CHECK(transport.would_join(OutputMode::kLocalPcm));
+    CHECK(queue.current_index() == 0);
+    CHECK(transport.state() == TransportState::kPlaying);
+    // Not played another way, and not with gapless off.
+    CHECK_FALSE(transport.would_join(OutputMode::kBitstream));
+    transport.set_gapless(false);
+    CHECK_FALSE(transport.would_join());
+    transport.set_gapless(true);
+    // Not an item that cannot be played, which the queue passes over for c,
+    // at another rate.
+    ItemFacts broken = queue.items()[1].facts;
+    broken.unplayable_because = "gone";
+    queue.set_facts(1, broken);
+    CHECK_FALSE(transport.would_join());
+    // And not past the end of the queue.
+    queue.set_current(2);
+    CHECK_FALSE(transport.would_join());
+    CHECK(transport.item_finished().action == TransportAction::kStopOutput);
+
+    // Stopped with the output still described - a caller has not closed it
+    // yet - nothing joins either.
+    queue.set_facts(1, item("b").facts);
+    queue.set_current(0);
+    REQUIRE(transport.play().action == TransportAction::kStartItem);
+    transport.set_open_format(open_at(48000));
+    REQUIRE(transport.would_join());
+    REQUIRE(transport.stop().action == TransportAction::kStopOutput);
+    CHECK_FALSE(transport.would_join());
+}
+
 TEST_CASE("transport: next and previous while playing reopen rather than join",
           "[hearth][transport-state]") {
     // Skipping is abandoning the current item part-way: whatever is queued

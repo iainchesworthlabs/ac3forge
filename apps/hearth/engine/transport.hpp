@@ -138,6 +138,11 @@ public:
     // through, as the output decision has it; a join needs it to be the mode
     // already open. Unset, the next item is taken to want the open mode.
     TransportOutcome item_finished(std::optional<OutputMode> next_mode = std::nullopt);
+    // Whether item_finished(next_mode) would join the next item now, asked
+    // without deciding anything: a caller with the last of an item still to
+    // be heard waits for that before asking for real, unless the next item
+    // follows it seamlessly.
+    [[nodiscard]] bool would_join(std::optional<OutputMode> next_mode = std::nullopt) const;
 
     // `item`, which the caller has just marked unplayable, would not open.
     // Under kSkip this is item_finished(next_mode): playback moves on to the
