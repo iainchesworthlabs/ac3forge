@@ -749,6 +749,13 @@ and release packaging.
   the loop ended. `spatial` had the same missing flush. Both commands now play that unit,
   through a new `ac3::apps::held_back_unit` shared with future callers, laid out the same way
   as every other unit.
+- **`ac3cli spatial` refused a §E2.3.1.2 legacy-core stream outright.** It refused any
+  stream whose first frame was AC-3 (`bsid <= 8`) before ever checking for an Annex E
+  extension substream behind it - but a legacy-core delivery's object layer lives in
+  exactly such a dependent, since a plain AC-3 core has nowhere to put an EMDF container.
+  `spatial` now shares `run_monitor`'s own `ac3::apps::reads_as_access_units` test, so a
+  legacy-core stream that does carry an object layer decodes and plays instead of being
+  turned away.
 - **The GUI offered E-AC-3 bitrates a source's sample rate couldn't frame.**
   `bitrates()` branched on codec but not on the loaded source's rate, so a 16 kHz file
   offered rungs no `frmsiz` could carry; encoding was refused only at the encode button.

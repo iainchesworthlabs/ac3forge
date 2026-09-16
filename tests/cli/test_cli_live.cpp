@@ -14,9 +14,11 @@
 #include <vector>
 
 #include "ac3/core/crc16.hpp"
+#include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/emdf/emdf.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/encoder/encoder.hpp"
 #include "ac3/oba/oamd.hpp"
 
 // The device-facing half of ac3cli: devices/outputs/record/live/monitor.
@@ -110,6 +112,55 @@ void write_oamd_stream(const fs::path& path, const ac3::oba::Program& program,
         REQUIRE(frame.has_value());
         out.write(reinterpret_cast<const char*>(frame->data()),
                   static_cast<std::streamsize>(frame->size()));
+    }
+}
+
+// A §E2.3.1.2 legacy-core delivery whose object layer rides in the Annex E
+// dependent, not the core: an AC-3 syncframe carrying a silent 5.1 bed,
+// immediately followed by a dependent extending it to 7.1 (same shape as
+// tests/decoder/test_eac3_decoder.cpp's "an AC-3 core plus an E-AC-3
+// dependent decodes to 7.1"), whose skip field carries `program`/`objects`
+// as an OAMD payload with no JOC beside it - write_oamd_stream's own
+// convention, above. The core cannot carry the container itself - plain
+// AC-3 has no skip-field syntax at all - which is exactly why a real
+// legacy-core Atmos delivery puts its object layer in the dependent instead
+// (decoder.hpp's DecodedAccessUnit::object_metadata comment).
+void write_legacy_core_oamd_stream(const fs::path& path, const ac3::oba::Program& program,
+                                   std::span<const ac3::oba::DynamicObject> objects) {
+    const auto payload = ac3::oba::build_payload(program, objects);
+    const std::vector<ac3::emdf::Payload> payloads = {
+        {.id = ac3::emdf::kPayloadIdOamd, .bytes = payload}};
+    const auto container = ac3::emdf::build_container(payloads);
+
+    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    ac3::eac3::FrameEncoder dependent{{.bitrate_kbps = 192,
+                                       .acmod = ac3::Acmod::k2_2,
+                                       .strmtyp = ac3::eac3::StreamType::kDependent,
+                                       .substreamid = 0,
+                                       .chanmap = ac3::eac3::chanmap::k71Rear,
+                                       .last_dependent = true}};
+
+    const std::vector<float> core_silence(static_cast<std::size_t>(ac3::kSamplesPerFrame), 0.0F);
+    const std::vector<std::span<const float>> core_channels(
+        static_cast<std::size_t>(core.channel_count()), core_silence);
+    const std::vector<float> dep_silence(static_cast<std::size_t>(ac3::kSamplesPerFrame), 0.0F);
+    const std::vector<std::span<const float>> dep_channels(
+        static_cast<std::size_t>(dependent.channel_count()), dep_silence);
+
+    std::ofstream out{path, std::ios::binary};
+    REQUIRE(out.is_open());
+    for (int frame_index = 0; frame_index < 16; ++frame_index) {
+        const auto core_frame = core.encode_frame(core_channels);
+        REQUIRE(core_frame.has_value());
+        out.write(reinterpret_cast<const char*>(core_frame->data()),
+                  static_cast<std::streamsize>(core_frame->size()));
+
+        // TS 103 420 §8.2: the container rides the last (here, only)
+        // dependent substream of the programme.
+        const auto dep_frame = dependent.encode_frame(dep_channels, container);
+        REQUIRE(dep_frame.has_value());
+        out.write(reinterpret_cast<const char*>(dep_frame->data()),
+                  static_cast<std::streamsize>(dep_frame->size()));
     }
 }
 
@@ -355,6 +406,45 @@ TEST_CASE("monitor describes a stream's object layer the way decode does",
         check_both("monitor_no_lfe", {.dynamic_only = true, .lfe = false, .dynamic_objects = 2},
                    objects,
                    "  2 dynamic objects = 2 objects, OAMD present (JOC audio not reconstructed)");
+    }
+}
+
+TEST_CASE("spatial reads a legacy-core stream instead of refusing it as plain AC-3",
+          "[cli][audio-io][atmos][concurrency]") {
+    // run_spatial refused any stream whose first frame was AC-3 (bsid <= 8)
+    // before ever checking for an Annex E extension substream behind it -
+    // but a §E2.3.1.2 legacy-core delivery's object layer lives in exactly
+    // such a dependent (decoder.hpp's DecodedAccessUnit::object_metadata
+    // comment), so a real legacy-core Atmos stream was refused outright even
+    // though it does carry one. write_legacy_core_oamd_stream above builds
+    // exactly that shape.
+    //
+    // This machine's spatial refusal only fires unconditionally before any
+    // device is touched, so its absence is the one assertion every machine
+    // can make, headless CI included - same reasoning as check_spoke_either_way,
+    // spelled out here because the specific line under test is a refusal
+    // this stream must never hit, not merely "some" refusal.
+    const auto dir = scratch_dir();
+    const auto stream = dir / "spatial_legacy_core.ec3";
+    const std::array<ac3::oba::DynamicObject, 2> objects{{
+        {.position = {.x = 0.25, .y = 0.5, .z = 0.0}, .gain_db = 0.0},
+        {.position = {.x = 0.75, .y = 0.5, .z = 0.0}, .gain_db = 0.0},
+    }};
+    write_legacy_core_oamd_stream(
+        stream, {.dynamic_only = true, .lfe = false, .dynamic_objects = 2}, objects);
+
+    const auto log = dir / "spatial_legacy_core.log";
+    const auto rc = run_cli("spatial \"" + stream.string() + "\"", log);
+    const auto out = read_log(log);
+    INFO("spatial:\n" + out);
+    check_spoke_either_way(rc, out);
+    CHECK(out.find("needs the object layer") == std::string::npos);
+    if (rc == 0) {
+        // A spatial-capable endpoint opened for real: the final summary line
+        // is spatial's own confirmation that decode_access_unit populated
+        // object_metadata/object_audio from the dependent and actually
+        // played the unit, not just that the refusal above was skipped.
+        CHECK(out.find("played") != std::string::npos);
     }
 }
 
