@@ -7,6 +7,7 @@
 #include <optional>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace ac4::detail {
 
@@ -478,13 +479,22 @@ PresentationContext presentation_context_v1(const ac4::Toc& toc,
     bool b_obj_or_ajoc = false;
     int pres_ch_mode_core = -1;
     bool b_obj_or_ajoc_adaptive = false;
+    // A presentation may name one substream group more than once: 6.2.1.3 sets
+    // no rule against it. Clauses 6.3.3.1.29 to 6.3.3.1.31 define these helpers
+    // over the substreams in the presentation, so a group named twice holds the
+    // same substreams and counts once, which is also how the assignment in
+    // decoder.cpp reads it. Counting per reference would make a frame that
+    // names one group N times cost N walks of that group.
+    std::vector<bool> counted(toc.substream_groups.size(), false);
     for (const int group_index : presentation.group_refs) {
         // A group the table of contents does not hold (b_multi_pid puts it in
         // another elementary stream) contributes nothing.
         if (group_index < 0 ||
-            static_cast<std::size_t>(group_index) >= toc.substream_groups.size()) {
+            static_cast<std::size_t>(group_index) >= toc.substream_groups.size() ||
+            counted[static_cast<std::size_t>(group_index)]) {
             continue;
         }
+        counted[static_cast<std::size_t>(group_index)] = true;
         const ac4::SubstreamGroupInfo& group =
             toc.substream_groups[static_cast<std::size_t>(group_index)];
         for (const ac4::GroupSubstream& substream : group.substreams) {

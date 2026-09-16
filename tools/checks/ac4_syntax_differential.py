@@ -27,8 +27,11 @@ before it are DEE's own, which the digest tests already compare. Findings:
             some values at different elements, so this is reported and does
             not fail the run;
   TOC       the two tables of contents (src/ac4's and ac4_parse.py's) disagree
-            on whether the frame parses or where its substreams are, and the
-            frame's substreams are not compared;
+            on whether the frame parses or where its substreams are, so that
+            frame's substreams are not compared, and only the first such frame
+            of a case is reported. A frame both sides refuse is no finding, and
+            either way the frames after it are still compared: what each side
+            carries from a frame it refused is where the two can part company;
   KIND      the two read one substream as different kinds, which a table of
             contents naming it in two roles can cause.
 The exit status is 1 when there is a DIVERGE, END, TOC or KIND finding.
@@ -73,8 +76,13 @@ def sync_frame(raw):
 def substream_spans(raw):
     toc = ac4_parse.parse_ac4_toc(ac4_parse.Reader(raw))
     offset = toc["toc_bytes"] + toc["payload_base"]
+    # With one substream and no transmitted size, the substream runs to the end
+    # of the frame, as python_layout() and ac4_syntax.StreamWalker read it. This
+    # took the sizes alone and so returned nothing for such a frame, which left
+    # that shape - the one fuzz_ac4_parse once crashed on - unmutated.
+    sizes = toc["substream_sizes"] if toc["b_size_present"] else [max(0, len(raw) - offset)]
     spans = []
-    for size in toc["substream_sizes"]:
+    for size in sizes:
         spans.append((offset, size))
         offset += size
     return spans
@@ -198,6 +206,8 @@ def generate(streams, cases, n_mutations, n_synthetic, seed):
             data = path.read_bytes()
             frames_of[path] = [raw for _, _, raw, _ in ac4_parse.iter_sync_frames(data)]
         frames = frames_of[path]
+        if not frames:
+            continue  # a file with no sync frame at all
         k = rng.randrange(0, min(len(frames), 12))
         try:
             mutated, how = mutate(rng, frames[k])
@@ -304,21 +314,30 @@ def compare_case(args):
     py = python_trace(case, last_only)
     cpp = cpp_trace(cpp_dir / f"{case.stem}.cpp.tsv")
     findings = []
-    stopped = set()
+    toc_reported = False
     for fi in sorted(set(py) | set(cpp)):
+        # Each frame is compared on its own: one frame both sides refuse, or
+        # read differently, says nothing about the frames after it, and the
+        # state each side carries makes those later frames worth comparing.
+        # Only the first table-of-contents finding of a case is reported, so a
+        # case that differs in every frame does not bury the rest.
+        stopped = set()
         p, c = py.get(fi), cpp.get(fi)
         if isinstance(p, tuple) or isinstance(c, tuple) or p is None or c is None:
-            if not (isinstance(p, tuple) and isinstance(c, tuple)):
+            if not (isinstance(p, tuple) and isinstance(c, tuple)) and not toc_reported:
                 python_says = p if isinstance(p, tuple) else "reads it"
                 cpp_says = c if isinstance(c, tuple) else "reads it"
                 findings.append(("TOC", "one side reads the table of contents", "",
                                  f"{case.stem} frame {fi}: python {python_says}; c++ {cpp_says}"))
-            break
+                toc_reported = True
+            continue
         if p["layout"] != c["layout"]:
-            findings.append(("TOC", "substream layouts differ", "",
-                             f"{case.stem} frame {fi}: python {p['layout'][:4]}; "
-                             f"c++ {c['layout'][:4]}"))
-            break
+            if not toc_reported:
+                findings.append(("TOC", "substream layouts differ", "",
+                                 f"{case.stem} frame {fi}: python {p['layout'][:4]}; "
+                                 f"c++ {c['layout'][:4]}"))
+                toc_reported = True
+            continue
         p, c = p["subs"], c["subs"]
         for idx in sorted(set(p) | set(c)):
             if idx in stopped:

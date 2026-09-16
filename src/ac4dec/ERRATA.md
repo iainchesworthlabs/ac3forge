@@ -75,6 +75,19 @@ Later phases add the readings their processing needs.
   order only makes the two transcriptions read such a stream alike.
 - **Evidence:** Text; no stream here names a substream twice.
 
+### A substream group named twice by one presentation
+
+- **Where:** Part 2 6.2.1.3, p. 115: a presentation reads its `ac4_sgi_specifier()` elements in turn, and
+  nothing forbids two of them naming one `group_index`. Clauses 6.3.3.1.29 to 6.3.3.1.31, p. 166, define
+  `pres_ch_mode`, `n_substreams_in_presentation` and the other helpers over the substreams in the
+  presentation.
+- **Reading:** a group named twice holds the same substreams both times, so it counts once, in the
+  helpers and in the substream assignment alike. `n_substream_groups`, which 6.2.1.3 assigns and the
+  `sg_gain` loop of `ac4_presentation_substream()` uses as a count, keeps the value the clause gives it.
+- **Evidence:** Text; no stream here names a group twice. Counting per reference also made a frame that
+  names one group thousands of times cost one walk of that group per reference, which is a way to make a
+  40 KB frame take a billion iterations.
+
 ### A change of source
 
 - **Where:** Part 1 4.3.3.2.2, p. 72: a frame continues the stream when its `sequence_counter` is the

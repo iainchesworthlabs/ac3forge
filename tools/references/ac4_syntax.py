@@ -2101,15 +2101,22 @@ IMS_STEREO_CODE = 0b1111000
 
 def _groups_of(toc, p):
     """The ac4_substream_group_info() dicts a presentation references
-    (group_index for bitstream_version 2, inline dicts for version 1)."""
+    (group_index for bitstream_version 2, inline dicts for version 1), each
+    once. A presentation may name one group twice; the group holds the same
+    substreams either way, so the helpers of 6.3.3.1.29 to 6.3.3.1.31 count
+    them once (src/ac4dec/ERRATA.md, 'A substream group named twice')."""
     groups = toc.get('substream_groups') or []
     out = []
     for ref in p.get('group_refs', []):
         if isinstance(ref, int):
             if ref < len(groups):
-                out.append(groups[ref])
+                g = groups[ref]
+            else:
+                continue
         else:
-            out.append(ref)
+            g = ref
+        if not any(g is seen for seen in out):
+            out.append(g)
     return out
 
 

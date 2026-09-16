@@ -2,6 +2,8 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -102,18 +104,27 @@ enum class Role : std::uint8_t { kMain, kMusicAndEffects, kDialogue, kDialogueEn
 // presentation's pres_ch_mode. The Python transcription found the same. It is
 // an observation of one encoder, not the text; the errata register records it.
 void apply_observed_stereo_rule(Toc& toc) {
+    // Each group is patched once however many presentations name it, and
+    // however many times one names it: a presentation may repeat a group
+    // reference, and walking a group per reference costs a walk per reference.
+    std::vector<bool> named(toc.substream_groups.size(), false);
     for (const PresentationInfoV1& p : toc.presentations_v1) {
         if (p.presentation_version != 2) {
             continue;
         }
         for (const int group_index : p.group_refs) {
-            if (group_index < 0 || static_cast<std::size_t>(group_index) >= toc.substream_groups.size()) {
-                continue;
+            if (group_index >= 0 && static_cast<std::size_t>(group_index) < toc.substream_groups.size()) {
+                named[static_cast<std::size_t>(group_index)] = true;
             }
-            for (GroupSubstream& sub : toc.substream_groups[static_cast<std::size_t>(group_index)].substreams) {
-                if (sub.kind == GroupSubstream::Kind::kChan && sub.chan && sub.chan->channel_mode == 0b1111000) {
-                    sub.chan->ch_mode = detail::ch_mode::kStereo;
-                }
+        }
+    }
+    for (std::size_t group_index = 0; group_index < named.size(); ++group_index) {
+        if (!named[group_index]) {
+            continue;
+        }
+        for (GroupSubstream& sub : toc.substream_groups[group_index].substreams) {
+            if (sub.kind == GroupSubstream::Kind::kChan && sub.chan && sub.chan->channel_mode == 0b1111000) {
+                sub.chan->ch_mode = detail::ch_mode::kStereo;
             }
         }
     }
@@ -187,10 +198,19 @@ void assign_instances(const Toc& toc, const ChannelSubstreamInfo& chan, int pres
         return;
     }
     const std::size_t instances = chan.b_iframe.empty() ? 1 : chan.b_iframe.size();
+    // substream_index carries a variable_bits() escape, so it reaches INT_MAX;
+    // the sum is taken in 64 bits because instance INT_MAX + 1 would overflow.
+    // An index past INT_MAX is past every substream the index table can hold,
+    // so it and the instances after it name nothing.
+    const std::int64_t first = *chan.substream_index;
     for (std::size_t i = 0; i < instances; ++i) {
+        const std::int64_t index = first + static_cast<std::int64_t>(i);
+        if (index > std::numeric_limits<int>::max()) {
+            break;
+        }
         const bool b_iframe = !chan.b_iframe.empty() && chan.b_iframe[i];
-        assign_audio(toc, chan, *chan.substream_index + static_cast<int>(i), b_iframe, presentation_version, sus_ver,
-                     b_associated, b_dialog, b_alternative, out);
+        assign_audio(toc, chan, static_cast<int>(index), b_iframe, presentation_version, sus_ver, b_associated,
+                     b_dialog, b_alternative, out);
     }
 }
 
