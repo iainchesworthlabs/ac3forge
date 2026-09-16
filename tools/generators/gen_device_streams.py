@@ -163,8 +163,8 @@ def make_sources(work):
 # Each entry: the file, one line on what it is, and either the ac3cli command
 # that makes it ({name} is a source above, {out} the output) or the file in
 # the tree it is a copy of. "psram" marks a stream measured to need more
-# internal RAM than the http shape has without PSRAM (planning/esp32-device-ui.md,
-# "The stream set"): CI's shape plays everything else.
+# internal RAM than the http shape has without PSRAM (planning/esp32-stream-set.md,
+# "What the network shape holds at 7.1.4"): CI's shape plays everything else.
 
 SET = [
     # 7.1.4, for listening and for a level on every slot.
@@ -262,7 +262,6 @@ SET = [
         "file": "714-aht.ec3",
         "what": "7.1.4, adaptive hybrid transform",
         "make": ["eac3-encode", "{tools714}", "{out}", "256", "aht", "714", MAP_714],
-        "psram": True,
     },
     {
         "file": "714-tpn.ec3",
@@ -274,7 +273,6 @@ SET = [
         "file": "714-all.ec3",
         "what": "7.1.4, coupling, spectral extension and AHT together",
         "make": ["eac3-encode", "{tools714}", "{out}", "256", "all", "714", MAP_714],
-        "psram": True,
     },
     {
         "file": "714-blocks2.ec3",
@@ -286,7 +284,9 @@ SET = [
         "what": "7.1.4, three-block syncframes",
         "make": ["eac3-encode", "{tools714}", "{out}", "384", "cpl+numblkscod:2", "714", MAP_714],
     },
-    # The three that 7.1.4 cannot carry without PSRAM, at 5.1, which can.
+    # The same three tools at 5.1. 7.1.4 still cannot carry enhanced coupling or
+    # TPN without PSRAM; AHT at 7.1.4 fits since the decoder stopped keeping a
+    # frame buffer per AHT stream.
     {
         "file": "51-aht.ec3",
         "what": "5.1, adaptive hybrid transform",
@@ -385,7 +385,6 @@ SET = [
         "file": "dee-eac3-51.ec3",
         "what": "Dolby Encoding Engine, E-AC-3 5.1 at 256 kbit/s",
         "copy": "tests/golden/external-baseline/eac3-51-256/dee.ec3",
-        "psram": True,
     },
     {
         "file": "ffmpeg-eac3-51.ec3",

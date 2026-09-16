@@ -21,6 +21,14 @@
     stream folded to 2.0 took longer to decode than it lasts, until that change brought it to
     real time, and a 7.1.4 stream using AHT or enhanced coupling still does.
 
+    Measured again on 2026-09-16 ([Measured again on
+    2026-09-16](#measured-again-on-2026-09-16)): what kept the streams marked "no" out of CI's
+    shape was the total internal RAM they need, not how the heap was cut up. The Dolby Encoding
+    Engine's 5.1 has fitted since the decoder split its AHT buffer per stream, and 7.1.4 with AHT
+    fits since the decoder stopped keeping that buffer at all; CI plays all three. 7.1.4 with
+    enhanced coupling or TPN still needs PSRAM: the shape is short of up to 2 KB and of about
+    51 KB for them.
+
     Written beside [the web UI's output layout](esp32-device-ui.md#the-output-layout), which
     uses these streams to show what a layout does, and in the shape of [the player
     plan](esp32-player.md): what exists, what changes and why, what was measured, what cannot be
@@ -77,9 +85,9 @@ shape holds at 7.1.4](#what-the-network-shape-holds-at-714).
 | `714-cpl.ec3` | 7.1.4, coupling | E-AC-3, 12 | 3 | cpl, blksw | 6 | 512 | 0.5 s | 32 KB | yes |
 | `714-ecpl.ec3` | 7.1.4, enhanced coupling | E-AC-3, 12 | 3 | cpl, ecpl, blksw | 6 | 512 | 0.5 s | 32 KB | no |
 | `714-spx.ec3` | 7.1.4, spectral extension | E-AC-3, 12 | 3 | spx, blksw | 6 | 512 | 0.5 s | 32 KB | yes |
-| `714-aht.ec3` | 7.1.4, adaptive hybrid transform | E-AC-3, 12 | 3 | aht, blksw | 6 | 512 | 0.5 s | 32 KB | no |
+| `714-aht.ec3` | 7.1.4, adaptive hybrid transform | E-AC-3, 12 | 3 | aht, blksw | 6 | 512 | 0.5 s | 32 KB | yes |
 | `714-tpn.ec3` | 7.1.4, transient pre-noise processing | E-AC-3, 12 | 3 | tpn, blksw | 6 | 512 | 0.5 s | 32 KB | no |
-| `714-all.ec3` | 7.1.4, coupling, spectral extension and AHT together | E-AC-3, 12 | 3 | cpl, spx, aht, blksw | 6 | 512 | 0.5 s | 32 KB | no |
+| `714-all.ec3` | 7.1.4, coupling, spectral extension and AHT together | E-AC-3, 12 | 3 | cpl, spx, aht, blksw | 6 | 512 | 0.5 s | 32 KB | yes |
 | `714-blocks2.ec3` | 7.1.4, two-block syncframes | E-AC-3, 12 | 3 | cpl, blksw | 2 | 768 | 0.5 s | 47 KB | yes |
 | `714-blocks3.ec3` | 7.1.4, three-block syncframes | E-AC-3, 12 | 3 | cpl, blksw | 3 | 768 | 0.5 s | 48 KB | yes |
 | `51-aht.ec3` | 5.1, adaptive hybrid transform | E-AC-3, 6 | 1 | aht, blksw | 6 | 384 | 0.5 s | 24 KB | yes |
@@ -94,7 +102,7 @@ shape holds at 7.1.4](#what-the-network-shape-holds-at-714).
 | `ac3-20.ac3` | AC-3 2/0 | AC-3, 2: L R | 1 | blksw, remat | 6 | 192 | 0.5 s | 12 KB | yes |
 | `eac3-dualmono.ec3` | E-AC-3 1+1: two mono programmes in one substream | E-AC-3, 2: Ch1 Ch2 | 1 | blksw | 6 | 192 | 1.0 s | 24 KB | yes |
 | `eac3-programmes.ec3` | E-AC-3 with two programmes: 5.1, and a mono second programme | E-AC-3, 6, and 1 | 1 per unit, 2 programmes | blksw | 6 | 240 | 1.0 s each | 60 KB | yes |
-| `dee-eac3-51.ec3` | Dolby Encoding Engine, E-AC-3 5.1 at 256 kbit/s | E-AC-3, 6 | 1 | cpl, spx, aht, blksw | 6 | 256 | 2.5 s | 79 KB | no |
+| `dee-eac3-51.ec3` | Dolby Encoding Engine, E-AC-3 5.1 at 256 kbit/s | E-AC-3, 6 | 1 | cpl, spx, aht, blksw | 6 | 256 | 2.5 s | 79 KB | yes |
 | `ffmpeg-eac3-51.ec3` | FFmpeg, E-AC-3 5.1 at 256 kbit/s | E-AC-3, 6 | 1 | cpl | 6 | 256 | 2.5 s | 79 KB | yes |
 | `dee-ac3-51.ac3` | Dolby Encoding Engine, AC-3 5.1 at 448 kbit/s | AC-3, 6 | 1 | cpl, blksw | 6 | 448 | 2.5 s | 138 KB | yes |
 | `dee-eac3-music.ec3` | Dolby Encoding Engine, E-AC-3 2/0 music at 96 kbit/s | E-AC-3, 2 | 1 | cpl, spx, aht, remat | 6 | 96 | 30.0 s | 352 KB | yes |
@@ -211,6 +219,69 @@ the player's block storage was sixteen slots at every layout (it is sized from t
 now), and the capture sink converts one block at a time. A board with PSRAM puts allocations of 16 KB and over there
 (`sdkconfig.psram`), which is where the streams marked "no" are meant to play. Each 1-second
 play took about two seconds of wall clock under QEMU.
+
+### Measured again on 2026-09-16
+
+By then the decoder allocated its per-substream slots only for the substreams a stream carries,
+and kept its AHT buffer per stream rather than as one 43,008-byte block. The Dolby Encoding
+Engine's 5.1 played in this shape, its least free internal heap during the play 53,324 bytes.
+The four 7.1.4 streams marked "no" still aborted, each with a little more internal heap free
+than it asked for. That read as fragmentation, and the first idea was to allocate the decoder's
+frame-long buffers before the network stack's.
+
+Summing every internal region at each abort says otherwise. A local build printed
+`heap_caps_print_heap_info` from the failed-allocation hook:
+
+| Stream | Asked for | Free in all internal regions | Of which in the largest region |
+|---|---|---|---|
+| `714-ecpl` | 2,508 (`substreams.reserve(3)`) | 2,920 | 852, in 23 pieces |
+| `714-aht` | 6,144 (a substream's overlap-add history) | 6,392 | 3,456 |
+| `714-tpn` | 6,144 (a PCM channel) | 8,776, after a low of 3,772 | 5,840 |
+| `714-all` | 6,144 | 6,756 | 3,820 |
+
+Each still had more to allocate. Two measurements put a size on it:
+
+- the true least free internal heap of each play that fits, read with
+  `heap_caps_monitor_local_minimum_free_size_start()` at the start of the play. The `heap_free=`
+  figure in the progress lines, which `--min-heap-free` holds, is a sample and reads higher: a
+  7.1.4 stream's true low is 30 to 35 KB;
+- each play's demand, from a build of the same shape with QEMU's PSRAM (quad, 32 MB) and
+  `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=0`, where everything `malloc` hands out comes from PSRAM
+  and every stream plays: the PSRAM free as the play starts, less the least it reaches.
+
+For the plays that fit, demand and true low add up to between 244.5 and 246.5 KB every time.
+That is the room this shape has for them, however the heap is cut up:
+
+| Stream | Demand | Against the room |
+|---|---|---|
+| `714-none`, `714-cpl`, `714-spx` | 212,940 to 213,204 | plays; true low 31,592 to 33,324 |
+| `714-ecpl` | 246,632 | short by up to 2 KB |
+| `714-aht` | 251,128 | short by 5 to 7 KB |
+| `714-all` | 255,380 | short by 9 to 11 KB |
+| `714-tpn` | 297,380 | short by about 51 KB |
+| `dee-eac3-51` | 193,132 | plays |
+
+No order of allocation makes up a shortfall in the total. At 5.1, over a stream with spectral
+extension, AHT costs 40 KB, enhanced coupling 35 KB and TPN 30 KB.
+
+**AHT.** The AHT buffers were a copy. An AHT stream's six blocks were decoded into a buffer per
+stream, 6,144 bytes each, and each block then copied its own out into the per-block coefficient
+store the decoder keeps for every stream anyway. The decoder now decodes them straight into that
+store, bit for bit the same in all three arithmetic tiers. `714-aht` and `714-all` then play in
+this shape, their true lows 31,224 to 32,032 and 30,072 to 32,196 bytes over three runs each,
+and `dee-eac3-51`'s rises to 95,408 to 96,412. CI plays all three.
+
+**Enhanced coupling** is still short by up to 2 KB, before any room for the network stack's own
+buffers during the play. Most of its 33 KB over coupling is one 23,552-byte allocation: the
+spectrum scratch's eight 512-sample arrays, and 7,168 bytes of tables narrowed from the double
+ones when the scratch is built. A 6,144-byte stash of the coupling channel for each block looks
+like a copy of what the per-block store already holds. Either would bring the stream inside the
+room; neither has been done.
+
+**TPN** is short by about 51 KB. Holding a frame back for §3.7 keeps a second full set of PCM for
+every substream - 86 KB for a 7.1.4 stream's fourteen coded channels - and each substream using
+the tool allocates a 12,288-byte splice buffer in every frame. That needs a different design,
+not a smaller buffer.
 
 ## What the set found
 
@@ -329,8 +400,9 @@ channels leave an S3, and what that costs in time and internal RAM, is still ope
 - **7.1.4 out of the part.** One TDM line on the S3 carries at most four 32-bit or eight 16-bit
   slots, so no sink here sends twelve channels to a DAC; QEMU has no I2S, and the board has no
   DAC. The board's figures are the decode and the render.
-- **The streams marked "no", in CI.** They played on the board on 2026-09-11, and CI's shape
-  has no PSRAM, so a change that breaks them shows only on a board.
+- **The streams marked "no", in CI** - `714-ecpl` and `714-tpn` since 2026-09-16. They played
+  on the board on 2026-09-11, and CI's shape has no PSRAM, so a change that breaks them shows
+  only on a board.
 
 ## Decisions
 
@@ -375,7 +447,9 @@ channels leave an S3, and what that costs in time and internal RAM, is still ope
 7. **The coding tools 7.1.4 cannot carry without PSRAM.** (a) **in the set at 7.1.4, marked
    PSRAM-only, and at 5.1, which CI plays**; (b) left out of the set. **Recommend (a).** A board
    with PSRAM plays the 7.1.4 ones, as one did on 2026-09-11, and CI still decodes AHT, enhanced
-   coupling and TPN through the player. Cost: 72 KB for the 5.1 streams.
+   coupling and TPN through the player. Cost: 72 KB for the 5.1 streams. Since 2026-09-16 AHT is
+   not one of these tools: CI plays `714-aht` and `714-all`
+   ([Measured again on 2026-09-16](#measured-again-on-2026-09-16)).
 
 8. **A wide programme folded to 2.0.** (a) **record it, and hand it to the decoder core**, with
    CI's folds at 2.0 made of 5.1 streams; (b) the player places a wide stream at `2.0` with its own
