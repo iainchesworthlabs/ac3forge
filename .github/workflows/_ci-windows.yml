@@ -226,6 +226,14 @@ jobs:
       # bump).
       - name: Install LLVM ${{ inputs.llvm_version }} (Windows)
         if: matrix.llvm && runner.os == 'Windows'
+        # ci-runners#26: this step has repeatedly hung for ~90 minutes (both
+        # self-hosted and windows-latest) with no progress, only ever caught
+        # by the whole job's 90-minute backstop above - which means one
+        # occurrence burns the entire job budget instead of failing fast.
+        # ~15-16 min is the worst historically-observed *legitimate* cost
+        # (before the progress-bar fix below existed); 20 min leaves headroom
+        # over that while still cutting a genuine hang to a fraction of 90.
+        timeout-minutes: 20
         # Windows PowerShell (always present on self-hosted + GitHub-hosted), NOT
         # pwsh/PowerShell 7 which the self-hosted runner image does not ship -
         # same reasoning as ./.github/actions/setup-msvc-env. GitHub-hosted
@@ -244,6 +252,23 @@ jobs:
           # the well-known PowerShell fix, not a workaround for anything
           # ac3forge-specific.
           $ProgressPreference = 'SilentlyContinue'
+          # Best-effort root-cause fix for the hang itself (ci-runners#26),
+          # not just the download slowness above: the rename-not-delete
+          # workaround a few lines down exists because two independent
+          # bulk-delete methods each hung for the full 90 minutes against
+          # this same directory, one file at a time - which points at
+          # realtime AV scanning, not a PowerShell or NSIS bug. A fresh
+          # install is the same shape of operation (thousands of small
+          # files, this time written instead of deleted) and has no
+          # equivalent workaround, so exclude both the install target and
+          # the temp paths the download/extraction touch before either runs.
+          # Non-fatal: a centrally-managed Defender policy can refuse this,
+          # and the timeout above is the safety net either way.
+          try {
+            Add-MpPreference -ExclusionPath "$env:ProgramFiles\LLVM", $env:RUNNER_TEMP, $env:TEMP -ErrorAction Stop
+          } catch {
+            Write-Host "::warning::Could not add Defender exclusion for LLVM ($_) - continuing without it"
+          }
           $version = $env:LLVM_WINDOWS_VERSION
           $pinnedMajor = $version.Split('.')[0]
           $llvmDir = "$env:ProgramFiles\LLVM"
