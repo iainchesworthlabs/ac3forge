@@ -17,11 +17,18 @@ add_library(ac3hearth_engine STATIC
     player.cpp
     queue.cpp
     session.cpp
+    settings_model.cpp
     stream_decoder.cpp
     transport.cpp
     unit_reports.cpp)
 target_include_directories(ac3hearth_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_features(ac3hearth_engine PUBLIC cxx_std_23)
+
+# The pairing records are a key ring for src/sendspin's server sessions, which
+# a core-only build leaves out, so they are left out with them.
+if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
+    target_sources(ac3hearth_engine PRIVATE pairing_store.cpp)
+endif()
 
 # From apps/common, which has no library target: the container facts an item's
 # loader hands over (container_input.hpp, whose functions the application's
@@ -32,12 +39,13 @@ target_include_directories(ac3hearth_engine PUBLIC "${PROJECT_SOURCE_DIR}/apps/c
 
 # ac3::audio for the output side (PcmOutput, PassthroughSink, the device
 # records the output decision reads), ac3::forge for the decoder and the
-# renderer, ac4::ac4 for an AC-4 item's table of contents. ac3::signing asks
-# whether frames carry an authenticity tag, and ac3::sendspin's JSON writer
-# writes the media information; the rest of ac3::sendspin joins when the
-# network output lands.
-target_link_libraries(ac3hearth_engine PUBLIC ac3::audio ac3::forge ac4::ac4)
-target_link_libraries(ac3hearth_engine PRIVATE ac3::warnings ac3::fmt ac3::signing ac3::sendspin)
+# renderer, ac4::ac4 for an AC-4 item's table of contents, and ac3::sendspin
+# for the JSON writer the media information is written with and the key ring
+# the pairing records implement (pairing_store.hpp); the rest of
+# ac3::sendspin joins when the network output lands. ac3::signing asks
+# whether frames carry an authenticity tag.
+target_link_libraries(ac3hearth_engine PUBLIC ac3::audio ac3::forge ac4::ac4 ac3::sendspin)
+target_link_libraries(ac3hearth_engine PRIVATE ac3::warnings ac3::fmt ac3::signing)
 # The engine thread (engine_thread.cpp).
 find_package(Threads REQUIRED)
 target_link_libraries(ac3hearth_engine PUBLIC Threads::Threads)

@@ -515,6 +515,32 @@ and release packaging.
     Windows, POSIX, UNC and relative forms; the file's sections and limits; and what the
     player and the engine note, in order, for a queue with a missing item, a join, a reopen,
     damaged units and a refused output.
+- **Hearth's settings model** (`apps/hearth/engine/settings_model.hpp` and
+  `pairing_store.hpp`): what the Settings page's Playback and Network cards hold, the queue
+  kept for the next start, and the pairing records.
+  - The window keeps them through a `SettingsStore` over QSettings, each as text under a fixed
+    key. A value that is missing, or does not read as one of its values, is the default.
+  - Playback: gapless, picking up the queue where it was left, and what an item that fails
+    does. Network: the name sinks and players show this computer by, cut to a DNS label's 63
+    bytes, and whether to look for Sendspin players.
+  - The saved queue keeps each item's path and title, the item being heard and how far into
+    it, in QSettings' array layout. A damaged one reads as far as it goes.
+    `Engine::restore()` brings it back without playing.
+  - "An item fails: Stop" stops playback at an item that will not open, rather than passing
+    over it. When the item was the next one, the item before it plays to its end first.
+    `Transport::item_failed()` makes the choice.
+  - The pairing records are a Sendspin `ServerStore`. A record, with the client's name and the
+    date, is written as its pairing completes, and one the store would not write is not kept.
+    A forgotten record stays forgotten. Keys typed in from a token, and approvals for unpaired
+    access, are kept in memory only. A core-only build of `src/sendspin` leaves them out.
+  - In `ac3tests`, tagged `[settings-model]` and `[pairing-store]`:
+    - defaults, damaged values and names;
+    - the saved queue's round trip, and a damaged saved queue;
+    - records surviving a restart, a failed write, forgetting, and records that do not read;
+    - lookups from other threads while records change.
+
+    The player stops at an item that fails, both when starting and after the item before
+    it, and a restored queue starts at its item and position.
 
 **Audio outputs**
 

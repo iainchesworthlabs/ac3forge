@@ -120,6 +120,10 @@ public:
     void clear();
     // Plays `index` from its start, as choosing it in the list does.
     TransportOutcome play_item(std::size_t index);
+    // Stops whatever plays and makes `index` current without starting it, so
+    // that the next play() starts there (and a seek made now is kept for
+    // that start). False, changing nothing, for an index out of range.
+    bool select(std::size_t index);
 
     // Where the item the device is playing has got to. Follows the device's
     // own clock across joins and seeks.
@@ -136,6 +140,9 @@ public:
     [[nodiscard]] const Transport& transport() const { return transport_; }
     void set_gapless(bool on) { transport_.set_gapless(on); }
     void set_repeat(bool on) { transport_.set_repeat(on); }
+    // Whether an item that cannot be played is passed over, or stops
+    // playback at that item once what was submitted before it has played.
+    void set_on_failure(FailurePolicy policy) { transport_.set_on_failure(policy); }
 
     // What every item is decoded with. A change reaches the playing item at
     // its next unit: the audio already decoded plays out as it was, and a new
@@ -230,6 +237,9 @@ private:
     [[nodiscard]] bool played_out();
     // The current item has delivered everything: decide what comes next.
     void item_ended(PumpReport& report);
+    // A reopen or a stop that waits for what has been submitted to play out;
+    // pump() carries it out once the sink's clock has passed it.
+    void play_out_then(const TransportOutcome& outcome, PumpReport& report);
     // After a queue edit: a waiting reopen goes to the item now current, and
     // a prepared session, keyed by index, is dropped.
     void after_edit();
@@ -240,6 +250,8 @@ private:
     // an item names it by its place and title (describe_item()), with the
     // item's folder withheld, since what a loader says can quote its path.
     void note(std::string_view line) const;
+    // `line` with the folders of queue item `index` withheld.
+    void note_withheld(std::size_t index, std::string_view line) const;
     void note_item(std::size_t index, std::string_view title, std::string_view what) const;
     [[nodiscard]] std::string_view title_of(std::size_t index) const;
     // The item session_ plays has started from an open, or joined.

@@ -23,6 +23,7 @@
 
 namespace {
 
+using ac3::hearth::FailurePolicy;
 using ac3::hearth::ItemFacts;
 using ac3::hearth::OpenOutputFormat;
 using ac3::hearth::OutputMode;
@@ -334,6 +335,57 @@ TEST_CASE("transport: an item that cannot be played is reported, not started",
     CHECK(outcome.state == TransportState::kStopped);
 }
 
+TEST_CASE("transport: an item that fails is passed over, or stops playback at it",
+          "[hearth][transport-state]") {
+    // The caller has marked b, which would not open, as it does before
+    // asking.
+    Queue queue;
+    queue.add(item("a"));
+    QueueItem b = item("b");
+    b.facts.unplayable_because = "the file is not there";
+    queue.add(b);
+    queue.add(item("c"));
+    Transport transport{queue};
+    CHECK(transport.on_failure() == FailurePolicy::kSkip);
+
+    // Skipping is what the end of an item does: on to the next that can play.
+    REQUIRE(transport.play().action == TransportAction::kStartItem);
+    transport.set_open_format(open_at(48000));
+    auto outcome = transport.item_failed(1);
+    CHECK(outcome.state == TransportState::kPlaying);
+    CHECK(outcome.action == TransportAction::kJoinItem);
+    CHECK(outcome.item == 2);
+    CHECK(queue.current_index() == 2);
+
+    // Stopping stops there, with the item current and the reason given.
+    transport.set_on_failure(FailurePolicy::kStop);
+    REQUIRE(queue.set_current(0));
+    outcome = transport.item_failed(1);
+    CHECK(outcome.state == TransportState::kStopped);
+    CHECK(outcome.action == TransportAction::kStopOutput);
+    CHECK(outcome.item == 1);
+    CHECK(queue.current_index() == 1);
+    CHECK(outcome.note.find("\"b\"") != std::string::npos);
+    CHECK(outcome.note.find("the file is not there") != std::string::npos);
+    CHECK(transport.state() == TransportState::kStopped);
+
+    // Already stopped, there is nothing to close; past the end, nothing to
+    // show.
+    outcome = transport.item_failed(1);
+    CHECK(outcome.action == TransportAction::kNone);
+    CHECK(outcome.item == 1);
+    outcome = transport.item_failed(7);
+    CHECK(outcome.action == TransportAction::kNone);
+    CHECK(outcome.item == Queue::kNone);
+    CHECK(queue.current_index() == 1);
+    REQUIRE(transport.play().action == TransportAction::kNone);
+    transport.set_on_failure(FailurePolicy::kSkip);
+    REQUIRE(transport.next().action == TransportAction::kStartItem);
+    outcome = transport.item_failed(7);
+    CHECK(outcome.action == TransportAction::kStopOutput);
+    CHECK(outcome.note.find("finished") != std::string::npos);
+}
+
 TEST_CASE("transport: every state and action describes itself", "[hearth][transport-state]") {
     for (const auto state :
          {TransportState::kStopped, TransportState::kPlaying, TransportState::kPaused}) {
@@ -350,4 +402,6 @@ TEST_CASE("transport: every state and action describes itself", "[hearth][transp
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown transport action");
     }
+    CHECK(ac3::hearth::describe(FailurePolicy::kSkip) == "skip to the next");
+    CHECK(ac3::hearth::describe(FailurePolicy::kStop) == "stop");
 }

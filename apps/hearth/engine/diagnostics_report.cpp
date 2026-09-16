@@ -94,6 +94,7 @@ std::string render_report(const ReportFacts& facts, const EngineStatus& engine,
     row("state", describe(engine.state));
     row("gapless", on_off(engine.gapless));
     row("repeat", on_off(engine.repeat));
+    row("an item fails", describe(engine.on_failure));
     row("queue", fmt::format("{} items, {}", engine.queue.size(),
                              engine.current == Queue::kNone
                                  ? std::string{"none current"}

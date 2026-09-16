@@ -194,6 +194,7 @@ TEST_CASE("diagnostics: the file has every section, from an idle engine", "[hear
     CHECK(has(report, "state: stopped\n"));
     CHECK(has(report, "gapless: on\n"));
     CHECK(has(report, "repeat: off\n"));
+    CHECK(has(report, "an item fails: skip to the next\n"));
     CHECK(has(report, "queue: 0 items, none current\n"));
     CHECK(has(report, "decoder: " + describe(DecoderSettings{}) + "\n"));
     CHECK(has(report, "# recent messages (oldest first, 0 of 512; 0 dropped)\n"));

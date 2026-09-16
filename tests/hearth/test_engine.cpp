@@ -37,11 +37,13 @@ namespace {
 using ac3::hearth::Engine;
 using ac3::hearth::EngineStatus;
 using ac3::hearth::EngineTiming;
+using ac3::hearth::FailurePolicy;
 using ac3::hearth::ItemLoader;
 using ac3::hearth::LoadedItem;
 using ac3::hearth::OpenOutputFormat;
 using ac3::hearth::OutputMode;
 using ac3::hearth::PcmSink;
+using ac3::hearth::PlayPosition;
 using ac3::hearth::QueueItem;
 using ac3::hearth::TransportState;
 
@@ -569,4 +571,53 @@ TEST_CASE("engine: the diagnostics ring hears each command, then what playback d
         "engine stopped",
     };
     CHECK(notes == expected);
+}
+
+TEST_CASE("engine: a restored queue waits at its item and position until asked to play",
+          "[hearth][concurrency]") {
+    Library library;
+    library.files["a"] = eac3_stream(40);
+    library.files["b"] = eac3_stream(200);
+    auto state = std::make_shared<ClockedDevice::State>();
+    // No clock runs, so the device hears nothing and a position is where
+    // playback started.
+    const auto engine = make_engine(library, state);
+
+    // Whatever was playing stops.
+    engine->add({item("a")});
+    engine->play();
+    engine->set_on_failure(FailurePolicy::kStop);
+    engine->restore({item("a"), item("b")}, 1, 3000ms);
+    engine->sync();
+    EngineStatus status = engine->status();
+    CHECK(status.state == TransportState::kStopped);
+    CHECK_FALSE(state->is_open());
+    REQUIRE(status.queue.size() == 2);
+    CHECK(status.queue[1].path == "b");
+    CHECK(status.current == 1);
+    CHECK(status.on_failure == FailurePolicy::kStop);
+
+    // Asked to play, it starts at the unit that covers the position: 3 s is
+    // 144000 samples, in the unit of 1536 that starts at 142848.
+    engine->play();
+    PlayPosition first;
+    REQUIRE(eventually([&] {
+        first = engine->position();
+        return first.item == 1;
+    }));
+    CHECK(first.heard == 2976ms);
+    engine->stop();
+
+    // A current item the queue does not have is none: the queue starts at
+    // its front, from the beginning.
+    engine->restore({item("a")}, 5, 1000ms);
+    engine->play();
+    REQUIRE(eventually([&] {
+        first = engine->position();
+        return first.item == 0;
+    }));
+    CHECK(first.heard == 0ms);
+    engine->stop();
+    engine->sync();
+    CHECK(engine->status().current == 0);
 }
