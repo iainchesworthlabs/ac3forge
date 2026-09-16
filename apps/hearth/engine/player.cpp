@@ -44,7 +44,10 @@ void Player::set_decoder_settings(const DecoderSettings& settings) {
         [this](std::span<const std::span<const float>> rendered, std::size_t n) {
             take_block(rendered, n);
         };
-    session_->hand_over(*decoder_, deliver);
+    const Session::ReportFn reported = [this](const UnitReport& report, std::size_t frames) {
+        take_report(report, frames);
+    };
+    session_->hand_over(*decoder_, deliver, reported);
     build_decoder(decoder_rate_);
 }
 
@@ -169,6 +172,29 @@ bool Player::meters(MeterSnapshot& latest) {
                                     ? device->frames_played - device->latency_frames
                                     : 0;
     return meters_->release(heard, latest);
+}
+
+bool Player::unit_report(UnitReport& latest) {
+    const auto device = sink_->position();
+    if (!device) {
+        return false;
+    }
+    const std::uint64_t heard = device->frames_played > device->latency_frames
+                                    ? device->frames_played - device->latency_frames
+                                    : 0;
+    return reports_.release(heard, latest);
+}
+
+void Player::take_report(const UnitReport& report, std::size_t frames) {
+    // take_block() drops a block that has no item to belong to; so is its
+    // unit's report.
+    if (history_.empty()) {
+        return;
+    }
+    // The unit's frames are the last ones queued, so it starts being heard
+    // that far back from the end of the queue.
+    const std::uint64_t end = submitted_since_open_ + pending_frames_;
+    reports_.add(report, end > frames ? end - frames : 0);
 }
 
 PlayPosition Player::position() const {
@@ -313,6 +339,7 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
                 if (meters_) {
                     meters_->restart_timeline();
                 }
+                reports_.clear();
             } else if (outcome.item != Queue::kNone) {
                 seek_on_start_ = SeekOnStart{.item = outcome.item, .to = outcome.seek_to};
             }
@@ -391,6 +418,7 @@ Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report
         meters_->restart_timeline();
     }
     metered_record_ = Queue::kNone;
+    reports_.clear();
     apply_seek_on_start(item);
     history_.push_back(PlayedItem{.queue_index = item,
                                   .title = queue_.items()[item].title,
@@ -423,6 +451,7 @@ void Player::close_output() {
     if (meters_) {
         meters_->restart_timeline();
     }
+    reports_.clear();
 }
 
 Player::Pending& Player::push_block() {
@@ -484,14 +513,17 @@ void Player::fill(std::size_t frames) {
     if (!session_ || !decoder_ || history_.empty()) {
         return;
     }
-    // Built once per call, capturing one pointer, so the std::function holds
-    // it without allocating.
+    // Built once per call, capturing one pointer, so the std::functions hold
+    // them without allocating.
     const StreamDecoder::BlockFn deliver =
         [this](std::span<const std::span<const float>> rendered, std::size_t n) {
             take_block(rendered, n);
         };
+    const Session::ReportFn reported = [this](const UnitReport& report, std::size_t count) {
+        take_report(report, count);
+    };
     while (pending_frames_ < frames && !session_->finished()) {
-        const auto got = session_->render(*decoder_, deliver, frames - pending_frames_);
+        const auto got = session_->render(*decoder_, deliver, frames - pending_frames_, reported);
         if (!got) {
             // One undecodable unit: say so and carry on with the next. The
             // session has already stepped past it.

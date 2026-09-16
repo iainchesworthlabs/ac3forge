@@ -114,6 +114,9 @@ public:
     // The newest meter snapshot the device has played up to, or nothing while
     // no output is open. Kept apart from status() for the position's reason.
     [[nodiscard]] std::optional<MeterSnapshot> meters() const;
+    // The report of the unit the device is playing, or nothing while no
+    // output is open.
+    [[nodiscard]] std::optional<UnitReport> unit_report() const;
 
     // Called on the engine thread after each publication, with the snapshot
     // just published. It should hand the news to its own thread and return.
@@ -145,10 +148,13 @@ private:
     PlayPosition position_;
     MeterSnapshot meters_;
     bool has_meters_ = false;
+    UnitReport report_;
+    bool has_report_ = false;
     std::function<void(const EngineStatus&)> on_change_;
-    // The engine thread's own snapshot, filled by the player and copied into
-    // meters_ under the lock, both keeping their storage.
+    // The engine thread's own copies, filled by the player and copied into
+    // meters_ and report_ under the lock, all keeping their storage.
     MeterSnapshot meter_scratch_;
+    UnitReport report_scratch_;
 
     // Last, so it starts once everything above exists and stops before any
     // of it goes.

@@ -403,6 +403,8 @@ TEST_CASE("engine: the position moves with the device's clock and stands while p
     CHECK(engine->position().duration.count() == 200 * 1536 * 1000 / 48000);
     REQUIRE(eventually([&] { return engine->meters().has_value(); }));
     CHECK(engine->meters()->levels.size() == 2);
+    REQUIRE(eventually([&] { return engine->unit_report().has_value(); }));
+    CHECK(engine->unit_report()->layout.count == 2);
 
     engine->pause();
     engine->sync();
@@ -415,10 +417,11 @@ TEST_CASE("engine: the position moves with the device's clock and stands while p
     engine->play();
     REQUIRE(eventually([&] { return engine->position().heard > paused + 20ms; }));
 
-    // Stopped, there is nothing to meter.
+    // Stopped, there is nothing to meter or report.
     engine->stop();
     engine->sync();
     CHECK_FALSE(engine->meters().has_value());
+    CHECK_FALSE(engine->unit_report().has_value());
 }
 
 TEST_CASE("engine: changes are reported on the engine's thread, every one, in order",

@@ -17,6 +17,7 @@
 #include "session.hpp"
 #include "stream_decoder.hpp"
 #include "transport.hpp"
+#include "unit_reports.hpp"
 
 // The player (planning/hearth-reference-player.md, A3): the queue, the
 // transport, one session at a time, and a PCM sink, put together.
@@ -119,6 +120,10 @@ public:
     // call, copied into `latest`; false when there is none. The meters run on
     // the output's slots; see play_meters.hpp for what starts again when.
     [[nodiscard]] bool meters(MeterSnapshot& latest);
+    // The report of the newest unit the device's clock has reached since the
+    // last call, copied into `latest`; false when there is none
+    // (unit_reports.hpp).
+    [[nodiscard]] bool unit_report(UnitReport& latest);
     [[nodiscard]] const Transport& transport() const { return transport_; }
     void set_gapless(bool on) { transport_.set_gapless(on); }
     void set_repeat(bool on) { transport_.set_repeat(on); }
@@ -203,6 +208,9 @@ private:
 
     // Takes one rendered block into the pending ring, for the current item.
     void take_block(std::span<const std::span<const float>> rendered, std::size_t n);
+    // Takes the report of the unit whose last `frames` frames were just
+    // taken.
+    void take_report(const UnitReport& report, std::size_t frames);
     // Builds the decoder for `rate` from the current settings.
     void build_decoder(std::uint32_t rate);
     // Decodes into the pending blocks until they hold at least `frames`.
@@ -259,6 +267,8 @@ private:
     // were metered last, so a new item restarts the programme measurements.
     std::optional<PlayMeters> meters_;
     std::size_t metered_record_ = Queue::kNone;
+    // Each unit's report, stamped like the meters' snapshots.
+    UnitReports reports_;
     std::string last_error_;
 };
 

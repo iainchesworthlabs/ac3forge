@@ -13,6 +13,8 @@
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/decoder/output.hpp"
+#include "ac3/oba/oamd.hpp"
 #include "ac3/render/layout.hpp"
 #include "ac3/render/render.hpp"
 #include "ac3/render/serving.hpp"
@@ -43,6 +45,13 @@
 // library configuration decoder_setup() makes of it, and dual mono's choice
 // of programme, applied here to each unit that codes 1+1 before it is placed.
 //
+// After a unit's blocks, what the unit said about itself goes to an optional
+// second callback as a UnitReport: its service, dialnorm, compr and dynrng
+// words, the fold levels in force, whether it was concealed, and its objects.
+// The report belongs to the blocks the call delivered, so a unit held back
+// for transient pre-noise processing is reported by the call that releases
+// it, and the last one by finish().
+//
 // What the test sink never needed and a player does is the end of a stream.
 // A unit still held back when the stream ends is released by
 // Eac3Decoder::flush() as raw substreams rather than an assembled unit, so
@@ -56,12 +65,44 @@
 
 namespace ac3::hearth {
 
+// What one access unit said about itself, as decoded.
+struct UnitReport {
+    Acmod acmod = Acmod::k2_0;
+    bool lfe = false;
+    // Substreams the unit assembled from: 1 for AC-3, the independent and
+    // its dependents for E-AC-3.
+    int substreams = 1;
+    // The locations it decoded to; empty for dual mono.
+    eac3::chanmap::Layout layout{};
+    // §5.4.2.2's service, when the unit sends one (E-AC-3 in its
+    // informational metadata only).
+    std::optional<int> bsmod = std::nullopt;
+    int dialnorm = 31;
+    std::optional<int> dialnorm2 = std::nullopt;
+    std::optional<std::uint8_t> compr = std::nullopt;
+    std::optional<std::uint8_t> compr2 = std::nullopt;  // AC-3 1+1
+    // The effective dynrng word of each of the unit's `blocks` blocks.
+    std::array<std::uint8_t, kBlocksPerFrame> dynrng{};
+    int blocks = kBlocksPerFrame;
+    // AC-3: the blocks in which any channel used the short transform.
+    std::optional<int> short_blocks = std::nullopt;
+    // The fold levels the unit's own metadata gives, defaults included.
+    MixLevels levels{};
+    // How the decoder concealed the unit, when it did (§7.10).
+    std::optional<Concealment> concealed = std::nullopt;
+    // The program its object metadata describes, with every update block's
+    // positions, when it carried any.
+    std::optional<oba::DecodedProgram> objects = std::nullopt;
+};
+
 class StreamDecoder {
 public:
     // One rendered block: a span per slot of the output layout, each
     // `frames` long, valid for the duration of the call.
     using BlockFn = std::function<void(std::span<const std::span<const float>> slots,
                                        std::size_t frames)>;
+    // A unit's report, valid for the duration of the call.
+    using UnitFn = std::function<void(const UnitReport& report)>;
 
     // `layout` is what the output renders onto; `sample_rate` is the
     // stream's own, which only the renderer's small-speaker crossover uses.
@@ -69,18 +110,20 @@ public:
                   const DecoderSettings& settings = {});
 
     // Decodes `unit` and hands each of its rendered blocks to `deliver`
-    // during the call. A unit held back for transient pre-noise processing
-    // delivers nothing now; its blocks arrive during the call that releases
-    // it. Returns the frames this call delivered, or a sentence saying why
-    // the unit could not be decoded - after which the decoders are reset, so
-    // the next unit starts clean rather than inheriting a broken state.
+    // during the call, then the unit's report to `reported`. A unit held back
+    // for transient pre-noise processing delivers nothing now; its blocks and
+    // report arrive during the call that releases it. Returns the frames this
+    // call delivered, or a sentence saying why the unit could not be decoded -
+    // after which the decoders are reset, so the next unit starts clean rather
+    // than inheriting a broken state.
     [[nodiscard]] std::expected<std::size_t, std::string> decode(std::span<const std::byte> unit,
-                                                                 const BlockFn& deliver);
+                                                                 const BlockFn& deliver,
+                                                                 const UnitFn& reported = {});
 
-    // End of stream: releases and delivers whatever is still held back.
-    // Returns the frames delivered. Leaves the decoder ready for a new
-    // stream.
-    std::size_t finish(const BlockFn& deliver);
+    // End of stream: releases and delivers whatever is still held back, and
+    // reports it. Returns the frames delivered. Leaves the decoder ready for a
+    // new stream.
+    std::size_t finish(const BlockFn& deliver, const UnitFn& reported = {});
 
     // Forgets the stream: decoders, programme, beds and the renderer's state.
     // What a seek needs before the first unit at its new position.
@@ -100,7 +143,8 @@ private:
     };
 
     void place(const PcmBlock& block, const BlockFn& deliver);
-    std::size_t render_flushed(std::span<DecodedSubstream> substreams, const BlockFn& deliver);
+    std::size_t render_flushed(std::span<DecodedSubstream> substreams, const BlockFn& deliver,
+                               const UnitFn& reported);
 
     render::OutputLayout layout_;
     std::uint32_t sample_rate_;
@@ -117,6 +161,8 @@ private:
     bool dual_mono_ = false;
     std::array<std::array<float, kSamplesPerBlock>, render::OutputLayout::kMaxSlots> block_{};
     std::size_t delivered_ = 0;
+    // Filled for each unit and handed out by reference, keeping its storage.
+    UnitReport report_{};
 };
 
 }  // namespace ac3::hearth

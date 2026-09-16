@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -119,4 +120,58 @@ TEST_CASE("session: a handover releases the unit the old decoder was holding, an
     // Every frame of the stream, once.
     CHECK(delivered == static_cast<std::uint64_t>(kFrames) * ac3::kSamplesPerFrame);
     CHECK(session->position_samples() == session->total_samples());
+}
+
+TEST_CASE("session: each unit the item plays is reported with its frames, and no other",
+          "[hearth][session]") {
+    // The same stream a frame behind, with the start and the end trimmed off.
+    const std::vector<std::byte> stream = joined(held_back_frames());
+    constexpr std::uint64_t kTotal = static_cast<std::uint64_t>(kFrames) * ac3::kSamplesPerFrame;
+    const ItemLoader loader = [&stream](const std::string&) -> std::expected<LoadedItem, std::string> {
+        return LoadedItem{.bytes = stream, .skip_samples = 700, .play_samples = kTotal - 700 - 1000};
+    };
+    auto session = Session::open("trimmed", loader);
+    REQUIRE(session.has_value());
+    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    REQUIRE(layout.has_value());
+    StreamDecoder decoder{*layout, 48000};
+
+    std::uint64_t delivered = 0;
+    std::vector<std::size_t> reported;
+    const StreamDecoder::BlockFn deliver = [&delivered](std::span<const std::span<const float>>,
+                                                        std::size_t n) { delivered += n; };
+    const Session::ReportFn report = [&reported](const ac3::hearth::UnitReport&, std::size_t frames) {
+        reported.push_back(frames);
+    };
+    const auto play_to_end = [&] {
+        while (!session->finished()) {
+            REQUIRE(session->render(decoder, deliver, 4 * ac3::kSamplesPerFrame, report).has_value());
+        }
+    };
+
+    play_to_end();
+    CHECK(delivered == session->total_samples());
+    // Every unit plays some of its frames, the first and the last only part.
+    REQUIRE(reported.size() == static_cast<std::size_t>(kFrames));
+    CHECK(reported.front() == static_cast<std::size_t>(ac3::kSamplesPerFrame) - 700);
+    CHECK(reported.back() == static_cast<std::size_t>(ac3::kSamplesPerFrame) - 1000);
+    std::uint64_t sum = 0;
+    for (const std::size_t frames : reported) {
+        sum += frames;
+    }
+    CHECK(sum == delivered);
+
+    // After a seek, the unit decoded only to prime the decoder plays nothing,
+    // so it is not reported.
+    session->seek(std::chrono::milliseconds{200}, decoder);
+    delivered = 0;
+    reported.clear();
+    play_to_end();
+    CHECK(reported.size() == 6);
+    sum = 0;
+    for (const std::size_t frames : reported) {
+        CHECK(frames > 0);
+        sum += frames;
+    }
+    CHECK(sum == delivered);
 }

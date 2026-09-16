@@ -213,13 +213,14 @@ std::vector<float> tone(double hz, std::uint32_t rate, std::size_t offset, doubl
 // decoder that starts late draws different values for the same bins; the
 // difference is some 95 dB down, but it is not zero.
 std::vector<std::byte> eac3_stream(int frames, ac3::SampleRate rate = ac3::SampleRate::k48000,
-                                   bool dither = true, double level = 0.3) {
+                                   bool dither = true, double level = 0.3, int dialnorm = 31) {
     ac3::eac3::FrameConfig config;
     config.sample_rate = rate;
     config.bitrate_kbps = 384;
     config.acmod = ac3::Acmod::k3_2;
     config.lfe = true;
     config.dither = dither;
+    config.dialnorm = dialnorm;
     ac3::eac3::FrameEncoder encoder{config};
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::byte> out;
@@ -1321,6 +1322,57 @@ TEST_CASE("player: a meter reading waits until the device has played what it des
     player->seek(std::chrono::milliseconds{200});
     advance(*log, 16384);
     CHECK_FALSE(player->meters(latest));
+}
+
+TEST_CASE("player: the report of the unit being heard waits for the device", "[hearth][player]") {
+    // Two items told apart by their dialnorm, joined.
+    Library library;
+    library.files["a.ec3"] = eac3_stream(20);
+    library.files["b.ec3"] = eac3_stream(20, ac3::SampleRate::k48000, true, 0.3, 20);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log, 8192, "2.0");
+    player->add(item("a.ec3"));
+    player->add(item("b.ec3"));
+    ac3::hearth::UnitReport report;
+    CHECK_FALSE(player->unit_report(report));
+
+    player->play();
+    player->pump();
+    // Decoded and queued, but nothing heard.
+    CHECK_FALSE(player->unit_report(report));
+    advance(*log, 1);
+    REQUIRE(player->unit_report(report));
+    CHECK(report.dialnorm == 31);
+    CHECK(report.layout.count == 6);
+    // The next unit's report once the clock passes its first frame, and not
+    // before.
+    advance(*log, 1535);
+    CHECK_FALSE(player->unit_report(report));
+    advance(*log, 1);
+    CHECK(player->unit_report(report));
+
+    // Up to the join, the first item's words; past it, the second's.
+    const std::uint64_t join = 20 * ac3::kSamplesPerFrame;
+    while (log->clock < join) {
+        player->pump();
+        advance(*log, std::min<std::uint64_t>(480, join - log->clock));
+    }
+    REQUIRE(log->opens == 1);
+    static_cast<void>(player->unit_report(report));
+    CHECK(report.dialnorm == 31);
+    player->pump();
+    advance(*log, 1);
+    REQUIRE(player->unit_report(report));
+    CHECK(report.dialnorm == 20);
+
+    // A seek throws away what was waiting, so the next report is the new
+    // position's as soon as it is heard.
+    player->pump();
+    player->seek(std::chrono::milliseconds{100});
+    player->pump();
+    advance(*log, 1);
+    REQUIRE(player->unit_report(report));
+    CHECK(report.dialnorm == 20);
 }
 
 TEST_CASE("player: a join starts the next item's loudness, and momentary loudness runs on",

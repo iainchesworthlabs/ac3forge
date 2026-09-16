@@ -480,6 +480,21 @@ and release packaging.
     the document parses. Tagged `[media-inspector]` and `[concurrency]`: a description is
     made on the inspector's thread, served from the cache until a reread is asked for, and a
     request replaced before it started is never read.
+- **What the unit being heard says, at play time** (`apps/hearth/engine/unit_reports.hpp`).
+  - Each access unit's report comes out when the device's clock passes the unit's first frame,
+    as the meters' readings do.
+  - A report gives the unit's channels and substreams; its service, dialnorm, `compr` and
+    `dynrng` words; AC-3's short blocks; the fold levels in force; any concealment; and its
+    object metadata, with every update block's positions.
+  - `StreamDecoder` reads the report from what the decoders return, which it used to drop. A
+    unit held back for transient pre-noise processing is reported by the call that releases
+    it, and the last unit by `finish()`.
+  - A unit the item plays nothing of, such as the one a seek decodes only to prime the
+    decoder, is not reported. A seek, a stop or a reopen drops the reports still waiting.
+  - `Engine::unit_report()` returns the latest report, and nothing while no output is open.
+  - In `ac3tests`, four streams are each reported unit by unit: AC-3, E-AC-3 with mixing
+    metadata, a stream a unit behind, and an object stream. The player's report changes with
+    the item heard at a gapless join.
 
 **Audio outputs**
 

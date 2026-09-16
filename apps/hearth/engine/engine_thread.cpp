@@ -139,6 +139,14 @@ std::optional<MeterSnapshot> Engine::meters() const {
     return meters_;
 }
 
+std::optional<UnitReport> Engine::unit_report() const {
+    const std::scoped_lock lock(mutex_);
+    if (!has_report_) {
+        return std::nullopt;
+    }
+    return report_;
+}
+
 void Engine::on_change(std::function<void(const EngineStatus&)> callback) {
     const std::scoped_lock lock(mutex_);
     on_change_ = std::move(callback);
@@ -205,6 +213,7 @@ void Engine::run(const std::stop_token& stop) {
             report = player_.pump(timing_.budget);
         }
         const bool metered = active && player_.meters(meter_scratch_);
+        const bool reported = active && player_.unit_report(report_scratch_);
         {
             const std::scoped_lock meter_lock(mutex_);
             if (metered) {
@@ -216,8 +225,14 @@ void Engine::run(const std::stop_token& stop) {
                 meters_.loudness_range = meter_scratch_.loudness_range;
                 meters_.true_peak_dbtp = meter_scratch_.true_peak_dbtp;
                 has_meters_ = true;
-            } else if (!player_.active()) {
+            }
+            if (reported) {
+                report_ = report_scratch_;
+                has_report_ = true;
+            }
+            if (!player_.active()) {
                 has_meters_ = false;
+                has_report_ = false;
             }
         }
         if (ran || report.item_started || report.output_reopened || report.stopped ||
