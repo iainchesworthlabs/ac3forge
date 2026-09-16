@@ -2778,7 +2778,28 @@ jobs:
           ls -l "$image"
           rm -rf build sdkconfig
 
-      - name: Upload the Sendspin player's QEMU image
+      # The same player on WiFi with nothing stored and nothing built in
+      # (sdkconfig.ci-wifi), which hearth-esp32s3's Improv step boots: what a
+      # board runs before anyone has given it a network. Its images go into
+      # the same artifact, under wifi/.
+      - name: Build the unprovisioned WiFi player for QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-http;sdkconfig.ci-sendspin;sdkconfig.ci-wifi"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          image="$GITHUB_WORKSPACE/sendspin-qemu-image/wifi"
+          mkdir -p "$image"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          (cd build && esptool --chip esp32s3 merge-bin --output "$image/qemu_flash.bin" --pad-to-size 16MB @flash_args >/dev/null)
+          PYTHONPATH="$IDF_PATH/tools" IMAGE="$image" python3 -c "import os; from idf_py_actions.qemu_ext import QEMU_TARGETS; open(os.path.join(os.environ['IMAGE'], 'qemu_efuse.bin'), 'wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"
+          ls -l "$image"
+          rm -rf build sdkconfig
+
+      - name: Upload the Sendspin player's QEMU images
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: esp32s3-sendspin-qemu
@@ -2895,6 +2916,24 @@ jobs:
             --server build/config-linux-gcc/bin/ac3hearth-testserver \
             --out sendspin-qemu-run
 
+      # B2's Improv provisioning, which the step above never reaches: its
+      # board has a network from boot. tools/checks/run_improv_qemu.sh boots
+      # the same image with its link down, gives it a network over Improv,
+      # brings the link up while it waits, and plays to the player it starts
+      # then. It also boots the WiFi build with nothing stored, which must come
+      # up once with its control surface and answer Improv. Before #741 the
+      # first board aborted and the second restarted in a loop. Each boots a
+      # copy of its image, since QEMU writes its NVS into the one it runs.
+      - name: Give the emulated board a network over Improv, and play to it
+        shell: bash
+        run: |
+          tools/checks/run_improv_qemu.sh \
+            --qemu "$QEMU_XTENSA" \
+            --image sendspin-qemu-image \
+            --wifi-image sendspin-qemu-image/wifi \
+            --server build/config-linux-gcc/bin/ac3hearth-testserver \
+            --out improv-qemu-run
+
       - name: Upload the run
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -2904,6 +2943,17 @@ jobs:
             sendspin-qemu-run/qemu-sendspin.txt
             sendspin-qemu-run/server.txt
             sendspin-qemu-run/report.json
+          if-no-files-found: warn
+
+      - name: Upload the Improv run
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hearth-esp32s3-improv
+          path: |
+            improv-qemu-run/*/qemu-improv.txt
+            improv-qemu-run/late-network/server.txt
+            improv-qemu-run/late-network/report.json
           if-no-files-found: warn
 
   build-esp32c3:

@@ -1,0 +1,14 @@
+# A board that has never been told a network, under QEMU:
+#
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci-http;sdkconfig.ci-sendspin;sdkconfig.ci-wifi"
+#
+# Layered on sdkconfig.ci-sendspin for its QEMU sizing, with the network seam
+# moved from QEMU's Ethernet to the board's WiFi station, no network built in
+# and nothing to play at boot: what sdkconfig.sendspin runs on a board before
+# anyone has provisioned it. tools/checks/run_improv_qemu.sh boots it, holds it
+# to one boot with the control surface up, and asks it over Improv what it is.
+# It never gives it a network: QEMU has no radio, and esp_wifi_start() does
+# not return from RF calibration there.
+CONFIG_AC3FORGE_EXAMPLE_NETWORK_WIFI=y
+CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID=""
+CONFIG_AC3FORGE_EXAMPLE_HTTP_URL=""
