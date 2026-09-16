@@ -282,14 +282,19 @@ That is about a microsecond a sample in `float` against 0.3 from the bits. The l
 front of the sink is `float` either way, at about 0.7 a sample, so it is now the larger half of
 what a sink spends on eight 16-bit slots: 9,153 microseconds against 3,839.
 
-Those two add to 12,992, which is the figure to hold the whole against. The streaming example's
-own `sink_us_per_frame`, measured end to end on this part for a 7.1 stream on eight 16-bit
-slots, reads 12,689 when the sink's source is built at `-Os` like the benchmark above, and
-11,551 in a plain build, where `AC3FORGE_MINIMAL_HOT_O2` builds that source at `-O2` and the
-conversion inlines into the interleave's loop. In `float` the same sink took 20,875. A
-conversion's cost depends on whether it inlines where it is called, which is why a figure
-measured inside a sink differs from an isolated one by more than measurement noise: in this
-benchmark the 24-in-32 form inlined and the 16-bit one did not.
+Those two add to 12,992 in isolation, which is the figure to hold a whole sink against. The
+streaming example playing a 7.1 stream onto eight 16-bit slots on this board reports
+`sink_us_per_frame` of 12,309, where the same sink converting in `float` reported 20,875. The
+end-to-end figure comes in under the sum because a plain build compiles the sink's own source at
+`-O2` (`AC3FORGE_MINIMAL_HOT_O2`) and the conversion inlines into the interleave's loop, where
+this benchmark at `-Os` called it once a sample. That is the general rule for these numbers: a
+conversion's cost depends on whether it inlines where it is called, and in this benchmark the
+24-in-32 form inlined and the 16-bit one did not.
+
+The sink is no longer the largest piece of that play. The same run takes 44,849 microseconds a
+frame against the frame's 32,000 - 28,923 of decode, 3,617 of render and the sink's 12,309 - so
+a 7.1 stream on eight slots is 1.40 times real time here, and the decode is what would have to
+give.
 
 ## QEMU
 
