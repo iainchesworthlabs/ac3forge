@@ -249,6 +249,11 @@ int sink_slots() {
     return static_cast<int>(kTdm ? std::min<std::size_t>(CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS, kMaxSlots) : 2);
 }
 
+// Its slots are fixed by the build, and it has no second line to wire.
+int sink_max_slots() { return sink_slots(); }
+
+bool sink_second_line_possible() { return false; }
+
 // Built for one width and checked against it (kWide above): this sink's whole
 // job is to convert exactly as the i2s sink does and check the result, so the
 // width is a property of the shape CI built, not something to change under it.

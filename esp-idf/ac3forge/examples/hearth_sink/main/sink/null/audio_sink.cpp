@@ -60,6 +60,10 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
 // player may ask for before this sink has been opened at all.
 int sink_slots() { return static_cast<int>(ac3::render::OutputLayout::kMaxSlots); }
 
+int sink_max_slots() { return sink_slots(); }
+
+bool sink_second_line_possible() { return false; }
+
 // Nothing here is interleaved into slots at all, so the width is only what a
 // caller asking gets told, and changing it would describe nothing.
 int sink_slot_bits() { return CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS; }
