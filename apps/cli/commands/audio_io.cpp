@@ -1,5 +1,7 @@
 #include "audio_io.hpp"
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -25,6 +27,7 @@
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/capture.hpp"
 #include "ac3/audio/passthrough.hpp"
+#include "ac3/audio/pcm_output.hpp"
 #include "ac3/audio/sink_capabilities.hpp"
 #include "ac3/audio/spatial.hpp"
 #include "ac3/audio/speakers.hpp"
@@ -35,6 +38,9 @@
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/iec61937/iec61937.hpp"
+#include "ac3/render/identify.hpp"
+#include "ac3/render/layout.hpp"
+#include "ac3/render/routing.hpp"
 #include "live_audio.hpp"
 #include "recording_sink.hpp"
 #include "stream_tools.hpp"
@@ -604,6 +610,165 @@ int run_outputs() {
     fmt::println("All no means exclusive mode itself is unavailable (disabled for the device,");
     fmt::println("or another application currently holds it).");
     return 0;
+}
+
+int run_identify(int device_index, std::string_view layout_text, std::uint32_t seconds,
+                 std::string_view routing_text, double level_db) {
+    constexpr std::uint32_t kRate = 48000;
+    constexpr std::size_t kBlockFrames = 480;
+
+    const auto devices = ac3::audio::enumerate_render_devices();
+    if (!devices.has_value()) {
+        fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
+        return kExitUnavailable;
+    }
+    if (device_index >= 0 && static_cast<std::size_t>(device_index) >= devices->size()) {
+        fmt::println(stderr, "error: no render endpoint with index {} ('ac3cli outputs' lists them)",
+                     device_index);
+        return kExitInput;
+    }
+    // A negative index means the default endpoint, which is what an empty
+    // device id opens - the same convention 'play' and 'monitor' use.
+    std::string device_id;
+    std::uint32_t speakers = 0;
+    std::uint16_t channels = 0;
+    if (device_index >= 0) {
+        const auto& chosen = (*devices)[static_cast<std::size_t>(device_index)];
+        device_id = chosen.id;
+        speakers = chosen.speakers;
+        channels = chosen.channels;
+    } else {
+        for (const auto& candidate : *devices) {
+            if (candidate.is_default) {
+                speakers = candidate.speakers;
+                channels = candidate.channels;
+                break;
+            }
+        }
+    }
+
+    // The layout to walk. Named explicitly, else the device's own speakers so
+    // that every output it reports gets a turn, else stereo - which is what a
+    // backend that cannot say leaves to work with.
+    std::optional<ac3::render::OutputLayout> layout;
+    if (!layout_text.empty() && layout_text != "-") {
+        layout = ac3::render::OutputLayout::parse(layout_text);
+        if (!layout) {
+            fmt::println(stderr, "error: \"{}\" is not a layout (try 5.1, 7.1.4, or L,R,C)",
+                         layout_text);
+            return kExitInput;
+        }
+    } else {
+        const auto locations =
+            ac3::audio::locations_of(speakers != 0 ? speakers
+                                                    : ac3::audio::default_speakers(channels));
+        layout = locations.empty() ? ac3::render::OutputLayout::stereo()
+                                   : ac3::render::OutputLayout::from_locations(locations)
+                                         .value_or(ac3::render::OutputLayout::stereo());
+    }
+
+    ac3::audio::PcmOutput output;
+    const auto opened = output.start(device_id, kRate, *layout);
+    if (!opened) {
+        fmt::println(stderr, "error: {}", ac3::audio::describe(opened.error()));
+        return kExitUnavailable;
+    }
+    if (!routing_text.empty() && routing_text != "-") {
+        const auto patch = ac3::render::Routing::parse(routing_text, opened->outputs);
+        if (!patch) {
+            fmt::println(stderr,
+                         "error: \"{}\" is not a patch for {} outputs (one token per rendered "
+                         "channel, each an output index or \"-\", e.g. 1,0,2,3,4,5)",
+                         routing_text, opened->outputs);
+            return kExitInput;
+        }
+        if (!output.set_routing(*patch)) {
+            fmt::println(stderr, "error: that patch is not for this stream");
+            return kExitInput;
+        }
+    }
+
+    std::array<char, ac3::render::Routing::kTextBytes> patch_text{};
+    output.routing().format(patch_text);
+    fmt::println("{} - {} outputs{}, {} Hz", opened->device_name.empty() ? "default output"
+                                                                         : opened->device_name,
+                 opened->outputs, opened->from_device ? "" : " (the backend does not say; assumed)",
+                 opened->sample_rate);
+    const std::string speaker_names = ac3::audio::describe_speakers(opened->speakers);
+    fmt::println("speakers: {}", speaker_names.empty() ? "not reported" : speaker_names);
+    fmt::println("layout:   {} ({} slots)", layout->text(), layout->slots());
+    fmt::println("patch:    {}", patch_text.data());
+    fmt::println("");
+
+    // Pink noise on one rendered channel at a time, placed by the patch: what
+    // comes out of a speaker is what the patch says goes to the output that
+    // speaker is plugged into, which is the whole point of walking it.
+    ac3::render::IdentifyTone tone{kRate};
+    if (!tone.set_level_db(level_db)) {
+        fmt::println(stderr, "error: level {} dB is outside [{}, {}]", level_db,
+                     ac3::render::IdentifyTone::kMinLevelDb,
+                     ac3::render::IdentifyTone::kMaxLevelDb);
+        return kExitInput;
+    }
+    std::vector<std::vector<float>> channels_storage(layout->slots(),
+                                                     std::vector<float>(kBlockFrames, 0.0F));
+    std::vector<std::span<float>> writable;
+    std::vector<std::span<const float>> readable;
+    for (auto& channel : channels_storage) {
+        writable.emplace_back(channel);
+        readable.emplace_back(channel);
+    }
+
+    const std::size_t blocks = std::max<std::size_t>(
+        1, static_cast<std::size_t>(seconds) * kRate / kBlockFrames);
+    for (std::size_t slot = 0; slot < layout->slots(); ++slot) {
+        const auto& speaker = layout->slot(slot);
+        const int patched = output.routing().output_of(slot);
+        const std::string_view name =
+            speaker.location ? ac3::eac3::chanmap::name(*speaker.location) : "by angle";
+        if (patched == ac3::render::Routing::kUnassigned) {
+            fmt::println("slot {:>2} {:<4} not patched - skipped", slot, name);
+            continue;
+        }
+        fmt::println("slot {:>2} {:<4} -> output {}", slot, name, patched);
+        tone.reset();
+        const auto band = speaker.kind == ac3::render::Speaker::Kind::kLfe
+                              ? ac3::render::IdentifyTone::Band::kLow
+                              : ac3::render::IdentifyTone::Band::kFull;
+        for (std::size_t block = 0; block < blocks; ++block) {
+            tone.fill(writable, slot, band);
+            while (!output.submit(readable, kBlockFrames)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(4));
+            }
+        }
+        // Drain before the next slot, so two speakers are never sounding at
+        // once and what is heard matches the line just printed. First the
+        // sink's own queue, which stats() report the depth of; then the
+        // frames the device has taken but not yet played, which is what is
+        // left of position()'s queue once ours is empty - a running device's
+        // own buffer never reaches zero, so this waits for its time rather
+        // than for a count.
+        for (int waited = 0; waited < 1000 && output.running(); ++waited) {
+            const auto counts = output.stats();
+            if (counts.frames_rendered >= counts.frames_submitted) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+        }
+        if (const auto position = output.position()) {
+            const auto left = position->frames_queued + position->latency_frames;
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(20 + static_cast<int>((left * 1000) / kRate)));
+        }
+    }
+
+    output.stop();
+    fmt::println("");
+    fmt::println("Each line played pink noise on one rendered channel (the LFE feed band-limited");
+    fmt::println("to 30-80 Hz). Heard from another speaker than the line names, the patch is");
+    fmt::println("wrong for this room: pass one, a token per rendered channel - e.g. 1,0,2,3,4,5");
+    fmt::println("swaps the front pair.");
+    return kExitOk;
 }
 
 namespace {

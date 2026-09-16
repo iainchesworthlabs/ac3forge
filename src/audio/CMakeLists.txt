@@ -56,6 +56,12 @@ target_sources(ac3audio PRIVATE src/sink_capabilities.cpp)
 # over a table, with no platform call in it (see speakers.hpp's header).
 target_sources(ac3audio PRIVATE src/speakers.cpp)
 
+# pcm_output.cpp likewise: it is MonitorSink, the render-device enumeration
+# both halves already share, and arithmetic over a routing patch - no platform
+# call of its own. It is what opens a stream at the device's own width instead
+# of the caller's, so see pcm_output.hpp's header for why that matters.
+target_sources(ac3audio PRIVATE src/pcm_output.cpp)
+
 target_compile_features(ac3audio PUBLIC cxx_std_23)
 
 # ac3::coverage is a no-op unless AC3FORGE_ENABLE_COVERAGE is on (see

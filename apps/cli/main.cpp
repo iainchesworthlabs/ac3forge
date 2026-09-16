@@ -172,13 +172,13 @@ int run_help(const Args& x);
 int run_man();
 int run_completions(std::string_view shell);
 
-// 41 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
+// 42 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
 // linked ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above
 // and run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating
 // it, never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 41> kCommands{{
+constexpr std::array<Command, 42> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
@@ -401,6 +401,16 @@ constexpr std::array<Command, 41> kCommands{{
     {"outputs", 1, "", "render endpoints + AC-3/E-AC-3 passthrough support", topic::kNone,
      Needs::kPassthrough,
      [](const Args&) { return run_outputs(); }},
+    {"identify", 1, "[device_index] [layout] [seconds] [routing] [level_db]",
+     "walk the identify tone across an output's speakers - pink noise on one rendered channel at "
+     "a time, placed by the routing patch, so a room's wiring can be heard (layout \"-\" is the "
+     "device's own speakers; routing 1,0,2,3,4,5 swaps the front pair)",
+     topic::kNone,
+     Needs::kMonitor,
+     [](const Args& x) {
+         return run_identify(x.i32(1, -1), x.str(2, "-"), x.u32(3, 2), x.str(4, "-"),
+                             static_cast<double>(x.i32(5, -20)));
+     }},
     {"play", 2, "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index]",
      "exclusive-mode IEC 61937 passthrough, following the sink (bsid decides the source "
      "format; a named device that rejects it gets an automatic AC-3/PCM fallback - follow=off "
