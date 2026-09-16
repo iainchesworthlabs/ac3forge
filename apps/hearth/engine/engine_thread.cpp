@@ -29,9 +29,38 @@ namespace {
 Engine::Engine(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout,
                const DecoderSettings& settings, const EngineTiming& timing,
                DiagnosticLog* diagnostics)
+    : Engine(PlayerOutputs{.pcm = std::move(sink), .bitstream = {}, .choose = {}},
+             std::move(loader), layout, settings, timing, diagnostics) {}
+
+// selector_ is declared before player_, so its initializer - which reads
+// whether there is a passthrough output - runs before player_'s moves it.
+Engine::Engine(EngineOutputs outputs, ItemLoader loader, const render::OutputLayout& layout,
+               const DecoderSettings& settings, const EngineTiming& timing,
+               DiagnosticLog* diagnostics)
     : timing_(timing),
       diagnostics_(diagnostics),
-      player_(std::move(sink), std::move(loader), layout, settings, diagnostics) {
+      selector_(std::make_unique<OutputSelector>(std::move(outputs.endpoints),
+                                                 /*bitstream_output=*/outputs.bitstream != nullptr)),
+      player_(PlayerOutputs{.pcm = std::move(outputs.pcm),
+                            .bitstream = std::move(outputs.bitstream),
+                            .choose = [chooser = selector_.get()](const ItemFacts& facts,
+                                                                  const HeldOutput& held) {
+                                return chooser->choose(facts, held);
+                            }},
+              std::move(loader), layout, settings, diagnostics) {
+    start(layout, settings);
+}
+
+Engine::Engine(PlayerOutputs outputs, ItemLoader loader, const render::OutputLayout& layout,
+               const DecoderSettings& settings, const EngineTiming& timing,
+               DiagnosticLog* diagnostics)
+    : timing_(timing),
+      diagnostics_(diagnostics),
+      player_(std::move(outputs), std::move(loader), layout, settings, diagnostics) {
+    start(layout, settings);
+}
+
+void Engine::start(const render::OutputLayout& layout, const DecoderSettings& settings) {
     status_.settings = settings;
     note(fmt::format("engine started: layout {} ({} slots), {}", layout.text(), layout.slots(),
                      describe(settings)));
@@ -236,6 +265,35 @@ void Engine::restore(std::vector<QueueItem> items, std::size_t current,
     });
 }
 
+void Engine::set_output_preferences(OutputPreferences preferences) {
+    post([this, preferences = std::move(preferences)](Player& player) {
+        if (!selector_) {
+            note("output choices refused: this engine was given its outputs' decisions");
+            return std::string{"This engine's outputs are chosen by its owner, not here."};
+        }
+        if (preferences == selector_->preferences()) {
+            return std::string{};
+        }
+        note(fmt::format("output choices: mode {}, endpoint {}, follow the sink {}",
+                         preferences.pinned ? describe(*preferences.pinned) : "automatic",
+                         preferences.endpoint_id.empty() ? "automatic" : preferences.endpoint_id,
+                         preferences.follow_sink ? "on" : "off"));
+        selector_->set_preferences(preferences);
+        return player.refollow();
+    });
+}
+
+void Engine::refresh_outputs() {
+    post([this](Player& player) {
+        if (!selector_) {
+            return std::string{};
+        }
+        note("outputs changed: reading them again");
+        selector_->refresh();
+        return player.refollow();
+    });
+}
+
 void Engine::sync() {
     std::unique_lock lock(mutex_);
     const std::uint64_t made = posted_;
@@ -285,7 +343,12 @@ void Engine::publish(const std::string& note, std::uint64_t carried) {
     next.repeat = player_.transport().repeat();
     next.on_failure = player_.transport().on_failure();
     next.settings = player_.decoder_settings();
+    next.settings_note = player_.settings_note();
     next.output = player_.transport().open_format();
+    next.output_reason = player_.output_choice().reason;
+    if (selector_) {
+        next.output_preferences = selector_->preferences();
+    }
     next.output_opens = player_.output_opens();
     next.history = player_.history();
     next.error = player_.last_error();

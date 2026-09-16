@@ -10,9 +10,12 @@
 #include <string_view>
 #include <vector>
 
+#include "ac3/iec61937/iec61937.hpp"
 #include "ac3/render/layout.hpp"
+#include "bitstream_sink.hpp"
 #include "decoder_settings.hpp"
 #include "diagnostic_log.hpp"
+#include "output_decision.hpp"
 #include "pcm_sink.hpp"
 #include "play_meters.hpp"
 #include "queue.hpp"
@@ -47,8 +50,32 @@
 // or refused, and units that would not decode - the first with its reason,
 // the rest as a count once the item is done with, so a damaged file writes
 // two lines rather than one per unit.
+//
+// Each item plays the way the output decision says (output_decision.hpp),
+// asked when the item starts and again before the next one joins. A
+// bitstream output is sent the item's access units, packed into IEC 61937
+// bursts, from the same units the decoder is given: the decode still runs,
+// for the meters and the unit reports, which are released by the
+// bitstream sink's clock as they are by a PCM sink's. Only whole units can be
+// sent, so a bitstreamed item plays every sample of the units its part of
+// the stream touches (Session::play_whole_units()), and the decoder settings
+// reach the meters but not the receiver, which decodes with its own.
 
 namespace ac3::hearth {
+
+// Each item's output, from its facts and the output the player holds open
+// while asking (OutputSelector::choose()).
+using OutputChooser = std::function<OutputChoice(const ItemFacts& item, const HeldOutput& held)>;
+
+// What a player plays through.
+struct PlayerOutputs {
+    // The local PCM output; with none, nothing is decoded to a device.
+    std::unique_ptr<PcmSink> pcm{};
+    // The passthrough output; with none, nothing is bitstreamed.
+    std::unique_ptr<BitstreamSink> bitstream{};
+    // Unset, every item is decoded to `pcm`.
+    OutputChooser choose{};
+};
 
 // One item's playback, as the output saw it.
 struct PlayedItem {
@@ -92,6 +119,9 @@ public:
     // `layout` is what every item is rendered onto; the sink places its slots.
     // `diagnostics`, when given, outlives the player.
     Player(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout,
+           const DecoderSettings& settings = {}, DiagnosticLog* diagnostics = nullptr);
+    // With a choice of outputs for each item.
+    Player(PlayerOutputs outputs, ItemLoader loader, const render::OutputLayout& layout,
            const DecoderSettings& settings = {}, DiagnosticLog* diagnostics = nullptr);
 
     // The transport holds the queue's address, so a player stays where it
@@ -152,6 +182,21 @@ public:
     // since it is a different list of units.
     void set_decoder_settings(const DecoderSettings& settings);
     [[nodiscard]] const DecoderSettings& decoder_settings() const { return settings_; }
+    // Why the decoder settings are not what the listener hears, or empty
+    // when they are: a bitstream is decoded by the receiver.
+    [[nodiscard]] std::string_view settings_note() const;
+
+    // The output decision the open output, or the last one, was made by.
+    [[nodiscard]] const OutputChoice& output_choice() const { return choice_; }
+
+    // The outputs, or the choices about them, have changed: the item playing
+    // is decided again, and if the answer is another mode or endpoint it
+    // moves there, from the position being heard - paused still, if it was.
+    // An item already playing out its last units finishes where it is, and
+    // an item joined behind one still being heard is decided again once the
+    // join has been heard (pump() does it), so the end of the one before is
+    // not cut. Returns what changed, for the status line, or nothing.
+    std::string refollow();
 
     TransportOutcome play();
     TransportOutcome pause();
@@ -172,20 +217,31 @@ public:
 
     // Whether pump() has anything to do: an output is open, or a reopen or a
     // stop is waiting for the audio already submitted to be heard.
-    [[nodiscard]] bool active() const { return after_drain_.has_value() || sink_->is_open(); }
+    [[nodiscard]] bool active() const { return after_drain_.has_value() || output_open(); }
 
     [[nodiscard]] const std::vector<PlayedItem>& history() const { return history_; }
     [[nodiscard]] std::uint32_t output_opens() const { return opens_; }
     [[nodiscard]] const std::string& last_error() const { return last_error_; }
 
 private:
-    // One rendered block waiting for room in the sink.
+    // Content frames of one history_ entry.
+    struct Span {
+        std::size_t record = 0;
+        std::uint64_t frames = 0;
+    };
+
+    // One rendered block, or one burst, waiting for room in the sink.
     struct Pending {
         std::vector<float> samples{};  // planar: slot 0's frames, then slot 1's, ...
+        // For a bitstream output, the burst instead, of `frames` content
+        // frames: what the units packed into it code, and whose they are - a
+        // burst at a join holds units of both items.
+        std::vector<std::byte> burst{};
+        std::vector<Span> spans{};
         std::size_t frames = 0;
         // The history_ entry these frames belong to. At a join the old
         // item's tail and the new item's head sit in the queue together, and
-        // each block counts towards its own item.
+        // each block counts towards its own item as it is submitted.
         std::size_t record = 0;
     };
 
@@ -203,18 +259,58 @@ private:
     // From output frame `output_start` on - counted since the output was
     // last opened or flushed - the output plays history_[record]'s item from
     // its own frame `item_start`. What position() reads the clock against.
+    // `unsent` is how many frames the item has since packed and not sent,
+    // each of which moves everything after it that much earlier on a
+    // bitstream's link.
     struct Segment {
         std::size_t record = 0;
         std::uint64_t output_start = 0;
         std::uint64_t item_start = 0;
+        std::uint64_t unsent = 0;
     };
 
     // Carries out what the transport decided.
     void perform(const TransportOutcome& outcome, PumpReport* report);
     OpenFailure open_output_for(std::size_t item, PumpReport* report);
+    // What an item that would not start leads to: the item marked and the
+    // failure policy applied, or playback stopped for an output's fault.
+    void open_failed(std::size_t item, OpenFailure failure, PumpReport* report);
+    // Opens the output `choice_` names for the current session, or says why
+    // it could not: the item's fault (kItem) or the output's (kOutput).
+    OpenFailure open_chosen(std::size_t item, PumpReport* report);
     bool start_session(std::size_t item);
     void apply_seek_on_start(std::size_t item);
     void close_output();
+
+    // The open output, whichever sink it is.
+    [[nodiscard]] bool bitstreaming() const {
+        return mode_ == OutputMode::kBitstream || mode_ == OutputMode::kBitstreamAsAc3;
+    }
+    [[nodiscard]] bool output_open() const;
+    [[nodiscard]] std::optional<audio::MonitorPosition> output_position() const;
+    [[nodiscard]] std::uint64_t heard_frames() const;
+    // Where the next frame the decode delivers goes in the output's
+    // timeline: everything submitted, queued, and - for a bitstream - packed
+    // into a burst not yet complete.
+    [[nodiscard]] std::uint64_t timeline_end() const;
+    // For a bitstream, whose units are packed before they are decoded: where
+    // the last frame the decode delivered sits on the link, from the
+    // session's own position in its stream.
+    [[nodiscard]] std::uint64_t decoded_end() const;
+    // The output a session's item would be played through, as the decision
+    // has it, asked while the open output is held.
+    [[nodiscard]] OutputChoice decide(const Session& session) const;
+    [[nodiscard]] HeldOutput held_output() const;
+    // Why the prepared item cannot join the open output although the
+    // transport would join it, or empty: another endpoint, or units the
+    // packer cannot make whole bursts of with the ones it holds.
+    [[nodiscard]] std::string join_blocked(const OutputChoice& next, std::string_view title) const;
+
+    // A unit the session sent, into the packer and, once it completes one,
+    // the pending ring as a burst.
+    void send_unit(std::span<const std::byte> unit, std::uint32_t samples);
+    // Forgets what the packer holds: a flush, or a new output.
+    void reset_packer();
 
     // The pending blocks, oldest first, as a ring whose blocks are never
     // freed: each keeps its buffer for the next block to reuse, so steady
@@ -262,6 +358,19 @@ private:
     void settle_unit_errors();
 
     std::unique_ptr<PcmSink> sink_;
+    std::unique_ptr<BitstreamSink> bitstream_;
+    OutputChooser choose_;
+    // The open output's mode, kNone while closed, and the decision behind it.
+    OutputMode mode_ = OutputMode::kNone;
+    OutputChoice choice_;
+    // A decision to take again once a join has been heard (refollow()).
+    bool refollow_pending_ = false;
+    // A bitstream output's packing: E-AC-3 units wait here until they make
+    // six blocks. `packed_frames_` is how many content frames they code, and
+    // `packed_spans_` whose they are.
+    std::optional<iec61937::Eac3BurstPacker> packer_;
+    std::uint64_t packed_frames_ = 0;
+    std::vector<Span> packed_spans_;
     ItemLoader loader_;
     render::OutputLayout layout_;
     DecoderSettings settings_;

@@ -16,8 +16,10 @@
 #include <vector>
 
 #include "ac3/render/layout.hpp"
+#include "bitstream_sink.hpp"
 #include "decoder_settings.hpp"
 #include "diagnostic_log.hpp"
+#include "output_selector.hpp"
 #include "pcm_sink.hpp"
 #include "play_meters.hpp"
 #include "player.hpp"
@@ -54,6 +56,15 @@
 
 namespace ac3::hearth {
 
+// A local output and a passthrough output, and where the endpoints each item
+// is decided against are read from: device_endpoints() for this machine's
+// own. The engine decides every item through an OutputSelector of its own.
+struct EngineOutputs {
+    std::unique_ptr<PcmSink> pcm{};
+    std::unique_ptr<BitstreamSink> bitstream{};
+    EndpointSource endpoints{};
+};
+
 struct EngineTiming {
     // How long the engine waits between pumps while an output is open.
     std::chrono::milliseconds period{5};
@@ -72,8 +83,16 @@ struct EngineStatus {
     bool repeat = false;
     FailurePolicy on_failure = FailurePolicy::kSkip;
     DecoderSettings settings{};
-    // What the output is open at; all zero while it is closed.
+    // Why the settings are not what is heard, or empty: a bitstream is
+    // decoded by the receiver (Player::settings_note()).
+    std::string settings_note{};
+    // What the output is open at; all zero while it is closed. And why that
+    // output: the output decision's reason for the item that opened it or
+    // last joined it.
     OpenOutputFormat output{};
+    std::string output_reason{};
+    // The Output screen's choices, for an engine that decides its outputs.
+    OutputPreferences output_preferences{};
     std::uint32_t output_opens = 0;
     std::vector<PlayedItem> history{};
     // The latest thing a command, the transport or an item had to say, and
@@ -86,6 +105,15 @@ class Engine {
 public:
     // `diagnostics`, when given, outlives the engine.
     Engine(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout,
+           const DecoderSettings& settings = {}, const EngineTiming& timing = {},
+           DiagnosticLog* diagnostics = nullptr);
+    // With a choice of outputs for each item (Player's PlayerOutputs). The
+    // chooser runs on the engine thread.
+    Engine(PlayerOutputs outputs, ItemLoader loader, const render::OutputLayout& layout,
+           const DecoderSettings& settings = {}, const EngineTiming& timing = {},
+           DiagnosticLog* diagnostics = nullptr);
+    // Deciding each item's output itself, from `outputs.endpoints`.
+    Engine(EngineOutputs outputs, ItemLoader loader, const render::OutputLayout& layout,
            const DecoderSettings& settings = {}, const EngineTiming& timing = {},
            DiagnosticLog* diagnostics = nullptr);
     // Stops the thread, and with it whatever is playing.
@@ -120,6 +148,14 @@ public:
     // asked to.
     void restore(std::vector<QueueItem> items, std::size_t current,
                  std::chrono::milliseconds position);
+    // The Output screen's choices. The item playing is decided again, and
+    // moves if the answer changed (Player::refollow()). Refused, with a
+    // note, by an engine given no endpoints to decide from.
+    void set_output_preferences(OutputPreferences preferences);
+    // The machine's outputs have changed - ac3::audio::RenderDeviceWatch's
+    // callback calls this: the endpoints are read again, for the item
+    // playing now and for every item after it.
+    void refresh_outputs();
 
     // Waits until every command made before the call has been carried out
     // and its effect published - for a test, or a caller that has to read
@@ -144,6 +180,9 @@ private:
     // A command runs against the player and returns anything it had to say.
     using Command = std::function<std::string(Player&)>;
 
+    // What every constructor ends with: the first status, and the thread.
+    void start(const render::OutputLayout& layout, const DecoderSettings& settings);
+
     void post(Command command);
     void run(const std::stop_token& stop);
     // Snapshots the player and makes it the status; `carried` is how many
@@ -157,7 +196,10 @@ private:
 
     EngineTiming timing_;
     DiagnosticLog* diagnostics_ = nullptr;
-    // The engine thread's alone once the thread has started.
+    // The engine thread's alone once the thread has started, as the player
+    // is: it decides each item for the player, when the engine was given
+    // endpoints to decide from.
+    std::unique_ptr<OutputSelector> selector_;
     Player player_;
 
     mutable std::mutex mutex_;

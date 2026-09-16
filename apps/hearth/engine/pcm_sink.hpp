@@ -23,10 +23,10 @@
 // the expected sample count at every join" - and what makes the player's
 // behaviour at a join checkable without a sound card or a stopwatch.
 //
-// A PCM sink only. A bitstream output takes access units rather than rendered
-// blocks, and a network group takes a stream; both have seams of their own
-// when they land, rather than a single interface with a payload that means
-// different things depending on the mode.
+// A PCM sink only. A bitstream output takes packed bursts rather than
+// rendered blocks (bitstream_sink.hpp), and a network group takes a stream;
+// each has a seam of its own, rather than a single interface with a payload
+// that means different things depending on the mode.
 
 namespace ac3::hearth {
 
@@ -39,6 +39,8 @@ public:
         // What the renderer produces, one block per slot. The sink decides
         // where each slot comes out; the engine never needs to know.
         render::OutputLayout layout{};
+        // The endpoint the output decision chose, or empty for the sink's own.
+        std::string endpoint_id{};
     };
 
     // Opens for `format`, and reports what it actually opened: the rate, and

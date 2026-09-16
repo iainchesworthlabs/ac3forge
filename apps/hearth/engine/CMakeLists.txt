@@ -13,6 +13,8 @@ add_library(ac3hearth_engine STATIC
     media_info.cpp
     media_inspector.cpp
     output_decision.cpp
+    output_selector.cpp
+    passthrough_sink.cpp
     play_meters.cpp
     player.cpp
     queue.cpp

@@ -77,6 +77,9 @@ public:
     // A unit's report, with how many of the frames the item plays came from
     // it; units the item plays nothing of are not reported.
     using ReportFn = std::function<void(const UnitReport& report, std::size_t frames)>;
+    // An access unit the item plays, as the stream carries it, and the
+    // samples it codes: what a bitstream output sends.
+    using SentFn = std::function<void(std::span<const std::byte> unit, std::uint32_t samples)>;
 
     // Loads `path` and scans it. The error is a sentence for the queue list.
     // `programme` picks one programme of a multi-programme E-AC-3 stream by
@@ -98,6 +101,12 @@ public:
     [[nodiscard]] std::size_t unit_count() const { return units_.size(); }
     // The programme playing: its independent substream id (0 for AC-3).
     [[nodiscard]] int programme() const { return programme_; }
+    // Whether that is the stream's first programme, which is the one a
+    // receiver decodes when the stream is sent to it whole.
+    [[nodiscard]] bool first_programme() const { return first_programme_; }
+    // The samples the unit covering `position` codes, counted from the start
+    // of what the item plays.
+    [[nodiscard]] std::uint32_t unit_samples_at(std::uint64_t position) const;
     // Every sample the item plays: the part of the stream its loader named,
     // counted from the units' own lengths.
     [[nodiscard]] std::uint64_t total_samples() const { return window_end_ - window_start_; }
@@ -108,13 +117,26 @@ public:
     // Decodes units until at least `wanted` frames have been delivered, and
     // releases the end of the stream once the last frame the item plays has
     // gone - so an item that has finished has delivered every frame it will
-    // ever deliver. Each unit's report follows its frames. Returns the frames
-    // this call delivered; an undecodable unit ends the call with the reason,
-    // and the session carries on from the next unit if asked again.
+    // ever deliver. Each unit's report follows its frames. `sent`, when
+    // given, is handed each unit the item plays as it goes into the decoder:
+    // the priming units before the item's part, and the unit a decoder
+    // starting part-way through is primed with, are decoded and not sent.
+    // Returns the frames this call delivered; an undecodable unit ends the
+    // call with the reason, having been sent, and the session carries on from
+    // the next unit if asked again.
     [[nodiscard]] std::expected<std::size_t, std::string> render(StreamDecoder& decoder,
                                                                  const StreamDecoder::BlockFn& deliver,
                                                                  std::size_t wanted,
-                                                                 const ReportFn& reported = {});
+                                                                 const ReportFn& reported = {},
+                                                                 const SentFn& sent = {});
+
+    // For a bitstream output, which can only send whole units: the part the
+    // item plays grows to the whole units it touches, so what is decoded and
+    // delivered is what is sent. A receiver decodes a whole frame, so an edit
+    // list's priming or padding inside the first or last unit is heard.
+    // Called before anything is rendered.
+    void play_whole_units();
+    [[nodiscard]] bool whole_units() const { return whole_units_; }
 
     // The next frame delivered is the first of the unit covering `to`,
     // counted from the start of what the item plays and clamped to it. The
@@ -167,6 +189,7 @@ private:
     std::vector<std::span<const std::byte>> units_;
     std::vector<std::uint64_t> starts_;
     int programme_ = 0;
+    bool first_programme_ = true;
     ItemFacts facts_{};
     // The part of the stream the item plays, in stream samples.
     std::uint64_t window_start_ = 0;
@@ -178,6 +201,7 @@ private:
     // Frames before this are a priming unit's, decoded and not delivered.
     std::uint64_t skip_until_ = 0;
     bool finished_ = false;
+    bool whole_units_ = false;
 };
 
 }  // namespace ac3::hearth
