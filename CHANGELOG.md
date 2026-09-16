@@ -900,7 +900,11 @@ and release packaging.
   LFE (`tests/render/test_object_lfe_timing.cpp`): the LFE feed had it 576 samples before
   the object's speaker, and now both have it at 832. In the MDCT-band domain the LFE was
   256 samples early, and both are now at 512. The QEMU 7.1.4 render run's twelve slot
-  levels are unchanged.
+  levels are unchanged. `set_bed()` stays idempotent for an unchanged bed, as it was
+  before: only a genuine change of which coded channels are LFE empties the delay line,
+  so a caller that re-announces the same bed every unit (as Hearth's own local decode
+  reference does) still agrees with one that calls `set_bed()` only when the bed changes
+  (as the players do).
 
 **Robustness and diagnostics**
 

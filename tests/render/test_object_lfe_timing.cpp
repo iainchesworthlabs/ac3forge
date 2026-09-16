@@ -49,6 +49,11 @@ using ac3::render::OutputLayout;
 using Location = ac3::eac3::chanmap::Location;
 
 constexpr std::uint16_t k51 = ac3::eac3::chanmap::acmod_map(ac3::Acmod::k3_2, true);
+// A genuinely different bed from k51's: the LFE sits at coded index 7 rather
+// than 5 (test_layout.cpp's "a channel the layout lacks is panned..." case
+// has the same figures), used to tell set_bed() apart from a mere repeat.
+constexpr std::uint16_t k71 =
+    static_cast<std::uint16_t>(k51 | ac3::eac3::chanmap::k71Rear);
 
 constexpr int kFrames = 8;
 // Frame 3, as tests/decoder/test_latency.cpp places its marker: past every
@@ -417,7 +422,8 @@ TEST_CASE("each LFE has its own line", "[render]") {
           -1);
 }
 
-TEST_CASE("reset, a new bed and a new domain each empty the line", "[render]") {
+TEST_CASE("reset, a real bed change and a new domain each empty the line; a repeat set_bed does not",
+          "[render]") {
     LayoutRenderer renderer{*OutputLayout::named("5.1")};
     const Ramps in = ramps(k51, 1024);
     renderer.set_bed(in.coded);
@@ -429,13 +435,26 @@ TEST_CASE("reset, a new bed and a new domain each empty the line", "[render]") {
         const auto out = play(renderer, in, 256, kEveryBlock);
         CHECK(out[5][0] == static_cast<float>(1024 - lag + 1));
     }
-    SECTION("reset") {
-        renderer.reset();
+    SECTION("set_bed called again with the same bed changes nothing") {
+        // tests/hearth/test_group.cpp's decode_and_render calls set_bed() on
+        // every unit's first block whatever the bed is; BurstOutput::place()
+        // instead guards the call with same_layout() and only calls it when
+        // the bed changes. Two renderers fed the same programme through the
+        // two styles of caller have to agree, so a repeat set_bed() must
+        // leave the line exactly where render() left it - the regression
+        // PR #722 fixed after the two disagreed under CI's Hearth leg.
+        renderer.set_bed(in.coded);
         const auto out = play(renderer, in, 256, kEveryBlock);
+        CHECK(out[5][0] == static_cast<float>(1024 - lag + 1));
+    }
+    SECTION("set_bed with a real LFE-topology change empties the line") {
+        const Ramps different = ramps(k71, 1024);  // LFE moves from coded index 5 to 7
+        renderer.set_bed(different.coded);
+        const auto out = play(renderer, different, 256, kEveryBlock);
         CHECK(first_difference(out[5], [&](std::size_t n) { return ramp_at(n, lag); }) == -1);
     }
-    SECTION("set_bed") {
-        renderer.set_bed(in.coded);
+    SECTION("reset") {
+        renderer.reset();
         const auto out = play(renderer, in, 256, kEveryBlock);
         CHECK(first_difference(out[5], [&](std::size_t n) { return ramp_at(n, lag); }) == -1);
     }
@@ -445,4 +464,60 @@ TEST_CASE("reset, a new bed and a new domain each empty the line", "[render]") {
         const auto out = play(renderer, in, 256, kEveryBlock);
         CHECK(first_difference(out[5], [](std::size_t n) { return ramp_at(n, 256); }) == -1);
     }
+}
+
+TEST_CASE("two renderers of the same programme agree whether or not the caller repeats set_bed",
+          "[render]") {
+    // The exact shape of the regression PR #722's own fix caught in CI's
+    // Hearth leg rather than in this file: tests/hearth/test_group.cpp's
+    // decode_and_render calls set_bed() on every unit's first block whatever
+    // the bed is; apps/hearth/testsink/burst_output.cpp's BurstOutput::place()
+    // instead guards the call with same_layout() and skips a repeat. Both
+    // decode and render the SAME programme, so their LFE output has to be the
+    // same sample for sample - a set_bed() that unconditionally emptied the
+    // delay line broke that: the two renderers took the reset at different
+    // rates across the four units below and diverged from the first one on.
+    constexpr std::size_t kUnits = 4;
+    constexpr std::size_t kUnitSamples = 768;  // multiple units: a divergence compounds
+    const Ramps in = ramps(k51, kUnits * kUnitSamples);
+
+    LayoutRenderer repeats_set_bed{*OutputLayout::named("5.1")};
+    LayoutRenderer guards_set_bed{*OutputLayout::named("5.1")};
+    repeats_set_bed.set_bed(in.coded);
+    guards_set_bed.set_bed(in.coded);
+    repeats_set_bed.set_objects(at_the_centre());
+    guards_set_bed.set_objects(at_the_centre());
+
+    std::vector<std::vector<float>> from_repeats(6, std::vector<float>(in.object.size(), 99.0F));
+    std::vector<std::vector<float>> from_guarded(6, std::vector<float>(in.object.size(), 99.0F));
+    for (std::size_t unit = 0; unit < kUnits; ++unit) {
+        const std::size_t start = unit * kUnitSamples;
+        repeats_set_bed.set_bed(in.coded);  // every unit, as decode_and_render does
+        // guards_set_bed never calls set_bed again: the bed never changes, so
+        // BurstOutput's same_layout() guard would have skipped every repeat.
+        std::vector<std::span<const float>> channels;
+        for (const std::vector<float>& channel : in.channels) {
+            channels.emplace_back(channel.data() + start, kUnitSamples);
+        }
+        const std::array<std::span<const float>, 1> object{
+            std::span<const float>(in.object.data() + start, kUnitSamples)};
+        const ac3::PcmBlock pcm{.index = 0,
+                                .blocks = 1,
+                                .channels = channels,
+                                .objects = object,
+                                .object_indices = {},
+                                .object_metadata = nullptr};
+        std::vector<std::span<float>> repeats_spans;
+        std::vector<std::span<float>> guarded_spans;
+        for (std::vector<float>& slot : from_repeats) {
+            repeats_spans.emplace_back(slot.data() + start, kUnitSamples);
+        }
+        for (std::vector<float>& slot : from_guarded) {
+            guarded_spans.emplace_back(slot.data() + start, kUnitSamples);
+        }
+        repeats_set_bed.render(pcm, true, 1.0F, repeats_spans);
+        guards_set_bed.render(pcm, true, 1.0F, guarded_spans);
+    }
+    CHECK(from_repeats[5] == from_guarded[5]);
+    CHECK(from_repeats[1] == from_guarded[1]);  // the objects too, for good measure
 }

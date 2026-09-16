@@ -184,15 +184,29 @@ class LayoutRenderer {
     [[nodiscard]] std::size_t object_lag() const { return object_lag_; }
 
     // The coded layout of the units about to arrive: the channels a PcmBlock
-    // will carry, in its order. Recomputes every bed gain, and empties the
-    // LFE's delay line when there is one. Call when it changes, which for a
-    // stream is once.
+    // will carry, in its order. Recomputes every bed gain. Call when it
+    // changes, which for a stream is once - but idempotent for a caller that
+    // announces the same layout again: the LFE's delay line, when there is
+    // one, is only emptied if the coded LFE channels themselves actually
+    // move or change count, not on every call.
     void set_bed(const ac3::eac3::chanmap::Layout& coded) {
         coded_ = coded;
         bed_channels_ = std::min(static_cast<std::size_t>(coded.count), kMaxCoded);
         for (auto& row : bed_gains_) {
             row.fill(0.0F);
         }
+        // set_bed() has to be idempotent when the bed is unchanged - a caller
+        // that re-announces the same coded layout every unit (decode_and_render
+        // in tests/hearth/test_group.cpp does; BurstOutput::place() instead
+        // guards the call with same_layout()) must not disturb the LFE's delay
+        // line, or two renderers fed the identical programme through the two
+        // styles of caller fall out of phase with each other and diverge
+        // sample by sample from there on - see the header comment on the
+        // delay line. So the old topology is kept here and compared after the
+        // loop below rebuilds it; only a genuine change - a different coded
+        // index, or a different count of LFE channels - empties the line.
+        const std::array<std::uint8_t, kMaxCoded> previous_lfe_coded = lfe_coded_;
+        const std::size_t previous_lfe_channels = lfe_channels_;
         lfe_channels_ = 0;
         // Where the coded surrounds sit depends on the coded layout's own
         // company, exactly as the output layout's do - see OutputLayout.
@@ -240,7 +254,13 @@ class LayoutRenderer {
                 bed_gains_[c][target_slots_[t]] = static_cast<float>(gains[t]);
             }
         }
-        size_lfe_delay();
+        const bool lfe_topology_changed =
+            lfe_channels_ != previous_lfe_channels ||
+            !std::equal(lfe_coded_.begin(), lfe_coded_.begin() + static_cast<std::ptrdiff_t>(lfe_channels_),
+                       previous_lfe_coded.begin());
+        if (lfe_topology_changed) {
+            size_lfe_delay();
+        }
     }
 
     // The objects of the unit about to be rendered, as describe_objects sees
