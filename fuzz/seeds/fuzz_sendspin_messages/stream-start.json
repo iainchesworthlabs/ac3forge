@@ -1,0 +1,1 @@
+{"type":"stream/start","payload":{"server_transmitted":123456789,"player":{"codec":"flac","sample_rate":48000,"channels":2,"bit_depth":16,"codec_header":"ZkxhQwAAACI="},"roles":["player"]}}

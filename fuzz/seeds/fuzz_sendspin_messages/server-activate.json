@@ -1,0 +1,1 @@
+{"type":"server/activate","payload":{"activities":["pairing"],"active_roles":[],"pairing":{"method":"dynamic_pin","pin_length":6,"languages":["en"],"format":"digits"}}}

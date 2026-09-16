@@ -8,16 +8,19 @@
 
 #include "ac3/sendspin/chunks.hpp"
 #include "ac3/sendspin/frames.hpp"
+#include "ac3/sendspin/stream_roles.hpp"
 
 // ac3::sendspin::Reassembler, parse_player_chunk and parse_burst_chunk
 // (src/sendspin/src/frames.cpp, chunks.cpp) - everything a decrypted Sendspin
 // frame meets before a session looks at it: fragment reassembly in both the
-// specification's form and aiosendspin 9.1.1's, and the two audio chunk parsers,
-// whose length fields a peer chooses.
+// specification's form and aiosendspin 9.1.1's, the two audio chunk parsers,
+// whose length fields a peer chooses, and the binary messages of artwork@v1,
+// visualizer@v1 and source@v1 (src/sendspin/src/stream_roles.cpp), each of which
+// must write back to the bytes it was read from.
 //
 // The input is a sequence of frames, each preceded by a two-byte little-endian
 // length, after one control byte: its low two bits pick the reassembly limit.
-// Every delivered message goes through both chunk parsers, player@v1's in both
+// Every delivered message goes through every parser, player@v1's in both
 // dialects' header forms. When bits 2 to 4 of
 // the control byte are all set, the whole input is also treated as one message,
 // repeated past the size that needs fragments, and split and reassembled in both
@@ -30,6 +33,62 @@ namespace {
 using ac3::sendspin::Dialect;
 using ac3::sendspin::FrameError;
 using ac3::sendspin::Reassembler;
+
+[[nodiscard]] bool same(std::span<const std::uint8_t> written, std::span<const std::uint8_t> read) {
+    return std::equal(written.begin(), written.end(), read.begin(), read.end());
+}
+
+void inspect_roles(std::span<const std::uint8_t> message) {
+    namespace artwork = ac3::sendspin::artwork;
+    namespace visualizer = ac3::sendspin::visualizer;
+    namespace source = ac3::sendspin::source;
+
+    if (const auto parsed = artwork::parse_message(message)) {
+        if (parsed->channel >= artwork::kMaxChannels) {
+            std::abort();
+        }
+        switch (parsed->kind) {
+            case artwork::Kind::kAnnounce:
+                if (!same(artwork::announce(parsed->channel, parsed->timestamp, parsed->total_size), message)) {
+                    std::abort();
+                }
+                break;
+            case artwork::Kind::kCancel:
+                if (!same(artwork::cancel(parsed->channel), message)) {
+                    std::abort();
+                }
+                break;
+            case artwork::Kind::kPart: {
+                const auto written = artwork::part(parsed->channel, parsed->data);
+                if (!written || !same(*written, message)) {
+                    std::abort();
+                }
+                break;
+            }
+        }
+    }
+
+    // A spectrum frame's bin count is its stream's; the one that fits the message, and none.
+    const std::size_t fitting = message.size() > 9 ? (message.size() - 9) / 2 : 0;
+    for (const std::size_t bins : {fitting, std::size_t{0}}) {
+        if (const auto frame = visualizer::parse_frame(message, bins)) {
+            std::vector<std::uint8_t> written = visualizer::write_frame(*frame);
+            // A beat's bits 1 to 7 are reserved and read as nothing.
+            if (frame->type == visualizer::Type::kBeat && written.size() == message.size()) {
+                written.back() = static_cast<std::uint8_t>(written.back() | (message.back() & 0xFEU));
+            }
+            if (!same(written, message) || frame->bins.size() != (frame->type == visualizer::Type::kSpectrum ? bins : 0)) {
+                std::abort();
+            }
+        }
+    }
+
+    if (const auto chunk = source::parse_chunk(message)) {
+        if (!same(source::write_chunk(chunk->timestamp, chunk->frame), message)) {
+            std::abort();
+        }
+    }
+}
 
 void inspect(std::span<const std::uint8_t> message) {
     for (const Dialect dialect : {Dialect::kSpecification, Dialect::kAiosendspin911}) {
@@ -47,6 +106,7 @@ void inspect(std::span<const std::uint8_t> message) {
             std::abort();
         }
     }
+    inspect_roles(message);
 }
 
 void round_trip(std::span<const std::uint8_t> input, Dialect dialect) {
