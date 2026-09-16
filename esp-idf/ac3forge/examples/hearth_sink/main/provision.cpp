@@ -10,6 +10,8 @@
 #include <string>
 #include <string_view>
 
+#include <unistd.h>
+
 #include "ac3forge/improv.hpp"
 #include "esp_app_desc.h"
 #include "esp_chip_info.h"
@@ -28,12 +30,19 @@ namespace improv = ac3forge::improv;
 // specification's serial transport is: a client picks its packets out of
 // whatever else the device is saying. Written in one fwrite so a packet does
 // not interleave with a printf from another task.
+//
+// Then synced as well as flushed. On the S3's USB-Serial-JTAG console (the
+// board shapes' sdkconfig.hw), fflush only hands the bytes to the peripheral,
+// which sends its buffer to the host at a newline, and a packet carries none:
+// the answer to a client's request sat there until the board next printed a
+// line, which on an idle board, or after cannot_connect, was never.
 void send(std::span<const std::uint8_t> packet) {
     if (packet.empty()) {
         return;
     }
     (void)std::fwrite(packet.data(), 1, packet.size(), stdout);
     (void)std::fflush(stdout);
+    (void)fsync(fileno(stdout));
 }
 
 void send_state(improv::State state) {
