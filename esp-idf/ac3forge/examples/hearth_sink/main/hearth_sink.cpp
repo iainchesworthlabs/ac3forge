@@ -459,6 +459,25 @@ ac3forge::ControlHandlers control_handlers() {
         return text;
     };
     h.set_layout = accept_layout;
+    h.slot_bits = []() { return player::sink_slot_bits(); };
+    h.set_slot_bits = [](int bits) {
+        xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+        const bool playing = g_player != nullptr;
+        xSemaphoreGive(g_player_mutex);
+        if (playing) {
+            // The lines are carrying a play; changing their width would take
+            // the bus out from under it. The caller stops first.
+            return false;
+        }
+        if (!player::sink_set_slot_bits(bits)) {
+            return false;
+        }
+        // Reopen at the next play whatever its layout asks for: the width
+        // change closed the lines, and a layout needing the same slot count
+        // as the last one would otherwise find them already open.
+        g_sink_channels_open = 0;
+        return true;
+    };
     h.stats = []() {
         xSemaphoreTake(g_player_mutex, portMAX_DELAY);
         const ac3forge::PlayerStats s = g_player ? g_player->stats() : g_last_stats;

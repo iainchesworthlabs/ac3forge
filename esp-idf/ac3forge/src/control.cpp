@@ -4,6 +4,7 @@
 #include "ac3forge/control.hpp"
 
 #include <array>
+#include <charconv>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -156,6 +157,9 @@ struct Control::Impl {
         if (h.sink_slots) {
             append_number(out, "sink_slots", static_cast<unsigned long long>(h.sink_slots()));
         }
+        if (h.slot_bits) {
+            append_number(out, "slot_bits", static_cast<unsigned long long>(h.slot_bits()));
+        }
         if (h.layout) {
             append_key(out, "layout");
             append_json_string(out, h.layout());
@@ -290,6 +294,44 @@ struct Control::Impl {
         }
         return send_text(req, "200 OK", "ok; takes effect at the next play\n");
     }
+
+    static esp_err_t on_slot_width_get(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        if (!h.slot_bits) {
+            return send_text(req, "404 Not Found", "this player reports no slot width\n");
+        }
+        std::string bits = std::to_string(h.slot_bits());
+        bits += '\n';
+        return send_text(req, "200 OK", bits.c_str());
+    }
+
+    static esp_err_t on_slot_width_put(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        const std::string body = read_body(req);
+        if (body.empty()) {
+            return send_text(req, "400 Bad Request", "PUT /slot-width wants a width in bits\n");
+        }
+        int bits = 0;
+        const auto* first = body.data();
+        const auto* last = body.data() + body.size();
+        while (first != last && (*first == ' ' || *first == '\n' || *first == '\r')) {
+            ++first;
+        }
+        const auto parsed = std::from_chars(first, last, bits);
+        if (parsed.ec != std::errc{}) {
+            return send_text(req, "400 Bad Request", "PUT /slot-width wants a number of bits\n");
+        }
+        if (!h.set_slot_bits) {
+            return send_text(req, "409 Conflict", "this player's slot width is fixed\n");
+        }
+        if (!h.set_slot_bits(bits)) {
+            return send_text(req, "409 Conflict",
+                             "not a slot width this player's sink has: 16 or 32 on an I2S bus, "
+                             "and a sink with no hardware behind it keeps the one it was built "
+                             "for\n");
+        }
+        return send_text(req, "200 OK", "ok; takes effect at the next play\n");
+    }
 };
 
 Control::~Control() { stop(); }
@@ -311,6 +353,14 @@ bool Control::start(const ControlHandlers& handlers, std::uint16_t port, std::si
         {.uri = "/volume", .method = HTTP_POST, .handler = &Impl::on_volume, .user_ctx = impl_},
         {.uri = "/layout", .method = HTTP_GET, .handler = &Impl::on_layout_get, .user_ctx = impl_},
         {.uri = "/layout", .method = HTTP_PUT, .handler = &Impl::on_layout_put, .user_ctx = impl_},
+        {.uri = "/slot-width",
+         .method = HTTP_GET,
+         .handler = &Impl::on_slot_width_get,
+         .user_ctx = impl_},
+        {.uri = "/slot-width",
+         .method = HTTP_PUT,
+         .handler = &Impl::on_slot_width_put,
+         .user_ctx = impl_},
     };
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();

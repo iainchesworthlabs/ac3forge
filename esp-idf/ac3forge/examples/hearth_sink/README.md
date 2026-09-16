@@ -360,6 +360,8 @@ configurations set 80; the default is 0, none), the component's
 | `POST /volume` | body: `0.0` to `1.0`, a linear gain the decode task applies before the sink |
 | `GET /layout` | the output layout, as text |
 | `PUT /layout` | body: a name (`5.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`), the same grammar as `CONFIG_AC3FORGE_EXAMPLE_LAYOUT`. Takes effect at the next play - the `i2s` sink reconfigures its mode and slot count to match, so this never needs a rebuild. `400` for text that is not a layout, `409` for one with more slots than the sink's ceiling. |
+| `GET /slot-width` | the slot width in bits, 16 or 32 |
+| `PUT /slot-width` | body: `16` or `32`. Takes effect at the next play, and moves the sink's ceiling with it: an I2S line carries 128 bits a frame, so two lines reach sixteen slots at 16 bits and eight at 32. `400` for a body that is not a number, `409` while a play is running, for a width the sink does not have, or on the `capture` and `null` sinks, which keep the width they were built for. A layout already set may be too wide after a change to 32; the next play says so. |
 
 The configured location plays at boot as before; the surface can stop it and
 play something else. `state` is `opening` while a play's source opens - by

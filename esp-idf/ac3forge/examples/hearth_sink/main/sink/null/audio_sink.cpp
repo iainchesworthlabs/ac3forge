@@ -41,6 +41,12 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
 
 int sink_slots() { return g_channels; }
 
+// Nothing here is interleaved into slots at all, so the width is only what a
+// caller asking gets told, and changing it would describe nothing.
+int sink_slot_bits() { return CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS; }
+
+bool sink_set_slot_bits(int bits) { return bits == CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS; }
+
 void sink_write(std::span<const std::span<const float>> channels) {
     // Summed in float per channel and block, and added in double once: a
     // double addition per sample is a soft-float call on this part, which is a
