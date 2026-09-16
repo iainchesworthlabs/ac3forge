@@ -2,6 +2,7 @@
 
 #include <sendspin_time_filter.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -62,19 +63,43 @@ void ClockSync::receive(const messages::ServerTime& time, std::int64_t now) {
     }
 }
 
+bool ClockSync::take(std::int64_t max_error) {
+    std::int64_t floor = max_error;
+    for (std::size_t i = 0; i < floor_count_; ++i) {
+        floor = std::min(floor, floor_window_[i]);
+    }
+    floor_window_[floor_next_] = max_error;
+    floor_next_ = (floor_next_ + 1) % kFloorBursts;
+    floor_count_ = std::min(floor_count_ + 1, kFloorBursts);
+    return !converged_ || max_error <= floor_limit(floor);
+}
+
 void ClockSync::finish_burst(std::int64_t now) {
     if (best_measurement_) {
-        // On the filter's scale: local times less the base, so the offset grows by it.
-        filter_->update(*best_measurement_ + *base_, best_max_error_, best_time_ - *base_);
-        ++updates_;
-        under_threshold_ = filter_->get_error() < kConvergedError ? under_threshold_ + 1 : 0;
-        if (under_threshold_ >= kConvergedUpdates) {
-            converged_ = true;
+        if (take(best_max_error_)) {
+            // On the filter's scale: local times less the base, so the offset grows by it.
+            filter_->update(*best_measurement_ + *base_, best_max_error_, best_time_ - *base_);
+            ++updates_;
+            if (converged_) {
+                learning_left_ = learning_left_ > 0 ? learning_left_ - 1 : 0;
+            } else {
+                under_threshold_ = filter_->get_error() < kConvergedError ? under_threshold_ + 1 : 0;
+                if (under_threshold_ >= kConvergedUpdates) {
+                    converged_ = true;
+                    learning_left_ = kLearningBursts;
+                }
+            }
+        } else {
+            ++rejected_;
         }
     }
     best_measurement_.reset();
     burst_count_ = 0;
-    next_due_ = converged_ ? now + kBurstInterval : now;
+    if (!converged_) {
+        next_due_ = now;
+    } else {
+        next_due_ = now + (learning_left_ > 0 ? kLearningInterval : kBurstInterval);
+    }
 }
 
 std::int64_t ClockSync::error_us() const {
@@ -102,6 +127,11 @@ void ClockSync::reset() {
     updates_ = 0;
     under_threshold_ = 0;
     converged_ = false;
+    learning_left_ = 0;
+    floor_window_.fill(0);
+    floor_count_ = 0;
+    floor_next_ = 0;
+    rejected_ = 0;
 }
 
 }  // namespace ac3::sendspin
