@@ -41,8 +41,9 @@ using audio::BitstreamFormat;
                                "this.",
                                endpoint.name);
         case CapabilitySource::kNoReader:
-            return " This platform cannot read a sink's descriptor at all, so what it accepts was "
-                   "never asked - that is a gap here, not a limit of the sink.";
+            return " This platform cannot read a sink's descriptor at all, so only a probe of the "
+                   "output answered - a refusal can be this machine's, such as another "
+                   "application holding the output, rather than a limit of the sink.";
         case CapabilitySource::kDescriptor:
         case CapabilitySource::kProbe: return {};
     }

@@ -26,15 +26,207 @@ constexpr std::size_t kInitialPendingBlocks = 32;
     return why.empty() ? std::string{what} : fmt::format("{}: {}", what, why);
 }
 
+[[nodiscard]] std::string_view stream_name(audio::BitstreamFormat format) {
+    return format == audio::BitstreamFormat::kAc3 ? "AC-3" : "E-AC-3";
+}
+
+[[nodiscard]] std::string_view describe(iec61937::WrapError error) {
+    switch (error) {
+        case iec61937::WrapError::kNotAFrame: return "it is not a whole frame";
+        case iec61937::WrapError::kFrameTooLarge: return "it is too large for a burst";
+    }
+    return "it could not be packed";
+}
+
 }  // namespace
 
 Player::Player(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout,
                const DecoderSettings& settings, DiagnosticLog* diagnostics)
-    : sink_(std::move(sink)),
+    : Player(PlayerOutputs{.pcm = std::move(sink), .bitstream = {}, .choose = {}},
+             std::move(loader), layout, settings, diagnostics) {}
+
+Player::Player(PlayerOutputs outputs, ItemLoader loader, const render::OutputLayout& layout,
+               const DecoderSettings& settings, DiagnosticLog* diagnostics)
+    : sink_(std::move(outputs.pcm)),
+      bitstream_(std::move(outputs.bitstream)),
+      choose_(std::move(outputs.choose)),
       loader_(std::move(loader)),
       layout_(layout),
       settings_(settings),
       diagnostics_(diagnostics) {}
+
+bool Player::output_open() const {
+    if (bitstreaming()) {
+        return bitstream_ && bitstream_->is_open();
+    }
+    return sink_ && sink_->is_open();
+}
+
+std::optional<audio::MonitorPosition> Player::output_position() const {
+    if (bitstreaming()) {
+        return bitstream_ ? bitstream_->position() : std::nullopt;
+    }
+    return sink_ ? sink_->position() : std::nullopt;
+}
+
+std::uint64_t Player::heard_frames() const {
+    const auto device = output_position();
+    if (!device) {
+        return 0;
+    }
+    return device->frames_played > device->latency_frames
+               ? device->frames_played - device->latency_frames
+               : 0;
+}
+
+std::uint64_t Player::timeline_end() const {
+    return submitted_since_open_ + pending_frames_ + (bitstreaming() ? packed_frames_ : 0);
+}
+
+std::uint64_t Player::decoded_end() const {
+    if (!session_ || segments_.empty()) {
+        return 0;
+    }
+    // Every unit the item plays is sent whole, so a place in its stream is
+    // the same place on the link, less anything that was not sent after all.
+    // Counting the frames the decode delivers would lose step at the first
+    // unit that did not decode.
+    const Segment& segment = segments_.back();
+    const std::uint64_t at = session_->position_samples();
+    const std::uint64_t end =
+        segment.output_start + (at > segment.item_start ? at - segment.item_start : 0);
+    return end > segment.unsent ? end - segment.unsent : 0;
+}
+
+HeldOutput Player::held_output() const {
+    if (!output_open()) {
+        return {};
+    }
+    const OpenOutputFormat& open = transport_.open_format();
+    return HeldOutput{.mode = mode_,
+                      .endpoint_id = choice_.endpoint_id,
+                      .sample_rate = open.sample_rate,
+                      .stream = open.stream};
+}
+
+OutputChoice Player::decide(const Session& session) const {
+    if (!choose_) {
+        return OutputChoice{.mode = OutputMode::kLocalPcm,
+                            .endpoint_id = {},
+                            .endpoint_name = {},
+                            .reason = "Decoding here, to the output this player was given."};
+    }
+    // A receiver decodes a stream's first programme, and a stream cannot be
+    // sent to it without the others; another programme is decoded here.
+    ItemFacts facts = session.facts();
+    const bool other_programme = !session.first_programme();
+    if (other_programme) {
+        facts.stream = std::nullopt;
+    }
+    OutputChoice choice = choose_(facts, held_output());
+    if (other_programme && choice.mode == OutputMode::kLocalPcm) {
+        choice.reason += fmt::format(
+            " Programme {} is chosen, and a receiver plays only a stream's first.",
+            session.programme());
+    }
+    return choice;
+}
+
+std::string Player::join_blocked(const OutputChoice& next, std::string_view title) const {
+    if (next.endpoint_id != choice_.endpoint_id) {
+        return fmt::format("\"{}\" plays on \"{}\", so the output reopens there - there is a gap.",
+                           title, next.endpoint_name);
+    }
+    if (!bitstreaming() || packed_frames_ == 0 || !prepared_) {
+        return {};
+    }
+    // The packer holds part of a burst. It is made whole only by units that
+    // add up to the six blocks a burst period is, and an E-AC-3 stream's
+    // units are all the same length, so the next item's first says whether
+    // they can.
+    constexpr auto kBlock = static_cast<std::uint64_t>(kSamplesPerBlock);
+    constexpr auto kBurstBlocks = static_cast<std::uint64_t>(kBlocksPerFrame);
+    const std::uint64_t pending = packed_frames_ / kBlock;
+    const std::uint64_t next_blocks = prepared_->unit_samples_at(0) / kBlock;
+    if (next_blocks != 0 && pending < kBurstBlocks && (kBurstBlocks - pending) % next_blocks == 0) {
+        return {};
+    }
+    return fmt::format(
+        "\"{}\" has units of another length, which cannot finish the burst the item before left "
+        "open, so the output reopens - there is a gap.",
+        title);
+}
+
+std::string_view Player::settings_note() const {
+    if (!bitstreaming()) {
+        return {};
+    }
+    return "The receiver decodes the bitstream with its own settings, so these reach only the "
+           "meters here.";
+}
+
+void Player::reset_packer() {
+    packer_.reset();
+    packed_frames_ = 0;
+    packed_spans_.clear();
+}
+
+void Player::send_unit(std::span<const std::byte> unit, std::uint32_t samples) {
+    if (history_.empty() || segments_.empty()) {
+        return;
+    }
+    const std::size_t record = history_.size() - 1;
+
+    // AC-3 is a burst a frame. E-AC-3's units are packed until they make six
+    // blocks, which for a stream of shorter frames spans several units - and
+    // at a join, units of both items.
+    std::expected<std::optional<std::vector<std::byte>>, iec61937::WrapError> packed;
+    if (transport_.open_format().stream == audio::BitstreamFormat::kEac3) {
+        if (!packer_) {
+            packer_.emplace();
+        }
+        packed = packer_->push(unit);
+    } else {
+        auto wrapped = iec61937::wrap_frame(unit);
+        if (wrapped) {
+            packed = std::optional<std::vector<std::byte>>{std::move(*wrapped)};
+        } else {
+            packed = std::unexpected(wrapped.error());
+        }
+    }
+    if (!packed) {
+        // Not sent, and a packer that refused a unit has let go of what it
+        // held, so none of that is on its way either. Everything after it
+        // on the link comes that much sooner.
+        std::uint64_t lost = samples;
+        if (packed.error() == iec61937::WrapError::kFrameTooLarge) {
+            lost += packed_frames_;
+            packed_frames_ = 0;
+            packed_spans_.clear();
+        }
+        segments_.back().unsent += lost;
+        note_unit_error(fmt::format("a unit could not be sent over IEC 61937, as {}",
+                                    describe(packed.error())));
+        return;
+    }
+    packed_frames_ += samples;
+    if (packed_spans_.empty() || packed_spans_.back().record != record) {
+        packed_spans_.push_back(Span{.record = record, .frames = 0});
+    }
+    packed_spans_.back().frames += samples;
+    if (!packed->has_value()) {
+        return;
+    }
+    Pending& block = push_block();
+    block.samples.clear();
+    block.burst = std::move(**packed);
+    block.spans.assign(packed_spans_.begin(), packed_spans_.end());
+    block.frames = static_cast<std::size_t>(packed_frames_);
+    block.record = record;
+    pending_frames_ += block.frames;
+    packed_frames_ = 0;
+    packed_spans_.clear();
+}
 
 void Player::note(std::string_view line) const {
     if (diagnostics_ != nullptr) {
@@ -261,28 +453,17 @@ bool Player::select(std::size_t index) {
 }
 
 bool Player::meters(MeterSnapshot& latest) {
-    if (!meters_) {
+    if (!meters_ || !output_position()) {
         return false;
     }
-    const auto device = sink_->position();
-    if (!device) {
-        return false;
-    }
-    const std::uint64_t heard = device->frames_played > device->latency_frames
-                                    ? device->frames_played - device->latency_frames
-                                    : 0;
-    return meters_->release(heard, latest);
+    return meters_->release(heard_frames(), latest);
 }
 
 bool Player::unit_report(UnitReport& latest) {
-    const auto device = sink_->position();
-    if (!device) {
+    if (!output_position()) {
         return false;
     }
-    const std::uint64_t heard = device->frames_played > device->latency_frames
-                                    ? device->frames_played - device->latency_frames
-                                    : 0;
-    return reports_.release(heard, latest);
+    return reports_.release(heard_frames(), latest);
 }
 
 void Player::take_report(const UnitReport& report, std::size_t frames) {
@@ -291,9 +472,12 @@ void Player::take_report(const UnitReport& report, std::size_t frames) {
     if (history_.empty()) {
         return;
     }
-    // The unit's frames are the last ones queued, so it starts being heard
-    // that far back from the end of the queue.
-    const std::uint64_t end = submitted_since_open_ + pending_frames_;
+    // The unit's frames are the last ones decoded, so it starts being heard
+    // that far back from where the decode has got to: the end of the queue
+    // for a PCM output, and the session's place on the link for a
+    // bitstream, whose units are packed before they are decoded.
+    const std::uint64_t end =
+        bitstreaming() ? decoded_end() : submitted_since_open_ + pending_frames_;
     reports_.add(report, end > frames ? end - frames : 0);
 }
 
@@ -302,13 +486,7 @@ PlayPosition Player::position() const {
     if (segments_.empty() || decoder_rate_ == 0) {
         return out;
     }
-    const auto device = sink_->position();
-    std::uint64_t heard = 0;
-    if (device) {
-        heard = device->frames_played > device->latency_frames
-                    ? device->frames_played - device->latency_frames
-                    : 0;
-    }
+    const std::uint64_t heard = heard_frames();
     // The latest segment the clock has reached, or the first.
     const Segment* segment = &segments_.front();
     for (const Segment& candidate : segments_) {
@@ -320,7 +498,9 @@ PlayPosition Player::position() const {
         return out;
     }
     const PlayedItem& played = history_[segment->record];
-    const std::uint64_t into = heard > segment->output_start ? heard - segment->output_start : 0;
+    // Frames of the item that were never sent are passed over, not heard.
+    const std::uint64_t into =
+        heard > segment->output_start ? heard - segment->output_start + segment->unsent : 0;
     const std::uint64_t at = std::min(segment->item_start + into, played.expected_frames);
     out.item = played.queue_index;
     out.heard = std::chrono::milliseconds{static_cast<std::int64_t>(at * 1000 / decoder_rate_)};
@@ -379,37 +559,16 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
             // either way the output starts afresh for this item.
             after_drain_.reset();
             close_output();
-            const OpenFailure failure = open_output_for(outcome.item, report);
-            if (failure == OpenFailure::kItem && outcome.item < queue_.size()) {
-                // The item could not be played. It is marked so the transport
-                // skips it from now on, and the failure policy says what now:
-                // playback moves past it - which ends, since a queue of
-                // nothing playable has no next item - or stops at it.
-                ItemFacts facts = queue_.items()[outcome.item].facts;
-                facts.unplayable_because = last_error_;
-                queue_.set_facts(outcome.item, std::move(facts));
-                if (transport_.on_failure() == FailurePolicy::kStop) {
-                    note_item(outcome.item, title_of(outcome.item),
-                              "stopped playback, as an item that fails is set to");
-                }
-                perform(transport_.item_failed(outcome.item), report);
-            } else if (failure == OpenFailure::kOutput) {
-                // The device would not open. Nothing in the queue is at
-                // fault, so playback stops and the reason is kept.
-                perform(transport_.stop(), report);
-                if (report != nullptr) {
-                    report->note = last_error_;
-                }
-            }
+            open_failed(outcome.item, open_output_for(outcome.item, report), report);
             break;
         }
         case TransportAction::kPauseOutput:
-            if (sink_->is_open() && !sink_->pause()) {
+            if (output_open() && !(bitstreaming() ? bitstream_->pause() : sink_->pause())) {
                 note("the output would not pause");
             }
             break;
         case TransportAction::kResumeOutput:
-            if (sink_->is_open() && !sink_->resume()) {
+            if (output_open() && !(bitstreaming() ? bitstream_->resume() : sink_->resume())) {
                 note("the output would not resume");
             }
             break;
@@ -430,10 +589,16 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
                 session_->seek(outcome.seek_to, *decoder_);
                 // What was decoded and submitted for the old position must
                 // not be heard after the new one; the sink's counts restart
-                // with the flush, and so do ours.
+                // with the flush, and so do ours. Units packed toward a
+                // burst belong to the old position too.
                 clear_pending();
-                if (sink_->is_open()) {
-                    sink_->flush();
+                reset_packer();
+                if (output_open()) {
+                    if (bitstreaming()) {
+                        bitstream_->flush();
+                    } else {
+                        sink_->flush();
+                    }
                 }
                 submitted_since_open_ = 0;
                 if (!history_.empty()) {
@@ -450,6 +615,76 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
             }
             break;
     }
+}
+
+void Player::open_failed(std::size_t item, OpenFailure failure, PumpReport* report) {
+    if (failure == OpenFailure::kItem && item < queue_.size()) {
+        // The item could not be played. It is marked so the transport skips
+        // it from now on, and the failure policy says what now: playback
+        // moves past it - which ends, since a queue of nothing playable has
+        // no next item - or stops at it.
+        ItemFacts facts = queue_.items()[item].facts;
+        facts.unplayable_because = last_error_;
+        queue_.set_facts(item, std::move(facts));
+        if (transport_.on_failure() == FailurePolicy::kStop) {
+            note_item(item, title_of(item), "stopped playback, as an item that fails is set to");
+        }
+        perform(transport_.item_failed(item), report);
+    } else if (failure == OpenFailure::kOutput) {
+        // The device would not open. Nothing in the queue is at fault, so
+        // playback stops and the reason is kept.
+        perform(transport_.stop(), report);
+        if (report != nullptr) {
+            report->note = last_error_;
+        }
+    }
+}
+
+std::string Player::refollow() {
+    // Only an item being played through an open output: one playing out its
+    // last units has nothing left to move, and a stopped player decides
+    // when it next starts.
+    if (after_drain_ || !session_ || !output_open()) {
+        return {};
+    }
+    const std::size_t item = queue_.current_index();
+    if (item == Queue::kNone) {
+        return {};
+    }
+    const PlayPosition at = position();
+    if (at.item != item) {
+        // The item before, joined to this one, is still being heard: moving
+        // now would cut its end. pump() asks again once the join is heard.
+        refollow_pending_ = true;
+        return {};
+    }
+    refollow_pending_ = false;
+    const OutputChoice choice = decide(*session_);
+    if (choice.mode == mode_ && choice.endpoint_id == choice_.endpoint_id) {
+        // Still right; the reason may read differently now.
+        choice_ = choice;
+        return {};
+    }
+    const bool paused = transport_.state() == TransportState::kPaused;
+    note(fmt::format("output changed: {}", choice.reason));
+    close_output();
+    session_.reset();
+    seek_on_start_ = SeekOnStart{.item = item, .to = at.heard};
+    const OpenFailure failure = open_output_for(item, nullptr);
+    if (failure != OpenFailure::kNone) {
+        const std::string why = last_error_;
+        open_failed(item, failure, nullptr);
+        // Whatever the failure policy started in its place waits, paused, as
+        // this item was.
+        if (paused && transport_.state() == TransportState::kPlaying) {
+            perform(transport_.pause(), nullptr);
+        }
+        return fmt::format("The output changed, and the item could not follow: {}", why);
+    }
+    if (paused && !(bitstreaming() ? bitstream_->pause() : sink_->pause())) {
+        note("the output would not pause");
+    }
+    return fmt::format("The output changed: {}", choice_.reason);
 }
 
 bool Player::start_session(std::size_t item) {
@@ -499,28 +734,93 @@ Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report
         }
         return OpenFailure::kItem;
     }
-    const std::uint32_t rate = session_->facts().sample_rate;
+    choice_ = decide(*session_);
+    if (choose_) {
+        note(fmt::format("output chosen: {}", choice_.reason));
+    }
+    return open_chosen(item, report);
+}
+
+Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
+    const auto refuse = [&](OpenFailure failure, std::string why, std::string_view what) {
+        last_error_ = std::move(why);
+        note_item(item, title_of(item), fmt::format("{}: {}", what, last_error_));
+        session_.reset();
+        if (report != nullptr) {
+            report->note = last_error_;
+        }
+        return failure;
+    };
+    const ItemFacts facts = session_->facts();
+    const std::uint32_t rate = facts.sample_rate;
+    switch (choice_.mode) {
+        case OutputMode::kLocalPcm:
+            if (!sink_) {
+                return refuse(OpenFailure::kOutput, "This player has no local output.",
+                              "could not start");
+            }
+            break;
+        case OutputMode::kBitstream:
+            if (!bitstream_) {
+                return refuse(OpenFailure::kOutput, "This player has no passthrough output.",
+                              "could not start");
+            }
+            if (!facts.stream) {
+                return refuse(OpenFailure::kItem, "It carries nothing IEC 61937 can wrap.",
+                              "cannot be played");
+            }
+            // Before anything is decoded, so the decode and the bursts cover
+            // the same units.
+            session_->play_whole_units();
+            break;
+        case OutputMode::kNone:
+            // The outputs, not the item, are in the way - no output at all,
+            // or one that follow=off will not fall back from - so playback
+            // stops with the reason rather than marking the queue unplayable
+            // item by item.
+            return refuse(OpenFailure::kOutput, choice_.reason, "could not start");
+        case OutputMode::kBitstreamAsAc3:
+        case OutputMode::kNetworkGroup:
+            return refuse(OpenFailure::kOutput,
+                          fmt::format("Playing as {} is not part of this engine yet.",
+                                      describe(choice_.mode)),
+                          "could not start");
+    }
+
     if (!decoder_ || decoder_rate_ != rate) {
         build_decoder(rate);
     } else {
         decoder_->reset();
     }
-    const auto opened = sink_->open(PcmSink::Format{.sample_rate = rate, .layout = layout_});
+    const bool bitstream = choice_.mode == OutputMode::kBitstream;
+    const auto opened =
+        bitstream ? bitstream_->open(BitstreamSink::Format{.format = *facts.stream,
+                                                           .sample_rate = rate,
+                                                           .endpoint_id = choice_.endpoint_id})
+                  : sink_->open(PcmSink::Format{.sample_rate = rate,
+                                                .layout = layout_,
+                                                .endpoint_id = choice_.endpoint_id});
     if (!opened) {
-        last_error_ = opened.error();
-        note_item(item, title_of(item),
-                  fmt::format("could not start: the output would not open: {}", last_error_));
-        session_.reset();
-        if (report != nullptr) {
-            report->note = last_error_;
-        }
-        return OpenFailure::kOutput;
+        return refuse(OpenFailure::kOutput, opened.error(),
+                      "could not start: the output would not open");
     }
+    OpenOutputFormat format = *opened;
+    format.mode = choice_.mode;
+    if (bitstream) {
+        format.stream = facts.stream;
+    }
+    mode_ = choice_.mode;
     ++opens_;
-    note(fmt::format("output opened: {}, {} Hz, {} channels (open {})", describe(opened->mode),
-                     opened->sample_rate, opened->channels, opens_));
+    if (bitstream) {
+        note(fmt::format("output opened: {} ({}), {} Hz (open {})", describe(format.mode),
+                         stream_name(*facts.stream), format.sample_rate, opens_));
+    } else {
+        note(fmt::format("output opened: {}, {} Hz, {} channels (open {})", describe(format.mode),
+                         format.sample_rate, format.channels, opens_));
+    }
     submitted_since_open_ = 0;
-    transport_.set_open_format(*opened);
+    reset_packer();
+    transport_.set_open_format(format);
     clear_pending();
     if (!meters_ || meters_->sample_rate() != rate) {
         meters_.emplace(layout_, rate);
@@ -552,12 +852,19 @@ Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report
 
 void Player::close_output() {
     settle_unit_errors();
-    if (sink_->is_open()) {
-        sink_->close();
+    if (output_open()) {
+        if (bitstreaming()) {
+            bitstream_->close();
+        } else {
+            sink_->close();
+        }
         note("output closed");
     }
+    mode_ = OutputMode::kNone;
+    refollow_pending_ = false;
     transport_.clear_open_format();
     clear_pending();
+    reset_packer();
     drain_target_.reset();
     submitted_since_open_ = 0;
     segments_.clear();
@@ -594,16 +901,23 @@ void Player::take_block(std::span<const std::span<const float>> rendered, std::s
     }
     const std::size_t slots = layout_.slots();
     const std::size_t record = history_.size() - 1;
+    // Where the block's end will be heard: after everything submitted and
+    // queued ahead of it, or for a bitstream, whose bursts carry the audio,
+    // at the session's place on the link.
+    const std::uint64_t heard_at =
+        bitstreaming() ? decoded_end() : submitted_since_open_ + pending_frames_ + n;
     if (meters_) {
-        // Metered as it is queued, stamped with where it will be heard:
-        // after everything submitted and everything queued ahead of it. An
+        // Metered as it is queued, stamped with where it will be heard. An
         // item's programme measurements start with its first block; after an
         // open, the meters have started again already.
         if (record != metered_record_) {
             meters_->restart_programme();
             metered_record_ = record;
         }
-        meters_->meter(rendered, n, submitted_since_open_ + pending_frames_ + n);
+        meters_->meter(rendered, n, heard_at);
+    }
+    if (bitstreaming()) {
+        return;
     }
     Pending& block = push_block();
     block.frames = n;
@@ -635,8 +949,14 @@ void Player::fill(std::size_t frames) {
     const Session::ReportFn reported = [this](const UnitReport& report, std::size_t count) {
         take_report(report, count);
     };
+    // A bitstream output is sent each unit as it is decoded.
+    const Session::SentFn sent =
+        bitstreaming() ? Session::SentFn{[this](std::span<const std::byte> unit,
+                                                std::uint32_t samples) { send_unit(unit, samples); }}
+                       : Session::SentFn{};
     while (pending_frames_ < frames && !session_->finished()) {
-        const auto got = session_->render(*decoder_, deliver, frames - pending_frames_, reported);
+        const auto got =
+            session_->render(*decoder_, deliver, frames - pending_frames_, reported, sent);
         if (!got) {
             // One undecodable unit: say so and carry on with the next. The
             // session has already stepped past it.
@@ -652,20 +972,41 @@ std::size_t Player::drain(std::size_t budget) {
     std::size_t submitted = 0;
     while (pending_count_ != 0 && submitted < budget) {
         const Pending& block = pending_[pending_head_];
-        for (std::size_t slot = 0; slot < slots; ++slot) {
-            views[slot] = std::span<const float>(block.samples).subspan(slot * block.frames,
-                                                                         block.frames);
-        }
-        if (!sink_->submit(std::span<const std::span<const float>>(views.data(), slots),
-                           block.frames)) {
-            break;
-        }
-        if (block.record < history_.size()) {
-            PlayedItem& played = history_[block.record];
-            if (played.frames == 0) {
-                played.first_frame = submitted_since_open_;
+        if (bitstreaming()) {
+            if (!bitstream_->submit(block.burst)) {
+                break;
             }
-            played.frames += block.frames;
+            // Each item's units in the burst count towards it now they are
+            // on their way, and not before: a burst dropped by a seek, a
+            // reopen or a stop, or units that never made a whole burst, were
+            // not played.
+            std::uint64_t offset = 0;
+            for (const Span& span : block.spans) {
+                if (span.record < history_.size()) {
+                    PlayedItem& played = history_[span.record];
+                    if (played.frames == 0) {
+                        played.first_frame = submitted_since_open_ + offset;
+                    }
+                    played.frames += span.frames;
+                }
+                offset += span.frames;
+            }
+        } else {
+            for (std::size_t slot = 0; slot < slots; ++slot) {
+                views[slot] = std::span<const float>(block.samples).subspan(slot * block.frames,
+                                                                             block.frames);
+            }
+            if (!sink_->submit(std::span<const std::span<const float>>(views.data(), slots),
+                               block.frames)) {
+                break;
+            }
+            if (block.record < history_.size()) {
+                PlayedItem& played = history_[block.record];
+                if (played.frames == 0) {
+                    played.first_frame = submitted_since_open_;
+                }
+                played.frames += block.frames;
+            }
         }
         submitted += block.frames;
         submitted_since_open_ += block.frames;
@@ -680,7 +1021,9 @@ bool Player::played_out() {
     if (pending_count_ != 0) {
         return false;
     }
-    const auto position = sink_->position();
+    // A bitstream's last units short of a burst are never sent: a burst
+    // is six blocks or nothing.
+    const auto position = output_position();
     if (!position) {
         // Closed, or a sink with no clock to wait on.
         return true;
@@ -742,8 +1085,28 @@ void Player::item_ended(PumpReport& report) {
         }
     }
 
-    const TransportOutcome outcome =
-        failed == Queue::kNone ? transport_.item_finished() : transport_.item_failed(failed);
+    // How the next item would be played, so that it joins only an output
+    // already playing it that way: a bitstream does not join a decoded
+    // output, and an item that would be bitstreamed is not decoded into one.
+    // The transport rules on the mode and the stream; what it cannot see -
+    // the endpoint, and whether the packer can make whole bursts of the next
+    // item's units - turns a join it would allow into a reopen here.
+    std::optional<OutputChoice> next_choice;
+    if (failed == Queue::kNone && prepared_) {
+        next_choice = decide(*prepared_);
+    }
+    TransportOutcome outcome =
+        failed == Queue::kNone
+            ? transport_.item_finished(next_choice ? std::optional<OutputMode>{next_choice->mode}
+                                                   : std::nullopt)
+            : transport_.item_failed(failed);
+    if (outcome.action == TransportAction::kJoinItem && next_choice) {
+        std::string blocked = join_blocked(*next_choice, title_of(outcome.item));
+        if (!blocked.empty()) {
+            outcome.action = TransportAction::kReopenForItem;
+            outcome.note = std::move(blocked);
+        }
+    }
     if (!outcome.note.empty()) {
         report.note = outcome.note;
     }
@@ -777,6 +1140,12 @@ void Player::item_ended(PumpReport& report) {
             if (!decoder_ || decoder_rate_ != rate) {
                 build_decoder(rate);
             }
+            if (next_choice) {
+                choice_ = *next_choice;
+            }
+            if (bitstreaming()) {
+                session_->play_whole_units();
+            }
             apply_seek_on_start(outcome.item);
             settle_unit_errors();
             history_.push_back(PlayedItem{.queue_index = outcome.item,
@@ -786,9 +1155,9 @@ void Player::item_ended(PumpReport& report) {
                                           .expected_frames = session_->total_samples(),
                                           .output_opens = opens_});
             // The new item's first frame goes in behind everything the last
-            // one still has queued.
+            // one still has queued, or packed toward a burst.
             segments_.push_back(Segment{.record = history_.size() - 1,
-                                        .output_start = submitted_since_open_ + pending_frames_,
+                                        .output_start = timeline_end(),
                                         .item_start = session_->position_samples()});
             note_started(outcome.item, true);
             report.item_started = true;
@@ -838,6 +1207,17 @@ PumpReport Player::pump(std::size_t budget) {
     }
     if (transport_.state() != TransportState::kPlaying || !session_) {
         return report;
+    }
+    // An output change that came while a join was still being heard, once
+    // the clock has reached the item it is about.
+    if (refollow_pending_ && position().item == queue_.current_index()) {
+        std::string moved = refollow();
+        if (!moved.empty()) {
+            report.note = std::move(moved);
+        }
+        if (!session_ || transport_.state() != TransportState::kPlaying) {
+            return report;
+        }
     }
     fill(budget);
     report.frames_submitted += drain(budget);

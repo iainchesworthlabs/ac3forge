@@ -541,6 +541,36 @@ and release packaging.
 
     The player stops at an item that fails, both when starting and after the item before
     it, and a restored queue starts at its item and position.
+- **Hearth's engine bitstreams** (`apps/hearth/engine/bitstream_sink.hpp` and
+  `output_selector.hpp`): each item plays the way the output decision says, over IEC 61937 to
+  a receiver or decoded here.
+  - A bitstreamed item is sent its own access units: AC-3 a frame to a burst, E-AC-3 packed
+    six blocks to a burst, across a join when a stream's frames are shorter. The decode still
+    runs, for the meters and the unit reports, on the link's clock.
+  - Only whole units can be sent, so an edit list's priming or padding inside a unit is heard.
+    The decoder settings reach the meters only; the status says so.
+  - An item joins the open output only when it would be played the same way. These reopen
+    once the output has played out, and say why:
+    - a different stream on the link, or a decode after a bitstream;
+    - another endpoint;
+    - units that cannot make whole bursts with those the last item left.
+  - `OutputSelector` reads each endpoint twice, through the platform's probe and the sink's
+    own descriptor, and takes a format as carried only when both do.
+    - It reads again when told the outputs changed: `Engine::refresh_outputs()`, for
+      `RenderDeviceWatch`'s callback, and `Engine::set_output_preferences()` for the Output
+      screen.
+    - The item playing then moves to the new output from where it was heard, paused if it
+      was, once any join before it has been heard (the appliance plan's gaps 3 and 5).
+    - The endpoint the player holds is judged by its last free probe and a fresh
+      descriptor, since a probe reads a device this player holds as refusing everything.
+    - An enumeration that finds nothing keeps the last list.
+    - A player with no passthrough output decodes.
+  - A programme other than a stream's first is decoded, since a receiver plays only the
+    first. The meters stay in step after a unit that does not decode.
+  - E-AC-3 on a sink that takes only AC-3 is decoded for now; the streaming transcode is next.
+  - In `ac3tests`, tagged `[bitstream]` and `[output-decision]`: bursts checked byte for byte
+    against `wrap_frame()` and `Eac3BurstPacker`, joins, reopens, a seek, pause, the meters,
+    an edit list, a missing link, an output that changes mid-item, and the engine's commands.
 
 **Audio outputs**
 

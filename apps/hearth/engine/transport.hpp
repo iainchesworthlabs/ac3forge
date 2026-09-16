@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -93,9 +94,12 @@ struct TransportOutcome {
 struct OpenOutputFormat {
     std::uint32_t sample_rate = 0;
     // The rendered width the output was opened at, which for a local output
-    // is the device's own channel count rather than the item's.
+    // is the device's own channel count rather than the item's, and for a
+    // bitstream the link's two.
     std::uint16_t channels = 0;
     OutputMode mode = OutputMode::kNone;
+    // What a bitstream output carries on its link; nothing for a local one.
+    std::optional<audio::BitstreamFormat> stream = std::nullopt;
 };
 
 class Transport {
@@ -130,16 +134,19 @@ public:
 
     // The current item has played to its end. This is the one event the
     // transport is told about rather than asked for, and it is where gapless
-    // is decided.
-    TransportOutcome item_finished();
+    // is decided. `next_mode` is the output the next item would be played
+    // through, as the output decision has it; a join needs it to be the mode
+    // already open. Unset, the next item is taken to want the open mode.
+    TransportOutcome item_finished(std::optional<OutputMode> next_mode = std::nullopt);
 
     // `item`, which the caller has just marked unplayable, would not open.
-    // Under kSkip this is item_finished(): playback moves on to the next item
-    // that can play. Under kStop playback stops, with `item` current so that
-    // the queue shows where and why; the caller lets what is already
-    // submitted play out first when the item was the next one rather than
-    // the one being started.
-    TransportOutcome item_failed(std::size_t item);
+    // Under kSkip this is item_finished(next_mode): playback moves on to the
+    // next item that can play. Under kStop playback stops, with `item`
+    // current so that the queue shows where and why; the caller lets what is
+    // already submitted play out first when the item was the next one rather
+    // than the one being started.
+    TransportOutcome item_failed(std::size_t item,
+                                 std::optional<OutputMode> next_mode = std::nullopt);
 
     // The queue changed under a playing item: the item that was playing is
     // gone. Restarts at whatever the queue now calls current, or stops when
@@ -147,8 +154,10 @@ public:
     TransportOutcome current_item_removed();
 
 private:
-    // The action that starts `item`, given what the output already holds.
-    [[nodiscard]] TransportOutcome start_or_join(std::size_t item, bool joining);
+    // The action that starts `item`, given what the output already holds and
+    // the mode the item would be played through.
+    [[nodiscard]] TransportOutcome start_or_join(std::size_t item, bool joining,
+                                                 std::optional<OutputMode> mode = std::nullopt);
 
     Queue* queue_;
     TransportState state_ = TransportState::kStopped;

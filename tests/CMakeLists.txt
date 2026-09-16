@@ -708,8 +708,10 @@ if(AC3FORGE_BUILD_HEARTH)
         hearth/test_engine.cpp
         hearth/test_media_info.cpp
         hearth/test_output_decision.cpp
+        hearth/test_output_selector.cpp
         hearth/test_play_meters.cpp
         hearth/test_player.cpp
+        hearth/test_player_bitstream.cpp
         hearth/test_queue.cpp
         hearth/test_session.cpp
         hearth/test_settings_model.cpp

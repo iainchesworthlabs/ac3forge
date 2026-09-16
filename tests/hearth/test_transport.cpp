@@ -196,6 +196,77 @@ TEST_CASE("transport: a mode change is not a join either", "[hearth][transport-s
     CHECK(transport.item_finished().action == TransportAction::kReopenForItem);
 }
 
+TEST_CASE("transport: a bitstream joins only the same stream, played the same way",
+          "[hearth][transport-state]") {
+    // The output decision says how the next item would be played; a join
+    // needs that to be what the output is already doing, and a bitstream
+    // needs the stream on the link to stay what it is.
+    Queue queue;
+    queue.add(item("e1"));
+    queue.add(item("e2"));
+    QueueItem plain = item("a3");
+    plain.facts.stream = ac3::audio::BitstreamFormat::kAc3;
+    queue.add(plain);
+    queue.add(item("e4"));
+    queue.add(item("e5"));
+    queue.add(item("e6"));
+    Transport transport{queue};
+
+    REQUIRE(transport.play().action == TransportAction::kStartItem);
+    const auto link = [](ac3::audio::BitstreamFormat stream, OutputMode mode) {
+        return OpenOutputFormat{
+            .sample_rate = 48000, .channels = 2, .mode = mode, .stream = stream};
+    };
+    transport.set_open_format(link(ac3::audio::BitstreamFormat::kEac3, OutputMode::kBitstream));
+
+    // E-AC-3 after E-AC-3, both bitstreamed: the link carries on.
+    auto outcome = transport.item_finished(OutputMode::kBitstream);
+    CHECK(outcome.action == TransportAction::kJoinItem);
+    CHECK(outcome.item == 1);
+
+    // AC-3 after E-AC-3: the link would change speed, so it starts again,
+    // and says why.
+    outcome = transport.item_finished(OutputMode::kBitstream);
+    CHECK(outcome.action == TransportAction::kReopenForItem);
+    CHECK(outcome.item == 2);
+    CHECK(outcome.note.find("\"a3\" is AC-3") != std::string::npos);
+    CHECK(outcome.note.find("carrying E-AC-3") != std::string::npos);
+
+    // After the AC-3 link, an item to be decoded here: another mode.
+    transport.set_open_format(link(ac3::audio::BitstreamFormat::kAc3, OutputMode::kBitstream));
+    outcome = transport.item_finished(OutputMode::kLocalPcm);
+    CHECK(outcome.action == TransportAction::kReopenForItem);
+    CHECK(outcome.item == 3);
+    CHECK(outcome.note.find("plays as local PCM") != std::string::npos);
+    CHECK(outcome.note.find("open for bitstream") != std::string::npos);
+
+    // A decoded output takes any stream at its rate, but not an item the
+    // decision would bitstream.
+    transport.set_open_format(open_at(48000));
+    outcome = transport.item_finished(OutputMode::kBitstream);
+    CHECK(outcome.action == TransportAction::kReopenForItem);
+    CHECK(outcome.item == 4);
+    CHECK(outcome.note.find("plays as bitstream") != std::string::npos);
+
+    // E-AC-3 transcoded to AC-3 joins E-AC-3 transcoded to AC-3, though the
+    // link carries AC-3. And a failed item passes the mode on under skip.
+    transport.set_open_format(
+        link(ac3::audio::BitstreamFormat::kAc3, OutputMode::kBitstreamAsAc3));
+    outcome = transport.item_failed(4, OutputMode::kBitstreamAsAc3);
+    CHECK(outcome.action == TransportAction::kJoinItem);
+    CHECK(outcome.item == 5);
+
+    // An item that is AC-3 already is not one to transcode.
+    Queue again;
+    again.add(item("e1"));
+    again.add(plain);
+    Transport other{again};
+    REQUIRE(other.play().action == TransportAction::kStartItem);
+    other.set_open_format(link(ac3::audio::BitstreamFormat::kAc3, OutputMode::kBitstreamAsAc3));
+    CHECK(other.item_finished(OutputMode::kBitstreamAsAc3).action ==
+          TransportAction::kReopenForItem);
+}
+
 TEST_CASE("transport: the end of the queue stops, and repeat makes the ends meet",
           "[hearth][transport-state]") {
     Queue queue;
