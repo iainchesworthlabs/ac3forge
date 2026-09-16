@@ -2893,8 +2893,7 @@ jobs:
             --qemu "$QEMU_XTENSA" \
             --image sendspin-qemu-image \
             --server build/config-linux-gcc/bin/ac3hearth-testserver \
-            --out sendspin-qemu-run \
-            --board-trim-db -6,-6
+            --out sendspin-qemu-run
 
       - name: Upload the run
         if: always()
