@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "ac3/io/elementary.hpp"
+#include "container_input.hpp"
 #include "queue.hpp"
 #include "stream_decoder.hpp"
 
@@ -47,8 +48,8 @@
 //
 // No file I/O: the path is turned into bytes by an ItemLoader, which the
 // application supplies (reading the file and demuxing Matroska, MP4 or
-// MPEG-TS through apps/common/container_input.hpp, which the engine does not
-// link) and a test supplies over memory.
+// MPEG-TS through apps/common/container_input.hpp, whose functions the engine
+// does not compile) and a test supplies over memory.
 
 namespace ac3::hearth {
 
@@ -63,6 +64,9 @@ struct LoadedItem {
     // Anything to show beside the item: an edit list that could not be
     // applied, say.
     std::string note{};
+    // What the file's container said about the stream, for the media
+    // information; empty for a bare elementary stream.
+    apps::ContainerFacts container{};
 };
 
 using ItemLoader =

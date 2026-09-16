@@ -13,8 +13,10 @@
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "container_input.hpp"
+#include "matroska/matroska.hpp"
 #include "mp4/mp4.hpp"
 #include "mp4/reader.hpp"
+#include "mpegts/mpegts.hpp"
 
 namespace {
 
@@ -96,6 +98,100 @@ TEST_CASE("elementary_stream_from_bytes leaves a bare elementary stream untouche
     CHECK(result.trim.start == 0);
     CHECK_FALSE(result.trim.length.has_value());
     CHECK(result.trim_note.empty());
+    CHECK(result.container.kind == ac3::apps::ContainerKind::kUnknown);
+    CHECK(result.container.codec_id.empty());
+    CHECK(result.container.samples == 0);
+    CHECK_FALSE(result.container.codec_box.has_value());
+}
+
+TEST_CASE("elementary_stream_from_bytes reports what each container says about its track",
+          "[containers][io2]") {
+    using ac3::apps::ContainerKind;
+    const auto frame = ac3::build_silent_stereo_frame({.bitrate_kbps = 192});
+    REQUIRE(frame.has_value());
+    Bytes stream;
+    for (int i = 0; i < 4; ++i) {
+        stream.insert(stream.end(), frame->begin(), frame->end());
+    }
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    const std::span<const std::span<const std::byte>> units(scanned->access_units);
+
+    SECTION("MP4, with its codec configuration box") {
+        mp4::AudioTrack track;
+        track.codec_id = std::string{mp4::kCodecAc3};
+        track.sample_rate = 48000;
+        track.channels = 2;
+        track.codec_config = ac3::io::build_codec_config_box(*scanned);
+        const auto file = mp4::mux(track, units);
+        REQUIRE(file.has_value());
+        const auto result = ac3::apps::elementary_stream_from_bytes(*file);
+        REQUIRE(result.error.empty());
+        const auto& facts = result.container;
+        CHECK(facts.kind == ContainerKind::kMp4);
+        CHECK(ac3::apps::container_token(facts.kind) == "mp4");
+        CHECK(facts.codec_id == "ac-3");
+        CHECK(facts.track == 1);
+        CHECK(facts.language == "und");
+        CHECK(facts.samples == 4);
+        CHECK(facts.sample_rate == 48000);
+        CHECK(facts.channels == 2);
+        CHECK(facts.timescale == 48000);
+        CHECK(facts.edits == 0);
+        REQUIRE(facts.codec_box.has_value());
+        CHECK(facts.codec_box->type == "dac3");
+        CHECK(facts.codec_box->fscod == 0);
+        CHECK(facts.codec_box->bsid == 8);
+        CHECK(facts.codec_box->acmod == 2);
+        CHECK_FALSE(facts.codec_box->lfeon);
+        CHECK(facts.codec_box->bit_rate_code == 10);  // Table 5.18: 192 kbit/s
+        CHECK(facts.codec_box->independent_substreams == 0);
+        CHECK(facts.codec_box->bytes > 0);
+    }
+    SECTION("Matroska") {
+        matroska::AudioTrack track;
+        track.codec_id = std::string{matroska::kCodecAc3};
+        track.sample_rate = 48000;
+        track.channels = 2;
+        const auto file = matroska::mux(track, units);
+        REQUIRE(file.has_value());
+        const auto result = ac3::apps::elementary_stream_from_bytes(*file);
+        REQUIRE(result.error.empty());
+        const auto& facts = result.container;
+        CHECK(facts.kind == ContainerKind::kMatroska);
+        CHECK(ac3::apps::container_token(facts.kind) == "matroska");
+        CHECK(facts.codec_id == "A_AC3");
+        CHECK(facts.track == 1);
+        CHECK(facts.samples == 4);
+        CHECK(facts.channels == 2);
+        CHECK_FALSE(facts.codec_box.has_value());
+    }
+    SECTION("MPEG-TS") {
+        mpegts::AudioTrack track;
+        track.codec = mpegts::AudioCodec::kAc3;
+        mpegts::MuxOptions options;
+        options.profile = mpegts::BroadcastProfile::kAtsc;
+        options.program_number = 3;
+        options.pmt_pid = 0x0200;
+        options.audio_pid = 0x0210;
+        const auto file = mpegts::mux(track, units, options);
+        REQUIRE(file.has_value());
+        const auto result = ac3::apps::elementary_stream_from_bytes(*file);
+        REQUIRE(result.error.empty());
+        const auto& facts = result.container;
+        CHECK(facts.kind == ContainerKind::kMpegTs);
+        CHECK(ac3::apps::container_token(facts.kind) == "mpegts");
+        CHECK(facts.codec_id.empty());
+        CHECK(facts.track == 0x0210);
+        CHECK(facts.language.empty());
+        CHECK(facts.samples > 0);
+        CHECK(facts.program_number == 3);
+        CHECK(facts.pmt_pid == 0x0200);
+        CHECK(facts.stream_type == 0x81);
+        CHECK(facts.signalling == "atsc_stream_type");
+        CHECK(facts.packet_size == 188);
+    }
+    CHECK(ac3::apps::container_token(ContainerKind::kUnknown).empty());
 }
 
 // An MP4 edit list, read as the part of the stream a player should play.
