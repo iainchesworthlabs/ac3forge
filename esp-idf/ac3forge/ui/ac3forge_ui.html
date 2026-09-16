@@ -25,7 +25,8 @@ dd{margin:0;min-width:0;overflow-wrap:anywhere}
 @media (max-width:30rem){dl{grid-template-columns:1fr}dd{margin-bottom:.25rem}}
 form,.control{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .75rem;margin:0 0 1rem}
 label{flex:0 0 100%;font-weight:600}
-input,button{font:inherit;min-height:2.75rem}
+input,button,select{font:inherit;min-height:2.75rem}
+select{padding:0 .5rem;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:.375rem}
 input[type=text]{flex:1 1 16rem;min-width:0;padding:0 .75rem;color:var(--fg);background:var(--bg);border:1px solid var(--edge);border-radius:.25rem}
 input[type=range]{flex:1 1 12rem;margin:0;accent-color:var(--accent)}
 button{padding:0 1.25rem;font-weight:600;color:var(--on-accent);background:var(--accent);border:2px solid var(--accent);border-radius:.25rem;cursor:pointer}
@@ -43,8 +44,8 @@ a{color:var(--accent)}
 </head>
 <body>
 <header>
-<h1>ac3forge player</h1>
-<p id="link" class="muted">Reading the player's status.</p>
+<h1 id="title">Hearth sink</h1>
+<p id="link" class="muted">Reading the sink's status.</p>
 </header>
 <main>
 <noscript><p>This page needs JavaScript; <a href="api">the routes</a> do not.</p></noscript>
@@ -65,18 +66,23 @@ a{color:var(--accent)}
 <dt hidden>Played</dt><dd id="played" hidden></dd>
 </dl>
 </section>
-<section aria-labelledby="control-heading">
-<h2 id="control-heading">Control</h2>
-<form id="play-form">
-<label for="location-input">Location to play</label>
-<input id="location-input" type="text" required autocapitalize="off" spellcheck="false">
-<button type="submit">Play</button>
-<button type="button" id="stop" class="secondary">Stop</button>
+<section aria-labelledby="settings-heading">
+<h2 id="settings-heading">Settings</h2>
+<p class="muted">What this board is. A server plays to it: this page does not.</p>
+<form id="name-form">
+<label for="name-input">Name</label>
+<input id="name-input" type="text" maxlength="32" required autocomplete="off" spellcheck="false" aria-describedby="name-help">
+<button type="submit" class="secondary">Save</button>
+<p id="name-help" class="muted">What this sink answers to on the network, and what a server lists it as.</p>
 </form>
 <div class="control">
-<label for="volume">Volume</label>
-<input id="volume" type="range" min="0" max="100" step="1" value="100">
-<span id="volume-out">100%</span>
+<label for="slot-width">Slot width</label>
+<select id="slot-width"><option value="32">32-bit</option><option value="16">16-bit</option></select>
+<span id="slot-help" class="muted"></span>
+</div>
+<div class="control">
+<input id="wiring" type="checkbox">
+<label for="wiring">A second I2S line is wired to a DAC</label>
 </div>
 <form id="layout-form">
 <label for="layout-input">Output layout</label>
@@ -92,6 +98,14 @@ a{color:var(--accent)}
 <p>With height speakers, a stream's objects are placed by their positions.</p>
 <p>Nothing is upmixed. A speaker the stream has nothing for stays silent, so a 5.1 stream on 7.1.4 leaves the rear surrounds and heights silent; Now lists them.</p>
 </details>
+<form id="network-form">
+<label for="ssid-input">Network</label>
+<input id="ssid-input" type="text" autocomplete="off" spellcheck="false" aria-describedby="network-help">
+<label for="pass-input">Passphrase</label>
+<input id="pass-input" type="password" autocomplete="off">
+<button type="submit" class="secondary">Save</button>
+<p id="network-help" class="muted">Stored for the next restart; this board stays on the network it is already on. A board with no network at all is told over its USB port instead.</p>
+</form>
 <p id="outcome" role="status"></p>
 </section>
 <section aria-labelledby="timing-heading">

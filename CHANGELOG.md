@@ -29,6 +29,20 @@ and release packaging.
 
 **Minimum-footprint / ESP32 decode profile**
 
+- **A Hearth sink knows what it is, joins a network it was told about, and is
+  found by name.** What the board is — its name, the network it joins, how wide its
+  DAC's slots are and whether a second I2S line is wired — lives in NVS rather than in
+  the image, so none of it needs a reflash. A board with nothing stored still behaves
+  exactly as the build says, which is what keeps CI unchanged. Two ways in: **Improv
+  Wi-Fi** over the same USB serial port the console uses, which is how a board with no
+  network at all is told about one; and `PUT /name`, `/wiring`, `/network` and
+  `/slot-width` over the REST surface for a board already on one. Once it has a
+  network it advertises **`_sendspin._tcp` over mDNS**, port 8928 with `path=/sendspin`,
+  which is what a Sendspin server looks for. The network now comes up at boot rather
+  than at the first play, because a sink is found before it is played to. Costs about
+  8 KB of internal RAM for mDNS on every shape; the Improv listener's 4 KB is only
+  spent on a board that has no network to join, since that board is not decoding
+  anything.
 - **Sixteen channels out of an ESP32-S3, and the slot width as a setting.** An I2S
   line carries 128 bits a frame, so the two the part has reach sixteen 16-bit slots or
   eight 32-bit ones — a 7.1.4 layout leaves through the `i2s` sink for the first time,

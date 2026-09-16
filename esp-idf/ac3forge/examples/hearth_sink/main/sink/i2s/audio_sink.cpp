@@ -63,6 +63,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "../../settings.hpp"
 #include "../sink_common.hpp"
 
 namespace player {
@@ -79,7 +80,12 @@ static_assert(CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS == 16 ||
                   CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS == 32,
               "CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS is 16 or 32");
 constexpr bool kSlave = CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE != 0;
-constexpr bool kSecondLineEnabled = CONFIG_AC3FORGE_EXAMPLE_I2S_SECOND_LINE != 0;
+
+// Whether a second line is wired to anything is the board's, not the image's,
+// and is stored beside the slot width (settings.hpp): both describe what the
+// DACs on this board are, and both survive a reflash. Kconfig is still the
+// answer until something stores another.
+[[nodiscard]] bool second_line_wired() { return settings().second_line; }
 constexpr ac3forge::SinkFrame kFrame = CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME != 0
                                            ? ac3forge::SinkFrame::fixed
                                            : ac3forge::SinkFrame::follow_layout;
@@ -95,7 +101,7 @@ constexpr ac3forge::SinkFrame kFrame = CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME !
 // a requested layout against before any of this runs. Eight at 32 bits with a
 // second line wired, sixteen at 16.
 [[nodiscard]] std::size_t ceiling() {
-    return ac3forge::sink_ceiling(g_slot_bits, kSecondLineEnabled);
+    return ac3forge::sink_ceiling(g_slot_bits, second_line_wired());
 }
 
 // One line's hardware state. GPIO numbers and role are fixed for the run
@@ -348,12 +354,12 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
         return false;
     }
     const auto plan = ac3forge::plan_sink(static_cast<std::size_t>(channels), g_slot_bits,
-                                          kSecondLineEnabled, kFrame);
+                                          second_line_wired(), kFrame);
     if (!plan.has_value()) {
         std::printf("error: %d channels do not fit this sink's %u-slot ceiling (%d-bit slots, "
                     "%s line)\n",
                     channels, static_cast<unsigned>(ceiling()), g_slot_bits,
-                    kSecondLineEnabled ? "a second" : "no second");
+                    second_line_wired() ? "a second" : "no second");
         return false;
     }
 

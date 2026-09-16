@@ -104,8 +104,9 @@ test('an error status, a body that is not JSON, and JSON that is not an object',
 });
 
 test('an action reads the status at once, without waiting for the next poll', async ({ page, stub }) => {
-    await page.getByRole('button', { name: 'Stop' }).click();
-    await expect.poll(() => stub.sent('POST /stop').length).toBe(1);
+    await page.getByLabel('Name').fill('Attic');
+    await page.locator('#name-form').getByRole('button', { name: 'Save' }).click();
+    await expect.poll(() => stub.sent('PUT /name').length).toBe(1);
     await expect.poll(() => polls(stub)).toBe(2);
 });
 
@@ -113,8 +114,9 @@ test('a poll asked for while one is out runs as soon as that one ends', async ({
     const release = stub.hold('GET /status');
     await page.clock.runFor(1000);
     await expect.poll(() => polls(stub)).toBe(2);
-    await page.getByRole('button', { name: 'Stop' }).click();
-    await expect.poll(() => stub.sent('POST /stop').length).toBe(1);
+    await page.getByLabel('Name').fill('Attic');
+    await page.locator('#name-form').getByRole('button', { name: 'Save' }).click();
+    await expect.poll(() => stub.sent('PUT /name').length).toBe(1);
     release();
     // The held answer handled - and with it the next poll scheduled - before
     // the clock moves, or the move can come first and the poll never fires.
@@ -125,7 +127,11 @@ test('a poll asked for while one is out runs as soon as that one ends', async ({
 
 test('the state is announced when it changes, and the figures are not', async ({ page, stub }) => {
     stub.device.framesPerPoll = 50;
-    await page.getByRole('button', { name: 'Play' }).click();
+    // Started through the device's own API: the page reports plays, it does
+    // not start them (see actions.spec.js).
+    await page.request.post(stub.url + 'play', { data: 'http://10.0.2.2:8000/demo.ec3' });
+    // The next poll is what brings it: the page did not start this play.
+    await page.clock.runFor(1000);
     await expect(page.getByRole('status')).toHaveText('Playing.');
     for (let i = 0; i < 3; i += 1) {
         await page.clock.runFor(1000);

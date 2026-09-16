@@ -62,6 +62,10 @@
 
 #include "audio_sink.hpp"
 #include "byte_source.hpp"
+#include "discovery.hpp"
+#include "network.hpp"
+#include "provision.hpp"
+#include "settings.hpp"
 
 // The example's half of the stage timers. main/CMakeLists.txt links the
 // bare-metal probe's backend (apps/baremetal/stage_timers.cpp) when the
@@ -459,6 +463,24 @@ ac3forge::ControlHandlers control_handlers() {
         return text;
     };
     h.set_layout = accept_layout;
+    h.name = []() { return std::string(player::settings().name.data()); };
+    h.set_name = [](std::string_view text) { return player::settings_set_name(text); };
+    h.second_line = []() { return player::settings().second_line; };
+    h.set_second_line = [](bool wired) {
+        xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+        const bool playing = g_player != nullptr;
+        xSemaphoreGive(g_player_mutex);
+        if (playing || !player::settings_set_second_line(wired)) {
+            return false;
+        }
+        // The sink's ceiling moves with the wiring, so the next play plans
+        // against the new one rather than what is open now.
+        g_sink_channels_open = 0;
+        return true;
+    };
+    h.set_network = [](std::string_view ssid, std::string_view password) {
+        return player::settings_set_network(ssid, password);
+    };
     h.slot_bits = []() { return player::sink_slot_bits(); };
     h.set_slot_bits = [](int bits) {
         xSemaphoreTake(g_player_mutex, portMAX_DELAY);
@@ -516,6 +538,34 @@ void on_alloc_failed(std::size_t size, std::uint32_t caps, const char* function)
 
 extern "C" void app_main() {
     (void)heap_caps_register_failed_alloc_callback(on_alloc_failed);
+
+    // What this BOARD is, before anything asks: the name it answers to, the
+    // network it joins and how its DAC is wired (settings.hpp). NVS comes up
+    // here rather than inside the network, so a board that never associates
+    // still knows what it is. An empty partition - every QEMU run, and every
+    // board before someone provisions it - leaves the image's own Kconfig
+    // answers in place.
+    player::settings_load();
+    if (player::settings().slot_bits != player::sink_slot_bits() &&
+        !player::sink_set_slot_bits(player::settings().slot_bits)) {
+        std::printf("warning: this sink keeps its %d-bit slots; the stored %d-bit setting is not "
+                    "one it can take\n",
+                    player::sink_slot_bits(), player::settings().slot_bits);
+    }
+
+    // The network, if this build has one, before anything plays: a sink is
+    // found before it is played to, so the control surface has to answer and
+    // mDNS has to be advertising while the board sits idle (network.hpp). A
+    // build with no network says so and carries on; so does a board with
+    // nothing stored to join, which is what Improv is then there to fix.
+    (void)player::network_up();
+
+    // Found by name once it is on one (discovery.hpp), and told what to join
+    // when it is not: a browser over the same USB port this console is on
+    // (provision.hpp).
+    player::discovery_start();
+    player::provisioning_start();
+
     const auto layout = ac3::render::OutputLayout::parse(kLayoutText);
     if (!layout.has_value()) {
         std::printf("error: CONFIG_AC3FORGE_EXAMPLE_LAYOUT \"%s\" is not a layout - a name like "
