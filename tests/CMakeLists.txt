@@ -91,6 +91,7 @@ add_executable(ac3tests
     render/test_serving.cpp
     render/test_trim_delay.cpp
     io/test_dac_queue_model.cpp
+    io/test_playout.cpp
     io/test_metadata_edit.cpp
     io/test_probe.cpp
     emdf/test_emdf.cpp
