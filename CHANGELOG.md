@@ -495,6 +495,26 @@ and release packaging.
   - In `ac3tests`, four streams are each reported unit by unit: AC-3, E-AC-3 with mixing
     metadata, a stream a unit behind, and an object stream. The player's report changes with
     the item heard at a gapless join.
+- **Hearth's diagnostics file** (`apps/hearth/engine/diagnostic_log.hpp` and
+  `diagnostics_report.hpp`): the text the Settings page's "Save diagnostics" writes, in the
+  pattern of Crucible's.
+  - A bounded ring of stamped one-line notes. The engine notes each command as its thread
+    carries it out, with anything the transport said about it. The player notes each output it
+    opens and closes, with the format, and each item it starts, joins or cannot play. Units that
+    will not decode are noted once with the reason, then as a count once the item is done with.
+  - The file gives the version, the platform, the output, the playback state and decoder
+    settings, the items that cannot be played, the last 50 items played, the settings the
+    window passes, and the ring.
+  - File paths are left out, as the page says. A note names an item by its place in the queue
+    and its title. A loader's error can quote a path, so the item's folders are withheld before
+    it is noted: `C:\Music\a.ec3` reads `<withheld>\a.ec3`. The file never reads the engine's
+    free-text note or error. It withholds settings under `pairing/` and `queue/`, and scrubs
+    the queue's folders and the window's secrets from the finished text.
+  - `EngineStatus::output` gives the format the output is open at.
+  - In `ac3tests`, tagged `[diagnostics]`: the ring's order and cut; paths withheld in
+    Windows, POSIX, UNC and relative forms; the file's sections and limits; and what the
+    player and the engine note, in order, for a queue with a missing item, a join, a reopen,
+    damaged units and a refused output.
 
 **Audio outputs**
 

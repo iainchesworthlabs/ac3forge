@@ -1,10 +1,30 @@
 #include "decoder_settings.hpp"
 
+#include <fmt/format.h>
+
 #include <algorithm>
+#include <string>
+#include <vector>
 
 // See decoder_settings.hpp.
 
 namespace ac3::hearth {
+
+namespace {
+
+// The parts, comma-separated.
+[[nodiscard]] std::string joined(const std::vector<std::string>& parts) {
+    std::string out;
+    for (const std::string& part : parts) {
+        if (!out.empty()) {
+            out += ", ";
+        }
+        out += part;
+    }
+    return out;
+}
+
+}  // namespace
 
 DecoderSetup decoder_setup(const DecoderSettings& settings, const render::OutputLayout& layout) {
     DecoderSetup setup;
@@ -34,6 +54,64 @@ DecoderSetup decoder_setup(const DecoderSettings& settings, const render::Output
     config.concealment = settings.concealment;
     render::configure_decoder(setup.serving, config);
     return setup;
+}
+
+std::string describe(const DecoderSettings& settings) {
+    std::vector<std::string> parts;
+    switch (settings.mode) {
+        case OperatingMode::kLine: parts.emplace_back("line mode"); break;
+        case OperatingMode::kRf: parts.emplace_back("RF mode"); break;
+        case OperatingMode::kCustom:
+            parts.push_back(fmt::format("custom mode (cut {:.2f}, boost {:.2f}, compr {}, dialogue {})",
+                                        settings.drc_cut, settings.drc_boost,
+                                        settings.heavy_compression ? "on" : "off",
+                                        settings.normalise_dialogue ? "normalised" : "as coded"));
+            break;
+    }
+    parts.push_back(settings.stereo_fold == DownmixTarget::kLtRt
+                        ? fmt::format("stereo fold Lt/Rt (phase shift {})",
+                                      settings.ltrt_phase_shift ? "on" : "off")
+                        : std::string{"stereo fold Lo/Ro"});
+    parts.emplace_back(settings.mix_lfe ? "LFE in folds" : "no LFE in folds");
+
+    const MixLevelOverride& levels = settings.mix_levels;
+    std::vector<std::string> set;
+    if (levels.loro_clev) {
+        set.push_back(fmt::format("Lo/Ro centre {:.3f}", *levels.loro_clev));
+    }
+    if (levels.loro_slev) {
+        set.push_back(fmt::format("Lo/Ro surround {:.3f}", *levels.loro_slev));
+    }
+    if (levels.ltrt_clev) {
+        set.push_back(fmt::format("Lt/Rt centre {:.3f}", *levels.ltrt_clev));
+    }
+    if (levels.ltrt_slev) {
+        set.push_back(fmt::format("Lt/Rt surround {:.3f}", *levels.ltrt_slev));
+    }
+    if (levels.lfe_mix_level_db) {
+        set.push_back(fmt::format("LFE {:+.1f} dB", *levels.lfe_mix_level_db));
+    }
+    parts.push_back(set.empty() ? std::string{"the stream's mix levels"}
+                                : "mix levels " + joined(set));
+
+    switch (settings.dual_mono) {
+        case DualMonoChoice::kBoth: parts.emplace_back("dual mono: both"); break;
+        case DualMonoChoice::kFirst: parts.emplace_back("dual mono: channel 1"); break;
+        case DualMonoChoice::kSecond: parts.emplace_back("dual mono: channel 2"); break;
+    }
+    parts.push_back(settings.programme ? fmt::format("programme {}", *settings.programme)
+                                       : std::string{"the first programme"});
+    switch (settings.objects) {
+        case render::ObjectsPolicy::kAuto: parts.emplace_back("objects for height layouts"); break;
+        case render::ObjectsPolicy::kNever: parts.emplace_back("objects never"); break;
+        case render::ObjectsPolicy::kAlways: parts.emplace_back("objects always"); break;
+    }
+    switch (settings.concealment) {
+        case ConcealmentPolicy::kNone: parts.emplace_back("no concealment"); break;
+        case ConcealmentPolicy::kRepeatFade: parts.emplace_back("concealment: repeat and fade"); break;
+        case ConcealmentPolicy::kMute: parts.emplace_back("concealment: mute"); break;
+    }
+    return joined(parts);
 }
 
 }  // namespace ac3::hearth

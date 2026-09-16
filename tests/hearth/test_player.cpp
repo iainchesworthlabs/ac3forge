@@ -87,6 +87,7 @@ public:
         bool open = false;
         bool paused = false;
         bool refuse_open = false;
+        bool refuse_pause = false;
     };
 
     FakeDevice(std::shared_ptr<Log> log, std::size_t capacity)
@@ -161,6 +162,9 @@ public:
     }
 
     bool pause() override {
+        if (log_->refuse_pause) {
+            return false;
+        }
         log_->paused = true;
         return log_->open;
     }
@@ -1411,4 +1415,147 @@ TEST_CASE("player: a join starts the next item's loudness, and momentary loudnes
     CHECK_FALSE(latest.integrated_lkfs.has_value());
     CHECK((!latest.true_peak_dbtp || *latest.true_peak_dbtp < -60.0));
     CHECK(log->opens == 1);
+}
+
+namespace {
+
+// What the ring holds, without the stamps.
+std::vector<std::string> notes_in(const ac3::hearth::DiagnosticLog& diagnostics) {
+    std::vector<std::string> notes;
+    for (const std::string& line : diagnostics.lines()) {
+        notes.push_back(line.substr(ac3::hearth::DiagnosticLog::kStampBytes));
+    }
+    return notes;
+}
+
+std::string all_of(const std::vector<std::string>& notes) {
+    std::string out;
+    for (const std::string& note : notes) {
+        out += note;
+        out += '\n';
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("player: the diagnostics ring hears what playback did, and not where a file lives",
+          "[hearth][player][diagnostics]") {
+    Library library;
+    const std::string folder = "C:\\Users\\Someone\\Music\\";
+    library.files[folder + "a.ec3"] = eac3_stream(4);
+    library.files[folder + "b.ec3"] = eac3_stream(3);
+    library.files["/home/someone/c.ec3"] = eac3_stream(2, ac3::SampleRate::k44100);
+    auto log = std::make_shared<FakeDevice::Log>();
+    ac3::hearth::DiagnosticLog diagnostics;
+    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    REQUIRE(layout.has_value());
+    Player player{std::make_unique<FakeDevice>(log, 8192), library.loader(), *layout,
+                  DecoderSettings{}, &diagnostics};
+    const auto add = [&player](const std::string& path, const std::string& title) {
+        QueueItem entry = item(path);
+        entry.title = title;
+        player.add(entry);
+    };
+    add(folder + "a.ec3", "Song A");
+    add(folder + "missing.ec3", "Song M");
+    add(folder + "b.ec3", "Song B");
+    add("/home/someone/c.ec3", "Song C");
+    player.play();
+    REQUIRE(play_out(player, *log));
+
+    const auto notes = notes_in(diagnostics);
+    INFO(all_of(notes));
+    const std::vector<std::string> expected{
+        "output opened: local PCM, 48000 Hz, 6 channels (open 1)",
+        "item 1 \"Song A\" started: E-AC-3, 48000 Hz, 6 channels, 0.128 s",
+        "item 2 \"Song M\" cannot be played: no such file: <withheld>\\missing.ec3",
+        "item 3 \"Song B\" joined the open output: E-AC-3, 48000 Hz, 6 channels, 0.096 s",
+        "item 4 \"Song C\" is next, once the output has played out and reopened: \"Song C\" is "
+        "44100 Hz and the output is open at 48000 Hz, so it reopens - there is a gap.",
+        "output closed",
+        "output opened: local PCM, 44100 Hz, 6 channels (open 2)",
+        "item 4 \"Song C\" started: E-AC-3, 44100 Hz, 6 channels, 0.069 s",
+        "playback ends once the output has played out: The queue has finished.",
+        "output closed",
+    };
+    CHECK(notes == expected);
+    CHECK(diagnostics.dropped() == 0);
+}
+
+TEST_CASE("player: units that will not decode are noted once, then counted",
+          "[hearth][player][diagnostics]") {
+    // The middle of six units damaged, where only their CRC notices.
+    auto damaged = eac3_stream(12);
+    {
+        const auto scanned = ac3::io::scan(damaged);
+        REQUIRE(scanned.has_value());
+        REQUIRE(scanned->access_units.size() == 12);
+        for (std::size_t k = 3; k <= 8; ++k) {
+            const auto unit = scanned->access_units[k];
+            const auto at = static_cast<std::size_t>(unit.data() - damaged.data()) + (unit.size() / 2);
+            damaged[at] ^= std::byte{0xFF};
+        }
+    }
+    Library library;
+    library.files["damaged.ec3"] = damaged;
+    library.files["clean.ec3"] = eac3_stream(2);
+    auto log = std::make_shared<FakeDevice::Log>();
+    ac3::hearth::DiagnosticLog diagnostics;
+    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    REQUIRE(layout.has_value());
+    // Concealment would hide the damage from the player.
+    DecoderSettings settings;
+    settings.concealment = ac3::ConcealmentPolicy::kNone;
+    Player player{std::make_unique<FakeDevice>(log, 8192), library.loader(), *layout, settings,
+                  &diagnostics};
+    player.add(item("damaged.ec3"));
+    player.add(item("clean.ec3"));
+    player.play();
+    REQUIRE(play_out(player, *log));
+    CHECK_FALSE(player.last_error().empty());
+
+    const auto notes = notes_in(diagnostics);
+    INFO(all_of(notes));
+    REQUIRE(notes.size() == 7);
+    CHECK(notes[1].starts_with("item 1 \"damaged.ec3\" started: "));
+    CHECK(notes[2] == "item 1 \"damaged.ec3\" has a unit that could not be decoded: An E-AC-3 "
+                      "access unit could not be decoded: the frame's CRC does not check out.");
+    CHECK(notes[3] == "item 1 \"damaged.ec3\" had 5 more units that could not be decoded");
+    CHECK(notes[4].starts_with("item 2 \"clean.ec3\" joined the open output: "));
+    CHECK(notes[6] == "output closed");
+}
+
+TEST_CASE("player: an output that will not open or pause is noted", "[hearth][player][diagnostics]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(40);
+    auto log = std::make_shared<FakeDevice::Log>();
+    ac3::hearth::DiagnosticLog diagnostics;
+    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    REQUIRE(layout.has_value());
+    Player player{std::make_unique<FakeDevice>(log, 8192), library.loader(), *layout,
+                  DecoderSettings{}, &diagnostics};
+    player.add(item("a.ec3"));
+    log->refuse_open = true;
+    player.play();
+    log->refuse_open = false;
+    player.play();
+    player.pump();
+    log->refuse_pause = true;
+    player.pause();
+    log->refuse_pause = false;
+    player.play();
+    player.stop();
+
+    const auto notes = notes_in(diagnostics);
+    INFO(all_of(notes));
+    const std::vector<std::string> expected{
+        "item 1 \"a.ec3\" could not start: the output would not open: The fake device refused to "
+        "open.",
+        "output opened: local PCM, 48000 Hz, 2 channels (open 1)",
+        "item 1 \"a.ec3\" started: E-AC-3, 48000 Hz, 6 channels, 1.280 s",
+        "the output would not pause",
+        "output closed",
+    };
+    CHECK(notes == expected);
 }

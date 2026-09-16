@@ -7,6 +7,8 @@
 add_library(ac3hearth_engine STATIC
     decoder_settings.cpp
     device_sink.cpp
+    diagnostic_log.cpp
+    diagnostics_report.cpp
     engine_thread.cpp
     media_info.cpp
     media_inspector.cpp

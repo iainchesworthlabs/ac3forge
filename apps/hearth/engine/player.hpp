@@ -7,10 +7,12 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "ac3/render/layout.hpp"
 #include "decoder_settings.hpp"
+#include "diagnostic_log.hpp"
 #include "pcm_sink.hpp"
 #include "play_meters.hpp"
 #include "queue.hpp"
@@ -39,6 +41,12 @@
 // own clock), then closes and opens the output at the new format. The record
 // of where each item began in the output's timeline and how many frames it
 // delivered is kept, which is what A3's exit checks at every join.
+//
+// Given a diagnostics ring (diagnostic_log.hpp), the player notes what it did
+// and could not do: each output opened and closed, each item started, joined
+// or refused, and units that would not decode - the first with its reason,
+// the rest as a count once the item is done with, so a damaged file writes
+// two lines rather than one per unit.
 
 namespace ac3::hearth {
 
@@ -82,8 +90,9 @@ struct PumpReport {
 class Player {
 public:
     // `layout` is what every item is rendered onto; the sink places its slots.
+    // `diagnostics`, when given, outlives the player.
     Player(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout,
-           const DecoderSettings& settings = {});
+           const DecoderSettings& settings = {}, DiagnosticLog* diagnostics = nullptr);
 
     // The transport holds the queue's address, so a player stays where it
     // was made.
@@ -227,6 +236,19 @@ private:
     // Moves the history's queue indices the way an edit moved the items.
     void remap_history(const std::function<std::size_t(std::size_t)>& moved);
 
+    // The diagnostics notes, when there is a ring to write to. A line about
+    // an item names it by its place and title (describe_item()), with the
+    // item's folder withheld, since what a loader says can quote its path.
+    void note(std::string_view line) const;
+    void note_item(std::size_t index, std::string_view title, std::string_view what) const;
+    [[nodiscard]] std::string_view title_of(std::size_t index) const;
+    // The item session_ plays has started from an open, or joined.
+    void note_started(std::size_t item, bool joined) const;
+    // A unit of the item being decoded would not decode.
+    void note_unit_error(const std::string& reason);
+    // Notes how many more units of that item would not decode, if any.
+    void settle_unit_errors();
+
     std::unique_ptr<PcmSink> sink_;
     ItemLoader loader_;
     render::OutputLayout layout_;
@@ -270,6 +292,12 @@ private:
     // Each unit's report, stamped like the meters' snapshots.
     UnitReports reports_;
     std::string last_error_;
+
+    DiagnosticLog* diagnostics_ = nullptr;
+    // The history entry whose first undecodable unit has been noted, and how
+    // many more of its units have failed since.
+    std::size_t unit_error_record_ = Queue::kNone;
+    std::uint64_t unit_errors_more_ = 0;
 };
 
 }  // namespace ac3::hearth
