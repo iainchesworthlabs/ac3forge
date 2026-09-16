@@ -133,10 +133,11 @@ void report_unit(const DecodedAccessUnit& unit, UnitReport& out) {
 }  // namespace
 
 StreamDecoder::StreamDecoder(const render::OutputLayout& layout, std::uint32_t sample_rate,
-                             const DecoderSettings& settings)
+                             const DecoderSettings& settings, Substreams substreams)
     : layout_(layout),
       sample_rate_(sample_rate),
       settings_(settings),
+      substreams_(substreams),
       serving_(decoder_setup(settings, layout).serving),
       config_(decoder_setup(settings, layout).config),
       renderer_(layout, sample_rate) {}
@@ -151,15 +152,21 @@ void StreamDecoder::reset() {
     renderer_ = render::LayoutRenderer{layout_, sample_rate_};
 }
 
-std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const std::byte> unit,
+std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const std::byte> whole,
                                                               const BlockFn& deliver,
                                                               const UnitFn& reported) {
     delivered_ = 0;
-    const auto header = io::read_frame_header(unit);
+    const auto header = io::read_frame_header(whole);
     if (!header) {
         reset();
         return std::unexpected(std::string{"A frame header could not be read."});
     }
+    // A unit's first syncframe is its independent substream (or its AC-3
+    // core); the dependents follow it.
+    const std::span<const std::byte> unit =
+        substreams_ == Substreams::kIndependent && header->bytes < whole.size()
+            ? whole.first(header->bytes)
+            : whole;
     if (header->kind == io::StreamKind::kEac3) {
         // One programme: the first unit's. A unit starts at an independent
         // substream, so this is that programme's id, not a dependent's.

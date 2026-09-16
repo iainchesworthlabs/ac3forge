@@ -149,11 +149,33 @@ TEST_CASE("output selector: rows are read once a rate, and again after a refresh
     selector.refresh();
     choice = selector.choose(eac3_item());
     CHECK(asked == std::vector<std::uint32_t>{48000, 44100, 48000});
-    // An endpoint that takes AC-3 only is decoded for, not transcoded to:
-    // the engine has no streaming transcode yet.
-    CHECK(choice.mode == OutputMode::kLocalPcm);
+    // An endpoint that takes AC-3 only is transcoded to.
+    CHECK(choice.mode == OutputMode::kBitstreamAsAc3);
     CHECK(choice.endpoint_id == "hdmi-id");
-    CHECK(mentions(choice.reason, "No output takes E-AC-3 over IEC 61937."));
+    CHECK(mentions(choice.reason, "transcoded to AC-3"));
+}
+
+TEST_CASE("output selector: a transcode is offered at the rates AC-3 has, over a link",
+          "[hearth][output-decision]") {
+    const auto source = [](std::uint32_t) {
+        return std::vector<EndpointReading>{probed(/*ac3=*/true, /*eac3=*/false)};
+    };
+    OutputSelector selector{source};
+    CHECK(selector.choose(eac3_item(48000)).mode == OutputMode::kBitstreamAsAc3);
+    CHECK(selector.choose(eac3_item(44100)).mode == OutputMode::kBitstreamAsAc3);
+    CHECK(selector.choose(eac3_item(32000)).mode == OutputMode::kBitstreamAsAc3);
+    // AC-3 has no 24 kHz, so an E-AC-3 item there is decoded.
+    const auto half = selector.choose(eac3_item(24000));
+    CHECK(half.mode == OutputMode::kLocalPcm);
+    CHECK(mentions(half.reason, "No output takes E-AC-3"));
+    // AC-3 itself needs no transcode.
+    ItemFacts ac3 = eac3_item();
+    ac3.stream = BitstreamFormat::kAc3;
+    CHECK(selector.choose(ac3).mode == OutputMode::kBitstream);
+
+    // With no link, nothing is transcoded either.
+    OutputSelector linkless{source, /*bitstream_output=*/false};
+    CHECK(linkless.choose(eac3_item()).mode == OutputMode::kLocalPcm);
 }
 
 TEST_CASE("output selector: the endpoint the player holds is not judged by a probe that cannot open it",
@@ -196,7 +218,8 @@ TEST_CASE("output selector: the endpoint the player holds is not judged by a pro
         busy = true;
         receiver_takes_eac3 = false;
         selector.refresh();
-        CHECK(selector.choose(eac3_item(), eac3_link()).mode == OutputMode::kLocalPcm);
+        // It still takes AC-3, so the item is transcoded to that.
+        CHECK(selector.choose(eac3_item(), eac3_link()).mode == OutputMode::kBitstreamAsAc3);
     }
 
     SECTION("an endpoint never read free is taken to carry what its link carries") {

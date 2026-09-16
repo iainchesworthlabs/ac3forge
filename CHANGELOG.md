@@ -567,10 +567,46 @@ and release packaging.
     - A player with no passthrough output decodes.
   - A programme other than a stream's first is decoded, since a receiver plays only the
     first. The meters stay in step after a unit that does not decode.
-  - E-AC-3 on a sink that takes only AC-3 is decoded for now; the streaming transcode is next.
+  - E-AC-3 on a sink that takes only AC-3 is transcoded (the next entry).
   - In `ac3tests`, tagged `[bitstream]` and `[output-decision]`: bursts checked byte for byte
     against `wrap_frame()` and `Eac3BurstPacker`, joins, reopens, a seek, pause, the meters,
     an edit list, a missing link, an output that changes mid-item, and the engine's commands.
+- **Hearth's engine transcodes E-AC-3 to AC-3** (`apps/hearth/engine/ac3_transcoder.hpp`) for
+  a receiver that takes AC-3 but not E-AC-3, over the same IEC 61937 link (the appliance
+  plan's gap 4).
+  - The item is decoded onto 5.1 with neutral settings and encoded as 3/2 with LFE at
+    448 kbit/s, as `ac3cli transcode` does. A 7.1 stream is decoded from its independent
+    substream, the 5.1 its own encoder made (`StreamDecoder`'s new `Substreams`).
+  - Each frame carries the dialnorm and service of the unit that fills most of it, so at a
+    join a frame is levelled as the item it mostly holds.
+  - Each frame also carries a compr word. It is the most attenuating word sent by the units
+    the frame's gain reaches. Where any of those units sent none, a word metered from the
+    frame against its own dialnorm (as the encoder meters) also counts, so RF mode stays
+    protected.
+  - Dual mono heard as its second channel carries that channel's dialnorm and compr word.
+  - dynrng is not carried, as on the command line.
+  - An encoder's fold levels are fixed, so the link takes the first item's. An item that
+    folds at other levels reopens rather than joining.
+  - The decode can be cut, so an edit list is honoured to the sample. Items with the same
+    fold levels join through one encoder whatever their frame lengths.
+  - The encoder's 256-sample delay is part of the link's timeline, so the position, the
+    meters and the unit reports run that much behind the decode. What the encoder still
+    holds is padded out and sent before the output plays out or reopens.
+  - The meters show what is sent, and the decoder settings do not apply; the status says so.
+  - The output selector offers the transcode over a passthrough output at 48, 44.1 or 32 kHz.
+  - `choose_output()` fixes: a pinned AC-3 bitstream sends AC-3 items untouched without a
+    transcode. When the transcode is what is missing, the reason says so rather than
+    claiming no output takes AC-3.
+  - In `ac3tests`, tagged `[transcode]`:
+    - each slot coming back through AC-3 in place, 256 samples late;
+    - the metadata in every frame, and the padding;
+    - the player's link checked byte for byte against a separate decoder and encoder,
+      across a join, an edit list, a seek, a reopen and a 7.1 item;
+    - the compr word matching what an encoder given the frame's dialnorm writes;
+    - a join that changes dialnorm, and one that changes fold levels;
+    - a concealment chosen mid-item reaching what is sent;
+    - an output change into a transcode;
+    - the engine choosing one.
 
 **Audio outputs**
 

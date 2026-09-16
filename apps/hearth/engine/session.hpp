@@ -99,6 +99,8 @@ public:
 
     [[nodiscard]] const ItemFacts& facts() const { return facts_; }
     [[nodiscard]] std::size_t unit_count() const { return units_.size(); }
+    // The programme's first access unit, as the stream carries it.
+    [[nodiscard]] std::span<const std::byte> first_unit() const { return units_.front(); }
     // The programme playing: its independent substream id (0 for AC-3).
     [[nodiscard]] int programme() const { return programme_; }
     // Whether that is the stream's first programme, which is the one a

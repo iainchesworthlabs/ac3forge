@@ -13,6 +13,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
+#include "ac3/encoder/plan.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/render/layout.hpp"
@@ -474,4 +475,64 @@ TEST_CASE("stream decoder: dual mono plays the programme the settings choose",
         CHECK(std::ranges::equal(second_left, both_right));
         CHECK(std::ranges::equal(second_right, both_right));
     }
+}
+
+TEST_CASE("stream decoder: an independent-only decoder plays a unit's first substream alone",
+          "[hearth][stream-decoder]") {
+    // 7.1: a 5.1 independent substream and a dependent that adds to it.
+    ac3::plan::Plan plan;
+    plan.codec = ac3::plan::Codec::kEac3;
+    plan.layout = ac3::plan::LayoutId::k71;
+    plan.bitrate_kbps = 384;
+    ac3::eac3::AccessUnitEncoder encoder{ac3::plan::eac3_config(plan)};
+    const auto coded = static_cast<std::size_t>(encoder.channel_count());
+    REQUIRE(coded > 6);
+    std::vector<std::vector<std::byte>> units;
+    std::vector<std::vector<std::byte>> cores;
+    for (int f = 0; f < 6; ++f) {
+        const auto offset = static_cast<std::size_t>(f) * ac3::kSamplesPerFrame;
+        std::vector<std::vector<float>> channels;
+        for (std::size_t c = 0; c < coded; ++c) {
+            channels.push_back(tone(200.0 + (150.0 * static_cast<double>(c)), 0.2,
+                                    ac3::kSamplesPerFrame, offset));
+        }
+        const std::vector<std::span<const float>> views(channels.begin(), channels.end());
+        auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+        REQUIRE(unit->substream_count() > 1);
+        const auto core = unit->substream(0);
+        cores.emplace_back(core.begin(), core.end());
+        units.push_back(std::move(unit->bytes));
+    }
+
+    const auto collect = [](StreamDecoder& decoder, const std::vector<std::vector<std::byte>>& in) {
+        std::vector<float> out;
+        const auto deliver = [&out](std::span<const std::span<const float>> slots,
+                                    std::size_t frames) {
+            for (const auto slot : slots) {
+                const auto part = slot.first(frames);
+                out.insert(out.end(), part.begin(), part.end());
+            }
+        };
+        for (const auto& unit : in) {
+            REQUIRE(decoder.decode(unit, deliver).has_value());
+        }
+        decoder.finish(deliver);
+        return out;
+    };
+    const auto layout = ac3::render::OutputLayout::named("5.1");
+    REQUIRE(layout.has_value());
+    const auto settings = ac3::hearth::transcode_settings({});
+    StreamDecoder independent{*layout, 48000, settings, ac3::hearth::Substreams::kIndependent};
+    StreamDecoder first_only{*layout, 48000, settings};
+    StreamDecoder whole{*layout, 48000, settings};
+    CHECK(independent.substreams() == ac3::hearth::Substreams::kIndependent);
+    CHECK(whole.substreams() == ac3::hearth::Substreams::kAll);
+
+    const auto from_units = collect(independent, units);
+    REQUIRE(from_units.size() == 6 * 6 * ac3::kSamplesPerFrame);
+    // Compared with ranges::equal so a failure prints a verdict, not
+    // thousands of samples.
+    CHECK(std::ranges::equal(from_units, collect(first_only, cores)));
+    CHECK_FALSE(std::ranges::equal(from_units, collect(whole, units)));
 }
