@@ -17,6 +17,12 @@ that are negatives: the driver is not in the package
 (test_windows_zip_must_not_carry_a_driver_inf) and neither is any part of Qt's
 test module (test_windows_zip_must_not_carry_qt_test). Both of those exist to
 go red on the day their subject comes back.
+test_macos_zip_must_not_carry_a_driver_script and
+test_macos_zip_must_not_carry_qt_test are the same two rules again for the
+macOS bundle shape, and test_dispatch_is_by_bundle_content_not_filename guards
+the thing that tells a macOS archive from a Windows one in the first place -
+both are ac3forge-crucible-<version>-<system>.zip alike, so main() has to look
+inside.
 
 Run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 """
@@ -54,6 +60,17 @@ LINUX_NOTICES = (
     "{fmt} 12.2.0\n"
     "SIL OPEN FONT LICENSE Version 1.1\n"
 )
+# Windows' own text minus the driver's MS-PL line: macOS bundles Qt the same
+# way (qt-bundled.txt is the same fragment, unchanged, on both platforms) but
+# installs no driver, so there is nothing to credit for one.
+MACOS_NOTICES = (
+    "AC3Forge Crucible 0.10.0 - third-party notices, macOS build\n"
+    "This package includes the Qt 6.8.3 libraries.\n"
+    "https://download.qt.io/archive/qt/6.8/6.8.3/single/\n"
+    "GNU LESSER GENERAL PUBLIC LICENSE\n"
+    "{fmt} 12.2.0\n"
+    "SIL OPEN FONT LICENSE Version 1.1\n"
+)
 
 
 def windows_zip(directory, notices, quick3d_payload=True, extra=()):
@@ -69,6 +86,25 @@ def windows_zip(directory, notices, quick3d_payload=True, extra=()):
         archive.writestr("qml/QtQuick/Controls/qmldir", "")
         if quick3d_payload:
             archive.writestr("qml/QtQuick3D/qmldir", "")
+        for name in extra:
+            archive.writestr(name, "")
+    return path
+
+
+def macos_zip(directory, notices, quick3d_payload=True, extra=()):
+    """A zip with every required name, the two QML modules, and this NOTICES.txt.
+
+    The macOS bundle shape. Same `extra` role as windows_zip(): members the
+    required list does not name, for exercising the two negative rules (the
+    driver scripts, Qt's test module).
+    """
+    path = os.path.join(directory, "ac3forge-crucible-test-Darwin.zip")
+    with zipfile.ZipFile(path, "w") as archive:
+        for name in gate.REQUIRED_MACOS:
+            archive.writestr(name, notices if name == "NOTICES.txt" else "")
+        archive.writestr("ac3crucible.app/Contents/Resources/qml/QtQuick/Controls/qmldir", "")
+        if quick3d_payload:
+            archive.writestr("ac3crucible.app/Contents/Resources/qml/QtQuick3D/qmldir", "")
         for name in extra:
             archive.writestr(name, "")
     return path
@@ -104,6 +140,9 @@ class NoticesContentTest(unittest.TestCase):
             self.assertEqual(code, 0, out)
             self.assertIn("notices", out)
             code, out = run(linux_tar(directory, LINUX_NOTICES))
+            self.assertEqual(code, 0, out)
+            self.assertIn("notices", out)
+            code, out = run(macos_zip(directory, MACOS_NOTICES + QUICK3D_SECTION))
             self.assertEqual(code, 0, out)
             self.assertIn("notices", out)
 
@@ -232,6 +271,95 @@ class NoticesContentTest(unittest.TestCase):
             self.assertEqual(code, 0, out)
             self.assertIn("no Qt Test", out)
 
+    def test_macos_zip_with_windows_notices_fails(self):
+        # The one phrase that actually distinguishes the two: both platforms
+        # bundle Qt (same LGPL heading, same source URL), so the driver's
+        # MS-PL text is the only thing a Windows NOTICES.txt says that a
+        # macOS one must not.
+        with tempfile.TemporaryDirectory() as directory:
+            code, out = run(macos_zip(directory, WINDOWS_NOTICES + QUICK3D_SECTION))
+            self.assertEqual(code, 1)
+            self.assertIn("::error::", out)
+            self.assertIn("Microsoft Public License", out)
+
+    def test_macos_quick3d_payload_and_notices_must_agree(self):
+        with tempfile.TemporaryDirectory() as directory:
+            code, out = run(macos_zip(directory, MACOS_NOTICES, quick3d_payload=True))
+            self.assertEqual(code, 1)
+            self.assertIn("does not name Qt Quick 3D", out)
+            code, out = run(
+                macos_zip(directory, MACOS_NOTICES + QUICK3D_SECTION, quick3d_payload=False)
+            )
+            self.assertEqual(code, 1)
+            self.assertIn("QtQuick3D", out)
+            code, out = run(
+                macos_zip(directory, MACOS_NOTICES + QUICK3D_SECTION, quick3d_payload=True)
+            )
+            self.assertEqual(code, 0, out)
+
+    def test_macos_zip_must_not_carry_a_driver_script(self):
+        # macOS needs no driver at all - it silences at the tap instead - so
+        # unlike the Windows rule (which watches for the INF a driver install
+        # would add), this one watches for the driver's own PowerShell
+        # scripts leaking in, the same three names FORBIDDEN_LINUX watches
+        # Linux for.
+        with tempfile.TemporaryDirectory() as directory:
+            good = macos_zip(directory, MACOS_NOTICES + QUICK3D_SECTION)
+            code, out = run(good)
+            self.assertEqual(code, 0, out)
+            self.assertIn("no driver scripts", out)
+        with tempfile.TemporaryDirectory() as directory:
+            shipped = macos_zip(
+                directory,
+                MACOS_NOTICES + QUICK3D_SECTION,
+                extra=("bin/driver/install.ps1",),
+            )
+            code, out = run(shipped)
+            self.assertEqual(code, 1)
+            self.assertIn("Windows driver script", out)
+            self.assertIn("bin/driver/install.ps1", out)
+
+    def test_macos_zip_must_not_carry_qt_test(self):
+        # The three shapes Qt's test module can leak into a macOS bundle in -
+        # the QML module itself, the flat PlugIns copy of its plugin, and
+        # either of the two Frameworks it depends on - each checked
+        # separately, the same reasoning as the Windows version of this test:
+        # a check that only ever saw them together would pass a partial
+        # removal.
+        payloads = (
+            "ac3crucible.app/Contents/Resources/qml/QtTest/qmldir",
+            "ac3crucible.app/Contents/PlugIns/libquicktestplugin.dylib",
+            "ac3crucible.app/Contents/Frameworks/QtTest.framework/QtTest",
+            "ac3crucible.app/Contents/Frameworks/QtQuickTest.framework/QtQuickTest",
+        )
+        for payload in payloads:
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as directory:
+                code, out = run(
+                    macos_zip(directory, MACOS_NOTICES + QUICK3D_SECTION, extra=(payload,))
+                )
+                self.assertEqual(code, 1)
+                self.assertIn("carries Qt's test module", out)
+                self.assertIn(payload, out)
+        with tempfile.TemporaryDirectory() as directory:
+            code, out = run(macos_zip(directory, MACOS_NOTICES + QUICK3D_SECTION))
+            self.assertEqual(code, 0, out)
+            self.assertIn("no Qt Test", out)
+
+    def test_dispatch_is_by_bundle_content_not_filename(self):
+        # Windows and macOS packages are both ac3forge-crucible-<version>-
+        # <system>.zip (cmake/Packaging.cmake) - main() tells them apart by a
+        # top-level "*.app/" entry, not by name. Proved here by renaming a
+        # macOS-shaped archive to something that says nothing about the
+        # platform and confirming it still gets the macOS rules (the success
+        # message names which rules ran).
+        with tempfile.TemporaryDirectory() as directory:
+            macos_path = macos_zip(directory, MACOS_NOTICES + QUICK3D_SECTION)
+            renamed = os.path.join(directory, "ac3forge-crucible-test.zip")
+            os.replace(macos_path, renamed)
+            code, out = run(renamed)
+            self.assertEqual(code, 0, out)
+            self.assertIn("the macOS package holds", out)
+
     def test_missing_notices_is_reported_by_name(self):
         with tempfile.TemporaryDirectory() as directory:
             path = os.path.join(directory, "ac3forge-crucible-bare-win64.zip")
@@ -241,6 +369,17 @@ class NoticesContentTest(unittest.TestCase):
                         archive.writestr(name, "")
                 archive.writestr("qml/QtQuick/qmldir", "")
                 archive.writestr("qml/QtQuick3D/qmldir", "")
+            code, out = run(path)
+            self.assertEqual(code, 1)
+            self.assertIn("missing NOTICES.txt", out)
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "ac3forge-crucible-bare-Darwin.zip")
+            with zipfile.ZipFile(path, "w") as archive:
+                for name in gate.REQUIRED_MACOS:
+                    if name != "NOTICES.txt":
+                        archive.writestr(name, "")
+                archive.writestr("ac3crucible.app/Contents/Resources/qml/QtQuick/qmldir", "")
+                archive.writestr("ac3crucible.app/Contents/Resources/qml/QtQuick3D/qmldir", "")
             code, out = run(path)
             self.assertEqual(code, 1)
             self.assertIn("missing NOTICES.txt", out)
