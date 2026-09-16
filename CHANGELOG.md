@@ -508,17 +508,6 @@ and release packaging.
 
 **Minimum-footprint / ESP32 decode and encode profile**
 
-- **An E-AC-3 stream using AHT decodes without a frame buffer of its own.** An AHT stream
-  sends all six blocks' mantissas in block 0, and the decoder held them in a buffer per
-  stream until each block copied its own out: 6,144 bytes a stream in the float build,
-  36,864 for a 7.1.4 stream's six streams and 43,008 with the coupling channel. Block 0 now
-  decodes them straight into the per-block coefficient store the decoder already keeps for
-  every stream of every block, and the buffer and the copies are gone. The PCM is unchanged
-  bit for bit in the `double`, `float` and `fixed` tiers. Under QEMU, in the ESP32-S3's
-  7.1.4 network shape without PSRAM, `714-aht.ec3` and `714-all.ec3` no longer abort for
-  want of internal RAM: over two runs each, their least free internal heap during the play
-  was 31,224 to 32,032 and 30,072 to 31,584 bytes, where the 7.1.4 streams CI already plays
-  reach 30,292 to 35,040.
 - **The fixed-point tier decodes 5.1 in real time on the ESP32-C6 with WiFi up**, with the
   same PCM bit for bit: the fixed-tier hashes do not move. The IMDCT pair's products drop a
   saturation they cannot reach, the overlap-add runs on 32 bits and builds its output floats
@@ -544,6 +533,17 @@ and release packaging.
   1.1 — every level unchanged to the digit throughout. [The ESP32-S3
   page](docs/platforms/bare-metal/esp32-s3.md#timing) has the full stage tables and a capability table
   of what fits the part.
+- **An E-AC-3 stream using AHT decodes without a frame buffer of its own.** An AHT stream
+  sends all six blocks' mantissas in block 0, and the decoder held them in a buffer per
+  stream until each block copied its own out: 6,144 bytes a stream in the float build,
+  36,864 for a 7.1.4 stream's six streams and 43,008 with the coupling channel. Block 0 now
+  decodes them straight into the per-block coefficient store the decoder already keeps for
+  every stream of every block, and the buffer and the copies are gone. The PCM is unchanged
+  bit for bit in the `double`, `float` and `fixed` tiers. Under QEMU, in the ESP32-S3's
+  7.1.4 network shape without PSRAM, `714-aht.ec3` and `714-all.ec3` no longer abort for
+  want of internal RAM: over two runs each, their least free internal heap during the play
+  was 31,224 to 32,032 and 30,072 to 31,584 bytes, where the 7.1.4 streams CI already plays
+  reach 30,292 to 35,040.
 - **The encoders now run their analysis front end and coefficient store in
   `encode_scalar_t`** (roadmap PF7, a second scalar axis beside the decoder's):
   transient detection, the block gather, the forward transform, and — in a second pass
