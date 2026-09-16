@@ -73,6 +73,9 @@ _ac3forge_player@v1, and writes a report of what each said about it.
                        commas: -6,-6 plays a two-output board 6 dB down
     --status URL       its GET /status, read once a second while it plays,
                        such as http://192.168.1.40/status
+    --hold             only connect, and stay connected unpaired, as a
+                       second server such as Music Assistant does: it is not
+                       paired or played to, and may be displaced
 
   --play FILE          the programme, an .ac3 or .ec3 file
   --seconds N          play the file over and over for at least N seconds
@@ -98,6 +101,10 @@ constexpr int kExitSetup = 2;
 constexpr int kExitPlay = 3;
 
 constexpr std::uint32_t kSampleRate = 48000;
+// The samples in every burst (planning/hearth-sendspin-extension.md, Burst chunks).
+constexpr std::int64_t kSamplesPerBurst = 1536;
+// How long after its last burst has played a programme ends: past the players' output queues.
+constexpr std::int64_t kEndMarginUs = 500'000;
 
 std::mutex g_log_mutex;
 const SteadyClock::time_point g_started = SteadyClock::now();
@@ -118,6 +125,7 @@ struct PlayerSpec {
     std::optional<std::string> layout;
     std::optional<std::vector<double>> trim_db;
     std::optional<std::string> status_url;
+    bool hold = false;
     bool in_process = false;
 };
 
@@ -403,6 +411,10 @@ class BurstSource {
         run.spec.label = view->name;
     }
     run.dialect = view->dialect == ss::Dialect::kAiosendspin911 ? "aiosendspin 9.1.1" : "specification";
+    if (run.spec.hold) {
+        note(run.spec.label + ": connected, and held without pairing (" + psk_text(view->psk) + ")");
+        return true;
+    }
     run.paired_by = run.spec.token ? "token" : view->psk == ss::handshake::PskCategory::kLongTerm ? "record" : "";
 
     // Paired: by its record, by its token (entered before dialling), or by the code it shows.
@@ -684,6 +696,14 @@ int main(int argc, char** argv) {
             std::cout << kUsage;
             return EXIT_SUCCESS;
         }
+        if (argument == "--hold") {
+            if (players.empty() || players.back().in_process) {
+                std::cerr << "--hold follows a --player\n";
+                return kExitUsage;
+            }
+            players.back().hold = true;
+            continue;
+        }
         if (i + 1 >= arguments.size()) {
             std::cerr << argument << " needs a value\n";
             return kExitUsage;
@@ -868,9 +888,25 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Held players only: nothing is played, and the connections are kept for the programme's
+    // length, for another server to find the players taken.
+    const bool any_played = std::any_of(runs.begin(), runs.end(), [](const PlayerRun& run) { return !run.spec.hold; });
+    if (!any_played) {
+        const auto hold_for = std::chrono::seconds(seconds.value_or(10));
+        note("holding " + std::to_string(runs.size()) + " connection(s) for " +
+             std::to_string(static_cast<long>(hold_for.count())) + " s");
+        std::this_thread::sleep_for(hold_for);
+        for (PlayerRun& run : runs) {
+            run.failure = events.gone(run.client_id) ? std::optional<std::string>("displaced or closed") : std::nullopt;
+        }
+        return finish(EXIT_SUCCESS, "pass", std::nullopt, 0, 0.0);
+    }
+
     std::shared_ptr<ss::Group> group = (*host)->make_group("Test group");
     for (const PlayerRun& run : runs) {
-        group->add(run.client_id);
+        if (!run.spec.hold) {
+            group->add(run.client_id);
+        }
     }
     const ac::DataType data_type =
         stream->kind == ac3::io::StreamKind::kAc3 ? ac::DataType::kAc3 : ac::DataType::kEac3;
@@ -912,9 +948,32 @@ int main(int argc, char** argv) {
 
     BurstSource source(*stream, passes);
     std::uint64_t sent = 0;
+    // The programme frame after the last burst sent.
+    std::int64_t end_frame = 0;
     std::string failure;
     std::optional<ss::Group::Burst> burst;
     std::string error;
+    // Each player still there, and what it last said of its decoder and levels.
+    const auto check_players = [&] {
+        for (PlayerRun& run : runs) {
+            if (run.spec.hold) {
+                continue;
+            }
+            const std::optional<ss::ClientView> view = (*host)->client(run.client_id);
+            if (events.gone(run.client_id) || !view) {
+                failure = run.spec.label + " went away during the play";
+                continue;
+            }
+            if (view->ac3forge_state) {
+                if (view->ac3forge_state->decoder) {
+                    run.decoder = view->ac3forge_state->decoder;
+                }
+                if (view->ac3forge_state->levels && !view->ac3forge_state->levels->empty()) {
+                    run.levels = *view->ac3forge_state->levels;
+                }
+            }
+        }
+    };
     const SteadyClock::time_point play_deadline =
         SteadyClock::now() + std::chrono::milliseconds(static_cast<std::int64_t>(programme_seconds * 1500.0)) + 60s;
     SteadyClock::time_point next_check = SteadyClock::now();
@@ -927,27 +986,14 @@ int main(int argc, char** argv) {
         }
         if (group->push_burst(*burst)) {
             ++sent;
+            end_frame = burst->frame + kSamplesPerBurst;
             burst.reset();
         } else {
             std::this_thread::sleep_for(5ms);
         }
         if (SteadyClock::now() >= next_check) {
             next_check = SteadyClock::now() + 250ms;
-            for (PlayerRun& run : runs) {
-                const std::optional<ss::ClientView> view = (*host)->client(run.client_id);
-                if (events.gone(run.client_id) || !view) {
-                    failure = run.spec.label + " went away during the play";
-                    continue;
-                }
-                if (view->ac3forge_state) {
-                    if (view->ac3forge_state->decoder) {
-                        run.decoder = view->ac3forge_state->decoder;
-                    }
-                    if (view->ac3forge_state->levels && !view->ac3forge_state->levels->empty()) {
-                        run.levels = *view->ac3forge_state->levels;
-                    }
-                }
-            }
+            check_players();
             if (SteadyClock::now() >= play_deadline) {
                 failure = "the play took too long: the group stopped taking bursts";
             }
@@ -957,6 +1003,17 @@ int main(int argc, char** argv) {
         failure = error;
     }
     const std::optional<std::int64_t> start_server_us = group->start_time();
+    // The group sends ahead of play, and stream/end has a player drop what it has not played yet
+    // (planning/hearth-sendspin-extension.md, stream/end): the end waits for the last burst to have
+    // played, and for the players' output queues after it.
+    if (failure.empty() && start_server_us) {
+        const std::int64_t played_out_us = *start_server_us + (end_frame * 1'000'000 / kSampleRate) + kEndMarginUs;
+        const ss::SteadyClock server_clock;
+        while (failure.empty() && server_clock.now_us() < played_out_us) {
+            std::this_thread::sleep_for(250ms);
+            check_players();
+        }
+    }
     group->stop();
 
     // Every player has played every burst, or has stopped counting.
@@ -966,7 +1023,8 @@ int main(int argc, char** argv) {
         while (SteadyClock::now() < settle) {
             bool done = true;
             for (const PlayerRun& run : runs) {
-                const std::optional<ss::ClientView> view = (*host)->client(run.client_id);
+                const std::optional<ss::ClientView> view =
+                    run.spec.hold ? std::nullopt : (*host)->client(run.client_id);
                 if (!view || !view->ac3forge_state) {
                     continue;
                 }
@@ -994,6 +1052,9 @@ int main(int argc, char** argv) {
 
     // What each player reported of the play.
     for (PlayerRun& run : runs) {
+        if (run.spec.hold) {
+            continue;
+        }
         const std::optional<ss::ClientView> view = (*host)->client(run.client_id);
         if (!view || !view->ac3forge_state) {
             if (failure.empty()) {
