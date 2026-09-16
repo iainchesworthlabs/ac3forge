@@ -60,23 +60,27 @@ void feed(ac3::audio::PassthroughSink& sink, const std::vector<std::byte>& burst
     }
 }
 
+// The first output the enumeration says takes AC-3, or nothing.
+std::string ac3_output() {
+    const auto devices = ac3::audio::enumerate_render_devices(kRate);
+    if (devices) {
+        for (const auto& device : *devices) {
+            if (device.supports_ac3_passthrough) {
+                WARN("bitstreaming to " << device.name);
+                return device.id;
+            }
+        }
+    }
+    WARN("no output here takes AC-3 over IEC 61937");
+    return {};
+}
+
 }  // namespace
 
 TEST_CASE("passthrough live: the position follows the receiver's link, and pause and flush hold it",
           "[.][passthrough-live]") {
-    const auto devices = ac3::audio::enumerate_render_devices(kRate);
-    std::string id;
-    if (devices) {
-        for (const auto& device : *devices) {
-            if (device.supports_ac3_passthrough) {
-                id = device.id;
-                INFO("bitstreaming to " << device.name);
-                break;
-            }
-        }
-    }
+    const std::string id = ac3_output();
     if (id.empty()) {
-        WARN("no output here takes AC-3 over IEC 61937");
         return;
     }
 
@@ -146,4 +150,78 @@ TEST_CASE("passthrough live: the position follows the receiver's link, and pause
     CHECK_FALSE(sink.running());
     CHECK_FALSE(sink.paused());
     CHECK_FALSE(sink.position().has_value());
+}
+
+// A receiver that goes away mid-stream, with a person to take it away.
+//
+// Hidden, and under a tag of its own so that "[passthrough-live]" never waits
+// for one: run it deliberately, with a receiver bitstreaming, and follow the
+// two prompts.
+//
+//   ac3tests "[passthrough-unplug]"
+//
+// First, within 30 seconds, pull the HDMI or S/PDIF cable, or switch the
+// receiver off or to another input (whichever makes the machine lose the
+// output - on Windows, disabling the device under Sound settings does it
+// too). Then, within 30 seconds more, put it back. The sink has to notice the
+// first on its own and answer every call as a stopped sink does; and start()
+// has to work again afterwards with no stop() in between.
+TEST_CASE("passthrough live: a receiver that goes away stops the sink, which can start again",
+          "[.][passthrough-unplug]") {
+    using ac3::audio::PassthroughError;
+    using namespace std::chrono_literals;
+
+    const std::string id = ac3_output();
+    if (id.empty()) {
+        return;
+    }
+    ac3::audio::PassthroughSink sink;
+    const auto started = sink.start(id, kRate, ac3::audio::BitstreamFormat::kAc3);
+    if (!started) {
+        WARN("the passthrough output would not open: " << ac3::audio::describe(started.error()));
+        return;
+    }
+    const auto burst = silent_burst();
+
+    WARN("Take the output away now: unplug the cable or switch the receiver off (30 s).");
+    auto deadline = std::chrono::steady_clock::now() + 30s;
+    while (sink.running() && std::chrono::steady_clock::now() < deadline) {
+        if (!sink.submit(burst)) {
+            std::this_thread::sleep_for(2ms);
+        }
+    }
+    REQUIRE_FALSE(sink.running());
+
+    // A stopped sink's answers, each at once.
+    CHECK_FALSE(sink.position().has_value());
+    CHECK_FALSE(sink.can_submit());
+    CHECK_FALSE(sink.submit(burst));
+    CHECK_FALSE(sink.paused());
+    const auto before = std::chrono::steady_clock::now();
+    sink.flush();
+    CHECK(std::chrono::steady_clock::now() - before < 50ms);
+    const auto paused = sink.pause();
+    REQUIRE_FALSE(paused.has_value());
+    CHECK(paused.error() == PassthroughError::kNotRunning);
+    const auto resumed = sink.resume();
+    REQUIRE_FALSE(resumed.has_value());
+    CHECK(resumed.error() == PassthroughError::kNotRunning);
+
+    // start() again, with no stop() first: refused while the output is away,
+    // and playing once it is back.
+    WARN("Put the output back now (30 s).");
+    deadline = std::chrono::steady_clock::now() + 30s;
+    while (!sink.running() && std::chrono::steady_clock::now() < deadline) {
+        if (!sink.start(id, kRate, ac3::audio::BitstreamFormat::kAc3)) {
+            std::this_thread::sleep_for(500ms);
+        }
+    }
+    REQUIRE(sink.running());
+    feed(sink, burst, 8);
+    std::this_thread::sleep_for(200ms);
+    const auto playing = sink.position();
+    REQUIRE(playing.has_value());
+    CHECK(playing->frames_played > 0);
+    sink.stop();
+    CHECK_FALSE(sink.running());
 }

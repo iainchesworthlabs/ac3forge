@@ -195,6 +195,8 @@ struct MonitorSink::Impl {
     std::unique_ptr<RingBuffer> queue;
     std::jthread worker;
     snd_pcm_t* pcm = nullptr;
+    // Raised by start(). Lowered by stop(), or by the render thread itself
+    // when the device goes away under it (see the end of its loop).
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
@@ -259,9 +261,11 @@ void MonitorSink::flush() {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     // The render thread did not get to it - a device that has stopped
-    // answering snd_pcm_wait, or one whose recovery failed. The flush is left
-    // for the thread to make when it next runs. It drops only what was queued
-    // before the mark, so audio submitted after this call returned is kept.
+    // answering snd_pcm_wait. The flush is left for the thread to make when
+    // it next runs. It drops only what was queued before the mark, so audio
+    // submitted after this call returned is kept. A device whose recovery
+    // failed has ended the thread instead, which lowered `running` and ended
+    // the wait at once.
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
@@ -286,11 +290,13 @@ std::expected<void, MonitorError> MonitorSink::resume() {
 }
 
 bool MonitorSink::paused() const {
-    return impl_->paused.load(std::memory_order_acquire);
+    // A pause is a property of a running stream, so one whose device has
+    // gone is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
 }
 
 bool MonitorSink::can_submit() const {
-    if (!impl_->queue || impl_->channels == 0) {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
         return false;
     }
     // Room for at least ~20 ms at a typical rate, in samples (interleaved).
@@ -347,6 +353,10 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     if (running()) {
         return std::unexpected(MonitorError::kAlreadyRunning);
     }
+    // A render thread that ended because its device went away still has its
+    // handle open; stop() joins the one and closes the other. With nothing
+    // started it does nothing.
+    stop();
     if (channels == 0) {
         return std::unexpected(MonitorError::kComFailure);
     }
@@ -397,6 +407,11 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
         // Whether the pause in force was performed by dropping rather than by
         // snd_pcm_pause, which decides how it is undone.
         bool dropped_to_pause = false;
+        // Set when the loop ends because the device did - a recovery that
+        // failed, -ENODEV for a card unplugged - rather than because stop()
+        // asked it to. A device that goes while paused is found on resume,
+        // when the first wait or write fails.
+        bool lost = false;
 
         while (!stop.stop_requested()) {
             // The device and the queue belong to this thread; pause() and
@@ -461,6 +476,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             const int ready = snd_pcm_wait(pcm, kWaitMs);
             if (ready < 0) {
                 if (snd_pcm_recover(pcm, ready, /*silent=*/1) < 0) {
+                    lost = true;
                     break;
                 }
                 continue;
@@ -481,6 +497,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             const snd_pcm_sframes_t written = snd_pcm_writei(pcm, raw.data(), period);
             if (written < 0) {
                 if (snd_pcm_recover(pcm, static_cast<int>(written), /*silent=*/1) < 0) {
+                    lost = true;
                     break;
                 }
                 continue;
@@ -489,6 +506,15 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             impl_->rendered.fetch_add(got / channels);
         }
 
+        if (lost) {
+            // As in the Windows backend: the stream has ended with its
+            // device, and running() says so as a stop() would have it, so
+            // position(), submit(), flush(), pause() and resume() answer at
+            // once. Only the flag is touched; stop() still joins this thread,
+            // closes the handle and lowers the caller's `paused` and
+            // `flushing`.
+            impl_->running.store(false, std::memory_order_release);
+        }
         snd_pcm_drop(pcm);
     });
 

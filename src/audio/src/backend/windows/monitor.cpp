@@ -97,6 +97,8 @@ std::string_view describe(MonitorError error) {
 struct MonitorSink::Impl {
     std::unique_ptr<RingBuffer> queue;
     std::jthread worker;
+    // Raised by start(). Lowered by stop(), or by the render thread itself
+    // when the device goes away under it (see the end of its loop).
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
@@ -163,12 +165,13 @@ void MonitorSink::flush() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    // The render thread did not get to it: the device is not answering, or
-    // the thread has broken out of its loop on a device failure. The flag
-    // stays raised, and the flush is made whenever the thread next runs. It
-    // drops only what was queued before the mark, so audio submitted after
-    // this call returned is kept, and the queue's write side is never
-    // touched from that thread while this one writes.
+    // The render thread did not get to it: the device is not answering. The
+    // flag stays raised, and the flush is made whenever the thread next runs.
+    // It drops only what was queued before the mark, so audio submitted after
+    // this call returned is kept, and the queue's write side is never touched
+    // from that thread while this one writes. A thread that has ended on a
+    // device failure does not run again; it lowers `running` as it goes,
+    // which ends the wait above at once, and stop() lowers `flushing`.
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
@@ -188,11 +191,13 @@ std::expected<void, MonitorError> MonitorSink::resume() {
 }
 
 bool MonitorSink::paused() const {
-    return impl_->paused.load(std::memory_order_acquire);
+    // A pause is a property of a running stream, so one whose device has
+    // gone is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
 }
 
 bool MonitorSink::can_submit() const {
-    if (!impl_->queue || impl_->channels == 0) {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
         return false;
     }
     // Room for at least ~20 ms at a typical rate, in samples (interleaved).
@@ -247,6 +252,9 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     if (running()) {
         return std::unexpected(MonitorError::kAlreadyRunning);
     }
+    // A render thread that ended because its device went away is joined
+    // before another is started; with nothing started this does nothing.
+    stop();
     if (channels == 0) {
         return std::unexpected(MonitorError::kComFailure);
     }
@@ -383,21 +391,32 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
         HANDLE mmcss = AvSetMmThreadCharacteristicsW(L"Audio", &mmcss_index);
 
         std::vector<float> chunk;
-        client->Start();
-        bool device_running = true;
         std::uint64_t handed_over = 0;
+        // Set when the loop ends because the device did rather than because
+        // stop() asked it to. A device that will not start has gone; no
+        // render event would ever come for it.
+        bool lost = FAILED(client->Start());
+        bool device_running = !lost;
 
-        while (!stop.stop_requested()) {
+        while (!lost && !stop.stop_requested()) {
             // A pause stops the device and leaves everything else standing:
             // the queue keeps what it holds and goes on taking frames, and no
             // render event arrives to wait for while stopped, so the loop
-            // sleeps instead of blocking on one that will not come.
+            // sleeps instead of blocking on one that will not come - and
+            // asks whether the stream is still there, since nothing else
+            // would say. A stopped stream still answers for its padding, so
+            // a refusal is the stream's end, as it is after a wait below.
             if (impl_->paused.load(std::memory_order_acquire)) {
                 if (device_running) {
                     client->Stop();
                     device_running = false;
                 }
                 if (!impl_->flushing.load(std::memory_order_acquire)) {
+                    UINT32 held = 0;
+                    if (FAILED(client->GetCurrentPadding(&held))) {
+                        lost = true;
+                        break;
+                    }
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
                     continue;
                 }
@@ -420,15 +439,27 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                 continue;
             }
             if (!device_running) {
-                client->Start();
+                // A flush's Stop and Reset on a device that has gone fail
+                // quietly, so it is this Start that finds out.
+                if (FAILED(client->Start())) {
+                    lost = true;
+                    break;
+                }
                 device_running = true;
             }
-            if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
-                continue;
-            }
+            // The padding is asked after every wait, woken or not. A device
+            // can stall and come back, but one that has been removed need
+            // never signal again, so a wait that times out says nothing on
+            // its own. A shared-mode stream always answers for its padding,
+            // so a refusal is the stream's end, as a refused buffer is below.
+            const bool woken = WaitForSingleObject(ready, 200) == WAIT_OBJECT_0;
             UINT32 padding = 0;
             if (FAILED(client->GetCurrentPadding(&padding))) {
+                lost = true;
                 break;
+            }
+            if (!woken) {
+                continue;
             }
             // The device's own clock, as close as a shared-mode stream can
             // ask: everything handed over, less what it has not played yet.
@@ -439,6 +470,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             }
             BYTE* target = nullptr;
             if (FAILED(render->GetBuffer(wanted_frames, &target))) {
+                lost = true;
                 break;
             }
             const std::size_t wanted_samples = static_cast<std::size_t>(wanted_frames) * channels;
@@ -457,6 +489,14 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             impl_->rendered.fetch_add(got / channels, std::memory_order_relaxed);
         }
 
+        if (lost) {
+            // As in the passthrough backend: the stream has ended with its
+            // device, and running() says so as a stop() would have it, so
+            // position(), submit(), flush(), pause() and resume() answer at
+            // once. Only the flag is touched; stop() still joins this thread
+            // and lowers the caller's `paused` and `flushing`.
+            impl_->running.store(false, std::memory_order_release);
+        }
         client->Stop();
         if (mmcss != nullptr) {
             AvRevertMmThreadCharacteristics(mmcss);

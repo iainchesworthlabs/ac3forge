@@ -121,6 +121,8 @@ public:
         const render::OutputLayout& layout, bool low_latency = false);
 
     void stop();
+    // MonitorSink::running(): false after stop(), and also once the device
+    // has gone away under the stream.
     [[nodiscard]] bool running() const;
     [[nodiscard]] const PcmOutputInfo& info() const;
 
@@ -133,9 +135,9 @@ public:
     // Queues `frames` frames of `rendered` - one span per rendered channel,
     // each at least `frames` long - placed by the patch. False, having queued
     // nothing, when the queue is full (the caller is ahead of real time and
-    // should wait), when nothing is open, or when a patched channel is
-    // shorter than `frames`. A channel `rendered` does not carry at all is
-    // silence, the same as an unpatched one.
+    // should wait), when nothing is open - running() tells that apart - or
+    // when a patched channel is shorter than `frames`. A channel `rendered`
+    // does not carry at all is silence, the same as an unpatched one.
     bool submit(std::span<const std::span<const float>> rendered, std::size_t frames);
     [[nodiscard]] bool can_submit() const;
 

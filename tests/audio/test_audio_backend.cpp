@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <string_view>
+#include <vector>
 
 #include "ac3/audio/capture.hpp"
 #include "ac3/audio/audio_backend.hpp"
@@ -301,7 +303,10 @@ TEST_CASE("a monitor sink refuses a channel count it cannot interpret",
 TEST_CASE("a sink that was never started refuses work", "[audio-backend][concurrency]") {
     // True of every backend including the stub, and the reason submit() checks
     // running() first: a caller that ignores start()'s result must not be able
-    // to write into a queue that does not exist.
+    // to write into a queue that does not exist. A sink whose device has gone
+    // answers the same way, which is what a caller finding the loss relies on;
+    // that half needs a device to lose, and is test_passthrough_live.cpp's
+    // [.][passthrough-unplug] case.
     ac3::audio::PassthroughSink sink;
     CHECK_FALSE(sink.running());
     CHECK_FALSE(sink.can_submit());
@@ -319,9 +324,42 @@ TEST_CASE("a sink that was never started refuses work", "[audio-backend][concurr
     CHECK_FALSE(sink.pause().has_value());
     CHECK_FALSE(sink.resume().has_value());
     CHECK_FALSE(sink.paused());
+    // Nothing to wait for either: a flush with no render thread to do it
+    // returns at once rather than after the wait a stalled device gets.
+    const auto before = std::chrono::steady_clock::now();
     sink.flush();
+    CHECK(std::chrono::steady_clock::now() - before < std::chrono::milliseconds(100));
+    sink.stop();
     sink.stop();
     CHECK_FALSE(sink.running());
+    CHECK_FALSE(sink.can_submit());
+}
+
+TEST_CASE("a monitor sink that was never started refuses work", "[audio-backend][concurrency]") {
+    // The same contract as PassthroughSink's case above, and the same reason:
+    // a stopped sink, and one whose device has gone, answer every call at
+    // once. The device half is test_monitor_live.cpp's [.][monitor-unplug].
+    ac3::audio::MonitorSink sink;
+    CHECK_FALSE(sink.running());
+    CHECK_FALSE(sink.can_submit());
+    const std::vector<float> frames(96, 0.0F);
+    CHECK_FALSE(sink.submit(frames));
+    CHECK_FALSE(sink.position().has_value());
+    CHECK_FALSE(sink.paused());
+    CHECK_FALSE(sink.pause().has_value());
+    CHECK_FALSE(sink.resume().has_value());
+    CHECK_FALSE(sink.paused());
+    const auto before = std::chrono::steady_clock::now();
+    sink.flush();
+    CHECK(std::chrono::steady_clock::now() - before < std::chrono::milliseconds(100));
+    sink.stop();
+    sink.stop();
+    CHECK_FALSE(sink.running());
+
+    const auto stats = sink.stats();
+    CHECK(stats.frames_submitted == 0);
+    CHECK(stats.frames_rendered == 0);
+    CHECK(stats.underruns == 0);
 }
 
 TEST_CASE("a capture that was never started reports nothing", "[audio-backend][concurrency]") {

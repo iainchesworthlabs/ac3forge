@@ -127,7 +127,9 @@ public:
     // exclusive mode with an IEC 61937 format at `sample_rate` (the CONTENT
     // rate; for E-AC-3 the carrier itself runs at 4x that), and starts the
     // render thread. `format` picks AC-3 vs E-AC-3 and, with it, which burst
-    // size submit() expects.
+    // size submit() expects. Refused while running(); once running() is
+    // false - after stop(), or after the device went away - it may be called
+    // again, with nothing to tidy up first.
     [[nodiscard]] std::expected<void, PassthroughError> start(
         const std::string& device_id, std::uint32_t sample_rate = 48000,
         BitstreamFormat format = BitstreamFormat::kAc3);
@@ -135,24 +137,29 @@ public:
     // Queues one complete burst (ac3::iec61937::kBurstBytes for AC-3,
     // kEac3BurstBytes for E-AC-3 - see ac3::iec61937::wrap_frame /
     // Eac3BurstPacker). Returns false if the queue is full - the caller is
-    // running ahead of real time and should wait rather than spin.
+    // running ahead of real time and should wait rather than spin - and
+    // whenever the sink is not running(), which no wait will change: a caller
+    // that retries on false has to look at running() too.
     bool submit(std::span<const std::byte> burst);
 
-    // Room for at least one more burst without blocking.
+    // Room for at least one more burst without blocking. False while not
+    // running().
     [[nodiscard]] bool can_submit() const;
 
     // Where the device has got to, as MonitorSink::position() reports it and
     // with the same meaning, but in frames of the CONTENT: 1536 to a burst in
     // either format, the E-AC-3 link's four frames counting as one
-    // (carrier_ratio()). Nothing while stopped. Underrun silence counts as
-    // played, as a device's own clock counts it.
+    // (carrier_ratio()). Nothing while not running(), including once the
+    // device has gone. Underrun silence counts as played, as a device's own
+    // clock counts it.
     [[nodiscard]] std::optional<MonitorPosition> position() const;
 
     // Drops the bursts not yet played, here and in the device, and carries on
-    // from the next submit(); position() then counts from zero again. Harmless
-    // when nothing is running. As MonitorSink::flush(), a device that has
-    // stopped answering is not waited for past a moment, and its flush drops
-    // only what was submitted before this call.
+    // from the next submit(); position() then counts from zero again. Returns
+    // at once when nothing is running, and as soon as the device goes away
+    // if that happens while it waits. As MonitorSink::flush(), a device that
+    // has stopped answering is not waited for past a moment, and its flush
+    // drops only what was submitted before this call.
     void flush();
 
     // Stops the device without closing it, and starts it again: the format,
@@ -164,10 +171,27 @@ public:
     // either call is harmless; both refuse only when nothing is running.
     [[nodiscard]] std::expected<void, PassthroughError> pause();
     [[nodiscard]] std::expected<void, PassthroughError> resume();
+    // True between a pause() and a resume(), and only while running().
     [[nodiscard]] bool paused() const;
 
+    // Stops and closes the device. Harmless when nothing is running, and
+    // what lets go of a stream that ended with its device.
     void stop();
 
+    // True from a successful start() until stop() - or until the device goes
+    // away under the stream: unplugged, disabled, or its stream taken by a
+    // format change or an audio-service restart. The sink stops itself then,
+    // and answers every call as it would after stop(): position() reports
+    // nothing, submit() and can_submit() refuse, flush() returns at once, and
+    // pause() and resume() refuse with kNotRunning. A caller that started the
+    // sink and finds this false without having stopped it has lost the
+    // device. When the loss shows depends on the platform: WASAPI within a
+    // fraction of a second, paused or not; ALSA at the render thread's next
+    // wait or write, which for a paused stream is its resume; Core Audio when
+    // the device reports itself dead; Android when a write finds the track
+    // dead. On PipeWire, a stream the session manager moves to another sink
+    // carries on, and one it holds unlinked until its sink comes back keeps
+    // running with a position that stands still.
     [[nodiscard]] bool running() const;
     [[nodiscard]] PassthroughStats stats() const;
 

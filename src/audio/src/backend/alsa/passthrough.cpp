@@ -419,6 +419,8 @@ struct PassthroughSink::Impl {
     std::size_t burst_bytes = iec61937::kBurstBytes;
     // Link frames to a content frame (carrier_ratio()), for position().
     std::uint32_t ratio = 1;
+    // Raised by start(). Lowered by stop(), or by the render thread itself
+    // when the device goes away under it (see the end of its loop).
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
@@ -478,9 +480,11 @@ void PassthroughSink::flush() {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     // The render thread did not get to it - a device that has stopped
-    // answering, or one whose recovery failed. The flush is left for the
-    // thread to make when it next runs. It drops only what was queued before
-    // the mark, so bursts submitted after this call returned are kept.
+    // answering. The flush is left for the thread to make when it next runs.
+    // It drops only what was queued before the mark, so bursts submitted
+    // after this call returned are kept. A device whose recovery failed has
+    // ended the thread instead, which lowered `running` and ended the wait
+    // at once.
 }
 
 std::expected<void, PassthroughError> PassthroughSink::pause() {
@@ -503,11 +507,13 @@ std::expected<void, PassthroughError> PassthroughSink::resume() {
 }
 
 bool PassthroughSink::paused() const {
-    return impl_->paused.load(std::memory_order_acquire);
+    // A pause is a property of a running stream, so one whose device has
+    // gone is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
 }
 
 bool PassthroughSink::can_submit() const {
-    if (!impl_->queue) {
+    if (!running() || !impl_->queue) {
         return false;
     }
     return impl_->queue->capacity() - impl_->queue->available() > impl_->burst_bytes;
@@ -549,6 +555,11 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (running()) {
         return std::unexpected(PassthroughError::kAlreadyRunning);
     }
+    // A render thread that ended because its device went away still has the
+    // device open, and a hw: device opens for one process at a time. stop()
+    // joins the thread and closes the handle; with nothing started it does
+    // nothing.
+    stop();
 
     // The link rate, not the content rate: the same for AC-3 and 4x it for
     // E-AC-3. Everything below - the channel status, the device parameters,
@@ -627,6 +638,9 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         // Whether the pause in force was made by dropping rather than by
         // snd_pcm_pause, which decides how it is undone.
         bool dropped_to_pause = false;
+        // Set when the loop ends because the device did, as MonitorSink's
+        // ALSA backend sets it.
+        bool lost = false;
 
         while (!stop.stop_requested()) {
             // As in MonitorSink's ALSA backend: the device and the queue
@@ -681,7 +695,11 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
             }
             const int ready = snd_pcm_wait(pcm, kWaitMs);
             if (ready < 0) {
+                // snd_pcm_recover mends an underrun or a suspend; anything
+                // else it hands back - -ENODEV for a card unplugged - is the
+                // device's end, and the stream's.
                 if (snd_pcm_recover(pcm, ready, /*silent=*/1) < 0) {
+                    lost = true;
                     break;
                 }
                 continue;
@@ -707,6 +725,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
                 snd_pcm_writei(pcm, chunk.data(), static_cast<snd_pcm_uframes_t>(burst_frames));
             if (written < 0) {
                 if (snd_pcm_recover(pcm, static_cast<int>(written), /*silent=*/1) < 0) {
+                    lost = true;
                     break;
                 }
                 continue;
@@ -715,6 +734,11 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
             impl_->rendered.fetch_add(got / burst_bytes);
         }
 
+        if (lost) {
+            // The stream has ended with its device, and running() says so as
+            // a stop() would have it; see MonitorSink's ALSA backend.
+            impl_->running.store(false, std::memory_order_release);
+        }
         // drop, not drain: a stop request means stop, and draining would play
         // out a buffer of bursts the caller has already stopped feeding.
         snd_pcm_drop(pcm);
