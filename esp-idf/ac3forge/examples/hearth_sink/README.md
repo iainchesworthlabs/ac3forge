@@ -664,6 +664,24 @@ bursts played each time, with each output's RMS equal to the test sink's;
 with the firmware the two boards above ran, at least 43,700 bytes of internal
 heap were free.
 
+[Joining a network](#joining-a-network) is checked the same way, by
+`tools/checks/run_improv_qemu.sh`. It boots the same image with QEMU's link
+down, so the board's own attempt gives up after 30 s and it listens for
+Improv. `tools/checks/improv_qemu.py` then asks the board its state, gives it
+a network, and brings the link up while the board waits for an address. The
+board must answer with its page, `http://10.0.2.15/`, then advertise itself
+and start the player, which the test server plays to as above. The script
+also boots `sdkconfig.ci-wifi`, the player on WiFi with nothing stored and
+nothing built in. That board must boot once, with its control surface up, and
+answer Improv's state and device requests. It is never given a network: QEMU
+has no radio, and `esp_wifi_start()` does not return there. Each run boots a
+copy of its image, because QEMU writes the board's NVS into the file it runs.
+On 2026-09-17 the first board held its address 1.8 s after the link came up,
+all 315 bursts played with each output's RMS equal to the test sink's, and at
+least 43,884 bytes of internal heap were free. Firmware from before
+2026-09-16 fails both: the first board aborts in the join Improv asked for,
+and the second restarts in a loop.
+
 ## The sources
 
 `partition` runs without hardware, which is why it is the default and the one
