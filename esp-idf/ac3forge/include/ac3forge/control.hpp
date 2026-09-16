@@ -61,6 +61,9 @@ struct ControlSendspin {
     std::string role;
     bool clock_converged = false;
     long long clock_error_us = 0;
+    // Clock bursts taken by the filter, and left out for their delay.
+    unsigned long clock_updates = 0;
+    unsigned long clock_rejected = 0;
     unsigned connections = 0;
     // This board's client_id, and the servers it is paired with.
     std::string client_id;

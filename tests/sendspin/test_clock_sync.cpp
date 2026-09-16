@@ -199,6 +199,39 @@ TEST_CASE("clock sync: a reply that never comes ends the burst after the timeout
     CHECK(sync.updates() == 0);
 }
 
+TEST_CASE("clock sync: says when the exchange waiting for its reply was sent", "[sendspin][clock_sync]") {
+    ClockSync sync;
+    CHECK_FALSE(sync.awaiting_since().has_value());
+    const std::optional<m::ClientTime> first = sync.poll(1'000);
+    REQUIRE(first.has_value());
+    REQUIRE(sync.awaiting_since().has_value());
+    CHECK(*sync.awaiting_since() == 1'000);
+    // Still the same exchange while its reply is due.
+    CHECK_FALSE(sync.poll(2'000).has_value());
+    CHECK(*sync.awaiting_since() == 1'000);
+
+    // Answered: nothing waits until the next exchange goes out.
+    sync.receive({.client_transmitted = first->client_transmitted, .server_received = 5'000, .server_transmitted = 5'050},
+                 3'000);
+    CHECK_FALSE(sync.awaiting_since().has_value());
+    const std::optional<m::ClientTime> second = sync.poll(3'500);
+    REQUIRE(second.has_value());
+    CHECK(*sync.awaiting_since() == 3'500);
+
+    // Abandoned after the timeout: the exchange that replaces it is the one waiting.
+    const std::int64_t late = 3'500 + ClockSync::kReplyTimeout;
+    REQUIRE(sync.poll(late).has_value());
+    CHECK(*sync.awaiting_since() == late);
+
+    // A reply to an exchange that is not the one waiting changes nothing.
+    sync.receive({.client_transmitted = second->client_transmitted, .server_received = 1, .server_transmitted = 2},
+                 late + 10);
+    CHECK(*sync.awaiting_since() == late);
+
+    sync.reset();
+    CHECK_FALSE(sync.awaiting_since().has_value());
+}
+
 TEST_CASE("clock sync: a local clock that reads negative", "[sendspin][clock_sync]") {
     // Nothing about a monotonic clock says it reads above zero, and the time filter ignores
     // updates at or before zero; ClockSync hands it times counted from its first exchange.

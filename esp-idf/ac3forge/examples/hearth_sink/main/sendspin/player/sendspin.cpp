@@ -59,6 +59,7 @@ constexpr std::size_t kMaxChunkBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUN
 constexpr std::uint32_t kDecodeStackBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES;
 constexpr std::size_t kServerStackBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_SERVER_STACK_BYTES;
 constexpr UBaseType_t kServerPriority = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_SERVER_PRIORITY;
+constexpr UBaseType_t kClockPriority = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_CLOCK_PRIORITY;
 constexpr int kMaxDelayMs = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS;
 constexpr std::uint32_t kReportEveryChunks = CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES;
 constexpr std::int32_t kLeadMs = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_LEAD_MS;
@@ -611,6 +612,8 @@ std::optional<ac3forge::ControlSendspin> sendspin_status() {
     s.role = host.role;
     s.clock_converged = host.clock_converged;
     s.clock_error_us = host.clock_error_us;
+    s.clock_updates = host.clock_updates;
+    s.clock_rejected = host.clock_rejected;
     s.connections = host.connections;
     s.client_id = host.client_id.data();
     s.paired = host.paired_servers;

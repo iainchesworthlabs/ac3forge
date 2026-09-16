@@ -59,6 +59,12 @@ constexpr std::size_t kMaxConnections = 4;
 // bursts, so this bounds how late those can be.
 constexpr std::int64_t kTimerPeriodUs = 10'000;
 
+// How long after a clock exchange went out the server task stays at
+// SendspinHostConfig::clock_priority while its reply is due. A reply later
+// than this measures little but the delay, and a lost one waits for
+// ClockSync::kReplyTimeout, too long to hold the task above the decode.
+constexpr std::int64_t kClockRaiseUs = 200'000;
+
 // The WebSocket message a peer may send, beyond the largest Sendspin message
 // the player takes: the AEAD tag of the frame that carries it.
 constexpr std::size_t kFrameOverhead = 64;
@@ -173,6 +179,8 @@ struct SendspinHost::Impl {
     Arbiter::Id clock_connection = 0;
     std::array<char, 48> client_id{};
     TaskHandle_t server_task = nullptr;
+    // The priority the server task was last set to; on its task only.
+    UBaseType_t running_priority = 0;
     // A frame on its way out, header and payload together; on the server's
     // task only.
     std::vector<std::uint8_t> frame_out;
@@ -193,6 +201,7 @@ struct SendspinHost::Impl {
     void deliver(HostConnection& connection, ss::SessionOutput out);
     void after_call();
     void refresh_status();
+    void set_priority(std::int64_t now);
     void displace(Arbiter::Id id);
     void queue_pending();
 
@@ -499,6 +508,8 @@ void SendspinHost::Impl::refresh_status() {
         s.role = "";
         s.clock_converged = false;
         s.clock_error_us = 0;
+        s.clock_updates = 0;
+        s.clock_rejected = 0;
         s.server_has_lost_pairing = false;
     } else {
         const ss::PlayerSession& session = held->session();
@@ -514,6 +525,8 @@ void SendspinHost::Impl::refresh_status() {
                                                              : "";
         s.clock_converged = session.clock_converged();
         s.clock_error_us = session.clock().updates() > 0 ? session.clock().error_us() : 0;
+        s.clock_updates = static_cast<std::uint32_t>(session.clock().updates());
+        s.clock_rejected = static_cast<std::uint32_t>(session.clock().rejected());
         s.server_has_lost_pairing = session.fell_back();
     }
     if (server_task != nullptr) {
@@ -531,6 +544,29 @@ void SendspinHost::Impl::after_call() {
     }
     next_due.store(due);
     refresh_status();
+    set_priority(now);
+}
+
+// SendspinHostConfig::clock_priority: raised while the playback connection's
+// clock exchange is waiting for its reply, for no longer than
+// kClockRaiseUs after it went out, and back to the configured priority
+// otherwise. Called on the server task, whose own priority this sets.
+void SendspinHost::Impl::set_priority(std::int64_t now) {
+    if (config.clock_priority == 0) {
+        return;
+    }
+    const std::optional<Arbiter::Id> admitted = arbiter->admitted();
+    const HostConnection* const held = admitted ? find(*admitted) : nullptr;
+    std::optional<std::int64_t> sent;
+    if (held != nullptr && held->session().phase() == ss::PlayerSession::Phase::kActive) {
+        sent = held->session().clock().awaiting_since();
+    }
+    const bool raise = sent && now - *sent < kClockRaiseUs;
+    const UBaseType_t wanted = raise ? config.clock_priority : config.priority;
+    if (wanted != running_priority) {
+        vTaskPrioritySet(nullptr, wanted);
+        running_priority = wanted;
+    }
 }
 
 // esp_http_server's callback for each accepted socket, before anything is
@@ -774,6 +810,7 @@ bool SendspinHost::start(SendspinHostConfig config, SendspinEvents& events) {
         im.ac3forge_state = config.player.ac3forge_state;
     }
     im.config = std::move(config);
+    im.running_priority = im.config.priority;
     copy_text(im.client_id, ss::base64url::encode(im.store.identity().public_key()));
 
     httpd_config_t http = HTTPD_DEFAULT_CONFIG();

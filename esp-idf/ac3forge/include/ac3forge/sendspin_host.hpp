@@ -93,6 +93,14 @@ struct SendspinHostConfig {
     std::size_t stack_bytes = 8192;
     UBaseType_t priority = 5;
     BaseType_t core = tskNO_AFFINITY;
+    // The server task's priority while the playback server's clock exchange
+    // waits for its reply (for at most 200 ms after it went out), or 0 to
+    // leave it at `priority`. A reply is timestamped when this task reads it,
+    // so on a part with one core, where this task sits below the decode task,
+    // every reply of a burst would otherwise be read at the end of a burst's
+    // decode, and the clock would follow that delay. Above the decode task
+    // only for those moments, the replies are read as they arrive.
+    UBaseType_t clock_priority = 0;
     // Connections at once: the one admitted for playback, a pairing
     // connection held beside it, and one arriving to displace either
     // (connection.md, Multiple servers). esp_http_server keeps three sockets of
@@ -128,6 +136,10 @@ struct SendspinStatus {
     const char* role = "";
     bool clock_converged = false;
     std::int64_t clock_error_us = 0;
+    // Clock bursts the filter took, and bursts it left out for their replies'
+    // delay (ac3::sendspin::ClockSync::rejected()).
+    std::uint32_t clock_updates = 0;
+    std::uint32_t clock_rejected = 0;
     // The server holds a pairing this board no longer has
     // (planning/hearth-sendspin-extension.md, C4): remove the board from the
     // server before pairing it again.
