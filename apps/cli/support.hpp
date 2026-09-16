@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <deque>
 #include <expected>
 #include <filesystem>
 #include <fmt/base.h>
@@ -828,6 +829,38 @@ void print_live_meter(const ac3::analysis::LevelMeter& meter, double seconds);
 // custom list can never shadow one of the seven presets.
 bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Plan& plan,
                     std::string& label);
+
+// The bed's LFE is not an object, so it never goes through JOC reconstruction
+// - but a decoded programme's dynamic objects did, and that costs
+// ac3::oba::joc::reconstruction_delay(domain) samples the LFE does not pay
+// (docs/library/decoding.md, "Atmos objects lag the bed"). Any command that
+// submits or meters a decoded unit's object_audio beside that same unit's
+// undelayed bed LFE - 'spatial', 'qc objects=' - has to hold the LFE back by
+// that many samples first, or it reaches the room/meter that far ahead of the
+// objects beside it. A plain FIFO rather than a fixed-size ring: a decoded
+// access unit's sample count is not always ac3::kSamplesPerFrame (a short
+// E-AC-3 frame, or the last, partial one).
+class LfeDelayLine {
+public:
+    explicit LfeDelayLine(std::size_t delay_samples) : pending_(delay_samples, 0.0F) {}
+
+    // Pushes `in` and returns in.size() samples delayed by the line's own
+    // fixed lag: the first calls return silence, drawn from the zeros this
+    // was constructed with, until enough history has passed through - exactly
+    // as if `in` had started delay_samples late.
+    std::vector<float> process(std::span<const float> in) {
+        pending_.insert(pending_.end(), in.begin(), in.end());
+        std::vector<float> out(in.size());
+        for (float& sample : out) {
+            sample = pending_.front();
+            pending_.pop_front();
+        }
+        return out;
+    }
+
+private:
+    std::deque<float> pending_;
+};
 
 // What `record`/`live` resolved their layout=/codec=/bitrate into: one
 // plan::Plan, the label to print for it, and the two facts every caller

@@ -726,6 +726,17 @@ and release packaging.
   offered rungs no `frmsiz` could carry; encoding was refused only at the encode button.
   The list is now filtered per-rate by the same rule `plan::validate()` already applies,
   and a lower-rate source clamps an out-of-range selection down.
+- **`ac3cli spatial` and `qc objects=` played and measured a decoded Atmos programme's
+  dynamic objects against an LFE that arrived 576 samples too early, and `decode ...
+  adm_out=` exported the same mismatch into its ADM master.** A JOC-reconstructed object
+  lags the bed it was pulled from by `oba::joc::reconstruction_delay(domain)` samples —
+  576 under the QMF domain every decoder defaults to (`docs/library/decoding.md`, "Atmos
+  objects lag the bed") — but all three sites combined a decoded unit's bed LFE with its
+  already-lagged object audio unmodified, in the same update or the same exported track.
+  The LFE is now held back to match: a small FIFO delay line ahead of the Windows Spatial
+  Sound sink and the loudness meter, and a whole-channel shift on the batch-written ADM
+  master, the last pinned by a regression test measuring the exported master's two
+  channels before and after.
 
 **ESP32 / bare-metal**
 
@@ -1037,6 +1048,10 @@ and release packaging.
 - The room page described Windows' application-list behaviour on Linux, where PipeWire
   (unlike Windows' session model) only shows an application while it's actually playing
   sound.
+- **Crucible's headphones output played a decoded Atmos programme's dynamic objects
+  against an LFE that arrived 576 samples too early** - the same JOC reconstruction
+  delay `ac3cli spatial` had (see "Command line and GUI" above). `OutputStage::submit`'s
+  spatial-sink branch now holds the LFE back by the same FIFO delay line.
 
 **Tooling, packaging and release engineering**
 
