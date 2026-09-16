@@ -49,8 +49,13 @@
 #                                     cmake/CompilerWarnings.cmake), fixed in
 #                                     one commit, then two consecutive clean
 #                                     runs. No longer experimental. GUI now
-#                                     on too (Homebrew's qt formula), same
-#                                     opt-in shape as the Linux legs.
+#                                     on too, same opt-in shape as the Linux
+#                                     legs - Qt from Homebrew's qt formula at
+#                                     first, switched to the official kit via
+#                                     install-qt-action once that was found to
+#                                     ship packaged .app bundles with dangling
+#                                     Homebrew-Cellar symlinks in place of
+#                                     their QML plugins (see _ci-macos.yml).
 #   macos-llvm-x64          GREEN     DR8: real GitHub Actions runs on
 #                                     macos-15-intel, native Intel hardware,
 #                                     not Rosetta. Went three consecutive

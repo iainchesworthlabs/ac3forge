@@ -116,8 +116,9 @@ runs:
     # matrix value is the suffix and each step names its own prefix. Running
     # `cmake --preset config-<leg>` locally reproduces CI exactly - EXCEPT
     # for two overrides bolted on here:
-    #   - -DCMAKE_PREFIX_PATH on Windows: install-qt-action installs into a
-    #     runner-specific path (QT_ROOT_DIR) that cmake/FindQt6.cmake's
+    #   - -DCMAKE_PREFIX_PATH wherever install-qt-action ran (every Windows
+    #     leg except windows-msvc-arm64, and both macOS legs): it installs
+    #     into a runner-specific path (QT_ROOT_DIR) that cmake/FindQt6.cmake's
     #     local search roots do not cover, so it has to be passed in
     #     explicitly rather than relying on auto-detection the way a local
     #     build does.
@@ -143,12 +144,13 @@ runs:
         set -euo pipefail
         extra_args=()
         # QT_ROOT_DIR is only set when the caller's "Install Qt (prebuilt)" step
-        # ran (every Windows leg except windows-msvc-arm64, which has no Qt kit
-        # to point at) - guarded rather than unconditional on "$RUNNER_OS" =
-        # "Windows" alone, because referencing an unset variable under this
-        # script's `set -u` would otherwise fail the Configure step outright on
-        # that leg.
-        if [ "$RUNNER_OS" = "Windows" ] && [ -n "${QT_ROOT_DIR:-}" ]; then
+        # ran - every Windows leg except windows-msvc-arm64 (no Qt kit to point
+        # at), and both macOS legs (gui: true). Guarded on the variable itself
+        # rather than a RUNNER_OS check, because referencing an unset variable
+        # under this script's `set -u` would otherwise fail the Configure step
+        # outright on every leg that has no Qt kit at all (linux-gcc and
+        # friends, windows-msvc-arm64).
+        if [ -n "${QT_ROOT_DIR:-}" ]; then
           extra_args+=(-DCMAKE_PREFIX_PATH="$QT_ROOT_DIR")
         fi
         if [ "$LEG_GUI" = "true" ]; then
