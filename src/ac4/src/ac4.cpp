@@ -347,14 +347,14 @@ int parse_frame_rate_fractions_info(Reader& r, int frame_rate_index, int frame_r
 
 // --- §4.2.3.9 ac4_hsf_ext_substream_info ------------------------------------
 // Part 1 has no parameter; Part 2 gates it on b_substreams_present
-// (§6.2.1.14). Both shapes just name a substream_index_table() row, which
-// this parser does not need (the HSF extension substream's own bytes are
-// still accounted for via substream_index_table()'s sizes; it is simply
-// reported as "other", the same as any non-channel-audio substream).
-void parse_hsf_ext_substream_info(Reader& r, bool b_substreams_present) {
+// (§6.2.1.14). Both shapes just name a substream_index_table() row: the
+// index of the ac4_substream() that holds this element's owner's
+// ac4_hsf_ext_substream() content.
+std::optional<int> parse_hsf_ext_substream_info(Reader& r, bool b_substreams_present) {
     if (b_substreams_present) {
-        parse_substream_index_ref(r);
+        return parse_substream_index_ref(r);
     }
+    return std::nullopt;
 }
 
 // --- §4.2.3.8 / §6.2.1.5 presentation_config_ext_info -----------------------
@@ -645,11 +645,11 @@ PresentationInfoV0 parse_presentation_info_v0(Reader& r, int fs_index, int frame
                 const int n_roles =
                     kPresentationConfigRoleCounts[static_cast<std::size_t>(*presentation_config)];
                 for (int i = 0; i < n_roles; ++i) {
-                    pres.substreams.emplace_back(
+                    auto& sub = pres.substreams.emplace_back(
                         std::string(roles[static_cast<std::size_t>(i)]),
                         parse_substream_info_v0(r, fs_index, frame_rate_factor));
                     if (i == 0 && b_hsf_ext) {
-                        parse_hsf_ext_substream_info(r, true);
+                        sub.second.hsf_ext_substream_index = parse_hsf_ext_substream_info(r, true);
                     }
                 }
             } else {
@@ -1147,12 +1147,14 @@ SubstreamGroupInfo parse_substream_group_info(Reader& r, int fs_index, int frame
             // syntax) per §6.2.1.6.
             auto chan =
                 parse_substream_info_chan(r, fs_index, frame_rate_factor, group.b_substreams_present);
+            std::optional<int> hsf_ext_substream_index;
             if (b_hsf_ext) {
-                parse_hsf_ext_substream_info(r, group.b_substreams_present);
+                hsf_ext_substream_index = parse_hsf_ext_substream_info(r, group.b_substreams_present);
             }
             GroupSubstream sub;
             sub.kind = GroupSubstream::Kind::kChan;
             sub.chan = std::move(chan);
+            sub.hsf_ext_substream_index = hsf_ext_substream_index;
             group.substreams.push_back(std::move(sub));
             if (r.error()) {
                 return group;  // the object-coded loop below already did this
@@ -1174,7 +1176,8 @@ SubstreamGroupInfo parse_substream_group_info(Reader& r, int fs_index, int frame
                                                     group.b_substreams_present);
             }
             if (b_hsf_ext) {
-                parse_hsf_ext_substream_info(r, group.b_substreams_present);
+                sub.hsf_ext_substream_index =
+                    parse_hsf_ext_substream_info(r, group.b_substreams_present);
             }
             group.substreams.push_back(std::move(sub));
             if (r.error()) {
