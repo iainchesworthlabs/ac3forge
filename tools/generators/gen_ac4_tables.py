@@ -89,6 +89,13 @@ SPECTRUM_CODEBOOKS = 11
 # The transform lengths of a 44.1 or 48 kHz stream: the frame lengths 2 048,
 # 1 920 and 1 536 and their halves down to a sixteenth, in Table B.1's order.
 LENGTHS_48 = [2048, 1920, 1536, 1024, 960, 768, 512, 480, 384, 256, 240, 192, 128, 120, 96]
+# Tables B.2 and B.3: every LENGTHS_48 entry doubled and quadrupled, in the
+# same order - the HSF extension's own transform lengths at 96 and 192 kHz.
+# Numerically some of these coincide with a LENGTHS_48 or LENGTHS_96 value
+# (4 x 256 == 2 x 512 == 1 024, say); that is not a collision, since each
+# rate's num_sfb/offsets are looked up in that rate's own table.
+LENGTHS_96 = [length * 2 for length in LENGTHS_48]
+LENGTHS_192 = [length * 4 for length in LENGTHS_48]
 
 TABLE_TITLE = re.compile(r"^\s*Table ([AB])\.(\d+):\s*(.*?)\s*$")
 CLAUSE_HEADING = re.compile(r"^\s*A\.(\d)\s+(\S.*?)\s*$")
@@ -420,17 +427,34 @@ def read_row(line, text, width, index=None, fits=None):
     return fitting[0]
 
 
-def parse_b1(section):
+# ERRATA.md's "Misprints with no effect": Table B.2 (96 kHz) prints a
+# transform length of 920 where every other table - Table 83's frame_len_base
+# doubling for 96 kHz, and the 96 kHz column of Tables B.4 to B.7, whose own
+# data this length's num_sfb has to agree with - has 960. Corrected here, at
+# the one place that reads Table B.2's transform-length column, rather than
+# carried as a second, wrong spelling of the same length into LENGTHS_96 and
+# everything keyed by it.
+MISPRINTS = {("B", 2, 920): 960}
+
+
+def parse_num_sfb(section, expected_lengths):
+    """{transform length: num_sfb} for one of Tables B.1 to B.3."""
+    number = section.number
     _, rows = body_rows(section)
     num_sfb = {}
     for line, text in rows:
         fields = read_row(line, text, 2, fits=lambda f: "-" not in f)
         length = number_value(fields[0])
-        check(length not in num_sfb, f"line {line}: Table B.1 lists {length} twice")
+        length = MISPRINTS.get(("B", number, length), length)
+        check(length not in num_sfb, f"line {line}: Table B.{number} lists {length} twice")
         num_sfb[length] = number_value(fields[1])
-    check(list(num_sfb) == LENGTHS_48,
-          f"Table B.1 lists transform lengths {list(num_sfb)}, not {LENGTHS_48}")
+    check(list(num_sfb) == expected_lengths,
+          f"Table B.{number} lists transform lengths {list(num_sfb)}, not {expected_lengths}")
     return num_sfb
+
+
+def parse_b1(section):
+    return parse_num_sfb(section, LENGTHS_48)
 
 
 def parse_n_side_bits(lines):
@@ -454,14 +478,18 @@ def parse_n_side_bits(lines):
     return rows
 
 
-def parse_offsets(section, num_sfb):
-    """{transform length: offsets} for the 44.1/48 kHz columns of one of Tables B.4 to B.7.
+def parse_offsets(section, num_sfb, num_sfb_96, num_sfb_192):
+    """{rate: {transform length: offsets}} for rates 48, 96 and 192, from the
+    44.1/48 kHz columns of one of Tables B.4 to B.7.
 
     The title names the 44.1/48 kHz lengths in column order. Tables B.4 to
     B.6 print each row twice over, the second half (after a "-" column)
     carrying on from the sfb where the first half's last row stops; Table
-    B.7 prints one half. A column carries on below its 48 kHz length's last
-    band for the 96 and 192 kHz lengths sharing it, which are not taken.
+    B.7 prints one half. Each column continues below its 48 kHz length's
+    last band, as far as it goes: to the 96 kHz length sharing it (double),
+    then to the 192 kHz length sharing it (quadruple) where the title names
+    one - the same underlying sequence at three prefix lengths, per the
+    tables' own headings ("2 048@44,1 / 2 048@48 / 4 096@96 / 8 192@192").
     """
     number = section.number
     match = re.search(r"44,1 kHz or 48 kHz and transform length (.*?);", section.title)
@@ -505,22 +533,47 @@ def parse_offsets(section, num_sfb):
               f"half has {len(rows)} rows")
         columns = [first + more for first, more in zip(columns, second, strict=True)]
 
-    offsets = {}
+    columns = [[number_value(v) if v != "-" else "-" for v in column] for column in columns]
+
+    def take(column, target_length, num_sfb_here, rate):
+        count = num_sfb_here[target_length] + 1
+        values = column[:count]
+        check(len(values) == count and "-" not in values,
+              f"Table B.{number}, {target_length}@{rate}: {len(values)} offsets before a '-' or "
+              f"the end, num_sfb {num_sfb_here[target_length]} needs {count}")
+        check(values[0] == 0, f"Table B.{number}, {target_length}@{rate}: sfb 0 is at {values[0]}")
+        for sfb, (a, b) in enumerate(itertools.pairwise(values)):
+            check(a < b, f"Table B.{number}, {target_length}@{rate}: sfb {sfb + 1} at {b} is "
+                  f"not after {a}")
+        check(values[-1] == target_length,
+              f"Table B.{number}, {target_length}@{rate}: sfb {count - 1} ends at {values[-1]}, "
+              f"not {target_length}")
+        return values
+
+    offsets_48, offsets_96, offsets_192 = {}, {}, {}
     for column, length in enumerate(lengths):
         check(length in num_sfb, f"Table B.{number}: {length} is not in Table B.1")
-        count = num_sfb[length] + 1
-        values = columns[column][:count]
-        check(len(values) == count and "-" not in values,
-              f"Table B.{number}, {length}: {len(values)} offsets before a '-' or the end, "
-              f"num_sfb {num_sfb[length]} needs {count}")
-        values = [number_value(v) for v in values]
-        check(values[0] == 0, f"Table B.{number}, {length}: sfb 0 is at {values[0]}")
-        for sfb, (a, b) in enumerate(itertools.pairwise(values)):
-            check(a < b, f"Table B.{number}, {length}: sfb {sfb + 1} at {b} is not after {a}")
-        check(values[-1] == length,
-              f"Table B.{number}, {length}: sfb {count - 1} ends at {values[-1]}, not {length}")
-        offsets[length] = values
-    return offsets
+        offsets_48[length] = take(columns[column], length, num_sfb, "48")
+        length_96 = length * 2
+        if length_96 in num_sfb_96:
+            offsets_96[length_96] = take(columns[column], length_96, num_sfb_96, "96")
+        length_192 = length * 4
+        if length_192 in num_sfb_192:
+            offsets_192[length_192] = take(columns[column], length_192, num_sfb_192, "192")
+    return {48: offsets_48, 96: offsets_96, 192: offsets_192}
+
+
+@dataclass
+class HsfTables:
+    """num_sfb/offsets/offset_tables for 96 and 192 kHz (Tables B.2 to B.7's
+    96/192 kHz columns) - the HSF extension's own transform lengths, num_sfb_
+    48's counterparts at LENGTHS_96 and LENGTHS_192 rather than LENGTHS_48."""
+    num_sfb_96: dict
+    offsets_96: dict
+    offset_tables_96: dict
+    num_sfb_192: dict
+    offsets_192: dict
+    offset_tables_192: dict
 
 
 @dataclass
@@ -574,17 +627,35 @@ def parse_annex_b(numbered, n_side_bits):
     check(sorted(sections) == list(range(1, 20)),
           f"Annex B has Tables B.{sorted(sections)}, not B.1 to B.19")
     num_sfb = parse_b1(sections[1])
-    offsets, offset_tables = {}, {}
+    num_sfb_96 = parse_num_sfb(sections[2], LENGTHS_96)
+    num_sfb_192 = parse_num_sfb(sections[3], LENGTHS_192)
+    offsets, offsets_96, offsets_192 = {}, {}, {}
+    offset_tables, offset_tables_96, offset_tables_192 = {}, {}, {}
     for number in range(4, 8):
-        for length, values in parse_offsets(sections[number], num_sfb).items():
+        by_rate = parse_offsets(sections[number], num_sfb, num_sfb_96, num_sfb_192)
+        for length, values in by_rate[48].items():
             check(length not in offsets, f"Table B.{number}: {length} appears in two tables")
             offsets[length], offset_tables[length] = values, number
+        for length, values in by_rate[96].items():
+            check(length not in offsets_96, f"Table B.{number}: {length}@96 appears in two tables")
+            offsets_96[length], offset_tables_96[length] = values, number
+        for length, values in by_rate[192].items():
+            check(length not in offsets_192,
+                  f"Table B.{number}: {length}@192 appears in two tables")
+            offsets_192[length], offset_tables_192[length] = values, number
     check(sorted(offsets) == sorted(LENGTHS_48),
           f"Tables B.4 to B.7 give offsets for {sorted(offsets)}")
+    check(sorted(offsets_96) == sorted(LENGTHS_96),
+          f"Tables B.4 to B.7 give 96 kHz offsets for {sorted(offsets_96)}, not {sorted(LENGTHS_96)}")
+    check(sorted(offsets_192) == sorted(LENGTHS_192),
+          f"Tables B.4 to B.7 give 192 kHz offsets for {sorted(offsets_192)}, "
+          f"not {sorted(LENGTHS_192)}")
     mappings = [parse_mapping(sections[n], num_sfb, n_side_bits) for n in range(8, 20)]
     masters = [m.master for m in mappings]
     check(len(set(masters)) == len(masters), f"Tables B.8 to B.19 repeat a master: {masters}")
-    return num_sfb, offsets, offset_tables, mappings
+    hsf = HsfTables(num_sfb_96, offsets_96, offset_tables_96,
+                    num_sfb_192, offsets_192, offset_tables_192)
+    return num_sfb, offsets, offset_tables, mappings, hsf
 
 
 # ---------------------------------------------------------------------------
@@ -732,10 +803,9 @@ SFB_HEADER = [
     "#include <span>",
     "",
     "// ETSI TS 103 190-1 V1.4.1 Annex B, the ASF scale factor band tables, at the",
-    "// 44.1 kHz and 48 kHz sampling frequencies (the 96 kHz and 192 kHz columns",
-    "// serve only the HSF extension, which this decoder does not read). GENERATED",
-    "// by tools/generators/gen_ac4_tables.py from Annex B's text; do not edit by",
-    "// hand.",
+    "// 44.1 kHz, 48 kHz, 96 kHz and 192 kHz sampling frequencies (the last two for",
+    "// the HSF extension, ac4_hsf_ext_substream() - see Sec.4.2.4.3). GENERATED by",
+    "// tools/generators/gen_ac4_tables.py from Annex B's text; do not edit by hand.",
     "",
     "namespace ac4::detail::tables {",
     "",
@@ -747,6 +817,19 @@ SFB_HEADER = [
     "// num_sfb_48(transform_length) + 1 entries, the last equal to the transform",
     "// length. Empty for a length the tables do not list.",
     "[[nodiscard]] std::span<const std::uint16_t> sfb_offsets_48(int transform_length) noexcept;",
+    "",
+    "// Table B.2 and the 96 kHz columns of Tables B.4 to B.7: num_sfb_96() and",
+    "// sfb_offsets_96(), the same shape as num_sfb_48()/sfb_offsets_48() but for",
+    "// the HSF extension's own transform length (twice the owning channel's, Table",
+    "// 17's max_sfb_ext_hsf loop). A length these do not list (0/empty) includes",
+    "// every 44.1 kHz-only length: Table B.2 has no 44.1 kHz row.",
+    "[[nodiscard]] int num_sfb_96(int transform_length) noexcept;",
+    "[[nodiscard]] std::span<const std::uint16_t> sfb_offsets_96(int transform_length) noexcept;",
+    "",
+    "// Table B.3 and the 192 kHz columns of Tables B.4 to B.7: num_sfb_192() and",
+    "// sfb_offsets_192(), four times the owning channel's transform length.",
+    "[[nodiscard]] int num_sfb_192(int transform_length) noexcept;",
+    "[[nodiscard]] std::span<const std::uint16_t> sfb_offsets_192(int transform_length) noexcept;",
     "",
     "// Tables B.8 to B.19, as clause 4.3.5.13 applies them: the max_sfb for a block",
     "// of transform length `target_length` in the two sf_data() elements that",
@@ -770,17 +853,17 @@ SFB_HEADER = [
 ]
 
 
-def emit_sfb_source(num_sfb, offsets, mappings, offset_tables):
-    out = ['#include "sfb_tables.hpp"', "", "#include <array>", "#include <cstddef>",
-           "#include <cstdint>", "#include <span>", "",
-           "// GENERATED by tools/generators/gen_ac4_tables.py from ETSI TS 103 190-1 V1.4.1",
-           "// Annex B's text; do not edit by hand.",
-           "", "namespace ac4::detail::tables {", "", "namespace {", ""]
-    for length in LENGTHS_48:
+def emit_rate_offset_arrays(rate_label, lengths, num_sfb, offsets, offset_tables, prefix):
+    """The kSfbOffset<prefix><length> arrays for one rate, then a
+    kTransformLengths<PREFIX> array of {length, num_sfb, offsets} - PREFIX
+    empty for 48 kHz (unprefixed, as before HSF), "96"/"192" otherwise."""
+    out = []
+    for length in lengths:
         values = offsets[length]
-        out.append(f"// Table B.{offset_tables[length]}, the {spaced(length)}@48 column: "
-                   f"sfb_offset for sfb 0 to {len(values) - 1}.")
-        out.append(f"constexpr std::array<std::uint16_t, {len(values)}> kSfbOffset{length} = {{{{")
+        out.append(f"// Table B.{offset_tables[length]}, the {spaced(length)}@{rate_label} "
+                   f"column: sfb_offset for sfb 0 to {len(values) - 1}.")
+        out.append(f"constexpr std::array<std::uint16_t, {len(values)}> "
+                   f"kSfbOffset{prefix}{length} = {{{{")
         for first in range(0, len(values), 10):
             row = ", ".join(str(v) for v in values[first:first + 10]) + ","
             last = min(first + 10, len(values)) - 1
@@ -788,19 +871,32 @@ def emit_sfb_source(num_sfb, offsets, mappings, offset_tables):
             out.append(f"    {row:<60}// {span}")
         out.append("}};")
         out.append("")
-
     out += [
-        "struct TransformLength {",
-        "    int transform_length;",
-        "    int num_sfb;                             // Table B.1",
-        "    std::span<const std::uint16_t> offsets;  // num_sfb + 1 entries",
-        "};",
-        "",
-        f"constexpr std::array<TransformLength, {len(LENGTHS_48)}> kTransformLengths = {{{{",
-        *(f"    {{{length}, {num_sfb[length]}, kSfbOffset{length}}}," for length in LENGTHS_48),
+        f"constexpr std::array<TransformLength, {len(lengths)}> kTransformLengths{prefix} = {{{{",
+        *(f"    {{{length}, {num_sfb[length]}, kSfbOffset{prefix}{length}}}," for length in lengths),
         "}};",
         "",
     ]
+    return out
+
+
+def emit_sfb_source(num_sfb, offsets, mappings, offset_tables, hsf):
+    out = ['#include "sfb_tables.hpp"', "", "#include <array>", "#include <cstddef>",
+           "#include <cstdint>", "#include <span>", "",
+           "// GENERATED by tools/generators/gen_ac4_tables.py from ETSI TS 103 190-1 V1.4.1",
+           "// Annex B's text; do not edit by hand.",
+           "", "namespace ac4::detail::tables {", "", "namespace {", "",
+           "struct TransformLength {",
+           "    int transform_length;",
+           "    int num_sfb;                             // Table B.1, B.2 or B.3",
+           "    std::span<const std::uint16_t> offsets;  // num_sfb + 1 entries",
+           "};",
+           ""]
+    out += emit_rate_offset_arrays("48", LENGTHS_48, num_sfb, offsets, offset_tables, "")
+    out += emit_rate_offset_arrays("96", LENGTHS_96, hsf.num_sfb_96, hsf.offsets_96,
+                                   hsf.offset_tables_96, "96")
+    out += emit_rate_offset_arrays("192", LENGTHS_192, hsf.num_sfb_192, hsf.offsets_192,
+                                   hsf.offset_tables_192, "192")
 
     most = max(len(m.sides) for m in mappings)
     for m in mappings:
@@ -832,8 +928,9 @@ def emit_sfb_source(num_sfb, offsets, mappings, offset_tables):
     out += [
         "}};",
         "",
-        "const TransformLength* find_length(int transform_length) noexcept {",
-        "    for (const TransformLength& entry : kTransformLengths) {",
+        "const TransformLength* find_length(std::span<const TransformLength> table,",
+        "                                   int transform_length) noexcept {",
+        "    for (const TransformLength& entry : table) {",
         "        if (entry.transform_length == transform_length) {",
         "            return &entry;",
         "        }",
@@ -844,12 +941,32 @@ def emit_sfb_source(num_sfb, offsets, mappings, offset_tables):
         "}  // namespace",
         "",
         "int num_sfb_48(int transform_length) noexcept {",
-        "    const TransformLength* entry = find_length(transform_length);",
+        "    const TransformLength* entry = find_length(kTransformLengths, transform_length);",
         "    return entry != nullptr ? entry->num_sfb : 0;",
         "}",
         "",
         "std::span<const std::uint16_t> sfb_offsets_48(int transform_length) noexcept {",
-        "    const TransformLength* entry = find_length(transform_length);",
+        "    const TransformLength* entry = find_length(kTransformLengths, transform_length);",
+        "    return entry != nullptr ? entry->offsets : std::span<const std::uint16_t>{};",
+        "}",
+        "",
+        "int num_sfb_96(int transform_length) noexcept {",
+        "    const TransformLength* entry = find_length(kTransformLengths96, transform_length);",
+        "    return entry != nullptr ? entry->num_sfb : 0;",
+        "}",
+        "",
+        "std::span<const std::uint16_t> sfb_offsets_96(int transform_length) noexcept {",
+        "    const TransformLength* entry = find_length(kTransformLengths96, transform_length);",
+        "    return entry != nullptr ? entry->offsets : std::span<const std::uint16_t>{};",
+        "}",
+        "",
+        "int num_sfb_192(int transform_length) noexcept {",
+        "    const TransformLength* entry = find_length(kTransformLengths192, transform_length);",
+        "    return entry != nullptr ? entry->num_sfb : 0;",
+        "}",
+        "",
+        "std::span<const std::uint16_t> sfb_offsets_192(int transform_length) noexcept {",
+        "    const TransformLength* entry = find_length(kTransformLengths192, transform_length);",
         "    return entry != nullptr ? entry->offsets : std::span<const std::uint16_t>{};",
         "}",
         "",
@@ -917,18 +1034,19 @@ def main():
     attach_codes(codebooks, parse_attachment(tables_c))
     check_spectrum_values(codebooks, cb_dim, unsigned_cb)
     n_side_bits = parse_n_side_bits(lines)
-    num_sfb, offsets, offset_tables, mappings = parse_annex_b(annex(lines, "B", "C"),
-                                                              n_side_bits)
+    num_sfb, offsets, offset_tables, mappings, hsf = parse_annex_b(annex(lines, "B", "C"),
+                                                                   n_side_bits)
 
     report_codebooks(codebooks)
-    print(f"\nAnnex B: num_sfb and offsets for {len(offsets)} transform lengths, "
+    print(f"\nAnnex B: num_sfb and offsets for {len(offsets)} transform lengths at 48 kHz, "
+          f"{len(hsf.offsets_96)} at 96 kHz, {len(hsf.offsets_192)} at 192 kHz, "
           f"{len(mappings)} max_sfb_master tables")
 
     outputs = {
         "huffman_tables.hpp": emit_huffman_header(codebooks),
         "huffman_tables.cpp": emit_huffman_source(codebooks, cb_dim, unsigned_cb),
         "sfb_tables.hpp": SFB_HEADER,
-        "sfb_tables.cpp": emit_sfb_source(num_sfb, offsets, mappings, offset_tables),
+        "sfb_tables.cpp": emit_sfb_source(num_sfb, offsets, mappings, offset_tables, hsf),
     }
     for name, out in outputs.items():
         for number, text in enumerate(out, start=1):

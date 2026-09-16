@@ -2,6 +2,7 @@
 // a frame whose table of contents does not parse returns, and when I-frame
 // configuration carried between frames is kept or forgotten.
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -81,6 +82,89 @@ std::size_t next_non_iframe(const std::vector<std::vector<std::byte>>& frames, s
     return 0;
 }
 
+class Bits {
+   public:
+    void put(std::uint32_t value, int n) {
+        for (int i = n - 1; i >= 0; --i) {
+            bits_.push_back(((value >> static_cast<unsigned>(i)) & 1U) != 0);
+        }
+    }
+
+    [[nodiscard]] std::vector<std::byte> bytes() const {
+        std::vector<std::byte> out((bits_.size() + 7) / 8, std::byte{0});
+        for (std::size_t i = 0; i < bits_.size(); ++i) {
+            if (bits_[i]) {
+                out[i / 8] |= static_cast<std::byte>(0x80U >> (i % 8));
+            }
+        }
+        return out;
+    }
+
+   private:
+    std::vector<bool> bits_;
+};
+
+// One presentation, one channel-coded group, one substream whose own
+// substream_index and whose group's hsf_ext_substream_index are the SAME
+// value - a self-reference no real encoder would write, but a fuzzed stream
+// can, and out.contains()'s first-claim-wins in assign_v1() (decoder.cpp)
+// means the two transcriptions must resolve it identically. Shares its
+// TOC-level shape with tests/ac4/test_ac4_presentation_configs.cpp's
+// frame_with(), an independent bit writer proven against that suite.
+std::vector<std::byte> self_referencing_hsf_ext_frame() {
+    Bits w;
+    w.put(2, 2);   // bitstream_version
+    w.put(1, 10);  // sequence_counter
+    w.put(0, 1);   // b_wait_frames
+    w.put(1, 1);   // fs_index: 48 kHz
+    w.put(13, 4);  // frame_rate_index 13: multiply/fractions info read nothing
+    w.put(1, 1);   // b_iframe_global
+    w.put(1, 1);   // b_single_presentation -> n_presentations = 1
+    w.put(0, 1);   // b_payload_base
+    w.put(0, 1);   // b_program_id
+
+    // Presentation 0, single group.
+    w.put(1, 1);  // b_single_substream_group
+    w.put(0, 1);  // presentation_version terminator -> 0
+    w.put(0, 3);  // md_compat
+    w.put(0, 1);  // b_presentation_id
+    w.put(0, 2);  // emdf_info: version
+    w.put(0, 3);  //   key_id
+    w.put(0, 1);  //   b_payloads_substream_info
+    w.put(0, 2);  //   emdf_reserved primary
+    w.put(0, 2);  //   emdf_reserved secondary
+    w.put(0, 1);  // b_presentation_filter
+    w.put(0, 3);  // ac4_sgi_specifier(): group 0
+    w.put(0, 1);  // b_pre_virtualized
+    w.put(0, 1);  // b_add_emdf_substreams
+    w.put(0, 1);  // b_alternative
+    w.put(1, 1);  // b_pres_ndot
+    w.put(1, 2);  // presentation substream_index = 1
+
+    // Group 0: single channel-coded substream, stereo, b_hsf_ext set.
+    w.put(1, 1);     // b_substreams_present
+    w.put(1, 1);     // b_hsf_ext
+    w.put(1, 1);     // b_single_substream
+    w.put(1, 1);     // b_channel_coded
+    w.put(0b10, 2);  // channel_mode: stereo
+    w.put(0, 1);     // b_sf_multiplier
+    w.put(0, 1);     // b_bitrate_info
+    w.put(1, 1);     // b_audio_ndot
+    w.put(0, 2);     // substream_index = 0 (this channel's own index)
+    w.put(0, 2);     // hsf_ext_substream_index = 0 - the self-reference
+    w.put(0, 1);     // b_content_type
+
+    // substream_index_table(): 2 substreams (the group's, the presentation's).
+    w.put(2, 2);
+    for (int s = 0; s < 2; ++s) {
+        w.put(0, 1);                              // b_more_bits
+        w.put(static_cast<std::uint32_t>(4 + s), 10);  // substream_size
+    }
+    auto data = w.bytes();
+    data.resize(data.size() + 32, std::byte{0});
+    return data;
+}
+
 }  // namespace
 
 TEST_CASE("ac4::Decoder fails a frame whose table of contents does not parse", "[ac4dec]") {
@@ -156,4 +240,15 @@ TEST_CASE("ac4::Decoder forgets I-frame configuration at a change of source", "[
     const auto report = decoder.parse(later);
     REQUIRE(report.has_value());
     CHECK(audio_refusal(*report) == ac4::DecodeError::kMissingIFrame);
+}
+
+TEST_CASE("a substream that is both a channel and its own HSF extension resolves to audio",
+          "[ac4dec]") {
+    ac4::Decoder decoder;
+    const auto report = decoder.parse(self_referencing_hsf_ext_frame());
+    REQUIRE(report.has_value());
+    const auto it = std::find_if(report->substreams.begin(), report->substreams.end(),
+                                  [](const ac4::SubstreamReport& s) { return s.index == 0; });
+    REQUIRE(it != report->substreams.end());
+    CHECK(it->kind == ac4::SubstreamReport::Kind::kAudio);
 }

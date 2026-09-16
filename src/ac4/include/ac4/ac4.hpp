@@ -141,6 +141,12 @@ struct ChannelSubstreamInfo {
     // earlier frame. A decoder needs it to know whether I-frame-only
     // configuration is present.
     std::vector<bool> b_iframe;
+    // §4.2.3.9 ac4_hsf_ext_substream_info: set only for the legacy
+    // (bitstream_version <= 1) path's first role substream when its
+    // presentation's b_hsf_ext is set - the v1 path's equivalent is
+    // GroupSubstream::hsf_ext_substream_index instead, since that one
+    // wrapper covers chan/ajoc/obj alike.
+    std::optional<int> hsf_ext_substream_index;
 };
 
 // --- §6.2.1.10 bed_dyn_obj_assignment / §6.3.2.10.8 -------------------------
@@ -271,6 +277,11 @@ struct GroupSubstream {
     std::optional<ChannelSubstreamInfo> chan;
     std::optional<AjocSubstreamInfo> ajoc;
     std::optional<ObjSubstreamInfo> obj;
+    // §4.2.3.9 ac4_hsf_ext_substream_info, read once per substream when the
+    // group's own b_hsf_ext is set - covers chan/ajoc/obj alike, unlike
+    // ChannelSubstreamInfo::hsf_ext_substream_index (the legacy path's own
+    // field, which this struct does not exist for).
+    std::optional<int> hsf_ext_substream_index;
 };
 
 struct SubstreamGroupInfo {
