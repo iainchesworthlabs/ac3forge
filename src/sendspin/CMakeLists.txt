@@ -161,19 +161,22 @@ elseif(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
                 src/transport/httplib/listen_socket_posix.cpp)
     endif()
     target_include_directories(ac3sendspin SYSTEM PRIVATE "${AC3FORGE_MDNS_INCLUDE_DIR}")
-    target_link_libraries(ac3sendspin PRIVATE MbedTLS::mbedcrypto httplib::httplib FLAC::FLAC Opus::opus)
-    # cpp-httplib is configured by macros, which reach every file here that includes it.
-    # Code elsewhere in the same program that included cpp-httplib would need the same
-    # values, since its inline functions would otherwise differ between the two.
+    # cpp-httplib is configured by macros, which must have the same values in every file of a
+    # program that includes it, since its inline functions would otherwise differ between them.
+    # So every target that includes it links ac3sendspin_httplib rather than httplib::httplib:
+    # this library, the test server, and the tests of the transport.
     #   - A Sendspin WebSocket message is one Noise transport message or one handshake-phase
     #     JSON text, never over 65535 bytes (messaging.md, Binary Messages). A peer that
     #     announces a longer one is disconnected before anything is allocated for it.
     #   - close() waits for the peer's answering Close frame when no reader is waiting for
     #     it. Upstream's 5 s would be what Listener::stop() waits out for a peer gone quiet.
-    target_compile_definitions(ac3sendspin
-        PRIVATE
+    add_library(ac3sendspin_httplib INTERFACE)
+    target_link_libraries(ac3sendspin_httplib INTERFACE httplib::httplib)
+    target_compile_definitions(ac3sendspin_httplib
+        INTERFACE
             CPPHTTPLIB_WEBSOCKET_MAX_PAYLOAD_LENGTH=65535
             CPPHTTPLIB_WEBSOCKET_CLOSE_TIMEOUT_SECOND=1)
+    target_link_libraries(ac3sendspin PRIVATE MbedTLS::mbedcrypto ac3sendspin_httplib FLAC::FLAC Opus::opus)
 endif()
 
 target_include_directories(ac3sendspin

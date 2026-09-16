@@ -1,9 +1,19 @@
-# Overlay port: microsoft/vcpkg's cpp-httplib port as of commit d725c087, unchanged but for
-# this comment. It pins 0.56.0 ahead of vcpkg.json's builtin-baseline, which still has
+# Overlay port: microsoft/vcpkg's cpp-httplib port as of commit d725c087, with this comment and
+# one patch of ours. It pins 0.56.0 ahead of vcpkg.json's builtin-baseline, which still has
 # 0.52.0: src/sendspin's WebSocket transport needs 0.56.0's ws::WebSocket::set_read_timeout(),
 # which hands a blocked read back as ReadResult::Timeout without closing the connection and is
-# safe to call while another thread reads. Delete this directory once the baseline reaches
-# 0.56.0. CMakePresets.json's core preset puts cmake/vcpkg/ports on VCPKG_OVERLAY_PORTS.
+# safe to call while another thread reads.
+#
+# wait-inside-a-frame.patch: the transport reads with a 100 ms timeout, so that a close from
+# another thread is seen within one poll, and 0.56.0 fails the connection when that timeout
+# elapses inside a frame. Over Wi-Fi the rest of a frame can come later than that. An ESP32-S3
+# board lost its connections this way while it sent each frame's header and payload as two TCP
+# segments, the second held back by Nagle's algorithm until the first was acknowledged. With
+# the patch, a read that has begun a frame under the caller's timeout waits for the rest until
+# the connection closes.
+#
+# Delete this directory once the baseline has a cpp-httplib that behaves the same way.
+# CMakePresets.json's core preset puts cmake/vcpkg/ports on VCPKG_OVERLAY_PORTS.
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO yhirose/cpp-httplib
@@ -12,6 +22,7 @@ vcpkg_from_github(
     HEAD_REF master
     PATCHES
         fix-find-brotli.patch
+        wait-inside-a-frame.patch
 )
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS

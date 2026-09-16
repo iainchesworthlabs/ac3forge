@@ -1,10 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -16,6 +19,9 @@
 
 #include "ac3/sendspin/transport.hpp"
 #include "ac3/sendspin/websocket.hpp"
+
+// Last: it brings in the platform's socket headers and their macros.
+#include <httplib.h>
 
 // The WebSocket transport over loopback: the threading contract test_transport.cpp holds the
 // in-memory pair to, and what the network adds to it - closes that have to reach a reader, the
@@ -92,6 +98,88 @@ std::optional<websocket::ConnectError> connect_error(const std::string& url) {
         return std::nullopt;
     }
     return dialled.error();
+}
+
+// A WebSocket client written byte by byte over a plain TCP connection, so that a test can stop
+// partway through a frame, as a Wi-Fi peer's frame may. cpp-httplib's socket functions keep it
+// free of platform code.
+class RawClient {
+   public:
+    explicit RawClient(std::uint16_t port) : port_(port) {
+        httplib::Error error = httplib::Error::Success;
+        socket_ = httplib::detail::create_client_socket("127.0.0.1", "", port, AF_INET, true, false, nullptr, 5, 0, 5,
+                                                        0, 5, 0, "", error);
+    }
+    ~RawClient() { close(); }
+    RawClient(const RawClient&) = delete;
+    RawClient& operator=(const RawClient&) = delete;
+    RawClient(RawClient&&) = delete;
+    RawClient& operator=(RawClient&&) = delete;
+
+    // Sends the upgrade request and reads the response to its blank line.
+    [[nodiscard]] bool upgrade() {
+        if (socket_ == INVALID_SOCKET) {
+            return false;
+        }
+        const std::string request = "GET /sendspin HTTP/1.1\r\nHost: 127.0.0.1:" + std::to_string(port_) +
+                                    "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                                    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n";
+        if (!write(std::vector<std::uint8_t>(request.begin(), request.end()))) {
+            return false;
+        }
+        std::string response;
+        char byte = 0;
+        while (!response.ends_with("\r\n\r\n")) {
+            if (httplib::detail::read_socket(socket_, &byte, 1, 0) != 1) {
+                return false;
+            }
+            response.push_back(byte);
+        }
+        return response.starts_with("HTTP/1.1 101");
+    }
+
+    [[nodiscard]] bool write(const std::vector<std::uint8_t>& bytes) {
+        std::size_t sent = 0;
+        while (sent < bytes.size()) {
+            const auto n = httplib::detail::send_socket(socket_, bytes.data() + sent, bytes.size() - sent,
+                                                        CPPHTTPLIB_SEND_FLAGS);
+            if (n <= 0) {
+                return false;
+            }
+            sent += static_cast<std::size_t>(n);
+        }
+        return true;
+    }
+
+    void close() {
+        if (socket_ != INVALID_SOCKET) {
+            httplib::detail::close_socket(socket_);
+            socket_ = INVALID_SOCKET;
+        }
+    }
+
+   private:
+    std::uint16_t port_;
+    socket_t socket_ = INVALID_SOCKET;
+};
+
+// A client's frame, masked as RFC 6455 requires, for a payload under 126 bytes.
+std::vector<std::uint8_t> client_frame(std::uint8_t opcode, bool final, const std::vector<std::uint8_t>& payload) {
+    constexpr std::array<std::uint8_t, 4> kMask{0x37, 0xfa, 0x21, 0x3d};
+    std::vector<std::uint8_t> frame{static_cast<std::uint8_t>((final ? 0x80 : 0x00) | opcode),
+                                    static_cast<std::uint8_t>(0x80 | payload.size())};
+    frame.insert(frame.end(), kMask.begin(), kMask.end());
+    for (std::size_t i = 0; i < payload.size(); ++i) {
+        frame.push_back(static_cast<std::uint8_t>(payload[i] ^ kMask[i % kMask.size()]));
+    }
+    return frame;
+}
+
+// The bytes of `frame` from `from`, up to `to` or its end.
+std::vector<std::uint8_t> part(const std::vector<std::uint8_t>& frame, std::size_t from,
+                               std::size_t to = static_cast<std::size_t>(-1)) {
+    return {frame.begin() + static_cast<std::ptrdiff_t>(from),
+            frame.begin() + static_cast<std::ptrdiff_t>(std::min(to, frame.size()))};
 }
 
 }  // namespace
@@ -190,6 +278,67 @@ TEST_CASE("websocket: messages sent before a close are still received",
     CHECK(binary->bytes == last);
     CHECK_FALSE(server->receive().has_value());
     closer.join();
+}
+
+TEST_CASE("websocket: a frame whose parts come further apart than the poll interval is received",
+          "[sendspin][transport][websocket]") {
+    Accepted accepted;
+    const auto listener = start_listener(accepted);
+    REQUIRE(listener != nullptr);
+    RawClient client(listener->port());
+    REQUIRE(client.upgrade());
+    const std::unique_ptr<Connection> server = accepted.pop();
+    REQUIRE(server != nullptr);
+
+    // Three poll intervals apart: about as long as an ESP32-S3's frames waited for their second
+    // TCP segment, which Nagle's algorithm held until the first was acknowledged.
+    const std::chrono::milliseconds gap = 3 * websocket::ConnectionOptions{}.poll_interval;
+    const std::vector<std::uint8_t> payload{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    std::vector<std::vector<std::uint8_t>> parts;
+    SECTION("inside a frame's header, and on either side of its mask") {
+        const std::vector<std::uint8_t> frame = client_frame(0x2, true, payload);
+        parts = {part(frame, 0, 1), part(frame, 1, 6), part(frame, 6, 11), part(frame, 11)};
+    }
+    SECTION("between the frames of a fragmented message, and inside the last") {
+        const std::vector<std::uint8_t> last = client_frame(0x0, true, part(payload, 4));
+        parts = {client_frame(0x2, false, part(payload, 0, 4)), part(last, 0, 3), part(last, 3)};
+    }
+
+    std::future<bool> sent = std::async(std::launch::async, [&] {
+        for (const std::vector<std::uint8_t>& bytes : parts) {
+            std::this_thread::sleep_for(gap);
+            if (!client.write(bytes)) {
+                return false;
+            }
+        }
+        return true;
+    });
+    const std::optional<Frame> frame = server->receive();
+    CHECK(sent.get());
+    REQUIRE(frame.has_value());
+    CHECK(frame->kind == FrameKind::kBinary);
+    CHECK(frame->bytes == payload);
+}
+
+TEST_CASE("websocket: a close ends a reader waiting inside a frame", "[sendspin][transport][websocket]") {
+    Accepted accepted;
+    const auto listener = start_listener(accepted);
+    REQUIRE(listener != nullptr);
+    RawClient client(listener->port());
+    REQUIRE(client.upgrade());
+    const std::unique_ptr<Connection> server = accepted.pop();
+    REQUIRE(server != nullptr);
+
+    // A frame's header and mask, and no payload after them.
+    REQUIRE(client.write(part(client_frame(0x2, true, {1, 2, 3}), 0, 6)));
+    std::future<std::optional<Frame>> received = std::async(std::launch::async, [&] { return server->receive(); });
+    std::this_thread::sleep_for(3 * websocket::ConnectionOptions{}.poll_interval);
+    server->close();
+    const bool ended = received.wait_for(5s) == std::future_status::ready;
+    // A reader still waiting is let go by closing the socket under it, so the test ends either way.
+    client.close();
+    CHECK(ended);
+    CHECK_FALSE(received.get().has_value());
 }
 
 TEST_CASE("websocket: many senders, one reader, nothing lost", "[sendspin][transport][websocket]") {

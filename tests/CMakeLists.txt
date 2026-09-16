@@ -727,10 +727,16 @@ if(AC3FORGE_BUILD_HEARTH)
             sendspin/test_pairing.cpp
             sendspin/test_pairing_flow.cpp
             sendspin/test_session_driver.cpp
-            sendspin/test_sessions.cpp
-            sendspin/test_websocket.cpp)
+            sendspin/test_sessions.cpp)
         # test_mdns.cpp reads the mdns backend's packet layer, which is private to the library.
         target_include_directories(ac3tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src/sendspin/src")
+        # test_websocket.cpp writes a WebSocket client's bytes by hand through cpp-httplib's socket
+        # functions, so it is compiled on its own with cpp-httplib configured as src/sendspin
+        # configures it (ac3sendspin_httplib), leaving the rest of the suite's flags alone.
+        add_library(ac3tests_websocket OBJECT sendspin/test_websocket.cpp)
+        target_link_libraries(ac3tests_websocket
+            PRIVATE ac3::sendspin ac3sendspin_httplib ac3::warnings ac3::coverage Catch2::Catch2)
+        target_link_libraries(ac3tests PRIVATE ac3tests_websocket)
         # Hearth's test sink, run in process (apps/hearth/testsink), and the server's half of A4's
         # exit with aiosendspin 9.1.1, which tools/sendspin/aiosendspin_exit.py runs.
         target_sources(ac3tests PRIVATE hearth/test_aiosendspin.cpp hearth/test_group.cpp hearth/test_testsink.cpp)
