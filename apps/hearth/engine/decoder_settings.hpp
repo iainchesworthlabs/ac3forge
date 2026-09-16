@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
@@ -75,5 +76,9 @@ struct DecoderSetup {
 
 [[nodiscard]] DecoderSetup decoder_setup(const DecoderSettings& settings,
                                          const render::OutputLayout& layout);
+
+// Every control's value on one line, for the diagnostics file: "line mode,
+// stereo fold Lo/Ro, no LFE in folds, the stream's mix levels, ...".
+[[nodiscard]] std::string describe(const DecoderSettings& settings);
 
 }  // namespace ac3::hearth

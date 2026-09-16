@@ -1,6 +1,8 @@
 #include "queue.hpp"
 
 #include <algorithm>
+#include <string>
+#include <string_view>
 #include <utility>
 
 // See queue.hpp. The only judgements in here are what happens to "current"
@@ -137,6 +139,23 @@ bool Queue::set_facts(std::size_t index, ItemFacts facts) {
     }
     items_[index].facts = std::move(facts);
     return true;
+}
+
+std::string describe_item(std::size_t index, std::string_view title) {
+    if (index == Queue::kNone && title.empty()) {
+        return "an item no longer in the queue";
+    }
+    std::string out;
+    if (index != Queue::kNone) {
+        out = "item " + std::to_string(index + 1) + " ";
+    }
+    out += '"';
+    out += title;
+    out += '"';
+    if (index == Queue::kNone) {
+        out += " (no longer in the queue)";
+    }
+    return out;
 }
 
 }  // namespace ac3::hearth

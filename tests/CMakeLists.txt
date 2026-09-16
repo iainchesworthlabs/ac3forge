@@ -703,6 +703,7 @@ if(AC3FORGE_BUILD_HEARTH)
     # unlike the test sink further down.
     target_sources(ac3tests PRIVATE
         hearth/test_decoder_settings.cpp
+        hearth/test_diagnostics.cpp
         hearth/test_engine.cpp
         hearth/test_media_info.cpp
         hearth/test_output_decision.cpp

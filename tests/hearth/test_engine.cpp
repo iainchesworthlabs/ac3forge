@@ -365,6 +365,7 @@ TEST_CASE("engine: sync waits for the effect of every command made before it",
     const auto engine = make_engine(library, state);
     const ClockThread clock{state};
 
+    CHECK(engine->status().output.sample_rate == 0);
     engine->add({item("long")});
     engine->play();
     engine->pause();
@@ -373,6 +374,10 @@ TEST_CASE("engine: sync waits for the effect of every command made before it",
     CHECK(status.state == TransportState::kPaused);
     CHECK(status.queue.size() == 1);
     CHECK(state->is_open());
+    // What the output is open at.
+    CHECK(status.output.sample_rate == 48000);
+    CHECK(status.output.channels == 2);
+    CHECK(status.output.mode == OutputMode::kLocalPcm);
 
     engine->play();
     engine->sync();
@@ -417,11 +422,12 @@ TEST_CASE("engine: the position moves with the device's clock and stands while p
     engine->play();
     REQUIRE(eventually([&] { return engine->position().heard > paused + 20ms; }));
 
-    // Stopped, there is nothing to meter or report.
+    // Stopped, there is nothing to meter or report, and no output.
     engine->stop();
     engine->sync();
     CHECK_FALSE(engine->meters().has_value());
     CHECK_FALSE(engine->unit_report().has_value());
+    CHECK(engine->status().output.sample_rate == 0);
 }
 
 TEST_CASE("engine: changes are reported on the engine's thread, every one, in order",
@@ -487,4 +493,80 @@ TEST_CASE("engine: a playing engine that goes away stops, and closes its output"
     CHECK_FALSE(state->is_open());
     const std::scoped_lock lock(state->mutex);
     CHECK(state->closes == 1);
+}
+
+TEST_CASE("engine: the diagnostics ring hears each command, then what playback did about it",
+          "[hearth][concurrency][diagnostics]") {
+    Library library;
+    library.files["a"] = eac3_stream(4);
+    auto state = std::make_shared<ClockedDevice::State>();
+    // Outlives the engine, which writes to it until it has stopped.
+    ac3::hearth::DiagnosticLog diagnostics;
+    ac3::hearth::DecoderSettings rf;
+    rf.mode = ac3::OperatingMode::kRf;
+    {
+        const auto layout = ac3::render::OutputLayout::parse("2.0");
+        REQUIRE(layout.has_value());
+        const auto engine = std::make_unique<Engine>(
+            std::make_unique<ClockedDevice>(state), library.loader(), *layout,
+            ac3::hearth::DecoderSettings{}, EngineTiming{.period = 1ms, .budget = 4800},
+            &diagnostics);
+        const ClockThread clock{state};
+        // The window reads the ring whenever it likes.
+        std::atomic<bool> reading{true};
+        std::jthread reader([&diagnostics, &reading] {
+            while (reading.load()) {
+                static_cast<void>(diagnostics.lines());
+            }
+        });
+
+        // An item whose loader names its path when it cannot read it.
+        QueueItem gone = item("C:\\Private\\gone.ec3");
+        gone.title = "gone";
+        engine->add({item("a"), gone});
+        engine->set_gapless(false);
+        engine->set_gapless(false);
+        engine->play();
+        REQUIRE(eventually([&] {
+            const EngineStatus status = engine->status();
+            return status.state == TransportState::kStopped && status.history.size() == 1 &&
+                   !state->is_open();
+        }));
+        // Asked for by hand, the item that cannot be played says why, and
+        // where it lives stays out of the ring.
+        engine->play_item(1);
+        engine->remove(5);
+        engine->next();
+        engine->set_decoder_settings(rf);
+        engine->set_decoder_settings(rf);
+        engine->sync();
+        reading.store(false);
+    }
+
+    std::vector<std::string> notes;
+    std::string all;
+    for (const std::string& line : diagnostics.lines()) {
+        notes.push_back(line.substr(ac3::hearth::DiagnosticLog::kStampBytes));
+        all += notes.back() + "\n";
+    }
+    INFO(all);
+    const std::vector<std::string> expected{
+        "engine started: layout 2.0 (2 slots), " + describe(ac3::hearth::DecoderSettings{}),
+        "add 2 items to a queue of 0",
+        "gapless off",
+        "play",
+        "output opened: local PCM, 48000 Hz, 2 channels (open 1)",
+        "item 1 \"a\" started: E-AC-3, 48000 Hz, 2 channels, 0.128 s",
+        "item 2 \"gone\" cannot be played: no such file: <withheld>\\gone.ec3",
+        "playback ends once the output has played out: The queue has finished.",
+        "output closed",
+        "play item 2 \"gone\"",
+        "transport: \"gone\" cannot be played here: no such file: <withheld>\\gone.ec3",
+        "remove item 6 (no such item)",
+        "next",
+        "transport: Nothing after this in the queue.",
+        "decoder settings: " + describe(rf),
+        "engine stopped",
+    };
+    CHECK(notes == expected);
 }

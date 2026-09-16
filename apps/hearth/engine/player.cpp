@@ -1,9 +1,12 @@
 #include "player.hpp"
 
+#include <fmt/format.h>
+
 #include <algorithm>
 #include <array>
 #include <iterator>
 #include <span>
+#include <string_view>
 #include <utility>
 
 // See player.hpp. The transport decides and this carries it out; every
@@ -18,11 +21,93 @@ namespace {
 // budget plus one access unit's worth, so it rarely has to grow.
 constexpr std::size_t kInitialPendingBlocks = 32;
 
+// A note, and what the transport said about it, if anything.
+[[nodiscard]] std::string said(std::string_view what, std::string_view why) {
+    return why.empty() ? std::string{what} : fmt::format("{}: {}", what, why);
+}
+
 }  // namespace
 
 Player::Player(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout,
-               const DecoderSettings& settings)
-    : sink_(std::move(sink)), loader_(std::move(loader)), layout_(layout), settings_(settings) {}
+               const DecoderSettings& settings, DiagnosticLog* diagnostics)
+    : sink_(std::move(sink)),
+      loader_(std::move(loader)),
+      layout_(layout),
+      settings_(settings),
+      diagnostics_(diagnostics) {}
+
+void Player::note(std::string_view line) const {
+    if (diagnostics_ != nullptr) {
+        diagnostics_->note(line);
+    }
+}
+
+void Player::note_item(std::size_t index, std::string_view title, std::string_view what) const {
+    if (diagnostics_ == nullptr) {
+        return;
+    }
+    const bool queued = index < queue_.size();
+    Secrets secrets;
+    if (queued) {
+        withhold_path(secrets, queue_.items()[index].path);
+    }
+    diagnostics_->note(scrub(
+        fmt::format("{} {}", describe_item(queued ? index : Queue::kNone, title), what), secrets));
+}
+
+std::string_view Player::title_of(std::size_t index) const {
+    return index < queue_.size() ? std::string_view{queue_.items()[index].title} : std::string_view{};
+}
+
+void Player::note_started(std::size_t item, bool joined) const {
+    if (diagnostics_ == nullptr || !session_) {
+        return;
+    }
+    const ItemFacts& facts = session_->facts();
+    const std::string_view stream =
+        !facts.stream                                      ? "an unknown stream"
+        : *facts.stream == audio::BitstreamFormat::kAc3 ? "AC-3"
+                                                          : "E-AC-3";
+    const std::uint64_t ms =
+        facts.sample_rate == 0 ? 0 : session_->total_samples() * 1000 / facts.sample_rate;
+    std::string what = fmt::format("{}: {}, {} Hz, {} channels, {}.{:03} s",
+                                   joined ? "joined the open output" : "started", stream,
+                                   facts.sample_rate, facts.channels, ms / 1000, ms % 1000);
+    if (session_->programme() != 0) {
+        what += fmt::format(", programme {}", session_->programme());
+    }
+    if (!facts.note.empty()) {
+        what += "; ";
+        what += facts.note;
+    }
+    note_item(item, title_of(item), what);
+}
+
+void Player::note_unit_error(const std::string& reason) {
+    if (diagnostics_ == nullptr || history_.empty()) {
+        return;
+    }
+    const std::size_t record = history_.size() - 1;
+    if (record == unit_error_record_) {
+        ++unit_errors_more_;
+        return;
+    }
+    settle_unit_errors();
+    unit_error_record_ = record;
+    const PlayedItem& played = history_[record];
+    note_item(played.queue_index, played.title,
+              fmt::format("has a unit that could not be decoded: {}", reason));
+}
+
+void Player::settle_unit_errors() {
+    if (unit_errors_more_ != 0 && unit_error_record_ < history_.size()) {
+        const PlayedItem& played = history_[unit_error_record_];
+        note_item(played.queue_index, played.title,
+                  fmt::format("had {} more units that could not be decoded", unit_errors_more_));
+    }
+    unit_error_record_ = Queue::kNone;
+    unit_errors_more_ = 0;
+}
 
 void Player::set_decoder_settings(const DecoderSettings& settings) {
     if (settings == settings_) {
@@ -299,13 +384,13 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
             break;
         }
         case TransportAction::kPauseOutput:
-            if (sink_->is_open()) {
-                sink_->pause();
+            if (sink_->is_open() && !sink_->pause()) {
+                note("the output would not pause");
             }
             break;
         case TransportAction::kResumeOutput:
-            if (sink_->is_open()) {
-                sink_->resume();
+            if (sink_->is_open() && !sink_->resume()) {
+                note("the output would not resume");
             }
             break;
         case TransportAction::kStopOutput:
@@ -388,6 +473,7 @@ void Player::apply_seek_on_start(std::size_t item) {
 
 Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report) {
     if (!start_session(item)) {
+        note_item(item, title_of(item), fmt::format("cannot be played: {}", last_error_));
         if (report != nullptr) {
             report->note = last_error_;
         }
@@ -402,6 +488,8 @@ Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report
     const auto opened = sink_->open(PcmSink::Format{.sample_rate = rate, .layout = layout_});
     if (!opened) {
         last_error_ = opened.error();
+        note_item(item, title_of(item),
+                  fmt::format("could not start: the output would not open: {}", last_error_));
         session_.reset();
         if (report != nullptr) {
             report->note = last_error_;
@@ -409,6 +497,8 @@ Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report
         return OpenFailure::kOutput;
     }
     ++opens_;
+    note(fmt::format("output opened: {}, {} Hz, {} channels (open {})", describe(opened->mode),
+                     opened->sample_rate, opened->channels, opens_));
     submitted_since_open_ = 0;
     transport_.set_open_format(*opened);
     clear_pending();
@@ -429,6 +519,7 @@ Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report
     segments_.assign(1, Segment{.record = history_.size() - 1,
                                 .output_start = 0,
                                 .item_start = session_->position_samples()});
+    note_started(item, false);
     if (report != nullptr) {
         report->item_started = true;
         report->output_reopened = opens_ > 1;
@@ -440,8 +531,10 @@ Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report
 }
 
 void Player::close_output() {
+    settle_unit_errors();
     if (sink_->is_open()) {
         sink_->close();
+        note("output closed");
     }
     transport_.clear_open_format();
     clear_pending();
@@ -528,6 +621,7 @@ void Player::fill(std::size_t frames) {
             // One undecodable unit: say so and carry on with the next. The
             // session has already stepped past it.
             last_error_ = got.error();
+            note_unit_error(last_error_);
         }
     }
 }
@@ -614,6 +708,7 @@ void Player::item_ended(PumpReport& report) {
             prepared_path_ = path;
             break;
         }
+        note_item(next, title_of(next), fmt::format("cannot be played: {}", opened.error()));
         ItemFacts facts = queue_.items()[next].facts;
         facts.unplayable_because = opened.error();
         queue_.set_facts(next, std::move(facts));
@@ -635,6 +730,8 @@ void Player::item_ended(PumpReport& report) {
                 // an item that no longer opens. Marked, and the transport is
                 // asked again from it - each pass marks one more item, so
                 // this ends, in a join, a reopen or a stop.
+                note_item(outcome.item, title_of(outcome.item),
+                          fmt::format("cannot be played: {}", last_error_));
                 if (outcome.item < queue_.size()) {
                     ItemFacts facts = queue_.items()[outcome.item].facts;
                     facts.unplayable_because = last_error_;
@@ -649,6 +746,7 @@ void Player::item_ended(PumpReport& report) {
                 build_decoder(rate);
             }
             apply_seek_on_start(outcome.item);
+            settle_unit_errors();
             history_.push_back(PlayedItem{.queue_index = outcome.item,
                                           .title = queue_.items()[outcome.item].title,
                                           .first_frame = 0,
@@ -660,6 +758,7 @@ void Player::item_ended(PumpReport& report) {
             segments_.push_back(Segment{.record = history_.size() - 1,
                                         .output_start = submitted_since_open_ + pending_frames_,
                                         .item_start = session_->position_samples()});
+            note_started(outcome.item, true);
             report.item_started = true;
             if (!session_->facts().note.empty()) {
                 report.note = session_->facts().note;
@@ -670,6 +769,13 @@ void Player::item_ended(PumpReport& report) {
         case TransportAction::kStopOutput:
             // What has already been submitted plays out first; pump() carries
             // the decision out once the sink's clock has passed it.
+            if (outcome.action == TransportAction::kReopenForItem) {
+                note_item(outcome.item, title_of(outcome.item),
+                          said("is next, once the output has played out and reopened",
+                               outcome.note));
+            } else {
+                note(said("playback ends once the output has played out", outcome.note));
+            }
             after_drain_ = outcome;
             drain_target_.reset();
             session_.reset();

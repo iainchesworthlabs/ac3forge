@@ -1,15 +1,40 @@
 #include "engine_thread.hpp"
 
+#include <fmt/format.h>
+
+#include <algorithm>
+#include <string_view>
 #include <utility>
 
 // See engine_thread.hpp.
 
 namespace ac3::hearth {
 
+namespace {
+
+[[nodiscard]] std::string_view items_word(std::size_t count) {
+    return count == 1 ? "item" : "items";
+}
+
+// A queue item named for a note, or just its place when the queue has no
+// such item.
+[[nodiscard]] std::string named(const Player& player, std::size_t index) {
+    const auto items = player.queue().items();
+    return index < items.size() ? describe_item(index, items[index].title)
+                                : fmt::format("item {} (no such item)", index + 1);
+}
+
+}  // namespace
+
 Engine::Engine(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout,
-               const DecoderSettings& settings, const EngineTiming& timing)
-    : timing_(timing), player_(std::move(sink), std::move(loader), layout, settings) {
+               const DecoderSettings& settings, const EngineTiming& timing,
+               DiagnosticLog* diagnostics)
+    : timing_(timing),
+      diagnostics_(diagnostics),
+      player_(std::move(sink), std::move(loader), layout, settings, diagnostics) {
     status_.settings = settings;
+    note(fmt::format("engine started: layout {} ({} slots), {}", layout.text(), layout.slots(),
+                     describe(settings)));
     thread_ = std::jthread([this](const std::stop_token& stop) { run(stop); });
 }
 
@@ -18,6 +43,27 @@ Engine::~Engine() {
     if (thread_.joinable()) {
         thread_.join();
     }
+    note("engine stopped");
+}
+
+void Engine::note(std::string_view line) const {
+    if (diagnostics_ != nullptr) {
+        diagnostics_->note(line);
+    }
+}
+
+std::string Engine::transport_said(const TransportOutcome& outcome) const {
+    if (diagnostics_ != nullptr && !outcome.note.empty()) {
+        // A note about an item can quote why it cannot be played, which can
+        // quote its path; the item it is about is the outcome's.
+        Secrets secrets;
+        const auto items = player_.queue().items();
+        if (outcome.item < items.size()) {
+            withhold_path(secrets, items[outcome.item].path);
+        }
+        diagnostics_->note(scrub(fmt::format("transport: {}", outcome.note), secrets));
+    }
+    return outcome.note;
 }
 
 void Engine::post(Command command) {
@@ -29,32 +75,55 @@ void Engine::post(Command command) {
     wake_.notify_one();
 }
 
+// Each command is noted as the engine thread starts to carry it out, so that
+// what the player notes while carrying it out follows it.
+
 void Engine::play() {
-    post([](Player& player) { return player.play().note; });
+    post([this](Player& player) {
+        note("play");
+        return transport_said(player.play());
+    });
 }
 
 void Engine::pause() {
-    post([](Player& player) { return player.pause().note; });
+    post([this](Player& player) {
+        note("pause");
+        return transport_said(player.pause());
+    });
 }
 
 void Engine::stop() {
-    post([](Player& player) { return player.stop().note; });
+    post([this](Player& player) {
+        note("stop");
+        return transport_said(player.stop());
+    });
 }
 
 void Engine::next() {
-    post([](Player& player) { return player.next().note; });
+    post([this](Player& player) {
+        note("next");
+        return transport_said(player.next());
+    });
 }
 
 void Engine::previous() {
-    post([](Player& player) { return player.previous().note; });
+    post([this](Player& player) {
+        note("previous");
+        return transport_said(player.previous());
+    });
 }
 
 void Engine::seek(std::chrono::milliseconds to) {
-    post([to](Player& player) { return player.seek(to).note; });
+    post([this, to](Player& player) {
+        note(fmt::format("seek to {:.3f} s", static_cast<double>(to.count()) / 1000.0));
+        return transport_said(player.seek(to));
+    });
 }
 
 void Engine::add(std::vector<QueueItem> items) {
-    post([items = std::move(items)](Player& player) {
+    post([this, items = std::move(items)](Player& player) {
+        note(fmt::format("add {} {} to a queue of {}", items.size(), items_word(items.size()),
+                         player.queue().size()));
         for (const QueueItem& item : items) {
             player.add(item);
         }
@@ -63,53 +132,76 @@ void Engine::add(std::vector<QueueItem> items) {
 }
 
 void Engine::insert(std::size_t index, QueueItem item) {
-    post([index, item = std::move(item)](Player& player) {
+    post([this, index, item = std::move(item)](Player& player) {
+        const std::size_t at = std::min(index, player.queue().size());
+        note(fmt::format("insert {} into a queue of {}", describe_item(at, item.title),
+                         player.queue().size()));
         player.insert(index, item);
         return std::string{};
     });
 }
 
 void Engine::remove(std::size_t index) {
-    post([index](Player& player) {
+    post([this, index](Player& player) {
+        note(fmt::format("remove {}", named(player, index)));
         player.remove(index);
         return std::string{};
     });
 }
 
 void Engine::move(std::size_t from, std::size_t to) {
-    post([from, to](Player& player) {
+    post([this, from, to](Player& player) {
+        if (to < player.queue().size()) {
+            note(fmt::format("move {} to {}", named(player, from), to + 1));
+        } else {
+            note(fmt::format("move {} to {} (no such place)", named(player, from), to + 1));
+        }
         player.move(from, to);
         return std::string{};
     });
 }
 
 void Engine::clear() {
-    post([](Player& player) {
+    post([this](Player& player) {
+        note(fmt::format("clear a queue of {} {}", player.queue().size(),
+                         items_word(player.queue().size())));
         player.clear();
         return std::string{};
     });
 }
 
 void Engine::play_item(std::size_t index) {
-    post([index](Player& player) { return player.play_item(index).note; });
+    post([this, index](Player& player) {
+        note(fmt::format("play {}", named(player, index)));
+        return transport_said(player.play_item(index));
+    });
 }
 
 void Engine::set_decoder_settings(const DecoderSettings& settings) {
-    post([settings](Player& player) {
+    post([this, settings](Player& player) {
+        if (settings != player.decoder_settings()) {
+            note(fmt::format("decoder settings: {}", describe(settings)));
+        }
         player.set_decoder_settings(settings);
         return std::string{};
     });
 }
 
 void Engine::set_gapless(bool on) {
-    post([on](Player& player) {
+    post([this, on](Player& player) {
+        if (on != player.transport().gapless()) {
+            note(on ? "gapless on" : "gapless off");
+        }
         player.set_gapless(on);
         return std::string{};
     });
 }
 
 void Engine::set_repeat(bool on) {
-    post([on](Player& player) {
+    post([this, on](Player& player) {
+        if (on != player.transport().repeat()) {
+            note(on ? "repeat on" : "repeat off");
+        }
         player.set_repeat(on);
         return std::string{};
     });
@@ -163,6 +255,7 @@ void Engine::publish(const std::string& note, std::uint64_t carried) {
     next.gapless = player_.transport().gapless();
     next.repeat = player_.transport().repeat();
     next.settings = player_.decoder_settings();
+    next.output = player_.transport().open_format();
     next.output_opens = player_.output_opens();
     next.history = player_.history();
     next.error = player_.last_error();

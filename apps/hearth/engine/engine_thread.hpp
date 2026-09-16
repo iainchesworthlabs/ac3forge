@@ -11,11 +11,13 @@
 #include <optional>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
 #include "ac3/render/layout.hpp"
 #include "decoder_settings.hpp"
+#include "diagnostic_log.hpp"
 #include "pcm_sink.hpp"
 #include "play_meters.hpp"
 #include "player.hpp"
@@ -45,6 +47,10 @@
 // the change callback on its own thread. The play position moves with every
 // pump and is kept apart, so a position slider does not copy the list a
 // thousand times a second.
+//
+// Given a diagnostics ring (diagnostic_log.hpp), the engine notes each
+// command as its thread carries it out, and anything the transport said
+// about it; the player notes what playback did in between.
 
 namespace ac3::hearth {
 
@@ -65,6 +71,8 @@ struct EngineStatus {
     bool gapless = true;
     bool repeat = false;
     DecoderSettings settings{};
+    // What the output is open at; all zero while it is closed.
+    OpenOutputFormat output{};
     std::uint32_t output_opens = 0;
     std::vector<PlayedItem> history{};
     // The latest thing a command, the transport or an item had to say, and
@@ -75,8 +83,10 @@ struct EngineStatus {
 
 class Engine {
 public:
+    // `diagnostics`, when given, outlives the engine.
     Engine(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout,
-           const DecoderSettings& settings = {}, const EngineTiming& timing = {});
+           const DecoderSettings& settings = {}, const EngineTiming& timing = {},
+           DiagnosticLog* diagnostics = nullptr);
     // Stops the thread, and with it whatever is playing.
     ~Engine();
 
@@ -131,8 +141,14 @@ private:
     // Snapshots the player and makes it the status; `carried` is how many
     // commands had been carried out by then, for sync().
     void publish(const std::string& note, std::uint64_t carried);
+    // A line for the diagnostics ring, if there is one; and what the
+    // transport said about a command, noted with the folders of the item it
+    // is about withheld, and returned as the command's result.
+    void note(std::string_view line) const;
+    [[nodiscard]] std::string transport_said(const TransportOutcome& outcome) const;
 
     EngineTiming timing_;
+    DiagnosticLog* diagnostics_ = nullptr;
     // The engine thread's alone once the thread has started.
     Player player_;
 
