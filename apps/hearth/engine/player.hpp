@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -55,6 +56,16 @@ struct PlayedItem {
     std::uint32_t output_opens = 0;
 };
 
+// Where the item being heard has got to.
+struct PlayPosition {
+    // The queue index of the item the device is playing now, or Queue::kNone.
+    std::size_t item = Queue::kNone;
+    // How much of it has been heard, by the device's clock less its output
+    // path's delay, and how long it is.
+    std::chrono::milliseconds heard{0};
+    std::chrono::milliseconds duration{0};
+};
+
 // What one pump() did.
 struct PumpReport {
     std::size_t frames_submitted = 0;
@@ -80,8 +91,28 @@ public:
     Player& operator=(Player&&) = delete;
     ~Player() = default;
 
+    // The queue, for a caller that edits it before playback starts or reads
+    // it. Edits while playing go through the functions below, which keep the
+    // transport and what is already decoded in step with the list.
     [[nodiscard]] Queue& queue() { return queue_; }
     [[nodiscard]] const Queue& queue() const { return queue_; }
+
+    // Queue edits, kept consistent with playback. Removing the item that is
+    // playing restarts at whatever the queue then calls current, or stops
+    // with nothing left; a reopen still waiting for the old item to be heard
+    // follows its item to wherever an edit moved it; and the history's queue
+    // indices follow their items too (kNone once an item is removed).
+    void add(QueueItem item);
+    void insert(std::size_t index, QueueItem item);
+    void remove(std::size_t index);
+    bool move(std::size_t from, std::size_t to);
+    void clear();
+    // Plays `index` from its start, as choosing it in the list does.
+    TransportOutcome play_item(std::size_t index);
+
+    // Where the item the device is playing has got to. Follows the device's
+    // own clock across joins and seeks.
+    [[nodiscard]] PlayPosition position() const;
     [[nodiscard]] const Transport& transport() const { return transport_; }
     void set_gapless(bool on) { transport_.set_gapless(on); }
     void set_repeat(bool on) { transport_.set_repeat(on); }
@@ -112,6 +143,10 @@ public:
     // submits, so a caller on a real-time thread keeps its own cadence.
     PumpReport pump(std::size_t budget = 4800);
 
+    // Whether pump() has anything to do: an output is open, or a reopen or a
+    // stop is waiting for the audio already submitted to be heard.
+    [[nodiscard]] bool active() const { return after_drain_.has_value() || sink_->is_open(); }
+
     [[nodiscard]] const std::vector<PlayedItem>& history() const { return history_; }
     [[nodiscard]] std::uint32_t output_opens() const { return opens_; }
     [[nodiscard]] const std::string& last_error() const { return last_error_; }
@@ -136,6 +171,15 @@ private:
     struct SeekOnStart {
         std::size_t item = Queue::kNone;
         std::chrono::milliseconds to{0};
+    };
+
+    // From output frame `output_start` on - counted since the output was
+    // last opened or flushed - the output plays history_[record]'s item from
+    // its own frame `item_start`. What position() reads the clock against.
+    struct Segment {
+        std::size_t record = 0;
+        std::uint64_t output_start = 0;
+        std::uint64_t item_start = 0;
     };
 
     // Carries out what the transport decided.
@@ -163,6 +207,11 @@ private:
     [[nodiscard]] bool played_out();
     // The current item has delivered everything: decide what comes next.
     void item_ended(PumpReport& report);
+    // After a queue edit: a waiting reopen goes to the item now current, and
+    // a prepared session, keyed by index, is dropped.
+    void after_edit();
+    // Moves the history's queue indices the way an edit moved the items.
+    void remap_history(const std::function<std::size_t(std::size_t)>& moved);
 
     std::unique_ptr<PcmSink> sink_;
     ItemLoader loader_;
@@ -199,6 +248,7 @@ private:
     std::uint64_t submitted_since_open_ = 0;
     std::uint32_t opens_ = 0;
     std::vector<PlayedItem> history_;
+    std::vector<Segment> segments_;
     std::string last_error_;
 };
 
