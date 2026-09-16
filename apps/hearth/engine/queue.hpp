@@ -43,6 +43,9 @@ struct ItemFacts {
     // Set when the item was recognised but cannot be played here: AC-4
     // today. It stays in the queue and is skipped, with the reason shown.
     std::string unplayable_because{};
+    // Something to show beside an item that does play: that its edit list
+    // could not be applied, say.
+    std::string note{};
 };
 
 struct QueueItem {

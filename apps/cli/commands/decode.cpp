@@ -32,6 +32,7 @@
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/verify/bap_census.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
@@ -61,6 +62,22 @@ bool write_bap_census(const ac3::verify::BapCensus& census, const std::string& p
         return false;
     }
     return true;
+}
+
+// Shifts `pcm` later by `delay_samples`: result[n] is pcm[n - delay_samples]
+// for n >= delay_samples, silence before it - the same length as `pcm`, not
+// longer, so the true last delay_samples samples fall off the end rather than
+// growing the file. accumulate_adm's own comment says why this has to happen
+// to the bed's LFE before write_adm_atmos_master runs: those trailing samples
+// describe a moment the dynamic object channels beside it were never decoded
+// far enough to reach either, so there is nothing for them to align with.
+std::vector<float> delay_pcm(std::span<const float> pcm, std::size_t delay_samples) {
+    std::vector<float> out(pcm.size(), 0.0F);
+    if (delay_samples < pcm.size()) {
+        const std::size_t keep = pcm.size() - delay_samples;
+        std::copy_n(pcm.begin(), keep, out.begin() + static_cast<std::ptrdiff_t>(delay_samples));
+    }
+    return out;
 }
 
 // Whether the §7.8 output stage is going to fold this programme, which
@@ -413,6 +430,13 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // the ADM master's own <axml> chunk needs every dynamic object's own final duration known
     // before it can be built at all (ac3::admbridge::write() computes each audioBlockFormat's
     // duration from it - see bridge.cpp's own build_block_formats).
+    //
+    // The LFE channel this lambda appends below is NOT yet delayed to match the objects beside
+    // it - decode_access_unit hands the two to it already ac3::oba::joc::reconstruction_delay()
+    // samples apart (docs/library/decoding.md, "Atmos objects lag the bed"), and appending both
+    // verbatim, unit by unit, carries that same gap straight into adm_input.channels. delay_pcm()
+    // fixes it in one pass, once, on the finished LFE channel below rather than here per unit -
+    // this lambda has no reason to know the decoder's own joc_domain.
     const bool have_adm_output = !adm_out.empty();
     ac3cli::AdmMasterInput adm_input;
     bool adm_input_ready = false;
@@ -736,6 +760,15 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             fmt::println(stderr, "warning: {} given but no dynamic-object-only Atmos programme was decoded",
                          adm_out);
         } else {
+            // accumulate_adm's own comment: the LFE channel it built is still
+            // reconstruction_delay(meta.joc_domain) samples ahead of the object
+            // channels beside it - the one channel here with bed_label set, so
+            // there is no need to have tracked which index it landed at above.
+            if (!adm_input.channels.empty() && adm_input.channels.back().bed_label.has_value()) {
+                auto& lfe = adm_input.channels.back().pcm;
+                lfe = delay_pcm(lfe, static_cast<std::size_t>(ac3::oba::joc::reconstruction_delay(
+                                         meta.joc_domain)));
+            }
             const auto written_adm = ac3cli::write_adm_atmos_master(adm_out, adm_input);
             if (!written_adm.has_value()) {
                 fmt::println(stderr, "error: {}", written_adm.error());

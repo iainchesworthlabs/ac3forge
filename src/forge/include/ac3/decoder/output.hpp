@@ -330,7 +330,7 @@ class AC3FORGE_EXPORT OutputStage {
     // The 90-degree phase shifter's history, and the matched delay line the
     // direct path runs through so the two stay aligned. Sized lazily at first
     // Lt/Rt use - a stage that never folds to Lt/Rt never allocates either,
-    // the same reasoning Eac3Decoder's own aht_coeffs_/ecpl_all_coeffs_ use.
+    // the same reasoning Eac3Decoder's own ecpl_amp_scratch_ uses.
     std::vector<float> shift_history_;
     std::vector<std::vector<float>> direct_history_;
     std::vector<float> delay_scratch_;

@@ -760,7 +760,7 @@
    "file": "714-aht.ec3",
    "what": "7.1.4, adaptive hybrid transform",
    "source": "made by this script",
-   "psram": true,
+   "psram": false,
    "refused": null,
    "codec": "E-AC-3",
    "channels": [
@@ -858,7 +858,7 @@
    "file": "714-all.ec3",
    "what": "7.1.4, coupling, spectral extension and AHT together",
    "source": "made by this script",
-   "psram": true,
+   "psram": false,
    "refused": null,
    "codec": "E-AC-3",
    "channels": [
@@ -1498,7 +1498,7 @@
    "file": "dee-eac3-51.ec3",
    "what": "Dolby Encoding Engine, E-AC-3 5.1 at 256 kbit/s",
    "source": "tests/golden/external-baseline/eac3-51-256/dee.ec3",
-   "psram": true,
+   "psram": false,
    "refused": null,
    "codec": "E-AC-3",
    "channels": [

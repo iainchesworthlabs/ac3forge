@@ -115,7 +115,9 @@ struct Out {
         }
     }
 
-    [[nodiscard]] float at(std::size_t slot) const { return storage[slot][3]; }
+    [[nodiscard]] float at(std::size_t slot, std::size_t sample = 3) const {
+        return storage[slot][sample];
+    }
 };
 
 ac3::oba::DisplayObject object_at(double x, double y, double z, double gain_db = 0.0,
@@ -392,15 +394,20 @@ TEST_CASE("render sums the objects into the slots and passes the bed's LFE", "[i
     };
     renderer.set_objects(objects);
 
-    // Bed channels L C R Ls Rs at 0.3, LFE at 0.1; objects at 0.5 and 0.2.
-    const Block source({0.3F, 0.3F, 0.3F, 0.3F, 0.3F, 0.1F}, {0.5F, 0.2F});
+    // Bed channels L C R Ls Rs at 0.3, LFE at 0.1; objects at 0.5 and 0.2. A
+    // block longer than the objects' lag, which the LFE waits out
+    // (test_object_lfe_timing.cpp has that sample by sample).
+    constexpr std::size_t kLong = 1024;
+    REQUIRE(renderer.object_lag() < kLong);
+    const Block source({0.3F, 0.3F, 0.3F, 0.3F, 0.3F, 0.1F}, {0.5F, 0.2F}, kLong);
 
-    Out with_objects(10);
+    Out with_objects(10, kLong);
     renderer.render(source.block(), true, 1.0F, with_objects.spans);
     REQUIRE(with_objects.at(1) == Approx(0.5F));                 // C: the first object
     REQUIRE(with_objects.at(5) == Approx(0.2F * 0.70710678F));   // Vhl: the second
     REQUIRE(with_objects.at(6) == Approx(0.2F * 0.70710678F));   // Vhr
-    REQUIRE(with_objects.at(9) == Approx(0.1F));                 // the bed's LFE, through
+    REQUIRE(with_objects.at(9) == 0.0F);                         // the bed's LFE, held back...
+    REQUIRE(with_objects.at(9, renderer.object_lag()) == Approx(0.1F));  // ...then through
     REQUIRE(with_objects.at(0) == 0.0F);  // the bed's L is NOT added: the bed is the objects' fold
     REQUIRE(with_objects.at(3) == 0.0F);
     REQUIRE(with_objects.at(7) == 0.0F);
@@ -424,7 +431,8 @@ TEST_CASE("render sums the objects into the slots and passes the bed's LFE", "[i
     REQUIRE(asked_anyway.at(0) == Approx(0.3F));
     REQUIRE(asked_anyway.at(9) == Approx(0.1F));
 
-    // The gain applies to everything, objects and LFE alike.
+    // The gain applies to everything, objects and LFE alike - the LFE here
+    // being the line's, full of 0.1 by now.
     Out quieter(10);
     renderer.render(source.block(), true, 0.5F, quieter.spans);
     REQUIRE(quieter.at(1) == Approx(0.25F));
