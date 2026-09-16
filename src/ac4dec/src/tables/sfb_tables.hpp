@@ -1,0 +1,41 @@
+#pragma once
+
+#include <cstdint>
+#include <span>
+
+// ETSI TS 103 190-1 V1.4.1 Annex B, the ASF scale factor band tables, at the
+// 44.1 kHz and 48 kHz sampling frequencies (the 96 kHz and 192 kHz columns
+// serve only the HSF extension, which this decoder does not read). GENERATED
+// by tools/generators/gen_ac4_tables.py from Annex B's text; do not edit by
+// hand.
+
+namespace ac4::detail::tables {
+
+// Table B.1: num_sfb_48(transform_length). 0 for a length the table does not
+// list.
+[[nodiscard]] int num_sfb_48(int transform_length) noexcept;
+
+// Tables B.4 to B.7: the scale factor band offsets for a transform length,
+// num_sfb_48(transform_length) + 1 entries, the last equal to the transform
+// length. Empty for a length the tables do not list.
+[[nodiscard]] std::span<const std::uint16_t> sfb_offsets_48(int transform_length) noexcept;
+
+// Tables B.8 to B.19, as clause 4.3.5.13 applies them: the max_sfb for a block
+// of transform length `target_length` in the two sf_data() elements that
+// follow a max_sfb_master element, where `master_length` is the largest
+// transform length signalled in the channel data before that element - the
+// length whose n_side_bits (Table 106) is max_sfb_master's width, per the
+// notes in clauses 4.2.6.6 and 4.2.6.14.
+//   - target_length == master_length: max_sfb_master itself, which "maps
+//     directly", for any max_sfb_master from 0 to num_sfb_48(master_length).
+//   - target_length shorter: the n_sfb_side value in row max_sfb_master of
+//     the table for master_length, in the column for target_length.
+// -1 for anything else: a length Table B.1 does not list, a target_length
+// longer than master_length or without a column in its table (another frame
+// length's family, or a master_length of 128, 120 or 96, which have no
+// table), or a max_sfb_master past the table's last row - which no value read
+// in n_side_bits bits reaches, every table having 2^n_side_bits rows.
+[[nodiscard]] int max_sfb_from_master(int master_length, int max_sfb_master,
+                                      int target_length) noexcept;
+
+}  // namespace ac4::detail::tables

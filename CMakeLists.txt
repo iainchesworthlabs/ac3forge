@@ -157,7 +157,7 @@ option(AC3FORGE_BUILD_MPEGTS "Build the standalone MPEG-TS container writer (src
 # Roadmap IM4: the AC-4 sync-frame/TOC/presentation/substream-group bitstream
 # inspector (src/ac4). Same "own option, defaults ON" treatment as the three
 # above - apps/cli's `probe` command links it unconditionally.
-option(AC3FORGE_BUILD_AC4 "Build the standalone AC-4 bitstream inspector (src/ac4)" ON)
+option(AC3FORGE_BUILD_AC4 "Build the standalone AC-4 bitstream inspector and decoder (src/ac4, src/ac4dec)" ON)
 
 # ac3iab::ac3iab (src/ac3iab) - roadmap item IM1 phase 1: a standalone reader for SMPTE
 # ST 2098-2's Immersive Audio Bitstream. Same zero-third-party-dependency shape as the three
@@ -436,10 +436,12 @@ endif()
 
 # A fourth standalone module, same "depends on nothing of ac3::forge" shape
 # as the three container writers above - roadmap IM4's AC-4 bitstream
-# inspector. Gated by AC3FORGE_BUILD_AC4 (default ON, see the option() and
-# its FATAL_ERROR guard above).
+# inspector, and the AC-4 decoder beside it, which links the inspector and
+# nothing of ac3::forge either. Gated together by AC3FORGE_BUILD_AC4 (default
+# ON, see the option() and its FATAL_ERROR guard above).
 if(AC3FORGE_BUILD_AC4)
     add_subdirectory(src/ac4)
+    add_subdirectory(src/ac4dec)
 endif()
 
 # A standalone reader, not a writer like the three container modules above - roadmap item IM1

@@ -762,8 +762,9 @@ gap closes later, it would upgrade tier 2 above (framing-only) to an audio-conte
 clause 6.3.2.8-6.3.2.12 — `ac4_substream_info_ajoc()`, `ac4_substream_info_obj()`,
 `bed_dyn_obj_assignment()`, `oamd_substream_info()`) are parsed the same way the channel-coded
 path is, as of the IM4 follow-up that added them. Their verification story is narrower than tier
-1/2/3 above, though, because no real stream reaches this path: `dee_ac4ajoc_encoder.exe` accepts
-only an Atmos ADM BWF mezzanine as input, and this project has no tooling that produces one DEE
+1/2/3 above, though, because no stream this project can encode reaches this path:
+`dee_ac4ajoc_encoder.exe` accepts only an Atmos ADM BWF mezzanine as input, and this project has no
+tooling that produces one DEE
 accepts (the same "gates on content provenance, not syntax" limit this page already states for
 the AC-3/E-AC-3 JOC side); `dee_ac4ims_encoder.exe` — the other locally available object-adjacent
 encoder, despite its "immersive stereo" name — was confirmed to stay channel-coded regardless of
@@ -783,7 +784,8 @@ behavior changes, that would upgrade this to a tier 2/3 check. `oamd_common_data
 reachable only via `ac4_substream_info_ajoc()`'s own `b_oamd_common_data_present` flag) remains
 out of scope either way — a large separate metadata structure (bed assignment, DRC, target-device
 categories, dialogue enhancement) a stream setting that flag is refused cleanly
-(`Error::kOamdCommonDataPresent`) rather than misparsed.
+(`Error::kOamdCommonDataPresent`) rather than misparsed. Chromium's public A-JOC test file sets the
+flag in every frame and is refused there.
 
 **The `bitstream_version <= 1` legacy path**
 (`ac4_toc()`/`ac4_presentation_info()` as TS 103 190-1 alone defines them) is transcribed and
@@ -802,6 +804,76 @@ wrong bit, and on that path the two transcriptions agreed: the shared-misreading
 above. `tests/ac4/test_ac4.cpp` now builds an EMDF-only presentation ahead of an ordinary one on
 both paths, and the same frames, built again with a separate Python bit writer, parse the same way
 in `tools/references/ac4_parse.py`.
+
+### The decoder's syntax
+
+`src/ac4dec` is the start of an AC-4 decoder written from the same two standards. It reads every
+syntax element of a frame's substreams and produces no audio yet: the presentation substream,
+channel-coded audio substreams in the Part 1 channel elements (ASF spectral data, stereo processing,
+companding, A-SPX and A-CPL data, and `metadata()` with its DRC and dialogue enhancement), and EMDF
+payload substreams. It refuses, with a named reason, the speech spectral frontend, the immersive and
+22.2 channel elements, object substreams and the HSF extension.
+
+With no reference output to compare against, the syntax is transcribed twice, separately, from the
+text: in C++ in the decoder, and in Python in `tools/references/ac4_syntax.py`, which takes its table
+of contents from `ac4_parse.py`. Each writes a trace of every element it reads, and the traces are
+compared. A reading both transcriptions share passes this check, so the places where the text is
+ambiguous or defective, the reading taken for each and the evidence for it are recorded in
+`src/ac4dec/ERRATA.md`.
+
+**The trace.** One record per syntax element (an entry with a bit count in a syntax table of either
+part), holding the bit offset from the start of its substream, the width and the value:
+
+| Element | Width | Value |
+|---|---|---|
+| A fixed-width or computed-width field | its width | the bits, MSB first |
+| An element listed with a variable width, such as `aspx_int_class` | the bits read | the code read |
+| `variable_bits(n)` | every bit, continuation flags included | the decoded value, modulo 2^64 |
+| A Huffman codeword | its length | its index in the codebook, before `cb_off` |
+| `quad_sign_bits`, `pair_sign_bits` | one bit per nonzero line | the bits |
+| `ext_code` | the whole escape | the magnitude, 2^(N_ext+4) + ext_val |
+| `add_data`, `extensions_bits`, `drc2_bits` | the width, in 65535-bit records when longer | its last 64 bits |
+| A byte of a run, such as `emdf_payload_byte` or `presentation_name` | 8 | the byte |
+
+`byte_align`, `fill_bits`, bits skipped by a size, zero-width elements and any element that runs past
+the end of its substream are not recorded. A loop records each read, and a field read and then
+extended (`audio_size_value` and its `variable_bits(7)`) is two records.
+
+**Digests, in CI.** For each frame and substream with records, one line: frame, substream, kind
+(`presentation`, `audio` or `emdf_payloads`), record count, the bit where the last record ends, and
+zlib's CRC-32 over the records packed as `struct.pack('<IHQ', offset, width, value)`.
+`tests/golden/ac4dec/` holds the Python parser's digests of every committed DEE stream: SIMPLE, ASPX,
+ASPX_ACPL_2 and ASPX_ACPL_3 at 2.0 and 5.1, DRC curves with an Lt/Rt downmix, and immersive stereo at
+three frame rates. `tests/ac4dec/test_ac4dec_syntax.cpp` requires the decoder to produce the same lines,
+to read every substream to its exact end and to refuse nothing, and
+`tools/checks/test_ac4_syntax_digests.py` requires the Python parser to reproduce the same files, so
+neither transcription can change alone.
+
+**Locally, over the census.** With `AC4DEC_GOLDEN_DIR` and `AC4DEC_STREAM_DIR` set, the same test
+compares the decoder with the Python parser's digests of any other set of streams. Over the 107 DEE
+streams of the local census (50,728 frames of 2.0, 5.1, 5.1.4 and immersive stereo) every digest
+agrees, and every substream is read to its exact end or, for 5.1.4's audio, refused at the immersive
+element. The same holds for the public channel-based streams other encoders wrote: DASH-IF's Dolby
+test vectors (2.0 and 5.1 at 25 and 29.97 fps), CTA WAVE's `ca4s` sets (2.0 at 30 fps) and Chromium's
+channel-based and immersive-stereo test files, 6,670 frames in all, taken out of their MP4 and CMAF
+segments with `ac3cli demux` and kept out of the tree. Chromium's A-JOC file is refused at the same
+table of contents by both. `AC4DEC_TRACE_DIR` writes the decoder's full trace, one record per line as
+`frame substream bit_offset width value name`, the shape `ac4_syntax.py trace` prints.
+
+**Where no stream reaches.** Most of the syntax: noise fill, VARVAR framing, time-interleaved A-SPX,
+the mono, 3.0 and 7.X elements, ASPX_ACPL_1, transmitted DRC gains, dialogue enhancement methods 1 to
+3 and alternative presentations among it. `tools/checks/ac4_syntax_differential.py` reads streams made
+for this through both transcriptions: DEE frames with one substream altered (a random tail from a
+random bit, a few flipped bits, or a random codec mode), tables of contents for the channel modes no
+encoder here writes over random payloads, and, with `--inputs`, a corpus `fuzz_ac4_decode` grew, which
+reaches syntax random bits rarely do. Where both read a substream to its end their traces must agree
+record for record, and where either stops they must agree up to that point; a table of contents the two
+read differently is reported apart. It found a limit on `variable_bits()` groups in the decoder that
+the text does not set, and `fuzz_ac4_decode` found an escape code the decoder did not bound.
+Comparing the two transcriptions' notes found that they had framed ASPX_ACPL_1's residuals and
+`b_use_sap_add_ch`'s parameters differently, each against the channel mapping of Part 1 clause 5.3.4;
+both now follow that mapping. The check shows that the two transcriptions read these paths alike,
+which a shared misreading still passes.
 
 ## What untrusted input is checked against
 

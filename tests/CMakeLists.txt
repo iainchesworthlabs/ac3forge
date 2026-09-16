@@ -47,6 +47,9 @@ endif()
 
 add_executable(ac3tests
     ac4/test_ac4.cpp
+    ac4/test_ac4_presentation_configs.cpp
+    ac4dec/test_ac4dec_decoder.cpp
+    ac4dec/test_ac4dec_syntax.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
     encoder/test_bandwidth.cpp
@@ -265,10 +268,11 @@ if(AC3FORGE_AVX2_INCLUDE_DIR)
 endif()
 
 # core/test_simd_kernels.cpp's own AVX2_REQUIRE knob reads std::getenv too -
-# same C4996 reasoning as cpu_features.cpp above.
+# same C4996 reasoning as cpu_features.cpp above - and so does
+# ac4dec/test_ac4dec_syntax.cpp, for its trace and census directories.
 if(AC3FORGE_IS_MSVC_LIKE)
-    set_source_files_properties(core/test_simd_kernels.cpp PROPERTIES
-        COMPILE_OPTIONS "/wd4996")
+    set_source_files_properties(core/test_simd_kernels.cpp ac4dec/test_ac4dec_syntax.cpp
+        PROPERTIES COMPILE_OPTIONS "/wd4996")
 endif()
 
 # core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
@@ -303,6 +307,11 @@ target_compile_definitions(ac3tests
 # defines above.
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
+
+# tests/ac4dec/test_ac4dec_syntax.cpp holds the AC-4 decoder's syntax trace to
+# the digests tools/references/ac4_syntax.py wrote for the same streams.
+target_compile_definitions(ac3tests
+    PRIVATE "AC4DEC_GOLDEN_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/ac4dec\"")
 
 # crucible/test_translations.cpp reads the Crucible's six Qt Linguist
 # catalogues as files (no Qt in this target), on the same reasoning: a
@@ -691,6 +700,7 @@ target_link_libraries(ac3tests
         mp4::mp4
         mpegts::mpegts
         ac4::ac4
+        ac4::decoder
         ac3::warnings
         ac3::coverage
         ac3::fmt
