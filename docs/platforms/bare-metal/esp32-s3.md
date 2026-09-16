@@ -21,9 +21,10 @@ the float32 path worth having and real-time decode worth measuring.
 | Fits internal SRAM | Yes, without PSRAM. 237,206-byte peak heap (the 7.1.4 fixture folded to stereo; 230,798 as coded, 211,371 with Atmos objects, 211,741 placing them) against 316,196 free on the board on 2026-09-11 — see [Memory](#memory) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record, the spectrum scratch's pointer; 23,552 bytes while §E3.5 is in use |
 | Audio output | Two examples drive real peripherals — see [Examples](#examples) |
+| Sendspin sink | `hearth_sink` plays as a Sendspin player on Wi-Fi. Two boards played one E-AC-3 JOC programme as a group for ten minutes with no underrun and their play times within 549 µs — see [As a Sendspin sink](#as-a-sendspin-sink) and [the sink guide](../../hearth/sink-esp32-s3.md) |
 | Real time | **Decode, yes, on a board**, at 240 MHz, every one of the fourteen fixtures: from 0.07x for AC-3 mono to 0.92x for E-AC-3 7.1.4 folded to stereo, with objects placed onto 7.1.4 at 0.78x — see [Timing](#timing). **Encode: AC-3 2/0 and E-AC-3 2/0, yes**, 0.35x and 0.73x with the encoders in `float` end to end and the search made cheaper; AC-3 5.1 at 1.01x sits at the line, 2/0 with tools 1.3x to 1.6x and E-AC-3 5.1 1.7x over, what remains being the exponent-run planner and the allocation candidates — see [Encoding](#encoding) |
 | ESPHome | An external component, `esphome/components/ac3forge/` — the decoder and framer, not a `speaker` source. See [ESPHome](esphome.md) |
-| CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU; `esphome config` and the component pack in their own workflows |
+| CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU, and `hearth-esp32s3` after it, which plays to the Sendspin sink from the host; `esphome config` and the component pack in their own workflows |
 
 Decode and encode are separate builds. They are mutually exclusive, and configure fails if both
 are asked for, because neither fits beside the other in this memory.
@@ -208,6 +209,50 @@ server, so it is where a decoder or player that starts holding more is seen firs
 `--min-heap-free` to the same check, and the step's own comment records what the shape measures
 and why the floor sits where it does.
 
+#### As a Sendspin sink
+
+`sdkconfig.sendspin`, over the hardware and PSRAM overlays, makes the example a Sendspin player on
+Wi-Fi ([the Hearth plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md), B3). It has:
+
+- the Noise responder;
+- pairing by token, or by a code shown on the console and the page;
+- Sendspin's time filter;
+- `player@v1`, for Music Assistant's stereo PCM;
+- Hearth's `_ac3forge_player@v1`, whose AC-3 and E-AC-3 bursts the component decodes and renders
+  onto the board's layout.
+
+[An ESP32-S3 sink](../../hearth/sink-esp32-s3.md) sets a board up.
+
+The player schedules each block against the I2S channel's end-of-frame interrupts. It works from a
+model of ESP-IDF v6.1's DMA ring (`esp-idf/ac3forge/include/ac3forge/playout.hpp`), which
+`tests/io/test_playout.cpp` tests on the host against a simulated ring. It corrects its error in
+the decoded PCM, by dropping or repeating one frame in 256.
+
+On 2026-09-16 two ESP32-S3-DevKitC-1-N16R8 boards on the same Wi-Fi, with no DAC wired, played the
+E-AC-3 JOC fixture for ten minutes as one group from `ac3hearth-testserver`. Each burst holds
+32 ms of audio.
+
+| | 2.0, 32-bit standard I2S | 5.1, eight 16-bit TDM slots |
+|---|---|---|
+| Bursts played | 18,774 of 18,774 | 18,774 of 18,774 |
+| Underruns, late, dropped | 0, 0, 0 | 0, 0, 0 |
+| Decode and render per burst, average (worst) | 20.9 ms (40.3 ms) | 24.3 ms (48.8 ms) |
+
+At each of the 602 seconds the server compared, the boards' reported play times were within
+549 µs of each other. The 2.0 board's levels were the test sink's to the digit. Four things on
+the boards broke playback, and no host test or QEMU run showed any of them: Wi-Fi modem sleep,
+Nagle's algorithm on the player's sockets, lwIP's task on the decoder's core, and clock replies
+delayed behind a stream's chunks. [The example's README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-two-boards) describes each.
+
+CI runs the same player on QEMU's Ethernet (`sdkconfig.ci-sendspin`) in `hearth-esp32s3`, a job
+that runs after `build-esp32s3`. `tools/checks/run_sendspin_qemu.sh` has `ac3hearth-testserver`
+pair with the emulated board, set it to 2.0, and play it the fixture in one group with a test
+sink. It then holds the board's levels to the test sink's WAV
+(`tools/checks/check_sendspin_levels.py`), and its console to one clean boot and the stream set's
+heap floor. The test server is a GCC 16 and vcpkg build, and Espressif's image carries neither.
+So the job runs in a container of its own and takes the emulated board's image from
+`build-esp32s3` as an artifact. `build-esp32s3` also builds the board shape, which QEMU cannot run.
+
 ## Memory
 
 The datasheet says 512 KB, `idf.py size` says 341,760, and the allocator says 280,792. All three
@@ -262,6 +307,29 @@ leaves 19,344 of the 40,960: 11,152 in terms of the original 32,768, close to th
 PR #698. The encode direction, less affected, left 23,040 free of the original 32,768. The decode
 margin is the one to watch — it was 14,000 before object reconstruction ran here, then 11,280
 before PR #698.
+
+### In the Sendspin sink
+
+The Sendspin sink is the tightest shape on a board. Wi-Fi, lwIP, two HTTP servers, mDNS, the
+Sendspin session and the E-AC-3 decoder share internal RAM, and `sdkconfig.psram` keeps every
+allocation under 16 KB there. These are the heap monitor API's figures while a stream played: the
+ten-minute group run on the boards, and 315 bursts under QEMU.
+
+| | QEMU (no PSRAM, 16 KB ring) | 2.0 board | 5.1 board |
+|---|---|---|---|
+| Least internal heap free | 43,700 bytes | 139 bytes | 23 bytes |
+| Decode task's stack unused | 5,744 of 24,576 | 13,916 of 32,768 | 13,840 of 32,768 |
+| Sendspin server's stack unused, of 8,192 | 2,972 | 2,960 | 2,960 |
+
+Nothing failed in those ten minutes. In a one-minute run before them, one 108-byte internal
+allocation did, with no effect on the stream. Two changes were tried and not kept:
+
+- Sending allocations over 4 KB to PSRAM left 80 KB free, but a burst then took 28 ms where it
+  had taken 20, and the board underran.
+- A larger `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL` changed nothing, because ESP-IDF v6.1 lets
+  ordinary small allocations take that reserve.
+
+Under QEMU, CI holds the shape to at least 20,480 bytes free, the stream set's floor.
 
 ## Timing
 
@@ -1157,6 +1225,10 @@ followed on 2026-09-10 — see [Folded to stereo](#folded-to-stereo).
 
 ## Open work
 
+- **Internal RAM in the Sendspin sink.** A board playing over Wi-Fi keeps under 150 bytes of
+  internal RAM free at its lowest ([In the Sendspin sink](#in-the-sendspin-sink)). Moving the
+  decoder's allocations between 4 and 16 KB to PSRAM made the board too slow, and Wi-Fi and lwIP
+  already try PSRAM first. What is left to try is a decoder that makes fewer such allocations.
 - **Heap traffic in the decode loop.** PF7 asks for zero; the steady state is 1–31 allocations per
   frame depending on fixture, from per-block geometry vectors and the `std::vector` members of the
   returned `DecodedFrame`. Reaching zero means those becoming fixed-capacity, which changes public

@@ -355,9 +355,9 @@ move to wherever the packet says," never a compromised process.
 ### Sendspin: Hearth's server and its sinks
 
 `src/sendspin`, built only with `AC3FORGE_BUILD_HEARTH`, listens on the local network. A sink
-(`ac3hearth-testsink` today) accepts WebSocket connections on port 8928 and advertises
-`_sendspin._tcp`; Hearth's server listens on 8927, advertises `_sendspin-server._tcp`, and dials
-the players it finds. Anyone on the network can open a connection to either, and anyone can send
+(`ac3hearth-testsink` on a computer, or `hearth_sink` on an ESP32-S3 board) accepts WebSocket
+connections on port 8928 and advertises `_sendspin._tcp`; Hearth's server listens on 8927,
+advertises `_sendspin-server._tcp`, and dials the players it finds. Anyone on the network can open a connection to either, and anyone can send
 them mDNS packets. The protocol, and where Hearth departs from it, is in
 [`planning/hearth-sendspin-extension.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-sendspin-extension.md).
 
@@ -400,9 +400,41 @@ bytes.
 packet reader has unit tests over packets that end early and names that point at themselves; the
 WebSocket framing is cpp-httplib's own code.
 
-**Planned.** Hearth's boards will serve a status page and a REST API with no authentication;
+**A board's page and REST API have no authentication.** `hearth_sink` serves its page and routes
+on port 80 beside the player, and whoever can reach that port can do what they allow without a
+key:
+
+- play any HTTP URL, stop a play, and set the volume;
+- change the board's name, layout, slot width and wiring, and the network it joins at its next
+  restart (`PUT /network`, whose body carries the passphrase in clear over HTTP);
+- forget every pairing, which gives the board a new identity, and lift the limit on wrong
+  pairing codes;
+- read `GET /status`, including the pairing code while a pairing runs. So on a board, pairing by
+  code shows only that the server's operator can reach the page, and anyone who can reach it can
+  pair a server of their own. The network is the boundary for pairing, as it is for the rest. The
+  pairing token pairs with no code at all, and only the console prints it.
+
+A page on another site, opened by someone on the same network, can send the board requests that
+need no CORS preflight, such as `POST /play` with a text body.
 [`planning/esp32-device-ui.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-device-ui.md)
-records the cross-site exposure that brings.
+records that exposure and the decision to leave it. The page puts every string from `/status` into
+the document as text, never as markup.
+
+**A board keeps its keys in NVS, unencrypted.** Its X25519 identity, its pairing PSK, up to eight
+pairing records and the Wi-Fi passphrase are in the NVS partition, and these builds turn on neither
+NVS encryption nor flash encryption. Whoever holds the board can read them with `esptool`, and
+with them pass as the board to every server it paired with, or join its network. Turning on both
+is the integrator's choice, and no build here has tried it.
+
+**The console is trusted.** Anyone with the board's USB port can read its pairing token, give it a
+network over Improv Wi-Fi, and type `pair forget` or `pair reset`.
+
+**A board's limits are its own.** The player holds three connections at once. It closes a
+connection that sends a message larger than its largest chunk
+(`CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES`, 25,600 bytes by default) before storing it.
+A chunk that does not fit the ring between the network and the decoder is dropped and counted.
+A chunk of the wrong type, or a unit that fails to decode, is counted as invalid, and the decoder
+starts again at the next burst. The decoder meets the posture above.
 
 ## What a decode failure looks like
 

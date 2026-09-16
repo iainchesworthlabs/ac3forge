@@ -453,6 +453,10 @@ B3), on WiFi with the page on port 80:
 SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram;sdkconfig.sendspin" idf.py build
 ```
 
+[An ESP32-S3 sink](../../../../docs/hearth/sink-esp32-s3.md) takes a board
+through this step by step: flashing, joining a network, pairing, groups,
+wiring and slot widths.
+
 Nothing plays at boot. The player listens on port 8928 at `/sendspin`, the
 board advertises `_sendspin._tcp` under its name, and a server that finds it
 dials it. Two roles are offered:
