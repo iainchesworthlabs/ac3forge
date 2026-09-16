@@ -1,0 +1,45 @@
+# The Sendspin player on an ESP32-C6, after sdkconfig.sendspin and sdkconfig.c6:
+#
+#   "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6"
+#
+# The part has no PSRAM, so every buffer the player keeps is internal RAM, and WiFi's
+# receive buffers come out of what is left. Each setting here is what a board needed:
+# a C6 playing an AC-3 2.0 stream from ac3hearth-testserver over WiFi, 2026-09-17.
+
+# The player's buffers. The S3's defaults (a 256 KB ring, 25 KB chunks, 20 ms delay
+# lines for 16 outputs) are about 426 KB here, more than the part has. A 32 KB ring
+# holds about a second of a 192 kbit/s stream and 0.4 s of a 640 kbit/s one, which a
+# server fills to three quarters; 4 KB takes an AC-3 burst at 640 kbit/s. The decode
+# task used 12.9 KB of its stack. No delay lines: a server that sets a delay is refused.
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_RING_BYTES=32768
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES=4096
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES=24576
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS=0
+
+# 16-bit slots, the width an ES9080 on this part runs, and half the bytes a frame a
+# 32-bit stereo pair takes. A board can still take 32 (PUT /slot-width).
+CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS=16
+
+# 24 DMA buffers of 128 frames, 64 ms: a burst's decode and render took 22.7 ms on
+# average and up to 46 ms, and a 21 ms queue ran dry behind the slow ones. That is
+# 12 KB for a 16-bit stereo pair, and 49 KB for eight 16-bit TDM slots.
+CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12
+CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_FRAMES=256
+
+# WiFi's code in flash rather than internal RAM: 45 KB more heap, which is what stopped
+# 1,848-byte receive-buffer allocations failing in a fragmented heap and the late
+# chunks that followed. It costs time: the burst's decode and render went from 20.3 to
+# 22.7 ms, and the WiFi task took 15% of the part while a stream played.
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_EXTRA_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+CONFIG_ESP_WIFI_SLP_IRAM_OPT=n
+CONFIG_ESP_PHY_IRAM_OPT=n
+
+# Radios and roles a sink does not use: the 802.15.4 driver the C6's defaults enable,
+# the soft access point, and receive aggregation, which a stream of at most a few
+# hundred kbit/s does not need and which has an access point send frames in batches,
+# each wanting a receive buffer at once. Together 60 KB less image.
+CONFIG_IEEE802154_ENABLED=n
+CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n
+CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=n

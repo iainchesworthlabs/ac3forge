@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "esp_app_desc.h"
+#include "esp_heap_caps.h"
 #include "esp_mac.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -57,6 +58,7 @@ constexpr std::size_t kRingBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_RING_BYTES;
 constexpr std::size_t kMaxChunkBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES;
 constexpr std::uint32_t kDecodeStackBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES;
 constexpr std::size_t kServerStackBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_SERVER_STACK_BYTES;
+constexpr UBaseType_t kServerPriority = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_SERVER_PRIORITY;
 constexpr int kMaxDelayMs = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS;
 constexpr std::uint32_t kReportEveryChunks = CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES;
 constexpr std::int32_t kLeadMs = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_LEAD_MS;
@@ -461,13 +463,13 @@ void start_player(const ac3::render::OutputLayout& layout) {
     config.sample_rate = kSampleRate;
     config.ring_bytes = kRingBytes;
     config.max_chunk_bytes = kMaxChunkBytes;
-    // An I2S bus's ceiling moves with its slot width and wiring, so its
-    // buffers are sized for the most it can reach; a sink with no hardware
-    // behind it keeps the slots it was built with.
-    config.max_outputs = std::string_view(sink_name()) == "i2s"
-                             ? ac3forge::Playout::kMaxOutputs
-                             : std::min<std::size_t>(ac3forge::Playout::kMaxOutputs,
-                                                     static_cast<std::size_t>(std::max(sink_slots(), 1)));
+    // An I2S bus's ceiling moves with its slot width and wiring, so the
+    // buffers are sized once for the most the sink can reach at any setting:
+    // sixteen on an ESP32-S3's two lines, eight on an ESP32-C6's one, where
+    // every per-output buffer is internal RAM. A sink with no hardware behind
+    // it keeps the slots it was built with.
+    config.max_outputs = std::min<std::size_t>(ac3forge::Playout::kMaxOutputs,
+                                               static_cast<std::size_t>(std::max(sink_max_slots(), 1)));
     config.max_delay_ms = static_cast<double>(kMaxDelayMs);
     config.core = kDecodeCore;
     config.stack_bytes = kDecodeStackBytes;
@@ -534,6 +536,12 @@ void start_player(const ac3::render::OutputLayout& layout) {
         g_started.host->set_player_config(player_config(*g_started.player));
     }
     print_token(*g_started.host);
+    // What is left once the player is up and nothing plays: a first unit's
+    // decoder and a server's connection buffers come out of this. On a part
+    // with no PSRAM every buffer above is internal RAM too.
+    std::printf("sendspin: player up with internal heap %u free, largest block %u\n",
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
 }
 
 }  // namespace

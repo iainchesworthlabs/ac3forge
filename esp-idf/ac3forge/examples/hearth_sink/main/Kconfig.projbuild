@@ -560,6 +560,17 @@ config AC3FORGE_EXAMPLE_SENDSPIN_SERVER_STACK_BYTES
         SHA-256 included. The page's Sendspin section says what a run left
         spare.
 
+config AC3FORGE_EXAMPLE_SENDSPIN_SERVER_PRIORITY
+    int "Priority of the Sendspin WebSocket server's task"
+    default 5
+    range 1 20
+    help
+        The decode task runs at 6. On an ESP32-S3 the two are on different
+        cores and this one's priority decides little. On a part with one core
+        it decides whether a clock reply or a chunk that arrives during a
+        burst's decode waits for the burst: below 6 it does, and the reply is
+        timestamped late.
+
 config AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS
     int "Longest per-output delay a server can set, milliseconds (0 = none)"
     default 20
