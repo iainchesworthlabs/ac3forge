@@ -245,6 +245,26 @@ jobs:
           LLVM_WINDOWS_VERSION: ${{ inputs.llvm_windows_version }}
         run: |
           $ErrorActionPreference = 'Stop'
+          # DIAGNOSTIC (ci-runners#26): the 2026-09-16/17 hosted-runner hang
+          # left a rename-fallback directory timestamped over a week before
+          # this job ran - on a runner that should be a fresh VM. Not proof
+          # of VM reuse: it's equally consistent with this VM's clock not
+          # having finished NTP sync yet this early in its own boot sequence
+          # (Defender's own event log from the same run was mid-startup too:
+          # cycling LoadingEngine -> ServiceStartedSuccessfully repeatedly,
+          # not a settled "protection is off" state). Actual OS uptime
+          # settles which: seconds/minutes since boot supports "still
+          # settling"; hours/days would instead mean the VM really is being
+          # reused. Logged unconditionally, not just on failure, so we get a
+          # baseline from healthy runs too, not only hung ones.
+          try {
+            $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+            $bootTime = $os.LastBootUpTime
+            $wallClockNow = Get-Date
+            Write-Host "VM boot time: $($bootTime.ToString('u')) - wall clock now: $($wallClockNow.ToString('u')) - uptime: $($wallClockNow - $bootTime)"
+          } catch {
+            Write-Host "Could not read boot time ($_)"
+          }
           # DRAFT (ci-runners#26): prefers winget over the hand-rolled
           # Invoke-WebRequest + NSIS '/S' dance, with that original dance
           # kept as a fallback for any runner without winget - confirmed
