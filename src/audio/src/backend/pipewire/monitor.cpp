@@ -68,24 +68,34 @@ struct MonitorSink::Impl {
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
     std::uint16_t channels = 0;
-    // What the process callback last read from pw_stream_get_time_n(), for
-    // position(): `ticks` is where the graph has got to in the stream's rate
-    // units and `delay` the further frames to the device, so the difference
-    // is what has been heard.
+    std::uint32_t sample_rate = 0;
+    // What the process callback last worked out, for position(): the frames
+    // it has handed the stream since the last start or flush, against those
+    // still between the stream and the speaker (ac3::pipewire::
+    // unplayed_frames()). pw_time's ticks are not used: they are the graph
+    // driver's clock, which runs on while this stream is paused, so a
+    // position built on them jumps forward by the length of every pause.
     PlaybackCounter counter;
-    // `ticks` counts from the stream's start and a flush does not reset it,
-    // so the figures counting from the last flush need their own zero.
-    std::atomic<std::uint64_t> tick_baseline{0};
+    std::uint64_t handed_over = 0;
+    // Set by pause() before the stream is made inactive, and cleared by
+    // resume() before it is made active again. paused() reports it, since
+    // the stream's own state follows pw_stream_set_active() only once the
+    // server has acted on it. process() does nothing while it is set, and
+    // `in_process` counts the calls under way, so pause() can wait for the
+    // last of them to finish. From then until resume() the queue's read
+    // side, `handed_over` and the counter are the caller's.
+    std::atomic_bool paused{false};
+    std::atomic<int> in_process{0};
     // A flush the process callback performs, for the same reason every other
     // backend's consumer performs its own: the callback owns the queue's read
     // side, and this one runs on the graph's DATA thread rather than the
     // thread loop (PW_STREAM_FLAG_RT_PROCESS), so pw_thread_loop_lock does
-    // NOT exclude it - resetting the ring buffer under that lock would race
-    // the reader's own index update and leave the buffer inconsistent for the
-    // rest of the stream. `flushes` counts the ones it has done, which is
-    // what flush() waits for.
+    // NOT exclude it. `flushes` counts the ones it has done, which is what
+    // flush() waits for, and `flush_mark` is how far the queue had been
+    // written when the flush was asked for: what it drops.
     std::atomic_bool flushing{false};
     std::atomic<std::uint64_t> flushes{0};
+    std::atomic<std::size_t> flush_mark{0};
 
     // See capture.cpp's Impl for the locking discipline this shares.
     std::atomic<ConnectState> connect_state{ConnectState::kPending};
@@ -111,6 +121,16 @@ struct MonitorSink::Impl {
 
     static void process(void* data) {
         auto& impl = *static_cast<Impl*>(data);
+        // Counted before `paused` is read, as pause() sets `paused` before it
+        // reads the count: whichever of the two goes first, the other sees it.
+        impl.in_process.fetch_add(1);
+        if (!impl.paused.load()) {
+            fill(impl);
+        }
+        impl.in_process.fetch_sub(1);
+    }
+
+    static void fill(Impl& impl) {
         if (!impl.queue || impl.channels == 0) {
             return;
         }
@@ -128,11 +148,8 @@ struct MonitorSink::Impl {
         // filled, so the buffer goes out silent from the emptied queue and
         // the counters restart together with it.
         if (impl.flushing.exchange(false, std::memory_order_acq_rel)) {
-            impl.queue->reset();
-            pw_time at_flush{};
-            if (pw_stream_get_time_n(impl.stream.get(), &at_flush, sizeof(at_flush)) == 0) {
-                impl.tick_baseline.store(at_flush.ticks, std::memory_order_relaxed);
-            }
+            impl.queue->discard_to(impl.flush_mark.load(std::memory_order_acquire));
+            impl.handed_over = 0;
             impl.counter.restart();
             impl.rendered.store(0, std::memory_order_relaxed);
             impl.submitted.store(0, std::memory_order_relaxed);
@@ -140,9 +157,12 @@ struct MonitorSink::Impl {
         }
 
         const std::uint32_t stride = static_cast<std::uint32_t>(sizeof(float)) * impl.channels;
+        // Never more than the buffer holds, whatever the graph asks for.
+        const std::uint32_t room = spa_buf->datas[0].maxsize / stride;
         const std::uint32_t requested =
-            buffer->requested > 0 ? static_cast<std::uint32_t>(buffer->requested)
-                                   : spa_buf->datas[0].maxsize / stride;
+            buffer->requested > 0
+                ? static_cast<std::uint32_t>(std::min<std::uint64_t>(buffer->requested, room))
+                : room;
         const std::size_t sample_count = static_cast<std::size_t>(requested) * impl.channels;
 
         auto* out = static_cast<float*>(spa_buf->datas[0].data);
@@ -156,17 +176,18 @@ struct MonitorSink::Impl {
         spa_buf->datas[0].chunk->offset = 0;
         spa_buf->datas[0].chunk->stride = static_cast<std::int32_t>(stride);
         spa_buf->datas[0].chunk->size = static_cast<std::uint32_t>(sample_count) * sizeof(float);
+        // In frames, which is then what pw_time.queued counts.
+        buffer->size = requested;
 
         pw_stream_queue_buffer(impl.stream.get(), buffer);
+        impl.handed_over += requested;
 
-        // Where the graph has got to, in the stream's own rate units, which
-        // for a stream of this format are frames.
+        // What of it all has been heard: everything handed over, less what
+        // the stream and the graph still hold.
         pw_time time{};
         if (pw_stream_get_time_n(impl.stream.get(), &time, sizeof(time)) == 0) {
-            const auto unplayed = static_cast<std::uint64_t>(std::max<std::int64_t>(time.delay, 0));
-            const auto baseline = impl.tick_baseline.load(std::memory_order_relaxed);
-            const auto ticks = time.ticks;
-            impl.counter.report(ticks - std::min(ticks, baseline), unplayed);
+            impl.counter.report(impl.handed_over,
+                                ac3::pipewire::unplayed_frames(time, impl.sample_rate));
         }
     }
 
@@ -233,14 +254,15 @@ void MonitorSink::flush() {
     // Impl's `flushing`.
     pw_thread_loop_lock(impl_->loop.get());
     pw_stream_flush(impl_->stream.get(), false);
-    const pw_stream_state state = pw_stream_get_state(impl_->stream.get(), nullptr);
     pw_thread_loop_unlock(impl_->loop.get());
 
-    // An inactive stream is not being called back, so there is nobody to hand
-    // the work to and nobody to race with either: a paused stream's queue is
-    // this thread's to reset.
-    if (state != PW_STREAM_STATE_STREAMING) {
-        impl_->queue->reset();
+    // Paused: the process callback has stopped touching the queue and the
+    // counts (see pause()), so the work is this thread's, including any
+    // flush still waiting for the callback.
+    if (impl_->paused.load()) {
+        impl_->flushing.store(false, std::memory_order_release);
+        impl_->queue->discard_to(impl_->queue->write_mark());
+        impl_->handed_over = 0;
         impl_->counter.restart();
         impl_->rendered.store(0, std::memory_order_relaxed);
         impl_->submitted.store(0, std::memory_order_relaxed);
@@ -248,6 +270,7 @@ void MonitorSink::flush() {
     }
 
     const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
     impl_->flushing.store(true, std::memory_order_release);
     for (int waited = 0; waited < 200; ++waited) {
         if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
@@ -255,21 +278,32 @@ void MonitorSink::flush() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    // The graph stopped calling back before it could do the work; the flag
-    // must not stay raised, or the next callback - a resume, a route change -
-    // would drop audio submitted after this call had already returned.
-    impl_->flushing.store(false, std::memory_order_release);
+    // The graph stopped calling back before it could do the work. The flush
+    // is left for the next callback - a resume, a route change - and drops
+    // only what was queued before the mark, so audio submitted after this
+    // call returned is kept.
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
     if (!running() || !impl_->loop || !impl_->stream) {
         return std::unexpected(MonitorError::kNotRunning);
     }
+    if (impl_->paused.load()) {
+        return {};
+    }
+    impl_->paused.store(true);
     pw_thread_loop_lock(impl_->loop.get());
     const int result = pw_stream_set_active(impl_->stream.get(), false);
     pw_thread_loop_unlock(impl_->loop.get());
     if (result < 0) {
+        impl_->paused.store(false);
         return std::unexpected(MonitorError::kComFailure);
+    }
+    // A callback already past its check of `paused` finishes first; after
+    // that, none touches the queue or the counts until resume(). A graph
+    // cycle is well under this.
+    for (int waited = 0; waited < 200 && impl_->in_process.load() != 0; ++waited) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     return {};
 }
@@ -278,24 +312,25 @@ std::expected<void, MonitorError> MonitorSink::resume() {
     if (!running() || !impl_->loop || !impl_->stream) {
         return std::unexpected(MonitorError::kNotRunning);
     }
+    if (!impl_->paused.load()) {
+        return {};
+    }
+    // Cleared before the stream is made active, so its first callback fills.
+    impl_->paused.store(false);
     pw_thread_loop_lock(impl_->loop.get());
     const int result = pw_stream_set_active(impl_->stream.get(), true);
     pw_thread_loop_unlock(impl_->loop.get());
     if (result < 0) {
+        impl_->paused.store(true);
         return std::unexpected(MonitorError::kComFailure);
     }
     return {};
 }
 
 bool MonitorSink::paused() const {
-    if (!running() || !impl_->loop || !impl_->stream) {
-        return false;
-    }
-    pw_thread_loop_lock(impl_->loop.get());
-    const pw_stream_state state = pw_stream_get_state(impl_->stream.get(), nullptr);
-    pw_thread_loop_unlock(impl_->loop.get());
-    // An inactive stream sits in PAUSED; a running one is STREAMING.
-    return state == PW_STREAM_STATE_PAUSED;
+    // What was asked for, not the stream's state, which follows it only once
+    // the server has acted.
+    return running() && impl_->paused.load();
 }
 
 bool MonitorSink::can_submit() const {
@@ -331,8 +366,10 @@ void MonitorSink::stop() {
     }
     impl_->stream.reset();
     impl_->loop.reset();
-    // A flush nobody performed does not outlive the stream it was asked of.
+    // A flush nobody performed, and a pause, do not outlive the stream they
+    // were asked of.
     impl_->flushing.store(false, std::memory_order_relaxed);
+    impl_->paused.store(false);
     impl_->running.store(false, std::memory_order_release);
 }
 
@@ -369,12 +406,13 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     impl_->queue =
         std::make_unique<RingBuffer>(static_cast<std::size_t>(channels) * sample_rate);
     impl_->channels = channels;
+    impl_->sample_rate = sample_rate;
     impl_->submitted.store(0, std::memory_order_relaxed);
     impl_->rendered.store(0, std::memory_order_relaxed);
     impl_->underruns.store(0, std::memory_order_relaxed);
     impl_->counter.restart();
-    // A fresh stream's ticks start at zero, so nothing to subtract yet.
-    impl_->tick_baseline.store(0, std::memory_order_relaxed);
+    impl_->handed_over = 0;
+    impl_->paused.store(false);
     impl_->flushing.store(false, std::memory_order_relaxed);
     impl_->flushes.store(0, std::memory_order_relaxed);
     impl_->connect_state.store(ConnectState::kPending, std::memory_order_relaxed);

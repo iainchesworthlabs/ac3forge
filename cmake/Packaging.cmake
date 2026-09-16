@@ -453,14 +453,15 @@ endif()
 # macOS package for as long as it stood).
 set(CPACK_COMPONENTS_ALL runtime library libruntime)
 
-# The Windows AC3Forge Crucible (roadmap UX11) as a fourth component, and so
-# its own archive rather than part of the runtime one: it is Windows-only, it
-# carries a second Qt deployment of its own, and its null-sink driver is still
-# test-signed, so someone downloading ac3cli/ac3gui should not be handed it.
-# Added only when it was actually built, since CPack would otherwise package
-# an empty component; kept out of the NSIS installer for now by
-# cmake/CPackProjectConfig.cmake, which is where that choice is explained.
-if(AC3FORGE_BUILD_CRUCIBLE AND (WIN32 OR LINUX))
+# The AC3Forge Crucible (roadmap UX11) as a fourth component, and so its own
+# archive rather than part of the runtime one: on Windows and macOS it carries
+# a second Qt deployment of its own (Linux leaves Qt to the system loader),
+# and on Windows its null-sink driver is still test-signed, so someone
+# downloading ac3cli/ac3gui should not be handed it. Added only when it was
+# actually built, since CPack would otherwise package an empty component;
+# kept out of the NSIS installer for now by cmake/CPackProjectConfig.cmake,
+# which is where that choice is explained.
+if(AC3FORGE_BUILD_CRUCIBLE AND (WIN32 OR LINUX OR APPLE))
     list(APPEND CPACK_COMPONENTS_ALL crucible)
 endif()
 

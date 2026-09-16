@@ -140,3 +140,40 @@ TEST_CASE("decoder settings: equal settings compare equal, and any control tells
     changed.dual_mono = ac3::hearth::DualMonoChoice::kSecond;
     CHECK_FALSE(changed == base);
 }
+
+TEST_CASE("decoder settings: a transcode decodes the programme as coded, whatever the listener "
+          "chose",
+          "[hearth][decoder-settings][transcode]") {
+    DecoderSettings listener;
+    listener.mode = ac3::OperatingMode::kRf;
+    listener.drc_cut = 0.5;
+    listener.heavy_compression = true;
+    listener.stereo_fold = ac3::DownmixTarget::kLtRt;
+    listener.mix_lfe = true;
+    listener.mix_levels.loro_clev = 0.5;
+    listener.objects = ac3::render::ObjectsPolicy::kAlways;
+    // What a receiver cannot choose for itself is kept.
+    listener.dual_mono = ac3::hearth::DualMonoChoice::kSecond;
+    listener.concealment = ac3::ConcealmentPolicy::kMute;
+    listener.programme = 3;
+
+    const DecoderSettings neutral = ac3::hearth::transcode_settings(listener);
+    CHECK(neutral.dual_mono == ac3::hearth::DualMonoChoice::kSecond);
+    CHECK(neutral.concealment == ac3::ConcealmentPolicy::kMute);
+    CHECK(neutral.programme == std::optional<int>{3});
+    CHECK(neutral.mix_levels == ac3::MixLevelOverride{});
+    CHECK_FALSE(neutral.mix_lfe);
+
+    const auto setup = decoder_setup(neutral, layout("5.1"));
+    const ac3::DecoderConfig& config = setup.config;
+    CHECK(config.output.mode == ac3::OperatingMode::kCustom);
+    CHECK(config.drc_scale == 0.0);
+    REQUIRE(config.drc_boost_scale.has_value());
+    CHECK(*config.drc_boost_scale == 0.0);
+    CHECK_FALSE(config.heavy_compression);
+    CHECK_FALSE(config.output.apply_dialnorm);
+    CHECK(config.output.target == ac3::DownmixTarget::kAsCoded);
+    CHECK_FALSE(setup.serving.fold.has_value());
+    CHECK(config.skip_object_reconstruction);
+    CHECK(config.concealment == ac3::ConcealmentPolicy::kMute);
+}

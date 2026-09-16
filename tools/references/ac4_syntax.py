@@ -2254,7 +2254,12 @@ def substream_roles(toc):
             put(ps['substream_index'], ('presentation', p))
         for _, info in p.get('substreams', []):
             audio(info, 0, 'chan', p, 'b_iframe')
-            put(info.get('hsf_ext_substream_index'), ('hsf_ext', p))
+            # The owner is info itself, not p: a presentation's HSF-carrying
+            # role is always its first (§4.2.3.2), so this never actually
+            # disambiguates among several substreams the way the v1 path
+            # below needs to - kept the same shape regardless, so the
+            # content parser has one place to look, not two.
+            put(info.get('hsf_ext_substream_index'), ('hsf_ext', info))
     seen = []
     for p in pres:
         for g in _groups_of(toc, p):
@@ -2265,7 +2270,11 @@ def substream_roles(toc):
                 put(g['oamd']['substream_index'], ('oamd', g))
             for s in g['substreams']:
                 audio(s['info'], s['sus_ver'], s['kind'], p, 'b_audio_ndot')
-                put(s.get('hsf_ext_substream_index'), ('hsf_ext', g))
+                # s, not g: a group can carry several substreams when
+                # b_hsf_ext is set, each with its own hsf_ext_substream_index
+                # naming its own extension - g alone would not say which of
+                # several is which extension's actual owner.
+                put(s.get('hsf_ext_substream_index'), ('hsf_ext', s))
     return roles
 
 
@@ -2442,7 +2451,7 @@ def walk_stream(data, ims_rule=True, diagnostics=None):
             diagnostics.append(f'frame {fi}: FAIL: CRC mismatch')
         try:
             subs = walker.frame(raw)
-        except (ValueError, IndexError, ac4_parse.OamdCommonDataPresent) as exc:
+        except (ValueError, IndexError) as exc:
             if diagnostics is not None:
                 diagnostics.append(f'frame {fi}: TOC: FAIL: {exc}')
             continue

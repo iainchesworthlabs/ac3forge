@@ -37,8 +37,9 @@ namespace {
 // from the device and the room's layout rather than from the item.
 //
 // A bitstream output is the stricter case: the sink was handed a format and a
-// carrier rate, so a different rate - or a different mode entirely - means a
-// new stream to the sink.
+// carrier rate, so a different rate, a different stream format - E-AC-3's
+// link runs four times as fast as AC-3's - or a different mode entirely
+// means a new stream to the sink.
 [[nodiscard]] bool same_stream(const OpenOutputFormat& open, const ItemFacts& next,
                                 OutputMode mode) {
     if (open.mode == OutputMode::kNone || open.mode != mode) {
@@ -49,7 +50,48 @@ namespace {
         // join; reopening is the answer that cannot be wrong.
         return false;
     }
-    return open.sample_rate == next.sample_rate;
+    if (open.sample_rate != next.sample_rate) {
+        return false;
+    }
+    switch (mode) {
+        case OutputMode::kBitstream:
+            return next.stream.has_value() && next.stream == open.stream;
+        case OutputMode::kBitstreamAsAc3:
+            return next.stream == audio::BitstreamFormat::kEac3;
+        case OutputMode::kLocalPcm:
+        case OutputMode::kNetworkGroup:
+        case OutputMode::kNone: return true;
+    }
+    return true;
+}
+
+[[nodiscard]] std::string_view stream_name(std::optional<audio::BitstreamFormat> stream) {
+    if (!stream) {
+        return "not a bitstream";
+    }
+    return *stream == audio::BitstreamFormat::kAc3 ? "AC-3" : "E-AC-3";
+}
+
+// Why an item that did not join reopens the output, for the status line.
+[[nodiscard]] std::string reopen_note(const OpenOutputFormat& open, const QueueItem& next,
+                                      OutputMode mode) {
+    if (open.mode != OutputMode::kNone && mode != open.mode) {
+        return fmt::format("\"{}\" plays as {}, and the output is open for {}, so it reopens - "
+                           "there is a gap.",
+                           next.title, describe(mode), describe(open.mode));
+    }
+    if (open.sample_rate != 0 && next.facts.sample_rate != 0 &&
+        open.sample_rate != next.facts.sample_rate) {
+        return fmt::format(
+            "\"{}\" is {} Hz and the output is open at {} Hz, so it reopens - there is a gap.",
+            next.title, next.facts.sample_rate, open.sample_rate);
+    }
+    if (mode == OutputMode::kBitstream && open.stream && next.facts.stream != open.stream) {
+        return fmt::format(
+            "\"{}\" is {} and the output is carrying {}, so it reopens - there is a gap.",
+            next.title, stream_name(next.facts.stream), stream_name(open.stream));
+    }
+    return fmt::format("The output reopens for \"{}\", so there is a gap.", next.title);
 }
 
 }  // namespace
@@ -61,6 +103,14 @@ std::string_view describe(TransportState state) {
         case TransportState::kPaused: return "paused";
     }
     return "unknown transport state";
+}
+
+std::string_view describe(FailurePolicy policy) {
+    switch (policy) {
+        case FailurePolicy::kSkip: return "skip to the next";
+        case FailurePolicy::kStop: return "stop";
+    }
+    return "unknown failure policy";
 }
 
 std::string_view describe(TransportAction action) {
@@ -77,7 +127,8 @@ std::string_view describe(TransportAction action) {
     return "unknown transport action";
 }
 
-TransportOutcome Transport::start_or_join(std::size_t item, bool joining) {
+TransportOutcome Transport::start_or_join(std::size_t item, bool joining,
+                                          std::optional<OutputMode> mode) {
     const QueueItem* const entry = item < queue_->size() ? &queue_->items()[item] : nullptr;
     if (entry == nullptr) {
         state_ = TransportState::kStopped;
@@ -100,22 +151,14 @@ TransportOutcome Transport::start_or_join(std::size_t item, bool joining) {
         return outcome(state_, TransportAction::kReopenForItem, item,
                        "Gapless is off, so the output stops and starts again between items.");
     }
-    // The caller has not said what mode the next item will use, so the
-    // decision is made against the mode the output is already in: a join is
-    // only ever a continuation of what is playing.
-    if (same_stream(open_, entry->facts, open_.mode)) {
+    // A join is only ever a continuation of what is playing: the mode the
+    // output is in, unless the caller has said the item wants another.
+    const OutputMode wanted = mode.value_or(open_.mode);
+    if (same_stream(open_, entry->facts, wanted)) {
         return outcome(state_, TransportAction::kJoinItem, item);
     }
-    std::string note;
-    if (open_.sample_rate != 0 && entry->facts.sample_rate != 0 &&
-        open_.sample_rate != entry->facts.sample_rate) {
-        note = fmt::format(
-            "\"{}\" is {} Hz and the output is open at {} Hz, so it reopens - there is a gap.",
-            entry->title, entry->facts.sample_rate, open_.sample_rate);
-    } else {
-        note = fmt::format("The output reopens for \"{}\", so there is a gap.", entry->title);
-    }
-    return outcome(state_, TransportAction::kReopenForItem, item, std::move(note));
+    return outcome(state_, TransportAction::kReopenForItem, item,
+                   reopen_note(open_, *entry, wanted));
 }
 
 TransportOutcome Transport::play() {
@@ -209,7 +252,7 @@ TransportOutcome Transport::seek(std::chrono::milliseconds to) {
     return outcome(state_, TransportAction::kSeekItem, queue_->current_index(), {}, to);
 }
 
-TransportOutcome Transport::item_finished() {
+TransportOutcome Transport::item_finished(std::optional<OutputMode> next_mode) {
     if (state_ == TransportState::kStopped) {
         return outcome(state_, TransportAction::kNone);
     }
@@ -219,7 +262,41 @@ TransportOutcome Transport::item_finished() {
         return outcome(state_, TransportAction::kStopOutput, Queue::kNone,
                        "The queue has finished.");
     }
-    return start_or_join(item, /*joining=*/true);
+    return start_or_join(item, /*joining=*/true, next_mode);
+}
+
+bool Transport::would_join(std::optional<OutputMode> next_mode) const {
+    if (state_ == TransportState::kStopped || !gapless_) {
+        return false;
+    }
+    // The same answers start_or_join() gives, read rather than acted on; the
+    // queue names only an item that can be played.
+    const std::size_t item = queue_->next_index(repeat_);
+    if (item >= queue_->size()) {
+        return false;
+    }
+    return same_stream(open_, queue_->items()[item].facts, next_mode.value_or(open_.mode));
+}
+
+TransportOutcome Transport::item_failed(std::size_t item, std::optional<OutputMode> next_mode) {
+    if (on_failure_ == FailurePolicy::kSkip) {
+        return item_finished(next_mode);
+    }
+    // Stopped at the item, whatever was playing before it: the person asked
+    // to be shown the failure rather than have it passed over.
+    const bool was_running = state_ != TransportState::kStopped;
+    state_ = TransportState::kStopped;
+    const QueueItem* const entry = item < queue_->size() ? &queue_->items()[item] : nullptr;
+    if (entry == nullptr) {
+        return outcome(state_,
+                       was_running ? TransportAction::kStopOutput : TransportAction::kNone,
+                       Queue::kNone, "Nothing left in the queue to play.");
+    }
+    queue_->set_current(item);
+    return outcome(state_, was_running ? TransportAction::kStopOutput : TransportAction::kNone,
+                   item,
+                   fmt::format("\"{}\" cannot be played here, so playback stops: {}",
+                               entry->title, entry->facts.unplayable_because));
 }
 
 TransportOutcome Transport::current_item_removed() {

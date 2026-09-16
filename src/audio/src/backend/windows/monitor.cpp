@@ -113,10 +113,13 @@ struct MonitorSink::Impl {
     std::atomic<std::uint32_t> latency{0};
     // Set by pause()/resume() and flush(); acted on by the render thread,
     // which owns the device and the queue's read side. `flushes` counts the
-    // flushes it has completed, which is what flush() waits for.
+    // flushes it has completed, which is what flush() waits for, and
+    // `flush_mark` is how far the queue had been written when the flush was
+    // asked for: what it drops.
     std::atomic_bool paused{false};
     std::atomic_bool flushing{false};
     std::atomic<std::uint64_t> flushes{0};
+    std::atomic<std::size_t> flush_mark{0};
 };
 
 MonitorSink::MonitorSink() : impl_(std::make_unique<Impl>()) {}
@@ -148,20 +151,24 @@ void MonitorSink::flush() {
         return;
     }
     const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
     impl_->flushing.store(true, std::memory_order_release);
-    // The render thread stops the device, resets it and drops the queue; a
-    // whole period of grace is longer than it needs, and giving up after that
-    // is better than blocking a caller on a device that has stopped answering.
+    // The render thread stops the device, resets it and drops the queue up to
+    // the mark; a whole period of grace is longer than it needs, and giving
+    // up after that is better than blocking a caller on a device that has
+    // stopped answering.
     for (int waited = 0; waited < 200; ++waited) {
         if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
             return;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    // The render thread did not get to it - it has broken out of its loop on
-    // a device failure, or the device is not answering. The flag must not
-    // stay raised: it would drop audio submitted after this call returned.
-    impl_->flushing.store(false, std::memory_order_release);
+    // The render thread did not get to it: the device is not answering, or
+    // the thread has broken out of its loop on a device failure. The flag
+    // stays raised, and the flush is made whenever the thread next runs. It
+    // drops only what was queued before the mark, so audio submitted after
+    // this call returned is kept, and the queue's write side is never
+    // touched from that thread while this one writes.
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
@@ -404,7 +411,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                     device_running = false;
                 }
                 client->Reset();
-                impl_->queue->reset();
+                impl_->queue->discard_to(impl_->flush_mark.load(std::memory_order_acquire));
                 handed_over = 0;
                 impl_->counter.restart();
                 impl_->rendered.store(0, std::memory_order_relaxed);

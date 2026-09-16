@@ -142,6 +142,39 @@ Later phases add the readings their processing needs.
   third frame. `tests/ac4dec/test_ac4dec_decoder.cpp` checks a jump and a 0. Text for the frame that
   does not parse.
 
+### oamd_common_data() has two call sites; only one is read
+
+- **Where:** Part 2 §6.2.8.1, embedded by `b_oamd_common_data_present` in both `ac4_substream_info_ajoc()`
+  (§6.2.1.9, a TOC-level element) and `oamd_substream()` (§6.2.2.4, an A-JOC/object substream's own DATA
+  content).
+- **Reading:** only the first is read, at the TOC level (`ac4::`/`ac4_parse.py`), since a wrong reading
+  there desyncs every substream after it - correctness here is what the differential check and
+  `tests/ac4/test_ac4.cpp`'s synthetic vectors can hold to. The second, inside `oamd_substream()`, is not:
+  no A-JOC/object substream's DATA is decoded at all yet, so an independent second transcription of the
+  same element there would have nothing to cross-check it against.
+- **Evidence:** Text; no stream here (nor Chromium's public A-JOC test file, not re-checked since) reaches
+  the TOC-level occurrence with non-trivial content - see docs/verification.md's AC-4 section.
+
+### bits_used from trim()/bed_render_info()/headphone() is measured, not returned
+
+- **Where:** Part 2 §6.2.8.1: `bits_used = trim(); add_data_bits = add_data_bits - bits_used;` and the
+  same for `bed_render_info()` and `headphone()`, three calls whose own syntax tables (§6.2.8.8, 6.2.8.9,
+  6.2.8.9a) read fields in the ordinary way and state no return value.
+- **Reading:** `bits_used` is the reader position immediately after the call minus the position
+  immediately before it - what each function actually read, not a quantity it computes and returns.
+- **Evidence:** Text.
+
+### An add_data budget a nested element overruns fails the substream
+
+- **Where:** Part 2 §6.2.8.1: `add_data_bits = add_data_bits - bits_used`, unguarded, for all three of
+  `trim()`, `bed_render_info()` and `headphone()`; `add_data_bits` then sizes the final `add_data` read.
+  The text does not say what a `bits_used` bigger than the remaining `add_data_bits` means.
+- **Reading:** a failure: `trim()`/`bed_render_info()`/`headphone()` reading more than `add_data_bytes`
+  budgeted them is possible only on a malformed stream (a real encoder sizes `add_data_bytes` to fit
+  exactly what it wrote), and letting `add_data` or the fields after `oamd_common_data()` be read from a
+  position the budget never actually reserved for them would misparse rather than fail.
+- **Evidence:** Text; `tests/ac4/test_ac4.cpp` covers it with a `trim()` sized past an 8-bit budget.
+
 ## Substream framing
 
 ### ac4_substream() byte alignment after audio_size

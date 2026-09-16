@@ -215,6 +215,43 @@ TEST_CASE("output decision: a pinned mode is honoured, or the reason says what s
     CHECK(mentions(fell_back.reason, "No available output takes AC-3"));
 }
 
+TEST_CASE("output decision: a pinned AC-3 bitstream transcodes only what needs it",
+          "[hearth][output-decision]") {
+    const std::vector<EndpointFacts> endpoints{receiver("Old AVR", /*eac3=*/false, /*ac3=*/true),
+                                               analogue("Speakers", 2, /*is_default=*/true)};
+
+    // AC-3 is sent as it is, with or without a transcode to hand.
+    auto ac3 = asking(endpoints, BitstreamFormat::kAc3);
+    ac3.pinned = OutputMode::kBitstreamAsAc3;
+    ac3.transcode_available = false;
+    const auto untouched = choose_output(ac3);
+    CHECK(untouched.mode == OutputMode::kBitstream);
+    CHECK(untouched.endpoint_name == "Old AVR");
+
+    // E-AC-3 needs the transcode.
+    auto eac3 = asking(endpoints, BitstreamFormat::kEac3);
+    eac3.pinned = OutputMode::kBitstreamAsAc3;
+    CHECK(choose_output(eac3).mode == OutputMode::kBitstreamAsAc3);
+
+    // Without one, the receiver still takes AC-3, and the reason says what
+    // was missing was the transcode, not an output.
+    eac3.transcode_available = false;
+    const auto decoded = choose_output(eac3);
+    CHECK(decoded.mode == OutputMode::kLocalPcm);
+    CHECK(mentions(decoded.reason, "An output takes AC-3, but E-AC-3 cannot be transcoded"));
+    CHECK_FALSE(mentions(decoded.reason, "No available output"));
+
+    eac3.preferred_endpoint_id = "Old AVR-id";
+    CHECK(mentions(choose_output(eac3).reason, "The chosen output takes AC-3"));
+
+    // With no output taking AC-3 at all, that is what it says.
+    const std::vector<EndpointFacts> analogue_only{analogue("Speakers", 6, /*is_default=*/true)};
+    auto nowhere = asking(analogue_only, BitstreamFormat::kEac3);
+    nowhere.pinned = OutputMode::kBitstreamAsAc3;
+    nowhere.transcode_available = false;
+    CHECK(mentions(choose_output(nowhere).reason, "No available output takes AC-3"));
+}
+
 TEST_CASE("output decision: a selected group is played to, and a group that is not ready says so",
           "[hearth][output-decision]") {
     const std::vector<EndpointFacts> endpoints{analogue("Speakers", 2, /*is_default=*/true)};

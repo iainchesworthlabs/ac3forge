@@ -47,4 +47,14 @@ void PassthroughSink::stop() {}
 bool PassthroughSink::running() const { return false; }
 PassthroughStats PassthroughSink::stats() const { return {}; }
 
+std::optional<MonitorPosition> PassthroughSink::position() const { return std::nullopt; }
+void PassthroughSink::flush() {}
+std::expected<void, PassthroughError> PassthroughSink::pause() {
+    return std::unexpected(PassthroughError::kNoBackend);
+}
+std::expected<void, PassthroughError> PassthroughSink::resume() {
+    return std::unexpected(PassthroughError::kNoBackend);
+}
+bool PassthroughSink::paused() const { return false; }
+
 }  // namespace ac3::audio

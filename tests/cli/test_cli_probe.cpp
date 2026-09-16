@@ -499,7 +499,8 @@ TEST_CASE("probe names a reserved dmixmod in both output forms, for both codecs"
 
 TEST_CASE("probe names bsmod 7 by acmod: voice over at 1/0, karaoke wider", "[cli][probe]") {
     // Table 5.7's one code that means two different services, split by acmod
-    // rather than by bsmod alone - see bsmod_label's own comment in probe.cpp.
+    // rather than by bsmod alone - see bsmod_label's own comment in
+    // apps/common/probe_json.cpp.
     // bsmod is unconditional in AC-3's bsi (§5.4.2.2), so 'metadata' can stamp
     // 7 onto a plain sine tone without needing a fixture that transmitted it
     // already; that keeps this to the acmod boundary the bug was actually in,

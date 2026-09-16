@@ -450,6 +450,207 @@ and release packaging.
     same way, so a seek no longer starts with a block missing its overlap.
   - Two differences from an unbroken decode remain: the settings change itself, and the
     §7.3.4 dither, whose generator a new decoder restarts, some 95 dB down.
+- **Hearth's engine thread** (`apps/hearth/engine/engine_thread.hpp`): the player on a thread of
+  its own.
+  - Commands from any thread are queued and carried out in order between pumps. The engine
+    pumps each period while an output is open and sleeps while none is.
+  - A snapshot of the queue, the transport, the settings and the history is published after
+    every change, with a callback on the engine's thread. The play position is kept apart, and
+    follows the device's clock through joins and seeks.
+  - Queue edits while playing are the player's own. Removing the playing item moves on to the
+    next; a reopen still waiting for the old item to be heard keeps its item through an edit;
+    the history's queue indices follow their items.
+  - In `ac3tests`, tagged `[concurrency]`, a queue plays to its end while the engine, a fake
+    device's clock and the test's own thread all run at once. Commands from five threads all
+    take effect, each thread's in its order, and a playing engine that goes away closes its
+    output.
+- **Hearth's meters, released at play time** (`apps/hearth/engine/play_meters.hpp`): a level
+  meter per output slot (peak, hold, RMS and a clip latch) and the programme's loudness
+  (momentary, short-term, integrated, loudness range and true peak), measured as the player
+  renders each block.
+  - Each reading is stamped with the output frame its audio ends on, and handed out only once
+    the device's clock, less the output's latency, has reached that frame. The meters move with
+    the sound, not ahead of it by what the device holds.
+  - Loudness is measured over the slots with a Table E2.5 location; a slot placed only by angle
+    has a level meter but no loudness weighting.
+  - Each item's integrated loudness, loudness range and true peak are its own. Momentary and
+    short-term loudness run on through a gapless join, read from the item before's meter until
+    the new item has filled the 3 s window. A seek, a stop or a reopen starts every meter again
+    and drops the readings still waiting, since their audio will not be heard.
+  - Integrated loudness and loudness range are read once a second. The library works both out
+    over the whole programme at each read; at 20 readings a second, that measured some 15% of a
+    core three hours into an item.
+  - The engine publishes the latest reading beside the play position, and none while nothing
+    plays. In `ac3tests`, tagged `[play-meters]`, a reading comes out when the clock reaches it
+    and not before, readings come out in order however many wait, each describes its audio's
+    level and loudness, and a join, a flush and the once-a-second reads each behave as above.
+- **Hearth's media information** (`apps/hearth/engine/media_info.hpp`): what a queue item's
+  file says about itself, for the media page and its JSON export.
+  - For AC-3 and E-AC-3: the programmes and associated services, the channel map, and the
+    whole-stream report `ac3cli probe` makes, authenticity tags included. Also the first
+    access unit's bitstream information: service, surround and headphone modes, copyright,
+    audio production, time codes, Annex D's alternate syntax and the mixing metadata, with the
+    fold levels they give.
+  - For AC-4, which Hearth cannot play: the sync frames and the table of contents.
+  - The container's facts arrive with the item from its loader. `apps/common`'s container
+    input now reports the track, its language, an MP4 track's codec configuration box and
+    edit list, and an MPEG-TS stream's programme, PIDs and signalling.
+  - `MediaInspector` reads items on a thread of its own, one at a time, and keeps the last
+    few descriptions. A newer request replaces one not yet started.
+  - The export is `ac3forge.hearth.media/1`. Its `probe` member is the `stream` object of
+    `ac3forge.probe/1`, written by the code `ac3cli probe json=1` uses, which moved to
+    `apps/common/probe_json.cpp` for the purpose.
+  - In `ac3tests`, tagged `[media-info]`: AC-3, E-AC-3 in MP4, Matroska and MPEG-TS, two
+    programmes, signed objects and a real AC-4 stream are each described and exported, and
+    the document parses. Tagged `[media-inspector]` and `[concurrency]`: a description is
+    made on the inspector's thread, served from the cache until a reread is asked for, and a
+    request replaced before it started is never read.
+- **What the unit being heard says, at play time** (`apps/hearth/engine/unit_reports.hpp`).
+  - Each access unit's report comes out when the device's clock passes the unit's first frame,
+    as the meters' readings do.
+  - A report gives the unit's channels and substreams; its service, dialnorm, `compr` and
+    `dynrng` words; AC-3's short blocks; the fold levels in force; any concealment; and its
+    object metadata, with every update block's positions.
+  - `StreamDecoder` reads the report from what the decoders return, which it used to drop. A
+    unit held back for transient pre-noise processing is reported by the call that releases
+    it, and the last unit by `finish()`.
+  - A unit the item plays nothing of, such as the one a seek decodes only to prime the
+    decoder, is not reported. A seek, a stop or a reopen drops the reports still waiting.
+  - `Engine::unit_report()` returns the latest report, and nothing while no output is open.
+  - In `ac3tests`, four streams are each reported unit by unit: AC-3, E-AC-3 with mixing
+    metadata, a stream a unit behind, and an object stream. The player's report changes with
+    the item heard at a gapless join.
+- **Hearth's diagnostics file** (`apps/hearth/engine/diagnostic_log.hpp` and
+  `diagnostics_report.hpp`): the text the Settings page's "Save diagnostics" writes, in the
+  pattern of Crucible's.
+  - A bounded ring of stamped one-line notes. The engine notes each command as its thread
+    carries it out, with anything the transport said about it. The player notes each output it
+    opens and closes, with the format, and each item it starts, joins or cannot play. Units that
+    will not decode are noted once with the reason, then as a count once the item is done with.
+  - The file gives the version, the platform, the output, the playback state and decoder
+    settings, the items that cannot be played, the last 50 items played, the settings the
+    window passes, and the ring.
+  - File paths are left out, as the page says. A note names an item by its place in the queue
+    and its title. A loader's error can quote a path, so the item's folders are withheld before
+    it is noted: `C:\Music\a.ec3` reads `<withheld>\a.ec3`. The file never reads the engine's
+    free-text note or error. It withholds settings under `pairing/` and `queue/`, and scrubs
+    the queue's folders and the window's secrets from the finished text.
+  - `EngineStatus::output` gives the format the output is open at.
+  - In `ac3tests`, tagged `[diagnostics]`: the ring's order and cut; paths withheld in
+    Windows, POSIX, UNC and relative forms; the file's sections and limits; and what the
+    player and the engine note, in order, for a queue with a missing item, a join, a reopen,
+    damaged units and a refused output.
+- **Hearth's settings model** (`apps/hearth/engine/settings_model.hpp` and
+  `pairing_store.hpp`): what the Settings page's Playback and Network cards hold, the queue
+  kept for the next start, and the pairing records.
+  - The window keeps them through a `SettingsStore` over QSettings, each as text under a fixed
+    key. A value that is missing, or does not read as one of its values, is the default.
+  - Playback: gapless, picking up the queue where it was left, and what an item that fails
+    does. Network: the name sinks and players show this computer by, cut to a DNS label's 63
+    bytes, and whether to look for Sendspin players.
+  - The saved queue keeps each item's path and title, the item being heard and how far into
+    it, in QSettings' array layout. A damaged one reads as far as it goes.
+    `Engine::restore()` brings it back without playing.
+  - "An item fails: Stop" stops playback at an item that will not open, rather than passing
+    over it. When the item was the next one, the item before it plays to its end first.
+    `Transport::item_failed()` makes the choice.
+  - The pairing records are a Sendspin `ServerStore`. A record, with the client's name and the
+    date, is written as its pairing completes, and one the store would not write is not kept.
+    A forgotten record stays forgotten. Keys typed in from a token, and approvals for unpaired
+    access, are kept in memory only. A core-only build of `src/sendspin` leaves them out.
+  - In `ac3tests`, tagged `[settings-model]` and `[pairing-store]`:
+    - defaults, damaged values and names;
+    - the saved queue's round trip, and a damaged saved queue;
+    - records surviving a restart, a failed write, forgetting, and records that do not read;
+    - lookups from other threads while records change.
+
+    The player stops at an item that fails, both when starting and after the item before
+    it, and a restored queue starts at its item and position.
+- **Hearth's engine bitstreams** (`apps/hearth/engine/bitstream_sink.hpp` and
+  `output_selector.hpp`): each item plays the way the output decision says, over IEC 61937 to
+  a receiver or decoded here.
+  - A bitstreamed item is sent its own access units: AC-3 a frame to a burst, E-AC-3 packed
+    six blocks to a burst, across a join when a stream's frames are shorter. The decode still
+    runs, for the meters and the unit reports, on the link's clock.
+  - Only whole units can be sent, so an edit list's priming or padding inside a unit is heard.
+    The decoder settings reach the meters only; the status says so.
+  - An item joins the open output only when it would be played the same way. These reopen
+    once the output has played out, and say why:
+    - a different stream on the link, or a decode after a bitstream;
+    - another endpoint;
+    - units that cannot make whole bursts with those the last item left.
+  - `OutputSelector` reads each endpoint twice, through the platform's probe and the sink's
+    own descriptor, and takes a format as carried only when both do.
+    - It reads again when told the outputs changed: `Engine::refresh_outputs()`, for
+      `RenderDeviceWatch`'s callback, and `Engine::set_output_preferences()` for the Output
+      screen.
+    - The item playing then moves to the new output from where it was heard, paused if it
+      was, once any join before it has been heard (the appliance plan's gaps 3 and 5).
+    - The endpoint the player holds is judged by its last free probe and a fresh
+      descriptor, since a probe reads a device this player holds as refusing everything.
+    - An enumeration that finds nothing keeps the last list.
+    - A player with no passthrough output decodes.
+  - A programme other than a stream's first is decoded, since a receiver plays only the
+    first. The meters stay in step after a unit that does not decode.
+  - E-AC-3 on a sink that takes only AC-3 is transcoded (the next entry).
+  - In `ac3tests`, tagged `[bitstream]` and `[output-decision]`: bursts checked byte for byte
+    against `wrap_frame()` and `Eac3BurstPacker`, joins, reopens, a seek, pause, the meters,
+    an edit list, a missing link, an output that changes mid-item, and the engine's commands.
+- **Hearth's engine transcodes E-AC-3 to AC-3** (`apps/hearth/engine/ac3_transcoder.hpp`) for
+  a receiver that takes AC-3 but not E-AC-3, over the same IEC 61937 link (the appliance
+  plan's gap 4).
+  - The item is decoded onto 5.1 with neutral settings and encoded as 3/2 with LFE at
+    448 kbit/s, as `ac3cli transcode` does. A 7.1 stream is decoded from its independent
+    substream, the 5.1 its own encoder made (`StreamDecoder`'s new `Substreams`).
+  - Each frame carries the dialnorm and service of the unit that fills most of it, so at a
+    join a frame is levelled as the item it mostly holds.
+  - Each frame also carries a compr word. It is the most attenuating word sent by the units
+    the frame's gain reaches. Where any of those units sent none, a word metered from the
+    frame against its own dialnorm (as the encoder meters) also counts, so RF mode stays
+    protected.
+  - Dual mono heard as its second channel carries that channel's dialnorm and compr word.
+  - dynrng is not carried, as on the command line.
+  - An encoder's fold levels are fixed, so the link takes the first item's. An item that
+    folds at other levels reopens rather than joining.
+  - The decode can be cut, so an edit list is honoured to the sample. Items with the same
+    fold levels join through one encoder whatever their frame lengths.
+  - The encoder's 256-sample delay is part of the link's timeline, so the position, the
+    meters and the unit reports run that much behind the decode. What the encoder still
+    holds is padded out and sent before the output plays out or reopens.
+  - The meters show what is sent, and the decoder settings do not apply; the status says so.
+  - The output selector offers the transcode over a passthrough output at 48, 44.1 or 32 kHz.
+  - `choose_output()` fixes: a pinned AC-3 bitstream sends AC-3 items untouched without a
+    transcode. When the transcode is what is missing, the reason says so rather than
+    claiming no output takes AC-3.
+  - In `ac3tests`, tagged `[transcode]`:
+    - each slot coming back through AC-3 in place, 256 samples late;
+    - the metadata in every frame, and the padding;
+    - the player's link checked byte for byte against a separate decoder and encoder,
+      across a join, an edit list, a seek, a reopen and a 7.1 item;
+    - the compr word matching what an encoder given the frame's dialnorm writes;
+    - a join that changes dialnorm, and one that changes fold levels;
+    - a concealment chosen mid-item reaching what is sent;
+    - an output change into a transcode;
+    - the engine choosing one.
+- **Hearth's player plays the end of the queue as part of the queue.** The last item used to
+  be taken as finished once its last unit was decoded, up to a second before it had been
+  heard, so a pause or a seek in that time was refused.
+  - Now, when what comes next cannot follow gapless, the player waits until the item's tail
+    has been heard before asking the transport what is next. That covers the end of the
+    queue, and an item needing another output.
+  - Until then the item is still playing: a pause holds it, and a seek plays it again from
+    the new place. A reopen decided just before a pause waits for the resume.
+  - An item added meanwhile joins it where it can, and is heard to its end. Once the device
+    has played everything, an added item reopens instead, since it would follow silence.
+  - A transcode sends what its encoder holds first.
+  - A tail on a link stays there through an output change. A seek back gives the item more
+    to play, and then it moves.
+  - Under the stop-at-failure policy, an item that will not open is remembered while the tail
+    plays, and marked only when playback stops at it. An item put before it meanwhile plays
+    first; a stop, or a change to passing over, forgets it.
+  - `Transport::would_join()` answers the join question without deciding anything.
+  - In `ac3tests`: pause, seek, an added item, and the stop, in the last moment of the queue,
+    for a PCM output, a link and a transcode.
 
 **Audio outputs**
 
@@ -470,6 +671,27 @@ and release packaging.
   the arithmetic over them is shared and tested against a fake device's clock. ALSA
   hardware that cannot pause is dropped and prepared again instead, which loses what the
   device held.
+  - On PipeWire the frames played are the stream's own, counted as they are handed over,
+    rather than the graph's clock, which runs on through a pause.
+  - A flush that a device does not reach in time is made when it next runs. It drops only
+    what was submitted before the flush.
+- **Passthrough reports its position, and can flush and pause**
+  (`ac3::audio::PassthroughSink`): the same figures, flush and pause as monitor playback,
+  counted in the content's frames. A burst is 1536 of them for AC-3 and for E-AC-3, whose
+  link runs four times as fast.
+  - A receiver loses its lock while the link is stopped, so the first moments after a
+    resume can be silent.
+  - On Android, the Shield app's AudioTrack bridge reports the head position and does the
+    pause and flush. A bridge without those methods still bitstreams.
+  - `ac3tests "[passthrough-live]"` runs all three against a receiver.
+- **macOS passthrough fills device buffers shorter than a burst**: the output callback
+  wrote only whole bursts into each buffer, so the usual 512-frame buffer went out as
+  silence. It now streams the bytes, and writes to the buffer of the stream it opened
+  rather than to the device's first. Not yet tried on a Mac.
+- **PipeWire reads which codecs a sink takes** (`ac3::audio::read_sink_capabilities`),
+  where it used to report no backend. It reads the `iec958.codecs` property the session
+  manager sets on a digital node from the sink's ELD. The property names the codecs only,
+  so it gives no PCM channel count or rates.
 - **A PCM output at the device's own width** (`ac3::audio::PcmOutput`): the stream opens
   at the endpoint's channel count rather than the programme's, and each rendered channel
   is placed at the output a routing patch names (`ac3::render::Routing`), silence in the
@@ -528,6 +750,13 @@ and release packaging.
   and 5.1, DRC curves, immersive stereo at three frame rates), checked in CI, and over
   107 local census streams and the public DASH-IF, CTA WAVE and Chromium channel-based
   streams. The readings taken where the text is ambiguous are in `src/ac4dec/ERRATA.md`.
+- **`ac4_substream_info_ajoc()`'s `oamd_common_data()` (§6.2.8.1) is read**, at the one TOC-level
+  site that reaches it, instead of refused: bed render info, trim and headphone metadata, and a
+  declared-length `add_data` tail a nested element that reads past its own byte budget fails
+  against. Transcribed independently in `tools/references/ac4_parse.py` and cross-checked by
+  `tools/checks/ac4_syntax_differential.py` over hand-built synthetic streams and a random
+  corpus exercising every branch. `oamd_substream()`'s own, separate `oamd_common_data()` embed
+  stays out of scope, like every other non-audio substream.
 
 **Browser (WASM)**
 
@@ -609,6 +838,12 @@ and release packaging.
 
 **Minimum-footprint / ESP32 decode and encode profile**
 
+- **A Hearth sink's built-in WiFi network is empty by default, not `my-network`.** With
+  the placeholder set, a freshly flashed board spent its `CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES`
+  attempts and up to 30 s failing to join it before Improv started listening. Empty means
+  nothing stored or built in, so `network_up()` returns at once and Improv listens from
+  the first second. A fleet meant to join one network from the image still sets the
+  option; a board meant for Improv or `PUT /network` now needs nothing set.
 - **The ESP-IDF streaming-player example is now `hearth_sink`.** It becomes Hearth's
   ESP32 sink (`planning/hearth-reference-player.md`), so it takes the name before the
   work starts: `esp-idf/ac3forge/examples/hearth_sink/`, the CMake project
@@ -798,6 +1033,13 @@ and release packaging.
   the loop ended. `spatial` had the same missing flush. Both commands now play that unit,
   through a new `ac3::apps::held_back_unit` shared with future callers, laid out the same way
   as every other unit.
+- **`ac3cli transcode`, `metadata`, `cut` and `cat` read a §E2.3.1.2 legacy-core stream as
+  plain AC-3, missing the Annex E dependent's channels.** `decode_and_render`'s decoder
+  choice and `codec_label`'s status-line label both tested `scan.kind == kEac3` alone, so a
+  stream whose 5.1 bed is a plain AC-3 syncframe with an Annex E dependent extending it fell
+  to `FrameDecoder` instead of `Eac3Decoder` - the same two-way test the `monitor` fix above
+  closed, in the one place it remained. Both now recognise the third `StreamKind`
+  (`kAc3CoreEac3Extension`) as E-AC-3-shaped, matching `decode`'s own dispatch.
 - **`ac3cli spatial` refused a §E2.3.1.2 legacy-core stream outright.** It refused any
   stream whose first frame was AC-3 (`bsid <= 8`) before ever checking for an Annex E
   extension substream behind it - but a legacy-core delivery's object layer lives in
@@ -805,6 +1047,15 @@ and release packaging.
   `spatial` now shares `run_monitor`'s own `ac3::apps::reads_as_access_units` test, so a
   legacy-core stream that does carry an object layer decodes and plays instead of being
   turned away.
+- **`ac3cli decode` and `transcode` could misplace a stream's held-back last unit.** Both
+  already drained `flush()`, but placed each flushed substream's channels by appending it
+  straight into the WAV sink or the transcode sample queue - once per substream per Table
+  E2.5 location, rather than assembling the whole unit first. A last unit that released a
+  bed together with the dependent that had been holding it back could then land both
+  substreams' channels in the same location, growing some channels past others instead of
+  merely leaving stale audio behind. Both now build the held-back unit once through the same
+  `ac3::apps::held_back_unit` `monitor`/`spatial` use above, and append it exactly once per
+  slot, like every other unit.
 - **The GUI offered E-AC-3 bitrates a source's sample rate couldn't frame.**
   `bitrates()` branched on codec but not on the loaded source's rate, so a 16 kHz file
   offered rungs no `frmsiz` could carry; encoding was refused only at the encode button.
@@ -825,6 +1076,10 @@ and release packaging.
   Sound sink and the loudness meter, and a whole-channel shift on the batch-written ADM
   master, the last pinned by a regression test measuring the exported master's two
   channels before and after.
+- **`ac3cli probe json=1` wrote invalid JSON for an AC-4 stream of bitstream version 0 or
+  1.** Each `presentations_v0[].substreams[]` entry held an unnamed object beside its
+  `role`. The substream's members now sit beside `role` in the entry. No stream on hand has
+  such a table of contents, so no output seen so far changes.
 
 **ESP32 / bare-metal**
 

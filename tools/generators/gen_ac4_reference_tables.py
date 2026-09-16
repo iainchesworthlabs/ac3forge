@@ -11,9 +11,10 @@ Sources:
   * Annex A codebook parameters (codebook_length, cb_off, cb_mod, cb_mod2,
     cb_mod3) and Tables A.14/A.15: transcribed by hand from the Annex A text
     below (CODEBOOK_PARAMS, CB_DIM, UNSIGNED_CB), not taken from the .c file.
-  * Annex B Tables B.1, B.4-B.7 (44.1/48 kHz columns) and B.8-B.19: parsed
-    from the spec text file, then checked (every offset column rises from 0
-    to its transform length in num_sfb + 1 steps, multiples of 4).
+  * Annex B Tables B.1-B.7 (44.1/48, 96 and 192 kHz - the last two for the
+    HSF extension, ac4_hsf_ext_substream()) and B.8-B.19: parsed from the
+    spec text file, then checked (every offset column rises from 0 to its
+    transform length in num_sfb + 1 steps, multiples of 4).
   * The small clause 4/5 tables the syntax needs (Tables 83, 100, 103, 106,
     109, 110, 143, 163, 169, 171, 192, 194, 197 and the A-SPX template
     tables of clause 5.7.6.3.1.1): transcribed by hand below.
@@ -189,15 +190,39 @@ def is_page_noise(line):
     return (not s) or s == 'ETSI' or 'ETSI TS 103 190-1' in s or '@' in s
 
 
-def parse_b1(lines):
-    i = find_line(lines, 'Table B.1: Number of scale factor bands for 44,1 kHz or 48 kHz')
-    j = find_line(lines, 'Table B.2:', i)
+def parse_num_sfb_table(lines, title, next_title):
+    i = find_line(lines, title)
+    j = find_line(lines, next_title, i)
     table = {}
     for line in lines[i + 1:j]:
         toks = merge_thousands(line.split())
         if len(toks) == 2 and toks[0].isdigit() and toks[1].isdigit():
             table[int(toks[0])] = int(toks[1])
     return table
+
+
+def parse_b1(lines):
+    return parse_num_sfb_table(
+        lines, 'Table B.1: Number of scale factor bands for 44,1 kHz or 48 kHz', 'Table B.2:')
+
+
+# ERRATA.md's "Misprints with no effect": Table B.2 (96 kHz) prints a
+# transform length of 920 where Table 83's frame_len_base doubling for 96 kHz
+# and the 96 kHz columns of Tables B.4-B.7 (whose own data this length's
+# num_sfb has to agree with) both have 960. Corrected here, independently of
+# gen_ac4_tables.py's own MISPRINTS dict for the same reading.
+B2_MISPRINTS = {920: 960}
+
+
+def parse_b2(lines):
+    table = parse_num_sfb_table(
+        lines, 'Table B.2: Number of scale factor bands for 96 kHz', 'Table B.3:')
+    return {B2_MISPRINTS.get(tl, tl): n for tl, n in table.items()}
+
+
+def parse_b3(lines):
+    return parse_num_sfb_table(
+        lines, 'Table B.3: Number of scale factor bands for 192 kHz', 'Table B.4:')
 
 
 def parse_split_offset_table(lines, title, next_title, columns):
@@ -381,6 +406,17 @@ def main():
     lengths = [2048, 1920, 1536, 1024, 960, 768, 512, 480, 384, 256, 240, 192, 128, 120, 96]
     if sorted(num_sfb, reverse=True) != lengths:
         raise SystemExit(f'Table B.1 parse: {num_sfb}')
+    # HSF (ac4_hsf_ext_substream(), Sec.4.2.4.3): every LENGTHS_48 transform
+    # length doubled (96 kHz) and quadrupled (192 kHz) - Tables B.2/B.3's own
+    # transform lengths, in the same order.
+    num_sfb_96 = parse_b2(lines)
+    lengths_96 = [tl * 2 for tl in lengths]
+    if sorted(num_sfb_96, reverse=True) != lengths_96:
+        raise SystemExit(f'Table B.2 parse: {num_sfb_96}')
+    num_sfb_192 = parse_b3(lines)
+    lengths_192 = [tl * 4 for tl in lengths]
+    if sorted(num_sfb_192, reverse=True) != lengths_192:
+        raise SystemExit(f'Table B.3 parse: {num_sfb_192}')
 
     offsets = {}
     offsets.update(parse_split_offset_table(
@@ -395,25 +431,36 @@ def main():
     offsets.update(parse_single_offset_table(
         lines, 'Table B.7: Scale factor band offsets', 'Table B.8: Mapping from max_sfb_master',
         [256, 240, 192, 128, 120, 96]))
-    # B.4-B.6 columns continue past the 48 kHz num_sfb for the 96/192 kHz transform
-    # lengths that share the column; keep the 44.1/48 kHz part, num_sfb + 1 entries.
-    sfb_offset_48 = {}
-    for tl in lengths:
-        col = offsets[tl]
-        n = num_sfb[tl]
+    # B.4-B.7 columns continue past the 48 kHz num_sfb for the 96/192 kHz transform
+    # lengths that share the column - HSF reads exactly that continuation, so this
+    # takes the same column three times, once per rate, instead of discarding it
+    # past the 44.1/48 kHz part.
+    if any(b <= a for col in offsets.values() for a, b in pairwise(col)):
+        raise SystemExit('an sfb_offset column is not strictly increasing')
+
+    def take_offsets(column_key, target_length, n, rate):
+        col = offsets[column_key]
         if len(col) < n + 1:
-            raise SystemExit(f'sfb_offset column {tl}: only {len(col)} entries, need {n + 1}')
+            raise SystemExit(f'sfb_offset column {column_key}, {target_length}@{rate}: only '
+                             f'{len(col)} entries, need {n + 1}')
         part = col[:n + 1]
-        if part[0] != 0 or part[-1] != tl:
-            raise SystemExit(f'sfb_offset column {tl}: starts {part[0]}, ends {part[-1]} '
-                             f'at sfb {n}')
-        if any(b <= a for a, b in pairwise(col)):
-            raise SystemExit(f'sfb_offset column {tl}: not strictly increasing')
+        if part[0] != 0 or part[-1] != target_length:
+            raise SystemExit(f'sfb_offset column {column_key}, {target_length}@{rate}: starts '
+                             f'{part[0]}, ends {part[-1]} at sfb {n}')
         if any(v % 4 for v in part):
-            raise SystemExit(f'sfb_offset column {tl}: value not a multiple of 4')
-        sfb_offset_48[tl] = tuple(part)
-        report.append(f'sfb_offset[{tl:4d}]: {n} bands, 0..{tl} ok '
-                      f'(text column has {len(col)} entries)')
+            raise SystemExit(f'sfb_offset column {column_key}, {target_length}@{rate}: value '
+                             f'not a multiple of 4')
+        return tuple(part)
+
+    sfb_offset_48, sfb_offset_96, sfb_offset_192 = {}, {}, {}
+    for tl in lengths:
+        sfb_offset_48[tl] = take_offsets(tl, tl, num_sfb[tl], 48)
+        report.append(f'sfb_offset[{tl:4d}]: {num_sfb[tl]} bands, 0..{tl} ok '
+                      f'(text column has {len(offsets[tl])} entries)')
+        tl_96 = tl * 2
+        sfb_offset_96[tl_96] = take_offsets(tl, tl_96, num_sfb_96[tl_96], 96)
+        tl_192 = tl * 4
+        sfb_offset_192[tl_192] = take_offsets(tl, tl_192, num_sfb_192[tl_192], 192)
 
     master = {}
     specs = [
@@ -466,8 +513,9 @@ def main():
              'Sources: ETSI TS 103 190-1 V1.4.1\n'
              'Annex A (Huffman codebooks: LEN/CW arrays from the ts_10319001v010401p0.zip\n'
              'table attachment, codebook parameters and Tables A.14/A.15 from the Annex A\n'
-             'text), Annex B (Tables B.1, B.4-B.7 for 44.1/48 kHz, B.8-B.19, parsed from the\n'
-             'text and checked) and hand-transcribed clause 4/5 tables. Plain Python data.\n'
+             'text), Annex B (Tables B.1-B.7 for 44.1/48, 96 and 192 kHz, B.8-B.19, parsed\n'
+             'from the text and checked) and hand-transcribed clause 4/5 tables. Plain Python\n'
+             'data.\n'
              '"""\n\n',
              '# name -> {"cb_off", "cb_mod", "cb_mod2", "cb_mod3", "len": [...], "cw": [...]}\n',
              'HUFFMAN_CODEBOOKS = {\n']
@@ -492,6 +540,20 @@ def main():
     parts.append('SFB_OFFSET_48 = {\n')
     for tl in lengths:
         parts.append(f'    {tl}: (\n{fmt_list(list(sfb_offset_48[tl]), 14, 8)}\n    ),\n')
+    parts.append('}\n')
+    parts.append('\n# Table B.2 / the 96 kHz columns of Tables B.4-B.7: the HSF extension\'s own\n'
+                 '# transform length (double the owning channel\'s) -> num_sfb / sfb_offset.\n')
+    parts.append(assign('NUM_SFB_96', dict(sorted(num_sfb_96.items(), reverse=True))))
+    parts.append('SFB_OFFSET_96 = {\n')
+    for tl in lengths_96:
+        parts.append(f'    {tl}: (\n{fmt_list(list(sfb_offset_96[tl]), 14, 8)}\n    ),\n')
+    parts.append('}\n')
+    parts.append('\n# Table B.3 / the 192 kHz columns of Tables B.4-B.7: quadruple the owning '
+                 'channel\'s.\n')
+    parts.append(assign('NUM_SFB_192', dict(sorted(num_sfb_192.items(), reverse=True))))
+    parts.append('SFB_OFFSET_192 = {\n')
+    for tl in lengths_192:
+        parts.append(f'    {tl}: (\n{fmt_list(list(sfb_offset_192[tl]), 14, 8)}\n    ),\n')
     parts.append('}\n\n# Tables B.8-B.19: largest transform length -> '
                  '{transform length: n_sfb_side[max_sfb_master]}\n')
     parts.append(assign('N_SFB_SIDE', master))

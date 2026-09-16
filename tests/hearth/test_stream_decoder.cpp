@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +13,9 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
+#include "ac3/encoder/plan.hpp"
+#include "ac3/meta/mixing.hpp"
+#include "ac3/oba/atmos.hpp"
 #include "ac3/render/layout.hpp"
 #include "decoder_settings.hpp"
 #include "stream_decoder.hpp"
@@ -245,6 +249,165 @@ TEST_CASE("stream decoder: a unit that is not a stream is reported, not played",
           3 * ac3::kSamplesPerFrame);
 }
 
+namespace {
+
+// What decoding a stream with reports turned on gave: the frames each call
+// delivered, and the reports in order, each with the frames delivered before
+// it in its call.
+struct Reported {
+    std::vector<ac3::hearth::UnitReport> reports;
+    std::vector<std::size_t> frames_before;
+    std::size_t frames = 0;
+};
+
+Reported play_reported(StreamDecoder& decoder, const std::vector<std::vector<std::byte>>& units) {
+    Reported out;
+    std::size_t in_call = 0;
+    const auto deliver = [&](std::span<const std::span<const float>>, std::size_t frames) {
+        in_call += frames;
+        out.frames += frames;
+    };
+    const auto reported = [&](const ac3::hearth::UnitReport& report) {
+        out.reports.push_back(report);
+        out.frames_before.push_back(in_call);
+    };
+    for (const auto& unit : units) {
+        in_call = 0;
+        REQUIRE(decoder.decode(unit, deliver, reported).has_value());
+    }
+    in_call = 0;
+    static_cast<void>(decoder.finish(deliver, reported));
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("stream decoder: an AC-3 unit's report follows its blocks", "[hearth][stream-decoder]") {
+    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    REQUIRE(layout.has_value());
+    StreamDecoder decoder{*layout, 48000};
+    ac3::EncoderConfig config;
+    config.bitrate_kbps = 448;
+    config.acmod = ac3::Acmod::k3_2;
+    config.lfe = true;
+    config.dialnorm = 20;
+    config.heavy = ac3::meta::HeavyConfig{};
+    config.cmixlev = ac3::meta::CentreMixLevel::kMinus3dB;
+    config.info.bsmod = ac3::meta::BitstreamMode::kCommentary;
+    ac3::FrameEncoder encoder{config};
+    std::vector<std::vector<std::byte>> units;
+    for (int f = 0; f < 4; ++f) {
+        const std::vector<float> samples = tone(440.0, 0.3, ac3::kSamplesPerFrame,
+                                                static_cast<std::size_t>(f) * ac3::kSamplesPerFrame);
+        const std::vector<std::span<const float>> views(6, samples);
+        auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        units.push_back(std::move(*frame));
+    }
+
+    const Reported played = play_reported(decoder, units);
+    REQUIRE(played.reports.size() == 4);
+    for (std::size_t k = 0; k < played.reports.size(); ++k) {
+        INFO("unit " << k);
+        const auto& report = played.reports[k];
+        // After the unit's own six blocks.
+        CHECK(played.frames_before[k] == static_cast<std::size_t>(ac3::kSamplesPerFrame));
+        CHECK(report.acmod == ac3::Acmod::k3_2);
+        CHECK(report.lfe);
+        CHECK(report.substreams == 1);
+        CHECK(report.layout.count == 6);
+        CHECK(report.bsmod == 5);
+        CHECK(report.dialnorm == 20);
+        CHECK(report.compr.has_value());
+        CHECK(report.blocks == ac3::kBlocksPerFrame);
+        CHECK(report.short_blocks == 0);
+        CHECK(report.levels.loro_clev == ac3::meta::level::kMinus3dB);
+        CHECK_FALSE(report.concealed.has_value());
+        CHECK_FALSE(report.objects.has_value());
+    }
+}
+
+TEST_CASE("stream decoder: an E-AC-3 unit's report comes with the call that delivers it",
+          "[hearth][stream-decoder]") {
+    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    REQUIRE(layout.has_value());
+
+    SECTION("mixing metadata") {
+        StreamDecoder decoder{*layout, 48000};
+        ac3::eac3::FrameConfig config;
+        config.bitrate_kbps = 384;
+        config.acmod = ac3::Acmod::k3_2;
+        config.lfe = true;
+        config.dialnorm = 24;
+        ac3::meta::MixMetadata mix;
+        mix.dmixmod = ac3::meta::DownmixMode::kLtRt;
+        mix.lfemixlevcod = 10;
+        config.mixing = mix;
+        ac3::eac3::FrameEncoder encoder{config};
+        std::vector<std::vector<std::byte>> units;
+        for (int f = 0; f < 3; ++f) {
+            const std::vector<float> samples = tone(440.0, 0.3, ac3::kSamplesPerFrame, 0);
+            const std::vector<std::span<const float>> views(6, samples);
+            auto frame = encoder.encode_frame(views);
+            REQUIRE(frame.has_value());
+            units.push_back(std::move(*frame));
+        }
+        const Reported played = play_reported(decoder, units);
+        REQUIRE(played.reports.size() == 3);
+        const auto& report = played.reports.front();
+        CHECK(report.dialnorm == 24);
+        CHECK(report.layout.count == 6);
+        CHECK(report.lfe);
+        CHECK_FALSE(report.bsmod.has_value());
+        CHECK_FALSE(report.short_blocks.has_value());
+        CHECK(report.levels.preferred == ac3::meta::DownmixMode::kLtRt);
+        CHECK(report.levels.lfe_mix_level_db == 0.0);
+    }
+
+    SECTION("a unit held back is reported by the call that releases it, the last by finish()") {
+        StreamDecoder decoder{*layout, 48000};
+        const auto units = eac3_frames(ac3::Acmod::k2_0, /*lfe=*/false, 8, /*transient_at_end=*/true);
+        const Reported played = play_reported(decoder, units);
+        CHECK(played.frames == 8 * ac3::kSamplesPerFrame);
+        // One report for every unit, each after a whole unit's frames.
+        REQUIRE(played.reports.size() == units.size());
+        for (const std::size_t before : played.frames_before) {
+            CHECK(before == static_cast<std::size_t>(ac3::kSamplesPerFrame));
+        }
+        CHECK(played.reports.back().layout.count == 2);
+    }
+}
+
+TEST_CASE("stream decoder: a unit's objects are in its report", "[hearth][stream-decoder]") {
+    ac3::oba::AtmosEncoder encoder{
+        {.bitrate_kbps = 448, .num_bands_idx = 4, .emit_object_metadata = true}, 1};
+    const std::array<ac3::oba::ObjectPlacement, 1> placement{{{}}};
+    std::vector<std::span<const float>> views(1);
+    std::vector<std::vector<std::byte>> units;
+    for (int f = 0; f < 3; ++f) {
+        const std::vector<float> essence = tone(440.0, 0.3, ac3::kSamplesPerFrame,
+                                                static_cast<std::size_t>(f) * ac3::kSamplesPerFrame);
+        views[0] = essence;
+        auto unit = encoder.encode_frame(views, placement);
+        REQUIRE(unit.has_value());
+        units.push_back(std::move(unit->bytes));
+    }
+    // Whether or not the objects are reconstructed, the report carries them.
+    for (const char* name : {"2.0", "7.1.4"}) {
+        INFO("layout " << name);
+        const auto layout = ac3::render::OutputLayout::parse(name);
+        REQUIRE(layout.has_value());
+        StreamDecoder decoder{*layout, 48000};
+        const Reported played = play_reported(decoder, units);
+        REQUIRE(played.reports.size() == 3);
+        for (const auto& report : played.reports) {
+            REQUIRE(report.objects.has_value());
+            CHECK(report.objects->program.dynamic_objects == 1);
+            CHECK_FALSE(report.objects->blocks.empty());
+        }
+    }
+}
+
 TEST_CASE("stream decoder: dual mono plays the programme the settings choose",
           "[hearth][stream-decoder]") {
     using ac3::hearth::DualMonoChoice;
@@ -312,4 +475,64 @@ TEST_CASE("stream decoder: dual mono plays the programme the settings choose",
         CHECK(std::ranges::equal(second_left, both_right));
         CHECK(std::ranges::equal(second_right, both_right));
     }
+}
+
+TEST_CASE("stream decoder: an independent-only decoder plays a unit's first substream alone",
+          "[hearth][stream-decoder]") {
+    // 7.1: a 5.1 independent substream and a dependent that adds to it.
+    ac3::plan::Plan plan;
+    plan.codec = ac3::plan::Codec::kEac3;
+    plan.layout = ac3::plan::LayoutId::k71;
+    plan.bitrate_kbps = 384;
+    ac3::eac3::AccessUnitEncoder encoder{ac3::plan::eac3_config(plan)};
+    const auto coded = static_cast<std::size_t>(encoder.channel_count());
+    REQUIRE(coded > 6);
+    std::vector<std::vector<std::byte>> units;
+    std::vector<std::vector<std::byte>> cores;
+    for (int f = 0; f < 6; ++f) {
+        const auto offset = static_cast<std::size_t>(f) * ac3::kSamplesPerFrame;
+        std::vector<std::vector<float>> channels;
+        for (std::size_t c = 0; c < coded; ++c) {
+            channels.push_back(tone(200.0 + (150.0 * static_cast<double>(c)), 0.2,
+                                    ac3::kSamplesPerFrame, offset));
+        }
+        const std::vector<std::span<const float>> views(channels.begin(), channels.end());
+        auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+        REQUIRE(unit->substream_count() > 1);
+        const auto core = unit->substream(0);
+        cores.emplace_back(core.begin(), core.end());
+        units.push_back(std::move(unit->bytes));
+    }
+
+    const auto collect = [](StreamDecoder& decoder, const std::vector<std::vector<std::byte>>& in) {
+        std::vector<float> out;
+        const auto deliver = [&out](std::span<const std::span<const float>> slots,
+                                    std::size_t frames) {
+            for (const auto slot : slots) {
+                const auto part = slot.first(frames);
+                out.insert(out.end(), part.begin(), part.end());
+            }
+        };
+        for (const auto& unit : in) {
+            REQUIRE(decoder.decode(unit, deliver).has_value());
+        }
+        decoder.finish(deliver);
+        return out;
+    };
+    const auto layout = ac3::render::OutputLayout::named("5.1");
+    REQUIRE(layout.has_value());
+    const auto settings = ac3::hearth::transcode_settings({});
+    StreamDecoder independent{*layout, 48000, settings, ac3::hearth::Substreams::kIndependent};
+    StreamDecoder first_only{*layout, 48000, settings};
+    StreamDecoder whole{*layout, 48000, settings};
+    CHECK(independent.substreams() == ac3::hearth::Substreams::kIndependent);
+    CHECK(whole.substreams() == ac3::hearth::Substreams::kAll);
+
+    const auto from_units = collect(independent, units);
+    REQUIRE(from_units.size() == 6 * 6 * ac3::kSamplesPerFrame);
+    // Compared with ranges::equal so a failure prints a verdict, not
+    // thousands of samples.
+    CHECK(std::ranges::equal(from_units, collect(first_only, cores)));
+    CHECK_FALSE(std::ranges::equal(from_units, collect(whole, units)));
 }

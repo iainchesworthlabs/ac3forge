@@ -213,6 +213,9 @@ struct MonitorSink::Impl {
     std::atomic_bool paused{false};
     std::atomic_bool flushing{false};
     std::atomic<std::uint64_t> flushes{0};
+    // How far the queue had been written when the flush was asked for: what
+    // the render thread drops.
+    std::atomic<std::size_t> flush_mark{0};
 };
 
 MonitorSink::MonitorSink() : impl_(std::make_unique<Impl>()) {}
@@ -247,6 +250,7 @@ void MonitorSink::flush() {
         return;
     }
     const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
     impl_->flushing.store(true, std::memory_order_release);
     for (int waited = 0; waited < 200; ++waited) {
         if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
@@ -255,9 +259,9 @@ void MonitorSink::flush() {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     // The render thread did not get to it - a device that has stopped
-    // answering snd_pcm_wait, or one whose recovery failed. The flag must not
-    // stay raised: it would drop audio submitted after this call returned.
-    impl_->flushing.store(false, std::memory_order_release);
+    // answering snd_pcm_wait, or one whose recovery failed. The flush is left
+    // for the thread to make when it next runs. It drops only what was queued
+    // before the mark, so audio submitted after this call returned is kept.
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
@@ -440,7 +444,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                 // back in a state that can be written to.
                 snd_pcm_drop(pcm);
                 snd_pcm_prepare(pcm);
-                impl_->queue->reset();
+                impl_->queue->discard_to(impl_->flush_mark.load(std::memory_order_acquire));
                 handed_over = 0;
                 impl_->counter.restart();
                 impl_->rendered.store(0, std::memory_order_relaxed);

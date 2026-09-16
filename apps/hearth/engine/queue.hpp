@@ -6,6 +6,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "ac3/audio/passthrough.hpp"
@@ -112,5 +113,10 @@ private:
     std::vector<QueueItem> items_;
     std::size_t current_ = kNone;
 };
+
+// An item as the queue list shows it, for the diagnostics file: `item 3
+// "Title"`, numbered from 1, or `"Title" (no longer in the queue)` for
+// Queue::kNone, which with no title is `an item no longer in the queue`.
+[[nodiscard]] std::string describe_item(std::size_t index, std::string_view title);
 
 }  // namespace ac3::hearth

@@ -20,10 +20,12 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstring>
 #include <future>
 #include <thread>
 
+#include "ac3/audio/playback_counter.hpp"
 #include "ac3/audio/ring_buffer.hpp"
 #include "ac3/audio/speakers.hpp"
 #include "ac3/iec61937/iec61937.hpp"
@@ -433,6 +435,26 @@ struct PassthroughSink::Impl {
     // Set by start(); submit()/can_submit() validate against whichever burst
     // size the chosen BitstreamFormat uses.
     std::size_t burst_bytes = iec61937::kBurstBytes;
+    // The link's frames: four bytes each, and carrier_ratio() of them to a
+    // content frame. Set by start() before the render thread runs.
+    std::size_t frame_bytes = kCarrierChannels * (kCarrierBits / 8);
+    std::uint32_t ratio = 1;
+    // What the render thread last saw of the device, in link frames, for
+    // position(): the frames handed over against what GetCurrentPadding said
+    // it still held. Only the render thread calls WASAPI - the client lives on
+    // it, and the AUDIOSES crash start() describes is what calling it from
+    // another thread cost - so position() reads the counter.
+    PlaybackCounter counter;
+    // IAudioClient::GetStreamLatency, in link frames.
+    std::atomic<std::uint32_t> latency{0};
+    // Set by pause()/resume() and flush(); acted on by the render thread.
+    // `flushes` counts the flushes it has completed, which flush() waits for,
+    // and `flush_mark` is how far the queue had been written when the flush
+    // was asked for: what it drops.
+    std::atomic_bool paused{false};
+    std::atomic_bool flushing{false};
+    std::atomic<std::uint64_t> flushes{0};
+    std::atomic<std::size_t> flush_mark{0};
 };
 
 PassthroughSink::PassthroughSink() : impl_(std::make_unique<Impl>()) {}
@@ -450,6 +472,57 @@ PassthroughStats PassthroughSink::stats() const {
             .bursts_rendered =
                 impl_->rendered_bytes.load(std::memory_order_relaxed) / impl_->burst_bytes,
             .underruns = impl_->underruns.load(std::memory_order_relaxed)};
+}
+
+std::optional<MonitorPosition> PassthroughSink::position() const {
+    if (!running() || !impl_->queue) {
+        return std::nullopt;
+    }
+    const std::uint64_t queued_here = impl_->queue->available() / impl_->frame_bytes;
+    return per_content_frame(
+        impl_->counter.position(queued_here, impl_->latency.load(std::memory_order_relaxed)),
+        impl_->ratio);
+}
+
+void PassthroughSink::flush() {
+    if (!running()) {
+        return;
+    }
+    const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
+    impl_->flushing.store(true, std::memory_order_release);
+    // As MonitorSink::flush(): the render thread stops, resets and restarts
+    // the device and drops the queue up to the mark. A render period is 10 ms
+    // at most, so this waits far longer than it should need to. Past that the
+    // device has stopped answering, and the flush is left for the thread to
+    // make when it next runs; the mark keeps it from dropping bursts
+    // submitted after this call returned.
+    for (int waited = 0; waited < 200; ++waited) {
+        if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+std::expected<void, PassthroughError> PassthroughSink::pause() {
+    if (!running()) {
+        return std::unexpected(PassthroughError::kNotRunning);
+    }
+    impl_->paused.store(true, std::memory_order_release);
+    return {};
+}
+
+std::expected<void, PassthroughError> PassthroughSink::resume() {
+    if (!running()) {
+        return std::unexpected(PassthroughError::kNotRunning);
+    }
+    impl_->paused.store(false, std::memory_order_release);
+    return {};
+}
+
+bool PassthroughSink::paused() const {
+    return impl_->paused.load(std::memory_order_acquire);
 }
 
 bool PassthroughSink::can_submit() const {
@@ -479,6 +552,9 @@ void PassthroughSink::stop() {
         impl_->worker.request_stop();
         impl_->worker.join();
     }
+    // A pause is a property of a running stream, so it does not outlive one.
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
     impl_->running.store(false, std::memory_order_release);
 }
 
@@ -519,9 +595,16 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     // ahead of real time never has to spin.
     impl_->burst_bytes = burst_bytes_for(format_kind);
     impl_->queue = std::make_unique<ByteRingBuffer>(impl_->burst_bytes * 40);
+    impl_->frame_bytes = frame_bytes;
+    impl_->ratio = carrier_ratio(format_kind);
     impl_->submitted.store(0, std::memory_order_relaxed);
     impl_->rendered_bytes.store(0, std::memory_order_relaxed);
     impl_->underruns.store(0, std::memory_order_relaxed);
+    impl_->counter.restart();
+    impl_->latency.store(0, std::memory_order_relaxed);
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
+    impl_->flushes.store(0, std::memory_order_relaxed);
 
     // Activate, IsFormatSupported, Initialize, GetService and Start all run
     // on this one worker thread from here on, never on the thread that calls
@@ -625,6 +708,16 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
             return;
         }
 
+        // GetStreamLatency is in 100 ns units: the delay past the buffer this
+        // sink fills, which is what MonitorPosition::latency_frames reports.
+        REFERENCE_TIME stream_latency = 0;
+        if (SUCCEEDED(client->GetStreamLatency(&stream_latency)) && stream_latency > 0) {
+            impl_->latency.store(
+                static_cast<std::uint32_t>(static_cast<std::uint64_t>(stream_latency) *
+                                           carrier_rate / 10'000'000ULL),
+                std::memory_order_relaxed);
+        }
+
         impl_->running.store(true, std::memory_order_release);
         promise.set_value({});
 
@@ -633,13 +726,70 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
 
         std::vector<std::byte> chunk;
         client->Start();
+        bool device_running = true;
+        std::uint64_t handed_over = 0;
 
         while (!stop.stop_requested()) {
+            // A pause stops the device and leaves everything else standing:
+            // the queue keeps its bursts and goes on taking more. No render
+            // event arrives while stopped, so the loop sleeps rather than
+            // wait for one.
+            if (impl_->paused.load(std::memory_order_acquire)) {
+                if (device_running) {
+                    client->Stop();
+                    device_running = false;
+                }
+                if (!impl_->flushing.load(std::memory_order_acquire)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    continue;
+                }
+            }
+            // A flush drops both buffers: Reset() discards what the device
+            // holds, and is only legal while stopped. The counts restart with
+            // them, as position() promises.
+            if (impl_->flushing.exchange(false, std::memory_order_acq_rel)) {
+                if (device_running) {
+                    client->Stop();
+                    device_running = false;
+                }
+                client->Reset();
+                impl_->queue->discard_to(impl_->flush_mark.load(std::memory_order_acquire));
+                handed_over = 0;
+                impl_->counter.restart();
+                impl_->rendered_bytes.store(0, std::memory_order_relaxed);
+                impl_->submitted.store(0, std::memory_order_relaxed);
+                impl_->flushes.fetch_add(1, std::memory_order_release);
+                continue;
+            }
+            if (!device_running) {
+                // An event signalled before the stop is stale: after a pause
+                // the device still holds the buffer it had, and would refuse
+                // another until it has played that one.
+                ResetEvent(ready);
+                client->Start();
+                device_running = true;
+            }
             if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
                 continue;
             }
+            // Exclusive event-driven streams take a whole buffer each period,
+            // so the padding sizes nothing here; it only tells the counter what
+            // the device still holds. A driver that will not say is taken to
+            // have played its buffer, which is what the event means.
+            UINT32 padding = 0;
+            if (FAILED(client->GetCurrentPadding(&padding))) {
+                padding = 0;
+            }
+            impl_->counter.report(handed_over, padding);
             BYTE* target = nullptr;
-            if (FAILED(render->GetBuffer(buffer_frames, &target))) {
+            const HRESULT buffer_result = render->GetBuffer(buffer_frames, &target);
+            if (buffer_result == AUDCLNT_E_BUFFER_TOO_LARGE) {
+                // The buffer is not free yet, which only a wake from before a
+                // restart can say; the next event is a real one. Anything
+                // else is the device failing, and ends the thread as before.
+                continue;
+            }
+            if (FAILED(buffer_result)) {
                 break;
             }
             const std::size_t wanted = static_cast<std::size_t>(buffer_frames) * frame_bytes;
@@ -655,6 +805,8 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
             }
             std::memcpy(target, chunk.data(), wanted);
             render->ReleaseBuffer(buffer_frames, 0);
+            handed_over += buffer_frames;
+            impl_->counter.report(handed_over, static_cast<std::uint64_t>(padding) + buffer_frames);
             impl_->rendered_bytes.fetch_add(got, std::memory_order_relaxed);
         }
 

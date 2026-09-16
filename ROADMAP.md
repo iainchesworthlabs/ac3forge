@@ -1003,8 +1003,10 @@ substream group parsing (TS 103 190-2 clause 6.3.2.8-6.3.2.12 — `ac4_substream
 follow-up: no real fixture reaches this path (`dee_ac4ajoc_encoder.exe` gates on Atmos
 mezzanine provenance this project's tooling cannot produce; `dee_ac4ims_encoder.exe` stays
 channel-coded despite its name), so it is verified against synthetic hand-built vectors instead
-— see docs/verification.md's AC-4 section. `oamd_common_data()` (§6.2.8.1) remains explicitly
-out of scope, refused cleanly (`Error::kOamdCommonDataPresent`) rather than misparsed. The
+— see docs/verification.md's AC-4 section. `oamd_common_data()` (§6.2.8.1) is transcribed at the
+one TOC-level site that reaches it, `ac4_substream_info_ajoc()`'s `b_oamd_common_data_present`
+flag; the OAMD substream DATA payload's own, independent `oamd_common_data()` embed
+(`oamd_substream()`, §6.2.2.4) stays out of scope, like every other non-audio substream. The
 carriage slice, done last: `ac4::build_dac4()` (Annex E.5's `ac4_dsi_v1` off the parsed TOC —
 stream-level fields in full, per-presentation entries as version + `pres_bytes` 0, the stated
 boundary rather than a reproduction of Annex E.10/E.11's twenty-odd conditional fields),

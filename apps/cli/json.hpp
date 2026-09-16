@@ -6,6 +6,8 @@
 #include <string_view>
 #include <vector>
 
+#include "json_sink.hpp"
+
 // A streaming JSON writer, for `ac3cli probe`'s machine-readable form.
 //
 // Deliberately not a document model. probe's whole posture is that a stream of
@@ -20,11 +22,13 @@
 // It is also not a general-purpose library. There is no reader, no value type
 // and no schema validation, because the only consumer is one command emitting
 // one documented shape - see docs/forge/cli/commands.md for that shape, which is the
-// contract, rather than anything here.
+// contract, rather than anything here. The member() shorthands, and the
+// writers of the document's stream summary (apps/common/probe_json.hpp), take
+// it as the JsonSink it is, which Hearth's media information writes to as well.
 
 namespace ac3cli {
 
-class JsonWriter {
+class JsonWriter final : public ac3::apps::JsonSink {
    public:
     explicit JsonWriter(std::FILE* out) : out_(out) {}
 
@@ -32,40 +36,30 @@ class JsonWriter {
     // destructor does not close them, because a writer abandoned part-way
     // through has produced invalid output either way and silently completing
     // the braces would hide that from whatever is parsing it.
-    void begin_object();
-    void end_object();
-    void begin_array();
-    void end_array();
+    void begin_object() override;
+    void end_object() override;
+    void begin_array() override;
+    void end_array() override;
 
     // A member name. The next value written belongs to it.
-    void key(std::string_view name);
+    void key(std::string_view name) override;
 
-    void value(std::string_view text);
+    void value(std::string_view text) override;
     // A string LITERAL is a const char*, and C++ ranks its conversion to bool
     // (a standard pointer-to-bool conversion) above the user-defined one to
     // std::string_view - so without this overload `value("text")` silently
     // writes `true`. It did, once, and the document still parsed.
-    void value(const char* text);
-    void value(bool flag);
-    void value(std::int64_t number);
-    void value(std::uint64_t number);
+    void value(const char* text) override;
+    void value(bool flag) override;
+    void value(std::int64_t number) override;
+    void value(std::uint64_t number) override;
     // Written with `decimals` places, fixed - never scientific notation and
     // never a bare integer, so a consumer reading the field as a float always
     // sees one. A non-finite value is written as null: JSON has no
     // representation for infinity or NaN, and emitting the literal text would
     // produce a document nothing can parse.
-    void value(double number, int decimals);
-    void value_null();
-
-    // The common shapes, so a caller writing thirty members is not writing
-    // sixty calls.
-    void member(std::string_view name, std::string_view text);
-    void member(std::string_view name, const char* text);  // see value() above
-    void member(std::string_view name, bool flag);
-    void member(std::string_view name, std::int64_t number);
-    void member(std::string_view name, std::uint64_t number);
-    void member(std::string_view name, double number, int decimals);
-    void member_null(std::string_view name);
+    void value(double number, int decimals) override;
+    void value_null() override;
 
     // Finish the document: a trailing newline, so the output is a well-formed
     // line for anything reading it a line at a time.

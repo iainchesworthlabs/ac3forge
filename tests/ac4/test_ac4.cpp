@@ -197,9 +197,14 @@ namespace {
 
 class BitWriter {
    public:
+    // n may run past value's own 32 bits (padding a frame well beyond where
+    // a test's real fields end, say) - bit positions at or above 32 are
+    // simply 0, rather than shifting value by that many bits, which Sec.
+    // [expr.shift] makes undefined once the shift count reaches the
+    // operand's width.
     void put(std::uint32_t value, int n) {
         for (int i = n - 1; i >= 0; --i) {
-            bits_.push_back(((value >> i) & 1u) != 0);
+            bits_.push_back(i < 32 && ((value >> i) & 1u) != 0);
         }
     }
 
@@ -416,23 +421,146 @@ TEST_CASE("parse_substream_info_ajoc: static_dmx, minimal upmix", "[ac4]") {
     CHECK(*ajoc.substream_index == 1);
 }
 
-TEST_CASE("parse_substream_info_ajoc refuses b_oamd_common_data_present", "[ac4]") {
-    // §6.2.8.1's oamd_common_data() is out of scope (see ac4.hpp's module
-    // docs) - proves the refusal is reached cleanly, mid-substream-group,
-    // rather than silently misparsing the bits that follow.
+TEST_CASE("oamd_common_data: b_additional_data = 0 reads cleanly and the TOC continues",
+          "[ac4]") {
+    const auto frame = parse_wrapped_object_coded_group([](BitWriter& w) {
+        w.put(0, 1);  // b_oamd_substream = 0
+        w.put(1, 1);  // b_ajoc = 1
+        w.put(1, 1);  // b_lfe
+        w.put(1, 1);  // b_static_dmx (skip dmx assignment to keep this short)
+        w.put(1, 1);  // b_oamd_common_data_present
+        w.put(1, 1);  //   b_default_screen_size_ratio = 1 (skips the 5-bit code)
+        w.put(1, 1);  //   b_bed_object_chan_distribute = 1
+        w.put(0, 1);  //   b_additional_data = 0 -> oamd_common_data() ends here
+        w.put(0, 4);  // n_fullband_upmix_signals_minus1 = 0 -> 1 signal
+        w.put(1, 1);  // bed_dyn_obj_assignment(1): b_dyn_objects_only = 1
+        w.put(0, 1);  // b_bitrate_info
+        w.put(0, 1);  // b_audio_ndot
+        w.put(1, 2);  // substream_index = 1
+    });
+
+    REQUIRE(frame.toc.substream_groups.size() == 1);
+    REQUIRE(frame.toc.substream_groups[0].substreams.size() == 1);
+    REQUIRE(frame.toc.substream_groups[0].substreams[0].ajoc.has_value());
+    const auto& ajoc = *frame.toc.substream_groups[0].substreams[0].ajoc;
+    REQUIRE(ajoc.oamd_common_data.has_value());
+    const auto& oamd = *ajoc.oamd_common_data;
+    CHECK(oamd.b_default_screen_size_ratio);
+    CHECK_FALSE(oamd.master_screen_size_ratio_code.has_value());
+    CHECK(oamd.b_bed_object_chan_distribute);
+    CHECK_FALSE(oamd.trim.has_value());
+    CHECK_FALSE(oamd.bed_render_info.has_value());
+    CHECK_FALSE(oamd.headphone.has_value());
+    // The bits after oamd_common_data() were read from the right place.
+    CHECK(ajoc.n_fullband_upmix_signals == 1);
+    CHECK(ajoc.upmix_objects.empty());
+    REQUIRE(ajoc.substream_index.has_value());
+    CHECK(*ajoc.substream_index == 1);
+}
+
+TEST_CASE("oamd_common_data: b_default_screen_size_ratio = 0 reads master_screen_size_ratio_code",
+          "[ac4]") {
+    const auto frame = parse_wrapped_object_coded_group([](BitWriter& w) {
+        w.put(0, 1);   // b_oamd_substream = 0
+        w.put(1, 1);   // b_ajoc = 1
+        w.put(0, 1);   // b_lfe
+        w.put(1, 1);   // b_static_dmx
+        w.put(1, 1);   // b_oamd_common_data_present
+        w.put(0, 1);   //   b_default_screen_size_ratio = 0
+        w.put(19, 5);  //   master_screen_size_ratio_code = 19
+        w.put(0, 1);   //   b_bed_object_chan_distribute = 0
+        w.put(0, 1);   //   b_additional_data = 0
+        w.put(0, 4);   // n_fullband_upmix_signals_minus1 = 0 -> 1 signal
+        w.put(1, 1);   // bed_dyn_obj_assignment(1): b_dyn_objects_only = 1
+        w.put(0, 1);   // b_bitrate_info
+        w.put(0, 1);   // b_audio_ndot
+        w.put(1, 2);   // substream_index = 1
+    });
+
+    const auto& oamd = *frame.toc.substream_groups[0].substreams[0].ajoc->oamd_common_data;
+    CHECK_FALSE(oamd.b_default_screen_size_ratio);
+    REQUIRE(oamd.master_screen_size_ratio_code.has_value());
+    CHECK(*oamd.master_screen_size_ratio_code == 19);
+    CHECK_FALSE(oamd.b_bed_object_chan_distribute);
+}
+
+TEST_CASE("oamd_common_data: add_data_bytes' budget covers trim, bed_render_info and headphone",
+          "[ac4]") {
+    // trim()/bed_render_info()/headphone() each read one bit (their own
+    // presence flag, 0) and stop there; the byte budget (8 bits) is wider
+    // than the 3 they spend between them, so the remaining 5 bits are read
+    // as add_data - a raw range this parser does not interpret - rather
+    // than left for headphone() (already read) or the fields after
+    // oamd_common_data() to be misread from the wrong position.
+    const auto frame = parse_wrapped_object_coded_group([](BitWriter& w) {
+        w.put(0, 1);  // b_oamd_substream = 0
+        w.put(1, 1);  // b_ajoc = 1
+        w.put(0, 1);  // b_lfe
+        w.put(1, 1);  // b_static_dmx
+        w.put(1, 1);  // b_oamd_common_data_present
+        w.put(1, 1);  //   b_default_screen_size_ratio = 1
+        w.put(0, 1);  //   b_bed_object_chan_distribute = 0
+        w.put(1, 1);  //   b_additional_data = 1
+        w.put(0, 1);  //   add_data_bytes_minus1 = 0 -> add_data_bytes = 1 (8 bits)
+        w.put(0, 1);  //   trim(): b_trim_present = 0            (1 of 8 bits)
+        w.put(0, 1);  //   bed_render_info(): b_bed_render_info = 0  (1 of 8 bits)
+        w.put(0, 1);  //   headphone(): b_headphone = 0          (1 of 8 bits)
+        w.put(0, 5);  //   add_data: 5 raw bits, uninterpreted    (5 of 8 bits)
+        w.put(0, 4);  // n_fullband_upmix_signals_minus1 = 0 -> 1 signal
+        w.put(1, 1);  // bed_dyn_obj_assignment(1): b_dyn_objects_only = 1
+        w.put(0, 1);  // b_bitrate_info
+        w.put(0, 1);  // b_audio_ndot
+        w.put(1, 2);  // substream_index = 1
+    });
+
+    const auto& ajoc = *frame.toc.substream_groups[0].substreams[0].ajoc;
+    const auto& oamd = *ajoc.oamd_common_data;
+    CHECK_FALSE(oamd.trim.has_value());
+    CHECK_FALSE(oamd.bed_render_info.has_value());
+    CHECK_FALSE(oamd.headphone.has_value());
+    CHECK(ajoc.n_fullband_upmix_signals == 1);
+    REQUIRE(ajoc.substream_index.has_value());
+    CHECK(*ajoc.substream_index == 1);
+}
+
+TEST_CASE("oamd_common_data: a nested element reading past its add_data budget fails cleanly",
+          "[ac4]") {
+    // add_data_bytes declares an 8-bit budget, but trim() alone - once
+    // global_trim_mode selects the NUM_TRIM_CONFIGS loop - reads 16 bits
+    // (1+2+2+2 header, then 9 configs at 1 bit each for b_default_trim).
+    // Plenty of real data follows, so this is the internal budget check in
+    // oamd_common_data()'s spend() firing, not truncation against the
+    // actual end of the frame.
     BitWriter w;
     write_ac4_object_coded_preamble(w);
     write_ac4_object_coded_group_preamble(w);
-    w.put(0, 1);  // b_oamd_substream = 0
-    w.put(1, 1);  // b_ajoc = 1
-    w.put(0, 1);  // b_lfe
-    w.put(1, 1);  // b_static_dmx (skip dmx assignment to keep this short)
-    w.put(1, 1);  // b_oamd_common_data_present -> refusal happens right here
+    w.put(0, 1);     // b_oamd_substream = 0
+    w.put(1, 1);     // b_ajoc = 1
+    w.put(0, 1);     // b_lfe
+    w.put(1, 1);     // b_static_dmx
+    w.put(1, 1);     // b_oamd_common_data_present
+    w.put(1, 1);     //   b_default_screen_size_ratio = 1
+    w.put(0, 1);     //   b_bed_object_chan_distribute = 0
+    w.put(1, 1);     //   b_additional_data = 1
+    w.put(0, 1);     //   add_data_bytes_minus1 = 0 -> add_data_bytes = 1 (8-bit budget)
+    w.put(1, 1);     //   trim(): b_trim_present = 1
+    w.put(0, 2);     //     warp_mode
+    w.put(0, 2);     //     reserved
+    w.put(0b10, 2);  //     global_trim_mode = 0b10 -> the NUM_TRIM_CONFIGS loop
+    for (int i = 0; i < 9; ++i) {
+        w.put(1, 1);  // configs[i]: b_default_trim = 1 (1 bit each, 9 total)
+    }
+    // 16 bits spent inside trim() alone, against an 8-bit budget: the
+    // failure happens here, so nothing after this matters, but pad well
+    // past it regardless - a bug that keeps reading anyway should hit real
+    // (if meaningless) data rather than the reader's own overflow path,
+    // keeping this test about the budget check, not about truncation.
+    w.put(0, 64);
     const auto data = w.bytes();
 
     const auto result = ac4::parse_raw_frame(data);
     REQUIRE_FALSE(result.has_value());
-    CHECK(result.error() == ac4::Error::kOamdCommonDataPresent);
+    CHECK(result.error() == ac4::Error::kTruncated);
 }
 
 TEST_CASE("parse_bed_dyn_obj_assignment: nonstd flags exclude LFE (A-JOC dmx assignment)",
@@ -1417,8 +1545,7 @@ TEST_CASE("parse_raw_frame: a payload_base and substream size that wrap are trun
 
 TEST_CASE("describe returns a distinct, non-empty string for every Error", "[ac4]") {
     for (const auto error :
-         {ac4::Error::kTruncated, ac4::Error::kLostSync, ac4::Error::kUnsupportedBitstreamVersion,
-          ac4::Error::kOamdCommonDataPresent}) {
+         {ac4::Error::kTruncated, ac4::Error::kLostSync, ac4::Error::kUnsupportedBitstreamVersion}) {
         CAPTURE(static_cast<int>(error));
         CHECK_FALSE(ac4::describe(error).empty());
     }

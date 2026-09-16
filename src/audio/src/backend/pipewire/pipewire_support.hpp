@@ -4,6 +4,7 @@
 #include <spa/param/audio/format-utils.h>
 #include <spa/utils/dict.h>
 
+#include <cctype>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -678,6 +679,47 @@ struct SinkInfo {
     std::string position;
     std::uint32_t rate = 0;
 };
+
+// The frames a playback stream has handed over and not yet had heard, from a
+// pw_time read in the process callback just after a buffer was queued: those
+// still queued in the stream (the sinks set pw_buffer.size in frames, which
+// is what pw_time.queued adds up), those in its converter, and the graph's
+// delay to the device. The delay is in the graph's time (pw_time.rate) and
+// is converted to the stream's frames; a negative delay, which a user's
+// offset can produce, counts as none.
+[[nodiscard]] inline std::uint64_t unplayed_frames(const pw_time& time, std::uint32_t stream_rate) {
+    std::uint64_t delay = 0;
+    if (time.delay > 0) {
+        delay = static_cast<std::uint64_t>(time.delay);
+        if (time.rate.denom != 0 && stream_rate != 0) {
+            delay = delay * time.rate.num * stream_rate / time.rate.denom;
+        }
+    }
+    return time.queued + time.buffered + delay;
+}
+
+// Whether an iec958.codecs list names `codec`. The list is a JSON array of
+// SPA's codec names, quoted or bare depending on who serialised it, so a name
+// is matched as a whole token, bounded by anything that cannot be part of one:
+// "AC3" is not found inside "EAC3". Two of SPA's names have a hyphen in them
+// ("DTS-HD", "MPEG2-AAC"), so a hyphen is part of a name, and "DTS" is not
+// found inside "DTS-HD".
+[[nodiscard]] inline bool codec_listed(std::string_view list, std::string_view codec) {
+    const auto name_char = [](char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '-' || c == '_';
+    };
+    std::size_t at = 0;
+    while ((at = list.find(codec, at)) != std::string_view::npos) {
+        const bool start_ok = at == 0 || !name_char(list[at - 1]);
+        const std::size_t stop = at + codec.size();
+        const bool end_ok = stop >= list.size() || !name_char(list[stop]);
+        if (start_ok && end_ok) {
+            return true;
+        }
+        at = stop;
+    }
+    return false;
+}
 
 // Every Audio/Sink in the graph with its info properties. Two round trips:
 // the registry walk binds each sink as it appears, and a second sync waits

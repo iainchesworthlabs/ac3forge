@@ -144,20 +144,21 @@ real receiver (ALSA `iec958`, on the Pi) for the one that is not. See
 ## Reading a sink's own EDID/ELD
 
 `ac3cli play`, given a `device_index`, asks the sink what it actually accepts before committing
-to a format — see [CLI → Following the sink](../forge/cli/commands.md#following-the-sink). On Linux
-that read is real on ALSA only: the HD-audio kernel driver populates
+to a format — see [CLI → Following the sink](../forge/cli/commands.md#following-the-sink). On ALSA
+the HD-audio kernel driver populates
 `/proc/asound/<card>/eld#<dev>.<port>` with the sink's own CEA-861 Short Audio Descriptors,
 already decoded into text fields, for every HDMI/DisplayPort output — a documented, stable
-kernel interface, not a private one this project reaches around. `ac3::audio::sink_capabilities`
+kernel interface, not a private one this project reaches around. `ac3::audio::read_sink_capabilities()`
 locates the right card/device the same way `enumerate_render_devices()` already does
 (`src/audio/src/backend/alsa/candidates.hpp`, shared between the two) and reads that file.
 
-PipeWire has no equivalent here, on purpose rather than by omission: an ALSA-backed PipeWire
-node likely carries enough in its own properties to find the same `/proc/asound` file, but no
-property name was found confirmed stable across PipeWire versions and session-manager
-configurations without a live daemon available to verify it against — the same caution this
-page already applies to PipeWire's passthrough negotiation itself. `play` falls back to the live
-probe `outputs` already uses when EDID/ELD is not available, on PipeWire and everywhere else.
+On PipeWire the read is the session manager's: WirePlumber sets `iec958.codecs` on an HDMI or
+S/PDIF node from the sink's ELD, and `read_sink_capabilities()` reports the codecs that property
+lists. It gives no LPCM channel count or rate list, because the property carries
+neither. A node without the property reads as having no descriptor. The mapping from a node to
+the `/proc/asound` file is not attempted, since no property name for it was found confirmed
+stable across PipeWire versions and session managers. `play` falls back to the live probe
+`outputs` already uses wherever no descriptor can be read.
 
 **Not verified against real hardware.** Like the passthrough gap above, the parser
 (`parse_eld_proc_text`, `tests/backend/alsa/test_alsa_eld_parsing.cpp`) is unit-tested against

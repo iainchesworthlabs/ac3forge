@@ -68,13 +68,76 @@ namespace {
     return mix_levels(substream.mixing);
 }
 
+// The same choice for an assembled access unit, whose fields are its
+// independent substream's.
+[[nodiscard]] MixLevels levels_of(const DecodedAccessUnit& unit) {
+    if (unit.cmixlev || unit.surmixlev || unit.alternate_bsi) {
+        return mix_levels(unit.acmod, unit.cmixlev, unit.surmixlev, unit.alternate_bsi);
+    }
+    return mix_levels(unit.mixing);
+}
+
+[[nodiscard]] std::optional<int> bsmod_of(const std::optional<meta::BsiInfo>& info) {
+    if (!info) {
+        return std::nullopt;
+    }
+    return static_cast<int>(info->bsmod);
+}
+
+void report_frame(const DecodedFrame& frame, UnitReport& out) {
+    out.acmod = frame.acmod;
+    out.lfe = frame.lfe;
+    out.substreams = 1;
+    out.layout = frame.acmod == Acmod::kDualMono
+                     ? eac3::chanmap::Layout{}
+                     : eac3::chanmap::expand(eac3::chanmap::acmod_map(frame.acmod, frame.lfe));
+    out.bsmod = frame.bsmod;
+    out.dialnorm = frame.dialnorm;
+    out.dialnorm2 = frame.dialnorm2;
+    out.compr = frame.compr;
+    out.compr2 = frame.compr2;
+    out.dynrng = frame.dynrng;
+    out.blocks = kBlocksPerFrame;
+    int short_blocks = 0;
+    for (int blk = 0; blk < kBlocksPerFrame; ++blk) {
+        const bool any = std::ranges::any_of(
+            frame.blksw, [blk](const std::array<bool, kBlocksPerFrame>& channel) {
+                return channel[static_cast<std::size_t>(blk)];
+            });
+        short_blocks += any ? 1 : 0;
+    }
+    out.short_blocks = short_blocks;
+    out.levels = mix_levels(frame.acmod, frame.cmixlev, frame.surmixlev, frame.alternate_bsi);
+    out.concealed = frame.concealed;
+    out.objects.reset();
+}
+
+void report_unit(const DecodedAccessUnit& unit, UnitReport& out) {
+    out.acmod = unit.acmod;
+    out.layout = unit.acmod == Acmod::kDualMono ? eac3::chanmap::Layout{} : unit.layout;
+    out.lfe = unit.layout.index_of(eac3::chanmap::Location::kLfe) >= 0;
+    out.substreams = unit.substream_count;
+    out.bsmod = bsmod_of(unit.info);
+    out.dialnorm = unit.dialnorm;
+    out.dialnorm2 = unit.dialnorm2;
+    out.compr = unit.compr;
+    out.compr2.reset();
+    out.dynrng = unit.dynrng;
+    out.blocks = eac3::blocks_per_syncframe(unit.numblkscod);
+    out.short_blocks.reset();
+    out.levels = levels_of(unit);
+    out.concealed = unit.concealed;
+    out.objects = unit.object_metadata;
+}
+
 }  // namespace
 
 StreamDecoder::StreamDecoder(const render::OutputLayout& layout, std::uint32_t sample_rate,
-                             const DecoderSettings& settings)
+                             const DecoderSettings& settings, Substreams substreams)
     : layout_(layout),
       sample_rate_(sample_rate),
       settings_(settings),
+      substreams_(substreams),
       serving_(decoder_setup(settings, layout).serving),
       config_(decoder_setup(settings, layout).config),
       renderer_(layout, sample_rate) {}
@@ -89,14 +152,21 @@ void StreamDecoder::reset() {
     renderer_ = render::LayoutRenderer{layout_, sample_rate_};
 }
 
-std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const std::byte> unit,
-                                                              const BlockFn& deliver) {
+std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const std::byte> whole,
+                                                              const BlockFn& deliver,
+                                                              const UnitFn& reported) {
     delivered_ = 0;
-    const auto header = io::read_frame_header(unit);
+    const auto header = io::read_frame_header(whole);
     if (!header) {
         reset();
         return std::unexpected(std::string{"A frame header could not be read."});
     }
+    // A unit's first syncframe is its independent substream (or its AC-3
+    // core); the dependents follow it.
+    const std::span<const std::byte> unit =
+        substreams_ == Substreams::kIndependent && header->bytes < whole.size()
+            ? whole.first(header->bytes)
+            : whole;
     if (header->kind == io::StreamKind::kEac3) {
         // One programme: the first unit's. A unit starts at an independent
         // substream, so this is that programme's id, not a dependent's.
@@ -127,6 +197,10 @@ std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const st
             return std::unexpected(
                 fmt::format("An AC-3 frame could not be decoded: {}.", describe(decoded.error())));
         }
+        if (reported) {
+            report_frame(*decoded, report_);
+            reported(report_);
+        }
         return delivered_;
     }
     if (!eac3_decoder_) {
@@ -137,6 +211,12 @@ std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const st
         reset();
         return std::unexpected(fmt::format("An E-AC-3 access unit could not be decoded: {}.",
                                            describe(decoded.error())));
+    }
+    // Nothing comes back for a unit held back; what does is the unit whose
+    // blocks this call delivered.
+    if (*decoded && reported) {
+        report_unit(**decoded, report_);
+        reported(report_);
     }
     return delivered_;
 }
@@ -193,18 +273,18 @@ void StreamDecoder::place(const PcmBlock& block, const BlockFn& deliver) {
     deliver(std::span<const std::span<const float>>(rendered.data(), slots), frames);
 }
 
-std::size_t StreamDecoder::finish(const BlockFn& deliver) {
+std::size_t StreamDecoder::finish(const BlockFn& deliver, const UnitFn& reported) {
     std::size_t frames = 0;
     if (eac3_decoder_) {
         std::vector<DecodedSubstream> released = eac3_decoder_->flush();
-        frames = render_flushed(released, deliver);
+        frames = render_flushed(released, deliver, reported);
     }
     reset();
     return frames;
 }
 
 std::size_t StreamDecoder::render_flushed(std::span<DecodedSubstream> substreams,
-                                          const BlockFn& deliver) {
+                                          const BlockFn& deliver, const UnitFn& reported) {
     // This programme's independent substream, and every dependent released
     // with it. flush() makes no promise about their order, and a dependent's
     // substreamid numbers the dependents rather than naming the programme, so
@@ -317,6 +397,32 @@ std::size_t StreamDecoder::render_flushed(std::span<DecodedSubstream> substreams
         const std::size_t before = delivered_;
         place(block, deliver);
         frames += delivered_ - before;
+    }
+
+    if (reported && frames > 0) {
+        // The independent substream's own words, as an assembled unit
+        // reports them; the objects from whichever substream carried them.
+        report_.acmod = independent->acmod;
+        report_.lfe = independent->lfe;
+        report_.substreams = static_cast<int>(1 + dependents.size());
+        report_.layout = independent->acmod == Acmod::kDualMono ? eac3::chanmap::Layout{} : layout;
+        report_.bsmod = bsmod_of(independent->info);
+        report_.dialnorm = independent->dialnorm;
+        report_.dialnorm2 = independent->dialnorm2;
+        report_.compr = independent->compr;
+        report_.compr2.reset();
+        report_.dynrng = independent->dynrng;
+        report_.blocks = eac3::blocks_per_syncframe(independent->numblkscod);
+        report_.short_blocks.reset();
+        report_.levels = levels_of(*independent);
+        report_.concealed = independent->concealed;
+        report_.objects = independent->object_metadata;
+        for (const DecodedSubstream* dependent : dependents) {
+            if (!report_.objects && dependent->object_metadata) {
+                report_.objects = dependent->object_metadata;
+            }
+        }
+        reported(report_);
     }
     return frames;
 }

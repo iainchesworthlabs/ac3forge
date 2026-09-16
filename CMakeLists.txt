@@ -266,6 +266,10 @@ if(NOT AC3FORGE_BUILD_AC4 AND (AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_TESTS))
     message(FATAL_ERROR "AC3FORGE_BUILD_AC4=OFF requires AC3FORGE_BUILD_CLI and "
         "AC3FORGE_BUILD_TESTS to both be OFF too - they both link ac4::ac4 unconditionally.")
 endif()
+if(NOT AC3FORGE_BUILD_AC4 AND AC3FORGE_BUILD_HEARTH)
+    message(FATAL_ERROR "AC3FORGE_BUILD_AC4=OFF requires AC3FORGE_BUILD_HEARTH to be OFF too - "
+        "Hearth's engine reads an AC-4 item's table of contents with ac4::ac4.")
+endif()
 
 # AC3FORGE_MINIMAL_DECODER's own version of the three guards above. Everything listed here
 # either links the full ac3::forge (CLI, GUI, tests, examples, the C API) or is a module the
@@ -279,7 +283,7 @@ if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
                           AC3FORGE_BUILD_EXAMPLES AC3FORGE_BUILD_MATROSKA AC3FORGE_BUILD_MP4
                           AC3FORGE_BUILD_MPEGTS AC3FORGE_BUILD_IAB AC3FORGE_BUILD_IAMF
                           AC3FORGE_BUILD_CAPI AC3FORGE_BUILD_ADM AC3FORGE_BUILD_PYTHON
-                          AC3FORGE_BUILD_FUZZERS AC3FORGE_BUILD_AC4)
+                          AC3FORGE_BUILD_FUZZERS AC3FORGE_BUILD_AC4 AC3FORGE_BUILD_HEARTH)
         if(${_opt})
             list(APPEND _ac3_minimal_conflicts "${_opt}")
         endif()

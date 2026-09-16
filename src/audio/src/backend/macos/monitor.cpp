@@ -95,9 +95,12 @@ struct MonitorSink::Impl {
     // IOProc stays registered, so the queue and the format survive.
     std::atomic_bool paused{false};
     // A flush the IOProc performs, since the queue's read side is its own;
-    // `flushes` counts the ones it has done, which is what flush() waits for.
+    // `flushes` counts the ones it has done, which is what flush() waits for,
+    // and `flush_mark` is how far the queue had been written when the flush
+    // was asked for: what it drops.
     std::atomic_bool flushing{false};
     std::atomic<std::uint64_t> flushes{0};
+    std::atomic<std::size_t> flush_mark{0};
     // Reused by the IOProc so it never allocates on Apple's realtime I/O
     // thread once warmed up - see platform/macos/capture.cpp's own comment
     // on why this lives here rather than as a lambda capture.
@@ -144,9 +147,11 @@ void MonitorSink::flush() {
     //
     // A stopped device has no IOProc running, so while paused there is nobody
     // to hand the work to and nobody to race with either: AudioDeviceStop
-    // does not return while the IOProc is still in use.
+    // does not return while the IOProc is still in use. Any flush still
+    // waiting for the IOProc is this one's too, and is done with here.
     if (impl_->paused.load(std::memory_order_acquire)) {
-        impl_->queue->reset();
+        impl_->flushing.store(false, std::memory_order_release);
+        impl_->queue->discard_to(impl_->queue->write_mark());
         impl_->handed_over = 0;
         impl_->counter.restart();
         impl_->rendered.store(0, std::memory_order_relaxed);
@@ -158,6 +163,7 @@ void MonitorSink::flush() {
     // that is better than blocking a caller on a device that has stopped
     // calling back.
     const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
     impl_->flushing.store(true, std::memory_order_release);
     for (int waited = 0; waited < 200; ++waited) {
         if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
@@ -166,10 +172,10 @@ void MonitorSink::flush() {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     // The device stopped calling back before it could do the work - an HDMI
-    // output whose display has gone to sleep, a device pulled out. The flag
-    // must not stay raised: the next callback, whenever the device comes
-    // back, would otherwise drop audio submitted after this call returned.
-    impl_->flushing.store(false, std::memory_order_release);
+    // output whose display has gone to sleep, a device pulled out. The flush
+    // is left for the next callback, whenever the device comes back. It drops
+    // only what was queued before the mark, so audio submitted after this
+    // call returned is kept.
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
@@ -367,25 +373,26 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                             const AudioTimeStamp* /*input_time*/, AudioBufferList* output,
                             const AudioTimeStamp* output_time, void* client_data) -> OSStatus {
         auto* impl = static_cast<Impl*>(client_data);
+        // A flush the caller asked for: drop what this sink holds and restart
+        // the counters with it, which is what position() promises. Done first,
+        // so a call with nothing to fill still makes it. The buffer then goes
+        // out silent from the empty queue, and counts as an underrun - the
+        // same bookkeeping the other backends show after a flush, and the
+        // honest description of what the device played.
+        if (impl->flushing.exchange(false, std::memory_order_acq_rel)) {
+            impl->queue->discard_to(impl->flush_mark.load(std::memory_order_acquire));
+            impl->handed_over = 0;
+            impl->counter.restart();
+            impl->rendered.store(0, std::memory_order_relaxed);
+            impl->submitted.store(0, std::memory_order_relaxed);
+            impl->flushes.fetch_add(1, std::memory_order_release);
+        }
         if (output == nullptr || output->mNumberBuffers == 0 || impl->channels == 0) {
             return noErr;
         }
         const auto bytes = coreaudio::bytes_per_sample(impl->format);
         if (bytes == 0) {
             return noErr;
-        }
-        // A flush the caller asked for: drop what this sink holds and restart
-        // the counters with it, which is what position() promises. This
-        // buffer then goes out silent from the empty queue, and counts as an
-        // underrun - the same bookkeeping the other backends show after a
-        // flush, and the honest description of what the device played.
-        if (impl->flushing.exchange(false, std::memory_order_acq_rel)) {
-            impl->queue->reset();
-            impl->handed_over = 0;
-            impl->counter.restart();
-            impl->rendered.store(0, std::memory_order_relaxed);
-            impl->submitted.store(0, std::memory_order_relaxed);
-            impl->flushes.fetch_add(1, std::memory_order_release);
         }
 
         const std::size_t frames = impl->interleaved

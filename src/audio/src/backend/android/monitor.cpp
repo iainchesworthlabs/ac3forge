@@ -112,10 +112,13 @@ struct MonitorSink::Impl {
     std::atomic<std::int64_t> frame_baseline{0};
     // Set by pause()/resume() and flush(); acted on by the worker, which owns
     // the stream and the queue's read side. `flushes` counts the flushes it
-    // has completed, which is what flush() waits for.
+    // has completed, which is what flush() waits for, and `flush_mark` is how
+    // far the queue had been written when the flush was asked for: what it
+    // drops.
     std::atomic_bool paused{false};
     std::atomic_bool flushing{false};
     std::atomic<std::uint64_t> flushes{0};
+    std::atomic<std::size_t> flush_mark{0};
 };
 
 MonitorSink::MonitorSink() : impl_(std::make_unique<Impl>()) {}
@@ -156,6 +159,7 @@ void MonitorSink::flush() {
     // state changes between them, and giving up after that rather than
     // blocking a caller on a stream that has stopped answering.
     const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
     impl_->flushing.store(true, std::memory_order_release);
     for (int waited = 0; waited < 600; ++waited) {
         if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
@@ -164,9 +168,9 @@ void MonitorSink::flush() {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     // The worker did not get to it - a disconnected stream, or one whose
-    // state transitions are not settling. The flag must not stay raised: it
-    // would drop audio submitted after this call returned.
-    impl_->flushing.store(false, std::memory_order_release);
+    // state transitions are not settling. The flush is left for the worker to
+    // make when it next gets there. It drops only what was queued before the
+    // mark, so audio submitted after this call returned is kept.
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
@@ -326,7 +330,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
                 if (!device_running) {
                     flush_stream(impl_->stream);
                 }
-                impl_->queue->reset();
+                impl_->queue->discard_to(impl_->flush_mark.load(std::memory_order_acquire));
                 // The frame counters carry on across a flush, so the new
                 // zero is where they stand once the discarded frames have
                 // been accounted for.

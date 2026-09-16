@@ -80,6 +80,7 @@ std::expected<Session, std::string> Session::open(const std::string& path,
     if (chosen != nullptr && chosen != &session.scanned_.programmes.front()) {
         session.units_ = chosen->access_units;
         session.programme_ = chosen->substreamid;
+        session.first_programme_ = false;
         session.facts_.channels = static_cast<std::uint16_t>(std::max(chosen->channels, 0));
         lengths.reserve(session.units_.size());
         for (const auto unit : session.units_) {
@@ -155,21 +156,73 @@ void Session::deliver_window(const Target& target, std::span<const std::span<con
     (*target.deliver)(std::span<const std::span<const float>>(views.data(), width), count);
 }
 
+void Session::report_window(const Target& target, const UnitReport& report) {
+    const std::size_t frames = *target.frames - target.unit_start;
+    if (frames > 0) {
+        (*target.reported)(report, frames);
+    }
+}
+
+StreamDecoder::UnitFn Session::unit_reports(Target& target) {
+    if (target.reported == nullptr || !*target.reported) {
+        return {};
+    }
+    return [&target](const UnitReport& report) { report_window(target, report); };
+}
+
+std::uint32_t Session::unit_samples_at(std::uint64_t position) const {
+    const std::uint64_t sample = window_start_ + position;
+    // The last unit starting at or before `sample`; starts_ begins at 0, so
+    // there is always one.
+    const auto after = std::upper_bound(starts_.begin(), std::prev(starts_.end()), sample);
+    const auto unit = static_cast<std::size_t>(std::distance(starts_.begin(), after)) - 1;
+    return static_cast<std::uint32_t>(starts_[unit + 1] - starts_[unit]);
+}
+
+void Session::play_whole_units() {
+    if (whole_units_) {
+        return;
+    }
+    whole_units_ = true;
+    // The unit the first sample played is in starts at or before it; the
+    // unit the last one is in ends at or after the end.
+    const auto first = std::upper_bound(starts_.begin(), std::prev(starts_.end()), window_start_);
+    window_start_ = *std::prev(first);
+    const auto last = std::lower_bound(starts_.begin(), starts_.end(), window_end_);
+    window_end_ = last == starts_.end() ? starts_.back() : *last;
+    if (facts_.sample_rate != 0) {
+        facts_.duration = std::chrono::milliseconds{
+            static_cast<std::int64_t>(total_samples() * 1000 / facts_.sample_rate)};
+    }
+}
+
 std::expected<std::size_t, std::string> Session::render(StreamDecoder& decoder,
                                                         const StreamDecoder::BlockFn& deliver,
-                                                        std::size_t wanted) {
+                                                        std::size_t wanted,
+                                                        const ReportFn& reported,
+                                                        const SentFn& sent) {
     std::size_t frames = 0;
     // Only the item's own part of the stream is handed on; the rest is
-    // decoded for the decoder's sake and dropped. Two pointers captured, so
-    // the std::function holds the callback without allocating.
-    const Target target{.deliver = &deliver, .frames = &frames};
+    // decoded for the decoder's sake and dropped. Two pointers captured at
+    // most, so each std::function holds its callback without allocating.
+    Target target{.deliver = &deliver, .frames = &frames, .reported = &reported};
     const StreamDecoder::BlockFn window = [this, &target](
                                               std::span<const std::span<const float>> slots,
                                               std::size_t n) { deliver_window(target, slots, n); };
+    const StreamDecoder::UnitFn units_reported = unit_reports(target);
 
     const std::size_t units = units_.size();
     while (frames < wanted && next_ < units && next_frame_ < window_end_) {
-        const auto got = decoder.decode(units_[next_], window);
+        target.unit_start = frames;
+        if (sent) {
+            // Sent when any of it is played: not a priming unit, and not the
+            // unit a part-way start decodes first and drops.
+            const std::uint64_t played_from = std::max(window_start_, skip_until_);
+            if (starts_[next_ + 1] > played_from && starts_[next_] < window_end_) {
+                sent(units_[next_], static_cast<std::uint32_t>(starts_[next_ + 1] - starts_[next_]));
+            }
+        }
+        const auto got = decoder.decode(units_[next_], window, units_reported);
         ++next_;
         if (!got) {
             // The unit's samples never arrive, and the decoder has let go of
@@ -184,7 +237,8 @@ std::expected<std::size_t, std::string> Session::render(StreamDecoder& decoder,
         // Either way whatever the decoder still holds is released now - and,
         // past the window, dropped - so a finished session has delivered
         // everything it ever will and leaves the decoder clean.
-        decoder.finish(window);
+        target.unit_start = frames;
+        decoder.finish(window, units_reported);
         finished_ = true;
     }
     return frames;
@@ -210,16 +264,17 @@ void Session::seek(std::chrono::milliseconds to, StreamDecoder& decoder) {
     start_at(sample >= starts_.back() ? units_.size() : unit, decoder);
 }
 
-void Session::hand_over(StreamDecoder& current, const StreamDecoder::BlockFn& deliver) {
+void Session::hand_over(StreamDecoder& current, const StreamDecoder::BlockFn& deliver,
+                        const ReportFn& reported) {
     if (finished_) {
         return;
     }
     std::size_t frames = 0;
-    const Target target{.deliver = &deliver, .frames = &frames};
+    Target target{.deliver = &deliver, .frames = &frames, .reported = &reported};
     const StreamDecoder::BlockFn window = [this, &target](
                                               std::span<const std::span<const float>> slots,
                                               std::size_t n) { deliver_window(target, slots, n); };
-    current.finish(window);
+    current.finish(window, unit_reports(target));
     // Everything before unit next_ has now come out, so the next decoder
     // carries on from there.
     start_at(next_, current);

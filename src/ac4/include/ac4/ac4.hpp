@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ac4/export.hpp"
@@ -30,13 +31,13 @@
 // framing for A-JOC-coded (§6.3.2.8), direct-coded-object (§6.3.2.10) and
 // OAMD (§6.3.2.12) substreams is parsed the same way the channel-coded path
 // is - object position/bed assignment (bed_dyn_obj_assignment(), §6.2.1.10)
-// included. One piece is deliberately not: oamd_common_data() (§6.2.8.1),
-// reachable only via ac4_substream_info_ajoc()'s own
-// b_oamd_common_data_present flag, is a large separate metadata structure
-// (bed assignment, DRC, target-device categories, dialogue enhancement) -
-// a stream setting that flag is refused cleanly (Error::kOamdCommonDataPresent)
-// rather than misparsed. The OAMD substream DATA payload itself
-// (oamd_substream(), §6.2.2.4) was never in scope either way - like every
+// and, at the TOC level, oamd_common_data() (§6.2.8.1, AjocSubstreamInfo::
+// oamd_common_data) included: ac4_substream_info_ajoc()'s own
+// b_oamd_common_data_present flag embeds it inline, ahead of the fields that
+// follow it in the same element, so reading it correctly is what keeps the
+// rest of the TOC in step. The OAMD substream DATA payload itself
+// (oamd_substream(), §6.2.2.4 - which embeds a second, independent
+// oamd_common_data() of its own) was never in scope either way - like every
 // non-audio substream, it is reported as a byte range only.
 //
 // The bitstream_version >= 2 path (TS 103 190-2 clause 6, presentation_v1
@@ -72,7 +73,6 @@ enum class Error : std::uint8_t {
     kTruncated,
     kLostSync,
     kUnsupportedBitstreamVersion,  // > 2; TS 103 190-2 §6.3.2.1.1
-    kOamdCommonDataPresent,        // see module docs above
 };
 
 [[nodiscard]] AC4_EXPORT std::string_view describe(Error error);
@@ -141,6 +141,12 @@ struct ChannelSubstreamInfo {
     // earlier frame. A decoder needs it to know whether I-frame-only
     // configuration is present.
     std::vector<bool> b_iframe;
+    // §4.2.3.9 ac4_hsf_ext_substream_info: set only for the legacy
+    // (bitstream_version <= 1) path's first role substream when its
+    // presentation's b_hsf_ext is set - the v1 path's equivalent is
+    // GroupSubstream::hsf_ext_substream_index instead, since that one
+    // wrapper covers chan/ajoc/obj alike.
+    std::optional<int> hsf_ext_substream_index;
 };
 
 // --- §6.2.1.10 bed_dyn_obj_assignment / §6.3.2.10.8 -------------------------
@@ -160,6 +166,81 @@ struct OamdSubstreamInfo {
     std::optional<int> substream_index;
 };
 
+// --- §6.2.8.13-16 tool_tb_to_f_s[_b] / tool_tf_to_f_s[_b], §6.2.9.9-10 -----
+// tool_t2_to_f_s[_b]: eight tables, three call shapes total (t2/tb/tf each
+// with and without a "to side" middle branch), differing only in field
+// names - one shared struct and reader.
+
+struct GainTool {
+    std::optional<int> code_a;
+    int code_b = 0;  // read, or the derived value 7 (never transmitted)
+    std::optional<int> code_c;
+};
+
+// --- §6.2.8.8a stereo_dmx_coeff ----------------------------------------------
+
+struct StereoDmxCoeff {
+    int loro_centre_mixgain = 0;
+    int loro_surround_mixgain = 0;
+    std::optional<int> ltrt_centre_mixgain;
+    std::optional<int> ltrt_surround_mixgain;
+    std::optional<int> lfe_mixgain;
+    int preferred_dmx_method = 0;
+};
+
+// --- §6.2.8.8 bed_render_info ------------------------------------------------
+
+struct BedRenderInfo {
+    std::optional<StereoDmxCoeff> stereo_dmx_coeff;
+    std::optional<int> gain_w_to_f_code;
+    std::optional<int> gain_b4_to_b2_code;
+    std::optional<GainTool> t2_to_f_s_b;
+    std::optional<GainTool> t2_to_f_s;
+    std::optional<GainTool> tb_to_f_s_b;
+    std::optional<GainTool> tb_to_f_s;
+    std::optional<GainTool> tf_to_f_s_b;
+    std::optional<GainTool> tf_to_f_s;
+    std::optional<int> gain_tfb_to_tm_code;
+};
+
+// --- §6.2.8.9 trim / §6.2.8.9a headphone -------------------------------------
+
+// One entry per configuration trim() reads (0 to kNumTrimConfigs):
+// nullopt where b_default_trim was set (the default profile applies,
+// nothing else to report), disabled where b_disable_trim was set, the
+// balance fields trim_balance_presence names otherwise.
+struct TrimConfig {
+    bool disabled = false;
+    int presence = 0;
+    std::optional<int> trim_centre;
+    std::optional<int> trim_surround;
+    std::optional<int> trim_height;
+    std::optional<std::pair<int, int>> bal3d_y_tb;   // sign, amount
+    std::optional<std::pair<int, int>> bal3d_y_lis;  // sign, amount
+};
+
+struct Trim {
+    int warp_mode = 0;
+    int global_trim_mode = 0;
+    std::vector<std::optional<TrimConfig>> configs;  // empty unless global_trim_mode == 0b10
+};
+
+struct Headphone {
+    int hp_operation_mode = 0;
+    std::optional<bool> b_head_track_disable_all;
+};
+
+// --- §6.2.8.1 oamd_common_data ------------------------------------------------
+
+struct OamdCommonData {
+    bool b_default_screen_size_ratio = false;
+    std::optional<int> master_screen_size_ratio_code;
+    bool b_bed_object_chan_distribute = false;
+    std::optional<Trim> trim;
+    std::optional<BedRenderInfo> bed_render_info;
+    std::optional<Headphone> headphone;
+};
+
 // --- §6.2.1.9 ac4_substream_info_ajoc ---------------------------------------
 
 struct AjocSubstreamInfo {
@@ -167,6 +248,7 @@ struct AjocSubstreamInfo {
     bool b_static_dmx = false;
     int n_fullband_dmx_signals = 0;
     std::vector<ObjectEntry> static_objects;   // empty when b_static_dmx
+    std::optional<OamdCommonData> oamd_common_data;
     int n_fullband_upmix_signals = 0;
     std::vector<ObjectEntry> upmix_objects;
     std::optional<int> sf_multiplier;
@@ -195,6 +277,11 @@ struct GroupSubstream {
     std::optional<ChannelSubstreamInfo> chan;
     std::optional<AjocSubstreamInfo> ajoc;
     std::optional<ObjSubstreamInfo> obj;
+    // §4.2.3.9 ac4_hsf_ext_substream_info, read once per substream when the
+    // group's own b_hsf_ext is set - covers chan/ajoc/obj alike, unlike
+    // ChannelSubstreamInfo::hsf_ext_substream_index (the legacy path's own
+    // field, which this struct does not exist for).
+    std::optional<int> hsf_ext_substream_index;
 };
 
 struct SubstreamGroupInfo {

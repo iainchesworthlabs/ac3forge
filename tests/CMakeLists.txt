@@ -130,6 +130,7 @@ add_executable(ac3tests
     encoder/test_plan.cpp
     audio/test_live_positions.cpp
     audio/test_monitor_live.cpp
+    audio/test_passthrough_live.cpp
     audio/test_pcm_output.cpp
     audio/test_playback_counter.cpp
     audio/test_render_devices.cpp
@@ -702,11 +703,19 @@ if(AC3FORGE_BUILD_HEARTH)
     # src/sendspin's player half: a core-only build still builds and tests it,
     # unlike the test sink further down.
     target_sources(ac3tests PRIVATE
+        hearth/test_ac3_transcoder.cpp
         hearth/test_decoder_settings.cpp
+        hearth/test_diagnostics.cpp
+        hearth/test_engine.cpp
+        hearth/test_media_info.cpp
         hearth/test_output_decision.cpp
+        hearth/test_output_selector.cpp
+        hearth/test_play_meters.cpp
         hearth/test_player.cpp
+        hearth/test_player_bitstream.cpp
         hearth/test_queue.cpp
         hearth/test_session.cpp
+        hearth/test_settings_model.cpp
         hearth/test_stream_decoder.cpp
         hearth/test_transport.cpp)
     target_link_libraries(ac3tests PRIVATE ac3hearth_engine)
@@ -752,6 +761,8 @@ if(AC3FORGE_BUILD_HEARTH)
         # Hearth's test sink, run in process (apps/hearth/testsink), and the server's half of A4's
         # exit with aiosendspin 9.1.1, which tools/sendspin/aiosendspin_exit.py runs.
         target_sources(ac3tests PRIVATE hearth/test_aiosendspin.cpp hearth/test_group.cpp hearth/test_testsink.cpp)
+        # The engine's pairing records, which a core-only build leaves out.
+        target_sources(ac3tests PRIVATE hearth/test_pairing_store.cpp)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
         # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
         # as core/test_simd_kernels.cpp's.

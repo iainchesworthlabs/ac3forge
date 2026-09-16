@@ -74,9 +74,11 @@ enum class CapabilitySource : std::uint8_t {
     // The platform was asked to open each format and said yes or no
     // (ac3::audio::enumerate_render_devices).
     kProbe,
-    // The endpoint is there and reports no descriptor.
+    // The endpoint is there and reports no descriptor, so nothing is known
+    // of what the sink behind it decodes.
     kNoDescriptor,
-    // This platform cannot read a descriptor at all.
+    // This platform cannot read a descriptor at all; the probe's answer is
+    // all there is.
     kNoReader,
 };
 
@@ -141,6 +143,20 @@ struct OutputChoice {
     // One line for the Output screen and the log: why this, or why not
     // something better. Never empty.
     std::string reason{};
+};
+
+// The output a player has open while it asks about an item. A probe of that
+// endpoint cannot see past it: a device this player holds reads as busy, so
+// its own link reads as refusing the very format it is carrying.
+struct HeldOutput {
+    OutputMode mode = OutputMode::kNone;
+    std::string endpoint_id{};
+    std::uint32_t sample_rate = 0;
+    // What a bitstream link carries. Only a link's is taken as proof of
+    // anything; a decoded output's is not read.
+    std::optional<audio::BitstreamFormat> stream = std::nullopt;
+
+    [[nodiscard]] bool held() const { return mode != OutputMode::kNone; }
 };
 
 [[nodiscard]] OutputChoice choose_output(const OutputRequest& request);

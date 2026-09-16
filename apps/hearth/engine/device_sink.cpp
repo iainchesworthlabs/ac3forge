@@ -26,8 +26,8 @@ public:
 
     std::expected<OpenOutputFormat, std::string> open(const Format& format) override {
         output_.stop();
-        const auto opened = output_.start(device_id_, format.sample_rate, format.layout,
-                                          low_latency_);
+        const std::string& endpoint = format.endpoint_id.empty() ? device_id_ : format.endpoint_id;
+        const auto opened = output_.start(endpoint, format.sample_rate, format.layout, low_latency_);
         if (!opened) {
             return std::unexpected(fmt::format("The output could not be opened at {} Hz: {}.",
                                                format.sample_rate,

@@ -282,6 +282,13 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
             const bool b_associated = role == Role::kAssociated || role_from_classifier(classifier) == Role::kAssociated;
             const bool b_dialog = role == Role::kDialogue || classifier == 0b100;
             for (const GroupSubstream& sub : group.substreams) {
+                // The substream's own claim on its own index goes first,
+                // matching Python's substream_roles() (audio() before the
+                // hsf_ext put()) - a fuzzed stream can send an
+                // hsf_ext_substream_index equal to the substream's own
+                // index, and out.contains()'s first-claim-wins means the
+                // two transcriptions would otherwise disagree on which
+                // claim that self-reference resolves to.
                 if (sub.kind == GroupSubstream::Kind::kAjoc && sub.ajoc && sub.ajoc->substream_index) {
                     refuse(out, *sub.ajoc->substream_index, DecodeError::kUnsupported,
                            "A-JOC substreams are not decoded yet");
@@ -292,6 +299,10 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                     // sus_ver is 1 for bitstream_version 2 (Part 2 6.2.1.6).
                     assign_instances(toc, *sub.chan, p.presentation_version, 1, b_associated, b_dialog,
                                      p.b_alternative, out);
+                }
+                if (sub.hsf_ext_substream_index) {
+                    refuse(out, *sub.hsf_ext_substream_index, DecodeError::kUnsupported,
+                           "HSF extension substreams are not decoded yet");
                 }
             }
         }
@@ -308,10 +319,16 @@ void assign_v0(const Toc& toc, std::map<int, Assignment>& out) {
             }
         }
         for (const auto& [role, chan] : p.substreams) {
+            // Own claim before hsf_ext, matching assign_v1() - see its own
+            // comment.
             const int classifier = chan.content_type ? chan.content_type->content_classifier : 0;
             const bool b_associated = role == "Associate" || role_from_classifier(classifier) == Role::kAssociated;
             const bool b_dialog = role == "Dialog" || classifier == 0b100;
             assign_instances(toc, chan, p.presentation_version, 0, b_associated, b_dialog, false, out);
+            if (chan.hsf_ext_substream_index) {
+                refuse(out, *chan.hsf_ext_substream_index, DecodeError::kUnsupported,
+                       "HSF extension substreams are not decoded yet");
+            }
         }
     }
 }

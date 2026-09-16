@@ -1,9 +1,29 @@
 # Hearth: a desktop reference player and Sendspin sinks
 
-!!! note "Status as of 2026-09-15: decided, not started"
+!!! note "Status as of 2026-09-16: being built"
     Written and decided on 2026-09-15, in one session of questions and answers recorded under
-    [Decisions](#decisions). Nothing here is built: there is no `apps/hearth`, no `src/sendspin`
-    and no `hearth_sink` firmware in the tree.
+    [Decisions](#decisions). What has merged since, by chip:
+
+    - **[The desktop app](#chip-a-the-desktop-app).**
+        - Merged: A1 (#686), A2 (#708) and A3 (#714, #720, #727, #732, #736, #742 and #745 to
+          #752).
+        - A4 has merged (#684, #704 and #706), but its Music Assistant exit is still open.
+        - A0's first design round is published and waits for review. A5 starts once it is
+          signed off, and A6 to A8 follow A5.
+    - **[The ESP32-S3 sink](#chip-b-the-esp32-s3-sink).**
+        - Merged: B1 (#709), B2 (#726), B3 (#737) and B4 (#738), with fixes in #741 and #743.
+        - The exits on the boards wait for the TDM DAC boards, and B3's Music Assistant exit is
+          still open.
+        - B5 has not merged.
+    - **[The ESP32-C6](#chip-c-the-esp32-c6).**
+        - Merged: C1 (#677) and C2 (#678 and #701), with the C6's fixed-point speed-up in #694.
+        - C2's exit on a TDM DAC waits for a board. C3 follows chip B.
+    - **[The AC-4 decoder](#chip-d-the-ac-4-decoder).** The plan is not in the repository yet.
+      Its first code has merged: the channel-coded substream syntax (#700), with #712, #715, #739
+      and #744.
+
+    Checks on the user's hardware are still to run for A2 and A3: the identify tone, and the
+    passthrough and monitor position tests, on the Onkyo receiver and the Pi.
 
     This page replaces the **form** of [the appliance plan](player-appliance.md): its headless
     daemon, web control page, kiosk window and HLS client are dropped. Hearth's name, its place
@@ -79,7 +99,7 @@ for end users.
 - AC-4 (`.ac4`, and AC-4 in MP4 or TS) is listed with its bitstream information from `src/ac4`
   and marked as not playable until [chip D](#chip-d-the-ac-4-decoder) delivers a decoder.
 - Duration and seek come from each stream's samples per access unit. The GUI's stream player
-  assumes 1,536 (`apps/gui/hearth_sink_controller.cpp:147`), which is wrong for E-AC-3 with
+  assumes 1,536 (`apps/gui/stream_player_controller.cpp:147`), which is wrong for E-AC-3 with
   fewer than six blocks per frame.
 
 ### Playback configuration
@@ -310,7 +330,7 @@ A draft shape. [A4](#a4-sendspin)'s first deliverable is the normative page,
 
 ### The firmware
 
-- The `hearth_sink` example becomes `hearth_sink` by `git mv`, and its CI shapes and docs
+- The `stream_player` example becomes `hearth_sink` by `git mv`, and its CI shapes and docs
   follow.
 - A Sendspin player: `player@v1` for Music Assistant, with PCM always and FLAC or Opus where
   memory and time allow, measured; `_ac3forge_player@v1` for the bitstream; the Noise responder;
@@ -592,7 +612,7 @@ merged. Proven on the S3 development boards with TDM DACs.
 
 ### B1: the firmware and its outputs
 
-`hearth_sink` becomes `hearth_sink`. Slot width becomes a setting, extending the one-line
+`stream_player` becomes `hearth_sink`. Slot width becomes a setting, extending the one-line
 16-bit TDM support that [C2](#c2-i2s-on-the-c6) adds to two lines on the S3, or adding it here if
 B1 starts first. The sink reports the slot count for its current setting.
 

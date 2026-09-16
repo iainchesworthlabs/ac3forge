@@ -23,6 +23,7 @@
 
 namespace {
 
+using ac3::hearth::FailurePolicy;
 using ac3::hearth::ItemFacts;
 using ac3::hearth::OpenOutputFormat;
 using ac3::hearth::OutputMode;
@@ -195,6 +196,77 @@ TEST_CASE("transport: a mode change is not a join either", "[hearth][transport-s
     CHECK(transport.item_finished().action == TransportAction::kReopenForItem);
 }
 
+TEST_CASE("transport: a bitstream joins only the same stream, played the same way",
+          "[hearth][transport-state]") {
+    // The output decision says how the next item would be played; a join
+    // needs that to be what the output is already doing, and a bitstream
+    // needs the stream on the link to stay what it is.
+    Queue queue;
+    queue.add(item("e1"));
+    queue.add(item("e2"));
+    QueueItem plain = item("a3");
+    plain.facts.stream = ac3::audio::BitstreamFormat::kAc3;
+    queue.add(plain);
+    queue.add(item("e4"));
+    queue.add(item("e5"));
+    queue.add(item("e6"));
+    Transport transport{queue};
+
+    REQUIRE(transport.play().action == TransportAction::kStartItem);
+    const auto link = [](ac3::audio::BitstreamFormat stream, OutputMode mode) {
+        return OpenOutputFormat{
+            .sample_rate = 48000, .channels = 2, .mode = mode, .stream = stream};
+    };
+    transport.set_open_format(link(ac3::audio::BitstreamFormat::kEac3, OutputMode::kBitstream));
+
+    // E-AC-3 after E-AC-3, both bitstreamed: the link carries on.
+    auto outcome = transport.item_finished(OutputMode::kBitstream);
+    CHECK(outcome.action == TransportAction::kJoinItem);
+    CHECK(outcome.item == 1);
+
+    // AC-3 after E-AC-3: the link would change speed, so it starts again,
+    // and says why.
+    outcome = transport.item_finished(OutputMode::kBitstream);
+    CHECK(outcome.action == TransportAction::kReopenForItem);
+    CHECK(outcome.item == 2);
+    CHECK(outcome.note.find("\"a3\" is AC-3") != std::string::npos);
+    CHECK(outcome.note.find("carrying E-AC-3") != std::string::npos);
+
+    // After the AC-3 link, an item to be decoded here: another mode.
+    transport.set_open_format(link(ac3::audio::BitstreamFormat::kAc3, OutputMode::kBitstream));
+    outcome = transport.item_finished(OutputMode::kLocalPcm);
+    CHECK(outcome.action == TransportAction::kReopenForItem);
+    CHECK(outcome.item == 3);
+    CHECK(outcome.note.find("plays as local PCM") != std::string::npos);
+    CHECK(outcome.note.find("open for bitstream") != std::string::npos);
+
+    // A decoded output takes any stream at its rate, but not an item the
+    // decision would bitstream.
+    transport.set_open_format(open_at(48000));
+    outcome = transport.item_finished(OutputMode::kBitstream);
+    CHECK(outcome.action == TransportAction::kReopenForItem);
+    CHECK(outcome.item == 4);
+    CHECK(outcome.note.find("plays as bitstream") != std::string::npos);
+
+    // E-AC-3 transcoded to AC-3 joins E-AC-3 transcoded to AC-3, though the
+    // link carries AC-3. And a failed item passes the mode on under skip.
+    transport.set_open_format(
+        link(ac3::audio::BitstreamFormat::kAc3, OutputMode::kBitstreamAsAc3));
+    outcome = transport.item_failed(4, OutputMode::kBitstreamAsAc3);
+    CHECK(outcome.action == TransportAction::kJoinItem);
+    CHECK(outcome.item == 5);
+
+    // An item that is AC-3 already is not one to transcode.
+    Queue again;
+    again.add(item("e1"));
+    again.add(plain);
+    Transport other{again};
+    REQUIRE(other.play().action == TransportAction::kStartItem);
+    other.set_open_format(link(ac3::audio::BitstreamFormat::kAc3, OutputMode::kBitstreamAsAc3));
+    CHECK(other.item_finished(OutputMode::kBitstreamAsAc3).action ==
+          TransportAction::kReopenForItem);
+}
+
 TEST_CASE("transport: the end of the queue stops, and repeat makes the ends meet",
           "[hearth][transport-state]") {
     Queue queue;
@@ -218,6 +290,51 @@ TEST_CASE("transport: the end of the queue stops, and repeat makes the ends meet
     CHECK(outcome.state == TransportState::kPlaying);
     CHECK(outcome.action == TransportAction::kJoinItem);
     CHECK(outcome.item == 0);
+}
+
+TEST_CASE("transport: whether the next item would join can be asked without deciding it",
+          "[hearth][transport-state]") {
+    Queue queue;
+    queue.add(item("a"));
+    queue.add(item("b"));
+    queue.add(item("c", 44100));
+    Transport transport{queue};
+
+    // Stopped, nothing joins anything.
+    CHECK_FALSE(transport.would_join());
+    REQUIRE(transport.play().action == TransportAction::kStartItem);
+    transport.set_open_format(open_at(48000));
+
+    // b follows a at a's rate: it would - and asking changed nothing.
+    CHECK(transport.would_join());
+    CHECK(transport.would_join(OutputMode::kLocalPcm));
+    CHECK(queue.current_index() == 0);
+    CHECK(transport.state() == TransportState::kPlaying);
+    // Not played another way, and not with gapless off.
+    CHECK_FALSE(transport.would_join(OutputMode::kBitstream));
+    transport.set_gapless(false);
+    CHECK_FALSE(transport.would_join());
+    transport.set_gapless(true);
+    // Not an item that cannot be played, which the queue passes over for c,
+    // at another rate.
+    ItemFacts broken = queue.items()[1].facts;
+    broken.unplayable_because = "gone";
+    queue.set_facts(1, broken);
+    CHECK_FALSE(transport.would_join());
+    // And not past the end of the queue.
+    queue.set_current(2);
+    CHECK_FALSE(transport.would_join());
+    CHECK(transport.item_finished().action == TransportAction::kStopOutput);
+
+    // Stopped with the output still described - a caller has not closed it
+    // yet - nothing joins either.
+    queue.set_facts(1, item("b").facts);
+    queue.set_current(0);
+    REQUIRE(transport.play().action == TransportAction::kStartItem);
+    transport.set_open_format(open_at(48000));
+    REQUIRE(transport.would_join());
+    REQUIRE(transport.stop().action == TransportAction::kStopOutput);
+    CHECK_FALSE(transport.would_join());
 }
 
 TEST_CASE("transport: next and previous while playing reopen rather than join",
@@ -334,6 +451,57 @@ TEST_CASE("transport: an item that cannot be played is reported, not started",
     CHECK(outcome.state == TransportState::kStopped);
 }
 
+TEST_CASE("transport: an item that fails is passed over, or stops playback at it",
+          "[hearth][transport-state]") {
+    // The caller has marked b, which would not open, as it does before
+    // asking.
+    Queue queue;
+    queue.add(item("a"));
+    QueueItem b = item("b");
+    b.facts.unplayable_because = "the file is not there";
+    queue.add(b);
+    queue.add(item("c"));
+    Transport transport{queue};
+    CHECK(transport.on_failure() == FailurePolicy::kSkip);
+
+    // Skipping is what the end of an item does: on to the next that can play.
+    REQUIRE(transport.play().action == TransportAction::kStartItem);
+    transport.set_open_format(open_at(48000));
+    auto outcome = transport.item_failed(1);
+    CHECK(outcome.state == TransportState::kPlaying);
+    CHECK(outcome.action == TransportAction::kJoinItem);
+    CHECK(outcome.item == 2);
+    CHECK(queue.current_index() == 2);
+
+    // Stopping stops there, with the item current and the reason given.
+    transport.set_on_failure(FailurePolicy::kStop);
+    REQUIRE(queue.set_current(0));
+    outcome = transport.item_failed(1);
+    CHECK(outcome.state == TransportState::kStopped);
+    CHECK(outcome.action == TransportAction::kStopOutput);
+    CHECK(outcome.item == 1);
+    CHECK(queue.current_index() == 1);
+    CHECK(outcome.note.find("\"b\"") != std::string::npos);
+    CHECK(outcome.note.find("the file is not there") != std::string::npos);
+    CHECK(transport.state() == TransportState::kStopped);
+
+    // Already stopped, there is nothing to close; past the end, nothing to
+    // show.
+    outcome = transport.item_failed(1);
+    CHECK(outcome.action == TransportAction::kNone);
+    CHECK(outcome.item == 1);
+    outcome = transport.item_failed(7);
+    CHECK(outcome.action == TransportAction::kNone);
+    CHECK(outcome.item == Queue::kNone);
+    CHECK(queue.current_index() == 1);
+    REQUIRE(transport.play().action == TransportAction::kNone);
+    transport.set_on_failure(FailurePolicy::kSkip);
+    REQUIRE(transport.next().action == TransportAction::kStartItem);
+    outcome = transport.item_failed(7);
+    CHECK(outcome.action == TransportAction::kStopOutput);
+    CHECK(outcome.note.find("finished") != std::string::npos);
+}
+
 TEST_CASE("transport: every state and action describes itself", "[hearth][transport-state]") {
     for (const auto state :
          {TransportState::kStopped, TransportState::kPlaying, TransportState::kPaused}) {
@@ -350,4 +518,6 @@ TEST_CASE("transport: every state and action describes itself", "[hearth][transp
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown transport action");
     }
+    CHECK(ac3::hearth::describe(FailurePolicy::kSkip) == "skip to the next");
+    CHECK(ac3::hearth::describe(FailurePolicy::kStop) == "stop");
 }
