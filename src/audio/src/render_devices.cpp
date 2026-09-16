@@ -170,19 +170,34 @@ std::expected<void, DeviceWatchError> RenderDeviceWatch::start(Options options, 
         // which is all ALSA ever had. Snapshot::watched is what says so.
     }
 
-    impl_->worker = std::thread([impl = impl_.get()] { impl->run(); });
+    {
+        const std::lock_guard<std::mutex> guard{impl_->mutex};
+        impl_->worker = std::thread([impl = impl_.get()] { impl->run(); });
+    }
     return {};
 }
 
 void RenderDeviceWatch::stop() {
     impl_->watcher.stop();
+    // The thread handle is taken under the mutex rather than joined in place:
+    // two threads calling stop() (or a destructor racing an explicit one)
+    // would otherwise both see it joinable and both join, which is undefined.
+    // Whoever takes it does the join; the other finds nothing to do.
+    std::thread worker;
     {
         const std::lock_guard<std::mutex> guard{impl_->mutex};
         impl_->stopping = true;
+        worker = std::move(impl_->worker);
     }
     impl_->wake.notify_all();
-    if (impl_->worker.joinable()) {
-        impl_->worker.join();
+    if (worker.joinable()) {
+        // This waits for an enumeration already in flight, which on ALSA is
+        // an open and a channel-map query per playback PCM and can take a
+        // noticeable fraction of a second (an HDMI output with no display
+        // attached is the slow case). Bounded by the platform call rather
+        // than by the re-probe interval, which is what the condition
+        // variable above is for.
+        worker.join();
     }
 }
 

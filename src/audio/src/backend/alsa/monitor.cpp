@@ -254,6 +254,10 @@ void MonitorSink::flush() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    // The render thread did not get to it - a device that has stopped
+    // answering snd_pcm_wait, or one whose recovery failed. The flag must not
+    // stay raised: it would drop audio submitted after this call returned.
+    impl_->flushing.store(false, std::memory_order_release);
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
@@ -386,6 +390,9 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
         std::vector<std::byte> raw;
         std::uint64_t handed_over = 0;
         bool device_paused = false;
+        // Whether the pause in force was performed by dropping rather than by
+        // snd_pcm_pause, which decides how it is undone.
+        bool dropped_to_pause = false;
 
         while (!stop.stop_requested()) {
             // The device and the queue belong to this thread; pause() and
@@ -395,9 +402,16 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             const bool wanted_pause = impl_->paused.load(std::memory_order_acquire);
             if (wanted_pause != device_paused) {
                 if (wanted_pause) {
-                    if (impl_->can_pause) {
-                        snd_pcm_pause(pcm, 1);
-                    } else {
+                    // snd_pcm_pause only works from RUNNING, and only on
+                    // hardware that claimed it: a stream still PREPARED (the
+                    // start threshold is a whole buffer, so an immediate
+                    // pause after start() is exactly that case) refuses it.
+                    // A refusal is not a pause, so fall through to the drop,
+                    // which always works and loses what the device held -
+                    // the same trade pause() documents for hardware that
+                    // cannot pause at all.
+                    const bool held = impl_->can_pause && snd_pcm_pause(pcm, 1) == 0;
+                    if (!held) {
                         snd_pcm_drop(pcm);
                         snd_pcm_prepare(pcm);
                         // The dropped frames will never be heard, so what
@@ -406,10 +420,14 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                         handed_over = impl_->counter.played();
                         impl_->counter.report(handed_over, 0);
                     }
-                } else if (impl_->can_pause) {
+                    dropped_to_pause = !held;
+                } else if (!dropped_to_pause) {
                     snd_pcm_pause(pcm, 0);
                 } else {
-                    snd_pcm_prepare(pcm);
+                    // Dropped rather than paused, so the stream is PREPARED
+                    // and the writes below start it again; prepare() only
+                    // repeats what the drop path already did.
+                    dropped_to_pause = false;
                 }
                 device_paused = wanted_pause;
             }

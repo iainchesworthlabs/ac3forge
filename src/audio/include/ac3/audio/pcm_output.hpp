@@ -97,10 +97,19 @@ public:
     PcmOutput(const PcmOutput&) = delete;
     PcmOutput& operator=(const PcmOutput&) = delete;
 
-    // Opens `device_id` (empty selects the default render endpoint) at the
-    // device's own channel count and `sample_rate`, ready to take blocks of
-    // `layout`'s slots, patched by speaker_routing(). `low_latency` is
-    // MonitorSink's.
+    // Opens `device_id` at the device's own channel count and `sample_rate`,
+    // ready to take blocks of `layout`'s slots, patched by
+    // speaker_routing(). `low_latency` is MonitorSink's.
+    //
+    // An empty `device_id` selects the endpoint the enumeration marks
+    // default, by its id, rather than leaving "default" to the platform: the
+    // width and the speaker mask everything else is built from come from that
+    // record, so the same endpoint has to be the one opened. The two are the
+    // same thing on Windows, Core Audio and PipeWire; on ALSA the enumeration
+    // prefers a digital output, while the name "default" is whatever the
+    // user's own configuration routes it to - pass that name explicitly to
+    // get it. Where nothing could be enumerated at all, the platform's own
+    // default is opened and the layout's width is used.
     //
     // kDeviceNotFound if the endpoint is not there, or is wider than a patch
     // can name (ac3::render::Routing::kMaxOutputs) - such a device cannot be

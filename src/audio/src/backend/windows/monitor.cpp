@@ -158,6 +158,10 @@ void MonitorSink::flush() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    // The render thread did not get to it - it has broken out of its loop on
+    // a device failure, or the device is not answering. The flag must not
+    // stay raised: it would drop audio submitted after this call returned.
+    impl_->flushing.store(false, std::memory_order_release);
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {

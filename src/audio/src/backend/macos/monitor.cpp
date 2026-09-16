@@ -165,22 +165,34 @@ void MonitorSink::flush() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    // The device stopped calling back before it could do the work - an HDMI
+    // output whose display has gone to sleep, a device pulled out. The flag
+    // must not stay raised: the next callback, whenever the device comes
+    // back, would otherwise drop audio submitted after this call returned.
+    impl_->flushing.store(false, std::memory_order_release);
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
     if (!running() || impl_->io_proc_id == nullptr) {
         return std::unexpected(MonitorError::kNotRunning);
     }
-    if (impl_->paused.exchange(true, std::memory_order_acq_rel)) {
+    if (impl_->paused.load(std::memory_order_acquire)) {
         return {};
     }
     // The IOProc stays registered: stopping the device only stops it being
     // called, so the queue, the format and the device are all still here for
     // resume().
+    //
+    // The flag is raised only AFTER the stop returns, which is what makes
+    // flush()'s paused branch safe: that branch resets the queue and the
+    // frame count from the caller's thread, and may only do so once no
+    // IOProc call can be in flight. Raising the flag first would open a
+    // window in which a flush on another thread saw "paused" while the
+    // IOProc was still running.
     if (AudioDeviceStop(impl_->device, impl_->io_proc_id) != noErr) {
-        impl_->paused.store(false, std::memory_order_release);
         return std::unexpected(MonitorError::kComFailure);
     }
+    impl_->paused.store(true, std::memory_order_release);
     return {};
 }
 
@@ -188,9 +200,13 @@ std::expected<void, MonitorError> MonitorSink::resume() {
     if (!running() || impl_->io_proc_id == nullptr) {
         return std::unexpected(MonitorError::kNotRunning);
     }
-    if (!impl_->paused.exchange(false, std::memory_order_acq_rel)) {
+    if (!impl_->paused.load(std::memory_order_acquire)) {
         return {};
     }
+    // Cleared before the start, for the mirror of pause()'s reason: the
+    // device must not be calling back while anything still believes it is
+    // stopped and may therefore touch the queue from another thread.
+    impl_->paused.store(false, std::memory_order_release);
     if (AudioDeviceStart(impl_->device, impl_->io_proc_id) != noErr) {
         impl_->paused.store(true, std::memory_order_release);
         return std::unexpected(MonitorError::kComFailure);
@@ -302,6 +318,10 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     impl_->format = format;
     impl_->interleaved = (asbd->mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0;
     impl_->scratch.reserve(static_cast<std::size_t>(channels) * 4096);
+    // Reserved too, for the same reason: a non-interleaved device's IOProc
+    // resizes this one per call, and the first such call would otherwise
+    // allocate on Apple's realtime I/O thread.
+    impl_->channel_scratch.reserve(4096);
     impl_->submitted.store(0, std::memory_order_relaxed);
     impl_->rendered.store(0, std::memory_order_relaxed);
     impl_->underruns.store(0, std::memory_order_relaxed);
@@ -312,17 +332,30 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     impl_->handed_over = 0;
     // The delay past the buffer the IOProc fills, in frames, which is what
     // MonitorPosition::latency_frames reports: the device's own presentation
-    // latency and the safety offset the HAL adds in front of it. Both are
-    // already in frames at the device's nominal rate. Either may be missing
-    // on a device that does not publish it, and zero then means "cannot
-    // say", as the header's comment on the field has it.
+    // latency plus the stream's, both already in frames at the nominal rate.
+    //
+    // Deliberately NOT the safety offset. The IOProc's own timestamps already
+    // carry it - the lead between `now` and `output_time` is the safety
+    // offset plus the buffer being filled - and that lead is reported as part
+    // of MonitorPosition::frames_queued below, so adding it here as well
+    // would have a caller summing queue and latency count it twice.
+    //
+    // The stream's latency is read as well as the device's because many
+    // drivers publish the figure on one and leave the other at zero; they
+    // describe different stages of the same path, so the sum is the delay,
+    // and zero from both means "cannot say" as the header's comment has it.
     const auto device_latency = coreaudio::get_property<UInt32>(
         device, coreaudio::address(kAudioDevicePropertyLatency, kAudioDevicePropertyScopeOutput));
-    const auto safety_offset = coreaudio::get_property<UInt32>(
-        device,
-        coreaudio::address(kAudioDevicePropertySafetyOffset, kAudioDevicePropertyScopeOutput));
-    impl_->latency.store(device_latency.value_or(0) + safety_offset.value_or(0),
-                         std::memory_order_relaxed);
+    UInt32 stream_latency = 0;
+    const auto streams =
+        coreaudio::device_streams(device, kAudioDevicePropertyScopeOutput);
+    if (!streams.empty()) {
+        stream_latency =
+            coreaudio::get_property<UInt32>(streams.front(),
+                                            coreaudio::address(kAudioStreamPropertyLatency))
+                .value_or(0);
+    }
+    impl_->latency.store(device_latency.value_or(0) + stream_latency, std::memory_order_relaxed);
 
     // A captureless lambda, not a free function - see
     // platform/macos/capture.cpp's own start() for why: AudioDeviceIOProc

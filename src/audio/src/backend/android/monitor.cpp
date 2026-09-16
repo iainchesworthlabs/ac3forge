@@ -163,6 +163,10 @@ void MonitorSink::flush() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    // The worker did not get to it - a disconnected stream, or one whose
+    // state transitions are not settling. The flag must not stay raised: it
+    // would drop audio submitted after this call returned.
+    impl_->flushing.store(false, std::memory_order_release);
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
@@ -298,8 +302,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
             // instead - and lets a flush through, which is only legal here.
             if (impl_->paused.load(std::memory_order_acquire)) {
                 if (device_running) {
-                    pause_stream(impl_->stream);
-                    device_running = false;
+                    device_running = !pause_stream(impl_->stream);
                 }
                 if (!impl_->flushing.load(std::memory_order_acquire)) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -311,10 +314,18 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
             // start again below unless they had also asked for a pause.
             if (impl_->flushing.exchange(false, std::memory_order_acq_rel)) {
                 if (device_running) {
-                    pause_stream(impl_->stream);
-                    device_running = false;
+                    device_running = !pause_stream(impl_->stream);
                 }
-                flush_stream(impl_->stream);
+                // Only a stream that actually reached PAUSED can be flushed;
+                // asking a still-running one is AAUDIO_ERROR_INVALID_STATE.
+                // What this sink holds is dropped either way - that half is
+                // always in its gift - and the frames the stream still holds
+                // are then heard out, the same limit the Core Audio backend
+                // has for its own reason. Saying the device was flushed when
+                // it refused would be the worse answer.
+                if (!device_running) {
+                    flush_stream(impl_->stream);
+                }
                 impl_->queue->reset();
                 // The frame counters carry on across a flush, so the new
                 // zero is where they stand once the discarded frames have
@@ -328,7 +339,13 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
                 continue;
             }
             if (!device_running) {
-                start_stream(impl_->stream);
+                if (!start_stream(impl_->stream)) {
+                    // Nothing can be written to a stream that will not start,
+                    // and hammering it would spin this thread; wait and try
+                    // again, so a transient refusal recovers on its own.
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    continue;
+                }
                 device_running = true;
             }
             const auto got = impl_->queue->read(chunk);
@@ -339,11 +356,31 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
                 std::fill(chunk.begin() + static_cast<std::ptrdiff_t>(got), chunk.end(), 0.0f);
                 impl_->underruns.fetch_add(1, std::memory_order_relaxed);
             }
-            const auto written = AAudioStream_write(impl_->stream, chunk.data(), kFramesPerWrite,
-                                                     kWriteTimeoutNanos);
-            if (written > 0) {
-                impl_->rendered.fetch_add(static_cast<std::uint64_t>(written),
+            // A blocking write can return short when its timeout expires,
+            // and what it did not take is still this thread's to deliver -
+            // dropping the tail would lose decoded audio silently and leave a
+            // discontinuity in the middle of a block. A negative result is a
+            // dead stream (AAUDIO_ERROR_DISCONNECTED when a route changes or
+            // headphones are pulled) and returns at once, so the loop must
+            // end rather than spin on it.
+            std::int32_t delivered = 0;
+            for (int attempt = 0; attempt < 50 && delivered < kFramesPerWrite &&
+                                   !impl_->worker_stop_requested.load(std::memory_order_acquire);
+                 ++attempt) {
+                const auto written = AAudioStream_write(
+                    impl_->stream, chunk.data() + (static_cast<std::size_t>(delivered) * channels),
+                    kFramesPerWrite - delivered, kWriteTimeoutNanos);
+                if (written < 0) {
+                    break;
+                }
+                delivered += written;
+            }
+            if (delivered > 0) {
+                impl_->rendered.fetch_add(static_cast<std::uint64_t>(delivered),
                                           std::memory_order_relaxed);
+            }
+            if (delivered < kFramesPerWrite) {
+                break;
             }
 
             // The stream's own clock: the presentation timestamp, which is

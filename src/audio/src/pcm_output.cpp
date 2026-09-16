@@ -126,12 +126,35 @@ std::expected<PcmOutputInfo, MonitorError> PcmOutput::start(const std::string& d
     if (info.outputs > render::Routing::kMaxOutputs) {
         return std::unexpected(MonitorError::kDeviceNotFound);
     }
+    // A mask is only usable as "which speaker each channel is" if it has one
+    // bit per channel. Nothing guarantees a backend reports the two
+    // consistently - a Core Audio layout can carry a different number of
+    // descriptions than the device has output channels, and an ALSA channel
+    // map can arrive for a width the device could not report - and a mask
+    // narrower or wider than the stream would both misplace channels and, on
+    // WASAPI, be refused outright beside a mismatched channel count. Where
+    // they disagree the mask is discarded: speaker_routing() then assumes the
+    // standard arrangement for the width, which is the same fallback a
+    // backend that reports no mask at all gets.
+    if (info.speakers != 0 && speaker_count(info.speakers) != info.outputs) {
+        info.speakers = 0;
+    }
 
     // The mask goes to the sink as well as into the patch: it is what tells a
     // shared-mode engine which speaker each channel of the stream is for, and
     // 0 leaves the platform to its own default for the width (monitor.hpp).
-    const auto started =
-        impl_->sink.start(device_id, sample_rate, info.outputs, info.speakers, low_latency);
+    //
+    // info.device_id, not the caller's: where the enumeration resolved an
+    // endpoint, that is the one whose width and speakers everything above was
+    // taken from, so it has to be the one opened. An empty id left to each
+    // platform's own idea of "default" is not always the same endpoint the
+    // enumeration marks default - on ALSA the enumeration prefers a digital
+    // output while an empty name opens whatever the user's configuration
+    // routes "default" to - and opening one device while describing another
+    // would put a patch built for the second onto the first. A caller wanting
+    // the configured default by name can still ask for it ("default").
+    const auto started = impl_->sink.start(info.device_id, sample_rate, info.outputs,
+                                            info.speakers, low_latency);
     if (!started) {
         return std::unexpected(started.error());
     }

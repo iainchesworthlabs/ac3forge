@@ -286,6 +286,14 @@ EndpointFacts endpoint_facts(const std::string& name) {
             }
             if (speaker_count(speakers) == map.channels) {
                 facts.speakers = speakers;
+                // A map found while the width was unknown is itself the
+                // width: reporting a mask for eight speakers beside a channel
+                // count of "cannot say" would let a caller pair the two with
+                // a stream of some third width. The two figures come from the
+                // same query, so they agree by construction.
+                if (facts.channels == 0) {
+                    facts.channels = static_cast<std::uint16_t>(map.channels);
+                }
                 break;
             }
         }
@@ -344,14 +352,26 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
     std::vector<RenderDeviceInfo> devices;
     for (const auto& candidate : find_candidates(alsa::Include::kEveryPlaybackPcm)) {
         EndpointFacts facts = endpoint_facts(candidate.hw_name);
+        // An output that is neither HDMI nor S/PDIF is not probed for
+        // passthrough at all, and this is load-bearing rather than an
+        // optimisation. Such an output is named through plug, and plug accepts
+        // ANY format, width and rate by construction - it would resample a
+        // burst rather than refuse it, so the probe would answer yes for every
+        // analogue jack on the machine. `play` believes that answer: it would
+        // hand IEC 61937 bursts to a resampler with no non-audio bit set, which
+        // is full-scale noise out of the speakers, the exact outcome
+        // device_names.hpp's header exists to prevent. The probe-decides
+        // reasoning in that header's DigitalOutput comment holds only for a
+        // name that would carry channel status, which a plug name cannot.
+        const bool digital = candidate.kind != DigitalOutput::kNone;
         RenderDeviceInfo info{
             .id = candidate.name,
             .name = candidate.friendly,
             .is_default = false,
             .supports_ac3_passthrough =
-                probe_format(candidate.name, BitstreamFormat::kAc3, sample_rate),
+                digital && probe_format(candidate.name, BitstreamFormat::kAc3, sample_rate),
             .supports_eac3_passthrough =
-                probe_format(candidate.name, BitstreamFormat::kEac3, sample_rate),
+                digital && probe_format(candidate.name, BitstreamFormat::kEac3, sample_rate),
             // The control probe: the same carrier format on the raw hardware
             // device, with no channel status. A device that takes this but
             // neither of the above cannot bitstream; one that takes none of

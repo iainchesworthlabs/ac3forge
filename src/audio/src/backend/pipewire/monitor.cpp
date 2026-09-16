@@ -21,10 +21,12 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
+#include <thread>
 
 #include "ac3/audio/playback_counter.hpp"
 #include "ac3/audio/ring_buffer.hpp"
@@ -74,6 +76,16 @@ struct MonitorSink::Impl {
     // `ticks` counts from the stream's start and a flush does not reset it,
     // so the figures counting from the last flush need their own zero.
     std::atomic<std::uint64_t> tick_baseline{0};
+    // A flush the process callback performs, for the same reason every other
+    // backend's consumer performs its own: the callback owns the queue's read
+    // side, and this one runs on the graph's DATA thread rather than the
+    // thread loop (PW_STREAM_FLAG_RT_PROCESS), so pw_thread_loop_lock does
+    // NOT exclude it - resetting the ring buffer under that lock would race
+    // the reader's own index update and leave the buffer inconsistent for the
+    // rest of the stream. `flushes` counts the ones it has done, which is
+    // what flush() waits for.
+    std::atomic_bool flushing{false};
+    std::atomic<std::uint64_t> flushes{0};
 
     // See capture.cpp's Impl for the locking discipline this shares.
     std::atomic<ConnectState> connect_state{ConnectState::kPending};
@@ -110,6 +122,21 @@ struct MonitorSink::Impl {
         if (spa_buf->n_datas == 0 || spa_buf->datas[0].data == nullptr) {
             pw_stream_queue_buffer(impl.stream.get(), buffer);
             return;
+        }
+
+        // A flush the caller asked for. Done here, before this buffer is
+        // filled, so the buffer goes out silent from the emptied queue and
+        // the counters restart together with it.
+        if (impl.flushing.exchange(false, std::memory_order_acq_rel)) {
+            impl.queue->reset();
+            pw_time at_flush{};
+            if (pw_stream_get_time_n(impl.stream.get(), &at_flush, sizeof(at_flush)) == 0) {
+                impl.tick_baseline.store(at_flush.ticks, std::memory_order_relaxed);
+            }
+            impl.counter.restart();
+            impl.rendered.store(0, std::memory_order_relaxed);
+            impl.submitted.store(0, std::memory_order_relaxed);
+            impl.flushes.fetch_add(1, std::memory_order_release);
         }
 
         const std::uint32_t stride = static_cast<std::uint32_t>(sizeof(float)) * impl.channels;
@@ -199,23 +226,39 @@ void MonitorSink::flush() {
     if (!running() || !impl_->loop || !impl_->stream) {
         return;
     }
-    // Under the loop's lock the process callback cannot be running, so the
-    // queue's read side is this thread's for the moment: pw_stream_flush()
-    // drops what the stream holds and the queue is reset beside it, which is
-    // the whole of what flush() promises.
+    // pw_stream_flush() drops what the stream holds, and must be called from
+    // the loop's own context. The queue is NOT reset here: the process
+    // callback runs on the graph's data thread, which this lock does not
+    // exclude, so the reset is handed to the callback and waited for - see
+    // Impl's `flushing`.
     pw_thread_loop_lock(impl_->loop.get());
     pw_stream_flush(impl_->stream.get(), false);
-    impl_->queue->reset();
-    // The graph's tick counter carries on across a flush, so the new zero is
-    // wherever it stands now.
-    pw_time time{};
-    if (pw_stream_get_time_n(impl_->stream.get(), &time, sizeof(time)) == 0) {
-        impl_->tick_baseline.store(time.ticks, std::memory_order_relaxed);
-    }
-    impl_->counter.restart();
-    impl_->rendered.store(0, std::memory_order_relaxed);
-    impl_->submitted.store(0, std::memory_order_relaxed);
+    const pw_stream_state state = pw_stream_get_state(impl_->stream.get(), nullptr);
     pw_thread_loop_unlock(impl_->loop.get());
+
+    // An inactive stream is not being called back, so there is nobody to hand
+    // the work to and nobody to race with either: a paused stream's queue is
+    // this thread's to reset.
+    if (state != PW_STREAM_STATE_STREAMING) {
+        impl_->queue->reset();
+        impl_->counter.restart();
+        impl_->rendered.store(0, std::memory_order_relaxed);
+        impl_->submitted.store(0, std::memory_order_relaxed);
+        return;
+    }
+
+    const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flushing.store(true, std::memory_order_release);
+    for (int waited = 0; waited < 200; ++waited) {
+        if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    // The graph stopped calling back before it could do the work; the flag
+    // must not stay raised, or the next callback - a resume, a route change -
+    // would drop audio submitted after this call had already returned.
+    impl_->flushing.store(false, std::memory_order_release);
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
@@ -288,6 +331,8 @@ void MonitorSink::stop() {
     }
     impl_->stream.reset();
     impl_->loop.reset();
+    // A flush nobody performed does not outlive the stream it was asked of.
+    impl_->flushing.store(false, std::memory_order_relaxed);
     impl_->running.store(false, std::memory_order_release);
 }
 
@@ -330,6 +375,8 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     impl_->counter.restart();
     // A fresh stream's ticks start at zero, so nothing to subtract yet.
     impl_->tick_baseline.store(0, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
+    impl_->flushes.store(0, std::memory_order_relaxed);
     impl_->connect_state.store(ConnectState::kPending, std::memory_order_relaxed);
 
     pw_properties* props = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY,

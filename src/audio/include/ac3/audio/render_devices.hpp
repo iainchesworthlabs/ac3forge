@@ -99,7 +99,10 @@ public:
                                                                Sources sources);
 
     // Stops the worker and unregisters, and returns once no callback can be
-    // in flight. Safe when not running, and safe to call twice.
+    // in flight. Safe when not running, and safe to call twice - including
+    // from two threads at once, and from a destructor racing an explicit
+    // call. It waits for an enumeration already under way, which on ALSA
+    // means opening every playback PCM, so it is not instant.
     void stop();
     [[nodiscard]] bool running() const;
 
