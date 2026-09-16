@@ -142,7 +142,7 @@ neither a partition nor I2S:
 | Source | Sink |
 |---|---|
 | `partition` — flash (default) | `i2s` — stereo DAC (default), 32-bit slots, master or slave |
-| `sd` — SD card over SDMMC | `tdm` — TDM on one data line, at most four 32-bit slots on an ESP32-S3 |
+| `sd` — SD card over SDMMC | `tdm` — TDM, four 32-bit or eight 16-bit slots a line, and both lines gives eight or sixteen |
 | `fatfs` — a FAT volume in flash | `capture` — converts and checks; what CI runs |
 | `http` — an HTTP body over WiFi | `null` — counts blocks |
 
@@ -982,9 +982,10 @@ run, under QEMU.
   still structural: a dependent's channels go through the access unit's
   own vectors, 73 KB at the peak, where writing them straight into their
   output slots would remove them; PSRAM for the staging remains the blunt
-  alternative. One S3 I2S line carries at most four 32-bit TDM slots, because a
-  frame holds 128 bits, so twelve need both controllers at 16 bits or a TDM
-  device fed by several lines; a twelve-slot DMA queue competes with WiFi for
+  alternative. One S3 I2S line carries 128 bits a frame — four 32-bit TDM
+  slots or eight 16-bit ones — so twelve need both controllers at 16 bits,
+  which is the shape the sink opens now (sixteen slots in all); a
+  twelve-slot DMA queue competes with WiFi for
   internal RAM; and at 0.90x the second core stops being optional for anything
   that decodes 7.1.4 and does something else
   (`planning/esp32-714-realtime.md` in the repository).

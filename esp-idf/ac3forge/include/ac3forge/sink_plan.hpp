@@ -87,10 +87,11 @@ struct SinkLineCeiling {
     std::size_t slots = 0;
     // Whether a second line can carry the overflow at this width: it always
     // runs TDM once it is needed at all (see the header comment on why both
-    // lines must share one frame shape). Only at 32 bits so far - the
-    // streaming example's sink writes a second 16-bit line nowhere yet, so
-    // sixteen 16-bit slots on two lines stay refused until it does.
-    bool second_line_usable = false;
+    // lines must share one frame shape). True at both widths the component
+    // supports, which is what puts sixteen channels within reach of a part
+    // with two I2S peripherals: two lines of eight 16-bit slots, or two of
+    // four 32-bit ones.
+    bool second_line_usable = true;
 };
 
 [[nodiscard]] constexpr SinkLineCeiling line_ceiling(int slot_bits) {
@@ -98,7 +99,7 @@ struct SinkLineCeiling {
         return {4, true};  // 128-bit frame / 32
     }
     if (slot_bits == 16) {
-        return {8, false};  // 128-bit frame / 16
+        return {8, true};  // 128-bit frame / 16
     }
     return {0, false};
 }

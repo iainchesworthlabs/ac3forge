@@ -127,15 +127,17 @@ ac3forge::DacQueueModel g_model;
 
 // One block of interleaved samples per line, at that line's own ceiling width,
 // in the build's slot width only: 32-bit slots for lines 0 and 1 (4 slots,
-// 4 KB each), or 16-bit slots for line 0 (8 slots, 4 KB), where standard
-// mode's stereo pair uses the first two of them. The other width's arrays are
-// empty. At namespace scope because the sink is the only thing that needs
-// them - the player hands over planar float and never sees this format at all.
+// 4 KB each), or 16-bit slots for both (8 slots, 4 KB each), where standard
+// mode's stereo pair uses the first two of line 0's. The other width's arrays
+// are empty, and a 128-bit frame costs the same 4 KB a line either way. At
+// namespace scope because the sink is the only thing that needs them - the
+// player hands over planar float and never sees this format at all.
 constexpr std::size_t kWideSlots = kSlotBits == 32 ? kMaxLineSlots : 0;
 constexpr std::size_t kNarrowSlots = kSlotBits == 16 ? kMaxLineSlots : 0;
 std::array<std::int32_t, ac3::kSamplesPerBlock * kWideSlots> g_wide0{};
 std::array<std::int32_t, ac3::kSamplesPerBlock * kWideSlots> g_wide1{};
 std::array<std::int16_t, ac3::kSamplesPerBlock * kNarrowSlots> g_narrow0{};
+std::array<std::int16_t, ac3::kSamplesPerBlock * kNarrowSlots> g_narrow1{};
 
 // The DMA queue, from Kconfig - see main/Kconfig.projbuild for why the
 // default is smaller than a frame. Computed once, from this line's ceiling
@@ -378,10 +380,12 @@ void sink_write(std::span<const std::span<const float>> channels) {
     g_model.arriving(esp_timer_get_time());
     std::size_t bytes_for_model = 0;
 
-    // Per line, in either width. Line 1 gets no 16-bit buffer: a second line
-    // is only ever planned at 32 bits today (ac3forge::line_ceiling). In a
-    // fixed frame line 1 is written for every layout, with no channels at all
-    // while line 0 holds the whole layout, which writes a block of zeroed slots.
+    // Per line, in either width, each with its own buffers: a second line is
+    // planned at both widths now (ac3forge::line_ceiling), so line 1 carries
+    // slots 8-15 of a sixteen-channel layout at 16 bits as it carries slots
+    // 4-7 at 32. In a fixed frame line 1 is written for every layout, with no
+    // channels at all while line 0 holds the whole layout, which writes a
+    // block of zeroed slots.
     if (g_line0.slots > 0) {
         const std::size_t used = std::min(g_line0.channels, channels.size());
         bytes_for_model = write_line(g_line0, channels.subspan(0, used), frames, g_wide0, g_narrow0);
@@ -390,7 +394,7 @@ void sink_write(std::span<const std::span<const float>> channels) {
         const std::size_t offset = std::min(g_line0.channels, channels.size());
         const std::size_t available = channels.size() > offset ? channels.size() - offset : 0;
         const std::size_t used = std::min(g_line1.channels, available);
-        (void)write_line(g_line1, channels.subspan(offset, used), frames, g_wide1, {});
+        (void)write_line(g_line1, channels.subspan(offset, used), frames, g_wide1, g_narrow1);
     }
 
     g_model.queued(bytes_for_model, esp_timer_get_time());
