@@ -49,7 +49,7 @@ On Windows, the three features that touch sound hardware are all implemented ove
   ship (see [Object signing](../concepts/object-signing.md)) — and needs nothing but a spatial-
   sound-capable endpoint to do it, no AVR and no key.
 
-These four are not equally verified against real hardware, and the project's own documentation
+These five are not equally verified against real hardware, and the project's own documentation
 is deliberately explicit about the difference.
 
 !!! note "MonitorSink is confirmed against real hardware"
@@ -63,6 +63,22 @@ is deliberately explicit about the difference.
     rather than the bed's fixed six channels. Both are fixed; see
     `src/audio/src/backend/windows/monitor.cpp` and `run_live` in
     `apps/cli/commands/live_audio.cpp`.
+
+!!! note "Playback position, pause and flush are confirmed; a multichannel patch is not"
+    `MonitorSink`'s playback position, `pause()`/`resume()` and `flush()` have been exercised
+    against the default Realtek endpoint by `ac3tests "[monitor-live]"` — a hidden case, since it
+    needs a sound card and makes a noise: the position advances with the device's own clock, a
+    pause holds it while the queue goes on taking frames, a flush drops both buffers and the
+    count restarts, and playback resumes from the next submit. `ac3cli identify` walked the tone
+    across that endpoint's own speakers, over a 5.1 layout it can place only two channels of, and
+    with the pair swapped.
+
+    What that machine cannot show is a **multichannel** patch: both its endpoints are stereo, and
+    which speaker an output actually reaches is exactly what a two-channel device cannot
+    disprove. That check needs an 8-channel endpoint — an AVR over HDMI as LPCM — and is
+    `ac3cli identify 0 7.1.4 3` heard from the speaker each printed line names, then the same
+    command with a patch that swaps two channels heard to swap those two speakers and nothing
+    else.
 
 !!! note "SpatialObjectSink is confirmed against a real spatial endpoint"
     `ac3cli spatial` has activated `ISpatialAudioObjectRenderStream` and rendered a real Atmos

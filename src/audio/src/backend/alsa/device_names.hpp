@@ -225,4 +225,14 @@ namespace detail {
     return fmt::format("hw:CARD={},DEV={}", card_id, device);
 }
 
+// The same card/device pair through the plug layer: what a caller playing
+// DECODED audio to an ordinary output should open, since plug converts the
+// rate, width and sample format the hardware itself will not take. An
+// analogue jack, a USB DAC or a Bluetooth sink is named this way; the digital
+// outputs above are named by their plugin and a per-card logical index
+// instead, because that is what carries the channel status a bitstream needs.
+[[nodiscard]] inline std::string plug_device_name(std::string_view card_id, int device) {
+    return fmt::format("plughw:CARD={},DEV={}", card_id, device);
+}
+
 }  // namespace ac3::alsa

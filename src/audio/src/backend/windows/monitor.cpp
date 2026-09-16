@@ -17,10 +17,14 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstring>
+#include <optional>
 #include <thread>
 
+#include "ac3/audio/playback_counter.hpp"
 #include "ac3/audio/ring_buffer.hpp"
+#include "ac3/audio/speakers.hpp"
 
 namespace ac3::audio {
 
@@ -72,24 +76,10 @@ std::expected<ComPtr<IMMDeviceEnumerator>, MonitorError> make_enumerator() {
     return enumerator;
 }
 
-// A default channel mask for a bare channel count, so a caller that does not
-// know or care about speaker positions (an offline file preview, say) still
-// gets a WAVEFORMATEXTENSIBLE the audio engine can place sensibly. Mirrors
-// the masks KSAUDIO_SPEAKER_* would spell out for the layouts this project
-// actually produces.
-constexpr DWORD kSpeakerStereo = 0x3;        // FL FR
-constexpr DWORD kSpeaker51 = 0x3F;           // FL FR FC LFE BL BR
-constexpr DWORD kSpeaker71 = 0x63F;          // 5.1 + side left/right
-
-DWORD default_channel_mask(std::uint16_t channels) {
-    switch (channels) {
-        case 1: return 0x4;  // FC
-        case 2: return kSpeakerStereo;
-        case 6: return kSpeaker51;
-        case 8: return kSpeaker71;
-        default: return 0;  // let the engine infer one
-    }
-}
+// The mask the audio engine is given for a bare channel count, when a caller
+// does not name one: speakers.hpp's own table, so the arrangement a width
+// implies is decided in one place for every backend (0 there means "no
+// standard arrangement", which is what the engine is left to infer).
 
 }  // namespace
 
@@ -112,6 +102,21 @@ struct MonitorSink::Impl {
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
     std::uint16_t channels = 0;
+    // What the render thread last saw of the device, for position(): the
+    // frames handed over against what GetCurrentPadding said it still held.
+    // Only the render thread reports, and only it calls WASAPI - IAudioClient
+    // is not documented thread-safe, so a position() on the caller's thread
+    // reads the counter instead of asking the device itself.
+    PlaybackCounter counter;
+    // IAudioClient::GetStreamLatency at start, in frames: the delay past the
+    // buffer this sink writes into.
+    std::atomic<std::uint32_t> latency{0};
+    // Set by pause()/resume() and flush(); acted on by the render thread,
+    // which owns the device and the queue's read side. `flushes` counts the
+    // flushes it has completed, which is what flush() waits for.
+    std::atomic_bool paused{false};
+    std::atomic_bool flushing{false};
+    std::atomic<std::uint64_t> flushes{0};
 };
 
 MonitorSink::MonitorSink() : impl_(std::make_unique<Impl>()) {}
@@ -128,6 +133,55 @@ MonitorStats MonitorSink::stats() const {
     return {.frames_submitted = impl_->submitted.load(std::memory_order_relaxed),
             .frames_rendered = impl_->rendered.load(std::memory_order_relaxed),
             .underruns = impl_->underruns.load(std::memory_order_relaxed)};
+}
+
+std::optional<MonitorPosition> MonitorSink::position() const {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
+        return std::nullopt;
+    }
+    const std::uint64_t queued_here = impl_->queue->available() / impl_->channels;
+    return impl_->counter.position(queued_here, impl_->latency.load(std::memory_order_relaxed));
+}
+
+void MonitorSink::flush() {
+    if (!running()) {
+        return;
+    }
+    const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flushing.store(true, std::memory_order_release);
+    // The render thread stops the device, resets it and drops the queue; a
+    // whole period of grace is longer than it needs, and giving up after that
+    // is better than blocking a caller on a device that has stopped answering.
+    for (int waited = 0; waited < 200; ++waited) {
+        if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    // The render thread did not get to it - it has broken out of its loop on
+    // a device failure, or the device is not answering. The flag must not
+    // stay raised: it would drop audio submitted after this call returned.
+    impl_->flushing.store(false, std::memory_order_release);
+}
+
+std::expected<void, MonitorError> MonitorSink::pause() {
+    if (!running()) {
+        return std::unexpected(MonitorError::kNotRunning);
+    }
+    impl_->paused.store(true, std::memory_order_release);
+    return {};
+}
+
+std::expected<void, MonitorError> MonitorSink::resume() {
+    if (!running()) {
+        return std::unexpected(MonitorError::kNotRunning);
+    }
+    impl_->paused.store(false, std::memory_order_release);
+    return {};
+}
+
+bool MonitorSink::paused() const {
+    return impl_->paused.load(std::memory_order_acquire);
 }
 
 bool MonitorSink::can_submit() const {
@@ -173,6 +227,9 @@ void MonitorSink::stop() {
         impl_->worker.request_stop();
         impl_->worker.join();
     }
+    // A pause is a property of a running stream, so it does not outlive one.
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
     impl_->running.store(false, std::memory_order_release);
 }
 
@@ -224,7 +281,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     format.Format.nAvgBytesPerSec = sample_rate * format.Format.nBlockAlign;
     format.Format.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
     format.Samples.wValidBitsPerSample = 32;
-    format.dwChannelMask = channel_mask != 0 ? channel_mask : default_channel_mask(channels);
+    format.dwChannelMask = channel_mask != 0 ? channel_mask : default_speakers(channels);
     format.SubFormat = kSubtypeIeeeFloat;
 
     // Shared mode's audio engine carries its own sample-rate/channel-matrix
@@ -295,6 +352,21 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     impl_->submitted.store(0, std::memory_order_relaxed);
     impl_->rendered.store(0, std::memory_order_relaxed);
     impl_->underruns.store(0, std::memory_order_relaxed);
+    impl_->counter.restart();
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
+    impl_->flushes.store(0, std::memory_order_relaxed);
+    // GetStreamLatency is in 100 ns units, and is the delay past the buffer
+    // this sink fills - what MonitorPosition::latency_frames reports.
+    REFERENCE_TIME stream_latency = 0;
+    if (SUCCEEDED(client->GetStreamLatency(&stream_latency)) && stream_latency > 0) {
+        impl_->latency.store(
+            static_cast<std::uint32_t>(static_cast<std::uint64_t>(stream_latency) * sample_rate /
+                                       10'000'000ULL),
+            std::memory_order_relaxed);
+    } else {
+        impl_->latency.store(0, std::memory_order_relaxed);
+    }
     impl_->running.store(true, std::memory_order_release);
 
     impl_->worker = std::jthread([this, client, render, ready, buffer_frames,
@@ -305,8 +377,45 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
 
         std::vector<float> chunk;
         client->Start();
+        bool device_running = true;
+        std::uint64_t handed_over = 0;
 
         while (!stop.stop_requested()) {
+            // A pause stops the device and leaves everything else standing:
+            // the queue keeps what it holds and goes on taking frames, and no
+            // render event arrives to wait for while stopped, so the loop
+            // sleeps instead of blocking on one that will not come.
+            if (impl_->paused.load(std::memory_order_acquire)) {
+                if (device_running) {
+                    client->Stop();
+                    device_running = false;
+                }
+                if (!impl_->flushing.load(std::memory_order_acquire)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    continue;
+                }
+            }
+            // A flush drops both buffers: Reset() is what discards the frames
+            // the device holds, and it is only legal while stopped. The
+            // counters restart with them, which is what position() promises.
+            if (impl_->flushing.exchange(false, std::memory_order_acq_rel)) {
+                if (device_running) {
+                    client->Stop();
+                    device_running = false;
+                }
+                client->Reset();
+                impl_->queue->reset();
+                handed_over = 0;
+                impl_->counter.restart();
+                impl_->rendered.store(0, std::memory_order_relaxed);
+                impl_->submitted.store(0, std::memory_order_relaxed);
+                impl_->flushes.fetch_add(1, std::memory_order_release);
+                continue;
+            }
+            if (!device_running) {
+                client->Start();
+                device_running = true;
+            }
             if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
                 continue;
             }
@@ -314,6 +423,9 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             if (FAILED(client->GetCurrentPadding(&padding))) {
                 break;
             }
+            // The device's own clock, as close as a shared-mode stream can
+            // ask: everything handed over, less what it has not played yet.
+            impl_->counter.report(handed_over, padding);
             const UINT32 wanted_frames = buffer_frames - padding;
             if (wanted_frames == 0) {
                 continue;
@@ -333,6 +445,8 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             }
             std::memcpy(target, chunk.data(), wanted_samples * sizeof(float));
             render->ReleaseBuffer(wanted_frames, 0);
+            handed_over += wanted_frames;
+            impl_->counter.report(handed_over, padding + wanted_frames);
             impl_->rendered.fetch_add(got / channels, std::memory_order_relaxed);
         }
 

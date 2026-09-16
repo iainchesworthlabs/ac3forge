@@ -35,4 +35,14 @@ void MonitorSink::stop() {}
 bool MonitorSink::running() const { return false; }
 MonitorStats MonitorSink::stats() const { return {}; }
 
+std::optional<MonitorPosition> MonitorSink::position() const { return std::nullopt; }
+void MonitorSink::flush() {}
+std::expected<void, MonitorError> MonitorSink::pause() {
+    return std::unexpected(MonitorError::kNoBackend);
+}
+std::expected<void, MonitorError> MonitorSink::resume() {
+    return std::unexpected(MonitorError::kNoBackend);
+}
+bool MonitorSink::paused() const { return false; }
+
 }  // namespace ac3::audio

@@ -126,8 +126,13 @@ add_executable(ac3tests
     oba/test_oba.cpp
     encoder/test_plan.cpp
     audio/test_live_positions.cpp
+    audio/test_monitor_live.cpp
+    audio/test_pcm_output.cpp
+    audio/test_playback_counter.cpp
+    audio/test_render_devices.cpp
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
+    audio/test_speakers.cpp
     oba/test_scene.cpp
     oba/test_scene_osc.cpp
     verify/test_eac3_selfcheck.cpp

@@ -64,6 +64,7 @@
 #include <vector>
 
 #include "ac3/audio/ring_buffer.hpp"
+#include "ac3/audio/speakers.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 #include "alsa_support.hpp"
 #include "candidates.hpp"
@@ -196,34 +197,109 @@ bool probe(const std::string& name, std::uint32_t carrier) {
     return configure(handle, carrier, /*burst_frames=*/0, /*commit=*/false);
 }
 
-// How many channels the endpoint itself renders, for
-// RenderDeviceInfo::channels. ALSA answers this from the hardware parameter
-// space rather than from a mix format, so the figure is the device's own
-// maximum rather than whatever a shared mixer happens to be running at - the
-// right number for "is a decoded programme wider than this output?", which is
-// what the field is for. 0 on any failure, including a device that is simply
-// busy: the header's wording makes 0 mean "cannot say", never "no channels".
-std::uint16_t endpoint_channels(const std::string& name) {
+// The SPEAKER_* bit an ALSA channel position names (ac3::audio::speakers.hpp).
+// 0 for the positions that are not a speaker - SND_CHMAP_NA (a channel to
+// leave alone), MONO, and the two "unknown" values - and for a position
+// WAVEFORMATEXTENSIBLE has no bit for.
+std::uint32_t speaker_of_position(unsigned int position) {
+    switch (position) {
+        case SND_CHMAP_FL: return kSpeakerFrontLeft;
+        case SND_CHMAP_FR: return kSpeakerFrontRight;
+        case SND_CHMAP_FC: return kSpeakerFrontCentre;
+        case SND_CHMAP_LFE: return kSpeakerLowFrequency;
+        case SND_CHMAP_RL: return kSpeakerBackLeft;
+        case SND_CHMAP_RR: return kSpeakerBackRight;
+        case SND_CHMAP_FLC: return kSpeakerFrontLeftOfCentre;
+        case SND_CHMAP_FRC: return kSpeakerFrontRightOfCentre;
+        case SND_CHMAP_RC: return kSpeakerBackCentre;
+        case SND_CHMAP_SL: return kSpeakerSideLeft;
+        case SND_CHMAP_SR: return kSpeakerSideRight;
+        case SND_CHMAP_TC: return kSpeakerTopCentre;
+        case SND_CHMAP_TFL: return kSpeakerTopFrontLeft;
+        case SND_CHMAP_TFC: return kSpeakerTopFrontCentre;
+        case SND_CHMAP_TFR: return kSpeakerTopFrontRight;
+        case SND_CHMAP_TRL: return kSpeakerTopBackLeft;
+        case SND_CHMAP_TRC: return kSpeakerTopBackCentre;
+        case SND_CHMAP_TRR: return kSpeakerTopBackRight;
+        default: return 0;
+    }
+}
+
+// What the endpoint itself renders, for RenderDeviceInfo's channels, speakers
+// and sample_rates. All three come from one open: this probe is intrusive
+// (see probe() above - ALSA has no IsFormatSupported), so the device is held
+// once rather than three times over.
+//
+// The width comes from the hardware parameter space rather than from a mix
+// format, so it is the device's own maximum rather than whatever a shared
+// mixer happens to be running at - the right number for "is a decoded
+// programme wider than this output?". Everything stays at its "cannot say"
+// value on any failure, including a device that is merely busy: 0 never means
+// "no channels", and an empty rate list never means "no rates".
+struct EndpointFacts {
+    std::uint16_t channels = 0;
+    std::uint32_t speakers = 0;
+    std::vector<std::uint32_t> sample_rates;
+};
+
+EndpointFacts endpoint_facts(const std::string& name) {
+    EndpointFacts facts;
     const alsa::QuietErrors quiet;
     snd_pcm_t* handle = nullptr;
     if (snd_pcm_open(&handle, name.c_str(), SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK) < 0) {
-        return 0;
+        return facts;
     }
     const Pcm owned{handle};
     const HwParams params;
-    if (!params) {
-        return 0;
+    if (!params || snd_pcm_hw_params_any(handle, params.get()) < 0) {
+        return facts;
     }
+
     unsigned int channels = 0;
-    if (snd_pcm_hw_params_any(handle, params.get()) < 0 ||
-        snd_pcm_hw_params_get_channels_max(params.get(), &channels) < 0) {
-        return 0;
+    if (snd_pcm_hw_params_get_channels_max(params.get(), &channels) == 0) {
+        // ALSA reports a plug device's maximum as something absurd (1024 or
+        // more) because the plug layer will invent any width asked of it. That
+        // is not an endpoint width, so it is reported as unknown rather than
+        // as a number no downmix decision should be made from.
+        facts.channels = channels > 0 && channels <= 64 ? static_cast<std::uint16_t>(channels) : 0;
     }
-    // ALSA reports a plug device's maximum as something absurd (1024 or more)
-    // because the plug layer will invent any width asked of it. That is not an
-    // endpoint width, so it is reported as unknown rather than as a number no
-    // downmix decision should be made from.
-    return channels > 0 && channels <= 64 ? static_cast<std::uint16_t>(channels) : 0;
+
+    for (const std::uint32_t rate : {44100U, 48000U, 88200U, 96000U, 176400U, 192000U}) {
+        if (snd_pcm_hw_params_test_rate(handle, params.get(), rate, 0) == 0) {
+            facts.sample_rates.push_back(rate);
+        }
+    }
+
+    // The driver's channel maps, one per width it can be configured in: the
+    // one for this endpoint's own width says which speaker each channel is.
+    // HDMI drivers fill these in; many others answer nothing, which stays
+    // "cannot say".
+    if (snd_pcm_chmap_query_t** maps = snd_pcm_query_chmaps(handle); maps != nullptr) {
+        for (snd_pcm_chmap_query_t** entry = maps; *entry != nullptr; ++entry) {
+            const snd_pcm_chmap_t& map = (*entry)->map;
+            if (facts.channels != 0 && map.channels != facts.channels) {
+                continue;
+            }
+            std::uint32_t speakers = 0;
+            for (unsigned int i = 0; i < map.channels; ++i) {
+                speakers |= speaker_of_position(map.pos[i]);
+            }
+            if (speaker_count(speakers) == map.channels) {
+                facts.speakers = speakers;
+                // A map found while the width was unknown is itself the
+                // width: reporting a mask for eight speakers beside a channel
+                // count of "cannot say" would let a caller pair the two with
+                // a stream of some third width. The two figures come from the
+                // same query, so they agree by construction.
+                if (facts.channels == 0) {
+                    facts.channels = static_cast<std::uint16_t>(map.channels);
+                }
+                break;
+            }
+        }
+        snd_pcm_free_chmaps(maps);
+    }
+    return facts;
 }
 
 // Whether `base` will carry `format` at `content_rate`: the device name with
@@ -262,36 +338,67 @@ std::string_view describe(PassthroughError error) {
 std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_devices(
     std::uint32_t sample_rate) {
     const int preferred_card = alsa::default_card();
+    // Which entry gets is_default, decided after the walk: the first DIGITAL
+    // output on the configured default card, since this list's default is
+    // what 'play' aims a bitstream at, and an analogue jack cannot carry one.
+    // A machine with no digital output at all falls back to its first entry.
+    // (A player asking for the default DECODED output passes no device name
+    // at all and gets ALSA's own "default" PCM, which is a different
+    // question and the user's own configuration to answer.)
+    std::size_t default_index = 0;
     bool marked_default = false;
+    bool any_digital = false;
 
     std::vector<RenderDeviceInfo> devices;
-    for (const auto& candidate : find_candidates()) {
+    for (const auto& candidate : find_candidates(alsa::Include::kEveryPlaybackPcm)) {
+        EndpointFacts facts = endpoint_facts(candidate.hw_name);
+        // An output that is neither HDMI nor S/PDIF is not probed for
+        // passthrough at all, and this is load-bearing rather than an
+        // optimisation. Such an output is named through plug, and plug accepts
+        // ANY format, width and rate by construction - it would resample a
+        // burst rather than refuse it, so the probe would answer yes for every
+        // analogue jack on the machine. `play` believes that answer: it would
+        // hand IEC 61937 bursts to a resampler with no non-audio bit set, which
+        // is full-scale noise out of the speakers, the exact outcome
+        // device_names.hpp's header exists to prevent. The probe-decides
+        // reasoning in that header's DigitalOutput comment holds only for a
+        // name that would carry channel status, which a plug name cannot.
+        const bool digital = candidate.kind != DigitalOutput::kNone;
         RenderDeviceInfo info{
             .id = candidate.name,
             .name = candidate.friendly,
             .is_default = false,
             .supports_ac3_passthrough =
-                probe_format(candidate.name, BitstreamFormat::kAc3, sample_rate),
+                digital && probe_format(candidate.name, BitstreamFormat::kAc3, sample_rate),
             .supports_eac3_passthrough =
-                probe_format(candidate.name, BitstreamFormat::kEac3, sample_rate),
+                digital && probe_format(candidate.name, BitstreamFormat::kEac3, sample_rate),
             // The control probe: the same carrier format on the raw hardware
             // device, with no channel status. A device that takes this but
             // neither of the above cannot bitstream; one that takes none of
             // the three is in use by something else.
             .supports_exclusive_pcm = probe(candidate.hw_name, sample_rate),
-            .channels = endpoint_channels(candidate.hw_name),
+            .channels = facts.channels,
+            .speakers = facts.speakers,
+            .sample_rates = std::move(facts.sample_rates),
         };
 
-        if (!marked_default && candidate.card == preferred_card) {
-            info.is_default = true;
-            marked_default = true;
+        // A digital output on the configured default card wins; failing that,
+        // the first digital output anywhere; failing that, entry zero, which
+        // is what default_index starts as.
+        if (candidate.kind != DigitalOutput::kNone && !marked_default) {
+            const bool preferred = candidate.card == preferred_card;
+            if (preferred || !any_digital) {
+                default_index = devices.size();
+            }
+            any_digital = true;
+            marked_default = preferred;
         }
         devices.push_back(std::move(info));
     }
-    // Nothing on the configured default card, or no configuration to read:
-    // the first digital output found is as good a default as exists.
-    if (!marked_default && !devices.empty()) {
-        devices.front().is_default = true;
+    // Nothing digital on the configured default card, or no configuration to
+    // read: the first output found is as good a default as exists.
+    if (!devices.empty()) {
+        devices[default_index].is_default = true;
     }
     return devices;
 }

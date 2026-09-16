@@ -127,7 +127,7 @@ command's own help (or the full listing when no command was named).
 
 ## Next
 
-- [Commands](commands.md) — all 41 commands, grouped and with the usage text they print
+- [Commands](commands.md) — all 42 commands, grouped and with the usage text they print
   (`atmos-adm` and `atmos-iab` only *run* with `-DAC3FORGE_BUILD_ADM=ON`, but are listed either
   way), plus the exit-code table.
 - [Options & grammars](metadata-options.md) — the `drc=`/`heavy`/`dialnorm=`/… options grammar,

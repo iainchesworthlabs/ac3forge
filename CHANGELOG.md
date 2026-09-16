@@ -191,6 +191,44 @@ and release packaging.
   the port. cpp-httplib joins the `hearth` feature at 0.56.0 through an overlay port, ahead of
   the vcpkg baseline's 0.52.0, for the read timeout that makes the close possible.
 
+**Audio outputs**
+
+- **Render device records say which speakers a device has, and at what rates**
+  (`ac3::audio::RenderDeviceInfo`): a WAVEFORMATEXTENSIBLE speaker mask and a rate list
+  beside the channel count, filled from WASAPI's `dwChannelMask`, ALSA's channel maps,
+  PipeWire's `audio.position` and Core Audio's channel labels, with
+  `ac3/audio/speakers.hpp` mapping those positions to the renderer's own locations.
+  `ac3cli outputs` prints both. Either can be "not reported", which is not the same as
+  none.
+- **Monitor playback reports its position, and can flush and pause**
+  (`ac3::audio::MonitorSink`): frames played from the device's own clock, frames still
+  queued here and in the device, and the further latency the platform admits to; a flush
+  that drops both buffers and counts from zero again; and a pause that stops the device
+  with the stream, the format and the queue intact. Each backend reads the same two
+  figures from its own platform — `GetCurrentPadding`, `snd_pcm_delay`,
+  `pw_stream_get_time_n`, the Core Audio timestamps, AAudio's presentation position — and
+  the arithmetic over them is shared and tested against a fake device's clock. ALSA
+  hardware that cannot pause is dropped and prepared again instead, which loses what the
+  device held.
+- **A PCM output at the device's own width** (`ac3::audio::PcmOutput`): the stream opens
+  at the endpoint's channel count rather than the programme's, and each rendered channel
+  is placed at the output a routing patch names (`ac3::render::Routing`), silence in the
+  rest. The platform is never asked to widen anything, and Core Audio's requirement that
+  the stream be exactly as wide as the device is met by construction. The patch starts
+  from the endpoint's speaker mask, which matters because a rendered programme's slots
+  are in the coded channel order while a device's outputs are in
+  WAVEFORMATEXTENSIBLE's — counting outputs off from zero would put the centre on the
+  right speaker.
+- **`ac3cli identify`**: walks pink noise across an output's speakers, one rendered
+  channel at a time at an AVR test tone's level and band-limited to 30–80 Hz for an LFE
+  feed, printing which channel and which output each burst went to. Takes a layout and a
+  routing patch, so a room wired differently from the patch can be heard and corrected.
+- **A render-device list that keeps itself current**
+  (`ac3::audio::RenderDeviceWatch`): endpoint notifications where the platform has them
+  (Windows, PipeWire, Core Audio) and a re-probe timer where it does not (ALSA), behind
+  one list with a generation to compare. A failed enumeration keeps the last good list,
+  so a device held exclusively or a restarting audio service does not empty a picker.
+
 **Containers and encoding**
 
 - **AC-4 container carriage** (roadmap IM4): `ac3cli mp4`/`ts` read and write an AC-4
