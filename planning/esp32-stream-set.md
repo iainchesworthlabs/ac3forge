@@ -26,8 +26,9 @@
     shape was the total internal RAM they need, not how the heap was cut up. The Dolby Encoding
     Engine's 5.1 has fitted since the decoder split its AHT buffer per stream, and 7.1.4 with AHT
     fits since the decoder stopped keeping that buffer at all; CI plays all three. 7.1.4 with
-    enhanced coupling or TPN still needs PSRAM: the shape is short of up to 2 KB and of about
-    51 KB for them.
+    TPN still needs PSRAM, the shape short of about 51 KB for it. 7.1.4 with enhanced coupling
+    now plays in the shape too, but with a few KB to spare where the streams CI plays keep
+    30 KB, so it stays marked.
 
     Written beside [the web UI's output layout](esp32-device-ui.md#the-output-layout), which
     uses these streams to show what a layout does, and in the shape of [the player
@@ -252,7 +253,7 @@ Each still had more to allocate. Two measurements put a size on it:
 For the plays that fit, demand and true low add up to between 244.5 and 246.5 KB every time.
 That is the room this shape has for them, however the heap is cut up:
 
-| Stream | Demand | Against the room |
+| Stream | Demand, before the changes below | Against the room |
 |---|---|---|
 | `714-none`, `714-cpl`, `714-spx` | 212,940 to 213,204 | plays; true low 31,592 to 33,324 |
 | `714-ecpl` | 246,632 | short by up to 2 KB |
@@ -268,15 +269,24 @@ extension, AHT costs 40 KB, enhanced coupling 35 KB and TPN 30 KB.
 stream, 6,144 bytes each, and each block then copied its own out into the per-block coefficient
 store the decoder keeps for every stream anyway. The decoder now decodes them straight into that
 store, bit for bit the same in all three arithmetic tiers. `714-aht` and `714-all` then play in
-this shape, their true lows 31,224 to 32,032 and 30,072 to 32,196 bytes over three runs each,
-and `dee-eac3-51`'s rises to 95,408 to 96,412. CI plays all three.
+this shape, their true lows 31,224 to 32,040 and 30,072 to 32,196 bytes over four runs each,
+and `dee-eac3-51`'s rises to about 95 KB. CI plays all three.
 
-**Enhanced coupling** is still short by up to 2 KB, before any room for the network stack's own
-buffers during the play. Most of its 33 KB over coupling is one 23,552-byte allocation: the
-spectrum scratch's eight 512-sample arrays, and 7,168 bytes of tables narrowed from the double
-ones when the scratch is built. A 6,144-byte stash of the coupling channel for each block looks
-like a copy of what the per-block store already holds. Either would bring the stream inside the
-room; neither has been done.
+**Enhanced coupling** was short by up to 2 KB, and most of its 33 KB over coupling is still one
+23,552-byte allocation: the spectrum scratch's eight 512-sample arrays, and 7,168 bytes of tables
+narrowed from the double ones when the scratch is built. Two smaller things went the same day.
+The reconstruction had read its neighbouring blocks' coupling channel from a 6,144-byte copy,
+and now reads the per-block store. And an access unit's substreams, 2,508 bytes for three, were
+gathered in an array allocated and freed around every unit; the decoder now keeps that array.
+The second is where fragmentation did matter. With the player's block storage sized to the
+layout (4 KB back at 7.1.4), `714-ecpl` got past its first unit and then failed that 2,508-byte
+request on a later one, with 9,056 bytes free and no block over 1,632.
+
+With both changes, `714-ecpl` plays in this shape, and its levels are the host's. But its true
+low is 2,236 bytes with the player as it is, and 7,496 to 7,700 over three runs with the block
+storage sized to the layout. In one of those three runs the lap line's sampled `heap_free`,
+15,980, fell under the step's 24,576 floor. The 7.1.4 streams CI plays keep 30 to 35 KB, so
+`714-ecpl` stays marked until the spectrum scratch shrinks.
 
 **TPN** is short by about 51 KB. Holding a frame back for §3.7 keeps a second full set of PCM for
 every substream - 86 KB for a 7.1.4 stream's fourteen coded channels - and each substream using
