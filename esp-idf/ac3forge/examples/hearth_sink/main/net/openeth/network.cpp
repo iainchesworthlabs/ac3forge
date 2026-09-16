@@ -13,8 +13,10 @@
 
 #include "network.hpp"
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
+#include <string>
 
 #include "esp_eth.h"
 #include "esp_eth_mac_openeth.h"
@@ -28,6 +30,10 @@ namespace player {
 namespace {
 
 EventGroupHandle_t g_events = nullptr;
+// Up once, however many callers ask: app_main brings it up at boot and the
+// HTTP source asks again when it opens.
+bool g_up = false;
+esp_netif_t* g_netif = nullptr;
 constexpr int kGotIpBit = BIT0;
 
 void on_got_ip(void*, esp_event_base_t, std::int32_t, void* data) {
@@ -40,6 +46,9 @@ void on_got_ip(void*, esp_event_base_t, std::int32_t, void* data) {
 }  // namespace
 
 bool network_up() {
+    if (g_up) {
+        return true;
+    }
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
@@ -61,8 +70,8 @@ bool network_up() {
     }
 
     esp_netif_config_t netif_config = ESP_NETIF_DEFAULT_ETH();
-    esp_netif_t* netif = esp_netif_new(&netif_config);
-    ESP_ERROR_CHECK(esp_netif_attach(netif, esp_eth_new_netif_glue(eth)));
+    g_netif = esp_netif_new(&netif_config);
+    ESP_ERROR_CHECK(esp_netif_attach(g_netif, esp_eth_new_netif_glue(eth)));
 
     g_events = xEventGroupCreate();
     ESP_ERROR_CHECK(
@@ -77,7 +86,23 @@ bool network_up() {
         std::printf("error: openeth got no address in 30 s\n");
         return false;
     }
+    g_up = true;
     return true;
+}
+
+bool network_ready() { return g_up; }
+
+std::string network_address() {
+    if (!g_up || g_netif == nullptr) {
+        return {};
+    }
+    esp_netif_ip_info_t info{};
+    if (esp_netif_get_ip_info(g_netif, &info) != ESP_OK) {
+        return {};
+    }
+    std::array<char, 16> text{};
+    (void)std::snprintf(text.data(), text.size(), IPSTR, IP2STR(&info.ip));
+    return std::string(text.data());
 }
 
 }  // namespace player

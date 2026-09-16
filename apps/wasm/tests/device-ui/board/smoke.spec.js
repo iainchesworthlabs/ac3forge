@@ -50,9 +50,11 @@ test('the board serves the page, and the page drives the board', async ({ page, 
     await expect(page.locator('#output')).toHaveText('2.0, 2 slots: folded to two channels by the decoder (Lo/Ro)');
     await expect(page.locator('#silent')).toBeHidden();
 
-    // The volume, set with the slider and read back from the device.
-    await page.getByRole('slider', { name: 'Volume' }).fill('25');
-    await expect.poll(async () => (await status()).volume, { timeout: 10_000 }).toBe(0.25);
+    // A setting, made from the page and read back from the device: the name
+    // it answers to, which is what B2 made the page's business.
+    await page.getByLabel('Name').fill('Bench sink');
+    await page.locator('#name-form').getByRole('button', { name: 'Save' }).click();
+    await expect.poll(async () => (await status()).name, { timeout: 10_000 }).toBe('Bench sink');
 
     // A layout the capture sink's two slots cannot carry: refused by the
     // firmware, explained by the page; the layout stays.
@@ -61,12 +63,19 @@ test('the board serves the page, and the page drives the board', async ({ page, 
     await expect(page.getByRole('status')).toHaveText('Output layout 5.1 refused (409): it needs 6 slots and this sink has 2.');
     expect((await status()).layout).toBe('2.0');
 
-    // A play from the form, through to its end, at the volume set above. While
-    // the new source opens, /status has the new location beside the boot
-    // play's state and figures, which look like this play's end; so first this
-    // play under way, then its end.
-    await page.getByRole('textbox', { name: 'Location to play' }).fill(REPLAY);
-    await page.getByRole('button', { name: 'Play' }).click();
+    // The volume, set over the REST surface as a server would, since the page
+    // has no slider from B2 on, and read back from the device. The console
+    // check after this test holds the play below to it: a quarter of the boot
+    // play's levels.
+    expect((await request.post('volume', { data: '0.25' })).ok()).toBe(true);
+    await expect.poll(async () => (await status()).volume, { timeout: 10_000 }).toBe(0.25);
+
+    // A play through to its end at that volume, started over the REST surface
+    // as a server would: the page reports plays from B2 on and does not start
+    // them. While the new source opens, /status has the new location beside
+    // the boot play's state and figures, which look like this play's end; so
+    // first this play under way, then its end.
+    await request.post('play', { data: REPLAY });
     await expect
         .poll(async () => {
             const s = await status();
@@ -82,8 +91,8 @@ test('the board serves the page, and the page drives the board', async ({ page, 
     await expect(page.locator('#state')).toHaveText('Finished (end of stream)');
     await expect(page.locator('#location')).toHaveText(REPLAY);
 
-    // Stop, from the button, read back from the device.
-    await page.getByRole('button', { name: 'Stop' }).click();
+    // Stop, over the same surface, read back through the page.
+    await request.post('stop');
     await expect.poll(async () => (await status()).state, { timeout: 10_000 }).toBe('stopped');
     await expect(page.locator('#state')).toHaveText('Stopped');
 

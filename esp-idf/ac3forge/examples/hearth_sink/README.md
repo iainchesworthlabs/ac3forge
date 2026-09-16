@@ -360,6 +360,11 @@ configurations set 80; the default is 0, none), the component's
 | `POST /volume` | body: `0.0` to `1.0`, a linear gain the decode task applies before the sink |
 | `GET /layout` | the output layout, as text |
 | `PUT /layout` | body: a name (`5.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`), the same grammar as `CONFIG_AC3FORGE_EXAMPLE_LAYOUT`. Takes effect at the next play - the `i2s` sink reconfigures its mode and slot count to match, so this never needs a rebuild. `400` for text that is not a layout, `409` for one with more slots than the sink's ceiling. |
+| `GET /name` | what the board calls itself, as text |
+| `PUT /name` | body: a name, up to 32 bytes. Stored on the board, so it survives a reflash; it is the mDNS instance name and what a server lists the sink under. `409` if it does not fit or NVS refused it. |
+| `GET /wiring` | `1` if a second I2S line is wired, `0` if not |
+| `PUT /wiring` | body: `1` or `0`. Moves the sink's ceiling with it - two lines carry twice one line's slots - and takes effect at the next play. `409` while a play is running. |
+| `PUT /network` | body: an SSID, a newline, then the passphrase. Stored for the next boot; the station stays on the network it is already associated with. Improv over the serial port is the other way in, and the one a board with no network at all needs. |
 | `GET /slot-width` | the slot width in bits, 16 or 32 |
 | `PUT /slot-width` | body: `16` or `32`. Takes effect at the next play, and moves the sink's ceiling with it: an I2S line carries 128 bits a frame, so two lines reach sixteen slots at 16 bits and eight at 32. `400` for a body that is not a number, `409` while a play is running, for a width the sink does not have, or on the `capture` and `null` sinks, which keep the width they were built for. A layout already set may be too wide after a change to 32; the next play says so. |
 
@@ -508,7 +513,7 @@ What happens to a stream depends on the layout, not the stream:
 | --- | --- |
 | `2.0`, `1.0` | The decoder's own §7.8 fold (`CONFIG_AC3FORGE_EXAMPLE_STEREO_FOLD` picks Lo/Ro or Lt/Rt). What every player before 2026-09-10 did, unchanged. |
 | anything wider, no heights | As coded. Each coded channel goes to the slot of its own location exactly, or, where the room has no such speaker (a 7.1 stream's rears in a 5.1 room), is spread over its neighbours by `ac3::spatial::pan_direction` at constant power. The LFE goes to the LFE slots and nowhere else. |
-| with heights | As above for a stream without objects. For a stream with an object layer the objects are reconstructed and placed by their own positions, the bed's LFE passes through, and the bed's other channels are **not** added — an Atmos bed is the objects' own 5.1 fold, and adding it would play everything twice. `CONFIG_AC3FORGE_EXAMPLE_OBJECTS` widens or narrows when that happens. |
+| with heights | As above for a stream without objects. For a stream with an object layer the objects are reconstructed and placed by their own positions, the bed's LFE passes through (held back by the objects' reconstruction delay, so that it stays with them), and the bed's other channels are **not** added — an Atmos bed is the objects' own 5.1 fold, and adding it would play everything twice. `CONFIG_AC3FORGE_EXAMPLE_OBJECTS` widens or narrows when that happens. |
 
 **Nothing is upmixed.** The renderer never makes a signal for a speaker out of
 other channels: a slot gets a coded channel at its location, a coded channel

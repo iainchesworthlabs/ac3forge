@@ -20,8 +20,38 @@ constexpr std::size_t kInitialPendingBlocks = 32;
 
 }  // namespace
 
-Player::Player(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout)
-    : sink_(std::move(sink)), loader_(std::move(loader)), layout_(layout) {}
+Player::Player(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout,
+               const DecoderSettings& settings)
+    : sink_(std::move(sink)), loader_(std::move(loader)), layout_(layout), settings_(settings) {}
+
+void Player::set_decoder_settings(const DecoderSettings& settings) {
+    if (settings == settings_) {
+        return;
+    }
+    if (settings.programme != settings_.programme) {
+        // A prepared session holds the old programme's units.
+        prepared_.reset();
+        prepared_index_ = Queue::kNone;
+    }
+    settings_ = settings;
+    if (!session_ || !decoder_) {
+        // Nothing is being decoded: the next item to start builds its decoder
+        // with these.
+        decoder_.reset();
+        return;
+    }
+    const StreamDecoder::BlockFn deliver =
+        [this](std::span<const std::span<const float>> rendered, std::size_t n) {
+            take_block(rendered, n);
+        };
+    session_->hand_over(*decoder_, deliver);
+    build_decoder(decoder_rate_);
+}
+
+void Player::build_decoder(std::uint32_t rate) {
+    decoder_.emplace(layout_, rate, settings_);
+    decoder_rate_ = rate;
+}
 
 TransportOutcome Player::play() {
     TransportOutcome outcome = transport_.play();
@@ -152,7 +182,7 @@ bool Player::start_session(std::size_t item) {
     }
     prepared_.reset();
     prepared_index_ = Queue::kNone;
-    auto opened = Session::open(queue_.items()[item].path, loader_);
+    auto opened = Session::open(queue_.items()[item].path, loader_, settings_.programme);
     if (!opened) {
         last_error_ = std::move(opened.error());
         return false;
@@ -180,8 +210,7 @@ Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report
     }
     const std::uint32_t rate = session_->facts().sample_rate;
     if (!decoder_ || decoder_rate_ != rate) {
-        decoder_.emplace(layout_, rate);
-        decoder_rate_ = rate;
+        build_decoder(rate);
     } else {
         decoder_->reset();
     }
@@ -208,6 +237,9 @@ Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report
     if (report != nullptr) {
         report->item_started = true;
         report->output_reopened = opens_ > 1;
+        if (!session_->facts().note.empty()) {
+            report->note = session_->facts().note;
+        }
     }
     return OpenFailure::kNone;
 }
@@ -243,33 +275,38 @@ void Player::clear_pending() {
     pending_frames_ = 0;
 }
 
+void Player::take_block(std::span<const std::span<const float>> rendered, std::size_t n) {
+    if (n == 0 || history_.empty()) {
+        return;
+    }
+    const std::size_t slots = layout_.slots();
+    Pending& block = push_block();
+    block.frames = n;
+    block.record = history_.size() - 1;
+    // A reused buffer is as large as the largest block it has held, so this
+    // only allocates while the ring is new.
+    block.samples.resize(slots * n);
+    for (std::size_t slot = 0; slot < slots; ++slot) {
+        const auto out = std::next(block.samples.begin(), static_cast<std::ptrdiff_t>(slot * n));
+        if (slot < rendered.size()) {
+            std::copy_n(rendered[slot].begin(), n, out);
+        } else {
+            std::fill_n(out, n, 0.0F);
+        }
+    }
+    pending_frames_ += n;
+}
+
 void Player::fill(std::size_t frames) {
     if (!session_ || !decoder_ || history_.empty()) {
         return;
     }
-    const std::size_t slots = layout_.slots();
-    const std::size_t record = history_.size() - 1;
-    const auto deliver = [this, slots, record](std::span<const std::span<const float>> rendered,
-                                               std::size_t n) {
-        if (n == 0) {
-            return;
-        }
-        Pending& block = push_block();
-        block.frames = n;
-        block.record = record;
-        // A reused buffer is as large as the largest block it has held, so
-        // this only allocates while the ring is new.
-        block.samples.resize(slots * n);
-        for (std::size_t slot = 0; slot < slots; ++slot) {
-            const auto out = std::next(block.samples.begin(), static_cast<std::ptrdiff_t>(slot * n));
-            if (slot < rendered.size()) {
-                std::copy_n(rendered[slot].begin(), n, out);
-            } else {
-                std::fill_n(out, n, 0.0F);
-            }
-        }
-        pending_frames_ += n;
-    };
+    // Built once per call, capturing one pointer, so the std::function holds
+    // it without allocating.
+    const StreamDecoder::BlockFn deliver =
+        [this](std::span<const std::span<const float>> rendered, std::size_t n) {
+            take_block(rendered, n);
+        };
     while (pending_frames_ < frames && !session_->finished()) {
         const auto got = session_->render(*decoder_, deliver, frames - pending_frames_);
         if (!got) {
@@ -354,7 +391,7 @@ void Player::item_ended(PumpReport& report) {
         }
         prepared_.reset();
         prepared_index_ = Queue::kNone;
-        auto opened = Session::open(path, loader_);
+        auto opened = Session::open(path, loader_, settings_.programme);
         if (opened) {
             queue_.set_facts(next, opened->facts());
             prepared_ = std::move(*opened);
@@ -394,8 +431,7 @@ void Player::item_ended(PumpReport& report) {
                 return;
             }
             if (!decoder_ || decoder_rate_ != rate) {
-                decoder_.emplace(layout_, rate);
-                decoder_rate_ = rate;
+                build_decoder(rate);
             }
             apply_seek_on_start(outcome.item);
             history_.push_back(PlayedItem{.queue_index = outcome.item,
@@ -405,6 +441,9 @@ void Player::item_ended(PumpReport& report) {
                                           .expected_frames = session_->total_samples(),
                                           .output_opens = opens_});
             report.item_started = true;
+            if (!session_->facts().note.empty()) {
+                report.note = session_->facts().note;
+            }
             break;
         }
         case TransportAction::kReopenForItem:

@@ -56,16 +56,6 @@ namespace {
     return true;
 }
 
-// Line mode, and whatever fold and object policy the layout calls for: the
-// same configuration the test sink decodes with, so the two render a stream
-// alike.
-[[nodiscard]] DecoderConfig configured(const render::Serving& serving) {
-    DecoderConfig config;
-    config.output.mode = OperatingMode::kLine;
-    render::configure_decoder(serving, config);
-    return config;
-}
-
 // The downmix levels a released substream carries: Annex D's for a legacy
 // core, which reports them in cmixlev/surmixlev/alternate_bsi, and Table
 // E1.2's mixmdate for a genuine E-AC-3 substream - which mix_levels() turns
@@ -80,11 +70,13 @@ namespace {
 
 }  // namespace
 
-StreamDecoder::StreamDecoder(const render::OutputLayout& layout, std::uint32_t sample_rate)
+StreamDecoder::StreamDecoder(const render::OutputLayout& layout, std::uint32_t sample_rate,
+                             const DecoderSettings& settings)
     : layout_(layout),
       sample_rate_(sample_rate),
-      serving_(render::serve(layout, DownmixTarget::kLoRo, render::ObjectsPolicy::kAuto)),
-      config_(configured(serving_)),
+      settings_(settings),
+      serving_(decoder_setup(settings, layout).serving),
+      config_(decoder_setup(settings, layout).config),
       renderer_(layout, sample_rate) {}
 
 void StreamDecoder::reset() {
@@ -93,6 +85,7 @@ void StreamDecoder::reset() {
     programme_.reset();
     beds_.clear();
     renderer_bed_.reset();
+    dual_mono_ = false;
     renderer_ = render::LayoutRenderer{layout_, sample_rate_};
 }
 
@@ -118,7 +111,7 @@ std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const st
         reset();
         return std::unexpected(std::string{"A unit's channel layout could not be read."});
     }
-    beds_.push_back(*bed);
+    beds_.push_back(UnitBed{.layout = *bed, .dual_mono = header->acmod == Acmod::kDualMono});
     const auto sink = [this, &deliver](const PcmBlock& block) { place(block, deliver); };
 
     // A unit that is one AC-3 syncframe goes to the AC-3 decoder, which a fold
@@ -157,20 +150,38 @@ void StreamDecoder::place(const PcmBlock& block, const BlockFn& deliver) {
     const std::span<const std::span<float>> out(spans.data(), slots);
     if (block.index == 0 && !beds_.empty()) {
         // A unit's first block: the bed of the oldest unit not yet placed.
-        const eac3::chanmap::Layout bed = beds_.front();
+        const UnitBed bed = beds_.front();
         beds_.pop_front();
-        if (!serving_.fold && (!renderer_bed_ || !same_layout(*renderer_bed_, bed))) {
-            renderer_.set_bed(bed);
-            renderer_bed_ = bed;
+        dual_mono_ = bed.dual_mono;
+        if (!serving_.fold && (!renderer_bed_ || !same_layout(*renderer_bed_, bed.layout))) {
+            renderer_.set_bed(bed.layout);
+            renderer_bed_ = bed.layout;
         }
     }
+
+    // Dual mono: channel 1 and channel 2 are two programmes, and the one not
+    // chosen is replaced by the one that is, so it plays from both sides. An
+    // LFE after them, which 1+1 may carry, is left where it is.
+    PcmBlock chosen = block;
+    std::array<std::span<const float>, eac3::chanmap::kMaxChannels> channels{};
+    if (dual_mono_ && settings_.dual_mono != DualMonoChoice::kBoth &&
+        block.channels.size() >= 2 && block.channels.size() <= channels.size()) {
+        std::copy(block.channels.begin(), block.channels.end(), channels.begin());
+        const std::span<const float> heard =
+            block.channels[settings_.dual_mono == DualMonoChoice::kFirst ? 0 : 1];
+        channels[0] = heard;
+        channels[1] = heard;
+        chosen.channels = std::span<const std::span<const float>>(channels.data(),
+                                                                  block.channels.size());
+    }
+
     if (serving_.fold) {
-        renderer_.render_folded(block, 1.0F, out);
+        renderer_.render_folded(chosen, 1.0F, out);
     } else {
-        if (serving_.reconstruct && block.index == 0) {
-            renderer_.set_objects(block.object_metadata, block.objects.size());
+        if (serving_.reconstruct && chosen.index == 0) {
+            renderer_.set_objects(chosen.object_metadata, chosen.objects.size());
         }
-        renderer_.render(block, serving_.reconstruct, 1.0F, out);
+        renderer_.render(chosen, serving_.reconstruct, 1.0F, out);
     }
     const std::size_t frames =
         block.channels.empty() ? 0 : std::min(block.channels.front().size(), block_[0].size());
@@ -278,6 +289,7 @@ std::size_t StreamDecoder::render_flushed(std::span<DecodedSubstream> substreams
     // unit's own bed is the one queued for it, and it has just been set
     // directly, so the queue is cleared rather than consulted.
     beds_.clear();
+    dual_mono_ = independent->acmod == Acmod::kDualMono;
 
     const std::size_t blocks = length / kSamplesPerBlock;
     std::vector<std::span<const float>> channel_views(count);

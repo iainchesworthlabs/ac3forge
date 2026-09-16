@@ -37,6 +37,9 @@ on:
       cmake_min:
         type: string
         required: true
+      qt_version:
+        type: string
+        required: true
       vcpkg_commit:
         type: string
         required: true
@@ -88,9 +91,9 @@ jobs:
           # docs.github.com/en/actions/reference/runners/github-hosted-runners
           # directly, not assumed), free for public repos - so this is a real
           # build, not a cross-compile or Rosetta emulation. Same toolchain
-          # file, same Homebrew install steps, same reasoning as the arm64 leg
-          # above throughout this job; only the preset/triplet (x64-macos-llvm)
-          # and runner label differ.
+          # file, same install steps, same reasoning as the arm64 leg above
+          # throughout this job; only the preset/triplet (x64-macos-llvm) and
+          # runner label differ.
           #
           # No longer experimental: three consecutive real, hosted-runner runs
           # went green on this brand-new macos-15-intel label before this line
@@ -111,18 +114,48 @@ jobs:
             gold_reference: true
 
     steps:
-      # Homebrew's "qt" formula is the umbrella Qt6 package (unlike apt's
-      # split qt6-base-dev/qt6-declarative-dev): one install pulls in
-      # QtDeclarative/QtQuick and their build-time tooling (qmlcachegen)
-      # alongside QtCore/QtGui, so there is no second "-dev-tools" formula to
-      # add the way there is on Linux. cmake/FindQt6.cmake already searches
-      # /opt/homebrew/opt/qt and /opt/homebrew/opt/qt6 (Apple Silicon's
-      # Homebrew prefix, which is what macos-latest runners are), so no
-      # -DAC3FORGE_QT_ROOT/CMAKE_PREFIX_PATH override is needed here the way
-      # Windows' prebuilt-kit install does.
-      - name: Install Qt6 (macOS GUI)
+      # NOT Homebrew's "qt" formula (that was this step until the packaging
+      # noise investigation below). Homebrew's Qt6 stages its QML plugins
+      # (Contents/PlugIns/*.dylib under ac3gui.app/ac3crucible.app, every
+      # QtQuick.Controls style among them - Fusion, which
+      # apps/gui/main.cpp's QQuickStyle::setStyle("Fusion") actually uses,
+      # included) as symlinks back into its own Cellar, computed as if the
+      # app were being installed under /usr/local. It isn't - cpack stages it
+      # under the runner's workspace - so every one of those symlinks is
+      # dangling from the moment qt_generate_deploy_qml_app_script()'s
+      # install(SCRIPT) creates it. The macdeployqt -executable= pass that
+      # follows is supposed to resolve and finish deploying each one; that is
+      # what was actually failing, tens of thousands of times over
+      # (install_name_tool/otool-classic: can't open file), one non-fatal
+      # error per broken symlink per dependency-graph pass. cpack "succeeds"
+      # regardless and ships the dangling symlink as-is: verified by
+      # downloading a green run's packages-macos-llvm-x64 artifact and
+      # finding every QtQuick/QML plugin in it a few dozen bytes (a symlink)
+      # instead of a real Mach-O binary. This is a known Homebrew/Qt6
+      # interaction, not anything specific to this project - Homebrew's Qt6
+      # is built with paths that resolve from its own Cellar layout, which
+      # several long-standing Homebrew/homebrew-core issues document as
+      # breaking macdeployqt-based redistribution (e.g. homebrew-core#73019,
+      # homebrew-core#74946, homebrew-core#3219). The official Qt kit below
+      # is built for exactly this redistribution case and does not have the
+      # problem - the same reason the Windows leg (_ci-windows.yml) and the
+      # Linux AppImage job (_build.yml) already use it instead of a
+      # system/Homebrew Qt for anything that leaves the build machine.
+      #
+      # modules: matches the Windows leg's list exactly, for the same
+      # reason - apps/crucible's room needs Qt Quick 3D, which is not part
+      # of the base kit, and Quick3D pulls in its own shader tooling
+      # (qtshadertools). arch/host/target are unset because, unlike Windows,
+      # aqtinstall needs neither for a macOS desktop kit: "macos" is a
+      # single universal build covering both arm64 and x86_64, and host/
+      # target both auto-detect correctly from the runner.
+      - name: Install Qt (prebuilt)
         if: matrix.gui && runner.os == 'macOS'
-        run: brew install qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
+        with:
+          version: ${{ inputs.qt_version }}
+          modules: qtquick3d qtshadertools
+          cache: true
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

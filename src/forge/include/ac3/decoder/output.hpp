@@ -82,6 +82,23 @@ enum class OperatingMode : std::uint8_t {
     kRf,
 };
 
+// Levels to fold with in place of the stream's own, one at a time: what a
+// listener sets who wants more centre in a stereo fold than the mix engineer
+// chose. A set field replaces the level the stream carried, or the §7.8
+// default that stood in for it; an unset one leaves it. The fields and units
+// are MixLevels' below, linear for the four levels and dB for the LFE. The LFE
+// level is honoured only where the stream allows LFE mixing at all, as
+// OutputConfig::mix_lfe is.
+struct MixLevelOverride {
+    std::optional<double> loro_clev = std::nullopt;
+    std::optional<double> loro_slev = std::nullopt;
+    std::optional<double> ltrt_clev = std::nullopt;
+    std::optional<double> ltrt_slev = std::nullopt;
+    std::optional<double> lfe_mix_level_db = std::nullopt;
+
+    friend bool operator==(const MixLevelOverride&, const MixLevelOverride&) = default;
+};
+
 struct OutputConfig {
     DownmixTarget target = DownmixTarget::kAsCoded;
     OperatingMode mode = OperatingMode::kCustom;
@@ -123,6 +140,9 @@ struct OutputConfig {
     // back more headroom than it was asked for would just be quieter than it
     // needed to be.
     double rf_ceiling = 1.0;
+    // The caller's levels, laid over the stream's for every fold. All unset
+    // by default, which folds with exactly what the stream says.
+    MixLevelOverride mix_override{};
 };
 
 // What the stream itself says about folding down, resolved from whichever

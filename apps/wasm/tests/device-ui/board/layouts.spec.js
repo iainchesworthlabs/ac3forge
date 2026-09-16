@@ -19,13 +19,15 @@ test('the page says what each output layout does with each stream', async ({ pag
     const status = async () => (await request.get('status')).json();
     const field = page.getByRole('combobox', { name: 'Output layout' });
 
-    // A play from the form, through to its end: first the new location past
-    // "opening", then its end, so that the previous play's end is never taken
-    // for this one's.
+    // A play through to its end: first the new location past "opening", then
+    // its end, so that the previous play's end is never taken for this one's.
+    //
+    // Started over the REST surface rather than from the page, which stopped
+    // starting plays in B2 - a server owns that now. What is under test here
+    // is what the page SAYS about a play, which is unchanged.
     async function play(file) {
         const location = `${BASE}/${file}`;
-        await page.getByRole('textbox', { name: 'Location to play' }).fill(location);
-        await page.getByRole('button', { name: 'Play' }).click();
+        await request.post('play', { data: location });
         await expect
             .poll(async () => {
                 const s = await status();

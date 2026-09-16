@@ -22,6 +22,16 @@
     twelve-slot emulated board with the page driven on it. Decisions 14 to 18 are that work's.
     The page and its script are 19,187 bytes of a 20,480-byte budget.
 
+    **Status plus the board's own settings, 2026-09-16 (Hearth B2).** The page stopped driving
+    playback: a server owns that now
+    ([the Hearth plan](hearth-reference-player.md#b2-joining-a-network)), so the location field,
+    Play, Stop and the volume slider are gone, and `POST /play`, `/stop` and `/volume` stay in
+    the REST surface for a person with curl. What replaced them is what only the board can
+    answer for: its name, the network it joins, its slot width and whether a second I2S line is
+    wired, each stored in NVS. Pairing joins them in B3, when there is something to pair with.
+    The budget was re-derived rather than raised to fit: **24,576 bytes**, against 20,571 used.
+    Decision 18 has the reasoning.
+
     Shape follows [the player plan](esp32-player.md): what exists, what changes and why, a
     budget with how each figure is measured, [Decisions](#decisions) with a recommendation and
     a cost each, and [what cannot be verified](#what-cannot-be-verified).
@@ -633,3 +643,13 @@ run as root, so Playwright can install Chromium's system libraries).
     whatever a file's length, and on the board a page load did not lower the least free internal
     heap. (b) would cut wording that readers and the tests rely on. Cost: up to 4,096 bytes more
     flash in every firmware that mounts Control, and about 2 KB more sent per page load.
+
+    **Re-derived 2026-09-16 (Hearth B2): 24,576 bytes.** The page traded playback for the
+    board's own settings and came out at 20,571, past the old figure. The question the budget
+    answers has not changed — how much flash a page may take, and how much a board sends per
+    load — and neither has the answer's ceiling: the image is about 518 KB of a 1,536 KB
+    factory partition. What changed is that a settings page is a form per setting, and each of
+    the four costs a label, a control and a sentence saying what it does. Sending 20 KB rather
+    than 16 costs one more lwIP send buffer's worth of turns on a load that happens when
+    somebody opens the page, not while anything plays. `apps/wasm/tests/device-ui/budget.spec.js`
+    holds the new figure.

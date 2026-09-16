@@ -38,7 +38,9 @@
 
 namespace {
 
+using ac3::hearth::DecoderSettings;
 using ac3::hearth::ItemLoader;
+using ac3::hearth::LoadedItem;
 using ac3::hearth::OpenOutputFormat;
 using ac3::hearth::OutputMode;
 using ac3::hearth::PcmSink;
@@ -72,6 +74,10 @@ public:
         // for two runs only if the same audio arrived in the same order.
         std::uint64_t submitted_total = 0;
         std::uint64_t hash = 14695981039346656037ULL;
+        // With `keep` set, every sample submitted, one vector per slot,
+        // emptied by a flush.
+        bool keep = false;
+        std::vector<std::vector<float>> kept{};
         // At each open: the frames of the old output that had been heard,
         // and how far the clock had run past the last of them - for a
         // reopen, proof that the old item was heard out first.
@@ -123,6 +129,13 @@ public:
                 }
             }
         }
+        if (log_->keep) {
+            log_->kept.resize(std::max(log_->kept.size(), slots.size()));
+            for (std::size_t slot = 0; slot < slots.size(); ++slot) {
+                log_->kept[slot].insert(log_->kept[slot].end(), slots[slot].begin(),
+                                        slots[slot].end());
+            }
+        }
         log_->submitted += frames;
         log_->submitted_total += frames;
         log_->drained_at.reset();
@@ -141,6 +154,9 @@ public:
     void flush() override {
         ++log_->flushes;
         restart();
+        for (std::vector<float>& slot : log_->kept) {
+            slot.clear();
+        }
     }
 
     bool pause() override {
@@ -190,12 +206,19 @@ std::vector<float> tone(double hz, std::uint32_t rate, std::size_t offset) {
     return out;
 }
 
-std::vector<std::byte> eac3_stream(int frames, ac3::SampleRate rate = ac3::SampleRate::k48000) {
+// `dither` off where a test compares a decode that started part-way through
+// the stream - after a seek or a change of settings - with an unbroken one
+// sample for sample. §7.3.4's dither generator runs on across frames, so a
+// decoder that starts late draws different values for the same bins; the
+// difference is some 95 dB down, but it is not zero.
+std::vector<std::byte> eac3_stream(int frames, ac3::SampleRate rate = ac3::SampleRate::k48000,
+                                   bool dither = true) {
     ac3::eac3::FrameConfig config;
     config.sample_rate = rate;
     config.bitrate_kbps = 384;
     config.acmod = ac3::Acmod::k3_2;
     config.lfe = true;
+    config.dither = dither;
     ac3::eac3::FrameEncoder encoder{config};
     const auto channels = static_cast<std::size_t>(encoder.channel_count());
     std::vector<std::byte> out;
@@ -230,8 +253,10 @@ std::vector<std::byte> ac3_stream(int frames, ac3::SampleRate rate = ac3::Sample
     return out;
 }
 
-// A stream wrapped the way the container writers wrap one.
-std::vector<std::byte> in_mp4(const std::vector<std::byte>& stream) {
+// A stream wrapped the way the container writers wrap one, with an edit list
+// when `edit` is given.
+std::vector<std::byte> in_mp4(const std::vector<std::byte>& stream,
+                              std::optional<mp4::MuxOptions::Edit> edit = std::nullopt) {
     const auto scanned = ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     mp4::AudioTrack track;
@@ -240,7 +265,10 @@ std::vector<std::byte> in_mp4(const std::vector<std::byte>& stream) {
     track.sample_rate = ac3::sample_rate_hz(scanned->sample_rate);
     track.channels = scanned->channels;
     track.codec_config = ac3::io::build_codec_config_box(*scanned);
-    const auto muxed = mp4::mux(track, std::span<const std::span<const std::byte>>(scanned->access_units));
+    mp4::MuxOptions options;
+    options.edit = edit;
+    const auto muxed = mp4::mux(
+        track, std::span<const std::span<const std::byte>>(scanned->access_units), options);
     REQUIRE(muxed.has_value());
     return *muxed;
 }
@@ -265,7 +293,7 @@ struct Library {
     std::map<std::string, std::vector<std::byte>> files;
 
     [[nodiscard]] ItemLoader loader() const {
-        return [this](const std::string& path) -> std::expected<std::vector<std::byte>, std::string> {
+        return [this](const std::string& path) -> std::expected<LoadedItem, std::string> {
             const auto found = files.find(path);
             if (found == files.end()) {
                 return std::unexpected("no such file: " + path);
@@ -274,7 +302,10 @@ struct Library {
             if (!stream.error.empty()) {
                 return std::unexpected(stream.error);
             }
-            return std::move(stream.bytes);
+            return LoadedItem{.bytes = std::move(stream.bytes),
+                              .skip_samples = stream.trim.start,
+                              .play_samples = stream.trim.length,
+                              .note = std::move(stream.trim_note)};
         };
     }
 };
@@ -300,11 +331,124 @@ bool play_out(Player& player, FakeDevice::Log& log, std::size_t period = 480) {
 }
 
 std::unique_ptr<Player> make_player(const Library& library, const std::shared_ptr<FakeDevice::Log>& log,
-                                    std::size_t capacity = 8192) {
-    const auto layout = ac3::render::OutputLayout::parse("5.1");
+                                    std::size_t capacity = 8192, const char* layout_name = "5.1",
+                                    const DecoderSettings& settings = {}) {
+    const auto layout = ac3::render::OutputLayout::parse(layout_name);
     REQUIRE(layout.has_value());
     return std::make_unique<Player>(std::make_unique<FakeDevice>(log, capacity), library.loader(),
-                                    *layout);
+                                    *layout, settings);
+}
+
+using Slots = std::vector<std::vector<float>>;
+
+// What one item gives, every sample of it, played on its own.
+Slots played_alone(const Library& library, const std::string& path, const char* layout_name = "5.1",
+                   const DecoderSettings& settings = {}) {
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log, 8192, layout_name, settings);
+    player->queue().add(item(path));
+    player->play();
+    REQUIRE(play_out(*player, *log));
+    return log->kept;
+}
+
+// A stereo E-AC-3 programme of `frames` frames of one tone, as independent
+// substream `substreamid`.
+std::vector<std::vector<std::byte>> programme_frames(int frames, double hz, int substreamid) {
+    ac3::eac3::FrameConfig config;
+    config.bitrate_kbps = 192;
+    config.acmod = ac3::Acmod::k2_0;
+    config.substreamid = substreamid;
+    config.dither = false;  // see eac3_stream()
+    ac3::eac3::FrameEncoder encoder{config};
+    std::vector<std::vector<std::byte>> out;
+    for (int f = 0; f < frames; ++f) {
+        const auto samples = tone(hz, 48000, static_cast<std::size_t>(f) * ac3::kSamplesPerFrame);
+        const std::vector<std::span<const float>> views(2, samples);
+        auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        out.push_back(std::move(*frame));
+    }
+    return out;
+}
+
+std::vector<std::byte> joined_frames(const std::vector<std::vector<std::byte>>& frames) {
+    std::vector<std::byte> out;
+    for (const auto& frame : frames) {
+        out.insert(out.end(), frame.begin(), frame.end());
+    }
+    return out;
+}
+
+// Two programmes in one stream, a frame of each per period: a 440 Hz one as
+// independent substream 0 and a 1 kHz one as substream 1.
+std::vector<std::byte> two_programmes(int frames) {
+    const auto first = programme_frames(frames, 440.0, 0);
+    const auto second = programme_frames(frames, 1000.0, 1);
+    std::vector<std::byte> out;
+    for (std::size_t f = 0; f < first.size(); ++f) {
+        out.insert(out.end(), first[f].begin(), first[f].end());
+        out.insert(out.end(), second[f].begin(), second[f].end());
+    }
+    return out;
+}
+
+// `count` frames of `slots` from `from`, slot by slot.
+Slots part(const Slots& slots, std::size_t from, std::size_t count) {
+    Slots out;
+    for (const std::vector<float>& slot : slots) {
+        REQUIRE(from + count <= slot.size());
+        out.emplace_back(std::next(slot.begin(), static_cast<std::ptrdiff_t>(from)),
+                         std::next(slot.begin(), static_cast<std::ptrdiff_t>(from + count)));
+    }
+    return out;
+}
+
+Slots joined(const Slots& first, const Slots& second) {
+    REQUIRE(first.size() == second.size());
+    Slots out = first;
+    for (std::size_t slot = 0; slot < out.size(); ++slot) {
+        out[slot].insert(out[slot].end(), second[slot].begin(), second[slot].end());
+    }
+    return out;
+}
+
+// Where two runs first differ, as slot * 1'000'000'000 + frame, or kSame -
+// a number rather than the vectors, so a failure does not print megabytes.
+constexpr std::size_t kSame = static_cast<std::size_t>(-1);
+
+// The largest difference between two runs of the same length.
+double max_difference(const Slots& a, const Slots& b) {
+    REQUIRE(a.size() == b.size());
+    double worst = 0.0;
+    for (std::size_t slot = 0; slot < a.size(); ++slot) {
+        REQUIRE(a[slot].size() == b[slot].size());
+        for (std::size_t frame = 0; frame < a[slot].size(); ++frame) {
+            worst = std::max(worst, std::abs(static_cast<double>(a[slot][frame]) -
+                                             static_cast<double>(b[slot][frame])));
+        }
+    }
+    return worst;
+}
+
+std::size_t first_difference(const Slots& a, const Slots& b) {
+    if (a.size() != b.size()) {
+        return 0;
+    }
+    for (std::size_t slot = 0; slot < a.size(); ++slot) {
+        const std::size_t common = std::min(a[slot].size(), b[slot].size());
+        for (std::size_t frame = 0; frame < common; ++frame) {
+            if (std::bit_cast<std::uint32_t>(a[slot][frame]) !=
+                std::bit_cast<std::uint32_t>(b[slot][frame])) {
+                return (slot * 1'000'000'000) + frame;
+            }
+        }
+        if (a[slot].size() != b[slot].size()) {
+            return (slot * 1'000'000'000) + common;
+        }
+    }
+    return kSame;
 }
 
 }  // namespace
@@ -619,5 +763,352 @@ TEST_CASE("player: a seek made while stopped lands when that item starts, and on
         REQUIRE(player->history().size() == 1);
         CHECK(player->history()[0].title == "second.ec3");
         CHECK(player->history()[0].frames == 12 * 1536);
+    }
+}
+
+// Edit lists. The priming and padding an MP4's edit list names are decoded -
+// the decoder needs them - and never played; what does play is sample for
+// sample the same stretch of an untrimmed decode.
+
+TEST_CASE("player: an MP4 edit list's priming and padding are decoded but not played",
+          "[hearth][player]") {
+    const std::vector<std::byte> stream = eac3_stream(12);
+    const std::uint64_t kept = (12 * 1536) - 256 - 1000;
+    Library library;
+    library.files["raw.ec3"] = stream;
+    library.files["edited.mp4"] = in_mp4(stream, mp4::MuxOptions::Edit{.start_samples = 256,
+                                                                       .duration_samples = kept});
+
+    const Slots whole = played_alone(library, "raw.ec3");
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log);
+    player->queue().add(item("edited.mp4"));
+    player->play();
+    // The duration the queue shows is the edited one.
+    REQUIRE(player->queue().items()[0].facts.duration.has_value());
+    CHECK(player->queue().items()[0].facts.duration->count() == static_cast<std::int64_t>(kept * 1000 / 48000));
+    REQUIRE(play_out(*player, *log));
+
+    REQUIRE(player->history().size() == 1);
+    CHECK(player->history()[0].expected_frames == kept);
+    CHECK(player->history()[0].frames == kept);
+    CHECK(first_difference(log->kept, part(whole, 256, kept)) == kSame);
+}
+
+TEST_CASE("player: two edited items join with nothing of either encoder's between them",
+          "[hearth][player]") {
+    const std::vector<std::byte> first = eac3_stream(10);
+    const std::vector<std::byte> second = ac3_stream(8);
+    const std::uint64_t first_kept = (10 * 1536) - 256 - 700;
+    const std::uint64_t second_kept = (8 * 1536) - 256 - 300;
+    Library library;
+    library.files["first.ec3"] = first;
+    library.files["second.ac3"] = second;
+    library.files["first.mp4"] = in_mp4(
+        first, mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = first_kept});
+    library.files["second.mp4"] = in_mp4(
+        second, mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = second_kept});
+
+    const Slots expected =
+        joined(part(played_alone(library, "first.ec3"), 256, first_kept),
+               part(played_alone(library, "second.ac3"), 256, second_kept));
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log);
+    player->queue().add(item("first.mp4"));
+    player->queue().add(item("second.mp4"));
+    player->play();
+    REQUIRE(play_out(*player, *log));
+
+    CHECK(log->opens == 1);
+    const auto& history = player->history();
+    REQUIRE(history.size() == 2);
+    CHECK(history[0].frames == first_kept);
+    CHECK(history[1].first_frame == first_kept);
+    CHECK(history[1].frames == second_kept);
+    CHECK(first_difference(log->kept, expected) == kSame);
+}
+
+TEST_CASE("player: a seek in an edited item counts from what the item plays", "[hearth][player]") {
+    const std::vector<std::byte> stream = eac3_stream(40, ac3::SampleRate::k48000, /*dither=*/false);
+    const std::uint64_t kept = (40 * 1536) - 256 - 512;
+    Library library;
+    library.files["raw.ec3"] = stream;
+    library.files["edited.mp4"] = in_mp4(stream, mp4::MuxOptions::Edit{.start_samples = 256,
+                                                                       .duration_samples = kept});
+    const Slots whole = played_alone(library, "raw.ec3");
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log);
+    player->queue().add(item("edited.mp4"));
+    player->play();
+    for (int step = 0; step < 10; ++step) {
+        player->pump();
+        advance(*log, 480);
+    }
+
+    SECTION("back to the start plays the priming no more than the first time") {
+        player->seek(std::chrono::milliseconds{0});
+        REQUIRE(play_out(*player, *log));
+        CHECK(first_difference(log->kept, part(whole, 256, kept)) == kSame);
+    }
+
+    SECTION("a position lands on the unit covering it, counted past the priming") {
+        // 507 ms in is 24,336 samples into what the item plays, so stream
+        // sample 24,592: inside unit 16 (24,576 to 26,112), where a seek that
+        // forgot the priming would have landed in unit 15. The unit plays from
+        // its start to the edit's end.
+        player->seek(std::chrono::milliseconds{507});
+        REQUIRE(play_out(*player, *log));
+        const std::size_t from = 16 * 1536;
+        // The decoder was primed with unit 15, so even unit 16's first block
+        // is what an unbroken decode gives.
+        CHECK(first_difference(log->kept, part(whole, from, 256 + kept - from)) == kSame);
+    }
+}
+
+TEST_CASE("player: what a loader says about an item is kept, and an item with nothing left is skipped",
+          "[hearth][player]") {
+    const std::vector<std::byte> stream = eac3_stream(4);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    REQUIRE(layout.has_value());
+    const ItemLoader loader = [&stream](const std::string& path) -> std::expected<LoadedItem, std::string> {
+        if (path == "noted") {
+            return LoadedItem{.bytes = stream,
+                              .skip_samples = 0,
+                              .play_samples = std::nullopt,
+                              .note = "The file's edit list has 2 edits with audio in them."};
+        }
+        // Everything skipped: an edit list that leaves nothing to play.
+        return LoadedItem{.bytes = stream,
+                          .skip_samples = 4 * 1536,
+                          .play_samples = std::nullopt,
+                          .note = {}};
+    };
+    Player player{std::make_unique<FakeDevice>(log, 8192), loader, *layout};
+    player.queue().add(item("noted"));
+    player.queue().add(item("empty"));
+    player.queue().add(item("noted"));
+
+    player.play();
+    CHECK(player.queue().items()[0].facts.note.find("2 edits") != std::string::npos);
+    std::vector<std::string> notes;
+    for (int step = 0; step < 200000; ++step) {
+        const auto report = player.pump();
+        if (report.item_started) {
+            notes.push_back(report.note);
+        }
+        advance(*log, 480);
+        if (player.transport().state() == TransportState::kStopped && !log->open) {
+            break;
+        }
+    }
+    REQUIRE(player.history().size() == 2);
+    CHECK(player.history()[1].first_frame == 4 * 1536);
+    CHECK_FALSE(player.queue().items()[1].playable());
+    CHECK(player.queue().items()[1].facts.unplayable_because.find("nothing left to play") !=
+          std::string::npos);
+    // The joining item's note came with the pump that started it.
+    REQUIRE(notes.size() == 1);
+    CHECK(notes[0].find("2 edits") != std::string::npos);
+}
+
+// Decoder settings. A 5.1 programme into a two-speaker room, so a change is
+// one the fold makes audible: the centre's level in it.
+
+TEST_CASE("player: a settings change reaches the playing item at a unit, losing and repeating "
+          "nothing",
+          "[hearth][player]") {
+    Library library;
+    library.files["long.ec3"] = eac3_stream(30, ac3::SampleRate::k48000, /*dither=*/false);
+    const std::size_t total = 30 * 1536;
+    const DecoderSettings before;
+    DecoderSettings after;
+    after.mix_levels.loro_clev = 0.25;
+
+    // Each setting's decode of the whole item.
+    const Slots old_whole = played_alone(library, "long.ec3", "2.0", before);
+    const Slots new_whole = played_alone(library, "long.ec3", "2.0", after);
+    REQUIRE(first_difference(old_whole, new_whole) != kSame);
+
+    // Where the output stops being the old decode and becomes the new one,
+    // if it does so at a unit boundary with nothing lost or repeated.
+    const auto boundary_in = [&](const Slots& played) -> std::optional<std::size_t> {
+        if (played.empty() || played[0].size() != total) {
+            return std::nullopt;
+        }
+        for (std::size_t unit = 0; unit <= 30; ++unit) {
+            const std::size_t at = unit * 1536;
+            if (first_difference(part(played, 0, at), part(old_whole, 0, at)) == kSame &&
+                first_difference(part(played, at, total - at), part(new_whole, at, total - at)) ==
+                    kSame) {
+                return at;
+            }
+        }
+        return std::nullopt;
+    };
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log, 8192, "2.0", before);
+    player->queue().add(item("long.ec3"));
+    player->play();
+
+    SECTION("while playing") {
+        for (int step = 0; step < 6; ++step) {
+            player->pump();
+            advance(*log, 480);
+        }
+        const std::uint64_t submitted = log->submitted;
+        player->set_decoder_settings(after);
+        CHECK(player->decoder_settings() == after);
+        REQUIRE(play_out(*player, *log));
+        REQUIRE(player->history().size() == 1);
+        CHECK(player->history()[0].frames == total);
+        const auto boundary = boundary_in(log->kept);
+        REQUIRE(boundary.has_value());
+        // What was already decoded when the change came plays out as it was,
+        // and the change lands after it, part-way through the item.
+        CHECK(*boundary >= submitted);
+        CHECK(*boundary > 0);
+        CHECK(*boundary < total);
+    }
+
+    SECTION("while paused") {
+        for (int step = 0; step < 6; ++step) {
+            player->pump();
+            advance(*log, 480);
+        }
+        player->pause();
+        player->set_decoder_settings(after);
+        player->play();
+        REQUIRE(play_out(*player, *log));
+        const auto boundary = boundary_in(log->kept);
+        REQUIRE(boundary.has_value());
+        CHECK(*boundary > 0);
+        CHECK(*boundary < total);
+    }
+
+    SECTION("while stopped, for the next play") {
+        player->stop();
+        player->set_decoder_settings(after);
+        for (std::vector<float>& slot : log->kept) {
+            slot.clear();
+        }
+        player->play();
+        REQUIRE(play_out(*player, *log));
+        CHECK(first_difference(log->kept, new_whole) == kSame);
+    }
+
+    SECTION("the same settings again change nothing") {
+        player->set_decoder_settings(before);
+        REQUIRE(play_out(*player, *log));
+        CHECK(first_difference(log->kept, old_whole) == kSame);
+    }
+}
+
+TEST_CASE("player: with dither in the stream, a settings change is still only the change",
+          "[hearth][player]") {
+    // This stream's frames do use §7.3.4 dither, so the decoder that takes
+    // over draws other values for those bins than an unbroken decode would -
+    // some 95 dB down. Anything else going wrong at the handover (a missing
+    // overlap, a unit lost or played twice) is of the order of the signal.
+    Library library;
+    library.files["long.ec3"] = eac3_stream(30);
+    const std::size_t total = 30 * 1536;
+    DecoderSettings after;
+    after.mix_levels.loro_clev = 0.25;
+    const Slots old_whole = played_alone(library, "long.ec3", "2.0");
+    const Slots new_whole = played_alone(library, "long.ec3", "2.0", after);
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log, 8192, "2.0");
+    player->queue().add(item("long.ec3"));
+    player->play();
+    for (int step = 0; step < 6; ++step) {
+        player->pump();
+        advance(*log, 480);
+    }
+    player->set_decoder_settings(after);
+    REQUIRE(play_out(*player, *log));
+    REQUIRE(log->kept.size() == old_whole.size());
+    REQUIRE(log->kept[0].size() == total);
+
+    std::optional<std::size_t> boundary;
+    for (std::size_t unit = 1; unit < 30 && !boundary; ++unit) {
+        const std::size_t at = unit * 1536;
+        if (first_difference(part(log->kept, 0, at), part(old_whole, 0, at)) == kSame &&
+            max_difference(part(log->kept, at, total - at), part(new_whole, at, total - at)) <
+                1e-4) {
+            boundary = at;
+        }
+    }
+    CHECK(boundary.has_value());
+}
+
+TEST_CASE("player: the programme setting picks one of a stream's programmes when an item starts",
+          "[hearth][player]") {
+    Library library;
+    library.files["both.ec3"] = two_programmes(8);
+    library.files["first.ec3"] = joined_frames(programme_frames(8, 440.0, 0));
+    library.files["second.ec3"] = joined_frames(programme_frames(8, 1000.0, 0));
+    const Slots first = played_alone(library, "first.ec3");
+    const Slots second = played_alone(library, "second.ec3");
+    REQUIRE(first_difference(first, second) != kSame);
+
+    DecoderSettings settings;
+    SECTION("unset plays the first") {
+        CHECK(first_difference(played_alone(library, "both.ec3", "5.1", settings), first) == kSame);
+    }
+
+    SECTION("an id plays that programme") {
+        settings.programme = 1;
+        CHECK(first_difference(played_alone(library, "both.ec3", "5.1", settings), second) ==
+              kSame);
+    }
+
+    SECTION("an id the stream lacks plays the first, and says so") {
+        settings.programme = 7;
+        auto log = std::make_shared<FakeDevice::Log>();
+        log->keep = true;
+        const auto player = make_player(library, log, 8192, "5.1", settings);
+        player->queue().add(item("both.ec3"));
+        player->play();
+        CHECK(player->queue().items()[0].facts.note.find("no programme 7") != std::string::npos);
+        REQUIRE(play_out(*player, *log));
+        CHECK(first_difference(log->kept, first) == kSame);
+    }
+
+    SECTION("a change reaches the next item, and the playing one plays on") {
+        // Long enough that one pump leaves most of the first item still to
+        // decode when the setting changes.
+        library.files["long_both.ec3"] = two_programmes(20);
+        library.files["long_first.ec3"] = joined_frames(programme_frames(20, 440.0, 0));
+        library.files["long_second.ec3"] = joined_frames(programme_frames(20, 1000.0, 0));
+        const Slots long_first = played_alone(library, "long_first.ec3");
+        const Slots long_second = played_alone(library, "long_second.ec3");
+
+        auto log = std::make_shared<FakeDevice::Log>();
+        log->keep = true;
+        const auto player = make_player(library, log);
+        player->queue().add(item("long_both.ec3"));
+        player->queue().add(item("long_both.ec3"));
+        player->play();
+        player->pump();
+        advance(*log, 480);
+        REQUIRE(log->submitted < 20 * 1536);
+        settings.programme = 1;
+        player->set_decoder_settings(settings);
+        REQUIRE(play_out(*player, *log));
+        REQUIRE(player->history().size() == 2);
+        CHECK(player->history()[0].frames == 20 * 1536);
+        CHECK(player->history()[1].first_frame == 20 * 1536);
+        CHECK(first_difference(log->kept, joined(long_first, long_second)) == kSame);
     }
 }

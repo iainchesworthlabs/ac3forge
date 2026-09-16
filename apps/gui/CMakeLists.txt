@@ -505,17 +505,24 @@ endif()
 
 # The same defect the Crucible has, in the same place and for the same reason:
 # the deploy script above scans THIS directory for QML imports, tests/qml/
-# tst_*.qml all `import QtTest`, and the runtime zip and the NSIS installer
-# have been carrying qml/QtTest/, Qt6Test.dll and Qt6QuickTest.dll ever since.
-# Only ac3gui_qmltests loads any of it, and that binary is not installed.
-# cmake/StripQtTestDeployment.cmake has the measurement.
+# tst_*.qml all `import QtTest`, and the runtime zip, the NSIS installer and
+# the macOS .app have been carrying qml/QtTest/ (plus Qt6Test.dll and
+# Qt6QuickTest.dll on Windows, Contents/PlugIns/libquicktestplugin.dylib on
+# macOS) ever since. Only ac3gui_qmltests loads any of it, and that binary is
+# not installed. cmake/StripQtTestDeployment.cmake has the measurement.
 #
-# WIN32 only, not WIN32 OR APPLE like the block above: a macOS .app keeps its
-# deployed Qt inside the bundle, and there is no macOS host here to confirm
-# where these three land in it (the same reason the DragNDrop generator's
-# shape in cmake/Packaging.cmake is reasoned about rather than measured). The
-# .dmg still carries Qt Test until someone can check that on a Mac.
-if(WIN32)
+# WIN32 OR APPLE, matching the deploy-script block above: a macOS .app keeps
+# its deployed Qt inside the bundle rather than beside the executable, and
+# cmake/StripQtTestDeployment.cmake now knows that shape too - confirmed
+# against a real packages-macos-llvm CI artifact, which shipped both paths
+# named above before this guard widened. COMPONENT runtime on the
+# install(CODE) below matters as much as it does on install(SCRIPT): a
+# component-scoped install runs only the rules tagged for that component, and
+# the strip script needs this bundle name set in the same pass it runs in.
+if(WIN32 OR APPLE)
+    if(APPLE)
+        install(CODE "set(_ac3_macos_bundle_name \"ac3gui\")" COMPONENT runtime)
+    endif()
     install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/StripQtTestDeployment.cmake"
         COMPONENT runtime)
 endif()

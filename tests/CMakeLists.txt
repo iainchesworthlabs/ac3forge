@@ -80,11 +80,13 @@ add_executable(ac3tests
     decoder/test_eac3_programmes.cpp
     io/test_elementary.cpp
     io/test_stream_accumulator.cpp
+    io/test_improv.cpp
     io/test_interleave.cpp
     io/test_sink_plan.cpp
     io/test_block_ring.cpp
     io/test_unit_hold.cpp
     render/test_layout.cpp
+    render/test_object_lfe_timing.cpp
     render/test_identify.cpp
     render/test_routing.cpp
     render/test_serving.cpp
@@ -699,9 +701,11 @@ if(AC3FORGE_BUILD_HEARTH)
     # src/sendspin's player half: a core-only build still builds and tests it,
     # unlike the test sink further down.
     target_sources(ac3tests PRIVATE
+        hearth/test_decoder_settings.cpp
         hearth/test_output_decision.cpp
         hearth/test_player.cpp
         hearth/test_queue.cpp
+        hearth/test_session.cpp
         hearth/test_stream_decoder.cpp
         hearth/test_transport.cpp)
     target_link_libraries(ac3tests PRIVATE ac3hearth_engine)
