@@ -814,6 +814,13 @@ and release packaging.
   the loop ended. `spatial` had the same missing flush. Both commands now play that unit,
   through a new `ac3::apps::held_back_unit` shared with future callers, laid out the same way
   as every other unit.
+- **`ac3cli transcode`, `metadata`, `cut` and `cat` read a §E2.3.1.2 legacy-core stream as
+  plain AC-3, missing the Annex E dependent's channels.** `decode_and_render`'s decoder
+  choice and `codec_label`'s status-line label both tested `scan.kind == kEac3` alone, so a
+  stream whose 5.1 bed is a plain AC-3 syncframe with an Annex E dependent extending it fell
+  to `FrameDecoder` instead of `Eac3Decoder` - the same two-way test the `monitor` fix above
+  closed, in the one place it remained. Both now recognise the third `StreamKind`
+  (`kAc3CoreEac3Extension`) as E-AC-3-shaped, matching `decode`'s own dispatch.
 - **`ac3cli spatial` refused a §E2.3.1.2 legacy-core stream outright.** It refused any
   stream whose first frame was AC-3 (`bsid <= 8`) before ever checking for an Annex E
   extension substream behind it - but a legacy-core delivery's object layer lives in
