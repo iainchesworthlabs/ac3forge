@@ -105,6 +105,9 @@ TEST_CASE("monitor live: the position follows the device, and pause and flush ho
     const auto resumed = sink.position();
     REQUIRE(resumed.has_value());
     CHECK(resumed->frames_played > still->frames_played);
+    // About 200 ms of playing, and none of the 200 ms paused: a clock that
+    // ran on through the pause would put this near 400 ms.
+    CHECK(resumed->frames_played - still->frames_played < kRate * 3 / 10);
 
     // A flush drops what has not been played, here and in the device, and the
     // position counts from zero again.

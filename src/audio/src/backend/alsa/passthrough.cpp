@@ -56,6 +56,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <fmt/format.h>
@@ -63,6 +64,7 @@
 #include <thread>
 #include <vector>
 
+#include "ac3/audio/playback_counter.hpp"
 #include "ac3/audio/ring_buffer.hpp"
 #include "ac3/audio/speakers.hpp"
 #include "ac3/iec61937/iec61937.hpp"
@@ -132,8 +134,9 @@ PassthroughError open_failure(int error) {
 // `commit` distinguishes the two callers. Enumeration only wants to know
 // whether the parameters would be accepted, and stops before installing them;
 // start() installs them and then sets up the software parameters too, sizing
-// the period to one whole burst.
-bool configure(snd_pcm_t* pcm, std::uint32_t carrier, std::size_t burst_frames, bool commit) {
+// the period to one whole burst, and learns whether the hardware can pause.
+bool configure(snd_pcm_t* pcm, std::uint32_t carrier, std::size_t burst_frames, bool commit,
+               bool* can_pause = nullptr) {
     HwParams params;
     if (!params || snd_pcm_hw_params_any(pcm, params.get()) < 0) {
         return false;
@@ -166,6 +169,9 @@ bool configure(snd_pcm_t* pcm, std::uint32_t carrier, std::size_t burst_frames, 
     }
     if (snd_pcm_hw_params(pcm, params.get()) < 0) {
         return false;
+    }
+    if (can_pause != nullptr) {
+        *can_pause = snd_pcm_hw_params_can_pause(params.get()) == 1;
     }
 
     SwParams software;
@@ -411,10 +417,25 @@ struct PassthroughSink::Impl {
     // apart, and a caller that hands over the wrong one is handing over a
     // frame boundary in the wrong place rather than a slightly odd length.
     std::size_t burst_bytes = iec61937::kBurstBytes;
+    // Link frames to a content frame (carrier_ratio()), for position().
+    std::uint32_t ratio = 1;
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
+    // What the render thread last read from the device, in link frames, for
+    // position(): snd_pcm_delay() against the frames handed over. Only the
+    // render thread touches the handle, so position() reads the counter.
+    PlaybackCounter counter;
+    // Whether the hardware can pause without losing what it holds; see
+    // MonitorSink's ALSA backend for what happens when it cannot.
+    bool can_pause = false;
+    std::atomic_bool paused{false};
+    std::atomic_bool flushing{false};
+    std::atomic<std::uint64_t> flushes{0};
+    // How far the queue had been written when the flush was asked for: what
+    // the render thread drops.
+    std::atomic<std::size_t> flush_mark{0};
 };
 
 PassthroughSink::PassthroughSink() : impl_(std::make_unique<Impl>()) {}
@@ -431,6 +452,58 @@ PassthroughStats PassthroughSink::stats() const {
     return {.bursts_submitted = impl_->submitted.load(),
             .bursts_rendered = impl_->rendered.load(),
             .underruns = impl_->underruns.load()};
+}
+
+std::optional<MonitorPosition> PassthroughSink::position() const {
+    if (!running() || !impl_->queue) {
+        return std::nullopt;
+    }
+    const std::uint64_t queued_here = impl_->queue->available() / kCarrierFrameBytes;
+    // snd_pcm_delay() already counts the whole path out of the machine, as
+    // the device's queue; there is no latency left to add.
+    return per_content_frame(impl_->counter.position(queued_here, /*latency=*/0), impl_->ratio);
+}
+
+void PassthroughSink::flush() {
+    if (!running()) {
+        return;
+    }
+    const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
+    impl_->flushing.store(true, std::memory_order_release);
+    for (int waited = 0; waited < 200; ++waited) {
+        if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    // The render thread did not get to it - a device that has stopped
+    // answering, or one whose recovery failed. The flush is left for the
+    // thread to make when it next runs. It drops only what was queued before
+    // the mark, so bursts submitted after this call returned are kept.
+}
+
+std::expected<void, PassthroughError> PassthroughSink::pause() {
+    if (!running()) {
+        return std::unexpected(PassthroughError::kNotRunning);
+    }
+    // Hardware that cannot pause is dropped and prepared again instead, which
+    // loses the bursts it held - up to a buffer's worth, as a flush() would.
+    // The queue survives either way.
+    impl_->paused.store(true, std::memory_order_release);
+    return {};
+}
+
+std::expected<void, PassthroughError> PassthroughSink::resume() {
+    if (!running()) {
+        return std::unexpected(PassthroughError::kNotRunning);
+    }
+    impl_->paused.store(false, std::memory_order_release);
+    return {};
+}
+
+bool PassthroughSink::paused() const {
+    return impl_->paused.load(std::memory_order_acquire);
 }
 
 bool PassthroughSink::can_submit() const {
@@ -464,6 +537,9 @@ void PassthroughSink::stop() {
         snd_pcm_close(impl_->pcm);
         impl_->pcm = nullptr;
     }
+    // A pause is a property of a running stream, so it does not outlive one.
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
     impl_->running.store(false, std::memory_order_release);
 }
 
@@ -518,7 +594,8 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     }
     Pcm opened{handle};
 
-    if (!configure(handle, carrier, burst_frames, /*commit=*/true)) {
+    bool can_pause = false;
+    if (!configure(handle, carrier, burst_frames, /*commit=*/true, &can_pause)) {
         return std::unexpected(PassthroughError::kFormatRejected);
     }
     if (snd_pcm_prepare(handle) < 0) {
@@ -530,17 +607,78 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     // bytes so an E-AC-3 session gets the same second, not a quarter of one.
     impl_->queue = std::make_unique<ByteRingBuffer>(burst_bytes * 40);
     impl_->burst_bytes = burst_bytes;
+    impl_->ratio = carrier_ratio(format_kind);
     impl_->submitted.store(0);
     impl_->rendered.store(0);
     impl_->underruns.store(0);
+    impl_->counter.restart();
+    impl_->paused.store(false);
+    impl_->flushing.store(false);
+    impl_->flushes.store(0);
+    impl_->can_pause = can_pause;
     impl_->running.store(true, std::memory_order_release);
     impl_->pcm = opened.release();
 
     impl_->worker = std::jthread([this, burst_bytes, burst_frames](const std::stop_token& stop) {
         snd_pcm_t* pcm = impl_->pcm;
         std::vector<std::byte> chunk(burst_bytes);
+        std::uint64_t handed_over = 0;
+        bool device_paused = false;
+        // Whether the pause in force was made by dropping rather than by
+        // snd_pcm_pause, which decides how it is undone.
+        bool dropped_to_pause = false;
 
         while (!stop.stop_requested()) {
+            // As in MonitorSink's ALSA backend: the device and the queue
+            // belong to this thread, and pause() and flush() raise flags. A
+            // hardware pause keeps what the device holds; a device that cannot
+            // pause, or refuses to from PREPARED, is dropped and prepared
+            // again, which loses it.
+            const bool wanted_pause = impl_->paused.load(std::memory_order_acquire);
+            if (wanted_pause != device_paused) {
+                if (wanted_pause) {
+                    const bool held = impl_->can_pause && snd_pcm_pause(pcm, 1) == 0;
+                    if (!held) {
+                        snd_pcm_drop(pcm);
+                        snd_pcm_prepare(pcm);
+                        // What was dropped will never be heard, so what the
+                        // device was given is what it played.
+                        handed_over = impl_->counter.played();
+                        impl_->counter.report(handed_over, 0);
+                    }
+                    dropped_to_pause = !held;
+                } else if (!dropped_to_pause) {
+                    snd_pcm_pause(pcm, 0);
+                } else {
+                    dropped_to_pause = false;
+                }
+                device_paused = wanted_pause;
+            }
+            if (device_paused && !impl_->flushing.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+            if (impl_->flushing.exchange(false, std::memory_order_acq_rel)) {
+                // drop discards what the device holds; prepare puts the stream
+                // back in a state that can be written to.
+                snd_pcm_drop(pcm);
+                snd_pcm_prepare(pcm);
+                impl_->queue->discard_to(impl_->flush_mark.load(std::memory_order_acquire));
+                handed_over = 0;
+                impl_->counter.restart();
+                impl_->rendered.store(0, std::memory_order_relaxed);
+                impl_->submitted.store(0, std::memory_order_relaxed);
+                impl_->flushes.fetch_add(1, std::memory_order_release);
+                if (device_paused) {
+                    // Dropped, so a resume starts the stream by writing.
+                    dropped_to_pause = true;
+                    continue;
+                }
+            }
+            snd_pcm_sframes_t delay = 0;
+            if (snd_pcm_delay(pcm, &delay) == 0 && delay >= 0) {
+                impl_->counter.report(handed_over, static_cast<std::uint64_t>(delay));
+            }
             const int ready = snd_pcm_wait(pcm, kWaitMs);
             if (ready < 0) {
                 if (snd_pcm_recover(pcm, ready, /*silent=*/1) < 0) {
@@ -573,6 +711,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
                 }
                 continue;
             }
+            handed_over += static_cast<std::uint64_t>(written);
             impl_->rendered.fetch_add(got / burst_bytes);
         }
 

@@ -311,6 +311,17 @@ TEST_CASE("a sink that was never started refuses work", "[audio-backend][concurr
     CHECK(stats.bursts_submitted == 0);
     CHECK(stats.bursts_rendered == 0);
     CHECK(stats.underruns == 0);
+
+    // Nothing to report, pause or flush: kNotRunning where there is a
+    // backend, kNoBackend where there is none.
+    CHECK_FALSE(sink.position().has_value());
+    CHECK_FALSE(sink.paused());
+    CHECK_FALSE(sink.pause().has_value());
+    CHECK_FALSE(sink.resume().has_value());
+    CHECK_FALSE(sink.paused());
+    sink.flush();
+    sink.stop();
+    CHECK_FALSE(sink.running());
 }
 
 TEST_CASE("a capture that was never started reports nothing", "[audio-backend][concurrency]") {

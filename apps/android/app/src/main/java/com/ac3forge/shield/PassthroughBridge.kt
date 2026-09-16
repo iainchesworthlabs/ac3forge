@@ -152,6 +152,60 @@ class PassthroughBridge {
         track.write(buffer, sizeBytes, AudioTrack.WRITE_NON_BLOCKING)
     }
 
+    /**
+     * Carrier frames the track has played since it was opened or last
+     * flushed, as [AudioTrack.getPlaybackHeadPosition] counts them - an
+     * unsigned 32-bit count, widened here so the native side can follow its
+     * wrap - or -1 when no track is open.
+     */
+    fun playbackHeadPosition(): Long = synchronized(trackLock) {
+        val track = audioTrack ?: return@synchronized -1L
+        track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
+    }
+
+    /** Pauses the track without releasing it; false when none is open. */
+    fun pause(): Boolean = synchronized(trackLock) {
+        val track = audioTrack ?: return@synchronized false
+        try {
+            track.pause()
+            true
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "pause: AudioTrack.pause() refused", e)
+            false
+        }
+    }
+
+    /** Plays a paused track again; false when none is open. */
+    fun resume(): Boolean = synchronized(trackLock) {
+        val track = audioTrack ?: return@synchronized false
+        try {
+            track.play()
+            true
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "resume: AudioTrack.play() refused", e)
+            false
+        }
+    }
+
+    /**
+     * Drops what the track holds and has not played, and restarts its head
+     * position at zero. AudioTrack flushes only a paused or stopped track, so
+     * a playing one is paused, flushed and played again.
+     */
+    fun flush(): Boolean = synchronized(trackLock) {
+        val track = audioTrack ?: return@synchronized false
+        try {
+            val playing = track.playState == AudioTrack.PLAYSTATE_PLAYING
+            if (playing) track.pause()
+            track.flush()
+            if (playing) track.play()
+            true
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "flush: AudioTrack refused", e)
+            false
+        }
+    }
+
     fun close(): Unit = synchronized(trackLock) {
         val track = audioTrack ?: return@synchronized
         audioTrack = null

@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <numeric>
 #include <thread>
 #include <vector>
@@ -61,6 +62,106 @@ TEST_CASE("reads never exceed what was written", "[ring][concurrency]") {
     const std::vector<float> in(3, 2.0f);
     ring.write(in);
     CHECK(ring.read(out) == 3);
+}
+
+TEST_CASE("a discard drops what came before the mark and keeps what came after",
+          "[ring][concurrency]") {
+    ac3::audio::RingBuffer ring(32);
+    std::vector<float> first(10);
+    std::iota(first.begin(), first.end(), 1.0f);
+    REQUIRE(ring.write(first) == first.size());
+    std::vector<float> out(4);
+    REQUIRE(ring.read(out) == 4);
+
+    // A flush's mark, then more written before the consumer gets to it.
+    const auto mark = ring.write_mark();
+    std::vector<float> after(5);
+    std::iota(after.begin(), after.end(), 100.0f);
+    REQUIRE(ring.write(after) == after.size());
+
+    ring.discard_to(mark);
+    CHECK(ring.available() == after.size());
+    std::vector<float> rest(8);
+    REQUIRE(ring.read(rest) == after.size());
+    CHECK(std::vector<float>(rest.begin(), rest.begin() + 5) == after);
+
+    // A mark already read past, or past what was written, moves nothing back
+    // or beyond.
+    ring.discard_to(mark);
+    CHECK(ring.available() == 0);
+    ring.discard_to(ring.write_mark() + 100);
+    CHECK(ring.available() == 0);
+    REQUIRE(ring.write(first) == first.size());
+    CHECK(ring.available() == first.size());
+}
+
+TEST_CASE("a discard while the producer writes loses nothing written after the mark",
+          "[ring][concurrency]") {
+    // A flush as the sinks make one: the producer takes a mark between two
+    // writes, and the consumer drops up to it while the producer carries on.
+    // Whatever was written after the mark arrives, once and in order, and
+    // the buffer never claims to hold more than it can.
+    constexpr std::size_t kChunk = 64;
+    constexpr std::size_t kTotal = kChunk * 1600;
+    // Every sample from here on is written after the mark.
+    constexpr std::size_t kMarkAt = kChunk * 800;
+    ac3::audio::RingBuffer ring(1024);
+    std::atomic<std::size_t> mark{0};
+    std::atomic_bool marked{false};
+
+    std::jthread producer([&] {
+        std::vector<float> chunk(kChunk);
+        for (std::size_t next = 0; next < kTotal; next += kChunk) {
+            if (next == kMarkAt) {
+                mark.store(ring.write_mark());
+                marked.store(true);
+            }
+            for (std::size_t i = 0; i < kChunk; ++i) {
+                chunk[i] = static_cast<float>(next + i);
+            }
+            std::size_t offset = 0;
+            while (offset < kChunk) {
+                const auto wrote = ring.write(std::span{chunk}.subspan(offset));
+                offset += wrote;
+                if (wrote == 0) {
+                    std::this_thread::yield();
+                }
+            }
+        }
+    });
+
+    std::vector<float> out(128);
+    bool discarded = false;
+    bool ordered = true;
+    bool within_capacity = true;
+    float last = -1.0f;
+    std::size_t after_mark = 0;
+    // Bounded, so a buffer that loses the last sample fails rather than hangs.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    while (last < static_cast<float>(kTotal - 1) && std::chrono::steady_clock::now() < deadline) {
+        if (!discarded && marked.load()) {
+            ring.discard_to(mark.load());
+            discarded = true;
+        }
+        within_capacity = within_capacity && ring.available() < ring.capacity();
+        const auto got = ring.read(out);
+        for (std::size_t i = 0; i < got; ++i) {
+            ordered = ordered && out[i] > last;
+            last = out[i];
+            if (out[i] >= static_cast<float>(kMarkAt)) {
+                ++after_mark;
+            }
+        }
+        if (got == 0) {
+            std::this_thread::yield();
+        }
+    }
+    producer.join();
+
+    CHECK(discarded);
+    CHECK(ordered);
+    CHECK(within_capacity);
+    CHECK(after_mark == kTotal - kMarkAt);
 }
 
 TEST_CASE("concurrent producer and consumer preserve the sample sequence", "[ring][concurrency]") {

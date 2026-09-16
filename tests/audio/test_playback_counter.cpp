@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <thread>
 
+#include "ac3/audio/passthrough.hpp"
 #include "ac3/audio/playback_counter.hpp"
 
 // ac3::audio::PlaybackCounter against a fake device's clock
@@ -167,4 +168,101 @@ TEST_CASE("playback counter: a reader sees a consistent position while the devic
     CHECK(reads.load() > 0);
     CHECK_FALSE(wrong.load());
     CHECK(counter.position(0, 0).frames_played == 480'000);
+}
+
+TEST_CASE("play head: a 32-bit count is widened past its wrap", "[audio-backend][playback-counter]") {
+    ac3::audio::PlayHead head;
+    CHECK(head.read(0) == 0);
+    CHECK(head.read(1000) == 1000);
+    CHECK(head.read(0xFFFFFF00U) == 0xFFFFFF00U);
+    // Round, and on.
+    CHECK(head.read(0x100U) == 0x100000100ULL);
+    CHECK(head.read(0x20000000U) == 0x120000000ULL);
+    CHECK(head.read(0xF0000000U) == 0x1F0000000ULL);
+    CHECK(head.read(0x10U) == 0x200000010ULL);
+}
+
+TEST_CASE("play head: a zero reading holds, and a count that starts again carries on",
+          "[audio-backend][playback-counter]") {
+    ac3::audio::PlayHead head;
+    CHECK(head.read(48'000) == 48'000);
+    // The HAL did not answer: nothing is taken from that.
+    CHECK(head.read(0) == 48'000);
+    // And answered again, from where it was.
+    CHECK(head.read(48'480) == 48'480);
+
+    // The output went to standby and its count started again: what has been
+    // played stays played, and the new count adds to it.
+    CHECK(head.read(0) == 48'480);
+    CHECK(head.read(0) == 48'480);
+    CHECK(head.read(960) == 48'480);
+    CHECK(head.read(1'920) == 49'440);
+    // A step back that is not near the top and the bottom of the range is a
+    // restart, not a wrap.
+    CHECK(head.read(0x90000000U) > 49'440);
+    const auto before = head.read(0x90000100U);
+    CHECK(head.read(0x30000000U) == before);
+}
+
+TEST_CASE("play head: after a flush the old count reads as nothing played",
+          "[audio-backend][playback-counter]") {
+    ac3::audio::PlayHead head;
+    CHECK(head.read(96'000) == 96'000);
+    head.restart();
+    // The flush has not reached the hardware: the old count, still rising.
+    CHECK(head.read(96'000) == 0);
+    CHECK(head.read(96'480) == 0);
+    // It has: the count starts from zero, and so does what is played.
+    CHECK(head.read(0) == 0);
+    CHECK(head.read(480) == 480);
+    CHECK(head.read(960) == 960);
+
+    // Read first below the old count, already moving.
+    head.restart();
+    CHECK(head.read(240) == 240);
+    CHECK(head.read(720) == 720);
+
+    // A flush before anything was read holds nothing back.
+    ac3::audio::PlayHead fresh;
+    fresh.restart();
+    CHECK(fresh.read(5'000) == 5'000);
+
+    // A count that had gone round starts from zero too.
+    ac3::audio::PlayHead wrapped;
+    CHECK(wrapped.read(0xFFFFFF00U) == 0xFFFFFF00U);
+    CHECK(wrapped.read(0x100U) == 0x100000100ULL);
+    wrapped.restart();
+    CHECK(wrapped.read(0) == 0);
+    CHECK(wrapped.read(480) == 480);
+
+    // An old count that never comes down is taken as it is, in the end.
+    head.restart();
+    for (int i = 0; i < ac3::audio::PlayHead::kStaleReadings; ++i) {
+        CHECK(head.read(1'000'000) == 0);
+    }
+    CHECK(head.read(1'000'480) == 1'000'480);
+}
+
+TEST_CASE("playback counter: a passthrough link counts in the content's frames",
+          "[audio-backend][playback-counter]") {
+    // An E-AC-3 link runs four frames to each content frame, so a burst's
+    // 6144 link frames are the 1536 content frames the player counts.
+    ac3::audio::PlaybackCounter counter;
+    FakeDevice link;
+    link.hand_over(6144 * 3);
+    link.play(6144 + 5);
+    counter.report(link.handed_over, link.unplayed());
+    const auto eac3 = ac3::audio::per_content_frame(counter.position(6144, 960),
+                                                    ac3::audio::carrier_ratio(
+                                                        ac3::audio::BitstreamFormat::kEac3));
+    CHECK(eac3.frames_played == 1536 + 1);
+    CHECK(eac3.frames_queued == (6144 * 3 - 6144 - 5 + 6144) / 4);
+    CHECK(eac3.latency_frames == 240);
+
+    // AC-3's link is the content's own rate.
+    const auto ac3_link = ac3::audio::per_content_frame(
+        counter.position(0, 0), ac3::audio::carrier_ratio(ac3::audio::BitstreamFormat::kAc3));
+    CHECK(ac3_link.frames_played == 6144 + 5);
+    // A ratio of zero is taken as one rather than divided by.
+    CHECK(ac3::audio::per_content_frame(counter.position(0, 0), 0).frames_played == 6144 + 5);
 }

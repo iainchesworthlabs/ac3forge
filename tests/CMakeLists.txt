@@ -130,6 +130,7 @@ add_executable(ac3tests
     encoder/test_plan.cpp
     audio/test_live_positions.cpp
     audio/test_monitor_live.cpp
+    audio/test_passthrough_live.cpp
     audio/test_pcm_output.cpp
     audio/test_playback_counter.cpp
     audio/test_render_devices.cpp

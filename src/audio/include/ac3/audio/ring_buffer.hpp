@@ -62,6 +62,25 @@ public:
         return write_.load() - read_.load();
     }
 
+    // Producer side: how far the producer has written, for discard_to().
+    [[nodiscard]] std::size_t write_mark() const {
+        return write_.load();
+    }
+
+    // Consumer side: drops what was written before `mark` and has not been
+    // read, and keeps everything written after it. This is how a sink
+    // flushes. The caller takes the mark on its own thread, which is the
+    // producer's; the device thread drops up to it when it gets there; and
+    // whatever the caller writes in between survives. reset() cannot be used
+    // that way, since it moves the producer's index as well.
+    void discard_to(std::size_t mark) {
+        const auto read_at = read_.load();
+        const auto to = std::min(mark, write_.load());
+        if (to > read_at) {
+            read_.store(to);
+        }
+    }
+
     // Items refused because the buffer was full when write() was called.
     // The capture thread cannot retry - it has to return to the device loop -
     // so for the real producer a refusal is a permanent loss, which is what
@@ -71,6 +90,8 @@ public:
         return dropped_.load();
     }
 
+    // Both sides' indices, so only while neither side is running: before a
+    // start, say. A flush uses write_mark() and discard_to().
     void reset() {
         read_.store(0);
         write_.store(0);

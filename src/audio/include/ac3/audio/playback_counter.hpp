@@ -70,4 +70,75 @@ private:
     std::atomic<std::uint64_t> unplayed_{0};
 };
 
+// A device's 32-bit play-head count, widened, and kept moving forward through
+// what a real one does besides count. Android's
+// AudioTrack.getPlaybackHeadPosition() is the case in point. For a direct
+// track it is the HAL's render position, which:
+//   * wraps at 2^32;
+//   * reads 0 when the HAL does not answer;
+//   * starts again from 0 when the output goes to standby;
+//   * after a flush, goes on reading the old count until the flush reaches
+//     the hardware.
+// One thread's: the one asking where playback has got to.
+class PlayHead {
+public:
+    // A flush: count from zero. Until a reading comes in below the last one
+    // taken, readings are the old count still arriving, and read as nothing
+    // played - for kStaleReadings of them at most, after which the count is
+    // taken as it is.
+    void restart() {
+        stale_from_ = last_;
+        stale_left_ = last_ > 0 ? kStaleReadings : 0;
+        base_ = 0;
+        last_ = 0;
+    }
+
+    // Takes one reading, and returns the frames played since the last
+    // restart().
+    std::uint64_t read(std::uint32_t reading) {
+        if (stale_left_ > 0) {
+            if (reading >= stale_from_) {
+                --stale_left_;
+                return base_ + last_;
+            }
+            stale_left_ = 0;
+        } else if (reading < last_) {
+            if (last_ >= kTopQuarter && reading < kBottomQuarter) {
+                // Counted round.
+                base_ += std::uint64_t{1} << 32U;
+            } else if (reading == 0) {
+                // No answer, or a count started again that has not moved yet.
+                return base_ + last_;
+            } else {
+                // The count started again: carry on from where it was.
+                base_ += last_ - reading;
+            }
+        }
+        last_ = reading;
+        return base_ + last_;
+    }
+
+    static constexpr int kStaleReadings = 100;
+
+private:
+    static constexpr std::uint32_t kTopQuarter = 0xC0000000U;
+    static constexpr std::uint32_t kBottomQuarter = 0x40000000U;
+
+    std::uint64_t base_ = 0;
+    std::uint32_t last_ = 0;
+    std::uint32_t stale_from_ = 0;
+    int stale_left_ = 0;
+};
+
+// A passthrough link's figures, counted in its own frames, in the content's:
+// `ratio` link frames make one content frame (carrier_ratio() in
+// passthrough.hpp). A partial content frame is not yet a frame.
+[[nodiscard]] inline MonitorPosition per_content_frame(const MonitorPosition& link,
+                                                      std::uint32_t ratio) {
+    const std::uint32_t by = std::max<std::uint32_t>(ratio, 1);
+    return MonitorPosition{.frames_played = link.frames_played / by,
+                           .frames_queued = link.frames_queued / by,
+                           .latency_frames = link.latency_frames / by};
+}
+
 }  // namespace ac3::audio
