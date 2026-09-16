@@ -225,6 +225,7 @@ jobs:
       # this on a long-lived self-hosted runner after a toolchain version
       # bump).
       - name: Install LLVM ${{ inputs.llvm_version }} (Windows)
+        id: install_llvm
         if: matrix.llvm && runner.os == 'Windows'
         # ci-runners#26: this step has repeatedly hung for ~90 minutes (both
         # self-hosted and windows-latest) with no progress, only ever caught
@@ -269,6 +270,21 @@ jobs:
           } catch {
             Write-Host "::warning::Could not add Defender exclusion for LLVM ($_) - continuing without it"
           }
+          # DIAGNOSTIC (ci-runners#26, temporary - drop once the hang is
+          # confirmed fixed or we know what to look for instead): the
+          # exclusion above is a hypothesis, not a confirmed fix - nobody has
+          # ever captured what a hung install was actually doing, because the
+          # VM recycles before anyone can attach to it. Record whether
+          # realtime protection is even on and whether the exclusion actually
+          # registered, so a future hang can at least be correlated against
+          # known-good Defender state instead of guessing again.
+          try {
+            $mpStatus = Get-MpComputerStatus -ErrorAction Stop
+            Write-Host "Defender: AntivirusEnabled=$($mpStatus.AntivirusEnabled) RealTimeProtectionEnabled=$($mpStatus.RealTimeProtectionEnabled) engine=$($mpStatus.AMEngineVersion)"
+          } catch {
+            Write-Host "Defender: Get-MpComputerStatus unavailable ($_)"
+          }
+          Write-Host "Defender exclusions: $((Get-MpPreference -ErrorAction SilentlyContinue).ExclusionPath -join '; ')"
           $version = $env:LLVM_WINDOWS_VERSION
           $pinnedMajor = $version.Split('.')[0]
           $llvmDir = "$env:ProgramFiles\LLVM"
@@ -318,13 +334,39 @@ jobs:
               # between an ac3forge pin bump and the next template rebuild).
               $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
               Write-Host "Existing LLVM install is not major $pinnedMajor - renaming out of the way ($staleName) before installing $version"
+              # DIAGNOSTIC (ci-runners#26, temporary): re-confirm the "9ms"
+              # rename cost still holds under current conditions - if this
+              # step ever hangs again, the log should show whether it stalled
+              # here (rename regressed) or further down (install itself).
+              $renameSw = [System.Diagnostics.Stopwatch]::StartNew()
               Rename-Item -Path $llvmDir -NewName $staleName
+              Write-Host "Rename completed in $([math]::Round($renameSw.Elapsed.TotalMilliseconds)) ms"
             }
             $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
             $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
             Invoke-WebRequest -Uri $url -OutFile $exe
+            Write-Host "[$($sw.Elapsed.ToString('mm\:ss'))] download complete: $((Get-Item $exe).Length) bytes"
+
             # NSIS installer; /S is a silent install into the default location.
-            $installer = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow -PassThru
+            # DIAGNOSTIC (ci-runners#26, temporary): this Start-Process -Wait
+            # is the one thing in this step that has repeatedly consumed the
+            # full 90-minute job timeout with zero visible progress. Poll
+            # instead of a plain -Wait so that if it happens again despite
+            # the exclusion above, the log shows (a) whether the tree is
+            # actually growing or genuinely frozen, and (b) whether
+            # Defender's own engine is the one spending the CPU while it
+            # does. Revert to a plain -Wait once the hang is confirmed fixed.
+            $installer = Start-Process -FilePath $exe -ArgumentList '/S' -NoNewWindow -PassThru
+            $lastMpCpu = (Get-Process MsMpEng -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CPU)
+            while (-not $installer.WaitForExit(30000)) {
+              $fileCount = (Get-ChildItem -Path $llvmDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
+              $mpCpu = (Get-Process MsMpEng -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CPU)
+              $mpDelta = if ($null -ne $mpCpu -and $null -ne $lastMpCpu) { [math]::Round($mpCpu - $lastMpCpu, 1) } else { 'n/a' }
+              Write-Host "[$($sw.Elapsed.ToString('mm\:ss'))] still installing - files_under_llvmDir=$fileCount MsMpEng_cpu_delta=${mpDelta}s"
+              $lastMpCpu = $mpCpu
+            }
+            Write-Host "[$($sw.Elapsed.ToString('mm\:ss'))] installer exited: code=$($installer.ExitCode)"
             if ($installer.ExitCode -ne 0) {
               throw "LLVM installer exited with code $($installer.ExitCode)"
             }
@@ -336,6 +378,38 @@ jobs:
           # success explicit rather than inheriting whatever the last native
           # invocation happened to leave behind.
           exit 0
+
+      # DIAGNOSTIC (ci-runners#26, temporary - delete this whole step once
+      # the hang is confirmed fixed or we know what to look for instead):
+      # only fires when the step above actually fails or times out, since a
+      # hung self-hosted VM normally recycles - and a hosted one is simply
+      # discarded - before anyone can look at it by hand. Best-effort: a
+      # failure in here should never mask the real failure above.
+      - name: Diagnose LLVM install timeout (Windows)
+        if: runner.os == 'Windows' && (steps.install_llvm.outcome == 'failure' || steps.install_llvm.outcome == 'cancelled')
+        shell: powershell
+        timeout-minutes: 3
+        continue-on-error: true
+        run: |
+          Write-Host "=== Recent Windows Defender operational events ==="
+          Get-WinEvent -LogName 'Microsoft-Windows-Windows Defender/Operational' -MaxEvents 100 -ErrorAction SilentlyContinue |
+            Select-Object TimeCreated, Id, LevelDisplayName, Message |
+            Format-List | Out-String -Width 300 | Write-Host
+
+          Write-Host "=== Top CPU processes ==="
+          Get-Process | Sort-Object CPU -Descending | Select-Object -First 15 Name, Id, CPU, Handles, WorkingSet |
+            Format-Table -AutoSize | Out-String -Width 300 | Write-Host
+
+          Write-Host "=== LLVM install dir state ==="
+          $llvmDir = "$env:ProgramFiles\LLVM"
+          if (Test-Path $llvmDir) {
+            $count = (Get-ChildItem -Path $llvmDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
+            Write-Host "files under ${llvmDir}: $count"
+          } else {
+            Write-Host "${llvmDir} does not exist"
+          }
+          Get-ChildItem -Path "$env:ProgramFiles" -Filter 'LLVM*' -ErrorAction SilentlyContinue |
+            Select-Object Name, LastWriteTime | Format-Table -AutoSize | Out-String -Width 300 | Write-Host
 
       - name: Install ffmpeg (Windows)
         if: matrix.gold_reference && runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
