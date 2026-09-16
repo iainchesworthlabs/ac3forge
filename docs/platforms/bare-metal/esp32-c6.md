@@ -296,6 +296,14 @@ frame against the frame's 32,000 - 28,923 of decode, 3,617 of render and the sin
 a 7.1 stream on eight slots is 1.40 times real time here, and the decode is what would have to
 give.
 
+What the stream carries decides that, not what the sink opens. The same eight 16-bit slots fed
+from a 5.1 stream, with the two slots it has nothing for zeroed, come to 31,875 microseconds a
+frame over eight laps: 17,131 of decode, 2,762 of render, 11,982 of sink. That is 0.996 of real
+time, and it plays, with 24 of its 1,536 writes finding the queue empty - 16 milliseconds in all,
+against 2,086 for the 7.1 stream. Both runs are the same build of the streaming example from the
+same board, `CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS=16` onto `7.1`, from the FAT partition with no
+network.
+
 ## QEMU
 
 ESP-IDF v6.1's `qemu-system-riscv32` (esp_develop_9.2.2_20260417) emulates one Espressif machine,
