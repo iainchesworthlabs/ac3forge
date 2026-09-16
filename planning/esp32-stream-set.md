@@ -164,7 +164,9 @@ web page on the emulated board":
 3. drives the web page on this twelve-slot board (`device-ui/board/layouts.spec.js`): the Output,
    Silent and Next play rows through a 5.1 stream on 7.1.4, a 7.1.4 stream on 5.1, a 5.1 stream
    folded to 2.0, a layout wider than the bus, and the 44.1 kHz stream refused;
-4. checks the console for a panic or a second boot (`tools/checks/check_esp_console.py`).
+4. checks the console for a panic, a second boot or a failed allocation, and holds the lowest
+   free-heap figure the play printed to `--min-heap-free`
+   (`tools/checks/check_esp_console.py`).
 
 The tolerance is tighter than the 5% + 200 the other ESP32 steps allow, on the evidence of the
 measurement below: over 34 plays the largest difference between a slot's level on the emulated
