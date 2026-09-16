@@ -119,22 +119,6 @@ template <std::size_t N>
            mode == ch_mode::k22_2;
 }
 
-// Part 1 Table 83 by frame_rate_index (the column "for external 48 kHz =
-// frame_len_base").
-constexpr std::array<int, 14> kFrameLenBase48 = {1920, 1920, 2048, 1536, 1536, 960, 960,
-                                                 1024, 768,  768,  512,  384,  384, 2048};
-
-[[nodiscard]] int frame_len_base_of(const ac4::Toc& toc) noexcept {
-    if (toc.sample_rate_hz == 44100) {
-        return toc.frame_rate_index == 13 ? 2048 : 0;  // Table 84
-    }
-    if (toc.frame_rate_index < 0 ||
-        static_cast<std::size_t>(toc.frame_rate_index) >= kFrameLenBase48.size()) {
-        return 0;
-    }
-    return kFrameLenBase48[static_cast<std::size_t>(toc.frame_rate_index)];
-}
-
 // --- Part 2 clause 6.2.2.5 advanced_de_data ----------------------------------
 
 [[nodiscard]] ParseResult parse_advanced_de_data(BitReader& r, bool b_pres_ndot,
@@ -558,7 +542,7 @@ PresentationContext presentation_context_v1(const ac4::Toc& toc,
     ctx.pres_ch_mode_core = pres_ch_mode_core;
     ctx.b_pres_has_lfe = pres_ch_mode >= 0 ? contains_lfe(pres_ch_mode)
                                            : (pres_ch_mode_core == 4 || pres_ch_mode_core == 6);
-    ctx.frame_len_base = frame_len_base_of(toc);
+    ctx.frame_len_base = frame_len_base(toc.frame_rate_index, toc.sample_rate_hz);
     return ctx;
 }
 
@@ -601,7 +585,7 @@ ParseResult parse_presentation_substream(BitReader& r, const PresentationContext
             }
             for (int sus = 0; sus < ctx.n_substreams_in_presentation; ++sus) {
                 if (r.read_flag("b_active")) {
-                    std::uint32_t alt_data_set_index = r.read(1, "alt_data_set_index");
+                    std::uint64_t alt_data_set_index = r.read(1, "alt_data_set_index");
                     if (alt_data_set_index == 1) {
                         alt_data_set_index += r.variable_bits(2, "alt_data_set_index");
                     }
