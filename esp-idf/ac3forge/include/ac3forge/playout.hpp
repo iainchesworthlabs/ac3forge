@@ -468,10 +468,17 @@ class Playout {
         }
     }
 
-    // What is staged, padded to a whole block and written: the end of a
-    // stream.
-    void flush(PlayoutSink& sink) {
+    // What is staged, padded to a whole block and written, at `now_us`: the
+    // end of a stream. Frames the sink has already played past are dropped
+    // instead, and count as skipped. A server may end a stream well after its
+    // last chunk has played, and a block written then would play late and be
+    // measured as the stream's worst error.
+    void flush(std::int64_t now_us, PlayoutSink& sink) {
         if (staged_ == 0) {
+            return;
+        }
+        if (behind(now_us)) {
+            drop_staged();
             return;
         }
         stage_silence(kBlockFrames - staged_);

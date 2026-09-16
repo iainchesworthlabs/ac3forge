@@ -215,7 +215,7 @@ void play(Playout& playout, SimulatedI2s& sink, std::int64_t first_target_us, st
         sink.idle(decode_us);
         playout.push(views, n, first_target_us + frames_us(f), f, sink.now(), sink);
     }
-    playout.flush(sink);
+    playout.flush(sink.now(), sink);
 }
 
 void play(Playout& playout, SimulatedI2s& sink, std::int64_t first_target_us, std::uint64_t frames,
@@ -439,7 +439,7 @@ TEST_CASE("the playout plays every frame in order to a sink that says nothing", 
     }
     const std::array<std::span<const float>, 1> views{std::span<const float>(samples)};
     playout.push(views, samples.size(), 5'000'000, 0, 0, sink);
-    playout.flush(sink);
+    playout.flush(0, sink);
     // One block of silence, written to find out where the sink is, then the
     // frames as they came and the last block padded.
     REQUIRE(sink.first_output.size() == 5 * kBlock);
@@ -466,7 +466,7 @@ TEST_CASE("the playout writes as many outputs as the sink was opened for", "[io]
     const std::array<std::span<const float>, 3> views{std::span<const float>(samples), std::span<const float>(samples),
                                                       std::span<const float>(samples)};
     playout.push(views, kBlock, 0, 0, 0, sink);
-    playout.flush(sink);
+    playout.flush(0, sink);
     REQUIRE_FALSE(sink.output_counts.empty());
     CHECK(std::all_of(sink.output_counts.begin(), sink.output_counts.end(), [](std::size_t n) { return n == 2; }));
     playout.set_outputs(9);
@@ -495,6 +495,47 @@ TEST_CASE("the playout pads a stream to its time and says when its next frame pl
     CHECK(*playout.next_play_us(0) == 1'100'000 + frames_us(kBlock));
     // Never sooner than now.
     CHECK(*playout.next_play_us(2'000'000) == 2'000'000);
+    CHECK(stats.underruns == 0);
+}
+
+TEST_CASE("the playout plays what a stream's end leaves staged while it is still due", "[io][playout]") {
+    std::vector<float> storage(kBlock);
+    Playout playout(storage, 1);
+    ScriptedSink sink;
+    sink.first_play_us = 1'000'000;
+    std::vector<float> samples(kBlock, 0.25F);
+    const std::array<std::span<const float>, 1> views{std::span<const float>(samples)};
+    playout.push(views, kBlock, 1'100'000, 0, 0, sink);
+    const std::size_t writes = sink.output_counts.size();
+    // The staged 192 frames play from the next block, which has not started.
+    playout.flush(1'050'000, sink);
+    CHECK(sink.output_counts.size() == writes + 1);
+    const Playout::Stats& stats = playout.stats();
+    CHECK(stats.stream_frames == kBlock);
+    CHECK(stats.skipped_frames == 0);
+    CHECK(stats.underruns == 0);
+}
+
+TEST_CASE("the playout drops what a stream's end leaves staged once it is overdue", "[io][playout]") {
+    std::vector<float> storage(kBlock);
+    Playout playout(storage, 1);
+    ScriptedSink sink;
+    sink.first_play_us = 1'000'000;
+    std::vector<float> samples(kBlock, 0.25F);
+    const std::array<std::span<const float>, 1> views{std::span<const float>(samples)};
+    playout.push(views, kBlock, 1'100'000, 0, 0, sink);
+    const std::size_t writes = sink.output_counts.size();
+    const Playout::Stats& stats = playout.stats();
+    const std::int64_t last_play = stats.last_play_us;
+    // The end comes long after the next block would have started, as it does
+    // from a server that lets the last chunk play first: a block written now
+    // would play late, and would be measured as the stream's worst error.
+    playout.flush(3'000'000, sink);
+    CHECK(sink.output_counts.size() == writes);
+    CHECK(stats.stream_frames == 64);
+    CHECK(stats.skipped_frames == kBlock - 64);
+    CHECK(stats.last_play_us == last_play);
+    CHECK(stats.worst_error_us == 0);
     CHECK(stats.underruns == 0);
 }
 

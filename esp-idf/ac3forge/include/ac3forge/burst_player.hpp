@@ -90,6 +90,9 @@ struct BurstPlayerConfig {
     // The decode task's stack, which the decoder needs most of
     // (PlayerConfig::decode_stack_bytes has the measurements).
     std::uint32_t stack_bytes = 32768;
+    // A sendspin.progress line on the console every this many chunks while a
+    // stream plays, as well as the closing line; 0 for the closing line only.
+    std::uint32_t report_every_chunks = 0;
 
     // The layout until a server sends one, and the decoder settings under
     // it: the server's settings replace these whole, as the extension page

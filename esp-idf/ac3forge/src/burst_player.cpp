@@ -341,7 +341,7 @@ struct BurstPlayer::Impl {
         const std::size_t needed = outputs_needed();
         if (always || needed != outputs_open) {
             if (playout && needed != outputs_open) {
-                playout->flush(timed);
+                playout->flush(esp_timer_get_time(), timed);
             }
             if (sink.open(config.sample_rate, needed)) {
                 outputs_open = needed;
@@ -542,7 +542,7 @@ struct BurstPlayer::Impl {
     }
 
     void end_stream() {
-        playout->flush(timed);
+        playout->flush(esp_timer_get_time(), timed);
         report_stream_end();
         reset_decoding();
         stream = Stream::kIdle;
@@ -852,6 +852,12 @@ struct BurstPlayer::Impl {
         if (!whole) {
             restart_after_error();
         }
+        count_time(started);
+    }
+
+    // A chunk's time, from `started` to now: the sink's part and the rest.
+    // A progress line follows every config.report_every_chunks chunks.
+    void count_time(std::int64_t started) {
         const std::uint64_t spent = static_cast<std::uint64_t>(esp_timer_get_time() - started);
         const std::uint64_t in_sink = timed.take_spent();
         const std::uint64_t own = spent > in_sink ? spent - in_sink : 0;
@@ -859,6 +865,27 @@ struct BurstPlayer::Impl {
         sink_us_total += in_sink;
         ++timed_bursts;
         worst_burst_us = std::max(worst_burst_us, static_cast<std::uint32_t>(own));
+        if (config.report_every_chunks > 0 && timed_bursts % config.report_every_chunks == 0) {
+            report_progress();
+        }
+    }
+
+    // What the closing line will say, so far, with the internal heap free
+    // now, its largest block and the least since the stream began: the
+    // network's receive buffers come from there, and a stream that runs it
+    // out loses packets.
+    void report_progress() const {
+        const Playout::Stats& p = playout->stats();
+        std::printf("sendspin.progress chunks=%llu late=%llu underruns=%llu resyncs=%u burst_us=%llu "
+                    "worst_burst_us=%lu sink_us=%llu ring_high=%lu heap_free=%lu heap_largest=%lu heap_least=%lu\n",
+                    static_cast<unsigned long long>(bursts_played), static_cast<unsigned long long>(late_chunks),
+                    static_cast<unsigned long long>(p.underruns), static_cast<unsigned>(p.resyncs),
+                    static_cast<unsigned long long>(decode_us_total / timed_bursts),
+                    static_cast<unsigned long>(worst_burst_us),
+                    static_cast<unsigned long long>(sink_us_total / timed_bursts), static_cast<unsigned long>(ring_high),
+                    static_cast<unsigned long>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                    static_cast<unsigned long>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                    static_cast<unsigned long>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
     }
 
     void play_pcm(const Header& header, std::span<const std::uint8_t> payload) {
@@ -939,11 +966,7 @@ struct BurstPlayer::Impl {
             emit(n);
             done += n;
         }
-        const std::uint64_t spent = static_cast<std::uint64_t>(esp_timer_get_time() - started);
-        const std::uint64_t in_sink = timed.take_spent();
-        decode_us_total += spent > in_sink ? spent - in_sink : 0;
-        sink_us_total += in_sink;
-        ++timed_bursts;
+        count_time(started);
     }
 
     // The identify tone with nothing playing: blocks of it straight to the

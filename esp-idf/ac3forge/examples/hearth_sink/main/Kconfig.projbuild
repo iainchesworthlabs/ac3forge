@@ -495,7 +495,8 @@ config AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES
         A source that cannot rewind - HTTP - makes exactly one pass, which for
         a long stream means one line after minutes of silence on the console.
         A non-zero value prints the same figures, cumulative, every N frames as
-        well; 125 is every four seconds at 48 kHz.
+        well; 125 is every four seconds at 48 kHz. A Sendspin stream prints a
+        sendspin.progress line every N chunks, with the internal heap free.
 
 # THE SENDSPIN PLAYER - main/sendspin.hpp, over the component's player
 # (CONFIG_AC3FORGE_SENDSPIN, in the component's own menu). A build with a

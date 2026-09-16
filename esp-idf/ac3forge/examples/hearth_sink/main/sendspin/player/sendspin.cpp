@@ -57,6 +57,7 @@ constexpr std::size_t kMaxChunkBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUN
 constexpr std::uint32_t kDecodeStackBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES;
 constexpr std::size_t kServerStackBytes = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_SERVER_STACK_BYTES;
 constexpr int kMaxDelayMs = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS;
+constexpr std::uint32_t kReportEveryChunks = CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES;
 constexpr std::int32_t kLeadMs = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_LEAD_MS;
 constexpr std::int32_t kBufferMs = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_BUFFER_MS;
 constexpr bool kUnpairedAccess = CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_UNPAIRED_ACCESS != 0;
@@ -439,6 +440,7 @@ void start_player(const ac3::render::OutputLayout& layout) {
     config.max_delay_ms = static_cast<double>(kMaxDelayMs);
     config.core = kDecodeCore;
     config.stack_bytes = kDecodeStackBytes;
+    config.report_every_chunks = kReportEveryChunks;
     config.layout = layout;
     config.decoder.output.mode = kMode;
     config.decoder.joc_domain = kJocDomain;
