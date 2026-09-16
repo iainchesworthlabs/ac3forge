@@ -74,6 +74,10 @@ using ItemLoader =
 
 class Session {
 public:
+    // A unit's report, with how many of the frames the item plays came from
+    // it; units the item plays nothing of are not reported.
+    using ReportFn = std::function<void(const UnitReport& report, std::size_t frames)>;
+
     // Loads `path` and scans it. The error is a sentence for the queue list.
     // `programme` picks one programme of a multi-programme E-AC-3 stream by
     // its independent substream id; unset, or naming one the stream does not
@@ -104,12 +108,13 @@ public:
     // Decodes units until at least `wanted` frames have been delivered, and
     // releases the end of the stream once the last frame the item plays has
     // gone - so an item that has finished has delivered every frame it will
-    // ever deliver. Returns the frames this call delivered; an undecodable
-    // unit ends the call with the reason, and the session carries on from the
-    // next unit if asked again.
+    // ever deliver. Each unit's report follows its frames. Returns the frames
+    // this call delivered; an undecodable unit ends the call with the reason,
+    // and the session carries on from the next unit if asked again.
     [[nodiscard]] std::expected<std::size_t, std::string> render(StreamDecoder& decoder,
                                                                  const StreamDecoder::BlockFn& deliver,
-                                                                 std::size_t wanted);
+                                                                 std::size_t wanted,
+                                                                 const ReportFn& reported = {});
 
     // The next frame delivered is the first of the unit covering `to`,
     // counted from the start of what the item plays and clamped to it. The
@@ -123,7 +128,8 @@ public:
     // so nothing is lost, nothing repeats, and the handover cannot be heard
     // beyond what the new decoder's own settings change. The caller replaces
     // `current` with the new decoder before the next render().
-    void hand_over(StreamDecoder& current, const StreamDecoder::BlockFn& deliver);
+    void hand_over(StreamDecoder& current, const StreamDecoder::BlockFn& deliver,
+                   const ReportFn& reported = {});
 
     // Where the next frame render() delivers sits, in samples from the start
     // of what the item plays.
@@ -132,16 +138,24 @@ public:
 private:
     Session() = default;
 
-    // Where the frames a render() call is delivering go, for the call's
-    // window callback.
+    // Where the frames and reports a render() call is delivering go, for the
+    // call's window callbacks, and the frame count the current decoder call
+    // started at.
     struct Target {
         const StreamDecoder::BlockFn* deliver = nullptr;
         std::size_t* frames = nullptr;
+        const ReportFn* reported = nullptr;
+        std::size_t unit_start = 0;
     };
 
     // Hands on the part of a decoded block the item plays, if any.
     void deliver_window(const Target& target, std::span<const std::span<const float>> slots,
                         std::size_t n);
+    // Hands on a unit's report if the item played any of its frames.
+    static void report_window(const Target& target, const UnitReport& report);
+    // The decoder's report callback for `target`, or none when it has no
+    // caller to go to.
+    static StreamDecoder::UnitFn unit_reports(Target& target);
     // The next frame delivered is the first of `unit`, with the unit before it
     // decoded first and dropped.
     void start_at(std::size_t unit, StreamDecoder& decoder);

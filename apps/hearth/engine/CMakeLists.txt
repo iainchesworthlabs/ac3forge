@@ -16,7 +16,8 @@ add_library(ac3hearth_engine STATIC
     queue.cpp
     session.cpp
     stream_decoder.cpp
-    transport.cpp)
+    transport.cpp
+    unit_reports.cpp)
 target_include_directories(ac3hearth_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_features(ac3hearth_engine PUBLIC cxx_std_23)
 
