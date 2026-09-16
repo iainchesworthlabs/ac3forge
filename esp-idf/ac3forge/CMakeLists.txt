@@ -67,6 +67,7 @@ idf_component_register(
     SRCS ${AC3FORGE_COMPONENT_SRCS}
     INCLUDE_DIRS "include"
     REQUIRES freertos esp_timer heap esp_http_server mbedtls nvs_flash
+    PRIV_REQUIRES lwip
     EMBED_FILES "ui/ac3forge_ui.html" "ui/ac3forge_ui.js")
 
 # How the interleave converts a float sample to an integer slot is chosen by

@@ -19,5 +19,8 @@ CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES=125
 CONFIG_LWIP_MAX_SOCKETS=16
 
 # The E-AC-3 decoder and the renderer on core 1, the network and the
-# sessions on core 0, as the player's own plays have them.
+# sessions on core 0, as the player's own plays have them. lwIP's task is
+# pinned there too: ESP-IDF leaves it free to run on either core, at a higher
+# priority than the decoder, and a server's read-ahead gives it a lot to do.
 CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE=1
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y

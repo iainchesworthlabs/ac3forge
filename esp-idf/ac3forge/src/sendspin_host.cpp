@@ -24,6 +24,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "lwip/sockets.h"
 
 #include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/arbiter.hpp"
@@ -172,6 +173,9 @@ struct SendspinHost::Impl {
     Arbiter::Id clock_connection = 0;
     std::array<char, 48> client_id{};
     TaskHandle_t server_task = nullptr;
+    // A frame on its way out, header and payload together; on the server's
+    // task only.
+    std::vector<std::uint8_t> frame_out;
 
     [[nodiscard]] ss::PlayerConfig new_session_config(std::uint32_t& generation) {
         const std::lock_guard lock(pending_mutex);
@@ -185,12 +189,14 @@ struct SendspinHost::Impl {
 
     [[nodiscard]] HostConnection* find(Arbiter::Id id) const;
     [[nodiscard]] std::size_t open_connections() const;
+    [[nodiscard]] bool send_frame(int fd, const ss::transport::Frame& frame);
     void deliver(HostConnection& connection, ss::SessionOutput out);
     void after_call();
     void refresh_status();
     void displace(Arbiter::Id id);
     void queue_pending();
 
+    static esp_err_t on_open(httpd_handle_t server, int fd);
     static esp_err_t on_upgraded(httpd_req_t* req);
     static esp_err_t on_frame(httpd_req_t* req);
     static void free_connection(void* ctx);
@@ -390,16 +396,48 @@ std::size_t SendspinHost::Impl::open_connections() const {
         std::count_if(connections.begin(), connections.end(), [](const HostConnection* c) { return c != nullptr; }));
 }
 
+// One WebSocket frame in one write, where httpd_ws_send_frame_async() writes
+// the header and the payload apart. Two writes can reach the server as two
+// TCP segments with a gap between them, and a server that reads with a short
+// timeout may give up on the frame in that gap. A write cut short by the send
+// timeout is finished here too, since part of a frame on the wire leaves the
+// connection unusable.
+bool SendspinHost::Impl::send_frame(int fd, const ss::transport::Frame& frame) {
+    const std::uint64_t size = frame.bytes.size();
+    frame_out.clear();
+    // Final, unmasked (RFC 6455, section 5.2).
+    frame_out.push_back(static_cast<std::uint8_t>(frame.kind == ss::transport::FrameKind::kText ? 0x81 : 0x82));
+    if (size < 126) {
+        frame_out.push_back(static_cast<std::uint8_t>(size));
+    } else if (size <= 0xffff) {
+        frame_out.push_back(126);
+        frame_out.push_back(static_cast<std::uint8_t>(size >> 8));
+        frame_out.push_back(static_cast<std::uint8_t>(size));
+    } else {
+        frame_out.push_back(127);
+        for (int shift = 56; shift >= 0; shift -= 8) {
+            frame_out.push_back(static_cast<std::uint8_t>(size >> static_cast<unsigned>(shift)));
+        }
+    }
+    frame_out.insert(frame_out.end(), frame.bytes.begin(), frame.bytes.end());
+    std::size_t sent = 0;
+    while (sent < frame_out.size()) {
+        const auto* rest = static_cast<const char*>(static_cast<const void*>(frame_out.data() + sent));
+        const int n = httpd_socket_send(server, fd, rest, frame_out.size() - sent, 0);
+        if (n <= 0) {
+            return false;
+        }
+        sent += static_cast<std::size_t>(n);
+    }
+    return true;
+}
+
 void SendspinHost::Impl::deliver(HostConnection& connection, ss::SessionOutput out) {
     if (connection.closing()) {
         return;
     }
-    for (ss::transport::Frame& frame : out.frames) {
-        httpd_ws_frame_t ws{};
-        ws.type = frame.kind == ss::transport::FrameKind::kText ? HTTPD_WS_TYPE_TEXT : HTTPD_WS_TYPE_BINARY;
-        ws.payload = frame.bytes.data();
-        ws.len = frame.bytes.size();
-        if (httpd_ws_send_frame_async(server, connection.fd(), &ws) != ESP_OK) {
+    for (const ss::transport::Frame& frame : out.frames) {
+        if (!send_frame(connection.fd(), frame)) {
             out.close = true;
             break;
         }
@@ -493,6 +531,19 @@ void SendspinHost::Impl::after_call() {
     }
     next_due.store(due);
     refresh_status();
+}
+
+// esp_http_server's callback for each accepted socket, before anything is
+// read from it: Nagle's algorithm off, as a computer's transport has it. With
+// it on, a small message waits for the server to acknowledge the one before,
+// which a server may delay by up to 200 ms: a clock exchange measures that wait
+// as network delay, and a frame's second segment arrives that much later.
+esp_err_t SendspinHost::Impl::on_open(httpd_handle_t /*server*/, int fd) {
+    const int on = 1;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) != 0) {
+        std::printf("sendspin: could not turn off Nagle's algorithm on a connection\n");
+    }
+    return ESP_OK;
 }
 
 esp_err_t SendspinHost::Impl::on_upgraded(httpd_req_t* req) {
@@ -742,6 +793,7 @@ bool SendspinHost::start(SendspinHostConfig config, SendspinEvents& events) {
     http.keep_alive_idle = 5;
     http.keep_alive_interval = 5;
     http.keep_alive_count = 3;
+    http.open_fn = &Impl::on_open;
     if (httpd_start(&im.server, &http) != ESP_OK) {
         std::printf("sendspin: could not start the WebSocket server on port %u\n",
                     static_cast<unsigned>(im.config.port));
