@@ -59,28 +59,78 @@
 # surgical fix. tools/ci/check_crucible_package.py asserts the absence on the
 # Crucible zip in CI, so this staying wired is checked rather than assumed.
 #
-# Windows only in effect: it is the platform whose packages carry their own Qt
-# at all (Linux finds the system's), and a macOS .app keeps its deployed Qt
-# inside the bundle - Contents/Frameworks/ and Contents/Resources/qml/ - which
-# is not where any path below looks. apps/gui narrows its call to WIN32 for
-# exactly that reason.
+# Windows AND macOS: both platforms' packages carry their own Qt (Linux finds
+# the system's, so this file never runs there - apps/gui's and apps/crucible's
+# install(SCRIPT) calls each sit inside a WIN32 OR APPLE deploy block). A
+# macOS .app keeps its deployed Qt inside the bundle rather than beside the
+# executable - Contents/PlugIns/ for QML plugins, Contents/Resources/qml/ for
+# QML modules - but qmlimportscanner's recursion into tests/qml/tst_*.qml is
+# not platform-specific, so qt_generate_deploy_qml_app_script() stages
+# Contents/PlugIns/libquicktestplugin.dylib and
+# Contents/Resources/qml/QtTest/{libquicktestplugin.dylib,qmldir} into the
+# .app exactly as it stages Qt6Test.dll and qml/QtTest/ on Windows. Confirmed
+# 2026-09-16 against a real packages-macos-llvm CI artifact built from main
+# (ac3forge-0.0.0-Darwin.zip): both paths were there, and nothing under
+# Contents/Frameworks/ was named Test or QuickTest - the QML plugin is the
+# only carrier, unlike Windows where windeployqt also resolves the plugin's
+# own Qt6Test.dll/Qt6QuickTest.dll dependencies into bin/.
 #
-# apps/crucible's is NOT narrowed, and now reaches macOS: the top-level
-# CMakeLists.txt adds Crucible under WIN32 OR APPLE OR LINUX since the macOS
-# platform half landed on 2026-09-06, so this script's install(SCRIPT) sits
-# inside a WIN32 OR APPLE deploy block whose APPLE arm both macOS CI legs have
-# now configured through. Neither has reached an install step yet, so this file
-# has never executed on macOS, and what it would do there is nothing: every
-# path below is the Windows package layout, so each if(EXISTS) is false and a
-# .app keeps its deployed Qt Test, the same way ac3gui's .dmg does. That is a
-# gap rather than a hazard - it
-# removes nothing it should not - and it stays open for the same reason
-# apps/gui's does: nobody here has a Mac to check where those files land in a
-# bundle. It is also not reachable through CPack yet, since
-# cmake/Packaging.cmake still adds the crucible component only under
-# WIN32 OR LINUX. Narrowing this call to WIN32 would match apps/gui and lose
-# nothing; leaving it is what lets a macOS bundle be fixed here once someone
-# can see one.
+# WHERE THE BUNDLE NAME COMES FROM
+#
+# install(SCRIPT) runs this file as its own `cmake -P` pass at install time -
+# after the generate step, in a scope that inherits none of the calling
+# CMakeLists.txt's variables or target properties, and cannot evaluate a
+# generator expression ($<TARGET_FILE_NAME:...> and friends only work at
+# generate time). So the caller cannot just write
+# ${CMAKE_INSTALL_PREFIX}/ac3gui.app inline here the way
+# qt_generate_deploy_qml_app_script()'s OWN generated script can (it bakes
+# the resolved path in via file(GENERATE), which this file is not). What DOES
+# cross that boundary is a variable set by an install(CODE) call placed
+# immediately before install(SCRIPT): CMake concatenates every install() rule
+# from one directory into a single per-directory cmake_install.cmake,
+# executed top to bottom as one script, so a set() from that install(CODE)
+# is still visible when this file's include() runs a moment later. apps/gui
+# and apps/crucible each do exactly that - install(CODE "set(_ac3_macos_
+# bundle_name \"ac3gui\")") (or "ac3crucible") right before their own
+# install(SCRIPT .../StripQtTestDeployment.cmake ...) - with the SAME
+# COMPONENT keyword on both calls, since a component-scoped install (`cmake
+# --install --component runtime`, what the package-macos-universal job's
+# lipo-merge actually runs) executes only the install() rules tagged for
+# that component; a mismatched COMPONENT would silently leave the variable
+# unset for exactly the install that matters. The literal target name, not
+# MACOSX_BUNDLE_BUNDLE_NAME, is what is passed: that variable only feeds
+# CFBundleName inside Info.plist: the CI artifact above is ac3gui.app despite
+# ac3crucible's MACOSX_BUNDLE_BUNDLE_NAME being "Crucible", not
+# ac3crucible's own target name. A plain literal, not a generator
+# expression, because the target name has no per-config variation on either
+# target - nothing here needs file(GENERATE).
+#
+# WHY THE PlugIns FILE'S GUARD IS EXISTS OR IS_SYMLINK, NOT EXISTS ALONE
+#
+# Every other removal in this file - including the macOS qml/QtTest
+# directory below - is measured with if(EXISTS) purely to keep the STATUS
+# message honest, since file(REMOVE)/file(REMOVE_RECURSE) already silently
+# no-op on a path that was never there. if(EXISTS) alone is not safe for
+# Contents/PlugIns/libquicktestplugin.dylib today: qt_generate_deploy_qml_app_script()
+# on Homebrew's Qt6 deploys every QtQuick/QML plugin in this bundle - QtTest's
+# included - as a relative symlink back into Homebrew's own Cellar (a
+# separate, longstanding Homebrew/Qt6 defect, tracked and being fixed
+# independently in PR #728 - unrelated to the qmlimportscanner over-broad
+# recursion this file exists for), dangling from the moment it is created
+# since cpack stages the bundle under the CI workspace, not /usr/local.
+# if(EXISTS) resolves a symlink to its target before answering, so it
+# reports a DANGLING symlink as absent - checked directly under WSL with
+# CMake 4.2: a symlink to a real file reads EXISTS TRUE, the identical
+# symlink repointed at a missing target reads EXISTS FALSE, even though the
+# symlink itself still sits right there on disk. Gating this removal on
+# if(EXISTS) alone would make it a silent no-op for exactly the shape this
+# plugin currently has - and start working again, unremarked, the moment
+# PR #728 fixes the symlink's target, which is the opposite of a check worth
+# having. IS_SYMLINK does not share that blind spot (confirmed the same way:
+# TRUE for both the live and the dangling symlink, FALSE only when the path
+# truly is not there), so the guard is EXISTS OR IS_SYMLINK; the file(REMOVE)
+# itself needs no extra care either way - it unlinks a dangling symlink by
+# its own path without following it, same as any other file.
 # ---------------------------------------------------------------------------
 
 # $ENV{DESTDIR} the way every hand-written install script has to: install(FILES)
@@ -110,6 +160,45 @@ if(EXISTS "${_ac3_prefix}/qml/QtTest")
     file(REMOVE_RECURSE "${_ac3_prefix}/qml/QtTest")
 endif()
 
+# macOS: _ac3_macos_bundle_name arrives via an install(CODE) set() just
+# before this file's install(SCRIPT) - see the header comment for why that is
+# the only way this file learns the bundle's name at all, and only DEFINED on
+# APPLE since Windows callers never set it.
+if(APPLE AND DEFINED _ac3_macos_bundle_name)
+    set(_ac3_macos_bundle "${_ac3_prefix}/${_ac3_macos_bundle_name}.app")
+    set(_ac3_macos_plugin "${_ac3_macos_bundle}/Contents/PlugIns/libquicktestplugin.dylib")
+
+    # EXISTS OR IS_SYMLINK, not EXISTS alone - see the header comment on why
+    # this plugin's current dangling-symlink shape under Homebrew's Qt6
+    # reads as absent to EXISTS but not to IS_SYMLINK.
+    if(EXISTS "${_ac3_macos_plugin}" OR IS_SYMLINK "${_ac3_macos_plugin}")
+        message(STATUS "Removing Qt Test from the package: ${_ac3_macos_plugin}")
+        file(REMOVE "${_ac3_macos_plugin}")
+    endif()
+
+    if(EXISTS "${_ac3_macos_bundle}/Contents/Resources/qml/QtTest")
+        message(STATUS "Removing Qt Test from the package: ${_ac3_macos_bundle}/Contents/Resources/qml/QtTest")
+        file(REMOVE_RECURSE "${_ac3_macos_bundle}/Contents/Resources/qml/QtTest")
+    endif()
+endif()
+
+# unset(_ac3_macos_bundle_name) here is not just the same tidiness as the
+# other unsets below - it is load-bearing. install(SCRIPT)/install(CODE) are
+# plain include()s into one flat, shared variable scope that runs from the
+# top-level cmake_install.cmake down through every subdirectory's own, in
+# add_subdirectory() order - unlike the CONFIGURE step, include() opens no
+# new scope. A full (non-component-scoped) install, or any CPack generator
+# that installs every component in one pass, walks apps/gui's directory and
+# apps/crucible's in that one process: without this unset, ac3gui's bundle
+# name would still be sitting in this variable when apps/crucible's own
+# install(CODE) set() has not run yet for whatever reason, or when a third
+# caller is added later and forgets to set it at all. Confirmed with a
+# throwaway two-target CMakeLists.txt: a value set by one directory's
+# install(CODE) was still readable, unmodified, from a second, sibling
+# directory's install(SCRIPT) later in the same install.
 unset(_ac3_file)
 unset(_ac3_qt_test_files)
+unset(_ac3_macos_bundle)
+unset(_ac3_macos_plugin)
+unset(_ac3_macos_bundle_name)
 unset(_ac3_prefix)
