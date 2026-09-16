@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "ac3forge/player.hpp"
 
@@ -32,6 +33,12 @@
 //   PUT  /layout      body: a name or a speaker list. Takes effect at the next
 //                     play. 200, 400 when it is not a layout, 409 when the
 //                     sink's bus has fewer slots than it needs.
+//   POST /pairing     body: reset, cancel or forget, for a board that is a
+//                     Sendspin player. 200, 400 for another body, 409 with no
+//                     player.
+//
+// And the board's own settings, which ControlHandlers lists: GET and PUT
+// /name, /slot-width and /wiring, and PUT /network.
 //
 // Every handler below runs on esp_http_server's task. Nothing here touches a
 // Player: the callbacks hand the request to whichever task owns the player -
@@ -40,6 +47,62 @@
 // already makes safe from any task.
 
 namespace ac3forge {
+
+// GET /status's "sendspin" object, for a board that is a Sendspin player
+// (sendspin_host.hpp, burst_player.hpp). Plain values, so that the control
+// surface carries no part of the player: the owner fills it in.
+struct ControlSendspin {
+    // The server this board is admitted to, and how.
+    std::string server;
+    std::string server_id;
+    std::string dialect;
+    std::string psk;
+    std::string activity;
+    std::string role;
+    bool clock_converged = false;
+    long long clock_error_us = 0;
+    unsigned connections = 0;
+    // This board's client_id, and the servers it is paired with.
+    std::string client_id;
+    unsigned paired = 0;
+    // The dynamic pairing code while an attempt shows one; whether an
+    // attempt waits for the operator; rounds since the last code that
+    // matched; how the last attempt ended; and whether a server holds a
+    // pairing this board has lost.
+    std::string pairing_code;
+    bool pairing_held = false;
+    unsigned pairing_rounds = 0;
+    std::string pairing_outcome;
+    bool lost_pairing = false;
+    // The stream: "bursts", "pcm" or "idle", and its counters.
+    std::string stream;
+    unsigned long long bursts = 0;
+    unsigned long long underruns = 0;
+    unsigned long long late = 0;
+    unsigned long long dropped = 0;
+    unsigned long long invalid = 0;
+    unsigned resyncs = 0;
+    // When frames played against when they should have, positive when late.
+    long long error_us = 0;
+    long long worst_error_us = 0;
+    // The newest frame played with a known time: its place in the stream, and
+    // when it played on the server's clock; with that, when the stream's first
+    // frame played by the same measure, which two boards in a group compare.
+    std::optional<unsigned long long> play_frame;
+    std::optional<long long> play_server_us;
+    std::optional<long long> origin_server_us;
+    // Per output over the last 100 ms, in dB, and the stream's RMS scaled by a
+    // million, as the console prints it.
+    std::vector<float> peak_db;
+    std::vector<float> rms_db;
+    std::vector<unsigned long> stream_rms;
+    unsigned burst_us = 0;
+    unsigned worst_burst_us = 0;
+    unsigned long decode_stack_free = 0;
+    unsigned long server_stack_free = 0;
+    long long settings_revision = 0;
+    bool identifying = false;
+};
 
 struct ControlHandlers {
     // POST /play. False means refused (the source cannot take a location, or
@@ -98,6 +161,15 @@ struct ControlHandlers {
     std::function<int()> sink_slots;
     // "playing", "stopped", "finished", "failed" - the owner knows.
     std::function<const char*()> state;
+
+    // GET /status's "sendspin" object; null in the reply when this returns
+    // nothing, and left out when the handler is empty.
+    std::function<std::optional<ControlSendspin>()> sendspin;
+    // POST /pairing: body "reset" (the dynamic code's round limit, the
+    // operator's action pairing.md asks for), "cancel" (the attempt in
+    // progress) or "forget" (every pairing, and a new identity). False for
+    // anything else, or with no player.
+    std::function<bool(std::string_view action)> pairing;
 };
 
 class Control {

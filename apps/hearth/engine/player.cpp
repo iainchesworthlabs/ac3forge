@@ -53,6 +53,142 @@ void Player::build_decoder(std::uint32_t rate) {
     decoder_rate_ = rate;
 }
 
+void Player::after_edit() {
+    // An index names a place in the list, so anything keyed by one is
+    // re-read: the transport moved the queue's current item to the one a
+    // waiting reopen is for, and the queue kept "current" on that item
+    // through the edit.
+    if (after_drain_ && after_drain_->action == TransportAction::kReopenForItem) {
+        after_drain_->item = queue_.current_index();
+        if (after_drain_->item == Queue::kNone) {
+            after_drain_->action = TransportAction::kStopOutput;
+        }
+    }
+    prepared_.reset();
+    prepared_index_ = Queue::kNone;
+}
+
+void Player::remap_history(const std::function<std::size_t(std::size_t)>& moved) {
+    for (PlayedItem& played : history_) {
+        if (played.queue_index != Queue::kNone) {
+            played.queue_index = moved(played.queue_index);
+        }
+    }
+    // A seek kept for an item's next start follows the item, and goes with it.
+    if (seek_on_start_) {
+        seek_on_start_->item = moved(seek_on_start_->item);
+        if (seek_on_start_->item == Queue::kNone) {
+            seek_on_start_.reset();
+        }
+    }
+}
+
+void Player::add(QueueItem item) {
+    queue_.add(std::move(item));
+    after_edit();
+}
+
+void Player::insert(std::size_t index, QueueItem item) {
+    const std::size_t at = std::min(index, queue_.size());
+    queue_.insert(at, std::move(item));
+    remap_history([at](std::size_t i) { return i >= at ? i + 1 : i; });
+    after_edit();
+}
+
+void Player::remove(std::size_t index) {
+    if (index >= queue_.size()) {
+        return;
+    }
+    const bool current_changed = queue_.remove(index);
+    remap_history([index](std::size_t i) {
+        return i == index ? Queue::kNone : (i > index ? i - 1 : i);
+    });
+    after_edit();
+    if (current_changed && transport_.state() != TransportState::kStopped) {
+        // The item playing, or the one a reopen was waiting to start, has
+        // gone: carry on with whatever is current now.
+        perform(transport_.current_item_removed(), nullptr);
+    }
+}
+
+bool Player::move(std::size_t from, std::size_t to) {
+    if (!queue_.move(from, to)) {
+        return false;
+    }
+    remap_history([from, to](std::size_t i) {
+        if (i == from) {
+            return to;
+        }
+        if (from < to && i > from && i <= to) {
+            return i - 1;
+        }
+        if (to < from && i >= to && i < from) {
+            return i + 1;
+        }
+        return i;
+    });
+    after_edit();
+    return true;
+}
+
+void Player::clear() {
+    const bool had_items = !queue_.empty();
+    queue_.clear();
+    remap_history([](std::size_t) { return Queue::kNone; });
+    after_edit();
+    if (had_items && transport_.state() != TransportState::kStopped) {
+        perform(transport_.current_item_removed(), nullptr);
+    }
+}
+
+TransportOutcome Player::play_item(std::size_t index) {
+    if (index >= queue_.size()) {
+        return TransportOutcome{.state = transport_.state(),
+                                .action = TransportAction::kNone,
+                                .item = Queue::kNone,
+                                .seek_to = std::chrono::milliseconds{0},
+                                .note = "That item is no longer in the queue."};
+    }
+    // Whatever was playing stops where it is; the chosen item starts from
+    // its beginning, on an output opened for it.
+    perform(transport_.stop(), nullptr);
+    queue_.set_current(index);
+    seek_on_start_.reset();
+    return play();
+}
+
+PlayPosition Player::position() const {
+    PlayPosition out;
+    if (segments_.empty() || decoder_rate_ == 0) {
+        return out;
+    }
+    const auto device = sink_->position();
+    std::uint64_t heard = 0;
+    if (device) {
+        heard = device->frames_played > device->latency_frames
+                    ? device->frames_played - device->latency_frames
+                    : 0;
+    }
+    // The latest segment the clock has reached, or the first.
+    const Segment* segment = &segments_.front();
+    for (const Segment& candidate : segments_) {
+        if (candidate.output_start <= heard) {
+            segment = &candidate;
+        }
+    }
+    if (segment->record >= history_.size()) {
+        return out;
+    }
+    const PlayedItem& played = history_[segment->record];
+    const std::uint64_t into = heard > segment->output_start ? heard - segment->output_start : 0;
+    const std::uint64_t at = std::min(segment->item_start + into, played.expected_frames);
+    out.item = played.queue_index;
+    out.heard = std::chrono::milliseconds{static_cast<std::int64_t>(at * 1000 / decoder_rate_)};
+    out.duration = std::chrono::milliseconds{
+        static_cast<std::int64_t>(played.expected_frames * 1000 / decoder_rate_)};
+    return out;
+}
+
 TransportOutcome Player::play() {
     TransportOutcome outcome = transport_.play();
     perform(outcome, nullptr);
@@ -155,6 +291,11 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
                     sink_->flush();
                 }
                 submitted_since_open_ = 0;
+                if (!history_.empty()) {
+                    segments_.assign(1, Segment{.record = history_.size() - 1,
+                                                .output_start = 0,
+                                                .item_start = session_->position_samples()});
+                }
             } else if (outcome.item != Queue::kNone) {
                 seek_on_start_ = SeekOnStart{.item = outcome.item, .to = outcome.seek_to};
             }
@@ -234,6 +375,9 @@ Player::OpenFailure Player::open_output_for(std::size_t item, PumpReport* report
                                   .frames = 0,
                                   .expected_frames = session_->total_samples(),
                                   .output_opens = opens_});
+    segments_.assign(1, Segment{.record = history_.size() - 1,
+                                .output_start = 0,
+                                .item_start = session_->position_samples()});
     if (report != nullptr) {
         report->item_started = true;
         report->output_reopened = opens_ > 1;
@@ -252,6 +396,7 @@ void Player::close_output() {
     clear_pending();
     drain_target_.reset();
     submitted_since_open_ = 0;
+    segments_.clear();
 }
 
 Player::Pending& Player::push_block() {
@@ -440,6 +585,11 @@ void Player::item_ended(PumpReport& report) {
                                           .frames = 0,
                                           .expected_frames = session_->total_samples(),
                                           .output_opens = opens_});
+            // The new item's first frame goes in behind everything the last
+            // one still has queued.
+            segments_.push_back(Segment{.record = history_.size() - 1,
+                                        .output_start = submitted_since_open_ + pending_frames_,
+                                        .item_start = session_->position_samples()});
             report.item_started = true;
             if (!session_->facts().note.empty()) {
                 report.note = session_->facts().note;

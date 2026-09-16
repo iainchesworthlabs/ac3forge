@@ -3,11 +3,14 @@
 #include "provision.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <span>
 #include <string>
 #include <string_view>
+
+#include <unistd.h>
 
 #include "ac3forge/improv.hpp"
 #include "esp_app_desc.h"
@@ -27,12 +30,19 @@ namespace improv = ac3forge::improv;
 // specification's serial transport is: a client picks its packets out of
 // whatever else the device is saying. Written in one fwrite so a packet does
 // not interleave with a printf from another task.
+//
+// Then synced as well as flushed. On the S3's USB-Serial-JTAG console (the
+// board shapes' sdkconfig.hw), fflush only hands the bytes to the peripheral,
+// which sends its buffer to the host at a newline, and a packet carries none:
+// the answer to a client's request sat there until the board next printed a
+// line, which on an idle board, or after cannot_connect, was never.
 void send(std::span<const std::uint8_t> packet) {
     if (packet.empty()) {
         return;
     }
     (void)std::fwrite(packet.data(), 1, packet.size(), stdout);
     (void)std::fflush(stdout);
+    (void)fsync(fileno(stdout));
 }
 
 void send_state(improv::State state) {
@@ -84,7 +94,10 @@ void answer(const improv::Rpc& rpc) {
                 return;
             }
             // The credentials are stored before the association is tried, so a
-            // board that is reset mid-attempt comes back with them.
+            // board that is reset mid-attempt comes back with them. A board
+            // whose last attempt failed - a mistyped passphrase, a network
+            // that has gone - tries these now, and a client that got
+            // cannot_connect can send another pair straight away.
             if (!network_up()) {
                 send_error(improv::Error::cannot_connect);
                 send_state(improv::State::ready);
@@ -150,9 +163,17 @@ void answer(const improv::Rpc& rpc) {
     }
 }
 
+// Written by app_main, when the task starts and again if the Sendspin player
+// starts after a network joined over Improv, and read by the task.
+std::atomic<ConsoleCommands> g_commands{nullptr};
+
 [[noreturn]] void improv_task(void*) {
     improv::Reader reader;
     std::size_t dropped = 0;
+    // Text typed on the console, a line at a time. An Improv packet's binary
+    // bytes are not text, so one arriving empties the line.
+    std::array<char, 64> line{};
+    std::size_t length = 0;
     // The console's own state is announced once at start, so a client that
     // opens the port mid-run knows where it stands without asking.
     send_state(current_state());
@@ -173,19 +194,41 @@ void answer(const improv::Rpc& rpc) {
             dropped = reader.dropped();
             send_error(improv::Error::invalid_packet);
         }
+        const ConsoleCommands commands = g_commands;
+        if (commands == nullptr) {
+            continue;
+        }
+        if (byte == '\n' || byte == '\r') {
+            if (length > 0 && !commands(std::string_view(line.data(), length))) {
+                std::printf("console: commands are pair reset, pair cancel, pair forget, pair token and sendspin\n");
+            }
+            length = 0;
+        } else if (byte >= 0x20 && byte < 0x7F && length < line.size()) {
+            line[length++] = static_cast<char>(byte);
+        } else {
+            length = 0;
+        }
     }
 }
 
 }  // namespace
 
-void provisioning_start() {
+void provisioning_start(ConsoleCommands commands) {
     // 4 KB: the task parses packets into its own fixed buffers and writes
     // through stdio, and holds nothing else.
     static TaskHandle_t task = nullptr;
     if (task != nullptr) {
+        // Already listening, since boot, on a board that had no network then.
+        // Its Sendspin player has started since, and the console takes the
+        // player's commands from here on.
+        if (commands != nullptr && g_commands.exchange(commands) != commands) {
+            std::printf("console: listening for commands (pair reset, pair cancel, pair forget, "
+                        "pair token, sendspin)\n");
+        }
         return;
     }
-    if (network_ready()) {
+    g_commands = commands;
+    if (network_ready() && commands == nullptr) {
         // Already on a network, so there is nothing for a client to hand this
         // board that it does not have - and the 4 KB is worth more to the
         // decoder. See provision.hpp.
@@ -198,7 +241,12 @@ void provisioning_start() {
         task = nullptr;
         return;
     }
-    std::printf("improv: listening on the console for Wi-Fi credentials\n");
+    if (network_ready()) {
+        std::printf("console: listening for commands (pair reset, pair cancel, pair forget, pair token, "
+                    "sendspin)\n");
+    } else {
+        std::printf("improv: listening on the console for Wi-Fi credentials\n");
+    }
 }
 
 }  // namespace player

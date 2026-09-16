@@ -38,6 +38,8 @@ inline constexpr std::string_view kPath = "/sendspin";
 
 struct ConnectionOptions {
     // How long one read waits before receive() looks again for a close from another thread.
+    // Once part of a frame has come, receive() waits for the rest past it, until the rest comes
+    // or the connection is closed: over Wi-Fi the rest can come later.
     std::chrono::milliseconds poll_interval{100};
     // WebSocket Ping is Sendspin's liveness mechanism (messaging.md). A peer that leaves
     // max_missed_pongs pings in a row unanswered is closed, unless max_missed_pongs is 0; a

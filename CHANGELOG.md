@@ -425,6 +425,20 @@ and release packaging.
     same way, so a seek no longer starts with a block missing its overlap.
   - Two differences from an unbroken decode remain: the settings change itself, and the
     §7.3.4 dither, whose generator a new decoder restarts, some 95 dB down.
+- **Hearth's engine thread** (`apps/hearth/engine/engine_thread.hpp`): the player on a thread of
+  its own.
+  - Commands from any thread are queued and carried out in order between pumps. The engine
+    pumps each period while an output is open and sleeps while none is.
+  - A snapshot of the queue, the transport, the settings and the history is published after
+    every change, with a callback on the engine's thread. The play position is kept apart, and
+    follows the device's clock through joins and seeks.
+  - Queue edits while playing are the player's own. Removing the playing item moves on to the
+    next; a reopen still waiting for the old item to be heard keeps its item through an edit;
+    the history's queue indices follow their items.
+  - In `ac3tests`, tagged `[concurrency]`, a queue plays to its end while the engine, a fake
+    device's clock and the test's own thread all run at once. Commands from five threads all
+    take effect, each thread's in its order, and a playing engine that goes away closes its
+    output.
 
 **Audio outputs**
 
@@ -787,6 +801,15 @@ and release packaging.
   `spatial` now shares `run_monitor`'s own `ac3::apps::reads_as_access_units` test, so a
   legacy-core stream that does carry an object layer decodes and plays instead of being
   turned away.
+- **`ac3cli decode` and `transcode` could misplace a stream's held-back last unit.** Both
+  already drained `flush()`, but placed each flushed substream's channels by appending it
+  straight into the WAV sink or the transcode sample queue - once per substream per Table
+  E2.5 location, rather than assembling the whole unit first. A last unit that released a
+  bed together with the dependent that had been holding it back could then land both
+  substreams' channels in the same location, growing some channels past others instead of
+  merely leaving stale audio behind. Both now build the held-back unit once through the same
+  `ac3::apps::held_back_unit` `monitor`/`spatial` use above, and append it exactly once per
+  slot, like every other unit.
 - **The GUI offered E-AC-3 bitrates a source's sample rate couldn't frame.**
   `bitrates()` branched on codec but not on the loaded source's rate, so a 16 kHz file
   offered rungs no `frmsiz` could carry; encoding was refused only at the encode button.
@@ -872,6 +895,34 @@ and release packaging.
   board is up to 3.1 times slower than the fixed-point tier. The component now sets the
   option from ESP-IDF's `SOC_CPU_HAS_FPU` capability when the project has not: `fixed`
   without an FPU, `float` with one. A value set above `project()` or passed with `-D` stays.
+- **A Hearth sink restarted when Improv gave it a network after a failed join.**
+  `hearth_sink`'s `network_up()` ran the whole network setup on every call that had not
+  yet joined, and ESP-IDF refuses a second default event loop. The call Improv makes
+  after storing new credentials therefore aborted whenever an earlier join had failed:
+  a mistyped passphrase followed by the right one, or a board whose stored or built-in
+  network could not be joined at boot. The build's placeholder network, `my-network`,
+  puts every freshly flashed board in the second case. The board came back on the new
+  network, but the Improv client saw the port vanish instead of an answer.
+  - The setup now runs once. Each later attempt stops the station, waits until the
+    stop is reported, and starts it on the new network with a fresh retry count.
+  - A board that joins after boot now starts mDNS and the Sendspin player without a
+    restart. Before, only boot started them. The same applies when the boot play's
+    source is what brings the network up.
+  - An attempt no longer waits forever. A network that associates but gives no
+    address is left after 30 s; once stored, it used to hang the board at boot before
+    Improv started. A connect the driver refuses now fails the attempt.
+  - A build with no network stored and none built in used to restart in a loop: its
+    control surface opened a socket before lwIP was initialised. lwIP now comes up
+    whether or not there is a network to join.
+  - The QEMU Ethernet network set itself up again on a second call too, and is now
+    set up once as well.
+- **Over an ESP32-S3's USB console, a Hearth sink's Improv answers waited for the next
+  line it printed.** ESP-IDF's driverless USB-Serial-JTAG console sends its buffer to
+  the host only at a newline, and an Improv packet has none. On an idle board, or after
+  `cannot_connect`, nothing followed, and the client never got its answer. Each packet
+  is now synced to the host as it is written; on a board, a `current_state` request is
+  answered in 0.5 s, where before its answer arrived 10 s later with the next request's
+  output.
 
 **Codec correctness**
 

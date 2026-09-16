@@ -1112,3 +1112,177 @@ TEST_CASE("player: the programme setting picks one of a stream's programmes when
         CHECK(first_difference(log->kept, joined(long_first, long_second)) == kSame);
     }
 }
+
+// Queue edits while playing, and the play position.
+
+TEST_CASE("player: removing the playing item goes on to the next, and the history follows the list",
+          "[hearth][player]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(10);
+    library.files["b.ec3"] = eac3_stream(4);
+    library.files["c.ec3"] = eac3_stream(4);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log);
+    for (const char* path : {"a.ec3", "b.ec3", "c.ec3"}) {
+        player->add(item(path));
+    }
+    player->play();
+    for (int step = 0; step < 3; ++step) {
+        player->pump();
+        advance(*log, 480);
+    }
+
+    player->remove(0);
+    REQUIRE(player->queue().size() == 2);
+    CHECK(player->transport().state() == TransportState::kPlaying);
+    REQUIRE(play_out(*player, *log));
+
+    const auto& history = player->history();
+    REQUIRE(history.size() == 3);
+    // The removed item played part of the way, and has no place in the list.
+    CHECK(history[0].title == "a.ec3");
+    CHECK(history[0].queue_index == ac3::hearth::Queue::kNone);
+    CHECK(history[0].frames < 10 * 1536);
+    // The next one started on an output of its own, since the one playing
+    // stopped part-way; the one after joined it.
+    CHECK(history[1].title == "b.ec3");
+    CHECK(history[1].queue_index == 0);
+    CHECK(history[1].frames == 4 * 1536);
+    CHECK(history[1].output_opens == 2);
+    CHECK(history[2].queue_index == 1);
+    CHECK(history[2].first_frame == 4 * 1536);
+    CHECK(history[2].output_opens == 2);
+}
+
+TEST_CASE("player: an edit while a reopen waits leaves the reopen on its item", "[hearth][player]") {
+    Library library;
+    library.files["48k.ec3"] = eac3_stream(6);
+    library.files["44k1.ac3"] = ac3_stream(4, ac3::SampleRate::k44100);
+    library.files["new.ec3"] = eac3_stream(2);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log);
+    player->add(item("48k.ec3"));
+    player->add(item("44k1.ac3"));
+    player->play();
+
+    // Until the first item has been decoded and the transport has moved on
+    // to the second, whose reopen now waits for the first to be heard.
+    for (int step = 0; step < 1000 && player->queue().current_index() != 1; ++step) {
+        player->pump();
+        advance(*log, 480);
+    }
+    REQUIRE(player->queue().current_index() == 1);
+    REQUIRE(player->history().size() == 1);
+    REQUIRE(log->open);
+
+    // An item in front moves the waiting one to index 2.
+    player->insert(0, item("new.ec3"));
+    REQUIRE(player->queue().current_index() == 2);
+    REQUIRE(play_out(*player, *log));
+
+    const auto& history = player->history();
+    REQUIRE(history.size() == 2);
+    CHECK(history[0].queue_index == 1);
+    CHECK(history[1].title == "44k1.ac3");
+    CHECK(history[1].queue_index == 2);
+    CHECK(history[1].frames == 4 * 1536);
+    CHECK(log->rates == std::vector<std::uint32_t>{48000, 44100});
+}
+
+TEST_CASE("player: the position follows the device's clock through a join and a seek",
+          "[hearth][player]") {
+    // The second item is long enough to be still decoding when the seek
+    // comes: the player decodes ahead of the clock, and an item decoded to
+    // its end at the end of the queue has nothing left to seek in.
+    Library library;
+    library.files["one.ec3"] = eac3_stream(10);
+    library.files["two.ec3"] = eac3_stream(40);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log);
+    player->add(item("one.ec3"));
+    player->add(item("two.ec3"));
+    CHECK(player->position().item == ac3::hearth::Queue::kNone);
+
+    player->play();
+    auto at = player->position();
+    CHECK(at.item == 0);
+    CHECK(at.heard.count() == 0);
+    CHECK(at.duration.count() == 10 * 1536 * 1000 / 48000);
+
+    const auto run_until = [&](std::uint64_t clock) {
+        while (log->clock < clock) {
+            player->pump();
+            advance(*log, 480);
+        }
+    };
+    // Part-way through the first item: what the clock has passed.
+    run_until(12000);
+    at = player->position();
+    CHECK(at.item == 0);
+    CHECK(at.heard.count() == static_cast<std::int64_t>(log->clock * 1000 / 48000));
+
+    // Past the join, the second item, counted from its own first frame.
+    run_until((10 * 1536) + 4800);
+    at = player->position();
+    CHECK(at.item == 1);
+    CHECK(at.heard.count() == static_cast<std::int64_t>((log->clock - (10 * 1536)) * 1000 / 48000));
+
+    // A seek restarts the clock at the unit the item now plays from: 100 ms
+    // is inside unit 3, which starts at 4,608.
+    player->seek(std::chrono::milliseconds{100});
+    at = player->position();
+    CHECK(at.item == 1);
+    CHECK(at.heard.count() == 4608 * 1000 / 48000);
+    player->pump();
+    advance(*log, 480);
+    CHECK(player->position().heard.count() == (4608 + 480) * 1000 / 48000);
+
+    // Paused, it stands.
+    player->pause();
+    const auto paused = player->position();
+    for (int step = 0; step < 5; ++step) {
+        player->pump();
+        advance(*log, 480);
+    }
+    CHECK(player->position().heard == paused.heard);
+
+    // Stopped, there is nothing playing.
+    player->stop();
+    CHECK(player->position().item == ac3::hearth::Queue::kNone);
+}
+
+TEST_CASE("player: choosing an item plays it from its start, and clearing the queue stops",
+          "[hearth][player]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(10);
+    library.files["b.ec3"] = eac3_stream(3);
+    library.files["c.ec3"] = eac3_stream(10);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log);
+    for (const char* path : {"a.ec3", "b.ec3", "c.ec3"}) {
+        player->add(item(path));
+    }
+    player->play();
+    player->pump();
+    advance(*log, 480);
+
+    const auto chosen = player->play_item(2);
+    CHECK(chosen.state == TransportState::kPlaying);
+    CHECK(player->queue().current_index() == 2);
+    CHECK(player->position().item == 2);
+    CHECK(player->position().heard.count() == 0);
+    player->pump();
+    advance(*log, 480);
+
+    player->clear();
+    CHECK(player->transport().state() == TransportState::kStopped);
+    CHECK_FALSE(log->open);
+    CHECK(player->position().item == ac3::hearth::Queue::kNone);
+    REQUIRE(player->history().size() == 2);
+    CHECK(player->history()[1].title == "c.ec3");
+    CHECK(player->history()[1].queue_index == ac3::hearth::Queue::kNone);
+    CHECK(log->opens == 2);
+
+    // Out of range is said, not done.
+    CHECK_FALSE(player->play_item(5).note.empty());
+}

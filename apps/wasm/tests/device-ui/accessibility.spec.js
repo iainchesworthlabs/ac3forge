@@ -8,6 +8,7 @@
 // large enough to hit, and a page that fits a narrow screen.
 
 const { test, expect } = require('./fixtures');
+const { playingSendspin } = require('./stub');
 
 test.beforeEach(async ({ page, stub }) => {
     await page.goto(stub.url);
@@ -19,10 +20,10 @@ test('landmarks, headings and a name for every control', async ({ page }) => {
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('contentinfo')).toBeVisible();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('hearth-a1b2c3');
-    for (const name of ['Now', 'Settings', 'Real time']) {
+    for (const name of ['Now', 'Sendspin', 'Settings', 'Real time']) {
         await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
     }
-    for (const name of ['Now', 'Settings', 'Real time']) {
+    for (const name of ['Now', 'Sendspin', 'Settings', 'Real time']) {
         await expect(page.getByRole('region', { name })).toBeVisible();
     }
     await expect(page.getByRole('textbox', { name: 'Name' })).toBeVisible();
@@ -35,13 +36,14 @@ test('landmarks, headings and a name for every control', async ({ page }) => {
     );
     await expect(page.locator('summary', { hasText: 'What an output layout does' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Apply' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Forget every server' })).toBeVisible();
     await expect(page.getByRole('status')).toHaveCount(1);
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 });
 
 test('every action from the keyboard, in page order', async ({ page, stub }) => {
     await page.locator('body').click({ position: { x: 1, y: 1 } });
-    const order = ['name-input', 'Save', 'slot-width', 'wiring', 'layout-input', 'Apply', 'What an output layout does', 'ssid-input', 'pass-input', 'Save', 'Counters'];
+    const order = ['ss-forget', 'name-input', 'Save', 'slot-width', 'wiring', 'layout-input', 'Apply', 'What an output layout does', 'ssid-input', 'pass-input', 'Save', 'Counters'];
     const focused = () =>
         page.evaluate(() => {
             const el = /** @type {HTMLElement} */ (document.activeElement);
@@ -79,6 +81,20 @@ test('every action from the keyboard, in page order', async ({ page, stub }) => 
         await page.keyboard.press('Enter');
         await expect(page.locator('details', { has: summary })).toHaveAttribute('open', '');
     }
+
+    // The pairing actions, the confirmation included.
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: 'Forget every server' }).focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => stub.sent('POST /pairing').map((r) => r.body)).toEqual(['forget']);
+    Object.assign(stub.device.sendspin, { pairing_code: '482913', pairing_held: true });
+    for (const [name, body] of [['Cancel pairing', 'cancel'], ['Allow pairing again', 'reset']]) {
+        const button = page.getByRole('button', { name });
+        await expect(button).toBeVisible();
+        await button.focus();
+        await page.keyboard.press('Space');
+        await expect.poll(() => stub.sent('POST /pairing').map((r) => r.body)).toContain(body);
+    }
 });
 
 for (const colorScheme of /** @type {const} */ (['light', 'dark'])) {
@@ -94,6 +110,8 @@ for (const colorScheme of /** @type {const} */ (['light', 'dark'])) {
             frames: 100, held: 0, us_per_frame: 5404, worst_frame_us: 7617, render_us_per_frame: 115,
             sink_us_per_frame: 362, realtime_permille: 168, resync_bytes: 0, fetched_bytes: 190464, ring_low: 2048,
             passes: 0, layout_mismatches: 0, finished: true, failed: true, why: 'decode', error: 2,
+            // A server playing, a level for each output, and a second pairing's code.
+            sendspin: { ...playingSendspin(), pairing_code: '482913', pairing_outcome: 'paired' },
         });
         await page.reload();
         // Both closed sections open, so their text is measured too.
@@ -101,6 +119,8 @@ for (const colorScheme of /** @type {const} */ (['light', 'dark'])) {
         await page.locator('summary', { hasText: 'Counters' }).click();
         await page.getByLabel('Name').fill('Attic');
         await expect(page.locator('#reason')).toBeVisible();
+        await expect(page.locator('#ss-code')).toBeVisible();
+        await expect(page.getByRole('table')).toBeVisible();
         const worst = await page.evaluate(() => {
             const channel = (c) => {
                 const v = c / 255;
@@ -164,13 +184,22 @@ test('controls at least 44 CSS pixels tall', async ({ page }) => {
         page.getByRole('button', { name: 'Apply' }),
         page.locator('summary', { hasText: 'What an output layout does' }),
         page.locator('summary', { hasText: 'Counters' }),
+        page.getByRole('button', { name: 'Forget every server' }),
     ]) {
         const box = await control.boundingBox();
         expect(box && box.height, await control.evaluate((el) => el.outerHTML.slice(0, 60))).toBeGreaterThanOrEqual(44);
     }
 });
 
-test('a 320 px screen, with nothing wider than it', async ({ page }) => {
+test('a 320 px screen, with nothing wider than it', async ({ page, stub }) => {
+    // The levels table as wide as it gets: sixteen outputs.
+    stub.device.sendspin = {
+        ...playingSendspin(),
+        pairing_code: '482913',
+        peak_db: Array(16).fill(-100.5),
+        rms_db: Array(16).fill(-110.5),
+    };
+    await expect(page.getByRole('table')).toBeVisible();
     await page.setViewportSize({ width: 320, height: 640 });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);

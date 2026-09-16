@@ -697,7 +697,7 @@ One leg is still `experimental: true`, `windows-msvc-arm64` on its own runner la
 (`_build.yml`'s matrix comment says why), and it carries `release_package: true` as well, so a
 release run packages it and its files are collected with the rest. What it packages is `ac3cli`
 and not `ac3gui`: `CMakePresets.json`'s `windows-msvc-arm64` preset leaves `AC3FORGE_BUILD_GUI`
-off, because Qt's only Windows arm64 kit for the pinned 6.8.3 is a cross-compile kit expecting a
+off, because Qt's only Windows arm64 kit for the pinned 6.9.3 is a cross-compile kit expecting a
 paired x64 install for its host tools - that preset's own description says the rest. What
 `experimental` costs is the leg's own failure signal: `_build.yml` runs it under
 `continue-on-error`, so it can die and still report green to the reusable workflow. That is why

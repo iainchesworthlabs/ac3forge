@@ -35,6 +35,11 @@ const REPLIES = {
         'POST /volume        body: 0.0 to 1.0',
         'GET  /layout        the output layout',
         'PUT  /layout        body: a name (5.1.4) or a speaker list; next play',
+        "GET  /name          this board's name; PUT one to change it",
+        'GET  /slot-width    16 or 32; PUT one to change it at the next play',
+        'GET  /wiring        1 when a second I2S line is wired; PUT 1 or 0',
+        'PUT  /network       body: an SSID, a newline, a passphrase; next boot',
+        'POST /pairing       body: reset, cancel or forget (Sendspin pairing)',
         '',
     ].join('\n'),
     playEmpty: 'POST /play wants the location as the body\n',
@@ -60,6 +65,8 @@ const REPLIES = {
     networkEmpty: 'PUT /network wants an SSID, a newline, and a passphrase\n',
     nextPlay: 'ok; takes effect at the next play\n',
     nextBoot: 'ok; takes effect at the next boot\n',
+    pairingBad: 'POST /pairing wants reset, cancel or forget\n',
+    pairingRefused: 'this board is not a Sendspin player\n',
 };
 
 const ROUTES = [
@@ -79,6 +86,7 @@ const ROUTES = [
     'GET /slot-width',
     'PUT /slot-width',
     'PUT /network',
+    'POST /pairing',
 ];
 
 // The streams the model plays, with the channels each codes. The E-AC-3 one is
@@ -168,6 +176,82 @@ function idleStats() {
     };
 }
 
+// The Sendspin player's part of /status with no server connected, as
+// append_sendspin writes it (esp-idf/ac3forge/src/control.cpp).
+function idleSendspin() {
+    return {
+        server: '',
+        server_id: '',
+        dialect: '',
+        psk: '',
+        activity: '',
+        role: '',
+        clock_converged: false,
+        clock_error_us: 0,
+        connections: 0,
+        client_id: 'gS3cmMlDUaQGhxYd0PF0x0jWR2OGdhxwUwBBwyD3O1c',
+        paired: 0,
+        pairing_code: '',
+        pairing_held: false,
+        pairing_rounds: 0,
+        pairing_outcome: '',
+        lost_pairing: false,
+        playing: 'idle',
+        bursts: 0,
+        underruns: 0,
+        late: 0,
+        dropped: 0,
+        invalid: 0,
+        resyncs: 0,
+        error_us: 0,
+        worst_error_us: 0,
+        play_frame: null,
+        play_server_us: null,
+        origin_server_us: null,
+        peak_db: [],
+        rms_db: [],
+        stream_rms: [],
+        burst_us: 0,
+        worst_burst_us: 0,
+        decode_stack_free: 0,
+        server_stack_free: 0,
+        settings_revision: 0,
+        identifying: false,
+    };
+}
+
+// A paired server playing a 5.1 stream to the board in bursts.
+function playingSendspin() {
+    return {
+        ...idleSendspin(),
+        server: 'Hearth on the desk',
+        server_id: 'Yx3kP0aZ',
+        dialect: 'specification',
+        psk: 'long-term',
+        activity: 'playback',
+        role: '_ac3forge_player@v1',
+        clock_converged: true,
+        clock_error_us: 310,
+        connections: 1,
+        paired: 1,
+        playing: 'bursts',
+        bursts: 1875,
+        error_us: -42,
+        worst_error_us: 180,
+        play_frame: 2880000,
+        play_server_us: 1726500060000000,
+        origin_server_us: 1726500000000000,
+        peak_db: [-3.1, -3.4, -8.9, -16.2, -12.5, -120],
+        rms_db: [-18.2, -18.6, -21, -30.4, -26.1, -120],
+        stream_rms: [123027, 117490, 89125, 30200, 49545, 0],
+        burst_us: 11850,
+        worst_burst_us: 19420,
+        decode_stack_free: 5120,
+        server_stack_free: 2210,
+        settings_revision: 3,
+    };
+}
+
 // GET /status as control.cpp writes it: the same keys in the same order, the
 // volume to three places, and a newline at the end.
 function statusJson(d) {
@@ -189,6 +273,9 @@ function statusJson(d) {
     for (const [key, value] of Object.entries(stats)) {
         fields.push([key, JSON.stringify(value)]);
     }
+    if (d.sendspin !== undefined) {
+        fields.push(['sendspin', JSON.stringify(d.sendspin)]);
+    }
     return '{' + fields.map(([k, v]) => JSON.stringify(k) + ':' + v).join(',') + '}\n';
 }
 
@@ -208,6 +295,10 @@ async function startStub() {
         password: '',
         layout: '2.0',
         volume: 1,
+        // A Sendspin player's firmware (sdkconfig.sendspin). Undefined for a
+        // firmware with no player, whose /status has no "sendspin" key, and
+        // null for one whose player did not start.
+        sendspin: idleSendspin(),
         player: null, // the play in progress: {stream, stats, total, fails}
         lastStats: idleStats(), // the last play that ended by itself, until another begins
         lastStream: null,
@@ -385,6 +476,27 @@ async function startStub() {
                 device.password = rest.join('\n');
                 return send(res, 200, REPLIES.nextBoot);
             }
+            case 'POST /pairing': {
+                if (body !== 'reset' && body !== 'cancel' && body !== 'forget') {
+                    return send(res, 400, REPLIES.pairingBad);
+                }
+                const p = device.sendspin;
+                if (!p) {
+                    return send(res, 409, REPLIES.pairingRefused);
+                }
+                if (body === 'reset') {
+                    Object.assign(p, { pairing_held: false, pairing_rounds: 0 });
+                } else if (body === 'cancel') {
+                    if (p.pairing_code) {
+                        Object.assign(p, { pairing_code: '', pairing_outcome: 'cancelled' });
+                    }
+                } else {
+                    // A new identity, and every server's record gone: the
+                    // connections close and the player starts again.
+                    device.sendspin = { ...idleSendspin(), client_id: 'Q1vGr0WkzZ5c2hXU8eYy0fKp3tNnJmAs7LbD4oHqIwE' };
+                }
+                return send(res, 200, REPLIES.ok);
+            }
             case 'GET /layout':
                 return send(res, 200, device.layout + '\n');
             case 'PUT /layout': {
@@ -481,4 +593,16 @@ async function startStub() {
     };
 }
 
-module.exports = { startStub, statusJson, REPLIES, ROUTES, POLICY, UI_DIR, slotsOf, speakersOf, served };
+module.exports = {
+    startStub,
+    statusJson,
+    idleSendspin,
+    playingSendspin,
+    REPLIES,
+    ROUTES,
+    POLICY,
+    UI_DIR,
+    slotsOf,
+    speakersOf,
+    served,
+};

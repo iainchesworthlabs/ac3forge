@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
-const { REPLIES, ROUTES, POLICY, UI_DIR, startStub } = require('./stub');
+const { REPLIES, ROUTES, POLICY, UI_DIR, startStub, idleSendspin, playingSendspin } = require('./stub');
 
 const CONTROL = fs.readFileSync(
     path.resolve(__dirname, '../../../../esp-idf/ac3forge/src/control.cpp'),
@@ -93,6 +93,9 @@ test('every request the page makes is to a route the firmware registers', () => 
     // the page is what the board itself is.
     expect(made.sort()).toEqual([
         'GET /status',
+        'POST /pairing',
+        'POST /pairing',
+        'POST /pairing',
         'PUT /layout',
         'PUT /name',
         'PUT /network',
@@ -115,15 +118,30 @@ test('the page asks for nothing the device does not serve', () => {
 
 test("the stand-in writes GET /status's keys in the firmware's order", async () => {
     // Every key on_status writes, in the order it writes them: the stream's own
-    // come straight after "stream".
-    const onStatus = CONTROL.slice(CONTROL.indexOf('static esp_err_t on_status'), CONTROL.indexOf('static esp_err_t on_play'));
-    const firmware = [...onStatus.matchAll(/append_(?:key|number|bool)\(out, "([a-z_]+)"/g)].map((m) => m[1]);
+    // come straight after "stream", and the Sendspin player's, which
+    // append_sendspin writes, straight after "sendspin".
+    const written = (from, to) =>
+        [
+            ...CONTROL.slice(CONTROL.indexOf(from), CONTROL.indexOf(to)).matchAll(
+                /append_(?:key|number|bool|signed|string|optional|levels)\(out, "([a-z_]+)"/g,
+            ),
+        ].map((m) => m[1]);
+    const player = written('void append_sendspin', 'esp_err_t send_text');
+    const firmware = written('static esp_err_t on_status', 'static esp_err_t on_play').flatMap((key) =>
+        key === 'sendspin' ? [key, ...player] : [key],
+    );
+    expect(player.length).toBeGreaterThan(30);
     const stub = await startStub();
     try {
         await fetch(`${stub.url}play`, { method: 'POST', body: 'http://10.0.2.2:8000/demo.ec3' });
-        const body = JSON.parse(await (await fetch(`${stub.url}status`)).text());
-        const keys = Object.keys(body).flatMap((key) => (key === 'stream' ? [key, ...Object.keys(body.stream)] : [key]));
-        expect(keys).toEqual(firmware);
+        for (const sendspin of [idleSendspin(), playingSendspin()]) {
+            stub.device.sendspin = sendspin;
+            const body = JSON.parse(await (await fetch(`${stub.url}status`)).text());
+            const keys = Object.keys(body).flatMap((key) =>
+                key === 'stream' || key === 'sendspin' ? [key, ...Object.keys(body[key])] : [key],
+            );
+            expect(keys).toEqual(firmware);
+        }
     } finally {
         await stub.close();
     }

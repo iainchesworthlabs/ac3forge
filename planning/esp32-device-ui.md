@@ -32,6 +32,18 @@
     The budget was re-derived rather than raised to fit: **24,576 bytes**, against 20,571 used.
     Decision 18 has the reasoning.
 
+    **The Sendspin player, 2026-09-16 (Hearth B3).** A board that plays as a Sendspin player
+    reports the player in `/status`, and the page shows it in a section of its own: the server
+    playing to the board and how the two are linked, whether the board's clock is in step with
+    the server's, what is playing, how far from the server's time it plays, underruns, and a
+    level for each output over the last 100 ms
+    ([the Hearth plan](hearth-reference-player.md#b3-the-sendspin-player-on-the-board)). A pairing in progress
+    puts its code on the page, and three actions go to `POST /pairing`: cancel the pairing,
+    allow pairing again after codes that did not match, and forget every server. The code is
+    readable by anyone who can reach the page, as it is by anyone at the board's USB port: the
+    page has no login ([Security](#security) has what that means). The budget
+    was re-derived again: **28,672 bytes**, against 25,594 used. Decision 18 has the reasoning.
+
     Shape follows [the player plan](esp32-player.md): what exists, what changes and why, a
     budget with how each figure is measured, [Decisions](#decisions) with a recommendation and
     a cost each, and [what cannot be verified](#what-cannot-be-verified).
@@ -340,7 +352,7 @@ mark after each handler, then reverted.
 
 | Item | Budget | Measured |
 |---|---|---|
-| Flash: the page and its script together, as stored | 20,480 bytes ([decision 18](#decisions)); 16,384 before the output layout | 19,187 (6,643 + 12,544); 16,190 before. A host test fails above the budget |
+| Flash: the page and its script together, as stored | 28,672 bytes ([decision 18](#decisions)); 24,576 before Hearth B3, 20,480 before B2, 16,384 before the output layout | 25,594 (9,018 + 16,576); 20,571 at B2, 19,187 at the output layout, 16,190 before. A host test fails above the budget |
 | Internal heap held once the server is up: two more route registrations and handler slots | 256 bytes | 76, from the `heap:` line: 290,428 free against the base's 290,504 |
 | Internal heap held while a browser has the page open | - | 376, the keep-alive connection |
 | Internal heap at the peak of one `GET /status` | 3,072 bytes | 4,700 to 7,700 from the page's keep-alive connection; 5,100 from `curl`, a new connection each time |
@@ -436,6 +448,11 @@ WCAG 2.2 AA is the target.
 
 - No authentication, as the REST API has none: whoever can reach the port can drive the player,
   with or without the page. Serving a page does not change who can.
+- A Sendspin pairing code is on the page while its pairing runs, as it is on the console, so
+  whoever can reach the port can read it and pair a server of their own with the board. That
+  is no more than the REST API already lets anyone on the network do - play to the board - so
+  the network stays the boundary for pairing as for the rest. The pairing token, which pairs a
+  server with no code at all, is never on the page or in `/status`: the console alone prints it.
 - The page requests relative URLs on its own origin only, and Control sends no CORS headers.
 - A page on another site can already send `POST /play` with a text body to a device on the
   viewer's network, because a cross-origin request of that kind needs no preflight. The web UI
@@ -474,9 +491,9 @@ the field's suggestions and its explanation of a refusal; and a check that the s
 **Coverage.** Chromium's V8 coverage of the script, collected by Playwright per test, written in
 the form Node's own coverage takes, and reported by c8 (`npm run coverage:device-ui`), which fails
 below 98% of statements, lines and functions and 90% of branches. The suite reaches 100, 100, 100
-and 94.5.
+and 95.6.
 
-**Budget.** A host test sums the two files, fails above 20,480 bytes, and fails on a carriage
+**Budget.** A host test sums the two files, fails above 28,672 bytes, and fails on a carriage
 return.
 
 **On the target.** A step in the ESP32 job, after the HTTP step and without changing it, boots the
@@ -653,3 +670,13 @@ run as root, so Playwright can install Chromium's system libraries).
     than 16 costs one more lwIP send buffer's worth of turns on a load that happens when
     somebody opens the page, not while anything plays. `apps/wasm/tests/device-ui/budget.spec.js`
     holds the new figure.
+
+    **Re-derived 2026-09-16 (Hearth B3): 28,672 bytes.** The Sendspin player's section took the
+    page to 25,594: the server, the link, the clock, the timing, the underruns, a table of
+    levels, a pairing code and three actions, each with the words a person needs to act on it.
+    The question is the one B2 answered, and its ceiling has moved: a board's image with the
+    player in it is 1,388,448 bytes of the 1,572,864-byte factory partition, 184 KB free, and the
+    CI shape's is 1,026,576. The page is 2% of the board's image and 14% of what is left; the
+    boards have 16 MB of flash, so a larger partition is a table change away when the image
+    needs one. What the budget holds is still how much one page load sends, which the section's
+    table of levels, at up to sixteen rows, is the largest part of that is not text.

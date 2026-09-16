@@ -34,13 +34,18 @@
 
 #include "audio_sink.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
 
 #include "ac3/core/tables.hpp"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "ac3forge/interleave.hpp"
+#include "ac3forge/playout.hpp"
 
 namespace player {
 namespace {
@@ -48,6 +53,17 @@ namespace {
 std::uint64_t g_writes = 0;
 int g_channels = 0;
 std::size_t g_slots = 0;
+
+// A timed write (a Sendspin stream) either says nothing about time, and runs
+// as fast as it is given blocks, or is paced by a DAC that is not there
+// (CONFIG_AC3FORGE_EXAMPLE_CAPTURE_PACED). Unpaced is what CI compares levels
+// with: every decoded sample is written, none padded, skipped or slewed, and
+// the emulator's speed cannot make a burst late.
+constexpr bool kPaced = CONFIG_AC3FORGE_EXAMPLE_CAPTURE_PACED != 0;
+// The ring a paced write stands in for: twelve buffers of 256 frames, the
+// depth the board's network shape runs its I2S sink at.
+constexpr std::uint32_t kVirtualDescriptors = 12;
+ac3forge::VirtualDac g_dac;
 
 constexpr bool kTdm = CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM != 0;
 constexpr bool kSlotBits16 = CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS == 16;
@@ -96,9 +112,10 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
                     static_cast<unsigned>(g_slots));
         return false;
     }
-    std::printf("sink: capture %lu Hz %s x%d in %u slots (no peripheral, no pacing)\n",
+    g_dac.open(kVirtualDescriptors, ac3::kSamplesPerBlock, sample_rate);
+    std::printf("sink: capture %lu Hz %s x%d in %u slots (no peripheral, %s)\n",
                 static_cast<unsigned long>(sample_rate), kWide ? "24-in-32" : "16-bit", channels,
-                static_cast<unsigned>(g_slots));
+                static_cast<unsigned>(g_slots), kPaced ? "timed writes paced as a DAC would" : "no pacing");
     return true;
 }
 
@@ -208,9 +225,29 @@ void sink_write(std::span<const std::span<const float>> channels) {
     ++g_writes;
 }
 
+std::optional<ac3forge::PlayoutWrite> sink_write_timed(std::span<const std::span<const float>> channels) {
+    if (g_channels == 0) {
+        return std::nullopt;
+    }
+    sink_write(channels);
+    if (!kPaced) {
+        return std::nullopt;
+    }
+    const ac3forge::VirtualDac::Write written = g_dac.write(esp_timer_get_time());
+    const std::int64_t wait_us = written.return_us - esp_timer_get_time();
+    if (wait_us > 0) {
+        vTaskDelay(std::max<TickType_t>(1, pdMS_TO_TICKS((wait_us + 999) / 1000)));
+    }
+    return ac3forge::PlayoutWrite{.play_us = written.play_us, .late = false, .gap = written.gap};
+}
+
 const char* sink_name() { return kTdm ? "capture-tdm" : "capture-i2s"; }
 
-int sink_slots() { return static_cast<int>(g_slots); }
+// The bus this sink stands in for, open or not: a player asks before its
+// first stream how many outputs it may use.
+int sink_slots() {
+    return static_cast<int>(kTdm ? std::min<std::size_t>(CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS, kMaxSlots) : 2);
+}
 
 // Built for one width and checked against it (kWide above): this sink's whole
 // job is to convert exactly as the i2s sink does and check the result, so the

@@ -34,6 +34,7 @@
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "stream_playback.hpp"
 
 namespace ac3cli::commands {
 
@@ -494,37 +495,34 @@ std::optional<DecodeRenderStats> decode_and_render(
             }
         }
         // Whatever transient pre-noise processing was still holding back
-        // (§3.7). flush() returns raw per-substream results rather than
-        // assembled access units, so each substream's channels are placed at
-        // the slot its own Table E2.5 location occupies in the programme
-        // layout - exactly as decode_access_unit's own §E3.8.2 assembly
-        // would have. Appending them by coded index instead would write a
-        // dependent's height channels over the bed's L/R.
+        // (§3.7). held_back_unit assembles the flushed substreams the way
+        // decode_access_unit's own §E3.8.2 assembly would have, onto
+        // programme_layout - see its own doc comment for the placement
+        // rules this used to duplicate here.
         const auto flushed = decoder->flush();
-        if (!flushed.empty() && slot_to_wav.empty()) {
-            fmt::println(stderr,
-                         "error: {}: no access unit ever completed, so there is no programme "
-                         "layout to place the held-back frames into",
-                         in_path);
-            on_abort();
-            return std::nullopt;
-        }
-        for (const auto& substream : flushed) {
-            if (substream.strmtyp == ac3::eac3::StreamType::kIndependent) {
+        if (!flushed.empty()) {
+            if (slot_to_wav.empty()) {
+                fmt::println(stderr,
+                             "error: {}: no access unit ever completed, so there is no programme "
+                             "layout to place the held-back frames into",
+                             in_path);
+                on_abort();
+                return std::nullopt;
+            }
+            // decode_and_render never folds - routing/coded_channels already
+            // describe the desired shape (plan::Routing, above), so this
+            // decoder is always constructed at kAsCoded.
+            const auto held = ac3::apps::held_back_unit(flushed, programme_layout, false);
+            if (held.has_value()) {
                 ++stats.units_in;
-            }
-            const auto locations = ac3::eac3::chanmap::expand(substream.location_map());
-            for (int i = 0; i < locations.count; ++i) {
-                const int slot = programme_layout.index_of(locations[i]);
-                if (slot < 0 || static_cast<std::size_t>(slot) >= slot_to_wav.size()) {
-                    continue;
+                const auto count = std::min(held->channels.size(), slot_to_wav.size());
+                for (std::size_t slot = 0; slot < count; ++slot) {
+                    queue.push(slot_to_wav[slot], held->channels[slot]);
                 }
-                queue.push(slot_to_wav[static_cast<std::size_t>(slot)],
-                           substream.channels[static_cast<std::size_t>(i)]);
             }
-        }
-        if (!flushed.empty() && !drain(false)) {
-            return std::nullopt;
+            if (!drain(false)) {
+                return std::nullopt;
+            }
         }
     } else {
         ac3::FrameDecoder decoder;

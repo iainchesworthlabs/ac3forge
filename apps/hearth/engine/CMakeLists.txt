@@ -7,6 +7,7 @@
 add_library(ac3hearth_engine STATIC
     decoder_settings.cpp
     device_sink.cpp
+    engine_thread.cpp
     output_decision.cpp
     player.cpp
     queue.cpp
@@ -21,3 +22,6 @@ target_compile_features(ac3hearth_engine PUBLIC cxx_std_23)
 # renderer. ac3::sendspin joins when the network output lands.
 target_link_libraries(ac3hearth_engine PUBLIC ac3::audio ac3::forge)
 target_link_libraries(ac3hearth_engine PRIVATE ac3::warnings ac3::fmt)
+# The engine thread (engine_thread.cpp).
+find_package(Threads REQUIRED)
+target_link_libraries(ac3hearth_engine PUBLIC Threads::Threads)

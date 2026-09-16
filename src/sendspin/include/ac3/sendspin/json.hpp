@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -7,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 // RFC 8259 JSON for Sendspin's messages, read and written in-tree.
@@ -289,10 +291,26 @@ class Writer {
         return key(name).string(std::string_view{value});
     }
     Writer& member(std::string_view name, bool value) { return key(name).boolean(value); }
-    Writer& member(std::string_view name, std::int64_t value) { return key(name).integer(value); }
+    // Any integer type, by its sign: std::int32_t is int on one target and
+    // long on another, and a fixed set of overloads is ambiguous on one of
+    // them. The int form is for an unscoped enumeration, which would
+    // otherwise reach the bool form.
     Writer& member(std::string_view name, int value) {
         return key(name).integer(static_cast<std::int64_t>(value));
     }
+    template <std::signed_integral T>
+    Writer& member(std::string_view name, T value) {
+        return key(name).integer(static_cast<std::int64_t>(value));
+    }
+    template <std::unsigned_integral T>
+        requires(!std::same_as<T, bool>)
+    Writer& member(std::string_view name, T value) {
+        return key(name).unsigned_integer(static_cast<std::uint64_t>(value));
+    }
+    // A number has decimals to choose: number() says how many. Deleted so
+    // that one does not reach the bool form.
+    template <std::floating_point T>
+    Writer& member(std::string_view name, T value) = delete;
 
     // True once exactly one top-level value is complete.
     [[nodiscard]] bool complete() const { return depth_ == 0 && wrote_root_; }

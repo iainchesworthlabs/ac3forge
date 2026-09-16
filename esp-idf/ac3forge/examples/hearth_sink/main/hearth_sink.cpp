@@ -65,6 +65,7 @@
 #include "discovery.hpp"
 #include "network.hpp"
 #include "provision.hpp"
+#include "sendspin.hpp"
 #include "settings.hpp"
 
 // The example's half of the stage timers. main/CMakeLists.txt links the
@@ -290,6 +291,8 @@ void end_play() {
     xSemaphoreGive(g_player_mutex);
     if (finished) {
         finished->stop();
+        // The sink is the Sendspin player's again (sendspin.hpp).
+        player::sendspin_set_external(false);
     }
 }
 
@@ -335,6 +338,14 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     config.layout = g_layout;
     xSemaphoreGive(g_player_mutex);
 
+    // This play takes the sink from the Sendspin player, which stops writing
+    // before this returns and may have opened the sink its own way, so the
+    // sink is opened again below whatever this task last opened it for.
+    if (player::sendspin_running()) {
+        player::sendspin_set_external(true);
+        g_sink_channels_open = 0;
+    }
+
     // A layout that needs a different slot count or mode than the sink is
     // presently open for reconfigures it here, between plays and before the
     // new Player exists - never mid-play, per audio_sink.hpp - so a layout
@@ -345,6 +356,7 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     if (needed_slots != g_sink_channels_open) {
         if (!player::sink_open(kSampleRate, needed_slots)) {
             g_state.store("failed");
+            player::sendspin_set_external(false);
             return false;
         }
         g_sink_channels_open = needed_slots;
@@ -371,6 +383,8 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     auto player = std::make_unique<ac3forge::Player>(config, g_source, g_sink);
     if (!player->start()) {
         g_state.store("failed");
+        player.reset();
+        player::sendspin_set_external(false);
         return false;
     }
     xSemaphoreTake(g_player_mutex, portMAX_DELAY);
@@ -385,6 +399,10 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
 bool accept_layout(std::string_view text) {
     const auto layout = ac3::render::OutputLayout::parse(text);
     if (!layout.has_value() || layout->slots() > static_cast<std::size_t>(player::sink_slots())) {
+        return false;
+    }
+    // The Sendspin player's too, for streams whose server sets no layout.
+    if (!player::sendspin_set_layout(*layout)) {
         return false;
     }
     Command c;
@@ -464,18 +482,27 @@ ac3forge::ControlHandlers control_handlers() {
     };
     h.set_layout = accept_layout;
     h.name = []() { return std::string(player::settings().name.data()); };
-    h.set_name = [](std::string_view text) { return player::settings_set_name(text); };
+    h.set_name = [](std::string_view text) {
+        if (!player::settings_set_name(text)) {
+            return false;
+        }
+        // What a server lists the board as comes from its hello.
+        player::sendspin_board_changed();
+        return true;
+    };
     h.second_line = []() { return player::settings().second_line; };
     h.set_second_line = [](bool wired) {
         xSemaphoreTake(g_player_mutex, portMAX_DELAY);
-        const bool playing = g_player != nullptr;
+        const bool playing = g_player != nullptr || player::sendspin_playing();
         xSemaphoreGive(g_player_mutex);
         if (playing || !player::settings_set_second_line(wired)) {
             return false;
         }
         // The sink's ceiling moves with the wiring, so the next play plans
-        // against the new one rather than what is open now.
+        // against the new one rather than what is open now, and a server is
+        // told how many outputs the board has now.
         g_sink_channels_open = 0;
+        player::sendspin_board_changed();
         return true;
     };
     h.set_network = [](std::string_view ssid, std::string_view password) {
@@ -484,20 +511,26 @@ ac3forge::ControlHandlers control_handlers() {
     h.slot_bits = []() { return player::sink_slot_bits(); };
     h.set_slot_bits = [](int bits) {
         xSemaphoreTake(g_player_mutex, portMAX_DELAY);
-        const bool playing = g_player != nullptr;
+        const bool playing = g_player != nullptr || player::sendspin_playing();
         xSemaphoreGive(g_player_mutex);
         if (playing) {
             // The lines are carrying a play; changing their width would take
             // the bus out from under it. The caller stops first.
             return false;
         }
-        if (!player::sink_set_slot_bits(bits)) {
+        // The Sendspin player lets go of the sink while its lines are closed,
+        // and opens them again at its own width afterwards.
+        player::sendspin_set_external(true);
+        const bool changed = player::sink_set_slot_bits(bits);
+        player::sendspin_set_external(false);
+        if (!changed) {
             return false;
         }
         // Reopen at the next play whatever its layout asks for: the width
         // change closed the lines, and a layout needing the same slot count
         // as the last one would otherwise find them already open.
         g_sink_channels_open = 0;
+        player::sendspin_board_changed();
         return true;
     };
     h.stats = []() {
@@ -517,6 +550,12 @@ ac3forge::ControlHandlers control_handlers() {
     h.sink_name = []() { return player::sink_name(); };
     h.sink_slots = []() { return player::sink_slots(); };
     h.state = []() { return g_state.load(); };
+    // A build with the player reports on it, as null until it runs; a build
+    // without leaves the object out of /status.
+    if (player::sendspin_built()) {
+        h.sendspin = []() { return player::sendspin_status(); };
+        h.pairing = [](std::string_view action) { return player::sendspin_pairing(action); };
+    }
     return h;
 }
 
@@ -532,6 +571,20 @@ void on_alloc_failed(std::size_t size, std::uint32_t caps, const char* function)
                 function, static_cast<unsigned>(size), static_cast<unsigned long>(caps),
                 static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
                 static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
+}
+
+// The Sendspin player, on a board that is on a network. A play that has the
+// sink when the player starts keeps it: the player starts held, as
+// begin_play leaves one that was already running, and end_play hands it the
+// sink.
+void start_sendspin() {
+    player::sendspin_start(g_layout);
+    xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+    const bool playing = g_player != nullptr;
+    xSemaphoreGive(g_player_mutex);
+    if (playing) {
+        player::sendspin_set_external(true);
+    }
 }
 
 }  // namespace
@@ -562,9 +615,9 @@ extern "C" void app_main() {
 
     // Found by name once it is on one (discovery.hpp), and told what to join
     // when it is not: a browser over the same USB port this console is on
-    // (provision.hpp).
+    // (provision.hpp), which starts below with the Sendspin player's console
+    // commands when there is a player.
     player::discovery_start();
-    player::provisioning_start();
 
     const auto layout = ac3::render::OutputLayout::parse(kLayoutText);
     if (!layout.has_value()) {
@@ -599,17 +652,50 @@ extern "C" void app_main() {
             (void)control.start(control_handlers(), kControlPort);
         }
     };
+    //
+    // A Sendspin sink is played to by its servers, so a build whose location
+    // is empty has no play at boot, and sits waiting for one.
     Session session;
-    const bool playing = begin_play(session, start_control);
-    if (!playing && kControlPort == 0) {
+    const bool boot_play = player::source_location()[0] != '\0';
+    const bool playing = boot_play && begin_play(session, start_control);
+    if (!playing && kControlPort == 0 && !player::sendspin_built()) {
         std::printf("result=fail\n");
         return;
     }
     start_control();
+    if (!boot_play) {
+        g_state.store("stopped");
+    }
+
+    // The boot play's source asks for the network too, and can be what brings
+    // it up when the call above could not; mDNS then starts here.
+    if (player::network_ready()) {
+        player::discovery_start();
+    }
+
+    // The Sendspin player after the control surface, whose server's stack
+    // has to come from internal RAM in one piece, and after the boot play has
+    // started, which holds the sink until it ends.
+    start_sendspin();
+    // Whether the calls above had a network to start on. One that comes up
+    // later - over Improv, on a board that had none stored or could not join
+    // the one it had - gets the same calls from the loop below, in the same
+    // order; the control surface is already listening.
+    bool networked = player::network_ready();
+    player::provisioning_start(player::sendspin_running() ? &player::sendspin_console : nullptr);
 
     // Everything from here is reporting and command handling. The player runs
     // on its own two tasks; this task wakes ten times a second.
     for (;;) {
+        if (!networked && player::network_ready()) {
+            networked = true;
+            player::discovery_start();
+            start_sendspin();
+            if (player::sendspin_running()) {
+                player::provisioning_start(&player::sendspin_console);
+            }
+        }
+        player::sendspin_poll();
         Command cmd;
         while (xQueueReceive(g_commands, &cmd, 0) == pdTRUE) {
             switch (cmd.kind) {
