@@ -50,6 +50,16 @@ const REPLIES = {
     layoutRefused:
         'not a layout this player can play: check the name or the list, and that it has no more slots than the sink\n',
     layoutOk: 'ok; takes effect at the next play\n',
+    nameEmpty: 'PUT /name wants a name\n',
+    nameRefused: 'not a name this player can hold: it is too long, or it could not be stored\n',
+    slotWidthBad: 'PUT /slot-width wants a number of bits\n',
+    slotWidthRefused:
+        "not a slot width this player's sink has: 16 or 32 on an I2S bus, and a sink with no hardware behind it keeps the one it was built for\n",
+    wiringBad: 'PUT /wiring wants 1 (a second I2S line is wired) or 0\n',
+    wiringRefused: 'the wiring could not be stored, or a play is running\n',
+    networkEmpty: 'PUT /network wants an SSID, a newline, and a passphrase\n',
+    nextPlay: 'ok; takes effect at the next play\n',
+    nextBoot: 'ok; takes effect at the next boot\n',
 };
 
 const ROUTES = [
@@ -62,6 +72,13 @@ const ROUTES = [
     'POST /volume',
     'GET /layout',
     'PUT /layout',
+    'GET /name',
+    'PUT /name',
+    'GET /wiring',
+    'PUT /wiring',
+    'GET /slot-width',
+    'PUT /slot-width',
+    'PUT /network',
 ];
 
 // The streams the model plays, with the channels each codes. The E-AC-3 one is
@@ -185,6 +202,10 @@ async function startStub() {
         slotBits: 32,
         secondLine: false,
         name: 'hearth-a1b2c3',
+        // Stored rather than reported: /status does not carry a network, and
+        // a passphrase should not travel back out of a device at all.
+        ssid: 'kitchen',
+        password: '',
         layout: '2.0',
         volume: 1,
         player: null, // the play in progress: {stream, stats, total, fails}
@@ -316,6 +337,53 @@ async function startStub() {
                 }
                 device.volume = value;
                 return send(res, 200, REPLIES.ok);
+            }
+            case 'GET /name':
+                return send(res, 200, device.name + '\n');
+            case 'PUT /name': {
+                if (!body || body.length > 32) {
+                    return send(res, body ? 409 : 400, body ? REPLIES.nameRefused : REPLIES.nameEmpty);
+                }
+                device.name = body;
+                return send(res, 200, REPLIES.ok);
+            }
+            case 'GET /slot-width':
+                return send(res, 200, device.slotBits + '\n');
+            case 'PUT /slot-width': {
+                const bits = Number.parseInt(body, 10);
+                if (!body || Number.isNaN(bits)) {
+                    return send(res, 400, REPLIES.slotWidthBad);
+                }
+                if ((bits !== 16 && bits !== 32) || device.player) {
+                    return send(res, 409, REPLIES.slotWidthRefused);
+                }
+                device.slotBits = bits;
+                // Two lines carry twice one line's slots, and a line carries
+                // 128 bits a frame whichever width divides it.
+                device.sinkSlots = (bits === 16 ? 8 : 4) * (device.secondLine ? 2 : 1);
+                return send(res, 200, REPLIES.nextPlay);
+            }
+            case 'GET /wiring':
+                return send(res, 200, (device.secondLine ? '1' : '0') + '\n');
+            case 'PUT /wiring': {
+                if (body !== '0' && body !== '1') {
+                    return send(res, 400, REPLIES.wiringBad);
+                }
+                if (device.player) {
+                    return send(res, 409, REPLIES.wiringRefused);
+                }
+                device.secondLine = body === '1';
+                device.sinkSlots = (device.slotBits === 16 ? 8 : 4) * (device.secondLine ? 2 : 1);
+                return send(res, 200, REPLIES.nextPlay);
+            }
+            case 'PUT /network': {
+                const [ssid, ...rest] = rawBody.split('\n');
+                if (!ssid.trim()) {
+                    return send(res, 400, REPLIES.networkEmpty);
+                }
+                device.ssid = ssid.trim();
+                device.password = rest.join('\n');
+                return send(res, 200, REPLIES.nextBoot);
             }
             case 'GET /layout':
                 return send(res, 200, device.layout + '\n');
