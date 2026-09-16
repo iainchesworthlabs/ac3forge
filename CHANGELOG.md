@@ -331,6 +331,14 @@ and release packaging.
 
 **Minimum-footprint / ESP32 decode and encode profile**
 
+- **The ESP-IDF streaming-player example is now `hearth_sink`.** It becomes Hearth's
+  ESP32 sink (`planning/hearth-reference-player.md`), so it takes the name before the
+  work starts: `esp-idf/ac3forge/examples/hearth_sink/`, the CMake project
+  `ac3forge_hearth_sink`, and the *ac3forge hearth sink* menu in `idf.py menuconfig`.
+  Its `CONFIG_AC3FORGE_EXAMPLE_*` options, sinks, sources, web page and stream set are
+  unchanged, and the image it builds behaves as it did. Anyone pointing a script at the
+  old path or flashing `ac3forge_stream_player.bin` needs the new name; the GUI's own
+  stream player is a different thing and keeps its.
 - **The fixed-point tier decodes 5.1 in real time on the ESP32-C6 with WiFi up**, with the
   same PCM bit for bit: the fixed-tier hashes do not move. The IMDCT pair's products drop a
   saturation they cannot reach, the overlap-add runs on 32 bits and builds its output floats

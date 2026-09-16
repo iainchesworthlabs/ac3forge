@@ -1,4 +1,4 @@
-# Streaming player
+# Hearth sink
 
 Decodes AC-3 or E-AC-3 on an ESP32-S3 from wherever the bytes are — a flash
 partition by default, a FAT volume in flash, an SD card, or an HTTP body over
@@ -53,10 +53,10 @@ decode task on core 1 drains the ring through the accumulator, decodes, and
 writes to the sink. A source that blocks — a socket waiting on the network —
 blocks the fetch task and nothing else, and the ring's depth is how long a
 stall the DAC never hears. The single loop this replaced had 20 ms of I2S DMA
-between a slow read and silence. `main/stream_player.cpp` is what is left: two
+between a slow read and silence. `main/hearth_sink.cpp` is what is left: two
 adapters from the seams to the player's `ByteSource` and `PcmSink`, a level
 meter, and the reporting. The ring's size, its placement in PSRAM, and both
-cores are under *ac3forge stream player* in `idf.py menuconfig`.
+cores are under *ac3forge hearth sink* in `idf.py menuconfig`.
 
 | Source | Sink |
 | --- | --- |
@@ -65,7 +65,7 @@ cores are under *ac3forge stream player* in `idf.py menuconfig`.
 | `fatfs` — a FAT volume in flash | `null` — counts blocks |
 | `http` — an HTTP body over WiFi | |
 
-Chosen in `idf.py menuconfig` under *ac3forge stream player*, with the output
+Chosen in `idf.py menuconfig` under *ac3forge hearth sink*, with the output
 layout the stream is rendered onto.
 
 ## Running it
@@ -409,7 +409,7 @@ through `idf.py qemu`, which fixes the network options:
 esptool --chip=esp32s3 merge-bin --output=build/qemu_flash.bin --pad-to-size=16MB \
   --flash-mode dio --flash-freq 80m --flash-size 16MB \
   0x0 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin \
-  0x10000 build/ac3forge_stream_player.bin 0x190000 stream/sample.ac3 0x1d0000 build/storage.bin
+  0x10000 build/ac3forge_hearth_sink.bin 0x190000 stream/sample.ac3 0x1d0000 build/storage.bin
 qemu-system-xtensa -M esp32s3 -m 32M -drive file=build/qemu_flash.bin,if=mtd,format=raw \
   -drive file=build/qemu_efuse.bin,if=none,format=raw,id=efuse \
   -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \

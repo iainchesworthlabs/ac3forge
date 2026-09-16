@@ -50,7 +50,7 @@ PCM. That path has been run against a real Atmos-capable receiver: a Raspberry P
 every stream shape locking correctly at zero underruns, including signed Atmos with four height
 channels ([Raspberry Pi](../docs/platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver),
 2026-08-20). The GUI has a player too — `StreamPlayerController`
-(`apps/gui/stream_player_controller.hpp`) — with transport, seeking, metering and export, but
+(`apps/gui/hearth_sink_controller.hpp`) — with transport, seeking, metering and export, but
 it decodes to PCM and plays through a shared-mode `MonitorSink`, and it lives inside a window on
 a workstation.
 
@@ -221,7 +221,7 @@ this list is revised.
 |---|---|---|
 | `apps/cli/commands/audio_io.cpp:721-849` (`run_play`) | The whole passthrough decision and submit loop, proven on real hardware | Reads the entire file into memory (`read_elementary_stream`), splits every unit up front, then blocks in one loop until done. No transport, no queue, no cancellation, no re-follow. A five-minute Atmos programme is fine; an appliance left running is not. |
 | `apps/cli/commands/audio_io.cpp:682-720` (`play_via_ac3_transcode`) | UX9's transcode-to-passthrough leg, metadata carried across | Goes through a **temp file**: the whole stream is transcoded to disk before a note is heard. On an SD-card appliance that is a write-amplification and latency problem both. Needs to become a streaming transcode. |
-| `apps/gui/stream_player_controller.{cpp,hpp}` | Transport, seek, position reporting, level publication, the worker-thread and shared-result ownership pattern (see its own header comment on why `result_` is a `shared_ptr`) | Decodes the whole file to memory and plays PCM through `MonitorSink`. It is a *monitor*, not a passthrough player, and it is Qt. The transport *state machine* is what transfers; none of the code does. |
+| `apps/gui/hearth_sink_controller.{cpp,hpp}` | Transport, seek, position reporting, level publication, the worker-thread and shared-result ownership pattern (see its own header comment on why `result_` is a `shared_ptr`) | Decodes the whole file to memory and plays PCM through `MonitorSink`. It is a *monitor*, not a passthrough player, and it is Qt. The transport *state machine* is what transfers; none of the code does. |
 | `src/audio/include/ac3/audio/passthrough.hpp` | `PassthroughSink`, `enumerate_render_devices()`, the live AC-3/E-AC-3/exclusive-PCM probe | Nothing missing; this is the load-bearing piece and it works. |
 | `src/audio/include/ac3/audio/sink_capabilities.hpp` + `src/backend/*/sink_capabilities.cpp` | UX9's EDID/ELD read | Real on **ALSA only** (84 lines, reading `/proc/asound/<card>/eld#*`). PipeWire, WASAPI, CoreAudio and posix each return `kNoBackend`, by name. See [What UX9 needs](#what-ux9-needs-before-it-can-carry-this). |
 | `src/audio/include/ac3/audio/device_watcher.hpp` | Endpoint added / removed / state-changed / default-changed, on Windows, PipeWire and CoreAudio | **Nothing calls it from `play`.** It was written for Crucible (UX11). ALSA has no such API — that is udev's job — which matters, because ALSA is one of the appliance's two Linux backends. |

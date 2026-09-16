@@ -4,8 +4,8 @@
 // web page's tests - planning/esp32-device-ui.md. It serves the page's two
 // files with the headers the firmware sends and answers the REST routes with
 // the firmware's status codes and reply texts, over a model of the streaming
-// example's player (esp-idf/ac3forge/examples/stream_player/main/
-// stream_player.cpp): POST /play hands a location to the http source, which
+// example's player (esp-idf/ac3forge/examples/hearth_sink/main/
+// hearth_sink.cpp): POST /play hands a location to the http source, which
 // takes it only if it starts with http://; a play clears the last one's
 // figures, runs for a few /status polls and finishes; a location that does not
 // open leaves the state "failed" with no figures. contract.spec.js holds the
@@ -67,7 +67,7 @@ const ROUTES = [
 // The streams the model plays, with the channels each codes. The E-AC-3 one is
 // the WASM page's demo, as CI's HTTP step plays it; the AC-3 one is the
 // example's own sample; the 7.1.4 one is the stream set's walk
-// (esp-idf/ac3forge/examples/stream_player/www/).
+// (esp-idf/ac3forge/examples/hearth_sink/www/).
 const STREAMS = {
     eac3: { codec: 'E-AC-3', acmod: 7, channels: 6, substreams: 1, dialnorm: -31, objects: true, coded: 'L,C,R,Ls,Rs,LFE' },
     ac3: { codec: 'AC-3', acmod: 7, channels: 6, substreams: 1, dialnorm: -31, objects: false, coded: 'L,C,R,Ls,Rs,LFE' },

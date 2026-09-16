@@ -77,9 +77,9 @@ the component's own CMake finds the library either way.
 | Example | What it shows |
 |---|---|
 | [`examples/i2s_player`](examples/i2s_player/README.md) | Decodes a fixture linked into the image and plays it out of an I2S DAC, printing per-lap timing from the DAC's own clock. The measurement anyone with a board can repeat. |
-| [`examples/stream_player`](examples/stream_player/README.md) | Bytes from a flash partition, an SD card or an HTTP body over WiFi, through the incremental framer, rendered onto a configured layout - stereo, 5.1, 7.1.4 with the objects placed - to an I2S or TDM DAC; a `capture` sink for CI. How a real player gets its audio. |
+| [`examples/hearth_sink`](examples/hearth_sink/README.md) | Bytes from a flash partition, an SD card or an HTTP body over WiFi, through the incremental framer, rendered onto a configured layout - stereo, 5.1, 7.1.4 with the objects placed - to an I2S or TDM DAC; a `capture` sink for CI. How a real player gets its audio. |
 
-Both are built by CI under `espressif/idf:v6.1`, and `stream_player` runs under QEMU there in four
+Both are built by CI under `espressif/idf:v6.1`, and `hearth_sink` runs under QEMU there in four
 shapes, one of which renders a height-object stream onto 7.1.4 and checks every slot's level
 against the footprint probe's. Timing figures come only from a board: QEMU is not cycle-accurate.
 

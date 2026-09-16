@@ -506,7 +506,7 @@ extern "C" void app_main() {
         return;
     }
     g_layout = *layout;
-    std::printf("ac3forge stream_player: AC-3 or E-AC-3 onto %s\n", g_layout.text().data());
+    std::printf("ac3forge hearth_sink: AC-3 or E-AC-3 onto %s\n", g_layout.text().data());
 
     g_commands = xQueueCreate(4, sizeof(Command));
     g_player_mutex = xSemaphoreCreateMutex();

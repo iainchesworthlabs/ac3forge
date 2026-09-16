@@ -32,7 +32,7 @@
 // pins, since its own job is only to read them.
 //
 // RECONFIGURING BETWEEN PLAYS, NOT MID-PLAY. sink_open is callable more than
-// once - stream_player.cpp's begin_play calls it again whenever the layout
+// once - hearth_sink.cpp's begin_play calls it again whenever the layout
 // about to play needs a different slot count or mode than what is currently
 // open - and each line prefers i2s_channel_reconfig_std_slot/_tdm_slot over a
 // full disable+delete+recreate whenever it can stay in the same mode: no new
@@ -84,7 +84,7 @@ constexpr i2s_data_bit_width_t kDataBits =
 constexpr std::size_t kMaxLineSlots = ac3forge::line_ceiling(kSlotBits).slots;
 
 // The combined ceiling both lines together could ever carry - what
-// sink_slots() reports, and what accept_layout() (stream_player.cpp) checks
+// sink_slots() reports, and what accept_layout() (hearth_sink.cpp) checks
 // a requested layout against before any of this runs.
 constexpr std::size_t kCeiling = ac3forge::sink_ceiling(kSlotBits, kSecondLineEnabled);
 

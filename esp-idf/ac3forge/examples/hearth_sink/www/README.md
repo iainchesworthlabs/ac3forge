@@ -13,7 +13,7 @@ stream, with the level each slot of a 7.1.4 output should get from it.
 From the repository's root:
 
 ```bash
-python3 -m http.server 8000 --bind 0.0.0.0 --directory esp-idf/ac3forge/examples/stream_player/www
+python3 -m http.server 8000 --bind 0.0.0.0 --directory esp-idf/ac3forge/examples/hearth_sink/www
 ```
 
 then play `http://<host>:8000/714-walk.ec3` - from a board, the serving machine's LAN address;

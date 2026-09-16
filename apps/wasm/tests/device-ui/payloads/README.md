@@ -1,7 +1,7 @@
 # Recorded `GET /status` payloads
 
 Bodies of `GET /status` exactly as the firmware sent them, recorded on 2026-09-11 from the
-streaming example (`esp-idf/ac3forge/examples/stream_player`) under QEMU in CI's HTTP shape
+streaming example (`esp-idf/ac3forge/examples/hearth_sink`) under QEMU in CI's HTTP shape
 (`sdkconfig.defaults;sdkconfig.ci-http`), with one local change: the stream came from port 18100
 on the host rather than 8000, so the locations say `:18100`. They predate #638, which clears the
 last play's figures when a play begins and reports `opening` while the source opens:
@@ -21,7 +21,7 @@ the shape the example reports since as well. It serves each payload to the page 
 The second set was recorded the same day from the firmware that reports how a play serves its
 layout (`sink_slots`, and `stream.layout`, `render`, `coded` and `silent`), in
 `sdkconfig.ci-http714`'s twelve-slot shape playing the stream set
-(`esp-idf/ac3forge/examples/stream_player/www/`) from port 18300, and one from
+(`esp-idf/ac3forge/examples/hearth_sink/www/`) from port 18300, and one from
 `sdkconfig.ci-http`'s two-slot shape.
 
 | File | What the device had just done |

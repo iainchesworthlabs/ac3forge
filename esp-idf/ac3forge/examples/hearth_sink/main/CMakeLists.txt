@@ -73,7 +73,7 @@ endif()
 # play.stage[<zone>] line per decoder stage - `idf.py -DAC3FORGE_STAGE_TIMERS=ON
 # build` - and without that option nothing calls it and the linker drops it, so
 # a plain build is unchanged. A component archive carries no apps/, and there
-# stream_player.cpp's own no-op stand-ins are what links.
+# hearth_sink.cpp's own no-op stand-ins are what links.
 set(AC3FORGE_STAGE_TIMER_SRCS "")
 set(AC3FORGE_STAGE_TIMER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../apps/baremetal")
 if(EXISTS "${AC3FORGE_STAGE_TIMER_DIR}/stage_timers.cpp")
@@ -81,7 +81,7 @@ if(EXISTS "${AC3FORGE_STAGE_TIMER_DIR}/stage_timers.cpp")
 endif()
 
 idf_component_register(
-    SRCS "stream_player.cpp"
+    SRCS "hearth_sink.cpp"
          "${AC3FORGE_SINK_DIR}/audio_sink.cpp"
          "${AC3FORGE_SOURCE_DIR}/byte_source.cpp"
          ${AC3FORGE_NETWORK_SRCS}

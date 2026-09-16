@@ -41,7 +41,7 @@ In the float tier, with the network up, mono is the only row in real time (0.52x
 ### 2/0, 5.1 and 7.1 from one generator
 
 The probe has no 7.1 fixture, so the stream set's three layout streams,
-`esp-idf/ac3forge/examples/stream_player/www/layout-20.ec3`, `layout-51.ec3` and `layout-71.ec3`,
+`esp-idf/ac3forge/examples/hearth_sink/www/layout-20.ec3`, `layout-51.ec3` and `layout-71.ec3`,
 were decoded on the same board by a copy of the probe with them added as rows. They come from one
 generator, use no Annex E tools and hold 32 access units each; 2/0 and 5.1 are 192 kbit/s, and
 7.1, a 5.1 substream and a dependent one, is 288 kbit/s. That copy measured time and heap, and did

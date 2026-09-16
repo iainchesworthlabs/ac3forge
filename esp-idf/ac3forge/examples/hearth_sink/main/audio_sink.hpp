@@ -101,7 +101,7 @@ namespace player {
 // Callable more than once: the real sink reconfigures its mode and slot count
 // to whatever `channels` needs (ac3forge/sink_plan.hpp), between plays, so a
 // layout change over the control surface never needs a rebuild. Not safe to
-// call while a play is in progress - see stream_player.cpp's begin_play.
+// call while a play is in progress - see hearth_sink.cpp's begin_play.
 [[nodiscard]] bool sink_open(std::uint32_t sample_rate, int channels);
 
 // The most slots this sink could ever be asked to carry - its hardware
