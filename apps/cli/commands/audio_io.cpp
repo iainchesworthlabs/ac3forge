@@ -27,6 +27,7 @@
 #include "ac3/audio/passthrough.hpp"
 #include "ac3/audio/sink_capabilities.hpp"
 #include "ac3/audio/spatial.hpp"
+#include "ac3/audio/speakers.hpp"
 #include "ac3/audio/watchdog.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
@@ -542,13 +543,35 @@ int run_outputs() {
         fmt::println("no active render endpoints found");
         return 0;
     }
-    fmt::println("{:>3}  {:<9}  {:<9}  {:<9}  {}", "idx", "AC-3", "E-AC-3", "excl PCM", "name");
+    fmt::println("{:>3}  {:<9}  {:<9}  {:<9}  {:>3}  {}", "idx", "AC-3", "E-AC-3", "excl PCM", "ch",
+                 "name");
     for (std::size_t i = 0; i < devices->size(); ++i) {
         const auto& d = (*devices)[i];
-        fmt::println("{:>3}  {:<9}  {:<9}  {:<9}  {}{}", i, d.supports_ac3_passthrough ? "yes" : "no",
+        fmt::println("{:>3}  {:<9}  {:<9}  {:<9}  {:>3}  {}{}", i,
+                     d.supports_ac3_passthrough ? "yes" : "no",
                      d.supports_eac3_passthrough ? "yes" : "no",
-                     d.supports_exclusive_pcm ? "yes" : "no", d.name,
+                     d.supports_exclusive_pcm ? "yes" : "no",
+                     d.channels != 0 ? std::to_string(d.channels) : "?", d.name,
                      d.is_default ? "  [default]" : "");
+        // Which speaker each of those channels is, and what rates the device
+        // itself takes: what a caller needs to route a rendered layout onto
+        // this endpoint (ac3::audio::locations_of) rather than hand it a
+        // channel count and hope. Either can be "not reported" - a backend
+        // that cannot say must not be read as saying "none".
+        const std::string speakers = ac3::audio::describe_speakers(d.speakers);
+        fmt::println("       speakers: {}", speakers.empty() ? "not reported" : speakers);
+        if (d.sample_rates.empty()) {
+            fmt::println("       rates: not reported");
+        } else {
+            std::string rates;
+            for (const std::uint32_t rate : d.sample_rates) {
+                if (!rates.empty()) {
+                    rates.push_back(' ');
+                }
+                rates += std::to_string(rate);
+            }
+            fmt::println("       rates: {} Hz", rates);
+        }
         // Probed per device rather than folded into RenderDeviceInfo above:
         // GetMaxDynamicObjectCount() is a live, per-endpoint fact that
         // changes the moment Settings > System > Sound is touched, not a
@@ -568,6 +591,12 @@ int run_outputs() {
     fmt::println("E-AC-3   the same, for Dolby Digital Plus (and Atmos riding inside it - there");
     fmt::println("         is no separate passthrough format for Atmos).");
     fmt::println("excl PCM the same endpoint accepted ordinary 16-bit stereo PCM exclusively.");
+    fmt::println("ch       how many channels the endpoint renders; \"?\" where the backend");
+    fmt::println("         cannot say, which is not the same as none.");
+    fmt::println("speakers which speaker each of those channels is, by its bitstream name, in");
+    fmt::println("         the order an interleaved stream carries them.");
+    fmt::println("rates    the rates the device itself takes. A rate not listed can still play:");
+    fmt::println("         the shared-mode engine resamples for it.");
     fmt::println("");
     fmt::println("PCM yes + AC-3/E-AC-3 no means the device simply cannot bitstream - analog");
     fmt::println("outputs cannot; only S/PDIF (TOSLINK/coax) and HDMI can. Enable Dolby Digital");

@@ -18,12 +18,14 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstring>
 #include <future>
 #include <thread>
 
 #include "ac3/audio/ring_buffer.hpp"
+#include "ac3/audio/speakers.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 
 namespace ac3::audio {
@@ -57,6 +59,12 @@ constexpr GUID kSubtypeIec61937DolbyDigital = {
 // worked Dolby Digital Plus example.
 constexpr GUID kSubtypeIec61937DolbyDigitalPlus = {
     0x0000000a, 0x0cea, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+
+// KSDATAFORMAT_SUBTYPE_PCM: {00000001-0000-0010-8000-00aa00389b71}, the
+// WAVE_FORMAT_PCM tag in the same GUID family. Needed for the rate probes,
+// which ask about ordinary PCM rather than a bitstream.
+constexpr GUID kSubtypePcm = {
+    0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 
 // The class and interface identifiers, spelled out for a related reason: the
 // SDK declares CLSID_MMDeviceEnumerator and the IAudio* IIDs but ships no
@@ -202,6 +210,66 @@ private:
     HRESULT hr_;
 };
 
+// The endpoint's configured speaker arrangement, which the mix format does not
+// always carry: a stereo mix on a 5.1 endpoint has dwChannelMask 0x3, while
+// PKEY_AudioEndpoint_PhysicalSpeakers holds what the user set under Sound >
+// Configure. Same SPEAKER_* bits either way (ac3::audio::speakers.hpp).
+constexpr PROPERTYKEY kPkeyAudioEndpointPhysicalSpeakers = {
+    {0x1da5d803, 0xd492, 0x4edd, {0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e}}, 3};
+
+std::uint32_t physical_speakers(IMMDevice* device) {
+    ComPtr<IPropertyStore> properties;
+    if (FAILED(device->OpenPropertyStore(STGM_READ, &properties))) {
+        return 0;
+    }
+    PROPVARIANT value;
+    PropVariantInit(&value);
+    std::uint32_t mask = 0;
+    if (SUCCEEDED(properties->GetValue(kPkeyAudioEndpointPhysicalSpeakers, &value)) &&
+        value.vt == VT_UI4) {
+        mask = value.ulVal;
+    }
+    PropVariantClear(&value);
+    // SPEAKER_ALL says "every speaker" without saying which, which is no more
+    // usable than nothing at all.
+    return mask & kSpeakerAllPositions;
+}
+
+// A 16-bit PCM format of `channels` channels at `sample_rate`, as
+// WAVEFORMATEXTENSIBLE, which is the only form exclusive mode takes above two
+// channels.
+WAVEFORMATEXTENSIBLE make_pcm_format(std::uint32_t sample_rate, WORD channels, DWORD mask) {
+    WAVEFORMATEXTENSIBLE format{};
+    auto& wf = format.Format;
+    wf.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+    wf.nChannels = channels;
+    wf.nSamplesPerSec = sample_rate;
+    wf.wBitsPerSample = kCarrierBits;
+    wf.nBlockAlign = static_cast<WORD>(channels * kCarrierBits / 8);
+    wf.nAvgBytesPerSec = sample_rate * wf.nBlockAlign;
+    wf.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
+    format.Samples.wValidBitsPerSample = kCarrierBits;
+    format.dwChannelMask = mask != 0 ? mask : default_speakers(channels);
+    format.SubFormat = kSubtypePcm;
+    return format;
+}
+
+// Which of the rates a consumer endpoint might run at it accepts in exclusive
+// mode, at its own width: the rate list RenderDeviceInfo reports. Shared mode
+// resamples anything, so asking about it would answer "all of them" and say
+// nothing about the device.
+std::vector<std::uint32_t> probe_sample_rates(IAudioClient* client, WORD channels, DWORD mask) {
+    constexpr std::array<std::uint32_t, 6> kRates{44100, 48000, 88200, 96000, 176400, 192000};
+    std::vector<std::uint32_t> rates;
+    for (const std::uint32_t rate : kRates) {
+        WAVEFORMATEXTENSIBLE format = make_pcm_format(rate, channels, mask);
+        if (client->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, &format.Format, nullptr) == S_OK) {
+            rates.push_back(rate);
+        }
+    }
+    return rates;
+}
+
 std::expected<ComPtr<IMMDeviceEnumerator>, PassthroughError> make_enumerator() {
     ComPtr<IMMDeviceEnumerator> enumerator;
     if (FAILED(CoCreateInstance(kClsidMmDeviceEnumerator, nullptr, CLSCTX_ALL,
@@ -290,10 +358,35 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
             // see RenderDeviceInfo::channels. A failure here is not an error
             // for this function: the field stays 0 ("cannot say") and the
             // passthrough probes below carry on regardless.
+            std::uint32_t mix_rate = 0;
             WAVEFORMATEX* mix = nullptr;
             if (SUCCEEDED(client->GetMixFormat(&mix)) && mix != nullptr) {
                 info.channels = mix->nChannels;
+                mix_rate = mix->nSamplesPerSec;
+                // The mix format carries a mask only in its EXTENSIBLE form,
+                // and then only the one the engine is mixing to: a stereo mix
+                // on a 5.1 endpoint says 0x3. The endpoint's own arrangement
+                // wins where it has one.
+                if (mix->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
+                    mix->cbSize >= sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)) {
+                    const auto* extensible = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(mix);
+                    info.speakers = extensible->dwChannelMask & kSpeakerAllPositions;
+                }
                 CoTaskMemFree(mix);
+            }
+            if (const std::uint32_t configured = physical_speakers(device.Get());
+                configured != 0 && speaker_count(configured) == info.channels) {
+                info.speakers = configured;
+            }
+
+            info.sample_rates = probe_sample_rates(
+                client.Get(), info.channels != 0 ? info.channels : kCarrierChannels, info.speakers);
+            if (info.sample_rates.empty() && mix_rate != 0) {
+                // Exclusive mode is unavailable, so the device cannot be asked
+                // what it takes. The rate the engine is mixing at is one the
+                // endpoint is rendering right now, which is the strongest
+                // thing left to say (see RenderDeviceInfo::sample_rates).
+                info.sample_rates.push_back(mix_rate);
             }
 
             // IsFormatSupported is the only honest way to ask "can this

@@ -50,6 +50,12 @@ target_include_directories(ac3audio
 # backend files, below.
 target_sources(ac3audio PRIVATE src/sink_capabilities.cpp)
 
+# speakers.cpp is platform-independent for the same reason: WAVEFORMATEXTENSIBLE's
+# channel mask is the vocabulary all four real backends already report their
+# speaker positions in, and mapping it to the renderer's locations is arithmetic
+# over a table, with no platform call in it (see speakers.hpp's header).
+target_sources(ac3audio PRIVATE src/speakers.cpp)
+
 target_compile_features(ac3audio PUBLIC cxx_std_23)
 
 # ac3::coverage is a no-op unless AC3FORGE_ENABLE_COVERAGE is on (see

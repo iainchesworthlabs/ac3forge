@@ -125,6 +125,7 @@ add_executable(ac3tests
     audio/test_live_positions.cpp
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
+    audio/test_speakers.cpp
     oba/test_scene.cpp
     oba/test_scene_osc.cpp
     verify/test_eac3_selfcheck.cpp

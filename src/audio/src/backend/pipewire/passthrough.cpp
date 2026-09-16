@@ -60,9 +60,11 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "ac3/audio/ring_buffer.hpp"
+#include "ac3/audio/speakers.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 #include "pipewire_support.hpp"
 
@@ -242,7 +244,72 @@ struct CandidateSink {
     std::string name;
     bool codec_ac3 = false;
     bool codec_eac3 = false;
+    std::uint16_t channels = 0;
+    std::uint32_t speakers = 0;
+    std::uint32_t rate = 0;
 };
+
+// The SPEAKER_* bit one SPA channel name stands for (ac3::audio::speakers.hpp).
+// These are the names audio.position carries, and the same ones ALSA's channel
+// maps use; 0 for a name with no WAVEFORMATEXTENSIBLE position, including SPA's
+// "NA" for a channel to leave alone, "MONO" and anything unrecognised.
+std::uint32_t speaker_of_name(std::string_view name) {
+    struct Named {
+        std::string_view name;
+        std::uint32_t speaker;
+    };
+    static constexpr std::array<Named, 18> kNames{{
+        {"FL", kSpeakerFrontLeft},
+        {"FR", kSpeakerFrontRight},
+        {"FC", kSpeakerFrontCentre},
+        {"LFE", kSpeakerLowFrequency},
+        {"RL", kSpeakerBackLeft},
+        {"RR", kSpeakerBackRight},
+        {"FLC", kSpeakerFrontLeftOfCentre},
+        {"FRC", kSpeakerFrontRightOfCentre},
+        {"RC", kSpeakerBackCentre},
+        {"SL", kSpeakerSideLeft},
+        {"SR", kSpeakerSideRight},
+        {"TC", kSpeakerTopCentre},
+        {"TFL", kSpeakerTopFrontLeft},
+        {"TFC", kSpeakerTopFrontCentre},
+        {"TFR", kSpeakerTopFrontRight},
+        {"TRL", kSpeakerTopBackLeft},
+        {"TRC", kSpeakerTopBackCentre},
+        {"TRR", kSpeakerTopBackRight},
+    }};
+    const auto found = std::find_if(kNames.begin(), kNames.end(),
+                                    [&](const Named& entry) { return entry.name == name; });
+    return found == kNames.end() ? 0 : found->speaker;
+}
+
+// The mask an audio.position list names. The list is SPA's own spelling, which
+// is either a JSON array ("[ FL FR FC LFE ]") or a bare comma-separated list
+// ("FL,FR"), so the separators are everything that is not a name character.
+// 0 when the names do not account for every channel: a partly understood map
+// would put audio at the wrong speaker, which is worse than saying nothing.
+std::uint32_t speakers_of_position(std::string_view position, std::uint16_t channels) {
+    std::uint32_t mask = 0;
+    std::uint16_t named = 0;
+    std::size_t at = 0;
+    while (at < position.size()) {
+        const std::size_t start = position.find_first_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", at);
+        if (start == std::string_view::npos) {
+            break;
+        }
+        const std::size_t stop =
+            position.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", start);
+        const std::size_t end = stop == std::string_view::npos ? position.size() : stop;
+        const std::uint32_t speaker = speaker_of_name(position.substr(start, end - start));
+        if (speaker == 0) {
+            return 0;
+        }
+        mask |= speaker;
+        ++named;
+        at = end;
+    }
+    return named == channels && speaker_count(mask) == channels ? mask : 0;
+}
 
 std::vector<CandidateSink> candidate_sinks() {
     std::vector<CandidateSink> candidates;
@@ -272,6 +339,9 @@ std::vector<CandidateSink> candidate_sinks() {
         };
         candidate.codec_ac3 = has("AC3");
         candidate.codec_eac3 = has("EAC3");
+        candidate.channels = sink.channels;
+        candidate.speakers = speakers_of_position(sink.position, sink.channels);
+        candidate.rate = sink.rate;
         candidates.push_back(std::move(candidate));
     }
     return candidates;
@@ -322,6 +392,16 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
             .supports_eac3_passthrough =
                 sink.codec_eac3 && probe_iec958(sink.id, BitstreamFormat::kEac3, sample_rate),
             .supports_exclusive_pcm = probe_exclusive_pcm(sink.id, sample_rate),
+            // What the node is configured as, which for a device sink is what
+            // the device renders. The rate is the one rate it is running at,
+            // not a list: PipeWire keeps the rates it may switch between in
+            // the session manager's settings, not on the node, so the honest
+            // answer here is the rate this sink has now (see
+            // RenderDeviceInfo::sample_rates).
+            .channels = sink.channels,
+            .speakers = sink.speakers,
+            .sample_rates = sink.rate != 0 ? std::vector<std::uint32_t>{sink.rate}
+                                           : std::vector<std::uint32_t>{},
         };
         devices.push_back(std::move(info));
     }
