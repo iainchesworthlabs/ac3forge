@@ -34,6 +34,7 @@
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/oba/scene.hpp"
 #include "ac3/audio/watchdog.hpp"
@@ -361,18 +362,24 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
         fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
         return kExitInput;
     }
-    auto decoder = std::make_unique<ac3::Eac3Decoder>(
-        ac3::DecoderConfig{.drc_scale = meta.drc_scale,
-                           .fast_imdct = meta.fast_imdct,
-                           .heavy_compression = meta.p.heavy.has_value(),
-                           .output = meta.output,
-                           .concealment = meta.concealment});
+    // Named rather than a temporary passed straight to the decoder: lfe_delay
+    // below reads .joc_domain back off it, so the two can never disagree on
+    // which domain the reconstruction this session actually decodes with.
+    const ac3::DecoderConfig decoder_config{.drc_scale = meta.drc_scale,
+                                            .fast_imdct = meta.fast_imdct,
+                                            .heavy_compression = meta.p.heavy.has_value(),
+                                            .output = meta.output,
+                                            .concealment = meta.concealment};
+    auto decoder = std::make_unique<ac3::Eac3Decoder>(decoder_config);
 
     ac3::audio::SpatialObjectSink sink;
     bool started = false;
     std::uint64_t units_played = 0;
     std::vector<ac3::audio::DynamicObjectUpdate> dynamic_updates;
     std::vector<ac3::audio::StaticObjectUpdate> static_updates;
+    LfeDelayLine lfe_delay{static_cast<std::size_t>(
+        ac3::oba::joc::reconstruction_delay(decoder_config.joc_domain))};
+    std::vector<float> delayed_lfe;
 
     for (const auto& unit : *units) {
         const auto decoded = decoder->decode_access_unit(unit);
@@ -423,9 +430,11 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
             !out.channels.empty()) {
             // Table 5.8's coded order puts the LFE last regardless of acmod
             // (ac3::DecodedAccessUnit::channels' own doc comment) - never a
-            // JOC output (§6.3.2.2), so it only ever exists here.
-            static_updates.push_back(
-                {.pcm = out.channels.back(), .channel = kSpeakerLowFrequency});
+            // JOC output (§6.3.2.2), so it only ever exists here. Delayed to
+            // arrive with the dynamic objects above, not ahead of them - see
+            // LfeDelayLine's own comment.
+            delayed_lfe = lfe_delay.process(out.channels.back());
+            static_updates.push_back({.pcm = delayed_lfe, .channel = kSpeakerLowFrequency});
         }
 
         while (!sink.submit(dynamic_updates, static_updates)) {
