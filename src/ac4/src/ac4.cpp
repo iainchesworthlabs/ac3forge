@@ -303,27 +303,33 @@ int parse_frame_rate_multiply_info(Reader& r, int frame_rate_index) {
     }
 }
 
-void parse_frame_rate_fractions_info(Reader& r, int frame_rate_index, int frame_rate_factor) {
+// Returns frame_rate_fraction: 1, or the 2 or 4 transmission frames one coded
+// frame is spread over in the efficient high frame rate mode (Part 2 clause
+// 5.1.3, Table 18). A reader that takes each transmission frame for a whole
+// one misreads a stream in that mode, so the value is reported rather than
+// dropped.
+int parse_frame_rate_fractions_info(Reader& r, int frame_rate_index, int frame_rate_factor) {
     switch (frame_rate_index) {
         case 5:
         case 6:
         case 7:
         case 8:
         case 9:
-            if (frame_rate_factor == 1 && r.bits(1)) {
-                // frame_rate_fraction = 2; unused downstream in this scope.
+            if (frame_rate_factor == 1 && r.bits(1)) {  // b_frame_rate_fraction
+                return 2;
             }
             break;
         case 10:
         case 11:
         case 12:
             if (r.bits(1)) {  // b_frame_rate_fraction
-                r.skip(1);    // b_frame_rate_fraction_is_4
+                return r.bits(1) ? 4 : 2;  // b_frame_rate_fraction_is_4
             }
             break;
         default:
             break;
     }
+    return 1;
 }
 
 // --- §4.2.3.9 ac4_hsf_ext_substream_info ------------------------------------
@@ -1020,7 +1026,8 @@ PresentationInfoV1 parse_presentation_v1_info(Reader& r, int bitstream_version,
             pres.presentation_id = static_cast<int>(variable_bits(r, 2));
         }
         pres.frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index);
-        parse_frame_rate_fractions_info(r, frame_rate_index, pres.frame_rate_factor);
+        pres.frame_rate_fraction =
+            parse_frame_rate_fractions_info(r, frame_rate_index, pres.frame_rate_factor);
         if (const EmdfInfo emdf = parse_emdf_info(r); emdf.payloads_substream_index) {
             pres.emdf_payloads_substream_indices.push_back(*emdf.payloads_substream_index);
         }

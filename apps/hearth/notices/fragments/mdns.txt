@@ -1,0 +1,8 @@
+mdns {{MDNS_VERSION}}
+-----------
+
+Mattias Jansson's mdns library, version {{MDNS_VERSION}}, is compiled into
+Hearth's programs, which advertise and find Sendspin services with it. Its
+author released it into the public domain:
+
+{{FILE:MDNS_COPYRIGHT}}

@@ -1,0 +1,10 @@
+Mbed TLS {{MBEDTLS_VERSION}}
+-------------------
+
+Mbed TLS, version {{MBEDTLS_VERSION}}, is compiled into Hearth's programs, whose
+Sendspin encryption and pairing use its PSA Crypto API. Mbed TLS is offered
+under the Apache License, version 2.0, or the GNU General Public License,
+version 2 or later; Hearth uses it under the Apache License, version 2.0.
+Both texts follow, as Mbed TLS distributes them.
+
+{{FILE:MBEDTLS_COPYRIGHT}}

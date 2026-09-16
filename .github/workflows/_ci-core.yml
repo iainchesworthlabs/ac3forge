@@ -387,9 +387,10 @@ jobs:
   # AC3FORGE_BUILD_HEARTH defaults OFF like AC3FORGE_BUILD_ADM, because the library's later
   # parts take cpp-httplib, mdns, mbedTLS, libFLAC and Opus from vcpkg's "hearth" feature.
   # Until A7 brings it into every build-and-test leg, this is the one build that compiles it
-  # and runs its tests. One Linux leg, for adm-validate's reason: the module has no
-  # platform code. Only ac3tests is built and only its [sendspin] cases run; the rest of
-  # the suite is build-and-test's.
+  # and runs its tests. One Linux leg, for adm-validate's reason: the module has little
+  # platform code. Only ac3tests and ac3hearth-testsink are built, and only the [sendspin]
+  # and [hearth] cases run, then A4's exit against aiosendspin 9.1.1 scripted as a player and as
+  # Music Assistant's server; the rest of the suite is build-and-test's.
   hearth-validate:
     name: Hearth Sendspin (Linux, GCC)
     runs-on: ${{ fromJSON(inputs.runner) }}
@@ -404,7 +405,8 @@ jobs:
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends \
             build-essential ca-certificates cmake curl git gnupg lsb-release \
-            ninja-build pkg-config software-properties-common tar unzip wget zip
+            ninja-build pkg-config python3 python3-venv software-properties-common tar unzip \
+            wget zip
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -430,11 +432,38 @@ jobs:
 
       - name: Build
         shell: bash
-        run: cmake --build --preset build-linux-gcc --target ac3tests -- -k 0
+        run: cmake --build --preset build-linux-gcc --target ac3tests ac3hearth-testsink -- -k 0
 
       - name: Test
         shell: bash
-        run: ./build/config-linux-gcc/bin/ac3tests "[sendspin]"
+        run: ./build/config-linux-gcc/bin/ac3tests "[sendspin],[hearth]"
+
+      # A4's exit with the stand-in for Sendspin's reference player
+      # (planning/hearth-sendspin-extension.md, Decisions): a host pairs with a scripted
+      # aiosendspin 9.1.1 player over loopback and plays it PCM, FLAC and Opus, which the script
+      # checks against the programme. The SDK, PyAV, numpy and Pillow come from
+      # tools/sendspin/requirements.txt.
+      - name: aiosendspin 9.1.1 player
+        shell: bash
+        run: |
+          set -eu
+          python3 -m venv /tmp/aiosendspin-venv
+          /tmp/aiosendspin-venv/bin/pip install --no-cache-dir --only-binary=:all: \
+            -r tools/sendspin/requirements.txt
+          /tmp/aiosendspin-venv/bin/python tools/sendspin/aiosendspin_exit.py \
+            --ac3tests ./build/config-linux-gcc/bin/ac3tests
+
+      # Music Assistant's side of the same exit, rehearsed: aiosendspin 9.1.1's server, which Music
+      # Assistant runs, pairs with the test sink by its token and by its dynamic code, and plays it
+      # PCM, FLAC and Opus.
+      - name: aiosendspin 9.1.1 server
+        shell: bash
+        run: |
+          set -eu
+          for pair in token code; do
+            /tmp/aiosendspin-venv/bin/python tools/sendspin/aiosendspin_server.py \
+              --testsink ./build/config-linux-gcc/bin/ac3hearth-testsink --pair "$pair"
+          done
 
       # See adm-validate's identical step for why the result is recorded this way.
       - name: Record result

@@ -235,6 +235,10 @@ struct PresentationInfoV1 {
     std::optional<int> md_compat;            // Table 55
     std::optional<bool> enable_presentation;
     int frame_rate_factor = 1;  // Table 87; threaded into this frame's substream groups
+    // §6.2.1.4 / Table 18: 1, or the 2 or 4 transmission frames one coded
+    // frame is spread over in the efficient high frame rate mode. Above 1,
+    // this frame's substreams are fragments, not whole substreams.
+    int frame_rate_fraction = 1;
     std::optional<int> presentation_id;
     bool b_pre_virtualized = false;  // §4.3.3.3.5
     // §6.2.1.12 ac4_presentation_substream_info(). Unset for an EMDF-only

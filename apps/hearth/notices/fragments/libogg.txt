@@ -1,0 +1,7 @@
+libogg {{LIBOGG_VERSION}}
+----------------
+
+libogg, version {{LIBOGG_VERSION}}, comes into Hearth's programs with libFLAC,
+for FLAC in an Ogg container. It is used under the BSD 3-Clause License.
+
+{{FILE:LIBOGG_COPYRIGHT}}

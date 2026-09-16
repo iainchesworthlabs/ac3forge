@@ -3,19 +3,27 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
+#include <iterator>
+#include <optional>
 #include <span>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "ac3/decoder/decoder.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/silent_frame.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 #include "ac3/sendspin/chunks.hpp"
 #include "ac3/sendspin/frames.hpp"
 
 // The audio chunks, including planning/hearth-sendspin-extension.md's test
-// vectors for _ac3forge_player@v1: a burst chunk from wrap_frame for an AC-3
-// frame and one from Eac3BurstPacker for E-AC-3 syncframes of fewer than six
-// blocks, checked field by field against the burst the library packs for a
-// receiver.
+// vectors for _ac3forge_player@v1: a burst chunk from wrap_frame for
+// tests/golden's AC-3 5.1 fixture and one from Eac3BurstPacker for the
+// encoder's E-AC-3 syncframes of two blocks, checked field by field against the
+// burst the library packs for a receiver, beside the same checks on a silent
+// frame and on hand-made one-block syncframes.
 
 namespace {
 
@@ -37,6 +45,50 @@ std::vector<std::uint8_t> burst_chunk(std::int64_t timestamp, std::uint32_t send
         message.push_back(std::to_integer<std::uint8_t>(b));
     }
     return message;
+}
+
+std::vector<std::byte> read_file(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    REQUIRE(in.good());
+    const std::string bytes{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+    std::vector<std::byte> out;
+    out.reserve(bytes.size());
+    for (const char c : bytes) {
+        out.push_back(static_cast<std::byte>(c));
+    }
+    return out;
+}
+
+// The message's bytes from `first` for `count`, as numbers.
+std::vector<unsigned> bytes_of(const std::vector<std::uint8_t>& message, std::size_t first, std::size_t count) {
+    return {message.begin() + static_cast<std::ptrdiff_t>(first),
+            message.begin() + static_cast<std::ptrdiff_t>(first + count)};
+}
+
+// The checks every burst chunk vector gets against the burst `burst` the library packed for a
+// receiver: the header's fields at their offsets, big-endian, and a payload that is the burst's
+// own with its 16-bit words swapped back and its stuffing left out.
+void check_against_burst(const std::vector<std::uint8_t>& message, std::span<const std::byte> burst,
+                         std::span<const std::byte> payload) {
+    const std::uint16_t pc = le16(burst, 4);
+    const std::uint16_t pd = le16(burst, 6);
+    REQUIRE(message.size() == ac3::sendspin::kBurstChunkHeaderBytes + payload.size());
+    CHECK(message[0] == 192);
+    CHECK(bytes_of(message, 13, 2) == std::vector<unsigned>{static_cast<unsigned>(pc >> 8U), pc & 0xFFU});
+    CHECK(bytes_of(message, 15, 2) == std::vector<unsigned>{static_cast<unsigned>(pd >> 8U), pd & 0xFFU});
+    REQUIRE(payload.size() % 2 == 0);
+    std::size_t different = 0;
+    for (std::size_t i = 0; i < payload.size(); ++i) {
+        const auto byte = std::to_integer<std::uint8_t>(payload[i]);
+        different += message[ac3::sendspin::kBurstChunkHeaderBytes + i] == byte ? 0U : 1U;
+        different += std::to_integer<std::uint8_t>(burst[8 + (i ^ 1U)]) == byte ? 0U : 1U;
+    }
+    CHECK(different == 0);
+    std::size_t stuffing = 0;
+    for (std::size_t i = 8 + payload.size(); i < burst.size(); ++i) {
+        stuffing += burst[i] == std::byte{0} ? 0U : 1U;
+    }
+    CHECK(stuffing == 0);
 }
 
 std::vector<std::uint8_t> ac3_payload_chunk(std::uint16_t pc, std::uint16_t pd,
@@ -205,6 +257,66 @@ TEST_CASE("chunks: an E-AC-3 burst chunk carries Eac3BurstPacker's six blocks",
     CHECK(chunk->data_type() == BurstDataType::kEac3);
     CHECK(chunk->pd == ac3::sendspin::burst_length_code(BurstDataType::kEac3, payload.size()));
     CHECK(chunk->chunk.data.size() == payload.size());
+}
+
+TEST_CASE("chunks: a burst chunk for the first syncframe of tests/golden's AC-3 5.1 fixture",
+          "[sendspin][chunks]") {
+    const std::vector<std::byte> stream = read_file(AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac3-51-448/ffmpeg.ac3");
+    const auto frames = ac3::split_frames(stream);
+    REQUIRE(frames.has_value());
+    REQUIRE_FALSE(frames->empty());
+    const std::span<const std::byte> frame = frames->front();
+    REQUIRE(frame.size() == 1792);
+    const auto burst = ac3::iec61937::wrap_frame(frame);
+    REQUIRE(burst.has_value());
+    REQUIRE(burst->size() == ac3::iec61937::kBurstBytes);
+    const std::uint16_t pc = le16(*burst, 4);
+    const std::uint16_t pd = le16(*burst, 6);
+    // Data type 1 and the frame's bsmod in bits 8 to 10; the frame's length in bits.
+    CHECK((pc & 0x1FU) == 1U);
+    CHECK(((pc >> 8U) & 0x7U) == (std::to_integer<unsigned>(frame[5]) & 0x7U));
+    CHECK(pd == 1792 * 8);
+
+    const std::vector<std::uint8_t> message = burst_chunk(0x0102030405060708, 0x0A0B0C0D, pc, pd, frame);
+    CHECK(bytes_of(message, 1, 8) == std::vector<unsigned>{1, 2, 3, 4, 5, 6, 7, 8});
+    CHECK(bytes_of(message, 9, 4) == std::vector<unsigned>{0x0A, 0x0B, 0x0C, 0x0D});
+    check_against_burst(message, *burst, frame);
+    const auto chunk = ac3::sendspin::parse_burst_chunk(message);
+    REQUIRE(chunk.has_value());
+    CHECK(chunk->data_type() == BurstDataType::kAc3);
+}
+
+TEST_CASE("chunks: a burst chunk for the encoder's E-AC-3 syncframes of two blocks", "[sendspin][chunks]") {
+    ac3::eac3::FrameConfig config{.bitrate_kbps = 192, .numblkscod = 1};
+    const auto frame = ac3::eac3::build_silent_frame(config);
+    REQUIRE(frame.has_value());
+    ac3::iec61937::Eac3BurstPacker packer;
+    std::vector<std::byte> payload;
+    std::optional<std::vector<std::byte>> burst;
+    int pushed = 0;
+    while (!burst && pushed < 6) {
+        payload.insert(payload.end(), frame->begin(), frame->end());
+        auto packed = packer.push(*frame);
+        REQUIRE(packed.has_value());
+        burst = std::move(*packed);
+        ++pushed;
+    }
+    // Two blocks each, so three syncframes make the burst's six.
+    CHECK(pushed == 3);
+    REQUIRE(burst.has_value());
+    REQUIRE(burst->size() == ac3::iec61937::kEac3BurstBytes);
+    const std::uint16_t pc = le16(*burst, 4);
+    const std::uint16_t pd = le16(*burst, 6);
+    CHECK(pc == 21);
+    CHECK(pd == payload.size());
+
+    const std::vector<std::uint8_t> message = burst_chunk(-1, 0xFFFFFFFFU, pc, pd, payload);
+    CHECK(bytes_of(message, 1, 12) == std::vector<unsigned>(12, 0xFF));
+    check_against_burst(message, *burst, payload);
+    const auto chunk = ac3::sendspin::parse_burst_chunk(message);
+    REQUIRE(chunk.has_value());
+    CHECK(chunk->data_type() == BurstDataType::kEac3);
+    CHECK(chunk->chunk.timestamp_us == -1);
 }
 
 TEST_CASE("chunks: burst chunk errors", "[sendspin][chunks]") {
