@@ -116,7 +116,7 @@ for _ in $(seq 1 30); do
 done
 kill "$qemu_pid" 2>/dev/null || true
 
-wav="$(find "$out/reference/out" -name 'bursts-*.wav' | head -1)"
+wav="$(find "$out/reference/out" -name 'bursts-*.wav' -print -quit 2>/dev/null)" || true
 [ -n "$wav" ] || fail "the test sink wrote no WAV file"
 python3 "$here/check_sendspin_levels.py" --title "$title" --console "$console" --wav "$wav" \
     || fail "the board's levels are not the test sink's (the lines above say which)"
