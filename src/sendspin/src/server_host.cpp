@@ -195,6 +195,7 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
             view.client_key = session.client_key();
             view.client_id = base64url::encode(view.client_key);
             view.peer = peer_;
+            view.url = url_;
             view.dialect = session.dialect();
             view.psk = session.psk_category();
             view.credential_mismatch = session.credential_mismatch();
@@ -740,6 +741,12 @@ bool ServerHost::cancel_pairing(const std::string& client_id) {
     const std::shared_ptr<HostConnection> connection = state_->find(client_id);
     return connection &&
            connection->driver().call([&] { return connection->session().cancel_pairing(); }).has_value();
+}
+
+bool ServerHost::ac3forge_command(const std::string& client_id, const ac3forge::CommandMessage& command) {
+    const std::shared_ptr<HostConnection> connection = state_->find(client_id);
+    return connection &&
+           connection->driver().call([&] { return connection->session().ac3forge_command(command); }).has_value();
 }
 
 bool ServerHost::approve(const std::string& client_id, bool approved) {
