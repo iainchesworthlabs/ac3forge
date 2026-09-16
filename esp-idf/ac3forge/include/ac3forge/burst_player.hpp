@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -93,6 +94,13 @@ struct BurstPlayerConfig {
     // A sendspin.progress line on the console every this many chunks while a
     // stream plays, as well as the closing line; 0 for the closing line only.
     std::uint32_t report_every_chunks = 0;
+    // The local time a server time plays at by the playing connection's clock
+    // as it stands, or nothing; called from any task. A chunk comes with its
+    // local time worked out when it arrived, which may be seconds before it
+    // plays, and the player moves it by as much as this has moved since. With
+    // none, a clock update reaches the playout only with the chunks sent
+    // after it.
+    std::function<std::optional<std::int64_t>(std::int64_t)> local_time;
 
     // The layout until a server sends one, and the decoder settings under
     // it: the server's settings replace these whole, as the extension page

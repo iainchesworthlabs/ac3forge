@@ -943,4 +943,13 @@ std::optional<std::int64_t> SendspinHost::server_time(std::int64_t local_us) con
     return map.server + (((local_us - map.local) * map.per_second) / 1'000'000);
 }
 
+std::optional<std::int64_t> SendspinHost::local_time(std::int64_t server_us) const {
+    const std::lock_guard lock(impl_->status_mutex);
+    const Impl::ClockMap& map = impl_->clock_map;
+    if (!map.valid || map.per_second <= 0) {
+        return std::nullopt;
+    }
+    return map.local + (((server_us - map.server) * 1'000'000) / map.per_second);
+}
+
 }  // namespace ac3forge

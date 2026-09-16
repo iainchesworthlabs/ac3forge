@@ -441,6 +441,11 @@ void start_player(const ac3::render::OutputLayout& layout) {
     config.core = kDecodeCore;
     config.stack_bytes = kDecodeStackBytes;
     config.report_every_chunks = kReportEveryChunks;
+    // g_host is made just below and kept while the player runs; no chunk
+    // comes before it.
+    config.local_time = [](std::int64_t server_us) -> std::optional<std::int64_t> {
+        return g_host ? g_host->local_time(server_us) : std::nullopt;
+    };
     config.layout = layout;
     config.decoder.output.mode = kMode;
     config.decoder.joc_domain = kJocDomain;

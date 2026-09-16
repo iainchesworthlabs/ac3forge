@@ -190,6 +190,8 @@ class SendspinHost final {
     // Nothing until that connection's clock has had an update. Safe from any
     // task.
     [[nodiscard]] std::optional<std::int64_t> server_time(std::int64_t local_us) const;
+    // The other way: the local time a server time plays at, by the same clock.
+    [[nodiscard]] std::optional<std::int64_t> local_time(std::int64_t server_us) const;
 
     struct Impl;
 

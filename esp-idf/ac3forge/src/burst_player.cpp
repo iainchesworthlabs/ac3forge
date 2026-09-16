@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstring>
 #include <expected>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -78,6 +79,9 @@ enum class Kind : std::uint8_t {
     kPcm,
 };
 
+// A chunk that arrived before the clock map said anything.
+constexpr std::int64_t kNoMap = std::numeric_limits<std::int64_t>::min();
+
 // Every ring entry starts with this, and a chunk's bytes follow it.
 struct Header {
     Kind kind = Kind::kBurst;
@@ -91,6 +95,8 @@ struct Header {
     std::int32_t bit_depth = 0;
     std::int64_t local_us = 0;
     std::int64_t server_us = 0;
+    // BurstPlayerConfig::local_time for server_us when the chunk arrived.
+    std::int64_t map_local_us = kNoMap;
 };
 static_assert(std::is_trivially_copyable_v<Header>);
 
@@ -550,6 +556,24 @@ struct BurstPlayer::Impl {
         active.store(false);
     }
 
+    // config.local_time for `server_us`, or kNoMap.
+    [[nodiscard]] std::int64_t map_now(std::int64_t server_us) const {
+        if (!config.local_time) {
+            return kNoMap;
+        }
+        return config.local_time(server_us).value_or(kNoMap);
+    }
+
+    // A chunk's local time, moved by as much as the clock map has moved since
+    // the chunk arrived (BurstPlayerConfig::local_time).
+    [[nodiscard]] std::int64_t local_of(const Header& header) const {
+        if (header.map_local_us == kNoMap) {
+            return header.local_us;
+        }
+        const std::int64_t now = map_now(header.server_us);
+        return now == kNoMap ? header.local_us : header.local_us + (now - header.map_local_us);
+    }
+
     [[nodiscard]] std::uint64_t frame_of(std::int64_t server_us) const {
         const std::int64_t since = server_us - origin_server_us;
         if (since <= 0) {
@@ -830,10 +854,11 @@ struct BurstPlayer::Impl {
             origin_server_us = header.server_us;
         }
         const std::uint64_t frame = frame_of(header.server_us);
+        const std::int64_t local_us = local_of(header);
         // Too late to play any of it: dropped before it is decoded, and the
         // decoder starts again with the next.
         if (const std::optional<std::int64_t> next = playout->next_play_us(esp_timer_get_time())) {
-            const std::int64_t end = header.local_us + static_cast<std::int64_t>((kBurstFrames * 1'000'000) / config.sample_rate);
+            const std::int64_t end = local_us + static_cast<std::int64_t>((kBurstFrames * 1'000'000) / config.sample_rate);
             if (end < *next) {
                 ++late_chunks;
                 reset_decoding();
@@ -844,7 +869,7 @@ struct BurstPlayer::Impl {
             decoded_frame_set = true;
             decoded_frame = frame;
         }
-        mark(frame, header.local_us);
+        mark(frame, local_us);
         ++bursts_played;
         const std::int64_t started = esp_timer_get_time();
         const bool whole = for_each_access_unit(std::as_bytes(payload),
@@ -904,7 +929,7 @@ struct BurstPlayer::Impl {
             origin_server_us = header.server_us;
         }
         const std::uint64_t first = frame_of(header.server_us);
-        mark(first, header.local_us);
+        mark(first, local_of(header));
         decoded_frame = first;
         ++bursts_played;
         const std::size_t frames = payload.size() / frame_bytes;
@@ -1280,6 +1305,7 @@ void BurstPlayer::burst(const ss::BurstChunk& chunk, std::int64_t local_us) {
     header.generation = impl_->generation.load();
     header.local_us = local_us;
     header.server_us = chunk.chunk.timestamp_us;
+    header.map_local_us = impl_->map_now(header.server_us);
     impl_->send(header, chunk.chunk.data, false);
 }
 
@@ -1289,6 +1315,7 @@ void BurstPlayer::pcm(std::span<const std::uint8_t> frame, std::int64_t server_u
     header.generation = impl_->generation.load();
     header.local_us = local_us;
     header.server_us = server_us;
+    header.map_local_us = impl_->map_now(server_us);
     impl_->send(header, frame, false);
 }
 
