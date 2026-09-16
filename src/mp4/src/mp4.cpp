@@ -21,6 +21,7 @@ using detail::put_box;
 using detail::put_bytes;
 using detail::put_fourcc;
 using detail::put_fullbox;
+using detail::put_u16;
 using detail::put_u32;
 
 Bytes build_ftyp() {
@@ -28,9 +29,31 @@ Bytes build_ftyp() {
     return detail::build_brand_box("ftyp", "isom", 0, kCompatibleBrands);
 }
 
+// §8.6.5/§8.6.6: an edts holding an elst of one edit. Version 0 is enough -
+// mux() refuses a track whose sample count needs more than 32 bits - and the
+// movie's and the media's timescales are both the sample rate here, so the
+// edit's sample counts go in as they are.
+Bytes build_edts(const MuxOptions::Edit& edit) {
+    Bytes elst_body;
+    put_u32(elst_body, 1);  // entry_count
+    put_u32(elst_body, static_cast<std::uint32_t>(edit.duration_samples));  // segment_duration
+    put_u32(elst_body, static_cast<std::uint32_t>(edit.start_samples));     // media_time
+    put_u16(elst_body, 1);  // media_rate_integer: the media's own speed
+    put_u16(elst_body, 0);  // media_rate_fraction
+    Bytes elst;
+    put_fullbox(elst, "elst", 0, 0, elst_body);
+    Bytes out;
+    put_box(out, "edts", elst);
+    return out;
+}
+
 Bytes build_moov(const AudioTrack& track, const MuxOptions& options,
                  std::span<const std::span<const std::byte>> frames,
                  std::span<const std::uint32_t> chunk_offsets, std::uint64_t total_samples) {
+    // With an edit, the movie and the track last as long as the edit plays;
+    // the media, as long as its samples.
+    const std::uint64_t presented =
+        options.edit ? options.edit->duration_samples : total_samples;
     Bytes stbl_body;
     put_bytes(stbl_body, detail::build_stsd(track));
     put_bytes(stbl_body, detail::build_stts(static_cast<std::uint32_t>(frames.size()),
@@ -56,13 +79,16 @@ Bytes build_moov(const AudioTrack& track, const MuxOptions& options,
     put_box(mdia, "mdia", mdia_body);
 
     Bytes trak_body;
-    put_bytes(trak_body, detail::build_tkhd(total_samples));
+    put_bytes(trak_body, detail::build_tkhd(presented));
+    if (options.edit) {
+        put_bytes(trak_body, build_edts(*options.edit));
+    }
     put_bytes(trak_body, mdia);
     Bytes trak;
     put_box(trak, "trak", trak_body);
 
     Bytes moov_body;
-    put_bytes(moov_body, detail::build_mvhd(track.sample_rate, total_samples));
+    put_bytes(moov_body, detail::build_mvhd(track.sample_rate, presented));
     put_bytes(moov_body, trak);
     Bytes out;
     put_box(out, "moov", moov_body);
@@ -104,6 +130,17 @@ std::expected<std::vector<std::byte>, MuxError> mux(
         static_cast<std::uint64_t>(frames.size()) * track.samples_per_frame;
     if (total_samples > std::numeric_limits<std::uint32_t>::max()) {
         return std::unexpected(MuxError::kFileTooLarge);
+    }
+    if (options.edit) {
+        const MuxOptions::Edit& edit = *options.edit;
+        // media_time is a signed 32-bit field in the version written here.
+        const bool fits = edit.duration_samples != 0 && edit.start_samples <= total_samples &&
+                          edit.duration_samples <= total_samples - edit.start_samples &&
+                          edit.start_samples <=
+                              static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max());
+        if (!fits) {
+            return std::unexpected(MuxError::kInvalidOptions);
+        }
     }
 
     const Bytes ftyp = build_ftyp();

@@ -39,6 +39,7 @@
 namespace {
 
 using ac3::hearth::ItemLoader;
+using ac3::hearth::LoadedItem;
 using ac3::hearth::OpenOutputFormat;
 using ac3::hearth::OutputMode;
 using ac3::hearth::PcmSink;
@@ -72,6 +73,10 @@ public:
         // for two runs only if the same audio arrived in the same order.
         std::uint64_t submitted_total = 0;
         std::uint64_t hash = 14695981039346656037ULL;
+        // With `keep` set, every sample submitted, one vector per slot,
+        // emptied by a flush.
+        bool keep = false;
+        std::vector<std::vector<float>> kept{};
         // At each open: the frames of the old output that had been heard,
         // and how far the clock had run past the last of them - for a
         // reopen, proof that the old item was heard out first.
@@ -123,6 +128,13 @@ public:
                 }
             }
         }
+        if (log_->keep) {
+            log_->kept.resize(std::max(log_->kept.size(), slots.size()));
+            for (std::size_t slot = 0; slot < slots.size(); ++slot) {
+                log_->kept[slot].insert(log_->kept[slot].end(), slots[slot].begin(),
+                                        slots[slot].end());
+            }
+        }
         log_->submitted += frames;
         log_->submitted_total += frames;
         log_->drained_at.reset();
@@ -141,6 +153,9 @@ public:
     void flush() override {
         ++log_->flushes;
         restart();
+        for (std::vector<float>& slot : log_->kept) {
+            slot.clear();
+        }
     }
 
     bool pause() override {
@@ -230,8 +245,10 @@ std::vector<std::byte> ac3_stream(int frames, ac3::SampleRate rate = ac3::Sample
     return out;
 }
 
-// A stream wrapped the way the container writers wrap one.
-std::vector<std::byte> in_mp4(const std::vector<std::byte>& stream) {
+// A stream wrapped the way the container writers wrap one, with an edit list
+// when `edit` is given.
+std::vector<std::byte> in_mp4(const std::vector<std::byte>& stream,
+                              std::optional<mp4::MuxOptions::Edit> edit = std::nullopt) {
     const auto scanned = ac3::io::scan(stream);
     REQUIRE(scanned.has_value());
     mp4::AudioTrack track;
@@ -240,7 +257,10 @@ std::vector<std::byte> in_mp4(const std::vector<std::byte>& stream) {
     track.sample_rate = ac3::sample_rate_hz(scanned->sample_rate);
     track.channels = scanned->channels;
     track.codec_config = ac3::io::build_codec_config_box(*scanned);
-    const auto muxed = mp4::mux(track, std::span<const std::span<const std::byte>>(scanned->access_units));
+    mp4::MuxOptions options;
+    options.edit = edit;
+    const auto muxed = mp4::mux(
+        track, std::span<const std::span<const std::byte>>(scanned->access_units), options);
     REQUIRE(muxed.has_value());
     return *muxed;
 }
@@ -265,7 +285,7 @@ struct Library {
     std::map<std::string, std::vector<std::byte>> files;
 
     [[nodiscard]] ItemLoader loader() const {
-        return [this](const std::string& path) -> std::expected<std::vector<std::byte>, std::string> {
+        return [this](const std::string& path) -> std::expected<LoadedItem, std::string> {
             const auto found = files.find(path);
             if (found == files.end()) {
                 return std::unexpected("no such file: " + path);
@@ -274,7 +294,10 @@ struct Library {
             if (!stream.error.empty()) {
                 return std::unexpected(stream.error);
             }
-            return std::move(stream.bytes);
+            return LoadedItem{.bytes = std::move(stream.bytes),
+                              .skip_samples = stream.trim.start,
+                              .play_samples = stream.trim.length,
+                              .note = std::move(stream.trim_note)};
         };
     }
 };
@@ -305,6 +328,62 @@ std::unique_ptr<Player> make_player(const Library& library, const std::shared_pt
     REQUIRE(layout.has_value());
     return std::make_unique<Player>(std::make_unique<FakeDevice>(log, capacity), library.loader(),
                                     *layout);
+}
+
+using Slots = std::vector<std::vector<float>>;
+
+// What one item gives, every sample of it, played on its own.
+Slots played_alone(const Library& library, const std::string& path) {
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log);
+    player->queue().add(item(path));
+    player->play();
+    REQUIRE(play_out(*player, *log));
+    return log->kept;
+}
+
+// `count` frames of `slots` from `from`, slot by slot.
+Slots part(const Slots& slots, std::size_t from, std::size_t count) {
+    Slots out;
+    for (const std::vector<float>& slot : slots) {
+        REQUIRE(from + count <= slot.size());
+        out.emplace_back(std::next(slot.begin(), static_cast<std::ptrdiff_t>(from)),
+                         std::next(slot.begin(), static_cast<std::ptrdiff_t>(from + count)));
+    }
+    return out;
+}
+
+Slots joined(const Slots& first, const Slots& second) {
+    REQUIRE(first.size() == second.size());
+    Slots out = first;
+    for (std::size_t slot = 0; slot < out.size(); ++slot) {
+        out[slot].insert(out[slot].end(), second[slot].begin(), second[slot].end());
+    }
+    return out;
+}
+
+// Where two runs first differ, as slot * 1'000'000'000 + frame, or kSame -
+// a number rather than the vectors, so a failure does not print megabytes.
+constexpr std::size_t kSame = static_cast<std::size_t>(-1);
+
+std::size_t first_difference(const Slots& a, const Slots& b) {
+    if (a.size() != b.size()) {
+        return 0;
+    }
+    for (std::size_t slot = 0; slot < a.size(); ++slot) {
+        const std::size_t common = std::min(a[slot].size(), b[slot].size());
+        for (std::size_t frame = 0; frame < common; ++frame) {
+            if (std::bit_cast<std::uint32_t>(a[slot][frame]) !=
+                std::bit_cast<std::uint32_t>(b[slot][frame])) {
+                return (slot * 1'000'000'000) + frame;
+            }
+        }
+        if (a[slot].size() != b[slot].size()) {
+            return (slot * 1'000'000'000) + common;
+        }
+    }
+    return kSame;
 }
 
 }  // namespace
@@ -620,4 +699,161 @@ TEST_CASE("player: a seek made while stopped lands when that item starts, and on
         CHECK(player->history()[0].title == "second.ec3");
         CHECK(player->history()[0].frames == 12 * 1536);
     }
+}
+
+// Edit lists. The priming and padding an MP4's edit list names are decoded -
+// the decoder needs them - and never played; what does play is sample for
+// sample the same stretch of an untrimmed decode.
+
+TEST_CASE("player: an MP4 edit list's priming and padding are decoded but not played",
+          "[hearth][player]") {
+    const std::vector<std::byte> stream = eac3_stream(12);
+    const std::uint64_t kept = (12 * 1536) - 256 - 1000;
+    Library library;
+    library.files["raw.ec3"] = stream;
+    library.files["edited.mp4"] = in_mp4(stream, mp4::MuxOptions::Edit{.start_samples = 256,
+                                                                       .duration_samples = kept});
+
+    const Slots whole = played_alone(library, "raw.ec3");
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log);
+    player->queue().add(item("edited.mp4"));
+    player->play();
+    // The duration the queue shows is the edited one.
+    REQUIRE(player->queue().items()[0].facts.duration.has_value());
+    CHECK(player->queue().items()[0].facts.duration->count() == static_cast<std::int64_t>(kept * 1000 / 48000));
+    REQUIRE(play_out(*player, *log));
+
+    REQUIRE(player->history().size() == 1);
+    CHECK(player->history()[0].expected_frames == kept);
+    CHECK(player->history()[0].frames == kept);
+    CHECK(first_difference(log->kept, part(whole, 256, kept)) == kSame);
+}
+
+TEST_CASE("player: two edited items join with nothing of either encoder's between them",
+          "[hearth][player]") {
+    const std::vector<std::byte> first = eac3_stream(10);
+    const std::vector<std::byte> second = ac3_stream(8);
+    const std::uint64_t first_kept = (10 * 1536) - 256 - 700;
+    const std::uint64_t second_kept = (8 * 1536) - 256 - 300;
+    Library library;
+    library.files["first.ec3"] = first;
+    library.files["second.ac3"] = second;
+    library.files["first.mp4"] = in_mp4(
+        first, mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = first_kept});
+    library.files["second.mp4"] = in_mp4(
+        second, mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = second_kept});
+
+    const Slots expected =
+        joined(part(played_alone(library, "first.ec3"), 256, first_kept),
+               part(played_alone(library, "second.ac3"), 256, second_kept));
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log);
+    player->queue().add(item("first.mp4"));
+    player->queue().add(item("second.mp4"));
+    player->play();
+    REQUIRE(play_out(*player, *log));
+
+    CHECK(log->opens == 1);
+    const auto& history = player->history();
+    REQUIRE(history.size() == 2);
+    CHECK(history[0].frames == first_kept);
+    CHECK(history[1].first_frame == first_kept);
+    CHECK(history[1].frames == second_kept);
+    CHECK(first_difference(log->kept, expected) == kSame);
+}
+
+TEST_CASE("player: a seek in an edited item counts from what the item plays", "[hearth][player]") {
+    const std::vector<std::byte> stream = eac3_stream(40);
+    const std::uint64_t kept = (40 * 1536) - 256 - 512;
+    Library library;
+    library.files["raw.ec3"] = stream;
+    library.files["edited.mp4"] = in_mp4(stream, mp4::MuxOptions::Edit{.start_samples = 256,
+                                                                       .duration_samples = kept});
+    const Slots whole = played_alone(library, "raw.ec3");
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log);
+    player->queue().add(item("edited.mp4"));
+    player->play();
+    for (int step = 0; step < 10; ++step) {
+        player->pump();
+        advance(*log, 480);
+    }
+
+    SECTION("back to the start plays the priming no more than the first time") {
+        player->seek(std::chrono::milliseconds{0});
+        REQUIRE(play_out(*player, *log));
+        CHECK(first_difference(log->kept, part(whole, 256, kept)) == kSame);
+    }
+
+    SECTION("a position lands on the unit covering it, counted past the priming") {
+        // 507 ms in is 24,336 samples into what the item plays, so stream
+        // sample 24,592: inside unit 16 (24,576 to 26,112), where a seek that
+        // forgot the priming would have landed in unit 15. The unit plays from
+        // its start to the edit's end.
+        player->seek(std::chrono::milliseconds{507});
+        REQUIRE(play_out(*player, *log));
+        const std::size_t from = 16 * 1536;
+        const std::size_t count = 256 + kept - from;
+        REQUIRE(log->kept.size() == whole.size());
+        CHECK(log->kept[0].size() == count);
+        // A decoder that starts at a unit has none of the overlap the unit
+        // before would have left it, so that unit's first block differs from
+        // an unbroken decode's; from its second block on the two agree.
+        CHECK(first_difference(part(log->kept, 256, count - 256),
+                               part(whole, from + 256, count - 256)) == kSame);
+    }
+}
+
+TEST_CASE("player: what a loader says about an item is kept, and an item with nothing left is skipped",
+          "[hearth][player]") {
+    const std::vector<std::byte> stream = eac3_stream(4);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    REQUIRE(layout.has_value());
+    const ItemLoader loader = [&stream](const std::string& path) -> std::expected<LoadedItem, std::string> {
+        if (path == "noted") {
+            return LoadedItem{.bytes = stream,
+                              .skip_samples = 0,
+                              .play_samples = std::nullopt,
+                              .note = "The file's edit list has 2 edits with audio in them."};
+        }
+        // Everything skipped: an edit list that leaves nothing to play.
+        return LoadedItem{.bytes = stream,
+                          .skip_samples = 4 * 1536,
+                          .play_samples = std::nullopt,
+                          .note = {}};
+    };
+    Player player{std::make_unique<FakeDevice>(log, 8192), loader, *layout};
+    player.queue().add(item("noted"));
+    player.queue().add(item("empty"));
+    player.queue().add(item("noted"));
+
+    player.play();
+    CHECK(player.queue().items()[0].facts.note.find("2 edits") != std::string::npos);
+    std::vector<std::string> notes;
+    for (int step = 0; step < 200000; ++step) {
+        const auto report = player.pump();
+        if (report.item_started) {
+            notes.push_back(report.note);
+        }
+        advance(*log, 480);
+        if (player.transport().state() == TransportState::kStopped && !log->open) {
+            break;
+        }
+    }
+    REQUIRE(player.history().size() == 2);
+    CHECK(player.history()[1].first_frame == 4 * 1536);
+    CHECK_FALSE(player.queue().items()[1].playable());
+    CHECK(player.queue().items()[1].facts.unplayable_because.find("nothing left to play") !=
+          std::string::npos);
+    // The joining item's note came with the pump that started it.
+    REQUIRE(notes.size() == 1);
+    CHECK(notes[0].find("2 edits") != std::string::npos);
 }

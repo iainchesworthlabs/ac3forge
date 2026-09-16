@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,13 @@
 // unit, which a player that assumes 1536 gets wrong in both its duration and
 // its seeks.
 //
+// An item plays only the part of its stream its loader says to: an MP4 edit
+// list's priming at the start and padding at the end are decoded - the
+// decoder needs them - but never delivered, so two such items join with
+// nothing of either encoder's making between them (the plan's Gapless
+// playback section). Positions and durations count from the start of that
+// part.
+//
 // No file I/O: the path is turned into bytes by an ItemLoader, which the
 // application supplies (reading the file and demuxing Matroska, MP4 or
 // MPEG-TS through apps/common/container_input.hpp, which the engine does not
@@ -36,8 +44,21 @@
 
 namespace ac3::hearth {
 
+// What an ItemLoader hands over: the item's elementary stream, and the part
+// of it to play.
+struct LoadedItem {
+    std::vector<std::byte> bytes{};
+    // Samples at the stream's rate to decode but not play, from the start.
+    std::uint64_t skip_samples = 0;
+    // Samples to play after those, or to the end when unset.
+    std::optional<std::uint64_t> play_samples = std::nullopt;
+    // Anything to show beside the item: an edit list that could not be
+    // applied, say.
+    std::string note{};
+};
+
 using ItemLoader =
-    std::function<std::expected<std::vector<std::byte>, std::string>(const std::string& path)>;
+    std::function<std::expected<LoadedItem, std::string>(const std::string& path)>;
 
 class Session {
 public:
@@ -55,36 +76,48 @@ public:
 
     [[nodiscard]] const ItemFacts& facts() const { return facts_; }
     [[nodiscard]] std::size_t unit_count() const { return scanned_.access_units.size(); }
-    // Every sample the stream codes, from the units' own lengths.
-    [[nodiscard]] std::uint64_t total_samples() const { return total_samples_; }
-    // Every unit decoded and the end of the stream released.
+    // Every sample the item plays: the part of the stream its loader named,
+    // counted from the units' own lengths.
+    [[nodiscard]] std::uint64_t total_samples() const { return window_end_ - window_start_; }
+    // Everything the item plays has been delivered, and the decoder has let
+    // go of the stream.
     [[nodiscard]] bool finished() const { return finished_; }
 
     // Decodes units until at least `wanted` frames have been delivered, and
-    // releases the end of the stream once the last unit has gone - so an item
-    // that has finished has delivered every frame it will ever deliver.
-    // Returns the frames this call delivered; an undecodable unit ends the
-    // call with the reason, and the session carries on from the next unit if
-    // asked again.
+    // releases the end of the stream once the last frame the item plays has
+    // gone - so an item that has finished has delivered every frame it will
+    // ever deliver. Returns the frames this call delivered; an undecodable
+    // unit ends the call with the reason, and the session carries on from the
+    // next unit if asked again.
     [[nodiscard]] std::expected<std::size_t, std::string> render(StreamDecoder& decoder,
                                                                  const StreamDecoder::BlockFn& deliver,
                                                                  std::size_t wanted);
 
-    // The next render() starts at the unit covering `to`, clamped to the
-    // stream. The decoder is reset: what it holds belongs to the old place.
+    // The next render() starts at the unit covering `to`, counted from the
+    // start of what the item plays and clamped to it. The decoder is reset:
+    // what it holds belongs to the old place.
     void seek(std::chrono::milliseconds to, StreamDecoder& decoder);
 
-    // Where the next render() starts, in samples from the stream's start.
+    // Where the next frame render() delivers sits, in samples from the start
+    // of what the item plays.
     [[nodiscard]] std::uint64_t position_samples() const;
 
 private:
     Session() = default;
 
+    // The stream sample `unit` starts at.
+    [[nodiscard]] std::uint64_t unit_start(std::size_t unit) const;
+
     std::vector<std::byte> bytes_;
     io::ScannedStream scanned_{};
     ItemFacts facts_{};
-    std::uint64_t total_samples_ = 0;
+    // The part of the stream the item plays, in stream samples.
+    std::uint64_t window_start_ = 0;
+    std::uint64_t window_end_ = 0;
+    // The next unit to decode, and the stream sample the next frame the
+    // decoder hands over sits at.
     std::size_t next_ = 0;
+    std::uint64_t next_frame_ = 0;
     bool finished_ = false;
 };
 

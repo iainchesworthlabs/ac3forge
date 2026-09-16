@@ -154,8 +154,14 @@ Full program: [`examples/mux_mp4.cpp`](https://github.com/iainchesworthlabs/ac3f
 
 `mux` returns the whole file as bytes and does no file I/O, the same as `matroska::mux`. It
 writes `ftyp`/`moov`/`mdat` for one audio track, one sample per chunk, `stts`/`stsz`/`stco` built
-straight off the frame sizes handed in. No edit lists, no multiple tracks — those matter for
-large-file seeking and multi-track muxing, not for playing back what this project produces.
+straight off the frame sizes handed in. No multiple tracks: those matter for multi-track muxing,
+not for playing back what this project produces.
+
+An edit list is written only when `MuxOptions::edit` asks for one, and then it has one edit:
+`start_samples` to skip at the start (an encoder's priming) and `duration_samples` to play after
+them (ending before the last frame's padding). The movie and track durations become the edit's;
+the media's stays the length of its samples. An edit that runs past the frames, or plays
+nothing, is `kInvalidOptions`.
 
 Getting the `dec3`/`dac3` box right from the spec is the point: FFmpeg's MKV→MP4 remux path used
 to silently drop or mis-signal the Atmos extension
@@ -199,6 +205,17 @@ another container can hand them straight back.
 A `dec3` box that stops before the Atmos extension leaves `oba_complexity_index` empty rather
 than reporting a confident zero — the extension is a trailing addition, and a box written before
 TS 103 420 simply has nothing to say about it.
+
+**Edit lists come back as stored.** `ReadTrack::edits` holds the track's `elst` entries in file
+order (version 0 or 1), each with its `segment_duration` in the movie's timescale,
+`ReadTrack::movie_timescale` from `mvhd`, and its `media_time` in the track's own timescale, where
+-1 marks an empty edit. Nothing here applies them, because what a media time means depends on
+the codec. `apps/common/container_input.hpp` turns the shape an audio encoder writes into a
+`StreamTrim`: any empty edits, then one edit at normal speed. The trim is the samples to skip and
+the samples to play, and Hearth's player plays only that part. Any other shape leaves the stream
+whole, with a note saying why. `ac3cli` and the GUI do not apply the trim yet. Neither `elst`
+nor `mvhd` is needed to find a sample, so one too short to read, one that declares more entries
+than it holds, or one longer than `ReadOptions::max_edits` is left out, and the file still reads.
 
 **Untrusted input.** An MP4's sample table is an *index*, which is a wider attack surface than
 Matroska's in-line framing: `stsc` names chunks, `stco` names absolute file offsets and `stsz`
