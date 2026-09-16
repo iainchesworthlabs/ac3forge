@@ -693,6 +693,7 @@ if(AC3FORGE_BUILD_HEARTH)
     # unlike the test sink further down.
     target_sources(ac3tests PRIVATE
         hearth/test_decoder_settings.cpp
+        hearth/test_engine.cpp
         hearth/test_output_decision.cpp
         hearth/test_player.cpp
         hearth/test_queue.cpp

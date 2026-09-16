@@ -402,6 +402,20 @@ and release packaging.
     same way, so a seek no longer starts with a block missing its overlap.
   - Two differences from an unbroken decode remain: the settings change itself, and the
     §7.3.4 dither, whose generator a new decoder restarts, some 95 dB down.
+- **Hearth's engine thread** (`apps/hearth/engine/engine_thread.hpp`): the player on a thread of
+  its own.
+  - Commands from any thread are queued and carried out in order between pumps. The engine
+    pumps each period while an output is open and sleeps while none is.
+  - A snapshot of the queue, the transport, the settings and the history is published after
+    every change, with a callback on the engine's thread. The play position is kept apart, and
+    follows the device's clock through joins and seeks.
+  - Queue edits while playing are the player's own. Removing the playing item moves on to the
+    next; a reopen still waiting for the old item to be heard keeps its item through an edit;
+    the history's queue indices follow their items.
+  - In `ac3tests`, tagged `[concurrency]`, a queue plays to its end while the engine, a fake
+    device's clock and the test's own thread all run at once. Commands from five threads all
+    take effect, each thread's in its order, and a playing engine that goes away closes its
+    output.
 
 **Audio outputs**
 

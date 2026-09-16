@@ -1,0 +1,479 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <numbers>
+#include <optional>
+#include <span>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include "ac3/core/tables.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/render/layout.hpp"
+#include "engine_thread.hpp"
+#include "pcm_sink.hpp"
+
+// ac3::hearth::Engine (apps/hearth/engine/engine_thread.cpp): the player on a thread
+// of its own. The device here has a clock that a second thread runs, as a
+// real device's render thread would, so the engine, the device and the test's
+// own thread - posting commands and reading snapshots - all run at once.
+// Tagged [concurrency]: this is what the TSan leg is for.
+
+using namespace std::chrono_literals;
+
+namespace {
+
+using ac3::hearth::Engine;
+using ac3::hearth::EngineStatus;
+using ac3::hearth::EngineTiming;
+using ac3::hearth::ItemLoader;
+using ac3::hearth::LoadedItem;
+using ac3::hearth::OpenOutputFormat;
+using ac3::hearth::OutputMode;
+using ac3::hearth::PcmSink;
+using ac3::hearth::QueueItem;
+using ac3::hearth::TransportState;
+
+// A device whose clock another thread runs. Everything is under one lock:
+// the engine thread submits and reads the position, the clock thread plays.
+class ClockedDevice final : public PcmSink {
+public:
+    struct State {
+        mutable std::mutex mutex;
+        bool open = false;
+        bool paused = false;
+        std::uint64_t submitted = 0;
+        std::uint64_t heard = 0;
+        std::uint64_t clock = 0;
+        std::uint64_t submitted_total = 0;
+        std::uint64_t heard_total = 0;
+        std::uint32_t opens = 0;
+        std::uint32_t closes = 0;
+        std::uint32_t flushes = 0;
+        std::size_t capacity = 16384;
+
+        // The device's thread: `frames` more of the clock, what is held
+        // heard first.
+        void tick(std::uint64_t frames) {
+            const std::scoped_lock lock(mutex);
+            if (!open || paused) {
+                return;
+            }
+            const std::uint64_t now = std::min(submitted - heard, frames);
+            heard += now;
+            heard_total += now;
+            clock += frames;
+        }
+
+        [[nodiscard]] bool is_open() const {
+            const std::scoped_lock lock(mutex);
+            return open;
+        }
+
+        [[nodiscard]] std::uint64_t heard_so_far() const {
+            const std::scoped_lock lock(mutex);
+            return heard_total;
+        }
+    };
+
+    explicit ClockedDevice(std::shared_ptr<State> state) : state_(std::move(state)) {}
+
+    std::expected<OpenOutputFormat, std::string> open(const Format& format) override {
+        const std::scoped_lock lock(state_->mutex);
+        state_->open = true;
+        state_->paused = false;
+        state_->submitted = 0;
+        state_->heard = 0;
+        state_->clock = 0;
+        ++state_->opens;
+        return OpenOutputFormat{.sample_rate = format.sample_rate,
+                                .channels = static_cast<std::uint16_t>(format.layout.slots()),
+                                .mode = OutputMode::kLocalPcm};
+    }
+
+    void close() override {
+        const std::scoped_lock lock(state_->mutex);
+        state_->open = false;
+        ++state_->closes;
+    }
+
+    [[nodiscard]] bool is_open() const override { return state_->is_open(); }
+
+    bool submit(std::span<const std::span<const float>> /*slots*/, std::size_t frames) override {
+        const std::scoped_lock lock(state_->mutex);
+        if (!state_->open || state_->submitted - state_->heard + frames > state_->capacity) {
+            return false;
+        }
+        state_->submitted += frames;
+        state_->submitted_total += frames;
+        return true;
+    }
+
+    [[nodiscard]] std::optional<ac3::audio::MonitorPosition> position() const override {
+        const std::scoped_lock lock(state_->mutex);
+        if (!state_->open) {
+            return std::nullopt;
+        }
+        return ac3::audio::MonitorPosition{.frames_played = state_->clock,
+                                           .frames_queued = state_->submitted - state_->heard,
+                                           .latency_frames = 0};
+    }
+
+    void flush() override {
+        const std::scoped_lock lock(state_->mutex);
+        ++state_->flushes;
+        state_->submitted = 0;
+        state_->heard = 0;
+        state_->clock = 0;
+    }
+
+    bool pause() override {
+        const std::scoped_lock lock(state_->mutex);
+        state_->paused = true;
+        return state_->open;
+    }
+
+    bool resume() override {
+        const std::scoped_lock lock(state_->mutex);
+        state_->paused = false;
+        return state_->open;
+    }
+
+private:
+    std::shared_ptr<State> state_;
+};
+
+// The device's render thread: `frames` of the clock every millisecond, a
+// hundred times real time by default.
+class ClockThread {
+public:
+    explicit ClockThread(std::shared_ptr<ClockedDevice::State> state, std::uint64_t frames = 4800)
+        : thread_([state = std::move(state), frames](const std::stop_token& stop) {
+              while (!stop.stop_requested()) {
+                  std::this_thread::sleep_for(1ms);
+                  state->tick(frames);
+              }
+          }) {}
+
+private:
+    std::jthread thread_;
+};
+
+std::vector<std::byte> eac3_stream(int frames) {
+    ac3::eac3::FrameConfig config;
+    config.bitrate_kbps = 192;
+    config.acmod = ac3::Acmod::k2_0;
+    ac3::eac3::FrameEncoder encoder{config};
+    std::vector<std::byte> out;
+    for (int f = 0; f < frames; ++f) {
+        std::vector<float> samples(ac3::kSamplesPerFrame);
+        for (std::size_t n = 0; n < samples.size(); ++n) {
+            samples[n] = static_cast<float>(
+                0.3 * std::sin(2.0 * std::numbers::pi * 440.0 *
+                               static_cast<double>(n + (static_cast<std::size_t>(f) * 1536)) /
+                               48000.0));
+        }
+        const std::vector<std::span<const float>> views(2, samples);
+        const auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        out.insert(out.end(), frame->begin(), frame->end());
+    }
+    return out;
+}
+
+// Streams by name. Filled before an engine starts and only read after, so the
+// engine thread's loader needs no lock.
+struct Library {
+    std::map<std::string, std::vector<std::byte>> files;
+
+    [[nodiscard]] ItemLoader loader() const {
+        return [this](const std::string& path) -> std::expected<LoadedItem, std::string> {
+            const auto found = files.find(path);
+            if (found == files.end()) {
+                return std::unexpected("no such file: " + path);
+            }
+            return LoadedItem{.bytes = found->second};
+        };
+    }
+};
+
+QueueItem item(const std::string& path) {
+    QueueItem entry;
+    entry.path = path;
+    entry.title = path;
+    return entry;
+}
+
+std::unique_ptr<Engine> make_engine(const Library& library,
+                                    const std::shared_ptr<ClockedDevice::State>& state) {
+    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    REQUIRE(layout.has_value());
+    return std::make_unique<Engine>(std::make_unique<ClockedDevice>(state), library.loader(),
+                                    *layout, ac3::hearth::DecoderSettings{},
+                                    EngineTiming{.period = 1ms, .budget = 4800});
+}
+
+// Polls until `done` holds, or gives up after a generous while.
+bool eventually(const std::function<bool()>& done) {
+    const auto deadline = std::chrono::steady_clock::now() + 60s;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (done()) {
+            return true;
+        }
+        std::this_thread::sleep_for(2ms);
+    }
+    return done();
+}
+
+}  // namespace
+
+TEST_CASE("engine: a queue plays to its end on the engine's thread while the device's runs",
+          "[hearth][concurrency]") {
+    Library library;
+    library.files["a"] = eac3_stream(8);
+    library.files["b"] = eac3_stream(5);
+    library.files["c"] = eac3_stream(6);
+    auto state = std::make_shared<ClockedDevice::State>();
+    const auto engine = make_engine(library, state);
+    const ClockThread clock{state};
+
+    engine->add({item("a"), item("b"), item("c")});
+    engine->play();
+    // Read from this thread the whole time the other two run.
+    std::uint64_t reads = 0;
+    const bool finished = eventually([&] {
+        const EngineStatus status = engine->status();
+        static_cast<void>(engine->position());
+        ++reads;
+        return status.state == TransportState::kStopped && status.history.size() == 3 &&
+               !state->is_open();
+    });
+    REQUIRE(finished);
+    CHECK(reads > 0);
+
+    engine->sync();
+    const EngineStatus status = engine->status();
+    const std::vector<std::uint64_t> expected{8 * 1536, 5 * 1536, 6 * 1536};
+    std::uint64_t total = 0;
+    for (std::size_t k = 0; k < 3; ++k) {
+        INFO("item " << k);
+        CHECK(status.history[k].frames == expected[k]);
+        CHECK(status.history[k].first_frame == total);
+        total += status.history[k].frames;
+    }
+    CHECK(status.output_opens == 1);
+    CHECK(state->heard_so_far() == total);
+}
+
+TEST_CASE("engine: commands from several threads all take effect, each thread's in its order",
+          "[hearth][concurrency]") {
+    Library library;
+    library.files["long"] = eac3_stream(40);
+    auto state = std::make_shared<ClockedDevice::State>();
+    const auto engine = make_engine(library, state);
+    // Ten times real time, so the queue is still playing when it is checked.
+    const ClockThread clock{state, 480};
+
+    constexpr int kWriters = 4;
+    constexpr int kEach = 6;
+    std::atomic<bool> writing{true};
+    std::vector<std::jthread> threads;
+    for (int writer = 0; writer < kWriters; ++writer) {
+        threads.emplace_back([&engine, writer] {
+            for (int n = 0; n < kEach; ++n) {
+                QueueItem entry = item("long");
+                entry.title = std::to_string(writer) + "/" + std::to_string(n);
+                engine->add({entry});
+                if (n == 1) {
+                    engine->play();
+                }
+            }
+        });
+    }
+    // Transport commands, and a settings change, from another thread.
+    threads.emplace_back([&engine] {
+        for (int n = 0; n < 20; ++n) {
+            engine->pause();
+            engine->play();
+            if (n % 5 == 0) {
+                ac3::hearth::DecoderSettings settings;
+                settings.mix_levels.loro_clev = 0.5 + (0.01 * n);
+                engine->set_decoder_settings(settings);
+            }
+        }
+    });
+    // A reader the whole time. Catch2's assertions are not for other threads,
+    // so what it sees is kept and checked here.
+    std::atomic<bool> went_back{false};
+    std::jthread reader([&engine, &writing, &went_back] {
+        std::uint64_t last = 0;
+        while (writing.load()) {
+            const EngineStatus status = engine->status();
+            if (status.generation < last) {
+                went_back.store(true);
+            }
+            last = status.generation;
+            static_cast<void>(engine->position());
+        }
+    });
+    for (std::jthread& thread : threads) {
+        thread.join();
+    }
+    engine->sync();
+    writing.store(false);
+    reader.join();
+    CHECK_FALSE(went_back.load());
+
+    const EngineStatus status = engine->status();
+    REQUIRE(status.queue.size() == static_cast<std::size_t>(kWriters * kEach));
+    // Each writer's items keep the order that writer added them in.
+    for (int writer = 0; writer < kWriters; ++writer) {
+        int expected = 0;
+        for (const QueueItem& entry : status.queue) {
+            const std::string prefix = std::to_string(writer) + "/";
+            if (entry.title.starts_with(prefix)) {
+                CHECK(entry.title == prefix + std::to_string(expected));
+                ++expected;
+            }
+        }
+        CHECK(expected == kEach);
+    }
+    CHECK(status.state == TransportState::kPlaying);
+    // The last of the four settings changes, made at n == 15.
+    CHECK(status.settings.mix_levels.loro_clev == std::optional<double>{0.5 + (0.01 * 15)});
+    engine->stop();
+    engine->sync();
+    CHECK(engine->status().state == TransportState::kStopped);
+}
+
+TEST_CASE("engine: sync waits for the effect of every command made before it",
+          "[hearth][concurrency]") {
+    Library library;
+    library.files["long"] = eac3_stream(40);
+    auto state = std::make_shared<ClockedDevice::State>();
+    const auto engine = make_engine(library, state);
+    const ClockThread clock{state};
+
+    engine->add({item("long")});
+    engine->play();
+    engine->pause();
+    engine->sync();
+    EngineStatus status = engine->status();
+    CHECK(status.state == TransportState::kPaused);
+    CHECK(status.queue.size() == 1);
+    CHECK(state->is_open());
+
+    engine->play();
+    engine->sync();
+    CHECK(engine->status().state == TransportState::kPlaying);
+
+    // A command that has something to say says it.
+    engine->next();
+    engine->sync();
+    status = engine->status();
+    CHECK_FALSE(status.note.empty());
+}
+
+TEST_CASE("engine: the position moves with the device's clock and stands while paused",
+          "[hearth][concurrency]") {
+    Library library;
+    library.files["long"] = eac3_stream(200);
+    auto state = std::make_shared<ClockedDevice::State>();
+    const auto engine = make_engine(library, state);
+    // Ten times real time: the item's 6.4 s must outlast however long this
+    // thread is kept waiting before it pauses and plays again.
+    const ClockThread clock{state, 480};
+
+    engine->add({item("long")});
+    engine->play();
+    REQUIRE(eventually([&] { return engine->position().heard > 50ms; }));
+    CHECK(engine->position().item == 0);
+    CHECK(engine->position().duration.count() == 200 * 1536 * 1000 / 48000);
+
+    engine->pause();
+    engine->sync();
+    // One period for the engine to read the clock after the device paused.
+    std::this_thread::sleep_for(20ms);
+    const auto paused = engine->position().heard;
+    std::this_thread::sleep_for(30ms);
+    CHECK(engine->position().heard == paused);
+
+    engine->play();
+    REQUIRE(eventually([&] { return engine->position().heard > paused + 20ms; }));
+}
+
+TEST_CASE("engine: changes are reported on the engine's thread, every one, in order",
+          "[hearth][concurrency]") {
+    Library library;
+    library.files["short"] = eac3_stream(4);
+    auto state = std::make_shared<ClockedDevice::State>();
+    // Declared before the engine, whose thread calls back into them until it
+    // stops.
+    std::mutex seen_mutex;
+    std::vector<std::uint64_t> generations;
+    std::vector<std::thread::id> threads;
+    bool heard_end = false;
+    const auto engine = make_engine(library, state);
+    const ClockThread clock{state};
+
+    engine->on_change([&](const EngineStatus& status) {
+        const std::scoped_lock lock(seen_mutex);
+        generations.push_back(status.generation);
+        threads.push_back(std::this_thread::get_id());
+        heard_end = heard_end ||
+                    (status.history.size() == 2 && status.state == TransportState::kStopped);
+    });
+
+    engine->add({item("short"), item("short")});
+    engine->play();
+    // A snapshot is stored before its callback runs, so status() can show the
+    // queue's end before the callback has heard it: what the callback heard is
+    // waited for. It hears the end twice - the queue finishing, then the
+    // output closing once the device has played the last item out - after
+    // the commands and the first item's start: three publications at least.
+    // The device closes before the last of them is made, so its closing is no
+    // sign that the callback has heard everything.
+    REQUIRE(eventually([&] {
+        const std::scoped_lock lock(seen_mutex);
+        return heard_end && generations.size() >= 3;
+    }));
+    REQUIRE(eventually([&] { return !state->is_open(); }));
+
+    const std::scoped_lock lock(seen_mutex);
+    REQUIRE(generations.size() >= 3);
+    for (std::size_t k = 1; k < generations.size(); ++k) {
+        CHECK(generations[k] == generations[k - 1] + 1);
+    }
+    for (const std::thread::id id : threads) {
+        CHECK(id == threads.front());
+        CHECK(id != std::this_thread::get_id());
+    }
+}
+
+TEST_CASE("engine: a playing engine that goes away stops, and closes its output",
+          "[hearth][concurrency]") {
+    Library library;
+    library.files["long"] = eac3_stream(200);
+    auto state = std::make_shared<ClockedDevice::State>();
+    const ClockThread clock{state};
+    {
+        const auto engine = make_engine(library, state);
+        engine->add({item("long")});
+        engine->play();
+        REQUIRE(eventually([&] { return state->heard_so_far() > 0; }));
+    }
+    CHECK_FALSE(state->is_open());
+    const std::scoped_lock lock(state->mutex);
+    CHECK(state->closes == 1);
+}
