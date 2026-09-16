@@ -266,9 +266,18 @@ if(NOT AC3FORGE_BUILD_AC4 AND (AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_TESTS))
     message(FATAL_ERROR "AC3FORGE_BUILD_AC4=OFF requires AC3FORGE_BUILD_CLI and "
         "AC3FORGE_BUILD_TESTS to both be OFF too - they both link ac4::ac4 unconditionally.")
 endif()
-if(NOT AC3FORGE_BUILD_AC4 AND AC3FORGE_BUILD_HEARTH)
-    message(FATAL_ERROR "AC3FORGE_BUILD_AC4=OFF requires AC3FORGE_BUILD_HEARTH to be OFF too - "
-        "Hearth's engine reads an AC-4 item's table of contents with ac4::ac4.")
+# Hearth's applications, which a board's build leaves out: a board takes src/sendspin's player
+# half alone (AC3FORGE_SENDSPIN_PLAYER_ONLY, set by esp-idf/ac3forge/CMakeLists.txt, with the
+# minimum-footprint profile and no AC-4), and the two guards below are about the applications.
+if(AC3FORGE_BUILD_HEARTH AND NOT AC3FORGE_SENDSPIN_PLAYER_ONLY)
+    set(_ac3_hearth_apps ON)
+else()
+    set(_ac3_hearth_apps OFF)
+endif()
+if(NOT AC3FORGE_BUILD_AC4 AND _ac3_hearth_apps)
+    message(FATAL_ERROR "AC3FORGE_BUILD_AC4=OFF requires AC3FORGE_BUILD_HEARTH to be OFF too, "
+        "unless AC3FORGE_SENDSPIN_PLAYER_ONLY is set - Hearth's engine reads an AC-4 item's table "
+        "of contents with ac4::ac4.")
 endif()
 
 # AC3FORGE_MINIMAL_DECODER's own version of the three guards above. Everything listed here
@@ -283,11 +292,15 @@ if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
                           AC3FORGE_BUILD_EXAMPLES AC3FORGE_BUILD_MATROSKA AC3FORGE_BUILD_MP4
                           AC3FORGE_BUILD_MPEGTS AC3FORGE_BUILD_IAB AC3FORGE_BUILD_IAMF
                           AC3FORGE_BUILD_CAPI AC3FORGE_BUILD_ADM AC3FORGE_BUILD_PYTHON
-                          AC3FORGE_BUILD_FUZZERS AC3FORGE_BUILD_AC4 AC3FORGE_BUILD_HEARTH)
+                          AC3FORGE_BUILD_FUZZERS AC3FORGE_BUILD_AC4)
         if(${_opt})
             list(APPEND _ac3_minimal_conflicts "${_opt}")
         endif()
     endforeach()
+    # Hearth's applications link the full ac3::forge; a board's Sendspin player half does not.
+    if(_ac3_hearth_apps)
+        list(APPEND _ac3_minimal_conflicts "AC3FORGE_BUILD_HEARTH")
+    endif()
     if(_ac3_minimal_conflicts)
         list(JOIN _ac3_minimal_conflicts "=OFF, " _ac3_minimal_message)
         message(FATAL_ERROR
@@ -298,6 +311,7 @@ if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
     unset(_ac3_minimal_conflicts)
     unset(_ac3_minimal_message)
 endif()
+unset(_ac3_hearth_apps)
 
 # ac3::minimal_profile - the compile/link options the profile above adds. Not
 # beside include(Sanitizers)/include(Coverage)/include(Tracy) up top because,
