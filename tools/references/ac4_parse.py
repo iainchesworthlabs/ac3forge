@@ -687,7 +687,8 @@ def parse_substream_info_ajoc(r, fs_index, frame_rate_factor, b_substreams_prese
     else:
         n_fullband_dmx_signals = r.bits(4) + 1
         static_objects = parse_bed_dyn_obj_assignment(r, n_fullband_dmx_signals)
-    oamd_common_data = parse_oamd_common_data(r) if r.bits(1) else None  # b_oamd_common_data_present
+    b_oamd_common_data_present = r.bits(1)
+    oamd_common_data = parse_oamd_common_data(r) if b_oamd_common_data_present else None
     n_fullband_upmix_signals = r.bits(4) + 1
     if n_fullband_upmix_signals == 16:
         n_fullband_upmix_signals += variable_bits(r, 3)

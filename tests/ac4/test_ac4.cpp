@@ -197,9 +197,14 @@ namespace {
 
 class BitWriter {
    public:
+    // n may run past value's own 32 bits (padding a frame well beyond where
+    // a test's real fields end, say) - bit positions at or above 32 are
+    // simply 0, rather than shifting value by that many bits, which Sec.
+    // [expr.shift] makes undefined once the shift count reaches the
+    // operand's width.
     void put(std::uint32_t value, int n) {
         for (int i = n - 1; i >= 0; --i) {
-            bits_.push_back(((value >> i) & 1u) != 0);
+            bits_.push_back(i < 32 && ((value >> i) & 1u) != 0);
         }
     }
 
