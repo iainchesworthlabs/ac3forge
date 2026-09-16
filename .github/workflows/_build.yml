@@ -2289,8 +2289,11 @@ jobs:
           # surrounds and the six heights - silent, with the LFE in slot 15:
           # the check that the renderer placed the channels rather than
           # filling the frame with whatever came next.
+          # Through value() rather than an anchored pattern of its own: the
+          # console ends every line with a CR, so a `$` after the digits
+          # matches nothing and every slot reads as empty.
           for slot in 5 6 7 8 9 10 11 12 13 14; do
-            level=$(sed -n "s/^stream\.rms\[$slot\]=\([0-9]*\)$/\1/p" qemu-capture916.txt | tail -1)
+            level=$(value "stream\.rms\[$slot\]")
             if [ "${level:-1}" != "0" ]; then
               echo "::error title=ESP32-S3 sixteen-slot capture run::slot $slot should be silent for a 5.1 stream, it is at $level" >&2
               exit 1
