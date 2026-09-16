@@ -118,13 +118,13 @@ void note(std::string_view text) {
 }
 
 struct PlayerSpec {
-    std::string url;
-    std::string label;
-    std::optional<std::string> token;
-    std::optional<fs::path> code_log;
-    std::optional<std::string> layout;
-    std::optional<std::vector<double>> trim_db;
-    std::optional<std::string> status_url;
+    std::string url{};
+    std::string label{};
+    std::optional<std::string> token{};
+    std::optional<fs::path> code_log{};
+    std::optional<std::string> layout{};
+    std::optional<std::vector<double>> trim_db{};
+    std::optional<std::string> status_url{};
     bool hold = false;
     bool in_process = false;
 };
@@ -132,8 +132,8 @@ struct PlayerSpec {
 // What one board's GET /status said, sampled once a second.
 struct StatusSample {
     double seconds = 0.0;
-    std::optional<std::int64_t> origin_server_us;
-    std::string playing;
+    std::optional<std::int64_t> origin_server_us{};
+    std::string playing{};
     std::int64_t underruns = 0;
     std::int64_t error_us = 0;
     std::int64_t worst_error_us = 0;
@@ -142,19 +142,19 @@ struct StatusSample {
 };
 
 struct PlayerRun {
-    PlayerSpec spec;
-    std::string client_id;
-    std::string name;
-    std::string dialect;
-    std::string paired_by;
+    PlayerSpec spec{};
+    std::string client_id{};
+    std::string name{};
+    std::string dialect{};
+    std::string paired_by{};
     std::int64_t settings_revision = 0;
-    std::optional<std::string> failure;
-    std::optional<ss::ClientView> last_view;
+    std::optional<std::string> failure{};
+    std::optional<ss::ClientView> last_view{};
     // What the player reported while it played: its decoder's findings, and its levels.
-    std::optional<ac::DecoderReport> decoder;
-    std::vector<ac::Level> levels;
-    std::vector<StatusSample> samples;
-    std::optional<std::string> status_error;
+    std::optional<ac::DecoderReport> decoder{};
+    std::vector<ac::Level> levels{};
+    std::vector<StatusSample> samples{};
+    std::optional<std::string> status_error{};
 };
 
 class Events final : public ss::ServerHostEvents {

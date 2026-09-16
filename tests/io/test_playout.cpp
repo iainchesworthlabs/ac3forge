@@ -82,8 +82,8 @@ struct Truth {
             first_error_us = error;
         }
         if (frame >= settled_from) {
-            worst_us = std::max(worst_us, std::llabs(error));
-            off_frames += std::llabs(error) > 1'000 ? 1 : 0;
+            worst_us = std::max(worst_us, std::abs(error));
+            off_frames += std::abs(error) > 1'000 ? 1U : 0U;
         }
         if (last_frame && (frame > *last_frame + 2 || frame < *last_frame)) {
             ++jumps;
