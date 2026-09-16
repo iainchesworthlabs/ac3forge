@@ -320,7 +320,13 @@ endchoice
 config AC3FORGE_EXAMPLE_WIFI_SSID
     string "WiFi SSID"
     depends on AC3FORGE_EXAMPLE_NETWORK_WIFI
-    default "my-network"
+    default ""
+    help
+        Empty by default, so a board with nothing else stored listens for
+        Improv at once (network.hpp) rather than spending the retries and
+        the association timeout on a placeholder network first. Set this
+        only for a fleet flashed from one image with one network in mind;
+        Improv or `PUT /network` is how a single board is told its own.
 
 config AC3FORGE_EXAMPLE_WIFI_PASSWORD
     string "WiFi password"

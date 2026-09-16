@@ -625,6 +625,12 @@ and release packaging.
 
 **Minimum-footprint / ESP32 decode and encode profile**
 
+- **A Hearth sink's built-in WiFi network is empty by default, not `my-network`.** With
+  the placeholder set, a freshly flashed board spent its `CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES`
+  attempts and up to 30 s failing to join it before Improv started listening. Empty means
+  nothing stored or built in, so `network_up()` returns at once and Improv listens from
+  the first second. A fleet meant to join one network from the image still sets the
+  option; a board meant for Improv or `PUT /network` now needs nothing set.
 - **The ESP-IDF streaming-player example is now `hearth_sink`.** It becomes Hearth's
   ESP32 sink (`planning/hearth-reference-player.md`), so it takes the name before the
   work starts: `esp-idf/ac3forge/examples/hearth_sink/`, the CMake project
