@@ -716,6 +716,7 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
     md_compat = None
     b_enable_presentation = None
     frame_rate_factor = 1
+    frame_rate_fraction = 1
     emdf = None
     n_substream_groups = 0
     b_pre_virtualized = 0
@@ -732,7 +733,8 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
         if r.bits(1):  # b_presentation_id
             variable_bits(r, 2)  # presentation_id, unused downstream
         frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index)
-        parse_frame_rate_fractions_info(r, frame_rate_index, frame_rate_factor)
+        frame_rate_fraction = parse_frame_rate_fractions_info(r, frame_rate_index,
+                                                              frame_rate_factor)
         emdf = parse_emdf_info(r)
         if r.bits(1):  # b_presentation_filter
             b_enable_presentation = bool(r.bits(1))
@@ -773,7 +775,8 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
     return {'presentation_version': presentation_version,
             'presentation_config': presentation_config, 'group_refs': group_refs,
             'md_compat': md_compat, 'enable_presentation': b_enable_presentation,
-            'frame_rate_factor': frame_rate_factor, 'n_substream_groups': n_substream_groups,
+            'frame_rate_factor': frame_rate_factor, 'frame_rate_fraction': frame_rate_fraction,
+            'n_substream_groups': n_substream_groups,
             'emdf': emdf, 'b_pre_virtualized': b_pre_virtualized,
             'presentation_substream': pres_sub, 'emdf_substreams': emdf_substreams}
 

@@ -113,7 +113,7 @@ struct PresentationTarget {
     // One per substream of the presentation (PresentationContext
     // n_substreams_in_presentation order): alt_data_set_index when b_active,
     // unset when not.
-    std::vector<std::optional<std::uint32_t>> alt_data_set_index;
+    std::vector<std::optional<std::uint64_t>> alt_data_set_index;
 };
 
 // Part 2 clause 6.2.2.5's configuration fields.

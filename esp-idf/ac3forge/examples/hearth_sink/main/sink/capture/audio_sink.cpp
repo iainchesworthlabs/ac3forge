@@ -212,6 +212,13 @@ const char* sink_name() { return kTdm ? "capture-tdm" : "capture-i2s"; }
 
 int sink_slots() { return static_cast<int>(g_slots); }
 
+// Built for one width and checked against it (kWide above): this sink's whole
+// job is to convert exactly as the i2s sink does and check the result, so the
+// width is a property of the shape CI built, not something to change under it.
+int sink_slot_bits() { return CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS; }
+
+bool sink_set_slot_bits(int bits) { return bits == CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS; }
+
 std::uint64_t sink_frames_written() { return g_writes; }
 
 // A new play's samples are checked from zero, so the line sink_report() prints

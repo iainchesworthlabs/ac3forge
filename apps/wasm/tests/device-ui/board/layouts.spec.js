@@ -2,7 +2,7 @@
 'use strict';
 
 // The page on a twelve-slot board - CI's sdkconfig.ci-http714 shape under QEMU,
-// with the stream set (esp-idf/ac3forge/examples/stream_player/www/) served
+// with the stream set (esp-idf/ac3forge/examples/hearth_sink/www/) served
 // beside it - and what it says a layout does with a stream: planning/
 // esp32-device-ui.md's "The output layout". CI runs it after
 // tools/checks/check_stream_set.py has played the set, with the device's

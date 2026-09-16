@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Holds the ESP32 player's plays of its stream set to the set's manifest.
 
-The stream set is esp-idf/ac3forge/examples/stream_player/www/ and its
+The stream set is esp-idf/ac3forge/examples/hearth_sink/www/ and its
 manifest streams.json (tools/generators/gen_device_streams.py writes both).
 The manifest gives, for each stream, the level each slot of a 7.1.4 output
 should get: the host decoder's, as coded. The player prints what it sent to

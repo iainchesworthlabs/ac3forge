@@ -1,4 +1,4 @@
-# Streaming player
+# Hearth sink
 
 Decodes AC-3 or E-AC-3 on an ESP32-S3 from wherever the bytes are — a flash
 partition by default, a FAT volume in flash, an SD card, or an HTTP body over
@@ -53,10 +53,10 @@ decode task on core 1 drains the ring through the accumulator, decodes, and
 writes to the sink. A source that blocks — a socket waiting on the network —
 blocks the fetch task and nothing else, and the ring's depth is how long a
 stall the DAC never hears. The single loop this replaced had 20 ms of I2S DMA
-between a slow read and silence. `main/stream_player.cpp` is what is left: two
+between a slow read and silence. `main/hearth_sink.cpp` is what is left: two
 adapters from the seams to the player's `ByteSource` and `PcmSink`, a level
 meter, and the reporting. The ring's size, its placement in PSRAM, and both
-cores are under *ac3forge stream player* in `idf.py menuconfig`.
+cores are under *ac3forge hearth sink* in `idf.py menuconfig`.
 
 | Source | Sink |
 | --- | --- |
@@ -65,7 +65,7 @@ cores are under *ac3forge stream player* in `idf.py menuconfig`.
 | `fatfs` — a FAT volume in flash | `null` — counts blocks |
 | `http` — an HTTP body over WiFi | |
 
-Chosen in `idf.py menuconfig` under *ac3forge stream player*, with the output
+Chosen in `idf.py menuconfig` under *ac3forge hearth sink*, with the output
 layout the stream is rendered onto.
 
 ## Running it
@@ -283,8 +283,9 @@ The twelve levels are the same in all three, to the digit. The decode and the
 render together take 26 ms of the frame's 32, the same work as the probe's
 `eac3_atmos_render` row at 25.1 ms. What is left over is the `capture` sink,
 which checks every sample it converts. The real `i2s` sink converts without
-checking, but on this part one I2S line carries at most four 32-bit slots (two
-lines, eight), so twelve slots cannot leave through it either way. The table found two things. The component
+checking, and on this part one I2S line carries 128 bits a frame: four 32-bit
+slots, or eight 16-bit ones, so twelve slots leave through it only at 16 bits
+with both lines wired. The table found two things. The component
 had never compiled the decoder's hot sources at `-O2` as the probe does; it
 does now, for 48.6 KB of flash and no SRAM. And the level meter that makes
 `result=pass` mean something squared every sample in double - a soft-float call
@@ -359,6 +360,8 @@ configurations set 80; the default is 0, none), the component's
 | `POST /volume` | body: `0.0` to `1.0`, a linear gain the decode task applies before the sink |
 | `GET /layout` | the output layout, as text |
 | `PUT /layout` | body: a name (`5.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`), the same grammar as `CONFIG_AC3FORGE_EXAMPLE_LAYOUT`. Takes effect at the next play - the `i2s` sink reconfigures its mode and slot count to match, so this never needs a rebuild. `400` for text that is not a layout, `409` for one with more slots than the sink's ceiling. |
+| `GET /slot-width` | the slot width in bits, 16 or 32 |
+| `PUT /slot-width` | body: `16` or `32`. Takes effect at the next play, and moves the sink's ceiling with it: an I2S line carries 128 bits a frame, so two lines reach sixteen slots at 16 bits and eight at 32. `400` for a body that is not a number, `409` while a play is running, for a width the sink does not have, or on the `capture` and `null` sinks, which keep the width they were built for. A layout already set may be too wide after a change to 32; the next play says so. |
 
 The configured location plays at boot as before; the surface can stop it and
 play something else. `state` is `opening` while a play's source opens - by
@@ -409,7 +412,7 @@ through `idf.py qemu`, which fixes the network options:
 esptool --chip=esp32s3 merge-bin --output=build/qemu_flash.bin --pad-to-size=16MB \
   --flash-mode dio --flash-freq 80m --flash-size 16MB \
   0x0 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin \
-  0x10000 build/ac3forge_stream_player.bin 0x190000 stream/sample.ac3 0x1d0000 build/storage.bin
+  0x10000 build/ac3forge_hearth_sink.bin 0x190000 stream/sample.ac3 0x1d0000 build/storage.bin
 qemu-system-xtensa -M esp32s3 -m 32M -drive file=build/qemu_flash.bin,if=mtd,format=raw \
   -drive file=build/qemu_efuse.bin,if=none,format=raw,id=efuse \
   -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \
@@ -532,8 +535,8 @@ with real time. The same stream decodes and renders onto twelve slots in about
 and [Folded to stereo](../../../../docs/platforms/bare-metal/esp32-s3.md#folded-to-stereo).
 
 All of it is [`ac3/render/render.hpp`](../../../../src/forge/include/ac3/render/render.hpp),
-one 256-sample block at a time, which is why a 7.1.4 layout costs the player 16 KB
-of block storage rather than 96 KB of frame. The geometry is the library's
+one 256-sample block at a time, which is why a 7.1.4 layout costs the player 12 KB
+of block storage rather than 72 KB of frame. The geometry is the library's
 (`tests/spatial/`); what the header adds is indexing between coded channels,
 objects and slots, tested on the host in `tests/render/test_layout.cpp` because a
 swapped subscript there puts the centre in the subwoofer and nothing complains.
@@ -659,8 +662,10 @@ either way: there is no DAC or DSP here that drives the clocks.
 that it compiles and links.** qemu-system-xtensa has no I2S, so every CI run
 that decodes and checks samples plays them through `capture` instead: eight
 slots for the padding check (`sdkconfig.ci-tdm`), twelve for a rendered 7.1.4
-(`sdkconfig.ci-render`, `sdkconfig.ci-http714`) - both wider than the real
-sink's own ceiling on any board this project has, one line or two. The build
+(`sdkconfig.ci-render`, `sdkconfig.ci-http714`), and sixteen 16-bit ones onto
+a 9.1.6 layout (`sdkconfig.ci-tdm916`), which is the widest frame the part
+reaches - two lines of eight - and so checks the planner's split and the
+16-bit interleave across a full sixteen slots. The build
 matrix (`main/CMakeLists.txt`'s sink choice) compiles `i2s` as well, so an IDF
 component rename or a driver API change is caught there, but nothing under
 QEMU runs it. The exceptions are the parts worth testing without a board at
@@ -730,7 +735,7 @@ decoder's hot sources at `-O2` move flash, not these figures:
 | Internal SRAM (DIRAM) used by the image | 88,563 |
 | …of which `.bss` | 46,232 |
 | …leaving for the heap, by the linker's estimate | 253,197 |
-| Taken from that heap when the player starts: one block of sixteen slots, the framing buffer, the staging block and the renderer's gain tables | 37,376 |
+| Taken from that heap when the player starts: one block for each of the layout's slots (two for `2.0`, 2,048 bytes; twelve for `7.1.4`, 12,288), the framing buffer, the staging block and the renderer's gain tables | 23,040 |
 | The ring between fetch and decode (`CONFIG_AC3FORGE_EXAMPLE_RING_BYTES`; PSRAM when present) | 32,768 |
 | The decode task's stack, and the fetch task's | 32,768 + 8,192 |
 | Interleave buffers (one block, 32-bit and 16-bit, static, in the sink) | 3,072 |

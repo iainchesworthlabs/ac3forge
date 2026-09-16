@@ -1,4 +1,4 @@
-menu "ac3forge stream player"
+menu "ac3forge hearth sink"
 
 # Defaults chosen to be safe on an ESP32-S3-DevKitC-1 rather than to match any
 # particular DAC board: 5, 6 and 7 are ordinary GPIOs - not strapping pins
@@ -69,11 +69,12 @@ config AC3FORGE_EXAMPLE_I2S_SLOT_BITS
         every DAC tried here accepts and a SigmaDSP requires, at twice the bit
         clock of 16 (3.07 MHz against 1.54 for stereo at 48 kHz). A TDM frame
         holds 128 bits, so one line carries four 32-bit slots or eight 16-bit
-        ones: at 16 a 7.1 layout fits one line. The second line
-        (AC3FORGE_EXAMPLE_I2S_SECOND_LINE) is used at 32 bits only. The DMA
-        queue is sized for the line's widest frame either way, eight 16-bit
-        slots being the same 16 bytes a frame as four 32-bit ones. Only 16 and
-        32 are valid.
+        ones: at 16 a 7.1 layout fits one line. With the second line
+        (AC3FORGE_EXAMPLE_I2S_SECOND_LINE) that doubles either way - sixteen
+        channels at 16 bits, eight at 32 - so a 7.1.4 layout leaves the part
+        only at 16 bits with both lines wired. The DMA queue is sized for the
+        line's widest frame either way, eight 16-bit slots being the same 16
+        bytes a frame as four 32-bit ones. Only 16 and 32 are valid.
 
 config AC3FORGE_EXAMPLE_I2S_SLAVE
     int "The DAC supplies the clocks (1) or the ESP32-S3 does (0)"
