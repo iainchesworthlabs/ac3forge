@@ -482,6 +482,10 @@ endif()
 # the Python encoder-space fuzzer that first found one (REGRESSION_SEEDS'
 # 3600083275727211684 in tools/ci/fuzz_encoder_space.py) - this file covers it
 # deterministically and without needing ffmpeg on the machine running it.
+# stream_playback.cpp joined for the reason its own header gives: 'monitor'
+# and 'spatial' pick their decoder and drain the end-of-stream flush through
+# it, and neither command reaches its decode loop without a render device, so
+# decoder/test_stream_playback.cpp holds both here instead.
 # ac3gui's diagnostics module (apps/gui/gui_diagnostics.hpp) rides the same
 # target for the same reason and with the same discipline: it is Qt-free, so
 # the rule it exists to hold - the support file carries no signing key, no
@@ -494,9 +498,11 @@ endif()
 target_sources(ac3tests PRIVATE
     gui/test_recording_sink.cpp
     gui/test_gui_diagnostics.cpp
+    decoder/test_stream_playback.cpp
     "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/common/stream_playback.cpp"
     "${CMAKE_SOURCE_DIR}/apps/gui/gui_diagnostics.cpp")
 target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/common"

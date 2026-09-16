@@ -664,6 +664,16 @@ and release packaging.
 
 **Command line and GUI**
 
+- **`ac3cli monitor` refused a §E2.3.1.2 legacy-core stream and dropped every stream's last
+  unit.** It picked its decode path from the first frame's bsid alone, so a stream whose 5.1
+  bed is a plain AC-3 syncframe with Annex E dependents extending it went to `FrameDecoder`,
+  which refuses the first dependent it reaches - the same test `decode` already makes now
+  reads `has_eac3_extension_substreams` too. Separately, the E-AC-3 loop never drained
+  `Eac3Decoder::flush()`, so the final access unit of any stream whose last frames used §3.7's
+  transient pre-noise tool never played - held back by the decoder and simply left there when
+  the loop ended. `spatial` had the same missing flush. Both commands now play that unit,
+  through a new `ac3::apps::held_back_unit` shared with future callers, laid out the same way
+  as every other unit.
 - **The GUI offered E-AC-3 bitrates a source's sample rate couldn't frame.**
   `bitrates()` branched on codec but not on the loaded source's rate, so a 16 kHz file
   offered rungs no `frmsiz` could carry; encoding was refused only at the encode button.
