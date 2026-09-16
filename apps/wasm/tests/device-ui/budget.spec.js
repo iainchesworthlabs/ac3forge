@@ -8,17 +8,21 @@
 //
 // 24,576 since Hearth B2, re-derived rather than raised to fit: the page lost
 // the playback controls, which a server now owns, and gained the settings that
-// are the board's own - a name, a network, a slot width, the wiring. The
-// binary it is embedded in is about 518 KB of a 1,536 KB factory partition, so
-// the budget is a statement about keeping the page small enough to read and
-// serve from flash rather than about running out of room.
+// are the board's own - a name, a network, a slot width, the wiring.
+//
+// 28,672 since Hearth B3: the Sendspin player's section - the server, the
+// link, the clock, how late the stream plays, underruns, a level per output,
+// a pairing code and the three pairing actions. planning/esp32-device-ui.md,
+// decision 18, has the image sizes behind it: the budget is a statement about
+// keeping the page small enough to read and serve from flash rather than
+// about running out of room.
 
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { UI_DIR } = require('./stub');
 
-const BUDGET = 24576;
+const BUDGET = 28672;
 
 test('the page and its script fit the flash budget', () => {
     const files = ['ac3forge_ui.html', 'ac3forge_ui.js'].map((name) => fs.readFileSync(path.join(UI_DIR, name)));

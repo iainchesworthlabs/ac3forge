@@ -38,6 +38,9 @@ a{color:var(--accent)}
 .bar .render,.key.render{background:var(--render)}
 .bar .sink,.key.sink{background:var(--sink)}
 .key{display:inline-block;width:.75rem;height:.75rem;margin-right:.5rem}
+table{border-collapse:collapse;margin:0 0 1rem}
+caption{text-align:left;font-weight:600}
+th,td{padding:0 1.5rem 0 0;text-align:left;font-variant-numeric:tabular-nums}
 [hidden]{display:none!important}
 </style>
 <script src="ui.js" defer></script>
@@ -65,6 +68,28 @@ a{color:var(--accent)}
 <dt hidden>Next play</dt><dd id="next" hidden></dd>
 <dt hidden>Played</dt><dd id="played" hidden></dd>
 </dl>
+</section>
+<section id="sendspin" aria-labelledby="sendspin-heading" hidden>
+<h2 id="sendspin-heading">Sendspin</h2>
+<p id="ss-code" class="state" hidden></p>
+<p id="ss-note" class="muted"></p>
+<dl>
+<dt hidden>Server</dt><dd id="ss-server" hidden></dd>
+<dt hidden>Link</dt><dd id="ss-link" hidden></dd>
+<dt hidden>Clock</dt><dd id="ss-clock" hidden></dd>
+<dt hidden>Playing</dt><dd id="ss-playing" hidden></dd>
+<dt hidden>Timing</dt><dd id="ss-timing" hidden></dd>
+<dt hidden>Underruns</dt><dd id="ss-underruns" hidden></dd>
+<dt hidden>Chunks not played</dt><dd id="ss-lost" hidden></dd>
+<dt hidden>Paired servers</dt><dd id="ss-paired" hidden></dd>
+<dt hidden>Last pairing</dt><dd id="ss-outcome" hidden></dd>
+</dl>
+<table id="ss-levels" hidden><caption>Levels over the last 100 ms</caption><thead><tr><th scope="col">Output</th><th scope="col">Peak</th><th scope="col">RMS</th></tr></thead><tbody id="ss-rows"></tbody></table>
+<div class="control">
+<button id="ss-cancel" type="button" class="secondary" hidden>Cancel pairing</button>
+<button id="ss-reset" type="button" class="secondary" hidden>Allow pairing again</button>
+<button id="ss-forget" type="button" class="secondary">Forget every server</button>
+</div>
 </section>
 <section aria-labelledby="settings-heading">
 <h2 id="settings-heading">Settings</h2>
