@@ -621,6 +621,21 @@ and release packaging.
 
 **ESP32 / bare-metal**
 
+- **A twelve-channel play aborted on the ESP32-S3 for want of internal RAM.** The E-AC-3
+  decoder held all 32 substream-identity slots (`strmtyp * 8 + substreamid`) by value, so
+  every byte added to `DecodedSubstream` cost 32 bytes of heap in every decoder whatever
+  the stream — and a stream has one to three identities. The three downmix-level fields
+  added for a legacy-core fold grew that struct by 284 bytes and so the array by 9.1 KB,
+  which was most of what the widest shape had left: a 7.1.4 play of a three-substream
+  stream had been running on about 10 KB of free internal RAM, and an Ethernet buffer
+  arriving at the wrong moment took the rest. The slots are now allocated per engaged
+  identity, as the overlap-add and JOC states beside them already were, and an engaged
+  slot is written through for the rest of the stream, so a steady-state decode still
+  allocates nothing. Measured under QEMU on the 7.1.4 stream set: least free internal RAM
+  during a play 9,540 → 35,332 bytes, each of the twelve slot levels unchanged to the
+  digit, decode time no higher. The ESP32 QEMU legs now also fail on a failed allocation
+  anywhere in the console — one can be survived, so a run could print hundreds and still
+  report `result=pass` — and the stream set's free heap is held to a floor.
 - **The ESP32 streaming example's `tdm` sink claimed sixteen 32-bit slots on one data
   line; an ESP32-S3 carries four.** An S3 TDM frame holds at most 128 bits (ESP-IDF v6.1
   enforces it); the sink had never run on hardware before a 2026-09-11 board run found

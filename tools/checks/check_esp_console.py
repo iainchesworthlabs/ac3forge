@@ -17,9 +17,24 @@ followed by the heap's assert, a backtrace, "Rebooting..." and a second boot.
 
 So from the first boot banner to the end, the capture must show
 
-  - no panic output: none of MARKERS below, anywhere; and
+  - no panic output: none of MARKERS below, anywhere;
   - one boot: one `ESP-ROM:` banner, which the ROM prints first on every
-    boot. A second one means the part reset, whatever the cause.
+    boot. A second one means the part reset, whatever the cause; and
+  - no failed allocation: none of the lines the streaming player's
+    heap_caps_register_failed_alloc_callback hook prints. A failure there is
+    not always fatal - the Ethernet driver drops a frame and plays on - so a
+    run can carry hundreds of them and still reach result=pass, which is how
+    an allocation failure that DID abort went unnoticed. The stream set's
+    step had exactly none in the fourteen runs before 2026-09-15 and some in
+    every run after, so any at all is a regression worth the step.
+
+A capture that reports free heap as it plays (the streaming player's progress
+lines) can also be held to a floor with --min-heap-free: the lowest
+`heap_free=` after the first boot banner must be at least that many bytes.
+The failed-allocation rule is a cliff - it fires once the margin is already
+gone - and this is the dial beneath it, so a shape whose margin is shrinking
+fails while it still has room. Only a shape that prints those lines can use
+it; without the option nothing is read from them.
 
 Nothing before the first banner is read: `idf.py qemu` builds the project
 before it starts QEMU, and the build's output lands in the same capture.
@@ -37,6 +52,7 @@ script-lint job's python3.
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -55,6 +71,16 @@ MARKERS = (
     "Rebooting",  # the panic handler's last line before it resets the part
 )
 
+# What the streaming player's failed-allocation hook prints, once per failure
+# (stream_player.cpp's on_alloc_failed): "heap: heap_caps_malloc could not
+# allocate 2508 bytes (caps 0x1800); internal free 6492, largest 1920". The
+# function name varies, so the fixed part of the sentence is what is matched.
+ALLOCATION_FAILED = "could not allocate"
+
+# The free-heap figure in the player's progress and lap lines, which --min-heap-free
+# holds to a floor: "... ring_low=6144 heap_free=41648".
+HEAP_FREE = re.compile(r"heap_free=(\d+)")
+
 # The application's verdict, listed beside a finding to show which came first.
 VERDICT = "result="
 
@@ -71,7 +97,22 @@ def read_capture(path: Path) -> list[str]:
     return [line.rstrip("\r") for line in text.split("\n")]
 
 
-def examine(lines: list[str]) -> tuple[list[str], list[int]]:
+def least_heap_free(lines: list[str], booted: range) -> tuple[int | None, int | None]:
+    """The lowest heap_free= figure after the boot banner, and the index of the
+    line carrying it. Both None where the shape prints no such line."""
+    lowest: int | None = None
+    where: int | None = None
+    for i in booted:
+        match = HEAP_FREE.search(lines[i])
+        if match is None:
+            continue
+        value = int(match.group(1))
+        if lowest is None or value < lowest:
+            lowest, where = value, i
+    return lowest, where
+
+
+def examine(lines: list[str], min_heap_free: int | None = None) -> tuple[list[str], list[int]]:
     """The rules `lines` breaks, one sentence each, and the indices of the lines
     to list for them: the ones that broke a rule, and every verdict. Both empty
     for one clean boot."""
@@ -81,12 +122,35 @@ def examine(lines: list[str]) -> tuple[list[str], list[int]]:
     booted = range(first, len(lines))
     boots = [i for i in booted if BANNER in lines[i]]
     panics = [i for i in booted if any(marker in lines[i] for marker in MARKERS)]
+    starved = [i for i in booted if ALLOCATION_FAILED in lines[i]]
     problems: list[str] = []
     shown: set[int] = set()
     if panics:
         found = [marker for marker in MARKERS if any(marker in lines[i] for i in panics)]
         problems.append(f"panic output after boot: {', '.join(found)}")
         shown.update(panics)
+    if starved:
+        problems.append(
+            f"{len(starved)} failed allocation(s) after boot; a clean run has none, and a "
+            "run can print them and still reach result=pass"
+        )
+        # The first few: they all say the same thing, and the first is the one
+        # with the most heap left, which sizes what the shape was short of.
+        shown.update(starved[:5])
+    if min_heap_free is not None:
+        lowest, where = least_heap_free(lines, booted)
+        if lowest is None:
+            problems.append(
+                f"--min-heap-free {min_heap_free} was asked for, but the capture has no "
+                "heap_free= line to hold to it"
+            )
+        elif lowest < min_heap_free:
+            problems.append(
+                f"free heap fell to {lowest} bytes while playing, under the {min_heap_free} "
+                "this shape is held to"
+            )
+            if where is not None:
+                shown.add(where)
     if len(boots) > 1:
         problems.append(f"the part booted {len(boots)} times, so it reset; a clean run boots once")
         shown.update(boots)
@@ -115,6 +179,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--title", default="ESP32 console", help="the title of the ::error:: annotations"
     )
+    parser.add_argument(
+        "--min-heap-free",
+        type=int,
+        default=None,
+        metavar="BYTES",
+        help="fail when the lowest heap_free= figure in the capture is under this",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -122,9 +193,13 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as error:
         print(annotation(args.title, f"cannot read the console capture: {error}"))
         return 1
-    problems, listing = examine(lines)
+    problems, listing = examine(lines, args.min_heap_free)
     if not problems:
-        print(f"{args.capture}: one boot, no panic output")
+        clean = f"{args.capture}: one boot, no panic output, no failed allocation"
+        if args.min_heap_free is not None:
+            lowest, _ = least_heap_free(lines, range(len(lines)))
+            clean += f", free heap no lower than {lowest} bytes"
+        print(clean)
         return 0
     for problem in problems:
         print(annotation(args.title, f"{args.capture}: {problem}"))
