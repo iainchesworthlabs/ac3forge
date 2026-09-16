@@ -190,6 +190,183 @@ and release packaging.
   already holds fails to start, where cpp-httplib's default socket options would let it share
   the port. cpp-httplib joins the `hearth` feature at 0.56.0 through an overlay port, ahead of
   the vcpkg baseline's 0.52.0, for the read timeout that makes the close possible.
+- **Sendspin's core messages in `src/sendspin`**: `server/hello` through `group/update` with
+  `player@v1`'s objects, each a struct with a writer and a reader in both the specification's
+  form and aiosendspin 9.1.1's, and the `client/hello` field that tells a 9.1.1 client apart.
+  Readers ignore what they do not recognise where the specification says to. Standard Base64
+  for `codec_header`, and a fourth fuzz harness, `fuzz_sendspin_messages`, which reads every
+  message in both dialects and checks that what it writes back reads back the same.
+- **Sendspin's handshake as two state machines in `src/sendspin`**: the server's and the
+  client's side of `client/init` through Noise message 2, fed the frames they receive and
+  answering with the frames to send, so a thread on a computer and a board's WebSocket handler
+  drive the same code. They choose the PSK as the specification says, including the client's
+  Sentinel fallback and the credential-mismatch signal it gives the server, tell an
+  aiosendspin 9.1.1 server apart by its message 1, and run re-handshakes. A transport-mode
+  channel seals messages into Noise ciphertexts, one per frame in the connection's dialect,
+  and opens them again.
+- **Sendspin's clock synchronisation for the player half**: `client/time` exchanges in bursts
+  of eight over the vendored time filter, one after another until the clock converges and
+  every ten seconds after, with convergence taken as the filter's error staying under 1 ms
+  for eight updates in a row. Against a simulated server 35 ppm fast over a 0.5 to 3 ms
+  network it converges in under two seconds and stays within 1 ms.
+- **Sendspin's server and player sessions in `src/sendspin`**: one connection each, from the
+  handshake through `server/hello`, `client/hello` and `server/activate` to a `player@v1`
+  stream whose chunks the player receives on its own clock, with commands, group updates,
+  unpairing and re-handshakes. Like the handshake machines they are fed frames and the time
+  and answer with frames, so a board can run the player's. The player checks each activation
+  as the specification's admissibility rules say; the server refuses what the specification
+  does not allow at that moment, such as a stream to an unavailable player or a command it
+  did not list.
+- **Sendspin's pairing flows in `src/sendspin`**: the Pairing PSK Flow, the Dynamic Pairing
+  Code Flow in digits or as a QR token with its retry rounds and round limit, and the Static
+  Pairing Code Flow behind its gesture window, from both the client's side and the server's,
+  in the specification's form and aiosendspin 9.1.1's. The server checks the client's tag,
+  the commitment to `nonce_B` and the binding of the typed code to the handshake in the order
+  each dialect uses, and two ends of different handshakes cannot pair whatever code is typed.
+- **Pairing in Sendspin's sessions**: a pairing activation on either session runs one attempt
+  of the method it names. The server session checks the method against the client's offer and
+  the matched PSK, takes the operator's code, and once its listener has stored the record
+  acknowledges and re-handshakes to the new long-term PSK in the same output; the player
+  session emits the code, waits for a gesture or the round limit's reset where the method
+  says, and sends nothing but pairing messages until the re-handshake, which Music Assistant
+  expects. Cancels from either side, a new activation that supersedes the attempt, the
+  player's two-minute attempt timeout and the server's own timeouts are covered, and a
+  static code's window admits attempts only on the connection that carried its first. The
+  pairing messages join `fuzz_sendspin_messages`.
+- **A session driver for Sendspin on a computer**: `SessionDriver` runs a server or player
+  session over one connection with a reader thread and a writer thread, which sends the
+  session's frames in order outside its lock and ticks it when due, and disconnects a peer
+  that stops reading once a bounded queue fills. Over a loopback WebSocket a server pairs a
+  player with its pairing PSK, activates it under the new long-term PSK and streams PCM that
+  the player receives within 2 ms of each chunk's time.
+- **Admission between Sendspin servers**: `Arbiter` decides which server's connection a client
+  holds, as the specification ranks them (playback above pairing above nothing, equal or
+  higher displacing the holder), with its three exceptions: a pairing attempt in progress is
+  not displaced, the last-playback server wins when neither declares anything, and one pairing
+  connection is held beside a playback holder. The player session asks its owner about each
+  admissible activation, refuses a rejected one with `concurrent_attempt`, and leaves with
+  `another_server`, or `pair/abort concurrent_attempt` while pairing, when displaced.
+- **Sendspin discovery over mDNS**: a discovery seam in `src/sendspin` and its backend on a
+  computer over mjansson's `mdns`, which joins the `hearth` vcpkg feature. An advertiser
+  answers DNS-SD questions for `_sendspin._tcp` or `_sendspin-server._tcp` on every IPv4
+  interface with that interface's own address, announces itself twice and says goodbye when it
+  stops; a browser queries at a lengthening interval, asks for the SRV, TXT and address records
+  a response left out, and reports each service with the `ws://` URL to dial once complete and
+  when it goes. The packets are tested without a network, and an advertiser and a browser find
+  each other on the loopback interface.
+- **`ac3hearth-testsink`**, the first of Hearth's applications (`apps/hearth/testsink`): a
+  Sendspin player that listens on its port, advertises `_sendspin._tcp`, keeps its identity,
+  pairing PSK and pairing records in a state directory, pairs by its `SP:0` token or a dynamic
+  or static code, admits servers as the specification ranks them, and writes each `player@v1`
+  PCM stream to a WAV file with a play time logged for every chunk. Several can run side by
+  side with distinct names, ports and state. Not packaged; `ac3tests` runs one in process,
+  pairs a server with it by its token over a loopback WebSocket, finds the PCM it sent in the
+  WAV sample for sample, and reaches it again after a restart under the stored long-term PSK.
+- **`player@v1`'s codecs in `src/sendspin`**: encoders and decoders for PCM at 16, 24 and 32
+  bits, FLAC over libFLAC and Opus over Opus, both joining the `hearth` vcpkg feature. A FLAC
+  stream's `codec_header` is its `fLaC` marker and STREAMINFO block and each unit one frame; an
+  Opus unit is one 20 ms packet, and the encoder reports its look-ahead so a server can time
+  Opus players with the rest of a group. PCM and FLAC decode to exactly what was encoded at
+  every depth. The test sink now offers and decodes all three, and its loopback test finds in
+  its WAV exactly what a local decode of the same units gives, for each codec.
+- **A Sendspin server host in `src/sendspin`**: `ServerHost` holds every connection to a
+  server's clients, listening and advertising `_sendspin-server._tcp`, and browsing for and
+  dialling players that advertise `_sendspin._tcp`. It activates each client from its
+  `ServerStore`: playback for a paired client or an approved unpaired one, pairing by the
+  pairing PSK once the operator has entered a client's token, pairing by a code on request, and
+  nothing otherwise. A `Group` plays one programme to several clients on one timeline, each in
+  the first of its formats the group can produce, started far enough ahead for the member that
+  needs the most lead and paced by what the members' buffers hold. Two test sinks in one group,
+  one taking PCM and the other FLAC, each write exactly the programme, and every chunk they log
+  puts its first frame at the same local time within 1 ms; a host pairs one sink by its token
+  and another by the dynamic code it shows.
+- **`_ac3forge_player@v1`'s objects in `src/sendspin`**: the support object in `client/hello`,
+  the state object in `client/state`, the object in `stream/start` and the role's commands in
+  `server/command` (volume, mute, output delay, settings and identify), each with a writer and a
+  reader, as `planning/hearth-sendspin-extension.md` defines them. A settings object with a
+  known key out of range is refused whole, and the reader names the revision it refused so a
+  sink can report `settings_error` for it; what depends on the sink, such as one trim per output
+  inside its range, is checked against the sink's own support object. The objects join
+  `fuzz_sendspin_messages`.
+- **`_ac3forge_player@v1` in Sendspin's sessions**: a player that lists the role offers its
+  support object, reports its state, and hands its listener the role's stream, each burst chunk
+  at its time on the player's clock less the role's output delay, and the commands its state
+  lists; a chunk of another data type than the stream's is passed on to be counted as invalid.
+  The server session activates the role only for a client that offers it, and sends a stream
+  only in a data type and sample rate the client listed, a burst only when its Pc and Pd fit its
+  payload and the stream, and settings only when the client would read them back whole.
+- **E-AC-3 over `_ac3forge_player@v1`, from a group to test sinks**: `ServerHost` activates the
+  extension role instead of `player@v1` for a paired client that offers it, and a `Group`
+  programme can carry the coded stream beside its PCM. Members playing the role get its IEC 61937
+  bursts on the group's timeline, each timed by its first decoded sample, paced as `player@v1`'s
+  chunks are and never past a sink's `buffer_capacity`. The test sink offers the role, decodes
+  AC-3 and E-AC-3 with any object layer and renders them to a speaker layout (`--layout`, 7.1.4
+  by default) in its WAV file. Two test sinks paired to a host play the Dolby Encoding Engine's
+  E-AC-3 JOC fixture as one group: each WAV equals a local decode and render sample for sample,
+  every burst's play time agrees on both within 1 ms, and a hidden case, `[hearth-soak]`, does the
+  same over ten minutes.
+- **Sendspin's other six roles in `src/sendspin`**: the objects and binary messages of
+  `metadata@v1`, `controller@v1`, `color@v1`, `artwork@v1`, `visualizer@v1` and `source@v1`, and
+  the messages that carry them (`server/state`, `client/command`, `client-stream/start` and
+  `client-stream/end`), in the specification's form and, for the three state roles, aiosendspin
+  9.1.1's, where a cleared field goes out as `null`. Beside them, the arithmetic the roles ask of a
+  server: the controller's group volume, which applies a change to every player that supports
+  volume and shares what clamping loses among the rest, its group mute, and the colours' 4.5:1
+  contrast, reached by moving backgrounds and the colours on them towards black or white. The
+  new JSON messages join `fuzz_sendspin_messages`, and the binary ones `fuzz_sendspin_frames`,
+  which checks that each writes back to the bytes it was read from.
+- **The other roles in Sendspin's sessions**: the server session sends a role's state only while
+  the role is active, never a first state scheduled ahead, and a null state for a removed role that
+  had one; runs artwork as one transfer at a time, cancelling a transfer and clearing a channel the
+  client turns off before a new `stream/start`; keeps visualizer frames to their stream's types and
+  rates, in time order and within the client's buffer; passes on only the controller commands its
+  last state listed, and seeks within range; and opens a source's input stream only after its own
+  start, closing a connection that opens one unasked. It does not activate `source@v1`,
+  `artwork@v1` or `visualizer@v1` for an aiosendspin 9.1.1 client. The player session does the
+  client's half, closing on an artwork message the role calls malformed.
+- **The other roles from a server host's groups**: `ServerHost` activates `controller@v1`,
+  `metadata@v1` and `color@v1` for a playing client that lists them, `artwork@v1` and
+  `visualizer@v1` only for one that is not aiosendspin 9.1.1, and `source@v1` only for a client
+  the operator allows. A `Group` gives its members' roles the programme's metadata, its colours at
+  the contrast the role requires, the engine's transport with the group's volume and mute, its
+  artwork at each channel's source, format and size, and visualizer frames of the types each member
+  asked for. A controller's volume or mute reaches every player in the group over its playback
+  role, the engine's commands arrive as host events, and a member that leaves the group has its
+  states cleared and its streams ended. The test sink lists the roles when asked (`--roles`) and
+  sends controller commands typed on its standard input; in `ac3tests`, two test sinks in one
+  group, one paired and one approved unpaired, get the group's metadata, colours, artwork and
+  visualizer frames, and a volume and mute set from either reaches both.
+- **A scripted aiosendspin 9.1.1 player for A4's exit** (`tools/sendspin`), standing in for
+  Sendspin's reference player: `aiosendspin_exit.py` runs `ac3tests`' hidden `[aiosendspin]` case
+  against it once each for PCM, FLAC and Opus. The host pairs with the player by its token in
+  aiosendspin 9.1.1's dialect and plays it three seconds of two tones; PCM and FLAC arrive sample
+  for sample, Opus at 42.5 dB after its 312-frame look-ahead, and every chunk's timestamp is where
+  the programme's timeline puts it. The released client refuses to offer Opus, so the player adds
+  it to the SDK's decodable codecs for that run (`planning/hearth-sendspin-extension.md`, decision
+  5). `hearth-validate` runs the script.
+- **Hearth's player against Music Assistant's server**, found with the scripts above: to an
+  aiosendspin 9.1.1 server a player reports `available: true` from its activation, as 9.1.1's own
+  client does, because the server starts from `available: true` and takes `available: false` for an
+  external source, which would move the player out of its group whenever it connected. From such a
+  server the player also holds `player@v1` chunks that arrive before its first clock update, within
+  its `buffer_capacity`, and drops a chunk whose timestamp is not later than the last one it took:
+  Music Assistant starts a stream with the activation, holds back what it sends before the player's
+  first `client/state`, and then sends it and replays the stream from its start as well
+  (`planning/hearth-sendspin-extension.md`, C13 and C14).
+- **Music Assistant's server scripted on aiosendspin 9.1.1** (`tools/sendspin/aiosendspin_server.py`),
+  a rehearsal of A4's exit with Music Assistant: it starts `ac3hearth-testsink`, dials it, pairs by
+  the sink's `SP:0` token or by the dynamic code the sink shows, and plays it three seconds of two
+  tones in each codec, driving aiosendspin's `SendspinServer` as Music Assistant's provider does.
+  The sink's WAV file is the programme sample for sample in PCM and FLAC and within 20 dB in Opus,
+  less the chunks the server sends only in its replay and the FLAC block it keeps when a stream
+  stops. The sink lists `controller@v1`, `metadata@v1` and `color@v1` as well, and the run shows the
+  server's metadata, colours and controller state reaching it, and a volume the sink asks for coming
+  back as a player command. `hearth-validate` runs it for both pairing methods.
+- **Hearth's third-party notices** (`apps/hearth/notices/`): `NOTICES.txt` for cpp-httplib,
+  Mbed TLS, mdns, libFLAC, libogg, Opus and Sendspin's time filter, generated at configure time
+  with the versions and licence texts vcpkg installs with each port, ready for Hearth's About page
+  and package. The threat model gains Sendspin: what a peer on the network can reach without a
+  key, what a key allows, what mDNS exposes, and the two parsers not yet fuzzed.
 
 **Audio outputs**
 

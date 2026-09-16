@@ -5,10 +5,11 @@
 # (planning/hearth-sendspin-extension.md).
 #
 # Two layers. The core needs nothing: JSON, base64url, the transport-mode framing, the
-# audio chunk formats, the handshake-phase messages, pairing tokens, and the transport
-# seam with its in-memory pair. The rest takes its dependencies from vcpkg's "hearth"
-# feature on a computer: mbedTLS for the crypto seam over the PSA Crypto API and the Noise,
-# PSK, CPace and pairing code above it, and cpp-httplib for the WebSocket transport.
+# audio chunk formats, the handshake-phase and core messages, pairing tokens, admission
+# between servers, PCM, and the transport seam with its in-memory pair. The rest takes its
+# dependencies from vcpkg's "hearth" feature on a computer: mbedTLS for the crypto seam over
+# the PSA Crypto API and the Noise, PSK, CPace and pairing code above it, cpp-httplib for the
+# WebSocket transport, mdns for discovery, and libFLAC and Opus for player@v1's codecs.
 # AC3FORGE_SENDSPIN_CORE_ONLY builds the core alone, which is what fuzz/run.sh does so the
 # fuzz build keeps no vcpkg dependency.
 #
@@ -40,38 +41,76 @@ add_library(ac3::sendspin ALIAS ac3sendspin)
 
 target_sources(ac3sendspin
     PRIVATE
+        src/ac3forge_player.cpp
+        src/arbiter.cpp
+        src/base64.cpp
         src/base64url.cpp
         src/chunks.cpp
+        src/codec/pcm.cpp
+        src/clock_sync.cpp
+        src/discovery.cpp
         src/frames.cpp
         src/handshake.cpp
         src/json.cpp
+        src/messages.cpp
+        src/pairing_messages.cpp
         src/pairing_token.cpp
+        src/state_roles.cpp
+        src/stream_roles.cpp
         src/suite.cpp
         src/transport_memory.cpp)
 
 if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     find_package(MbedTLS CONFIG REQUIRED)
     find_package(httplib CONFIG REQUIRED)
+    find_package(FLAC CONFIG REQUIRED)
+    find_package(Opus CONFIG REQUIRED)
+    # mdns is one C header. Its package's target asks for a C99 compiler, which this C++-only
+    # project does not enable, so the header is found directly, as the port's usage says.
+    find_path(AC3FORGE_MDNS_INCLUDE_DIR "mdns.h" REQUIRED)
     # The seams' backends: one directory per backend, chosen here rather than by a
     # preprocessor branch. crypto/psa/ is the PSA Crypto API, which mbedTLS 3.6 and 4 both
-    # provide; transport/httplib/ is the WebSocket transport over cpp-httplib, for a
-    # computer (a board brings its own over esp_http_server).
+    # provide; transport/httplib/ is the WebSocket transport over cpp-httplib, and
+    # discovery/mdns/ DNS-SD over mjansson's mdns, both for a computer (a board brings its
+    # own over esp_http_server and espressif/mdns).
     target_sources(ac3sendspin
         PRIVATE
+            src/channel.cpp
+            src/codec/codec.cpp
+            src/codec/flac/flac.cpp
+            src/codec/opus/opus.cpp
             src/cpace.cpp
             src/crypto/psa/crypto.cpp
+            src/discovery/mdns/mdns.cpp
+            src/discovery/mdns/packets.cpp
+            src/handshake_session.cpp
             src/hmac.cpp
             src/noise.cpp
             src/pairing.cpp
+            src/pairing_flow.cpp
+            src/player_session.cpp
             src/psk.cpp
+            src/server_host.cpp
+            src/server_session.cpp
+            src/server_store.cpp
+            src/session_driver.cpp
             src/transport/httplib/websocket.cpp)
-    # The listening socket's options, which differ by platform (listen_socket.hpp).
+    # The listening socket's options and the mDNS sockets' system calls, which differ by
+    # platform (listen_socket.hpp, discovery/mdns/platform.hpp).
     if(WIN32)
-        target_sources(ac3sendspin PRIVATE src/transport/httplib/listen_socket_windows.cpp)
+        target_sources(ac3sendspin
+            PRIVATE
+                src/discovery/mdns/platform_windows.cpp
+                src/transport/httplib/listen_socket_windows.cpp)
+        target_link_libraries(ac3sendspin PRIVATE iphlpapi ws2_32)
     else()
-        target_sources(ac3sendspin PRIVATE src/transport/httplib/listen_socket_posix.cpp)
+        target_sources(ac3sendspin
+            PRIVATE
+                src/discovery/mdns/platform_posix.cpp
+                src/transport/httplib/listen_socket_posix.cpp)
     endif()
-    target_link_libraries(ac3sendspin PRIVATE MbedTLS::mbedcrypto httplib::httplib)
+    target_include_directories(ac3sendspin SYSTEM PRIVATE "${AC3FORGE_MDNS_INCLUDE_DIR}")
+    target_link_libraries(ac3sendspin PRIVATE MbedTLS::mbedcrypto httplib::httplib FLAC::FLAC Opus::opus)
     # cpp-httplib is configured by macros, which reach every file here that includes it.
     # Code elsewhere in the same program that included cpp-httplib would need the same
     # values, since its inline functions would otherwise differ between the two.

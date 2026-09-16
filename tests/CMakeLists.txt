@@ -676,20 +676,46 @@ endif()
 # AC3FORGE_BUILD_ADM block above.
 if(AC3FORGE_BUILD_HEARTH)
     target_sources(ac3tests PRIVATE
+        sendspin/test_ac3forge_player.cpp
+        sendspin/test_arbiter.cpp
+        sendspin/test_base64.cpp
         sendspin/test_base64url.cpp
         sendspin/test_chunks.cpp
+        sendspin/test_clock_sync.cpp
+        sendspin/test_discovery.cpp
         sendspin/test_frames.cpp
         sendspin/test_handshake.cpp
         sendspin/test_json.cpp
+        sendspin/test_messages.cpp
+        sendspin/test_pairing_messages.cpp
+        sendspin/test_state_roles.cpp
+        sendspin/test_stream_roles.cpp
         sendspin/test_transport.cpp)
     # The parts that need vcpkg's "hearth" feature, which AC3FORGE_SENDSPIN_CORE_ONLY leaves out.
     if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
         target_sources(ac3tests PRIVATE
+            sendspin/test_codec.cpp
             sendspin/test_cpace.cpp
             sendspin/test_crypto.cpp
+            sendspin/test_handshake_session.cpp
+            sendspin/test_mdns.cpp
             sendspin/test_noise.cpp
             sendspin/test_pairing.cpp
+            sendspin/test_pairing_flow.cpp
+            sendspin/test_session_driver.cpp
+            sendspin/test_sessions.cpp
             sendspin/test_websocket.cpp)
+        # test_mdns.cpp reads the mdns backend's packet layer, which is private to the library.
+        target_include_directories(ac3tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src/sendspin/src")
+        # Hearth's test sink, run in process (apps/hearth/testsink), and the server's half of A4's
+        # exit with aiosendspin 9.1.1, which tools/sendspin/aiosendspin_exit.py runs.
+        target_sources(ac3tests PRIVATE hearth/test_aiosendspin.cpp hearth/test_group.cpp hearth/test_testsink.cpp)
+        target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
+        # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
+        # as core/test_simd_kernels.cpp's.
+        if(AC3FORGE_IS_MSVC_LIKE)
+            set_source_files_properties(hearth/test_aiosendspin.cpp PROPERTIES COMPILE_OPTIONS "/wd4996")
+        endif()
     endif()
     target_link_libraries(ac3tests PRIVATE ac3::sendspin)
 endif()

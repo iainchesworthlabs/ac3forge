@@ -1,0 +1,11 @@
+Sendspin time filter
+--------------------
+
+Sendspin's reference time filter is compiled into Hearth's programs, whose
+players map a server's clock to their own with it. It is used unmodified,
+under the Apache License, version 2.0, from github.com/Sendspin/time-filter
+at the commit that the source's VENDORED.md names.
+
+Copyright 2025 Sendspin Contributors
+
+{{FILE:TIME_FILTER_APACHE}}

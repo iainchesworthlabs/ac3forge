@@ -1,0 +1,11 @@
+AC3Forge Hearth {{VERSION}} - third-party notices
+=================================================
+
+Hearth, AC3Forge's player, and the ac3forge library it is built from, are
+free software under the GNU General Public License, version 3 or later; the
+full text is LICENSE.txt beside this file. The source is at
+https://github.com/iainchesworthlabs/ac3forge
+
+What follows is what Hearth's Sendspin implementation carries from others:
+each component, the terms it is used under, and the text of those terms
+where they ask to travel with the copy.
