@@ -73,8 +73,8 @@ std::string_view strmtyp_token(ac3::eac3::StreamType type) {
 }
 
 // A/52 Table 5.7. bsmod's meaning additionally depends on acmod for one
-// value - 0x7 is "voice over" everywhere except acmod 1/0, where it is
-// "karaoke" - so the pair is what names it, not bsmod alone.
+// value - 0x7 is "voice over" at acmod 1/0, and "karaoke" everywhere wider -
+// so the pair is what names it, not bsmod alone.
 std::string_view bsmod_label(int bsmod, ac3::Acmod acmod) {
     switch (bsmod) {
         case 0: return "complete main";
@@ -84,7 +84,7 @@ std::string_view bsmod_label(int bsmod, ac3::Acmod acmod) {
         case 4: return "dialogue";
         case 5: return "commentary";
         case 6: return "emergency";
-        case 7: return acmod == ac3::Acmod::k1_0 ? "karaoke" : "voice over";
+        case 7: return acmod == ac3::Acmod::k1_0 ? "voice over" : "karaoke";
         default: break;
     }
     return "reserved";

@@ -701,6 +701,10 @@ and release packaging.
   offered rungs no `frmsiz` could carry; encoding was refused only at the encode button.
   The list is now filtered per-rate by the same rule `plan::validate()` already applies,
   and a lower-rate source clamps an out-of-range selection down.
+- **`ac3cli probe` swapped bsmod 7's two service names.** Table 5.7 makes acmod 1/0's
+  bsmod 7 "voice over" and every wider acmod's "karaoke"; the table form and the JSON
+  document's `bsmod_label` had the pair backwards. `ac3::meta::describe()`, used by
+  `mpegts` and the library's own reporting, already had it the right way round.
 
 **ESP32 / bare-metal**
 
