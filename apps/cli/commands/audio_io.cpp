@@ -617,12 +617,18 @@ int run_identify(int device_index, std::string_view layout_text, std::uint32_t s
     constexpr std::uint32_t kRate = 48000;
     constexpr std::size_t kBlockFrames = 480;
 
+    // The enumeration is what names an endpoint by index and says which
+    // speakers it has. An index cannot be resolved without it, so that is an
+    // error; the default endpoint can still be played to without it, since
+    // PcmOutput falls back to the layout's own width - so a machine whose
+    // backend cannot enumerate gets a tone rather than a refusal.
     const auto devices = ac3::audio::enumerate_render_devices();
-    if (!devices.has_value()) {
+    if (!devices.has_value() && device_index >= 0) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return kExitUnavailable;
     }
-    if (device_index >= 0 && static_cast<std::size_t>(device_index) >= devices->size()) {
+    if (devices.has_value() && device_index >= 0 &&
+        static_cast<std::size_t>(device_index) >= devices->size()) {
         fmt::println(stderr, "error: no render endpoint with index {} ('ac3cli outputs' lists them)",
                      device_index);
         return kExitInput;
@@ -637,7 +643,7 @@ int run_identify(int device_index, std::string_view layout_text, std::uint32_t s
         device_id = chosen.id;
         speakers = chosen.speakers;
         channels = chosen.channels;
-    } else {
+    } else if (devices.has_value()) {
         for (const auto& candidate : *devices) {
             if (candidate.is_default) {
                 speakers = candidate.speakers;
