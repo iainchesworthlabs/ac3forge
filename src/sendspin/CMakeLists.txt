@@ -13,6 +13,12 @@
 # AC3FORGE_SENDSPIN_CORE_ONLY builds the core alone, which is what fuzz/run.sh does so the
 # fuzz build keeps no vcpkg dependency.
 #
+# AC3FORGE_SENDSPIN_PLAYER_ONLY builds the core and the player half, which is what a board
+# runs (planning/hearth-reference-player.md, B3): the Noise responder, pairing, the clock and
+# the player session, with the crypto seam over whichever mbedTLS the board's SDK provides,
+# named by AC3FORGE_SENDSPIN_MBEDTLS_TARGET. The ESP-IDF component sets both
+# (esp-idf/ac3forge/CMakeLists.txt) and brings its own WebSocket and mDNS. No vcpkg.
+#
 # Written for the player half's hardest host, an ESP32 inside an HTTP server task:
 # no thread_local, no recursion over input, no large stack frames, and allocations
 # bounded by limits the caller sets (see the plan's constraints on src/sendspin). The
@@ -24,6 +30,23 @@
 option(AC3FORGE_SENDSPIN_CORE_ONLY
     "Build only ac3::sendspin's dependency-free core, leaving out the parts that need vcpkg's \"hearth\" feature"
     OFF)
+option(AC3FORGE_SENDSPIN_PLAYER_ONLY
+    "Build ac3::sendspin's core and player half only, for a board, with the crypto seam over AC3FORGE_SENDSPIN_MBEDTLS_TARGET"
+    OFF)
+set(AC3FORGE_SENDSPIN_MBEDTLS_TARGET "" CACHE STRING
+    "With AC3FORGE_SENDSPIN_PLAYER_ONLY, the CMake target that provides mbedTLS's PSA Crypto API (idf::mbedtls on ESP-IDF); empty to find MbedTLS as a package")
+if(AC3FORGE_SENDSPIN_CORE_ONLY AND AC3FORGE_SENDSPIN_PLAYER_ONLY)
+    message(FATAL_ERROR "AC3FORGE_SENDSPIN_CORE_ONLY and AC3FORGE_SENDSPIN_PLAYER_ONLY are exclusive: "
+                        "the player half is the core and more")
+endif()
+
+# A board's build is position-dependent, as the minimum-footprint library beside it is; a
+# computer's links these archives into executables and shared test binaries alike.
+if(AC3FORGE_SENDSPIN_PLAYER_ONLY)
+    set(_ac3_sendspin_pic OFF)
+else()
+    set(_ac3_sendspin_pic ON)
+endif()
 
 # Sendspin's reference time filter, vendored unmodified (third_party/time-filter/VENDORED.md).
 # A target of its own so the project's warning set, which upstream's code was not written
@@ -34,7 +57,7 @@ target_include_directories(ac3sendspin_time_filter SYSTEM
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/time-filter>")
 target_compile_features(ac3sendspin_time_filter PUBLIC cxx_std_17)
-set_target_properties(ac3sendspin_time_filter PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(ac3sendspin_time_filter PROPERTIES POSITION_INDEPENDENT_CODE ${_ac3_sendspin_pic})
 
 add_library(ac3sendspin STATIC)
 add_library(ac3::sendspin ALIAS ac3sendspin)
@@ -60,7 +83,44 @@ target_sources(ac3sendspin
         src/suite.cpp
         src/transport_memory.cpp)
 
-if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
+# The player half beyond the core: everything a player needs that takes the crypto seam, and
+# nothing that needs an operating system's sockets or threads. crypto/psa/ is the seam's one
+# backend, over the PSA Crypto API, which mbedTLS 3.6 and 4 both provide.
+set(_ac3_sendspin_player_sources
+    src/channel.cpp
+    src/cpace.cpp
+    src/handshake_session.cpp
+    src/hmac.cpp
+    src/noise.cpp
+    src/pairing.cpp
+    src/pairing_flow.cpp
+    src/player_session.cpp
+    src/psk.cpp)
+set(_ac3_sendspin_crypto_sources src/crypto/psa/crypto.cpp)
+
+if(AC3FORGE_SENDSPIN_PLAYER_ONLY)
+    target_sources(ac3sendspin PRIVATE ${_ac3_sendspin_player_sources})
+    # The backend is an archive of its own there, compiled against the SDK's mbedTLS without
+    # the project's warning set: the SDK's headers, and the C library headers they bring, were
+    # not written against -Wpedantic, and only this file includes them.
+    add_library(ac3sendspin_crypto STATIC ${_ac3_sendspin_crypto_sources})
+    target_include_directories(ac3sendspin_crypto PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_compile_features(ac3sendspin_crypto PRIVATE cxx_std_23)
+    if(AC3FORGE_SENDSPIN_MBEDTLS_TARGET)
+        target_link_libraries(ac3sendspin_crypto PRIVATE ${AC3FORGE_SENDSPIN_MBEDTLS_TARGET})
+    else()
+        find_package(MbedTLS CONFIG REQUIRED)
+        target_link_libraries(ac3sendspin_crypto PRIVATE MbedTLS::mbedcrypto)
+    endif()
+    target_link_libraries(ac3sendspin PRIVATE ac3sendspin_crypto)
+    # A board's library is built with the minimum-footprint profile's options, where there is
+    # one: no exceptions, no RTTI, a section per function. The board's code shares them.
+    if(TARGET ac3::minimal_profile)
+        target_link_libraries(ac3sendspin PUBLIC ac3::minimal_profile)
+        target_link_libraries(ac3sendspin_time_filter PRIVATE ac3::minimal_profile)
+        target_link_libraries(ac3sendspin_crypto PRIVATE ac3::minimal_profile)
+    endif()
+elseif(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     find_package(MbedTLS CONFIG REQUIRED)
     find_package(httplib CONFIG REQUIRED)
     find_package(FLAC CONFIG REQUIRED)
@@ -68,28 +128,19 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     # mdns is one C header. Its package's target asks for a C99 compiler, which this C++-only
     # project does not enable, so the header is found directly, as the port's usage says.
     find_path(AC3FORGE_MDNS_INCLUDE_DIR "mdns.h" REQUIRED)
-    # The seams' backends: one directory per backend, chosen here rather than by a
-    # preprocessor branch. crypto/psa/ is the PSA Crypto API, which mbedTLS 3.6 and 4 both
-    # provide; transport/httplib/ is the WebSocket transport over cpp-httplib, and
+    # The seams' other backends: one directory per backend, chosen here rather than by a
+    # preprocessor branch. transport/httplib/ is the WebSocket transport over cpp-httplib, and
     # discovery/mdns/ DNS-SD over mjansson's mdns, both for a computer (a board brings its
     # own over esp_http_server and espressif/mdns).
     target_sources(ac3sendspin
         PRIVATE
-            src/channel.cpp
+            ${_ac3_sendspin_player_sources}
+            ${_ac3_sendspin_crypto_sources}
             src/codec/codec.cpp
             src/codec/flac/flac.cpp
             src/codec/opus/opus.cpp
-            src/cpace.cpp
-            src/crypto/psa/crypto.cpp
             src/discovery/mdns/mdns.cpp
             src/discovery/mdns/packets.cpp
-            src/handshake_session.cpp
-            src/hmac.cpp
-            src/noise.cpp
-            src/pairing.cpp
-            src/pairing_flow.cpp
-            src/player_session.cpp
-            src/psk.cpp
             src/server_host.cpp
             src/server_session.cpp
             src/server_store.cpp
@@ -134,4 +185,4 @@ target_compile_features(ac3sendspin PUBLIC cxx_std_23)
 target_link_libraries(ac3sendspin PUBLIC ac3sendspin_time_filter)
 target_link_libraries(ac3sendspin PRIVATE ac3::warnings ac3::coverage)
 
-set_target_properties(ac3sendspin PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(ac3sendspin PROPERTIES POSITION_INDEPENDENT_CODE ${_ac3_sendspin_pic})
