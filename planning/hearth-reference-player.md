@@ -79,7 +79,7 @@ for end users.
 - AC-4 (`.ac4`, and AC-4 in MP4 or TS) is listed with its bitstream information from `src/ac4`
   and marked as not playable until [chip D](#chip-d-the-ac-4-decoder) delivers a decoder.
 - Duration and seek come from each stream's samples per access unit. The GUI's stream player
-  assumes 1,536 (`apps/gui/stream_player_controller.cpp:147`), which is wrong for E-AC-3 with
+  assumes 1,536 (`apps/gui/hearth_sink_controller.cpp:147`), which is wrong for E-AC-3 with
   fewer than six blocks per frame.
 
 ### Playback configuration
@@ -310,17 +310,34 @@ A draft shape. [A4](#a4-sendspin)'s first deliverable is the normative page,
 
 ### The firmware
 
-- The `stream_player` example becomes `hearth_sink` by `git mv`, and its CI shapes and docs
+- The `hearth_sink` example becomes `hearth_sink` by `git mv`, and its CI shapes and docs
   follow.
 - A Sendspin player: `player@v1` for Music Assistant, with PCM always and FLAC or Opus where
   memory and time allow, measured; `_ac3forge_player@v1` for the bitstream; the Noise responder;
   pairing codes on the serial console and the page; `_sendspin._tcp` through the `espressif/mdns`
   component.
 - The player comes from `src/sendspin`, over `esp_http_server`'s WebSocket and ESP-IDF's mbedTLS.
-  `sendspin-cpp` was the earlier recommendation ([esp32-player.md decision 11](esp32-player.md#decisions))
-  and is reconsidered in B3 with measurements. It implements the player role and Noise, but it
-  has no decoder interface and no hook for a custom role, so carrying the extension through it
-  means a fork.
+  `sendspin-cpp` was the earlier recommendation ([esp32-player.md decision 11](esp32-player.md#decisions)).
+  B3 measured both on 2026-09-16, each as a minimal player app for the S3 built at `-Os` with
+  GCC 15.2 and run under QEMU with no PSRAM, paired and played 24-bit PCM by aiosendspin 9.1.1's
+  server:
+
+  | | `src/sendspin` | `sendspin-cpp` 696e75ff |
+  |---|---|---|
+  | Image | 521,780 bytes | 695,384 bytes |
+  | Internal heap free when idle | 333,916 bytes | 307,676 bytes |
+  | Least internal heap free while streaming | 305,240 bytes | 254,736 bytes |
+  | Internal heap after the connection closed, against idle | 236 bytes less (the pairing record) | 35,576 bytes less |
+  | WebSocket server task, stack used | 4,776 of 8,192 bytes | 4,548 of 8,192 bytes |
+  | 10 s of PCM | played | stream stopped after 0.8 s, `Lost sync (-9364us off)` |
+
+  `sendspin-cpp` completed a Noise handshake only with `noise-c` pinned to 0.1.13, which adds
+  29,460 bytes; the 0.1.30 its manifest resolves to accepts only the NNpsk0 pattern on ESP-IDF.
+  It links its Opus and FLAC decoders into a PCM-only player (109,050 bytes of flash), and it has
+  no decoder interface and no hook for a custom role, so carrying the extension through it means
+  a fork. `src/sendspin` was chosen. In `hearth_sink` on a board, starting the player (the Noise
+  keys are made then) used 7,272 bytes of stack, more than the main task has to spare, so it
+  starts on a 16 KB task of its own.
 - Slot width is a setting. At 16 bits: 16 channels on the S3 (two lines of eight), 8 on the C6
   (one line). At 32 bits: 8 on the S3, 4 on the C6. The sink advertises the count for its current
   setting. Today a 16-bit slot width is standard I2S only, because TDM at 16 bits needs an
@@ -342,8 +359,14 @@ A draft shape. [A4](#a4-sendspin)'s first deliverable is the normative page,
 ### Memory and time on each part
 
 - **ESP32-S3**: PSRAM, and 7.1.4 in real time measured on a board
-  ([esp32-714-realtime.md](esp32-714-realtime.md)). What Noise, the WebSocket buffers and the
-  Sendspin ring add is measured in B3 with the heap monitor API.
+  ([esp32-714-realtime.md](esp32-714-realtime.md)). B3 measured the Sendspin player with the
+  heap monitor API. Under QEMU, with no PSRAM and a 16 KB ring in internal RAM, at least
+  43,700 bytes of internal heap stayed free while a stream played. On a board the 256 KB ring is
+  in PSRAM, and the decoder's allocations of up to 16 KB take nearly all the internal RAM the
+  network leaves: 23 and 139 bytes at the least on two boards over ten minutes, with nothing
+  failing. The decode task used about 18.9 KB of its 32 KB stack, the WebSocket server's task
+  5.2 KB of 8 KB, and starting the player 7.3 KB of the 16 KB it is given
+  ([the sink's README](../esp-idf/ac3forge/examples/hearth_sink/README.md#on-two-boards)).
 - **ESP32-C6**: no PSRAM (ESP-IDF has no external-RAM support for the part), 512 KB of SRAM shared
   with WiFi, and one 160 MHz core with no FPU, so the fixed-point tier. On the C3 the tier's
   largest fixture that fit peaked at 225,038 bytes and the 7.1.4 fixtures did not fit
@@ -569,7 +592,7 @@ merged. Proven on the S3 development boards with TDM DACs.
 
 ### B1: the firmware and its outputs
 
-`stream_player` becomes `hearth_sink`. Slot width becomes a setting, extending the one-line
+`hearth_sink` becomes `hearth_sink`. Slot width becomes a setting, extending the one-line
 16-bit TDM support that [C2](#c2-i2s-on-the-c6) adds to two lines on the S3, or adding it here if
 B1 starts first. The sink reports the slot count for its current setting.
 
@@ -594,8 +617,8 @@ status and sink-owned settings, with its budget re-derived and its Playwright su
 
 ### B3: the Sendspin player on the board
 
-First the choice between `src/sendspin`'s player half and `sendspin-cpp`, measured and recorded.
-Then: the Noise responder, pairing codes on serial and the page, the time filter, playout
+First the choice between `src/sendspin`'s player half and `sendspin-cpp`, measured and recorded
+([The firmware](#the-firmware): `src/sendspin`). Then: the Noise responder, pairing codes on serial and the page, the time filter, playout
 scheduled against the DAC with corrections applied to decoded PCM, `player@v1` with PCM for Music
 Assistant (FLAC and Opus by measurement), the extension role feeding the component's decoder,
 renderer, speaker management and sink, decoder settings at runtime, and per-slot levels and
@@ -619,6 +642,13 @@ protocol failure.
 
 **Verified by:** the step failing when a deliberate mismatch is introduced, and passing without
 it.
+
+**As built:** `hearth-esp32s3` in `.github/workflows/_build.yml`, a job of its own that runs
+after the ESP32-S3 job and takes that job's QEMU image as an artifact. The server is a host build
+with GCC 16 and vcpkg's `hearth` feature, and Espressif's image carries neither. The engine has
+no Sendspin server yet, so `ac3hearth-testserver`, on `src/sendspin`'s `ServerHost`, plays in its
+place. `tools/checks/run_sendspin_qemu.sh` runs the step, and its `--board-trim-db` option makes
+the deliberate mismatch.
 
 ### B5: docs
 

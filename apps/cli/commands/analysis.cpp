@@ -30,6 +30,7 @@
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/qc.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 #include "ac3/spatial/spatial.hpp"
@@ -574,11 +575,21 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
         fmt::println(stderr, "error: not a valid E-AC-3 stream");
         return std::nullopt;
     }
-    auto decoder = std::make_unique<ac3::Eac3Decoder>(ac3::DecoderConfig{.programme = programme});
+    // Named rather than a temporary passed straight to the decoder: lfe_delay
+    // below reads .joc_domain back off it, so the two can never disagree on
+    // which domain the reconstruction this measurement actually decodes with.
+    const ac3::DecoderConfig decoder_config{.programme = programme};
+    auto decoder = std::make_unique<ac3::Eac3Decoder>(decoder_config);
     std::optional<ac3::meta::LoudnessMeter> meter;
     QcProgrammeResult result;
     result.label = "objects";
     bool have_first = false;
+    // The panned object buffers below are JOC-reconstructed and so lag the
+    // bed LFE buffer beside them by reconstruction_delay(joc_domain) samples
+    // (LfeDelayLine's own comment, apps/cli/support.hpp) - held back to match
+    // before either reaches the meter.
+    LfeDelayLine lfe_delay{
+        static_cast<std::size_t>(ac3::oba::joc::reconstruction_delay(decoder_config.joc_domain))};
 
     for (const auto& unit : *units) {
         const auto decoded = decoder->decode_access_unit(unit);
@@ -625,6 +636,11 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
                 lfe_buffer = out.channels[static_cast<std::size_t>(source_lfe)];
             }
         }
+        // Held back to arrive with the panned object buffers below, not ahead
+        // of them - see lfe_delay's own comment above. Fed every unit, real
+        // LFE data or this unit's silence filler alike, so the line's own
+        // sample count always matches how much bed audio has actually gone by.
+        lfe_buffer = lfe_delay.process(lfe_buffer);
         const auto objects = out.object_metadata
                                  ? ac3::oba::describe_objects(*out.object_metadata)
                                  : std::vector<ac3::oba::DisplayObject>{};

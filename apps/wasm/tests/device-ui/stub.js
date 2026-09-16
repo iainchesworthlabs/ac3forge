@@ -4,8 +4,8 @@
 // web page's tests - planning/esp32-device-ui.md. It serves the page's two
 // files with the headers the firmware sends and answers the REST routes with
 // the firmware's status codes and reply texts, over a model of the streaming
-// example's player (esp-idf/ac3forge/examples/stream_player/main/
-// stream_player.cpp): POST /play hands a location to the http source, which
+// example's player (esp-idf/ac3forge/examples/hearth_sink/main/
+// hearth_sink.cpp): POST /play hands a location to the http source, which
 // takes it only if it starts with http://; a play clears the last one's
 // figures, runs for a few /status polls and finishes; a location that does not
 // open leaves the state "failed" with no figures. contract.spec.js holds the
@@ -35,6 +35,11 @@ const REPLIES = {
         'POST /volume        body: 0.0 to 1.0',
         'GET  /layout        the output layout',
         'PUT  /layout        body: a name (5.1.4) or a speaker list; next play',
+        "GET  /name          this board's name; PUT one to change it",
+        'GET  /slot-width    16 or 32; PUT one to change it at the next play',
+        'GET  /wiring        1 when a second I2S line is wired; PUT 1 or 0',
+        'PUT  /network       body: an SSID, a newline, a passphrase; next boot',
+        'POST /pairing       body: reset, cancel or forget (Sendspin pairing)',
         '',
     ].join('\n'),
     playEmpty: 'POST /play wants the location as the body\n',
@@ -50,6 +55,18 @@ const REPLIES = {
     layoutRefused:
         'not a layout this player can play: check the name or the list, and that it has no more slots than the sink\n',
     layoutOk: 'ok; takes effect at the next play\n',
+    nameEmpty: 'PUT /name wants a name\n',
+    nameRefused: 'not a name this player can hold: it is too long, or it could not be stored\n',
+    slotWidthBad: 'PUT /slot-width wants a number of bits\n',
+    slotWidthRefused:
+        "not a slot width this player's sink has: 16 or 32 on an I2S bus, and a sink with no hardware behind it keeps the one it was built for\n",
+    wiringBad: 'PUT /wiring wants 1 (a second I2S line is wired) or 0\n',
+    wiringRefused: 'the wiring could not be stored, or a play is running\n',
+    networkEmpty: 'PUT /network wants an SSID, a newline, and a passphrase\n',
+    nextPlay: 'ok; takes effect at the next play\n',
+    nextBoot: 'ok; takes effect at the next boot\n',
+    pairingBad: 'POST /pairing wants reset, cancel or forget\n',
+    pairingRefused: 'this board is not a Sendspin player\n',
 };
 
 const ROUTES = [
@@ -62,12 +79,20 @@ const ROUTES = [
     'POST /volume',
     'GET /layout',
     'PUT /layout',
+    'GET /name',
+    'PUT /name',
+    'GET /wiring',
+    'PUT /wiring',
+    'GET /slot-width',
+    'PUT /slot-width',
+    'PUT /network',
+    'POST /pairing',
 ];
 
 // The streams the model plays, with the channels each codes. The E-AC-3 one is
 // the WASM page's demo, as CI's HTTP step plays it; the AC-3 one is the
 // example's own sample; the 7.1.4 one is the stream set's walk
-// (esp-idf/ac3forge/examples/stream_player/www/).
+// (esp-idf/ac3forge/examples/hearth_sink/www/).
 const STREAMS = {
     eac3: { codec: 'E-AC-3', acmod: 7, channels: 6, substreams: 1, dialnorm: -31, objects: true, coded: 'L,C,R,Ls,Rs,LFE' },
     ac3: { codec: 'AC-3', acmod: 7, channels: 6, substreams: 1, dialnorm: -31, objects: false, coded: 'L,C,R,Ls,Rs,LFE' },
@@ -151,6 +176,82 @@ function idleStats() {
     };
 }
 
+// The Sendspin player's part of /status with no server connected, as
+// append_sendspin writes it (esp-idf/ac3forge/src/control.cpp).
+function idleSendspin() {
+    return {
+        server: '',
+        server_id: '',
+        dialect: '',
+        psk: '',
+        activity: '',
+        role: '',
+        clock_converged: false,
+        clock_error_us: 0,
+        connections: 0,
+        client_id: 'gS3cmMlDUaQGhxYd0PF0x0jWR2OGdhxwUwBBwyD3O1c',
+        paired: 0,
+        pairing_code: '',
+        pairing_held: false,
+        pairing_rounds: 0,
+        pairing_outcome: '',
+        lost_pairing: false,
+        playing: 'idle',
+        bursts: 0,
+        underruns: 0,
+        late: 0,
+        dropped: 0,
+        invalid: 0,
+        resyncs: 0,
+        error_us: 0,
+        worst_error_us: 0,
+        play_frame: null,
+        play_server_us: null,
+        origin_server_us: null,
+        peak_db: [],
+        rms_db: [],
+        stream_rms: [],
+        burst_us: 0,
+        worst_burst_us: 0,
+        decode_stack_free: 0,
+        server_stack_free: 0,
+        settings_revision: 0,
+        identifying: false,
+    };
+}
+
+// A paired server playing a 5.1 stream to the board in bursts.
+function playingSendspin() {
+    return {
+        ...idleSendspin(),
+        server: 'Hearth on the desk',
+        server_id: 'Yx3kP0aZ',
+        dialect: 'specification',
+        psk: 'long-term',
+        activity: 'playback',
+        role: '_ac3forge_player@v1',
+        clock_converged: true,
+        clock_error_us: 310,
+        connections: 1,
+        paired: 1,
+        playing: 'bursts',
+        bursts: 1875,
+        error_us: -42,
+        worst_error_us: 180,
+        play_frame: 2880000,
+        play_server_us: 1726500060000000,
+        origin_server_us: 1726500000000000,
+        peak_db: [-3.1, -3.4, -8.9, -16.2, -12.5, -120],
+        rms_db: [-18.2, -18.6, -21, -30.4, -26.1, -120],
+        stream_rms: [123027, 117490, 89125, 30200, 49545, 0],
+        burst_us: 11850,
+        worst_burst_us: 19420,
+        decode_stack_free: 5120,
+        server_stack_free: 2210,
+        settings_revision: 3,
+    };
+}
+
 // GET /status as control.cpp writes it: the same keys in the same order, the
 // volume to three places, and a newline at the end.
 function statusJson(d) {
@@ -162,12 +263,18 @@ function statusJson(d) {
         ['source', JSON.stringify(d.source)],
         ['sink', JSON.stringify(d.sink)],
         ['sink_slots', String(d.sinkSlots)],
+        ['slot_bits', String(d.slotBits)],
+        ['second_line', d.secondLine ? 'true' : 'false'],
+        ['name', JSON.stringify(d.name)],
         ['layout', JSON.stringify(d.layout)],
         ['volume', d.volume.toFixed(3)],
         ['stream', stream ? JSON.stringify(stream) : 'null'],
     ];
     for (const [key, value] of Object.entries(stats)) {
         fields.push([key, JSON.stringify(value)]);
+    }
+    if (d.sendspin !== undefined) {
+        fields.push(['sendspin', JSON.stringify(d.sendspin)]);
     }
     return '{' + fields.map(([k, v]) => JSON.stringify(k) + ':' + v).join(',') + '}\n';
 }
@@ -179,8 +286,19 @@ async function startStub() {
         source: 'http',
         sink: 'capture-i2s',
         sinkSlots: 2,
+        slotBits: 32,
+        secondLine: false,
+        name: 'hearth-a1b2c3',
+        // Stored rather than reported: /status does not carry a network, and
+        // a passphrase should not travel back out of a device at all.
+        ssid: 'kitchen',
+        password: '',
         layout: '2.0',
         volume: 1,
+        // A Sendspin player's firmware (sdkconfig.sendspin). Undefined for a
+        // firmware with no player, whose /status has no "sendspin" key, and
+        // null for one whose player did not start.
+        sendspin: idleSendspin(),
         player: null, // the play in progress: {stream, stats, total, fails}
         lastStats: idleStats(), // the last play that ended by itself, until another begins
         lastStream: null,
@@ -311,6 +429,74 @@ async function startStub() {
                 device.volume = value;
                 return send(res, 200, REPLIES.ok);
             }
+            case 'GET /name':
+                return send(res, 200, device.name + '\n');
+            case 'PUT /name': {
+                if (!body || body.length > 32) {
+                    return send(res, body ? 409 : 400, body ? REPLIES.nameRefused : REPLIES.nameEmpty);
+                }
+                device.name = body;
+                return send(res, 200, REPLIES.ok);
+            }
+            case 'GET /slot-width':
+                return send(res, 200, device.slotBits + '\n');
+            case 'PUT /slot-width': {
+                const bits = Number.parseInt(body, 10);
+                if (!body || Number.isNaN(bits)) {
+                    return send(res, 400, REPLIES.slotWidthBad);
+                }
+                if ((bits !== 16 && bits !== 32) || device.player) {
+                    return send(res, 409, REPLIES.slotWidthRefused);
+                }
+                device.slotBits = bits;
+                // Two lines carry twice one line's slots, and a line carries
+                // 128 bits a frame whichever width divides it.
+                device.sinkSlots = (bits === 16 ? 8 : 4) * (device.secondLine ? 2 : 1);
+                return send(res, 200, REPLIES.nextPlay);
+            }
+            case 'GET /wiring':
+                return send(res, 200, (device.secondLine ? '1' : '0') + '\n');
+            case 'PUT /wiring': {
+                if (body !== '0' && body !== '1') {
+                    return send(res, 400, REPLIES.wiringBad);
+                }
+                if (device.player) {
+                    return send(res, 409, REPLIES.wiringRefused);
+                }
+                device.secondLine = body === '1';
+                device.sinkSlots = (device.slotBits === 16 ? 8 : 4) * (device.secondLine ? 2 : 1);
+                return send(res, 200, REPLIES.nextPlay);
+            }
+            case 'PUT /network': {
+                const [ssid, ...rest] = rawBody.split('\n');
+                if (!ssid.trim()) {
+                    return send(res, 400, REPLIES.networkEmpty);
+                }
+                device.ssid = ssid.trim();
+                device.password = rest.join('\n');
+                return send(res, 200, REPLIES.nextBoot);
+            }
+            case 'POST /pairing': {
+                if (body !== 'reset' && body !== 'cancel' && body !== 'forget') {
+                    return send(res, 400, REPLIES.pairingBad);
+                }
+                const p = device.sendspin;
+                if (!p) {
+                    return send(res, 409, REPLIES.pairingRefused);
+                }
+                if (body === 'reset') {
+                    Object.assign(p, { pairing_held: false, pairing_rounds: 0 });
+                } else if (body === 'cancel') {
+                    if (p.pairing_code) {
+                        Object.assign(p, { pairing_code: '', pairing_outcome: 'cancelled' });
+                    }
+                } else {
+                    // A new identity, and every server's record gone: the
+                    // connections close and the player starts again.
+                    device.sendspin = { ...idleSendspin(), client_id: 'Q1vGr0WkzZ5c2hXU8eYy0fKp3tNnJmAs7LbD4oHqIwE' };
+                }
+                return send(res, 200, REPLIES.ok);
+            }
             case 'GET /layout':
                 return send(res, 200, device.layout + '\n');
             case 'PUT /layout': {
@@ -407,4 +593,16 @@ async function startStub() {
     };
 }
 
-module.exports = { startStub, statusJson, REPLIES, ROUTES, POLICY, UI_DIR, slotsOf, speakersOf, served };
+module.exports = {
+    startStub,
+    statusJson,
+    idleSendspin,
+    playingSendspin,
+    REPLIES,
+    ROUTES,
+    POLICY,
+    UI_DIR,
+    slotsOf,
+    speakersOf,
+    served,
+};

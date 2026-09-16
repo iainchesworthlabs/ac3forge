@@ -19,11 +19,26 @@ Channel::Channel(noise::Handshake::Transport keys, Dialect dialect, std::size_t 
       receive_(std::move(keys.receive)),
       handshake_hash_(keys.handshake_hash),
       dialect_(dialect),
-      reassembler_(max_message_bytes),
-      frame_(kMaxFramePlaintext) {}
+      reassembler_(max_message_bytes) {}
 
 bool Channel::seal(std::span<const std::uint8_t> message, std::vector<std::vector<std::uint8_t>>& out) {
+    if (message.empty()) {
+        return false;
+    }
     const std::size_t frames = frame_count(message.size(), dialect_);
+    if (frames == 1) {
+        // A message that fits one frame is that frame, sealed as it stands. The scratch frame
+        // below is only for fragments: allocated with the channel, it cost a board 64 KB per
+        // connection for messages no longer than a client/state.
+        std::vector<std::uint8_t> ciphertext;
+        ciphertext.reserve(message.size() + kAeadTagBytes);
+        if (!send_.encrypt(message, ciphertext)) {
+            return false;
+        }
+        out.push_back(std::move(ciphertext));
+        return true;
+    }
+    frame_.resize(kMaxFramePlaintext);
     for (std::size_t i = 0; i < frames; ++i) {
         const std::size_t written = write_frame(message, i, frame_, dialect_);
         std::vector<std::uint8_t> ciphertext;

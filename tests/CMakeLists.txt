@@ -80,16 +80,19 @@ add_executable(ac3tests
     decoder/test_eac3_programmes.cpp
     io/test_elementary.cpp
     io/test_stream_accumulator.cpp
+    io/test_improv.cpp
     io/test_interleave.cpp
     io/test_sink_plan.cpp
     io/test_block_ring.cpp
     io/test_unit_hold.cpp
     render/test_layout.cpp
+    render/test_object_lfe_timing.cpp
     render/test_identify.cpp
     render/test_routing.cpp
     render/test_serving.cpp
     render/test_trim_delay.cpp
     io/test_dac_queue_model.cpp
+    io/test_playout.cpp
     io/test_metadata_edit.cpp
     io/test_probe.cpp
     emdf/test_emdf.cpp
@@ -495,6 +498,10 @@ endif()
 # the Python encoder-space fuzzer that first found one (REGRESSION_SEEDS'
 # 3600083275727211684 in tools/ci/fuzz_encoder_space.py) - this file covers it
 # deterministically and without needing ffmpeg on the machine running it.
+# stream_playback.cpp joined for the reason its own header gives: 'monitor'
+# and 'spatial' pick their decoder and drain the end-of-stream flush through
+# it, and neither command reaches its decode loop without a render device, so
+# decoder/test_stream_playback.cpp holds both here instead.
 # ac3gui's diagnostics module (apps/gui/gui_diagnostics.hpp) rides the same
 # target for the same reason and with the same discipline: it is Qt-free, so
 # the rule it exists to hold - the support file carries no signing key, no
@@ -507,9 +514,11 @@ endif()
 target_sources(ac3tests PRIVATE
     gui/test_recording_sink.cpp
     gui/test_gui_diagnostics.cpp
+    decoder/test_stream_playback.cpp
     "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp"
+    "${CMAKE_SOURCE_DIR}/apps/common/stream_playback.cpp"
     "${CMAKE_SOURCE_DIR}/apps/gui/gui_diagnostics.cpp")
 target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/common"
@@ -654,7 +663,8 @@ endif()
 # (AC3CLI_EXE might not be defined at all, e.g. AC3FORGE_BUILD_CLI=OFF) is sufficient by itself -
 # both are checked together here, after both blocks above have already run.
 if(AC3FORGE_BUILD_ADM AND TARGET ac3cli)
-    target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp cli/test_cli_atmos_iab.cpp)
+    target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp cli/test_cli_atmos_iab.cpp
+                                    cli/test_cli_decode_adm.cpp)
 endif()
 
 # ac3iab::ac3iab (roadmap IM1 phase 1, src/ac3iab) is gated by its own AC3FORGE_BUILD_IAB
@@ -731,10 +741,16 @@ if(AC3FORGE_BUILD_HEARTH)
             sendspin/test_pairing.cpp
             sendspin/test_pairing_flow.cpp
             sendspin/test_session_driver.cpp
-            sendspin/test_sessions.cpp
-            sendspin/test_websocket.cpp)
+            sendspin/test_sessions.cpp)
         # test_mdns.cpp reads the mdns backend's packet layer, which is private to the library.
         target_include_directories(ac3tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src/sendspin/src")
+        # test_websocket.cpp writes a WebSocket client's bytes by hand through cpp-httplib's socket
+        # functions, so it is compiled on its own with cpp-httplib configured as src/sendspin
+        # configures it (ac3sendspin_httplib), leaving the rest of the suite's flags alone.
+        add_library(ac3tests_websocket OBJECT sendspin/test_websocket.cpp)
+        target_link_libraries(ac3tests_websocket
+            PRIVATE ac3::sendspin ac3sendspin_httplib ac3::warnings ac3::coverage Catch2::Catch2)
+        target_link_libraries(ac3tests PRIVATE ac3tests_websocket)
         # Hearth's test sink, run in process (apps/hearth/testsink), and the server's half of A4's
         # exit with aiosendspin 9.1.1, which tools/sendspin/aiosendspin_exit.py runs.
         target_sources(ac3tests PRIVATE hearth/test_aiosendspin.cpp hearth/test_group.cpp hearth/test_testsink.cpp)

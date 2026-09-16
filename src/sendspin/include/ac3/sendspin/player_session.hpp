@@ -249,6 +249,10 @@ class PlayerSession {
     [[nodiscard]] const std::vector<messages::Activity>& activities() const { return activities_; }
     [[nodiscard]] const std::vector<std::string>& active_roles() const { return active_roles_; }
     [[nodiscard]] bool clock_converged() const { return clock_.converged(); }
+    // The clock the session keeps with its server, for an owner that reports when it played
+    // something on the server's timeline (a board's play times, planning/hearth-reference-player.md
+    // B3).
+    [[nodiscard]] const ClockSync& clock() const { return clock_; }
     [[nodiscard]] bool streaming() const { return stream_.has_value(); }
     // An _ac3forge_player@v1 stream is running.
     [[nodiscard]] bool burst_streaming() const { return burst_stream_.has_value(); }

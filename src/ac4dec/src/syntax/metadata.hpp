@@ -340,9 +340,11 @@ struct DeState {
 
 // Part 1 clause 4.2.14.14; semantics clause 4.3.15.2.
 struct EmdfPayloadConfig {
-    std::optional<std::uint32_t> smpoffst;
-    std::optional<std::uint32_t> duration;
-    std::optional<std::uint32_t> groupid;
+    // 64 bits, as variable_bits() hands them back: nothing here bounds what
+    // the escape can express, and these are reported rather than indexed with.
+    std::optional<std::uint64_t> smpoffst;
+    std::optional<std::uint64_t> duration;
+    std::optional<std::uint64_t> groupid;
     std::optional<int> codecdata;
     bool b_discard_unknown_payload = false;
     // Read only when neither b_discard_unknown_payload nor b_smpoffst is set.
@@ -354,7 +356,9 @@ struct EmdfPayloadConfig {
 };
 
 struct EmdfPayload {
-    std::uint32_t emdf_payload_id = 0;  // Table 174; never the terminating 0
+    // Table 174; never the terminating 0. 64 bits because the escape at 31 adds
+    // a variable_bits(5) that spans the whole range that can express.
+    std::uint64_t emdf_payload_id = 0;
     EmdfPayloadConfig config{};
     std::vector<std::uint8_t> bytes;  // emdf_payload_size of them
 };

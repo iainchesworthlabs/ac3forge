@@ -920,11 +920,14 @@ ParseResult parse_emdf_payloads_substream(BitReader& r, EmdfPayloads& out) {
     // 0 ends the loop with nothing after it. Past the end of the data the
     // reader returns zeros, so a truncated substream ends the loop too.
     while (true) {
-        std::uint32_t id = r.read(5, "emdf_payload_id");
+        std::uint64_t id = r.read(5, "emdf_payload_id");
         if (id == 0) {
             break;
         }
         if (id == 31) {
+            // The escape carries the whole range variable_bits() can express,
+            // so the sum is kept in 64 bits; the payload id is only compared,
+            // never used as an index.
             id += r.variable_bits(5, "emdf_payload_id");
         }
         EmdfPayload payload;

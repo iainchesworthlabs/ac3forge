@@ -131,9 +131,9 @@ Three GPIOs under `ac3forge I2S player` in `idf.py menuconfig`, defaulting to BC
 DOUT 7 — chosen to avoid the strapping pins, the USB pair and the console UART. No MCLK is
 configured, so a DAC needing one has to have it added. Written against a MAX98357A and a PCM5102.
 
-### Streaming player
+### Hearth sink
 
-`stream_player` decodes AC-3 and E-AC-3 from a flash partition, an SD card, a FAT volume in flash
+`hearth_sink` decodes AC-3 and E-AC-3 from a flash partition, an SD card, a FAT volume in flash
 or an HTTP body. It reads the stream a piece at a time, through a ring between the player's fetch
 and decode tasks (32 KB by default) and a 16 KB framing buffer. Where bytes come from and where
 audio goes are directories CMake picks, not flags the player branches on — the player itself names
@@ -142,11 +142,11 @@ neither a partition nor I2S:
 | Source | Sink |
 |---|---|
 | `partition` — flash (default) | `i2s` — stereo DAC (default), 32-bit slots, master or slave |
-| `sd` — SD card over SDMMC | `tdm` — TDM on one data line, at most four 32-bit slots on an ESP32-S3 |
+| `sd` — SD card over SDMMC | `tdm` — TDM, four 32-bit or eight 16-bit slots a line, and both lines gives eight or sixteen |
 | `fatfs` — a FAT volume in flash | `capture` — converts and checks; what CI runs |
 | `http` — an HTTP body over WiFi | `null` — counts blocks |
 
-Chosen under *ac3forge stream player* in `idf.py menuconfig`, along with the output layout — a
+Chosen under *ac3forge hearth sink* in `idf.py menuconfig`, along with the output layout — a
 name such as `5.1.4` or a speaker list — that the player renders every stream onto
 (`src/forge/include/ac3/render/layout.hpp`, `render.hpp`).
 
@@ -256,9 +256,12 @@ The decode runs on the main task. `uxTaskGetStackHighWaterMark` left 11,280 byte
 original 32,768 `sdkconfig.defaults` set, until PR #698 (legacy-core downmix levels) grew
 `DecodedSubstream`/`DecodedAccessUnit` by `bsid`/`cmixlev`/`surmixlev`/`alternate_bsi` and the
 runner measured that down to 8,096 — 96 bytes under its 8,192 floor.
-`sdkconfig.defaults` now sets 40,960; the encode direction, less affected, left 23,040 free of
-the original 32,768. That margin is the one to watch — it was 14,000 before object
-reconstruction ran here, then 11,280 before this fix.
+`sdkconfig.defaults` now sets 40,960, which left 16,064. The decoder has since stopped keeping
+extra copies of those two structs on the stack (it builds its results in place), and the decode
+leaves 19,344 of the 40,960: 11,152 in terms of the original 32,768, close to the figure before
+PR #698. The encode direction, less affected, left 23,040 free of the original 32,768. The decode
+margin is the one to watch — it was 14,000 before object reconstruction ran here, then 11,280
+before PR #698.
 
 ## Timing
 
@@ -268,7 +271,7 @@ is 32,000 microseconds and `realtime_permille` is 1000 at exactly real time.
 
 Under `idf.py qemu` these figures do not describe hardware: QEMU is not cycle-accurate and
 reports `cpu_mhz=40` against its own boot log's 160 MHz, so treat the QEMU leg as a correctness
-and footprint check only; under the streaming player's `null` sink the figure means less again,
+and footprint check only; under the Hearth sink's `null` output the figure means less again,
 since nothing paces the loop. The figures that follow are from a board.
 
 ### Measured, on an ESP32-S3-DevKitC-1-N16R8
@@ -299,7 +302,7 @@ code. (The `ac3` row is from the stage-timed run described next, whose markers
 cost it about 0.2 ms; the other seven are from a plain build.)
 
 The instruction cache stayed at its default 16 KB for all of this, and in the
-probe that held. In the streaming player's network shape, where WiFi and the
+probe that held. In the Hearth sink's network shape, where WiFi and the
 rest of the player run beside the decoder, it did not: at 32 KB a 7.1.4 frame
 decoded 3.1 ms faster folded to 2.0 and 3.8 ms faster onto twelve slots
 ([7.1.4 in real time](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-714-realtime.md)).
@@ -556,7 +559,7 @@ line mode without a fold, the one fixture where line mode has work to do.
 #### What the fold cost
 
 On 2026-09-10 the E-AC-3 5.1 fold cost 3.2 ms here where the Cortex-M3
-leg counted 10% of the frame, and a stream player folding 7.1.4 to stereo
+leg counted 10% of the frame, and the sink folding 7.1.4 to stereo
 over WiFi fell behind (`planning/esp32-stream-set.md`, "On a board"). The
 output stage had no stage-timer zones of its own. With zones inside
 `OutputStage::apply` and around both decoders' §7.7 gain, stage-timed on
@@ -644,9 +647,9 @@ Peak heap: `eac3_fold` 217,574 to 174,566, `ac3_fold` 68,709 to 58,469,
 and `eac3_714_fold` 237,206 against 280,214 for the same fold before. It
 is the probe's peak now, under the 245,000 the ESP32-S3 runner gates.
 
-#### In the stream player
+#### In the Hearth sink
 
-The same comparison through `stream_player`, built from `main` and from
+The same comparison through `hearth_sink`, built from `main` and from
 this change and run one after the other on one board on 2026-09-11: the
 network shape (`sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram` with
 WiFi), the stream set's `714-walk.ec3` served over the LAN, 2.0 on the I2S
@@ -982,9 +985,10 @@ run, under QEMU.
   still structural: a dependent's channels go through the access unit's
   own vectors, 73 KB at the peak, where writing them straight into their
   output slots would remove them; PSRAM for the staging remains the blunt
-  alternative. One S3 I2S line carries at most four 32-bit TDM slots, because a
-  frame holds 128 bits, so twelve need both controllers at 16 bits or a TDM
-  device fed by several lines; a twelve-slot DMA queue competes with WiFi for
+  alternative. One S3 I2S line carries 128 bits a frame — four 32-bit TDM
+  slots or eight 16-bit ones — so twelve need both controllers at 16 bits,
+  which is the shape the sink opens now (sixteen slots in all); a
+  twelve-slot DMA queue competes with WiFi for
   internal RAM; and at 0.90x the second core stops being optional for anything
   that decodes 7.1.4 and does something else
   (`planning/esp32-714-realtime.md` in the repository).
@@ -1049,7 +1053,10 @@ Four changes, each measured on its own:
 | + per-object scratches sized to the stream | 267,754 | 43,008 |
 | + handing back the enhanced-coupling scratch | **233,546** | 43,008 |
 
-The largest allocation is now the E-AC-3 decoder's own AHT buffer rather than anything JOC owns.
+The largest allocation was then the E-AC-3 decoder's own AHT buffer rather than anything JOC owns.
+That buffer was split into one 6,144-byte buffer per stream on 2026-09-12, and since 2026-09-16
+an AHT stream decodes straight into the per-block coefficient store instead, with no buffer of
+its own.
 
 That last row is the one that is easy to miss. 267,754 against 280,792 free looks like 13,038
 spare, but the order of fixtures decided the result: objects run after an enhanced-coupling decode

@@ -8,7 +8,7 @@ else()
     set(AC3FORGE_ESP_PROBE_SRC "../../../probe.cpp")
 endif()
 
-# The network load is a DIRECTORY, like the stream_player example's sinks and
+# The network load is a DIRECTORY, like the hearth_sink example's sinks and
 # sources: net/none/ has no network code at all, net/wifi/ joins an access
 # point and reads a TCP stream. One of them is compiled.
 if(CONFIG_AC3FORGE_PROBE_NETWORK_WIFI)
@@ -20,7 +20,7 @@ endif()
 # The WiFi components are listed for both loads. IDF expands REQUIRES in an
 # earlier pass than the one that reads CONFIG_ values, so a conditional list
 # resolves to its default branch while the source list resolves correctly (see
-# the stream_player example's main/CMakeLists.txt). Listing them changes
+# the hearth_sink example's main/CMakeLists.txt). Listing them changes
 # nothing the `none` load runs: nothing it compiles calls into them.
 #
 #   ac3forge       the decoder under test

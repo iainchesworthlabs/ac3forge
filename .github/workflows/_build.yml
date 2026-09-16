@@ -120,7 +120,7 @@ on:
         default: true
       run_esp:
         description: >-
-          Build/test build-esp32s3, build-esp32c3 and build-footprint. The last one runs on a
+          Build/test build-esp32s3, hearth-esp32s3, build-esp32c3 and build-footprint. The last one runs on a
           Linux-fleet runner and cross-compiles arm-none-eabi rather than ESP-IDF, but it shares
           apps/baremetal/'s probe and fixtures with the other two (see its own "sibling" comment)
           and classify_changes.py's LANE_PREFIXES puts apps/baremetal/ in `esp`, not `linux` - the
@@ -386,6 +386,7 @@ jobs:
       persist_quality_trend: ${{ inputs.persist_quality_trend }}
       llvm_version: ${{ needs.toolchain-versions.outputs.llvm_version }}
       cmake_min: ${{ needs.toolchain-versions.outputs.cmake_min }}
+      qt_version: ${{ needs.toolchain-versions.outputs.qt_version }}
       vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
   package-macos-universal:
@@ -1962,13 +1963,13 @@ jobs:
       # rather than one so the rewind at end of stream is exercised. This step
       # does not gate on the capture sink's figures; the capture and render
       # steps below do.
-      - name: Build and run the streaming player example under QEMU
+      - name: Build and run the Hearth sink example under QEMU
         env:
           SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci"
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           idf.py set-target esp32s3
           idf.py build
           idf.py size | tee -a "$GITHUB_STEP_SUMMARY"
@@ -2006,7 +2007,7 @@ jobs:
           kill "$watcher" 2>/dev/null || true
           wait "$watcher" 2>/dev/null || true
           if ! grep -q '^result=pass' qemu-stream.txt; then
-            echo "::error title=ESP32-S3 streaming player failed::the example did not report result=pass" >&2
+            echo "::error title=ESP32-S3 Hearth sink failed::the example did not report result=pass" >&2
             grep -E 'result=|error|Guru Meditation|assert failed' qemu-stream.txt >&2 || true
             exit 1
           fi
@@ -2014,14 +2015,14 @@ jobs:
           # verdict is printed, so a panic or a reset that came later is in the
           # capture too; tools/checks/check_esp_console.py fails the step on
           # either, and its header says why that matters.
-          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 streaming player" qemu-stream.txt
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 Hearth sink" qemu-stream.txt
           # Nothing should ever be skipped looking for a sync word: the build
           # tells the player exactly how many bytes of the partition are audio.
           # A non-zero count means either that length is wrong or the framing is.
           resync=$(sed -n 's/.*stream\.resync_bytes=\([0-9]*\).*/\1/p' qemu-stream.txt | tail -1)
           echo "resynchronised bytes: ${resync:-unknown}"
           if [ "${resync:-1}" != "0" ]; then
-            echo "::error title=ESP32-S3 streaming player::${resync} bytes were skipped looking for a sync word, expected 0" >&2
+            echo "::error title=ESP32-S3 Hearth sink::${resync} bytes were skipped looking for a sync word, expected 0" >&2
             exit 1
           fi
 
@@ -2049,13 +2050,13 @@ jobs:
             local got
             got=$(sed -n "s/.*stream\.rms\[$channel\]=\([0-9]*\).*/\1/p" qemu-stream.txt | tail -1)
             if [ -z "$got" ]; then
-              echo "::error title=ESP32-S3 streaming player::no stream.rms[$channel] line" >&2
+              echo "::error title=ESP32-S3 Hearth sink::no stream.rms[$channel] line" >&2
               exit 1
             fi
             local slack=$(( expected / 20 + 200 ))
             echo "rms[$channel] = $got (host $expected, tolerance +/-$slack)"
             if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
-              echo "::error title=ESP32-S3 streaming player::channel $channel decoded to $got, host says $expected" >&2
+              echo "::error title=ESP32-S3 Hearth sink::channel $channel decoded to $got, host says $expected" >&2
               exit 1
             fi
           }
@@ -2084,7 +2085,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2167,7 +2168,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2222,6 +2223,84 @@ jobs:
             exit 1
           fi
 
+      # The widest frame the part reaches: sixteen 16-bit slots, two lines of
+      # eight (ac3forge::sink_ceiling(16, true)), onto a sixteen-speaker 9.1.6
+      # layout so every slot carries a channel rather than padding
+      # (sdkconfig.ci-tdm916). The i2s sink cannot run here - QEMU emulates no
+      # I2S - so what this holds is everything up to the peripheral: the
+      # planner's two-line split, interleave_16in16 across a full sixteen
+      # slots, and the renderer putting a 5.1 stream where a 9.1.6 layout
+      # expects it, with the six height slots silent because the stream has
+      # nothing for them.
+      - name: Run the capture sink at sixteen 16-bit TDM slots under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-tdm;sdkconfig.ci-tdm916"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          : > qemu-capture916.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-capture916.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-capture916.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
+
+          if ! grep -q '^result=pass' qemu-capture916.txt; then
+            echo "::error title=ESP32-S3 sixteen-slot capture run::did not report result=pass" >&2
+            grep -E 'result=|error|Guru Meditation|assert failed' qemu-capture916.txt >&2 || true
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 sixteen-slot capture run" qemu-capture916.txt
+
+          value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-capture916.txt | tail -1; }
+          if ! grep -q '^sink: capture .* 16-bit x16 in 16 slots' qemu-capture916.txt; then
+            echo "::error title=ESP32-S3 sixteen-slot capture run::the sink did not open sixteen 16-bit slots" >&2
+            grep -E '^sink: capture|^player: layout' qemu-capture916.txt >&2 || true
+            exit 1
+          fi
+          pad=$(value 'capture\.padding_nonzero')
+          carried=$(value 'capture\.carried_nonzero')
+          slots=$(value 'capture\.slots')
+          echo "slots=$slots padding_nonzero=$pad carried_nonzero=$carried"
+          if [ "${slots:-0}" != "16" ] || [ "${pad:-1}" != "0" ] || [ "${carried:-0}" -eq 0 ]; then
+            echo "::error title=ESP32-S3 sixteen-slot capture run::TDM slot layout is wrong (slots=$slots padding_nonzero=$pad carried_nonzero=$carried)" >&2
+            exit 1
+          fi
+          # Every slot a 5.1 stream has nothing for - the wides, the rear
+          # surrounds and the six heights - silent, with the LFE in slot 15:
+          # the check that the renderer placed the channels rather than
+          # filling the frame with whatever came next.
+          # Through value() rather than an anchored pattern of its own: the
+          # console ends every line with a CR, so a `$` after the digits
+          # matches nothing and every slot reads as empty.
+          for slot in 5 6 7 8 9 10 11 12 13 14; do
+            level=$(value "stream\.rms\[$slot\]")
+            if [ "${level:-1}" != "0" ]; then
+              echo "::error title=ESP32-S3 sixteen-slot capture run::slot $slot should be silent for a 5.1 stream, it is at $level" >&2
+              exit 1
+            fi
+          done
+
       # A height layout, rendered from the stream's objects: the footprint
       # probe's eac3_atmos_height fixture (stream/height.ec3, the same bytes as
       # fixture.hpp's kEac3AtmosHeightStream) played onto 7.1.4 through the
@@ -2239,7 +2318,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2333,7 +2412,7 @@ jobs:
           python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2449,7 +2528,7 @@ jobs:
           python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           if [ ! -f build/qemu_flash.bin ] || [ ! -f build/qemu_efuse.bin ]; then
             echo "::error title=ESP32-S3 web page::the HTTP step's QEMU images are not in build/" >&2
             exit 1
@@ -2478,7 +2557,7 @@ jobs:
             local slack=$(( expected / 20 + 200 ))
             echo "rms[$channel] = $got (a quarter of the host's, $expected, tolerance +/-$slack)"
             if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
-              fail "channel $channel decoded to $got at the page's volume, expected $expected"
+              fail "channel $channel decoded to $got at the volume the test set, expected $expected"
             fi
           }
 
@@ -2489,16 +2568,17 @@ jobs:
           grep -q '^result=pass' qemu-ui.txt || fail "the boot play did not report result=pass"
           echo "served: GET / $(curl -s -m 10 -o /dev/null -w '%{size_download}' http://127.0.0.1:8080/) bytes, GET /ui.js $(curl -s -m 10 -o /dev/null -w '%{size_download}' http://127.0.0.1:8080/ui.js) bytes"
 
-          # The page loads from the firmware and shows the boot play; the
-          # volume set with its slider reads back through GET /status; a
-          # layout the capture sink cannot carry is refused in the firmware's
-          # words; a play started from its form finishes; its Stop reads back
-          # as stopped. device-ui/board/smoke.spec.js has the details.
+          # The page loads from the firmware and shows the boot play; a name
+          # saved from it reads back through GET /status; a layout the capture
+          # sink cannot carry is refused in the firmware's words; a volume set
+          # over REST reads back, and a play started over REST finishes at it;
+          # Stop reads back as stopped, on the page too.
+          # device-ui/board/smoke.spec.js has the details.
           (cd "$GITHUB_WORKSPACE/apps/wasm/tests" && AC3FORGE_DEVICE_URL=http://127.0.0.1:8080/ CI=1 npm run test:board) || fail "the page did not drive the board (Playwright's output is above)"
 
-          # The play the page started, at the volume the page set: a quarter of
-          # the boot play's levels, 56,673 and 47,346.
-          [ "$(grep -c '^result=pass' qemu-ui.txt)" -ge 2 ] || fail "the play the page started did not report result=pass"
+          # The play the test started, at the volume it set: a quarter of the
+          # boot play's levels, 56,673 and 47,346.
+          [ "$(grep -c '^result=pass' qemu-ui.txt)" -ge 2 ] || fail "the play the test started did not report result=pass"
           check_rms 0 14168
           check_rms 1 11837
 
@@ -2515,7 +2595,7 @@ jobs:
           python3 "$console" --title "ESP32-S3 web page" qemu-ui.txt
           kill "$qemu" 2>/dev/null || true
 
-      # The stream set (esp-idf/ac3forge/examples/stream_player/www/,
+      # The stream set (esp-idf/ac3forge/examples/hearth_sink/www/,
       # planning/esp32-stream-set.md) over the HTTP source, rendered onto
       # 7.1.4: sdkconfig.ci-http714 is the HTTP shape with the capture sink's
       # twelve-slot TDM conversion, levels as coded and objects as their bed,
@@ -2532,11 +2612,11 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          www="$GITHUB_WORKSPACE/esp-idf/ac3forge/examples/stream_player/www"
+          www="$GITHUB_WORKSPACE/esp-idf/ac3forge/examples/hearth_sink/www"
           python3 -m http.server 8000 --bind 0.0.0.0 --directory "$www" >/dev/null 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2587,12 +2667,19 @@ jobs:
           # --min-heap-free: this is the widest shape the part runs - twelve
           # channels out of three substreams, with the Ethernet driver and the
           # HTTP server in the same internal RAM - so it is where a decoder or
-          # player that starts holding more is seen first. The floor is set
-          # below what this shape measures (about 33-35 KB) and well above
-          # both the 18-21 KB it ran at before PR #698 and the 7-9.5 KB that
-          # merge left it at, so a change that spends ten kilobytes fails here
-          # rather than in whichever later run happens to abort.
-          python3 "$console" --title "ESP32-S3 stream set" --min-heap-free 24576 qemu-set.txt
+          # player that starts holding more is seen first.
+          #
+          # The floor moved from 24,576 to 20,480 when B2 put mDNS on the
+          # board: being findable costs about 8 KB of internal RAM in every
+          # shape. The plan asks for that cost, and this gate caught it the
+          # afternoon it arrived. With the player's block storage sized from
+          # the layout (PR #719), the shape measures 28,304 bytes with mDNS,
+          # so 20,480 leaves about 8 KB for run-to-run movement and for what
+          # the Sendspin player adds, and still fails on a change of the size
+          # that put this step in the ground: PR #698 spent 10 KB and left
+          # the play running on 7-9.5 KB. The Improv listener's own 4 KB is
+          # not in this figure - a board with a network does not start it.
+          python3 "$console" --title "ESP32-S3 stream set" --min-heap-free 20480 qemu-set.txt
           kill "$qemu" 2>/dev/null || true
 
       # BUILD ONLY, for the four combinations no step above runs: i2s, sd,
@@ -2627,6 +2714,11 @@ jobs:
       # The fourth, null, drives no hardware. It is built here because the
       # QEMU runs above all use the capture sink in its place.
       #
+      # And the Sendspin player as a board builds it (sdkconfig.sendspin, over
+      # the hardware and PSRAM overlays): WiFi, PSRAM and the I2S sink, none of
+      # which QEMU has. Its protocol, playout and levels run under QEMU in
+      # hearth-esp32s3, from the image the step after this one builds.
+      #
       # What can go wrong in a build nothing runs is that it stops compiling -
       # an IDF component is renamed, a driver API changes shape - and CI should
       # find that before an integrator does. It has found one: the SD and HTTP
@@ -2638,7 +2730,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           for combo in \
             "i2s:CONFIG_AC3FORGE_EXAMPLE_SINK_I2S=y" \
             "sd:CONFIG_AC3FORGE_EXAMPLE_SOURCE_SD=y" \
@@ -2654,9 +2746,45 @@ jobs:
             echo "$name: built"
           done
           rm -f sdkconfig.probe
+          echo "--- sendspin board ---"
+          rm -rf build sdkconfig
+          board="sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram;sdkconfig.sendspin"
+          SDKCONFIG_DEFAULTS="$board" idf.py set-target esp32s3 >/dev/null
+          SDKCONFIG_DEFAULTS="$board" idf.py build >/dev/null
+          echo "sendspin board: built"
           # Leave the tree as CI's runnable configuration found it, so a later
           # step or a re-run does not inherit a probe build.
           rm -rf build sdkconfig
+
+      # The Sendspin player on QEMU's Ethernet (sdkconfig.ci-sendspin, over the
+      # HTTP shape), for hearth-esp32s3 to play to: that job needs the host's
+      # test server, which is a GCC 16 and vcpkg build this image does not
+      # carry, so the image goes to it as an artifact. The flash and eFuse
+      # images are made as the HTTP step makes them.
+      - name: Build the Sendspin player for QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-http;sdkconfig.ci-sendspin"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          image="$GITHUB_WORKSPACE/sendspin-qemu-image"
+          mkdir -p "$image"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          (cd build && esptool --chip esp32s3 merge-bin --output "$image/qemu_flash.bin" --pad-to-size 16MB @flash_args >/dev/null)
+          PYTHONPATH="$IDF_PATH/tools" IMAGE="$image" python3 -c "import os; from idf_py_actions.qemu_ext import QEMU_TARGETS; open(os.path.join(os.environ['IMAGE'], 'qemu_efuse.bin'), 'wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"
+          ls -l "$image"
+          rm -rf build sdkconfig
+
+      - name: Upload the Sendspin player's QEMU image
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: esp32s3-sendspin-qemu
+          path: sendspin-qemu-image/
+          retention-days: 3
+          if-no-files-found: error
 
       - name: Upload the ESP32-S3 map and console output
         if: always()
@@ -2667,15 +2795,116 @@ jobs:
             apps/baremetal/platform/esp32s3/build/ac3probe_esp32s3.map
             apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
             apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
-            esp-idf/ac3forge/examples/stream_player/qemu-stream.txt
-            esp-idf/ac3forge/examples/stream_player/qemu-capture.txt
-            esp-idf/ac3forge/examples/stream_player/qemu-render.txt
-            esp-idf/ac3forge/examples/stream_player/qemu-http.txt
-            esp-idf/ac3forge/examples/stream_player/qemu-set.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-stream.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-capture.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-capture16.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-capture916.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-render.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-http.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-set.txt
           # error, not warn: this artifact is the only way to read what the
           # probe measured without re-running the leg, and it silently uploaded
           # just the map the first time. A missing file here should say so.
           if-no-files-found: error
+
+  # Hearth B4 (planning/hearth-reference-player.md): the Sendspin player
+  # build-esp32s3 built for QEMU, played to from the host. ac3hearth-testserver
+  # pairs with the emulated board by the token on its console, gives it a 2.0
+  # layout and plays it the E-AC-3 JOC fixture in one group with a test sink of
+  # its own; tools/checks/run_sendspin_qemu.sh then holds the board's levels to
+  # the test sink's WAV and its console to one clean boot and the heap floor.
+  # A connection, pairing, setting, burst or level that goes wrong fails it.
+  #
+  # A job of its own rather than a step in build-esp32s3: the test server is a
+  # host build with GCC 16 and vcpkg's hearth feature, made as hearth-validate
+  # makes it, and Espressif's image carries neither. QEMU is Espressif's
+  # release that ESP-IDF v6.1's tools.json pins, checked against that file's
+  # SHA-256, and the second apt line is what it links.
+  hearth-esp32s3:
+    name: Hearth Sendspin sink (ESP32-S3, QEMU)
+    needs: [check-runners, toolchain-versions, build-esp32s3]
+    if: inputs.run_esp
+    runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_6) }}
+    container: ubuntu:26.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      QEMU_XTENSA_URL: https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417/qemu-xtensa-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz
+      QEMU_XTENSA_SHA256: 0eecb2a34a5586c0e59110f77b9343b7b336e82fdb0e1a30e1dc1bab8a547e35
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config python3 python3-venv software-properties-common tar unzip \
+            wget xz-utils zip \
+            libgcrypt20 libglib2.0-0t64 libpixman-1-0 libsdl2-2.0-0 libslirp0
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+          # hearth-validate's install set, so its cache.
+          cache-key-suffix: hearth
+
+      - name: Build the test server
+        shell: bash
+        run: |
+          set -eu
+          cmake --preset config-linux-gcc \
+            -DVCPKG_MANIFEST_FEATURES=hearth \
+            -DAC3FORGE_BUILD_HEARTH=ON \
+            -DAC3FORGE_BUILD_EXAMPLES=OFF
+          cmake --build --preset build-linux-gcc --target ac3hearth-testserver
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: esp32s3-sendspin-qemu
+          path: sendspin-qemu-image
+
+      - name: Install QEMU for Xtensa
+        shell: bash
+        run: |
+          set -eu
+          curl -sSfL --retry 3 -o /tmp/qemu-xtensa.tar.xz "$QEMU_XTENSA_URL"
+          echo "$QEMU_XTENSA_SHA256  /tmp/qemu-xtensa.tar.xz" | sha256sum -c -
+          mkdir -p /opt/qemu-xtensa
+          tar -xJf /tmp/qemu-xtensa.tar.xz -C /opt/qemu-xtensa
+          qemu="$(find /opt/qemu-xtensa -name qemu-system-xtensa -type f -print -quit)"
+          [ -n "$qemu" ] || { echo "::error title=Hearth Sendspin sink::qemu-system-xtensa is not in the release archive" >&2; exit 1; }
+          "$qemu" --version
+          echo "QEMU_XTENSA=$qemu" >> "$GITHUB_ENV"
+
+      - name: Play to the emulated board and hold its levels to a test sink's
+        shell: bash
+        run: |
+          tools/checks/run_sendspin_qemu.sh \
+            --qemu "$QEMU_XTENSA" \
+            --image sendspin-qemu-image \
+            --server build/config-linux-gcc/bin/ac3hearth-testserver \
+            --out sendspin-qemu-run
+
+      - name: Upload the run
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hearth-esp32s3-sendspin
+          path: |
+            sendspin-qemu-run/qemu-sendspin.txt
+            sendspin-qemu-run/server.txt
+            sendspin-qemu-run/report.json
+          if-no-files-found: warn
 
   build-esp32c3:
     name: Minimum-footprint codec (ESP32-C3, QEMU)

@@ -1,0 +1,26 @@
+# A board as a Sendspin sink (planning/hearth-reference-player.md, B3):
+#
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram;sdkconfig.sendspin" idf.py build
+#
+# The Sendspin player on WiFi, with the page and the REST routes on port 80.
+# Nothing plays at boot: servers play to the board. POST /play with a URL still
+# plays one stream over HTTP, for debugging, and hands the sink back when it
+# ends. A board with no network stored is told one over Improv on the console
+# (README, "Joining a network").
+CONFIG_AC3FORGE_SENDSPIN=y
+CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP=y
+CONFIG_AC3FORGE_EXAMPLE_NETWORK_WIFI=y
+CONFIG_AC3FORGE_EXAMPLE_HTTP_URL=""
+CONFIG_AC3FORGE_EXAMPLE_CONTROL_PORT=80
+CONFIG_AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES=125
+
+# Two HTTP servers, each with three sockets of its own and three it keeps for
+# itself, the HTTP client and mDNS: lwIP's default of ten is not enough.
+CONFIG_LWIP_MAX_SOCKETS=16
+
+# The E-AC-3 decoder and the renderer on core 1, the network and the
+# sessions on core 0, as the player's own plays have them. lwIP's task is
+# pinned there too: ESP-IDF leaves it free to run on either core, at a higher
+# priority than the decoder, and a server's read-ahead gives it a lot to do.
+CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE=1
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y

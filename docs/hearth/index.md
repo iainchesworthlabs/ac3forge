@@ -24,7 +24,7 @@ sink will take it.
 
 | Target | What runs there | Strongest evidence |
 |---|---|---|
-| [ESP32-S3](../platforms/bare-metal/esp32-s3.md) | Two example players — `i2s_player` (a fixed fixture, looped) and `stream_player` (flash, SD, FAT or HTTP source; I2S, TDM, capture or null sink) | **Real time on a board**, every fixture, Atmos objects placed onto 7.1.4; `stream_player`'s control surface exercised through QEMU with a port forward |
+| [ESP32-S3](../platforms/bare-metal/esp32-s3.md) | Two example players — `i2s_player` (a fixed fixture, looped) and `hearth_sink` (flash, SD, FAT or HTTP source; I2S, TDM, capture or null sink) | **Real time on a board**, every fixture, Atmos objects placed onto 7.1.4; `hearth_sink`'s control surface exercised through QEMU with a port forward |
 | [ESP32-C3](../platforms/bare-metal/esp32-c3.md) | The same decoder, in the fixed-point tier | Correct under `qemu-riscv32` emulation. No board has run it |
 | [ESPHome](../platforms/bare-metal/esphome.md) | An external component wrapping the ESP32-S3 decoder | Config-checked in CI against the manifest; not yet a `media_player` or `speaker` source |
 | Windows, Linux and macOS | `ac3hearth`, a desktop reference player: planned, not built | Nothing yet — see [the design record](design/player-appliance.md) |

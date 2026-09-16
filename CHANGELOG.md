@@ -29,6 +29,29 @@ and release packaging.
 
 **Minimum-footprint / ESP32 decode profile**
 
+- **A Hearth sink knows what it is, joins a network it was told about, and is
+  found by name.** What the board is — its name, the network it joins, how wide its
+  DAC's slots are and whether a second I2S line is wired — lives in NVS rather than in
+  the image, so none of it needs a reflash. A board with nothing stored still behaves
+  exactly as the build says, which is what keeps CI unchanged. Two ways in: **Improv
+  Wi-Fi** over the same USB serial port the console uses, which is how a board with no
+  network at all is told about one; and `PUT /name`, `/wiring`, `/network` and
+  `/slot-width` over the REST surface for a board already on one. Once it has a
+  network it advertises **`_sendspin._tcp` over mDNS**, port 8928 with `path=/sendspin`,
+  which is what a Sendspin server looks for. The network now comes up at boot rather
+  than at the first play, because a sink is found before it is played to. Costs about
+  8 KB of internal RAM for mDNS on every shape; the Improv listener's 4 KB is only
+  spent on a board that has no network to join, since that board is not decoding
+  anything.
+- **Sixteen channels out of an ESP32-S3, and the slot width as a setting.** An I2S
+  line carries 128 bits a frame, so the two the part has reach sixteen 16-bit slots or
+  eight 32-bit ones — a 7.1.4 layout leaves through the `i2s` sink for the first time,
+  where eight channels was the ceiling before. The width is no longer fixed when the
+  image is built: `GET` and `PUT /slot-width` beside `/layout` change it between plays,
+  `/status` reports it as `slot_bits`, and the sink's ceiling moves with it, since which
+  width a board wants is a property of the DACs it is wired to rather than of the
+  firmware. A change is refused while a play is running, and takes effect at the next
+  one. Kconfig still sets the width the sink starts at.
 - **A fixed-point decode tier** (`-DAC3FORGE_DECODE_SCALAR=fixed`), a Q7.24 integer
   scalar path for parts with no FPU (an ESP32-C3, a Cortex-M3), joining `double` and
   `float` on the decode-scalar axis. Measured at 121 dB+ on the gold streams and 111 dB+
@@ -595,6 +618,14 @@ and release packaging.
 
 **Minimum-footprint / ESP32 decode and encode profile**
 
+- **The ESP-IDF streaming-player example is now `hearth_sink`.** It becomes Hearth's
+  ESP32 sink (`planning/hearth-reference-player.md`), so it takes the name before the
+  work starts: `esp-idf/ac3forge/examples/hearth_sink/`, the CMake project
+  `ac3forge_hearth_sink`, and the *ac3forge hearth sink* menu in `idf.py menuconfig`.
+  Its `CONFIG_AC3FORGE_EXAMPLE_*` options, sinks, sources, web page and stream set are
+  unchanged, and the image it builds behaves as it did. Anyone pointing a script at the
+  old path or flashing `ac3forge_stream_player.bin` needs the new name; the GUI's own
+  stream player is a different thing and keeps its.
 - **The fixed-point tier decodes 5.1 in real time on the ESP32-C6 with WiFi up**, with the
   same PCM bit for bit: the fixed-tier hashes do not move. The IMDCT pair's products drop a
   saturation they cannot reach, the overlap-add runs on 32 bits and builds its output floats
@@ -620,6 +651,21 @@ and release packaging.
   1.1 — every level unchanged to the digit throughout. [The ESP32-S3
   page](docs/platforms/bare-metal/esp32-s3.md#timing) has the full stage tables and a capability table
   of what fits the part.
+- **The E-AC-3 decoder no longer copies what its per-block coefficient store already
+  holds.** An AHT stream sends all six blocks' mantissas in block 0, and the decoder held
+  them in a buffer per stream until each block copied its own out: 6,144 bytes a stream in
+  the float build, 36,864 for a 7.1.4 stream's six streams and 43,008 with the coupling
+  channel. Block 0 now decodes them straight into the store, which keeps every stream of
+  every block. Enhanced coupling's reconstruction likewise reads its neighbouring blocks'
+  coupling channel there instead of from a 6,144-byte copy, and an access unit's substreams
+  are gathered in an array the decoder keeps from unit to unit instead of one allocated
+  for every unit (2,508 bytes for three substreams on the ESP32-S3). The PCM is unchanged
+  bit for bit in the `double`, `float` and `fixed` tiers. Under QEMU, in the ESP32-S3's
+  7.1.4 network shape without PSRAM, `714-aht.ec3` and `714-all.ec3` no longer abort for
+  want of internal RAM: over four runs each, their least free internal heap during a play
+  was 31,224 to 32,040 and 30,072 to 32,196 bytes, where the 7.1.4 streams CI already plays
+  reach 30,252 to 35,040. `714-ecpl.ec3` now plays too, but with as little as 2,236 bytes
+  to spare, so it stays a PSRAM-only stream.
 - **The encoders now run their analysis front end and coefficient store in
   `encode_scalar_t`** (roadmap PF7, a second scalar axis beside the decoder's):
   transient detection, the block gather, the forward transform, and — in a second pass
@@ -751,11 +797,52 @@ and release packaging.
 
 **Command line and GUI**
 
+- **`ac3cli monitor` refused a §E2.3.1.2 legacy-core stream and dropped every stream's last
+  unit.** It picked its decode path from the first frame's bsid alone, so a stream whose 5.1
+  bed is a plain AC-3 syncframe with Annex E dependents extending it went to `FrameDecoder`,
+  which refuses the first dependent it reaches - the same test `decode` already makes now
+  reads `has_eac3_extension_substreams` too. Separately, the E-AC-3 loop never drained
+  `Eac3Decoder::flush()`, so the final access unit of any stream whose last frames used §3.7's
+  transient pre-noise tool never played - held back by the decoder and simply left there when
+  the loop ended. `spatial` had the same missing flush. Both commands now play that unit,
+  through a new `ac3::apps::held_back_unit` shared with future callers, laid out the same way
+  as every other unit.
+- **`ac3cli spatial` refused a §E2.3.1.2 legacy-core stream outright.** It refused any
+  stream whose first frame was AC-3 (`bsid <= 8`) before ever checking for an Annex E
+  extension substream behind it - but a legacy-core delivery's object layer lives in
+  exactly such a dependent, since a plain AC-3 core has nowhere to put an EMDF container.
+  `spatial` now shares `run_monitor`'s own `ac3::apps::reads_as_access_units` test, so a
+  legacy-core stream that does carry an object layer decodes and plays instead of being
+  turned away.
+- **`ac3cli decode` and `transcode` could misplace a stream's held-back last unit.** Both
+  already drained `flush()`, but placed each flushed substream's channels by appending it
+  straight into the WAV sink or the transcode sample queue - once per substream per Table
+  E2.5 location, rather than assembling the whole unit first. A last unit that released a
+  bed together with the dependent that had been holding it back could then land both
+  substreams' channels in the same location, growing some channels past others instead of
+  merely leaving stale audio behind. Both now build the held-back unit once through the same
+  `ac3::apps::held_back_unit` `monitor`/`spatial` use above, and append it exactly once per
+  slot, like every other unit.
 - **The GUI offered E-AC-3 bitrates a source's sample rate couldn't frame.**
   `bitrates()` branched on codec but not on the loaded source's rate, so a 16 kHz file
   offered rungs no `frmsiz` could carry; encoding was refused only at the encode button.
   The list is now filtered per-rate by the same rule `plan::validate()` already applies,
   and a lower-rate source clamps an out-of-range selection down.
+- **`ac3cli probe` swapped bsmod 7's two service names.** Table 5.7 makes acmod 1/0's
+  bsmod 7 "voice over" and every wider acmod's "karaoke"; the table form and the JSON
+  document's `bsmod_label` had the pair backwards. `ac3::meta::describe()`, used by
+  `mpegts` and the library's own reporting, already had it the right way round.
+- **`ac3cli spatial` and `qc objects=` played and measured a decoded Atmos programme's
+  dynamic objects against an LFE that arrived 576 samples too early, and `decode ...
+  adm_out=` exported the same mismatch into its ADM master.** A JOC-reconstructed object
+  lags the bed it was pulled from by `oba::joc::reconstruction_delay(domain)` samples —
+  576 under the QMF domain every decoder defaults to (`docs/library/decoding.md`, "Atmos
+  objects lag the bed") — but all three sites combined a decoded unit's bed LFE with its
+  already-lagged object audio unmodified, in the same update or the same exported track.
+  The LFE is now held back to match: a small FIFO delay line ahead of the Windows Spatial
+  Sound sink and the loudness meter, and a whole-channel shift on the batch-written ADM
+  master, the last pinned by a regression test measuring the exported master's two
+  channels before and after.
 
 **ESP32 / bare-metal**
 
@@ -774,6 +861,15 @@ and release packaging.
   digit, decode time no higher. The ESP32 QEMU legs now also fail on a failed allocation
   anywhere in the console — one can be survived, so a run could print hundreds and still
   report `result=pass` — and the stream set's free heap is held to a floor.
+- **The ESP32 player kept block storage for sixteen output slots whatever the layout.**
+  `ac3forge::Player` held 256 samples for each of sixteen slots inside its own
+  allocation, 16 KB, so a 7.1.4 play carried 4 KB it never read and a stereo play 14 KB,
+  in internal RAM on a part without PSRAM, where the twelve-channel shape runs short
+  first. The storage is now sized from the play's layout at `start()`, placed in PSRAM
+  when the part has it, and released at `stop()` with the ring and the hold. On the
+  7.1.4 stream set under QEMU, the least free internal RAM during a play is 41,456 bytes
+  against 36,904 on main's last CI run, and every stream's slot levels are still the
+  host's.
 - **The ESP32 streaming example's `tdm` sink claimed sixteen 32-bit slots on one data
   line; an ESP32-S3 carries four.** An S3 TDM frame holds at most 128 bits (ESP-IDF v6.1
   enforces it); the sink had never run on hardware before a 2026-09-11 board run found
@@ -794,6 +890,17 @@ and release packaging.
   stack free at high-water, 96 bytes under the CI runner's 8,192 floor — `DecodedSubstream`
   and `DecodedAccessUnit` grew by `bsid`/`cmixlev`/`surmixlev`/`alternate_bsi` (see below).
   `CONFIG_ESP_MAIN_TASK_STACK_SIZE` moves from 32,768 to 40,960.
+- **An E-AC-3 decode kept two or three copies of its result on the stack.** `Eac3Decoder`
+  returned each substream and access unit through a `std::optional` temporary, and
+  `decode_substream` held a concealed substream beside the decoded one, so a field added to
+  `DecodedSubstream` or `DecodedAccessUnit` cost the decode path several times its size: the
+  four fields above cost the ESP32-S3 streaming player's decode task about 1.9 KB. The results
+  are now built in place, in the caller's storage. The three stack frames live while a
+  substream decodes shrink from 12,352 to 9,040 bytes on the ESP32-S3. Under QEMU, every
+  E-AC-3 stream of the 7.1.4 stream set leaves the decode task at least 3,312 bytes more of
+  its 24,576: 9,344 at the least, against 6,032 before, and 10,368 for `714-walk`, which
+  left about 9,000 before those four fields. The footprint probe's decode leaves 19,344 bytes
+  of its 40,960-byte main-task stack, against 16,064.
 - **The ESP-IDF component decoded in `float` on parts with no FPU.** Its manifest says the
   decode arithmetic follows the part, but only the probe projects chose `fixed`:
   `src/forge/minimal.cmake` builds `float` when `AC3FORGE_DECODE_SCALAR` is unset, so any
@@ -801,6 +908,34 @@ and release packaging.
   board is up to 3.1 times slower than the fixed-point tier. The component now sets the
   option from ESP-IDF's `SOC_CPU_HAS_FPU` capability when the project has not: `fixed`
   without an FPU, `float` with one. A value set above `project()` or passed with `-D` stays.
+- **A Hearth sink restarted when Improv gave it a network after a failed join.**
+  `hearth_sink`'s `network_up()` ran the whole network setup on every call that had not
+  yet joined, and ESP-IDF refuses a second default event loop. The call Improv makes
+  after storing new credentials therefore aborted whenever an earlier join had failed:
+  a mistyped passphrase followed by the right one, or a board whose stored or built-in
+  network could not be joined at boot. The build's placeholder network, `my-network`,
+  puts every freshly flashed board in the second case. The board came back on the new
+  network, but the Improv client saw the port vanish instead of an answer.
+  - The setup now runs once. Each later attempt stops the station, waits until the
+    stop is reported, and starts it on the new network with a fresh retry count.
+  - A board that joins after boot now starts mDNS and the Sendspin player without a
+    restart. Before, only boot started them. The same applies when the boot play's
+    source is what brings the network up.
+  - An attempt no longer waits forever. A network that associates but gives no
+    address is left after 30 s; once stored, it used to hang the board at boot before
+    Improv started. A connect the driver refuses now fails the attempt.
+  - A build with no network stored and none built in used to restart in a loop: its
+    control surface opened a socket before lwIP was initialised. lwIP now comes up
+    whether or not there is a network to join.
+  - The QEMU Ethernet network set itself up again on a second call too, and is now
+    set up once as well.
+- **Over an ESP32-S3's USB console, a Hearth sink's Improv answers waited for the next
+  line it printed.** ESP-IDF's driverless USB-Serial-JTAG console sends its buffer to
+  the host only at a newline, and an Improv packet has none. On an idle board, or after
+  `cannot_connect`, nothing followed, and the client never got its answer. Each packet
+  is now synced to the host as it is written; on a board, a `current_state` request is
+  answered in 0.5 s, where before its answer arrived 10 s later with the next request's
+  output.
 
 **Codec correctness**
 
@@ -974,6 +1109,24 @@ and release packaging.
   `meta::describe()` names it. Both encoders refuse to write it, as they already refuse
   reserved surround levels, and `transcode` carries a reserved source value across as
   not indicated.
+- **The renderer played a JOC programme's LFE ahead of its objects.** A reconstructed
+  object comes out `oba::joc::reconstruction_delay()` samples after the bed it was pulled
+  from: 576 (12 ms) in the QMF domain the decoder uses by default, 256 in the MDCT-band
+  one. `ac3::render::LayoutRenderer::render()` played the bed's LFE beside the objects as
+  it arrived, so on the ESP32 player and Hearth's test sink the LFE led the objects by
+  that much. While objects are placed, the LFE now goes through a delay line of that
+  length. `set_joc_domain()` sets the length, and the ESP32 player passes its decoder's
+  domain. The line takes 2,304 bytes for a 5.1 bed, allocated when a unit's objects are
+  first placed, so a player that only plays the bed pays nothing. Measured end to end on
+  a stream this project's encoder writes, with one pulse sent to both an object and the
+  LFE (`tests/render/test_object_lfe_timing.cpp`): the LFE feed had it 576 samples before
+  the object's speaker, and now both have it at 832. In the MDCT-band domain the LFE was
+  256 samples early, and both are now at 512. The QEMU 7.1.4 render run's twelve slot
+  levels are unchanged. `set_bed()` stays idempotent for an unchanged bed, as it was
+  before: only a genuine change of which coded channels are LFE empties the delay line,
+  so a caller that re-announces the same bed every unit (as Hearth's own local decode
+  reference does) still agrees with one that calls `set_bed()` only when the bed changes
+  (as the players do).
 
 **Robustness and diagnostics**
 
@@ -1047,6 +1200,10 @@ and release packaging.
 - The room page described Windows' application-list behaviour on Linux, where PipeWire
   (unlike Windows' session model) only shows an application while it's actually playing
   sound.
+- **Crucible's headphones output played a decoded Atmos programme's dynamic objects
+  against an LFE that arrived 576 samples too early** - the same JOC reconstruction
+  delay `ac3cli spatial` had (see "Command line and GUI" above). `OutputStage::submit`'s
+  spatial-sink branch now holds the LFE back by the same FIFO delay line.
 
 **Tooling, packaging and release engineering**
 

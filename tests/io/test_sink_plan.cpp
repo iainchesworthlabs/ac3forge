@@ -35,18 +35,16 @@ TEST_CASE("sink_ceiling matches the per-line ceiling plan_sink refuses past",
           "[io][sink_plan]") {
     CHECK(sink_ceiling(32, false) == 4);
     CHECK(sink_ceiling(32, true) == 8);
-    // 128 bits a frame: eight 16-bit slots on one line.
+    // 128 bits a frame: eight 16-bit slots on one line, sixteen across two.
     CHECK(sink_ceiling(16, false) == 8);
-    // 16-bit stays single-line even with a second line enabled - the sink
-    // writes no second 16-bit line yet for the overflow to spill into.
-    CHECK(sink_ceiling(16, true) == 8);
+    CHECK(sink_ceiling(16, true) == 16);
     CHECK(sink_ceiling(24, false) == 0);
     CHECK(sink_ceiling(0, true) == 0);
 
     CHECK(line_ceiling(32).slots == 4);
     CHECK(line_ceiling(32).second_line_usable);
     CHECK(line_ceiling(16).slots == 8);
-    CHECK_FALSE(line_ceiling(16).second_line_usable);
+    CHECK(line_ceiling(16).second_line_usable);
     CHECK(line_ceiling(24).slots == 0);
 
     // Usable in a constant expression, which is what lets a sink size a
@@ -167,17 +165,34 @@ TEST_CASE("two lines, 32-bit, frame following the layout: line 0 fills to its ce
     REQUIRE_FALSE(plan_sink(8, 32, false, kFollow).has_value());
 }
 
-TEST_CASE("two lines, 16-bit: the combined ceiling is one line's 8 - no second 16-bit line yet",
+TEST_CASE("two lines, 16-bit: sixteen channels as two eight-slot frames",
           "[io][sink_plan]") {
-    // With a second line enabled, eight channels still go on line 0 alone,
-    // and nine have nowhere to go: the sink writes no second 16-bit line
-    // (SinkLineCeiling::second_line_usable is false at this width).
+    // The widest shape the component plans: two 128-bit frames of eight
+    // 16-bit slots, which is what a pair of eight-channel TDM DACs takes.
+    const auto sixteen = plan_sink(16, 16, true, kFollow);
+    REQUIRE(sixteen.has_value());
+    REQUIRE(sixteen->line0.slots == 8);
+    REQUIRE(sixteen->line0.channels == 8);
+    REQUIRE(sixteen->line0.tdm);
+    REQUIRE(sixteen->line1.slots == 8);
+    REQUIRE(sixteen->line1.channels == 8);
+    REQUIRE(sixteen->line1.tdm);
+    REQUIRE_FALSE(plan_sink(17, 16, true, kFollow).has_value());
+
+    // Line 0 fills first; the overflow rides line 1 with its remaining slots
+    // zeroed, the same rule the 32-bit pair follows.
+    const auto twelve = plan_sink(12, 16, true, kFollow);
+    REQUIRE(twelve.has_value());
+    REQUIRE(twelve->line0.channels == 8);
+    REQUIRE(twelve->line1.slots == 8);
+    REQUIRE(twelve->line1.channels == 4);
+
+    // A layout that fits one line leaves the second down, and a stereo one
+    // is still standard mode.
     const auto eight = plan_sink(8, 16, true, kFollow);
     REQUIRE(eight.has_value());
     REQUIRE(eight->line0.slots == 8);
-    REQUIRE(eight->line0.tdm);
     REQUIRE(eight->line1.slots == 0);
-    REQUIRE_FALSE(plan_sink(9, 16, true, kFollow).has_value());
 
     const auto two = plan_sink(2, 16, true, kFollow);
     REQUIRE(two.has_value());
@@ -185,14 +200,17 @@ TEST_CASE("two lines, 16-bit: the combined ceiling is one line's 8 - no second 1
     REQUIRE_FALSE(two->line0.tdm);
     REQUIRE(two->line1.slots == 0);
 
-    // A fixed frame does not bring line 1 up at this width either: there is
-    // no 16-bit buffer for it to write.
+    // In a fixed frame the second line runs for every layout, carrying
+    // nothing while line 0 holds all of it, so a second DAC's data pin is
+    // never left undriven.
     const auto fixed_two = plan_sink(2, 16, true, kFixed);
     REQUIRE(fixed_two.has_value());
     REQUIRE(fixed_two->line0.slots == 8);
     REQUIRE(fixed_two->line0.tdm);
-    REQUIRE(fixed_two->line1.slots == 0);
-    REQUIRE_FALSE(plan_sink(9, 16, true, kFixed).has_value());
+    REQUIRE(fixed_two->line1.slots == 8);
+    REQUIRE(fixed_two->line1.channels == 0);
+    REQUIRE(fixed_two->line1.tdm);
+    REQUIRE_FALSE(plan_sink(17, 16, true, kFixed).has_value());
 }
 
 TEST_CASE("fixed frame, one line: every channel count from 1 opens the full TDM frame",

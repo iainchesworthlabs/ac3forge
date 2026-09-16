@@ -883,10 +883,14 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // decode_substream without the §7.10 concealment wrapper around it.
     [[nodiscard]] std::expected<std::optional<DecodedSubstream>, DecodeError>
     decode_substream_core(std::span<const std::byte> frame);
-    // §7.10: a substream's worth of audio built out of retained_[slot] under
-    // the configured policy, or std::nullopt when that identity has nothing
-    // retained yet. `slot` is the identity key described below.
-    [[nodiscard]] std::optional<DecodedSubstream> conceal(DecodeError error, std::size_t slot);
+    // §7.10: replaces `decoded`'s error with a substream's worth of audio built
+    // out of retained_[slot] under the configured policy, or leaves the error
+    // standing when that identity has nothing retained yet. `slot` is the
+    // identity key described below. The substream is built inside `decoded`,
+    // which is decode_substream's return value, so the decode task's stack
+    // holds no second copy of it.
+    void conceal(std::size_t slot,
+                 std::expected<std::optional<DecodedSubstream>, DecodeError>& decoded);
     // The §7.8 fold over an assembled access unit, in whichever storage it
     // landed - the result's own vectors or the caller's spans. The fold
     // itself is OutputStage's; this only decides what to hand it.

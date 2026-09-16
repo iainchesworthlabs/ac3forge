@@ -613,11 +613,19 @@ else()
         # Immediately after it, and only after it: that script deploys Qt's
         # test module into the package, because Qt scans this whole directory
         # for QML imports and ui/tests/qml/tst_*.qml all `import QtTest`.
-        # Nothing a user runs loads qml/QtTest, Qt6Test.dll or
-        # Qt6QuickTest.dll - only ac3crucible_qmltests does, and that binary
-        # is never installed. cmake/StripQtTestDeployment.cmake carries the
-        # whole measurement, including why the Qt Quick Test binary's own
-        # location in bin/ has nothing to do with it and does not move.
+        # Nothing a user runs loads qml/QtTest, Qt6Test.dll, Qt6QuickTest.dll
+        # or (macOS) Contents/PlugIns/libquicktestplugin.dylib - only
+        # ac3crucible_qmltests does, and that binary is never installed.
+        # cmake/StripQtTestDeployment.cmake carries the whole measurement,
+        # including why the Qt Quick Test binary's own location in bin/ has
+        # nothing to do with it and does not move, and how it strips the
+        # macOS bundle shape too. That script needs this bundle's name set in
+        # the same install pass it runs in - hence install(CODE) with the
+        # SAME COMPONENT immediately before it, only on APPLE since the
+        # Windows shape needs no such variable.
+        if(APPLE)
+            install(CODE "set(_ac3_macos_bundle_name \"ac3crucible\")" COMPONENT crucible)
+        endif()
         install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/StripQtTestDeployment.cmake"
             COMPONENT crucible)
     endif()
@@ -646,6 +654,20 @@ if(WIN32)
         DESTINATION "${CMAKE_INSTALL_BINDIR}/driver" COMPONENT crucible)
     # The notices and the licence at the archive root, beside bin/ - the
     # layout tools/ci/check_crucible_package.py asserts and reads.
+    install(FILES "${AC3CRUCIBLE_NOTICES_FILE}" DESTINATION "." COMPONENT crucible)
+    install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" DESTINATION "." RENAME "LICENSE.txt" COMPONENT crucible)
+elseif(APPLE)
+    # The notices and the licence at the archive root, beside ac3crucible.app -
+    # notices/platform/macos/components.cmake's own AC3CRUCIBLE_NOTICES_LOCATION
+    # string already promised this layout, and it is the same place
+    # apps/notices/notices.cmake puts the runtime component's own pair beside
+    # ac3gui.app. Harmless in the one place these two pairs share a
+    # destination - the monolithic macOS .dmg (cmake/CPackProjectConfig.cmake) -
+    # since add_subdirectory(apps/crucible) in the top-level CMakeLists.txt runs
+    # before that file's include(), so its copy installs last and wins there;
+    # the standalone crucible zip this component actually ships as
+    # (cmake/Packaging.cmake) never shares a destination with the runtime
+    # component's files at all.
     install(FILES "${AC3CRUCIBLE_NOTICES_FILE}" DESTINATION "." COMPONENT crucible)
     install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" DESTINATION "." RENAME "LICENSE.txt" COMPONENT crucible)
 elseif(LINUX)

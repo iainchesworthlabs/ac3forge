@@ -32,10 +32,12 @@
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/verify/bap_census.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
 #include "ac3/verify/mirror.hpp"
+#include "stream_playback.hpp"
 
 namespace ac3cli::commands {
 
@@ -61,6 +63,22 @@ bool write_bap_census(const ac3::verify::BapCensus& census, const std::string& p
         return false;
     }
     return true;
+}
+
+// Shifts `pcm` later by `delay_samples`: result[n] is pcm[n - delay_samples]
+// for n >= delay_samples, silence before it - the same length as `pcm`, not
+// longer, so the true last delay_samples samples fall off the end rather than
+// growing the file. accumulate_adm's own comment says why this has to happen
+// to the bed's LFE before write_adm_atmos_master runs: those trailing samples
+// describe a moment the dynamic object channels beside it were never decoded
+// far enough to reach either, so there is nothing for them to align with.
+std::vector<float> delay_pcm(std::span<const float> pcm, std::size_t delay_samples) {
+    std::vector<float> out(pcm.size(), 0.0F);
+    if (delay_samples < pcm.size()) {
+        const std::size_t keep = pcm.size() - delay_samples;
+        std::copy_n(pcm.begin(), keep, out.begin() + static_cast<std::ptrdiff_t>(delay_samples));
+    }
+    return out;
 }
 
 // Whether the §7.8 output stage is going to fold this programme, which
@@ -413,6 +431,13 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // the ADM master's own <axml> chunk needs every dynamic object's own final duration known
     // before it can be built at all (ac3::admbridge::write() computes each audioBlockFormat's
     // duration from it - see bridge.cpp's own build_block_formats).
+    //
+    // The LFE channel this lambda appends below is NOT yet delayed to match the objects beside
+    // it - decode_access_unit hands the two to it already ac3::oba::joc::reconstruction_delay()
+    // samples apart (docs/library/decoding.md, "Atmos objects lag the bed"), and appending both
+    // verbatim, unit by unit, carries that same gap straight into adm_input.channels. delay_pcm()
+    // fixes it in one pass, once, on the finished LFE channel below rather than here per unit -
+    // this lambda has no reason to know the decoder's own joc_domain.
     const bool have_adm_output = !adm_out.empty();
     ac3cli::AdmMasterInput adm_input;
     bool adm_input_ready = false;
@@ -484,6 +509,11 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         adm_samples_emitted += object_audio.front().size();
     };
     ac3::DecodedAccessUnit first{};
+    // The programme's layout, from the first unit decoded - the held-back
+    // unit at end-of-stream is laid out against it (held_back_unit's own doc
+    // comment). std::nullopt exactly when `first` is still default, i.e. the
+    // sink never opened.
+    std::optional<ac3::eac3::chanmap::Layout> programme_layout;
     // What the independent (bed) substream actually carried, reported whether
     // or not it was applied - same convention as run_decode's own dynrng_min_db/
     // dynrng_max_db/compr_min_db/compr_max_db above, except both are seeded
@@ -549,6 +579,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         const auto& out = **decoded;
         if (!sink.is_open()) {
             first = out;
+            programme_layout = out.layout;
             if (!open_sink(first, out.channels.size())) {
                 return kExitOutput;
             }
@@ -572,132 +603,41 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                        sample_rate_hz(first.sample_rate));
     }
     // Whatever transient pre-noise processing was still holding back at
-    // end-of-stream. flush() returns raw per-substream results rather than
-    // assembled access units (see its own doc comment) - placed at the SAME
-    // pcm slot decode_access_unit's own §E3.8.2 assembly would have used
-    // (via location_map()), not assumed to already sit at that slot: a lone
-    // independent substream's coded order happens to agree with pcm's, but
-    // a dependent carrying only its own smaller channel set does not, and
-    // naively appending it by coded index corrupts already-established
-    // channels (e.g. a bed's L/R) with a dependent's height audio instead.
+    // end-of-stream (§3.7). held_back_unit assembles the flushed substreams
+    // the way decode_access_unit's own §E3.8.2 assembly would have, onto
+    // `programme_layout` (or, when nothing ever decoded, a layout it synthesizes
+    // itself by unioning the flushed substreams' own locations) - see its
+    // own doc comment for the placement rules this used to duplicate here.
     const auto flushed = decoder.flush();
     if (!flushed.empty()) {
-        // §7.7 words are meaningful at this report's level only from the
-        // independent (bed) substream - same convention as
-        // DecodedAccessUnit::dynrng/compr above; a dependent flushed here
-        // (only possible when transient pre-noise processing has left
-        // substreams of one access unit desynchronised at end-of-stream) is
-        // never the figure this report promises.
-        for (const auto& substream : flushed) {
-            if (substream.strmtyp == ac3::eac3::StreamType::kIndependent) {
-                track_metadata(substream.dynrng, substream.numblkscod, substream.compr);
-            }
-        }
-        const bool dual_mono = sink.is_open() ? first.acmod == ac3::Acmod::kDualMono
-                                              : flushed.front().acmod == ac3::Acmod::kDualMono;
-        if (dual_mono) {
-            // No Table E2.5 location to place by - dual mono is always a
-            // lone substream with no dependents and no spatial layout
-            // (decode_access_unit's own comment) - so its channels go
-            // straight out in coded order, same as decode_access_unit.
-            for (const auto& substream : flushed) {
-                if (!sink.is_open()) {
-                    first.acmod = ac3::Acmod::kDualMono;
-                    first.sample_rate = substream.sample_rate;
-                    first.dialnorm = substream.dialnorm;
-                    first.substream_count = 1;
-                    first.object_metadata = substream.object_metadata;
-                    if (!open_sink(first, substream.channels.size())) {
-                        return kExitOutput;
-                    }
-                }
-                for (std::size_t ch = 0; ch < substream.channels.size(); ++ch) {
-                    if (!sink.append(ch, substream.channels[ch])) {
-                        fmt::println(stderr, "error: cannot write to {}", out_path);
-                        abort_all();
-                        return kExitOutput;
-                    }
-                }
-            }
-        } else {
+        const auto held = ac3::apps::held_back_unit(
+            flushed, programme_layout, meta.output.target != ac3::DownmixTarget::kAsCoded);
+        if (held.has_value()) {
+            // §7.7 words are meaningful at this report's level only from the
+            // independent (bed) substream - held_back_unit's dynrng/compr/
+            // numblkscod already come from the lead substream alone, the
+            // same convention DecodedAccessUnit's own fields follow for a
+            // live unit.
+            track_metadata(held->dynrng, held->numblkscod, held->compr);
             if (!sink.is_open()) {
-                // No access unit ever completed - synthesize the program's
-                // layout by unioning every flushed substream's own
-                // locations, exactly like decode_access_unit's own §E3.8.2
-                // assembly.
-                std::uint16_t occupied = 0;
-                for (const auto& substream : flushed) {
-                    occupied = static_cast<std::uint16_t>(occupied | substream.location_map());
-                }
-                ac3::DecodedAccessUnit synthesized;
-                synthesized.sample_rate = flushed.front().sample_rate;
-                synthesized.acmod = flushed.front().acmod;
-                synthesized.dialnorm = flushed.front().dialnorm;
-                synthesized.substream_count = static_cast<int>(flushed.size());
-                synthesized.layout = ac3::eac3::chanmap::expand(occupied);
-                // Object audio only ever rides in the bed (the independent
-                // substream) - see DecodedAccessUnit::object_metadata's own
-                // comment - so at most one flushed substream carries it.
-                for (const auto& substream : flushed) {
-                    if (substream.object_metadata.has_value()) {
-                        synthesized.object_metadata = substream.object_metadata;
-                        break;
-                    }
-                }
-                first = synthesized;
-                if (!open_sink(first, static_cast<std::size_t>(first.layout.count))) {
+                first = *held;
+                if (!open_sink(first, held->channels.size())) {
                     return kExitOutput;
                 }
             }
-            // §E3.8.2 placement: each flushed substream's own channels land
-            // at whichever slot their Table E2.5 location occupies in
-            // `first.layout`, mirroring decode_access_unit's own assembly
-            // loop. Different substreams may append different lengths to
-            // different slots here; the sink's per-slot carry absorbs it.
-            for (const auto& substream : flushed) {
-                // A fold leaves the substream with its own channels in their
-                // own order and no Table E2.5 location left to place them by
-                // - Eac3Decoder::flush() folds these for exactly the reason
-                // this loop exists, so that every frame of the stream leaves
-                // at the same width the sink was opened for.
-                if (folding(meta, substream.acmod)) {
-                    for (std::size_t ch = 0; ch < substream.channels.size() && ch < sink_slots;
-                         ++ch) {
-                        if (!sink.append(ch, substream.channels[ch])) {
-                            fmt::println(stderr, "error: cannot write to {}", out_path);
-                            abort_all();
-                            return 1;
-                        }
-                    }
-                    continue;
-                }
-                const auto locations = ac3::eac3::chanmap::expand(substream.location_map());
-                for (int i = 0; i < locations.count; ++i) {
-                    const int slot = first.layout.index_of(locations[i]);
-                    if (slot < 0) {
-                        continue;
-                    }
-                    if (!sink.append(static_cast<std::size_t>(slot),
-                                     substream.channels[static_cast<std::size_t>(i)])) {
-                        fmt::println(stderr, "error: cannot write to {}", out_path);
-                        abort_all();
-                        return kExitOutput;
-                    }
+            for (std::size_t ch = 0; ch < held->channels.size() && ch < sink_slots; ++ch) {
+                if (!sink.append(ch, held->channels[ch])) {
+                    fmt::println(stderr, "error: cannot write to {}", out_path);
+                    abort_all();
+                    return kExitOutput;
                 }
             }
-        }
-        // JOC's reconstructed per-object audio, streamed the same way the
-        // main access-unit loop's is - see append_objects for why a size
-        // mismatch is skipped rather than resized into.
-        for (const auto& substream : flushed) {
-            if (!append_objects(substream.object_audio,
-                                sample_rate_hz(substream.sample_rate))) {
+            if (!append_objects(held->object_audio, sample_rate_hz(held->sample_rate))) {
                 abort_all();
                 return kExitOutput;
             }
-            accumulate_adm(substream.object_audio, substream.object_metadata, substream.channels,
-                           ac3::eac3::chanmap::expand(substream.location_map()),
-                           sample_rate_hz(substream.sample_rate));
+            accumulate_adm(held->object_audio, held->object_metadata, held->channels,
+                           held->layout, sample_rate_hz(held->sample_rate));
         }
     }
     progress.finish();
@@ -736,6 +676,15 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             fmt::println(stderr, "warning: {} given but no dynamic-object-only Atmos programme was decoded",
                          adm_out);
         } else {
+            // accumulate_adm's own comment: the LFE channel it built is still
+            // reconstruction_delay(meta.joc_domain) samples ahead of the object
+            // channels beside it - the one channel here with bed_label set, so
+            // there is no need to have tracked which index it landed at above.
+            if (!adm_input.channels.empty() && adm_input.channels.back().bed_label.has_value()) {
+                auto& lfe = adm_input.channels.back().pcm;
+                lfe = delay_pcm(lfe, static_cast<std::size_t>(ac3::oba::joc::reconstruction_delay(
+                                         meta.joc_domain)));
+            }
             const auto written_adm = ac3cli::write_adm_atmos_master(adm_out, adm_input);
             if (!written_adm.has_value()) {
                 fmt::println(stderr, "error: {}", written_adm.error());

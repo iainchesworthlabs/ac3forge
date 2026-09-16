@@ -2,7 +2,7 @@
 'use strict';
 
 // The page on a twelve-slot board - CI's sdkconfig.ci-http714 shape under QEMU,
-// with the stream set (esp-idf/ac3forge/examples/stream_player/www/) served
+// with the stream set (esp-idf/ac3forge/examples/hearth_sink/www/) served
 // beside it - and what it says a layout does with a stream: planning/
 // esp32-device-ui.md's "The output layout". CI runs it after
 // tools/checks/check_stream_set.py has played the set, with the device's
@@ -19,13 +19,15 @@ test('the page says what each output layout does with each stream', async ({ pag
     const status = async () => (await request.get('status')).json();
     const field = page.getByRole('combobox', { name: 'Output layout' });
 
-    // A play from the form, through to its end: first the new location past
-    // "opening", then its end, so that the previous play's end is never taken
-    // for this one's.
+    // A play through to its end: first the new location past "opening", then
+    // its end, so that the previous play's end is never taken for this one's.
+    //
+    // Started over the REST surface rather than from the page, which stopped
+    // starting plays in B2 - a server owns that now. What is under test here
+    // is what the page SAYS about a play, which is unchanged.
     async function play(file) {
         const location = `${BASE}/${file}`;
-        await page.getByRole('textbox', { name: 'Location to play' }).fill(location);
-        await page.getByRole('button', { name: 'Play' }).click();
+        await request.post('play', { data: location });
         await expect
             .poll(async () => {
                 const s = await status();

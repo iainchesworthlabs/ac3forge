@@ -4,13 +4,14 @@
 # platform - qt-quick3d when the kit has Quick 3D, tracy in a profiling build -
 # are inserted by notices.cmake, so nothing here names an option.
 #
-# Written 2026-09-06 with the rest of the macOS platform half, and like the
-# rest of it, never run: no macOS package has been produced by this project's
-# CPack rules at all, since cmake/Packaging.cmake's Crucible component is still
-# `WIN32 OR LINUX`. What this file settles is the one thing that would
-# otherwise stop a macOS configure dead - notices.cmake FATAL_ERRORs on a
-# platform with no components.cmake - and the section list a configure would
-# then assemble.
+# Written 2026-09-06 with the rest of the macOS platform half. Until this
+# component's own CI packaging pass runs green, the section list below is
+# still like the rest of that half - compiled, never run: no Mac has read
+# the NOTICES.txt this produces, packaged or otherwise. What this file
+# originally settled, before cmake/Packaging.cmake's Crucible component
+# grew an APPLE arm, was the one thing that would otherwise stop a macOS
+# configure dead - notices.cmake FATAL_ERRORs on a platform with no
+# components.cmake - and the section list a configure would then assemble.
 #
 # Three differences from the other two platforms, each following from a fact
 # about the build rather than a preference:
@@ -29,11 +30,11 @@
 #   macOS needs no silent device at all
 #   (engine/platform/macos/virtual_device.cpp), so there is nothing to credit.
 set(AC3CRUCIBLE_NOTICES_PLATFORM "macOS")
-# Where the notices would sit once a macOS package exists. There is none yet:
-# cmake/Packaging.cmake's Crucible component is still `WIN32 OR LINUX` and no
-# install rule puts this file beside the bundle, so this sentence describes the
-# intended layout rather than one that has been produced. The bundle directory
-# is named after the target, ac3crucible.app; MACOSX_BUNDLE_BUNDLE_NAME
+# Where the notices sit: apps/crucible/CMakeLists.txt's own APPLE install()
+# branch puts this file and LICENSE.txt at the archive root, beside the
+# bundle, the same DESTINATION "." apps/notices/notices.cmake already used
+# for the runtime component's pair beside ac3gui.app. The bundle directory is
+# named after the target, ac3crucible.app; MACOSX_BUNDLE_BUNDLE_NAME
 # ("Crucible") is the display name and not the path.
 set(AC3CRUCIBLE_NOTICES_LOCATION "NOTICES.txt beside ac3crucible.app, next to LICENSE.txt")
 set(AC3CRUCIBLE_NOTICE_FRAGMENTS header qt-bundled fmt fonts trademarks)

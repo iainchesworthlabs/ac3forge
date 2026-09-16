@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -40,10 +41,12 @@ class BitReader {
     // Part 1 clause 4.2.2's variable_bits(n_bits), recorded as one element.
     // The text sets no limit on how many groups follow one another, so none
     // is set here: the loop ends at a clear b_read_more or at the end of the
-    // substream. A value too large for 64 bits is recorded modulo 2^64, and
-    // the caller receives its low 32 bits, a count every loop that uses it
-    // bounds by the data left.
-    std::uint32_t variable_bits(int n_bits, std::string_view name) noexcept {
+    // substream. A value too large for 64 bits is recorded, and returned,
+    // modulo 2^64. The caller gets all 64 bits: the sizes built from this are
+    // compared against the substream rather than looped over, so handing back
+    // the low 32 would let a value of 2^32 or more pass a check its true size
+    // fails.
+    std::uint64_t variable_bits(int n_bits, std::string_view name) noexcept {
         const std::size_t start = pos_;
         std::uint64_t value = 0;
         while (true) {
@@ -57,8 +60,8 @@ class BitReader {
             value <<= n_bits;
             value += std::uint64_t{1} << n_bits;
         }
-        emit(start, static_cast<int>(pos_ - start), value, name);
-        return static_cast<std::uint32_t>(value);
+        emit_element(start, pos_, value, name);
+        return value;
     }
 
     // A field whose width the stream sets and whose bits the syntax does not
@@ -106,6 +109,30 @@ class BitReader {
         if (sink_ && bits > 0 && start + static_cast<std::size_t>(bits) <= size_bits()) {
             sink_(SyntaxRecord{substream_, static_cast<std::uint32_t>(start),
                                static_cast<std::uint16_t>(bits), value, name});
+        }
+    }
+
+    // One element, whatever its width. A record's width is 16 bits, so an
+    // element wider than 65535 bits is recorded as consecutive 65535-bit
+    // records, the last shorter, each valued at its own last 64 bits - the
+    // shape read_run() uses, which the Python transcription follows too. Only
+    // variable_bits() can reach that width, and a value of 65536 bits of
+    // continuation groups carries nothing worth recording as a number.
+    void emit_element(std::size_t start, std::size_t end, std::uint64_t value,
+                      std::string_view name) const {
+        const std::size_t total = end - start;
+        if (total <= kMaxRecordBits) {
+            emit(start, static_cast<int>(total), value, name);
+            return;
+        }
+        for (std::size_t at = start; at < end;) {
+            const std::size_t width = std::min<std::size_t>(kMaxRecordBits, end - at);
+            std::uint64_t chunk = 0;
+            for (std::size_t i = 0; i < width; ++i) {
+                chunk = (chunk << 1U) | bit_at(at + i);
+            }
+            emit(at, static_cast<int>(width), chunk, name);
+            at += width;
         }
     }
 

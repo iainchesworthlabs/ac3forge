@@ -531,8 +531,10 @@ if(AC3FORGE_BUILD_GUI)
     add_subdirectory(apps/gui)
 endif()
 
-# Hearth's applications, the test sink so far (planning/hearth-reference-player.md).
-if(AC3FORGE_BUILD_HEARTH)
+# Hearth's applications, the test sink so far (planning/hearth-reference-player.md). Not in a
+# board's build, which takes src/sendspin's player half alone (AC3FORGE_SENDSPIN_PLAYER_ONLY,
+# set by esp-idf/ac3forge/CMakeLists.txt) and has no ac3::forge for the applications to link.
+if(AC3FORGE_BUILD_HEARTH AND NOT AC3FORGE_SENDSPIN_PLAYER_ONLY)
     add_subdirectory(apps/hearth)
 endif()
 
