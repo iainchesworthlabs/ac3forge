@@ -1559,3 +1559,82 @@ TEST_CASE("player: an output that will not open or pause is noted", "[hearth][pl
     };
     CHECK(notes == expected);
 }
+
+TEST_CASE("player: an item that fails can stop playback at it", "[hearth][player]") {
+    Library library;
+    library.files["first.ec3"] = eac3_stream(4);
+    library.files["third.ec3"] = eac3_stream(3);
+    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    REQUIRE(layout.has_value());
+
+    // The item before it plays to its end, and playback stops at it.
+    auto log = std::make_shared<FakeDevice::Log>();
+    ac3::hearth::DiagnosticLog diagnostics;
+    Player player{std::make_unique<FakeDevice>(log, 8192), library.loader(), *layout,
+                  DecoderSettings{}, &diagnostics};
+    player.set_on_failure(ac3::hearth::FailurePolicy::kStop);
+    player.add(item("first.ec3"));
+    QueueItem missing = item("D:\\Private\\missing.ec3");
+    missing.title = "missing.ec3";
+    player.add(missing);
+    player.add(item("third.ec3"));
+    player.play();
+    REQUIRE(play_out(player, *log));
+    REQUIRE(player.history().size() == 1);
+    CHECK(player.history()[0].frames == 4 * 1536);
+    CHECK(log->heard == 4 * 1536);
+    CHECK(log->opens == 1);
+    CHECK(player.transport().state() == TransportState::kStopped);
+    CHECK(player.queue().current_index() == 1);
+    CHECK_FALSE(player.queue().items()[1].playable());
+    const auto notes = notes_in(diagnostics);
+    INFO(all_of(notes));
+    const std::vector<std::string> expected{
+        "output opened: local PCM, 48000 Hz, 6 channels (open 1)",
+        "item 1 \"first.ec3\" started: E-AC-3, 48000 Hz, 6 channels, 0.128 s",
+        "item 2 \"missing.ec3\" cannot be played: no such file: <withheld>\\missing.ec3",
+        "playback ends once the output has played out: \"missing.ec3\" cannot be played here, so "
+        "playback stops: no such file: <withheld>\\missing.ec3",
+        "output closed",
+    };
+    CHECK(notes == expected);
+
+    // Playing again does not pass over it; moving on is the person's choice.
+    const auto again = player.play();
+    CHECK(again.action == ac3::hearth::TransportAction::kNone);
+    CHECK(again.note.find("missing.ec3") != std::string::npos);
+    CHECK(log->opens == 1);
+    player.next();
+    REQUIRE(play_out(player, *log));
+    REQUIRE(player.history().size() == 2);
+    CHECK(player.history()[1].title == "third.ec3");
+
+    // An item that will not open as playback starts stops it there and then,
+    // where passing over it would have played the next.
+    auto starting_log = std::make_shared<FakeDevice::Log>();
+    ac3::hearth::DiagnosticLog starting_notes;
+    Player starting{std::make_unique<FakeDevice>(starting_log, 8192), library.loader(), *layout,
+                    DecoderSettings{}, &starting_notes};
+    starting.set_on_failure(ac3::hearth::FailurePolicy::kStop);
+    starting.add(item("gone.ec3"));
+    starting.add(item("first.ec3"));
+    starting.play();
+    CHECK(starting.transport().state() == TransportState::kStopped);
+    CHECK_FALSE(starting.active());
+    CHECK(starting.queue().current_index() == 0);
+    CHECK(starting.history().empty());
+    CHECK(starting_log->opens == 0);
+    const std::vector<std::string> stopped{
+        "item 1 \"gone.ec3\" cannot be played: no such file: gone.ec3",
+        "item 1 \"gone.ec3\" stopped playback, as an item that fails is set to",
+    };
+    CHECK(notes_in(starting_notes) == stopped);
+
+    starting.set_on_failure(ac3::hearth::FailurePolicy::kSkip);
+    starting.play_item(0);
+    CHECK(starting_log->opens == 0);
+    starting.next();
+    REQUIRE(play_out(starting, *starting_log));
+    REQUIRE(starting.history().size() == 1);
+    CHECK(starting.history()[0].title == "first.ec3");
+}

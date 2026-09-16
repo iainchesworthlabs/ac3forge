@@ -711,6 +711,7 @@ if(AC3FORGE_BUILD_HEARTH)
         hearth/test_player.cpp
         hearth/test_queue.cpp
         hearth/test_session.cpp
+        hearth/test_settings_model.cpp
         hearth/test_stream_decoder.cpp
         hearth/test_transport.cpp)
     target_link_libraries(ac3tests PRIVATE ac3hearth_engine)
@@ -756,6 +757,8 @@ if(AC3FORGE_BUILD_HEARTH)
         # Hearth's test sink, run in process (apps/hearth/testsink), and the server's half of A4's
         # exit with aiosendspin 9.1.1, which tools/sendspin/aiosendspin_exit.py runs.
         target_sources(ac3tests PRIVATE hearth/test_aiosendspin.cpp hearth/test_group.cpp hearth/test_testsink.cpp)
+        # The engine's pairing records, which a core-only build leaves out.
+        target_sources(ac3tests PRIVATE hearth/test_pairing_store.cpp)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
         # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
         # as core/test_simd_kernels.cpp's.

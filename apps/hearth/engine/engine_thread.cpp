@@ -207,6 +207,35 @@ void Engine::set_repeat(bool on) {
     });
 }
 
+void Engine::set_on_failure(FailurePolicy policy) {
+    post([this, policy](Player& player) {
+        if (policy != player.transport().on_failure()) {
+            note(fmt::format("an item that fails: {}", describe(policy)));
+        }
+        player.set_on_failure(policy);
+        return std::string{};
+    });
+}
+
+void Engine::restore(std::vector<QueueItem> items, std::size_t current,
+                     std::chrono::milliseconds position) {
+    post([this, items = std::move(items), current, position](Player& player) {
+        note(fmt::format("restore a queue of {} {}, {}", items.size(), items_word(items.size()),
+                         current < items.size()
+                             ? fmt::format("item {} current, {:.3f} s in", current + 1,
+                                           static_cast<double>(position.count()) / 1000.0)
+                             : std::string{"none current"}));
+        player.clear();
+        for (const QueueItem& item : items) {
+            player.add(item);
+        }
+        if (!player.select(current) || position <= std::chrono::milliseconds{0}) {
+            return std::string{};
+        }
+        return transport_said(player.seek(position));
+    });
+}
+
 void Engine::sync() {
     std::unique_lock lock(mutex_);
     const std::uint64_t made = posted_;
@@ -254,6 +283,7 @@ void Engine::publish(const std::string& note, std::uint64_t carried) {
     next.current = player_.queue().current_index();
     next.gapless = player_.transport().gapless();
     next.repeat = player_.transport().repeat();
+    next.on_failure = player_.transport().on_failure();
     next.settings = player_.decoder_settings();
     next.output = player_.transport().open_format();
     next.output_opens = player_.output_opens();

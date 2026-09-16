@@ -63,6 +63,14 @@ std::string_view describe(TransportState state) {
     return "unknown transport state";
 }
 
+std::string_view describe(FailurePolicy policy) {
+    switch (policy) {
+        case FailurePolicy::kSkip: return "skip to the next";
+        case FailurePolicy::kStop: return "stop";
+    }
+    return "unknown failure policy";
+}
+
 std::string_view describe(TransportAction action) {
     switch (action) {
         case TransportAction::kNone: return "nothing";
@@ -220,6 +228,27 @@ TransportOutcome Transport::item_finished() {
                        "The queue has finished.");
     }
     return start_or_join(item, /*joining=*/true);
+}
+
+TransportOutcome Transport::item_failed(std::size_t item) {
+    if (on_failure_ == FailurePolicy::kSkip) {
+        return item_finished();
+    }
+    // Stopped at the item, whatever was playing before it: the person asked
+    // to be shown the failure rather than have it passed over.
+    const bool was_running = state_ != TransportState::kStopped;
+    state_ = TransportState::kStopped;
+    const QueueItem* const entry = item < queue_->size() ? &queue_->items()[item] : nullptr;
+    if (entry == nullptr) {
+        return outcome(state_,
+                       was_running ? TransportAction::kStopOutput : TransportAction::kNone,
+                       Queue::kNone, "Nothing left in the queue to play.");
+    }
+    queue_->set_current(item);
+    return outcome(state_, was_running ? TransportAction::kStopOutput : TransportAction::kNone,
+                   item,
+                   fmt::format("\"{}\" cannot be played here, so playback stops: {}",
+                               entry->title, entry->facts.unplayable_because));
 }
 
 TransportOutcome Transport::current_item_removed() {

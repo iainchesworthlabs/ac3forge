@@ -39,6 +39,15 @@ enum class TransportState : std::uint8_t {
 
 [[nodiscard]] std::string_view describe(TransportState state);
 
+// What playback does when an item cannot be played (the Settings page's "An
+// item fails"): move on to the next item that can, or stop at that one.
+enum class FailurePolicy : std::uint8_t {
+    kSkip,
+    kStop,
+};
+
+[[nodiscard]] std::string_view describe(FailurePolicy policy);
+
 // What the engine should do as a result of a command. One action per command:
 // the state machine never asks for two things at once, which is what keeps
 // the caller's side a switch rather than a script.
@@ -101,6 +110,8 @@ public:
     void set_gapless(bool on) { gapless_ = on; }
     [[nodiscard]] bool repeat() const { return repeat_; }
     void set_repeat(bool on) { repeat_ = on; }
+    [[nodiscard]] FailurePolicy on_failure() const { return on_failure_; }
+    void set_on_failure(FailurePolicy policy) { on_failure_ = policy; }
 
     // What the output currently holds. The caller sets this when it opens or
     // reopens an output, and clears it when it closes one; the transport
@@ -122,6 +133,14 @@ public:
     // is decided.
     TransportOutcome item_finished();
 
+    // `item`, which the caller has just marked unplayable, would not open.
+    // Under kSkip this is item_finished(): playback moves on to the next item
+    // that can play. Under kStop playback stops, with `item` current so that
+    // the queue shows where and why; the caller lets what is already
+    // submitted play out first when the item was the next one rather than
+    // the one being started.
+    TransportOutcome item_failed(std::size_t item);
+
     // The queue changed under a playing item: the item that was playing is
     // gone. Restarts at whatever the queue now calls current, or stops when
     // the queue has emptied.
@@ -135,6 +154,7 @@ private:
     TransportState state_ = TransportState::kStopped;
     bool gapless_ = true;
     bool repeat_ = false;
+    FailurePolicy on_failure_ = FailurePolicy::kSkip;
     OpenOutputFormat open_;
 };
 

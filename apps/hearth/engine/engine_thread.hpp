@@ -70,6 +70,7 @@ struct EngineStatus {
     std::size_t current = Queue::kNone;
     bool gapless = true;
     bool repeat = false;
+    FailurePolicy on_failure = FailurePolicy::kSkip;
     DecoderSettings settings{};
     // What the output is open at; all zero while it is closed.
     OpenOutputFormat output{};
@@ -112,6 +113,13 @@ public:
     void set_decoder_settings(const DecoderSettings& settings);
     void set_gapless(bool on);
     void set_repeat(bool on);
+    void set_on_failure(FailurePolicy policy);
+    // Replaces the queue with `items`, stopping whatever plays, and makes
+    // `current` the item a play starts, `position` into it: the queue a
+    // window brings back at start (settings_model.hpp). Nothing plays until
+    // asked to.
+    void restore(std::vector<QueueItem> items, std::size_t current,
+                 std::chrono::milliseconds position);
 
     // Waits until every command made before the call has been carried out
     // and its effect published - for a test, or a caller that has to read

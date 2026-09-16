@@ -42,17 +42,24 @@ void Player::note(std::string_view line) const {
     }
 }
 
+void Player::note_withheld(std::size_t index, std::string_view line) const {
+    if (diagnostics_ == nullptr) {
+        return;
+    }
+    Secrets secrets;
+    if (index < queue_.size()) {
+        withhold_path(secrets, queue_.items()[index].path);
+    }
+    diagnostics_->note(scrub(std::string{line}, secrets));
+}
+
 void Player::note_item(std::size_t index, std::string_view title, std::string_view what) const {
     if (diagnostics_ == nullptr) {
         return;
     }
     const bool queued = index < queue_.size();
-    Secrets secrets;
-    if (queued) {
-        withhold_path(secrets, queue_.items()[index].path);
-    }
-    diagnostics_->note(scrub(
-        fmt::format("{} {}", describe_item(queued ? index : Queue::kNone, title), what), secrets));
+    note_withheld(index,
+                  fmt::format("{} {}", describe_item(queued ? index : Queue::kNone, title), what));
 }
 
 std::string_view Player::title_of(std::size_t index) const {
@@ -239,10 +246,18 @@ TransportOutcome Player::play_item(std::size_t index) {
     }
     // Whatever was playing stops where it is; the chosen item starts from
     // its beginning, on an output opened for it.
+    select(index);
+    return play();
+}
+
+bool Player::select(std::size_t index) {
+    if (index >= queue_.size()) {
+        return false;
+    }
     perform(transport_.stop(), nullptr);
     queue_.set_current(index);
     seek_on_start_.reset();
-    return play();
+    return true;
 }
 
 bool Player::meters(MeterSnapshot& latest) {
@@ -367,12 +382,17 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
             const OpenFailure failure = open_output_for(outcome.item, report);
             if (failure == OpenFailure::kItem && outcome.item < queue_.size()) {
                 // The item could not be played. It is marked so the transport
-                // skips it from now on, and playback moves past it - which
-                // ends, since a queue of nothing playable has no next item.
+                // skips it from now on, and the failure policy says what now:
+                // playback moves past it - which ends, since a queue of
+                // nothing playable has no next item - or stops at it.
                 ItemFacts facts = queue_.items()[outcome.item].facts;
                 facts.unplayable_because = last_error_;
                 queue_.set_facts(outcome.item, std::move(facts));
-                perform(transport_.item_finished(), report);
+                if (transport_.on_failure() == FailurePolicy::kStop) {
+                    note_item(outcome.item, title_of(outcome.item),
+                              "stopped playback, as an item that fails is set to");
+                }
+                perform(transport_.item_failed(outcome.item), report);
             } else if (failure == OpenFailure::kOutput) {
                 // The device would not open. Nothing in the queue is at
                 // fault, so playback stops and the reason is kept.
@@ -688,7 +708,10 @@ void Player::item_ended(PumpReport& report) {
     // An item that will not open is marked, which takes it out of
     // next_index()'s answer, and the one after it is tried - so a run of
     // unreadable items between two good ones still ends in a join. Each pass
-    // marks one more item, so this ends.
+    // marks one more item, so this ends. When an item that fails is to stop
+    // playback, the first that will not open ends the search, and playback
+    // stops at it once the current item has been heard.
+    std::size_t failed = Queue::kNone;
     for (;;) {
         const std::size_t next = queue_.next_index(transport_.repeat());
         if (next == Queue::kNone) {
@@ -713,9 +736,14 @@ void Player::item_ended(PumpReport& report) {
         facts.unplayable_because = opened.error();
         queue_.set_facts(next, std::move(facts));
         report.note = std::move(opened.error());
+        if (transport_.on_failure() == FailurePolicy::kStop) {
+            failed = next;
+            break;
+        }
     }
 
-    const TransportOutcome outcome = transport_.item_finished();
+    const TransportOutcome outcome =
+        failed == Queue::kNone ? transport_.item_finished() : transport_.item_failed(failed);
     if (!outcome.note.empty()) {
         report.note = outcome.note;
     }
@@ -739,6 +767,10 @@ void Player::item_ended(PumpReport& report) {
                 }
                 session_.reset();
                 report.note = last_error_;
+                if (transport_.on_failure() == FailurePolicy::kStop) {
+                    play_out_then(transport_.item_failed(outcome.item), report);
+                    return;
+                }
                 item_ended(report);
                 return;
             }
@@ -767,23 +799,30 @@ void Player::item_ended(PumpReport& report) {
         }
         case TransportAction::kReopenForItem:
         case TransportAction::kStopOutput:
-            // What has already been submitted plays out first; pump() carries
-            // the decision out once the sink's clock has passed it.
-            if (outcome.action == TransportAction::kReopenForItem) {
-                note_item(outcome.item, title_of(outcome.item),
-                          said("is next, once the output has played out and reopened",
-                               outcome.note));
-            } else {
-                note(said("playback ends once the output has played out", outcome.note));
-            }
-            after_drain_ = outcome;
-            drain_target_.reset();
-            session_.reset();
+            play_out_then(outcome, report);
             break;
         default:
             session_.reset();
             break;
     }
+}
+
+void Player::play_out_then(const TransportOutcome& outcome, PumpReport& report) {
+    if (!outcome.note.empty()) {
+        report.note = outcome.note;
+    }
+    // A stop's note can say why an item cannot be played, which can quote
+    // its path: the item it is about is the outcome's.
+    if (outcome.action == TransportAction::kReopenForItem) {
+        note_item(outcome.item, title_of(outcome.item),
+                  said("is next, once the output has played out and reopened", outcome.note));
+    } else {
+        note_withheld(outcome.item,
+                      said("playback ends once the output has played out", outcome.note));
+    }
+    after_drain_ = outcome;
+    drain_target_.reset();
+    session_.reset();
 }
 
 PumpReport Player::pump(std::size_t budget) {
