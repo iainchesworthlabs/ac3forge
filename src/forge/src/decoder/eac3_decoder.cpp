@@ -797,29 +797,24 @@ struct Eac3Decoder::Impl {
     // SETS that peak - pays nothing at all rather than 4 KB it never reads.
     std::vector<internal::decode_scalar_t> ecpl_amp_scratch_;
     std::vector<internal::decode_scalar_t> ecpl_angle_scratch_;
-    // decode_substream's frame-lifetime coefficient buffers - the AHT
-    // stream store (§3.4: all six blocks decoded at block 0) and the
-    // enhanced-coupling channel store (§3.5.5.1: a block's reconstruction
-    // reads its neighbors). Owned here for the same reuse reasoning as the
-    // scratch above, with one extra property worth the wordier comment:
-    // both used to be heap-allocated and zeroed afresh on every call (98 KB
-    // per frame, the two largest per-frame heap costs in the decoder)
-    // whether or not the stream used either tool. They are sized lazily at
-    // first use instead - a stream using neither tool never allocates them
-    // - and every read of a reused buffer is made safe at the write site:
-    // an AHT stream's slot is cleared before its block-0 decode fills it
-    // (bins past its endmant must read zero), and enhanced-coupling reads
-    // are whole-array assignments from this call or gated by this call's
-    // ecpl_active flags, so a previous frame's contents are never visible.
-    // One buffer per stream, each sized on that stream's first AHT use: all
-    // seven streams' six blocks in one vector made a single 43,008-byte
-    // allocation in the float build (86,016 in double) whether one stream
-    // used the AHT or all seven, and on a regioned heap the largest free
-    // block is what limits an allocation, not the total. The outer vector is
-    // still sized on the decoder's first AHT use rather than held as a
-    // fixed array, which keeps this object the size it was: a decoder that
-    // never meets the AHT carries one empty vector, as before.
-    std::vector<std::vector<std::array<internal::decode_scalar_t, 256>>> aht_coeffs_;
+    // decode_substream's frame-lifetime enhanced-coupling channel store
+    // (§3.5.5.1: a block's reconstruction reads its neighbors). Owned here
+    // for the same reuse reasoning as the scratch above: it used to be
+    // heap-allocated and zeroed afresh on every call whether or not the
+    // stream used the tool. It is sized lazily at first use instead - a
+    // stream that never uses enhanced coupling never allocates it - and its
+    // reads are whole-array assignments from this call or gated by this
+    // call's ecpl_active flags, so a previous frame's contents are never
+    // visible.
+    //
+    // The AHT's frame store (§3.4: all six blocks decoded at block 0) is not
+    // here any more. It was a buffer per stream, copied into each block's
+    // tail as that block was parsed; an AHT stream now decodes its six
+    // blocks straight into the six tails below, which hold every stream of
+    // every block anyway. The copy cost 6,144 bytes a stream in the float
+    // build - 36,864 for a 7.1.4 stream's six, 43,008 with the coupling
+    // channel - which is what kept 7.1.4 AHT streams off an ESP32-S3
+    // without PSRAM (planning/esp32-stream-set.md).
     std::vector<std::array<internal::decode_scalar_t, 256>> ecpl_all_coeffs_;
     // §7.1.3's packed exponent groups, for one stream of one block.
     //
@@ -934,8 +929,8 @@ struct Eac3Decoder::Impl {
 
     // --- per-frame scratch --------------------------------------------------
     // Everything decode_substream_core used to declare as a local before its
-    // block loop. The same move tails_, aht_coeffs_, ecpl_all_coeffs_ and
-    // exp_groups_ above have already had, and for the same reason: a local is
+    // block loop. The same move tails_, ecpl_all_coeffs_ and exp_groups_
+    // above have already had, and for the same reason: a local is
     // freshly allocated every frame, and at 5.1 this cluster was most of that
     // fixture's per-frame allocation count.
     //
@@ -1774,17 +1769,6 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     spxblnd.assign(static_cast<std::size_t>(nfchans), 0);
     eac3::SpxNoise spx_noise;
 
-    // AHT-decoded coefficients (§3.4), one array of all six blocks per
-    // stream. Unlike every other per-stream array above, these are produced
-    // once - at block 0, since an AHT stream's mantissas exist only there -
-    // rather than block by block, so they need their own frame-lifetime
-    // buffer distinct from the per-block-local `coeffs` below. The buffer
-    // itself lives on the decoder (see the members' comment in decoder.hpp):
-    // decode_aht_stream sizes it at first AHT use and clears a stream's
-    // slot before filling it, so a stream that never uses AHT never pays
-    // the 86 KB, and a reused slot can never leak a previous frame's bins.
-    auto& aht_coeffs = impl_->aht_coeffs_;
-
     // Enhanced coupling state (§E3.5), parallel to the standard-coupling
     // state above and mutually exclusive with it per block (ecplinu picks
     // one or the other). Persistence follows the same convention: geometry
@@ -1820,13 +1804,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // syncframe this call was not given: a real, documented approximation,
     // not a bug - every interior block reconstructs with its true
     // neighbors.
-    // Heap-allocated like aht_coeffs above (PREfast's C6262, alert #63): a
-    // fixed std::array here was the single largest contributor to
-    // decode_substream's oversized stack frame. Like aht_coeffs it lives on
-    // the decoder, sized lazily at the first block that stashes into it:
-    // every read is either a whole-array assignment made this call or gated
-    // by this call's ecpl_active flags, so nothing stale is ever visible,
-    // and a stream that never uses enhanced coupling never allocates it.
+    // Heap-allocated (PREfast's C6262, alert #63): a fixed std::array here
+    // was the single largest contributor to decode_substream's oversized
+    // stack frame. It lives on the decoder, sized lazily at the first block
+    // that stashes into it: every read is either a whole-array assignment
+    // made this call or gated by this call's ecpl_active flags, so nothing
+    // stale is ever visible, and a stream that never uses enhanced coupling
+    // never allocates it.
     auto& ecpl_all_coeffs = impl_->ecpl_all_coeffs_;
     std::array<bool, kBlocksPerFrame> ecpl_active{};
 
@@ -1850,6 +1834,16 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // guard they are written under.
     auto& tails = impl_->tails_;
     tails.resize(static_cast<std::size_t>(nblks));
+    // Every block's spectra zeroed here, once for the frame, rather than
+    // each block's at the top of its own parse: an AHT stream (§3.4) sends
+    // all six blocks' mantissas in block 0, and decode_aht_stream writes them
+    // straight into the six tails, so tails 1-5 have to be clear before
+    // block 0 reaches them. Otherwise a block's parse still writes only its
+    // own tail, and every bin nothing writes reads zero, as a fresh store
+    // did.
+    for (auto& tail : tails) {
+        tail.coeffs.assign(static_cast<std::size_t>(kMaxSubstreamStreams), {});
+    }
 
     // Captured alongside out.object_metadata below, from whichever block's
     // skip field carries the EMDF container - kept raw here (not parsed
@@ -2902,9 +2896,10 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         MantissaBlockReader mantissa_reader;
         // Heap-backed, matching decoder.cpp's own per-block coeffs: at
         // kMaxSubstreamStreams * 256 doubles, a stack std::array here is the
-        // single largest contributor to this function's frame size. The
-        // assign() re-zeroes exactly as a fresh vector did (uncoded bins must
-        // read zero).
+        // single largest contributor to this function's frame size. Already
+        // zeroed, with every other block's, where the tails were sized above
+        // (uncoded bins must read zero) - and an AHT stream's bins for this
+        // block already in place, if block 0 decoded them.
         //
         // Parsed straight into this block's own tail, rather than into a
         // separate buffer that the snapshot below then swapped in. The swap
@@ -2912,11 +2907,10 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // did - but it also meant one more kMaxSubstreamStreams x 256 array
         // existed than there were blocks to hold, which is what made moving
         // that buffer onto the decoder cost 7,168 bytes of peak instead of
-        // saving an allocation. Nothing in pass one reads any tail, so
-        // writing into this one directly is the same sequence of values with
-        // one fewer buffer and nothing to swap.
+        // saving an allocation. Nothing in pass one reads another block's
+        // tail, so writing into this one directly is the same sequence of
+        // values with one fewer buffer and nothing to swap.
         auto& coeffs = tails[static_cast<std::size_t>(blk)].coeffs;
-        coeffs.assign(static_cast<std::size_t>(kMaxSubstreamStreams), {});
         auto& norm = tails[static_cast<std::size_t>(blk)].norm;
         norm.fill(0);
         tails[static_cast<std::size_t>(blk)].rematrix_room = false;
@@ -3004,17 +2998,14 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         // because its BitAllocRegion was built with high_efficiency=true.
         const auto decode_aht_stream = [&](int s, int begin) -> std::expected<void, DecodeError> {
             const auto us = static_cast<std::size_t>(s);
-            // The decoder's first AHT use sizes the outer vector and the
-            // stream's first use its own frame-lifetime buffer; every later
-            // use reuses it, assign() zero-filling without reallocating once
-            // the capacity is there. The zero fill keeps the read side's
-            // invariant that bins this decode does not write - past endmant,
-            // below `begin` - read zero. (`= {}` would EMPTY the stream's
-            // vector, and the writes below would run past its end.)
-            if (aht_coeffs.size() < static_cast<std::size_t>(kMaxSubstreamStreams)) {
-                aht_coeffs.resize(static_cast<std::size_t>(kMaxSubstreamStreams));
-            }
-            aht_coeffs[us].assign(static_cast<std::size_t>(kBlocksPerFrame), {});
+            // Block j's values go straight into block j's own tail, which
+            // the top of the frame zeroed, so the bins this decode does not
+            // write - past endmant, below `begin` - read zero as every other
+            // stream's do, and each block's parse finds its AHT streams
+            // already in place. A frame buffer per stream used to hold them
+            // until each block copied its own out. parse_audfrm reads ahte
+            // only in a six-block syncframe, so there are six tails.
+            assert(tails.size() == static_cast<std::size_t>(kBlocksPerFrame));
             const int end = endmant[us];
             // The stream's frame exponent (block_norm.hpp): its six blocks
             // are dequantised here at once, and their reconstructed peaks
@@ -3130,14 +3121,14 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     // Unscaled for now; the frame's exponent is applied below
                     // once every bin's peak is known.
                     for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
-                        aht_coeffs[us][j][ubin] = blocks[j];
+                        tails[j].coeffs[us][ubin] = blocks[j];
                     }
                     const int effective = internal::aht_effective_exponent(blocks, exp);
                     effective_exps[ubin] = effective;
                     smallest_effective = std::min(smallest_effective, effective);
                 } else {
                     for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
-                        aht_coeffs[us][j][ubin] = blocks[j] * exponent_scale<Scalar>(exp);
+                        tails[j].coeffs[us][ubin] = blocks[j] * exponent_scale<Scalar>(exp);
                     }
                 }
             }
@@ -3148,8 +3139,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     const auto ubin = static_cast<std::size_t>(bin);
                     const int shift = aht_norm - exps[us][ubin];
                     for (std::size_t j = 0; j < kBlocksPerFrame; ++j) {
-                        aht_coeffs[us][j][ubin] =
-                            internal::scalar_ldexp(aht_coeffs[us][j][ubin], shift);
+                        auto& value = tails[j].coeffs[us][ubin];
+                        value = internal::scalar_ldexp(value, shift);
                     }
                 }
             }
@@ -3170,10 +3161,10 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                         return result;
                     }
                 }
-                coeffs[us] = aht_coeffs[us][static_cast<std::size_t>(blk)];
-                // Under the frame's exact exponent (zero in the floating
-                // tiers); a tool that needs more room lowers it where it
-                // runs (block_norm.hpp's renormalise).
+                // This block's bins are already in its tail, put there by
+                // block 0's decode. They sit under the frame's exact exponent
+                // (zero in the floating tiers); a tool that needs more room
+                // lowers it where it runs (block_norm.hpp's renormalise).
                 norm[us] = impl_->aht_norm_[us];
                 return {};
             }

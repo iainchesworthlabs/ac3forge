@@ -44,12 +44,13 @@ void report_internal_sram(const char* when) {
     // to a C++ program that only ever says `new`.
     //
     // It is reported because of what this decoder allocates. Its large buffers
-    // are arrays of float and double - aht_coeffs_ at 43,008 bytes, the coupling
-    // and transform scratch, oba::joc::ReconstructionState at 147,504 - and word
-    // arrays are exactly what 32-bit-only memory is good for. Reaching it needs
-    // heap_caps_malloc(n, MALLOC_CAP_32BIT) behind those allocations rather than
-    // the global operator new they use now, so this number is a measurement of
-    // an OPPORTUNITY, not of anything the decode currently uses.
+    // are arrays of float and double - the per-block coefficient store at 43,008
+    // bytes, the coupling and transform scratch, oba::joc::ReconstructionState at
+    // 147,504 - and word arrays are exactly what 32-bit-only memory is good for.
+    // Reaching it needs heap_caps_malloc(n, MALLOC_CAP_32BIT) behind those
+    // allocations rather than the global operator new they use now, so this
+    // number is a measurement of an OPPORTUNITY, not of anything the decode
+    // currently uses.
     constexpr std::uint32_t kInternalAny = MALLOC_CAP_INTERNAL;
     const std::size_t any = heap_caps_get_free_size(kInternalAny);
     const std::size_t byte_addressable = heap_caps_get_free_size(kInternal8Bit);
