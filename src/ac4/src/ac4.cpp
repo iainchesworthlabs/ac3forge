@@ -15,9 +15,6 @@ std::string_view describe(Error error) {
             return "lost sync: sync_word was neither 0xAC40 nor 0xAC41";
         case Error::kUnsupportedBitstreamVersion:
             return "bitstream_version > 2 is not decodable per TS 103 190-2 §6.3.2.1.1";
-        case Error::kOamdCommonDataPresent:
-            return "ac4_substream_info_ajoc sets b_oamd_common_data_present; "
-                   "oamd_common_data() (TS 103 190-2 §6.2.8.1) not implemented";
     }
     return "unknown ac4::Error";
 }
@@ -26,11 +23,10 @@ namespace {
 
 // MSB-first bit reader with a sticky failure state - the same shape
 // ac3::core::BitReader uses for overflow, extended here to also carry the
-// two explicit refusal conditions (kUnsupportedBitstreamVersion,
-// kOamdCommonDataPresent) so every parse_* helper below can bail out with a
-// plain early return instead of threading std::expected through the whole
-// call tree. Only parse_raw_frame(), at the boundary, converts the final
-// state to std::expected.
+// explicit refusal condition (kUnsupportedBitstreamVersion) so every parse_*
+// helper below can bail out with a plain early return instead of threading
+// std::expected through the whole call tree. Only parse_raw_frame(), at the
+// boundary, converts the final state to std::expected.
 class Reader {
    public:
     explicit Reader(std::span<const std::byte> data) : data_(data) {}
@@ -58,6 +54,23 @@ class Reader {
     void skip_bytes(std::uint32_t n) {
         const std::uint64_t end = std::uint64_t{data_.size()} * 8;
         const std::uint64_t target = std::uint64_t{position_} + std::uint64_t{n} * 8;
+        if (target <= end) {
+            position_ = static_cast<std::size_t>(target);
+            return;
+        }
+        overflowed_ = true;
+        if (position_ < end) {
+            position_ = static_cast<std::size_t>(end);
+        }
+    }
+
+    // Bit-granular twin of skip_bytes(), for a bit count the stream chose
+    // (oamd_common_data()'s add_data, after trim()/bed_render_info()/
+    // headphone() spend some of add_data_bytes*8) rather than a whole byte
+    // count - same 64-bit-safe arithmetic, same reasoning.
+    void skip_bits(std::uint64_t n) {
+        const std::uint64_t end = std::uint64_t{data_.size()} * 8;
+        const std::uint64_t target = std::uint64_t{position_} + n;
         if (target <= end) {
             position_ = static_cast<std::size_t>(target);
             return;
@@ -784,6 +797,212 @@ std::vector<ObjectEntry> parse_bed_dyn_obj_assignment(Reader& r, int n_signals) 
     return objects;
 }
 
+// --- §6.2.8.13-16 tool_tb_to_f_s[_b] / tool_tf_to_f_s[_b], §6.2.9.9-10 -----
+// tool_t2_to_f_s[_b]: eight tables, three call shapes total, differing only
+// in field names - one shared reader (see GainTool in ac4.hpp).
+
+GainTool parse_gain_tool(Reader& r, bool has_side_branch) {
+    GainTool tool;
+    if (r.bits(1)) {  // b_..._to_front
+        tool.code_a = static_cast<int>(r.bits(3));
+        tool.code_b = 7;
+        return tool;
+    }
+    if (!has_side_branch) {
+        tool.code_b = static_cast<int>(r.bits(3));
+        return tool;
+    }
+    if (r.bits(1)) {  // b_..._to_side
+        tool.code_b = static_cast<int>(r.bits(3));
+        return tool;
+    }
+    tool.code_b = 7;
+    tool.code_c = static_cast<int>(r.bits(3));
+    return tool;
+}
+
+// --- §6.2.8.8a stereo_dmx_coeff ----------------------------------------------
+
+StereoDmxCoeff parse_stereo_dmx_coeff(Reader& r) {
+    StereoDmxCoeff c;
+    c.loro_centre_mixgain = static_cast<int>(r.bits(3));
+    c.loro_surround_mixgain = static_cast<int>(r.bits(3));
+    if (r.bits(1)) {  // b_ltrt_mixinfo
+        c.ltrt_centre_mixgain = static_cast<int>(r.bits(3));
+        c.ltrt_surround_mixgain = static_cast<int>(r.bits(3));
+    }
+    if (r.bits(1)) {  // b_lfe_mixinfo
+        c.lfe_mixgain = static_cast<int>(r.bits(5));
+    }
+    c.preferred_dmx_method = static_cast<int>(r.bits(2));
+    return c;
+}
+
+// --- §6.2.8.8 bed_render_info ------------------------------------------------
+
+std::optional<BedRenderInfo> parse_bed_render_info(Reader& r) {
+    if (!r.bits(1)) {  // b_bed_render_info
+        return std::nullopt;
+    }
+    BedRenderInfo info;
+    if (r.bits(1)) {  // b_stereo_dmx_coeff
+        info.stereo_dmx_coeff = parse_stereo_dmx_coeff(r);
+    }
+    if (!r.bits(1)) {  // b_cdmx_data_present
+        return info;
+    }
+    if (r.bits(1)) {  // b_cdmx_w_to_f
+        info.gain_w_to_f_code = static_cast<int>(r.bits(3));
+    }
+    if (r.bits(1)) {  // b_cdmx_b4_to_b2
+        info.gain_b4_to_b2_code = static_cast<int>(r.bits(3));
+    }
+    if (r.bits(1)) {  // b_tm_ch_present
+        if (r.bits(1)) {  // b_cdmx_t2_to_f_s_b
+            info.t2_to_f_s_b = parse_gain_tool(r, true);
+        }
+        if (r.bits(1)) {  // b_cdmx_t2_to_f_s
+            info.t2_to_f_s = parse_gain_tool(r, false);
+        }
+    }
+    const bool b_tb_ch_present = r.bits(1) != 0;
+    if (b_tb_ch_present) {
+        if (r.bits(1)) {  // b_cdmx_tb_to_f_s_b
+            info.tb_to_f_s_b = parse_gain_tool(r, true);
+        }
+        if (r.bits(1)) {  // b_cdmx_tb_to_f_s
+            info.tb_to_f_s = parse_gain_tool(r, false);
+        }
+    }
+    const bool b_tf_ch_present = r.bits(1) != 0;
+    if (b_tf_ch_present) {
+        if (r.bits(1)) {  // b_cdmx_tf_to_f_s_b
+            info.tf_to_f_s_b = parse_gain_tool(r, true);
+        }
+        if (r.bits(1)) {  // b_cdmx_tf_to_f_s
+            info.tf_to_f_s = parse_gain_tool(r, false);
+        }
+    }
+    if ((b_tb_ch_present || b_tf_ch_present) && r.bits(1)) {  // b_cdmx_tfb_to_tm
+        info.gain_tfb_to_tm_code = static_cast<int>(r.bits(3));
+    }
+    return info;
+}
+
+// --- §6.2.8.9 trim / §6.2.8.9a headphone -------------------------------------
+
+// §6.3.9.10.4: "the number of trim configurations is nine".
+constexpr int kNumTrimConfigs = 9;
+
+std::optional<Trim> parse_trim(Reader& r) {
+    if (!r.bits(1)) {  // b_trim_present
+        return std::nullopt;
+    }
+    Trim trim;
+    trim.warp_mode = static_cast<int>(r.bits(2));
+    r.skip(2);  // reserved
+    trim.global_trim_mode = static_cast<int>(r.bits(2));
+    if (trim.global_trim_mode == 0b10) {
+        trim.configs.reserve(kNumTrimConfigs);
+        for (int i = 0; i < kNumTrimConfigs; ++i) {
+            if (r.bits(1)) {  // b_default_trim
+                trim.configs.push_back(std::nullopt);
+                continue;
+            }
+            TrimConfig cfg;
+            cfg.disabled = r.bits(1) != 0;  // b_disable_trim
+            if (!cfg.disabled) {
+                cfg.presence = static_cast<int>(r.bits(5));  // trim_balance_presence[]
+                if (cfg.presence & 0b10000) {                // [4]
+                    cfg.trim_centre = static_cast<int>(r.bits(4));
+                }
+                if (cfg.presence & 0b01000) {  // [3]
+                    cfg.trim_surround = static_cast<int>(r.bits(4));
+                }
+                if (cfg.presence & 0b00100) {  // [2]
+                    cfg.trim_height = static_cast<int>(r.bits(4));
+                }
+                if (cfg.presence & 0b00010) {  // [1]: sign, amount
+                    const int sign = static_cast<int>(r.bits(1));
+                    cfg.bal3d_y_tb = {sign, static_cast<int>(r.bits(4))};
+                }
+                if (cfg.presence & 0b00001) {  // [0]: sign, amount
+                    const int sign = static_cast<int>(r.bits(1));
+                    cfg.bal3d_y_lis = {sign, static_cast<int>(r.bits(4))};
+                }
+            }
+            trim.configs.push_back(cfg);
+        }
+    }
+    return trim;
+}
+
+std::optional<Headphone> parse_headphone(Reader& r) {
+    if (!r.bits(1)) {  // b_headphone
+        return std::nullopt;
+    }
+    Headphone hp;
+    hp.hp_operation_mode = static_cast<int>(r.bits(3));
+    if (hp.hp_operation_mode == 0b001 || hp.hp_operation_mode == 0b010) {
+        hp.b_head_track_disable_all = r.bits(1) != 0;
+    }
+    return hp;
+}
+
+// --- §6.2.8.1 oamd_common_data ------------------------------------------------
+
+// Embedded, at the TOC level, in ac4_substream_info_ajoc() when it sets
+// b_oamd_common_data_present - see ac4.hpp's module docs for where its
+// second call site (oamd_substream(), never walked here) sits.
+OamdCommonData parse_oamd_common_data(Reader& r) {
+    OamdCommonData data;
+    data.b_default_screen_size_ratio = r.bits(1) != 0;
+    if (!data.b_default_screen_size_ratio) {
+        data.master_screen_size_ratio_code = static_cast<int>(r.bits(5));
+    }
+    data.b_bed_object_chan_distribute = r.bits(1) != 0;
+    if (!r.bits(1)) {  // b_additional_data
+        return data;
+    }
+    std::uint64_t add_data_bytes = r.bits(1) + 1;  // add_data_bytes_minus1
+    if (add_data_bytes == 2) {
+        add_data_bytes += variable_bits(r, 2);
+    }
+    std::uint64_t add_data_bits = add_data_bytes * 8;
+
+    // bits_used = X(); add_data_bits -= bits_used, tracked by reader
+    // position rather than each parser returning its own bit count. A
+    // nested element reading past its remaining budget - only possible on a
+    // malformed stream, since a real encoder sizes add_data_bytes to fit
+    // exactly what it wrote - fails the substream the same way running past
+    // the actual end of the data would, rather than let the elements after
+    // it be read from the wrong position.
+    const auto spend = [&](auto&& parse) {
+        const std::size_t start = r.bit_position();
+        auto value = parse(r);
+        const std::size_t consumed = r.bit_position() - start;
+        if (consumed > add_data_bits) {
+            r.fail(Error::kTruncated);
+            add_data_bits = 0;
+        } else {
+            add_data_bits -= consumed;
+        }
+        return value;
+    };
+
+    data.trim = spend(parse_trim);
+    if (add_data_bits && !r.error()) {
+        data.bed_render_info = spend(parse_bed_render_info);
+    }
+    if (add_data_bits && !r.error()) {
+        data.headphone = spend(parse_headphone);
+    }
+    if (add_data_bits && !r.error()) {
+        r.skip_bits(add_data_bits);  // add_data: raw bits this parser does not interpret
+    }
+    return data;
+}
+
 // --- §6.2.1.9 ac4_substream_info_ajoc ---------------------------------------
 
 AjocSubstreamInfo parse_substream_info_ajoc(Reader& r, int fs_index, int frame_rate_factor,
@@ -798,8 +1017,10 @@ AjocSubstreamInfo parse_substream_info_ajoc(Reader& r, int fs_index, int frame_r
         info.static_objects = parse_bed_dyn_obj_assignment(r, info.n_fullband_dmx_signals);
     }
     if (r.bits(1)) {  // b_oamd_common_data_present
-        r.fail(Error::kOamdCommonDataPresent);
-        return info;
+        info.oamd_common_data = parse_oamd_common_data(r);
+        if (r.error()) {
+            return info;
+        }
     }
     // Summed unsigned for the same reason as parse_emdf_info()'s escapes.
     std::uint32_t n_fullband_upmix_signals = r.bits(4) + 1;
@@ -957,7 +1178,7 @@ SubstreamGroupInfo parse_substream_group_info(Reader& r, int fs_index, int frame
             }
             group.substreams.push_back(std::move(sub));
             if (r.error()) {
-                return group;  // kOamdCommonDataPresent - stop, caller checks r.error()
+                return group;  // an ajoc's oamd_common_data() failed - caller checks r.error()
             }
         }
     }

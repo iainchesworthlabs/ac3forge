@@ -780,12 +780,15 @@ array-index formula that was reversed for one of the two flag-array widths, and 
 handling of LFE at the same array position - included for `ac4_substream_info_obj()`'s std-flags
 branch but excluded for `bed_dyn_obj_assignment()`'s, a spec difference this project's
 first draft assumed away). If `dee_ac4ajoc_encoder.exe`'s provenance gate or `dee_ac4ims_encoder.exe`'s
-behavior changes, that would upgrade this to a tier 2/3 check. `oamd_common_data()` (§6.2.8.1,
-reachable only via `ac4_substream_info_ajoc()`'s own `b_oamd_common_data_present` flag) remains
-out of scope either way — a large separate metadata structure (bed assignment, DRC, target-device
-categories, dialogue enhancement) a stream setting that flag is refused cleanly
-(`Error::kOamdCommonDataPresent`) rather than misparsed. Chromium's public A-JOC test file sets the
-flag in every frame and is refused there.
+behavior changes, that would upgrade this to a tier 2/3 check. `oamd_common_data()` (§6.2.8.1) is
+transcribed at the one TOC-level site that reaches it, `ac4_substream_info_ajoc()`'s own
+`b_oamd_common_data_present` flag — bed render info, trim and headphone metadata, plus the
+declared-length `add_data` tail a nested element that reads past its own byte budget fails against,
+the same synthetic-vector evidence as the rest of this section. The OAMD substream DATA payload
+itself (`oamd_substream()`, §6.2.2.4, which embeds a second, independent `oamd_common_data()` of its
+own) stays out of scope, reported as a byte range like every other non-audio substream. Chromium's
+public A-JOC test file sets `b_oamd_common_data_present` in every frame; re-checking this reading
+against it is still open.
 
 **The `bitstream_version <= 1` legacy path**
 (`ac4_toc()`/`ac4_presentation_info()` as TS 103 190-1 alone defines them) is transcribed and
