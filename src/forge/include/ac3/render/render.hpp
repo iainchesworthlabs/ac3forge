@@ -10,6 +10,7 @@
 
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/render/float_biquad.hpp"
 #include "ac3/render/layout.hpp"
@@ -40,13 +41,28 @@
 //   the probe's reference to the digit. The bed's other channels are NOT added
 //   on top: for a JOC programme the bed IS the objects' 5.1 fold, and adding it
 //   would render everything twice. The bed's LFE passes through, because it is
-//   not an object.
+//   not an object - and it passes through late. A reconstructed object comes
+//   out oba::joc::reconstruction_delay() samples after the bed it was pulled
+//   from (docs/library/decoding.md, "Atmos objects lag the bed"): 576 in the
+//   QMF domain a decoder reconstructs in by default, 256 in the MDCT-band one
+//   (set_joc_domain). Played as it arrives, the LFE would reach the room that
+//   far ahead of the objects it goes with, so it goes through a delay line of
+//   that length first. The bass a small speaker hands to the LFE feed (below)
+//   is the objects' own and already late, so it is not held back again.
+//   tests/render/test_object_lfe_timing.cpp measures both, end to end.
 //
 // The gains are trigonometry in double, refreshed when the coded layout
 // changes (set_bed) and once per unit for the objects (set_objects, on the
 // unit's first block); the per-sample work is float multiply-adds on the FPU,
-// which is where an ESP32-S3 spends its time well. Nothing here allocates
-// except describe_objects' own vector of descriptions, once per unit.
+// which is where an ESP32-S3 spends its time well. render() never allocates.
+// Outside it, nothing here does but describe_objects' own vector of
+// descriptions, once per unit, and the LFE's delay line, once, when
+// set_objects() first has an object to place - 2,304 bytes for a 5.1 bed in
+// the QMF domain, 1,024 in the MDCT-band one, and nothing for a renderer that
+// only ever plays the bed. The line is a vector rather than an array in the
+// object because this object is copied by value onto small FreeRTOS stacks
+// (the ESP32 player constructs one there), the case OutputLayout::kTextBytes'
+// comment records a boot loop from.
 //
 // Moved from the ESP-IDF component with layout.hpp, and tested on the host in
 // tests/render/test_layout.cpp: the geometry has its own tests under
@@ -149,15 +165,35 @@ class LayoutRenderer {
         return true;
     }
 
+    // The domain the decoder reconstructs the objects in
+    // (ac3::DecoderConfig::joc_domain), which is what decides how far they
+    // trail their bed: object_lag() becomes oba::joc::reconstruction_delay()
+    // of it. kQmf, the decoder's default, until this says otherwise. A change
+    // empties the LFE's delay line, so the LFE is silent for the new lag
+    // rather than played out of order.
+    void set_joc_domain(ac3::oba::joc::Domain domain) {
+        const auto lag = static_cast<std::size_t>(ac3::oba::joc::reconstruction_delay(domain));
+        if (lag != object_lag_) {
+            object_lag_ = lag;
+            size_lfe_delay();
+        }
+    }
+
+    // How many samples render() holds the bed's LFE back while it places
+    // objects.
+    [[nodiscard]] std::size_t object_lag() const { return object_lag_; }
+
     // The coded layout of the units about to arrive: the channels a PcmBlock
-    // will carry, in its order. Recomputes every bed gain. Call when it
-    // changes, which for a stream is once.
+    // will carry, in its order. Recomputes every bed gain, and empties the
+    // LFE's delay line when there is one. Call when it changes, which for a
+    // stream is once.
     void set_bed(const ac3::eac3::chanmap::Layout& coded) {
         coded_ = coded;
         bed_channels_ = std::min(static_cast<std::size_t>(coded.count), kMaxCoded);
         for (auto& row : bed_gains_) {
             row.fill(0.0F);
         }
+        lfe_channels_ = 0;
         // Where the coded surrounds sit depends on the coded layout's own
         // company, exactly as the output layout's do - see OutputLayout.
         const bool has_rears = coded.index_of(Location::kLrs) >= 0;
@@ -167,6 +203,7 @@ class LayoutRenderer {
         for (std::size_t c = 0; c < bed_channels_; ++c) {
             const Location location = coded[static_cast<int>(c)];
             if (location == Location::kLfe || location == Location::kLfe2) {
+                lfe_coded_[lfe_channels_++] = static_cast<std::uint8_t>(c);
                 // LFE to the LFE feeds. A second LFE goes to a second feed when
                 // the room has one, and joins the first otherwise; the first
                 // never lands on a slot named LFE2.
@@ -203,11 +240,13 @@ class LayoutRenderer {
                 bed_gains_[c][target_slots_[t]] = static_cast<float>(gains[t]);
             }
         }
+        size_lfe_delay();
     }
 
     // The objects of the unit about to be rendered, as describe_objects sees
     // them: position, gain and whether active. Only the first kMaxObjects are
-    // placed.
+    // placed. The first call with any takes the LFE's delay line (see the
+    // header comment); later ones reuse it.
     void set_objects(std::span<const ac3::oba::DisplayObject> objects) {
         object_count_ = std::min(objects.size(), kMaxObjects);
         std::array<double, kMaxSlots> gains{};
@@ -226,6 +265,10 @@ class LayoutRenderer {
                 // Double until here, float from here: the probe's arithmetic.
                 object_gains_[i][target_slots_[t]] = static_cast<float>(gains[t] * linear);
             }
+        }
+        if (object_count_ > 0 && !lfe_delay_taken_) {
+            lfe_delay_taken_ = true;
+            size_lfe_delay();
         }
     }
 
@@ -296,7 +339,8 @@ class LayoutRenderer {
     // zeros, so a bus reused from the last block never replays it. `objects`
     // says whether to place the objects the block carries (when it carries
     // none, the bed is placed whatever this says); `gain` is applied to
-    // everything, 1.0 being free.
+    // everything, 1.0 being free. While objects are placed, the LFE a slot
+    // plays is the bed's of object_lag() samples before.
     void render(const ac3::PcmBlock& block, bool objects, float gain,
                 std::span<const std::span<float>> out) {
         const std::size_t slots = std::min(out.size(), layout_.slots());
@@ -327,18 +371,21 @@ class LayoutRenderer {
                     }
                 }
             }
-            // The bed's LFE, and only that, through its own gains.
-            for (std::size_t c = 0; c < bed_channels_ && c < block.channels.size(); ++c) {
-                const Location location = coded_[static_cast<int>(c)];
-                if (location != Location::kLfe && location != Location::kLfe2) {
-                    continue;
-                }
-                add_channel(block.channels[c], c, n, slots, out);
-            }
         } else {
             for (std::size_t c = 0; c < bed_channels_ && c < block.channels.size(); ++c) {
-                add_channel(block.channels[c], c, n, slots, out);
+                // Once there is a delay line, the LFE goes by way of it below.
+                if (!lfe_delay_taken_ || !coded_is_lfe(c)) {
+                    add_channel(block.channels[c], c, n, slots, out);
+                }
             }
+        }
+        // The bed's LFE through its own gains: delayed beside the objects, as
+        // it arrives beside the rest of the bed, and into the line either way,
+        // so that objects placed after a unit without them still find the LFE
+        // they go with. set_objects() takes the line before object_count_ can
+        // be anything but zero, so it is there whenever objects are placed.
+        if (lfe_delay_taken_) {
+            add_lfe(block, n, slots, out, place_objects);
         }
         if (has_small_) {
             apply_crossover(n, slots, out);
@@ -354,9 +401,10 @@ class LayoutRenderer {
     }
 
     // Drops the crossover filters' delay-line state (not their
-    // coefficients), for reuse across streams - the same reasoning
-    // ac3::OutputStage::reset() has for its own Lt/Rt phase-shift history.
-    // A no-op when nothing is small.
+    // coefficients) and silences the LFE's delay line, for reuse across
+    // streams - the same reasoning ac3::OutputStage::reset() has for its own
+    // Lt/Rt phase-shift history. A no-op when nothing is small and no object
+    // has been placed.
     void reset() {
         for (FloatBiquad& hp : crossover_hp_) {
             hp.reset();
@@ -364,6 +412,8 @@ class LayoutRenderer {
         for (FloatBiquad& lp : crossover_lp_) {
             lp.reset();
         }
+        std::fill(lfe_delay_.begin(), lfe_delay_.end(), 0.0F);
+        lfe_delay_at_ = 0;
     }
 
     // A block the decoder's own output stage already folded (kLoRo, kLtRt,
@@ -471,27 +521,88 @@ class LayoutRenderer {
         return n;
     }
 
+    [[nodiscard]] bool coded_is_lfe(std::size_t c) const {
+        const Location location = coded_[static_cast<int>(c)];
+        return location == Location::kLfe || location == Location::kLfe2;
+    }
+
     void add_channel(std::span<const float> src, std::size_t c, std::size_t n, std::size_t slots,
                      std::span<const std::span<float>> out) const {
         if (src.size() < n) {
             return;
         }
+        add_samples(src.data(), n, c, 0, slots, out);
+    }
+
+    // `count` samples of coded channel `c` into every slot it reaches, at its
+    // gain, starting `offset` samples into each.
+    void add_samples(const float* src, std::size_t count, std::size_t c, std::size_t offset,
+                     std::size_t slots, std::span<const std::span<float>> out) const {
         for (std::size_t slot = 0; slot < slots; ++slot) {
             const float g = bed_gains_[c][slot];
             if (g == 0.0F) {
                 continue;
             }
-            float* const dst = out[slot].data();
+            float* const dst = out[slot].data() + offset;
             if (g == 1.0F) {
-                for (std::size_t k = 0; k < n; ++k) {
+                for (std::size_t k = 0; k < count; ++k) {
                     dst[k] += src[k];
                 }
             } else {
-                for (std::size_t k = 0; k < n; ++k) {
+                for (std::size_t k = 0; k < count; ++k) {
                     dst[k] += g * src[k];
                 }
             }
         }
+    }
+
+    // The LFE's delay line for the bed and the lag as they now are, silent:
+    // object_lag_ samples for each coded LFE channel, end to end. Nothing
+    // until set_objects() has taken it.
+    void size_lfe_delay() {
+        if (!lfe_delay_taken_) {
+            return;
+        }
+        lfe_delay_.assign(lfe_channels_ * object_lag_, 0.0F);
+        lfe_delay_at_ = 0;
+    }
+
+    // The bed's LFE channels into their slots by way of the delay line. When
+    // `delayed`, what the line gives back - each channel as it was
+    // object_lag_ samples ago - and otherwise the block's own samples; into
+    // the line, either way, go the block's samples, a run at a time up to the
+    // line's end, so a block longer than the lag works too. A channel the
+    // block lacks, or has short, is silence, as add_channel() takes it.
+    void add_lfe(const ac3::PcmBlock& block, std::size_t n, std::size_t slots,
+                 std::span<const std::span<float>> out, bool delayed) {
+        const std::size_t lag = object_lag_;
+        for (std::size_t i = 0; i < lfe_channels_; ++i) {
+            const std::size_t c = lfe_coded_[i];
+            const std::span<const float> src =
+                c < block.channels.size() ? block.channels[c] : std::span<const float>{};
+            const bool present = src.size() >= n;
+            float* const line = lfe_delay_.data() + (i * lag);
+            std::size_t at = lfe_delay_at_;
+            for (std::size_t k = 0; k < n;) {
+                const std::size_t run = std::min(n - k, lag - at);
+                if (delayed) {
+                    add_samples(line + at, run, c, k, slots, out);
+                } else if (present) {
+                    add_samples(src.data() + k, run, c, k, slots, out);
+                }
+                if (present) {
+                    std::copy_n(src.data() + k, run, line + at);
+                } else {
+                    std::fill_n(line + at, run, 0.0F);
+                }
+                k += run;
+                at += run;
+                if (at == lag) {
+                    at = 0;
+                }
+            }
+        }
+        lfe_delay_at_ = (lfe_delay_at_ + n) % lag;
     }
 
     OutputLayout layout_;
@@ -517,6 +628,23 @@ class LayoutRenderer {
     std::vector<std::size_t> small_slots_;
     std::vector<FloatBiquad> crossover_hp_;
     std::vector<FloatBiquad> crossover_lp_;
+    // The bed's LFE, held back while objects are placed: by how much
+    // (set_joc_domain; kQmf's lag, as DecoderConfig::joc_domain defaults),
+    // which coded channels are LFEs (set_bed), and the line itself -
+    // object_lag_ samples for each of them, written at lfe_delay_at_. The
+    // line stays empty until set_objects() first has an object
+    // (lfe_delay_taken_), and is a vector rather than an array for the stack
+    // reason the header comment gives. add_lfe()'s modulo relies on the lag
+    // never being zero.
+    std::size_t object_lag_ = static_cast<std::size_t>(
+        ac3::oba::joc::reconstruction_delay(ac3::oba::joc::Domain::kQmf));
+    std::array<std::uint8_t, kMaxCoded> lfe_coded_{};
+    std::size_t lfe_channels_ = 0;
+    bool lfe_delay_taken_ = false;
+    std::size_t lfe_delay_at_ = 0;
+    std::vector<float> lfe_delay_;
+    static_assert(ac3::oba::joc::reconstruction_delay(ac3::oba::joc::Domain::kQmf) > 0 &&
+                  ac3::oba::joc::reconstruction_delay(ac3::oba::joc::Domain::kMdctBand) > 0);
 };
 
 }  // namespace ac3::render

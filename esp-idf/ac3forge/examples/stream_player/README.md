@@ -505,7 +505,7 @@ What happens to a stream depends on the layout, not the stream:
 | --- | --- |
 | `2.0`, `1.0` | The decoder's own §7.8 fold (`CONFIG_AC3FORGE_EXAMPLE_STEREO_FOLD` picks Lo/Ro or Lt/Rt). What every player before 2026-09-10 did, unchanged. |
 | anything wider, no heights | As coded. Each coded channel goes to the slot of its own location exactly, or, where the room has no such speaker (a 7.1 stream's rears in a 5.1 room), is spread over its neighbours by `ac3::spatial::pan_direction` at constant power. The LFE goes to the LFE slots and nowhere else. |
-| with heights | As above for a stream without objects. For a stream with an object layer the objects are reconstructed and placed by their own positions, the bed's LFE passes through, and the bed's other channels are **not** added — an Atmos bed is the objects' own 5.1 fold, and adding it would play everything twice. `CONFIG_AC3FORGE_EXAMPLE_OBJECTS` widens or narrows when that happens. |
+| with heights | As above for a stream without objects. For a stream with an object layer the objects are reconstructed and placed by their own positions, the bed's LFE passes through (held back by the objects' reconstruction delay, so that it stays with them), and the bed's other channels are **not** added — an Atmos bed is the objects' own 5.1 fold, and adding it would play everything twice. `CONFIG_AC3FORGE_EXAMPLE_OBJECTS` widens or narrows when that happens. |
 
 **Nothing is upmixed.** The renderer never makes a signal for a speaker out of
 other channels: a slot gets a coded channel at its location, a coded channel

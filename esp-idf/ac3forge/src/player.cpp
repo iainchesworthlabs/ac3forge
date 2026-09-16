@@ -805,6 +805,9 @@ bool Player::start() {
     im.reconstruct = serving.reconstruct;
     ac3::render::configure_decoder(serving, im.config.decoder);
     im.renderer = LayoutRenderer{im.config.layout};
+    // Placed objects trail their bed by the reconstruction's own delay, which
+    // depends on the domain, and the renderer holds the bed's LFE back by it.
+    im.renderer.set_joc_domain(im.config.decoder.joc_domain);
 
     im.events = xEventGroupCreate();
     if (im.events == nullptr) {
