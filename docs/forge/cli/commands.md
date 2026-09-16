@@ -600,7 +600,9 @@ additive to the schema, and a consumer branches on `stream.codec` first the way 
 discriminated-union JSON shape is read. `stream.ac4`: `bitstream_version`, `sample_rate_hz`,
 `frame_rate_index`, `n_presentations`, `substream_groups[]`, and `presentations_v0[]` for the
 legacy `bitstream_version <= 1` path (empty for every stream observed so far — see the
-Verification link above). Each `substream_groups[]` entry carries `b_substreams_present`,
+Verification link above). Each `presentations_v0[]` entry carries `presentation_version` and
+`substreams[]`, whose entries are a `chan` substream's members (below) with its `role` beside
+them. Each `substream_groups[]` entry carries `b_substreams_present`,
 `b_channel_coded`, `oamd` (null unless the group is object-coded and carries an OAMD substream:
 `b_oamd_ndot`, `substream_index`), and `substreams[]`. Each substream entry is a tagged union —
 `kind` (`"chan"`, `"ajoc"` or `"obj"`) says which one of `chan`/`ajoc`/`obj` is non-null, the

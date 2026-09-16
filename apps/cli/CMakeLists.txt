@@ -40,6 +40,11 @@ else()
                                   platform/posix/console_encoding.cpp)
 endif()
 
+# ../common/probe_json.cpp: probe's JSON stream summary and its vocabulary,
+# which Hearth's media information writes too (apps/hearth/engine), compiled
+# in the same way as the apps/common files above.
+target_sources(ac3cli PRIVATE ../common/probe_json.cpp)
+
 # main.cpp's 'atmos-adm' command (roadmap B1 phase 3) needs ac3adm::ac3adm/ac3::admbridge - this
 # project's one optional, non-default library dependency (AC3FORGE_BUILD_ADM, default OFF - see
 # the root CMakeLists.txt's own option() for why: libadm's Boost dependency). Unlike

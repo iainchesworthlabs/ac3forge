@@ -459,6 +459,27 @@ and release packaging.
     plays. In `ac3tests`, tagged `[play-meters]`, a reading comes out when the clock reaches it
     and not before, readings come out in order however many wait, each describes its audio's
     level and loudness, and a join, a flush and the once-a-second reads each behave as above.
+- **Hearth's media information** (`apps/hearth/engine/media_info.hpp`): what a queue item's
+  file says about itself, for the media page and its JSON export.
+  - For AC-3 and E-AC-3: the programmes and associated services, the channel map, and the
+    whole-stream report `ac3cli probe` makes, authenticity tags included. Also the first
+    access unit's bitstream information: service, surround and headphone modes, copyright,
+    audio production, time codes, Annex D's alternate syntax and the mixing metadata, with the
+    fold levels they give.
+  - For AC-4, which Hearth cannot play: the sync frames and the table of contents.
+  - The container's facts arrive with the item from its loader. `apps/common`'s container
+    input now reports the track, its language, an MP4 track's codec configuration box and
+    edit list, and an MPEG-TS stream's programme, PIDs and signalling.
+  - `MediaInspector` reads items on a thread of its own, one at a time, and keeps the last
+    few descriptions. A newer request replaces one not yet started.
+  - The export is `ac3forge.hearth.media/1`. Its `probe` member is the `stream` object of
+    `ac3forge.probe/1`, written by the code `ac3cli probe json=1` uses, which moved to
+    `apps/common/probe_json.cpp` for the purpose.
+  - In `ac3tests`, tagged `[media-info]`: AC-3, E-AC-3 in MP4, Matroska and MPEG-TS, two
+    programmes, signed objects and a real AC-4 stream are each described and exported, and
+    the document parses. Tagged `[media-inspector]` and `[concurrency]`: a description is
+    made on the inspector's thread, served from the cache until a reread is asked for, and a
+    request replaced before it started is never read.
 
 **Audio outputs**
 
@@ -863,6 +884,10 @@ and release packaging.
   Sound sink and the loudness meter, and a whole-channel shift on the batch-written ADM
   master, the last pinned by a regression test measuring the exported master's two
   channels before and after.
+- **`ac3cli probe json=1` wrote invalid JSON for an AC-4 stream of bitstream version 0 or
+  1.** Each `presentations_v0[].substreams[]` entry held an unnamed object beside its
+  `role`. The substream's members now sit beside `role` in the entry. No stream on hand has
+  such a table of contents, so no output seen so far changes.
 
 **ESP32 / bare-metal**
 

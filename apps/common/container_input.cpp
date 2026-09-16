@@ -115,7 +115,92 @@ constexpr std::size_t kContainerSniffBytes = 64 * 1024;
     return (whole * to) + part;
 }
 
+[[nodiscard]] ContainerFacts facts_of(const mp4::Demuxed& demuxed) {
+    const mp4::ReadTrack& track = demuxed.track;
+    ContainerFacts facts;
+    facts.kind = ContainerKind::kMp4;
+    facts.codec_id = track.codec_id;
+    facts.track = track.track_id;
+    facts.language = track.language;
+    facts.samples = demuxed.samples.size();
+    facts.sample_rate = track.sample_rate;
+    facts.channels = track.channels;
+    facts.timescale = track.timescale;
+    facts.movie_timescale = track.movie_timescale;
+    facts.edits = track.edits.size();
+    const mp4::CodecConfig& config = track.codec_config;
+    if (!config.payload.empty()) {
+        CodecBox box;
+        box.bytes = config.payload.size();
+        if (config.ac4) {
+            box.type = "dac4";
+        } else {
+            box.type = config.eac3 ? "dec3" : "dac3";
+            box.fscod = config.fscod;
+            box.bsid = config.bsid;
+            box.bsmod = config.bsmod;
+            box.acmod = config.acmod;
+            box.lfeon = config.lfeon;
+            box.bit_rate_code = config.bit_rate_code;
+            box.data_rate_kbps = config.data_rate_kbps;
+            box.independent_substreams = config.eac3 ? config.num_ind_sub + 1 : 0;
+            box.num_dep_sub = config.num_dep_sub;
+            box.chan_loc = config.chan_loc;
+            box.asvc = config.asvc;
+            box.complexity_index = config.oba_complexity_index;
+        }
+        facts.codec_box = std::move(box);
+    }
+    return facts;
+}
+
+[[nodiscard]] ContainerFacts facts_of(const matroska::Demuxed& demuxed) {
+    ContainerFacts facts;
+    facts.kind = ContainerKind::kMatroska;
+    facts.codec_id = demuxed.track.codec_id;
+    facts.track = demuxed.track.track_number;
+    facts.language = demuxed.track.language;
+    facts.samples = demuxed.frames.size();
+    facts.sample_rate = demuxed.track.sample_rate;
+    facts.channels = demuxed.track.channels;
+    return facts;
+}
+
+[[nodiscard]] std::string_view signalling_token(mpegts::CodecSignalling signalling) {
+    switch (signalling) {
+        case mpegts::CodecSignalling::kAtscStreamType: return "atsc_stream_type";
+        case mpegts::CodecSignalling::kDvbDescriptor: return "dvb_descriptor";
+        case mpegts::CodecSignalling::kRegistrationDescriptor: return "registration_descriptor";
+        case mpegts::CodecSignalling::kDvbExtensionDescriptor: return "dvb_extension_descriptor";
+    }
+    return "";
+}
+
+[[nodiscard]] ContainerFacts facts_of(const mpegts::Demuxed& demuxed) {
+    const mpegts::ReadStream& stream = demuxed.stream;
+    ContainerFacts facts;
+    facts.kind = ContainerKind::kMpegTs;
+    facts.track = stream.elementary_pid;
+    facts.samples = demuxed.payloads.size();
+    facts.program_number = stream.program_number;
+    facts.pmt_pid = stream.pmt_pid;
+    facts.stream_type = stream.stream_type;
+    facts.signalling = std::string{signalling_token(stream.signalling)};
+    facts.packet_size = stream.packet_size;
+    return facts;
+}
+
 }  // namespace
+
+std::string_view container_token(ContainerKind kind) {
+    switch (kind) {
+        case ContainerKind::kMatroska: return "matroska";
+        case ContainerKind::kMp4: return "mp4";
+        case ContainerKind::kMpegTs: return "mpegts";
+        case ContainerKind::kUnknown: break;
+    }
+    return "";
+}
 
 StreamTrim trim_from_edit_list(const mp4::ReadTrack& track, std::string& note) {
     StreamTrim trim;
@@ -203,7 +288,9 @@ ElementaryStreamResult elementary_stream_from_bytes(std::span<const std::byte> f
                        .error = std::string{"Matroska/WebM file this build cannot demux ("} +
                                 std::string{matroska::describe(demuxed.error())} + ")"};
             }
-            return {.bytes = concat_frames(demuxed->frames), .error = {}};
+            return {.bytes = concat_frames(demuxed->frames),
+                    .error = {},
+                    .container = facts_of(*demuxed)};
         }
         case ContainerKind::kMp4: {
             const auto demuxed = mp4::demux(file);
@@ -236,14 +323,15 @@ ElementaryStreamResult elementary_stream_from_bytes(std::span<const std::byte> f
                     }
                     out.insert(out.end(), sample.begin(), sample.end());
                 }
-                return {.bytes = std::move(out), .error = {}};
+                return {.bytes = std::move(out), .error = {}, .container = facts_of(*demuxed)};
             }
             std::string note;
             const StreamTrim trim = trim_from_edit_list(demuxed->track, note);
             return {.bytes = concat_frames(demuxed->samples),
                     .error = {},
                     .trim = trim,
-                    .trim_note = std::move(note)};
+                    .trim_note = std::move(note),
+                    .container = facts_of(*demuxed)};
         }
         case ContainerKind::kMpegTs: {
             const auto demuxed = mpegts::demux(file);
@@ -252,7 +340,9 @@ ElementaryStreamResult elementary_stream_from_bytes(std::span<const std::byte> f
                        .error = std::string{"Transport Stream this build cannot demux ("} +
                                 std::string{mpegts::describe(demuxed.error())} + ")"};
             }
-            return {.bytes = concat_frames(demuxed->payloads), .error = {}};
+            return {.bytes = concat_frames(demuxed->payloads),
+                    .error = {},
+                    .container = facts_of(*demuxed)};
         }
     }
     return {.bytes = {}, .error = "unrecognised container"};
