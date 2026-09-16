@@ -37,6 +37,10 @@ using ConsoleCommands = bool (*)(std::string_view line);
 // every line typed on the console to them: a Sendspin player's pairing needs
 // an operator's action (pairing.md), which the console is one place for. The
 // same task still answers an Improv client there.
+//
+// Called again with `commands` once a board that had no network at boot has
+// joined one and started its Sendspin player: the task, listening since
+// boot, hands the console's lines to them from then on.
 void provisioning_start(ConsoleCommands commands = nullptr);
 
 }  // namespace player

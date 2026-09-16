@@ -3,6 +3,7 @@
 #include "provision.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <span>
@@ -153,7 +154,9 @@ void answer(const improv::Rpc& rpc) {
     }
 }
 
-ConsoleCommands g_commands = nullptr;
+// Written by app_main, when the task starts and again if the Sendspin player
+// starts after a network joined over Improv, and read by the task.
+std::atomic<ConsoleCommands> g_commands{nullptr};
 
 [[noreturn]] void improv_task(void*) {
     improv::Reader reader;
@@ -182,11 +185,12 @@ ConsoleCommands g_commands = nullptr;
             dropped = reader.dropped();
             send_error(improv::Error::invalid_packet);
         }
-        if (g_commands == nullptr) {
+        const ConsoleCommands commands = g_commands;
+        if (commands == nullptr) {
             continue;
         }
         if (byte == '\n' || byte == '\r') {
-            if (length > 0 && !g_commands(std::string_view(line.data(), length))) {
+            if (length > 0 && !commands(std::string_view(line.data(), length))) {
                 std::printf("console: commands are pair reset, pair cancel, pair forget, pair token and sendspin\n");
             }
             length = 0;
@@ -205,6 +209,13 @@ void provisioning_start(ConsoleCommands commands) {
     // through stdio, and holds nothing else.
     static TaskHandle_t task = nullptr;
     if (task != nullptr) {
+        // Already listening, since boot, on a board that had no network then.
+        // Its Sendspin player has started since, and the console takes the
+        // player's commands from here on.
+        if (commands != nullptr && g_commands.exchange(commands) != commands) {
+            std::printf("console: listening for commands (pair reset, pair cancel, pair forget, "
+                        "pair token, sendspin)\n");
+        }
         return;
     }
     g_commands = commands;

@@ -20,7 +20,9 @@
 // played to: mDNS has to be answering and the control surface reachable while
 // the board sits idle, which is the whole of B2
 // (planning/hearth-reference-player.md). The HTTP source still calls
-// network_up() when it opens, and gets the network that is already up.
+// network_up() when it opens, and gets the network that is already up. A
+// board with no network at boot gets one when Improv gives it one
+// (provision.hpp), and app_main then starts what boot would have.
 
 namespace player {
 
@@ -38,8 +40,8 @@ namespace player {
 [[nodiscard]] bool network_up();
 
 // Whether network_up() has succeeded. Asked by anything that wants to know
-// whether to bother - mDNS, the Improv reply's device URL - rather than to
-// bring it up itself.
+// whether to bother - mDNS, the Improv reply's device URL, app_main watching
+// for a network that comes up after boot - rather than to bring it up itself.
 [[nodiscard]] bool network_ready();
 
 // The address the board holds, as text ("192.168.1.45"), or empty when it
