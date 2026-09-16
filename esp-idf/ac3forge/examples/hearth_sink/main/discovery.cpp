@@ -10,23 +10,18 @@
 #include "mdns.h"
 
 #include "network.hpp"
+#include "sendspin.hpp"
 #include "settings.hpp"
 
 namespace player {
 namespace {
 
 // planning/hearth-sendspin-extension.md, row T4: a player advertises
-// _sendspin._tcp with the path the server opens its WebSocket on. The port is
-// the PLAYER column's, 8928 - the table reads Server then Player, and 8927 is
-// the server's - which is ac3::sendspin::kClientPort in
-// src/sendspin/include/ac3/sendspin/websocket.hpp and the test sink's default.
-// This example does not link src/sendspin yet; B3 does, and shares the one
-// constant then. B3 is also what answers on the port - until then this board
-// is found and then found wanting, which is the order the plan puts these
-// phases in.
+// _sendspin._tcp with the path the server opens its WebSocket on, and the
+// PLAYER column's port, kSendspinPort (sendspin.hpp), which the Sendspin
+// player listens on.
 constexpr const char* kService = "_sendspin";
 constexpr const char* kProtocol = "_tcp";
-constexpr std::uint16_t kSendspinPort = 8928;
 constexpr const char* kPath = "/sendspin";
 
 // mDNS hostnames take letters, digits and hyphens. A name someone typed into
@@ -75,6 +70,12 @@ void discovery_start() {
     (void)mdns_hostname_set(host.data());
     (void)mdns_instance_name_set(name);
 
+    // A build without the Sendspin player answers to its name and advertises
+    // no service it would not answer.
+    if (!sendspin_built()) {
+        std::printf("mdns: %s.local; no Sendspin player in this build\n", host.data());
+        return;
+    }
     const std::array<mdns_txt_item_t, 2> txt{{
         {"path", kPath},
         {"name", name},

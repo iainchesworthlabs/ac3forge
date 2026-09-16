@@ -10,11 +10,9 @@
 // opens the WebSocket - and `name` should match what the player will say in
 // client/hello, which is the board's own name (settings.hpp).
 //
-// ADVERTISED BEFORE IT CAN BE PLAYED TO. B3 is what answers on that port; this
-// is what makes the board appear in ac3hearth's and Music Assistant's lists,
-// which is B2's own exit. A sink that answered nothing would be worse than
-// invisible, so the advertisement waits until B3's player exists - see
-// discovery_start's own comment on the port it opens today.
+// The Sendspin player (sendspin.hpp) is what answers on that port, so a build
+// without one advertises its host name and no service: a sink a server found
+// and could not open would be worse than one it never listed.
 
 namespace player {
 

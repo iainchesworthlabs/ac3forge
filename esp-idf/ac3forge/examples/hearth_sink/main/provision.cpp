@@ -150,9 +150,15 @@ void answer(const improv::Rpc& rpc) {
     }
 }
 
+ConsoleCommands g_commands = nullptr;
+
 [[noreturn]] void improv_task(void*) {
     improv::Reader reader;
     std::size_t dropped = 0;
+    // Text typed on the console, a line at a time. An Improv packet's binary
+    // bytes are not text, so one arriving empties the line.
+    std::array<char, 64> line{};
+    std::size_t length = 0;
     // The console's own state is announced once at start, so a client that
     // opens the port mid-run knows where it stands without asking.
     send_state(current_state());
@@ -173,19 +179,33 @@ void answer(const improv::Rpc& rpc) {
             dropped = reader.dropped();
             send_error(improv::Error::invalid_packet);
         }
+        if (g_commands == nullptr) {
+            continue;
+        }
+        if (byte == '\n' || byte == '\r') {
+            if (length > 0 && !g_commands(std::string_view(line.data(), length))) {
+                std::printf("console: commands are pair reset, pair cancel, pair forget, pair token and sendspin\n");
+            }
+            length = 0;
+        } else if (byte >= 0x20 && byte < 0x7F && length < line.size()) {
+            line[length++] = static_cast<char>(byte);
+        } else {
+            length = 0;
+        }
     }
 }
 
 }  // namespace
 
-void provisioning_start() {
+void provisioning_start(ConsoleCommands commands) {
     // 4 KB: the task parses packets into its own fixed buffers and writes
     // through stdio, and holds nothing else.
     static TaskHandle_t task = nullptr;
     if (task != nullptr) {
         return;
     }
-    if (network_ready()) {
+    g_commands = commands;
+    if (network_ready() && commands == nullptr) {
         // Already on a network, so there is nothing for a client to hand this
         // board that it does not have - and the 4 KB is worth more to the
         // decoder. See provision.hpp.
@@ -198,7 +218,12 @@ void provisioning_start() {
         task = nullptr;
         return;
     }
-    std::printf("improv: listening on the console for Wi-Fi credentials\n");
+    if (network_ready()) {
+        std::printf("console: listening for commands (pair reset, pair cancel, pair forget, pair token, "
+                    "sendspin)\n");
+    } else {
+        std::printf("improv: listening on the console for Wi-Fi credentials\n");
+    }
 }
 
 }  // namespace player

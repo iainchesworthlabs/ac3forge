@@ -1,0 +1,32 @@
+# The Sendspin player under QEMU (planning/hearth-reference-player.md, B4):
+#
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci-http;sdkconfig.ci-sendspin"
+#
+# Layered on sdkconfig.ci-http - QEMU's Ethernet, the capture sink, the control
+# surface - with the Sendspin player on, and no play at boot: a server on the
+# host connects through QEMU's port forward and plays to it, and CI compares
+# the levels the board prints at the stream's end with a test sink's.
+CONFIG_AC3FORGE_SENDSPIN=y
+CONFIG_AC3FORGE_EXAMPLE_HTTP_URL=""
+CONFIG_LWIP_MAX_SOCKETS=16
+
+# The capture sink writes every decoded sample as it comes, with no time
+# attached (CONFIG_AC3FORGE_EXAMPLE_CAPTURE_PACED is 0): however slowly the
+# emulator decodes, no burst is late, and the levels are the whole stream's.
+
+# QEMU has no PSRAM, so the player's buffers are in internal RAM beside the
+# network, both HTTP servers and the decoder: a ring for a few seconds of a
+# 448 kbit/s stream, chunks no larger than such a stream's bursts, no delay
+# lines, and the decode stack the HTTP shape's own player runs with.
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_RING_BYTES=16384
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES=4096
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES=24576
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS=0
+
+# The decode task on the network's core, which the board itself does not do
+# (sdkconfig.sendspin). QEMU runs the part's two cores in turn on one host
+# thread, so a decode task on core 1 waits while core 0 takes in a batch of
+# bursts, and the ring overflows: 64 of 315 bursts dropped on 2026-09-16, with
+# the decoder busy under a tenth of the time and the ring at 14,689 bytes at
+# worst. On one core the priorities decide, and the same run dropped none.
+CONFIG_AC3FORGE_EXAMPLE_DECODE_CORE=0

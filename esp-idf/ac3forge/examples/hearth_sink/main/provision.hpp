@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string_view>
+
 // Improv Wi-Fi over the console serial port: how a board with nothing stored
 // is told which network to join (planning/hearth-reference-player.md, B2).
 //
@@ -16,6 +18,11 @@
 
 namespace player {
 
+// A line typed on the console, for whatever else the board takes commands
+// for (the Sendspin player's pairing commands, sendspin.hpp). True when the
+// line was one of them.
+using ConsoleCommands = bool (*)(std::string_view line);
+
 // Starts the task that listens for Improv packets on the console, if this
 // board needs it: a board already on a network is provisioned, and the page's
 // own PUT /network is what moves it to another one.
@@ -25,6 +32,11 @@ namespace player {
 // runs with about 35 KB of it free - a margin PR #707 had to go and find.
 // A board with no network is not decoding anything, so the two never want
 // the same kilobytes at the same time.
-void provisioning_start();
+//
+// With `commands`, the task runs on a board with a network too, and hands
+// every line typed on the console to them: a Sendspin player's pairing needs
+// an operator's action (pairing.md), which the console is one place for. The
+// same task still answers an Improv client there.
+void provisioning_start(ConsoleCommands commands = nullptr);
 
 }  // namespace player

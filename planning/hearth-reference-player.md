@@ -317,10 +317,27 @@ A draft shape. [A4](#a4-sendspin)'s first deliverable is the normative page,
   pairing codes on the serial console and the page; `_sendspin._tcp` through the `espressif/mdns`
   component.
 - The player comes from `src/sendspin`, over `esp_http_server`'s WebSocket and ESP-IDF's mbedTLS.
-  `sendspin-cpp` was the earlier recommendation ([esp32-player.md decision 11](esp32-player.md#decisions))
-  and is reconsidered in B3 with measurements. It implements the player role and Noise, but it
-  has no decoder interface and no hook for a custom role, so carrying the extension through it
-  means a fork.
+  `sendspin-cpp` was the earlier recommendation ([esp32-player.md decision 11](esp32-player.md#decisions)).
+  B3 measured both on 2026-09-16, each as a minimal player app for the S3 built at `-Os` with
+  GCC 15.2 and run under QEMU with no PSRAM, paired and played 24-bit PCM by aiosendspin 9.1.1's
+  server:
+
+  | | `src/sendspin` | `sendspin-cpp` 696e75ff |
+  |---|---|---|
+  | Image | 521,780 bytes | 695,384 bytes |
+  | Internal heap free when idle | 333,916 bytes | 307,676 bytes |
+  | Least internal heap free while streaming | 305,240 bytes | 254,736 bytes |
+  | Internal heap after the connection closed, against idle | 236 bytes less (the pairing record) | 35,576 bytes less |
+  | WebSocket server task, stack used | 4,776 of 8,192 bytes | 4,548 of 8,192 bytes |
+  | 10 s of PCM | played | stream stopped after 0.8 s, `Lost sync (-9364us off)` |
+
+  `sendspin-cpp` completed a Noise handshake only with `noise-c` pinned to 0.1.13, which adds
+  29,460 bytes; the 0.1.30 its manifest resolves to accepts only the NNpsk0 pattern on ESP-IDF.
+  It links its Opus and FLAC decoders into a PCM-only player (109,050 bytes of flash), and it has
+  no decoder interface and no hook for a custom role, so carrying the extension through it means
+  a fork. `src/sendspin` was chosen. In `hearth_sink` on a board, starting the player (the Noise
+  keys are made then) used 7,272 bytes of stack, more than the main task has to spare, so it
+  starts on a 16 KB task of its own.
 - Slot width is a setting. At 16 bits: 16 channels on the S3 (two lines of eight), 8 on the C6
   (one line). At 32 bits: 8 on the S3, 4 on the C6. The sink advertises the count for its current
   setting. Today a 16-bit slot width is standard I2S only, because TDM at 16 bits needs an
@@ -342,8 +359,14 @@ A draft shape. [A4](#a4-sendspin)'s first deliverable is the normative page,
 ### Memory and time on each part
 
 - **ESP32-S3**: PSRAM, and 7.1.4 in real time measured on a board
-  ([esp32-714-realtime.md](esp32-714-realtime.md)). What Noise, the WebSocket buffers and the
-  Sendspin ring add is measured in B3 with the heap monitor API.
+  ([esp32-714-realtime.md](esp32-714-realtime.md)). B3 measured the Sendspin player with the
+  heap monitor API. Under QEMU, with no PSRAM and a 16 KB ring in internal RAM, at least
+  43,700 bytes of internal heap stayed free while a stream played. On a board the 256 KB ring is
+  in PSRAM, and the decoder's allocations of up to 16 KB take nearly all the internal RAM the
+  network leaves: 23 and 139 bytes at the least on two boards over ten minutes, with nothing
+  failing. The decode task used about 18.9 KB of its 32 KB stack, the WebSocket server's task
+  5.2 KB of 8 KB, and starting the player 7.3 KB of the 16 KB it is given
+  ([the sink's README](../esp-idf/ac3forge/examples/hearth_sink/README.md#on-two-boards)).
 - **ESP32-C6**: no PSRAM (ESP-IDF has no external-RAM support for the part), 512 KB of SRAM shared
   with WiFi, and one 160 MHz core with no FPU, so the fixed-point tier. On the C3 the tier's
   largest fixture that fit peaked at 225,038 bytes and the 7.1.4 fixtures did not fit
@@ -594,8 +617,8 @@ status and sink-owned settings, with its budget re-derived and its Playwright su
 
 ### B3: the Sendspin player on the board
 
-First the choice between `src/sendspin`'s player half and `sendspin-cpp`, measured and recorded.
-Then: the Noise responder, pairing codes on serial and the page, the time filter, playout
+First the choice between `src/sendspin`'s player half and `sendspin-cpp`, measured and recorded
+([The firmware](#the-firmware): `src/sendspin`). Then: the Noise responder, pairing codes on serial and the page, the time filter, playout
 scheduled against the DAC with corrections applied to decoded PCM, `player@v1` with PCM for Music
 Assistant (FLAC and Opus by measurement), the extension role feeding the component's decoder,
 renderer, speaker management and sink, decoder settings at runtime, and per-slot levels and

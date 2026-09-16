@@ -49,6 +49,14 @@ else()
     set(AC3FORGE_NETWORK_SRCS "net/none/network.cpp")
 endif()
 
+# And the Sendspin player, which needs the component's (CONFIG_AC3FORGE_SENDSPIN)
+# and a network to be found on. See main/sendspin.hpp.
+if(CONFIG_AC3FORGE_SENDSPIN AND CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP)
+    set(AC3FORGE_SENDSPIN_SRCS "sendspin/player/sendspin.cpp")
+else()
+    set(AC3FORGE_SENDSPIN_SRCS "sendspin/none/sendspin.cpp")
+endif()
+
 # esp_driver_i2s is required whichever sink is chosen. The capture and null
 # builds do not call it, but a component's REQUIRES is resolved before the
 # source list is, and listing it conditionally would make the builds differ in
@@ -89,6 +97,7 @@ idf_component_register(
          "${AC3FORGE_SINK_DIR}/audio_sink.cpp"
          "${AC3FORGE_SOURCE_DIR}/byte_source.cpp"
          ${AC3FORGE_NETWORK_SRCS}
+         ${AC3FORGE_SENDSPIN_SRCS}
          ${AC3FORGE_STAGE_TIMER_SRCS}
     INCLUDE_DIRS "." "source/http"
     REQUIRES ac3forge esp_driver_i2s esp_timer freertos

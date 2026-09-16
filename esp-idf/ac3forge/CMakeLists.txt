@@ -48,10 +48,26 @@
 # (planning/esp32-device-ui.md). IDF names an embedded file's symbols after its
 # base name, hence the component's name on both. Like the rest of this archive
 # they reach a firmware only when something in it uses Control.
+#
+# The Sendspin player (CONFIG_AC3FORGE_SENDSPIN, this directory's Kconfig) adds
+# its sources only when a project turns it on. The condition reads a CONFIG_
+# value, which is unset during IDF's requirements pass - where the source list
+# does not matter - and set when the sources are compiled. REQUIRES does not
+# wait for it: mbedtls and nvs_flash are listed for every project, since a
+# REQUIRES that depended on the configuration would resolve in the pass that
+# cannot see it (examples/hearth_sink/main/CMakeLists.txt found the same).
+set(AC3FORGE_COMPONENT_SRCS "src/player.cpp" "src/control.cpp")
+if(CONFIG_AC3FORGE_SENDSPIN)
+    list(APPEND AC3FORGE_COMPONENT_SRCS
+        "src/burst_player.cpp"
+        "src/sendspin_host.cpp"
+        "src/sendspin_store.cpp")
+endif()
 idf_component_register(
-    SRCS "src/player.cpp" "src/control.cpp"
+    SRCS ${AC3FORGE_COMPONENT_SRCS}
     INCLUDE_DIRS "include"
-    REQUIRES freertos esp_timer heap esp_http_server
+    REQUIRES freertos esp_timer heap esp_http_server mbedtls nvs_flash
+    PRIV_REQUIRES lwip
     EMBED_FILES "ui/ac3forge_ui.html" "ui/ac3forge_ui.js")
 
 # How the interleave converts a float sample to an integer slot is chosen by
@@ -162,6 +178,21 @@ set(AC3FORGE_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_FUZZERS OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_AC4 OFF CACHE BOOL "" FORCE)
 
+# src/sendspin's player half, for the Sendspin player: the core and the
+# player's session, pairing and Noise, with its crypto seam over ESP-IDF's own
+# mbedTLS (the PSA Crypto API, which v6.1's mbedTLS 4 provides). The WebSocket
+# and mDNS a computer takes from vcpkg are the component's and the example's
+# own here, over esp_http_server and espressif/mdns. AC3FORGE_BUILD_HEARTH
+# alone would also build apps/hearth, which the root skips when the player
+# half is all there is.
+if(CONFIG_AC3FORGE_SENDSPIN)
+    set(AC3FORGE_BUILD_HEARTH ON CACHE BOOL "" FORCE)
+    set(AC3FORGE_SENDSPIN_PLAYER_ONLY ON CACHE BOOL "" FORCE)
+    set(AC3FORGE_SENDSPIN_MBEDTLS_TARGET "idf::mbedtls" CACHE STRING "" FORCE)
+else()
+    set(AC3FORGE_BUILD_HEARTH OFF CACHE BOOL "" FORCE)
+endif()
+
 # The decode-critical sources at -O2. src/forge/minimal.cmake lists them, with
 # what each one measured, and the probe under apps/baremetal/platform/esp32s3/
 # has always been built this way - so the timing docs/platforms/bare-metal/esp32-s3.md
@@ -239,3 +270,12 @@ add_subdirectory("${AC3FORGE_ROOT}" ac3forge_build)
 # PUBLIC, not INTERFACE: the component now has sources of its own that include
 # the library's headers, and so does everything that includes the component's.
 target_link_libraries(${COMPONENT_LIB} PUBLIC ac3::forge_minimal)
+if(CONFIG_AC3FORGE_SENDSPIN)
+    target_link_libraries(${COMPONENT_LIB} PUBLIC ac3::sendspin)
+endif()
+
+# The burst player's source under the same switch as player.cpp: it renders,
+# routes and meters every block of a Sendspin stream.
+if(CONFIG_AC3FORGE_SENDSPIN AND AC3FORGE_MINIMAL_HOT_O2)
+    set_source_files_properties(src/burst_player.cpp PROPERTIES COMPILE_OPTIONS "-O2")
+endif()

@@ -1,0 +1,41 @@
+menu "ac3forge"
+
+# THE SENDSPIN PLAYER - include/ac3forge/sendspin_host.hpp and
+# include/ac3forge/burst_player.hpp, over src/sendspin's player half
+# (planning/hearth-reference-player.md, B3). Off by default: a firmware that
+# only decodes from its own storage carries none of it.
+config AC3FORGE_SENDSPIN
+    bool "Sendspin player"
+    default n
+    select HTTPD_WS_SUPPORT
+    select HTTPD_WS_POST_HANDSHAKE_CB_SUPPORT
+    select MBEDTLS_CHACHA20_C
+    select MBEDTLS_CHACHAPOLY_C
+    help
+        Builds src/sendspin's player half into the component with the parts a
+        board adds to it: the WebSocket a Sendspin server connects to, on
+        esp_http_server; pairing records in NVS; and a player that decodes
+        timestamped bursts and PCM and plays each sample at the time the
+        server gave it.
+
+        Selects what that needs from ESP-IDF: WebSocket support in
+        esp_http_server, with the callback it makes once a connection has
+        been upgraded (a player speaks first, with client/init), and
+        ChaCha20-Poly1305 in mbedTLS. mbedTLS's PSA Crypto API carries the
+        rest: X25519, SHA-256, SHA-512 and AES-256-GCM are on in ESP-IDF's
+        default configuration.
+
+# An int rather than a choice, so it reaches C++ as a plain constant: the
+# component reads no configuration through the preprocessor.
+config AC3FORGE_SENDSPIN_SUITE
+    int "Noise suite the player asks for: ChaCha20-Poly1305 (0) or AES-256-GCM (1)"
+    depends on AC3FORGE_SENDSPIN
+    default 0
+    range 0 1
+    help
+        A client names one suite in client/init and a server supports both
+        (planning/hearth-sendspin-extension.md, row E3).
+        25519_ChaChaPoly_SHA256 is software on every part;
+        25519_AESGCM_SHA256 uses the part's AES accelerator where it has one.
+
+endmenu

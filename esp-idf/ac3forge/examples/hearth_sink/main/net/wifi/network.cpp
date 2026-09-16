@@ -91,6 +91,16 @@ bool network_up() {
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &config));
     ESP_ERROR_CHECK(esp_wifi_start());
+    // Modem sleep off, which a sink on mains power can afford. With it on, the
+    // access point holds what it sends the board until the board next wakes,
+    // up to a beacon interval later, while what the board sends leaves at
+    // once. A Sendspin clock exchange reads that as an offset that moves by
+    // milliseconds from one exchange to the next, and a server's read-ahead
+    // that arrives while the board sleeps can overflow the access point's
+    // queue for it, which stalls the stream's start on retransmissions.
+    if (esp_wifi_set_ps(WIFI_PS_NONE) != ESP_OK) {
+        std::printf("network: could not turn modem sleep off; clock and stream timing will suffer\n");
+    }
 
     const auto bits = xEventGroupWaitBits(g_events, kConnectedBit | kFailedBit, pdFALSE, pdFALSE,
                                           portMAX_DELAY);

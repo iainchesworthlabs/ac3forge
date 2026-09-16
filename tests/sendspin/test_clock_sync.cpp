@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <optional>
 #include <random>
+#include <vector>
 
 #include "ac3/sendspin/clock_sync.hpp"
 #include "ac3/sendspin/messages.hpp"
@@ -82,7 +83,7 @@ TEST_CASE("clock sync: converges on a local network and maps both ways", "[sends
     CHECK(std::llabs(sync.to_server(local) - server.at(local)) < 1'000);
 }
 
-TEST_CASE("clock sync: once converged a burst runs every ten seconds, and tracks drift",
+TEST_CASE("clock sync: once converged, bursts a second apart learn the drift, then one runs every ten seconds",
           "[sendspin][clock_sync]") {
     ClockSync sync;
     const ServerClock server{.offset_us = -123'456, .drift_ppm = -80.0};
@@ -93,15 +94,92 @@ TEST_CASE("clock sync: once converged a burst runs every ten seconds, and tracks
     }
     const std::size_t updates = sync.updates();
     CHECK(sync.next_due() >= now);
-    CHECK(sync.next_due() - now <= ClockSync::kBurstInterval);
+    CHECK(sync.next_due() - now <= ClockSync::kLearningInterval);
 
-    // Ten minutes more: one update per ten seconds, and still within a millisecond.
+    // The learning bursts a second apart, and the next ten seconds after the last of them.
+    std::vector<std::int64_t> finished;
+    const std::int64_t learning_from = now;
+    while (now < learning_from + 45'000'000) {
+        const std::size_t bursts = sync.updates() + sync.rejected();
+        now = simulate(sync, server, now, now + 20'000, 800, 2'500, random);
+        if (sync.updates() + sync.rejected() != bursts) {
+            finished.push_back(now);
+        }
+    }
+    REQUIRE(finished.size() == ClockSync::kLearningBursts + 1);
+    for (std::size_t i = 1; i < ClockSync::kLearningBursts; ++i) {
+        CHECK(finished[i] - finished[i - 1] >= ClockSync::kLearningInterval);
+        CHECK(finished[i] - finished[i - 1] < ClockSync::kLearningInterval + 100'000);
+    }
+    CHECK(finished.back() - finished[ClockSync::kLearningBursts - 1] >= ClockSync::kBurstInterval);
+    CHECK(sync.updates() - updates == ClockSync::kLearningBursts + 1);
+
+    // Ten minutes more: one burst per ten seconds, and still within a millisecond.
+    const std::size_t bursts = sync.updates() + sync.rejected();
     std::size_t requests = 0;
     now = simulate(sync, server, now, now + 600'000'000, 800, 2'500, random, &requests);
-    CHECK(sync.updates() - updates >= 59);
-    CHECK(sync.updates() - updates <= 61);
-    CHECK(requests == (sync.updates() - updates) * ClockSync::kBurstLength);
+    CHECK(sync.updates() + sync.rejected() - bursts >= 59);
+    CHECK(sync.updates() + sync.rejected() - bursts <= 61);
+    CHECK(requests == (sync.updates() + sync.rejected() - bursts) * ClockSync::kBurstLength);
     CHECK(std::llabs(sync.to_local(server.at(now)) - now) < 1'000);
+}
+
+TEST_CASE("clock sync: a burst whose replies all come back late is left out of the filter",
+          "[sendspin][clock_sync]") {
+    ClockSync sync;
+    const ServerClock server{.offset_us = 2'000'000, .drift_ppm = 20.0};
+    std::mt19937 random(5);
+    std::int64_t now = 0;
+    while (!sync.converged()) {
+        now = simulate(sync, server, now, now + 100'000, 1'000, 2'000, random);
+    }
+    now = sync.next_due();
+    const std::size_t updates = sync.updates();
+    const std::int64_t probe = now + 1'000'000;
+    const std::int64_t before = sync.to_server(probe);
+
+    // Every reply of the next burst waits 20 ms on its way back, as a player's do behind a
+    // stream's chunks: taken, the burst would move the offset by about 10 ms.
+    for (std::size_t i = 0; i < ClockSync::kBurstLength; ++i) {
+        const std::optional<m::ClientTime> request = sync.poll(now);
+        REQUIRE(request.has_value());
+        const std::int64_t arrive = now + 1'500;
+        const std::int64_t leave = arrive + 50;
+        const std::int64_t back = leave + 1'500 + 20'000;
+        sync.receive({.client_transmitted = request->client_transmitted,
+                      .server_received = server.at(arrive),
+                      .server_transmitted = server.at(leave)},
+                     back);
+        now = back;
+    }
+    CHECK(sync.rejected() == 1);
+    CHECK(sync.updates() == updates);
+    CHECK(sync.to_server(probe) == before);
+
+    // The bursts after it are taken again.
+    now = simulate(sync, server, now, now + 5'000'000, 1'000, 2'000, random);
+    CHECK(sync.updates() > updates);
+    CHECK(std::llabs(sync.to_server(now) - server.at(now)) < 1'000);
+}
+
+TEST_CASE("clock sync: a network that stays slower is followed once the floor's window has passed",
+          "[sendspin][clock_sync]") {
+    ClockSync sync;
+    const ServerClock server{.offset_us = -50'000, .drift_ppm = -10.0};
+    std::mt19937 random(9);
+    std::int64_t now = 0;
+    while (!sync.converged()) {
+        now = simulate(sync, server, now, now + 100'000, 500, 1'000, random);
+    }
+    // Both ways 30 ms slower from here, which moves no offset but puts every burst far above
+    // the floor the fast network set.
+    now = simulate(sync, server, now, now + 400'000'000, 30'000, 30'500, random);
+    CHECK(sync.rejected() >= ClockSync::kFloorBursts - 1);
+    CHECK(sync.rejected() <= ClockSync::kFloorBursts);
+    const std::size_t updates = sync.updates();
+    now = simulate(sync, server, now, now + 100'000'000, 30'000, 30'500, random);
+    CHECK(sync.updates() > updates);
+    CHECK(std::llabs(sync.to_server(now) - server.at(now)) < 1'000);
 }
 
 TEST_CASE("clock sync: a reply that never comes ends the burst after the timeout", "[sendspin][clock_sync]") {

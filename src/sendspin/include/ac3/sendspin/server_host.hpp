@@ -70,6 +70,8 @@ struct ClientView {
     std::string client_id;
     std::string name;
     std::string peer;
+    // The URL the host dialled for the client; empty for a client that dialled the host.
+    std::string url;
     Dialect dialect = Dialect::kSpecification;
     handshake::PskCategory psk = handshake::PskCategory::kSentinel;
     // A client the store holds a record for, that could not use it (connection.md, Sentinel
@@ -159,6 +161,10 @@ class ServerHost {
     bool pair(const std::string& client_id, messages::PairMethod method, std::optional<messages::CodeFormat> format);
     bool enter_code(const std::string& client_id, const pairing_flow::Code& code);
     bool cancel_pairing(const std::string& client_id);
+    // Sends a client playing _ac3forge_player@v1 a command its state lists, settings checked
+    // against its support object first (ServerSession::ac3forge_command). False when the client is
+    // not connected or the session refuses it.
+    bool ac3forge_command(const std::string& client_id, const ac3forge::CommandMessage& command);
     // Approves a client for unpaired access, or withdraws the approval.
     bool approve(const std::string& client_id, bool approved);
     bool unpair(const std::string& client_id);
