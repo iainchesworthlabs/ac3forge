@@ -141,6 +141,13 @@ struct DecoderConfig {
     // because it exists to check what the encoder wrote, and a decoder that
     // silently rescales its output cannot be the reference for that.
     double drc_scale = 0.0;
+    // The same scaling for boost alone - a dynrng word above unity - where it
+    // should differ from the cut's: in a quiet room a listener keeps quiet
+    // passages quiet (boost 0) while loud ones are still brought down
+    // (drc_scale 1). Unset, boost is scaled by drc_scale as well, as it always
+    // was. Like drc_scale it applies to kCustom only: kLine and kRf apply the
+    // whole word either way.
+    std::optional<double> drc_boost_scale = std::nullopt;
     // §7.9.4 step 3's complex transform evaluated via the same FFT core the
     // encoder's fast MDCT fold uses, instead of the pseudocode's direct
     // O(N^2) sum against a 320 KiB tabulated matrix - see mdct.hpp's

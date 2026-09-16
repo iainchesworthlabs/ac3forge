@@ -364,6 +364,97 @@ TEST_CASE("the LFE joins a fold only when asked, and never against the stream's 
     CHECK(fold(true, std::nullopt) == 0.0);
 }
 
+TEST_CASE("mix-level overrides fold as if the stream had sent those levels",
+          "[decoder][output]") {
+    // An override is only a different set of levels, so a stage told to use
+    // them folds exactly as a plain stage handed them does - for every target,
+    // and through the rendered-layout form as well as the coded one.
+    const std::array<double, 6> hz = {200.0, 300.0, 500.0, 700.0, 1100.0, 60.0};
+    const auto source = tones(hz, 0, 1536);
+    const ac3::MixLevelOverride chosen{.loro_clev = ac3::meta::level::kMinus6dB,
+                                       .loro_slev = ac3::meta::level::kMinus3dB,
+                                       .ltrt_clev = ac3::meta::level::kMinus6dB,
+                                       .ltrt_slev = ac3::meta::level::kMinus4_5dB,
+                                       .lfe_mix_level_db = 4.0};
+    const ac3::MixLevels stream{};
+    ac3::MixLevels as_sent = stream;
+    as_sent.loro_clev = ac3::meta::level::kMinus6dB;
+    as_sent.loro_slev = ac3::meta::level::kMinus3dB;
+    as_sent.ltrt_clev = ac3::meta::level::kMinus6dB;
+    as_sent.ltrt_slev = ac3::meta::level::kMinus4_5dB;
+    as_sent.lfe_mix_level_db = 4.0;
+    const auto layout =
+        ac3::eac3::chanmap::expand(ac3::eac3::chanmap::acmod_map(ac3::Acmod::k3_2, true));
+    REQUIRE(layout.count == 6);
+
+    const auto same = [](const std::vector<std::vector<float>>& a,
+                         const std::vector<std::vector<float>>& b, std::size_t width) {
+        for (std::size_t ch = 0; ch < width; ++ch) {
+            for (std::size_t i = 0; i < a[ch].size(); ++i) {
+                if (a[ch][i] != b[ch][i]) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    const auto rendered_fold = [&source, &layout](const ac3::OutputConfig& config,
+                                                   const ac3::MixLevels& levels) {
+        auto channels = source;
+        std::vector<std::span<float>> views;
+        for (auto& channel : channels) {
+            views.emplace_back(channel);
+        }
+        ac3::OutputStage stage{config};
+        stage.apply(views, layout, ac3::Acmod::k3_2, true, levels, 31);
+        return channels;
+    };
+
+    for (const auto target :
+         {ac3::DownmixTarget::kLoRo, ac3::DownmixTarget::kLtRt, ac3::DownmixTarget::kMono}) {
+        INFO("target " << static_cast<int>(target));
+        const ac3::OutputConfig plain_config{.target = target, .mix_lfe = true};
+        const ac3::OutputConfig override_config{
+            .target = target, .mix_lfe = true, .mix_override = chosen};
+
+        auto overridden = source;
+        ac3::OutputStage{override_config}.apply(overridden, ac3::Acmod::k3_2, true, stream, 31);
+        auto sent = source;
+        ac3::OutputStage{plain_config}.apply(sent, ac3::Acmod::k3_2, true, as_sent, 31);
+        auto untouched = source;
+        ac3::OutputStage{plain_config}.apply(untouched, ac3::Acmod::k3_2, true, stream, 31);
+        REQUIRE(overridden.size() == sent.size());
+        CHECK(same(overridden, sent, sent.size()));
+        CHECK_FALSE(same(overridden, untouched, untouched.size()));
+
+        const auto width = overridden.size();
+        CHECK(same(rendered_fold(override_config, stream), rendered_fold(plain_config, as_sent),
+                   width));
+    }
+
+    // An unset field keeps the stream's level, and an LFE level cannot switch
+    // on the LFE mixing a stream disabled.
+    const auto lfe_fold = [](const ac3::MixLevelOverride& override_levels,
+                             std::optional<double> stream_lfe) {
+        ac3::OutputStage stage{{.target = ac3::DownmixTarget::kLoRo,
+                                .mix_lfe = true,
+                                .mix_override = override_levels}};
+        std::vector<std::vector<float>> channels(6, std::vector<float>(16, 0.0F));
+        channels[5][0] = 1.0F;
+        channels[1][1] = 1.0F;  // the centre, one sample later
+        ac3::MixLevels levels;
+        levels.lfe_mix_level_db = stream_lfe;
+        stage.apply(channels, ac3::Acmod::k3_2, true, levels, 31);
+        return std::pair{static_cast<double>(channels[0][0]), static_cast<double>(channels[0][1])};
+    };
+    const ac3::MixLevelOverride lfe_only{.lfe_mix_level_db = 4.0};
+    const auto [lfe_level, centre_level] = lfe_fold(lfe_only, 10.0);
+    const auto [plain_lfe, plain_centre] = lfe_fold(ac3::MixLevelOverride{}, 10.0);
+    CHECK(lfe_level < plain_lfe);
+    CHECK(centre_level == Catch::Approx(plain_centre).epsilon(1e-6));
+    CHECK(lfe_fold(lfe_only, std::nullopt).first == 0.0);
+}
+
 TEST_CASE("RF mode holds the fold under its ceiling and says that it did",
           "[decoder][output]") {
     // §7.8.1's normalisation alone cannot overload, so the case worth testing

@@ -386,6 +386,7 @@ jobs:
       persist_quality_trend: ${{ inputs.persist_quality_trend }}
       llvm_version: ${{ needs.toolchain-versions.outputs.llvm_version }}
       cmake_min: ${{ needs.toolchain-versions.outputs.cmake_min }}
+      qt_version: ${{ needs.toolchain-versions.outputs.qt_version }}
       vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
   package-macos-universal:

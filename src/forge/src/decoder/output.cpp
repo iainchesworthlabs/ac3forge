@@ -207,8 +207,33 @@ struct FoldPlan {
     Scalar lfe_gain{};
 };
 
+// The stream's levels with OutputConfig::mix_override laid over them. An LFE
+// level only replaces one the stream has: an absent one is the stream
+// disabling LFE mixing, which nothing here overrides.
+MixLevels with_override(MixLevels levels, const MixLevelOverride& override_levels) {
+    if (override_levels.loro_clev) {
+        levels.loro_clev = *override_levels.loro_clev;
+    }
+    if (override_levels.loro_slev) {
+        levels.loro_slev = *override_levels.loro_slev;
+    }
+    if (override_levels.ltrt_clev) {
+        levels.ltrt_clev = *override_levels.ltrt_clev;
+    }
+    if (override_levels.ltrt_slev) {
+        levels.ltrt_slev = *override_levels.ltrt_slev;
+    }
+    if (override_levels.lfe_mix_level_db && levels.lfe_mix_level_db) {
+        levels.lfe_mix_level_db = *override_levels.lfe_mix_level_db;
+    }
+    return levels;
+}
+
 FoldPlan plan_fold(const OutputConfig& config, std::size_t inputs, Acmod acmod, bool lfe,
-                   const MixLevels& levels) {
+                   const MixLevels& stream_levels) {
+    // Every fold is planned here, whichever apply() it came through, so this
+    // is the one place the caller's levels have to be laid over the stream's.
+    const MixLevels levels = with_override(stream_levels, config.mix_override);
     FoldPlan plan;
     const auto nfchans = static_cast<std::size_t>(fullbw_channel_count(acmod));
     plan.stereo = config.target != DownmixTarget::kMono;

@@ -839,8 +839,9 @@ MacPorts prefixes, and so on — newest kit first, and then defers to Qt's own c
 Linux and macOS preset still forces `AC3FORGE_BUILD_GUI=OFF` by default — pass
 `-DAC3FORGE_BUILD_GUI=ON` explicitly on a machine that has Qt 6.5+, which is verified to work on
 Linux both locally (see [GUI on Linux](#gui-on-linux) above) and in CI, which installs a Qt6 kit
-and turns the flag on for the four Linux build legs (x64 and arm64, GCC and Clang) plus
-`macos-llvm` (Homebrew's `qt` formula — see [macOS](platforms/macos.md#gui-on-macos)). See
+and turns the flag on for the four Linux build legs (x64 and arm64, GCC and Clang) plus both
+macOS legs (the official kit via `install-qt-action`, not Homebrew's `qt` formula — see
+[macOS](platforms/macos.md#gui-on-macos)). See
 [Verified configuration](#verified-configuration). If your kit is somewhere else, say so explicitly and it
 wins over the search — the project's own `-DAC3FORGE_QT_ROOT=` (or the `AC3FORGE_QT_ROOT`,
 `QT_ROOT_DIR` or `QTDIR` environment variables) is the preferred way:
@@ -1057,7 +1058,8 @@ whatever Homebrew currently ships. The gold-reference correctness gate
 below) also passes: real SNR numbers from that CI run were 61.81/61.82 dB on macOS, against
 67.84/67.82 dB on Linux and Windows for the same material - a real but modest cross-compiler
 floating-point difference, comfortably clear of the 30 dB gate. `macos-llvm` now builds the GUI
-too (Homebrew's `qt` formula — see [GUI on macOS](platforms/macos.md#gui-on-macos)), which adds
+too (Qt installed via `install-qt-action`, not Homebrew's `qt` formula — see
+[GUI on macOS](platforms/macos.md#gui-on-macos)), which adds
 the same per-suite `ac3gui_qml_tests_*` entries to that same suite the same way it does on Linux:
 confirmed on a real run before the harness split into one ctest entry per `tst_*.qml` suite (see
 `apps/gui/tests/CMakeLists.txt`), 582 ctest entries total, 100% passing, the GUI harness (then

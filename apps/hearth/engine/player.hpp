@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "ac3/render/layout.hpp"
+#include "decoder_settings.hpp"
 #include "pcm_sink.hpp"
 #include "queue.hpp"
 #include "session.hpp"
@@ -68,13 +69,31 @@ struct PumpReport {
 class Player {
 public:
     // `layout` is what every item is rendered onto; the sink places its slots.
-    Player(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout);
+    Player(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout,
+           const DecoderSettings& settings = {});
+
+    // The transport holds the queue's address, so a player stays where it
+    // was made.
+    Player(const Player&) = delete;
+    Player& operator=(const Player&) = delete;
+    Player(Player&&) = delete;
+    Player& operator=(Player&&) = delete;
+    ~Player() = default;
 
     [[nodiscard]] Queue& queue() { return queue_; }
     [[nodiscard]] const Queue& queue() const { return queue_; }
     [[nodiscard]] const Transport& transport() const { return transport_; }
     void set_gapless(bool on) { transport_.set_gapless(on); }
     void set_repeat(bool on) { transport_.set_repeat(on); }
+
+    // What every item is decoded with. A change reaches the playing item at
+    // its next unit: the audio already decoded plays out as it was, and a new
+    // decoder, primed with the unit before, carries on - nothing lost,
+    // nothing repeated, nothing to hear at the change beyond the change
+    // itself. A different programme takes effect when an item next starts,
+    // since it is a different list of units.
+    void set_decoder_settings(const DecoderSettings& settings);
+    [[nodiscard]] const DecoderSettings& decoder_settings() const { return settings_; }
 
     TransportOutcome play();
     TransportOutcome pause();
@@ -132,6 +151,10 @@ private:
     Pending& push_block();
     void clear_pending();
 
+    // Takes one rendered block into the pending ring, for the current item.
+    void take_block(std::span<const std::span<const float>> rendered, std::size_t n);
+    // Builds the decoder for `rate` from the current settings.
+    void build_decoder(std::uint32_t rate);
     // Decodes into the pending blocks until they hold at least `frames`.
     void fill(std::size_t frames);
     // Submits pending blocks while the sink takes them.
@@ -144,6 +167,7 @@ private:
     std::unique_ptr<PcmSink> sink_;
     ItemLoader loader_;
     render::OutputLayout layout_;
+    DecoderSettings settings_;
     Queue queue_;
     Transport transport_{queue_};
 

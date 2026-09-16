@@ -5,6 +5,7 @@
 # here can then be tested by ac3tests on every CI leg, including the legs
 # with no display and no sound card.
 add_library(ac3hearth_engine STATIC
+    decoder_settings.cpp
     device_sink.cpp
     output_decision.cpp
     player.cpp

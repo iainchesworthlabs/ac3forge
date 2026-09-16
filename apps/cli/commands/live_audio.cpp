@@ -341,12 +341,20 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
     if (!apply_object_verification(stream, meta, status_stream())) {
         return kExitInput;
     }
-    const auto bsid = ac3::stream_bsid(stream);
-    if (!bsid.has_value()) {
+    if (!ac3::stream_bsid(stream).has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
-    if (*bsid <= 8) {
+    // Not a bare bsid <= 8 check: a §E2.3.1.2 legacy-core delivery opens with
+    // an AC-3 syncframe but carries its object layer in the Annex E
+    // dependent behind it - a plain AC-3 core has nowhere to put an EMDF
+    // container (decoder.hpp's DecodedAccessUnit::object_metadata comment).
+    // The same test run_monitor uses to choose Eac3Decoder over FrameDecoder
+    // decides whether an object layer is even possible here. Unlike
+    // run_monitor, this command never falls back to FrameDecoder: a stream
+    // that fails this test has no Annex E extension substream at all, so
+    // there is no object layer to render regardless of decoder.
+    if (!ac3::apps::reads_as_access_units(stream)) {
         fmt::println(stderr,
                      "error: spatial rendering needs the object layer, which only E-AC-3 "
                      "carries - 'ac3cli monitor' plays a plain AC-3 bed");

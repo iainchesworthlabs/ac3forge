@@ -1,16 +1,19 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <numbers>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/render/layout.hpp"
+#include "decoder_settings.hpp"
 #include "stream_decoder.hpp"
 
 // ac3::hearth::StreamDecoder (apps/hearth/engine/stream_decoder.cpp): access
@@ -240,4 +243,73 @@ TEST_CASE("stream decoder: a unit that is not a stream is reported, not played",
     // And the decoder carries on with a real stream afterwards.
     CHECK(play(decoder, eac3_frames(ac3::Acmod::k2_0, false, 3)).frames ==
           3 * ac3::kSamplesPerFrame);
+}
+
+TEST_CASE("stream decoder: dual mono plays the programme the settings choose",
+          "[hearth][stream-decoder]") {
+    using ac3::hearth::DualMonoChoice;
+    // Two unrelated programmes, one per channel, told apart by their tones.
+    ac3::EncoderConfig config;
+    config.bitrate_kbps = 192;
+    config.acmod = ac3::Acmod::kDualMono;
+    config.dialnorm2 = 31;  // required for 1+1
+    ac3::FrameEncoder encoder{config};
+    REQUIRE(encoder.channel_count() == 2);
+    std::vector<std::vector<std::byte>> units;
+    for (int f = 0; f < 6; ++f) {
+        const auto offset = static_cast<std::size_t>(f) * ac3::kSamplesPerFrame;
+        const std::vector<float> first = tone(440.0, 0.3, ac3::kSamplesPerFrame, offset);
+        const std::vector<float> second = tone(1000.0, 0.3, ac3::kSamplesPerFrame, offset);
+        const std::vector<std::span<const float>> views{first, second};
+        auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        units.push_back(std::move(*frame));
+    }
+
+    // A stereo room, served by the decoder's fold (which leaves 1+1 alone),
+    // and a 5.1 room, where the renderer places the bed's left and right.
+    for (const char* name : {"2.0", "5.1"}) {
+        INFO("layout " << name);
+        const auto layout = ac3::render::OutputLayout::parse(name);
+        REQUIRE(layout.has_value());
+        const int left = layout->index_of(ac3::eac3::chanmap::Location::kLeft);
+        const int right = layout->index_of(ac3::eac3::chanmap::Location::kRight);
+        REQUIRE(left >= 0);
+        REQUIRE(right >= 0);
+
+        const auto heard = [&](DualMonoChoice choice) {
+            ac3::hearth::DecoderSettings settings;
+            settings.dual_mono = choice;
+            StreamDecoder decoder{*layout, 48000, settings};
+            std::vector<std::vector<float>> slots(layout->slots());
+            const auto deliver = [&slots](std::span<const std::span<const float>> rendered,
+                                          std::size_t frames) {
+                for (std::size_t slot = 0; slot < rendered.size() && slot < slots.size(); ++slot) {
+                    slots[slot].insert(slots[slot].end(), rendered[slot].begin(),
+                                       rendered[slot].begin() + static_cast<std::ptrdiff_t>(frames));
+                }
+            };
+            for (const auto& unit : units) {
+                REQUIRE(decoder.decode(unit, deliver).has_value());
+            }
+            decoder.finish(deliver);
+            return std::pair{slots[static_cast<std::size_t>(left)],
+                             slots[static_cast<std::size_t>(right)]};
+        };
+
+        // Compared with ranges::equal so a failure prints a verdict, not
+        // thousands of samples.
+        const auto [both_left, both_right] = heard(DualMonoChoice::kBoth);
+        REQUIRE(both_left.size() == 6 * ac3::kSamplesPerFrame);
+        // Both programmes: one each side, and they are not the same audio.
+        CHECK_FALSE(std::ranges::equal(both_left, both_right));
+
+        const auto [first_left, first_right] = heard(DualMonoChoice::kFirst);
+        CHECK(std::ranges::equal(first_left, both_left));
+        CHECK(std::ranges::equal(first_right, both_left));
+
+        const auto [second_left, second_right] = heard(DualMonoChoice::kSecond);
+        CHECK(std::ranges::equal(second_left, both_right));
+        CHECK(std::ranges::equal(second_right, both_right));
+    }
 }
