@@ -497,6 +497,50 @@ TEST_CASE("probe names a reserved dmixmod in both output forms, for both codecs"
     }
 }
 
+TEST_CASE("probe names bsmod 7 by acmod: voice over at 1/0, karaoke wider", "[cli][probe]") {
+    // Table 5.7's one code that means two different services, split by acmod
+    // rather than by bsmod alone - see bsmod_label's own comment in probe.cpp.
+    // bsmod is unconditional in AC-3's bsi (§5.4.2.2), so 'metadata' can stamp
+    // 7 onto a plain sine tone without needing a fixture that transmitted it
+    // already; that keeps this to the acmod boundary the bug was actually in,
+    // not the encoder's own bsmod support.
+    const auto stamp_bsmod7 = [](const fs::path& source, const std::string& name) {
+        const auto out = scratch_dir() / name;
+        const auto log = scratch_dir() / (name + ".log");
+        REQUIRE(run_cli("metadata \"" + source.string() + "\" \"" + out.string() +
+                            "\" bsmod=voiceover",
+                        log) == 0);
+        REQUIRE(fs::exists(out));
+        return out;
+    };
+    const auto check = [](const fs::path& input, std::string_view expected_label) {
+        const auto table_log = scratch_dir() / (input.filename().string() + "_table.txt");
+        REQUIRE(run_cli("probe \"" + input.string() + "\"", table_log) == 0);
+        const auto table = read_log(table_log);
+        INFO(table);
+        // "bsmod" padded to the table's 16-column label, same shape as the
+        // dmixmod check above.
+        CHECK(table.find(std::string{"bsmod"} + std::string(11, ' ') + "7 (" +
+                         std::string{expected_label} + ")") != std::string::npos);
+
+        const auto json_log = scratch_dir() / (input.filename().string() + ".json");
+        REQUIRE(run_cli("probe \"" + input.string() + "\" json=1", json_log) == 0);
+        const auto document = read_log(json_log);
+        INFO(document);
+        CHECK(json_field(document, "bsmod") == "7");
+        CHECK(json_field(document, "bsmod_label") == "\"" + std::string{expected_label} + "\"");
+    };
+
+    SECTION("acmod 1/0: voice over") {
+        const auto source = make_ac3("bsmod7_10_src.ac3", "1 448 1000 50 mono");
+        check(stamp_bsmod7(source, "bsmod7_10.ac3"), "voice over");
+    }
+    SECTION("acmod 2/0: karaoke") {
+        const auto source = make_ac3("bsmod7_20_src.ac3", "1 448 1000 50 stereo");
+        check(stamp_bsmod7(source, "bsmod7_20.ac3"), "karaoke");
+    }
+}
+
 TEST_CASE("probe rejects malformed json=/detail= tokens", "[cli][probe]") {
     const auto input = make_ac3("probe_opts.ac3", "1 192");
     const auto log = scratch_dir() / "probe_opts.log";

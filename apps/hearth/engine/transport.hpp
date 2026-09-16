@@ -76,7 +76,7 @@ struct TransportOutcome {
     std::chrono::milliseconds seek_to{0};
     // Empty unless there is something to say: why the output has to reopen,
     // why a command did nothing, why an item was skipped. Shown, and logged.
-    std::string note;
+    std::string note{};
 };
 
 // What the output is carrying right now, as far as the transport needs to

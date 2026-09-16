@@ -32,8 +32,9 @@
 //   - one audio track, ftyp/moov/mdat only,
 //   - one sample per chunk (no interleaving/multi-track concerns to solve),
 //   - stts/stsz/stco built straight off the frame sizes handed in.
-// No edit lists, no multiple tracks. Those matter for large-file seeking and
-// multi-track muxing, not for playing back what this project produces.
+// No multiple tracks, and an edit list only when MuxOptions::edit asks for
+// its one edit. Multiple tracks matter for multi-track muxing, not for
+// playing back what this project produces.
 //
 // fragment() below (ROADMAP.md's A2) is the fMP4/CMAF follow-up mux() itself
 // used to defer: an initialization segment plus one or more media segments,
@@ -65,7 +66,8 @@ enum class MuxError : std::uint8_t {
     kInvalidTrack,    // zero/negative channels or sample rate, unrecognised codec id, or no
                       // codec_config payload
     kFileTooLarge,    // mdat would need a 64-bit chunk offset (co64), unsupported in this cut
-    kInvalidOptions,  // e.g. FragmentOptions::frames_per_fragment == 0
+    kInvalidOptions,  // e.g. FragmentOptions::frames_per_fragment == 0, or a MuxOptions::edit
+                      // that runs past the frames
 };
 
 [[nodiscard]] MP4_EXPORT std::string_view describe(MuxError error);
@@ -101,6 +103,19 @@ struct AudioTrack {
 
 struct MuxOptions {
     std::string writing_app{"ac3forge"};
+    // One edit (ISO/IEC 14496-12 §8.6.6): the presentation plays
+    // `duration_samples` of the track, starting `start_samples` in - the
+    // priming a decoder should drop, and where the audio ends before the last
+    // frame's padding. Both count samples at the track's rate, which this
+    // module also uses as the movie's and the media's timescale. The movie and
+    // track durations become the edit's. Unset writes no edit list. An edit
+    // that runs past the frames handed in, or plays nothing, is
+    // kInvalidOptions.
+    struct Edit {
+        std::uint64_t start_samples = 0;
+        std::uint64_t duration_samples = 0;
+    };
+    std::optional<Edit> edit = std::nullopt;
 };
 
 // Mux frames into a complete .mp4, returned as bytes. No file I/O here, so

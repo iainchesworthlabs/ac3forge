@@ -3,7 +3,7 @@ menu "ac3forge probe (ESP32-C6)"
 # What else the part is doing while the probe decodes. A choice in Kconfig
 # rather than a -D cache variable, because main/CMakeLists.txt picks a source
 # file from it and IDF evaluates that file in a requirements pass that does not
-# inherit the project's cache variables (the stream_player example found this
+# inherit the project's cache variables (the hearth_sink example found this
 # the hard way; see its main/CMakeLists.txt).
 choice AC3FORGE_PROBE_NETWORK
     prompt "Network load during the decode"

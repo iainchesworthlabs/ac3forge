@@ -72,17 +72,33 @@ test("the stand-in sends the page with the firmware's headers", () => {
 });
 
 test("the stand-in has the firmware's routes and no others", () => {
-    const registered = [...CONTROL.matchAll(/\.uri = "([^"]+)", \.method = HTTP_(GET|POST|PUT)/g)].map(
+    // The designated initialisers sit on one line or several, depending on
+    // how long the route's name is, so the gap between them is any whitespace
+    // rather than one space - a route whose name pushed it onto two lines was
+    // silently not checked here.
+    const registered = [...CONTROL.matchAll(/\.uri = "([^"]+)",\s*\.method = HTTP_(GET|POST|PUT)/g)].map(
         (m) => `${m[2]} ${m[1]}`,
     );
     expect(registered.sort()).toEqual([...ROUTES].sort());
 });
 
 test('every request the page makes is to a route the firmware registers', () => {
-    const made = [...SCRIPT.matchAll(/(?:call|act)\((?:[^,()]+, )?'(GET|POST|PUT)', '([a-z]+)'/g)].map(
+    // A hyphen is part of a route (/slot-width), so the name is [a-z-]+ and
+    // not [a-z]+ - which matched the route up to the hyphen and then nothing,
+    // leaving a real request out of this list rather than failing it.
+    const made = [...SCRIPT.matchAll(/(?:call|act)\((?:[^,()]+, )?'(GET|POST|PUT)', '([a-z-]+)'/g)].map(
         (m) => `${m[1]} /${m[2]}`,
     );
-    expect(made.sort()).toEqual(['GET /status', 'POST /play', 'POST /stop', 'POST /volume', 'PUT /layout']);
+    // No POST /play, /stop or /volume: a server owns playback from B2 on, and
+    // the page is what the board itself is.
+    expect(made.sort()).toEqual([
+        'GET /status',
+        'PUT /layout',
+        'PUT /name',
+        'PUT /network',
+        'PUT /slot-width',
+        'PUT /wiring',
+    ]);
     for (const route of made) {
         expect(ROUTES).toContain(route);
     }

@@ -3,7 +3,7 @@
 
 The ESP32 legs CI runs under QEMU pass on `result=pass` in what the
 application printed: tools/checks/run_esp32s3_probe.sh,
-tools/checks/run_esp32c3_probe.sh and the stream_player steps in
+tools/checks/run_esp32c3_probe.sh and the hearth_sink steps in
 .github/workflows/_build.yml. QEMU runs on to a timeout either way, and the
 verdict is not the end of the run: the probe still has its closing lines to
 print and app_main to return from, and the HTTP step plays the stream a
@@ -20,7 +20,7 @@ So from the first boot banner to the end, the capture must show
   - no panic output: none of MARKERS below, anywhere;
   - one boot: one `ESP-ROM:` banner, which the ROM prints first on every
     boot. A second one means the part reset, whatever the cause; and
-  - no failed allocation: none of the lines the streaming player's
+  - no failed allocation: none of the lines hearth_sink's
     heap_caps_register_failed_alloc_callback hook prints. A failure there is
     not always fatal - the Ethernet driver drops a frame and plays on - so a
     run can carry hundreds of them and still reach result=pass, which is how
@@ -28,7 +28,7 @@ So from the first boot banner to the end, the capture must show
     step had exactly none in the fourteen runs before 2026-09-15 and some in
     every run after, so any at all is a regression worth the step.
 
-A capture that reports free heap as it plays (the streaming player's progress
+A capture that reports free heap as it plays (hearth_sink's progress
 lines) can also be held to a floor with --min-heap-free: the lowest
 `heap_free=` after the first boot banner must be at least that many bytes.
 The failed-allocation rule is a cliff - it fires once the margin is already
@@ -71,8 +71,8 @@ MARKERS = (
     "Rebooting",  # the panic handler's last line before it resets the part
 )
 
-# What the streaming player's failed-allocation hook prints, once per failure
-# (stream_player.cpp's on_alloc_failed): "heap: heap_caps_malloc could not
+# What hearth_sink's failed-allocation hook prints, once per failure
+# (hearth_sink.cpp's on_alloc_failed): "heap: heap_caps_malloc could not
 # allocate 2508 bytes (caps 0x1800); internal free 6492, largest 1920". The
 # function name varies, so the fixed part of the sentence is what is matched.
 ALLOCATION_FAILED = "could not allocate"

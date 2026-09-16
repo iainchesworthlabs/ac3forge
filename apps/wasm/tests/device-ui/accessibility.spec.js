@@ -18,17 +18,17 @@ test('landmarks, headings and a name for every control', async ({ page }) => {
     await expect(page.getByRole('banner')).toBeVisible();
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('contentinfo')).toBeVisible();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('ac3forge player');
-    for (const name of ['Now', 'Control', 'Real time']) {
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('hearth-a1b2c3');
+    for (const name of ['Now', 'Settings', 'Real time']) {
         await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
     }
-    for (const name of ['Now', 'Control', 'Real time']) {
+    for (const name of ['Now', 'Settings', 'Real time']) {
         await expect(page.getByRole('region', { name })).toBeVisible();
     }
-    await expect(page.getByRole('textbox', { name: 'Location to play' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
-    await expect(page.getByRole('slider', { name: 'Volume' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Name' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Slot width' })).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: 'A second I2S line is wired to a DAC' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Network' })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Output layout' })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Output layout' })).toHaveAccessibleDescription(
         /^The speakers this player drives, one per output slot: .+ It takes effect at the next play\. This sink has 2 slots\.$/,
@@ -41,7 +41,7 @@ test('landmarks, headings and a name for every control', async ({ page }) => {
 
 test('every action from the keyboard, in page order', async ({ page, stub }) => {
     await page.locator('body').click({ position: { x: 1, y: 1 } });
-    const order = ['location-input', 'Play', 'stop', 'volume', 'layout-input', 'Apply', 'What an output layout does', 'Counters'];
+    const order = ['name-input', 'Save', 'slot-width', 'wiring', 'layout-input', 'Apply', 'What an output layout does', 'ssid-input', 'pass-input', 'Save', 'Counters'];
     const focused = () =>
         page.evaluate(() => {
             const el = /** @type {HTMLElement} */ (document.activeElement);
@@ -52,17 +52,19 @@ test('every action from the keyboard, in page order', async ({ page, stub }) => 
         await expect.poll(focused).toBe(expected);
     }
 
-    await page.getByRole('textbox', { name: 'Location to play' }).focus();
+    await page.getByRole('textbox', { name: 'Name' }).focus();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('Attic');
     await page.keyboard.press('Enter');
-    await expect.poll(() => stub.sent('POST /play').length).toBe(1);
+    await expect.poll(() => stub.sent('PUT /name').map((r) => r.body)).toEqual(['Attic']);
 
-    await page.getByRole('button', { name: 'Stop' }).focus();
+    await page.getByRole('checkbox', { name: 'A second I2S line is wired to a DAC' }).focus();
     await page.keyboard.press('Space');
-    await expect.poll(() => stub.sent('POST /stop').length).toBe(1);
+    await expect.poll(() => stub.sent('PUT /wiring').map((r) => r.body)).toEqual(['1']);
 
-    await page.getByRole('slider', { name: 'Volume' }).focus();
-    await page.keyboard.press('ArrowLeft');
-    await expect.poll(() => stub.sent('POST /volume').map((r) => r.body)).toEqual(['0.99']);
+    await page.getByRole('combobox', { name: 'Slot width' }).focus();
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => stub.sent('PUT /slot-width').map((r) => r.body)).toEqual(['16']);
 
     const layout = page.getByRole('combobox', { name: 'Output layout' });
     await layout.focus();
@@ -84,7 +86,6 @@ for (const colorScheme of /** @type {const} */ (['light', 'dark'])) {
         await page.emulateMedia({ colorScheme });
         // A page with everything showing: a failed play has the most text.
         stub.device.framesPerPoll = 50;
-        await page.getByRole('button', { name: 'Stop' }).click();
         stub.setStatus({
             state: 'failed', location: 'http://10.0.2.2:8000/demo.ec3', source: 'http', sink: 'capture-tdm',
             sink_slots: 12, layout: '5.1', volume: 1, stream: { codec: 'E-AC-3', acmod: 7, channels: 6, substreams: 1,
@@ -98,7 +99,7 @@ for (const colorScheme of /** @type {const} */ (['light', 'dark'])) {
         // Both closed sections open, so their text is measured too.
         await page.locator('summary', { hasText: 'What an output layout does' }).click();
         await page.locator('summary', { hasText: 'Counters' }).click();
-        await page.getByRole('slider', { name: 'Volume' }).fill('30');
+        await page.getByLabel('Name').fill('Attic');
         await expect(page.locator('#reason')).toBeVisible();
         const worst = await page.evaluate(() => {
             const channel = (c) => {
@@ -138,9 +139,9 @@ for (const colorScheme of /** @type {const} */ (['light', 'dark'])) {
 
 test('the focused control shows a 3 px outline', async ({ page }) => {
     for (const control of [
-        page.getByRole('textbox', { name: 'Location to play' }),
-        page.getByRole('button', { name: 'Play' }),
-        page.getByRole('slider', { name: 'Volume' }),
+        page.getByRole('textbox', { name: 'Name' }),
+        page.getByRole('combobox', { name: 'Slot width' }),
+        page.getByRole('checkbox', { name: 'A second I2S line is wired to a DAC' }),
     ]) {
         await control.focus();
         await page.keyboard.press('Shift+Tab');
@@ -153,10 +154,12 @@ test('the focused control shows a 3 px outline', async ({ page }) => {
 
 test('controls at least 44 CSS pixels tall', async ({ page }) => {
     for (const control of [
-        page.getByRole('textbox', { name: 'Location to play' }),
-        page.getByRole('button', { name: 'Play' }),
-        page.getByRole('button', { name: 'Stop' }),
-        page.getByRole('slider', { name: 'Volume' }),
+        page.getByRole('textbox', { name: 'Name' }),
+        page.getByRole('combobox', { name: 'Slot width' }),
+        page.getByRole('textbox', { name: 'Network' }),
+        // A password input has no textbox role to ask for, so it is found by
+        // the label that names it.
+        page.getByLabel('Passphrase'),
         page.getByRole('combobox', { name: 'Output layout' }),
         page.getByRole('button', { name: 'Apply' }),
         page.locator('summary', { hasText: 'What an output layout does' }),

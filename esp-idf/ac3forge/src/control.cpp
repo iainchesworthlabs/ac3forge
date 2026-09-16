@@ -4,6 +4,7 @@
 #include "ac3forge/control.hpp"
 
 #include <array>
+#include <charconv>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -156,6 +157,16 @@ struct Control::Impl {
         if (h.sink_slots) {
             append_number(out, "sink_slots", static_cast<unsigned long long>(h.sink_slots()));
         }
+        if (h.slot_bits) {
+            append_number(out, "slot_bits", static_cast<unsigned long long>(h.slot_bits()));
+        }
+        if (h.second_line) {
+            append_bool(out, "second_line", h.second_line());
+        }
+        if (h.name) {
+            append_key(out, "name");
+            append_json_string(out, h.name());
+        }
         if (h.layout) {
             append_key(out, "layout");
             append_json_string(out, h.layout());
@@ -290,6 +301,121 @@ struct Control::Impl {
         }
         return send_text(req, "200 OK", "ok; takes effect at the next play\n");
     }
+
+    static esp_err_t on_name_get(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        if (!h.name) {
+            return send_text(req, "404 Not Found", "this player has no name to report\n");
+        }
+        std::string text = h.name();
+        text += '\n';
+        return send_text(req, "200 OK", text.c_str());
+    }
+
+    static esp_err_t on_name_put(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        const std::string body = read_body(req);
+        if (body.empty()) {
+            return send_text(req, "400 Bad Request", "PUT /name wants a name\n");
+        }
+        if (!h.set_name) {
+            return send_text(req, "409 Conflict", "this player's name is fixed\n");
+        }
+        if (!h.set_name(body)) {
+            return send_text(req, "409 Conflict",
+                             "not a name this player can hold: it is too long, or it could not "
+                             "be stored\n");
+        }
+        return send_text(req, "200 OK", "ok\n");
+    }
+
+    static esp_err_t on_wiring_get(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        if (!h.second_line) {
+            return send_text(req, "404 Not Found", "this player reports no wiring\n");
+        }
+        return send_text(req, "200 OK", h.second_line() ? "1\n" : "0\n");
+    }
+
+    static esp_err_t on_wiring_put(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        const std::string body = read_body(req);
+        if (body.empty() || (body[0] != '0' && body[0] != '1')) {
+            return send_text(req, "400 Bad Request",
+                             "PUT /wiring wants 1 (a second I2S line is wired) or 0\n");
+        }
+        if (!h.set_second_line) {
+            return send_text(req, "409 Conflict", "this player's wiring is fixed\n");
+        }
+        if (!h.set_second_line(body[0] == '1')) {
+            return send_text(req, "409 Conflict",
+                             "the wiring could not be stored, or a play is running\n");
+        }
+        return send_text(req, "200 OK", "ok; takes effect at the next play\n");
+    }
+
+    static esp_err_t on_network_put(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        // "ssid\npassword", the passphrase being whatever is left after the
+        // first newline: an SSID may contain anything but a newline, and a
+        // passphrase may contain anything at all.
+        const std::string body = read_body(req);
+        const std::size_t split = body.find('\n');
+        const std::string_view ssid = std::string_view(body).substr(0, split);
+        const std::string_view password =
+            split == std::string::npos ? std::string_view{} : std::string_view(body).substr(split + 1);
+        if (ssid.empty()) {
+            return send_text(req, "400 Bad Request",
+                             "PUT /network wants an SSID, a newline, and a passphrase\n");
+        }
+        if (!h.set_network) {
+            return send_text(req, "409 Conflict", "this player's network is fixed\n");
+        }
+        if (!h.set_network(ssid, password)) {
+            return send_text(req, "409 Conflict",
+                             "that network could not be stored: the SSID or the passphrase is "
+                             "longer than the board holds\n");
+        }
+        return send_text(req, "200 OK", "ok; takes effect at the next boot\n");
+    }
+
+    static esp_err_t on_slot_width_get(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        if (!h.slot_bits) {
+            return send_text(req, "404 Not Found", "this player reports no slot width\n");
+        }
+        std::string bits = std::to_string(h.slot_bits());
+        bits += '\n';
+        return send_text(req, "200 OK", bits.c_str());
+    }
+
+    static esp_err_t on_slot_width_put(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        const std::string body = read_body(req);
+        if (body.empty()) {
+            return send_text(req, "400 Bad Request", "PUT /slot-width wants a width in bits\n");
+        }
+        int bits = 0;
+        const auto* first = body.data();
+        const auto* last = body.data() + body.size();
+        while (first != last && (*first == ' ' || *first == '\n' || *first == '\r')) {
+            ++first;
+        }
+        const auto parsed = std::from_chars(first, last, bits);
+        if (parsed.ec != std::errc{}) {
+            return send_text(req, "400 Bad Request", "PUT /slot-width wants a number of bits\n");
+        }
+        if (!h.set_slot_bits) {
+            return send_text(req, "409 Conflict", "this player's slot width is fixed\n");
+        }
+        if (!h.set_slot_bits(bits)) {
+            return send_text(req, "409 Conflict",
+                             "not a slot width this player's sink has: 16 or 32 on an I2S bus, "
+                             "and a sink with no hardware behind it keeps the one it was built "
+                             "for\n");
+        }
+        return send_text(req, "200 OK", "ok; takes effect at the next play\n");
+    }
 };
 
 Control::~Control() { stop(); }
@@ -311,6 +437,22 @@ bool Control::start(const ControlHandlers& handlers, std::uint16_t port, std::si
         {.uri = "/volume", .method = HTTP_POST, .handler = &Impl::on_volume, .user_ctx = impl_},
         {.uri = "/layout", .method = HTTP_GET, .handler = &Impl::on_layout_get, .user_ctx = impl_},
         {.uri = "/layout", .method = HTTP_PUT, .handler = &Impl::on_layout_put, .user_ctx = impl_},
+        {.uri = "/slot-width",
+         .method = HTTP_GET,
+         .handler = &Impl::on_slot_width_get,
+         .user_ctx = impl_},
+        {.uri = "/slot-width",
+         .method = HTTP_PUT,
+         .handler = &Impl::on_slot_width_put,
+         .user_ctx = impl_},
+        {.uri = "/name", .method = HTTP_GET, .handler = &Impl::on_name_get, .user_ctx = impl_},
+        {.uri = "/name", .method = HTTP_PUT, .handler = &Impl::on_name_put, .user_ctx = impl_},
+        {.uri = "/wiring", .method = HTTP_GET, .handler = &Impl::on_wiring_get, .user_ctx = impl_},
+        {.uri = "/wiring", .method = HTTP_PUT, .handler = &Impl::on_wiring_put, .user_ctx = impl_},
+        {.uri = "/network",
+         .method = HTTP_PUT,
+         .handler = &Impl::on_network_put,
+         .user_ctx = impl_},
     };
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();

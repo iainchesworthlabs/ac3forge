@@ -57,7 +57,6 @@ test('a play in progress', async ({ page, stub }) => {
     await expect(page.locator('#t-ring')).toHaveText(`${s.ring_low.toLocaleString('en-US')} bytes`);
     await expect(page.locator('#timing-note')).toBeHidden();
     await expect(page.locator('#bar')).toBeVisible();
-    await expect(page.getByRole('slider', { name: 'Volume' })).toHaveValue('100');
 });
 
 test('a play that reached the end of its stream', async ({ page, stub }) => {
@@ -171,7 +170,6 @@ test('a firmware that reports only the state and the figures', async ({ page, st
     expect(await enabled(page)).toEqual(['1.0', '2.0', '5.1', '7.1', '5.1.2', '5.1.4', '7.1.4', '9.1.6']);
     await expect(page.locator('#played')).toBeVisible();
     await expect(page.locator('#t-frame')).toBeVisible();
-    await expect(page.getByLabel('Location to play')).toHaveValue('');
 });
 
 test('a firmware from before the render and sink figures', async ({ page, stub }) => {
@@ -251,10 +249,13 @@ test('a failed run that gives no reason or code', async ({ page, stub }) => {
     await expect(page.locator('#reason')).toHaveText('Stopped by a player error.');
 });
 
-test('the volume the device reports moves the slider', async ({ page, stub }) => {
-    await show(page, stub, { ...parsed('stopped.json'), volume: 0.35 });
-    await expect(page.getByRole('slider', { name: 'Volume' })).toHaveValue('35');
-    await expect(page.locator('#volume-out')).toHaveText('35%');
+test('the settings the device reports fill the page', async ({ page, stub }) => {
+    await show(page, stub, { ...parsed('stopped.json'), name: 'Sitting room', slot_bits: 16, second_line: true, sink_slots: 16 });
+    await expect(page.locator('#title')).toHaveText('Sitting room');
+    await expect(page.getByLabel('Name')).toHaveValue('Sitting room');
+    await expect(page.getByLabel('Slot width')).toHaveValue('16');
+    await expect(page.getByLabel('A second I2S line is wired to a DAC')).toBeChecked();
+    await expect(page.locator('#slot-help')).toHaveText('This sink has 16 slots.');
 });
 
 test('text from the device goes into the page as text', async ({ page, stub }) => {

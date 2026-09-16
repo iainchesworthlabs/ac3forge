@@ -56,6 +56,36 @@ struct ControlHandlers {
     std::function<std::string()> layout;
     std::function<bool(std::string_view text)> set_layout;
 
+    // GET and PUT /slot-width, in bits. How wide a slot the sink's bus
+    // carries is a property of the DACs a board is wired to, so it is a
+    // setting rather than a build choice; set_slot_bits returns false for a
+    // width the sink does not have, and the owner applies it at its next
+    // play. It moves sink_slots below with it - an I2S line carries 128 bits
+    // a frame either way, so the same wiring reaches sixteen slots at 16 bits
+    // and eight at 32 - which can leave a layout already set too wide to
+    // play; the owner says so at the next play rather than here.
+    std::function<int()> slot_bits;
+    std::function<bool(int bits)> set_slot_bits;
+
+    // GET and PUT /name: what the board calls itself, on the network and in a
+    // server's list of sinks. Stored on the board (its settings), so it
+    // survives a reflash.
+    std::function<std::string()> name;
+    std::function<bool(std::string_view text)> set_name;
+
+    // GET and PUT /wiring: whether the second I2S line is connected to
+    // anything. It moves sink_slots with it, the same way the slot width
+    // does, because two lines carry twice one line's slots.
+    std::function<bool()> second_line;
+    std::function<bool(bool wired)> set_second_line;
+
+    // PUT /network: the access point the board joins, as an SSID and a
+    // passphrase. Improv over the serial port is the other way in
+    // (the board's own provisioning); this is the one the page offers to
+    // someone already on the network who wants to move the board to another.
+    // Takes effect at the next boot: the station is already associated.
+    std::function<bool(std::string_view ssid, std::string_view password)> set_network;
+
     // GET /status draws on these. Any may be left empty; the field is then
     // omitted or reported as null.
     std::function<PlayerStats()> stats;

@@ -2,17 +2,23 @@
 'use strict';
 
 // The flash budget planning/esp32-device-ui.md sets for the page (decision 18):
-// the page and its script together, as the firmware embeds them, within
-// 20,480 bytes. LF
+// the page and its script together, as the firmware embeds them. LF
 // line endings too (.gitattributes pins them), so a Windows checkout embeds,
 // budgets and maps coverage onto the same bytes CI does.
+//
+// 24,576 since Hearth B2, re-derived rather than raised to fit: the page lost
+// the playback controls, which a server now owns, and gained the settings that
+// are the board's own - a name, a network, a slot width, the wiring. The
+// binary it is embedded in is about 518 KB of a 1,536 KB factory partition, so
+// the budget is a statement about keeping the page small enough to read and
+// serve from flash rather than about running out of room.
 
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { UI_DIR } = require('./stub');
 
-const BUDGET = 20480;
+const BUDGET = 24576;
 
 test('the page and its script fit the flash budget', () => {
     const files = ['ac3forge_ui.html', 'ac3forge_ui.js'].map((name) => fs.readFileSync(path.join(UI_DIR, name)));

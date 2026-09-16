@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # ac3cli - the command-line front end over ac3::forge.
 # ---------------------------------------------------------------------------
-add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp ../common/fmp4_folder_writer.cpp ../common/recording_sink.cpp ../common/container_input.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/decode.cpp commands/analysis.cpp commands/probe.cpp commands/stream_tools.cpp)
+add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp ../common/fmp4_folder_writer.cpp ../common/recording_sink.cpp ../common/container_input.cpp ../common/stream_playback.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/decode.cpp commands/analysis.cpp commands/probe.cpp commands/stream_tools.cpp)
 
 # ../common/recording_sink.cpp + fmp4_folder_writer.cpp: the take writer
 # 'record' and 'live' stream their output through (roadmap IO9), shared
@@ -10,7 +10,9 @@ add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp .
 # in either app. Compiled straight in; apps/common has no library target,
 # matching how tests/CMakeLists.txt already compiles the same files into
 # ac3tests. ../common/container_input.cpp (roadmap IO2) is the same shape,
-# for turning a container file into an elementary stream instead.
+# for turning a container file into an elementary stream instead, and so is
+# ../common/stream_playback.cpp, the decoder choice and end-of-stream flush
+# 'monitor' and 'spatial' play a stream with.
 target_include_directories(ac3cli PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 # ac3cli's platform-specific code, two seams' worth: putting stdin/stdout into
