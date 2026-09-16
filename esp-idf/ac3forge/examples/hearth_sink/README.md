@@ -365,6 +365,7 @@ configurations set 80; the default is 0, none), the component's
 | `GET /wiring` | `1` if a second I2S line is wired, `0` if not |
 | `PUT /wiring` | body: `1` or `0`. Moves the sink's ceiling with it - two lines carry twice one line's slots - and takes effect at the next play. `409` while a play is running. |
 | `PUT /network` | body: an SSID, a newline, then the passphrase. Stored for the next boot; the station stays on the network it is already associated with. Improv over the serial port is the other way in, and the one a board with no network at all needs. |
+| `POST /pairing` | body: `reset`, `cancel` or `forget`, for a Sendspin player's pairing ([Pairing](#pairing)). `400` for any other body, `409` on a board with no Sendspin player. |
 | `GET /slot-width` | the slot width in bits, 16 or 32 |
 | `PUT /slot-width` | body: `16` or `32`. Takes effect at the next play, and moves the sink's ceiling with it: an I2S line carries 128 bits a frame, so two lines reach sixteen slots at 16 bits and eight at 32. `400` for a body that is not a number, `409` while a play is running, for a width the sink does not have, or on the `capture` and `null` sinks, which keep the width they were built for. A layout already set may be too wide after a change to 32; the next play says so. |
 
@@ -441,6 +442,137 @@ comments. A board has a squeeze of its own: the radio needs more internal RAM th
 QEMU's Ethernet stand-in, and with WiFi up the decoder does not fit beside it.
 `sdkconfig.psram` is what the board's network shape needs, and
 [On the board](#on-the-board) has the measurements behind it.
+
+## Playing from a Sendspin server
+
+`sdkconfig.sendspin` makes the board a Sendspin player
+([planning/hearth-reference-player.md](../../../../planning/hearth-reference-player.md),
+B3), on WiFi with the page on port 80:
+
+```bash
+SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram;sdkconfig.sendspin" idf.py build
+```
+
+Nothing plays at boot. The player listens on port 8928 at `/sendspin`, the
+board advertises `_sendspin._tcp` under its name, and a server that finds it
+dials it. Two roles are offered:
+
+- `_ac3forge_player@v1`
+  ([planning/hearth-sendspin-extension.md](../../../../planning/hearth-sendspin-extension.md)):
+  AC-3 or E-AC-3 in IEC 61937 bursts, decoded on the board, rendered onto its
+  layout, then routed, trimmed and delayed as the server's settings say. The
+  server can also set the layout, the crossover and the decoder's settings
+  (operating mode, heavy compression, dialnorm, the downmix and its phase
+  shift, the LFE mix, the programme, objects and concealment), play an
+  identify tone on one output, and change the volume. `ac3hearth` plays this
+  role.
+- `player@v1`: stereo PCM at 48 kHz, 24 or 16 bits, which Music Assistant
+  sends to a player that lists nothing else. FLAC and Opus are not offered:
+  their decoders are not on the board, and what they would cost it has not
+  been measured.
+
+`POST /play` still plays a URL over HTTP, for debugging. While it plays, the
+Sendspin player reports itself unavailable to its servers, and it takes the
+sink back when the play ends.
+
+### Joining a network
+
+A board with no network stored listens for [Improv Wi-Fi](https://www.improv-wifi.com/)
+on its serial port: the page at improv-wifi.com, in a browser with Web Serial,
+connects to the board and gives it an SSID and a passphrase, which the board
+stores and joins. A board already on a network moves to another with
+`PUT /network`, at its next boot.
+
+### Pairing
+
+Every connection is encrypted with Noise (`KKpsk2`, ChaChaPoly by default;
+`CONFIG_AC3FORGE_SENDSPIN_SUITE` chooses AES-GCM). A server plays to the board
+once they are paired, which happens one of two ways:
+
+- **By the token.** The console prints the board's pairing token at boot, and
+  again for `pair token`:
+
+  ```
+  sendspin: pairing token SP:0AO4BQKDC3YEKAULMZ4UMZFDRQGZSLVY9...
+  ```
+
+  A server given the token pairs at once, with no code. Anyone who has it can
+  pair, so it is printed nowhere else: not on the page and not in `/status`.
+- **By a code.** A server that asks to pair by a code gets six digits, on the
+  console as `sendspin: PAIRING CODE 482-913` and at the top of the page's
+  Sendspin section, for as long as the pairing runs. The code goes into the
+  server. After twenty codes that did not match, the board holds pairing back
+  until `pair reset` on the console or *Allow pairing again* on the page.
+
+The board keeps eight pairings in NVS. `pair forget`, or *Forget every server*
+on the page, removes them all and gives the board a new identity, so every
+server has to pair again. Lines typed on the console are commands: `pair
+token`, `pair reset`, `pair cancel`, `pair forget`, and `sendspin`, which
+prints the player's state.
+
+A server that has not paired gets nothing to play unless
+`CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_UNPAIRED_ACCESS` is set, and then only once
+its own operator approves the board.
+
+### When a sample plays
+
+A server stamps each chunk with the time its first sample should play, on
+its own clock, and the player follows that clock with Sendspin's time
+filter. The I2S sink says when each buffer it is given will play, from the
+channel's own end-of-frame interrupts
+([`ac3forge/playout.hpp`](../../include/ac3forge/playout.hpp)). The player
+pads the start of a stream with silence, or leaves out the frames already
+late, so that its first frame plays when the server asked; after that it
+drops or repeats one frame in 256 while the smoothed error is outside
+250 µs. Corrections are made to decoded PCM, never to a burst. A burst that
+arrives too late to play any of is dropped before it is decoded. The
+`capture` and `null` sinks have no interrupts, and pace and time themselves
+as a DMA ring would. The capture sink does so only with
+`CONFIG_AC3FORGE_EXAMPLE_CAPTURE_PACED`; unpaced, it plays each frame as it
+comes, which is what CI compares levels with.
+
+### What it reports
+
+`/status` gains a `sendspin` object: the server playing to the board and its
+dialect (`specification`, or `aiosendspin 9.1.1` for Music Assistant), the PSK
+the connection uses, the active role, whether the clock has converged, a
+pairing code while one runs, and for the stream the bursts played, underruns,
+bursts late, dropped for want of room or invalid, how far from the server's
+time the stream plays (`error_us`, and `worst_error_us` since its first
+second), where it put the stream's first frame on the server's clock
+(`origin_server_us`, which two boards playing one programme should agree on),
+and each output's peak and RMS over the last 100 ms. The same levels and
+counters reach the server in the extension role's `client/state`, up to ten
+times a second while a stream plays.
+
+When a stream ends, the console prints its figures and each output's RMS
+over the whole stream:
+
+```
+sendspin.stream=bursts bursts=315 late=0 dropped=0 invalid=0 underruns=0 resyncs=0 silence_frames=256 skipped_frames=0 dropped_frames=0 repeated_frames=0 worst_error_us=0 burst_us=3350 sink_us=148 ring_high=0 heap_free=47768
+sendspin.rms[0]=7891
+sendspin.rms[1]=7414
+```
+
+`heap_free` is the least free internal heap while the stream played, and
+`ring_high` the most the ring between the network and the decoder held.
+
+The player's buffers, stacks, lead and ring are under *Sendspin player* in
+`idf.py menuconfig`.
+
+### Under QEMU
+
+`sdkconfig.ci-sendspin`, over `sdkconfig.ci-http`, is the player on QEMU's
+Ethernet with the capture sink, a 16 KB ring and no PSRAM.
+`tools/checks/run_sendspin_qemu.sh` boots it with the Sendspin port and the
+page forwarded to the host, and `ac3hearth-testserver` pairs with it by the
+token on its console, gives it a 2.0 layout and plays the E-AC-3 JOC fixture
+to it and to a test sink of its own, in one group. The board's RMS lines are
+then held to the test sink's WAV file by `tools/checks/check_sendspin_levels.py`,
+and its console to one clean boot and a heap floor. On 2026-09-16, paired
+by its token and then, on a fresh board, by the code it printed, all 315
+bursts played each time, with each output's RMS equal to the test sink's
+and at least 47,768 bytes of internal heap free.
 
 ## The sources
 

@@ -197,6 +197,22 @@ config AC3FORGE_EXAMPLE_CAPTURE_TDM
     depends on AC3FORGE_EXAMPLE_SINK_CAPTURE
     default 0
 
+# Whether the capture sink paces a Sendspin stream's timed writes as a DAC
+# would, or takes them as fast as they come. An int so it reaches C++ as a
+# plain constant.
+config AC3FORGE_EXAMPLE_CAPTURE_PACED
+    int "Pace a Sendspin stream's writes as a DAC would (1) or not (0)"
+    depends on AC3FORGE_EXAMPLE_SINK_CAPTURE
+    default 0
+    range 0 1
+    help
+        0, what CI runs: every decoded sample is written and checked as it
+        comes, with no time attached, so no burst is ever late however slowly
+        the emulator decodes, and the levels a Sendspin stream leaves are the
+        stream's whole. 1: each write waits as a twelve-buffer DMA queue
+        would and reports when it would have played, which runs the Sendspin
+        player's timing under the emulator's clock.
+
 config AC3FORGE_EXAMPLE_TDM_SLOTS
     int "TDM slots the capture sink emulates"
     depends on AC3FORGE_EXAMPLE_SINK_CAPTURE
@@ -480,5 +496,88 @@ config AC3FORGE_EXAMPLE_REPORT_EVERY_FRAMES
         a long stream means one line after minutes of silence on the console.
         A non-zero value prints the same figures, cumulative, every N frames as
         well; 125 is every four seconds at 48 kHz.
+
+# THE SENDSPIN PLAYER - main/sendspin.hpp, over the component's player
+# (CONFIG_AC3FORGE_SENDSPIN, in the component's own menu). A build with a
+# network and the component's player has one; each of these sizes it.
+menu "Sendspin player"
+    depends on AC3FORGE_SENDSPIN
+
+config AC3FORGE_EXAMPLE_SENDSPIN_RING_BYTES
+    int "Ring of chunks between the session and the decode, bytes"
+    default 262144
+    range 8192 4194304
+    help
+        What a server may send ahead of playing it, less a little for stream
+        starts and ends, is this: 256 KB is about four and a half seconds of
+        a 448 kbit/s E-AC-3 stream's bursts, or 0.9 s of 24-bit stereo PCM.
+        In PSRAM when the part has it; a build with none (QEMU) sizes it to
+        what its internal RAM can spare.
+
+config AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES
+    int "The largest chunk taken, bytes"
+    default 25600
+    range 4096 65535
+    help
+        An E-AC-3 burst at the bitstream's ceiling is 24,585 bytes with its
+        header, and 150 ms of 24-bit stereo PCM 21,613. A shape that plays
+        only small streams can take less, and the decode task's buffer for
+        one chunk shrinks with it.
+
+config AC3FORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES
+    int "Stack for the Sendspin decode task, bytes"
+    default 32768
+    range 12288 65536
+    help
+        As AC3FORGE_EXAMPLE_DECODE_STACK_BYTES, for the task that decodes a
+        Sendspin stream's bursts: the decoder's frames are most of it. The
+        page's Sendspin section says what a run left spare.
+
+config AC3FORGE_EXAMPLE_SENDSPIN_SERVER_STACK_BYTES
+    int "Stack for the Sendspin WebSocket server's task, bytes"
+    default 8192
+    range 6144 32768
+    help
+        Every session runs on this task, the Noise handshake's X25519 and
+        SHA-256 included. The page's Sendspin section says what a run left
+        spare.
+
+config AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS
+    int "Longest per-output delay a server can set, milliseconds (0 = none)"
+    default 20
+    range 0 100
+    help
+        The delay lines are one buffer per output of this length: sixteen
+        outputs of 20 ms is about 61 KB, in PSRAM when the part has it.
+
+config AC3FORGE_EXAMPLE_SENDSPIN_LEAD_MS
+    int "Lead a stream's first chunk needs, milliseconds (required_lead_time_ms)"
+    default 250
+    range 50 30000
+    help
+        From a chunk's arrival to its first sample leaving the port: the
+        decoder's one-frame hold, a burst's decode and render, and the DMA
+        queue, with room to spare.
+
+config AC3FORGE_EXAMPLE_SENDSPIN_BUFFER_MS
+    int "Audio kept buffered while playing, milliseconds (min_buffer_ms)"
+    default 300
+    range 0 30000
+
+config AC3FORGE_EXAMPLE_SENDSPIN_UNPAIRED_ACCESS
+    int "Let an approved server play without pairing (1) or not (0)"
+    default 0
+    range 0 1
+    help
+        pairing.md's unpaired access, which a player offers and a server's
+        operator approves. Off by default: a board plays only for servers it
+        has paired with.
+
+config AC3FORGE_EXAMPLE_SENDSPIN_PCM
+    int "Offer player@v1 with PCM (1), for Music Assistant, or only _ac3forge_player@v1 (0)"
+    default 1
+    range 0 1
+
+endmenu
 
 endmenu

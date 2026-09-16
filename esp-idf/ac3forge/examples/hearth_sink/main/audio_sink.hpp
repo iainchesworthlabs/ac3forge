@@ -1,7 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
+
+#include "ac3forge/playout.hpp"
 
 // Where decoded audio goes, as a seam CMake resolves rather than a flag the
 // code branches on - the same rule the library follows for its own platform
@@ -146,6 +149,17 @@ void sink_begin_play();
 // nominally in [-1, 1). Blocks until the sink has taken it, which for I2S is
 // the back-pressure that paces the whole player at real time.
 void sink_write(std::span<const std::span<const float>> channels);
+
+// One block of exactly ac3::kSamplesPerBlock samples a slot, as sink_write,
+// for a player that times its output (the Sendspin player,
+// ac3forge/playout.hpp): when the block's first sample leaves the audio port,
+// by the sink's own clock, whether the block was written too late to play
+// whole, and whether the queue ran dry before it. The i2s sink reads that
+// from its DMA ring's end-of-frame interrupts. The capture sink has no ring,
+// so it says nothing unless CONFIG_AC3FORGE_EXAMPLE_CAPTURE_PACED asks it to
+// pace itself as one would and report its times, which under QEMU are the
+// emulator's; the null sink always does. Nothing when the sink is not open.
+[[nodiscard]] std::optional<ac3forge::PlayoutWrite> sink_write_timed(std::span<const std::span<const float>> channels);
 
 // For the log line, so a run says which sink produced its numbers.
 [[nodiscard]] const char* sink_name();

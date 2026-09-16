@@ -56,9 +56,11 @@
 #include "ac3/core/tables.hpp"
 #include "ac3forge/dac_queue_model.hpp"
 #include "ac3forge/interleave.hpp"
+#include "ac3forge/playout.hpp"
 #include "ac3forge/sink_plan.hpp"
 #include "driver/i2s_std.h"
 #include "driver/i2s_tdm.h"
+#include "esp_attr.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -141,6 +143,21 @@ Line g_line0;
 Line g_line1;
 ac3forge::DacQueueModel g_model;
 
+// When line 0's DMA buffers play, for the timed writes a Sendspin stream
+// makes (ac3forge/playout.hpp): its end-of-frame interrupts, and the line
+// fitted through them. Line 1 shares line 0's clocks, so line 0's ring times
+// both.
+ac3forge::DmaRing g_ring;
+ac3forge::DmaClock g_clock;
+
+// Line 0's on_sent callback. The channel's interrupt is not IRAM-safe here
+// (CONFIG_I2S_ISR_IRAM_SAFE is off), so it never runs while the flash cache is
+// off, and the ring's side of it may live in flash.
+IRAM_ATTR bool on_sent(i2s_chan_handle_t /*handle*/, i2s_event_data_t* /*event*/, void* /*context*/) {
+    g_ring.sent(esp_timer_get_time());
+    return false;
+}
+
 // One block of interleaved samples per line, in whichever width the sink is
 // set to. A line's frame is 128 bits however it divides - four 32-bit slots
 // or eight 16-bit ones - so 4 KB a line serves both, and a union says that
@@ -174,6 +191,15 @@ constexpr int kDmaFrames = CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_FRAMES;
 constexpr std::size_t kLineBytesPerFrame = 16;
 const DmaPlan g_dma_plan =
     dma_plan(kDmaDescriptors, kDmaFrames, kLineBytesPerFrame, ac3::kSamplesPerBlock);
+
+// Line 0's ring starts counting again: the driver empties its queue of free
+// buffers when a channel is disabled, and a new channel starts with none.
+// Called with the channel not running, so no interrupt is in the ring.
+void restart_clock(std::uint32_t sample_rate) {
+    g_ring.reset();
+    g_clock.open(static_cast<std::uint32_t>(g_dma_plan.descriptors), static_cast<std::uint32_t>(g_dma_plan.frames),
+                 sample_rate);
+}
 
 // Standard mode's slot_mode for `slots` real channels. 16-bit slots always
 // run stereo - interleave_16 has no narrower or padded form, so a mono
@@ -238,6 +264,9 @@ bool configure_line(Line& line, const ac3forge::SinkLinePlan& plan, const LineGp
         if (i2s_channel_disable(line.chan) != ESP_OK) {
             return false;
         }
+        if (&line == &g_line0) {
+            restart_clock(sample_rate);
+        }
         esp_err_t err;
         if (plan.tdm) {
             i2s_tdm_slot_config_t slot_cfg = I2S_TDM_PHILIPS_SLOT_DEFAULT_CONFIG(
@@ -276,6 +305,15 @@ bool configure_line(Line& line, const ac3forge::SinkLinePlan& plan, const LineGp
     if (i2s_new_channel(&chan_cfg, &line.chan, nullptr) != ESP_OK) {
         std::printf("error: could not allocate an I2S channel\n");
         return false;
+    }
+    if (&line == &g_line0) {
+        // Registered before the channel runs, which the driver requires.
+        restart_clock(sample_rate);
+        i2s_event_callbacks_t callbacks{};
+        callbacks.on_sent = &on_sent;
+        if (i2s_channel_register_event_callback(line.chan, &callbacks, nullptr) != ESP_OK) {
+            std::printf("warning: no DMA interrupts from I2S line 0; a Sendspin stream plays untimed\n");
+        }
     }
 
     // Field by field onto a zeroed struct: C++ requires designated
@@ -433,6 +471,21 @@ void sink_write(std::span<const std::span<const float>> channels) {
     }
 
     g_model.queued(bytes_for_model, esp_timer_get_time());
+}
+
+std::optional<ac3forge::PlayoutWrite> sink_write_timed(std::span<const std::span<const float>> channels) {
+    if (g_line0.slots == 0 || channels.empty()) {
+        return std::nullopt;
+    }
+    sink_write(channels);
+    // A block is exactly the player's 256 frames, which the DMA plan's
+    // descriptor divides: this many buffers of line 0's ring took it.
+    const auto buffers = static_cast<std::uint32_t>(ac3::kSamplesPerBlock / static_cast<std::size_t>(g_dma_plan.frames));
+    const std::optional<ac3forge::DmaClock::Taken> taken = g_clock.took(g_ring, esp_timer_get_time(), buffers);
+    if (!taken) {
+        return std::nullopt;
+    }
+    return ac3forge::PlayoutWrite{.play_us = taken->play_us, .late = taken->late, .gap = taken->skipped > 0};
 }
 
 const char* sink_name() { return "i2s"; }
