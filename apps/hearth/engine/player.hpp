@@ -39,12 +39,16 @@
 // delivered its last frame, the next item is opened straight away - before
 // the transport is told the item finished, so the transport's join decision
 // sees the next item's real rate rather than "not probed yet" - and if the
-// transport says join, the next item's first frame follows the last one's
-// with nothing between them and nothing reopened. If it says reopen, the
-// player waits for everything already submitted to be heard (by the sink's
-// own clock), then closes and opens the output at the new format. The record
-// of where each item began in the output's timeline and how many frames it
-// delivered is kept, which is what A3's exit checks at every join.
+// transport would join it, the next item's first frame follows the last
+// one's with nothing between them and nothing reopened. Otherwise - another
+// format, or nothing next at all - the player waits for everything already
+// submitted to be heard (by the sink's own clock) before telling the
+// transport, so until the item's tail has been heard it is still the item
+// playing: a pause or a seek there is the item's, and an item added to the
+// queue meanwhile can still join. Then a reopen closes and opens the output
+// at the new format, and a stop closes it. The record of where each item
+// began in the output's timeline and how many frames it delivered is kept,
+// which is what A3's exit checks at every join.
 //
 // Given a diagnostics ring (diagnostic_log.hpp), the player notes what it did
 // and could not do: each output opened and closed, each item started, joined
@@ -353,11 +357,27 @@ private:
     std::size_t drain(std::size_t budget);
     // Whether everything submitted since the output opened has been heard.
     [[nodiscard]] bool played_out();
+    // Opens the item after the current one ahead of its join decision,
+    // marking any that will not open on the way. Returns the one that would
+    // not, when an item that fails is to stop playback, else Queue::kNone.
+    std::size_t prepare_next(PumpReport& report);
+    // Whether the item remembered as failing is still what the queue plays
+    // next, ahead of anything that can be played.
+    [[nodiscard]] bool failed_next_stands() const;
+    void mark_unplayable(std::size_t item, std::string why);
+    // How the prepared item would be played, decided once for it.
+    [[nodiscard]] const OutputChoice& prepared_decision();
+    void drop_prepared();
+    // Whether the next item would join the output now: the transport would,
+    // and neither the endpoint nor the packer stands in the way.
+    bool next_joins(PumpReport& report);
     // The current item has delivered everything: decide what comes next.
-    void item_ended(PumpReport& report);
+    // `heard` says its tail has been heard already.
+    void item_ended(PumpReport& report, bool heard);
     // A reopen or a stop that waits for what has been submitted to play out;
-    // pump() carries it out once the sink's clock has passed it.
-    void play_out_then(const TransportOutcome& outcome, PumpReport& report);
+    // pump() carries it out once the sink's clock has passed it, which with
+    // `heard` it already has.
+    void play_out_then(const TransportOutcome& outcome, PumpReport& report, bool heard);
     // After a queue edit: a waiting reopen goes to the item now current, and
     // a prepared session, keyed by index, is dropped.
     void after_edit();
@@ -419,11 +439,20 @@ private:
     std::optional<Session> prepared_;
     std::size_t prepared_index_ = Queue::kNone;
     std::string prepared_path_;
+    std::optional<OutputChoice> prepared_choice_;
+    // The next item, when it would not open and an item that fails stops
+    // playback, and why: the transport hears of it once the current item has
+    // ended, and the item is marked then.
+    std::size_t failed_next_ = Queue::kNone;
+    std::string failed_next_why_;
 
     // A reopen or a stop waiting for the audio already submitted to play,
     // and the device-clock frame by which it will have (played_out()).
     std::optional<TransportOutcome> after_drain_;
     std::optional<std::uint64_t> drain_target_;
+    // Set while the current item, decoded to its end, waits for its tail to
+    // be heard: an item that would join it now has come late.
+    bool tail_waiting_ = false;
 
     std::optional<SeekOnStart> seek_on_start_;
 

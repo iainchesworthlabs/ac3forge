@@ -88,6 +88,9 @@ public:
         bool paused = false;
         bool refuse_open = false;
         bool refuse_pause = false;
+        // A device that plays what it is given as soon as it has it: the
+        // player is always behind it, as a slow machine can leave it.
+        bool instant = false;
     };
 
     FakeDevice(std::shared_ptr<Log> log, std::size_t capacity)
@@ -141,6 +144,11 @@ public:
         log_->submitted += frames;
         log_->submitted_total += frames;
         log_->drained_at.reset();
+        if (log_->instant && !log_->paused) {
+            log_->heard += frames;
+            log_->clock += frames;
+            log_->drained_at = log_->clock;
+        }
         return true;
     }
 
@@ -543,6 +551,8 @@ TEST_CASE("player: a rate change reopens the output, after the old item has been
     REQUIRE(log->heard_when_opened.size() == 2);
     CHECK(log->heard_when_opened[1] == 10 * 1536);
     CHECK(log->slack_when_opened[1] >= 1000);
+    // And no longer than that, give or take the pumps it takes to notice.
+    CHECK(log->slack_when_opened[1] < 1000 + (3 * 480));
 
     const auto& history = player->history();
     REQUIRE(history.size() == 2);
@@ -1216,10 +1226,11 @@ TEST_CASE("player: the position follows the device's clock through a join and a 
     CHECK(at.duration.count() == 10 * 1536 * 1000 / 48000);
 
     const auto run_until = [&](std::uint64_t clock) {
-        while (log->clock < clock) {
+        for (int step = 0; step < 100000 && log->clock < clock; ++step) {
             player->pump();
             advance(*log, 480);
         }
+        REQUIRE(log->clock >= clock);
     };
     // Part-way through the first item: what the clock has passed.
     run_until(12000);
@@ -1357,10 +1368,11 @@ TEST_CASE("player: the report of the unit being heard waits for the device", "[h
 
     // Up to the join, the first item's words; past it, the second's.
     const std::uint64_t join = 20 * ac3::kSamplesPerFrame;
-    while (log->clock < join) {
+    for (int step = 0; step < 100000 && log->clock < join; ++step) {
         player->pump();
         advance(*log, std::min<std::uint64_t>(480, join - log->clock));
     }
+    REQUIRE(log->clock == join);
     REQUIRE(log->opens == 1);
     static_cast<void>(player->unit_report(report));
     CHECK(report.dialnorm == 31);
@@ -1392,10 +1404,11 @@ TEST_CASE("player: a join starts the next item's loudness, and momentary loudnes
     player->play();
     const std::uint64_t join = 60 * ac3::kSamplesPerFrame;
     const auto play_until = [&](std::uint64_t frame) {
-        while (log->clock < frame) {
+        for (int step = 0; step < 100000 && log->clock < frame; ++step) {
             player->pump();
             advance(*log, 480);
         }
+        REQUIRE(log->clock >= frame);
     };
 
     // 200 ms into the silence, half the momentary window is still the tone.
@@ -1637,4 +1650,364 @@ TEST_CASE("player: an item that fails can stop playback at it", "[hearth][player
     REQUIRE(play_out(starting, *starting_log));
     REQUIRE(starting.history().size() == 1);
     CHECK(starting.history()[0].title == "first.ec3");
+}
+
+// The end of the queue. The last item is decoded to its end well before it
+// has been heard; until it has, it is still the item playing.
+
+namespace {
+
+// Pumps, with the device's clock running, until the last item has been
+// decoded to its end - its units all handed to the device or waiting for
+// room - while some of it is still to be heard.
+void pump_into_tail(Player& player, FakeDevice::Log& log, std::uint64_t item_frames) {
+    for (int step = 0; step < 4; ++step) {
+        player.pump();
+        advance(log, 480);
+    }
+    REQUIRE(log.submitted > 0);
+    REQUIRE(log.heard < item_frames);
+}
+
+}  // namespace
+
+TEST_CASE("player: the last item is still playing until its tail has been heard",
+          "[hearth][player]") {
+    const std::uint64_t item_frames = 6 * 1536;
+    Library library;
+    library.files["last.ec3"] = eac3_stream(6);
+    library.files["more.ec3"] = eac3_stream(4);
+    library.files["44k1.ac3"] = ac3_stream(4, ac3::SampleRate::k44100);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log);
+    player->queue().add(item("last.ec3"));
+    player->play();
+    pump_into_tail(*player, *log, item_frames);
+    CHECK(player->transport().state() == TransportState::kPlaying);
+
+    SECTION("a pause holds it, and it plays on afterwards") {
+        player->pause();
+        CHECK(log->paused);
+        CHECK(player->transport().state() == TransportState::kPaused);
+        const std::uint64_t heard = log->heard;
+        const auto at = player->position().heard;
+        for (int step = 0; step < 50; ++step) {
+            player->pump();
+            advance(*log, 480);
+        }
+        CHECK(log->heard == heard);
+        CHECK(player->position().heard == at);
+        CHECK(player->transport().state() == TransportState::kPaused);
+        player->play();
+        CHECK_FALSE(log->paused);
+        REQUIRE(play_out(*player, *log));
+        CHECK(log->heard == item_frames);
+    }
+
+    SECTION("a seek plays it again from there") {
+        const std::uint64_t submitted = log->submitted_total;
+        player->seek(std::chrono::milliseconds{64});
+        CHECK(log->flushes == 1);
+        CHECK(player->position().heard == std::chrono::milliseconds{64});
+        REQUIRE(play_out(*player, *log));
+        // From 64 ms: units 2 to 5.
+        CHECK(log->submitted_total == submitted + (4 * 1536));
+    }
+
+    SECTION("a seek once everything has gone to the device ends when the new tail is heard") {
+        // Everything handed over, and the wait for it begun.
+        for (int step = 0; step < 100 && log->submitted_total < item_frames; ++step) {
+            player->pump();
+            advance(*log, 480);
+        }
+        REQUIRE(log->submitted_total == item_frames);
+        player->pump();
+        REQUIRE(log->heard < item_frames);
+        // 128 ms is unit 4: two units, heard by 3072 on the new clock.
+        player->seek(std::chrono::milliseconds{128});
+        std::optional<std::uint64_t> stopped_at;
+        for (int step = 0; step < 1000 && !stopped_at; ++step) {
+            player->pump();
+            if (!log->open) {
+                stopped_at = log->clock;
+            }
+            advance(*log, 480);
+        }
+        REQUIRE(stopped_at.has_value());
+        CHECK(log->heard == 2 * 1536);
+        CHECK(*stopped_at < (2 * 1536) + (3 * 480));
+    }
+
+    SECTION("a seek to its end, once everything has gone to the device, stops playback at once") {
+        for (int step = 0; step < 100 && log->submitted_total < item_frames; ++step) {
+            player->pump();
+            advance(*log, 480);
+        }
+        REQUIRE(log->submitted_total == item_frames);
+        player->pump();
+        REQUIRE(log->heard < item_frames);
+        // 192 ms is the end: the last unit is decoded for its overlap and none
+        // of it is played, so there is nothing new to wait for - the wait
+        // taken before the seek counted frames the flush threw away.
+        player->seek(std::chrono::milliseconds{192});
+        const auto report = player->pump();
+        CHECK(player->transport().state() == TransportState::kStopped);
+        CHECK(report.note == "The queue has finished.");
+        player->pump();
+        CHECK_FALSE(log->open);
+        CHECK(log->submitted_total == item_frames);
+    }
+
+    SECTION("an item added meanwhile joins it") {
+        player->add(item("more.ec3"));
+        REQUIRE(play_out(*player, *log));
+        CHECK(log->opens == 1);
+        const auto& history = player->history();
+        REQUIRE(history.size() == 2);
+        CHECK(history[1].first_frame == item_frames);
+        CHECK(history[1].frames == 4 * 1536);
+        CHECK(history[1].output_opens == history[0].output_opens);
+        // And heard to its end before the output closed.
+        CHECK(log->heard == item_frames + (4 * 1536));
+    }
+
+    SECTION("an item added meanwhile that wants another output waits for it to be heard") {
+        player->add(item("44k1.ac3"));
+        REQUIRE(play_out(*player, *log));
+        CHECK(log->rates == std::vector<std::uint32_t>{48000, 44100});
+        REQUIRE(log->heard_when_opened.size() == 2);
+        CHECK(log->heard_when_opened[1] == item_frames);
+        REQUIRE(player->history().size() == 2);
+        CHECK(player->history()[1].title == "44k1.ac3");
+    }
+
+    SECTION("playback stops once it has been heard, and not before") {
+        std::optional<std::string> stopped_note;
+        for (int step = 0; step < 1000 && !stopped_note; ++step) {
+            const std::uint64_t heard = log->heard;
+            const auto report = player->pump();
+            if (player->transport().state() == TransportState::kStopped) {
+                CHECK(heard == item_frames);
+                stopped_note = report.note;
+            }
+            advance(*log, 480);
+        }
+        REQUIRE(stopped_note.has_value());
+        CHECK(*stopped_note == "The queue has finished.");
+        REQUIRE(play_out(*player, *log));
+        CHECK(log->heard == item_frames);
+    }
+}
+
+TEST_CASE("player: a next item that will not open still stops playback after the tail",
+          "[hearth][player]") {
+    // Asked again at every pump while the tail plays, the transport must still
+    // hear of the item that would not open, not of the one after it.
+    Library library;
+    library.files["first.ec3"] = eac3_stream(6);
+    library.files["third.ec3"] = eac3_stream(3);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log);
+    player->set_on_failure(ac3::hearth::FailurePolicy::kStop);
+    player->add(item("first.ec3"));
+    player->add(item("gone.ec3"));
+    player->add(item("third.ec3"));
+    player->play();
+    pump_into_tail(*player, *log, 6 * 1536);
+    CHECK(player->transport().state() == TransportState::kPlaying);
+
+    SECTION("an edit meanwhile moves the item, and it is still the one stopped at") {
+        player->move(2, 0);
+        REQUIRE(play_out(*player, *log));
+        REQUIRE(player->history().size() == 1);
+        CHECK(player->queue().current_index() == 2);
+        CHECK(player->queue().items()[2].path == "gone.ec3");
+    }
+
+    SECTION("skipping on meanwhile stops at it at once") {
+        // It is the next item, so Next starts it, and it will not open.
+        player->next();
+        CHECK(player->transport().state() == TransportState::kStopped);
+        CHECK_FALSE(log->open);
+        CHECK(player->queue().current_index() == 1);
+        CHECK_FALSE(player->queue().items()[1].playable());
+    }
+
+    SECTION("an item put before it meanwhile plays first") {
+        player->insert(1, item("third.ec3"));
+        REQUIRE(play_out(*player, *log));
+        const auto& history = player->history();
+        REQUIRE(history.size() == 2);
+        CHECK(history[1].title == "third.ec3");
+        CHECK(history[1].output_opens == history[0].output_opens);
+        CHECK(log->heard == (6 + 3) * 1536);
+        // And then it is the one playback stops at.
+        CHECK(player->queue().current_index() == 2);
+        CHECK(player->queue().items()[2].path == "gone.ec3");
+    }
+
+    SECTION("passing over is chosen meanwhile") {
+        player->set_on_failure(ac3::hearth::FailurePolicy::kSkip);
+        REQUIRE(play_out(*player, *log));
+        const auto& history = player->history();
+        REQUIRE(history.size() == 2);
+        CHECK(history[1].title == "third.ec3");
+        CHECK(history[1].first_frame == 6 * 1536);
+        CHECK(log->heard == (6 + 3) * 1536);
+        CHECK_FALSE(player->queue().items()[1].playable());
+    }
+
+    SECTION("a stop forgets it, and the item is tried again") {
+        player->stop();
+        library.files["gone.ec3"] = eac3_stream(2);
+        player->play();
+        REQUIRE(play_out(*player, *log));
+        const auto& history = player->history();
+        REQUIRE(history.size() == 4);
+        CHECK(history[2].title == "gone.ec3");
+        CHECK(history[3].title == "third.ec3");
+    }
+}
+
+TEST_CASE("player: an item added during a tail is heard to its end", "[hearth][player]") {
+    // Added once the wait for the tail has begun: the join must move the end
+    // the wait is for, or the output closes on the added item.
+    Library library;
+    library.files["last.ec3"] = eac3_stream(6);
+    library.files["more.ec3"] = eac3_stream(4);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log);
+    player->add(item("last.ec3"));
+    player->play();
+    // Everything handed over, and the wait for it begun.
+    for (int step = 0; step < 100 && log->submitted_total < 6 * 1536; ++step) {
+        player->pump();
+        advance(*log, 480);
+    }
+    player->pump();
+    REQUIRE(log->heard < 6 * 1536);
+    player->add(item("more.ec3"));
+    REQUIRE(play_out(*player, *log));
+    CHECK(log->opens == 1);
+    CHECK(log->heard == 10 * 1536);
+}
+
+TEST_CASE("player: an item added once the tail has left the device reopens",
+          "[hearth][player]") {
+    // The device has played everything, and only its output path's delay is
+    // left: joining now would follow silence the timeline does not count.
+    Library library;
+    library.files["last.ec3"] = eac3_stream(6);
+    library.files["more.ec3"] = eac3_stream(4);
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->latency = 4800;
+    const auto player = make_player(library, log);
+    player->add(item("last.ec3"));
+    player->play();
+    for (int step = 0; step < 100 && log->heard < 6 * 1536; ++step) {
+        player->pump();
+        advance(*log, 480);
+    }
+    REQUIRE(log->heard == 6 * 1536);
+    REQUIRE(player->transport().state() == TransportState::kPlaying);
+    player->add(item("more.ec3"));
+    REQUIRE(play_out(*player, *log));
+    CHECK(log->opens == 2);
+    REQUIRE(player->history().size() == 2);
+    CHECK(player->history()[1].first_frame == 0);
+}
+
+TEST_CASE("player: an item queued all along joins even if the device ran dry before",
+          "[hearth][player]") {
+    // A device that has played everything by the time an item ends means the
+    // player fell behind it, not that the next item came late. Each pump here
+    // decodes and sends a whole item, which the device plays at once; only the
+    // output path's delay is ever left to wait for.
+    const std::size_t whole = std::size_t{1} << 20;
+    Library library;
+    library.files["first.ec3"] = eac3_stream(4);
+    library.files["second.ec3"] = eac3_stream(3);
+    library.files["44k1-a.ac3"] = ac3_stream(3, ac3::SampleRate::k44100);
+    library.files["44k1-b.ac3"] = ac3_stream(2, ac3::SampleRate::k44100);
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->instant = true;
+    log->latency = 480;
+    const auto player = make_player(library, log);
+    const auto run = [&] {
+        for (int step = 0;
+             step < 100 && !(player->transport().state() == TransportState::kStopped && !log->open);
+             ++step) {
+            player->pump(whole);
+            advance(*log, 480);
+        }
+        REQUIRE(player->transport().state() == TransportState::kStopped);
+        REQUIRE_FALSE(log->open);
+    };
+
+    SECTION("at the item's end") {
+        player->add(item("first.ec3"));
+        player->add(item("second.ec3"));
+        player->play();
+        run();
+        CHECK(log->opens == 1);
+        REQUIRE(player->history().size() == 2);
+        CHECK(player->history()[1].first_frame == 4 * 1536);
+    }
+
+    SECTION("after a wait that ended in a reopen") {
+        player->add(item("first.ec3"));
+        player->add(item("44k1-a.ac3"));
+        player->add(item("44k1-b.ac3"));
+        player->play();
+        run();
+        CHECK(log->rates == std::vector<std::uint32_t>{48000, 44100});
+        REQUIRE(player->history().size() == 3);
+        CHECK(player->history()[2].first_frame == 3 * 1536);
+    }
+
+    SECTION("after a seek back from a wait") {
+        player->add(item("first.ec3"));
+        player->play();
+        player->pump(whole);
+        // Heard, and waiting on the output path's delay.
+        REQUIRE(log->heard == 4 * 1536);
+        REQUIRE(player->transport().state() == TransportState::kPlaying);
+        player->add(item("second.ec3"));
+        // 64 ms is unit 2: two units, then the join.
+        player->seek(std::chrono::milliseconds{64});
+        run();
+        CHECK(log->opens == 1);
+        REQUIRE(player->history().size() == 2);
+        CHECK(player->history()[1].first_frame == 2 * 1536);
+        CHECK(log->heard == 5 * 1536);
+    }
+}
+
+TEST_CASE("player: a reopen decided before a pause waits for the resume", "[hearth][player]") {
+    Library library;
+    library.files["48k.ec3"] = eac3_stream(4);
+    library.files["44k1.ac3"] = ac3_stream(4, ac3::SampleRate::k44100);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log);
+    player->add(item("48k.ec3"));
+    player->add(item("44k1.ac3"));
+    player->play();
+    // Until the reopen has been decided: the transport has moved on.
+    for (int step = 0; step < 200 && player->queue().current_index() == 0; ++step) {
+        player->pump();
+        advance(*log, 480);
+    }
+    REQUIRE(player->queue().current_index() == 1);
+    REQUIRE(log->opens == 1);
+    player->pause();
+    for (int step = 0; step < 20; ++step) {
+        player->pump();
+        advance(*log, 480);
+    }
+    // Not opened while paused.
+    CHECK(log->opens == 1);
+    player->play();
+    REQUIRE(play_out(*player, *log));
+    CHECK(log->rates == std::vector<std::uint32_t>{48000, 44100});
+    CHECK(log->heard == 4 * 1536);
 }

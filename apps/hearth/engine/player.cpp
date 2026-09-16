@@ -384,8 +384,7 @@ void Player::set_decoder_settings(const DecoderSettings& settings) {
     }
     if (settings.programme != settings_.programme) {
         // A prepared session holds the old programme's units.
-        prepared_.reset();
-        prepared_index_ = Queue::kNone;
+        drop_prepared();
     }
     settings_ = settings;
     if (!session_ || !decoder_) {
@@ -443,8 +442,7 @@ void Player::after_edit() {
             after_drain_->action = TransportAction::kStopOutput;
         }
     }
-    prepared_.reset();
-    prepared_index_ = Queue::kNone;
+    drop_prepared();
 }
 
 void Player::remap_history(const std::function<std::size_t(std::size_t)>& moved) {
@@ -459,6 +457,10 @@ void Player::remap_history(const std::function<std::size_t(std::size_t)>& moved)
         if (seek_on_start_->item == Queue::kNone) {
             seek_on_start_.reset();
         }
+    }
+    // So does the next item that would not open, which playback stops at.
+    if (failed_next_ != Queue::kNone) {
+        failed_next_ = moved(failed_next_);
     }
 }
 
@@ -679,8 +681,10 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
             after_drain_.reset();
             close_output();
             session_.reset();
-            prepared_.reset();
-            prepared_index_ = Queue::kNone;
+            drop_prepared();
+            // Tried again when playback next gets there.
+            failed_next_ = Queue::kNone;
+            failed_next_why_.clear();
             if (report != nullptr) {
                 report->stopped = true;
             }
@@ -698,6 +702,9 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
                 if (transcoder_) {
                     transcoder_->reset();
                 }
+                // An item that was being heard out has more to decode now.
+                drain_target_.reset();
+                tail_waiting_ = false;
                 if (output_open()) {
                     if (bitstreaming()) {
                         bitstream_->flush();
@@ -728,9 +735,7 @@ void Player::open_failed(std::size_t item, OpenFailure failure, PumpReport* repo
         // it from now on, and the failure policy says what now: playback
         // moves past it - which ends, since a queue of nothing playable has
         // no next item - or stops at it.
-        ItemFacts facts = queue_.items()[item].facts;
-        facts.unplayable_because = last_error_;
-        queue_.set_facts(item, std::move(facts));
+        mark_unplayable(item, last_error_);
         if (transport_.on_failure() == FailurePolicy::kStop) {
             note_item(item, title_of(item), "stopped playback, as an item that fails is set to");
         }
@@ -746,10 +751,18 @@ void Player::open_failed(std::size_t item, OpenFailure failure, PumpReport* repo
 }
 
 std::string Player::refollow() {
+    // The next item is decided again when its turn comes.
+    prepared_choice_.reset();
     // Only an item being played through an open output: one playing out its
     // last units has nothing left to move, and a stopped player decides
     // when it next starts.
     if (after_drain_ || !session_ || !output_open()) {
+        return {};
+    }
+    if (session_->finished()) {
+        // Its tail finishes where it is - but a seek back would play more of
+        // it, and pump() asks again then.
+        refollow_pending_ = true;
         return {};
     }
     const std::size_t item = queue_.current_index();
@@ -793,9 +806,10 @@ std::string Player::refollow() {
 }
 
 bool Player::start_session(std::size_t item) {
+    // Whatever plays next has no tail to wait for yet.
+    tail_waiting_ = false;
     if (item >= queue_.size()) {
-        prepared_.reset();
-        prepared_index_ = Queue::kNone;
+        drop_prepared();
         last_error_ = "That item is no longer in the queue.";
         return false;
     }
@@ -806,12 +820,10 @@ bool Player::start_session(std::size_t item) {
                                prepared_path_ == queue_.items()[item].path;
     if (prepared_here) {
         session_ = std::move(prepared_);
-        prepared_.reset();
-        prepared_index_ = Queue::kNone;
+        drop_prepared();
         return true;
     }
-    prepared_.reset();
-    prepared_index_ = Queue::kNone;
+    drop_prepared();
     auto opened = Session::open(queue_.items()[item].path, loader_, settings_.programme);
     if (!opened) {
         last_error_ = std::move(opened.error());
@@ -1017,6 +1029,8 @@ Player::Pending& Player::push_block() {
     }
     Pending& block = pending_[(pending_head_ + pending_count_) % pending_.size()];
     ++pending_count_;
+    // Anything new to hear moves the end a play-out waits for.
+    drain_target_.reset();
     return block;
 }
 
@@ -1186,46 +1200,127 @@ bool Player::played_out() {
     return position->frames_played >= *drain_target_;
 }
 
-void Player::item_ended(PumpReport& report) {
+void Player::drop_prepared() {
+    prepared_.reset();
+    prepared_index_ = Queue::kNone;
+    prepared_choice_.reset();
+}
+
+std::size_t Player::prepare_next(PumpReport& report) {
     // Open the next item before asking the transport, so its join decision
     // sees the item's real rate rather than "not probed yet", which would
     // force a reopen on every item the player had not read ahead of time.
     // An item that will not open is marked, which takes it out of
     // next_index()'s answer, and the one after it is tried - so a run of
     // unreadable items between two good ones still ends in a join. Each pass
-    // marks one more item, so this ends. When an item that fails is to stop
-    // playback, the first that will not open ends the search, and playback
-    // stops at it once the current item has been heard.
-    std::size_t failed = Queue::kNone;
+    // marks one more item, so this ends.
+    //
+    // When an item that fails is to stop playback, the first that will not
+    // open ends the search, and playback stops at it once the current item
+    // has been heard. Until the transport hears of it, it is remembered and
+    // not marked, so it keeps its place in the order the queue plays in: an
+    // item put before it meanwhile plays first, and it is tried again when
+    // its turn comes. Under a policy changed to passing over, it is.
+    if (failed_next_ != Queue::kNone) {
+        if (transport_.on_failure() == FailurePolicy::kStop && failed_next_stands()) {
+            return failed_next_;
+        }
+        failed_next_ = Queue::kNone;
+        failed_next_why_.clear();
+    }
     for (;;) {
         const std::size_t next = queue_.next_index(transport_.repeat());
         if (next == Queue::kNone) {
-            break;
+            return Queue::kNone;
         }
         const std::string path = queue_.items()[next].path;
         if (prepared_ && prepared_index_ == next && prepared_path_ == path) {
-            break;
+            return Queue::kNone;
         }
-        prepared_.reset();
-        prepared_index_ = Queue::kNone;
+        drop_prepared();
         auto opened = Session::open(path, loader_, settings_.programme);
         if (opened) {
             queue_.set_facts(next, opened->facts());
             prepared_ = std::move(*opened);
             prepared_index_ = next;
             prepared_path_ = path;
-            break;
+            return Queue::kNone;
         }
-        note_item(next, title_of(next), fmt::format("cannot be played: {}", opened.error()));
-        ItemFacts facts = queue_.items()[next].facts;
-        facts.unplayable_because = opened.error();
-        queue_.set_facts(next, std::move(facts));
-        report.note = std::move(opened.error());
+        std::string why = std::move(opened.error());
+        note_item(next, title_of(next), fmt::format("cannot be played: {}", why));
+        report.note = why;
         if (transport_.on_failure() == FailurePolicy::kStop) {
-            failed = next;
-            break;
+            failed_next_ = next;
+            failed_next_why_ = std::move(why);
+            return next;
+        }
+        mark_unplayable(next, std::move(why));
+    }
+}
+
+void Player::mark_unplayable(std::size_t item, std::string why) {
+    if (item >= queue_.size()) {
+        return;
+    }
+    ItemFacts facts = queue_.items()[item].facts;
+    facts.unplayable_because = std::move(why);
+    queue_.set_facts(item, std::move(facts));
+}
+
+bool Player::failed_next_stands() const {
+    // Nothing that can be played lies between the current item and it, in
+    // the order the queue plays in.
+    const std::size_t size = queue_.size();
+    const std::size_t current = queue_.current_index();
+    if (failed_next_ >= size || current >= size) {
+        return false;
+    }
+    for (std::size_t step = 1; step <= size; ++step) {
+        if (current + step >= size && !transport_.repeat()) {
+            return false;
+        }
+        const std::size_t at = (current + step) % size;
+        if (at == failed_next_) {
+            return true;
+        }
+        if (queue_.items()[at].playable()) {
+            return false;
         }
     }
+    return false;
+}
+
+const OutputChoice& Player::prepared_decision() {
+    // How the next item would be played, asked once for the session: the
+    // decision can enumerate the machine's outputs.
+    if (!prepared_choice_) {
+        prepared_choice_ = decide(*prepared_);
+    }
+    return *prepared_choice_;
+}
+
+bool Player::next_joins(PumpReport& report) {
+    if (prepare_next(report) != Queue::kNone || !prepared_) {
+        return false;
+    }
+    // Once the item is waiting for its tail, with nothing left to hand over
+    // and nothing held by the device, it is over but for the output path's
+    // delay: what came next would follow silence, and on a timeline that had
+    // not counted it. At the item's end itself an empty device is only an
+    // underrun - the player fell behind it - and the next item, queued all
+    // along, joins as it always has.
+    if (tail_waiting_ && pending_count_ == 0) {
+        const auto device = output_position();
+        if (device && device->frames_queued == 0) {
+            return false;
+        }
+    }
+    const OutputChoice& next = prepared_decision();
+    return transport_.would_join(next.mode) && join_blocked(next, title_of(prepared_index_)).empty();
+}
+
+void Player::item_ended(PumpReport& report, bool heard) {
+    const std::size_t failed = prepare_next(report);
 
     // How the next item would be played, so that it joins only an output
     // already playing it that way: a bitstream does not join a decoded
@@ -1235,8 +1330,14 @@ void Player::item_ended(PumpReport& report) {
     // item's units - turns a join it would allow into a reopen here.
     std::optional<OutputChoice> next_choice;
     if (failed == Queue::kNone && prepared_) {
-        next_choice = decide(*prepared_);
+        next_choice = prepared_decision();
     }
+    if (failed != Queue::kNone) {
+        // Marked now the transport is to hear of it, which says why.
+        mark_unplayable(failed, std::move(failed_next_why_));
+    }
+    failed_next_ = Queue::kNone;
+    failed_next_why_.clear();
     TransportOutcome outcome =
         failed == Queue::kNone
             ? transport_.item_finished(next_choice ? std::optional<OutputMode>{next_choice->mode}
@@ -1248,6 +1349,14 @@ void Player::item_ended(PumpReport& report) {
             outcome.action = TransportAction::kReopenForItem;
             outcome.note = std::move(blocked);
         }
+    }
+    if (outcome.action == TransportAction::kJoinItem && heard) {
+        // Nothing else stands in the way, but the output has played
+        // everything out: the item would follow silence, not the item before.
+        outcome.action = TransportAction::kReopenForItem;
+        outcome.note = fmt::format(
+            "\"{}\" came after the output had played out, so it reopens - there is a gap.",
+            title_of(outcome.item));
     }
     if (!outcome.note.empty()) {
         report.note = outcome.note;
@@ -1266,18 +1375,14 @@ void Player::item_ended(PumpReport& report) {
                 // this ends, in a join, a reopen or a stop.
                 note_item(outcome.item, title_of(outcome.item),
                           fmt::format("cannot be played: {}", last_error_));
-                if (outcome.item < queue_.size()) {
-                    ItemFacts facts = queue_.items()[outcome.item].facts;
-                    facts.unplayable_because = last_error_;
-                    queue_.set_facts(outcome.item, std::move(facts));
-                }
+                mark_unplayable(outcome.item, last_error_);
                 session_.reset();
                 report.note = last_error_;
                 if (transport_.on_failure() == FailurePolicy::kStop) {
-                    play_out_then(transport_.item_failed(outcome.item), report);
+                    play_out_then(transport_.item_failed(outcome.item), report, heard);
                     return;
                 }
-                item_ended(report);
+                item_ended(report, heard);
                 return;
             }
             if (!decoder_fits(rate, transcode)) {
@@ -1311,7 +1416,7 @@ void Player::item_ended(PumpReport& report) {
         }
         case TransportAction::kReopenForItem:
         case TransportAction::kStopOutput:
-            play_out_then(outcome, report);
+            play_out_then(outcome, report, heard);
             break;
         default:
             session_.reset();
@@ -1319,12 +1424,13 @@ void Player::item_ended(PumpReport& report) {
     }
 }
 
-void Player::play_out_then(const TransportOutcome& outcome, PumpReport& report) {
+void Player::play_out_then(const TransportOutcome& outcome, PumpReport& report, bool heard) {
     if (!outcome.note.empty()) {
         report.note = outcome.note;
     }
     // A transcode's last frame, padded, and the samples its encoder still
-    // holds go out ahead of the wait.
+    // holds go out ahead of the wait - unless they already went out, and were
+    // heard, before the transport was asked.
     encode_transcoded(true);
     // A stop's note can say why an item cannot be played, which can quote
     // its path: the item it is about is the outcome's.
@@ -1336,7 +1442,9 @@ void Player::play_out_then(const TransportOutcome& outcome, PumpReport& report) 
                       said("playback ends once the output has played out", outcome.note));
     }
     after_drain_ = outcome;
-    drain_target_.reset();
+    if (!heard) {
+        drain_target_.reset();
+    }
     session_.reset();
 }
 
@@ -1344,7 +1452,10 @@ PumpReport Player::pump(std::size_t budget) {
     PumpReport report;
     if (after_drain_) {
         report.frames_submitted += drain(budget);
-        if (played_out()) {
+        // A reopen waits out a pause too: the next item starts on resume.
+        const bool held = after_drain_->action == TransportAction::kReopenForItem &&
+                          transport_.state() == TransportState::kPaused;
+        if (!held && played_out()) {
             const TransportOutcome outcome = *after_drain_;
             after_drain_.reset();
             perform(outcome, &report);
@@ -1355,8 +1466,10 @@ PumpReport Player::pump(std::size_t budget) {
         return report;
     }
     // An output change that came while a join was still being heard, once
-    // the clock has reached the item it is about.
-    if (refollow_pending_ && position().item == queue_.current_index()) {
+    // the clock has reached the item it is about - or while a tail was being
+    // heard, once a seek has given the item more to play.
+    if (refollow_pending_ && !session_->finished() &&
+        position().item == queue_.current_index()) {
         std::string moved = refollow();
         if (!moved.empty()) {
             report.note = std::move(moved);
@@ -1371,7 +1484,22 @@ PumpReport Player::pump(std::size_t budget) {
     }
     report.frames_submitted += drain(budget);
     if (session_ && session_->finished()) {
-        item_ended(report);
+        // Decoded to its end. What follows gapless joins now, behind the
+        // item's tail. Anything else waits until the tail has been heard,
+        // with the transport still playing the item - a pause or a seek in
+        // its last moment is still the item's, and an item added meanwhile
+        // can still join.
+        const bool joins = next_joins(report);
+        if (!joins) {
+            encode_transcoded(true);
+            report.frames_submitted +=
+                drain(budget > report.frames_submitted ? budget - report.frames_submitted : 0);
+            if (!played_out()) {
+                tail_waiting_ = true;
+                return report;
+            }
+        }
+        item_ended(report, !joins);
         if (session_ && report.item_started) {
             // A join: the next item's first blocks go in behind the last
             // item's tail straight away, so the sink never waits on a gap

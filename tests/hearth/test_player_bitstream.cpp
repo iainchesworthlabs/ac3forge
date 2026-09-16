@@ -1101,6 +1101,11 @@ TEST_CASE("bitstream: a join to another endpoint reopens there", "[hearth][playe
     rig.player->play();
     // The decision for what comes next names another endpoint.
     rig.policy->endpoint = "hdmi2";
+    rig.player->pump();
+    // a is decoded and still being heard: it is still the item playing.
+    REQUIRE(rig.link->heard < 3 * ac3::kSamplesPerFrame);
+    CHECK(rig.player->queue().current_index() == 0);
+    CHECK(rig.player->transport().state() == TransportState::kPlaying);
     REQUIRE(rig.play_out());
 
     CHECK(rig.link->endpoints == std::vector<std::string>{"hdmi", "hdmi2"});
@@ -1948,4 +1953,126 @@ TEST_CASE("transcode: an engine transcodes for a receiver that takes AC-3 only",
     CHECK(status.output.stream == BitstreamFormat::kAc3);
     CHECK(status.output_reason.find("transcoded to AC-3 and bitstreamed") != std::string::npos);
     CHECK(status.settings_note.find("transcoded") != std::string::npos);
+}
+
+// The end of the queue, on a link.
+
+TEST_CASE("bitstream: a seek or a pause in the last moment of the queue is the item's",
+          "[hearth][player][bitstream]") {
+    // Short enough to be decoded to its end in the first pumps.
+    const Units a = ac3_units(6);
+    Library library;
+    library.files["a.ac3"] = {.bytes = joined(a)};
+    Rig rig{library};
+    rig.player->queue().add(item("a.ac3"));
+    rig.player->play();
+    for (int i = 0; i < 3; ++i) {
+        rig.player->pump();
+        rig.advance(480);
+    }
+    REQUIRE(rig.link->heard < 6 * ac3::kSamplesPerFrame);
+    CHECK(rig.player->transport().state() == TransportState::kPlaying);
+
+    SECTION("a pause") {
+        rig.player->pause();
+        CHECK(rig.link->paused);
+        rig.player->play();
+        CHECK_FALSE(rig.link->paused);
+        REQUIRE(rig.play_out());
+        CHECK(rig.link->bursts == expected_bursts(a, BitstreamFormat::kAc3));
+    }
+
+    SECTION("a seek") {
+        rig.player->seek(std::chrono::milliseconds{64});
+        REQUIRE(rig.link->flushes == 1);
+        const std::size_t from = rig.link->bursts_at_flush.front();
+        REQUIRE(rig.play_out());
+        const std::vector<Bytes> sent(
+            std::next(rig.link->bursts.begin(), static_cast<std::ptrdiff_t>(from)),
+            rig.link->bursts.end());
+        CHECK(sent ==
+              expected_bursts(Units(std::next(a.begin(), 2), a.end()), BitstreamFormat::kAc3));
+    }
+
+    SECTION("an output change leaves the tail where it is") {
+        rig.policy->bitstream_ac3 = false;
+        CHECK(rig.player->refollow().empty());
+        CHECK(rig.link->closes == 0);
+        REQUIRE(rig.play_out());
+        CHECK(rig.pcm->opens == 0);
+        CHECK(rig.link->unheard_at_close == std::vector<std::uint64_t>{0});
+    }
+
+    SECTION("an output change, then a seek back, moves it") {
+        rig.policy->bitstream_ac3 = false;
+        CHECK(rig.player->refollow().empty());
+        rig.player->seek(std::chrono::milliseconds{0});
+        rig.player->pump();
+        CHECK(rig.link->closes == 1);
+        CHECK(rig.pcm->opens == 1);
+        CHECK(rig.player->transport().open_format().mode == OutputMode::kLocalPcm);
+        REQUIRE(rig.play_out());
+    }
+}
+
+TEST_CASE("bitstream: an item added while the last one is heard out joins it on the link",
+          "[hearth][player][bitstream]") {
+    // Five three-block units leave one waiting for a partner, which the
+    // added item's first unit makes a burst with.
+    const Units a = eac3_units(5, /*numblkscod=*/2);
+    const Units b = eac3_units(3, /*numblkscod=*/2);
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(a)};
+    library.files["b.ec3"] = {.bytes = joined(b)};
+    Rig rig{library};
+    rig.player->queue().add(item("a.ec3"));
+    rig.player->play();
+    rig.player->pump();
+    REQUIRE(rig.player->history().size() == 1);
+    rig.player->add(item("b.ec3"));
+    REQUIRE(rig.play_out());
+
+    Units both = a;
+    both.insert(both.end(), b.begin(), b.end());
+    CHECK(rig.link->opens == 1);
+    CHECK(rig.link->bursts == expected_bursts(both, BitstreamFormat::kEac3));
+    CHECK(rig.link->unheard_at_close == std::vector<std::uint64_t>{0});
+    REQUIRE(rig.player->history().size() == 2);
+    CHECK(rig.player->history()[1].first_frame == 5 * 3 * ac3::kSamplesPerBlock);
+}
+
+TEST_CASE("transcode: the last item's encoder is emptied while it is heard out",
+          "[hearth][player][bitstream][transcode]") {
+    // A part-frame at the end: sent, padded, before the tail can be heard.
+    const Units a = eac3_units(5, /*numblkscod=*/2);
+    const Units b = eac3_units(4, /*numblkscod=*/3);
+    Library library;
+    library.files["a.ec3"] = {.bytes = joined(a)};
+    library.files["b.ec3"] = {.bytes = joined(b)};
+    Rig rig{library};
+    rig.policy->bitstream_eac3 = false;
+    rig.policy->transcode_eac3 = true;
+    rig.player->queue().add(item("a.ec3"));
+    rig.player->play();
+    rig.player->pump();
+    rig.player->pump();
+    const auto first = wrapped(reference_transcode({ItemPart{.units = &a}}).frames);
+    CHECK(rig.link->bursts == first);
+    CHECK(rig.player->transport().state() == TransportState::kPlaying);
+
+    // An item added now joins the link through a new encoder, after the
+    // padding the first one sent.
+    rig.player->add(item("b.ec3"));
+    REQUIRE(rig.play_out());
+    CHECK(rig.link->opens == 1);
+    auto expected = first;
+    const auto second = wrapped(reference_transcode({ItemPart{.units = &b}}).frames);
+    expected.insert(expected.end(), second.begin(), second.end());
+    CHECK(rig.link->bursts == expected);
+    CHECK(rig.link->unheard_at_close == std::vector<std::uint64_t>{0});
+    const auto& history = rig.player->history();
+    REQUIRE(history.size() == 2);
+    CHECK(history[1].first_frame ==
+          (first.size() * ac3::kSamplesPerFrame) + ac3::hearth::Ac3Transcoder::kDelay);
+    CHECK(history[1].frames == 4 * ac3::kSamplesPerFrame);
 }

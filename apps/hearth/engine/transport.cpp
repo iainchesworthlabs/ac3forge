@@ -265,6 +265,19 @@ TransportOutcome Transport::item_finished(std::optional<OutputMode> next_mode) {
     return start_or_join(item, /*joining=*/true, next_mode);
 }
 
+bool Transport::would_join(std::optional<OutputMode> next_mode) const {
+    if (state_ == TransportState::kStopped || !gapless_) {
+        return false;
+    }
+    // The same answers start_or_join() gives, read rather than acted on; the
+    // queue names only an item that can be played.
+    const std::size_t item = queue_->next_index(repeat_);
+    if (item >= queue_->size()) {
+        return false;
+    }
+    return same_stream(open_, queue_->items()[item].facts, next_mode.value_or(open_.mode));
+}
+
 TransportOutcome Transport::item_failed(std::size_t item, std::optional<OutputMode> next_mode) {
     if (on_failure_ == FailurePolicy::kSkip) {
         return item_finished(next_mode);
