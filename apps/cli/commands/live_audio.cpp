@@ -37,10 +37,12 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac3/oba/scene.hpp"
 #include "ac3/audio/watchdog.hpp"
+#include "ac3/core/eac3_tables.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 #include "recording_sink.hpp"
+#include "stream_playback.hpp"
 
 namespace ac3cli::commands {
 
@@ -54,12 +56,17 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     if (!apply_object_verification(stream, meta, status_stream())) {
         return kExitInput;
     }
-    const auto bsid = ac3::stream_bsid(stream);
-    if (!bsid.has_value()) {
+    if (!ac3::stream_bsid(stream).has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
-    const bool eac3 = *bsid > 8;
+    // Access units for E-AC-3, and for §E2.3.1.2's legacy core too: its first
+    // frame is AC-3, but FrameDecoder refuses the Annex E dependent behind it.
+    // The same test 'decode' makes. A fold below is no reason to hand the
+    // core's frames to FrameDecoder the way the ESP32 player hands it a lone
+    // AC-3 syncframe (esp-idf/ac3forge/include/ac3forge/player.hpp):
+    // Eac3Decoder has folded a core correctly since #690.
+    const bool access_units = ac3::apps::reads_as_access_units(stream);
 
     std::string device_id;
     std::string device_name = "default endpoint";
@@ -129,7 +136,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         }
     };
 
-    if (eac3) {
+    if (access_units) {
         const auto units = ac3::split_access_units(stream);
         if (!units || units->empty()) {
             fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
@@ -146,23 +153,16 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                                .output = output,
                                .concealment = meta.concealment,
                                .fast_mdct = meta.fast_mdct});
+        const bool folded = output.target != ac3::DownmixTarget::kAsCoded;
         std::vector<std::size_t> order;
-        for (const auto& unit : *units) {
-            const auto decoded = decoder->decode_access_unit(unit);
-            if (!decoded.has_value()) {
-                fmt::println(stderr, "error: decode failed: {}",
-                             ac3::describe(decoded.error()));
-                return kExitInput;
-            }
-            if (!decoded->has_value()) {
-                // §3.7: held back pending transient pre-noise processing
-                // (Eac3Decoder::decode_access_unit's own doc comment) - live
-                // monitoring just waits for the next unit to catch up rather
-                // than draining decoder.flush() mid-stream.
-                continue;
-            }
-            const auto& out = **decoded;
+        // The programme's layout, from the first unit played. The held-back
+        // unit after the loop is laid out against it.
+        std::optional<ac3::eac3::chanmap::Layout> programme;
+        // Plays one unit, opening the device on the first. False once the
+        // device has refused, with the reason printed.
+        const auto monitor_unit = [&](const ac3::DecodedAccessUnit& out) -> bool {
             if (order.empty()) {
+                programme = out.layout;
                 // Dual mono has no Table E2.5 location to order by - `layout`
                 // is left empty for exactly that case - so Ch1/Ch2 monitor in
                 // coded order, same as everywhere else this comes up (see
@@ -172,8 +172,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 // layout - monitor_order alone would size the permutation off
                 // that unfolded layout rather than the folded channel count,
                 // so the fold case stays identity here too.
-                if (out.acmod == ac3::Acmod::kDualMono ||
-                    output.target != ac3::DownmixTarget::kAsCoded) {
+                if (out.acmod == ac3::Acmod::kDualMono || folded) {
                     order.resize(out.channels.size());
                     for (std::size_t i = 0; i < order.size(); ++i) {
                         order[i] = i;
@@ -187,7 +186,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                                                 static_cast<std::uint16_t>(order.size()));
                 if (!started.has_value()) {
                     fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
-                    return kExitUnavailable;
+                    return false;
                 }
                 status_println(status_stream(), "monitoring {} ({} channels, {} Hz) on \"{}\"…",
                                in_path, order.size(), sample_rate_hz(out.sample_rate),
@@ -206,6 +205,35 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
             }
             play(interleave_reordered(out.channels, order));
             ++units_played;
+            return true;
+        };
+        for (const auto& unit : *units) {
+            const auto decoded = decoder->decode_access_unit(unit);
+            if (!decoded.has_value()) {
+                fmt::println(stderr, "error: decode failed: {}",
+                             ac3::describe(decoded.error()));
+                return kExitInput;
+            }
+            if (!decoded->has_value()) {
+                // §3.7: held back pending transient pre-noise processing
+                // (Eac3Decoder::decode_access_unit's own doc comment). It
+                // comes out with a later unit, or from flush() below.
+                continue;
+            }
+            if (!monitor_unit(**decoded)) {
+                return kExitUnavailable;
+            }
+        }
+        // §3.7 again: what the decoder still holds once the stream has ended,
+        // which is its last unit whenever the stream's last frames used
+        // transient pre-noise processing. flush() returns it as raw
+        // substreams; held_back_unit lays them out the way every unit above
+        // was laid out, so it plays in the same order. A unit whose width no
+        // longer matches the open device is not played.
+        const auto held = ac3::apps::held_back_unit(decoder->flush(), programme, folded);
+        if (held.has_value() && (order.empty() || held->channels.size() == order.size()) &&
+            !monitor_unit(*held)) {
+            return kExitUnavailable;
         }
     } else {
         const auto frames = ac3::split_frames(stream);
@@ -257,7 +285,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     const auto stats = sink.stats();
     sink.stop();
     status_println(status_stream(), "played {} {}, {} underruns", units_played,
-                   eac3 ? "access units" : "frames", stats.underruns);
+                   access_units ? "access units" : "frames", stats.underruns);
     return kExitOk;
 }
 
@@ -370,24 +398,19 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
 
     ac3::audio::SpatialObjectSink sink;
     bool started = false;
+    // The dynamic-object budget the sink opened with - fixed by the first
+    // unit's own OAMD and never re-read, same convention as the live encode
+    // side's ObjectSlot budget (resolve_object_slots' own comment). A later
+    // unit with a different count is not this programme.
+    std::size_t opened_objects = 0;
     std::uint64_t units_played = 0;
+    std::optional<ac3::eac3::chanmap::Layout> programme;
     std::vector<ac3::audio::DynamicObjectUpdate> dynamic_updates;
     std::vector<ac3::audio::StaticObjectUpdate> static_updates;
 
-    for (const auto& unit : *units) {
-        const auto decoded = decoder->decode_access_unit(unit);
-        if (!decoded.has_value()) {
-            fmt::println(stderr, "error: decode failed: {}",
-                         ac3::describe(decoded.error()));
-            return kExitInput;
-        }
-        if (!decoded->has_value()) {
-            // §3.7: held back pending transient pre-noise processing - see
-            // run_monitor's identical handling above.
-            continue;
-        }
-        const auto& out = **decoded;
-
+    // Plays one unit, opening the sink on the first. False once the sink has
+    // refused, with the reason printed.
+    const auto spatial_unit = [&](const ac3::DecodedAccessUnit& out) -> bool {
         if (!started) {
             const bool has_lfe =
                 out.object_metadata && ac3::oba::has_lfe(out.object_metadata->program);
@@ -397,12 +420,16 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
                           static_cast<std::uint32_t>(out.object_audio.size()));
             if (!started_result.has_value()) {
                 fmt::println(stderr, "error: {}", ac3::audio::describe(started_result.error()));
-                return kExitUnavailable;
+                return false;
             }
             started = true;
+            opened_objects = out.object_audio.size();
+            programme = out.layout;
             status_println(status_stream(), "spatial: {} dynamic object(s){} on \"{}\"…",
                            out.object_audio.size(),
                            has_lfe ? " + the bed's LFE (static)" : "", device_name);
+        } else if (out.object_audio.size() != opened_objects) {
+            return true;
         }
 
         dynamic_updates.clear();
@@ -432,6 +459,34 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
             std::this_thread::sleep_for(std::chrono::milliseconds(4));
         }
         ++units_played;
+        return true;
+    };
+
+    for (const auto& unit : *units) {
+        const auto decoded = decoder->decode_access_unit(unit);
+        if (!decoded.has_value()) {
+            fmt::println(stderr, "error: decode failed: {}",
+                         ac3::describe(decoded.error()));
+            return kExitInput;
+        }
+        if (!decoded->has_value()) {
+            // §3.7: held back pending transient pre-noise processing. It
+            // comes out with a later unit, or from flush() below.
+            continue;
+        }
+        if (!spatial_unit(**decoded)) {
+            return kExitUnavailable;
+        }
+    }
+    // §3.7 again: whatever the decoder still holds once the stream has
+    // ended - see run_monitor's identical flush, above, for why this is
+    // needed at all. meta.output folds run_spatial no differently from
+    // run_monitor (DecoderConfig::output is set from it either way), so the
+    // same fold flag applies to what flush() already applied per substream.
+    const auto held = ac3::apps::held_back_unit(
+        decoder->flush(), programme, meta.output.target != ac3::DownmixTarget::kAsCoded);
+    if (held.has_value() && !spatial_unit(*held)) {
+        return kExitUnavailable;
     }
 
     while (sink.stats().updates_rendered < sink.stats().updates_submitted) {
