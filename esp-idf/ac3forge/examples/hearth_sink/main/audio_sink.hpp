@@ -101,14 +101,33 @@ namespace player {
 // Callable more than once: the real sink reconfigures its mode and slot count
 // to whatever `channels` needs (ac3forge/sink_plan.hpp), between plays, so a
 // layout change over the control surface never needs a rebuild. Not safe to
-// call while a play is in progress - see stream_player.cpp's begin_play.
+// call while a play is in progress - see hearth_sink.cpp's begin_play.
 [[nodiscard]] bool sink_open(std::uint32_t sample_rate, int channels);
 
 // The most slots this sink could ever be asked to carry - its hardware
 // ceiling, not whatever it happens to be open for right now. A layout with no
 // more than this many is accepted and reconfigures the sink at the next play
 // if it differs from today's; a wider one is refused up front.
+//
+// It moves with the slot width below: an I2S line carries 128 bits a frame,
+// so the same two lines reach sixteen slots at 16 bits and eight at 32.
 [[nodiscard]] int sink_slots();
+
+// The slot width in force, in bits, and setting it.
+//
+// Which width a board wants is a property of the DACs it is wired to, not of
+// the image: the sink starts at the Kconfig default and takes 16 or 32 here.
+// Refused (false, with a line saying why) for any other number. Not safe to
+// call while a play is in progress, for the reason sink_open is not: a width
+// change closes the lines so the next sink_open builds them again, and
+// sink_slots() reports the new ceiling from the moment it returns - so a
+// caller that keeps a layout open against the old one must re-check it.
+//
+// The sinks with no hardware behind them (capture, null) report the width
+// they were built for and refuse to change it: nothing about their output
+// depends on it that a rebuild does not already decide.
+[[nodiscard]] int sink_slot_bits();
+[[nodiscard]] bool sink_set_slot_bits(int bits);
 
 // A play is beginning, and the next write is its first block. Called with no
 // write in progress: the player that made the last play has stopped, and the

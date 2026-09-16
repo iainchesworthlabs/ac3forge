@@ -1,4 +1,4 @@
-# ESP-IDF configuration for the streaming player example.
+# ESP-IDF configuration for the Hearth sink example.
 #
 # The same shape as the i2s_player example beside it - see that file for why
 # each setting is what it is - plus a custom partition table, which is the one

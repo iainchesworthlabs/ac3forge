@@ -1962,13 +1962,13 @@ jobs:
       # rather than one so the rewind at end of stream is exercised. This step
       # does not gate on the capture sink's figures; the capture and render
       # steps below do.
-      - name: Build and run the streaming player example under QEMU
+      - name: Build and run the Hearth sink example under QEMU
         env:
           SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci"
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           idf.py set-target esp32s3
           idf.py build
           idf.py size | tee -a "$GITHUB_STEP_SUMMARY"
@@ -2006,7 +2006,7 @@ jobs:
           kill "$watcher" 2>/dev/null || true
           wait "$watcher" 2>/dev/null || true
           if ! grep -q '^result=pass' qemu-stream.txt; then
-            echo "::error title=ESP32-S3 streaming player failed::the example did not report result=pass" >&2
+            echo "::error title=ESP32-S3 Hearth sink failed::the example did not report result=pass" >&2
             grep -E 'result=|error|Guru Meditation|assert failed' qemu-stream.txt >&2 || true
             exit 1
           fi
@@ -2014,14 +2014,14 @@ jobs:
           # verdict is printed, so a panic or a reset that came later is in the
           # capture too; tools/checks/check_esp_console.py fails the step on
           # either, and its header says why that matters.
-          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 streaming player" qemu-stream.txt
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 Hearth sink" qemu-stream.txt
           # Nothing should ever be skipped looking for a sync word: the build
           # tells the player exactly how many bytes of the partition are audio.
           # A non-zero count means either that length is wrong or the framing is.
           resync=$(sed -n 's/.*stream\.resync_bytes=\([0-9]*\).*/\1/p' qemu-stream.txt | tail -1)
           echo "resynchronised bytes: ${resync:-unknown}"
           if [ "${resync:-1}" != "0" ]; then
-            echo "::error title=ESP32-S3 streaming player::${resync} bytes were skipped looking for a sync word, expected 0" >&2
+            echo "::error title=ESP32-S3 Hearth sink::${resync} bytes were skipped looking for a sync word, expected 0" >&2
             exit 1
           fi
 
@@ -2049,13 +2049,13 @@ jobs:
             local got
             got=$(sed -n "s/.*stream\.rms\[$channel\]=\([0-9]*\).*/\1/p" qemu-stream.txt | tail -1)
             if [ -z "$got" ]; then
-              echo "::error title=ESP32-S3 streaming player::no stream.rms[$channel] line" >&2
+              echo "::error title=ESP32-S3 Hearth sink::no stream.rms[$channel] line" >&2
               exit 1
             fi
             local slack=$(( expected / 20 + 200 ))
             echo "rms[$channel] = $got (host $expected, tolerance +/-$slack)"
             if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
-              echo "::error title=ESP32-S3 streaming player::channel $channel decoded to $got, host says $expected" >&2
+              echo "::error title=ESP32-S3 Hearth sink::channel $channel decoded to $got, host says $expected" >&2
               exit 1
             fi
           }
@@ -2084,7 +2084,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2167,7 +2167,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2222,6 +2222,84 @@ jobs:
             exit 1
           fi
 
+      # The widest frame the part reaches: sixteen 16-bit slots, two lines of
+      # eight (ac3forge::sink_ceiling(16, true)), onto a sixteen-speaker 9.1.6
+      # layout so every slot carries a channel rather than padding
+      # (sdkconfig.ci-tdm916). The i2s sink cannot run here - QEMU emulates no
+      # I2S - so what this holds is everything up to the peripheral: the
+      # planner's two-line split, interleave_16in16 across a full sixteen
+      # slots, and the renderer putting a 5.1 stream where a 9.1.6 layout
+      # expects it, with the six height slots silent because the stream has
+      # nothing for them.
+      - name: Run the capture sink at sixteen 16-bit TDM slots under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-tdm;sdkconfig.ci-tdm916"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          : > qemu-capture916.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-capture916.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-capture916.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
+
+          if ! grep -q '^result=pass' qemu-capture916.txt; then
+            echo "::error title=ESP32-S3 sixteen-slot capture run::did not report result=pass" >&2
+            grep -E 'result=|error|Guru Meditation|assert failed' qemu-capture916.txt >&2 || true
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 sixteen-slot capture run" qemu-capture916.txt
+
+          value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-capture916.txt | tail -1; }
+          if ! grep -q '^sink: capture .* 16-bit x16 in 16 slots' qemu-capture916.txt; then
+            echo "::error title=ESP32-S3 sixteen-slot capture run::the sink did not open sixteen 16-bit slots" >&2
+            grep -E '^sink: capture|^player: layout' qemu-capture916.txt >&2 || true
+            exit 1
+          fi
+          pad=$(value 'capture\.padding_nonzero')
+          carried=$(value 'capture\.carried_nonzero')
+          slots=$(value 'capture\.slots')
+          echo "slots=$slots padding_nonzero=$pad carried_nonzero=$carried"
+          if [ "${slots:-0}" != "16" ] || [ "${pad:-1}" != "0" ] || [ "${carried:-0}" -eq 0 ]; then
+            echo "::error title=ESP32-S3 sixteen-slot capture run::TDM slot layout is wrong (slots=$slots padding_nonzero=$pad carried_nonzero=$carried)" >&2
+            exit 1
+          fi
+          # Every slot a 5.1 stream has nothing for - the wides, the rear
+          # surrounds and the six heights - silent, with the LFE in slot 15:
+          # the check that the renderer placed the channels rather than
+          # filling the frame with whatever came next.
+          # Through value() rather than an anchored pattern of its own: the
+          # console ends every line with a CR, so a `$` after the digits
+          # matches nothing and every slot reads as empty.
+          for slot in 5 6 7 8 9 10 11 12 13 14; do
+            level=$(value "stream\.rms\[$slot\]")
+            if [ "${level:-1}" != "0" ]; then
+              echo "::error title=ESP32-S3 sixteen-slot capture run::slot $slot should be silent for a 5.1 stream, it is at $level" >&2
+              exit 1
+            fi
+          done
+
       # A height layout, rendered from the stream's objects: the footprint
       # probe's eac3_atmos_height fixture (stream/height.ec3, the same bytes as
       # fixture.hpp's kEac3AtmosHeightStream) played onto 7.1.4 through the
@@ -2239,7 +2317,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2333,7 +2411,7 @@ jobs:
           python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2449,7 +2527,7 @@ jobs:
           python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           if [ ! -f build/qemu_flash.bin ] || [ ! -f build/qemu_efuse.bin ]; then
             echo "::error title=ESP32-S3 web page::the HTTP step's QEMU images are not in build/" >&2
             exit 1
@@ -2515,7 +2593,7 @@ jobs:
           python3 "$console" --title "ESP32-S3 web page" qemu-ui.txt
           kill "$qemu" 2>/dev/null || true
 
-      # The stream set (esp-idf/ac3forge/examples/stream_player/www/,
+      # The stream set (esp-idf/ac3forge/examples/hearth_sink/www/,
       # planning/esp32-stream-set.md) over the HTTP source, rendered onto
       # 7.1.4: sdkconfig.ci-http714 is the HTTP shape with the capture sink's
       # twelve-slot TDM conversion, levels as coded and objects as their bed,
@@ -2532,11 +2610,11 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          www="$GITHUB_WORKSPACE/esp-idf/ac3forge/examples/stream_player/www"
+          www="$GITHUB_WORKSPACE/esp-idf/ac3forge/examples/hearth_sink/www"
           python3 -m http.server 8000 --bind 0.0.0.0 --directory "$www" >/dev/null 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true' EXIT
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           rm -rf build sdkconfig
           idf.py set-target esp32s3
           idf.py build
@@ -2638,7 +2716,7 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          cd esp-idf/ac3forge/examples/stream_player
+          cd esp-idf/ac3forge/examples/hearth_sink
           for combo in \
             "i2s:CONFIG_AC3FORGE_EXAMPLE_SINK_I2S=y" \
             "sd:CONFIG_AC3FORGE_EXAMPLE_SOURCE_SD=y" \
@@ -2667,11 +2745,13 @@ jobs:
             apps/baremetal/platform/esp32s3/build/ac3probe_esp32s3.map
             apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
             apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
-            esp-idf/ac3forge/examples/stream_player/qemu-stream.txt
-            esp-idf/ac3forge/examples/stream_player/qemu-capture.txt
-            esp-idf/ac3forge/examples/stream_player/qemu-render.txt
-            esp-idf/ac3forge/examples/stream_player/qemu-http.txt
-            esp-idf/ac3forge/examples/stream_player/qemu-set.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-stream.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-capture.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-capture16.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-capture916.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-render.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-http.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-set.txt
           # error, not warn: this artifact is the only way to read what the
           # probe measured without re-running the leg, and it silently uploaded
           # just the map the first time. A missing file here should say so.

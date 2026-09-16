@@ -5,7 +5,7 @@ receive from it.
 
     python tools/generators/gen_device_streams.py --ac3cli <path to ac3cli>
 
-writes esp-idf/ac3forge/examples/stream_player/www/. The set covers the
+writes esp-idf/ac3forge/examples/hearth_sink/www/. The set covers the
 output layouts the player renders onto, both codecs, dependent substreams,
 two programmes in one stream, dual mono, the Annex E coding tools, short
 frames, VBR, DRC metadata, other encoders' streams and object audio. Most of
@@ -35,7 +35,7 @@ import tempfile
 import numpy as np
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-OUT = REPO / "esp-idf/ac3forge/examples/stream_player/www"
+OUT = REPO / "esp-idf/ac3forge/examples/hearth_sink/www"
 RATE = 48000
 
 # The output layout the levels are for: "7.1.4" in the player's slot order
@@ -198,7 +198,7 @@ SET = [
         "file": "height.ec3",
         "what": "the footprint probe's height fixture: five objects, three on the ceiling, "
         "MDCT-band domain",
-        "copy": "esp-idf/ac3forge/examples/stream_player/stream/height.ec3",
+        "copy": "esp-idf/ac3forge/examples/hearth_sink/stream/height.ec3",
     },
     # Every coded layout the encoder names, a tone per speaker.
     {

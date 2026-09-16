@@ -3,7 +3,7 @@ its stream set to the set's manifest.
 
 stdlib `unittest`, as the other suites here are: this runs in ci.yml's script-
 lint job with the system python3. The console lines are the shapes the
-streaming example prints (examples/stream_player/main/stream_player.cpp and
+streaming example prints (examples/hearth_sink/main/hearth_sink.cpp and
 its http source), cut down to what the checker reads.
 
 Run: python3 -m unittest discover -s tools/checks -p 'test_*.py'

@@ -238,7 +238,7 @@
   {
    "file": "height.ec3",
    "what": "the footprint probe's height fixture: five objects, three on the ceiling, MDCT-band domain",
-   "source": "esp-idf/ac3forge/examples/stream_player/stream/height.ec3",
+   "source": "esp-idf/ac3forge/examples/hearth_sink/stream/height.ec3",
    "psram": false,
    "refused": null,
    "codec": "E-AC-3",
