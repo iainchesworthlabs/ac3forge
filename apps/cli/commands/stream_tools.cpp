@@ -64,7 +64,12 @@ std::optional<LoadedStream> load_stream(std::string_view path) {
 namespace {
 
 std::string_view codec_label(ac3::io::StreamKind kind) {
-    return kind == ac3::io::StreamKind::kEac3 ? "E-AC-3" : "AC-3";
+    // kAc3CoreEac3Extension (§E2.3.1.2's legacy core) reads through the same
+    // access-unit path as plain E-AC-3 below - see decode_and_render - so it
+    // is labelled the same way rather than defaulting to "AC-3" by falling
+    // through a two-way test (see StreamKind's own comment on why that is the
+    // wrong instinct for this third kind).
+    return kind == ac3::io::StreamKind::kAc3 ? "AC-3" : "E-AC-3";
 }
 
 // Writes access units out through the same sink every encoding command uses,
@@ -358,7 +363,19 @@ std::optional<DecodeRenderStats> decode_and_render(
     std::size_t coded_channels,
     const std::function<bool(std::span<const std::span<const float>>)>& on_frame,
     const std::function<void()>& on_abort) {
-    const bool eac3_source = loaded.scan.kind == ac3::io::StreamKind::kEac3;
+    // §E2.3.1.2's legacy core (kAc3CoreEac3Extension) opens with an AC-3
+    // syncframe but carries Annex E dependents behind it. Eac3Decoder reads
+    // the whole access unit correctly (it has folded a legacy core's own
+    // channels correctly since #690); FrameDecoder only knows how to split
+    // plain AC-3 syncframes and was never meant to skip over the trailing
+    // dependent bytes loaded.scan.access_units bundles in with it here. Route
+    // it down the same path as plain E-AC-3, matching run_decode's own
+    // dispatch (ac3::stream_bsid(...) > 8 || ac3::has_eac3_extension_substreams(...),
+    // apps/cli/commands/decode.cpp) and apps/common/stream_playback.hpp's
+    // reads_as_access_units - both of which test the stream's content rather
+    // than trust a two-way read of this enum.
+    const bool eac3_source = loaded.scan.kind == ac3::io::StreamKind::kEac3 ||
+                             loaded.scan.kind == ac3::io::StreamKind::kAc3CoreEac3Extension;
     const auto source_channels = static_cast<std::size_t>(loaded.scan.channels);
 
     // Planar buffers, allocated once: the queue feeds `source`, plan::render
