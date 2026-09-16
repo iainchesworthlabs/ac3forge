@@ -2222,6 +2222,81 @@ jobs:
             exit 1
           fi
 
+      # The widest frame the part reaches: sixteen 16-bit slots, two lines of
+      # eight (ac3forge::sink_ceiling(16, true)), onto a sixteen-speaker 9.1.6
+      # layout so every slot carries a channel rather than padding
+      # (sdkconfig.ci-tdm916). The i2s sink cannot run here - QEMU emulates no
+      # I2S - so what this holds is everything up to the peripheral: the
+      # planner's two-line split, interleave_16in16 across a full sixteen
+      # slots, and the renderer putting a 5.1 stream where a 9.1.6 layout
+      # expects it, with the six height slots silent because the stream has
+      # nothing for them.
+      - name: Run the capture sink at sixteen 16-bit TDM slots under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-tdm;sdkconfig.ci-tdm916"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          : > qemu-capture916.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-capture916.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-capture916.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
+
+          if ! grep -q '^result=pass' qemu-capture916.txt; then
+            echo "::error title=ESP32-S3 sixteen-slot capture run::did not report result=pass" >&2
+            grep -E 'result=|error|Guru Meditation|assert failed' qemu-capture916.txt >&2 || true
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 sixteen-slot capture run" qemu-capture916.txt
+
+          value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-capture916.txt | tail -1; }
+          if ! grep -q '^sink: capture .* 16-bit x16 in 16 slots' qemu-capture916.txt; then
+            echo "::error title=ESP32-S3 sixteen-slot capture run::the sink did not open sixteen 16-bit slots" >&2
+            grep -E '^sink: capture|^player: layout' qemu-capture916.txt >&2 || true
+            exit 1
+          fi
+          pad=$(value 'capture\.padding_nonzero')
+          carried=$(value 'capture\.carried_nonzero')
+          slots=$(value 'capture\.slots')
+          echo "slots=$slots padding_nonzero=$pad carried_nonzero=$carried"
+          if [ "${slots:-0}" != "16" ] || [ "${pad:-1}" != "0" ] || [ "${carried:-0}" -eq 0 ]; then
+            echo "::error title=ESP32-S3 sixteen-slot capture run::TDM slot layout is wrong (slots=$slots padding_nonzero=$pad carried_nonzero=$carried)" >&2
+            exit 1
+          fi
+          # Every slot a 5.1 stream has nothing for - the wides, the rear
+          # surrounds and the six heights - silent, with the LFE in slot 15:
+          # the check that the renderer placed the channels rather than
+          # filling the frame with whatever came next.
+          for slot in 5 6 7 8 9 10 11 12 13 14; do
+            level=$(sed -n "s/^stream\.rms\[$slot\]=\([0-9]*\)$/\1/p" qemu-capture916.txt | tail -1)
+            if [ "${level:-1}" != "0" ]; then
+              echo "::error title=ESP32-S3 sixteen-slot capture run::slot $slot should be silent for a 5.1 stream, it is at $level" >&2
+              exit 1
+            fi
+          done
+
       # A height layout, rendered from the stream's objects: the footprint
       # probe's eac3_atmos_height fixture (stream/height.ec3, the same bytes as
       # fixture.hpp's kEac3AtmosHeightStream) played onto 7.1.4 through the
@@ -2669,6 +2744,8 @@ jobs:
             apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
             esp-idf/ac3forge/examples/hearth_sink/qemu-stream.txt
             esp-idf/ac3forge/examples/hearth_sink/qemu-capture.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-capture16.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-capture916.txt
             esp-idf/ac3forge/examples/hearth_sink/qemu-render.txt
             esp-idf/ac3forge/examples/hearth_sink/qemu-http.txt
             esp-idf/ac3forge/examples/hearth_sink/qemu-set.txt
