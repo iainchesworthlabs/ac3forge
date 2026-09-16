@@ -18,8 +18,11 @@ CONFIG_IDF_TARGET="esp32c6"
 # The part's maximum. The defaults' 240 MHz is an ESP32-S3 setting.
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
 
-# partitions.csv ends at 2.1 MB; every C6 module has at least 4 MB.
+# The C6's own table: its Sendspin player image (1.62 MB) is past partitions.csv's
+# 1.5 MB application partition, so partitions_c6.csv has a 2 MB one. It ends at
+# 2.6 MB; every C6 module has at least 4 MB.
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_c6.csv"
 
 # One core: the player's two tasks go wherever the scheduler puts them.
 CONFIG_AC3FORGE_EXAMPLE_FETCH_CORE=-1
