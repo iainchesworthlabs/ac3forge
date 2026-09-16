@@ -86,6 +86,12 @@ struct RenderDeviceInfo {
     // without help, which is what a caller needs to decide whether to resample
     // before it or leave that to the engine.
     std::vector<std::uint32_t> sample_rates;
+
+    // Every member, so that two enumerations can be compared for "has
+    // anything changed" - which is how RenderDeviceWatch decides whether a
+    // re-probe found a hot-plug (render_devices.hpp). A device renegotiating
+    // its rates or its speakers is a change as much as one arriving is.
+    friend bool operator==(const RenderDeviceInfo&, const RenderDeviceInfo&) = default;
 };
 
 // Every active render endpoint, each probed for AC-3 passthrough support at

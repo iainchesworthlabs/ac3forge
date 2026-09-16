@@ -126,6 +126,7 @@ add_executable(ac3tests
     audio/test_monitor_live.cpp
     audio/test_pcm_output.cpp
     audio/test_playback_counter.cpp
+    audio/test_render_devices.cpp
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
     audio/test_speakers.cpp

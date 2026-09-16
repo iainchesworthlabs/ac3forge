@@ -62,6 +62,12 @@ target_sources(ac3audio PRIVATE src/speakers.cpp)
 # of the caller's, so see pcm_output.hpp's header for why that matters.
 target_sources(ac3audio PRIVATE src/pcm_output.cpp)
 
+# render_devices.cpp too: DeviceWatcher and the enumeration are the parts that
+# differ per platform, and both are already behind their own interfaces - what
+# is left is a list, a worker thread and a timer, which are the same
+# everywhere (and are what ALSA has instead of a watcher at all).
+target_sources(ac3audio PRIVATE src/render_devices.cpp)
+
 target_compile_features(ac3audio PUBLIC cxx_std_23)
 
 # ac3::coverage is a no-op unless AC3FORGE_ENABLE_COVERAGE is on (see
