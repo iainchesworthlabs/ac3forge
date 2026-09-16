@@ -306,7 +306,7 @@ differ, since VS2026 is exactly what the older `windows-11-arm` image was missin
 
 **CLI-only, for now.** Unlike every other packageable Windows/Linux/macOS leg, `windows-msvc-arm64`
 does not build `ac3gui` — `AC3FORGE_BUILD_GUI` is off in `CMakePresets.json`'s
-`windows-msvc-arm64` preset. Qt's only Windows ARM64 kit for the pinned 6.8.4 (the first Qt LTS
+`windows-msvc-arm64` preset. Qt's only Windows ARM64 kit for the pinned 6.9.3 (introduced in 6.8, the first Qt LTS
 with official Windows ARM64 support at all) is `win64_msvc2022_arm64_cross_compiled` — a
 cross-compile kit that expects a paired `win64_msvc2022_64` install to supply its host build
 tools (`moc`/`uic`/`rcc`), and `aqtinstall`/`jurplel/install-qt-action` have a documented CI bug

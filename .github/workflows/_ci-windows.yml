@@ -153,7 +153,7 @@ jobs:
           # matrix.msvc leg omits it and gets the action's own x64 default.
           #
           # No gui: true, unlike every other packageable leg. At authoring
-          # time, Qt's only Windows ARM64 kit for the pinned 6.8.4
+          # time, Qt's only Windows ARM64 kit for the pinned 6.9.3
           # (win64_msvc2022_arm64_cross_compiled) is a cross-compile kit that
           # expects a paired win64_msvc2022_64 install for its host tools, and
           # aqtinstall has a documented CI bug against exactly that
