@@ -43,6 +43,23 @@ and release packaging.
   8 KB of internal RAM for mDNS on every shape; the Improv listener's 4 KB is only
   spent on a board that has no network to join, since that board is not decoding
   anything.
+- **A Hearth sink plays as a Sendspin player** (`hearth_sink` with `sdkconfig.sendspin`).
+  The board pairs with a server by its token or by a six-digit code on the console and its page,
+  over Noise, and follows the server's clock with Sendspin's time filter. Music Assistant plays
+  it stereo PCM through `player@v1`. Hearth's `_ac3forge_player@v1` sends it AC-3 or E-AC-3 with
+  any Atmos objects, which the board decodes and renders to its own layout, routed, trimmed and
+  delayed as the server's settings say. Each sample leaves the I2S port when the server asked:
+  playout is scheduled against the channel's end-of-frame interrupts, and corrections are made
+  to decoded PCM. Per-output peak and RMS, underruns and play times are reported on the page, in
+  `/status` and to the server. Two ESP32-S3 boards played one E-AC-3 JOC programme as a group
+  for ten minutes over Wi-Fi, one at 2.0 and one at 5.1, with no underrun and their play times
+  within 549 µs. The player is `src/sendspin`'s player half: measured against `sendspin-cpp`,
+  it took 173,604 bytes less flash and left 50,504 bytes more internal RAM free while streaming.
+  [An ESP32-S3 sink](docs/hearth/sink-esp32-s3.md) is the guide: flashing, Improv, pairing,
+  groups, wiring and slot widths. A new CI job, `Hearth Sendspin sink (ESP32-S3, QEMU)`, plays
+  to the emulated board from `ac3hearth-testserver` and holds its levels to a test sink's. In
+  this shape the console listens on every board, for the pairing commands, so the Improv
+  listener's 4 KB is spent whether or not the board has a network.
 - **Sixteen channels out of an ESP32-S3, and the slot width as a setting.** An I2S
   line carries 128 bits a frame, so the two the part has reach sixteen 16-bit slots or
   eight 32-bit ones — a 7.1.4 layout leaves through the `i2s` sink for the first time,
@@ -180,6 +197,14 @@ and release packaging.
 
 **Hearth**
 
+- **The Sendspin time filter learns faster and ignores delayed replies.** Once it has
+  converged, `ac3::sendspin::ClockSync` runs thirty bursts a second apart before settling to one
+  every ten seconds. It leaves out a burst whose best reply is well above the recent floor, since
+  clock replies that wait behind a stream's chunks would otherwise read as a change of offset.
+- **cpp-httplib's WebSocket reads wait out a frame split across packets.** Its 0.56 port
+  failed a connection when a read's timeout fell inside a frame, which on Wi-Fi broke pairing
+  with a board. The overlay port carries a patch: a read that has begun a frame waits for the
+  rest until the connection closes.
 - **`src/sendspin`, the first part of Hearth's Sendspin implementation**
   (`planning/hearth-sendspin-extension.md`): an in-tree JSON reader and writer, strict
   base64url, transport-mode fragments and the `player@v1` audio chunk in both the

@@ -7,27 +7,27 @@ there. Where [Forge](../forge/index.md) is for a person at a workstation and
 stream through to a speaker or an HDMI/S-PDIF receiver — bit-exact, with no re-encode where the
 sink will take it.
 
-!!! note "Status: hardware-verified as an embedded player; a desktop player and network sinks are planned, not built"
-    **Today, Hearth is the bare-metal player.** `esp-idf/ac3forge/examples/` decodes AC-3 and
-    E-AC-3 — including Atmos objects, placed onto 7.1.4 — in real time on an ESP32-S3 board, and
-    drives real I2S and TDM hardware. The streaming example already exposes a small HTTP control
-    surface (`GET /status`, `POST /volume`, `POST /play`, `POST /stop`), tested through a port
-    forward under QEMU and with its requests measured on a board.
+!!! note "Status as of 2026-09-16: an ESP32-S3 sink plays in groups; the desktop player is being built"
+    **An ESP32-S3 board is a Hearth sink.** `hearth_sink` joins a network over Improv Wi-Fi, pairs
+    with a server, and plays as a Sendspin player: stereo PCM from Music Assistant, and AC-3 or
+    E-AC-3 with Atmos objects through Hearth's own role, decoded and rendered to the board's
+    speakers. Two boards have played one programme as a group for ten minutes with no underrun.
+    No DAC has been wired to one yet. [An ESP32-S3 sink](sink-esp32-s3.md) sets one up.
 
-    **A desktop reference player for Windows, Linux and macOS, `ac3hearth`, and firmware that
-    turns ESP32-S3 and ESP32-C6 boards into Sendspin network sinks, `hearth_sink`, are a decided
-    plan ([the design record](design/player-appliance.md)); no code for either exists yet, and
-    there is no `apps/hearth` in the tree.** That plan replaced an earlier one, for a headless
-    appliance with a web control page, on 2026-09-15.
+    **The desktop reference player for Windows, Linux and macOS, `ac3hearth`, is being built**
+    ([the design record](design/player-appliance.md)). Its engine is in `apps/hearth` and has no
+    window yet, and it cannot play to a sink yet. `ac3hearth-testserver`, a developer tool, plays
+    to sinks in the meantime. An ESP32-C6 sink follows the S3's. That plan replaced an earlier
+    one, for a headless appliance with a web control page, on 2026-09-15.
 
 ## Where it runs
 
 | Target | What runs there | Strongest evidence |
 |---|---|---|
-| [ESP32-S3](../platforms/bare-metal/esp32-s3.md) | Two example players — `i2s_player` (a fixed fixture, looped) and `hearth_sink` (flash, SD, FAT or HTTP source; I2S, TDM, capture or null sink) | **Real time on a board**, every fixture, Atmos objects placed onto 7.1.4; `hearth_sink`'s control surface exercised through QEMU with a port forward |
+| [ESP32-S3](../platforms/bare-metal/esp32-s3.md) | `hearth_sink`, a Sendspin sink ([set one up](sink-esp32-s3.md)), which also plays from flash, SD, FAT or HTTP; and `i2s_player` (a fixed fixture, looped) | **Two boards in a group on Wi-Fi**, ten minutes, no underrun, play times within 549 µs; real time on a board for every fixture, Atmos objects placed onto 7.1.4; under QEMU in CI, paired and played to from the host with levels held to a test sink's |
 | [ESP32-C3](../platforms/bare-metal/esp32-c3.md) | The same decoder, in the fixed-point tier | Correct under `qemu-riscv32` emulation. No board has run it |
 | [ESPHome](../platforms/bare-metal/esphome.md) | An external component wrapping the ESP32-S3 decoder | Config-checked in CI against the manifest; not yet a `media_player` or `speaker` source |
-| Windows, Linux and macOS | `ac3hearth`, a desktop reference player: planned, not built | Nothing yet — see [the design record](design/player-appliance.md) |
+| Windows, Linux and macOS | `ac3hearth`, a desktop reference player: its engine, with no window yet; and `ac3hearth-testsink` and `ac3hearth-testserver`, the test tools | The engine's tests, and the test tools against aiosendspin 9.1.1 in CI — see [the design record](design/player-appliance.md) |
 
 The passthrough path itself — decode-or-pass-through, following what the sink will accept — is
 proven outside Hearth too: `ac3cli play` ([Forge](../forge/index.md)) has locked every stream
@@ -37,16 +37,18 @@ That is the evidence the planned desktop player's passthrough mode builds on.
 
 ## What it does not do (yet)
 
-No install guide, no settings page, no troubleshooting page exists here, because the application
-they would document has not been built. What exists today is the embedded player above,
-documented on its own platform pages rather than as a product guide, since it ships as example
-code and a component, not an installable application.
+The desktop application has no install guide, settings page or troubleshooting page, because it
+has not been built. The sink has a guide, [An ESP32-S3 sink](sink-esp32-s3.md), which covers
+flashing, joining a network, pairing, groups, wiring and slot widths. It ships as example code
+and a component, which you build yourself: there is no firmware download.
 
 ## Where to go next
 
 - [The design record](design/player-appliance.md) — what's decided about the desktop player and
   the sinks, and where the full plan is.
-- [ESP32-S3](../platforms/bare-metal/esp32-s3.md) — the real, hardware-verified player today.
+- [An ESP32-S3 sink](sink-esp32-s3.md) — a board from a checkout to playing in a group.
+- [ESP32-S3](../platforms/bare-metal/esp32-s3.md) — the decoder on the part, and its timing and
+  memory.
 - [Forge](../forge/index.md) and [Crucible](../crucible/index.md) — the family's other two
   members.
 - [Roadmap](../roadmap.md) — where the appliance sits against everything else planned.
