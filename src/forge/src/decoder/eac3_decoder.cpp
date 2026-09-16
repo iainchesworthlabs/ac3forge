@@ -749,6 +749,14 @@ struct Eac3Decoder::Impl {
     // vector - unlike some deques - allocates nothing, so 32 idle slots
     // cost nothing.
     std::array<std::vector<DecodedSubstream>, kSubstreamSlots> pending_au_parts_;
+    // decode_access_unit_core's assembly of one unit's substreams. A member so
+    // its storage - 836 bytes a substream on the ESP32-S3, 2,508 for a
+    // three-substream unit - is allocated at a stream's first unit and kept,
+    // rather than allocated and freed around every unit: on a heap that is
+    // nearly full, the block the last unit freed is often cut up by the time
+    // the next unit asks. Emptied at the end of every unit (the PcmReturn
+    // guard), so nothing in it outlives the call it was filled for.
+    std::vector<DecodedSubstream> au_substreams_;
     // decode_substream_core's PCM buffers: one channel set per substream
     // identity that has decoded, keyed as the slots above are. The set an
     // access unit is finished with comes back here (see the PcmReturn guard in
@@ -797,25 +805,21 @@ struct Eac3Decoder::Impl {
     // SETS that peak - pays nothing at all rather than 4 KB it never reads.
     std::vector<internal::decode_scalar_t> ecpl_amp_scratch_;
     std::vector<internal::decode_scalar_t> ecpl_angle_scratch_;
-    // decode_substream's frame-lifetime enhanced-coupling channel store
-    // (§3.5.5.1: a block's reconstruction reads its neighbors). Owned here
-    // for the same reuse reasoning as the scratch above: it used to be
-    // heap-allocated and zeroed afresh on every call whether or not the
-    // stream used the tool. It is sized lazily at first use instead - a
-    // stream that never uses enhanced coupling never allocates it - and its
-    // reads are whole-array assignments from this call or gated by this
-    // call's ecpl_active flags, so a previous frame's contents are never
-    // visible.
-    //
-    // The AHT's frame store (§3.4: all six blocks decoded at block 0) is not
-    // here any more. It was a buffer per stream, copied into each block's
-    // tail as that block was parsed; an AHT stream now decodes its six
-    // blocks straight into the six tails below, which hold every stream of
-    // every block anyway. The copy cost 6,144 bytes a stream in the float
-    // build - 36,864 for a 7.1.4 stream's six, 43,008 with the coupling
-    // channel - which is what kept 7.1.4 AHT streams off an ESP32-S3
-    // without PSRAM (planning/esp32-stream-set.md).
-    std::vector<std::array<internal::decode_scalar_t, 256>> ecpl_all_coeffs_;
+    // Two frame-lifetime stores that used to sit here are gone, both copies of
+    // what tails_ below holds for every stream of every block. The AHT's
+    // (§3.4: all six blocks decoded at block 0) was a buffer per stream,
+    // copied into each block's tail as that block was parsed; an AHT stream
+    // now decodes its six blocks straight into the six tails. Enhanced
+    // coupling's (§3.5.5.1: a block's reconstruction reads its neighbours'
+    // coupling channel) was a copy of each block's coupling channel, taken at
+    // the end of the block's parse; the second pass now reads the neighbours'
+    // own tails, whose coupling channel nothing writes after the parse. In the
+    // float build the first cost 6,144 bytes a stream - 36,864 for a 7.1.4
+    // stream's six, 43,008 with the coupling channel - and the second 6,144:
+    // the first is what kept 7.1.4 AHT streams off an ESP32-S3 without PSRAM,
+    // and the second part of what keeps enhanced coupling there
+    // (planning/esp32-stream-set.md).
+
     // §7.1.3's packed exponent groups, for one stream of one block.
     //
     // A member, reused by assign(), because the two sites that read it are
@@ -929,8 +933,8 @@ struct Eac3Decoder::Impl {
 
     // --- per-frame scratch --------------------------------------------------
     // Everything decode_substream_core used to declare as a local before its
-    // block loop. The same move tails_, ecpl_all_coeffs_ and exp_groups_
-    // above have already had, and for the same reason: a local is
+    // block loop. The same move tails_ and exp_groups_ above have already
+    // had, and for the same reason: a local is
     // freshly allocated every frame, and at 5.1 this cluster was most of that
     // fixture's per-frame allocation count.
     //
@@ -1795,23 +1799,14 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     auto& ecpltrans_persist = impl_->ecpltrans_persist_;
     ecpltrans_persist.assign(static_cast<std::size_t>(nfchans), false);
     eac3::EcplNoise ecpl_noise;
-    // Every block's enhanced coupling channel raw mantissas (§3.5.5.1's
-    // XCURR), stashed as each block is parsed so the second pass below can
-    // look at any block's neighbors freely - a block whose neighbor did not
-    // use enhanced coupling substitutes zero there (`ecpl_active`), exactly
-    // the rule §3.5.5.1 itself specifies. This also covers this syncframe's
-    // own first/last block, whose true neighbor lives in an adjacent
-    // syncframe this call was not given: a real, documented approximation,
-    // not a bug - every interior block reconstructs with its true
-    // neighbors.
-    // Heap-allocated (PREfast's C6262, alert #63): a fixed std::array here
-    // was the single largest contributor to decode_substream's oversized
-    // stack frame. It lives on the decoder, sized lazily at the first block
-    // that stashes into it: every read is either a whole-array assignment
-    // made this call or gated by this call's ecpl_active flags, so nothing
-    // stale is ever visible, and a stream that never uses enhanced coupling
-    // never allocates it.
-    auto& ecpl_all_coeffs = impl_->ecpl_all_coeffs_;
+    // Which blocks used enhanced coupling. The second pass below reads a
+    // block's neighbors' enhanced coupling channel raw mantissas (§3.5.5.1's
+    // XPREV/XNEXT) straight from their tails, and a neighbor whose flag is
+    // clear reads as zero, exactly the rule §3.5.5.1 itself specifies. This
+    // also covers this syncframe's own first/last block, whose true neighbor
+    // lives in an adjacent syncframe this call was not given: a real,
+    // documented approximation, not a bug - every interior block
+    // reconstructs with its true neighbors.
     std::array<bool, kBlocksPerFrame> ecpl_active{};
 
     // Everything the second pass below (spx synthesis, rematrixing, IMDCT
@@ -3297,18 +3292,13 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             }
         }
 
-        // Stash this block's raw enhanced coupling channel mantissas
-        // regardless of mode - a NEIGHBORING block that used enhanced
-        // coupling needs them even when this block did not (§3.5.5.1's own
-        // zero-substitution rule reads them via ecpl_active below).
+        // A block that used enhanced coupling says so, and the second pass
+        // reads its raw enhanced coupling channel, as this block's and as a
+        // neighbor's, from this tail: nothing after this point writes the
+        // tail's coupling stream (the second pass writes channels only), so
+        // what it reads is what this block's parse left. It used to read a
+        // copy taken here, 1,024 bytes a block in the float build.
         if (frm->cplinu[static_cast<std::size_t>(blk)] && ecplinu_now) {
-            if (ecpl_all_coeffs.empty()) {
-                ecpl_all_coeffs.resize(static_cast<std::size_t>(kBlocksPerFrame));
-            }
-            // A whole-array assignment in the store's own type: the spectrum
-            // routine it feeds exists in both scalars now.
-            ecpl_all_coeffs[static_cast<std::size_t>(blk)] =
-                coeffs[static_cast<std::size_t>(kCplStream)];
             ecpl_active[static_cast<std::size_t>(blk)] = true;
         }
 
@@ -3403,13 +3393,16 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             // (§3.5.5.1's own rule) - which includes this syncframe's first
             // and last block, whose true neighbor lives in an adjacent
             // syncframe this call was not given (see this function's
-            // comment on `prev_ecpl_coeffs` above).
+            // comment on `ecpl_active` above). Every block's coupling channel
+            // is read from its own tail, which the loop has not written: the
+            // second pass writes a tail's channels, never its coupling stream.
             static constexpr std::array<internal::decode_scalar_t, 256> kZero{};
+            const auto ucpl = static_cast<std::size_t>(kCplStream);
             const auto& prev = (blk > 0 && ecpl_active[static_cast<std::size_t>(blk - 1)])
-                                   ? ecpl_all_coeffs[static_cast<std::size_t>(blk - 1)]
+                                   ? tails[static_cast<std::size_t>(blk - 1)].coeffs[ucpl]
                                    : kZero;
             const auto& next = (blk + 1 < nblks && ecpl_active[static_cast<std::size_t>(blk + 1)])
-                                   ? ecpl_all_coeffs[static_cast<std::size_t>(blk + 1)]
+                                   ? tails[static_cast<std::size_t>(blk + 1)].coeffs[ucpl]
                                    : kZero;
             const int prev_norm = (blk > 0 && ecpl_active[static_cast<std::size_t>(blk - 1)])
                                       ? tails[static_cast<std::size_t>(blk - 1)]
@@ -3433,12 +3426,10 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                     }
                 }
             }
-            ecpl_reconstruct_block(tail, prev, ecpl_all_coeffs[static_cast<std::size_t>(blk)],
-                                   next, prev_norm, next_norm, nfchans, ecpl_noise,
-                                   impl_->ecpl_spectrum_real_,
+            ecpl_reconstruct_block(tail, prev, coeffs[ucpl], next, prev_norm, next_norm, nfchans,
+                                   ecpl_noise, impl_->ecpl_spectrum_real_,
                                    impl_->ecpl_spectrum_imag_, impl_->ecpl_amp_scratch_,
-                                   impl_->ecpl_angle_scratch_, impl_->config_.fast_imdct,
-                                   coeffs);
+                                   impl_->ecpl_angle_scratch_, impl_->config_.fast_imdct, coeffs);
         }
 
         // §3.6.4 spectral extension synthesis: translate the low band up,
@@ -4191,7 +4182,10 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
         }
     }
     AC3_ZONE_BEGIN(assemble_zone, "eac3_au_assemble");
-    std::vector<DecodedSubstream> substreams;
+    // The decoder's own array, kept from unit to unit (see au_substreams_);
+    // empty here, and emptied again by the guard below.
+    auto& substreams = impl_->au_substreams_;
+    substreams.clear();
     substreams.reserve(keys.size());
     for (const int key : keys) {
         auto& queue = impl_->pending_au_parts_[static_cast<std::size_t>(key)];
@@ -4206,7 +4200,9 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     // return, so no exit, the refusals included, misses one. It only moves a
     // set into an entry decode_substream_core made, so it never allocates; a
     // set with no empty entry to go to (concealment's, the legacy AC-3
-    // core's, a second one for the same identity) is freed as before.
+    // core's, a second one for the same identity) is freed as before. Then
+    // the substreams themselves end, as they did when the array was a local,
+    // and the array keeps its storage for the next unit.
     struct PcmReturn {
         Impl& impl;
         std::vector<DecodedSubstream>& parts;
@@ -4229,6 +4225,7 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
                     }
                 }
             }
+            parts.clear();
         }
     };
     const PcmReturn pcm_return{*impl_, substreams, keys};
