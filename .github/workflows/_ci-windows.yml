@@ -348,8 +348,14 @@ jobs:
             if ($winget) {
               Write-Host "winget found ($($winget.Source)) - using it"
               if (Test-Path $llvmDir) {
-                Write-Host "Existing LLVM install is not major $pinnedMajor - removing via winget before installing $version"
-                $code = Invoke-TimedProcess -FilePath 'winget' -ArgumentList @('uninstall', '--id', 'LLVM.LLVM', '--silent') -Label 'winget uninstall' -WatchDir $llvmDir
+                Write-Host "Existing LLVM install is not major $pinnedMajor - forcing uninstall via winget before installing $version"
+                # --force here: "Direct run the command and continue with
+                # non security related issues" (winget's own help text) -
+                # the previous plain `uninstall --silent` came back with a
+                # blank exit code in ~2-3s (ci-runners#26 git history), too
+                # fast to be a real per-file uninstall and not a value
+                # PowerShell's process object should ever leave blank.
+                $code = Invoke-TimedProcess -FilePath 'winget' -ArgumentList @('uninstall', '--id', 'LLVM.LLVM', '--silent', '--force') -Label 'winget uninstall' -WatchDir $llvmDir
                 if ($code -ne 0 -and (Test-Path $llvmDir)) {
                   # winget doesn't recognize a previous install it didn't
                   # make itself (e.g. a hosted image's pre-baked LLVM, or
@@ -361,7 +367,19 @@ jobs:
                   Rename-Item -Path $llvmDir -NewName $staleName
                 }
               }
-              $code = Invoke-TimedProcess -FilePath 'winget' -ArgumentList @('install', '--id', 'LLVM.LLVM', '--exact', '--version', $version, '--silent', '--accept-source-agreements', '--accept-package-agreements') -Label 'winget install' -WatchDir $llvmDir
+              # --force on install (ci-runners#26): winget's own --help is
+              # explicit - "By default, install command will check package
+              # installed status and try to perform an upgrade if
+              # applicable. Override with --force to perform a direct
+              # install." A prior occurrence's log showed exactly that
+              # upgrade path triggering ("Found an existing package already
+              # installed. Trying to upgrade the installed package...")
+              # right before hanging - --force bypasses it. Applied
+              # regardless of whether the uninstall above fully succeeded,
+              # since winget's own detection is registry/product-code
+              # based, not directory-presence based, so a rename alone
+              # doesn't necessarily stop it from trying to upgrade.
+              $code = Invoke-TimedProcess -FilePath 'winget' -ArgumentList @('install', '--id', 'LLVM.LLVM', '--exact', '--version', $version, '--silent', '--force', '--accept-source-agreements', '--accept-package-agreements') -Label 'winget install' -WatchDir $llvmDir
               if ($code -ne 0) {
                 throw "winget install exited with code $code"
               }
