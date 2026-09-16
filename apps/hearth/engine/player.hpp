@@ -227,11 +227,21 @@ public:
     // nothing more is ready, and moves on to the next item when the current
     // one has delivered everything. `budget` bounds the frames one call
     // submits, so a caller on a real-time thread keeps its own cadence.
+    //
+    // An output whose device has gone away - the sink closed itself, as
+    // ac3::audio's sinks do when their device is unplugged - stops playback
+    // here, with the output closed, the report marked stopped, and the reason
+    // in last_error(). Nothing submitted to it will be heard, so nothing
+    // waits for it: neither the item, nor a reopen or stop waiting for the
+    // audio to play out.
     PumpReport pump(std::size_t budget = 4800);
 
     // Whether pump() has anything to do: an output is open, or a reopen or a
-    // stop is waiting for the audio already submitted to be heard.
-    [[nodiscard]] bool active() const { return after_drain_.has_value() || output_open(); }
+    // stop is waiting for the audio already submitted to be heard - or an
+    // output this player opened has closed by itself, which pump() finds.
+    [[nodiscard]] bool active() const {
+        return after_drain_.has_value() || output_open() || output_lost();
+    }
 
     [[nodiscard]] const std::vector<PlayedItem>& history() const { return history_; }
     [[nodiscard]] std::uint32_t output_opens() const { return opens_; }
@@ -301,6 +311,9 @@ private:
         return mode_ == OutputMode::kBitstream || mode_ == OutputMode::kBitstreamAsAc3;
     }
     [[nodiscard]] bool output_open() const;
+    // An output this player opened, and has not closed, that is not open: its
+    // sink closed itself when the device went away.
+    [[nodiscard]] bool output_lost() const { return mode_ != OutputMode::kNone && !output_open(); }
     [[nodiscard]] std::optional<audio::MonitorPosition> output_position() const;
     [[nodiscard]] std::uint64_t heard_frames() const;
     // Where the next frame the decode delivers goes in the output's
@@ -334,6 +347,8 @@ private:
     void encode_transcoded(bool last);
     // A transcode that failed stops playback; true when it did.
     bool stop_for_transcode(PumpReport& report);
+    // So does an output that was lost (output_lost()); true when it did.
+    bool stop_for_lost_output(PumpReport& report);
 
     // The pending blocks, oldest first, as a ring whose blocks are never
     // freed: each keeps its buffer for the next block to reuse, so steady

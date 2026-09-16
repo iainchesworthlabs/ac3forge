@@ -83,6 +83,13 @@ public:
             return open;
         }
 
+        // The device goes away: the sink stops itself without being closed,
+        // as ac3::audio's sinks do.
+        void lose() {
+            const std::scoped_lock lock(mutex);
+            open = false;
+        }
+
         [[nodiscard]] std::uint64_t heard_so_far() const {
             const std::scoped_lock lock(mutex);
             return heard_total;
@@ -493,6 +500,34 @@ TEST_CASE("engine: a playing engine that goes away stops, and closes its output"
         REQUIRE(eventually([&] { return state->heard_so_far() > 0; }));
     }
     CHECK_FALSE(state->is_open());
+    const std::scoped_lock lock(state->mutex);
+    CHECK(state->closes == 1);
+}
+
+TEST_CASE("engine: an output whose device goes away stops playback, and the status says why",
+          "[hearth][concurrency]") {
+    Library library;
+    library.files["long"] = eac3_stream(200);
+    auto state = std::make_shared<ClockedDevice::State>();
+    const auto engine = make_engine(library, state);
+    // Real time, so the item is still playing when its device goes.
+    const ClockThread clock{state, 48};
+    engine->add({item("long")});
+    engine->play();
+    // Published as playing first, so a stopped status below is news.
+    engine->sync();
+    REQUIRE(engine->status().state == TransportState::kPlaying);
+    REQUIRE(eventually([&] { return state->heard_so_far() > 0; }));
+
+    state->lose();
+    EngineStatus status;
+    REQUIRE(eventually([&] {
+        status = engine->status();
+        return status.state == TransportState::kStopped;
+    }));
+    CHECK(status.error == "Playback stopped: the output device went away.");
+    CHECK(status.note == status.error);
+    CHECK(status.history.size() == 1);
     const std::scoped_lock lock(state->mutex);
     CHECK(state->closes == 1);
 }

@@ -2011,3 +2011,76 @@ TEST_CASE("player: a reopen decided before a pause waits for the resume", "[hear
     CHECK(log->rates == std::vector<std::uint32_t>{48000, 44100});
     CHECK(log->heard == 4 * 1536);
 }
+
+TEST_CASE("player: an output whose device goes away stops playback, and says so",
+          "[hearth][player]") {
+    const std::uint64_t item_frames = 6 * 1536;
+    Library library;
+    library.files["one.ec3"] = eac3_stream(6);
+    // A device with room for a fraction of the item, so blocks are still
+    // waiting to go in when it goes: what used to keep the player waiting for
+    // a clock that had stopped.
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log, 2048);
+    player->queue().add(item("one.ec3"));
+    player->play();
+
+    SECTION("while the item plays") {
+        // One pump decodes only part of it: its budget is 4800 frames of the
+        // item's 9216.
+        player->pump();
+        advance(*log, 480);
+        REQUIRE(log->submitted > 0);
+        REQUIRE(player->transport().state() == TransportState::kPlaying);
+    }
+
+    SECTION("while its tail is waited for") {
+        // Decoded to its end in one pump, with most of it still here.
+        player->pump(2 * item_frames);
+        REQUIRE(log->submitted_total < item_frames);
+        REQUIRE(player->transport().state() == TransportState::kPlaying);
+    }
+
+    SECTION("while paused") {
+        player->pump();
+        player->pause();
+        REQUIRE(log->paused);
+        REQUIRE(player->transport().state() == TransportState::kPaused);
+    }
+
+    SECTION("between the queue's end and the output's close") {
+        // Heard to its end: the transport has stopped, and the output closes
+        // at the next pump - so the stop has to be carried out whatever the
+        // transport says now.
+        for (int step = 0; step < 1000 && player->transport().state() != TransportState::kStopped;
+             ++step) {
+            player->pump();
+            advance(*log, 480);
+        }
+        REQUIRE(player->transport().state() == TransportState::kStopped);
+        REQUIRE(log->open);
+    }
+
+    REQUIRE(player->active());
+    // Unplugged: the sink stops itself without being closed, as ac3::audio's
+    // do. It takes nothing more, has no position, and its clock stands.
+    log->open = false;
+    const auto report = player->pump();
+    CHECK(report.stopped);
+    CHECK(player->last_error() == "Playback stopped: the output device went away.");
+    CHECK(report.note == player->last_error());
+    CHECK(player->transport().state() == TransportState::kStopped);
+    // Closed all the same, which is what releases what the sink still holds.
+    CHECK(log->closes == 1);
+    // Nothing is left to pump, or to wait for.
+    CHECK_FALSE(player->active());
+    CHECK(player->pump().frames_submitted == 0);
+    CHECK(log->closes == 1);
+
+    // The item was not at fault: once the device is back, it plays again.
+    CHECK(player->queue().items()[0].playable());
+    player->play();
+    REQUIRE(play_out(*player, *log));
+    CHECK(log->opens == 2);
+    CHECK(player->history().back().frames == item_frames);
+}

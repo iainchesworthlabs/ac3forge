@@ -2076,3 +2076,42 @@ TEST_CASE("transcode: the last item's encoder is emptied while it is heard out",
           (first.size() * ac3::kSamplesPerFrame) + ac3::hearth::Ac3Transcoder::kDelay);
     CHECK(history[1].frames == 4 * ac3::kSamplesPerFrame);
 }
+
+TEST_CASE("bitstream: a link whose device goes away stops playback, and says so",
+          "[hearth][player][bitstream]") {
+    // Twice the bursts the link holds, so some are still waiting for room
+    // when its device goes.
+    const Units a = ac3_units(12);
+    Library library;
+    library.files["a.ac3"] = {.bytes = joined(a)};
+    Rig rig{library};
+    rig.player->queue().add(item("a.ac3"));
+    rig.player->play();
+
+    SECTION("while the item plays") {
+        rig.player->pump();
+        rig.advance(480);
+        REQUIRE_FALSE(rig.link->bursts.empty());
+    }
+
+    SECTION("while its tail is waited for") {
+        // Decoded to its end in one pump; the link takes six of the twelve.
+        rig.player->pump(std::size_t{1} << 20U);
+        REQUIRE(rig.link->bursts.size() == rig.link->capacity_bursts);
+    }
+
+    REQUIRE(rig.player->transport().state() == TransportState::kPlaying);
+    // Unplugged: PassthroughSink stops itself without being closed.
+    rig.link->open = false;
+    const auto report = rig.player->pump();
+    CHECK(report.stopped);
+    CHECK(rig.player->last_error() == "Playback stopped: the output device \"HDMI\" went away.");
+    CHECK(report.note == rig.player->last_error());
+    CHECK(rig.player->transport().state() == TransportState::kStopped);
+    CHECK(rig.link->closes == 1);
+    CHECK(rig.pcm->opens == 0);
+    CHECK_FALSE(rig.player->active());
+    const auto notes = rig.notes();
+    CHECK(has_note(notes, "output lost: its device went away"));
+    CHECK(has_note(notes, "output closed"));
+}
