@@ -417,7 +417,7 @@ class Playout {
                 // placed again, which counts once the stream had been placed.
                 drop_staged();
                 aligned_ = false;
-                stats_.resyncs += measured_ ? 1 : 0;
+                stats_.resyncs += measured_ ? 1U : 0U;
             }
             if (!aligned_) {
                 align(target_us + offset_us(k), now_us, sink);
@@ -571,8 +571,8 @@ class Playout {
             // stream, or a block of it went out late. Silence that runs dry
             // into silence is not one.
             const bool broken = written->late || written->gap;
-            stats_.underruns += broken && (after_stream_ || block_has_target_) ? 1 : 0;
-            stats_.late_blocks += written->late && block_has_target_ ? 1 : 0;
+            stats_.underruns += broken && (after_stream_ || block_has_target_) ? 1U : 0U;
+            stats_.late_blocks += written->late && block_has_target_ ? 1U : 0U;
             have_next_ = true;
             fresh_ = !written->late;
             next_block_play_ = written->play_us + offset_us(kBlockFrames);

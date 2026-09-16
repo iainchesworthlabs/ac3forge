@@ -33,6 +33,7 @@ namespace ac3::internal {
             break;
         case OperatingMode::kLine:
             out.drc_scale = 1.0;
+            out.drc_boost_scale.reset();
             out.heavy_compression = false;
             break;
         case OperatingMode::kRf:
@@ -44,6 +45,7 @@ namespace ac3::internal {
             // here would make the fallback quietly weaker than the word it
             // stands in for.
             out.drc_scale = 1.0;
+            out.drc_boost_scale.reset();
             break;
     }
     return out;
@@ -70,14 +72,21 @@ namespace ac3::internal {
         // arithmetic FFmpeg's heavy_compr applies.
         return config.output.mode == OperatingMode::kRf ? gain * meta::kRfModeGain : gain;
     }
-    if (config.drc_scale == 0.0 || dynrng_word == meta::kDynrngUnity) {
+    const double boost_scale = config.drc_boost_scale.value_or(config.drc_scale);
+    if ((config.drc_scale == 0.0 && boost_scale == 0.0) || dynrng_word == meta::kDynrngUnity) {
         return 1.0;
     }
     const double gain = meta::dynrng_gain(dynrng_word);
-    // §7.7.1's "Partial Compression" scales the word as a signed fraction of
-    // dB, which in the linear domain is exactly raising the gain to that
-    // power. Doing it here rather than on the bits avoids re-quantising.
-    return config.drc_scale == 1.0 ? gain : std::pow(gain, config.drc_scale);
+    // A word above unity boosts and one below it cuts, and each has its own
+    // share of §7.7.1's "Partial Compression" (DecoderConfig::drc_boost_scale).
+    const double scale = gain > 1.0 ? boost_scale : config.drc_scale;
+    if (scale == 0.0) {
+        return 1.0;
+    }
+    // Partial compression scales the word as a signed fraction of dB, which
+    // in the linear domain is exactly raising the gain to that power. Doing
+    // it here rather than on the bits avoids re-quantising.
+    return scale == 1.0 ? gain : std::pow(gain, scale);
 }
 
 // One programme's block_gain() as its coefficients take it: whether there is

@@ -1265,6 +1265,106 @@ TEST_CASE("E-AC-3 dynrng survives the round trip and moves the decoded level",
     CHECK(half_db == Catch::Approx(0.5 * (off_db[3] + on_db[3])).margin(0.15));
 }
 
+TEST_CASE("cut and boost are scaled apart, in both decoders", "[drc][decoder]") {
+    // The stepped programme of the two round trips above: the words cut the
+    // loud frames and lift the quiet ones. Decoded with only one of the two
+    // shares set, only the frames that share governs may move.
+    constexpr int kLoudFrames = 4;
+    const auto audio = stepped_tone(8, 2, 0.5, 0.004, kLoudFrames);
+    auto profile = ac3::meta::profile(ac3::meta::ProfileId::kFilmStandard);
+    profile.attack_ms = 5.0;
+    profile.release_ms = 40.0;
+
+    // A decode's level in frame 3, settled loud, and frame 7, settled quiet.
+    struct Levels {
+        double loud = 0.0;
+        double quiet = 0.0;
+    };
+    const auto check_split = [](const auto& levels_with) {
+        const Levels off = levels_with({.drc_scale = 0.0});
+        const Levels on = levels_with({.drc_scale = 1.0});
+        REQUIRE(on.loud < off.loud - 2.0);
+        REQUIRE(on.quiet > off.quiet + 2.0);
+
+        // Cut alone: the loud frames as fully compressed, the quiet ones as
+        // if nothing were applied. Boost alone: the other way round.
+        const Levels cut = levels_with({.drc_scale = 1.0, .drc_boost_scale = 0.0});
+        CHECK(cut.loud == on.loud);
+        CHECK(cut.quiet == off.quiet);
+        const Levels boost = levels_with({.drc_scale = 0.0, .drc_boost_scale = 1.0});
+        CHECK(boost.loud == off.loud);
+        CHECK(boost.quiet == on.quiet);
+
+        // Unset, boost takes drc_scale's share, as it always did.
+        const Levels half = levels_with({.drc_scale = 0.5});
+        const Levels half_both = levels_with({.drc_scale = 0.5, .drc_boost_scale = 0.5});
+        CHECK(half.loud == half_both.loud);
+        CHECK(half.quiet == half_both.quiet);
+        const Levels quarter_boost = levels_with({.drc_scale = 0.5, .drc_boost_scale = 0.25});
+        CHECK(quarter_boost.loud == half.loud);
+        CHECK(quarter_boost.quiet ==
+              Catch::Approx(off.quiet + (0.25 * (on.quiet - off.quiet))).margin(0.15));
+
+        // Line mode applies the whole word, whatever the shares say.
+        const Levels line = levels_with({.drc_scale = 0.0,
+                                         .drc_boost_scale = 0.0,
+                                         .output = {.mode = ac3::OperatingMode::kLine}});
+        const Levels line_plain = levels_with({.output = {.mode = ac3::OperatingMode::kLine}});
+        CHECK(line.loud == line_plain.loud);
+        CHECK(line.quiet == line_plain.quiet);
+    };
+
+    SECTION("AC-3") {
+        ac3::FrameEncoder encoder{{.bitrate_kbps = 448, .dialnorm = 24, .drc = profile}};
+        std::vector<std::vector<std::byte>> frames;
+        for (int frame = 0; frame < 8; ++frame) {
+            auto encoded = encoder.encode_frame(frame_views(audio, frame));
+            REQUIRE(encoded.has_value());
+            frames.push_back(std::move(*encoded));
+        }
+        check_split([&frames](const ac3::DecoderConfig& config) {
+            ac3::FrameDecoder decoder{config};
+            Levels out;
+            for (std::size_t i = 0; i < frames.size(); ++i) {
+                const auto decoded = decoder.decode_frame(frames[i]);
+                REQUIRE(decoded.has_value());
+                if (i == 3) {
+                    out.loud = rms_db(decoded->channels[0]);
+                } else if (i == 7) {
+                    out.quiet = rms_db(decoded->channels[0]);
+                }
+            }
+            return out;
+        });
+    }
+
+    SECTION("E-AC-3") {
+        ac3::eac3::FrameEncoder encoder{
+            {.bitrate_kbps = 448, .acmod = ac3::Acmod::k2_0, .dialnorm = 24, .drc = profile}};
+        std::vector<std::vector<std::byte>> frames;
+        for (int frame = 0; frame < 8; ++frame) {
+            auto encoded = encoder.encode_frame(frame_views(audio, frame));
+            REQUIRE(encoded.has_value());
+            frames.push_back(std::move(*encoded));
+        }
+        check_split([&frames](const ac3::DecoderConfig& config) {
+            ac3::Eac3Decoder decoder{config};
+            Levels out;
+            for (std::size_t i = 0; i < frames.size(); ++i) {
+                const auto decoded = decoder.decode_substream(frames[i]);
+                REQUIRE(decoded.has_value());
+                REQUIRE(decoded->has_value());
+                if (i == 3) {
+                    out.loud = rms_db((*decoded)->channels[0]);
+                } else if (i == 7) {
+                    out.quiet = rms_db((*decoded)->channels[0]);
+                }
+            }
+            return out;
+        });
+    }
+}
+
 TEST_CASE("E-AC-3 heavy compression holds its ceiling through the decoder",
           "[drc][eac3][decoder]") {
     // The E-AC-3 sibling of "AC-3 compr holds its ceiling through the
