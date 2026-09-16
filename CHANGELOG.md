@@ -537,6 +537,13 @@ and release packaging.
   and 5.1, DRC curves, immersive stereo at three frame rates), checked in CI, and over
   107 local census streams and the public DASH-IF, CTA WAVE and Chromium channel-based
   streams. The readings taken where the text is ambiguous are in `src/ac4dec/ERRATA.md`.
+- **`ac4_substream_info_ajoc()`'s `oamd_common_data()` (§6.2.8.1) is read**, at the one TOC-level
+  site that reaches it, instead of refused: bed render info, trim and headphone metadata, and a
+  declared-length `add_data` tail a nested element that reads past its own byte budget fails
+  against. Transcribed independently in `tools/references/ac4_parse.py` and cross-checked by
+  `tools/checks/ac4_syntax_differential.py` over hand-built synthetic streams and a random
+  corpus exercising every branch. `oamd_substream()`'s own, separate `oamd_common_data()` embed
+  stays out of scope, like every other non-audio substream.
 
 **Browser (WASM)**
 

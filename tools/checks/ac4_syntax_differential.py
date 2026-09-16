@@ -245,7 +245,7 @@ def generate(streams, cases, n_mutations, n_synthetic, seed):
         k = rng.randrange(0, min(len(frames), 12))
         try:
             mutated, how = mutate(rng, frames[k])
-        except (ValueError, IndexError, ac4_parse.OamdCommonDataPresent):
+        except (ValueError, IndexError):
             continue  # a table of contents the reference parser cannot read
         if mutated is None:
             continue
@@ -311,7 +311,7 @@ def python_trace(path, last_only):
             subs = walker.frame(raw)
             outcome = {"layout": python_layout(raw),
                        "subs": {idx: (kind, recs, err) for idx, kind, recs, err in subs}}
-        except (ValueError, IndexError, ac4_parse.OamdCommonDataPresent) as exc:
+        except (ValueError, IndexError) as exc:
             outcome = ("TOC", repr(exc))
         if not last_only or fi == len(raws) - 1:
             frames[fi] = outcome

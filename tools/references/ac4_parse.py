@@ -82,6 +82,18 @@ class Reader:
     def byte_align(self):
         self.pos = (self.pos + 7) & ~7
 
+    def skip(self, n):
+        """Advances by n bits without materialising a value - for a raw field
+        the syntax does not interpret and whose width the stream can make
+        huge via variable_bits() escalation (oamd_common_data()'s add_data).
+        Fails exactly where bits() would if asked to read this many bits one
+        at a time, without paying bits()'s O(n) value-accumulation cost or
+        building a value nothing uses."""
+        end = self.pos + n
+        if end > len(self.data) * 8:
+            raise IndexError(f'skip({n}) at bit {self.pos} runs past the end of the data')
+        self.pos = end
+
 
 def variable_bits(r, n_bits):
     """Table 3 (§4.2.2): a value sent as groups of n_bits, MSB group first,
@@ -452,17 +464,6 @@ def _count_for_code(table, code):
     return table[code] if code < len(table) else 0
 
 
-class OamdCommonDataPresent(Exception):
-    """Raised when ac4_substream_info_ajoc() sets b_oamd_common_data_present.
-    oamd_common_data() (§6.2.8.1) is a large, separate metadata structure
-    (bed assignment, DRC, target-device categories, dialogue enhancement)
-    this parser does not transcribe - see the module docstring. It is
-    reached only from this one TOC-level info element; the OAMD substream
-    DATA payload itself (oamd_substream(), §6.2.2.4) is always treated as
-    an opaque byte range regardless of this flag, the same as every other
-    non-channel-audio substream."""
-
-
 def parse_bed_dyn_obj_assignment(r, n_signals):
     """§6.2.1.10 / §6.3.2.10.8. Returns a list of {'type': 'BED'|'DYN'|'ISF',
     'lfe': bool, 'ajoc_coded': bool} dicts - always ajoc_coded=True here,
@@ -520,6 +521,161 @@ def parse_bed_dyn_obj_assignment(r, n_signals):
     return objects
 
 
+# --- §6.2.8.13-16 tool_tb_to_f_s[_b] / tool_tf_to_f_s[_b], §6.2.9.9-10 -----
+# tool_t2_to_f_s[_b]: eight tables, three call shapes total (t2/tb/tf each
+# with and without a "to side" middle branch), differing only in field
+# names - one shared reader, one thin wrapper per table for its own names.
+
+def _parse_gain_tool(r, has_side_branch):
+    """Returns (code_a, code_b, code_c); unused entries are None, and
+    code_b is the derived value 7 (never transmitted) wherever code_a's or
+    code_c's branch was taken instead of an explicit code_b read."""
+    if r.bits(1):  # b_..._to_front
+        return r.bits(3), 7, None
+    if not has_side_branch:
+        return None, r.bits(3), None
+    if r.bits(1):  # b_..._to_side
+        return None, r.bits(3), None
+    return None, 7, r.bits(3)
+
+
+# --- §6.2.8.8a stereo_dmx_coeff ----------------------------------------------
+
+def parse_stereo_dmx_coeff(r):
+    loro_centre_mixgain = r.bits(3)
+    loro_surround_mixgain = r.bits(3)
+    ltrt_centre_mixgain = ltrt_surround_mixgain = None
+    if r.bits(1):  # b_ltrt_mixinfo
+        ltrt_centre_mixgain = r.bits(3)
+        ltrt_surround_mixgain = r.bits(3)
+    lfe_mixgain = None
+    if r.bits(1):  # b_lfe_mixinfo
+        lfe_mixgain = r.bits(5)
+    preferred_dmx_method = r.bits(2)
+    return {'loro_centre_mixgain': loro_centre_mixgain,
+            'loro_surround_mixgain': loro_surround_mixgain,
+            'ltrt_centre_mixgain': ltrt_centre_mixgain,
+            'ltrt_surround_mixgain': ltrt_surround_mixgain,
+            'lfe_mixgain': lfe_mixgain, 'preferred_dmx_method': preferred_dmx_method}
+
+
+# --- §6.2.8.8 bed_render_info ------------------------------------------------
+
+def parse_bed_render_info(r):
+    if not r.bits(1):  # b_bed_render_info
+        return None
+    stereo_dmx_coeff = parse_stereo_dmx_coeff(r) if r.bits(1) else None  # b_stereo_dmx_coeff
+    info = {'stereo_dmx_coeff': stereo_dmx_coeff}
+    if not r.bits(1):  # b_cdmx_data_present
+        return info
+    info['gain_w_to_f_code'] = r.bits(3) if r.bits(1) else None  # b_cdmx_w_to_f
+    info['gain_b4_to_b2_code'] = r.bits(3) if r.bits(1) else None  # b_cdmx_b4_to_b2
+    if r.bits(1):  # b_tm_ch_present
+        info['t2_to_f_s_b'] = _parse_gain_tool(r, True) if r.bits(1) else None
+        info['t2_to_f_s'] = _parse_gain_tool(r, False) if r.bits(1) else None
+    b_tb_ch_present = r.bits(1)
+    if b_tb_ch_present:
+        info['tb_to_f_s_b'] = _parse_gain_tool(r, True) if r.bits(1) else None
+        info['tb_to_f_s'] = _parse_gain_tool(r, False) if r.bits(1) else None
+    b_tf_ch_present = r.bits(1)
+    if b_tf_ch_present:
+        info['tf_to_f_s_b'] = _parse_gain_tool(r, True) if r.bits(1) else None
+        info['tf_to_f_s'] = _parse_gain_tool(r, False) if r.bits(1) else None
+    if (b_tb_ch_present or b_tf_ch_present) and r.bits(1):  # b_cdmx_tfb_to_tm
+        info['gain_tfb_to_tm_code'] = r.bits(3)
+    return info
+
+
+# --- §6.2.8.9 trim / §6.2.8.9a headphone -------------------------------------
+
+# §6.3.9.10.4: "the number of trim configurations is nine".
+_NUM_TRIM_CONFIGS = 9
+
+
+def parse_trim(r):
+    if not r.bits(1):  # b_trim_present
+        return None
+    warp_mode = r.bits(2)
+    r.bits(2)  # reserved
+    global_trim_mode = r.bits(2)
+    configs = []
+    if global_trim_mode == 0b10:
+        for _ in range(_NUM_TRIM_CONFIGS):
+            if r.bits(1):  # b_default_trim
+                configs.append(None)
+                continue
+            if r.bits(1):  # b_disable_trim
+                configs.append(False)
+                continue
+            presence = r.bits(5)  # trim_balance_presence[]
+            cfg = {'presence': presence}
+            if presence & 0b10000:  # [4]
+                cfg['trim_centre'] = r.bits(4)
+            if presence & 0b01000:  # [3]
+                cfg['trim_surround'] = r.bits(4)
+            if presence & 0b00100:  # [2]
+                cfg['trim_height'] = r.bits(4)
+            if presence & 0b00010:  # [1]: sign, amount
+                cfg['bal3D_Y_tb'] = (r.bits(1), r.bits(4))
+            if presence & 0b00001:  # [0]: sign, amount
+                cfg['bal3D_Y_lis'] = (r.bits(1), r.bits(4))
+            configs.append(cfg)
+    return {'warp_mode': warp_mode, 'global_trim_mode': global_trim_mode, 'configs': configs}
+
+
+def parse_headphone(r):
+    if not r.bits(1):  # b_headphone
+        return None
+    hp_operation_mode = r.bits(3)
+    b_head_track_disable_all = None
+    if hp_operation_mode in (0b001, 0b010):
+        b_head_track_disable_all = r.bits(1)
+    return {'hp_operation_mode': hp_operation_mode,
+            'b_head_track_disable_all': b_head_track_disable_all}
+
+
+# --- §6.2.8.1 oamd_common_data ------------------------------------------------
+
+def parse_oamd_common_data(r):
+    """Embedded, at the TOC level, in ac4_substream_info_ajoc() when it sets
+    b_oamd_common_data_present. (It appears again inside every
+    oamd_substream() - the A-JOC/object substream's own DATA content, which
+    this TOC-only parser does not walk at all - see the module docstring.)"""
+    b_default_screen_size_ratio = r.bits(1)
+    master_screen_size_ratio_code = None if b_default_screen_size_ratio else r.bits(5)
+    b_bed_object_chan_distribute = r.bits(1)
+    trim = bed_render_info = headphone = None
+    if r.bits(1):  # b_additional_data
+        add_data_bytes = r.bits(1) + 1  # add_data_bytes_minus1
+        if add_data_bytes == 2:
+            add_data_bytes += variable_bits(r, 2)
+        add_data_bits = add_data_bytes * 8
+
+        def spend(parse):
+            # bits_used = X(); add_data_bits -= bits_used, tracked by reader
+            # position rather than each parser returning its own bit count.
+            nonlocal add_data_bits
+            start = r.pos
+            value = parse(r)
+            add_data_bits -= r.pos - start
+            if add_data_bits < 0:
+                raise ValueError('oamd_common_data(): a nested element read past the byte '
+                                  'budget add_data_bytes gave it')
+            return value
+
+        trim = spend(parse_trim)
+        if add_data_bits:
+            bed_render_info = spend(parse_bed_render_info)
+        if add_data_bits:
+            headphone = spend(parse_headphone)
+        if add_data_bits:
+            r.skip(add_data_bits)  # add_data: raw bits this parser does not interpret
+    return {'b_default_screen_size_ratio': b_default_screen_size_ratio,
+            'master_screen_size_ratio_code': master_screen_size_ratio_code,
+            'b_bed_object_chan_distribute': b_bed_object_chan_distribute,
+            'trim': trim, 'bed_render_info': bed_render_info, 'headphone': headphone}
+
+
 # --- §6.2.1.9 ac4_substream_info_ajoc ---------------------------------------
 
 def parse_substream_info_ajoc(r, fs_index, frame_rate_factor, b_substreams_present):
@@ -531,10 +687,8 @@ def parse_substream_info_ajoc(r, fs_index, frame_rate_factor, b_substreams_prese
     else:
         n_fullband_dmx_signals = r.bits(4) + 1
         static_objects = parse_bed_dyn_obj_assignment(r, n_fullband_dmx_signals)
-    if r.bits(1):  # b_oamd_common_data_present
-        raise OamdCommonDataPresent(
-            'ac4_substream_info_ajoc sets b_oamd_common_data_present; '
-            'oamd_common_data() (TS 103 190-2 §6.2.8.1) not implemented')
+    b_oamd_common_data_present = r.bits(1)
+    oamd_common_data = parse_oamd_common_data(r) if b_oamd_common_data_present else None
     n_fullband_upmix_signals = r.bits(4) + 1
     if n_fullband_upmix_signals == 16:
         n_fullband_upmix_signals += variable_bits(r, 3)
@@ -549,6 +703,7 @@ def parse_substream_info_ajoc(r, fs_index, frame_rate_factor, b_substreams_prese
     substream_index = parse_substream_index_ref(r) if b_substreams_present else None
     return {'b_lfe': b_lfe, 'b_static_dmx': b_static_dmx,
             'n_fullband_dmx_signals': n_fullband_dmx_signals, 'static_objects': static_objects,
+            'oamd_common_data': oamd_common_data,
             'n_fullband_upmix_signals': n_fullband_upmix_signals, 'upmix_objects': upmix_objects,
             'sf_multiplier': sf_multiplier, 'bitrate_kbps': bitrate_kbps,
             'b_audio_ndot': b_audio_ndot, 'substream_index': substream_index}
@@ -960,7 +1115,7 @@ def main():
 
     try:
         toc, substreams = parse_raw_frame(raw)
-    except (OamdCommonDataPresent, ValueError) as exc:
+    except (ValueError, IndexError) as exc:
         raise SystemExit(f'REFUSED: {exc}') from exc
 
     print(f"  bitstream_version={toc['bitstream_version']} "

@@ -714,8 +714,6 @@ std::string_view ac4_error_token(ac4::Error error) {
             return "lost_sync";
         case ac4::Error::kUnsupportedBitstreamVersion:
             return "unsupported_bitstream_version";
-        case ac4::Error::kOamdCommonDataPresent:
-            return "oamd_common_data_present";
     }
     return "unknown";
 }

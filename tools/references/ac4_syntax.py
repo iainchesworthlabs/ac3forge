@@ -2442,7 +2442,7 @@ def walk_stream(data, ims_rule=True, diagnostics=None):
             diagnostics.append(f'frame {fi}: FAIL: CRC mismatch')
         try:
             subs = walker.frame(raw)
-        except (ValueError, IndexError, ac4_parse.OamdCommonDataPresent) as exc:
+        except (ValueError, IndexError) as exc:
             if diagnostics is not None:
                 diagnostics.append(f'frame {fi}: TOC: FAIL: {exc}')
             continue
