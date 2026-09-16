@@ -262,20 +262,47 @@ layout leaves unused written as zeros. Nothing was connected to the pins; a DAC 
 not part of this measurement.
 
 Getting samples onto those slots costs time here too. The decoder hands a sink planar `float`
-blocks, and the component's conversions (`esp-idf/ac3forge/include/ac3forge/interleave.hpp`)
-scale, clip and convert each sample in `float`, which on a part with no FPU is a call into the
-software floating-point routines for each operation. Timed on the board for one frame, six
-256-sample blocks, from a build at `-Os`:
+blocks, and the component's interleaves
+(`esp-idf/ac3forge/include/ac3forge/interleave.hpp`) turn each sample into a slot. Scaling,
+clipping and converting one in `float` is four calls into the software floating-point routines
+on a part with no FPU, so the component computes the same integers from the sample's IEEE-754
+bits wherever `CONFIG_SOC_CPU_HAS_FPU` is unset, which is this part. Both forms are timed below.
+The bits column is what a sink here runs; the float one is the same interleave converting in
+`float`, which is what a part with an FPU runs and what this part ran before the component chose
+by capability. One build at `-Os`, one frame of six 256-sample blocks, best of five runs:
 
-| Work per frame | Microseconds |
-|---|---:|
-| `to_pcm16` into eight interleaved 16-bit slots | 11,744 |
-| `to_slot_24in32` into four interleaved 32-bit slots (`interleave_24in32`) | 5,159 |
-| `to_pcm16` into a stereo pair (`interleave_16`) | 2,879 |
-| A float level meter over eight slots, squares summed sixteen at a time | 9,621 |
+| Work per frame | In float | From the bits |
+|---|---:|---:|
+| Eight interleaved 16-bit slots (`interleave_16in16`) | 12,052 | 3,839 |
+| Four interleaved 32-bit slots (`interleave_24in32`) | 5,197 | 1,428 |
+| A stereo pair (`interleave_16`) | 2,879 | 770 |
+| A float level meter over eight slots, squares summed sixteen at a time | 9,153 | - |
 
-About 0.9 microseconds a sample for the conversions and 0.8 for the meter, so eight 16-bit slots
-and a level meter on them take two thirds of a frame before the decode is counted.
+That is about a microsecond a sample in `float` against 0.3 from the bits. The level meter in
+front of the sink is `float` either way, at about 0.7 a sample, so it is now the larger half of
+what a sink spends on eight 16-bit slots: 9,153 microseconds against 3,839.
+
+Those two add to 12,992 in isolation, which is the figure to hold a whole sink against. The
+streaming example playing a 7.1 stream onto eight 16-bit slots on this board reports
+`sink_us_per_frame` of 12,309, where the same sink converting in `float` reported 20,875. The
+end-to-end figure comes in under the sum because a plain build compiles the sink's own source at
+`-O2` (`AC3FORGE_MINIMAL_HOT_O2`) and the conversion inlines into the interleave's loop, where
+this benchmark at `-Os` called it once a sample. That is the general rule for these numbers: a
+conversion's cost depends on whether it inlines where it is called, and in this benchmark the
+24-in-32 form inlined and the 16-bit one did not.
+
+The sink is no longer the largest piece of that play. The same run takes 44,849 microseconds a
+frame against the frame's 32,000 - 28,923 of decode, 3,617 of render and the sink's 12,309 - so
+a 7.1 stream on eight slots is 1.40 times real time here, and the decode is what would have to
+give.
+
+What the stream carries decides that, not what the sink opens. The same eight 16-bit slots fed
+from a 5.1 stream, with the two slots it has nothing for zeroed, come to 31,875 microseconds a
+frame over eight laps: 17,131 of decode, 2,762 of render, 11,982 of sink. That is 0.996 of real
+time, and it plays, with 24 of its 1,536 writes finding the queue empty - 16 milliseconds in all,
+against 2,086 for the 7.1 stream. Both runs are the same build of the streaming example from the
+same board, `CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS=16` onto `7.1`, from the FAT partition with no
+network.
 
 ## QEMU
 

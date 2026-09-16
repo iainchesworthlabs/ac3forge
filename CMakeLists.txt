@@ -531,6 +531,11 @@ if(AC3FORGE_BUILD_GUI)
     add_subdirectory(apps/gui)
 endif()
 
+# Hearth's applications, the test sink so far (planning/hearth-reference-player.md).
+if(AC3FORGE_BUILD_HEARTH)
+    add_subdirectory(apps/hearth)
+endif()
+
 # AC3Forge Crucible (roadmap UX11 and UX12, docs/crucible/design/promotion.md).
 # In-tree like the GUI rather than wrapping the root the way the Android app
 # does, because it shares this toolchain. All three desktop platforms now have

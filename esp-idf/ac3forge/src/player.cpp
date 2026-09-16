@@ -34,9 +34,11 @@ namespace {
 using ac3::render::LayoutRenderer;
 using ac3::render::OutputLayout;
 
-// One block per slot is what the player holds of the audio: sixteen slots of
-// 256 samples, 16 KB, against the 96 KB a frame of them would be. Sixteen is
-// §E3.8.2's cap on a rendered programme and OutputLayout's on a layout.
+// One block per slot is what the player holds of the audio: 256 samples a slot,
+// 1 KB, against the 6 KB a frame of them would be. Sixteen slots is §E3.8.2's
+// cap on a rendered programme and OutputLayout's on a layout, and what the
+// span arrays below are sized for; the samples themselves are sized from the
+// play's own layout (Impl::block_storage).
 constexpr std::size_t kMaxSlots = OutputLayout::kMaxSlots;
 
 // One event group, shared by the two tasks and the caller. Bits are set and
@@ -149,9 +151,22 @@ struct Player::Impl {
     TaskHandle_t fetch_task = nullptr;
     TaskHandle_t decode_task = nullptr;
 
-    // One block per slot, the sink's view of it, and the spans the renderer
-    // writes through. Sized once, reused for every block.
-    std::array<std::array<float, ac3::kSamplesPerBlock>, kMaxSlots> block{};
+    // One block per slot of THIS play's layout, the spans the renderer writes
+    // through, and the sink's view of them. Allocated at start(), reused for
+    // every block, and released at stop() with the ring and the hold.
+    //
+    // Sized from the layout rather than for sixteen slots: as an array of
+    // sixteen inside Impl it carried 4 KB of float storage a 7.1.4 play never
+    // read, and 14 KB for a 2.0 one - internal RAM on a part without PSRAM,
+    // which is exactly where the twelve-channel shape runs short first. In
+    // PSRAM when the part has it, as the ring and the hold are, which is where
+    // this storage already sat on a board while it was part of Impl: Impl is
+    // larger than SPIRAM_MALLOC_ALWAYSINTERNAL, and a plain `new` for the
+    // smaller buffer alone would have moved it into internal RAM there.
+    struct HeapFree {
+        void operator()(float* samples) const { heap_caps_free(samples); }
+    };
+    std::unique_ptr<float[], HeapFree> block_storage;
     std::array<std::span<float>, kMaxSlots> block_spans{};
     std::array<std::span<const float>, kMaxSlots> block_views{};
     // The framer's buffer: 16 KB holds an independent substream plus three
@@ -446,7 +461,8 @@ struct Player::Impl {
             }
         }
         for (std::size_t slot = 0; slot < slots; ++slot) {
-            block_views[slot] = std::span<const float>(block[slot].data(), std::min(n, block[slot].size()));
+            block_views[slot] = std::span<const float>(block_spans[slot].data(),
+                                                       std::min(n, block_spans[slot].size()));
         }
         const std::int64_t rendered = esp_timer_get_time();
         sink.write(std::span<const std::span<const float>>(block_views.data(), slots));
@@ -786,8 +802,26 @@ bool Player::start() {
         std::printf("player: the layout must have 1..%u slots\n", static_cast<unsigned>(kMaxSlots));
         return false;
     }
-    for (std::size_t slot = 0; slot < kMaxSlots; ++slot) {
-        im.block_spans[slot] = std::span<float>(im.block[slot]);
+    // The block storage, for this layout's slots and no more (see Impl), held
+    // from here until stop(). Zeroed, as the array it replaced was: a slot the
+    // renderer leaves alone for a block has to read as silence, not as
+    // whatever the heap held. A start() that failed after this point left its
+    // storage behind, and that goes before this one is taken.
+    const std::size_t floats = slots * ac3::kSamplesPerBlock;
+    const std::uint32_t block_caps = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0
+                                         ? (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+                                         : (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    im.block_storage.reset();
+    im.block_storage.reset(
+        static_cast<float*>(heap_caps_calloc(floats, sizeof(float), block_caps)));
+    if (!im.block_storage) {
+        std::printf("player: no room for %u bytes of block storage (%u slots)\n",
+                    static_cast<unsigned>(floats * sizeof(float)), static_cast<unsigned>(slots));
+        return false;
+    }
+    for (std::size_t slot = 0; slot < slots; ++slot) {
+        im.block_spans[slot] = std::span<float>(
+            im.block_storage.get() + (slot * ac3::kSamplesPerBlock), ac3::kSamplesPerBlock);
     }
     im.staging.resize(im.config.fetch_bytes);
     set_volume(im.config.volume);
@@ -904,6 +938,7 @@ void Player::stop() {
     im.holding = false;
     im.free_hold();
     im.free_ring();
+    im.block_storage.reset();
     vEventGroupDelete(im.events);
     im.events = nullptr;
 }

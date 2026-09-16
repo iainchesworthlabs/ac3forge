@@ -1,0 +1,1 @@
+{"type":"client/hello","payload":{"name":"Desk","supported_roles":["source@v1","visualizer@v1","artwork@v1","metadata@v1","controller@v1","color@v1"],"source@v1_support":{"features":{"line_sense":true}},"visualizer@v1_support":{"buffer_capacity":65536},"supported_pair_methods":{"pairing_psk":{"locations":["device"]}},"unpaired_access":{"enabled":true}}}

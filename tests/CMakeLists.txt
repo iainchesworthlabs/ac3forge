@@ -171,6 +171,19 @@ add_executable(ac3tests
 set_source_files_properties(io/test_metadata_edit.cpp
     PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
 
+# The same GNU-only false positive, in a different disguise, on the hearth
+# queue tests: GCC at -O3 inlines std::operator==(const string&, const char*)
+# into a CHECK that compares a title against a literal ("b"), follows it down
+# to traits_type::length on the literal's pointer, and reports a null
+# dereference at basic_string.h:1165. The full -Wnull-dereference chain names
+# Catch2's decomposer and the literal's own type (const char (&)[2]), so the
+# pointer it worries about is a string constant - never null. Restructuring
+# the test away from it was tried first and changes nothing, since the
+# comparison itself is what gets inlined; scoped to these two files rather
+# than widened for the same reason the block above gives.
+set_source_files_properties(hearth/test_queue.cpp hearth/test_transport.cpp
+    PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
+
 # test_signing.cpp reaches ac3::signing's internal crypto headers (sha256.hpp/
 # hmac_sha256.hpp) to run the FIPS/RFC known-answer vectors directly - they are
 # not part of the target's public API, so put its private src/ dir on this
@@ -675,21 +688,56 @@ endif()
 # ac3::sendspin (src/sendspin) is opt-in through AC3FORGE_BUILD_HEARTH, the same shape as the
 # AC3FORGE_BUILD_ADM block above.
 if(AC3FORGE_BUILD_HEARTH)
+    # The engine (apps/hearth/engine) comes first because it needs nothing from
+    # src/sendspin's player half: a core-only build still builds and tests it,
+    # unlike the test sink further down.
     target_sources(ac3tests PRIVATE
+        hearth/test_output_decision.cpp
+        hearth/test_queue.cpp
+        hearth/test_transport.cpp)
+    target_link_libraries(ac3tests PRIVATE ac3hearth_engine)
+
+    target_sources(ac3tests PRIVATE
+        sendspin/test_ac3forge_player.cpp
+        sendspin/test_arbiter.cpp
+        sendspin/test_base64.cpp
         sendspin/test_base64url.cpp
         sendspin/test_chunks.cpp
+        sendspin/test_clock_sync.cpp
+        sendspin/test_discovery.cpp
         sendspin/test_frames.cpp
         sendspin/test_handshake.cpp
         sendspin/test_json.cpp
+        sendspin/test_messages.cpp
+        sendspin/test_pairing_messages.cpp
+        sendspin/test_state_roles.cpp
+        sendspin/test_stream_roles.cpp
         sendspin/test_transport.cpp)
     # The parts that need vcpkg's "hearth" feature, which AC3FORGE_SENDSPIN_CORE_ONLY leaves out.
     if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
         target_sources(ac3tests PRIVATE
+            sendspin/test_codec.cpp
             sendspin/test_cpace.cpp
             sendspin/test_crypto.cpp
+            sendspin/test_handshake_session.cpp
+            sendspin/test_mdns.cpp
             sendspin/test_noise.cpp
             sendspin/test_pairing.cpp
+            sendspin/test_pairing_flow.cpp
+            sendspin/test_session_driver.cpp
+            sendspin/test_sessions.cpp
             sendspin/test_websocket.cpp)
+        # test_mdns.cpp reads the mdns backend's packet layer, which is private to the library.
+        target_include_directories(ac3tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src/sendspin/src")
+        # Hearth's test sink, run in process (apps/hearth/testsink), and the server's half of A4's
+        # exit with aiosendspin 9.1.1, which tools/sendspin/aiosendspin_exit.py runs.
+        target_sources(ac3tests PRIVATE hearth/test_aiosendspin.cpp hearth/test_group.cpp hearth/test_testsink.cpp)
+        target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
+        # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
+        # as core/test_simd_kernels.cpp's.
+        if(AC3FORGE_IS_MSVC_LIKE)
+            set_source_files_properties(hearth/test_aiosendspin.cpp PROPERTIES COMPILE_OPTIONS "/wd4996")
+        endif()
     endif()
     target_link_libraries(ac3tests PRIVATE ac3::sendspin)
 endif()
