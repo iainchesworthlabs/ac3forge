@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <string_view>
@@ -32,6 +34,25 @@ using ParseResult = std::expected<void, SyntaxError>;
         return fail(DecodeError::kTruncated, "a syntax element runs past the end of the substream");
     }
     return {};
+}
+
+// Part 1 Tables 83 and 84: frame_len_base from the frame rate index and the
+// sample rate, 0 when the pair is one neither table defines. Index 13 is the
+// only one Table 84 gives 44.1 kHz, so every other index there is reserved and
+// has no frame length to read a substream with - which is what ac4::
+// samples_per_frame() says about the same pair. One helper for both the audio
+// substreams and the presentation substream: deriving it twice let a 44.1 kHz
+// frame be read with two different frame lengths at once.
+[[nodiscard]] inline int frame_len_base(int frame_rate_index, int sample_rate_hz) noexcept {
+    constexpr std::array<int, 14> kForExternal48 = {1920, 1920, 2048, 1536, 1536, 960, 960,
+                                                    1024, 768,  768,  512,  384,  384, 2048};
+    if (frame_rate_index < 0 || static_cast<std::size_t>(frame_rate_index) >= kForExternal48.size()) {
+        return 0;
+    }
+    if (sample_rate_hz == 44100) {
+        return frame_rate_index == 13 ? 2048 : 0;
+    }
+    return kForExternal48[static_cast<std::size_t>(frame_rate_index)];
 }
 
 // Channel modes as ch_mode numbers (Part 1 Table 88, Part 2 Table 56).

@@ -207,8 +207,8 @@ boot in the two-slot shape, on the decoder's own frame-long channel buffers
 (`Eac3Decoder::decode_substream_core`), 6,144 bytes with 17,088 free and no block over 5,632.
 
 The allocations that failed are the decoder's, which are the same whatever the output layout:
-the player's block storage is sixteen slots at every layout, and the capture sink converts one
-block at a time. A board with PSRAM puts allocations of 16 KB and over there
+the player's block storage was sixteen slots at every layout (it is sized from the layout
+now), and the capture sink converts one block at a time. A board with PSRAM puts allocations of 16 KB and over there
 (`sdkconfig.psram`), which is where the streams marked "no" are meant to play. Each 1-second
 play took about two seconds of wall clock under QEMU.
 

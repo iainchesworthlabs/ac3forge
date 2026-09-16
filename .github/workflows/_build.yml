@@ -2669,14 +2669,14 @@ jobs:
           #
           # The floor moved from 24,576 to 20,480 when B2 put mDNS on the
           # board: being findable costs about 8 KB of internal RAM in every
-          # shape, which took the measured floor from about 35 KB to 25,036
-          # bytes. That is a cost the plan asks for rather than a regression,
-          # and the gate caught it the same afternoon it arrived, which is the
-          # gate working. 20,480 still leaves 4.5 KB of slack under what the
-          # shape measures, and still fails on a change of the size that put
-          # this step in the ground: PR #698 spent 10 KB and left the play
-          # running on 7-9.5 KB. The Improv listener's own 4 KB is not in
-          # this figure - a board with a network does not start it.
+          # shape. The plan asks for that cost, and this gate caught it the
+          # afternoon it arrived. With the player's block storage sized from
+          # the layout (PR #719), the shape measures 28,304 bytes with mDNS,
+          # so 20,480 leaves about 8 KB for run-to-run movement and for what
+          # the Sendspin player adds, and still fails on a change of the size
+          # that put this step in the ground: PR #698 spent 10 KB and left
+          # the play running on 7-9.5 KB. The Improv listener's own 4 KB is
+          # not in this figure - a board with a network does not start it.
           python3 "$console" --title "ESP32-S3 stream set" --min-heap-free 20480 qemu-set.txt
           kill "$qemu" 2>/dev/null || true
 

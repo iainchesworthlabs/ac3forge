@@ -173,6 +173,19 @@ add_executable(ac3tests
 set_source_files_properties(io/test_metadata_edit.cpp
     PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
 
+# The same GNU-only false positive, in a different disguise, on the hearth
+# queue tests: GCC at -O3 inlines std::operator==(const string&, const char*)
+# into a CHECK that compares a title against a literal ("b"), follows it down
+# to traits_type::length on the literal's pointer, and reports a null
+# dereference at basic_string.h:1165. The full -Wnull-dereference chain names
+# Catch2's decomposer and the literal's own type (const char (&)[2]), so the
+# pointer it worries about is a string constant - never null. Restructuring
+# the test away from it was tried first and changes nothing, since the
+# comparison itself is what gets inlined; scoped to these two files rather
+# than widened for the same reason the block above gives.
+set_source_files_properties(hearth/test_queue.cpp hearth/test_transport.cpp
+    PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
+
 # test_signing.cpp reaches ac3::signing's internal crypto headers (sha256.hpp/
 # hmac_sha256.hpp) to run the FIPS/RFC known-answer vectors directly - they are
 # not part of the target's public API, so put its private src/ dir on this
@@ -677,6 +690,15 @@ endif()
 # ac3::sendspin (src/sendspin) is opt-in through AC3FORGE_BUILD_HEARTH, the same shape as the
 # AC3FORGE_BUILD_ADM block above.
 if(AC3FORGE_BUILD_HEARTH)
+    # The engine (apps/hearth/engine) comes first because it needs nothing from
+    # src/sendspin's player half: a core-only build still builds and tests it,
+    # unlike the test sink further down.
+    target_sources(ac3tests PRIVATE
+        hearth/test_output_decision.cpp
+        hearth/test_queue.cpp
+        hearth/test_transport.cpp)
+    target_link_libraries(ac3tests PRIVATE ac3hearth_engine)
+
     target_sources(ac3tests PRIVATE
         sendspin/test_ac3forge_player.cpp
         sendspin/test_arbiter.cpp

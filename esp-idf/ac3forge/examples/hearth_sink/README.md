@@ -672,8 +672,8 @@ with real time. The same stream decodes and renders onto twelve slots in about
 and [Folded to stereo](../../../../docs/platforms/bare-metal/esp32-s3.md#folded-to-stereo).
 
 All of it is [`ac3/render/render.hpp`](../../../../src/forge/include/ac3/render/render.hpp),
-one 256-sample block at a time, which is why a 7.1.4 layout costs the player 16 KB
-of block storage rather than 96 KB of frame. The geometry is the library's
+one 256-sample block at a time, which is why a 7.1.4 layout costs the player 12 KB
+of block storage rather than 72 KB of frame. The geometry is the library's
 (`tests/spatial/`); what the header adds is indexing between coded channels,
 objects and slots, tested on the host in `tests/render/test_layout.cpp` because a
 swapped subscript there puts the centre in the subwoofer and nothing complains.
@@ -872,7 +872,7 @@ decoder's hot sources at `-O2` move flash, not these figures:
 | Internal SRAM (DIRAM) used by the image | 88,563 |
 | …of which `.bss` | 46,232 |
 | …leaving for the heap, by the linker's estimate | 253,197 |
-| Taken from that heap when the player starts: one block of sixteen slots, the framing buffer, the staging block and the renderer's gain tables | 37,376 |
+| Taken from that heap when the player starts: one block for each of the layout's slots (two for `2.0`, 2,048 bytes; twelve for `7.1.4`, 12,288), the framing buffer, the staging block and the renderer's gain tables | 23,040 |
 | The ring between fetch and decode (`CONFIG_AC3FORGE_EXAMPLE_RING_BYTES`; PSRAM when present) | 32,768 |
 | The decode task's stack, and the fetch task's | 32,768 + 8,192 |
 | Interleave buffers (one block, 32-bit and 16-bit, static, in the sink) | 3,072 |

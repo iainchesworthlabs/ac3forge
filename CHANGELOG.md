@@ -718,6 +718,15 @@ and release packaging.
   digit, decode time no higher. The ESP32 QEMU legs now also fail on a failed allocation
   anywhere in the console — one can be survived, so a run could print hundreds and still
   report `result=pass` — and the stream set's free heap is held to a floor.
+- **The ESP32 player kept block storage for sixteen output slots whatever the layout.**
+  `ac3forge::Player` held 256 samples for each of sixteen slots inside its own
+  allocation, 16 KB, so a 7.1.4 play carried 4 KB it never read and a stereo play 14 KB,
+  in internal RAM on a part without PSRAM, where the twelve-channel shape runs short
+  first. The storage is now sized from the play's layout at `start()`, placed in PSRAM
+  when the part has it, and released at `stop()` with the ring and the hold. On the
+  7.1.4 stream set under QEMU, the least free internal RAM during a play is 41,456 bytes
+  against 36,904 on main's last CI run, and every stream's slot levels are still the
+  host's.
 - **The ESP32 streaming example's `tdm` sink claimed sixteen 32-bit slots on one data
   line; an ESP32-S3 carries four.** An S3 TDM frame holds at most 128 bits (ESP-IDF v6.1
   enforces it); the sink had never run on hardware before a 2026-09-11 board run found
