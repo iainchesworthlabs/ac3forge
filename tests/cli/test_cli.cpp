@@ -23,8 +23,12 @@
 #include <sys/wait.h>
 #endif
 
+#include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/encoder/encoder.hpp"
+#include "ac3/encoder/plan.hpp"
 #include "ac3/io/metadata_edit.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/qc.hpp"
@@ -3052,6 +3056,160 @@ TEST_CASE(
     for (const std::size_t ch : {std::size_t{2}, std::size_t{3}}) {
         CHECK(rms(decoded->channels[ch], tail_from, expected_length - tail_from) < 0.05);
     }
+}
+
+// A second regression, for the bug the flush() tail loop above still had
+// after the fix that test guards: it appended each flushed substream by
+// calling PlanarWavSink::append once per substream per Table E2.5 location,
+// so two substreams released in the same flush (a legacy core's bed plus the
+// Annex E dependent that held the last unit back) grew some slots twice and
+// left others once, corrupting the sink's per-slot carry rather than just
+// leaving a length mismatch. run_decode_eac3 (and decode_and_render in
+// stream_tools.cpp, tested separately below) now build the whole held-back
+// unit first via ac3::apps::held_back_unit - apps/common/stream_playback.hpp
+// - the same assembly decode_access_unit itself uses, and append it exactly
+// once per slot like any other unit. tests/decoder/test_stream_playback.cpp
+// proves held_back_unit's own placement is correct; this proves decode.cpp
+// actually calls it and routes its output to the right WAV channels.
+TEST_CASE("decode plays a legacy core's held-back last unit without swapping the "
+          "dependent's audio for the bed's",
+          "[cli][decode][eac3][transient_prenoise]") {
+    namespace cm = ac3::eac3::chanmap;
+    constexpr auto kFrame = static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    constexpr std::size_t kOnsetSample = 960;  // late in the frame - block switching's own onset
+    constexpr int kUnits = 5;
+    constexpr int kOnsetUnit = 2;  // well before the last unit, and steady after
+    // k71Rear's dependent carries FOUR channels - Ls, Rs, Lrs, Rrs, in that
+    // order (eac3_tables.hpp's own static_asserts on expand(k71Rear)) - and
+    // REPLACES the bed's own Ls/Rs at those same Table E2.5 slots rather than
+    // sitting beside them (k71Rear's own comment: "the dependent replaces the
+    // bed's surrounds and adds the two rear surrounds"). So Ls/Rs are exactly
+    // where bed and dependent collide for real, not merely sit adjacent -
+    // kBedTones' own Ls/Rs entries (index 3/4) must NOT survive into the
+    // final unit once the dependent has released.
+    constexpr std::array<double, 6> kBedTones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
+    constexpr std::array<double, 4> kRearTones = {500.0, 1600.0, 400.0, 1800.0};
+
+    // Silence until kOnsetSample of unit kOnsetUnit, then each channel's own
+    // steady tone - a cosine, so the onset is a step clear of §8.2.2's
+    // silence gate, same construction as tests/decoder/test_stream_playback.cpp's
+    // own unit_pcm.
+    const auto unit_pcm = [&](std::span<const double> tones, int unit) {
+        const auto onset = static_cast<std::size_t>(kOnsetUnit) * kFrame + kOnsetSample;
+        std::vector<std::vector<float>> pcm(tones.size(), std::vector<float>(kFrame, 0.0F));
+        for (std::size_t ch = 0; ch < tones.size(); ++ch) {
+            for (std::size_t i = 0; i < kFrame; ++i) {
+                const auto n = static_cast<std::size_t>(unit) * kFrame + i;
+                if (n < onset) {
+                    continue;
+                }
+                const double t = static_cast<double>(n - onset) / 48000.0;
+                pcm[ch][i] =
+                    static_cast<float>(0.4 * std::cos(2.0 * std::numbers::pi * tones[ch] * t));
+            }
+        }
+        return pcm;
+    };
+    const auto views = [](const std::vector<std::vector<float>>& pcm) {
+        return std::vector<std::span<const float>>{pcm.begin(), pcm.end()};
+    };
+
+    // §E2.3.1.2 legacy core: an AC-3 5.1 bed, its own tones steady from
+    // kOnsetUnit and never holding, extended by a §3.7 transient-pre-noise
+    // Annex E 7.1-rear dependent - only it turns the tool on, so only it can
+    // hold the stream's very last unit back. When it does, the bed's already-
+    // decoded channels for that same access unit are cached alongside it
+    // (Eac3Decoder::decode_access_unit's own doc comment on the per-identity
+    // cache), so flush() releases both together - the exact shape the bug
+    // needed.
+    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+                                  .acmod = ac3::Acmod::k2_2,
+                                  .strmtyp = ac3::eac3::StreamType::kDependent,
+                                  .substreamid = 0,
+                                  .chanmap = cm::k71Rear,
+                                  .last_dependent = true,
+                                  .transient_prenoise = true}};
+    std::vector<std::byte> stream;
+    for (int unit = 0; unit < kUnits; ++unit) {
+        const auto bed_frame = core.encode_frame(views(unit_pcm(kBedTones, unit)));
+        REQUIRE(bed_frame.has_value());
+        stream.insert(stream.end(), bed_frame->begin(), bed_frame->end());
+        const auto dep_frame = rear.encode_frame(views(unit_pcm(kRearTones, unit)));
+        REQUIRE(dep_frame.has_value());
+        stream.insert(stream.end(), dep_frame->begin(), dep_frame->end());
+    }
+
+    const auto dir = scratch_dir();
+    const auto in_path = dir / "legacy_core_held.ec3";
+    {
+        std::ofstream out{in_path, std::ios::binary};
+        out.write(reinterpret_cast<const char*>(stream.data()),
+                  static_cast<std::streamsize>(stream.size()));
+        REQUIRE(out.good());
+    }
+    const auto wav_out = dir / "legacy_core_held.wav";
+    const auto log = dir / "legacy_core_held.log";
+    REQUIRE(run_cli("decode \"" + in_path.string() + "\" \"" + wav_out.string() + "\"", log) == 0);
+    INFO(read_log(log));
+
+    const auto decoded = ac3::io::read_wav(wav_out.string());
+    REQUIRE(decoded.has_value());
+    REQUIRE(decoded->channels.size() == 8);
+    // Every real unit made it out, including the one only flush() returns -
+    // a pre-fix build either dropped it (short by one unit) or grew some
+    // channels past others (ac3::io::read_wav itself enforces equal channel
+    // lengths, so a length mismatch here would already have failed the read).
+    CHECK(decoded->frame_count() == static_cast<std::size_t>(kUnits) * kFrame);
+
+    // Where C (bed-only, untouched by the dependent) and Ls/Lrs (both the
+    // dependent's, per k71Rear's own comment above) land in the WAV: the
+    // same ground-truth layout and wav_order permutation open_sink/
+    // held_back_unit compute from, not re-derived from the decode under test.
+    const auto layout =
+        cm::expand(static_cast<std::uint16_t>(cm::acmod_map(ac3::Acmod::k3_2, true) | cm::k71Rear));
+    const auto order =
+        ac3::plan::wav_order(std::span{layout.items}.first(static_cast<std::size_t>(layout.count)));
+    const auto wav_index_of = [&](cm::Location location) {
+        const auto slot = layout.index_of(location);
+        REQUIRE(slot >= 0);
+        const auto at = std::find(order.begin(), order.end(), static_cast<std::size_t>(slot));
+        REQUIRE(at != order.end());
+        return static_cast<std::size_t>(std::distance(order.begin(), at));
+    };
+    const auto c_wav = wav_index_of(cm::Location::kCentre);
+    const auto ls_wav = wav_index_of(cm::Location::kLeftSurround);
+    const auto lrs_wav = wav_index_of(cm::Location::kLrs);
+
+    // The power of one frequency in the LAST unit's window, whatever its
+    // phase - same DFT-single-bin technique as
+    // tests/decoder/test_stream_playback.cpp's own tone_power.
+    const auto tone_power = [&](std::span<const float> x, double hz) {
+        double re = 0.0;
+        double im = 0.0;
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            const double phase = 2.0 * std::numbers::pi * hz * static_cast<double>(i) / 48000.0;
+            re += static_cast<double>(x[i]) * std::cos(phase);
+            im += static_cast<double>(x[i]) * std::sin(phase);
+        }
+        return re * re + im * im;
+    };
+    const auto window = [&](std::size_t wav_channel) {
+        return std::span{decoded->channels[wav_channel]}.last(kFrame);
+    };
+    // C is the bed's alone - k71Rear never touches it - so it must still be
+    // kBedTones' own tone (index 1), proving the dependent's overwrite
+    // stayed inside its own locations rather than spreading further.
+    CHECK(tone_power(window(c_wav), kBedTones[1]) > 100.0 * tone_power(window(c_wav), kRearTones[0]));
+    // Ls and Lrs are both the dependent's (k71Rear's own comment: it
+    // REPLACES the bed's Ls/Rs, not merely adds Lrs/Rrs beside them), so both
+    // must carry the dependent's own tones - Ls index 0, Lrs index 2, per
+    // expand(k71Rear)'s documented order - not kBedTones' now-superseded Ls
+    // (index 3). The collision this regresses against left one of these two
+    // with the wrong tone, or the bed's stale one, once the flush placed two
+    // substreams' channels into overlapping WAV slots within the same call.
+    CHECK(tone_power(window(ls_wav), kRearTones[0]) > 100.0 * tone_power(window(ls_wav), kBedTones[3]));
+    CHECK(tone_power(window(lrs_wav), kRearTones[2]) > 100.0 * tone_power(window(lrs_wav), kBedTones[3]));
 }
 
 TEST_CASE("mode=reference is exactly the two transform off-switches together", "[cli][mode]") {
