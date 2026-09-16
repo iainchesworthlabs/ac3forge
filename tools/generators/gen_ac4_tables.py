@@ -646,7 +646,8 @@ def parse_annex_b(numbered, n_side_bits):
     check(sorted(offsets) == sorted(LENGTHS_48),
           f"Tables B.4 to B.7 give offsets for {sorted(offsets)}")
     check(sorted(offsets_96) == sorted(LENGTHS_96),
-          f"Tables B.4 to B.7 give 96 kHz offsets for {sorted(offsets_96)}, not {sorted(LENGTHS_96)}")
+          f"Tables B.4 to B.7 give 96 kHz offsets for {sorted(offsets_96)}, "
+          f"not {sorted(LENGTHS_96)}")
     check(sorted(offsets_192) == sorted(LENGTHS_192),
           f"Tables B.4 to B.7 give 192 kHz offsets for {sorted(offsets_192)}, "
           f"not {sorted(LENGTHS_192)}")
@@ -873,7 +874,8 @@ def emit_rate_offset_arrays(rate_label, lengths, num_sfb, offsets, offset_tables
         out.append("")
     out += [
         f"constexpr std::array<TransformLength, {len(lengths)}> kTransformLengths{prefix} = {{{{",
-        *(f"    {{{length}, {num_sfb[length]}, kSfbOffset{prefix}{length}}}," for length in lengths),
+        *(f"    {{{length}, {num_sfb[length]}, kSfbOffset{prefix}{length}}},"
+          for length in lengths),
         "}};",
         "",
     ]
