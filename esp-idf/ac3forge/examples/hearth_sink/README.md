@@ -483,6 +483,14 @@ connects to the board and gives it an SSID and a passphrase, which the board
 stores and joins. A board already on a network moves to another with
 `PUT /network`, at its next boot.
 
+A board that could not join its network at boot also listens: the network
+stored or built in may have gone, or its passphrase may be wrong. If a join
+over Improv fails, the client reports that it could not connect, and the board
+keeps listening for another network. A network that accepts the board but
+gives it no address within 30 s counts as a failed join. Once a join succeeds,
+the board advertises itself and starts the Sendspin player, as it would at
+boot. It does not restart.
+
 ### Pairing
 
 Every connection is encrypted with Noise (`KKpsk2`, ChaChaPoly by default;
