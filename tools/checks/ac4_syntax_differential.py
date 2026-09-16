@@ -124,6 +124,14 @@ class Bits:
     def put(self, value, n):
         self.bits.extend((value >> i) & 1 for i in range(n - 1, -1, -1))
 
+    def put_variable_bits(self, value, n_bits):
+        """Table 3: groups of n_bits, MSB group first, each with a
+        continuation bit. Only the values these frames need, so one group."""
+        if value >= (1 << n_bits):
+            raise ValueError(f'{value} needs more than one {n_bits}-bit group')
+        self.put(value, n_bits)
+        self.put(0, 1)
+
     def to_bytes(self):
         while len(self.bits) % 8:
             self.bits.append(0)
@@ -147,12 +155,20 @@ def synthetic(rng):
     presentation of one channel-coded substream group, an audio substream
     and a presentation substream of random bytes."""
     code, width = rng.choice(SYNTHETIC_MODES)
+    # A frame rate factor above 1 (Table 87) makes the substream info name a
+    # series of 2 or 4 consecutive substreams, each covering frame_len_base /
+    # factor samples and sharing the series' carried state. No encoder here
+    # writes one, so these frames are the only place the two transcriptions
+    # meet that path. Index 2 (25 fps, 2048 samples) is the one that takes
+    # both factors; index 13 keeps the unmultiplied shape.
+    factor = rng.choice((1, 1, 1, 2, 4))
+    frame_rate_index = 13 if factor == 1 else 2
     w = Bits()
     w.put(2, 2)                         # bitstream_version
     w.put(rng.randrange(1, 1024), 10)   # sequence_counter, not 0: no splice
     w.put(0, 1)                         # b_wait_frames
     w.put(1, 1)                         # fs_index
-    w.put(13, 4)                        # frame_rate_index
+    w.put(frame_rate_index, 4)          # frame_rate_index
     w.put(1, 1)                         # b_iframe_global
     w.put(1, 1)                         # b_single_presentation
     w.put(0, 1)                         # b_payload_base
@@ -161,6 +177,12 @@ def synthetic(rng):
     w.put(0b10, 2)                      # presentation_version 1
     w.put(rng.randrange(8), 3)          # mdcompat
     w.put(0, 1)                         # b_presentation_id
+    if factor == 1:
+        if frame_rate_index != 13:
+            w.put(0, 1)                 # b_multiplier
+    else:
+        w.put(1, 1)                     # b_multiplier
+        w.put(1 if factor == 4 else 0, 1)   # b_multiplier_is_4
     for value, n in ((0, 2), (0, 3), (0, 1), (0, 2), (0, 2)):
         w.put(value, n)                 # emdf_info() with nothing in it
     w.put(0, 1)                         # b_presentation_filter
@@ -169,7 +191,9 @@ def synthetic(rng):
     w.put(0, 1)                         # b_add_emdf_substreams
     w.put(rng.randrange(2), 1)          # b_alternative
     w.put(1, 1)                         # b_pres_ndot
-    w.put(1, 2)                         # substream_index 1
+    # The audio element names substreams 0..factor-1, so the presentation
+    # substream is the row after them.
+    w.put(factor, 2)                    # presentation substream_index
     for value in (1, 0, 1, 1):          # b_substreams_present, b_hsf_ext,
         w.put(value, 1)                 # b_single_substream, b_channel_coded
     w.put(code, width)                  # channel_mode
@@ -177,22 +201,32 @@ def synthetic(rng):
     w.put(0, 1)                         # b_bitrate_info
     if code in (0b1111010, 0b1111011, 0b1111100, 0b1111101):
         w.put(rng.randrange(2), 1)      # add_ch_base
-    w.put(1, 1)                         # b_audio_ndot
+    for i in range(factor):
+        # The series' own b_audio_ndot per instance: the first carries the
+        # I-frame, the rest do not, which is the shape 4.3.3.2.7 describes.
+        w.put(1 if i == 0 else 0, 1)
     w.put(0, 2)                         # substream_index 0
     w.put(0, 1)                         # b_content_type
-    audio_len = rng.randint(16, 900)
+    audio_lens = [rng.randint(16, 900) for _ in range(factor)]
     pres_len = rng.randint(4, 120)
-    w.put(2, 2)                         # n_substreams
-    w.put(0, 1)
-    w.put(audio_len, 10)
-    w.put(0, 1)
-    w.put(pres_len, 10)
-    audio = bytearray(rng.getrandbits(8) for _ in range(audio_len))
-    audio_size = rng.randint(max(1, audio_len // 2), audio_len - 2)
-    audio[0] = audio_size >> 7                  # audio_size_value, then
-    audio[1] = (audio_size << 1) & 0xFE         # b_more_bits 0
-    presentation = bytes(rng.getrandbits(8) for _ in range(pres_len))
-    return w.to_bytes() + bytes(audio) + presentation
+    sizes = [*audio_lens, pres_len]
+    if len(sizes) <= 3:
+        w.put(len(sizes), 2)            # n_substreams
+    else:
+        w.put(0, 2)                     # the escape: variable_bits(2) + 4
+        w.put_variable_bits(len(sizes) - 4, 2)
+    for size in sizes:
+        w.put(0, 1)                     # b_size_present, then a 10-bit size
+        w.put(size, 10)
+    payload = bytearray()
+    for audio_len in audio_lens:
+        audio = bytearray(rng.getrandbits(8) for _ in range(audio_len))
+        audio_size = rng.randint(max(1, audio_len // 2), audio_len - 2)
+        audio[0] = audio_size >> 7                  # audio_size_value, then
+        audio[1] = (audio_size << 1) & 0xFE         # b_more_bits 0
+        payload += audio
+    payload += bytes(rng.getrandbits(8) for _ in range(pres_len))
+    return w.to_bytes() + bytes(payload)
 
 
 def generate(streams, cases, n_mutations, n_synthetic, seed):

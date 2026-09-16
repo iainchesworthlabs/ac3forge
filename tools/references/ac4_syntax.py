@@ -2233,9 +2233,16 @@ def substream_roles(toc):
         idx = info.get('substream_index')
         if idx is None:
             return
-        for i, ndot in enumerate(info.get(frames_key) or [0]):
+        # 4.3.3.7.9: with a frame rate factor above 1 the element names a
+        # series of consecutive substreams. They are consecutive codec frames
+        # of one signal (4.3.3.5.3), and b_iframe_global answers to the first
+        # of them (4.3.3.2.7), so they share the first instance's carried
+        # state and each covers frame_len_base / factor samples.
+        frames = info.get(frames_key) or [0]
+        for i, ndot in enumerate(frames):
             put(idx + i, ('audio', {'info': info, 'sus_ver': sus_ver, 'kind': kind,
-                                    'b_iframe': ndot, 'owner': owner}))
+                                    'b_iframe': ndot, 'owner': owner,
+                                    'state_key': idx, 'frame_rate_factor': len(frames)}))
 
     pres = toc['presentations']
     for p in pres:
@@ -2387,14 +2394,22 @@ class StreamWalker:
                     b_assoc = b_dlg = 0
                     if a['sus_ver'] == 0 and owner is not None:
                         b_assoc, b_dlg = _derive_assoc_dialog(owner, info)
-                    st = self.state.setdefault(('audio', idx), {})
+                    # The slot is the series' first index, this substream's own
+                    # outside a frame-rate-multiplied series; every instance of
+                    # a series carries one state, and each covers its share of
+                    # the base frame (substream_roles()'s own comment).
+                    st = self.state.setdefault(('audio', a['state_key']), {})
                     # What a substream carries between frames belongs to its
                     # channel mode and substream version; a change of either
                     # starts it afresh.
                     if st.get('carried_for') != (info['ch_mode'], a['sus_ver']):
                         st.clear()
                         st['carried_for'] = (info['ch_mode'], a['sus_ver'])
-                    parse_ac4_substream(data, info, a['b_iframe'], flb, st, recs, b_alt,
+                    factor = a['frame_rate_factor']
+                    if factor <= 0 or flb % factor:
+                        raise SyntaxFail(f'frame_rate_factor {factor} does not divide '
+                                         f'frame_len_base {flb}')
+                    parse_ac4_substream(data, info, a['b_iframe'], flb // factor, st, recs, b_alt,
                                         a['sus_ver'], b_assoc, b_dlg)
                 elif kind in ('hsf_ext', 'oamd'):
                     raise Refused(f'{kind} substream')

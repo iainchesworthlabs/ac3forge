@@ -63,7 +63,22 @@ Later phases add the readings their processing needs.
   carry different ones, and no stream here does. With a factor above 1,
   `substream_index` names the first of that many consecutive substreams (Part 1 4.3.3.7.9, p. 79),
   and both transcriptions read each as an instance of its own, with that instance's `b_audio_ndot`.
-- **Evidence:** Streams for factor 1 (every stream here); Text above it.
+- **The series, not the instance, is what carries state.** 4.3.3.5.3, p. 78, has the substreams of a
+  series decoded consecutively, and 4.3.3.2.7, p. 74, fulfils `b_iframe_global` when the **first**
+  `b_iframe` of a series of 2 or 4 is true, so a stream whose I-frames set only that first flag is legal.
+  The configuration an I-frame of the series sends therefore serves the instances after it, and each
+  instance predicts from the one before: one slot of carried state per series, the first instance's. A
+  slot per instance leaves every instance after the first with a configuration no I-frame ever sent, and
+  every frame of such a stream fails as missing its I-frame.
+- **Each instance covers `frame_len_base / frame_rate_factor` samples.** Tables 83 and 87 leave no other
+  reading: every (index, factor) pair Table 87 permits lands on another index's listed length - 2048 at
+  25 fps doubled is 1024, the 50 fps entry; 1536 quadrupled is 384 - and the base length would put two
+  or four frames' samples into one frame period. The length sets transform lengths and the widths taken
+  from them (`max_sfb` among them), so an instance read at the base length is misread, not mis-scaled.
+- **Evidence:** Streams for factor 1 (every stream here); Text above it. The differential check's
+  synthetic frames carry factor 2 and 4, which is where the two transcriptions meet this path at all:
+  with one side reading an instance at the base length, that check reports the `max_sfb` width
+  differing.
 
 ### A frame rate the sample rate does not define
 

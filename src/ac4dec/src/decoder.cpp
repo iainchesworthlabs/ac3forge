@@ -127,6 +127,10 @@ struct Assignment {
     SubstreamContext audio{};
     std::optional<PresentationContext> presentation;
     std::optional<detail::SyntaxError> refusal;  // set to refuse without reading
+    // Which slot of carried state this substream reads and writes. It is the
+    // substream's own index except in a frame-rate-multiplied series, where
+    // every instance shares the first one's - see assign_instances().
+    int state_key = 0;
 };
 
 void refuse(std::map<int, Assignment>& out, int index, DecodeError error, std::string_view reason) {
@@ -142,14 +146,26 @@ void refuse(std::map<int, Assignment>& out, int index, DecodeError error, std::s
 // The context of the channel-coded substream instance `index` of `chan`.
 // Refuses without reading what the syntax cannot follow: a reserved
 // frame_rate_index or channel_mode.
-void assign_audio(const Toc& toc, const ChannelSubstreamInfo& chan, int index, bool b_iframe, int presentation_version,
-                  int sus_ver, bool b_associated, bool b_dialog, bool b_alternative,
-                  std::map<int, Assignment>& out) {
+void assign_audio(const Toc& toc, const ChannelSubstreamInfo& chan, int index, int state_key, int frame_rate_factor,
+                  bool b_iframe, int presentation_version, int sus_ver, bool b_associated, bool b_dialog,
+                  bool b_alternative, std::map<int, Assignment>& out) {
     if (out.contains(index)) {
         return;
     }
-    if (detail::frame_len_base(toc.frame_rate_index, toc.sample_rate_hz) == 0) {
+    const int base = detail::frame_len_base(toc.frame_rate_index, toc.sample_rate_hz);
+    if (base == 0) {
         refuse(out, index, DecodeError::kInvalidStream, "a reserved frame_rate_index");
+        return;
+    }
+    // Part 1 Tables 83 and 87: an instance of a frame-rate-multiplied series
+    // covers its share of the base frame, and every (frame_rate_index, factor)
+    // pair Table 87 permits lands on another index's listed length - 2048 at 25
+    // fps doubled is 1024, the 50 fps entry. The length sets transform lengths
+    // and the widths derived from them, so an instance read at the base length
+    // is misread, not merely mis-scaled.
+    if (frame_rate_factor <= 0 || base % frame_rate_factor != 0) {
+        refuse(out, index, DecodeError::kInvalidStream,
+               "a frame rate factor the frame length does not divide by");
         return;
     }
     if (!chan.ch_mode) {
@@ -158,12 +174,13 @@ void assign_audio(const Toc& toc, const ChannelSubstreamInfo& chan, int index, b
     }
     Assignment a;
     a.kind = SubstreamReport::Kind::kAudio;
+    a.state_key = state_key;
     SubstreamContext& ctx = a.audio;
     ctx.bitstream_version = toc.bitstream_version;
     ctx.presentation_version = presentation_version;
     ctx.fs_index = toc.sample_rate_hz == 44100 ? 0 : 1;
     ctx.frame_rate_index = toc.frame_rate_index;
-    ctx.frame_len_base = detail::frame_len_base(toc.frame_rate_index, toc.sample_rate_hz);
+    ctx.frame_len_base = base / frame_rate_factor;
     ctx.b_iframe = b_iframe;
     ctx.sus_ver = sus_ver;
     ctx.ch_mode = *chan.ch_mode;
@@ -183,6 +200,15 @@ void assign_audio(const Toc& toc, const ChannelSubstreamInfo& chan, int index, b
 // Part 1 4.3.3.7.9: with a frame_rate_factor above 1, substream_index names
 // the first of that many consecutive substreams, one per instance, each with
 // its own b_iframe or b_audio_ndot.
+//
+// The series is one audio signal cut into consecutive codec frames - 4.3.3.5.3
+// says each of those substreams is decoded consecutively, and 4.3.3.2.7 makes
+// b_iframe_global true when the FIRST b_iframe of a series is - so what an
+// I-frame of the series configures serves the instances after it, and each
+// instance predicts from the one before. They therefore share one slot of
+// carried state, the first instance's. A slot per instance leaves instance 1
+// with no configuration any I-frame ever sent, so every frame of a legal
+// stream whose I-frames set only the first flag fails as missing its I-frame.
 void assign_instances(const Toc& toc, const ChannelSubstreamInfo& chan, int presentation_version, int sus_ver,
                       bool b_associated, bool b_dialog, bool b_alternative, std::map<int, Assignment>& out) {
     if (!chan.substream_index) {
@@ -200,8 +226,9 @@ void assign_instances(const Toc& toc, const ChannelSubstreamInfo& chan, int pres
             break;
         }
         const bool b_iframe = !chan.b_iframe.empty() && chan.b_iframe[i];
-        assign_audio(toc, chan, static_cast<int>(index), b_iframe, presentation_version, sus_ver, b_associated,
-                     b_dialog, b_alternative, out);
+        assign_audio(toc, chan, static_cast<int>(index), static_cast<int>(first),
+                     static_cast<int>(instances), b_iframe, presentation_version, sus_ver, b_associated, b_dialog,
+                     b_alternative, out);
     }
 }
 
@@ -394,8 +421,10 @@ std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte
             case SubstreamReport::Kind::kAudio: {
                 // What one substream carries from frame to frame belongs to
                 // its channel mode and substream syntax version; a change of
-                // either starts it afresh.
-                AudioSubstreamState& state = impl_->audio[index];
+                // either starts it afresh. The slot is the series' first
+                // index, which is this substream's own outside a frame-rate-
+                // multiplied series (assign_instances()).
+                AudioSubstreamState& state = impl_->audio[assignment.state_key];
                 if (state.ch_mode != assignment.audio.ch_mode || state.sus_ver != assignment.audio.sus_ver) {
                     state = AudioSubstreamState{};
                     state.ch_mode = assignment.audio.ch_mode;
