@@ -1173,6 +1173,24 @@ and release packaging.
   is now synced to the host as it is written; on a board, a `current_state` request is
   answered in 0.5 s, where before its answer arrived 10 s later with the next request's
   output.
+- **A Hearth sink's page could reach its Sendspin player before the player had started,
+  and after a failed start had freed it.** `hearth_sink` set two global pointers to the
+  player and its server as it made them, on the task that starts them. The control
+  surface's task read the same pointers for `GET /status`, `PUT /layout`, `PUT /name`,
+  `/wiring`, `/slot-width` and `POST /pairing`, so a request could find a server that had
+  not started yet. A start that failed then freed both, whether or not a request was
+  still using them. A board that joins a network over Improv starts its player just
+  after Improv gives the client the page's address, so a browser that opens the page at
+  once can send requests during the start. The player and its server now reach the other
+  tasks together, once both have started, and nothing from a failed start reaches them.
+  `/status` has `"sendspin": null` until then. Two requests sent during the start used to
+  be lost, and now are not:
+  - A `PUT /layout` sent before the player had started reached the next control-surface
+    play only, and the player started with the layout from before. The player now starts
+    with the new layout, or receives it as its start completes.
+  - A `PUT /name`, `/wiring` or `/slot-width` sent while the player was starting could be
+    lost: the server started with the board's old description, which is what servers
+    read in its hello. The server now gets the new one.
 
 **Codec correctness**
 

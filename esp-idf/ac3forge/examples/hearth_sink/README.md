@@ -564,6 +564,12 @@ and each output's peak and RMS over the last 100 ms. The same levels and
 counters reach the server in the extension role's `client/state`, up to ten
 times a second while a stream plays.
 
+The object is `null` until the player has started, which it has only once its
+WebSocket server is listening. A board that joins a network over Improv starts
+its player just as the client is given the page's address, so a page opened at
+once can see `null` for a moment. A `PUT /layout`, `/name`, `/wiring` or
+`/slot-width` sent before the player has started still reaches it.
+
 When a stream ends, the console prints its figures and each output's RMS
 over the whole stream:
 
