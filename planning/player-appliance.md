@@ -725,8 +725,7 @@ documentation. It must answer, in this order, the questions someone actually has
 - `docs/verification.md`: the per-platform hardware table gains the appliance's own rows.
 - `docs/threat-model.md`: a section on the listener — what it accepts, from where, and what it
   never does.
-- The proposed ROADMAP entry is in [The roadmap entry](#the-roadmap-entry) below, as text, not
-  as an edit.
+- The historical roadmap proposal is in [Roadmap status (historical)](#roadmap-status-historical) below.
 
 ## Localisation and accessibility
 
@@ -906,31 +905,27 @@ And what it explicitly does **not** get: boot integrity. The Raspberry Pi 4 has 
 worth the name, so signing an image verifies the *download*, never the *boot*. Anyone who can
 write to the SD card owns the appliance. That belongs on the install page in those words.
 
-## The roadmap entry
+## Roadmap status (historical)
 
-`ROADMAP.md` is not edited by this plan, and no roadmap ID is allocated here. The entry below is
-proposed text, in the file's own form, with a `CR`-style code for a new member (the recasting
-plan's Phase 5 established `CR` for Crucible; a fourth member takes the next such code).
+This page's original form was **replaced** on 2026-09-15 by
+[hearth-reference-player.md](hearth-reference-player.md). The proposed `PLn` appliance entry
+below was never adopted. Current Hearth status:
+[ROADMAP.md](../ROADMAP.md) and [SUPERSEDED.md](SUPERSEDED.md).
 
-> **PLn (XL, Hearth)** — A playback appliance: the decode and passthrough path as an always-on
-> headless product, with a local control page, feeding an AV receiver over HDMI or S/PDIF.
-> Linux first, on the two backends confirmed on real hardware.
->
-> <details markdown="1">
-> <summary>Full record</summary>
->
-> Planned in `docs/family/player-appliance.md`. Builds on UX1's transport, UX9's sink-following
-> and DR9's Pi/ALSA and Pi/PipeWire hardware confirmations. Six things stand between UX9 and
-> carrying it, listed on that page: the default endpoint is never probed, PipeWire has no
-> capability read, `play` never re-follows, the transcode leg goes through a temp file, EDID is
-> read once, and `kNoEdid` and `kNoBackend` reach the user as one message. Proposed as a fourth
-> family member, which supersedes the recasting plan's "a fourth member" exclusion; the name is
-> undecided.
->
-> </details>
+<details markdown="1">
+<summary>Original proposed entry (2026-09-07, obsolete)</summary>
 
-Two existing entries would gain a pointer rather than change: **UX9**, whose six gaps this
-depends on, and **DR9**, whose Linux rows are the evidence the platform choice rests on.
+Proposed text for the old nine-theme roadmap (never adopted):
+
+> A playback appliance: the decode and passthrough path as an always-on headless product, with a
+> local control page, feeding an AV receiver over HDMI or S/PDIF. Linux first, on the two backends
+> confirmed on real hardware.
+
+It depended on sink-following (`play`) gaps since closed in UX9 and on DR9 Linux hardware rows.
+The desktop + Sendspin form in [hearth-reference-player.md](hearth-reference-player.md) replaced
+this entirely.
+
+</details>
 
 ## Phases
 
@@ -1141,7 +1136,8 @@ needs none, which is the point.
 - **A web framework, a webfont, or any new vcpkg dependency.**
 - **Splitting `ac3tests`**, exporting `src/audio`, or moving any existing directory.
 - **Renaming any published identifier**, including the ones this member would add.
-- **Renumbering roadmap IDs**, or editing `ROADMAP.md` or `CHANGELOG.md` from this plan.
+- **Renumbering the roadmap or editing `ROADMAP.md` from this plan.** This page is a superseded
+  record; current status is in [ROADMAP.md](../ROADMAP.md).
 - **A mark of the project's own.** The icon gap is recorded, not solved.
 
 ## Decisions

@@ -305,6 +305,12 @@ Windows demo (`apps/windows/`)"), `docs/library/muxing-and-sinks.md:698` (which 
 
 ## The roadmap
 
+!!! warning "Historical — superseded 2026-09-17"
+    This section planned the old nine-theme ID model (`EQ`, `UX`, `AP10`, …). The roadmap was
+    rebuilt as a slim status board with plain-English names and no new numeric IDs. Treat
+    [ROADMAP.md](../ROADMAP.md) and [planning/SUPERSEDED.md](SUPERSEDED.md) as current; keep this
+    section only for recasting phase context.
+
 `ROADMAP.md`'s nine themes are library themes except UX and DR, which hold Forge, Crucible, WASM
 and Shield items under one code each. IDs are load-bearing: 389 citations in
 src/apps/tests/tools/cmake/.github, 99 in docs, 11 in CHANGELOG.md, and the header (lines 6-8)
@@ -608,7 +614,8 @@ it touches a `.cmake` or a `.qml` it pays for eleven legs.
   `platforms/windows-demo.md` and `platforms/windows-driver-acx.md`.
 - **Changing the Android applicationId** or the GUI's and Crucible's QSettings organisation and
   application names.
-- **Renumbering roadmap IDs** or splitting the roadmap into files.
+- **Splitting or simplifying the roadmap.** Done 2026-09-17 — see [ROADMAP.md](../ROADMAP.md) and
+  [planning/roadmap-inventory.md](roadmap-inventory.md).
 - **The driver's identity** before signing; the endpoint string after it.
 - **A fourth member.** The Shield demo and the browser demos stay demos of the library. *Superseded
   2026-09-07 by [the player-appliance plan](player-appliance.md#which-member-it-belongs-to): Hearth

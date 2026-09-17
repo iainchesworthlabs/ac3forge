@@ -737,35 +737,17 @@ rather than in this one.
 A batch manifest for a whole delivery; a signed report; presets that need a document nobody has
 read yet; and the icon work identity assets would need under option C.
 
-## The proposed ROADMAP entry
+## Roadmap status
 
-`ROADMAP.md` is not edited by this plan, and no roadmap ID is allocated here. The natural theme is **IO**
-("Streams in and out", member "the library, Forge"), whose last three items are IO10, IO11 and
-IO12, all QC and loudness; IO13 is the next free number. Proposed text, in the theme's own format:
+Listed in [ROADMAP.md](../ROADMAP.md) Proposed as **QC delivery report file**. Summary:
 
-> **IO13 (M, Forge)** — Delivery QC reports — `ac3cli qc` writes a machine-readable
-> `ac3forge.qc/1` document and a self-contained HTML report, and gates layout, sample rate, codec,
-> object count and stream integrity against what was ordered.
->
-> C2 gave `qc` its measurement, IO10 and IO11 its rendered-layout algorithm and its cited presets,
-> IO12 its object re-render, and C3 the same in a window — but nothing wrote a file. The
-> measurement result existed twice, as `apps/cli`'s `QcResult` and `apps/gui`'s
-> `qc_detail::RawResult`, so a third surface would have been a third copy; it is now
-> `ac3::meta::QcReport` and both surfaces read it. `QcExpectations` adds the conformance half the
-> loudness gates never covered: a delivery is rejected for a wrong layout more often than for a
-> wrong loudness, and the layout, sample rate, codec, OAMD object count and bed configuration were
-> all already computed and never compared. The JSON document follows `ac3forge.probe/1`'s contract
-> unchanged — add-only within a version, a member that does not apply present and null. The HTML
-> report is one file with no external resource, because a delivery report is read offline; the PDF
-> in the original ask is the browser's print, and the alternative — a PDF library, a vcpkg port, a
-> notices fragment and a second layout engine — is recorded in `docs/forge/qc-report.md` with the
-> licence check that ruled out PoDoFo's LGPL-2.1. `ac3/quality/distortion.hpp` and `perceptual.hpp`
-> are deliberately absent: both are encoder in-loop measurements over coefficients a delivered file
-> no longer carries. `kExitQcGate` is unchanged, and a conformance failure returns it.
+> `ac3cli qc` writes a machine-readable `ac3forge.qc/1` document and a self-contained HTML report,
+> gating layout, sample rate, codec, object count and stream integrity against what was ordered.
+> Builds on shipped `qc` measurement (IO10/IO11/IO12 scope); needs shared `ac3::meta::QcReport`
+> instead of duplicating CLI and GUI result structs.
 
-If decision 1 takes option C, this becomes a **UX** item instead — UX is the Applications theme and
-holds Forge and Crucible items — and a new member would need its own theme code the way Crucible
-took `CR`.
+Full phase plan stays in this file. If decision 1 took option C (a fourth named member), the
+roadmap row would move under that product name — still without a numeric ID.
 
 ## What cannot be verified, and why
 
@@ -820,8 +802,8 @@ and should not be batched with unrelated prose.
   schema's top level and should be designed once, later.
 - **Signing the report.** Downstream of DR6 and of `src/signing`.
 - **AC-4.** `src/ac4` has no decoder, so there is nothing to meter.
-- **Editing `CHANGELOG.md` or `ROADMAP.md`.** The roadmap entry is
-  [proposed as text](#the-proposed-roadmap-entry).
+- **Editing the roadmap from this plan.** Status summary is in [Roadmap status](#roadmap-status);
+  [ROADMAP.md](../ROADMAP.md) carries the one-line entry.
 - **Moving any page** under `docs/`.
 
 ## Decisions
