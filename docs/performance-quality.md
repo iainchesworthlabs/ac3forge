@@ -1,12 +1,11 @@
 # Performance & quality
 
-This project measures itself on every merge and keeps the numbers forever. This
-page is the front door to those measurements: what they mean in plain terms,
-what they say right now, and which page to open for detail.
+CI records performance, quality, and memory measurements after merges. This page
+shows the latest values from `main`, explains each measure, and links to the
+append-only histories.
 
-If you have never read a codec benchmark before, start with
-[How to read these numbers](#how-to-read-these-numbers) at the bottom — it is
-written for exactly that.
+New to codec benchmarks: start with
+[How to read these numbers](#how-to-read-these-numbers).
 
 <div id="pq-status" class="pq-grid">
   <p class="pq-loading">Loading the latest measurements from <code>main</code>…</p>
@@ -16,10 +15,8 @@ written for exactly that.
 
 ## The three questions
 
-Everything measured here is in service of three questions. They pull against
-each other — the settings that make a stream sound better generally make it
-slower to produce — so each is tracked separately and none is allowed to quietly
-pay for another.
+The measurements answer three questions. Speed, audio quality, and memory use
+are tracked separately because a change can improve one while making another worse.
 
 ### Is it fast enough?
 
@@ -37,7 +34,7 @@ kernel, and alongside memory use.
 
 ### Does it sound right?
 
-Two different kinds of answer, because neither alone is enough.
+Two measures are used.
 
 **SNR** (signal-to-noise ratio, in dB) compares the decoded waveform against the
 original sample by sample. Higher is better. It is objective and unforgiving,
@@ -46,10 +43,9 @@ but it punishes techniques that are *designed* to discard inaudible detail, so a
 low SNR is not automatically a quality problem.
 
 !!! note "What the SNR number on this page is actually measuring"
-    The **Decode accuracy** card above is not a measure of how good this codec
-    sounds. It is a measure of how closely this project's decoder agrees with
-    an independent one (FFmpeg's) given the *same* bitstream — including
-    bitstreams produced by Dolby's own encoder, which neither decoder controls.
+    The **Decode accuracy** card compares this decoder with FFmpeg's decoder for
+    the same bitstream. It does not measure perceived audio quality. The inputs
+    include bitstreams produced by Dolby's encoder.
 
     That distinction matters for reading the number. Perfect agreement would be
     limited only by floating-point noise, and on the channels that carry most
@@ -89,8 +85,7 @@ long content and on small devices even when it is fast.
 
 ## What happens when a number moves
 
-Not every change is a regression, so the thresholds are tiered and only the
-serious tier blocks a merge:
+Thresholds separate expected run-to-run variation from regressions:
 
 | Tier | What it means | What happens |
 | --- | --- | --- |

@@ -29,10 +29,10 @@ standards in C++23, and the applications built on it.
 
 | Component | What it is | Docs |
 |---|---|---|
-| **The library** — `ac3::forge` | The codec: encodes and decodes AC-3 and E-AC-3 — every coding mode, layout and Annex E tool, plus Atmos objects via JOC — with loudness metering and QC gates built in, MKV/MP4/MPEG-TS muxing, IAB and ADM/BW64 reading, IAMF writing, an AC-4 inspector, live capture/passthrough and object signing. C, Python, Rust and WebAssembly bindings. | [docs/library/](docs/library/index.md), with the full [capability tables](docs/library/capabilities.md) — packages, source builds and `pip install ac3forge` covered there |
-| **Forge** — `ac3cli` + `ac3gui` | The tooling over the library: a forty-one-command CLI and a Qt Quick workbench with a plan view for placing objects and channel-level metering. One release download carries both. | [docs/forge/](docs/forge/index.md) for installing it, then the [CLI](docs/forge/cli/index.md) and [GUI](docs/forge/gui/index.md) guides |
-| **Crucible** — `ac3crucible` | A desktop application that makes every application playing sound an Atmos object the listener places in a room, streamed live over HDMI or decoded to whatever the endpoint takes. Ships its own silent virtual output device on Windows and taps PipeWire on Linux. A macOS platform half builds and is tested in CI; nobody has launched it on a Mac, and its Core Audio tap has never captured anything. | [docs/crucible/](docs/crucible/index.md), [install and first run](docs/crucible/install.md) |
-| **Hearth** | The playback member: turns a stream into sound in a room. Today that's an embedded player, real and hardware-verified on an ESP32-S3 (an ESP32-C3 and an ESPHome component beside it). A cross-platform appliance daemon for Linux, Windows and macOS is a fully decided plan with no code behind it yet. | [docs/hearth/](docs/hearth/index.md) |
+| **The library** — `ac3::forge` | Encodes and decodes AC-3 and E-AC-3, including Atmos objects through JOC. Includes container, metadata, quality, and platform-audio modules, with C, Python, Rust, and WebAssembly interfaces. | [Library](docs/library/index.md), [capabilities](docs/library/capabilities.md) |
+| **Forge** — `ac3cli` + `ac3gui` | CLI and GUI for encoding, decoding, inspection, quality checks, and live audio. | [Forge](docs/forge/index.md), [CLI](docs/forge/cli/index.md), [GUI](docs/forge/gui/index.md) |
+| **Crucible** — `ac3crucible` | Captures desktop applications separately and positions them in an Atmos scene. Runs on Windows and Linux; macOS code builds in CI but has not run with audio hardware. | [Crucible](docs/crucible/index.md), [install](docs/crucible/install.md) |
+| **Hearth** | Plays streams through speakers or a receiver. The ESP32-S3 network player works on hardware; the desktop player's engine and test tools are in development. | [Hearth](docs/hearth/index.md) |
 
 Nothing here links FFmpeg or any other codec library. The FFmpeg command-line tools are used
 during development as an independent decoder to check output against; the build does not
@@ -62,18 +62,17 @@ demonstrate the library rather than being products of their own.
 
 ## Limits
 
-**What the codec will not do.** Object streams from here are spec-correct but won't decode as
-*objects* in Dolby's own decoder, which gates that on a keyed authenticity tag this project ships
-no key for — an operator with one can [sign](docs/library/signing.md) a stream; without one it
-plays as its 5.1 bed. A licensing gate, not a conformance failure. AC-3 has no VBR — its frame
-size indexes a fixed table rather than stating a word count — so it stays CBR; E-AC-3 supports
-both.
+**Object playback in Dolby decoders.** Dolby's decoder requires a keyed authenticity tag before
+it reconstructs objects. This project does not ship a key. An operator with a key can
+[sign](docs/library/signing.md) a stream; otherwise Dolby's decoder plays its 5.1 bed.
 
-**Where independent checking runs out.** Enhanced coupling, transient pre-noise processing and
-JOC object decode have no external decode oracle, so they're scored through the in-repo decoder
-rather than FFmpeg — see
-[where the oracles don't reach](docs/verification.md#where-the-oracles-dont-reach). No listening
-test has been run anywhere; every quality number published here is a waveform metric.
+**Bit-rate modes.** AC-3 is constant bit rate because its frame size is selected from a fixed
+table. E-AC-3 supports constant and variable bit rate.
+
+**Limits of independent checking.** Enhanced coupling, transient pre-noise processing, and JOC
+object decoding have no external reference decoder. These paths are scored with the in-repo
+decoder. See [where the oracles do not reach](docs/verification.md#where-the-oracles-dont-reach).
+No listening panel has been run; published quality values are waveform or model-based measures.
 
 [Validation](docs/verification.md) covers both in full: what object reconstruction means in
 practice, and which streams FFmpeg can check independently versus only the in-repo decoder.
@@ -91,9 +90,10 @@ Every target builds and tests green in CI. Beyond that:
 | macOS arm64 / Intel | Library, `ac3cli`, `ac3gui`; Crucible compiles | — | ✗⁴ |
 | Android (NVIDIA Shield) | Shield Atmos Demo only, sideload-only | — | ✅⁵ |
 | WebAssembly | Decode and encode in a browser page | — | ✅⁶ |
-| ESP32-S3 | Hearth (two example players); decode (every layout/tool, Atmos objects) or encode (2/0, 5.1); reusable ESP-IDF component | ✅ correct | ✅⁷ |
+| ESP32-S3 | Hearth (`hearth_sink` Sendspin player, `i2s_player`); decode (every layout/tool, Atmos objects) or encode (2/0, 5.1); reusable ESP-IDF component | ✅ correct | ✅⁷ |
 | ESP32-C3 | Decode only, fixed-point tier (no FPU), same component | ✅ correct | —⁸ |
-| Bare metal (`arm-none-eabi`) | Decode or encode, `ac3::forge_minimal` | ✅ correct | —⁹ |
+| ESP32-C6 | Decode, fixed-point tier, same component; timed on a board with and without Wi-Fi | ✅ correct | ✅⁹ |
+| Bare metal (`arm-none-eabi`) | Decode or encode, `ac3::forge_minimal` | ✅ correct | —¹⁰ |
 
 1. Capture, monitor playback, `spatial` rendering and exclusive-mode IEC 61937 passthrough
    (AC-3, E-AC-3 and signed Atmos) are all confirmed, an Onkyo TX-RZ740 over HDMI.
@@ -107,7 +107,10 @@ Every target builds and tests green in CI. Beyond that:
    [the capability table](docs/platforms/bare-metal/esp32-s3.md#what-the-part-can-and-cannot-do).
 8. Correct under `qemu-riscv32`: twelve of fourteen fixtures, byte-identical to the x86 host and
    Cortex-M3 leg; no board has run it, and the two 7.1.4 rows don't fit in its SRAM.
-9. Correct under QEMU's `mps2-an385`; no real silicon.
+9. All fourteen fixtures on a board, PCM identical to the other fixed-tier legs. With the
+   network up, AC-3 and E-AC-3 5.1 decode in real time; E-AC-3 7.1 does not. QEMU does not
+   emulate the part. [ESP32-C6](docs/platforms/bare-metal/esp32-c6.md).
+10. Correct under QEMU's `mps2-an385`; no real silicon.
 
 What each can encode and decode is the same everywhere — see
 [docs/library/capabilities.md](docs/library/capabilities.md). Which page applies to what you
@@ -187,6 +190,8 @@ src/ac3adm/     ac3adm::ac3adm — BW64/RF64 + Audio Definition Model reader (op
 src/ac3iab/     ac3iab::ac3iab — a standalone SMPTE ST 2098-2 (IAB) bitstream reader, codec-blind
 src/ac4/        ac4::ac4 — a standalone AC-4 TOC/presentation/substream inspector, codec-blind
 src/iamf/       iamf::iamf — a standalone IAMF v1.1 OBU/ISOBMFF writer, fed from an E-AC-3 decode
+src/sendspin/   ac3::sendspin — Sendspin player and server for Hearth (desktop tools and the
+                ESP32 sink); built with the hearth feature, not as part of the codec library
 python/         the ac3forge PyPI package — pybind11 bindings straight onto ac3::forge
 js/             ac3forge-wasm-decoder — the npm streaming decoder package (AudioWorklet + Worker)
 rust/           ac3forge-sys and ac3forge — Rust crates over the C API in src/capi
@@ -211,11 +216,16 @@ apps/crucible/  AC3Forge Crucible: the engine, the ac3crucible-run runner, the a
 apps/windows/   the Windows-only pieces of Crucible: the Ac3ForgeNullSink driver (MS-PL,
                 separately licensed) and the VMware guest it is verified in
 
+# Hearth — ESP32-S3 player; desktop engine in progress
+apps/hearth/    ac3hearth engine (no window yet), ac3hearth-testsink and ac3hearth-testserver
+esp-idf/        ESP-IDF component and examples: hearth_sink (Sendspin player) and i2s_player
+esphome/        ESPHome external component wrapping the ESP32-S3 decoder; not a media_player yet
+
 # beside those — demonstrations of the library, not products of their own
 apps/android/   Shield Atmos Demo — Android TV app, live Atmos object motion over HDMI
 apps/wasm/      the browser demos, decode and encode, over ac3::forge compiled to WASM
 
-# shared by all three, owned by none of them
+# shared, owned by none of them
 cmake/          toolchains, Qt/CPack/sanitizer/coverage modules, vcpkg triplet overlays
 assets/         the app-icon source: one procedural mark, plus a hand-authored SVG for the
                 WASM favicon; every .ico/.icns/.png/mipmap in the tree is generated from it
@@ -240,39 +250,20 @@ generators in `tools/`.
 
 ## Documentation
 
-[iainchesworthlabs.github.io/ac3forge](https://iainchesworthlabs.github.io/ac3forge/) is built
-from `docs/` with mkdocs. Locally, the same pages —
-[CONTRIBUTING.md](CONTRIBUTING.md#documentation) settles which page wins when two disagree, and
-[docs/library/capabilities.md](docs/library/capabilities.md) and
-[docs/verification.md](docs/verification.md) are the authority on what the project can and
-cannot do:
+The published site is
+[iainchesworthlabs.github.io/ac3forge](https://iainchesworthlabs.github.io/ac3forge/), built from
+`docs/` with MkDocs.
 
-| Document | Contents |
-|---|---|
-| [docs/quickstart.md](docs/quickstart.md) | Developer quick start: clone to first encode |
-| [docs/building.md](docs/building.md) | Building from a clean clone, including the failures you will hit |
-| [docs/platforms/](docs/platforms/windows.md) | Windows / Linux / Raspberry Pi / macOS specifics: toolchains, audio backends, packaging |
-| [docs/platforms/android.md](docs/platforms/android.md) | Shield Atmos Demo: the Android TV app, HDMI passthrough, controller input, screenshots |
-| [docs/crucible/](docs/crucible/index.md) | AC3Forge Crucible: every application on the desk as an Atmos object; the guide, install, signal path and troubleshooting |
-| [docs/platforms/windows-demo.md](docs/platforms/windows-demo.md) | The Windows demo Crucible grew from: design, phase record and what is verified |
-| [docs/concepts/](docs/concepts/index.md) | Beginner's guide to AC-3, E-AC-3, Atmos and JOC, with diagrams |
-| [docs/library/capabilities.md](docs/library/capabilities.md) | The capability and limitation tables: coding modes, layouts, rates, metadata fields, spec citations |
-| [docs/library/](docs/library/index.md) | The public API, with compiled examples |
-| [docs/library/examples.md](docs/library/examples.md) | Index of the example programs the library pages excerpt |
-| [docs/forge/](docs/forge/index.md) | Forge: what the `ac3cli` + `ac3gui` pair is, and the three ways to install it |
-| [docs/forge/cli/](docs/forge/cli/index.md) | The `ac3cli` reference: every command, the option grammars |
-| [docs/forge/gui/](docs/forge/gui/index.md) | Step-by-step `ac3gui` guide, with screenshots |
-| [docs/hearth/](docs/hearth/index.md) | Hearth: the embedded player today, and the planned cross-platform appliance's design record |
-| [docs/platforms/bare-metal/](docs/platforms/bare-metal/index.md) | Cortex-M3, ESP32-S3, ESP32-C3 and ESPHome: the bare-metal targets, one page each |
-| [docs/verification.md](docs/verification.md) | How output is checked, and where checking runs out |
-| [docs/threat-model.md](docs/threat-model.md) | Untrusted input: the trust boundary, memory-safety posture and resource limits |
-| [docs/conformance-vectors.md](docs/conformance-vectors.md) | The published stream set other decoders can test against |
-| [docs/history.md](docs/history.md) | How the implementation was built, milestone by milestone |
-| [ROADMAP.md](ROADMAP.md) | Candidate ideas, checked off as they land |
-| [docs/quality-trend.md](docs/quality-trend.md) | Gold-reference SNR history by commit — with [performance](docs/performance-trend.md) and [tool-comparison](docs/tool-comparison-trend.md) siblings |
-| [docs/releasing.md](docs/releasing.md) | Cutting a release: versioning, the tag-triggered workflow, GPG signing |
-| [fuzz/README.md](fuzz/README.md) | The libFuzzer harnesses: what they cover, how to run them locally |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Conventions, and the validation discipline |
+- [Quick start](docs/quickstart.md) — install Forge, build from source, or flash a Hearth sink.
+- [Concepts](docs/concepts/index.md) — AC-3, E-AC-3, Atmos, and JOC without assumed domain knowledge.
+- [Platforms](docs/platforms/index.md) — operating systems, boards, browser support, and evidence.
+- [Capabilities](docs/library/capabilities.md) — the authority for supported codec features and limits.
+- [Validation](docs/verification.md) — checks, independent references, and coverage gaps.
+- [Performance and quality](docs/performance-quality.md) — current measures and append-only trend histories.
+- [Contributing](CONTRIBUTING.md) — repository structure, documentation ownership, and validation requirements.
+
+Product documentation starts at [Forge](docs/forge/index.md),
+[Crucible](docs/crucible/index.md), and [Hearth](docs/hearth/index.md).
 
 ## Licence
 

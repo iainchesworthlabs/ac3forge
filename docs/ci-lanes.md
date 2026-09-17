@@ -43,7 +43,7 @@ job-level conditions.
 |---|---|
 | `android` | `build-android` |
 | `wasm` | `build-wasm`, `device-ui` |
-| `esp` | `build-esp32s3`, `build-esp32c3`, `build-footprint`, `ci.yml`'s `esp-component` job-call (`.github/workflows/esp-component.yml`: `pack`, `esphome`) |
+| `esp` | `build-esp32s3`, `hearth-esp32s3` (Hearth Sendspin sink under QEMU), `build-esp32c3` (also builds the ESP32-C6 probe), `build-footprint`, `ci.yml`'s `esp-component` job-call (`.github/workflows/esp-component.yml`: `pack`, `esphome`) |
 | `rust` | `build-rust` |
 | `windows` | `build-windows` (windows-msvc, windows-llvm, windows-msvc-arm64), `windows-driver` |
 | `linux` | `build-linux` (linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan), `linux-appimage` |
@@ -52,7 +52,7 @@ job-level conditions.
 | `python` | `ci.yml`'s `wheels` job-call (`.github/workflows/wheels.yml`: `build`, `python-coverage`) - see "The fold-satellites phase" below |
 | `npm` | `ci.yml`'s `npm` job-call (`.github/workflows/npm.yml`: `build`) - see "The fold-satellites phase" below |
 
-An Android-only PR today skips `build-wasm`, `build-esp32s3`/`c3`,
+An Android-only PR today skips `build-wasm`, `build-esp32s3`/`hearth-esp32s3`/`c3`,
 `build-footprint`, `build-rust`, `build-windows`, `windows-driver`,
 `build-linux`, `linux-appimage`, `build-macos` and `package-macos-universal`
 - the full win the plan's phase 3 example described, not just the subset the

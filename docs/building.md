@@ -7,14 +7,14 @@ Every command here has been run on the configuration described under
 
 | | Version | Notes |
 |---|---|---|
-| A compiler | MSVC (VS 2026), clang-cl 22, GCC 16, or Clang 22 | C++23. `std::expected` and deducing-`this` are both used. Formatted output goes through {fmt} (`fmt::format`/`fmt::print`), not `std::format`/`std::print` — see [Options](#options) and `docs/platforms/android.md`. One [preset](#presets) per compiler; all seven platform/compiler legs are required, green CI (GCC 16 covers two of them — `linux-gcc` and `linux-gcc-arm64`; Clang 22 covers three — `linux-llvm`, `linux-llvm-arm64` and `macos-llvm`, each as a separate leg, though `macos-llvm` deliberately tracks Homebrew's unpinned `llvm` formula, currently also 22, rather than an exact pin) — see [Verified configuration](#verified-configuration). |
+| A compiler | MSVC (VS 2026), clang-cl 22, GCC 16, or Clang 22 | C++23, including `std::expected` and deducing `this`. See [Verified configuration](#verified-configuration) for the CI matrix. |
 | CMake | ≥ 3.28 | `cmake_minimum_required(VERSION 3.28...4.3)`. |
 | Ninja | any recent | The presets hard-code the Ninja generator. |
-| vcpkg | any recent | Supplies fmt (a base dependency, needed by every build — see `cmake/Fmt.cmake`) and Catch2 (needed only when tests are on); with `-DVCPKG_MANIFEST_FEATURES=adm`, the Boost header libraries `AC3FORGE_BUILD_ADM=ON` needs; and with `-DVCPKG_MANIFEST_FEATURES=profiling`, the Tracy profiler `AC3FORGE_ENABLE_TRACY=ON` needs — see [Options](#options). vcpkg itself is never strictly required, though: fmt and Catch2 both fall back to a `FetchContent` build from source when no local copy is found (`AC3FORGE_FETCH_FMT`/`AC3FORGE_FETCH_CATCH2`, both default `ON`), and Boost/Tracy are opt-in features nobody gets by default. |
+| vcpkg | any recent | Supplies fmt and Catch2, plus optional Boost and Tracy features. fmt and Catch2 can use `FetchContent` when vcpkg is unavailable. See [Options](#options). |
 | Qt | 6.5+ prebuilt | GUI only. **Never from vcpkg** — see [Qt](#qt). |
-| ALSA (`libasound2-dev`) | any recent | Linux only, optional. Live capture/monitor/passthrough — see [Linux audio](#linux-audio). |
-| PipeWire (`libpipewire-0.3-dev`) | any recent | Linux only, optional, used only when ALSA is not — see [Linux audio](#linux-audio). |
-| libxcb (`libxcb1-dev`) | any recent | Linux only, optional, Crucible only (`AC3FORGE_BUILD_CRUCIBLE`). The full-screen rule on X11 — see `AC3FORGE_CRUCIBLE_X11` under [Options](#options). |
+| ALSA (`libasound2-dev`) | any recent | Optional Linux audio backend. See [Linux audio](#linux-audio). |
+| PipeWire (`libpipewire-0.3-dev`) | any recent | Optional Linux audio backend; required by Crucible. See [Linux audio](#linux-audio). |
+| libxcb (`libxcb1-dev`) | any recent | Optional; used by Crucible for X11 full-screen detection. |
 | Python 3 + numpy | 3.11+ | Only for `tools/`; not part of the build. |
 | FFmpeg CLI | 8.x | Only for validation scripts; not part of the build. |
 

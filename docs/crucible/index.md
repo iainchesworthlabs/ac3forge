@@ -1,29 +1,20 @@
 # AC3Forge Crucible
 
-Every application making sound on your machine becomes an object in a Dolby Atmos scene. Drag
-each one to a place in the room; what leaves for your receiver is a live E-AC-3 JOC stream in
-which the browser is behind you, the game is in the corner, and the chat client is at your left
-ear.
-
-A crucible is where separate materials are combined under heat into one melt, which is what this
-does to the sounds on a desk.
+Crucible captures applications separately and places each one in a Dolby Atmos scene. You can
+position an application in the room, send it to the fixed 5.1 bed, or split its stereo channels
+into two objects. Output follows the selected audio device.
 
 !!! note "Status: Windows works; Linux is new; macOS builds and has never made a sound"
-    The application began as a Windows demo and was promoted to a product on
-    2026-09-04. Windows is the mature platform. The Linux half is new: its
-    per-application capture, silent device and window are confirmed on real hardware, and on
-    2026-09-05 a receiver's own front panel was read during a Linux stream. The macOS half
-    arrived on 2026-09-06: it compiles on both macOS CI legs and the window's Qt Quick suites
-    run over it there, and that is the whole record — no Mac has run the application, no macOS
-    code has captured or played a sound, and there is no macOS package.
-    [Where each platform stands](#where-each-platform-stands) is exact about this, and
-    [the promotion plan](design/promotion.md) carries the full record.
+    Windows and Linux have run on real hardware. macOS compiles and runs its test suites in CI;
+    the application has not been launched on a Mac, captured macOS audio, or produced macOS
+    audio. There is no macOS package. See [Where each platform stands](#where-each-platform-stands)
+    and the [promotion record](design/promotion.md).
 
 ## What it does
 
 1. **Install it**, and its silent output device.
-2. **Send applications to that device** — one click, or your system's sound settings. Every
-   application now plays into a device nobody hears.
+2. **Send applications to that device** using Crucible or the system sound settings. The device
+   suppresses their direct output.
 3. **Crucible taps each one separately** and shows it in a room, as an icon with a level ring.
    Applications appear when they start playing and stay while they run.
 4. **Drag one anywhere** — in plan, and in elevation. That application is now a dynamic object at
@@ -44,9 +35,9 @@ the 5.1 bed.
 3. **Silence** their direct output, so the only thing you hear is what Crucible sends.
 4. **Bitstream** the encoded result to a receiver.
 
-Step 3 is the one that surprises people: tapping an application doesn't stop it playing out of
-your speakers too, so without it you'd hear everything twice. Each platform solves it
-differently — [Install and first run](install.md) is mostly about that difference.
+Capturing an application does not suppress its original output. The silent device prevents the
+same audio from being heard twice. [Install and first run](install.md) explains the platform
+differences.
 
 ## Where each platform stands
 
@@ -62,30 +53,23 @@ driver that is **test-signed only** today — it loads on a machine with test si
 and refuses on a normal one. That closes when an EV certificate and attestation submission are in
 place.
 
-**Linux** has the engine, the console runner, the window, and all four platform services over
-PipeWire, confirmed on real hardware. The receiver's own display has read **5.1 DD+** from a
-pre-encoded fixture and **Atmos/DD+** (7.1, a 5.1 bed plus objects) from the live path with a key
-loaded. That matters because Crucible **cannot** use the ALSA backend (no per-application tap) —
-PipeWire is the only passthrough path, and this is its first hardware confirmation
-([the plan](design/promotion.md#alsa-or-pipewire) has the detail). Application icons come from the
+**Linux** has the engine, console runner, window, and platform services over PipeWire. It has
+produced 5.1 E-AC-3 from a fixture and E-AC-3 with Atmos objects from the live path on a real
+receiver. Crucible requires PipeWire because ALSA has no per-application capture. See the
+[promotion record](design/promotion.md#alsa-or-pipewire). Application icons come from the
 icon theme and `.desktop` entries. The full-screen rule is on under X11 and unanswerable under
 Wayland (no client can ask which window is full-screen); the tray icon publishes wherever the
 desktop has a StatusNotifier host, and says so where there is none
 ([Troubleshooting](troubleshooting.md#there-is-no-tray-icon)).
 
-**macOS** needs no driver — its process taps mute an application where they tap it, the job the
-Windows driver exists to do. The code is written (a Core Audio process tap and device watcher in
-the library, five platform seams and two window files in Crucible) and builds: on 2026-09-06 both
-macOS CI legs compiled, linked and ran the test suites — every test passed on Intel, and three of
-the window's eleven Qt Quick suites timed out on Apple Silicon. That's the whole record. A hosted
-runner has no audio device, no desktop session, and no way to grant the tap's consent prompt, so
-nothing has been captured, played, or launched. What's still needed: a Mac with a desktop and an
-audio device, and a Developer ID certificate — the consent prompt doesn't fire for an unsigned
-binary.
+**macOS** uses Core Audio process taps, which mute applications when captured. The code compiles
+and runs its test suites on both macOS CI legs. It has not been launched on a Mac or tested with
+audio hardware. That requires a Mac with a desktop session, an audio device, and a Developer ID
+certificate so the operating system can show the capture consent prompt.
 
 ## The silent device
 
-The thing that stops you hearing everything twice, and the biggest difference between platforms.
+The silent device suppresses the application's original output while Crucible plays its mix.
 
 **On Windows** it is a virtual audio device called "Desktop Atmos" that discards whatever it is
 given. It arrives with the application and stays installed until you uninstall it.

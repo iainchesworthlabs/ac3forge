@@ -1,7 +1,8 @@
 # Install and first run
 
-Mostly this is about the silent device — the thing that stops you hearing every application
-twice. It works differently on each platform, and on two of them there is nothing to install.
+Crucible suppresses each application's original output while it plays the combined mix. Windows
+uses a silent virtual audio device; Linux creates a temporary PipeWire node; macOS process taps
+mute captured applications.
 
 ## Windows
 

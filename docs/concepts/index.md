@@ -1,8 +1,7 @@
 # Concepts
 
-This section explains the ideas behind ac3forge in plain language — no code, no DSP maths,
-no prior knowledge of audio codecs assumed. If you have ever seen "Dolby Digital" or "Dolby
-Atmos" on a disc case or a TV settings menu and wondered what it actually means, start here.
+This section explains the audio formats used by AC3Forge. It assumes no codec or digital-signal
+processing knowledge.
 
 The rest of the documentation ([Library](../library/index.md), [CLI](../forge/cli/index.md),
 [GUI](../forge/gui/index.md)) shows you how ac3forge implements these ideas in software. This
@@ -31,10 +30,9 @@ The formats ac3forge implements form a single lineage, each one building on the 
 - **E-AC-3** ("Enhanced AC-3") — better known as **Dolby Digital Plus**. Adds more channel
   layouts (7.1 and beyond) and squeezes harder for the same audio quality, so it fits more
   channels into less bitrate.
-- **Dolby Atmos** — not a separate audio codec. It is E-AC-3 with an extra layer of
-  metadata bolted on, describing sounds as *objects* with a position in 3D space rather than
-  as channels locked to fixed speakers. That extra layer travels inside the E-AC-3 stream
-  itself, via a side-channel called **JOC** (Joint Object Coding).
+- **Dolby Atmos in E-AC-3** — an object layer carried with E-AC-3. It describes sounds as
+  *objects* with positions in three-dimensional space. **JOC** (Joint Object Coding) carries
+  that object information inside the E-AC-3 stream.
 
 ```mermaid
 graph LR
@@ -76,7 +74,6 @@ existing tooling.
   before reconstructing objects, why the algorithm is in-tree but the key isn't, and how to turn
   it on.
 
-Once the formats make sense, [Capabilities](../library/capabilities.md) says which parts of them
-this project implements, and the three members that use it are the library itself,
-[Forge](../forge/index.md) (`ac3cli` and `ac3gui`) and [Crucible](../crucible/index.md), which
-encodes a desktop's own applications as objects in real time.
+Once the formats make sense, [Capabilities](../library/capabilities.md) lists the implemented
+parts. [Forge](../forge/index.md), [Crucible](../crucible/index.md), and
+[Hearth](../hearth/index.md) use the library for their codec work.

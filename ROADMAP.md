@@ -1935,8 +1935,8 @@ control surface — and their own design work are in
 [`planning/esp32-stream-set.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-stream-set.md)
 and
 [`planning/esp32-714-realtime.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-714-realtime.md).
-This profile is also Hearth's only real implementation today, ahead of its planned appliance
-form — see `docs/hearth/index.md`.
+Hearth's ESP32-S3 sink uses this profile. Desktop engine: `apps/hearth`. Protocol library:
+`src/sendspin`. See `docs/hearth/index.md`.
 </details>
 
 **PF8 (S)** — The decoder's JOC bed analysis was still running direct forward transforms — now

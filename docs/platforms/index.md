@@ -23,9 +23,8 @@ levels that appear.
 | **An ESP32-C6** (ESP-IDF, FreeRTOS) | [ESP32-C6](bare-metal/esp32-c6.md) | The same `ac3::forge_minimal` component, whose manifest lists `esp32c6`, decoding in the fixed-point tier: one 160 MHz RISC-V core with no floating-point unit, 512 KB of SRAM shared with WiFi, no PSRAM | **Measured on a board**, with no network and with WiFi connected and a 1,536 kbit/s TCP stream arriving. Decode is correct on all fourteen fixtures, the PCM identical to the host's, the Cortex-M3 leg's and the C3 leg's. With the network up, AC-3 and E-AC-3 5.1 decode in real time (0.82x and 0.96x), as do stereo and mono (0.17x to 0.41x), and E-AC-3 7.1 takes 1.09x; every fixture but 7.1.4 fits the heap. QEMU does not emulate the part, so CI builds it and runs nothing. |
 | **A board with no operating system at all** | [Bare metal](bare-metal/cortex-m3.md) | `ac3::forge_minimal`: one static library, decode-only or encode-only, no exceptions, no RTTI | Cross-compiled `arm-none-eabi` and run on QEMU's `mps2-an385` (Cortex-M3, no FPU). A probe decodes six frames each of fourteen fixtures and gates on exact per-channel levels, image size, heap peak, retained bytes and allocation counts. CI runs it twice: in the default arithmetic, and in the [fixed-point tier](bare-metal/cortex-m3.md) (`-DAC3FORGE_DECODE_SCALAR=fixed`, Q7.24 integers under a per-block exponent) which is what a part with no FPU wants and costs 0.37x the default build's instructions on the same leg. Correctness under emulation; no real silicon. |
 
-**The Windows kernel driver is a component, not a target**, so it is not in that table.
-Crucible's silent output device on Windows is a kernel driver, which is the only way Windows lets
-anyone create an audio endpoint. You do not target it; Crucible installs it. It is
+**Windows kernel driver.** Crucible installs a kernel driver to provide its silent output device
+on Windows. It is
 **test-signed only** today and a Windows machine with default settings refuses to load it, which
 is why [Crucible's install page](../crucible/install.md#without-the-driver) covers running
 without it. [The null-sink driver on ACX](windows-driver-acx.md) has the detail, and
@@ -38,14 +37,15 @@ without it. [The null-sink driver on ACX](windows-driver-acx.md) has the detail,
 | **A shell** — `ac3cli` | Windows, Linux (including the Pi), macOS | [CLI reference](../forge/cli/index.md), [Forge](../forge/index.md) |
 | **A window** — `ac3gui` | Windows, Linux and macOS. Shipped prebuilt for Windows and macOS; from source, only the Windows presets default it on (`-DAC3FORGE_BUILD_GUI=ON` elsewhere, and Qt is needed either way) | [GUI guide](../forge/gui/index.md) |
 | **A desktop app** — Crucible | Windows and Linux; the macOS half compiles but has never been run | [Crucible](../crucible/index.md) |
+| **A Hearth sink** — `hearth_sink` | ESP32-S3 network player. Two boards as a group. Example has a C6 overlay; no C6 setup guide | [Hearth](../hearth/index.md), [An ESP32-S3 sink](../hearth/sink-esp32-s3.md) |
 | **C++** | Every desktop platform above, plus WebAssembly and [bare metal](bare-metal/index.md) | [Library conventions](../library/index.md) |
 | **C** | Wherever the C++ library builds | [C API](../library/c-api.md) |
 | **Python** | `pip install ac3forge` — wheels for Windows x64, macOS arm64 and x86_64, Linux x86_64 and aarch64 | [Python bindings](../library/python-api.md) |
 | **Rust** | In-tree at `rust/`, over the C API; not published to crates.io | [Rust bindings](../library/rust-api.md) |
-| **An ESP-IDF component** | An ESP32-S3, decode-only or encode-only; ESP-IDF owns the build, so there is no ac3forge preset | [ESP32-S3](bare-metal/esp32-s3.md) |
+| **An ESP-IDF component** | An ESP32-S3, decode-only or encode-only; ESP32-C3 and ESP32-C6 decode in the fixed-point tier (C3 under QEMU, C6 timed on a board). ESP-IDF owns the build, so there is no ac3forge preset | [ESP32-S3](bare-metal/esp32-s3.md), [ESP32-C3](bare-metal/esp32-c3.md), [ESP32-C6](bare-metal/esp32-c6.md) |
 | **An ESPHome component** | The same ESP32-S3 decoder, wrapped for an ESPHome project; not yet a `media_player` or `speaker` source | [ESPHome](bare-metal/esphome.md) |
 | **JavaScript** | A browser, through WebAssembly; the npm package is unpublished | [WebAssembly](wasm.md) |
-| **You do not** — Shield Atmos Demo is the whole surface | An NVIDIA Shield, sideloaded | [Android](android.md) |
+| **Shield Atmos Demo** | An NVIDIA Shield, sideloaded | [Android](android.md) |
 
 ## Reading the last column
 

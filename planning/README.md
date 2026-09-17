@@ -7,16 +7,16 @@ publishing them alongside the reference documentation invited reading a proposal
 What is on the site instead: [the documentation](../docs/index.md) describes what exists, and
 [ROADMAP.md](../ROADMAP.md) lists candidate work.
 
-| Page | What it is | State as of 2026-09-08 |
+| Page | What it is | State as of 2026-09-16 |
 |---|---|---|
 | [recasting.md](recasting.md) | Splitting one name over everything into three named products | Phases 1–5 in; Phase 6 partly; Phase 7 waits on driver signing |
 | [topology.md](topology.md) | Source, transport and sink roles, and the transport between them | One decision taken, nothing built; for Hearth's own sinks, decision 1 replaced on 2026-09-15 by Sendspin |
-| [player-appliance.md](player-appliance.md) | A playback appliance, "Hearth" | Not started; its form (daemon, web page, kiosk, HLS client) replaced on 2026-09-15 by hearth-reference-player.md |
-| [hearth-reference-player.md](hearth-reference-player.md) | Hearth as a desktop reference player (`ac3hearth`) and ESP32 Sendspin sinks (`hearth_sink`), with an extension role carrying the bitstream | Decided 2026-09-15, not started |
+| [player-appliance.md](player-appliance.md) | The 2026-09-07 playback-appliance form (daemon, web page, kiosk, HLS client) | Replaced on 2026-09-15 by hearth-reference-player.md; kept as a record |
+| [hearth-reference-player.md](hearth-reference-player.md) | Hearth as a desktop reference player (`ac3hearth`) and ESP32 Sendspin sinks (`hearth_sink`), with an extension role carrying the bitstream | Being built. Merged: A1–A4, B1–B5, C1–C2. A5 (window) not started. Music Assistant and TDM-DAC exits still open — that page's status block |
 | [hearth-sendspin-extension.md](hearth-sendspin-extension.md) | Hearth's Sendspin conformance reading, Music Assistant compatibility, and the `_ac3forge_player@v1` role | Draft for review, 2026-09-15 |
 | [host-plugin.md](host-plugin.md) | Whether a DAW/NLE plugin is possible, and what shipping one takes | A study; nothing decided, no code |
 | [qc-report.md](qc-report.md) | A delivery-shaped QC report file | Not started — `ac3cli qc` writes no report file |
-| [arithmetic-tiers.md](arithmetic-tiers.md) | One implementation, three arithmetics (`double`, `float`, fixed point) and an encoder effort axis; the platform choice matrix; the fixed-point decoder for the ESP32-C3 | Two tiers shipping and gated; the effort axis's first level measured 2026-09-10; the fixed tier proposed, not started |
+| [arithmetic-tiers.md](arithmetic-tiers.md) | One implementation, three arithmetics (`double`, `float`, fixed point) and an encoder effort axis; the platform choice matrix; the fixed-point decoder for the ESP32-C3 | Fixed-point decode tier shipping and gated (C3 under QEMU, C6 on a board); `delta_allocation` measured 2026-09-10 |
 | [esp32-player.md](esp32-player.md) | The ESP32-S3 player: a component layer under the examples, and an ESPHome media player | Phases 1 and 2 built and QEMU-verified; Phase 0 and Phase 2's hardware half wait on the board; its Sendspin sections replaced on 2026-09-15 by hearth-reference-player.md |
 | [esp32-device-ui.md](esp32-device-ui.md) | The player's web UI: a page the board serves from flash beside the REST API, and calls it | Built 2026-09-11; tested on the host and under QEMU, and its requests measured on a board. What it says about the output layout proposed 2026-09-11 |
 | [esp32-stream-set.md](esp32-stream-set.md) | Streams the player can fetch over HTTP: 7.1.4 streams for a 7.1.4 output, and a range of layouts, codecs and coding tools, with the level each slot should get | Proposed 2026-09-11; the streams made and played under QEMU |

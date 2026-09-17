@@ -1,29 +1,25 @@
 # Changelog
 
-*For end users tracking what has shipped. How releases and version numbers are cut lives in
-[docs/releasing.md](docs/releasing.md); the project overview is in [README.md](README.md).*
-
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-See [docs/releasing.md](docs/releasing.md) for how releases and version numbers are cut.
+See [README.md](README.md) for the project overview and
+[Releasing](docs/releasing.md) for the release process.
 
 ## [Unreleased]
 
-The bare-metal profile gains a fixed-point decode tier and an ESP32-C3 target, and a
-sequence of profiling passes brings both E-AC-3 decode and encode to real time on the
-ESP32-S3. The Windows-only Desktop Atmos Demo becomes AC3Forge Crucible, a real desktop
-application: a Linux/PipeWire backend verified against an Atmos receiver, keyboard and
-screen-reader access, and per-platform packaging with third-party notices. The gold-
-reference quality gate moves to a per-channel SNR floor, and the ~6.02 dB cross-platform
-decode split turns out to be a last-bit arithmetic difference rather than a codec
-defect. AC-4 gains container carriage, the WASM encode demo gains wide layouts and live
-microphone capture, and the Rust bindings now cover the whole codec surface. Fixed
-issues span an AC-4 parser null-pointer and unbounded-allocation pair, an E-AC-3 legacy-
-core programme-selection bug, Crucible's startup and tap lifecycle on Linux and macOS,
-and release packaging.
+This release adds:
+
+- Hearth's ESP32-S3 Sendspin sink, desktop engine, and development tools;
+- fixed-point decoding for ESP32-C3 and ESP32-C6, with real-time ESP32-S3 work;
+- Crucible on Windows and Linux, with macOS code built and tested in CI;
+- per-channel quality gates and continued performance, quality, and memory histories;
+- AC-4 container support, wider WebAssembly encoding, microphone capture, and expanded Rust
+  bindings.
+
+The sections below contain the complete change list and fixes.
 
 ### Added
 
@@ -79,9 +75,9 @@ and release packaging.
   `planning/arithmetic-tiers.md`.
 - **An ESP32-C3 target** for the minimum-footprint profile
   (`apps/baremetal/platform/esp32c3/`), decoding in the fixed-point tier since the part
-  has no FPU. CI builds and runs it under `qemu-riscv32`: 11 of 12 fixtures decode with
-  PCM identical to the x86 host and Cortex-M3 legs; 7.1.4 needs more heap than the
-  part's largest free block and is declared skipped rather than silently missing. Speed
+  has no FPU. CI builds and runs it under `qemu-riscv32`: 12 of 14 fixtures decode with
+  PCM identical to the x86 host and Cortex-M3 legs; the two 7.1.4 rows need more heap than the
+  part's largest free block and are declared skipped rather than silently missing. Speed
   is unmeasured — QEMU isn't cycle-accurate.
 - **An ESP32-C6 target** (`apps/baremetal/platform/esp32c6/`), with `esp32c6` in the ESP-IDF
   component's manifest, timed on a board with no network and with WiFi connected and a

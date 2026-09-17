@@ -132,10 +132,9 @@ configured, is in [Why ALSA still comes first](../building.md#why-alsa-still-com
 
 ## Crucible requires PipeWire
 
-Everything above is the library's ALSA and PipeWire backends, which `ac3cli` and `ac3gui`
-([Forge](../forge/index.md)) both use. [Crucible](../crucible/index.md), the third member of the
-family, is the exception: it taps each application separately, ALSA has no per-application
-concept at all, and building Crucible against ALSA is refused at configure time.
+The library's ALSA and PipeWire backends are used by `ac3cli` and `ac3gui`
+([Forge](../forge/index.md)). [Crucible](../crucible/index.md) requires PipeWire for
+per-application capture. Its build rejects ALSA configurations.
 
 That trade is uncomfortable: forcing PipeWire gives up the passthrough path confirmed against a
 real receiver (ALSA `iec958`, on the Pi) for the one that is not. See
