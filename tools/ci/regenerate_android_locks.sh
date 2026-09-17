@@ -44,12 +44,15 @@ printf 'sdk.dir=%s\n' "$sdk" > "$android_dir/local.properties"
 cd "$android_dir"
 sed 's/\r$//' gradlew > gradlew.unix
 chmod +x gradlew.unix
-# assembleDebug alone does not lock debugAndroidTestRuntimeClasspath
-# (connectedDebugAndroidTest in CI); include androidTest + release too.
+# assembleDebug alone does not lock debugAndroidTestRuntimeClasspath or the
+# AGP Unified Test Platform (_internal-unified-test-platform-*) configs that
+# connectedDebugAndroidTest resolves. UTP artifact versions track AGP (8.9.1 →
+# 31.9.1); bumping AGP without re-locking those configs breaks CI.
 ./gradlew.unix \
   :app:assembleDebug \
   :app:assembleDebugAndroidTest \
   :app:assembleRelease \
+  :app:connectedDebugAndroidTest \
   --write-locks
 rm -f gradlew.unix
 
