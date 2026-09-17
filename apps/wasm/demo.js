@@ -1,15 +1,15 @@
 // ac3forge WASM decode demo - a consumer of the bundled ac3forge-wasm-decoder
-// package from js/, not a parallel implementation of it. This file owns the page
+// bindings from js/. This file owns the page
 // (Web Audio playback of already-decoded PCM, the Canvas visualizations ported
 // from apps/gui/qml/SoundfieldView.qml and Main.qml's Objects tab, scrub/solo
 // controls) - decoding, the §7.8 fold and the realtime AudioWorklet pipeline
-// all come from the package.
+// all come from those bindings.
 //
-// `./package/` is this package's own `js/dist/` copied in alongside the
+// `./package/` is `js/dist/` copied in alongside the
 // Emscripten build output (see apps/wasm/CMakeLists.txt's build docs in
 // docs/platforms/wasm.md) - a self-contained servable directory needs both.
 // `ac3forge_decode.js` (loaded as a plain classic <script> in index.html,
-// exactly as before) supplies the `createAc3ForgeModule` factory the package
+// exactly as before) supplies the `createAc3ForgeModule` factory the bindings
 // itself takes as a parameter rather than embedding a compiled binary of its
 // own - see js/README.md's "Loading the WASM module" section.
 
