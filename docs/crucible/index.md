@@ -12,7 +12,8 @@ into two objects. Output follows the selected audio device.
 
 ## What it does
 
-1. **Install it**, and its silent output device.
+1. **Install Crucible.** On Windows, build and install the test-signed silent-device driver
+   separately; Linux creates its silent node while Crucible runs, and macOS needs no device.
 2. **Send applications to that device** using Crucible or the system sound settings. The device
    suppresses their direct output.
 3. **Crucible taps each one separately** and shows it in a room, as an icon with a level ring.
@@ -44,14 +45,14 @@ differences.
 | | Windows | Linux | macOS |
 |---|---|---|---|
 | Enumerate and tap | yes | yes, confirmed on hardware | compiles; nothing has been captured |
-| Silence | a kernel driver, test-signed only, [see below](#the-silent-device) | a PipeWire node, nothing to install | the tap mutes where it taps; no device needed — compiles; no tap has been created |
+| Silence | a source-built kernel driver, test-signed only, [see below](#the-silent-device) | a PipeWire node, nothing to install | the tap mutes where it taps; no device needed — compiles; no tap has been created |
 | Bitstream to a receiver | the underlying `PassthroughSink` is, via `ac3cli` — [see Windows](../platforms/windows.md#audio-backend-wasapi); Crucible itself hasn't been run against a receiver yet | yes, read off the receiver: 5.1 DD+, and Atmos/DD+ with objects | nothing has been played |
 | The window | yes | yes, run on the Pi | builds in CI and its suites run there; never launched on a Mac |
 
-**Windows** has the longest record: the room, the tray, the driver. Its silent device is a kernel
-driver that is **test-signed only** today — it loads on a machine with test signing turned on,
-and refuses on a normal one. That closes when an EV certificate and attestation submission are in
-place.
+**Windows** has the longest record: the room, the tray, and the driver have run. Its silent
+device is a kernel driver that is **test-signed only** today. The release archive carries the
+install and remove scripts only. Until EV-certificate attestation is in place, the driver must
+be built from source and loads only with Windows test signing enabled.
 
 **Linux** has the engine, console runner, window, and platform services over PipeWire. It has
 produced 5.1 E-AC-3 from a fixture and E-AC-3 with Atmos objects from the live path on a real
@@ -72,7 +73,8 @@ certificate so the operating system can show the capture consent prompt.
 The silent device suppresses the application's original output while Crucible plays its mix.
 
 **On Windows** it is a virtual audio device called "Desktop Atmos" that discards whatever it is
-given. It arrives with the application and stays installed until you uninstall it.
+given. The release archive has the install and remove scripts only. A source-built driver stays
+installed until you remove it.
 
 **On Linux** there is nothing to install. Crucible creates a PipeWire node named
 "Crucible (silent)" while it runs, and the node disappears when it exits. No driver, no signing,

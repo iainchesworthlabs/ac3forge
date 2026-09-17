@@ -140,7 +140,7 @@
     <h2 style="font-size:1rem;margin:0 0 8px;">Realtime push-decode (AudioWorklet)</h2>
     <p class="hint" style="margin:0 0 12px;">
       The same bundled stream, fed one access unit at a time through
-      <a href="https://www.npmjs.com/package/ac3forge-wasm-decoder"><code>ac3forge-wasm-decoder</code></a>'s
+      <a href="https://github.com/iainchesworthlabs/ac3forge/tree/main/js"><code>ac3forge-wasm-decoder</code></a>'s
       push-frame API into a real <code>AudioWorkletNode</code> - decoding happens in a Worker, off
       this tab's main thread, and only a small ring-buffer drain runs on the audio thread itself.
       Needs cross-origin isolation (<code>SharedArrayBuffer</code>) - see

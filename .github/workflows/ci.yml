@@ -285,7 +285,7 @@ jobs:
     secrets:
       ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
-  # Classify the change so a docs-only edit skips a five-platform matrix. This
+  # Classify the change so a docs-only edit skips the split platform builds. This
   # is a job rather than a workflow-level paths-ignore on purpose: a filtered-out
   # workflow never runs, so the required "CI Status" check below would sit
   # pending forever and block the PR. Gating the heavy job instead keeps the
@@ -293,8 +293,8 @@ jobs:
   #
   # Also runs tools/ci/classify_changes.py and exposes its per-lane outputs
   # (core, windows, linux, ...) alongside `code` - see docs/ci-lanes.md.
-  # Nothing reads them yet; this is the classifier-only phase of the CI lane
-  # partitions plan, wiring the outputs before any job's `if:` uses them.
+  # These outputs gate the core reusable workflow, split platform workflows,
+  # platform satellites and package workflows below.
   changes:
     name: Detect changes
     # Routed through check-runner like the other cheap gate jobs. This job
@@ -312,10 +312,9 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.detect.outputs.code }}
-      # Lane booleans from tools/ci/classify_changes.py (roadmap: CI lane
-      # partitions, docs/ci-lanes.md). Wired through but unconsumed for now -
-      # every job below still gates on `code` alone, so this adds outputs
-      # without changing any job's skip behaviour.
+      # Lane booleans from tools/ci/classify_changes.py. They gate the reusable
+      # workflows and satellites below; docs/ci-lanes.md maps each output to
+      # the work it controls.
       core: ${{ steps.detect.outputs.core }}
       windows: ${{ steps.detect.outputs.windows }}
       linux: ${{ steps.detect.outputs.linux }}
@@ -714,10 +713,9 @@ jobs:
       # CI lane partitions (docs/ci-lanes.md): the `changes` job's own
       # per-lane outputs, `== 'true'` the same way every other job in this
       # file compares one of its string outputs (see `code` above it). Only
-      # windows/linux/macos/android/wasm/esp/rust actually gate anything in
-      # _build.yml today - see that workflow's own `run_windows`/etc. input
-      # comments for exactly which job each one reaches, and why the `build`
-      # matrix's own per-OS legs are not among them yet.
+      # windows/linux/macos gate their split platform workflow plus satellites;
+      # android/wasm/esp/rust gate their platform jobs. See _build.yml's input
+      # comments for the exact mapping.
       run_core: ${{ needs.changes.outputs.core == 'true' }}
       run_windows: ${{ needs.changes.outputs.windows == 'true' }}
       run_linux: ${{ needs.changes.outputs.linux == 'true' }}

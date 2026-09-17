@@ -1,5 +1,5 @@
-// ac3forge WASM decode demo - a consumer of the published ac3forge-wasm-decoder
-// package (js/), not a parallel implementation of it. This file owns the page
+// ac3forge WASM decode demo - a consumer of the bundled ac3forge-wasm-decoder
+// package from js/, not a parallel implementation of it. This file owns the page
 // (Web Audio playback of already-decoded PCM, the Canvas visualizations ported
 // from apps/gui/qml/SoundfieldView.qml and Main.qml's Objects tab, scrub/solo
 // controls) - decoding, the §7.8 fold and the realtime AudioWorklet pipeline

@@ -7,9 +7,11 @@ receiver.
 !!! note "Status as of 2026-09-16: an ESP32-S3 sink plays in groups; the desktop player is being built"
     **The ESP32-S3 sink works on a network.** `hearth_sink` uses Improv Wi-Fi for initial network
     setup. It uses Sendspin, a protocol for synchronised network audio, to pair with a server and
-    play in a group. It plays stereo PCM from Music Assistant and decodes AC-3, E-AC-3, and Atmos
-    objects for its configured speaker layout. Two boards have played one programme as a group
-    for ten minutes without an underrun. No DAC has been connected yet.
+    play in a group. Compatibility with the aiosendspin 9.1.1 server library used by Music
+    Assistant is validated in CI; Music Assistant itself has not been tested. The sink decodes
+    AC-3, E-AC-3, and Atmos objects for its configured speaker layout. Two boards have played one
+    programme from the AC3Forge test server as a group for ten minutes without an underrun. No
+    DAC has been connected yet.
     [An ESP32-S3 sink](sink-esp32-s3.md) explains setup.
 
     **The desktop player `ac3hearth` is being built for Windows, Linux, and macOS.** Its engine

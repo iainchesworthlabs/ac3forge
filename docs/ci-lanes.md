@@ -48,7 +48,7 @@ job-level conditions.
 | `windows` | `build-windows` (windows-msvc, windows-llvm, windows-msvc-arm64), `windows-driver` |
 | `linux` | `build-linux` (linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan), `linux-appimage` |
 | `macos` | `build-macos` (macos-llvm, macos-llvm-x64), `package-macos-universal` (alongside `do_package`, which it already required) |
-| `core` | the whole `core` job-call (`_ci-core.yml`: coverage, ADM module, Hearth's Sendspin library, performance/memory compare+gate, ABI gate, FFmpeg validate, both quality-trend persisters) - see "The core lane" below |
+| `core` | the whole `core` job-call (`_ci-core.yml`: coverage, ADM module, Hearth's Sendspin library, performance/memory compare+gate, ABI gate, FFmpeg validate, external-comparison and object-quality persisters) - see "The core lane" below |
 | `python` | `ci.yml`'s `wheels` job-call (`.github/workflows/wheels.yml`: `build`, `python-coverage`) - see "The fold-satellites phase" below |
 | `npm` | `ci.yml`'s `npm` job-call (`.github/workflows/npm.yml`: `build`) - see "The fold-satellites phase" below |
 
@@ -70,20 +70,23 @@ reason. See that job's own comment in `_build.yml`.
 
 ## The core lane
 
-`_ci-core.yml` is `ci.yml`'s coverage, ADM module build, PR-time
-performance/memory comparisons and their gates, ABI gate, and FFmpeg-oracle
-validation together with its two quality-trend persisters - ten jobs, moved
+`_ci-core.yml` contains coverage, ADM and Hearth validation, PR-time
+performance/memory comparisons and their gates, the ABI gate, FFmpeg-oracle
+validation, and the external-comparison and object-quality persisters - 11 jobs, moved
 out of `ci.yml` wholesale and called as one `core` job, gated on
 `needs.changes.outputs.core == 'true'` instead of the `code` output each of
-them checked individually before. This is the first lane whose gate is a
-**narrowing**, not just a parallel addition: today, any non-docs change -
-including one confined entirely to `apps/android/` or
-`apps/windows/driver/` - still runs all ten. After this, only a change that
-actually touches the library (or trips a conservative-default fallback) does.
-None of the ten tests anything platform-specific, so this is the intended,
+them checked individually before. Only a change that touches the library or
+trips a conservative fallback runs those 11 jobs; a platform-only change
+does not. None tests anything platform-specific, so this is the intended,
 correct behaviour, not an accident of the lane boundaries - see each job's
 own header comment in `_ci-core.yml`, unchanged from before the move, for
 why.
+
+The main gold-reference quality persister did not move. `quality-trend` remains
+in `_build.yml` because it needs the Windows, Linux and macOS build calls and
+their gold-reference artifacts. Its hard trailing-regression failure therefore
+surfaces as `_build.yml`'s `Publish quality trend` job, inside
+`build-and-test`, not as an `_ci-core.yml` result.
 
 **Not moved: `persist-performance-trend` and `performance-trend-arm64`.**
 Both `needs: build-and-test` - _build.yml's_ own call, a *different* reusable
@@ -139,13 +142,13 @@ before the move either.
 ### What `_ci-core.yml` needs from `ci.yml`
 
 Same shape as `_build.yml`'s per-platform inputs: `check-runner` and
-`toolchain-versions` stay in `ci.yml` (five of the ten jobs share `runs-on:
+`toolchain-versions` stay in `ci.yml` (five of the 11 jobs share `runs-on:
 ${{ fromJSON(needs.check-runner.outputs.runner) }}` - one live-runner
 decision reused by all of them, unlike `_build.yml`'s per-leg
 `check-runners` fan-out), and `ci.yml`'s `core` job-call forwards
 `check-runner.outputs.runner`, `toolchain-versions.outputs.vcpkg_commit` and
 `toolchain-versions.outputs.llvm_version` (the only two toolchain-versions
-outputs any of the ten jobs actually reads - `llvm_version` only in two step
+outputs any of the 11 jobs actually reads - `llvm_version` only in two step
 *names*, for display) as plain `workflow_call` inputs.
 
 ## Why a job, not a workflow-level path filter

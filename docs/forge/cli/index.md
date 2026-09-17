@@ -1,9 +1,9 @@
 # ac3cli
 
-`ac3cli` is the command-line front end over `ac3::forge` — forty-one commands covering
+`ac3cli` is the command-line front end over `ac3::forge` — 42 commands covering
 synthesis, file encoding/decoding, container wrapping, inspection, live capture/playback, and the
 tool's own self-description (`help`, `man`, `completions`).
-Two of the forty-one (`atmos-adm` and `atmos-iab`) only *run* in a build configured with
+Two of the 42 (`atmos-adm` and `atmos-iab`) only *run* in a build configured with
 `-DAC3FORGE_BUILD_ADM=ON`, but are always *listed* — the same "shown, not hidden" treatment
 this page's own live-audio commands get when the platform can't run them either (see
 [Commands](commands.md)'s own ADM section). Every command it can run is backed by the same public
@@ -23,27 +23,8 @@ ac3cli
 
 ## Installing
 
-`ac3cli` installs as part of [Forge](../index.md), the `ac3cli` + `ac3gui` pair — that
-page carries the same three paths in one place. Building from source
-([Quick start](../../quickstart.md)) always works (see [Releasing](../../releasing.md) for the
-per-tool submission status):
-
-- **winget** (Windows) — once
-  [`packaging/winget/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/winget)
-  is merged into `microsoft/winget-pkgs`, `winget install iainchesworthlabs.ac3forge` installs
-  `ac3cli` and `ac3gui` together as portable executables. Today, `winget install --manifest
-  packaging/winget/manifests/i/iainchesworthlabs/ac3forge/<version>` from a clone does the same.
-- **Homebrew** (macOS/Linux) —
-  [`packaging/homebrew/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/homebrew)
-  is published to the live personal tap `iainchesworthlabs/homebrew-ac3forge`, so
-  `brew install iainchesworthlabs/ac3forge/ac3forge` installs `ac3cli` from source; the GUI
-  has a cask of its own, with the caveats on the [Forge page](../index.md#installing).
-  `brew install --build-from-source ./packaging/homebrew/Formula/ac3forge.rb` from a clone
-  builds the same formula locally.
-- **A prebuilt archive** — every [release](https://github.com/iainchesworthlabs/ac3forge/releases)
-  already publishes a `.zip`/`.tar.gz`/`.dmg` per platform with `ac3cli` (and `ac3gui` where
-  built) inside, no package manager or local clone needed — see [What gets
-  published](../../releasing.md#what-gets-published).
+`ac3cli` installs as part of Forge. See [Installing Forge](../index.md#installing) for the
+prebuilt archives, Homebrew, winget, and source-build paths.
 
 ## Version
 
@@ -69,7 +50,7 @@ A build from past the tag says so in the headline, as semver build metadata: `ac
 git's own describe of it), so it is not mistaken for the tagged release. A tree with
 uncommitted changes adds a `state: dirty` line.
 
-`--version` (or its `-v` alias) is a flag, not one of the forty-one commands — it's handled
+`--version` (or its `-v` alias) is a flag, not one of the 42 commands — it's handled
 before argument parsing and exits immediately. So are `--help` and `-h`, which print the named
 command's own help (or the full listing when no command was named).
 

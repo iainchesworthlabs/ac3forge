@@ -1,8 +1,8 @@
 # An ESP32-S3 sink
 
 `hearth_sink` turns an ESP32-S3 board into a network audio player. It uses Sendspin to receive
-synchronised audio from Music Assistant or an AC3Forge test server. The board can play stereo
-PCM, or decode AC-3 and E-AC-3 (including Atmos objects) for its configured speakers.
+synchronised audio from a compatible server. The board can play stereo PCM, or decode AC-3 and
+E-AC-3 (including Atmos objects) for its configured speakers.
 
 This guide covers building, flashing, network setup, pairing, and group playback. The example
 [README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md)
@@ -138,19 +138,18 @@ The board keeps eight pairings. Lines typed on the console are commands:
 | `pair forget` | Removes every pairing and gives the board a new identity and token; *Forget every server* on the page does the same |
 | `sendspin` | Prints the player's state: the server, the role, the clock, and the stream's counters |
 
-## Play from Music Assistant
+## Music Assistant compatibility
 
-Music Assistant finds the board over mDNS and lists it as a Sendspin player. Once paired, it
-plays stereo PCM at 48 kHz, 16 or 24 bits, to the board's `player@v1` role. The board renders
-that stereo pair onto its layout: left and right go to the layout's front left and right
-speakers, and the other speakers stay silent. On a one-speaker layout, the two channels are
-mixed. FLAC and Opus are not offered, because their decoders are not on the board.
+CI validates the sink against a scripted aiosendspin 9.1.1 server, the library version used by
+Music Assistant. Music Assistant itself has not been tested with a board. The validated server
+finds the board over mDNS, pairs with it, and plays stereo PCM at 48 kHz, 16 or 24 bits, through
+the `player@v1` role. The board renders left and right onto the layout's front speakers; other
+speakers stay silent. A one-speaker layout mixes the two channels. The sink does not offer FLAC
+or Opus.
 
-A board plays for one server at a time. Music Assistant stays connected to every player it has
-found, so a board usually holds its connection when another server dials. As the Sendspin
-specification sets out, a server that asks to play takes the board from one that is only
-connected or is already playing. The exception is a pairing in progress, which is not
-interrupted.
+A board plays for one server at a time. As the Sendspin specification sets out, a server that
+asks to play takes the board from one that is only connected or is already playing. A pairing
+in progress is not interrupted.
 
 ## Play AC-3 and E-AC-3
 
@@ -195,7 +194,7 @@ ac3hearth-testserver --play programme.ec3 \
   --player ws://192.168.1.41:8928/sendspin --token SP:0... --layout 5.1
 ```
 
-Music Assistant has groups of its own: group the boards there.
+Music Assistant group playback has not been tested.
 
 ## Wiring
 

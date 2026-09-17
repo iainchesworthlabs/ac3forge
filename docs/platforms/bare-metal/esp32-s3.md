@@ -1,8 +1,9 @@
 # ESP32-S3
 
 The minimum-footprint codec profile on an Espressif ESP32-S3: a 240 MHz dual-core Xtensa LX7 with
-a single-precision FPU, 512 KB of internal SRAM and hardware I2S. It decodes AC-3 and E-AC-3
-— including Atmos objects — and encodes both, in internal SRAM with no PSRAM.
+a single-precision FPU, 512 KB of internal SRAM and hardware I2S. The standalone decode and
+encode probes run in internal SRAM with no PSRAM. The networked Hearth Sendspin sink requires
+8 MB of PSRAM.
 
 It is the second bare-metal target. The first is [`arm-none-eabi` on QEMU](cortex-m3.md), a
 Cortex-M3 with no FPU. The S3 has hardware single-precision floating point, which is what makes
@@ -18,10 +19,10 @@ the float32 path worth having and real-time decode worth measuring.
 | Atmos bed | Correct, decoded bed-only via `DecoderConfig::skip_object_reconstruction`. 20 allocations per frame |
 | Atmos objects | **Correct, reconstructed on target.** 31 allocations per frame — see [Objects](#objects). **And placed**: the `eac3_atmos_render` row pans a height-object stream onto 7.1.4 through the block form, every level the host's — see [Placed on loudspeakers](#placed-on-loudspeakers) |
 | Encode | AC-3 and E-AC-3, six rows: 5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, and 2/0 §E3.5 enhanced coupling - six frames of synthesised programme each, byte count and FNV-1a hash checked against `apps/baremetal/encode_fixture.hpp`, peak heap per row. One substream at a time; see [Encoding](#encoding) for what does not fit |
-| Fits internal SRAM | Yes, without PSRAM. 237,206-byte peak heap (the 7.1.4 fixture folded to stereo; 230,798 as coded, 211,371 with Atmos objects, 211,741 placing them) against 316,196 free on the board on 2026-09-11 — see [Memory](#memory) |
+| Standalone probe fits internal SRAM | Yes, without PSRAM. 237,206-byte peak heap (the 7.1.4 fixture folded to stereo; 230,798 as coded, 211,371 with Atmos objects, 211,741 placing them) against 316,196 free on the board on 2026-09-11 — see [Memory](#memory) |
 | Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record, the spectrum scratch's pointer; 23,552 bytes while §E3.5 is in use |
 | Audio output | Two examples drive real peripherals — see [Examples](#examples) |
-| Sendspin sink | `hearth_sink` plays as a Sendspin player on Wi-Fi. Two boards played one E-AC-3 JOC programme as a group for ten minutes with no underrun and their play times within 549 µs — see [As a Sendspin sink](#as-a-sendspin-sink) and [the sink guide](../../hearth/sink-esp32-s3.md) |
+| Sendspin sink | `hearth_sink` requires an ESP32-S3 board with 8 MB of PSRAM and plays as a Sendspin player on Wi-Fi. Two boards played one E-AC-3 JOC programme as a group for ten minutes with no underrun and their play times within 549 µs — see [As a Sendspin sink](#as-a-sendspin-sink) and [the sink guide](../../hearth/sink-esp32-s3.md) |
 | Real time | **Decode, yes, on a board**, at 240 MHz, every one of the fourteen fixtures: from 0.07x for AC-3 mono to 0.92x for E-AC-3 7.1.4 folded to stereo, with objects placed onto 7.1.4 at 0.78x — see [Timing](#timing). **Encode: AC-3 2/0 and E-AC-3 2/0, yes**, 0.35x and 0.73x with the encoders in `float` end to end and the search made cheaper; AC-3 5.1 at 1.01x sits at the line, 2/0 with tools 1.3x to 1.6x and E-AC-3 5.1 1.7x over, what remains being the exponent-run planner and the allocation candidates — see [Encoding](#encoding) |
 | ESPHome | An external component, `esphome/components/ac3forge/` — the decoder and framer, not a `speaker` source. See [ESPHome](esphome.md) |
 | CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU, and `hearth-esp32s3` after it, which plays to the Sendspin sink from the host; `esphome config` and the component pack in their own workflows |
@@ -628,7 +629,9 @@ line mode without a fold, the one fixture where line mode has work to do.
 
 On 2026-09-10 the E-AC-3 5.1 fold cost 3.2 ms here where the Cortex-M3
 leg counted 10% of the frame, and the sink folding 7.1.4 to stereo
-over WiFi fell behind (`planning/esp32-stream-set.md`, "On a board"). The
+over WiFi fell behind
+([`planning/esp32-stream-set.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-stream-set.md),
+"On a board"). The
 output stage had no stage-timer zones of its own. With zones inside
 `OutputStage::apply` and around both decoders' §7.7 gain, stage-timed on
 2026-09-11 in internal SRAM, a frame of `eac3_714_fold`:
@@ -722,7 +725,8 @@ this change and run one after the other on one board on 2026-09-11: the
 network shape (`sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram` with
 WiFi), the stream set's `714-walk.ec3` served over the LAN, 2.0 on the I2S
 sink in line mode - the play that fell behind in
-`planning/esp32-stream-set.md`'s "On a board":
+[`planning/esp32-stream-set.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-stream-set.md)'s
+"On a board":
 
 | | Before | After |
 |---|---:|---:|
@@ -1059,7 +1063,7 @@ run, under QEMU.
   twelve-slot DMA queue competes with WiFi for
   internal RAM; and at 0.90x the second core stops being optional for anything
   that decodes 7.1.4 and does something else
-  (`planning/esp32-714-realtime.md` in the repository).
+  ([`planning/esp32-714-realtime.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-714-realtime.md)).
 - **The second core** was the lever the earlier estimates ranked first. It was
   not needed for stereo or 5.1, and the breakdown says why it would have
   disappointed: the stages that dominated were serial software floating point,
@@ -1191,11 +1195,11 @@ are repeated here because neither failure mode points at its cause:
   without yielding, which is what the watchdog exists to catch. A decoder in a product should keep
   the watchdog and give the decode its own task with a bounded per-frame budget.
 
-PSRAM is off, although the development board has 8 MB. QEMU cannot emulate S3 PSRAM
+PSRAM is off in the standalone probe, although the development board has 8 MB. QEMU cannot emulate S3 PSRAM
 ([espressif/qemu#129](https://github.com/espressif/qemu/issues/129)), so a build requiring it
 cannot run in CI, and keeping it off means the internal-SRAM budget is enforced rather than
-avoided. Turn it on for a board build that needs the headroom; not to make a footprint number go
-away.
+avoided. The Hearth Sendspin sink is a separate networked shape and requires the board's 8 MB
+of PSRAM.
 
 ## What the port required from the library
 
@@ -1216,7 +1220,8 @@ minimum-footprint profile, `double` by default elsewhere, and selectable in any 
 are independent CMake axes. The option's third value, `fixed`, is the tier for a part with no FPU
 at all - an ESP32-C3 or C6 - and the one value the profile honours over its own `float`
 default; [docs/building.md](../../building.md#minimum-footprint-decoder-profile) and
-`planning/arithmetic-tiers.md` say what it is and what it measured. It is not this part's tier:
+[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)
+say what it is and what it measured. It is not this part's tier:
 the S3's FPU makes `float` the right arithmetic here. Since 2026-09-09 the arithmetic between the bitstream and those
 buffers — mantissa dequantisation, dither, coordinates, decoupling, spectral extension, the AHT
 and JOC's mixing — follows the same scalar; it had stayed `double`, which on this FPU is

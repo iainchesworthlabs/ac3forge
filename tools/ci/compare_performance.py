@@ -5,7 +5,7 @@ Fills the hole between the two performance checks this repository already has.
 tests/performance/test_performance.cpp's ac3perf is an ABSOLUTE real-time gate
 and runs on every PR, but its budget carries enough headroom that a change
 could double ms/frame and still pass. tools/ci/append_performance_history.py is
-RELATIVE and would catch that, but it only ever runs on pushes to develop/main
+RELATIVE and would catch that, but it only ever runs on pushes to main
 (see .github/workflows/ci.yml's persist-performance-trend job) - so today a PR
 that halves the encoder's speed is discovered after it has already merged.
 

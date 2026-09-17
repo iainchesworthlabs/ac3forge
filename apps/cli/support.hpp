@@ -369,7 +369,8 @@ struct Options {
     // §7.2.2.6 delta bit allocation (plan::Tools::delta), on by default;
     // delta=off is the encoders' first effort level - see the field's own
     // comment in ac3/encoder/encoder.hpp - reached the same way dither=off
-    // is. eac3-encode's tools= string has the bare nodelta token.
+    // is. eac3-encode's [tools] positional has the equivalent bare nodelta
+    // token; it is not a tools= key/value option.
     bool delta = true;
     // Whether channels= or downmix= actually named a target this run, so the
     // two can cooperate without either silently winning: downmix=ltrt on its

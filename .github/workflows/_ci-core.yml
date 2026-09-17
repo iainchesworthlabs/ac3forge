@@ -1667,9 +1667,8 @@ jobs:
             --commit "$COMMIT_SHA" \
             --commit-date "$commit_date"
 
-      # main-only: main only ever advances on a release promotion in this
-      # repo's GitFlow model, so this is already release cadence, not an
-      # extra gate - see docs/landscape.md's own release-by-release framing.
+      # main-only: this records the latest comparison on the trunk branch.
+      # See docs/landscape.md's release-by-release framing.
       # Unlike the JSONL append above, a fresh PNG every push doesn't
       # delta-compress the way small JSON text does, so this deliberately
       # does NOT run on every main push the way the numbers do; the

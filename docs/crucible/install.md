@@ -145,11 +145,33 @@ icon named after its binary. A script, an interpreter or a command-line player (
 `aplay`) has none of those, and shows the monogram.
 
 ```
-ac3crucible-run [--null-sink SUBSTR] [--key PATH] [--pin MODE]
-  list                      the applications and their slots
-  pos <app> <x> <y> <z>     position one (x,y in [0,1], z in [-1,1])
-  bed <app>                 send it back to the bed
-  status                    one line of engine state
+ac3crucible-run [--null-sink SUBSTR] [--key PATH] [--pin MODE] [--low-latency]
+                [--bitrate KBPS] [--set-default SUBSTR]
+
+Options:
+  --null-sink SUBSTR       silent endpoint applications render into
+  --key PATH               signing key file; otherwise use AC3FORGE_SIGNING_KEY*
+  --pin MODE               start in atmos, ddplus, dd, pcm, headphones, or stereo
+  --low-latency            use one-block frames and the smallest PCM sink period
+  --bitrate KBPS           fixed bit rate; default 448, or 1536 with --low-latency
+  --set-default SUBSTR     move the default output before starting; restore it on quit
+
+Commands:
+  list                     list applications and the IDs used by <app>
+  pos <app> <x> <y> <z>   position one application (x,y in [0,1], z in [-1,1])
+  side <app> l|r <x> <y> <z>
+                           position one side of a split stereo application
+  pair <app> reset         restore a split pair's standard spread
+  bed <app>                send an application back to the bed
+  pin <mode>|off           pin an output mode, or return to policy selection
+  key <path>|none          load or clear the signing key
+  bypass on|off            use the engine mix directly in PCM-side modes
+  split <app> on|off       represent stereo as two objects or one mono fold
+  size <app> <0..1>        set object extent from a point to the whole room
+  default <substr>|restore move the default output, or restore the previous one
+  probe                    re-run the output probe
+  status                   print one line of engine state
+  quit | exit              stop the runner
 ```
 
 Two things worth knowing before you start:

@@ -27,6 +27,8 @@
   }
 
   async function fetchHistory(stem) {
+    // Append producers create the recent sidecar only after the full history
+    // exceeds the shared window; the full JSONL remains the normal fallback.
     var candidates = [stem + ".recent.jsonl", stem + ".jsonl"];
     for (var i = 0; i < candidates.length; i++) {
       try {

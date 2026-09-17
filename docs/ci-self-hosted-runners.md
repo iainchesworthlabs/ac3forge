@@ -1,8 +1,8 @@
 # Self-hosted CI runners
 
-The six plain Windows/Linux legs in [`_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)'s
-`build` matrix (Windows MSVC, Windows LLVM, Linux GCC, Linux LLVM, Linux LLVM ASan+UBSan,
-Linux LLVM TSan) can each run on a
+The six plain Windows/Linux legs in the split `_ci-windows.yml` and
+`_ci-linux.yml` matrices (Windows MSVC, Windows LLVM, Linux GCC, Linux LLVM,
+Linux LLVM ASan+UBSan, Linux LLVM TSan) can each run on a
 self-hosted runner instead of a GitHub-hosted one - whenever the fleet is *online* at all,
 and up to however many runners are online: with the fleet at its normal size (13 Linux, 7
 Windows) that means every leg, and the per-leg fan-out only reappears as graceful
@@ -17,8 +17,8 @@ merge base moved into `_ci-core.yml` with the CI lane partitions split
 `_ci-core.yml`'s jobs cannot reach across the `workflow_call` boundary to
 `needs: check-runner` directly. The Windows wheel leg routes through a
 decider of its own in
-`wheels.yml`, and `_build.yml`'s standalone containerised build-footprint job rides the
-matrix fan-out as leg 5 - so one queue entry can put up to three Windows consumers (two
+`wheels.yml`. `_build.yml`'s build-footprint, ESP32-S3 and ESP32-C3 jobs use
+Linux runner slots 5-7. One queue entry can put up to three Windows consumers (two
 build legs, the wheel leg) onto the 7-runner Windows fleet at once. The nightly analysis
 workflows (`codeql.yml`, `msvc-analysis.yml`, `static-analysis.yml`) have deciders of their
 own too, but run against `main` once a night rather than per queue entry - see
@@ -56,10 +56,12 @@ this one.
 
 ## How the decision gets made
 
-A `check-runners` job runs before the `build` matrix on every push/PR/release, decides a
-runner-label set for each of the five Linux legs (the four matrix legs plus
-build-footprint's leg 5) and each of the two Windows legs individually, and the matrix
-picks those up via `runs-on: ${{ fromJSON(matrix.runner) }}`.
+A `check-runners` job runs before the split platform workflows on every
+push/PR/release. It decides a runner-label set for seven Linux consumers (four
+self-hosted-eligible matrix legs plus `build-footprint`, ESP32-S3 and ESP32-C3)
+and two Windows legs.
+`_build.yml` passes those labels into the platform workflows, whose matrices use
+them via `runs-on`.
 Per OS, in order:
 
 1. **Fork PRs always get GitHub-hosted**, no exceptions and no live check, for every leg.

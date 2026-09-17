@@ -23,12 +23,20 @@ The main public headers are under `src/forge/include/ac3/`.
 | `matroska::matroska`, `mp4::mp4`, `mpegts::mpegts` | Container writers |
 | `ac3::signing` | EMDF object signing; see [Object signing](signing.md) |
 | `ac3iab::ac3iab` | SMPTE ST 2098-2 IAB reading; see [IAB](iab.md) |
+| `iamf::iamf` | IAMF OBU and ISOBMFF writing; see [IAMF](iamf.md) |
 | `ac3adm::ac3adm` | ADM/BW64 reading and writing; opt-in with `AC3FORGE_BUILD_ADM=ON` |
 | `ac3::admbridge` | Mapping between ADM objects and the Atmos encoder or decoder |
+| `ac4::ac4` | AC-4 inspection used by in-tree applications; in-tree only, not installed or exported |
 
-`ac3adm::ac3adm` and `ac3::admbridge` require the `adm` vcpkg feature and are installed as
-shared libraries. Their [ADM](adm.md) and [ADM bridge](adm-bridge.md) pages explain the
-dependency and linkage details.
+`ac3adm::ac3adm` and `ac3::admbridge` need the root dependency manifest's `adm` feature
+(`-DVCPKG_MANIFEST_FEATURES=adm`) when building this repository with vcpkg, and are installed as
+shared libraries. The packaged `ac3forge` port has no `adm` feature and does not package either
+target. Their [ADM](adm.md) and [ADM bridge](adm-bridge.md) pages explain the dependency and
+linkage details.
+
+`ac4::ac4` is available only while this repository is part of the build.
+`cmake/InstallLibrary.cmake` has no AC-4 export or install rule, so it is not available through
+`find_package(ac3forge)`.
 
 **In-tree** (this repo `add_subdirectory`'d into a larger build, or as a git submodule):
 

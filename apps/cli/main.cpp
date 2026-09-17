@@ -301,9 +301,9 @@ constexpr std::array<Command, 42> kCommands{{
      topic::kStdio | topic::kDecode | topic::kObjects,
      Needs::kNothing,
      [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3), x.str(4)); }},
-    {"probe", 2, "<in.ac3|in.ec3> [json=1] [detail=frames|blocks]",
-     "what the stream declares: layout, substreams, rates, metadata ranges, object layer, "
-     "tool usage and per-frame CRC - as a table, or as a documented JSON contract",
+    {"probe", 2, "<in.ac3|in.ec3|in.ac4> [json=1] [detail=frames|blocks]",
+     "inspect AC-3/E-AC-3 layout, substreams, metadata, objects, tools and CRC, or AC-4 "
+     "TOC/presentations/substream groups; table or documented JSON",
      topic::kStdio | topic::kProbe,
      Needs::kNothing, [](const Args& x) { return run_probe(x.str(1), x.meta); }},
     {"transcode", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout]",
@@ -369,8 +369,8 @@ constexpr std::array<Command, 42> kCommands{{
     {"mkv", 3, "<in.ac3|in.ec3> <out.mkv>", "wrap as a playable Matroska file", topic::kMkv,
      Needs::kNothing,
      [](const Args& x) { return run_mkv(x.str(1), x.str(2)); }},
-    {"mp4", 3, "<in.ac3|in.ec3> <out.mp4>",
-     "wrap as a playable MP4 with a spec-correct dac3/dec3 box", topic::kNone,
+    {"mp4", 3, "<in.ac3|in.ec3|in.ac4> <out.mp4>",
+     "wrap as playable MP4 with dac3/dec3 for AC-3/E-AC-3 or dac4 for AC-4", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_mp4(x.str(1), x.str(2)); }},
     {"fmp4", 3, "<in.ac3|in.ec3> <out_dir> [frames_per_fragment]",
@@ -379,8 +379,8 @@ constexpr std::array<Command, 42> kCommands{{
      topic::kFmp4 | topic::kMeta,
      Needs::kNothing,
      [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48), x.meta); }},
-    {"ts", 3, "<in.ac3|in.ec3> <out.ts> [dvb|atsc]",
-     "wrap as an MPEG-2 Transport Stream, DVB profile by default",
+    {"ts", 3, "<in.ac3|in.ec3|in.ac4> <out.ts> [dvb|atsc]",
+     "wrap as MPEG-2 TS; AC-4 supports DVB only",
      topic::kTs | topic::kMeta,
      Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2), x.str(3, "dvb"), x.meta); }},
     {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3>",
@@ -441,7 +441,7 @@ constexpr std::array<Command, 42> kCommands{{
 }};
 
 // kCommands as usage.hpp sees it: no handler, no Needs, and this build's own
-// answer to "can it run here" already resolved. Rebuilt on every call - 39
+// answer to "can it run here" already resolved. Rebuilt on every call - 42
 // rows of string_view, so there is nothing worth caching and nothing that can
 // go stale between the table and what gets printed.
 std::vector<CommandInfo> command_infos() {

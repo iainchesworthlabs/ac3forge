@@ -207,9 +207,9 @@ ceiling) fails the build rather than merely being recorded.
     return text.split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
   }
 
-  // The window first, the full history second - tools/ci/append_quality_history.py
-  // writes a <branch>.recent.jsonl once the history outgrows its window, and
-  // nothing at all before that. Absent is the normal case, not an error.
+  // Every append-history producer writes a *.recent.jsonl sidecar once its
+  // history outgrows the shared window. Before that, absence is normal and the
+  // authoritative full file remains the fallback.
   async function fetchHistory(stem) {
     for (const file of [`${stem}.recent.jsonl`, `${stem}.jsonl`]) {
       try {

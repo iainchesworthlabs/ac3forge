@@ -108,7 +108,7 @@ because it isn't a platform/compiler pair but an instrumented variant of `linux-
 which inherits `linux-llvm` plus a `sanitize-asan-ubsan` fragment setting
 `AC3FORGE_SANITIZERS=address,undefined` (see `cmake/Sanitizers.cmake`; MSVC is rejected outright,
 so this only exists for GCC/Clang). See [Verified configuration](#verified-configuration) for what CI says
-about all eighteen. There are also nine `ci-<platform>` `workflowPresets` (Release except for the
+about all eighteen. There are also 11 `ci-<platform>` `workflowPresets` (Release except for the
 two sanitizer ones, which are Debug-only) that chain configure→build→test in one
 `cmake --workflow --preset ci-windows-msvc` call. There is no coverage workflow preset — the
 `config-`/`build-`/`test-linux-gcc-coverage` trio exists, but nothing chains it — and CI does not
@@ -256,6 +256,8 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_BUILD_CAPI` | `ON` | Build `ac3::forge_c` (`src/capi`), the C API over the encode/decode core — see [C API](library/c-api.md). Depends on nothing but `ac3::forge_static`, so unlike `AC3FORGE_BUILD_ADM` there is no extra dependency footprint to opt out of. |
 | `AC3FORGE_BUILD_PYTHON` | `OFF` | Build the pybind11 extension module (`python/`). Off by default for the same reason as `AC3FORGE_BUILD_ADM`: nothing under `src/`, `apps/`, `tests/` or `examples/` links it, so a normal C++ build is unaffected either way. `python/pyproject.toml` turns it on itself via scikit-build-core when `pip install`/cibuildwheel drives the configure. |
 | `AC3FORGE_BUILD_ADM` | `OFF` | Build `ac3adm::ac3adm` (`src/ac3adm`), the standalone BW64/RF64 + ADM parser — see [ADM / BW64 reading](library/adm.md). Off by default, unlike every other library component: it vendors libbw64/libadm via `FetchContent`, and libadm needs several Boost header libraries, resolved separately via `-DVCPKG_MANIFEST_FEATURES=adm` (`vcpkg.json`'s `adm` feature) — turning this `ON` without also selecting that feature fails with a clear configure-time message rather than a bare "Boost not found". |
+| `AC3FORGE_BUILD_CRUCIBLE` | `OFF` | Build the Crucible engine, console runner, and desktop window. Linux requires PipeWire; see [Crucible installation](crucible/install.md#linux). |
+| `AC3FORGE_BUILD_HEARTH` | `OFF` | Build `ac3::sendspin`, the Hearth engine, `ac3hearth-testsink`, and `ac3hearth-testserver`. With vcpkg, also select the root manifest's `hearth` feature (`-DVCPKG_MANIFEST_FEATURES=hearth`) for its network, pairing, FLAC, and Opus dependencies. There is no desktop window yet; see [Hearth](hearth/index.md). |
 | `AC3FORGE_WITH_ALSA` | `AUTO` | Linux only. `AUTO` builds the ALSA audio backend when libasound's headers are present; `ON` requires them; `OFF` never builds it. Takes precedence over `AC3FORGE_WITH_PIPEWIRE` when both are found — see [Linux audio](#linux-audio). |
 | `AC3FORGE_WITH_PIPEWIRE` | `AUTO` | Linux only. `AUTO` builds the PipeWire audio backend when libpipewire-0.3's headers are present *and* ALSA was not selected; `ON` requires the headers (independently of ALSA); `OFF` never builds it. See [Linux audio](#linux-audio). |
 | `AC3FORGE_CRUCIBLE_X11` | `AUTO` | Linux only, with `AC3FORGE_BUILD_CRUCIBLE`. `AUTO` compiles Crucible's X11 full-screen check over libxcb when `libxcb1-dev` is present; `ON` requires it; `OFF` never builds it. Without it the rule is off at runtime and the Room page says so. The configure summary prints `Crucible X11   : xcb` or `none`. |
@@ -555,8 +557,8 @@ the Cortex-M3 leg, and CI holds both to the pinned ones in
 `tests/golden/fixed-probe-pcm-hashes.json` (`tools/checks/check_probe_hashes.py`). The
 Catch2 suite is not one of its gates: two of the encoder's mirror self-checks compare the
 encoder's model against a real decode at a tolerance set for the double decoder, and fail under
-the fixed one. The plan, the phases and what each measured are in
-`planning/arithmetic-tiers.md`.
+the fixed one. The plan, phases, and measurements are in
+[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md).
 
 **And the encoders' analysis front end, on its own axis.**
 `src/forge/src/internal/scalar/encode/{float64,float32}/` carries `encode_scalar_t`: the type
@@ -986,6 +988,11 @@ also runs clean headless (`QT_QPA_PLATFORM=offscreen`), encoding real audio and 
 real QML channel meters. See [Linux audio](#linux-audio) for what the ALSA verification did,
 and did not (real hardware), prove.
 
+CI no longer has one cross-OS build matrix. `_build.yml` orchestrates three
+reusable workflows: `_ci-windows.yml`, `_ci-linux.yml`, and `_ci-macos.yml`.
+Their platform matrices contain 11 legs in total and can be gated independently
+by the change classifier.
+
 linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan,
 linux-llvm-tsan (ThreadSanitizer over the `concurrency` ctest label — `tests/audio/` and the
 headless CLI device paths — via `config-linux-llvm-tsan`), macos-llvm,
@@ -1021,8 +1028,10 @@ comment in `ci.yml`.
 On `pull_request` only, a `performance-compare` job builds `ac3bench`/`ac3kernelbench` at the
 merge base and at the PR head on one runner and posts a table of per-workload deltas to the job
 summary, using the same soft/hard tiers `tools/ci/append_performance_history.py` applies on
-merge. It is informational and never fails a build — the blocking performance checks remain
-`ac3perf`'s absolute real-time budget on every leg and the trend job's hard tier on push.
+merge. The comparison job is informational and has `continue-on-error`; its
+`hard_regression` verdict feeds the separate blocking `performance-gate` job.
+`ac3perf` also enforces its absolute real-time budget on every eligible leg,
+and the main-branch trend job enforces the same hard relative tier after push.
 
 An `abi-gate` job (`_ci-core.yml`, called from `ci.yml`) runs on the same advisory footing: on a code-touching change it
 builds `config-linux-llvm-shared` at a comparison point in a git worktree beside HEAD, then

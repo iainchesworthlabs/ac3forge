@@ -107,7 +107,6 @@ nav:
           - C API: library/c-api.md
           - Python: library/python-api.md
           - Rust: library/rust-api.md
-          - JavaScript / WebAssembly: platforms/wasm.md
   - Validation:
       - How output is checked: verification.md
       - Threat model: threat-model.md
@@ -176,6 +175,8 @@ nav:
       - Windows null-sink driver: platforms/windows-driver-acx.md
   - Project:
       - Contributing: contributing.md
+      - Security policy: security.md
+      - Release notes: https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md
       - Releasing: releasing.md
       - Self-hosted CI runners: ci-self-hosted-runners.md
       - CI lane partitions: ci-lanes.md

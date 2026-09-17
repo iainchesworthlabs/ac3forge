@@ -41,10 +41,12 @@ The sections below contain the complete change list and fixes.
   anything.
 - **A Hearth sink plays as a Sendspin player** (`hearth_sink` with `sdkconfig.sendspin`).
   The board pairs with a server by its token or by a six-digit code on the console and its page,
-  over Noise, and follows the server's clock with Sendspin's time filter. Music Assistant plays
-  it stereo PCM through `player@v1`. Hearth's `_ac3forge_player@v1` sends it AC-3 or E-AC-3 with
-  any Atmos objects, which the board decodes and renders to its own layout, routed, trimmed and
-  delayed as the server's settings say. Each sample leaves the I2S port when the server asked:
+  over Noise, and follows the server's clock with Sendspin's time filter. Compatibility with the
+  aiosendspin 9.1.1 server library used by Music Assistant is validated in CI; Music Assistant
+  itself has not been tested. The `player@v1` role carries stereo PCM. Hearth's
+  `_ac3forge_player@v1` sends AC-3 or E-AC-3 with any Atmos objects, which the board decodes and
+  renders to its own layout, routed, trimmed and delayed as the server's settings say. Each
+  sample leaves the I2S port when the server asked:
   playout is scheduled against the channel's end-of-frame interrupts, and corrections are made
   to decoded PCM. Per-output peak and RMS, underruns and play times are reported on the page, in
   `/status` and to the server. Two ESP32-S3 boards played one E-AC-3 JOC programme as a group
@@ -145,21 +147,18 @@ The sections below contain the complete change list and fixes.
 
 **Crucible desktop application**
 
-- The Desktop Atmos Demo is built, tested and packaged in CI (roadmap UX11 phase 6):
-  both Windows legs build and run the demo's 68 tests, and the MSVC leg packages
-  `ac3forge-desktop-atmos-<version>-win64.zip` as its own release asset.
+- **AC3Forge Crucible is built and tested on Windows and Linux, with its macOS code built and
+  tested in CI.** The Windows release asset is
+  `ac3forge-crucible-<version>-win64.zip`. It carries the driver's install and remove scripts
+  only. The test-signed driver must be built from source until attestation signing is in place.
 - **Per-process loopback capture and endpoint change notifications on Windows** (roadmap
   UX11): `Capture::start_process_loopback` taps one process tree's render output at a
   caller-stated format (Windows 10 build 20348+), and `DeviceWatcher` delivers endpoint
   add/remove/state/default-changed events on a callback instead of requiring polling.
   Every other backend refuses both honestly.
-- **The Desktop Atmos Demo for Windows** (roadmap UX11; `apps/windows/`, behind
-  `AC3FORGE_BUILD_WINDEMO`, default OFF): every application playing sound becomes an
-  Atmos object the user places in a room, streamed live as E-AC-3 JOC over HDMI or
-  AC-3/PCM/Spatial Sound/stereo as the endpoint requires. `ac3windemo` is the console
-  runner, `ac3desk` the Qt Quick window (six languages, tray residency, a 3D room).
-  `apps/windows/driver/` is `Ac3ForgeNullSink`, the silent 7.1 render endpoint, test-
-  signed and verified in a VMware guest under Driver Verifier and KASAN.
+- Crucible places each captured application in a room and streams E-AC-3 JOC over HDMI or
+  AC-3, PCM, Spatial Sound, or stereo as the endpoint requires. `ac3crucible-run` is the
+  console runner and `ac3crucible` is the Qt Quick window.
 - `MonitorSink::start` takes a `low_latency` flag: on Windows it asks `IAudioClient3`
   for the engine's smallest shared-mode period, falling back to the default where
   unsupported; other backends ignore it.
@@ -204,8 +203,8 @@ The sections below contain the complete change list and fixes.
 - **`src/sendspin`, the first part of Hearth's Sendspin implementation**
   (`planning/hearth-sendspin-extension.md`): an in-tree JSON reader and writer, strict
   base64url, transport-mode fragments and the `player@v1` audio chunk in both the
-  specification's forms and those of aiosendspin 9.1.1 (Music Assistant's server), and the
-  `_ac3forge_player@v1` burst chunk. Built with `-DAC3FORGE_BUILD_HEARTH=ON`. The
+  specification's forms and those of aiosendspin 9.1.1 (the version used by Music Assistant),
+  and the `_ac3forge_player@v1` burst chunk. Built with `-DAC3FORGE_BUILD_HEARTH=ON`. The
   JSON reader parses into caller-owned storage without recursing, and refuses invalid
   UTF-8 and duplicate keys. Two fuzz harnesses (`fuzz_sendspin_json`,
   `fuzz_sendspin_frames`) and a CI job, `Hearth Sendspin (Linux, GCC)`, cover it.
@@ -388,17 +387,17 @@ The sections below contain the complete change list and fixes.
   the programme's timeline puts it. The released client refuses to offer Opus, so the player adds
   it to the SDK's decodable codecs for that run (`planning/hearth-sendspin-extension.md`, decision
   5). `hearth-validate` runs the script.
-- **Hearth's player against Music Assistant's server**, found with the scripts above: to an
-  aiosendspin 9.1.1 server a player reports `available: true` from its activation, as 9.1.1's own
+- **Hearth's player against an aiosendspin 9.1.1 server**, found with the scripts above: a player
+  reports `available: true` from its activation, as 9.1.1's own
   client does, because the server starts from `available: true` and takes `available: false` for an
   external source, which would move the player out of its group whenever it connected. From such a
   server the player also holds `player@v1` chunks that arrive before its first clock update, within
   its `buffer_capacity`, and drops a chunk whose timestamp is not later than the last one it took:
-  Music Assistant starts a stream with the activation, holds back what it sends before the player's
-  first `client/state`, and then sends it and replays the stream from its start as well
+  The scripted server starts a stream with the activation, holds back what it sends before the
+  player's first `client/state`, and then sends it and replays the stream from its start as well
   (`planning/hearth-sendspin-extension.md`, C13 and C14).
-- **Music Assistant's server scripted on aiosendspin 9.1.1** (`tools/sendspin/aiosendspin_server.py`),
-  a rehearsal of A4's exit with Music Assistant: it starts `ac3hearth-testsink`, dials it, pairs by
+- **An aiosendspin 9.1.1 server script** (`tools/sendspin/aiosendspin_server.py`), a rehearsal of
+  Music Assistant's Sendspin path: it starts `ac3hearth-testsink`, dials it, pairs by
   the sink's `SP:0` token or by the dynamic code the sink shows, and plays it three seconds of two
   tones in each codec, driving aiosendspin's `SendspinServer` as Music Assistant's provider does.
   The sink's WAV file is the programme sample for sample in PCM and FLAC and within 20 dB in Opus,
@@ -1002,11 +1001,11 @@ The sections below contain the complete change list and fixes.
 
 - The Crucible guide gained its two missing pages ([The room](docs/crucible/room.md),
   [Settings](docs/crucible/settings.md)).
-- The library's docs page now presents it as a member in its own right, matching its two
-  siblings.
+- The library's docs page now presents it as a member in its own right, matching Forge,
+  Crucible, and Hearth.
 - The published-asset table now matches the pipeline: a Windows arm64 row, Crucible
   rows, and four stale claims corrected.
-- The CLI reference lists all forty-one commands, including the previously-undocumented
+- The CLI reference lists all forty-two commands, including the previously-undocumented
   `spatial`.
 
 **Release engineering**
@@ -1719,8 +1718,8 @@ trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
   doesn't work: hls.js drops an audio track outright the moment the real `addSourceBuffer` throws
   for an unsupported codec) and extracts access units from the fMP4 segments hls.js's own remuxer
   produces.
-- The docs site's WASM demo is now a consumer of the published package rather than its own
-  parallel implementation of the same decode/playback logic.
+- The docs site's WASM demo now consumes the bundled JavaScript bindings and their
+  decode/playback logic.
 
 **Shield Atmos Demo (Android)**
 

@@ -1,9 +1,8 @@
 # Localisation
 
-The app's own text is translated via Qt Linguist, the same mechanism and the same canonical
-language set as the sibling CountdownSolver project. This page covers what is in the catalogues
-today and what that does and does not promise, how to update or extend them, and the pseudo-locale
-QA fixture the pipeline itself is tested against.
+The app's text is translated with Qt Linguist. This page covers what is in the catalogues today,
+what that does and does not promise, how to update or extend them, and the pseudo-locale QA
+fixture used to test the pipeline.
 
 ## How it fits together
 
