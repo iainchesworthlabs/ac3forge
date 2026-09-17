@@ -196,8 +196,8 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.appcompat:appcompat:1.8.0")
 
     // roadmap VX18(b): device-free instrumented coverage for
     // NativeBridge/PassthroughBridge (src/androidTest/), run via
