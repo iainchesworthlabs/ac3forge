@@ -44,17 +44,43 @@ printf 'sdk.dir=%s\n' "$sdk" > "$android_dir/local.properties"
 cd "$android_dir"
 sed 's/\r$//' gradlew > gradlew.unix
 chmod +x gradlew.unix
-# assembleDebug alone does not lock debugAndroidTestRuntimeClasspath or the
-# AGP Unified Test Platform (_internal-unified-test-platform-*) configs that
-# connectedDebugAndroidTest resolves. UTP artifact versions track AGP (8.9.1 →
-# 31.9.1); bumping AGP without re-locking those configs breaks CI.
+
+# Resolve every canBeResolved configuration so --write-locks captures app,
+# androidTest, release, and AGP Unified Test Platform
+# (_internal-unified-test-platform-*) configs without needing an emulator.
+# assemble* / connectedDebugAndroidTest alone miss UTP core configs that only
+# resolve at connected-test time; running connected without a device fails
+# before locks are persisted.
+init_script="$(mktemp --suffix=.init.gradle.kts)"
+cat > "$init_script" <<'EOF'
+gradle.projectsLoaded {
+    rootProject.allprojects {
+        afterEvaluate {
+            tasks.register("resolveAndLockAll") {
+                notCompatibleWithConfigurationCache("resolves all configurations for locking")
+                doLast {
+                    configurations
+                        .filter { it.isCanBeResolved }
+                        .forEach { cfg ->
+                            try {
+                                println("Resolving ${project.path}:${cfg.name}")
+                                cfg.resolve()
+                            } catch (e: Exception) {
+                                println("Skip ${project.path}:${cfg.name}: ${e.message}")
+                            }
+                        }
+                }
+            }
+        }
+    }
+}
+EOF
+
 ./gradlew.unix \
-  :app:assembleDebug \
-  :app:assembleDebugAndroidTest \
-  :app:assembleRelease \
-  :app:connectedDebugAndroidTest \
+  -I "$init_script" \
+  :app:resolveAndLockAll \
   --write-locks
-rm -f gradlew.unix
+rm -f gradlew.unix "$init_script"
 
 echo "Updated $android_dir/app/gradle.lockfile"
 echo "SDK at $sdk (local.properties written; both are machine-local, not committed)"
