@@ -112,10 +112,11 @@ Every target builds and tests green in CI. Beyond that:
    emulate the part. [ESP32-C6](docs/platforms/bare-metal/esp32-c6.md).
 10. Correct under QEMU's `mps2-an385`; no real silicon.
 
-What each can encode and decode is the same everywhere — see
-[docs/library/capabilities.md](docs/library/capabilities.md). Which page applies to what you
-have, and the full detail and caveats behind each tick above, is in
-[docs/platforms/](docs/platforms/index.md#reading-the-last-column).
+The complete codec surface is in
+[docs/library/capabilities.md](docs/library/capabilities.md). Minimum-footprint targets narrow it
+for memory, arithmetic and timing constraints. The platform and variant matrices, with the
+evidence behind each claim, are in
+[docs/platforms/](docs/platforms/index.md#reading-the-evidence).
 
 ## Building
 

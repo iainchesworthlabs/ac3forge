@@ -12,7 +12,7 @@ encoding. The repository contains the codec library and three applications built
 | Capture desktop applications and position them in an Atmos scene | [Crucible](crucible/index.md) |
 | Play audio through an ESP32 sink or follow the desktop player | [Hearth](hearth/index.md) |
 | Link the codec from C++, C, Python, Rust, or WebAssembly | [Library](library/index.md) |
-| Find support for an operating system or device | [Platforms](platforms/index.md) |
+| Compare products and features by platform and architecture | [Platforms](platforms/index.md) |
 
 The [Quick start](quickstart.md) covers installation, source builds, and the ESP32-S3 sink.
 
@@ -36,6 +36,8 @@ performance, decoder-accuracy, listening-quality, object-quality, and memory his
 ## Project information
 
 - [Capabilities](library/capabilities.md) — supported formats, coding tools, layouts, and limits.
+- [Application coverage](library/application-coverage.md) — which library features each
+  application exposes.
 - [Validation](verification.md) — how output is checked and where independent checking ends.
 - [Building from source](building.md) — toolchains, presets, options, and platform details.
 - [Contributing](contributing.md) — repository structure and contribution requirements.

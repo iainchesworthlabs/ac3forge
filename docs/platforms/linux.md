@@ -16,6 +16,11 @@ troubleshooting, see [Building from source](../building.md).
 | Other Linux hardware | Untried. Treat the Pi as two confirmed configurations on one box, not as Linux generally |
 | Packaging | DEB and RPM, plus an AppImage — see [Packaging](#packaging) |
 
+The table below separates x86_64 from aarch64 and records where the evidence comes from. The
+hardware-confirmed aarch64 entries are measurements from one Raspberry Pi 4B.
+
+--8<-- "docs-snippets/generated/platform-linux.md"
+
 ## Toolchains
 
 Built and tested with **GCC 16** and **Clang 22.1** on **Ubuntu 26.04 (WSL2)** — the versions

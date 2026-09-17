@@ -17,6 +17,11 @@ unchanged, just with `-arm64` presets.
 | Pi 3 | Not a supported target — the weaker CPU puts the real-time encode gate at risk |
 | OS | 64-bit required (`aarch64`); there is no 32-bit ARM triplet |
 
+The Pi 4B is the measured target. Pi 5 cells describe the shared Linux aarch64 path and are
+labelled unrun wherever no Pi 5 has supplied evidence.
+
+--8<-- "docs-snippets/generated/platform-raspberry-pi.md"
+
 ## Why there's no Raspberry Pi-specific code
 
 The project's backend tree (`src/audio/src/backend/{windows,alsa,pipewire,posix,macos,android}/`,

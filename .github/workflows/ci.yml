@@ -581,6 +581,14 @@ jobs:
         shell: bash
         run: python3 tools/checks/check_platform_matrix.py
 
+      # The comparison tables are committed Markdown so they remain searchable
+      # and usable without JavaScript. The home-page selector reads the JSON
+      # source directly; this check keeps those two presentations on the same
+      # catalogue.
+      - name: Generated support matrices
+        shell: bash
+        run: python3 tools/checks/generate_support_matrices.py --check
+
       # `git ls-files` rather than a hard-coded list of directories: a shell
       # script added anywhere in the tree is then linted the day it lands,
       # instead of silently sitting outside the gate until someone remembers to

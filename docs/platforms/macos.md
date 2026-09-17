@@ -36,6 +36,11 @@
 | Crucible | Compiles and is exercised by the CI suites; the application has never been launched on a Mac |
 | Packaging | A `.dmg` for the CLI and a cask for the GUI; the cask has not been installed end to end on a Mac |
 
+The two build variants feed one universal end-user package. Entries marked **Source** or
+**In development** remain unconfirmed for sound hardware.
+
+--8<-- "docs-snippets/generated/platform-macos.md"
+
 ## Toolchain
 
 Homebrew-installed LLVM (`cmake/toolchains/macos.llvm.toolchain.cmake` prefers it over Apple's

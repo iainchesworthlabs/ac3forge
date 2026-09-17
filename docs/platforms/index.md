@@ -3,10 +3,28 @@
 Where ac3forge runs, and which page holds the detail. Where this page and a platform page
 disagree, the platform page is right.
 
-The first table below is organised by what you have, the second by how you want to call it. The
-last column of the first says what each target has been *shown* to do; those claims are not all
-the same strength, and [Reading the last column](#reading-the-last-column) sets out the four
+The overview compares products across platform families. The routing table below it is organised
+by what you have, followed by one organised by how you want to call the code. The evidence claims
+are not all the same strength; [Reading the evidence](#reading-the-evidence) sets out the four
 levels that appear.
+
+## Feature support at a glance
+
+This table compares the broad feature set across platform families. **Source** means the feature
+is available to code or applications built from this tree; **Limited** identifies a family where
+variants differ. The evidence line says whether the claim rests on hardware, required CI,
+experimental CI, a build, or emulation. Select the platform heading for its variant-level table.
+
+--8<-- "docs-snippets/generated/platform-feature-overview.md"
+
+## Product availability at a glance
+
+**Published** means there is a package to download now; **Next release** means packaging is wired
+but has not appeared on a tagged release. **Source** and **In development** do not promise a
+downloadable application. The [home-page selector](../index.md) routes a product, platform and
+variant to its release or build instructions.
+
+--8<-- "docs-snippets/generated/platform-product-overview.md"
 
 ## Which page
 
@@ -47,9 +65,9 @@ without it. [The null-sink driver on ACX](windows-driver-acx.md) has the detail,
 | **JavaScript** | A browser, through WebAssembly; the npm package is unpublished | [WebAssembly](wasm.md) |
 | **Shield Atmos Demo** | An NVIDIA Shield, sideloaded | [Android](android.md) |
 
-## Reading the last column
+## Reading the evidence
 
-Four strengths of claim appear in that column, and the distance between them matters:
+Four strengths of claim appear throughout these tables, and the distance between them matters:
 
 - **Confirmed on real hardware.** Somebody connected it and it worked: Windows passthrough, the
   Pi 4B driving an AVR, the Shield playing to a receiver.
@@ -68,12 +86,12 @@ A target can sit at different levels for different things, and several do. macOS
 under the second level while its process tap sits at the fourth. Read the platform page before
 depending on any of it.
 
-## What the codec does, on any of them
+## Codec detail
 
-Picking a platform settles where the code runs, not what it can encode or decode. That question
-is the same on every row above and is answered in one place:
-[Capabilities and limitations](../library/capabilities.md), which lists every coding mode,
-layout, sample rate, metadata field and Annex E tool with its spec citation, and says where each
-runs out. Two limits there are worth knowing before you choose anything — objects decode as a
-5.1 bed in Dolby's own decoder without a signing key, and Linux bitstream output has reached a
-real receiver on one machine.
+[Capabilities and limitations](../library/capabilities.md) lists every coding mode, layout,
+sample rate, metadata field and Annex E tool with its spec citation. Desktop and WebAssembly
+builds expose the full codec. Minimum-footprint and fixed-point builds narrow that surface for
+memory, arithmetic and timing constraints; the variant tables above and the individual bare-metal
+pages record those limits. The [application coverage
+matrix](../library/application-coverage.md) shows which broad library capabilities each
+application exposes.

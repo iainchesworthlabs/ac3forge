@@ -17,6 +17,11 @@ reference, options list and troubleshooting, see [Building from source](../build
 | Crucible's null sink | A kernel driver, **test-signed only**; a default-settings machine refuses to load it — see [the driver page](windows-driver-acx.md) |
 | ARM64 | One CI leg, still marked experimental, and it packages for release |
 
+The table below separates x64 from ARM64. Package status and runtime evidence are separate: a
+package can exist even where its hardware-facing paths have not been exercised.
+
+--8<-- "docs-snippets/generated/platform-windows.md"
+
 ## Toolchains
 
 Built and tested with **MSVC 14.51** and **clang-cl 22.1** on **Windows 11**, via Visual Studio
