@@ -10,7 +10,7 @@
 
 // ac3iab::parse_iabitstream(std::istream&) and ac3iab::parse_mxf_iab(std::istream&)
 // (src/ac3iab/src/iab_reader.cpp, mxf_reader.cpp), plus ac3iab::parse_iaframe
-// on the same bytes - the IAB reader, roadmap IM1 phases 1 and 2.
+// on the same bytes - the IAB reader, IAB reader phases 1 and 2.
 //
 // The whole of ac3iab exists to read files this project did not write: an
 // elementary .iab IABitstream, or an IAB track file that a mastering tool
@@ -21,9 +21,9 @@
 // are three framings of the same bytes and libFuzzer's corpus is more useful
 // shared between them than split three ways:
 //
-//   parse_iabitstream  §7's Preamble+IAFrame run, the elementary form
-//   parse_mxf_iab      the KLV walk that extracts that run from a track file
-//   parse_iaframe      §9.1 Table 5, one already-extracted frame's payload
+// parse_iabitstream §7's Preamble+IAFrame run, the elementary form
+// parse_mxf_iab the KLV walk that extracts that run from a track file
+// parse_iaframe §9.1 Table 5, one already-extracted frame's payload
 //
 // parse_iaframe is reached directly as well as through the other two because
 // it is a public entry point in its own right (see ac3iab.hpp's own note on
@@ -36,18 +36,18 @@
 // BitReader::read_plex, whose §5.2 bound (`width >= 32` is kBadEscape) is
 // exactly the kind of clause a fuzzer finds the far side of.
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-    const std::string bytes(reinterpret_cast<const char*>(data), size);
+ const std::string bytes(reinterpret_cast<const char*>(data), size);
 
-    {
-        std::istringstream stream(bytes, std::ios::binary);
-        (void)ac3iab::parse_iabitstream(stream);
-    }
-    {
-        std::istringstream stream(bytes, std::ios::binary);
-        (void)ac3iab::parse_mxf_iab(stream);
-    }
-    (void)ac3iab::parse_iaframe(
-        std::span<const std::byte>(reinterpret_cast<const std::byte*>(data), size));
+ {
+ std::istringstream stream(bytes, std::ios::binary);
+ (void)ac3iab::parse_iabitstream(stream);
+ }
+ {
+ std::istringstream stream(bytes, std::ios::binary);
+ (void)ac3iab::parse_mxf_iab(stream);
+ }
+ (void)ac3iab::parse_iaframe(
+ std::span<const std::byte>(reinterpret_cast<const std::byte*>(data), size));
 
-    return 0;
+ return 0;
 }

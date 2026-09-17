@@ -81,16 +81,16 @@ enum class ConnectState : int { kPending, kReady, kError };
 // pw_thread_loop_wait()'s own contract) until connect_state leaves kPending
 // or the timeout elapses. Must be called with the loop already locked.
 bool wait_for_connect(pw_thread_loop* loop, std::atomic<ConnectState>& state) {
-    for (int waited = 0; waited < kConnectTimeoutSeconds; ++waited) {
-        if (state.load(std::memory_order_acquire) != ConnectState::kPending) {
-            break;
-        }
-        pw_thread_loop_timed_wait(loop, 1);
-    }
-    return state.load(std::memory_order_acquire) == ConnectState::kReady;
+ for (int waited = 0; waited < kConnectTimeoutSeconds; ++waited) {
+ if (state.load(std::memory_order_acquire) != ConnectState::kPending) {
+ break;
+ }
+ pw_thread_loop_timed_wait(loop, 1);
+ }
+ return state.load(std::memory_order_acquire) == ConnectState::kReady;
 }
 
-}  // namespace
+} // namespace
 
 // Impl is private (declared in the shared ac3/audio/capture.hpp every
 // backend implements), so the callbacks below - which need to reach it from
@@ -99,329 +99,329 @@ bool wait_for_connect(pw_thread_loop* loop, std::atomic<ConnectState>& state) {
 // access violation the moment it is more than this struct's own out-of-line
 // definition, which is the one exemption every pimpl class relies on.
 struct Capture::Impl {
-    ThreadLoop loop;
-    Stream stream;
-    std::unique_ptr<RingBuffer> ring;
-    std::atomic_bool running{false};
-    std::atomic<std::uint64_t> frames_captured{0};
-    std::atomic<std::uint64_t> frames_silence{0};
-    std::uint32_t sample_rate = 0;
-    std::uint16_t channels = 0;
-    std::chrono::steady_clock::time_point started;
-    std::uint64_t timeline_frames = 0;
-    bool loopback = false;
+ ThreadLoop loop;
+ Stream stream;
+ std::unique_ptr<RingBuffer> ring;
+ std::atomic_bool running{false};
+ std::atomic<std::uint64_t> frames_captured{0};
+ std::atomic<std::uint64_t> frames_silence{0};
+ std::uint32_t sample_rate = 0;
+ std::uint16_t channels = 0;
+ std::chrono::steady_clock::time_point started;
+ std::uint64_t timeline_frames = 0;
+ bool loopback = false;
 
-    // Touched only while the thread loop's lock is held: connect_state by
-    // both sides (start() polls it via wait_for_connect(), which itself only
-    // returns with the lock re-acquired; state_changed below sets it, and
-    // every stream callback runs with the lock already held, per
-    // pw_thread_loop's own contract).
-    std::atomic<ConnectState> connect_state{ConnectState::kPending};
+ // Touched only while the thread loop's lock is held: connect_state by
+ // both sides (start() polls it via wait_for_connect(), which itself only
+ // returns with the lock re-acquired; state_changed below sets it, and
+ // every stream callback runs with the lock already held, per
+ // pw_thread_loop's own contract).
+ std::atomic<ConnectState> connect_state{ConnectState::kPending};
 
-    static void state_changed(void* data, pw_stream_state /*old_state*/, pw_stream_state state,
-                               const char* /*error*/) {
-        auto& impl = *static_cast<Impl*>(data);
-        if (state == PW_STREAM_STATE_STREAMING || state == PW_STREAM_STATE_PAUSED) {
-            auto expected = ConnectState::kPending;
-            impl.connect_state.compare_exchange_strong(expected, ConnectState::kReady);
-        } else if (state == PW_STREAM_STATE_ERROR) {
-            impl.connect_state.store(ConnectState::kError, std::memory_order_release);
-        } else {
-            return;  // still on its way; nobody is waiting for this one
-        }
-        // Wake the thread in wait_for_connect(). Without this the answer is
-        // set and nobody is told, so the waiter sleeps out its full one-second
-        // step and every tap start costs a second on the caller's thread -
-        // about thirty frames at the engine's cadence. Measured on a
-        // Raspberry Pi 4B, 2026-09-05: 1046 ms before this line, 43 ms after.
-        // pw_thread_loop_signal is the documented other half of
-        // pw_thread_loop_timed_wait, and every stream callback already runs
-        // with the loop's lock held.
-        if (impl.loop) {
-            pw_thread_loop_signal(impl.loop.get(), false);
-        }
-    }
+ static void state_changed(void* data, pw_stream_state /*old_state*/, pw_stream_state state,
+ const char* /*error*/) {
+ auto& impl = *static_cast<Impl*>(data);
+ if (state == PW_STREAM_STATE_STREAMING || state == PW_STREAM_STATE_PAUSED) {
+ auto expected = ConnectState::kPending;
+ impl.connect_state.compare_exchange_strong(expected, ConnectState::kReady);
+ } else if (state == PW_STREAM_STATE_ERROR) {
+ impl.connect_state.store(ConnectState::kError, std::memory_order_release);
+ } else {
+ return; // still on its way; nobody is waiting for this one
+ }
+ // Wake the thread in wait_for_connect(). Without this the answer is
+ // set and nobody is told, so the waiter sleeps out its full one-second
+ // step and every tap start costs a second on the caller's thread -
+ // about thirty frames at the engine's cadence. Measured on a
+ // Raspberry Pi 4B, 2026-09-05: 1046 ms before this line, 43 ms after.
+ // pw_thread_loop_signal is the documented other half of
+ // pw_thread_loop_timed_wait, and every stream callback already runs
+ // with the loop's lock held.
+ if (impl.loop) {
+ pw_thread_loop_signal(impl.loop.get(), false);
+ }
+ }
 
-    static void process(void* data) {
-        auto& impl = *static_cast<Impl*>(data);
-        if (!impl.ring) {
-            return;  // connect() has not finished setting up yet
-        }
-        pw_buffer* buffer = pw_stream_dequeue_buffer(impl.stream.get());
-        if (buffer == nullptr) {
-            return;
-        }
-        const spa_buffer* spa_buf = buffer->buffer;
-        if (spa_buf->n_datas > 0 && spa_buf->datas[0].data != nullptr && impl.channels > 0) {
-            const auto* samples = static_cast<const float*>(spa_buf->datas[0].data);
-            const auto raw_stride = spa_buf->datas[0].chunk->stride;
-            const std::uint32_t stride =
-                raw_stride > 0 ? static_cast<std::uint32_t>(raw_stride)
-                               : static_cast<std::uint32_t>(sizeof(float)) * impl.channels;
-            const std::size_t frame_count = spa_buf->datas[0].chunk->size / stride;
-            const std::size_t sample_count = frame_count * impl.channels;
+ static void process(void* data) {
+ auto& impl = *static_cast<Impl*>(data);
+ if (!impl.ring) {
+ return; // connect() has not finished setting up yet
+ }
+ pw_buffer* buffer = pw_stream_dequeue_buffer(impl.stream.get());
+ if (buffer == nullptr) {
+ return;
+ }
+ const spa_buffer* spa_buf = buffer->buffer;
+ if (spa_buf->n_datas > 0 && spa_buf->datas[0].data != nullptr && impl.channels > 0) {
+ const auto* samples = static_cast<const float*>(spa_buf->datas[0].data);
+ const auto raw_stride = spa_buf->datas[0].chunk->stride;
+ const std::uint32_t stride =
+ raw_stride > 0 ? static_cast<std::uint32_t>(raw_stride)
+ : static_cast<std::uint32_t>(sizeof(float)) * impl.channels;
+ const std::size_t frame_count = spa_buf->datas[0].chunk->size / stride;
+ const std::size_t sample_count = frame_count * impl.channels;
 
-            impl.ring->write(std::span{samples, sample_count});
-            impl.frames_captured.fetch_add(frame_count, std::memory_order_relaxed);
-            impl.timeline_frames += frame_count;
-        }
-        pw_stream_queue_buffer(impl.stream.get(), buffer);
+ impl.ring->write(std::span{samples, sample_count});
+ impl.frames_captured.fetch_add(frame_count, std::memory_order_relaxed);
+ impl.timeline_frames += frame_count;
+ }
+ pw_stream_queue_buffer(impl.stream.get(), buffer);
 
-        if (!impl.loopback || impl.channels == 0) {
-            return;
-        }
-        // Cover a suspended sink's silence the same way ac3::alsa's
-        // snd-aloop path does - see this file's header comment.
-        const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                                             impl.started)
-                                  .count();
-        const auto elapsed_frames =
-            static_cast<std::uint64_t>(elapsed * static_cast<double>(impl.sample_rate));
-        if (elapsed_frames > impl.timeline_frames + impl.sample_rate / 100) {
-            auto missing = elapsed_frames - impl.timeline_frames;
-            missing = std::min<std::uint64_t>(missing, impl.sample_rate);
-            std::vector<float> silence(static_cast<std::size_t>(missing) * impl.channels, 0.0f);
-            impl.ring->write(silence);
-            impl.frames_silence.fetch_add(missing, std::memory_order_relaxed);
-            impl.timeline_frames += missing;
-        }
-    }
+ if (!impl.loopback || impl.channels == 0) {
+ return;
+ }
+ // Cover a suspended sink's silence the same way ac3::alsa's
+ // snd-aloop path does - see this file's header comment.
+ const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() -
+ impl.started)
+ .count();
+ const auto elapsed_frames =
+ static_cast<std::uint64_t>(elapsed * static_cast<double>(impl.sample_rate));
+ if (elapsed_frames > impl.timeline_frames + impl.sample_rate / 100) {
+ auto missing = elapsed_frames - impl.timeline_frames;
+ missing = std::min<std::uint64_t>(missing, impl.sample_rate);
+ std::vector<float> silence(static_cast<std::size_t>(missing) * impl.channels, 0.0f);
+ impl.ring->write(silence);
+ impl.frames_silence.fetch_add(missing, std::memory_order_relaxed);
+ impl.timeline_frames += missing;
+ }
+ }
 
-    static const pw_stream_events& stream_events() {
-        // Function-local static: constructed once, lives for the process,
-        // so the pointer pw_stream_new_simple stores stays valid for every
-        // stream this backend ever creates.
-        static const pw_stream_events events = [] {
-            pw_stream_events value{};
-            value.version = PW_VERSION_STREAM_EVENTS;
-            value.state_changed = &Impl::state_changed;
-            value.process = &Impl::process;
-            return value;
-        }();
-        return events;
-    }
+ static const pw_stream_events& stream_events() {
+ // Function-local static: constructed once, lives for the process,
+ // so the pointer pw_stream_new_simple stores stays valid for every
+ // stream this backend ever creates.
+ static const pw_stream_events events = [] {
+ pw_stream_events value{};
+ value.version = PW_VERSION_STREAM_EVENTS;
+ value.state_changed = &Impl::state_changed;
+ value.process = &Impl::process;
+ return value;
+ }();
+ return events;
+ }
 
-    // The one place a capture stream is built. start() links to a device (or
-    // to a sink's monitor); start_process_loopback() links to one
-    // application's own output node. Everything else about the two - the
-    // thread loop, the ring, the format negotiation, the connect handshake
-    // and the unwind on every failure path - is identical, so it lives here
-    // once (roadmap UX12).
-    std::expected<void, CaptureError> connect_stream(const std::string& target, bool capture_sink,
-                                                     std::uint32_t rate, std::uint32_t channel_count,
-                                                     std::size_t ring_capacity_samples);
+ // The one place a capture stream is built. start() links to a device (or
+ // to a sink's monitor); start_process_loopback() links to one
+ // application's own output node. Everything else about the two - the
+ // thread loop, the ring, the format negotiation, the connect handshake
+ // and the unwind on every failure path - is identical, so it lives here
+ // once (Crucible cross-platform promotion).
+ std::expected<void, CaptureError> connect_stream(const std::string& target, bool capture_sink,
+ std::uint32_t rate, std::uint32_t channel_count,
+ std::size_t ring_capacity_samples);
 };
 
 std::string_view describe(CaptureError error) {
-    switch (error) {
-        case CaptureError::kNoBackend: return "no capture backend on this platform";
-        case CaptureError::kComFailure: return "a PipeWire call failed";
-        case CaptureError::kDeviceNotFound:
-            return "the requested capture device was not found (no such PipeWire node, or the "
-                   "session manager refused to link it)";
-        case CaptureError::kFormatUnsupported:
-            return "the device offers no sample format this backend can read";
-        case CaptureError::kAlreadyRunning: return "capture is already running";
-        case CaptureError::kProcessLoopbackUnavailable:
-            return "per-process loopback capture is not implemented on PipeWire (its per-node capture could provide it)";
-        case CaptureError::kProcessNotFound: return "no process has the requested id";
-    }
-    return "unknown capture error";
+ switch (error) {
+ case CaptureError::kNoBackend: return "no capture backend on this platform";
+ case CaptureError::kComFailure: return "a PipeWire call failed";
+ case CaptureError::kDeviceNotFound:
+ return "the requested capture device was not found (no such PipeWire node, or the "
+ "session manager refused to link it)";
+ case CaptureError::kFormatUnsupported:
+ return "the device offers no sample format this backend can read";
+ case CaptureError::kAlreadyRunning: return "capture is already running";
+ case CaptureError::kProcessLoopbackUnavailable:
+ return "per-process loopback capture is not implemented on PipeWire (its per-node capture could provide it)";
+ case CaptureError::kProcessNotFound: return "no process has the requested id";
+ }
+ return "unknown capture error";
 }
 
 std::expected<std::vector<DeviceInfo>, CaptureError> enumerate_devices() {
-    std::vector<DeviceInfo> devices;
+ std::vector<DeviceInfo> devices;
 
-    ac3::pipewire::for_each_audio_node([&devices](std::uint32_t /*id*/, const spa_dict& props) {
-        const bool is_source = ac3::pipewire::is_audio_source(props);
-        const bool is_sink = ac3::pipewire::is_audio_sink(props);
-        if (!is_source && !is_sink) {
-            return;
-        }
-        DeviceInfo info{
-            .id = ac3::pipewire::node_id(props),
-            .name = ac3::pipewire::node_friendly_name(props),
-            .kind = is_sink ? DeviceKind::kLoopback : DeviceKind::kInput,
-            .sample_rate = 0,
-            .channels = 0,
-            .is_default = false,
-        };
-        if (info.id.empty()) {
-            return;  // no node.name to target - not something a caller could open anyway
-        }
-        if (is_sink) {
-            info.name += " (loopback)";
-        }
-        devices.push_back(std::move(info));
-    });
+ ac3::pipewire::for_each_audio_node([&devices](std::uint32_t /*id*/, const spa_dict& props) {
+ const bool is_source = ac3::pipewire::is_audio_source(props);
+ const bool is_sink = ac3::pipewire::is_audio_sink(props);
+ if (!is_source && !is_sink) {
+ return;
+ }
+ DeviceInfo info{
+ .id = ac3::pipewire::node_id(props),
+ .name = ac3::pipewire::node_friendly_name(props),
+ .kind = is_sink ? DeviceKind::kLoopback : DeviceKind::kInput,
+ .sample_rate = 0,
+ .channels = 0,
+ .is_default = false,
+ };
+ if (info.id.empty()) {
+ return; // no node.name to target - not something a caller could open anyway
+ }
+ if (is_sink) {
+ info.name += " (loopback)";
+ }
+ devices.push_back(std::move(info));
+ });
 
-    // No per-node "this is the default" metadata is read here (see
-    // pipewire_support.hpp's header for why); the same honest fallback ALSA's
-    // own enumerate_devices() falls back to when it cannot resolve one either
-    // - the first entry found is as good a default as exists.
-    if (!devices.empty()) {
-        devices.front().is_default = true;
-    }
+ // No per-node "this is the default" metadata is read here (see
+ // pipewire_support.hpp's header for why); the same honest fallback ALSA's
+ // own enumerate_devices() falls back to when it cannot resolve one either
+ // - the first entry found is as good a default as exists.
+ if (!devices.empty()) {
+ devices.front().is_default = true;
+ }
 
-    return devices;
+ return devices;
 }
 
 Capture::Capture() : impl_(std::make_unique<Impl>()) {}
 
 Capture::~Capture() {
-    stop();
+ stop();
 }
 
 bool Capture::running() const {
-    return impl_->running.load(std::memory_order_acquire);
+ return impl_->running.load(std::memory_order_acquire);
 }
 
 std::uint32_t Capture::sample_rate() const {
-    return impl_->sample_rate;
+ return impl_->sample_rate;
 }
 
 std::uint16_t Capture::channels() const {
-    return impl_->channels;
+ return impl_->channels;
 }
 
 CaptureStats Capture::stats() const {
-    return {.frames_captured = impl_->frames_captured.load(std::memory_order_relaxed),
-            .frames_silence_filled = impl_->frames_silence.load(std::memory_order_relaxed),
-            .frames_dropped = impl_->ring ? impl_->ring->dropped() /
-                                                std::max<std::size_t>(impl_->channels, 1)
-                                          : 0};
+ return {.frames_captured = impl_->frames_captured.load(std::memory_order_relaxed),
+ .frames_silence_filled = impl_->frames_silence.load(std::memory_order_relaxed),
+ .frames_dropped = impl_->ring ? impl_->ring->dropped() /
+ std::max<std::size_t>(impl_->channels, 1)
+ : 0};
 }
 
 RingBuffer* Capture::buffer() {
-    return impl_->ring.get();
+ return impl_->ring.get();
 }
 
 void Capture::stop() {
-    if (impl_->loop) {
-        pw_thread_loop_stop(impl_->loop.get());
-        // Stopped, but the lock is still what PipeWire's context check wants
-        // held around a stream destroy from this thread.
-        pw_thread_loop_lock(impl_->loop.get());
-        impl_->stream.reset();
-        pw_thread_loop_unlock(impl_->loop.get());
-    }
-    impl_->stream.reset();
-    impl_->loop.reset();
-    impl_->running.store(false, std::memory_order_release);
+ if (impl_->loop) {
+ pw_thread_loop_stop(impl_->loop.get());
+ // Stopped, but the lock is still what PipeWire's context check wants
+ // held around a stream destroy from this thread.
+ pw_thread_loop_lock(impl_->loop.get());
+ impl_->stream.reset();
+ pw_thread_loop_unlock(impl_->loop.get());
+ }
+ impl_->stream.reset();
+ impl_->loop.reset();
+ impl_->running.store(false, std::memory_order_release);
 }
 
 std::expected<void, CaptureError> Capture::Impl::connect_stream(
-    const std::string& target, bool capture_sink, std::uint32_t rate, std::uint32_t channel_count,
-    std::size_t ring_capacity_samples) {
-    loop = ThreadLoop{pw_thread_loop_new("ac3audio-capture", nullptr)};
-    if (!loop) {
-        return std::unexpected(CaptureError::kComFailure);
-    }
-    if (pw_thread_loop_start(loop.get()) < 0) {
-        loop.reset();
-        return std::unexpected(CaptureError::kComFailure);
-    }
+ const std::string& target, bool capture_sink, std::uint32_t rate, std::uint32_t channel_count,
+ std::size_t ring_capacity_samples) {
+ loop = ThreadLoop{pw_thread_loop_new("ac3audio-capture", nullptr)};
+ if (!loop) {
+ return std::unexpected(CaptureError::kComFailure);
+ }
+ if (pw_thread_loop_start(loop.get()) < 0) {
+ loop.reset();
+ return std::unexpected(CaptureError::kComFailure);
+ }
 
-    pw_thread_loop_lock(loop.get());
+ pw_thread_loop_lock(loop.get());
 
-    // Everything Impl::process()/Impl::state_changed() might touch is set up
-    // before pw_stream_connect() below, while the loop's lock is still held
-    // by this thread - the earliest either callback can run is once that
-    // call releases the lock (inside pw_thread_loop_timed_wait()), so there
-    // is no window where they see a half-constructed Impl.
-    ring = std::make_unique<RingBuffer>(ring_capacity_samples);
-    sample_rate = rate;
-    channels = static_cast<std::uint16_t>(channel_count);
-    frames_captured.store(0, std::memory_order_relaxed);
-    frames_silence.store(0, std::memory_order_relaxed);
-    started = std::chrono::steady_clock::now();
-    timeline_frames = 0;
-    loopback = capture_sink;
-    connect_state.store(ConnectState::kPending, std::memory_order_relaxed);
+ // Everything Impl::process()/Impl::state_changed() might touch is set up
+ // before pw_stream_connect() below, while the loop's lock is still held
+ // by this thread - the earliest either callback can run is once that
+ // call releases the lock (inside pw_thread_loop_timed_wait()), so there
+ // is no window where they see a half-constructed Impl.
+ ring = std::make_unique<RingBuffer>(ring_capacity_samples);
+ sample_rate = rate;
+ channels = static_cast<std::uint16_t>(channel_count);
+ frames_captured.store(0, std::memory_order_relaxed);
+ frames_silence.store(0, std::memory_order_relaxed);
+ started = std::chrono::steady_clock::now();
+ timeline_frames = 0;
+ loopback = capture_sink;
+ connect_state.store(ConnectState::kPending, std::memory_order_relaxed);
 
-    pw_properties* props = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY,
-                                              "Capture", PW_KEY_MEDIA_ROLE, "Production", nullptr);
-    if (!target.empty()) {
-        pw_properties_set(props, PW_KEY_TARGET_OBJECT, target.c_str());
-    }
-    if (capture_sink) {
-        pw_properties_set(props, PW_KEY_STREAM_CAPTURE_SINK, "true");
-    }
+ pw_properties* props = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY,
+ "Capture", PW_KEY_MEDIA_ROLE, "Production", nullptr);
+ if (!target.empty()) {
+ pw_properties_set(props, PW_KEY_TARGET_OBJECT, target.c_str());
+ }
+ if (capture_sink) {
+ pw_properties_set(props, PW_KEY_STREAM_CAPTURE_SINK, "true");
+ }
 
-    Stream new_stream{pw_stream_new_simple(pw_thread_loop_get_loop(loop.get()),
-                                        "ac3forge capture", props, &Impl::stream_events(),
-                                        this)};
-    if (!new_stream) {
-        pw_thread_loop_unlock(loop.get());
-        ring.reset();
-        pw_thread_loop_stop(loop.get());
-        loop.reset();
-        return std::unexpected(CaptureError::kComFailure);
-    }
+ Stream new_stream{pw_stream_new_simple(pw_thread_loop_get_loop(loop.get()),
+ "ac3forge capture", props, &Impl::stream_events(),
+ this)};
+ if (!new_stream) {
+ pw_thread_loop_unlock(loop.get());
+ ring.reset();
+ pw_thread_loop_stop(loop.get());
+ loop.reset();
+ return std::unexpected(CaptureError::kComFailure);
+ }
 
-    spa_audio_info_raw info{};
-    info.format = SPA_AUDIO_FORMAT_F32;
-    info.channels = channel_count;
-    info.rate = rate;
+ spa_audio_info_raw info{};
+ info.format = SPA_AUDIO_FORMAT_F32;
+ info.channels = channel_count;
+ info.rate = rate;
 
-    std::array<std::uint8_t, 1024> pod_buffer{};
-    spa_pod_builder builder{};
-    // The function, not the SPA_POD_BUILDER_INIT macro it wraps: the macro
-    // expands to a C99 compound literal, which -isystem exempts inside
-    // PipeWire's own header but would not exempt if expanded directly here
-    // under -Werror -Wc99-extensions (Clang, not GCC, treats it as an
-    // extension worth flagging).
-    spa_pod_builder_init(&builder, pod_buffer.data(), static_cast<std::uint32_t>(pod_buffer.size()));
-    const spa_pod* param = spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat, &info);
-    const spa_pod* params[1] = {param};
+ std::array<std::uint8_t, 1024> pod_buffer{};
+ spa_pod_builder builder{};
+ // The function, not the SPA_POD_BUILDER_INIT macro it wraps: the macro
+ // expands to a C99 compound literal, which -isystem exempts inside
+ // PipeWire's own header but would not exempt if expanded directly here
+ // under -Werror -Wc99-extensions (Clang, not GCC, treats it as an
+ // extension worth flagging).
+ spa_pod_builder_init(&builder, pod_buffer.data(), static_cast<std::uint32_t>(pod_buffer.size()));
+ const spa_pod* param = spa_format_audio_raw_build(&builder, SPA_PARAM_EnumFormat, &info);
+ const spa_pod* params[1] = {param};
 
-    const auto flags = static_cast<pw_stream_flags>(PW_STREAM_FLAG_AUTOCONNECT |
-                                                      PW_STREAM_FLAG_MAP_BUFFERS |
-                                                      PW_STREAM_FLAG_RT_PROCESS);
-    if (pw_stream_connect(new_stream.get(), PW_DIRECTION_INPUT, PW_ID_ANY, flags, params, 1) < 0) {
-        pw_thread_loop_unlock(loop.get());
-        // Stop first: destroying a stream while its loop still runs is a
-        // call from the wrong context, and wedges the loop.
-        pw_thread_loop_stop(loop.get());
-        new_stream.reset();
-        ring.reset();
-        loop.reset();
-        return std::unexpected(CaptureError::kComFailure);
-    }
+ const auto flags = static_cast<pw_stream_flags>(PW_STREAM_FLAG_AUTOCONNECT |
+ PW_STREAM_FLAG_MAP_BUFFERS |
+ PW_STREAM_FLAG_RT_PROCESS);
+ if (pw_stream_connect(new_stream.get(), PW_DIRECTION_INPUT, PW_ID_ANY, flags, params, 1) < 0) {
+ pw_thread_loop_unlock(loop.get());
+ // Stop first: destroying a stream while its loop still runs is a
+ // call from the wrong context, and wedges the loop.
+ pw_thread_loop_stop(loop.get());
+ new_stream.reset();
+ ring.reset();
+ loop.reset();
+ return std::unexpected(CaptureError::kComFailure);
+ }
 
-    stream = std::move(new_stream);
-    const bool ready = wait_for_connect(loop.get(), connect_state);
+ stream = std::move(new_stream);
+ const bool ready = wait_for_connect(loop.get(), connect_state);
 
-    if (!ready) {
-        pw_thread_loop_unlock(loop.get());
-        pw_thread_loop_stop(loop.get());
-        // `stream`, not `new_stream`: the move above already happened, so
-        // this is where the live stream is. It has to go before the loop it
-        // was created on.
-        stream.reset();
-        ring.reset();
-        loop.reset();
-        return std::unexpected(CaptureError::kDeviceNotFound);
-    }
+ if (!ready) {
+ pw_thread_loop_unlock(loop.get());
+ pw_thread_loop_stop(loop.get());
+ // `stream`, not `new_stream`: the move above already happened, so
+ // this is where the live stream is. It has to go before the loop it
+ // was created on.
+ stream.reset();
+ ring.reset();
+ loop.reset();
+ return std::unexpected(CaptureError::kDeviceNotFound);
+ }
 
-    pw_thread_loop_unlock(loop.get());
+ pw_thread_loop_unlock(loop.get());
 
-    running.store(true, std::memory_order_release);
-    return {};
+ running.store(true, std::memory_order_release);
+ return {};
 }
 
 std::expected<void, CaptureError> Capture::start(const std::string& device_id, DeviceKind kind,
-                                                  std::size_t ring_capacity_samples) {
-    if (running()) {
-        return std::unexpected(CaptureError::kAlreadyRunning);
-    }
-    ac3::pipewire::ensure_initialized();
-    return impl_->connect_stream(device_id, kind == DeviceKind::kLoopback, kPreferredRate,
-                                 kPreferredChannels, ring_capacity_samples);
+ std::size_t ring_capacity_samples) {
+ if (running()) {
+ return std::unexpected(CaptureError::kAlreadyRunning);
+ }
+ ac3::pipewire::ensure_initialized();
+ return impl_->connect_stream(device_id, kind == DeviceKind::kLoopback, kPreferredRate,
+ kPreferredChannels, ring_capacity_samples);
 }
 
 // Per-process capture on PipeWire is linking a capture stream to one
-// application's own output node instead of to a device (roadmap UX12). That
+// application's own output node instead of to a device (Crucible cross-platform promotion). That
 // needs a session to ask, and nothing else: no kernel version test, no
 // driver, no elevation. So the answer is whether a session is reachable
 // right now, which is the same question this returns on Windows - can this
@@ -431,62 +431,62 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
 // this is a capability query a caller makes once before deciding whether to
 // offer the feature, not something on a frame path.
 bool process_loopback_available() {
-    // A session with no nodes in it yet is still a session that can be
-    // tapped once something starts playing, so what is looked for is the
-    // session, not any particular node - hence a visitor that does nothing.
-    return ac3::pipewire::for_each_audio_node([](std::uint32_t, const spa_dict&) {});
+ // A session with no nodes in it yet is still a session that can be
+ // tapped once something starts playing, so what is looked for is the
+ // session, not any particular node - hence a visitor that does nothing.
+ return ac3::pipewire::for_each_audio_node([](std::uint32_t, const spa_dict&) {});
 }
 
 std::expected<void, CaptureError> Capture::start_process_loopback(
-    std::uint32_t process_id, ProcessLoopbackMode mode, ProcessLoopbackFormat format,
-    std::size_t ring_capacity_samples) {
-    if (running()) {
-        return std::unexpected(CaptureError::kAlreadyRunning);
-    }
-    // PipeWire links a stream to a target; there is no "everything except
-    // this one" link, and building it out of the rest of the graph would
-    // mean following every node that came and went for the life of the tap.
-    // Windows' exclude mode has no counterpart here, and saying so is better
-    // than a tap that quietly captured the wrong thing.
-    if (mode == ProcessLoopbackMode::kExcludeProcessTree) {
-        return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
-    }
+ std::uint32_t process_id, ProcessLoopbackMode mode, ProcessLoopbackFormat format,
+ std::size_t ring_capacity_samples) {
+ if (running()) {
+ return std::unexpected(CaptureError::kAlreadyRunning);
+ }
+ // PipeWire links a stream to a target; there is no "everything except
+ // this one" link, and building it out of the rest of the graph would
+ // mean following every node that came and went for the life of the tap.
+ // Windows' exclude mode has no counterpart here, and saying so is better
+ // than a tap that quietly captured the wrong thing.
+ if (mode == ProcessLoopbackMode::kExcludeProcessTree) {
+ return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
+ }
 
-    ac3::pipewire::ensure_initialized();
+ ac3::pipewire::ensure_initialized();
 
-    // Which node to link to. An application can own several streams; the
-    // first is taken, which is the same choice the Windows backend makes by
-    // tapping the process tree rather than one stream.
-    //
-    // The pid is resolved through the owning Client, not read off the node -
-    // see output_stream_nodes() for why the obvious version matches nothing.
-    //
-    // The registry facts alone, which is the default: a tap needs the target
-    // and the pid, never an icon name, and this runs on the caller's frame
-    // thread, where the binds the identity needs cost about a second on a
-    // Raspberry Pi (measured; see that function's comment).
-    const auto streams = ac3::pipewire::output_stream_nodes();
-    std::string target;
-    for (const auto& stream : streams) {
-        if (stream.pid == process_id && !stream.target.empty()) {
-            target = stream.target;
-            break;
-        }
-    }
-    if (streams.empty() && !ac3::pipewire::for_each_audio_node(
-                               [](std::uint32_t, const spa_dict&) {})) {
-        return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
-    }
-    if (target.empty()) {
-        // Either no such process, or it owns no audio stream. Both mean the
-        // same thing to a caller: there is nothing to tap. Checked here
-        // because a stream linked to nothing delivers silence forever.
-        return std::unexpected(CaptureError::kProcessNotFound);
-    }
+ // Which node to link to. An application can own several streams; the
+ // first is taken, which is the same choice the Windows backend makes by
+ // tapping the process tree rather than one stream.
+ //
+ // The pid is resolved through the owning Client, not read off the node -
+ // see output_stream_nodes() for why the obvious version matches nothing.
+ //
+ // The registry facts alone, which is the default: a tap needs the target
+ // and the pid, never an icon name, and this runs on the caller's frame
+ // thread, where the binds the identity needs cost about a second on a
+ // Raspberry Pi (measured; see that function's comment).
+ const auto streams = ac3::pipewire::output_stream_nodes();
+ std::string target;
+ for (const auto& stream : streams) {
+ if (stream.pid == process_id && !stream.target.empty()) {
+ target = stream.target;
+ break;
+ }
+ }
+ if (streams.empty() && !ac3::pipewire::for_each_audio_node(
+ [](std::uint32_t, const spa_dict&) {})) {
+ return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
+ }
+ if (target.empty()) {
+ // Either no such process, or it owns no audio stream. Both mean the
+ // same thing to a caller: there is nothing to tap. Checked here
+ // because a stream linked to nothing delivers silence forever.
+ return std::unexpected(CaptureError::kProcessNotFound);
+ }
 
-    return impl_->connect_stream(target, /*capture_sink=*/false, format.sample_rate,
-                                 static_cast<std::uint32_t>(format.channels),
-                                 ring_capacity_samples);
+ return impl_->connect_stream(target, /*capture_sink=*/false, format.sample_rate,
+ static_cast<std::uint32_t>(format.channels),
+ ring_capacity_samples);
 }
 
-}  // namespace ac3::audio
+} // namespace ac3::audio

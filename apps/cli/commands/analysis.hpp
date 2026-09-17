@@ -33,11 +33,11 @@ namespace ac3cli::commands {
 // reported on stderr). A result whose figures are all unset means it decoded
 // but held no audio above the -70 LKFS absolute gate.
 struct StreamLoudness {
-    // Explicit defaults for the same -Wmissing-field-initializers reason
-    // QcProgrammeResult (analysis.cpp) spells its own out.
-    std::optional<double> integrated_lkfs = std::nullopt;
-    std::optional<double> ch1_lkfs = std::nullopt;
-    std::optional<double> ch2_lkfs = std::nullopt;
+ // Explicit defaults for the same -Wmissing-field-initializers reason
+ // QcProgrammeResult (analysis.cpp) spells its own out.
+ std::optional<double> integrated_lkfs = std::nullopt;
+ std::optional<double> ch1_lkfs = std::nullopt;
+ std::optional<double> ch2_lkfs = std::nullopt;
 };
 
 std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte> stream);
@@ -51,16 +51,16 @@ std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte>
 // independent substream is authored in) is the only one there is. Ignored for
 // AC-3, which has no substream layer.
 //
-// `objects_layout` is objects=<name> (roadmap IO12, see
+// `objects_layout` is objects=<name> (legacy item IO12, see
 // Options::qc_objects_layout) - when set, dynamic objects are additionally
 // re-rendered by their own position onto that layout and metered through
 // BS.1770-5 Annex 4, independently of `rendered_layout` above.
 int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
-           bool rendered_layout, std::optional<int> want_programme = std::nullopt,
-           std::optional<ac3::plan::LayoutId> objects_layout = std::nullopt);
+ bool rendered_layout, std::optional<int> want_programme = std::nullopt,
+ std::optional<ac3::plan::LayoutId> objects_layout = std::nullopt);
 int run_levels(std::string_view in_path, std::optional<int> want_programme = std::nullopt);
 int run_loudness(std::string_view in_path);
 int run_spdif(std::string_view in_path, std::string_view out_path);
 int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_partial);
 
-}  // namespace ac3cli::commands
+} // namespace ac3cli::commands

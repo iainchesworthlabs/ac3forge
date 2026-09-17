@@ -2,7 +2,7 @@
 # tools/ that implement this project's oracles and CI gates (quality_race.py,
 # fuzz_encoder_space.py, compare_wav.py, the four trend appenders), the
 # python/ binding package, the examples, the icon generator and the Conan
-# recipe. Run by .github/workflows/ci.yml's script-lint job (roadmap VX14) and
+# recipe. Run by .github/workflows/ci.yml's script-lint job (non-C++ lint and scan) and
 # runnable locally the same way - see docs/building.md.
 #
 # A silent bug in tools/ is not an ordinary lint problem here: those scripts

@@ -1,7 +1,7 @@
 #pragma once
 
 // The type the DECODER carries its coefficients, transform scratch and
-// overlap-add history in (roadmap PF7's float32 gap), in the DOUBLE variant.
+// overlap-add history in (minimum-footprint decoder profile's float32 gap), in the DOUBLE variant.
 // The float variant is the identically-pathed header under
 // src/internal/scalar/float32/; src/forge/CMakeLists.txt picks the directory
 // from AC3FORGE_DECODE_SCALAR, so no source file asks which it is with a
@@ -35,4 +35,4 @@ namespace ac3::internal {
 // them.
 using decode_scalar_t = double;
 
-}  // namespace ac3::internal
+} // namespace ac3::internal

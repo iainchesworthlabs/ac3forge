@@ -18,16 +18,16 @@
 //
 // Deliberately narrow, per CONTRIBUTING.md's "say so" rule for behaviour
 // short of the standard - this is not a general OSC client:
-//   - UDP only. No SLIP/TCP framing, no OSC 1.1's mid-stream length prefix.
-//   - Address patterns match LITERALLY. No '?'/'*'/'[]'/'{}' glob matching -
-//     nothing a live position source needs sends a pattern, and implementing
-//     the matcher is the single largest piece of an OSC 1.0 implementation.
-//   - Argument types 'f' (float32) and 'i' (int32, widened losslessly to
-//     double) only. 'd'/'s'/'b'/anything else drops the message.
-//   - A message with no OSC Type Tag String (OSC 1.0 permits this for
-//     pre-1.0 compatibility) drops rather than guessing argument types.
+// - UDP only. No SLIP/TCP framing, no OSC 1.1's mid-stream length prefix.
+// - Address patterns match LITERALLY. No '?'/'*'/'[]'/'{}' glob matching -
+// nothing a live position source needs sends a pattern, and implementing
+// the matcher is the single largest piece of an OSC 1.0 implementation.
+// - Argument types 'f' (float32) and 'i' (int32, widened losslessly to
+// double) only. 'd'/'s'/'b'/anything else drops the message.
+// - A message with no OSC Type Tag String (OSC 1.0 permits this for
+// pre-1.0 compatibility) drops rather than guessing argument types.
 // No third-party OSC library (oscpack, liblo) is linked or consulted for
-// this - the ROADMAP.md JSON-not-YAML argument applies verbatim: OSC 1.0's
+// this - the roadmap JSON-not-YAML argument applies verbatim: OSC 1.0's
 // binary grammar is small enough to transcribe completely from the published
 // specification (opensoundcontrol.org, "OSC 1.0 Specification"), so there is
 // never a need to borrow an implementation of it.
@@ -47,14 +47,14 @@ namespace ac3::oba {
 // caller (ac3cli's, the GUI's) computes per frame. apply() below is how a
 // caller turns this into a real placement without that trap.
 struct SceneOscUpdate {
-    std::size_t object = 0;
-    std::optional<Position> position{};
-    std::optional<double> gain{};      // linear, matching ObjectPlacement::gain - not dB
-    std::optional<double> lfe_send{};
-    // /object/<n>/release: hand this to SceneCursor::release(object) instead
-    // of apply()/push() - there is no placement to merge, only a request to
-    // stop overriding. Never set alongside position/gain/lfe_send.
-    bool release = false;
+ std::size_t object = 0;
+ std::optional<Position> position{};
+ std::optional<double> gain{}; // linear, matching ObjectPlacement::gain - not dB
+ std::optional<double> lfe_send{};
+ // /object/<n>/release: hand this to SceneCursor::release(object) instead
+ // of apply()/push() - there is no placement to merge, only a request to
+ // stop overriding. Never set alongside position/gain/lfe_send.
+ bool release = false;
 };
 
 // Malformed-input counters a caller may want for a status line. Never a
@@ -62,14 +62,14 @@ struct SceneOscUpdate {
 // thing that owns a socket and therefore the only place a bad datagram from
 // the network can otherwise do anything at all.
 struct OscParseStats {
-    // A whole datagram that was not "/..." or "#bundle\0...", or a bundle
-    // element whose framing (a negative or non-multiple-of-4 int32 size, or
-    // more bytes than remain) could not be trusted enough to keep reading.
-    std::size_t packets_rejected = 0;
-    // A recognised message shape (starts '/', has a Type Tag String) that
-    // was still unusable: an unknown address, an argument count/type
-    // mismatch, or a non-finite float/int argument.
-    std::size_t messages_dropped = 0;
+ // A whole datagram that was not "/..." or "#bundle\0...", or a bundle
+ // element whose framing (a negative or non-multiple-of-4 int32 size, or
+ // more bytes than remain) could not be trusted enough to keep reading.
+ std::size_t packets_rejected = 0;
+ // A recognised message shape (starts '/', has a Type Tag String) that
+ // was still unusable: an unknown address, an argument count/type
+ // mismatch, or a non-finite float/int argument.
+ std::size_t messages_dropped = 0;
 };
 
 // Parses one OSC packet (the payload of one UDP datagram) into zero or more
@@ -88,7 +88,7 @@ struct OscParseStats {
 // found - a caller accumulating across many packets passes the same struct
 // through repeatedly.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<SceneOscUpdate> parse_osc_packet(
-    std::span<const std::byte> packet, OscParseStats* stats = nullptr);
+ std::span<const std::byte> packet, OscParseStats* stats = nullptr);
 
 // As parse_osc_packet, writing into caller-owned storage instead of
 // allocating - the form LivePositionSource's drain path uses, since nothing
@@ -98,8 +98,8 @@ struct OscParseStats {
 // than `out` holds is not expected in practice - a fader move is one
 // message - so stopping early rather than growing `out` costs nothing real.
 [[nodiscard]] AC3FORGE_EXPORT std::size_t parse_osc_packet_into(
-    std::span<const std::byte> packet, std::span<SceneOscUpdate> out,
-    OscParseStats* stats = nullptr);
+ std::span<const std::byte> packet, std::span<SceneOscUpdate> out,
+ OscParseStats* stats = nullptr);
 
 // Merges `update` onto `base`, returning the placement to push - or nullopt
 // when `update` carries no position, meaning nothing is ready to push yet
@@ -119,6 +119,6 @@ struct OscParseStats {
 // unchanged for whichever fields `update` did not set - an object's authored
 // gain automation keeps running underneath a network-driven position.
 [[nodiscard]] AC3FORGE_EXPORT std::optional<ObjectPlacement> apply(
-    const SceneOscUpdate& update, const ObjectPlacement& base);
+ const SceneOscUpdate& update, const ObjectPlacement& base);
 
-}  // namespace ac3::oba
+} // namespace ac3::oba

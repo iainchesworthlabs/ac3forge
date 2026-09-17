@@ -1,19 +1,19 @@
 # ---------------------------------------------------------------------------
-# ac3probe - the minimum-footprint probe (roadmap PF7). See probe.cpp's and
+# ac3probe - the minimum-footprint probe (minimum-footprint decoder profile). See probe.cpp's and
 # encode_probe.cpp's own headers for what each checks and why neither is a unit
 # test.
 #
 # Built under AC3FORGE_MINIMAL_DECODER or AC3FORGE_MINIMAL_ENCODER, and in two
 # shapes from one source:
 #
-#   - Cross-compiled for arm-none-eabi (see cmake/toolchains/arm-none-eabi.toolchain.cmake).
-#     Adds the reset vector and the linker script from platform/baremetal/, and
-#     runs under QEMU - the no-OS leg PF7 names.
+# - Cross-compiled for arm-none-eabi (see cmake/toolchains/arm-none-eabi.toolchain.cmake).
+# Adds the reset vector and the linker script from platform/baremetal/, and
+# runs under QEMU - the no-OS leg PF7 names.
 #
-#   - Natively on the host. Same probe, same fixture, same checks, no startup
-#     files needed because the host has a C runtime already. It exists so the
-#     profile can be built and RUN without an emulator - a leg that only works
-#     under QEMU is a leg nobody exercises locally.
+# - Natively on the host. Same probe, same fixture, same checks, no startup
+# files needed because the host has a C runtime already. It exists so the
+# profile can be built and RUN without an emulator - a leg that only works
+# under QEMU is a leg nobody exercises locally.
 #
 # Nothing in probe.cpp knows which one it is: the difference is a directory
 # CMake adds, per the platform-tree rule (tools/checks/check_platform_macros.ps1).
@@ -41,21 +41,21 @@
 # The esp32s3 value is set by esp-idf/ac3forge/CMakeLists.txt before it
 # add_subdirectory()s the root, so it is already in the cache when this runs.
 if(NOT DEFINED AC3FORGE_BAREMETAL_PLATFORM)
-    if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
-        set(AC3FORGE_BAREMETAL_PLATFORM "baremetal")
-    else()
-        set(AC3FORGE_BAREMETAL_PLATFORM "host")
-    endif()
+ if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
+ set(AC3FORGE_BAREMETAL_PLATFORM "baremetal")
+ else()
+ set(AC3FORGE_BAREMETAL_PLATFORM "host")
+ endif()
 endif()
 
 if(AC3FORGE_BAREMETAL_PLATFORM STREQUAL "esp32s3")
-    # ESP-IDF builds the application from platform/esp32s3/main/, linking
-    # ac3::forge_minimal through its own component. There is nothing for this
-    # file to add, and an add_executable() here would produce a second binary
-    # IDF has no way to flash.
-    message(STATUS "  Footprint probe: ESP-IDF owns the application "
-                   "(apps/baremetal/platform/esp32s3)")
-    return()
+ # ESP-IDF builds the application from platform/esp32s3/main/, linking
+ # ac3::forge_minimal through its own component. There is nothing for this
+ # file to add, and an add_executable() here would produce a second binary
+ # IDF has no way to flash.
+ message(STATUS " Footprint probe: ESP-IDF owns the application "
+ "(apps/baremetal/platform/esp32s3)")
+ return()
 endif()
 
 # main.cpp is the entry point both hosted shapes share; probe.cpp is the probe
@@ -67,9 +67,9 @@ endif()
 # main(), so main.cpp and the ESP-IDF application run whichever was built
 # without knowing which it is.
 if(AC3FORGE_MINIMAL_ENCODER)
-    add_executable(ac3probe encode_probe.cpp main.cpp)
+ add_executable(ac3probe encode_probe.cpp main.cpp)
 else()
-    add_executable(ac3probe probe.cpp main.cpp)
+ add_executable(ac3probe probe.cpp main.cpp)
 endif()
 
 # The stage-timer backend's application half, in EVERY build of the probe and
@@ -91,19 +91,19 @@ target_sources(ac3probe PRIVATE stage_timers.cpp)
 # read back by run_baremetal_probe.sh --icount). A cache variable rather than
 # a conditional in either file, per the platform-tree rule.
 set(AC3FORGE_BAREMETAL_CLOCK "semihosting" CACHE STRING
-    "Clock behind ac3probe::now_us() on the mps2-an385: semihosting (host time) or timer (CMSDK TIMER0; instructions under QEMU -icount)")
+ "Clock behind ac3probe::now_us() on the mps2-an385: semihosting (host time) or timer (CMSDK TIMER0; instructions under QEMU -icount)")
 set_property(CACHE AC3FORGE_BAREMETAL_CLOCK PROPERTY STRINGS semihosting timer)
 if(AC3FORGE_BAREMETAL_PLATFORM STREQUAL "baremetal")
-    if(AC3FORGE_BAREMETAL_CLOCK STREQUAL "semihosting")
-        target_sources(ac3probe PRIVATE platform/baremetal/clock.cpp)
-    elseif(AC3FORGE_BAREMETAL_CLOCK STREQUAL "timer")
-        target_sources(ac3probe PRIVATE platform/baremetal/clock_timer.cpp)
-    else()
-        message(FATAL_ERROR "AC3FORGE_BAREMETAL_CLOCK must be semihosting or timer, not "
-                            "'${AC3FORGE_BAREMETAL_CLOCK}'")
-    endif()
+ if(AC3FORGE_BAREMETAL_CLOCK STREQUAL "semihosting")
+ target_sources(ac3probe PRIVATE platform/baremetal/clock.cpp)
+ elseif(AC3FORGE_BAREMETAL_CLOCK STREQUAL "timer")
+ target_sources(ac3probe PRIVATE platform/baremetal/clock_timer.cpp)
+ else()
+ message(FATAL_ERROR "AC3FORGE_BAREMETAL_CLOCK must be semihosting or timer, not "
+ "'${AC3FORGE_BAREMETAL_CLOCK}'")
+ endif()
 else()
-    target_sources(ac3probe PRIVATE platform/host/clock.cpp)
+ target_sources(ac3probe PRIVATE platform/host/clock.cpp)
 endif()
 
 # What the part can give the decode, in bytes, or 0 for no budget. A fixture
@@ -114,9 +114,9 @@ endif()
 # variable rather than a conditional in probe.cpp, per the platform-tree
 # rule. Raising a target's budget is a measurement, not an edit.
 set(AC3FORGE_PROBE_HEAP_BUDGET_BYTES "0" CACHE STRING
-    "Heap a fixture may peak at before ac3probe skips it, in bytes; 0 means no budget")
+ "Heap a fixture may peak at before ac3probe skips it, in bytes; 0 means no budget")
 target_compile_definitions(ac3probe PRIVATE
-    AC3FORGE_PROBE_HEAP_BUDGET_BYTES=${AC3FORGE_PROBE_HEAP_BUDGET_BYTES})
+ AC3FORGE_PROBE_HEAP_BUDGET_BYTES=${AC3FORGE_PROBE_HEAP_BUDGET_BYTES})
 
 target_link_libraries(ac3probe PRIVATE ac3::forge_minimal ac3::warnings)
 
@@ -130,37 +130,37 @@ target_link_libraries(ac3probe PRIVATE ac3::forge_minimal ac3::warnings)
 # smaller encoder). See encode_probe.cpp and encode_fixture.hpp. The ESP-IDF
 # application under platform/esp32s3/ takes the same option.
 option(AC3FORGE_PROBE_SEVEN_ONE
-       "Encode probe: add the 7.1 access-unit fixture (a footprint measurement; does not fit an ESP32-S3)"
-       OFF)
+ "Encode probe: add the 7.1 access-unit fixture (a footprint measurement; does not fit an ESP32-S3)"
+ OFF)
 target_compile_definitions(ac3probe PRIVATE
-    "AC3FORGE_PROBE_SEVEN_ONE=$<BOOL:${AC3FORGE_PROBE_SEVEN_ONE}>")
+ "AC3FORGE_PROBE_SEVEN_ONE=$<BOOL:${AC3FORGE_PROBE_SEVEN_ONE}>")
 
 # fixture.hpp sits beside probe.cpp; the generated ac3/export.hpp comes with
 # the library target.
 target_include_directories(ac3probe PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
 if(AC3FORGE_BAREMETAL_PLATFORM STREQUAL "baremetal")
-    target_sources(ac3probe PRIVATE
-        platform/baremetal/vectors.cpp
-        platform/baremetal/tls.cpp)
+ target_sources(ac3probe PRIVATE
+ platform/baremetal/vectors.cpp
+ platform/baremetal/tls.cpp)
 
-    set(_ac3_probe_ld "${CMAKE_CURRENT_SOURCE_DIR}/platform/baremetal/mps2-an385.ld")
-    target_link_options(ac3probe PRIVATE "LINKER:-T,${_ac3_probe_ld}")
-    # The script is an input to the LINK step, not to any compile, so CMake
-    # does not track it on its own - say so, or editing the memory map does
-    # not relink.
-    set_target_properties(ac3probe PROPERTIES LINK_DEPENDS "${_ac3_probe_ld}")
+ set(_ac3_probe_ld "${CMAKE_CURRENT_SOURCE_DIR}/platform/baremetal/mps2-an385.ld")
+ target_link_options(ac3probe PRIVATE "LINKER:-T,${_ac3_probe_ld}")
+ # The script is an input to the LINK step, not to any compile, so CMake
+ # does not track it on its own - say so, or editing the memory map does
+ # not relink.
+ set_target_properties(ac3probe PROPERTIES LINK_DEPENDS "${_ac3_probe_ld}")
 
-    # The map is what tools/checks/footprint_report.py reads to attribute code
-    # size to objects, and the single most useful artefact when a footprint
-    # number moves for a reason nobody can see in the diff.
-    target_link_options(ac3probe PRIVATE
-        "LINKER:-Map,${CMAKE_CURRENT_BINARY_DIR}/ac3probe.map")
+ # The map is what tools/checks/footprint_report.py reads to attribute code
+ # size to objects, and the single most useful artefact when a footprint
+ # number moves for a reason nobody can see in the diff.
+ target_link_options(ac3probe PRIVATE
+ "LINKER:-Map,${CMAKE_CURRENT_BINARY_DIR}/ac3probe.map")
 
-    message(STATUS "  Bare-metal probe: ${AC3FORGE_BAREMETAL_TARGET} "
-                   "(run it with tools/checks/run_baremetal_probe.sh)")
+ message(STATUS " Bare-metal probe: ${AC3FORGE_BAREMETAL_TARGET} "
+ "(run it with tools/checks/run_baremetal_probe.sh)")
 else()
-    message(STATUS "  Footprint probe: host build (run bin/ac3probe directly)")
+ message(STATUS " Footprint probe: host build (run bin/ac3probe directly)")
 endif()
 
 # Not ctest-registered in either shape, and deliberately: the profile requires

@@ -37,15 +37,15 @@ void apply_analysis_window(std::span<const double, 512> x, std::span<double, 512
 // AVX2 intrinsics; P must be a multiple of 4 (true at both call sites, 128
 // and 64). u.size() must be 2*P (M).
 void dct4_pre_twiddle(std::span<const double> u, std::span<const double> pre_re,
-                      std::span<const double> pre_im, std::span<const std::uint16_t> bitrev,
-                      std::span<double> z_re, std::span<double> z_im);
+ std::span<const double> pre_im, std::span<const std::uint16_t> bitrev,
+ std::span<double> z_re, std::span<double> z_im);
 
 // dct4_scaled<NLen>'s post-twiddle: unit-stride read of z_re/z_im/post_re/
 // post_im (all P long), scaled complex multiply, scatter to out (2*P = M
 // long) at stride +-2. P must be a multiple of 4.
 void dct4_post_twiddle(std::span<const double> z_re, std::span<const double> z_im,
-                       std::span<const double> post_re, std::span<const double> post_im,
-                       double scale, std::span<double> out);
+ std::span<const double> post_re, std::span<const double> post_im,
+ double scale, std::span<double> out);
 
 // imdct512_windowed's step 2-3 pre-twiddle (fast branch), four k at a time:
 // gathers coeffs at two different descending/ascending stride-2 walks,
@@ -55,30 +55,30 @@ void dct4_post_twiddle(std::span<const double> z_re, std::span<const double> z_i
 // bitrev.size() == z_re.size() == z_im.size()) is 128, a multiple of 4.
 // coeffs.size() must be kHalfN (512).
 void imdct512_pre_twiddle(std::span<const double> coeffs, std::span<const double> cos1,
-                          std::span<const double> sin1, std::span<const std::uint16_t> bitrev,
-                          std::span<double> z_re, std::span<double> z_im);
+ std::span<const double> sin1, std::span<const std::uint16_t> bitrev,
+ std::span<double> z_re, std::span<double> z_im);
 
 // imdct512_windowed's post-FFT copy-and-negate (fast branch): t_re = z_re,
 // t_im = -z_im, unit stride, four at a time.
 void imdct512_negate_copy(std::span<const double> z_re, std::span<const double> z_im,
-                          std::span<double> t_re, std::span<double> t_im);
+ std::span<double> t_re, std::span<double> t_im);
 
 // imdct512_windowed's step 4 post-twiddle: unit stride throughout (cos1,
 // sin1, t_re, t_im, y_re, y_im all kQuarter = 128 long), four at a time.
 void imdct512_post_twiddle(std::span<const double> cos1, std::span<const double> sin1,
-                           std::span<const double> t_re, std::span<const double> t_im,
-                           std::span<double> y_re, std::span<double> y_im);
+ std::span<const double> t_re, std::span<const double> t_im,
+ std::span<double> y_re, std::span<double> y_im);
 
 // imdct256_pair_windowed's step 4 post-twiddle: the same shape as
 // imdct512_post_twiddle but over BOTH half-block sets (1 and 2) at once,
 // unit stride throughout, kEighth = 64 long, four at a time.
 void imdct256_post_twiddle(std::span<const double> cos2, std::span<const double> sin2,
-                           std::span<const double> t1_re, std::span<const double> t1_im,
-                           std::span<const double> t2_re, std::span<const double> t2_im,
-                           std::span<double> y1_re, std::span<double> y1_im,
-                           std::span<double> y2_re, std::span<double> y2_im);
+ std::span<const double> t1_re, std::span<const double> t1_im,
+ std::span<const double> t2_re, std::span<const double> t2_im,
+ std::span<double> y1_re, std::span<double> y1_im,
+ std::span<double> y2_re, std::span<double> y2_im);
 
-// ROADMAP PF5's batch-axis follow-on (ac3::imdct512_windowed_batch4's own
+// batched SIMD kernels (ac3::imdct512_windowed_batch4's own
 // AVX2 body, see mdct.hpp): runs the SAME steps 2-5 imdct512_windowed's
 // fast branch does - pre-twiddle, in-place FFT, negate-copy, post-twiddle,
 // windowing/de-interleave - but with one f64x4 per BIN holding all four
@@ -117,10 +117,10 @@ void imdct256_post_twiddle(std::span<const double> cos2, std::span<const double>
 // that translation unit; this is a plain-old-data struct (no AVX2 type),
 // so passing a reference across the object-library boundary is safe.
 void imdct512_windowed_batch4(std::span<const double> coeffs0, std::span<const double> coeffs1,
-                              std::span<const double> coeffs2, std::span<const double> coeffs3,
-                              std::span<const double> cos1, std::span<const double> sin1,
-                              const ac3::internal::FftTables<128>& fft, std::span<double> x0,
-                              std::span<double> x1, std::span<double> x2, std::span<double> x3);
+ std::span<const double> coeffs2, std::span<const double> coeffs3,
+ std::span<const double> cos1, std::span<const double> sin1,
+ const ac3::internal::FftTables<128>& fft, std::span<double> x0,
+ std::span<double> x1, std::span<double> x2, std::span<double> x3);
 
 // ac3::mdct512_forward_batch4's AVX2 body (mdct.hpp): the forward twin of
 // imdct512_windowed_batch4 above, and the same three-part shape - transpose
@@ -147,11 +147,11 @@ void imdct512_windowed_batch4(std::span<const double> coeffs0, std::span<const d
 // mdct.cpp's anonymous namespace and so passed in rather than looked up
 // here; `scale` is dct4_scaled's own -2/NLen.
 void mdct512_forward_batch4(std::span<const double> w0, std::span<const double> w1,
-                            std::span<const double> w2, std::span<const double> w3,
-                            std::span<const double> pre_re, std::span<const double> pre_im,
-                            std::span<const double> post_re, std::span<const double> post_im,
-                            const ac3::internal::FftTables<128>& fft, double scale,
-                            std::span<double> c0, std::span<double> c1, std::span<double> c2,
-                            std::span<double> c3);
+ std::span<const double> w2, std::span<const double> w3,
+ std::span<const double> pre_re, std::span<const double> pre_im,
+ std::span<const double> post_re, std::span<const double> post_im,
+ const ac3::internal::FftTables<128>& fft, double scale,
+ std::span<double> c0, std::span<double> c1, std::span<double> c2,
+ std::span<double> c3);
 
-}  // namespace ac3::internal::avx2
+} // namespace ac3::internal::avx2

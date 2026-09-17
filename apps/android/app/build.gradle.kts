@@ -47,7 +47,7 @@ android {
         versionCode = 2
         versionName = "0.3.0-beta.1"
 
-        // roadmap VX18(b): connectedAndroidTest needs an instrumentation
+        // WASM/mobile headless coverage(b): connectedAndroidTest needs an instrumentation
         // runner declared before Gradle will run anything under
         // src/androidTest/ at all.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -143,7 +143,7 @@ android {
             // on-device debug testing on the (arm64-only) Shield must keep
             // working. x86_64 is for CI only:
             // _build.yml's build-android job runs connectedDebugAndroidTest
-            // (roadmap VX18b) against a GitHub-hosted emulator, which needs
+            // (Android JNI instrumented coverage) against a GitHub-hosted emulator, which needs
             // KVM hardware acceleration to be usable in CI time budgets -
             // only available for an x86/x86_64 system image on these
             // runners, not arm64-v8a under software translation. release
@@ -199,7 +199,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
 
-    // roadmap VX18(b): device-free instrumented coverage for
+    // WASM/mobile headless coverage(b): device-free instrumented coverage for
     // NativeBridge/PassthroughBridge (src/androidTest/), run via
     // connectedDebugAndroidTest - see _build.yml's build-android job.
     androidTestImplementation("junit:junit:4.13.2")

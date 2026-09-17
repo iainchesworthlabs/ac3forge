@@ -1,5 +1,5 @@
 // The Cortex-M reset vector for the minimum-footprint decoder probe
-// (roadmap PF7). Two words at address 0, which is the whole of what this core
+// (minimum-footprint decoder profile). Two words at address 0, which is the whole of what this core
 // needs to start: the initial stack pointer, then the address to begin
 // executing at. Everything after that - zeroing .bss, running static
 // constructors, calling main, and turning main's return value into a
@@ -29,4 +29,4 @@ using Handler = void (*)();
 __attribute__((section(".vectors"), used))
 Handler const kVectorTable[2] = {reinterpret_cast<Handler>(&__stack), &_start};
 
-}  // extern "C"
+} // extern "C"

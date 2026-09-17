@@ -10,11 +10,11 @@
 add_executable(ac3perf test_performance.cpp)
 
 target_link_libraries(ac3perf
-    PRIVATE
-        ac3::forge
-        ac3::warnings
-        ac3::fmt
-        Catch2::Catch2WithMain)
+ PRIVATE
+ ac3::forge
+ ac3::warnings
+ ac3::fmt
+ Catch2::Catch2WithMain)
 
 target_include_directories(ac3perf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -23,7 +23,7 @@ target_include_directories(ac3perf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # from - see that header for why a synthetic tone is not an acceptable
 # substitute for it.
 target_compile_definitions(ac3perf PRIVATE
-    "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+ "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 
 # TEST_PREFIX so `ctest -R '^Performance::'`/`-E` can target this target's
 # cases specifically without a fragile name-based guess, and
@@ -32,8 +32,8 @@ target_compile_definitions(ac3perf PRIVATE
 # exact label (an instrumented build's timing is not a signal worth having
 # an opinion about, at any slack factor).
 catch_discover_tests(ac3perf
-    TEST_PREFIX "Performance::"
-    PROPERTIES LABELS "Performance")
+ TEST_PREFIX "Performance::"
+ PROPERTIES LABELS "Performance")
 
 # ---------------------------------------------------------------------------
 # ac3bench - the trend-tracking half (numbers, not a threshold). Not a
@@ -53,7 +53,7 @@ target_include_directories(ac3bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # reason: a 440 Hz tone leaves the SNR search, coupling, rematrixing and the
 # block-switched transform out of the measurement entirely.
 target_compile_definitions(ac3bench PRIVATE
-    "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+ "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 
 # ---------------------------------------------------------------------------
 # ac3membench - heap-churn and footprint numbers for the same workloads as
@@ -72,7 +72,7 @@ target_compile_definitions(ac3bench PRIVATE
 # simply does not exist there yet rather than carrying an untested port.
 # ---------------------------------------------------------------------------
 #
-# Not built on the ThreadSanitizer leg (roadmap VX16). The global operator
+# Not built on the ThreadSanitizer leg (ThreadSanitizer leg). The global operator
 # new/delete replacements above are the whole mechanism of this target, and
 # TSan's own runtime defines those same operators in
 # libclang_rt.tsan_cxx-x86_64.a - so linking it under -fsanitize=thread is a
@@ -87,17 +87,17 @@ target_compile_definitions(ac3bench PRIVATE
 # sanitizer's intercepting allocator would not be the codec's number anyway -
 # the same reason the sanitizer legs are exempt from performance gating.
 if((WIN32 OR LINUX) AND NOT AC3FORGE_SANITIZERS MATCHES "thread")
-    add_executable(ac3membench bench_memory.cpp)
+ add_executable(ac3membench bench_memory.cpp)
 
-    if(WIN32)
-        target_sources(ac3membench PRIVATE platform/windows/mem_probe.cpp)
-    else()
-        target_sources(ac3membench PRIVATE platform/linux/mem_probe.cpp)
-    endif()
+ if(WIN32)
+ target_sources(ac3membench PRIVATE platform/windows/mem_probe.cpp)
+ else()
+ target_sources(ac3membench PRIVATE platform/linux/mem_probe.cpp)
+ endif()
 
-    target_include_directories(ac3membench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+ target_include_directories(ac3membench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-    target_link_libraries(ac3membench PRIVATE ac3::forge_static ac3::warnings ac3::fmt)
+ target_link_libraries(ac3membench PRIVATE ac3::forge_static ac3::warnings ac3::fmt)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -123,4 +123,4 @@ target_include_directories(ac3kernelbench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # from silence or a single tone give misleadingly tidy bit-allocation/
 # mantissa-cost numbers real program material never produces.
 target_compile_definitions(ac3kernelbench PRIVATE
-    "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+ "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")

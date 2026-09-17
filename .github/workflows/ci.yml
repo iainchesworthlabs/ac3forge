@@ -14,57 +14,57 @@
 # main in their own workflows and none of them feeds CI Status - see
 # docs/ci-self-hosted-runners.md "Nightly analysis window".
 #
-#   leg                     status    notes
-#   ----------------------  --------  ------------------------------------------
-#   windows-msvc            GREEN
-#   windows-llvm            GREEN     fixed a qsizetype-to-int narrowing in
-#                                     encoder_controller.cpp that -Wconversion
-#                                     rejects under clang-cl (MSVC's /W4 has
-#                                     no equivalent check)
-#   linux-gcc               GREEN     GUI and ALSA both on, plus the same
-#                                     leg's no-ALSA-fallback step
-#   linux-llvm              GREEN     GUI and ALSA both on
-#   linux-llvm-asan-ubsan   GREEN     leak detection on. Still CLI-only by
-#                                     design, to keep a Qt kit out of the
-#                                     sanitizer leg's install time - see
-#                                     _build.yml. Also runs the codec-matrix
-#                                     script's full layout/tool/atmos sweep
-#   coverage                GREEN     per-component line/branch gates over all
-#                                     nine library components (src/forge 92.2%
-#                                     line / 84.1% branch on the 2026-08-20
-#                                     WSL2 calibration run - no hosted run of
-#                                     the per-component gate recorded here
-#                                     yet; src/audio measured genuinely thin,
-#                                     src/capi's own thin spot closed the same
-#                                     day when tests/capi/test_capi.cpp gained its
-#                                     E-AC-3 half) - the floors and the full
-#                                     measured table live in
-#                                     tools/checks/coverage_report.sh
-#   macos-llvm              GREEN     real GitHub Actions runs - this project
-#                                     has no Mac. Its first-ever run hit one
-#                                     genuine, fully-understood issue
-#                                     (Homebrew's unpinned llvm formula
-#                                     flagging Catch2's __COUNTER__ under
-#                                     -Wc2y-extensions - see
-#                                     cmake/CompilerWarnings.cmake), fixed in
-#                                     one commit, then two consecutive clean
-#                                     runs. No longer experimental. GUI now
-#                                     on too, same opt-in shape as the Linux
-#                                     legs - Qt from Homebrew's qt formula at
-#                                     first, switched to the official kit via
-#                                     install-qt-action once that was found to
-#                                     ship packaged .app bundles with dangling
-#                                     Homebrew-Cellar symlinks in place of
-#                                     their QML plugins (see _ci-macos.yml).
-#   macos-llvm-x64          GREEN     DR8: real GitHub Actions runs on
-#                                     macos-15-intel, native Intel hardware,
-#                                     not Rosetta. Went three consecutive
-#                                     clean runs (build+test+gold-reference)
-#                                     before promotion, same bar macos-llvm
-#                                     was held to. Merged with macos-llvm's
-#                                     arm64 build into one universal .dmg by
-#                                     _build.yml's package-macos-universal
-#                                     job on a real release.
+# leg status notes
+# ---------------------- -------- ------------------------------------------
+# windows-msvc GREEN
+# windows-llvm GREEN fixed a qsizetype-to-int narrowing in
+# encoder_controller.cpp that -Wconversion
+# rejects under clang-cl (MSVC's /W4 has
+# no equivalent check)
+# linux-gcc GREEN GUI and ALSA both on, plus the same
+# leg's no-ALSA-fallback step
+# linux-llvm GREEN GUI and ALSA both on
+# linux-llvm-asan-ubsan GREEN leak detection on. Still CLI-only by
+# design, to keep a Qt kit out of the
+# sanitizer leg's install time - see
+# _build.yml. Also runs the codec-matrix
+# script's full layout/tool/atmos sweep
+# coverage GREEN per-component line/branch gates over all
+# nine library components (src/forge 92.2%
+# line / 84.1% branch on the 2026-08-20
+# WSL2 calibration run - no hosted run of
+# the per-component gate recorded here
+# yet; src/audio measured genuinely thin,
+# src/capi's own thin spot closed the same
+# day when tests/capi/test_capi.cpp gained its
+# E-AC-3 half) - the floors and the full
+# measured table live in
+# tools/checks/coverage_report.sh
+# macos-llvm GREEN real GitHub Actions runs - this project
+# has no Mac. Its first-ever run hit one
+# genuine, fully-understood issue
+# (Homebrew's unpinned llvm formula
+# flagging Catch2's __COUNTER__ under
+# -Wc2y-extensions - see
+# cmake/CompilerWarnings.cmake), fixed in
+# one commit, then two consecutive clean
+# runs. No longer experimental. GUI now
+# on too, same opt-in shape as the Linux
+# legs - Qt from Homebrew's qt formula at
+# first, switched to the official kit via
+# install-qt-action once that was found to
+# ship packaged .app bundles with dangling
+# Homebrew-Cellar symlinks in place of
+# their QML plugins (see _ci-macos.yml).
+# macos-llvm-x64 GREEN DR8: real GitHub Actions runs on
+# macos-15-intel, native Intel hardware,
+# not Rosetta. Went three consecutive
+# clean runs (build+test+gold-reference)
+# before promotion, same bar macos-llvm
+# was held to. Merged with macos-llvm's
+# arm64 build into one universal .dmg by
+# _build.yml's package-macos-universal
+# job on a real release.
 #
 # ---------------------------------------------------------------------------
 # Gold-reference correctness gate (added alongside the macos-llvm promotion)
@@ -86,10 +86,10 @@
 # explain three legs across two different C libraries agreeing to the
 # decimal. The next hypothesis, floating-point contraction into FMA (a base
 # ARMv8-A instruction, absent from baseline x86-64), was tested directly by
-# pinning -ffp-contract=off project-wide (roadmap PF5) - and DISPROVEN: every
+# pinning -ffp-contract=off project-wide (SIMD kernels) - and DISPROVEN: every
 # arm64 leg still measures ~61.8 dB with the flag on, unchanged from before it
 # existed. Architecture-specific libm sin/cos in the transform twiddle tables
-# was the next hypothesis and is ALSO disproven (roadmap VX11): every
+# was the next hypothesis and is ALSO disproven (cross-platform reproducibility): every
 # std::cos/std::sin call the twiddle-table construction makes is bit-identical
 # between native x86-64 and a real aarch64 cross-build (GCC 16, the same
 # -ffp-contract=off flag, the aarch64-neon SIMD kernel) run under qemu-user -
@@ -105,7 +105,7 @@
 # docs/building.md's "Floating-point contraction" for the full measurement.
 # The gate stays SNR-based for its own three checks; a separate cross-
 # platform bitstream-hash gate (tools/checks/check_cross_platform_hash.py,
-# also VX11) now pins the ENCODED bytes of every gold-reference stream per
+# also cross-platform bitstream reproducibility) now pins the ENCODED bytes of every gold-reference stream per
 # kernel/mode so this specific gap - resolved or not - cannot silently
 # change without CI noticing.
 #
@@ -116,8 +116,7 @@
 # 67.80/67.82/67.76 dB across its first three real runs, matching the x86
 # baseline every non-arm64 leg reports, not macos-llvm's ~61.8 dB. That rules
 # out an OS-specific contributor: the same OS/toolchain now sits on both
-# sides of the split, differing only by CPU architecture. See ROADMAP.md's
-# VX11 entry for the fuller note; the underlying mechanism itself is still
+# sides of the split, differing only by CPU architecture. See cross-platform reproducibility notes below for the fuller context; the underlying mechanism itself is still
 # open.
 #
 # Qt Quick Test harness: apps/gui/tests/ adds ac3gui_qml_tests_*, one real
@@ -141,1086 +140,1086 @@
 name: CI
 
 on:
-  # Only the long-lived branches build on push; the work happens on topic
-  # branches whose pull_request run covers them, so a WIP push does not also run
-  # the matrix.
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  # main's merge queue (see .github/branch-protection.md) tests each queue
-  # entry on a temporary gh-readonly-queue/... ref before it merges - GitHub
-  # only runs workflows that explicitly opt into this event on that ref, so
-  # without it "Branch Name"/"CI Status" (both required checks) would simply
-  # never report and every queue entry would sit until it times out. `changes`
-  # below already treats a non-pull_request event generically (falls back to
-  # the before/sha compare), and `branch-name` already treats any non-PR
-  # event as a pass-by-skip (see its own `if`) - both behaviours already
-  # exist for the plain `push` case above, merge_group needs no special-casing
-  # beyond receiving the trigger.
-  merge_group:
-    branches: [ main ]
-  workflow_dispatch:
+ # Only the long-lived branches build on push; the work happens on topic
+ # branches whose pull_request run covers them, so a WIP push does not also run
+ # the matrix.
+ push:
+ branches: [ main ]
+ pull_request:
+ branches: [ main ]
+ # main's merge queue (see .github/branch-protection.md) tests each queue
+ # entry on a temporary gh-readonly-queue/... ref before it merges - GitHub
+ # only runs workflows that explicitly opt into this event on that ref, so
+ # without it "Branch Name"/"CI Status" (both required checks) would simply
+ # never report and every queue entry would sit until it times out. `changes`
+ # below already treats a non-pull_request event generically (falls back to
+ # the before/sha compare), and `branch-name` already treats any non-PR
+ # event as a pass-by-skip (see its own `if`) - both behaviours already
+ # exist for the plain `push` case above, merge_group needs no special-casing
+ # beyond receiving the trigger.
+ merge_group:
+ branches: [ main ]
+ workflow_dispatch:
 
 concurrency:
-  # PR runs cancel their own superseded pushes (head_ref-keyed, cancel true) -
-  # that's the WIP-churn case this exists for. Push runs on main are
-  # SHA-keyed instead: every merge gets its own group, so a fast run of merges
-  # can never cancel an earlier merge's still-running gold-reference gate and
-  # quality-history append (see docs/quality-trend.md) before it finishes.
-  # Branch-name-keyed cancellation silently dropped exactly that data in
-  # practice - confirmed via `gh run list`, e.g. PR #35's push run was
-  # cancelled outright by PR #36 landing a second later.
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+ # PR runs cancel their own superseded pushes (head_ref-keyed, cancel true) -
+ # that's the WIP-churn case this exists for. Push runs on main are
+ # SHA-keyed instead: every merge gets its own group, so a fast run of merges
+ # can never cancel an earlier merge's still-running gold-reference gate and
+ # quality-history append (see docs/quality-trend.md) before it finishes.
+ # Branch-name-keyed cancellation silently dropped exactly that data in
+ # practice - confirmed via `gh run list`, e.g. PR #35's push run was
+ # cancelled outright by PR #36 landing a second later.
+ group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
+ cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
-  contents: read
+ contents: read
 
 jobs:
-  # Enforce trunk-based branch naming on every PR. A topic branch is
-  # <type>/<name> where type is feature or bugfix - every topic branch (hotfix
-  # included) merges straight to main, so there is no separate release/hotfix/
-  # support vocabulary to allow. main itself is accepted as a PR head for the
-  # rare revert-by-PR case, and dependabot/** is accepted because Dependabot's
-  # branch names are not configurable. Required on main, so a misnamed branch
-  # cannot merge.
-  branch-name:
-    name: Branch Name
-    needs: check-runner
-    if: github.event_name == 'pull_request'
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    steps:
-      - name: Validate head branch name
-        shell: bash
-        env:
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          set -euo pipefail
-          if [[ "$HEAD_REF" == "main" ]]; then
-            echo "Core branch '$HEAD_REF' - allowed."
-            exit 0
-          fi
-          if [[ "$HEAD_REF" == dependabot/* ]]; then
-            echo "Dependabot branch '$HEAD_REF' - allowed (names are not configurable)."
-            exit 0
-          fi
-          pattern='^(feature|bugfix)/[a-z0-9._-]+$'
-          if [[ "$HEAD_REF" =~ $pattern ]]; then
-            echo "Branch '$HEAD_REF' conforms to <type>/<name>."
-            exit 0
-          fi
-          echo "::error title=Invalid branch name::'$HEAD_REF' must be <type>/<name> where <type> is feature or bugfix (for example feature/eac3-decoder). See CONTRIBUTING.md."
-          exit 1
+ # Enforce trunk-based branch naming on every PR. A topic branch is
+ # <type>/<name> where type is feature or bugfix - every topic branch (hotfix
+ # included) merges straight to main, so there is no separate release/hotfix/
+ # support vocabulary to allow. main itself is accepted as a PR head for the
+ # rare revert-by-PR case, and dependabot/** is accepted because Dependabot's
+ # branch names are not configurable. Required on main, so a misnamed branch
+ # cannot merge.
+ branch-name:
+ name: Branch Name
+ needs: check-runner
+ if: github.event_name == 'pull_request'
+ runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+ steps:
+ - name: Validate head branch name
+ shell: bash
+ env:
+ HEAD_REF: ${{ github.head_ref }}
+ run: |
+ set -euo pipefail
+ if [[ "$HEAD_REF" == "main" ]]; then
+ echo "Core branch '$HEAD_REF' - allowed."
+ exit 0
+ fi
+ if [[ "$HEAD_REF" == dependabot/* ]]; then
+ echo "Dependabot branch '$HEAD_REF' - allowed (names are not configurable)."
+ exit 0
+ fi
+ pattern='^(feature|bugfix)/[a-z0-9._-]+$'
+ if [[ "$HEAD_REF" =~ $pattern ]]; then
+ echo "Branch '$HEAD_REF' conforms to <type>/<name>."
+ exit 0
+ fi
+ echo "::error title=Invalid branch name::'$HEAD_REF' must be <type>/<name> where <type> is feature or bugfix (for example feature/eac3-decoder). See CONTRIBUTING.md."
+ exit 1
 
-  # The RE-derived EMDF signer is quarantined to a local branch and must never
-  # reach a public remote (it embeds a key extracted from Dolby's binary). The
-  # .gitignore keeps it from being staged; this makes doubly sure by failing if
-  # the directory ever appears in a tracked tree on main.
-  no-quarantine:
-    name: No Quarantine On Main
-    needs: check-runner
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Assert src/quarantine is absent
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git ls-files --error-unmatch src/quarantine >/dev/null 2>&1; then
-            echo "::error::src/quarantine is tracked here; it must never leave its local branch."
-            exit 1
-          fi
-          echo "No quarantined signer in the tree."
+ # The RE-derived EMDF signer is quarantined to a local branch and must never
+ # reach a public remote (it embeds a key extracted from Dolby's binary). The
+ # .gitignore keeps it from being staged; this makes doubly sure by failing if
+ # the directory ever appears in a tracked tree on main.
+ no-quarantine:
+ name: No Quarantine On Main
+ needs: check-runner
+ runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
+ - name: Assert src/quarantine is absent
+ shell: bash
+ run: |
+ set -euo pipefail
+ if git ls-files --error-unmatch src/quarantine >/dev/null 2>&1; then
+ echo "::error::src/quarantine is tracked here; it must never leave its local branch."
+ exit 1
+ fi
+ echo "No quarantined signer in the tree."
 
-  # Same self-hosted/GitHub-hosted fan-out the nightly analysis workflows'
-  # check-runner jobs get (see docs/ci-self-hosted-runners.md), via the shared
-  # decide-runner composite action - covers this workflow's own cheap,
-  # container-free jobs below (everything except platform-macros, which
-  # needs pwsh and the self-hosted Linux image's shell is unverified, and
-  # the heavier container-based jobs, which already ride _build.yml's own
-  # check-runners fan-out via build-and-test). Fork-PR safety is handled
-  # entirely inside decide-runner itself, so the jobs below don't each need
-  # their own belt-and-braces `if` the way msvc-analysis.yml's single
-  # self-hosted-eligible job does.
-  check-runner:
-    name: Check self-hosted runner availability
-    # Control-plane job: routed by vars.CONTROL_RUNNER_JSON (delete the
-    # variable to send it back to ubuntu-latest - see
-    # _toolchain-versions.yml's jobs comment for the full rationale). This
-    # 9-second job deciding where the real work runs is worthless if it
-    # itself queues for hours behind saturated hosted runners - observed
-    # 2026-08-28. Fork PRs stay on GitHub-hosted unconditionally: this job
-    # checks out the fork's merge ref and runs ./.github/actions/decide-runner
-    # FROM that checkout, i.e. fork-controlled code.
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
-    permissions:
-      contents: read
-      actions: read
-    outputs:
-      runner: ${{ steps.decide.outputs.runner }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - id: decide
-        uses: ./.github/actions/decide-runner
-        with:
-          os-label: Linux
-          hosted-json: '["ubuntu-latest"]'
-          mode: ${{ vars.RUNNER_LINUX_MODE || 'auto' }}
-          org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
+ # Same self-hosted/GitHub-hosted fan-out the nightly analysis workflows'
+ # check-runner jobs get (see docs/ci-self-hosted-runners.md), via the shared
+ # decide-runner composite action - covers this workflow's own cheap,
+ # container-free jobs below (everything except platform-macros, which
+ # needs pwsh and the self-hosted Linux image's shell is unverified, and
+ # the heavier container-based jobs, which already ride _build.yml's own
+ # check-runners fan-out via build-and-test). Fork-PR safety is handled
+ # entirely inside decide-runner itself, so the jobs below don't each need
+ # their own belt-and-braces `if` the way msvc-analysis.yml's single
+ # self-hosted-eligible job does.
+ check-runner:
+ name: Check self-hosted runner availability
+ # Control-plane job: routed by vars.CONTROL_RUNNER_JSON (delete the
+ # variable to send it back to ubuntu-latest - see
+ # _toolchain-versions.yml's jobs comment for the full rationale). This
+ # 9-second job deciding where the real work runs is worthless if it
+ # itself queues for hours behind saturated hosted runners - observed
+ # 2026-08-28. Fork PRs stay on GitHub-hosted unconditionally: this job
+ # checks out the fork's merge ref and runs ./.github/actions/decide-runner
+ # FROM that checkout, i.e. fork-controlled code.
+ runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+ permissions:
+ contents: read
+ actions: read
+ outputs:
+ runner: ${{ steps.decide.outputs.runner }}
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
+ - id: decide
+ uses: ./.github/actions/decide-runner
+ with:
+ os-label: Linux
+ hosted-json: '["ubuntu-latest"]'
+ mode: ${{ vars.RUNNER_LINUX_MODE || 'auto' }}
+ org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
-  # Single source of truth for the tool-version pins several jobs below need
-  # for their own direct setup-vcpkg call (build-and-test gets its copy from
-  # _build.yml's own internal job of the same name instead) - see
-  # docs/ci-self-hosted-runners.md and _toolchain-versions.yml's own header.
-  toolchain-versions:
-    uses: ./.github/workflows/_toolchain-versions.yml
-    permissions:
-      contents: read
-      actions: read
-    secrets:
-      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
+ # Single source of truth for the tool-version pins several jobs below need
+ # for their own direct setup-vcpkg call (build-and-test gets its copy from
+ # _build.yml's own internal job of the same name instead) - see
+ # docs/ci-self-hosted-runners.md and _toolchain-versions.yml's own header.
+ toolchain-versions:
+ uses: ./.github/workflows/_toolchain-versions.yml
+ permissions:
+ contents: read
+ actions: read
+ secrets:
+ ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
-  # Classify the change so a docs-only edit skips the split platform builds. This
-  # is a job rather than a workflow-level paths-ignore on purpose: a filtered-out
-  # workflow never runs, so the required "CI Status" check below would sit
-  # pending forever and block the PR. Gating the heavy job instead keeps the
-  # gate reporting. Conservative - anything not clearly docs counts as code.
-  #
-  # Also runs tools/ci/classify_changes.py and exposes its per-lane outputs
-  # (core, windows, linux, ...) alongside `code` - see docs/ci-lanes.md.
-  # These outputs gate the core reusable workflow, split platform workflows,
-  # platform satellites and package workflows below.
-  changes:
-    name: Detect changes
-    # Routed through check-runner like the other cheap gate jobs. This job
-    # calls `gh api` directly, which briefly broke on self-hosted ("gh:
-    # command not found" on tf-gh-linux-runner-11, reverted in #459) - the
-    # fleet image now ships the GitHub CLI (ci-runners#12, deployed
-    # 2026-08-28), so that constraint is gone. Routing matters here more
-    # than for the other cheap jobs: everything heavy needs this job's
-    # output, so when the hosted queue is saturated an ubuntu-latest
-    # `changes` stalls the whole run behind it.
-    needs: check-runner
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      code: ${{ steps.detect.outputs.code }}
-      # Lane booleans from tools/ci/classify_changes.py. They gate the reusable
-      # workflows and satellites below; docs/ci-lanes.md maps each output to
-      # the work it controls.
-      core: ${{ steps.detect.outputs.core }}
-      windows: ${{ steps.detect.outputs.windows }}
-      linux: ${{ steps.detect.outputs.linux }}
-      macos: ${{ steps.detect.outputs.macos }}
-      android: ${{ steps.detect.outputs.android }}
-      wasm: ${{ steps.detect.outputs.wasm }}
-      esp: ${{ steps.detect.outputs.esp }}
-      rust: ${{ steps.detect.outputs.rust }}
-      python: ${{ steps.detect.outputs.python }}
-      npm: ${{ steps.detect.outputs.npm }}
-      ci_self: ${{ steps.detect.outputs.ci_self }}
-      docs: ${{ steps.detect.outputs.docs }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Classify changed files
-        id: detect
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          EVENT_NAME: ${{ github.event_name }}
-          # zizmor (template-injection): github.ref, like every other
-          # attacker-reachable-shaped context value in this script, goes
-          # through env: rather than straight into the run: text - same
-          # reasoning as VERSION_TAG_INPUT in
-          # .github/actions/build-leg/action.yml's Configure step.
-          REF: ${{ github.ref }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          docs_re='^(docs/|LICENSE$|mkdocs\.yml$|requirements/requirements-docs\.(in|txt)$|\.github/workflows/docs\.yml$|.*\.md$)'
+ # Classify the change so a docs-only edit skips the split platform builds. This
+ # is a job rather than a workflow-level paths-ignore on purpose: a filtered-out
+ # workflow never runs, so the required "CI Status" check below would sit
+ # pending forever and block the PR. Gating the heavy job instead keeps the
+ # gate reporting. Conservative - anything not clearly docs counts as code.
+ #
+ # Also runs tools/ci/classify_changes.py and exposes its per-lane outputs
+ # (core, windows, linux, ...) alongside `code` - see docs/ci-lanes.md.
+ # These outputs gate the core reusable workflow, split platform workflows,
+ # platform satellites and package workflows below.
+ changes:
+ name: Detect changes
+ # Routed through check-runner like the other cheap gate jobs. This job
+ # calls `gh api` directly, which briefly broke on self-hosted ("gh:
+ # command not found" on tf-gh-linux-runner-11, reverted in #459) - the
+ # fleet image now ships the GitHub CLI (ci-runners#12, deployed
+ # 2026-08-28), so that constraint is gone. Routing matters here more
+ # than for the other cheap jobs: everything heavy needs this job's
+ # output, so when the hosted queue is saturated an ubuntu-latest
+ # `changes` stalls the whole run behind it.
+ needs: check-runner
+ runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+ permissions:
+ contents: read
+ pull-requests: read
+ outputs:
+ code: ${{ steps.detect.outputs.code }}
+ # Lane booleans from tools/ci/classify_changes.py. They gate the reusable
+ # workflows and satellites below; docs/ci-lanes.md maps each output to
+ # the work it controls.
+ core: ${{ steps.detect.outputs.core }}
+ windows: ${{ steps.detect.outputs.windows }}
+ linux: ${{ steps.detect.outputs.linux }}
+ macos: ${{ steps.detect.outputs.macos }}
+ android: ${{ steps.detect.outputs.android }}
+ wasm: ${{ steps.detect.outputs.wasm }}
+ esp: ${{ steps.detect.outputs.esp }}
+ rust: ${{ steps.detect.outputs.rust }}
+ python: ${{ steps.detect.outputs.python }}
+ npm: ${{ steps.detect.outputs.npm }}
+ ci_self: ${{ steps.detect.outputs.ci_self }}
+ docs: ${{ steps.detect.outputs.docs }}
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
+ - name: Classify changed files
+ id: detect
+ env:
+ GH_TOKEN: ${{ github.token }}
+ REPO: ${{ github.repository }}
+ EVENT_NAME: ${{ github.event_name }}
+ # zizmor (template-injection): github.ref, like every other
+ # attacker-reachable-shaped context value in this script, goes
+ # through env: rather than straight into the run: text - same
+ # reasoning as VERSION_TAG_INPUT in
+ # .github/actions/build-leg/action.yml's Configure step.
+ REF: ${{ github.ref }}
+ PR_NUMBER: ${{ github.event.pull_request.number }}
+ shell: bash
+ run: |
+ set -euo pipefail
+ docs_re='^(docs/|LICENSE$|mkdocs\.yml$|requirements/requirements-docs\.(in|txt)$|\.github/workflows/docs\.yml$|.*\.md$)'
 
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            files=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')
-          else
-            before='${{ github.event.before }}'
-            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
-              files=$(gh api "repos/$REPO/commits/${{ github.sha }}" --jq '.files[].filename')
-            else
-              files=$(gh api "repos/$REPO/compare/$before...${{ github.sha }}" --jq '.files[].filename')
-            fi
-          fi
+ if [ "$EVENT_NAME" = "pull_request" ]; then
+ files=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')
+ else
+ before='${{ github.event.before }}'
+ if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+ files=$(gh api "repos/$REPO/commits/${{ github.sha }}" --jq '.files[].filename')
+ else
+ files=$(gh api "repos/$REPO/compare/$before...${{ github.sha }}" --jq '.files[].filename')
+ fi
+ fi
 
-          # No file list (a manual dispatch, an API hiccup) means build, not skip.
-          force_lanes=false
-          if [ -z "$files" ]; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "No file list available; assuming code changed."
-            force_lanes=true
-          else
-            code=false
-            while IFS= read -r f; do
-              [ -z "$f" ] && continue
-              if ! echo "$f" | grep -qE "$docs_re"; then
-                echo "  code: $f"
-                code=true
-              fi
-            done <<< "$files"
-            echo "code=$code" >> "$GITHUB_OUTPUT"
-            echo "code=$code"
-          fi
+ # No file list (a manual dispatch, an API hiccup) means build, not skip.
+ force_lanes=false
+ if [ -z "$files" ]; then
+ echo "code=true" >> "$GITHUB_OUTPUT"
+ echo "No file list available; assuming code changed."
+ force_lanes=true
+ else
+ code=false
+ while IFS= read -r f; do
+ [ -z "$f" ] && continue
+ if ! echo "$f" | grep -qE "$docs_re"; then
+ echo " code: $f"
+ code=true
+ fi
+ done <<< "$files"
+ echo "code=$code" >> "$GITHUB_OUTPUT"
+ echo "code=$code"
+ fi
 
-          # A queued or direct-to-main run has no single PR diff to read lanes
-          # from, and the merge queue exists to catch what one PR's own lane
-          # subset could not see - so both force every lane on, same as an
-          # empty file list above. See classify_changes.py's own header.
-          if [ "$EVENT_NAME" = "merge_group" ] || \
-             { [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/main" ]; }; then
-            force_lanes=true
-          fi
+ # A queued or direct-to-main run has no single PR diff to read lanes
+ # from, and the merge queue exists to catch what one PR's own lane
+ # subset could not see - so both force every lane on, same as an
+ # empty file list above. See classify_changes.py's own header.
+ if [ "$EVENT_NAME" = "merge_group" ] || \
+ { [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/main" ]; }; then
+ force_lanes=true
+ fi
 
-          classify_args=()
-          if [ "$force_lanes" = true ]; then
-            classify_args+=(--force-all)
-          fi
-          echo "$files" | python3 tools/ci/classify_changes.py "${classify_args[@]}" >> "$GITHUB_OUTPUT"
+ classify_args=()
+ if [ "$force_lanes" = true ]; then
+ classify_args+=(--force-all)
+ fi
+ echo "$files" | python3 tools/ci/classify_changes.py "${classify_args[@]}" >> "$GITHUB_OUTPUT"
 
-  # The no-#ifdef rule. Cheap, fast, and deliberately ungated by `changes` so a
-  # violation is reported even while the porting legs are still red.
-  platform-macros:
-    name: Platform Macros
-    # Stays GitHub-hosted, deliberately: check_platform_macros.ps1 needs
-    # pwsh, which the hosted Ubuntu image ships and the fleet's Linux image
-    # does not - confirmed live ("pwsh: command not found" on
-    # tf-gh-linux-runner-08 when this was briefly routed, 2026-08-28). Route
-    # it only if/when ci-runners bakes PowerShell into the Linux template -
-    # same follow-the-toolchain rule as build-wasm/android/rust in
-    # _build.yml.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Check for preprocessor conditionals in src/
-        shell: pwsh
-        run: ./tools/checks/check_platform_macros.ps1 -Root $PWD
+ # The no-#ifdef rule. Cheap, fast, and deliberately ungated by `changes` so a
+ # violation is reported even while the porting legs are still red.
+ platform-macros:
+ name: Platform Macros
+ # Stays GitHub-hosted, deliberately: check_platform_macros.ps1 needs
+ # pwsh, which the hosted Ubuntu image ships and the fleet's Linux image
+ # does not - confirmed live ("pwsh: command not found" on
+ # tf-gh-linux-runner-08 when this was briefly routed, 2026-08-28). Route
+ # it only if/when ci-runners bakes PowerShell into the Linux template -
+ # same follow-the-toolchain rule as build-wasm/android/rust in
+ # _build.yml.
+ runs-on: ubuntu-latest
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
+ - name: Check for preprocessor conditionals in src/
+ shell: pwsh
+ run: ./tools/checks/check_platform_macros.ps1 -Root $PWD
 
-  # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan), plus a
-  # latest-tag advisory (roadmap DR2) - see the script's own header for the split
-  # between the two and why only the first one fails the job. fetch-depth: 0, unlike
-  # platform-macros above: the advisory half needs `git describe --tags` to see the
-  # repository's tags, which a shallow (depth-1) clone would hide, silently disabling
-  # it in CI while it kept working from a normal local checkout.
-  packaging-consistency:
-    name: Packaging Consistency
-    needs: check-runner
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check packaging manifests are internally consistent
-        shell: bash
-        run: bash tools/checks/check_packaging_versions.sh -r "$PWD"
+ # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan), plus a
+ # latest-tag advisory (manifest bump automation) - see the script's own header for the split
+ # between the two and why only the first one fails the job. fetch-depth: 0, unlike
+ # platform-macros above: the advisory half needs `git describe --tags` to see the
+ # repository's tags, which a shallow (depth-1) clone would hide, silently disabling
+ # it in CI while it kept working from a normal local checkout.
+ packaging-consistency:
+ name: Packaging Consistency
+ needs: check-runner
+ runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ fetch-depth: 0
+ persist-credentials: false
+ - name: Check packaging manifests are internally consistent
+ shell: bash
+ run: bash tools/checks/check_packaging_versions.sh -r "$PWD"
 
-  # Every published quality series is measured against tests/golden/audio/,
-  # and its points are only comparable to each other because the material
-  # under them never moved. A regenerated fixture is close to invisible - it
-  # still decodes, still has the right duration and channel count, still
-  # produces a plausible SNR - and simply puts a step in every series that
-  # reads as an encoder change. This hashes each fixture against
-  # tests/golden/audio/corpus.json so that becomes a failing check instead of
-  # a mystery on a trend page months later.
-  #
-  # Its own job rather than a step on ffmpeg-validate: stdlib-only, no build,
-  # no container, seconds to run, and it should still report on a
-  # docs-or-fixtures-only change where `changes.outputs.code` is false and
-  # ffmpeg-validate never starts. Same shape and same reasoning as
-  # packaging-consistency above.
-  fixture-corpus:
-    name: Fixture Corpus
-    needs: check-runner
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Check committed fixtures match the corpus manifest
-        run: python3 tools/checks/check_corpus.py
+ # Every published quality series is measured against tests/golden/audio/,
+ # and its points are only comparable to each other because the material
+ # under them never moved. A regenerated fixture is close to invisible - it
+ # still decodes, still has the right duration and channel count, still
+ # produces a plausible SNR - and simply puts a step in every series that
+ # reads as an encoder change. This hashes each fixture against
+ # tests/golden/audio/corpus.json so that becomes a failing check instead of
+ # a mystery on a trend page months later.
+ #
+ # Its own job rather than a step on ffmpeg-validate: stdlib-only, no build,
+ # no container, seconds to run, and it should still report on a
+ # docs-or-fixtures-only change where `changes.outputs.code` is false and
+ # ffmpeg-validate never starts. Same shape and same reasoning as
+ # packaging-consistency above.
+ fixture-corpus:
+ name: Fixture Corpus
+ needs: check-runner
+ runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
+ - name: Check committed fixtures match the corpus manifest
+ run: python3 tools/checks/check_corpus.py
 
-  # ruff, shellcheck and actionlint over the non-C++ half of the tree (roadmap
-  # VX14). Same shape as platform-macros and packaging-consistency above:
-  # cheap, fast, and deliberately ungated by `changes` so a script edit is
-  # reported even while a heavier leg is red.
-  #
-  # This is not ordinary lint hygiene here. The ~30 Python files under tools/
-  # ARE this project's oracles and gates - quality_race.py's SNR floors,
-  # fuzz_encoder_space.py, compare_wav.py, the four trend appenders,
-  # check_matrix_coverage.py - so a swallowed subprocess failure or a closure
-  # capturing a loop variable in one of them turns a CI check green without
-  # checking anything, and nothing downstream would ever notice. Every rule in
-  # ruff.toml's curated set was picked with that in mind; see its header.
-  #
-  # A checkout and a pip install, kept apart from anything that needs a
-  # container bootstrap, a toolchain install, vcpkg and a complete build before
-  # it parses its first TU - the nightly clang-tidy job in static-analysis.yml
-  # used to be that neighbour here. Keeping them apart means a broken oracle
-  # script is reported in about a minute instead of behind the slowest job on
-  # the critical path.
-  #
-  # zizmor.yml already covers workflow *security* (injectable expressions,
-  # over-broad permissions, unpinned actions); actionlint covers workflow
-  # *correctness* (undefined matrix properties, bad `needs`/`if` expressions,
-  # invalid runner labels) plus, via -shellcheck below, the shell inside every
-  # `run:` block - which no other check in this repo looks at at all.
-  script-lint:
-    name: Script Lint
-    needs: check-runner
-    runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
+ # ruff, shellcheck and actionlint over the non-C++ half of the tree (non-C++ lint and scan).
+ # Same shape as platform-macros and packaging-consistency above:
+ # cheap, fast, and deliberately ungated by `changes` so a script edit is
+ # reported even while a heavier leg is red.
+ #
+ # This is not ordinary lint hygiene here. The ~30 Python files under tools/
+ # ARE this project's oracles and gates - quality_race.py's SNR floors,
+ # fuzz_encoder_space.py, compare_wav.py, the four trend appenders,
+ # check_matrix_coverage.py - so a swallowed subprocess failure or a closure
+ # capturing a loop variable in one of them turns a CI check green without
+ # checking anything, and nothing downstream would ever notice. Every rule in
+ # ruff.toml's curated set was picked with that in mind; see its header.
+ #
+ # A checkout and a pip install, kept apart from anything that needs a
+ # container bootstrap, a toolchain install, vcpkg and a complete build before
+ # it parses its first TU - the nightly clang-tidy job in static-analysis.yml
+ # used to be that neighbour here. Keeping them apart means a broken oracle
+ # script is reported in about a minute instead of behind the slowest job on
+ # the critical path.
+ #
+ # zizmor.yml already covers workflow *security* (injectable expressions,
+ # over-broad permissions, unpinned actions); actionlint covers workflow
+ # *correctness* (undefined matrix properties, bad `needs`/`if` expressions,
+ # invalid runner labels) plus, via -shellcheck below, the shell inside every
+ # `run:` block - which no other check in this repo looks at at all.
+ script-lint:
+ name: Script Lint
+ needs: check-runner
+ runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
 
-      # A venv rather than a bare `pip install`: the hosted image's system
-      # Python is PEP 668 externally-managed, and --break-system-packages (what
-      # the container jobs below use, safely, because their container is thrown
-      # away) is the wrong tool on a runner whose Python other steps may still
-      # need. requirements/requirements-lint.txt is a pip-compile
-      # --generate-hashes lock like requirements-coverage.txt and
-      # requirements-ffmpeg-validate.txt, so all three linter versions are
-      # pinned by hash and move only when the lock is regenerated.
-      # requirements-pip-bootstrap.txt pins the venv's own pip upgrade the
-      # same way - see that file's header for why it can't just live in the
-      # pip-compile lock above.
-      - name: Install linters
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m venv .lintvenv
-          .lintvenv/bin/python -m pip install --quiet --require-hashes \
-            -r requirements/requirements-pip-bootstrap.txt
-          .lintvenv/bin/python -m pip install --quiet --require-hashes \
-            -r requirements/requirements-lint.txt
-          .lintvenv/bin/ruff --version
-          .lintvenv/bin/shellcheck --version | tr '\n' ' '; echo
-          .lintvenv/bin/actionlint -version
+ # A venv rather than a bare `pip install`: the hosted image's system
+ # Python is PEP 668 externally-managed, and --break-system-packages (what
+ # the container jobs below use, safely, because their container is thrown
+ # away) is the wrong tool on a runner whose Python other steps may still
+ # need. requirements/requirements-lint.txt is a pip-compile
+ # --generate-hashes lock like requirements-coverage.txt and
+ # requirements-ffmpeg-validate.txt, so all three linter versions are
+ # pinned by hash and move only when the lock is regenerated.
+ # requirements-pip-bootstrap.txt pins the venv's own pip upgrade the
+ # same way - see that file's header for why it can't just live in the
+ # pip-compile lock above.
+ - name: Install linters
+ shell: bash
+ run: |
+ set -euo pipefail
+ python3 -m venv .lintvenv
+ .lintvenv/bin/python -m pip install --quiet --require-hashes \
+ -r requirements/requirements-pip-bootstrap.txt
+ .lintvenv/bin/python -m pip install --quiet --require-hashes \
+ -r requirements/requirements-lint.txt
+ .lintvenv/bin/ruff --version
+ .lintvenv/bin/shellcheck --version | tr '\n' ' '; echo
+ .lintvenv/bin/actionlint -version
 
-      # Configuration (rule set, line length, exclusions, and the reasoning for
-      # each) lives in ruff.toml at the repository root, shared verbatim with a
-      # local `ruff check .`, the same way tools/checks/coverage_report.sh is
-      # shared with the coverage job - CI and a developer machine cannot drift
-      # onto different rules.
-      - name: ruff
-        shell: bash
-        run: .lintvenv/bin/ruff check --no-cache --output-format=github .
+ # Configuration (rule set, line length, exclusions, and the reasoning for
+ # each) lives in ruff.toml at the repository root, shared verbatim with a
+ # local `ruff check .`, the same way tools/checks/coverage_report.sh is
+ # shared with the coverage job - CI and a developer machine cannot drift
+ # onto different rules.
+ - name: ruff
+ shell: bash
+ run: .lintvenv/bin/ruff check --no-cache --output-format=github .
 
-      # The oracles' own unit tests. This job's header explains why the ~30
-      # Python files under tools/ get more scrutiny than ordinary scripts -
-      # they ARE the gates - and lint alone cannot tell whether a gate still
-      # gates. compare_wav.py's suite pins the case that motivated per-channel
-      # SNR floors: a single floor low enough for a 5.1 fixture's
-      # dither-dominated surrounds leaves the front channels 30-70 dB of room
-      # to collapse in without failing anything.
-      #
-      # stdlib unittest, run with the system python3 rather than .lintvenv:
-      # these tests deliberately import nothing that is not in the standard
-      # library (same rule the scripts under test follow), so needing the
-      # linter venv at all would be a sign one of them had grown a dependency.
-      #
-      # tools/ci is discovered separately rather than by starting at tools/:
-      # unittest only recurses into directories it can import, and neither of
-      # these is a package. Reporting what the gates measure is part of the
-      # same contract as running them - a badge that disagreed with the page it
-      # links to is what put a suite in tools/ci in the first place.
-      - name: Oracle unit tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          for suite in tools/checks tools/ci; do
-            printf '\n=== %s ===\n' "$suite"
-            python3 -m unittest discover --start-directory "$suite" --pattern 'test_*.py' --verbose
-          done
+ # The oracles' own unit tests. This job's header explains why the ~30
+ # Python files under tools/ get more scrutiny than ordinary scripts -
+ # they ARE the gates - and lint alone cannot tell whether a gate still
+ # gates. compare_wav.py's suite pins the case that motivated per-channel
+ # SNR floors: a single floor low enough for a 5.1 fixture's
+ # dither-dominated surrounds leaves the front channels 30-70 dB of room
+ # to collapse in without failing anything.
+ #
+ # stdlib unittest, run with the system python3 rather than .lintvenv:
+ # these tests deliberately import nothing that is not in the standard
+ # library (same rule the scripts under test follow), so needing the
+ # linter venv at all would be a sign one of them had grown a dependency.
+ #
+ # tools/ci is discovered separately rather than by starting at tools/:
+ # unittest only recurses into directories it can import, and neither of
+ # these is a package. Reporting what the gates measure is part of the
+ # same contract as running them - a badge that disagreed with the page it
+ # links to is what put a suite in tools/ci in the first place.
+ - name: Oracle unit tests
+ shell: bash
+ run: |
+ set -euo pipefail
+ for suite in tools/checks tools/ci; do
+ printf '\n=== %s ===\n' "$suite"
+ python3 -m unittest discover --start-directory "$suite" --pattern 'test_*.py' --verbose
+ done
 
-      # The paths the docs and the CI plumbing name: every relative Markdown
-      # link under docs/ and in the root pages, the #anchor each one lands on,
-      # and every docs/, apps/, src/ or tools/ literal in the workflows, the
-      # CMake modules and the scripts under tools/. A file that moves takes its
-      # README row, its workflow step and the comments that cite it along only
-      # when someone remembers; this makes forgetting a red job. Shapes it
-      # cannot judge (globs, placeholders) are printed as info, never failed -
-      # the script's own header has the rules. Its own suite runs in the step
-      # above.
-      #
-      # This job is deliberately not gated on an event, so the merge_group
-      # trigger at the top of this file reaches it and main's queue runs it over
-      # each entry's merged tree. That is what catches the anchor break neither
-      # branch can see on its own: one renames a heading, the other links the
-      # name it used to have, and only the merge of the two is wrong.
-      - name: Doc and script paths
-        shell: bash
-        run: python3 tools/checks/check_doc_paths.py
+ # The paths the docs and the CI plumbing name: every relative Markdown
+ # link under docs/ and in the root pages, the #anchor each one lands on,
+ # and every docs/, apps/, src/ or tools/ literal in the workflows, the
+ # CMake modules and the scripts under tools/. A file that moves takes its
+ # README row, its workflow step and the comments that cite it along only
+ # when someone remembers; this makes forgetting a red job. Shapes it
+ # cannot judge (globs, placeholders) are printed as info, never failed -
+ # the script's own header has the rules. Its own suite runs in the step
+ # above.
+ #
+ # This job is deliberately not gated on an event, so the merge_group
+ # trigger at the top of this file reaches it and main's queue runs it over
+ # each entry's merged tree. That is what catches the anchor break neither
+ # branch can see on its own: one renames a heading, the other links the
+ # name it used to have, and only the merge of the two is wrong.
+ - name: Doc and script paths
+ shell: bash
+ run: python3 tools/checks/check_doc_paths.py
 
-      # The platform selection matrix, docs/platforms/index.md, routes a reader
-      # from what they have to the page for it. The step above proves its links
-      # resolve; this one proves the reverse direction, that no platform page
-      # has been added without a route to it - the drift that is invisible
-      # precisely because every link on the page still works. Its own suite
-      # runs in the Oracle unit tests step above.
-      - name: Platform matrix coverage
-        shell: bash
-        run: python3 tools/checks/check_platform_matrix.py
+ # The platform selection matrix, docs/platforms/index.md, routes a reader
+ # from what they have to the page for it. The step above proves its links
+ # resolve; this one proves the reverse direction, that no platform page
+ # has been added without a route to it - the drift that is invisible
+ # precisely because every link on the page still works. Its own suite
+ # runs in the Oracle unit tests step above.
+ - name: Platform matrix coverage
+ shell: bash
+ run: python3 tools/checks/check_platform_matrix.py
 
-      # The comparison tables are committed Markdown so they remain searchable
-      # and usable without JavaScript. The home-page selector reads the JSON
-      # source directly; this check keeps those two presentations on the same
-      # catalogue.
-      - name: Generated support matrices
-        shell: bash
-        run: python3 tools/checks/generate_support_matrices.py --check
+ # The comparison tables are committed Markdown so they remain searchable
+ # and usable without JavaScript. The home-page selector reads the JSON
+ # source directly; this check keeps those two presentations on the same
+ # catalogue.
+ - name: Generated support matrices
+ shell: bash
+ run: python3 tools/checks/generate_support_matrices.py --check
 
-      # `git ls-files` rather than a hard-coded list of directories: a shell
-      # script added anywhere in the tree is then linted the day it lands,
-      # instead of silently sitting outside the gate until someone remembers to
-      # widen a glob here.
-      - name: shellcheck
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t scripts < <(git ls-files '*.sh')
-          printf 'shellcheck: %d script(s)\n' "${#scripts[@]}"
-          printf '  %s\n' "${scripts[@]}"
-          .lintvenv/bin/shellcheck --format=gcc "${scripts[@]}"
+ # `git ls-files` rather than a hard-coded list of directories: a shell
+ # script added anywhere in the tree is then linted the day it lands,
+ # instead of silently sitting outside the gate until someone remembers to
+ # widen a glob here.
+ - name: shellcheck
+ shell: bash
+ run: |
+ set -euo pipefail
+ mapfile -t scripts < <(git ls-files '*.sh')
+ printf 'shellcheck: %d script(s)\n' "${#scripts[@]}"
+ printf ' %s\n' "${scripts[@]}"
+ .lintvenv/bin/shellcheck --format=gcc "${scripts[@]}"
 
-      # -shellcheck hands actionlint the same pinned binary the step above uses,
-      # so the shell inside every `run:` block is checked too - that integration
-      # is where this job's first real finding came from (an `ls | head -1`
-      # parse in release.yml's provenance-export step). -pyflakes= disables the
-      # other integration outright: it would only see the `python -c` one-liners
-      # inside `run:` blocks, and ruff above already covers every real .py file.
-      - name: actionlint
-        shell: bash
-        run: |
-          set -euo pipefail
-          .lintvenv/bin/actionlint -no-color -oneline \
-            -shellcheck .lintvenv/bin/shellcheck -pyflakes=
+ # -shellcheck hands actionlint the same pinned binary the step above uses,
+ # so the shell inside every `run:` block is checked too - that integration
+ # is where this job's first real finding came from (an `ls | head -1`
+ # parse in release.yml's provenance-export step). -pyflakes= disables the
+ # other integration outright: it would only see the `python -c` one-liners
+ # inside `run:` blocks, and ruff above already covers every real .py file.
+ - name: actionlint
+ shell: bash
+ run: |
+ set -euo pipefail
+ .lintvenv/bin/actionlint -no-color -oneline \
+ -shellcheck .lintvenv/bin/shellcheck -pyflakes=
 
-  # CI lane partitions plan (docs/ci-lanes.md): coverage, the ADM module
-  # build, the PR-time performance/memory comparisons and gates, the ABI
-  # gate, FFmpeg-oracle validation and its two quality-trend persisters all
-  # moved into _ci-core.yml - see that file's own header for the full list
-  # and for why persist-performance-trend/performance-trend-arm64 did NOT
-  # move with them. Gated on the `core` lane, not `code`: none of these jobs
-  # test anything platform-specific, so a PR confined to one platform lane
-  # no longer pays for any of them - the first real use `run_core` gets.
-  core:
-    name: Core checks
-    needs: [changes, toolchain-versions, check-runner]
-    if: needs.changes.outputs.core == 'true'
-    uses: ./.github/workflows/_ci-core.yml
-    # Ceiling for _ci-core.yml's two persist-*-trend jobs, which need
-    # contents: write to push to the quality-history branch - same reasoning
-    # as build-and-test's identical override just below (a callee job's own
-    # `permissions:` can only narrow what the caller grants here, never
-    # widen it).
-    permissions:
-      contents: write
-    with:
-      runner: ${{ needs.check-runner.outputs.runner }}
-      vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
-      llvm_version: ${{ needs.toolchain-versions.outputs.llvm_version }}
+ # CI lane partitions plan (docs/ci-lanes.md): coverage, the ADM module
+ # build, the PR-time performance/memory comparisons and gates, the ABI
+ # gate, FFmpeg-oracle validation and its two quality-trend persisters all
+ # moved into _ci-core.yml - see that file's own header for the full list
+ # and for why persist-performance-trend/performance-trend-arm64 did NOT
+ # move with them. Gated on the `core` lane, not `code`: none of these jobs
+ # test anything platform-specific, so a PR confined to one platform lane
+ # no longer pays for any of them - the first real use `run_core` gets.
+ core:
+ name: Core checks
+ needs: [changes, toolchain-versions, check-runner]
+ if: needs.changes.outputs.core == 'true'
+ uses: ./.github/workflows/_ci-core.yml
+ # Ceiling for _ci-core.yml's two persist-*-trend jobs, which need
+ # contents: write to push to the quality-history branch - same reasoning
+ # as build-and-test's identical override just below (a callee job's own
+ # `permissions:` can only narrow what the caller grants here, never
+ # widen it).
+ permissions:
+ contents: write
+ with:
+ runner: ${{ needs.check-runner.outputs.runner }}
+ vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+ llvm_version: ${{ needs.toolchain-versions.outputs.llvm_version }}
 
-  # CI lane partitions plan (docs/ci-lanes.md), fold-satellites phase:
-  # wheels.yml/npm.yml/esp-component.yml were each triggered independently
-  # (their own pull_request/push with a paths: filter), so a Python-only or
-  # npm-only regression never touched CI Status - the workflow ran, could go
-  # red, and blocked nothing, the same silent-non-required trap
-  # branch-protection.md's own history already records for other checks.
-  # Calling them here, gated on the matching lane, makes them required
-  # through CI Status like every other lane below; each workflow's own
-  # `push: tags: v*` trigger (release publishing) is untouched and cannot
-  # overlap with this call - see wheels.yml's own comment on its `on:` block.
-  wheels:
-    name: Python wheels
-    needs: changes
-    if: needs.changes.outputs.python == 'true'
-    uses: ./.github/workflows/wheels.yml
-    # Ceiling for every job wheels.yml declares, not just the ones this call
-    # path actually reaches: GitHub validates a called workflow's nested
-    # jobs' permissions against what the caller grants here statically, at
-    # parse time, regardless of whether a job's own `if:` would skip it at
-    # runtime - confirmed the hard way (a real "is only allowed 'actions:
-    # none'"/"'id-token: none'" validation failure on this exact call).
-    # actions: read is check-runners' decide-runner call; id-token: write is
-    # publish's OIDC token request, unreachable here since `github.ref` is
-    # never a tag on this call path, but still declared inside wheels.yml and
-    # still checked against this ceiling either way.
-    permissions:
-      contents: read
-      actions: read
-      id-token: write
-    secrets:
-      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
+ # CI lane partitions plan (docs/ci-lanes.md), fold-satellites phase:
+ # wheels.yml/npm.yml/esp-component.yml were each triggered independently
+ # (their own pull_request/push with a paths: filter), so a Python-only or
+ # npm-only regression never touched CI Status - the workflow ran, could go
+ # red, and blocked nothing, the same silent-non-required trap
+ # branch-protection.md's own history already records for other checks.
+ # Calling them here, gated on the matching lane, makes them required
+ # through CI Status like every other lane below; each workflow's own
+ # `push: tags: v*` trigger (release publishing) is untouched and cannot
+ # overlap with this call - see wheels.yml's own comment on its `on:` block.
+ wheels:
+ name: Python wheels
+ needs: changes
+ if: needs.changes.outputs.python == 'true'
+ uses: ./.github/workflows/wheels.yml
+ # Ceiling for every job wheels.yml declares, not just the ones this call
+ # path actually reaches: GitHub validates a called workflow's nested
+ # jobs' permissions against what the caller grants here statically, at
+ # parse time, regardless of whether a job's own `if:` would skip it at
+ # runtime - confirmed the hard way (a real "is only allowed 'actions:
+ # none'"/"'id-token: none'" validation failure on this exact call).
+ # actions: read is check-runners' decide-runner call; id-token: write is
+ # publish's OIDC token request, unreachable here since `github.ref` is
+ # never a tag on this call path, but still declared inside wheels.yml and
+ # still checked against this ceiling either way.
+ permissions:
+ contents: read
+ actions: read
+ id-token: write
+ secrets:
+ ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
-  npm:
-    name: npm package
-    needs: changes
-    if: needs.changes.outputs.npm == 'true'
-    uses: ./.github/workflows/npm.yml
-    # Ceiling for npm.yml's publish job (id-token: write) - same reasoning as
-    # the wheels call above; publish is unreachable here (disarmed except on
-    # workflow_dispatch, see docs/releasing.md) but its declared permission
-    # still has to fit inside what this call grants.
-    permissions:
-      contents: read
-      id-token: write
+ npm:
+ name: npm package
+ needs: changes
+ if: needs.changes.outputs.npm == 'true'
+ uses: ./.github/workflows/npm.yml
+ # Ceiling for npm.yml's publish job (id-token: write) - same reasoning as
+ # the wheels call above; publish is unreachable here (disarmed except on
+ # workflow_dispatch, see docs/releasing.md) but its declared permission
+ # still has to fit inside what this call grants.
+ permissions:
+ contents: read
+ id-token: write
 
-  esp-component:
-    name: ESP-IDF component
-    needs: changes
-    if: needs.changes.outputs.esp == 'true'
-    uses: ./.github/workflows/esp-component.yml
+ esp-component:
+ name: ESP-IDF component
+ needs: changes
+ if: needs.changes.outputs.esp == 'true'
+ uses: ./.github/workflows/esp-component.yml
 
-  build-and-test:
-    name: Build & Test
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    uses: ./.github/workflows/_build.yml
-    # contents: write is only actually used by _build.yml's quality-trend job
-    # (persist_quality_trend gates it to direct main pushes below);
-    # actions: read is only actually used by check-runners, to list this
-    # repo's (and optionally iainchesworthlabs org's) self-hosted runners -
-    # see docs/ci-self-hosted-runners.md. No security-events here since
-    # 2026-09: the java-kotlin CodeQL scan that needed it left build-android
-    # for codeql.yml's nightly matrix, and nothing in that reusable workflow
-    # uploads SARIF any more. Every other job in it keeps the workflow-level
-    # `contents: read` it already declares - a callee job's own
-    # `permissions:` can only narrow what the caller grants here, never widen
-    # it, so this is the one place that ceiling has to be raised.
-    permissions:
-      contents: write
-      actions: read
-    with:
-      # Computed here, not inside _build.yml: github.event_name/github.ref
-      # reflect the reusable workflow's own call context once inside it, and
-      # this caller site is the unambiguous place to ask "is this a direct
-      # push to main" - see persist_quality_trend's own
-      # description in _build.yml.
-      persist_quality_trend: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      quality_trend_branch: ${{ github.ref_name }}
-      # CI lane partitions (docs/ci-lanes.md): the `changes` job's own
-      # per-lane outputs, `== 'true'` the same way every other job in this
-      # file compares one of its string outputs (see `code` above it). Only
-      # windows/linux/macos gate their split platform workflow plus satellites;
-      # android/wasm/esp/rust gate their platform jobs. See _build.yml's input
-      # comments for the exact mapping.
-      run_core: ${{ needs.changes.outputs.core == 'true' }}
-      run_windows: ${{ needs.changes.outputs.windows == 'true' }}
-      run_linux: ${{ needs.changes.outputs.linux == 'true' }}
-      run_macos: ${{ needs.changes.outputs.macos == 'true' }}
-      run_android: ${{ needs.changes.outputs.android == 'true' }}
-      run_wasm: ${{ needs.changes.outputs.wasm == 'true' }}
-      run_esp: ${{ needs.changes.outputs.esp == 'true' }}
-      run_rust: ${{ needs.changes.outputs.rust == 'true' }}
-    secrets:
-      # Forward the Atmos object-signing key so build-android bundles it and the
-      # Shield app signs whenever the secret is set - on ordinary CI builds too,
-      # not only releases. Absent (or on a fork PR, where secrets don't flow) it
-      # resolves empty and the build stays the safe unsigned bed51 app. Only
-      # this one secret is forwarded here; the APK-keystore secrets stay on
-      # release.yml's call, which is the only path that packages a release APK.
-      ATMOS_SIGNING_KEY: ${{ secrets.ATMOS_SIGNING_KEY }}
-      # Optional; see _build.yml's own description of this secret. Absent
-      # today (no such repo secret is provisioned yet) resolves empty, which
-      # check-runners already treats as "skip the org-level check".
-      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
+ build-and-test:
+ name: Build & Test
+ needs: changes
+ if: needs.changes.outputs.code == 'true'
+ uses: ./.github/workflows/_build.yml
+ # contents: write is only actually used by _build.yml's quality-trend job
+ # (persist_quality_trend gates it to direct main pushes below);
+ # actions: read is only actually used by check-runners, to list this
+ # repo's (and optionally iainchesworthlabs org's) self-hosted runners -
+ # see docs/ci-self-hosted-runners.md. No security-events here since
+ # 2026-09: the java-kotlin CodeQL scan that needed it left build-android
+ # for codeql.yml's nightly matrix, and nothing in that reusable workflow
+ # uploads SARIF any more. Every other job in it keeps the workflow-level
+ # `contents: read` it already declares - a callee job's own
+ # `permissions:` can only narrow what the caller grants here, never widen
+ # it, so this is the one place that ceiling has to be raised.
+ permissions:
+ contents: write
+ actions: read
+ with:
+ # Computed here, not inside _build.yml: github.event_name/github.ref
+ # reflect the reusable workflow's own call context once inside it, and
+ # this caller site is the unambiguous place to ask "is this a direct
+ # push to main" - see persist_quality_trend's own
+ # description in _build.yml.
+ persist_quality_trend: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+ quality_trend_branch: ${{ github.ref_name }}
+ # CI lane partitions (docs/ci-lanes.md): the `changes` job's own
+ # per-lane outputs, `== 'true'` the same way every other job in this
+ # file compares one of its string outputs (see `code` above it). Only
+ # windows/linux/macos gate their split platform workflow plus satellites;
+ # android/wasm/esp/rust gate their platform jobs. See _build.yml's input
+ # comments for the exact mapping.
+ run_core: ${{ needs.changes.outputs.core == 'true' }}
+ run_windows: ${{ needs.changes.outputs.windows == 'true' }}
+ run_linux: ${{ needs.changes.outputs.linux == 'true' }}
+ run_macos: ${{ needs.changes.outputs.macos == 'true' }}
+ run_android: ${{ needs.changes.outputs.android == 'true' }}
+ run_wasm: ${{ needs.changes.outputs.wasm == 'true' }}
+ run_esp: ${{ needs.changes.outputs.esp == 'true' }}
+ run_rust: ${{ needs.changes.outputs.rust == 'true' }}
+ secrets:
+ # Forward the Atmos object-signing key so build-android bundles it and the
+ # Shield app signs whenever the secret is set - on ordinary CI builds too,
+ # not only releases. Absent (or on a fork PR, where secrets don't flow) it
+ # resolves empty and the build stays the safe unsigned bed51 app. Only
+ # this one secret is forwarded here; the APK-keystore secrets stay on
+ # release.yml's call, which is the only path that packages a release APK.
+ ATMOS_SIGNING_KEY: ${{ secrets.ATMOS_SIGNING_KEY }}
+ # Optional; see _build.yml's own description of this secret. Absent
+ # today (no such repo secret is provisioned yet) resolves empty, which
+ # check-runners already treats as "skip the org-level check".
+ ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
-  # Persists this run's encoder throughput numbers (docs/performance-trend.md)
-  # so they outlive the CI log that produced them - the trend-tracking half of
-  # the performance suite, alongside tests/performance/test_performance.cpp's
-  # ac3perf (a hard, absolute real-time gate that runs on every push/PR as
-  # part of build-and-test's own ctest, not here). This job answers a softer
-  # question on top of that gate: is throughput drifting slower over time even
-  # while ac3perf keeps passing. It records two granularities per run:
-  # ac3bench's whole-frame ms/frame (gating at the +100% tier, below) and
-  # ac3kernelbench's per-kernel ns/call (never gating - see
-  # tools/ci/append_kernel_history.py for why), so a whole-frame drift can be
-  # attributed to the kernel that caused it without re-running a profiler.
-  #
-  # One leg (linux-gcc), not the whole matrix: unlike the gold-reference SNR
-  # numbers (genuinely cross-platform floating-point comparisons worth seeing
-  # side by side), a timing trend's value is in comparing one consistent
-  # runner against its own history over time, not in comparing GitHub's
-  # runner classes against each other. Self-contained here rather than added
-  # to _build.yml's matrix, so this stays a small, independently-readable
-  # job instead of one more thing threaded through that file's per-leg logic.
-  #
-  # Reuses the quality-history branch (a different file - see
-  # tools/ci/append_performance_history.py) rather than a new branch, for the
-  # same reasons quality-trend already uses a dedicated branch instead of
-  # gh-pages: incremental, no publish-cadence coupling, fetchable client-side
-  # with no auth.
-  persist-performance-trend:
-    name: Publish performance trend
-    needs: [build-and-test, toolchain-versions, performance-trend-arm64]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    container: ubuntu:26.04
-    permissions:
-      contents: write
-    steps:
-      - name: Bootstrap container
-        run: |
-          set -eu
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends \
-            build-essential ca-certificates cmake curl git gnupg lsb-release \
-            ninja-build pkg-config software-properties-common tar unzip wget zip
+ # Persists this run's encoder throughput numbers (docs/performance-trend.md)
+ # so they outlive the CI log that produced them - the trend-tracking half of
+ # the performance suite, alongside tests/performance/test_performance.cpp's
+ # ac3perf (a hard, absolute real-time gate that runs on every push/PR as
+ # part of build-and-test's own ctest, not here). This job answers a softer
+ # question on top of that gate: is throughput drifting slower over time even
+ # while ac3perf keeps passing. It records two granularities per run:
+ # ac3bench's whole-frame ms/frame (gating at the +100% tier, below) and
+ # ac3kernelbench's per-kernel ns/call (never gating - see
+ # tools/ci/append_kernel_history.py for why), so a whole-frame drift can be
+ # attributed to the kernel that caused it without re-running a profiler.
+ #
+ # One leg (linux-gcc), not the whole matrix: unlike the gold-reference SNR
+ # numbers (genuinely cross-platform floating-point comparisons worth seeing
+ # side by side), a timing trend's value is in comparing one consistent
+ # runner against its own history over time, not in comparing GitHub's
+ # runner classes against each other. Self-contained here rather than added
+ # to _build.yml's matrix, so this stays a small, independently-readable
+ # job instead of one more thing threaded through that file's per-leg logic.
+ #
+ # Reuses the quality-history branch (a different file - see
+ # tools/ci/append_performance_history.py) rather than a new branch, for the
+ # same reasons quality-trend already uses a dedicated branch instead of
+ # gh-pages: incremental, no publish-cadence coupling, fetchable client-side
+ # with no auth.
+ persist-performance-trend:
+ name: Publish performance trend
+ needs: [build-and-test, toolchain-versions, performance-trend-arm64]
+ if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+ runs-on: ubuntu-latest
+ container: ubuntu:26.04
+ permissions:
+ contents: write
+ steps:
+ - name: Bootstrap container
+ run: |
+ set -eu
+ export DEBIAN_FRONTEND=noninteractive
+ apt-get update -qq
+ apt-get install -y -qq --no-install-recommends \
+ build-essential ca-certificates cmake curl git gnupg lsb-release \
+ ninja-build pkg-config software-properties-common tar unzip wget zip
 
-      # persist-credentials: false - this checkout is only ever read from
-      # (ac3bench's build, `git show` on this commit); the "Prepare
-      # quality-history checkout" step below pushes through its own
-      # explicitly-scoped remote instead.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
+ # persist-credentials: false - this checkout is only ever read from
+ # (ac3bench's build, `git show` on this commit); the "Prepare
+ # quality-history checkout" step below pushes through its own
+ # explicitly-scoped remote instead.
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
 
-      - name: Install GCC 16
-        run: bash .github/toolchain/02-gcc-toolchain.sh
+ - name: Install GCC 16
+ run: bash .github/toolchain/02-gcc-toolchain.sh
 
-      - uses: ./.github/actions/setup-vcpkg
-        with:
-          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+ - uses: ./.github/actions/setup-vcpkg
+ with:
+ vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
-      - name: Configure
-        run: cmake --preset config-linux-gcc
+ - name: Configure
+ run: cmake --preset config-linux-gcc
 
-      - name: Build ac3bench, ac3kernelbench and ac3membench
-        run: cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench ac3membench -- -k 0
+ - name: Build ac3bench, ac3kernelbench and ac3membench
+ run: cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench ac3membench -- -k 0
 
-      # Three repetitions, not one. append_performance_history.py reduces them
-      # to a single record per workload by taking the FASTEST run and recording
-      # the spread beside it (see its load_leg_results docstring for why the
-      # minimum rather than the mean). Until this, the number written into the
-      # permanent history was a single unrepeated sample - a weaker signal than
-      # the PR-time comparison feeding into the very same merge already used,
-      # which is min-of-3 interleaved. The trailing-mean regression tiers were
-      # being fed the noisier of the two numbers.
-      #
-      # Cheap: ac3bench is 200 frames per workload and takes seconds, against a
-      # job that has already paid for a container, a GCC install, a vcpkg setup
-      # and a full build.
-      - name: Run ac3bench (repeated)
-        env:
-          BENCH_RUNS: "3"
-        run: |
-          set -euo pipefail
-          mkdir -p results/performance-linux-gcc
-          for i in $(seq 1 "$BENCH_RUNS"); do
-            build/config-linux-gcc/bin/ac3bench \
-              --json-out "results/performance-linux-gcc/bench$i.json"
-          done
+ # Three repetitions, not one. append_performance_history.py reduces them
+ # to a single record per workload by taking the FASTEST run and recording
+ # the spread beside it (see its load_leg_results docstring for why the
+ # minimum rather than the mean). Until this, the number written into the
+ # permanent history was a single unrepeated sample - a weaker signal than
+ # the PR-time comparison feeding into the very same merge already used,
+ # which is min-of-3 interleaved. The trailing-mean regression tiers were
+ # being fed the noisier of the two numbers.
+ #
+ # Cheap: ac3bench is 200 frames per workload and takes seconds, against a
+ # job that has already paid for a container, a GCC install, a vcpkg setup
+ # and a full build.
+ - name: Run ac3bench (repeated)
+ env:
+ BENCH_RUNS: "3"
+ run: |
+ set -euo pipefail
+ mkdir -p results/performance-linux-gcc
+ for i in $(seq 1 "$BENCH_RUNS"); do
+ build/config-linux-gcc/bin/ac3bench \
+ --json-out "results/performance-linux-gcc/bench$i.json"
+ done
 
-      # What the numbers were measured ON. ms/frame is hardware-relative in a
-      # way the quality series' dB is not, so a hosted-image bump or a
-      # differently-specced runner otherwise shows up as an unattributable step
-      # in the trend that nobody can distinguish from a code change. Recorded
-      # only - nothing compares against it.
-      - name: Capture the measurement environment
-        shell: bash
-        env:
-          LEG_DIR: results/performance-linux-gcc
-        run: bash .github/scripts/capture-bench-environment.sh
+ # What the numbers were measured ON. ms/frame is hardware-relative in a
+ # way the quality series' dB is not, so a hosted-image bump or a
+ # differently-specced runner otherwise shows up as an unattributable step
+ # in the trend that nobody can distinguish from a code change. Recorded
+ # only - nothing compares against it.
+ - name: Capture the measurement environment
+ shell: bash
+ env:
+ LEG_DIR: results/performance-linux-gcc
+ run: bash .github/scripts/capture-bench-environment.sh
 
-      # A separate results tree from ac3bench's on purpose:
-      # append_performance_history.py globs every *.json under its legs and
-      # requires ac3bench's schema, so the two producers' outputs must never
-      # share a directory - see append_kernel_history.py's load_leg_results.
-      - name: Run ac3kernelbench
-        run: |
-          set -euo pipefail
-          mkdir -p kernel-results/kernels-linux-gcc
-          build/config-linux-gcc/bin/ac3kernelbench --json-out kernel-results/kernels-linux-gcc/kernels.json
+ # A separate results tree from ac3bench's on purpose:
+ # append_performance_history.py globs every *.json under its legs and
+ # requires ac3bench's schema, so the two producers' outputs must never
+ # share a directory - see append_kernel_history.py's load_leg_results.
+ - name: Run ac3kernelbench
+ run: |
+ set -euo pipefail
+ mkdir -p kernel-results/kernels-linux-gcc
+ build/config-linux-gcc/bin/ac3kernelbench --json-out kernel-results/kernels-linux-gcc/kernels.json
 
-      # Third results tree, same reasoning as the kernel one above: each
-      # append script globs every *.json under its legs and requires its own
-      # producer's schema.
-      - name: Run ac3membench
-        run: |
-          set -euo pipefail
-          mkdir -p memory-results/memory-linux-gcc
-          build/config-linux-gcc/bin/ac3membench --json-out memory-results/memory-linux-gcc/membench.json
+ # Third results tree, same reasoning as the kernel one above: each
+ # append script globs every *.json under its legs and requires its own
+ # producer's schema.
+ - name: Run ac3membench
+ run: |
+ set -euo pipefail
+ mkdir -p memory-results/memory-linux-gcc
+ build/config-linux-gcc/bin/ac3membench --json-out memory-results/memory-linux-gcc/membench.json
 
-      # The arm64 leg's measurements, produced by the job below on hardware this
-      # one cannot execute. Unpacked as a SIBLING of this job's own
-      # results/performance-linux-gcc, because append_performance_history.py
-      # takes one leg per subdirectory (leg = the name with "performance-"
-      # stripped) - so two directories become two series with no schema change
-      # and no second commit to quality-history.
-      #
-      # `continue-on-error` on the download alone: a missing arm64 artifact
-      # must not cost the x86 series its record for that commit. The append
-      # step below simply sees one leg instead of two.
-      - name: Download the arm64 measurements
-        continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: performance-linux-gcc-arm64
-          path: results/performance-linux-gcc-arm64
+ # The arm64 leg's measurements, produced by the job below on hardware this
+ # one cannot execute. Unpacked as a SIBLING of this job's own
+ # results/performance-linux-gcc, because append_performance_history.py
+ # takes one leg per subdirectory (leg = the name with "performance-"
+ # stripped) - so two directories become two series with no schema change
+ # and no second commit to quality-history.
+ #
+ # `continue-on-error` on the download alone: a missing arm64 artifact
+ # must not cost the x86 series its record for that commit. The append
+ # step below simply sees one leg instead of two.
+ - name: Download the arm64 measurements
+ continue-on-error: true
+ uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+ with:
+ name: performance-linux-gcc-arm64
+ path: results/performance-linux-gcc-arm64
 
-      # Same mechanic as quality-trend's own step in _build.yml (plain git
-      # over an HTTPS remote carrying the token, not actions/checkout, which
-      # fails outright if quality-history does not exist yet).
-      - name: Prepare quality-history checkout
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          git config --global --add safe.directory '*'
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
-          mkdir -p history
-          cd history
-          if git ls-remote --exit-code --heads "$remote" quality-history >/dev/null 2>&1; then
-            git init -q
-            git remote add origin "$remote"
-            git fetch -q origin quality-history
-            git checkout -q quality-history
-          else
-            git init -q -b quality-history
-            git remote add origin "$remote"
-            git commit -q --allow-empty -m "Initialize quality-history branch"
-          fi
+ # Same mechanic as quality-trend's own step in _build.yml (plain git
+ # over an HTTPS remote carrying the token, not actions/checkout, which
+ # fails outright if quality-history does not exist yet).
+ - name: Prepare quality-history checkout
+ shell: bash
+ env:
+ GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+ run: |
+ set -euo pipefail
+ git config --global --add safe.directory '*'
+ git config --global user.name "github-actions[bot]"
+ git config --global user.email "github-actions[bot]@users.noreply.github.com"
+ remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+ mkdir -p history
+ cd history
+ if git ls-remote --exit-code --heads "$remote" quality-history >/dev/null 2>&1; then
+ git init -q
+ git remote add origin "$remote"
+ git fetch -q origin quality-history
+ git checkout -q quality-history
+ else
+ git init -q -b quality-history
+ git remote add origin "$remote"
+ git commit -q --allow-empty -m "Initialize quality-history branch"
+ fi
 
-      - name: Append performance-trend history
-        id: append
-        shell: bash
-        env:
-          BRANCH: ${{ github.ref_name }}
-          COMMIT_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          git config --global --add safe.directory '*'
-          commit_date="$(git show -s --format=%cI "$COMMIT_SHA")"
-          python3 tools/ci/append_performance_history.py \
-            --results-dir results \
-            --history-dir history \
-            --branch "$BRANCH" \
-            --commit "$COMMIT_SHA" \
-            --commit-date "$commit_date"
+ - name: Append performance-trend history
+ id: append
+ shell: bash
+ env:
+ BRANCH: ${{ github.ref_name }}
+ COMMIT_SHA: ${{ github.sha }}
+ run: |
+ set -euo pipefail
+ git config --global --add safe.directory '*'
+ commit_date="$(git show -s --format=%cI "$COMMIT_SHA")"
+ python3 tools/ci/append_performance_history.py \
+ --results-dir results \
+ --history-dir history \
+ --branch "$BRANCH" \
+ --commit "$COMMIT_SHA" \
+ --commit-date "$commit_date"
 
-      # Its own step (and script) rather than more legs in the one above:
-      # the kernel series is deliberately non-gating - both regression tiers
-      # are ::warning:: annotations and there is no hard_regression output -
-      # so keeping it out of the `append` step keeps that step's output
-      # contract (which the fail-on-hard-regression step below keys off)
-      # about the whole-frame series only.
-      - name: Append kernel-trend history
-        shell: bash
-        env:
-          BRANCH: ${{ github.ref_name }}
-          COMMIT_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          git config --global --add safe.directory '*'
-          commit_date="$(git show -s --format=%cI "$COMMIT_SHA")"
-          python3 tools/ci/append_kernel_history.py \
-            --results-dir kernel-results \
-            --history-dir history \
-            --branch "$BRANCH" \
-            --commit "$COMMIT_SHA" \
-            --commit-date "$commit_date"
+ # Its own step (and script) rather than more legs in the one above:
+ # the kernel series is deliberately non-gating - both regression tiers
+ # are ::warning:: annotations and there is no hard_regression output -
+ # so keeping it out of the `append` step keeps that step's output
+ # contract (which the fail-on-hard-regression step below keys off)
+ # about the whole-frame series only.
+ - name: Append kernel-trend history
+ shell: bash
+ env:
+ BRANCH: ${{ github.ref_name }}
+ COMMIT_SHA: ${{ github.sha }}
+ run: |
+ set -euo pipefail
+ git config --global --add safe.directory '*'
+ commit_date="$(git show -s --format=%cI "$COMMIT_SHA")"
+ python3 tools/ci/append_kernel_history.py \
+ --results-dir kernel-results \
+ --history-dir history \
+ --branch "$BRANCH" \
+ --commit "$COMMIT_SHA" \
+ --commit-date "$commit_date"
 
-      # Gates like the whole-frame series (its own hard_regression output,
-      # keyed off by its own fail step below), unlike the never-gating
-      # kernel series - ac3membench's counts are near-deterministic for a
-      # fixed workload, so its hard tier carries none of the runner-noise
-      # risk that keeps the kernel series advisory.
-      - name: Append memory-trend history
-        id: append_memory
-        shell: bash
-        env:
-          BRANCH: ${{ github.ref_name }}
-          COMMIT_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          git config --global --add safe.directory '*'
-          commit_date="$(git show -s --format=%cI "$COMMIT_SHA")"
-          python3 tools/ci/append_memory_history.py \
-            --results-dir memory-results \
-            --history-dir history \
-            --branch "$BRANCH" \
-            --commit "$COMMIT_SHA" \
-            --commit-date "$commit_date"
+ # Gates like the whole-frame series (its own hard_regression output,
+ # keyed off by its own fail step below), unlike the never-gating
+ # kernel series - ac3membench's counts are near-deterministic for a
+ # fixed workload, so its hard tier carries none of the runner-noise
+ # risk that keeps the kernel series advisory.
+ - name: Append memory-trend history
+ id: append_memory
+ shell: bash
+ env:
+ BRANCH: ${{ github.ref_name }}
+ COMMIT_SHA: ${{ github.sha }}
+ run: |
+ set -euo pipefail
+ git config --global --add safe.directory '*'
+ commit_date="$(git show -s --format=%cI "$COMMIT_SHA")"
+ python3 tools/ci/append_memory_history.py \
+ --results-dir memory-results \
+ --history-dir history \
+ --branch "$BRANCH" \
+ --commit "$COMMIT_SHA" \
+ --commit-date "$commit_date"
 
-      # Renders the newest figures as shields.io endpoint JSON for the README's
-      # badge row. Runs HERE, in the job that already commits to
-      # quality-history, rather than as a job of its own: that branch has two
-      # writers already (_build.yml's quality-trend and this one) and a third
-      # would be a third chance to race on it.
-      #
-      # After the appends above, so the speed and memory badges describe the
-      # records this run just wrote. The accuracy badge reads whatever the
-      # quality-trend job last pushed, which can be one run behind on a commit
-      # whose quality leg finished after this one - acceptable for a summary,
-      # and the trend pages carry the exact number one click away.
-      - name: Render the measurement badges
-        env:
-          BRANCH: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          python3 tools/ci/write_measurement_badges.py \
-            --history-dir history \
-            --branch "$BRANCH"
+ # Renders the newest figures as shields.io endpoint JSON for the README's
+ # badge row. Runs HERE, in the job that already commits to
+ # quality-history, rather than as a job of its own: that branch has two
+ # writers already (_build.yml's quality-trend and this one) and a third
+ # would be a third chance to race on it.
+ #
+ # After the appends above, so the speed and memory badges describe the
+ # records this run just wrote. The accuracy badge reads whatever the
+ # quality-trend job last pushed, which can be one run behind on a commit
+ # whose quality leg finished after this one - acceptable for a summary,
+ # and the trend pages carry the exact number one click away.
+ - name: Render the measurement badges
+ env:
+ BRANCH: ${{ github.ref_name }}
+ run: |
+ set -euo pipefail
+ python3 tools/ci/write_measurement_badges.py \
+ --history-dir history \
+ --branch "$BRANCH"
 
-      - name: Commit and push performance-history update
-        shell: bash
-        env:
-          BRANCH: ${{ github.ref_name }}
-          COMMIT_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          cd history
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -q -m "Performance trend: ${BRANCH}@${COMMIT_SHA}"
-            # Four trend publishers (quality, performance,
-            # external-comparison, object-quality) share this one branch and
-            # routinely finish within seconds of each other, so losing the
-            # push race is an expected outcome rather than an error - it is
-            # what "! [rejected] (fetch first)" on main means. Each writes its
-            # own data file, so rebasing onto whichever sibling won is
-            # conflict-free; only a genuine conflict stops the retry.
-            pushed=""
-            for attempt in 1 2 3 4 5; do
-              if git push -q origin quality-history 2>/dev/null; then
-                pushed=yes
-                break
-              fi
-              echo "push rejected (attempt ${attempt}); rebasing onto origin/quality-history"
-              git fetch -q origin quality-history
-              git rebase -q origin/quality-history
-              sleep $(( (RANDOM % 5) + 1 ))
-            done
-            if [ -z "${pushed}" ]; then
-              echo "::error::could not push quality-history after 5 attempts"
-              exit 1
-            fi
-          fi
+ - name: Commit and push performance-history update
+ shell: bash
+ env:
+ BRANCH: ${{ github.ref_name }}
+ COMMIT_SHA: ${{ github.sha }}
+ run: |
+ set -euo pipefail
+ cd history
+ git add -A
+ if git diff --cached --quiet; then
+ echo "No changes to commit."
+ else
+ git commit -q -m "Performance trend: ${BRANCH}@${COMMIT_SHA}"
+ # Four trend publishers (quality, performance,
+ # external-comparison, object-quality) share this one branch and
+ # routinely finish within seconds of each other, so losing the
+ # push race is an expected outcome rather than an error - it is
+ # what "! [rejected] (fetch first)" on main means. Each writes its
+ # own data file, so rebasing onto whichever sibling won is
+ # conflict-free; only a genuine conflict stops the retry.
+ pushed=""
+ for attempt in 1 2 3 4 5; do
+ if git push -q origin quality-history 2>/dev/null; then
+ pushed=yes
+ break
+ fi
+ echo "push rejected (attempt ${attempt}); rebasing onto origin/quality-history"
+ git fetch -q origin quality-history
+ git rebase -q origin/quality-history
+ sleep $(( (RANDOM % 5) + 1 ))
+ done
+ if [ -z "${pushed}" ]; then
+ echo "::error::could not push quality-history after 5 attempts"
+ exit 1
+ fi
+ fi
 
-      # Deliberately after the push above, not instead of the append step
-      # failing outright - see append_performance_history.py's own
-      # HARD_REGRESSION_SLOWDOWN_FRACTION and append_quality_history.py's
-      # identical reasoning for its own hard-regression step.
-      - name: Fail on hard performance regression
-        if: steps.append.outputs.hard_regression == 'true'
-        shell: bash
-        run: |
-          echo "::error::A leg/config ran at least twice as slow as its trailing average - see the job log above and docs/performance-trend.md for the recorded numbers."
-          exit 1
+ # Deliberately after the push above, not instead of the append step
+ # failing outright - see append_performance_history.py's own
+ # HARD_REGRESSION_SLOWDOWN_FRACTION and append_quality_history.py's
+ # identical reasoning for its own hard-regression step.
+ - name: Fail on hard performance regression
+ if: steps.append.outputs.hard_regression == 'true'
+ shell: bash
+ run: |
+ echo "::error::A leg/config ran at least twice as slow as its trailing average - see the job log above and docs/performance-trend.md for the recorded numbers."
+ exit 1
 
-      # `always() &&` so a hard memory regression is still reported when the
-      # performance step above already failed the job - without it, a failed
-      # earlier step would silently skip this one.
-      - name: Fail on hard memory regression
-        if: always() && steps.append_memory.outputs.hard_regression == 'true'
-        shell: bash
-        run: |
-          echo "::error::A workload's heap churn at least doubled against its trailing average (or it leaked past the absolute threshold) - see the job log above and docs/performance-trend.md's memory tables for the recorded numbers."
-          exit 1
+ # `always() &&` so a hard memory regression is still reported when the
+ # performance step above already failed the job - without it, a failed
+ # earlier step would silently skip this one.
+ - name: Fail on hard memory regression
+ if: always() && steps.append_memory.outputs.hard_regression == 'true'
+ shell: bash
+ run: |
+ echo "::error::A workload's heap churn at least doubled against its trailing average (or it leaked past the absolute threshold) - see the job log above and docs/performance-trend.md's memory tables for the recorded numbers."
+ exit 1
 
-  # A SECOND ac3bench series, on arm64 (roadmap VX17).
-  #
-  # ms/frame was measured on exactly one platform - x86-64, GCC, one hosted
-  # image - so the trend could only ever answer "did this get slower on that
-  # machine". This project hand-vectorises: fast-MDCT, the radix-4 FFT kernel,
-  # the QMF filterbank. A change tuned against AVX that pessimises NEON is
-  # invisible to a single-ISA series, and it is exactly the kind of change
-  # this repository makes.
-  #
-  # WHY ARM64 AND NOT WINDOWS. Windows is the more obvious second platform and
-  # is deliberately not it: those legs run on the self-hosted fleet, where
-  # docs/performance-trend.md's own guidance is to compare PAIRED ratios
-  # rather than absolute times because a co-tenant build can move a number by
-  # more than any regression this would catch. A trend series is absolute by
-  # construction, so it needs a runner whose timings mean something on their
-  # own. ubuntu-24.04-arm is GitHub-hosted, the same class of machine as the
-  # x86 series' ubuntu-latest, and differs in the one dimension worth adding.
-  #
-  # Mirrors _build.yml's linux-gcc-arm64 leg exactly - same runner label, same
-  # ubuntu:26.04 container, same GCC 16 script, same preset - so this measures
-  # a binary built the way that platform's binaries are actually built.
-  #
-  # Uploads rather than appends. Only ONE job may write to quality-history:
-  # two jobs committing to the same branch race, and this repository has hit
-  # that race before. persist-performance-trend downloads this artifact and
-  # records both legs in its single existing commit.
-  performance-trend-arm64:
-    name: Publish performance trend (arm64 measurements)
-    needs: [build-and-test, toolchain-versions]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04-arm
-    container: ubuntu:26.04
-    env:
-      BENCH_RUNS: "3"
-      LEG_DIR: results/performance-linux-gcc-arm64
-    steps:
-      - name: Bootstrap container
-        run: |
-          set -eu
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends \
-            build-essential ca-certificates cmake curl git gnupg lsb-release \
-            ninja-build pkg-config software-properties-common tar unzip wget zip
+ # A SECOND ac3bench series, on arm64 (PR-time performance comparison).
+ #
+ # ms/frame was measured on exactly one platform - x86-64, GCC, one hosted
+ # image - so the trend could only ever answer "did this get slower on that
+ # machine". This project hand-vectorises: fast-MDCT, the radix-4 FFT kernel,
+ # the QMF filterbank. A change tuned against AVX that pessimises NEON is
+ # invisible to a single-ISA series, and it is exactly the kind of change
+ # this repository makes.
+ #
+ # WHY ARM64 AND NOT WINDOWS. Windows is the more obvious second platform and
+ # is deliberately not it: those legs run on the self-hosted fleet, where
+ # docs/performance-trend.md's own guidance is to compare PAIRED ratios
+ # rather than absolute times because a co-tenant build can move a number by
+ # more than any regression this would catch. A trend series is absolute by
+ # construction, so it needs a runner whose timings mean something on their
+ # own. ubuntu-24.04-arm is GitHub-hosted, the same class of machine as the
+ # x86 series' ubuntu-latest, and differs in the one dimension worth adding.
+ #
+ # Mirrors _build.yml's linux-gcc-arm64 leg exactly - same runner label, same
+ # ubuntu:26.04 container, same GCC 16 script, same preset - so this measures
+ # a binary built the way that platform's binaries are actually built.
+ #
+ # Uploads rather than appends. Only ONE job may write to quality-history:
+ # two jobs committing to the same branch race, and this repository has hit
+ # that race before. persist-performance-trend downloads this artifact and
+ # records both legs in its single existing commit.
+ performance-trend-arm64:
+ name: Publish performance trend (arm64 measurements)
+ needs: [build-and-test, toolchain-versions]
+ if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+ runs-on: ubuntu-24.04-arm
+ container: ubuntu:26.04
+ env:
+ BENCH_RUNS: "3"
+ LEG_DIR: results/performance-linux-gcc-arm64
+ steps:
+ - name: Bootstrap container
+ run: |
+ set -eu
+ export DEBIAN_FRONTEND=noninteractive
+ apt-get update -qq
+ apt-get install -y -qq --no-install-recommends \
+ build-essential ca-certificates cmake curl git gnupg lsb-release \
+ ninja-build pkg-config software-properties-common tar unzip wget zip
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
 
-      - name: Install GCC 16
-        run: bash .github/toolchain/02-gcc-toolchain.sh
+ - name: Install GCC 16
+ run: bash .github/toolchain/02-gcc-toolchain.sh
 
-      - uses: ./.github/actions/setup-vcpkg
-        with:
-          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+ - uses: ./.github/actions/setup-vcpkg
+ with:
+ vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
-      - name: Configure
-        run: cmake --preset config-linux-gcc-arm64
+ - name: Configure
+ run: cmake --preset config-linux-gcc-arm64
 
-      # ac3bench only. The x86 job also runs ac3kernelbench and ac3membench;
-      # neither is added here yet, because a kernel series and a heap series
-      # each want their own thresholds calibrated against this platform and
-      # that is a separate exercise from establishing the whole-frame one.
-      - name: Build ac3bench
-        run: cmake --build --preset build-linux-gcc-arm64 --target ac3bench -- -k 0
+ # ac3bench only. The x86 job also runs ac3kernelbench and ac3membench;
+ # neither is added here yet, because a kernel series and a heap series
+ # each want their own thresholds calibrated against this platform and
+ # that is a separate exercise from establishing the whole-frame one.
+ - name: Build ac3bench
+ run: cmake --build --preset build-linux-gcc-arm64 --target ac3bench -- -k 0
 
-      - name: Run ac3bench (repeated)
-        run: |
-          set -euo pipefail
-          mkdir -p "$LEG_DIR"
-          for i in $(seq 1 "$BENCH_RUNS"); do
-            build/config-linux-gcc-arm64/bin/ac3bench --json-out "$LEG_DIR/bench$i.json"
-          done
+ - name: Run ac3bench (repeated)
+ run: |
+ set -euo pipefail
+ mkdir -p "$LEG_DIR"
+ for i in $(seq 1 "$BENCH_RUNS"); do
+ build/config-linux-gcc-arm64/bin/ac3bench --json-out "$LEG_DIR/bench$i.json"
+ done
 
-      - name: Capture the measurement environment
-        shell: bash
-        run: bash .github/scripts/capture-bench-environment.sh
+ - name: Capture the measurement environment
+ shell: bash
+ run: bash .github/scripts/capture-bench-environment.sh
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: performance-linux-gcc-arm64
-          path: results/performance-linux-gcc-arm64
-          retention-days: 7
+ - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+ with:
+ name: performance-linux-gcc-arm64
+ path: results/performance-linux-gcc-arm64
+ retention-days: 7
 
-  # Branch protection points at this one check rather than at each matrix leg,
-  # so adding or renaming a leg does not need the protection rule updated.
-  # Experimental legs cannot reach it: continue-on-error means the reusable
-  # workflow reports success even when one of them fails.
-  ci-status:
-    name: CI Status
-    if: always()
-    needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, core, wheels, npm, esp-component, build-and-test, persist-performance-trend ]
-    # Control-plane job, same vars.CONTROL_RUNNER_JSON routing and kill
-    # switch as check-runner above. This is the required check every PR
-    # waits on LAST - when the hosted pool is saturated, a run whose every
-    # real job passed still reported nothing for hours because this
-    # seconds-long aggregator was queued behind build legs (PR #447,
-    # 2026-08-28). No checkout, no untrusted code - the fork guard is
-    # consistency, not necessity.
-    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
-    steps:
-      - name: Gate on required job results
-        shell: bash
-        env:
-          # 'skipped' on a push (no PR head to name), which is a pass.
-          R_BRANCH: ${{ needs.branch-name.result }}
-          R_QUARANTINE: ${{ needs.no-quarantine.result }}
-          R_CHANGES: ${{ needs.changes.result }}
-          R_MACROS: ${{ needs.platform-macros.result }}
-          R_PACKAGING: ${{ needs.packaging-consistency.result }}
-          R_CORPUS: ${{ needs.fixture-corpus.result }}
-          R_SCRIPTLINT: ${{ needs.script-lint.result }}
-          # CI lane partitions (docs/ci-lanes.md): coverage/adm-validate/
-          # ffmpeg-validate/performance-gate/memory-gate/both persist-*-trend
-          # jobs now live inside _ci-core.yml, called as the `core` job
-          # above - each one's own result comes back through that reusable
-          # workflow's own
-          # workflow_call.outputs (needs.core.outputs.<x>), not
-          # needs.<job>.result, since those jobs are no longer direct
-          # siblings of this one. 'skipped' still reads as a pass below,
-          # same as before the move - `core` itself is 'skipped' whole on a
-          # non-core-lane PR (see its own `if:`), and each output then comes
-          # back empty, which the loop's failure/cancelled check already
-          # treats as a pass.
-          R_COVERAGE: ${{ needs.core.outputs.coverage_result }}
-          R_ADM: ${{ needs.core.outputs.adm_result }}
-          R_HEARTH: ${{ needs.core.outputs.hearth_result }}
-          R_BUILD: ${{ needs.build-and-test.result }}
-          R_FFMPEG: ${{ needs.core.outputs.ffmpeg_result }}
-          # 'skipped' on a push and on a docs-only PR (performance-compare
-          # itself is gated on the `core` lane), which is a pass.
-          R_PERF_GATE: ${{ needs.core.outputs.performance_gate_result }}
-          # Same, for heap churn (memory-compare is gated on the `core` lane
-          # too). Being named here is what makes the gate required: a job
-          # this aggregate does not list can go red while blocking nothing,
-          # which is precisely the state the memory series was in before it.
-          R_MEM_GATE: ${{ needs.core.outputs.memory_gate_result }}
-          # 'skipped' on every PR and every push off main (its own
-          # `if`) - a pass, not a failure, same as R_COVERAGE above.
-          R_PERF_TREND: ${{ needs.persist-performance-trend.result }}
-          R_EXT_TREND: ${{ needs.core.outputs.persist_external_trend_result }}
-          R_OBJ_TREND: ${{ needs.core.outputs.persist_object_trend_result }}
-          # 'skipped' on any PR/push outside their own lane (python/npm/esp),
-          # which is a pass - fold-satellites phase (docs/ci-lanes.md). Each
-          # workflow's own release-publish trigger is untouched and unrelated
-          # to this result.
-          R_WHEELS: ${{ needs.wheels.result }}
-          R_NPM: ${{ needs.npm.result }}
-          R_ESP_COMPONENT: ${{ needs.esp-component.result }}
-        run: |
-          set -euo pipefail
-          fail=0
-          for pair in "branch-name:$R_BRANCH" "no-quarantine:$R_QUARANTINE" \
-                      "changes:$R_CHANGES" "platform-macros:$R_MACROS" \
-                      "packaging-consistency:$R_PACKAGING" \
-                      "fixture-corpus:$R_CORPUS" \
-                      "script-lint:$R_SCRIPTLINT" \
-                      "coverage:$R_COVERAGE" \
-                      "adm-validate:$R_ADM" \
-                      "hearth-validate:$R_HEARTH" \
-                      "build-and-test:$R_BUILD" "ffmpeg-validate:$R_FFMPEG" \
-                      "performance-gate:$R_PERF_GATE" \
-                      "memory-gate:$R_MEM_GATE" \
-                      "persist-performance-trend:$R_PERF_TREND" \
-                      "persist-external-comparison-trend:$R_EXT_TREND" \
-                      "persist-object-quality-trend:$R_OBJ_TREND" \
-                      "wheels:$R_WHEELS" "npm:$R_NPM" \
-                      "esp-component:$R_ESP_COMPONENT"; do
-            job="${pair%%:*}"; result="${pair#*:}"
-            echo "  $job: $result"
-            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
-              echo "::error::$job reported '$result'."
-              fail=1
-            fi
-          done
-          if [ "$fail" -ne 0 ]; then
-            echo "CI failed - see the failing job(s) above."
-            exit 1
-          fi
-          echo "All required CI jobs passed or were skipped."
+ # Branch protection points at this one check rather than at each matrix leg,
+ # so adding or renaming a leg does not need the protection rule updated.
+ # Experimental legs cannot reach it: continue-on-error means the reusable
+ # workflow reports success even when one of them fails.
+ ci-status:
+ name: CI Status
+ if: always()
+ needs: [ branch-name, no-quarantine, changes, platform-macros, packaging-consistency, fixture-corpus, script-lint, core, wheels, npm, esp-component, build-and-test, persist-performance-trend ]
+ # Control-plane job, same vars.CONTROL_RUNNER_JSON routing and kill
+ # switch as check-runner above. This is the required check every PR
+ # waits on LAST - when the hosted pool is saturated, a run whose every
+ # real job passed still reported nothing for hours because this
+ # seconds-long aggregator was queued behind build legs (PR #447,
+ # 2026-08-28). No checkout, no untrusted code - the fork guard is
+ # consistency, not necessity.
+ runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+ steps:
+ - name: Gate on required job results
+ shell: bash
+ env:
+ # 'skipped' on a push (no PR head to name), which is a pass.
+ R_BRANCH: ${{ needs.branch-name.result }}
+ R_QUARANTINE: ${{ needs.no-quarantine.result }}
+ R_CHANGES: ${{ needs.changes.result }}
+ R_MACROS: ${{ needs.platform-macros.result }}
+ R_PACKAGING: ${{ needs.packaging-consistency.result }}
+ R_CORPUS: ${{ needs.fixture-corpus.result }}
+ R_SCRIPTLINT: ${{ needs.script-lint.result }}
+ # CI lane partitions (docs/ci-lanes.md): coverage/adm-validate/
+ # ffmpeg-validate/performance-gate/memory-gate/both persist-*-trend
+ # jobs now live inside _ci-core.yml, called as the `core` job
+ # above - each one's own result comes back through that reusable
+ # workflow's own
+ # workflow_call.outputs (needs.core.outputs.<x>), not
+ # needs.<job>.result, since those jobs are no longer direct
+ # siblings of this one. 'skipped' still reads as a pass below,
+ # same as before the move - `core` itself is 'skipped' whole on a
+ # non-core-lane PR (see its own `if:`), and each output then comes
+ # back empty, which the loop's failure/cancelled check already
+ # treats as a pass.
+ R_COVERAGE: ${{ needs.core.outputs.coverage_result }}
+ R_ADM: ${{ needs.core.outputs.adm_result }}
+ R_HEARTH: ${{ needs.core.outputs.hearth_result }}
+ R_BUILD: ${{ needs.build-and-test.result }}
+ R_FFMPEG: ${{ needs.core.outputs.ffmpeg_result }}
+ # 'skipped' on a push and on a docs-only PR (performance-compare
+ # itself is gated on the `core` lane), which is a pass.
+ R_PERF_GATE: ${{ needs.core.outputs.performance_gate_result }}
+ # Same, for heap churn (memory-compare is gated on the `core` lane
+ # too). Being named here is what makes the gate required: a job
+ # this aggregate does not list can go red while blocking nothing,
+ # which is precisely the state the memory series was in before it.
+ R_MEM_GATE: ${{ needs.core.outputs.memory_gate_result }}
+ # 'skipped' on every PR and every push off main (its own
+ # `if`) - a pass, not a failure, same as R_COVERAGE above.
+ R_PERF_TREND: ${{ needs.persist-performance-trend.result }}
+ R_EXT_TREND: ${{ needs.core.outputs.persist_external_trend_result }}
+ R_OBJ_TREND: ${{ needs.core.outputs.persist_object_trend_result }}
+ # 'skipped' on any PR/push outside their own lane (python/npm/esp),
+ # which is a pass - fold-satellites phase (docs/ci-lanes.md). Each
+ # workflow's own release-publish trigger is untouched and unrelated
+ # to this result.
+ R_WHEELS: ${{ needs.wheels.result }}
+ R_NPM: ${{ needs.npm.result }}
+ R_ESP_COMPONENT: ${{ needs.esp-component.result }}
+ run: |
+ set -euo pipefail
+ fail=0
+ for pair in "branch-name:$R_BRANCH" "no-quarantine:$R_QUARANTINE" \
+ "changes:$R_CHANGES" "platform-macros:$R_MACROS" \
+ "packaging-consistency:$R_PACKAGING" \
+ "fixture-corpus:$R_CORPUS" \
+ "script-lint:$R_SCRIPTLINT" \
+ "coverage:$R_COVERAGE" \
+ "adm-validate:$R_ADM" \
+ "hearth-validate:$R_HEARTH" \
+ "build-and-test:$R_BUILD" "ffmpeg-validate:$R_FFMPEG" \
+ "performance-gate:$R_PERF_GATE" \
+ "memory-gate:$R_MEM_GATE" \
+ "persist-performance-trend:$R_PERF_TREND" \
+ "persist-external-comparison-trend:$R_EXT_TREND" \
+ "persist-object-quality-trend:$R_OBJ_TREND" \
+ "wheels:$R_WHEELS" "npm:$R_NPM" \
+ "esp-component:$R_ESP_COMPONENT"; do
+ job="${pair%%:*}"; result="${pair#*:}"
+ echo " $job: $result"
+ if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+ echo "::error::$job reported '$result'."
+ fail=1
+ fi
+ done
+ if [ "$fail" -ne 0 ]; then
+ echo "CI failed - see the failing job(s) above."
+ exit 1
+ fi
+ echo "All required CI jobs passed or were skipped."

@@ -24,18 +24,18 @@ namespace ac3 {
 // Bit-allocation parameter codes as transmitted in the BSI/audblk. Defaults
 // are the spec's basic-encoder values (§8.2.12).
 struct BitAllocCodes {
-    int sdcycod = 2;
-    int fdcycod = 1;
-    int sgaincod = 1;
-    int dbpbcod = 2;
-    int floorcod = 4;
-    int fgaincod = 4;
+ int sdcycod = 2;
+ int fdcycod = 1;
+ int sgaincod = 1;
+ int dbpbcod = 2;
+ int floorcod = 4;
+ int fgaincod = 4;
 
-    // An encoder searching these per frame needs to know whether a candidate
-    // is the one it already has (see encoder.cpp step 9a), and every member
-    // is a plain transmitted code, so the defaulted comparison says exactly
-    // the right thing.
-    [[nodiscard]] friend bool operator==(const BitAllocCodes&, const BitAllocCodes&) = default;
+ // An encoder searching these per frame needs to know whether a candidate
+ // is the one it already has (see encoder.cpp step 9a), and every member
+ // is a plain transmitted code, so the defaulted comparison says exactly
+ // the right thing.
+ [[nodiscard]] friend bool operator==(const BitAllocCodes&, const BitAllocCodes&) = default;
 };
 
 // Tables 7.11 and 7.8. Exposed because an encoder picking the coupling
@@ -71,11 +71,11 @@ struct BitAllocCodes {
 // the allocator's, or the two are not comparable in the same units.
 // Bands outside the requested range are left zero.
 [[nodiscard]] AC3FORGE_EXPORT std::array<int, 50> band_psd(std::span<const int> psd, int start,
-                                                           int end);
+ int end);
 
 // §7.2.2.1: the composite SNR offset.
 [[nodiscard]] constexpr int snr_offset(int csnroffst, int fsnroffst) {
-    return (((csnroffst - 15) << 4) + fsnroffst) << 2;
+ return (((csnroffst - 15) << 4) + fsnroffst) << 2;
 }
 
 // §7.2.2.6: a resolved set of delta bit allocation segments for ONE channel
@@ -84,43 +84,43 @@ struct BitAllocCodes {
 // exactly one such channel. deltnseg == 0 means no segments: the spec's own
 // recommended reset state ("perform no delta alloc" / absent).
 struct DeltaSegments {
-    int deltnseg = 0;                         // 1..8 segments when > 0
-    std::array<std::uint8_t, 8> deltoffst{};  // 5-bit band offsets (Table 5.3/E1.3)
-    std::array<std::uint8_t, 8> deltlen{};    // 4-bit band lengths
-    std::array<std::uint8_t, 8> deltba{};     // 3-bit adjustment codes (Table 5.17)
+ int deltnseg = 0; // 1..8 segments when > 0
+ std::array<std::uint8_t, 8> deltoffst{}; // 5-bit band offsets (Table 5.3/E1.3)
+ std::array<std::uint8_t, 8> deltlen{}; // 4-bit band lengths
+ std::array<std::uint8_t, 8> deltba{}; // 3-bit adjustment codes (Table 5.17)
 
-    // Field-wise, so a decoder can tell whether a block's segments are the
-    // previous block's and keep the allocation they produced.
-    [[nodiscard]] friend bool operator==(const DeltaSegments&, const DeltaSegments&) = default;
+ // Field-wise, so a decoder can tell whether a block's segments are the
+ // previous block's and keep the allocation they produced.
+ [[nodiscard]] friend bool operator==(const DeltaSegments&, const DeltaSegments&) = default;
 };
 
 // Where the allocation starts, and - for the coupling channel - the leak
 // state the spec seeds instead of running the low-frequency lowcomp path.
 struct BitAllocRegion {
-    int start = 0;          // strtmant: 0 for fbw and LFE, cplstrtmant for coupling
-    bool coupling = false;  // §7.2.2.4 takes the "else" branch: no lowcomp
-    int cplfleak = 0;       // 3-bit cplfleak, only when coupling
-    int cplsleak = 0;       // 3-bit cplsleak, only when coupling
-    // §7.2.2.1.1: the all-zero-SNR mute is a FRAME-WIDE condition - csnroffst
-    // together with every fsnroffst, cplfsnroffst and lfefsnroffst. It cannot
-    // be decided from one channel's offsets, so the caller evaluates it and
-    // passes the answer; getting this wrong zeroes one channel's allocation
-    // while the others allocate normally, which desynchronises the shared
-    // mantissa stream.
-    bool snr_all_zero = false;
-    // §E3.4.3.1: when the adaptive hybrid transform is in use for this
-    // channel, the final table lookup goes through hebaptab instead of
-    // baptab. Everything up to that point - psd, banding, excitation,
-    // masking, the snroffset/floor/truncation dance - is identical, so this
-    // is one table swap rather than a second allocator. The outcome is a
-    // pointer in 0..19 rather than 0..15, and it means something different:
-    // 1-7 select vector quantisers, 8-19 scalar ones.
-    bool high_efficiency = false;
-    // §7.2.2.6: this call's delta segments (see DeltaSegments above) — the
-    // caller picks whichever of cpldelt*/delt*[ch] belongs to this channel.
-    DeltaSegments delta{};
+ int start = 0; // strtmant: 0 for fbw and LFE, cplstrtmant for coupling
+ bool coupling = false; // §7.2.2.4 takes the "else" branch: no lowcomp
+ int cplfleak = 0; // 3-bit cplfleak, only when coupling
+ int cplsleak = 0; // 3-bit cplsleak, only when coupling
+ // §7.2.2.1.1: the all-zero-SNR mute is a FRAME-WIDE condition - csnroffst
+ // together with every fsnroffst, cplfsnroffst and lfefsnroffst. It cannot
+ // be decided from one channel's offsets, so the caller evaluates it and
+ // passes the answer; getting this wrong zeroes one channel's allocation
+ // while the others allocate normally, which desynchronises the shared
+ // mantissa stream.
+ bool snr_all_zero = false;
+ // §E3.4.3.1: when the adaptive hybrid transform is in use for this
+ // channel, the final table lookup goes through hebaptab instead of
+ // baptab. Everything up to that point - psd, banding, excitation,
+ // masking, the snroffset/floor/truncation dance - is identical, so this
+ // is one table swap rather than a second allocator. The outcome is a
+ // pointer in 0..19 rather than 0..15, and it means something different:
+ // 1-7 select vector quantisers, 8-19 scalar ones.
+ bool high_efficiency = false;
+ // §7.2.2.6: this call's delta segments (see DeltaSegments above) — the
+ // caller picks whichever of cpldelt*/delt*[ch] belongs to this channel.
+ DeltaSegments delta{};
 
-    [[nodiscard]] friend bool operator==(const BitAllocRegion&, const BitAllocRegion&) = default;
+ [[nodiscard]] friend bool operator==(const BitAllocRegion&, const BitAllocRegion&) = default;
 };
 
 // §7.2.2.2-7.2.2.7 for one channel. exps are the DECODED exponents (the
@@ -129,10 +129,10 @@ struct BitAllocRegion {
 // csnroffst == 0 && fsnroffst == 0 triggers the §7.2.2.1.1 special case
 // (all-zero bap).
 AC3FORGE_EXPORT void compute_bit_allocation(std::span<const std::uint8_t> exps,
-                                            SampleRate sample_rate, const BitAllocCodes& codes,
-                                            int csnroffst, int fsnroffst,
-                                            std::span<std::uint8_t> bap,
-                                            const BitAllocRegion& region = {});
+ SampleRate sample_rate, const BitAllocCodes& codes,
+ int csnroffst, int fsnroffst,
+ std::span<std::uint8_t> bap,
+ const BitAllocRegion& region = {});
 
 // The same allocation in two halves, for a caller that evaluates one channel
 // at many SNR offsets - the encoders' rate-control search, which probes a
@@ -144,29 +144,29 @@ AC3FORGE_EXPORT void compute_bit_allocation(std::span<const std::uint8_t> exps,
 // offset applied per probe, which is most of the call. compute_bit_allocation
 // is exactly the two in sequence, and the two share its code.
 struct MaskingCurve {
-    // §7.2.2.5's banded curve, before the delta correction. Indexed by
-    // Table 7.13's absolute band, like compute_bit_allocation's own.
-    std::array<int, 50> mask{};
-    // False when the region was unusable (empty, past kMaxMantissas, or a
-    // start outside it): allocate_from_curve then gives an all-zero bap, as
-    // compute_bit_allocation does for the same region.
-    bool valid = false;
+ // §7.2.2.5's banded curve, before the delta correction. Indexed by
+ // Table 7.13's absolute band, like compute_bit_allocation's own.
+ std::array<int, 50> mask{};
+ // False when the region was unusable (empty, past kMaxMantissas, or a
+ // start outside it): allocate_from_curve then gives an all-zero bap, as
+ // compute_bit_allocation does for the same region.
+ bool valid = false;
 };
 
 // §7.2.2.2-7.2.2.5. Reads region.start, region.coupling and the leaks; the
 // delta segments, snr_all_zero and high_efficiency are the other half's.
 [[nodiscard]] AC3FORGE_EXPORT MaskingCurve compute_masking_curve(std::span<const std::uint8_t> exps,
-                                                                 SampleRate sample_rate,
-                                                                 const BitAllocCodes& codes,
-                                                                 const BitAllocRegion& region);
+ SampleRate sample_rate,
+ const BitAllocCodes& codes,
+ const BitAllocRegion& region);
 
 // §7.2.2.6-7.2.2.7 from a curve compute_masking_curve gave for the same exps
 // and region (its start, coupling and leaks; the delta, snr_all_zero and
 // high_efficiency fields are read here). `codes` supplies the floor.
 AC3FORGE_EXPORT void allocate_from_curve(std::span<const std::uint8_t> exps,
-                                         const MaskingCurve& curve, const BitAllocCodes& codes,
-                                         int csnroffst, int fsnroffst, std::span<std::uint8_t> bap,
-                                         const BitAllocRegion& region);
+ const MaskingCurve& curve, const BitAllocCodes& codes,
+ int csnroffst, int fsnroffst, std::span<std::uint8_t> bap,
+ const BitAllocRegion& region);
 
 // §7.2.2.6, encoder side. compute_bit_allocation()'s masking curve is built
 // only from the quantized exponent (psd[bin] = 3072 - exps[bin]<<7 — exactly
@@ -186,12 +186,12 @@ AC3FORGE_EXPORT void allocate_from_curve(std::span<const std::uint8_t> exps,
 // channel's own start band (bin_to_band(start)), matching how
 // compute_bit_allocation() applies it back — see that function's own note.
 [[nodiscard]] AC3FORGE_EXPORT DeltaSegments choose_delta_segments(
-    std::span<const double> coefficients, std::span<const std::uint8_t> exps, int start);
+ std::span<const double> coefficients, std::span<const std::uint8_t> exps, int start);
 
 // The float form, for the float encode path (AC3FORGE_ENCODE_SCALAR): the
 // same comparison from float coefficients. Everything past the per-bin
 // magnitude is integer psd arithmetic in either form.
 [[nodiscard]] AC3FORGE_EXPORT DeltaSegments choose_delta_segments(
-    std::span<const float> coefficients, std::span<const std::uint8_t> exps, int start);
+ std::span<const float> coefficients, std::span<const std::uint8_t> exps, int start);
 
-}  // namespace ac3
+} // namespace ac3

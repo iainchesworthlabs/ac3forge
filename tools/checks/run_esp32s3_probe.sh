@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and run a minimum-footprint probe (roadmap PF7) for ESP32-S3, under
+# Build and run a minimum-footprint probe (minimum-footprint decoder profile) for ESP32-S3, under
 # QEMU, then gate on what it reports. The sibling of run_baremetal_probe.sh,
 # which does the same for arm-none-eabi, and it takes the same --decoder /
 # --encoder switch for the same reason.

@@ -19,754 +19,754 @@
 name: Reusable Build (Windows)
 
 on:
-  workflow_call:
-    inputs:
-      do_package:
-        description: "Package every packageable leg (best-effort), not just windows-msvc. See _build.yml's own input of the same name."
-        type: boolean
-        default: false
-      version_tag:
-        type: string
-        default: ""
-      fetch_depth:
-        type: number
-        default: 1
-      persist_quality_trend:
-        type: boolean
-        default: false
-      llvm_version:
-        description: "needs.toolchain-versions.outputs.llvm_version, at the _build.yml call site."
-        type: string
-        required: true
-      llvm_windows_version:
-        description: "needs.toolchain-versions.outputs.llvm_windows_version, at the _build.yml call site."
-        type: string
-        required: true
-      msvc_toolset:
-        type: string
-        required: true
-      cmake_min:
-        type: string
-        required: true
-      qt_version:
-        type: string
-        required: true
-      vcpkg_commit:
-        type: string
-        required: true
-      windows_runner_1:
-        description: "needs.check-runners.outputs.windows_runner_1, at the _build.yml call site (windows-msvc's runner-label JSON array)."
-        type: string
-        required: true
-      windows_runner_2:
-        description: "needs.check-runners.outputs.windows_runner_2 (windows-llvm's runner-label JSON array)."
-        type: string
-        required: true
+ workflow_call:
+ inputs:
+ do_package:
+ description: "Package every packageable leg (best-effort), not just windows-msvc. See _build.yml's own input of the same name."
+ type: boolean
+ default: false
+ version_tag:
+ type: string
+ default: ""
+ fetch_depth:
+ type: number
+ default: 1
+ persist_quality_trend:
+ type: boolean
+ default: false
+ llvm_version:
+ description: "needs.toolchain-versions.outputs.llvm_version, at the _build.yml call site."
+ type: string
+ required: true
+ llvm_windows_version:
+ description: "needs.toolchain-versions.outputs.llvm_windows_version, at the _build.yml call site."
+ type: string
+ required: true
+ msvc_toolset:
+ type: string
+ required: true
+ cmake_min:
+ type: string
+ required: true
+ qt_version:
+ type: string
+ required: true
+ vcpkg_commit:
+ type: string
+ required: true
+ windows_runner_1:
+ description: "needs.check-runners.outputs.windows_runner_1, at the _build.yml call site (windows-msvc's runner-label JSON array)."
+ type: string
+ required: true
+ windows_runner_2:
+ description: "needs.check-runners.outputs.windows_runner_2 (windows-llvm's runner-label JSON array)."
+ type: string
+ required: true
 
 permissions:
-  contents: read
+ contents: read
 
 jobs:
-  build:
-    name: ${{ matrix.name }}
-    # Fork PRs never reach self-hosted (check-runners' own fork-PR branch
-    # already forces hosted labels for them) - this is belt-and-braces so a
-    # gap in that logic can't silently hand a fork PR a self-hosted runner.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ fromJSON(matrix.runner) }}
-    # A backstop against GitHub's own 360-minute default: the macos-llvm
-    # leg's first-ever GUI run hung in the Test step and silently consumed
-    # the full 6 hours before being force-cancelled (see
-    # apps/gui/tests/CMakeLists.txt's QSG_RENDER_LOOP comment for the
-    # hypothesis and the per-test TIMEOUT that now also bounds that specific
-    # case). This is deliberately generous - the slowest leg observed so far
-    # (windows-llvm, packaging included on windows-msvc) is ~22 minutes - so
-    # it should never fire for a legitimately slow-but-working run, only for
-    # a genuine hang anywhere in the job, known or not-yet-known.
-    timeout-minutes: 90
-    # A failing experimental leg annotates the run but does not fail it.
-    continue-on-error: ${{ matrix.experimental || false }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: "Windows MSVC"
-            runner: ${{ inputs.windows_runner_1 }}
-            preset: windows-msvc
-            # Declared once, here, so `matrix.experimental` in continue-on-error
-            # above resolves against a property the matrix actually defines -
-            # without it every leg silently reads null and actionlint reports the
-            # reference as undefined. Every other leg is non-experimental by
-            # omission (the `|| false` fallback); a leg that IS experimental sets
-            # this to true and continue-on-error keeps it out of CI Status.
-            experimental: false
-            # VS 2026 Build Tools / MSVC 14.5x, from the aka.ms/vs/18/stable
-            # channel. Pinned by channel, not exact version: the runner image
-            # ships whatever 18.x is current, and the assert step below fails
-            # loudly if that ever stops being a 14.5x toolset.
-            msvc: true
-            packageable: true
-            release_package: true
-            gold_reference: true
-            # AC3Forge Crucible (roadmap UX11/UX12, apps/crucible): built and
-            # tested on both Windows legs, packaged on this one (the Package
-            # step's own condition already singles out windows-msvc), as its
-            # own archive - see cmake/Packaging.cmake's crucible component. The
-            # null-sink driver is NOT built on this leg: it needs the WDK,
-            # which the self-hosted fleet lacks, so it has its own
-            # GitHub-hosted job (windows-driver, below) that builds it from
-            # the WDK NuGet packages. Still test-signed only, so it stays out
-            # of the package until the EV certificate lands (Phase 6).
-            crucible: true
+ build:
+ name: ${{ matrix.name }}
+ # Fork PRs never reach self-hosted (check-runners' own fork-PR branch
+ # already forces hosted labels for them) - this is belt-and-braces so a
+ # gap in that logic can't silently hand a fork PR a self-hosted runner.
+ if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+ runs-on: ${{ fromJSON(matrix.runner) }}
+ # A backstop against GitHub's own 360-minute default: the macos-llvm
+ # leg's first-ever GUI run hung in the Test step and silently consumed
+ # the full 6 hours before being force-cancelled (see
+ # apps/gui/tests/CMakeLists.txt's QSG_RENDER_LOOP comment for the
+ # hypothesis and the per-test TIMEOUT that now also bounds that specific
+ # case). This is deliberately generous - the slowest leg observed so far
+ # (windows-llvm, packaging included on windows-msvc) is ~22 minutes - so
+ # it should never fire for a legitimately slow-but-working run, only for
+ # a genuine hang anywhere in the job, known or not-yet-known.
+ timeout-minutes: 90
+ # A failing experimental leg annotates the run but does not fail it.
+ continue-on-error: ${{ matrix.experimental || false }}
+ strategy:
+ fail-fast: false
+ matrix:
+ include:
+ - name: "Windows MSVC"
+ runner: ${{ inputs.windows_runner_1 }}
+ preset: windows-msvc
+ # Declared once, here, so `matrix.experimental` in continue-on-error
+ # above resolves against a property the matrix actually defines -
+ # without it every leg silently reads null and actionlint reports the
+ # reference as undefined. Every other leg is non-experimental by
+ # omission (the `|| false` fallback); a leg that IS experimental sets
+ # this to true and continue-on-error keeps it out of CI Status.
+ experimental: false
+ # VS 2026 Build Tools / MSVC 14.5x, from the aka.ms/vs/18/stable
+ # channel. Pinned by channel, not exact version: the runner image
+ # ships whatever 18.x is current, and the assert step below fails
+ # loudly if that ever stops being a 14.5x toolset.
+ msvc: true
+ packageable: true
+ release_package: true
+ gold_reference: true
+ # AC3Forge Crucible (Crucible Windows demo/UX12, apps/crucible): built and
+ # tested on both Windows legs, packaged on this one (the Package
+ # step's own condition already singles out windows-msvc), as its
+ # own archive - see cmake/Packaging.cmake's crucible component. The
+ # null-sink driver is NOT built on this leg: it needs the WDK,
+ # which the self-hosted fleet lacks, so it has its own
+ # GitHub-hosted job (windows-driver, below) that builds it from
+ # the WDK NuGet packages. Still test-signed only, so it stays out
+ # of the package until the EV certificate lands (Phase 6).
+ crucible: true
 
-          - name: "Windows LLVM (clang-cl)"
-            runner: ${{ inputs.windows_runner_2 }}
-            preset: windows-llvm
-            msvc: true          # clang-cl targets the MSVC ABI: same headers, same libs
-            llvm: true
-            packageable: true
-            gold_reference: true
-            # Built and tested here too - clang-cl is stricter than MSVC about
-            # several things the demo's Qt and WASAPI code touches - but not
-            # packaged: this leg carries no release_package (see the Package
-            # step's condition).
-            crucible: true
+ - name: "Windows LLVM (clang-cl)"
+ runner: ${{ inputs.windows_runner_2 }}
+ preset: windows-llvm
+ msvc: true # clang-cl targets the MSVC ABI: same headers, same libs
+ llvm: true
+ packageable: true
+ gold_reference: true
+ # Built and tested here too - clang-cl is stricter than MSVC about
+ # several things the demo's Qt and WASAPI code touches - but not
+ # packaged: this leg carries no release_package (see the Package
+ # step's condition).
+ crucible: true
 
-          # ARM64 - GitHub's hosted windows-11-vs2026-arm runner (roadmap DR8). Real
-          # ARM64 hardware, not emulation. Deliberately NOT routed through
-          # check-runners' self-hosted/hosted fan-out (the windows_runner_1/2
-          # outputs the two legs above use) - that logic is sized for exactly
-          # those two existing x64 Windows legs, and there is no self-hosted
-          # ARM64 Windows capacity to fan out to; the literal runner label is
-          # used directly instead.
-          #
-          # experimental: true, the same promotion path macos-llvm and
-          # build-android both went through (see this file's own header) -
-          # this leg's first real runs are exactly what confirms or corrects
-          # the toolchain/vcvarsall/Qt/ffmpeg choices made without hosted-
-          # runner access at authoring time. Delete this line once a run has
-          # gone green for real.
-          #
-          # msvc_arch: arm64 threads through to the "Setup MSVC environment"
-          # step, which otherwise always loads the x64 developer environment
-          # (see .github/actions/setup-msvc-env/action.yml) - every other
-          # matrix.msvc leg omits it and gets the action's own x64 default.
-          #
-          # No gui: true, unlike every other packageable leg. At authoring
-          # time, Qt's only Windows ARM64 kit for the pinned 6.9.3
-          # (win64_msvc2022_arm64_cross_compiled) is a cross-compile kit that
-          # expects a paired win64_msvc2022_64 install for its host tools, and
-          # aqtinstall has a documented CI bug against exactly that
-          # combination (qtpaths.bat pointing at the wrong x64 setup) - real
-          # complexity this leg's native-ARM64-host build doesn't need to
-          # take on for a first pass. CMakePresets.json's windows-msvc-arm64
-          # preset defaults AC3FORGE_BUILD_GUI off for exactly this reason
-          # (see its own description) - the same "Qt kit not assumed present"
-          # shape linux-gcc/linux-llvm/macos-llvm already use below, not a new
-          # pattern. See docs/platforms/windows.md's ARM64 section.
-          #
-          # gold_reference: true - choco's ffmpeg package is x64-only, so this
-          # leg installs BtbN's static win-arm64 ffmpeg build instead (see the
-          # dedicated install step below).
-          #
-          # release_package: true, not just packageable: a genuinely new
-          # architecture earns its own canonical release artifact, the same
-          # precedent linux-gcc-arm64 already set sitting next to linux-gcc -
-          # not a redundant same-arch compiler variant like windows-llvm
-          # above (which stays non-canonical: no release_package there).
-          - name: "Windows MSVC (arm64)"
-            runner: '["windows-11-vs2026-arm"]'
-            preset: windows-msvc-arm64
-            experimental: true
-            msvc: true
-            msvc_arch: arm64
-            packageable: true
-            release_package: true
-            gold_reference: true
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: ${{ inputs.fetch_depth }}
+ # ARM64 - GitHub's hosted windows-11-vs2026-arm runner (Windows ARM64 / reach builds). Real
+ # ARM64 hardware, not emulation. Deliberately NOT routed through
+ # check-runners' self-hosted/hosted fan-out (the windows_runner_1/2
+ # outputs the two legs above use) - that logic is sized for exactly
+ # those two existing x64 Windows legs, and there is no self-hosted
+ # ARM64 Windows capacity to fan out to; the literal runner label is
+ # used directly instead.
+ #
+ # experimental: true, the same promotion path macos-llvm and
+ # build-android both went through (see this file's own header) -
+ # this leg's first real runs are exactly what confirms or corrects
+ # the toolchain/vcvarsall/Qt/ffmpeg choices made without hosted-
+ # runner access at authoring time. Delete this line once a run has
+ # gone green for real.
+ #
+ # msvc_arch: arm64 threads through to the "Setup MSVC environment"
+ # step, which otherwise always loads the x64 developer environment
+ # (see .github/actions/setup-msvc-env/action.yml) - every other
+ # matrix.msvc leg omits it and gets the action's own x64 default.
+ #
+ # No gui: true, unlike every other packageable leg. At authoring
+ # time, Qt's only Windows ARM64 kit for the pinned 6.9.3
+ # (win64_msvc2022_arm64_cross_compiled) is a cross-compile kit that
+ # expects a paired win64_msvc2022_64 install for its host tools, and
+ # aqtinstall has a documented CI bug against exactly that
+ # combination (qtpaths.bat pointing at the wrong x64 setup) - real
+ # complexity this leg's native-ARM64-host build doesn't need to
+ # take on for a first pass. CMakePresets.json's windows-msvc-arm64
+ # preset defaults AC3FORGE_BUILD_GUI off for exactly this reason
+ # (see its own description) - the same "Qt kit not assumed present"
+ # shape linux-gcc/linux-llvm/macos-llvm already use below, not a new
+ # pattern. See docs/platforms/windows.md's ARM64 section.
+ #
+ # gold_reference: true - choco's ffmpeg package is x64-only, so this
+ # leg installs BtbN's static win-arm64 ffmpeg build instead (see the
+ # dedicated install step below).
+ #
+ # release_package: true, not just packageable: a genuinely new
+ # architecture earns its own canonical release artifact, the same
+ # precedent linux-gcc-arm64 already set sitting next to linux-gcc -
+ # not a redundant same-arch compiler variant like windows-llvm
+ # above (which stays non-canonical: no release_package there).
+ - name: "Windows MSVC (arm64)"
+ runner: '["windows-11-vs2026-arm"]'
+ preset: windows-msvc-arm64
+ experimental: true
+ msvc: true
+ msvc_arch: arm64
+ packageable: true
+ release_package: true
+ gold_reference: true
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
+ fetch-depth: ${{ inputs.fetch_depth }}
 
-      # The Windows runner image ships an LLVM, but not necessarily the pinned
-      # one. Install the official build straight from the llvm-project release,
-      # pinned via llvm_windows_version to the same point release the Ubuntu
-      # 26.04 archive carries (see toolchain-versions.json's own comment), so
-      # both LLVM legs are on one version. Chocolatey is deliberately avoided:
-      # its llvm package tracks whatever is newest and would drift off the pin.
-      #
-      # Checks the installed version before downloading anything: GitHub-hosted
-      # windows-latest ships an older LLVM major (currently 20.x against our
-      # pinned 22.x - see actions/runner-images' Windows software list) so it
-      # never matches and always installs, but a self-hosted runner's own
-      # Packer template now bakes this exact major in (see ci-runners'
-      # scripts/windows/03-llvm-toolchain.ps1) and a prior job on that same
-      # long-lived box may already have installed it too - either way, a
-      # match means this step can skip the ~10+ minute download+install
-      # outright. The comparison is MAJOR-ONLY, not the full
-      # llvm_windows_version point release: the point release exists solely
-      # to pin a concrete llvm-project GitHub Release asset to download (see
-      # toolchain-versions.json's own comment), not to police an
-      # already-installed toolchain down to the patch - clang 22.1.1 and
-      # 22.1.3 are the same ABI/language surface this project builds against,
-      # so treating a patch-level difference as "wrong" just forces a
-      # pointless reinstall on self-hosted boxes every time the pin ticks a
-      # point release (the build-time assert down in build-leg/action.yml
-      # already only checks the major, for the same reason). A mismatched
-      # major (wrong major, or nothing installed) renames any existing
-      # C:\Program Files\LLVM out of the way
-      # first (see the run block's own comment for why a rename, not a
-      # delete), so the installer always writes into a fresh directory -
-      # NSIS `/S` overwrites same-named files but never uninstalls first, so
-      # installing straight over a *different* version can leave stale
-      # compiler-rt builtins/libs behind that silently break linking far
-      # downstream (see iainchesworthlabs/ci-runners#9, which hit exactly
-      # this on a long-lived self-hosted runner after a toolchain version
-      # bump).
-      - name: Install LLVM ${{ inputs.llvm_version }} (Windows)
-        if: matrix.llvm && runner.os == 'Windows'
-        # Windows PowerShell (always present on self-hosted + GitHub-hosted), NOT
-        # pwsh/PowerShell 7 which the self-hosted runner image does not ship -
-        # same reasoning as ./.github/actions/setup-msvc-env. GitHub-hosted
-        # windows-latest ships pwsh too, which is why this only surfaced once a
-        # job actually landed on a self-hosted Windows runner.
-        shell: powershell
-        env:
-          LLVM_WINDOWS_VERSION: ${{ inputs.llvm_windows_version }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          # Invoke-WebRequest renders a progress bar by default, and updating
-          # it in a non-interactive CI console (no real terminal to redraw
-          # in-place) turns into the dominant cost of the download - observed
-          # turning this step's ~10 minute download+install into 36+ minutes
-          # on a run that otherwise had nothing else wrong with it. This is
-          # the well-known PowerShell fix, not a workaround for anything
-          # ac3forge-specific.
-          $ProgressPreference = 'SilentlyContinue'
-          $version = $env:LLVM_WINDOWS_VERSION
-          $pinnedMajor = $version.Split('.')[0]
-          $llvmDir = "$env:ProgramFiles\LLVM"
-          $clangCl = "$llvmDir\bin\clang-cl.exe"
+ # The Windows runner image ships an LLVM, but not necessarily the pinned
+ # one. Install the official build straight from the llvm-project release,
+ # pinned via llvm_windows_version to the same point release the Ubuntu
+ # 26.04 archive carries (see toolchain-versions.json's own comment), so
+ # both LLVM legs are on one version. Chocolatey is deliberately avoided:
+ # its llvm package tracks whatever is newest and would drift off the pin.
+ #
+ # Checks the installed version before downloading anything: GitHub-hosted
+ # windows-latest ships an older LLVM major (currently 20.x against our
+ # pinned 22.x - see actions/runner-images' Windows software list) so it
+ # never matches and always installs, but a self-hosted runner's own
+ # Packer template now bakes this exact major in (see ci-runners'
+ # scripts/windows/03-llvm-toolchain.ps1) and a prior job on that same
+ # long-lived box may already have installed it too - either way, a
+ # match means this step can skip the ~10+ minute download+install
+ # outright. The comparison is MAJOR-ONLY, not the full
+ # llvm_windows_version point release: the point release exists solely
+ # to pin a concrete llvm-project GitHub Release asset to download (see
+ # toolchain-versions.json's own comment), not to police an
+ # already-installed toolchain down to the patch - clang 22.1.1 and
+ # 22.1.3 are the same ABI/language surface this project builds against,
+ # so treating a patch-level difference as "wrong" just forces a
+ # pointless reinstall on self-hosted boxes every time the pin ticks a
+ # point release (the build-time assert down in build-leg/action.yml
+ # already only checks the major, for the same reason). A mismatched
+ # major (wrong major, or nothing installed) renames any existing
+ # C:\Program Files\LLVM out of the way
+ # first (see the run block's own comment for why a rename, not a
+ # delete), so the installer always writes into a fresh directory -
+ # NSIS `/S` overwrites same-named files but never uninstalls first, so
+ # installing straight over a *different* version can leave stale
+ # compiler-rt builtins/libs behind that silently break linking far
+ # downstream (see iainchesworthlabs/ci-runners#9, which hit exactly
+ # this on a long-lived self-hosted runner after a toolchain version
+ # bump).
+ - name: Install LLVM ${{ inputs.llvm_version }} (Windows)
+ if: matrix.llvm && runner.os == 'Windows'
+ # Windows PowerShell (always present on self-hosted + GitHub-hosted), NOT
+ # pwsh/PowerShell 7 which the self-hosted runner image does not ship -
+ # same reasoning as ./.github/actions/setup-msvc-env. GitHub-hosted
+ # windows-latest ships pwsh too, which is why this only surfaced once a
+ # job actually landed on a self-hosted Windows runner.
+ shell: powershell
+ env:
+ LLVM_WINDOWS_VERSION: ${{ inputs.llvm_windows_version }}
+ run: |
+ $ErrorActionPreference = 'Stop'
+ # Invoke-WebRequest renders a progress bar by default, and updating
+ # it in a non-interactive CI console (no real terminal to redraw
+ # in-place) turns into the dominant cost of the download - observed
+ # turning this step's ~10 minute download+install into 36+ minutes
+ # on a run that otherwise had nothing else wrong with it. This is
+ # the well-known PowerShell fix, not a workaround for anything
+ # ac3forge-specific.
+ $ProgressPreference = 'SilentlyContinue'
+ $version = $env:LLVM_WINDOWS_VERSION
+ $pinnedMajor = $version.Split('.')[0]
+ $llvmDir = "$env:ProgramFiles\LLVM"
+ $clangCl = "$llvmDir\bin\clang-cl.exe"
 
-          $alreadyCurrent = $false
-          if (Test-Path $clangCl) {
-            # Collect ALL of clang-cl's output before taking the first line.
-            # The previous form (`& $clangCl ... | Select-Object -First 1`)
-            # early-terminated the pipeline, which can kill clang-cl before
-            # it finishes writing - the killed process leaves a non-zero
-            # $LASTEXITCODE that GitHub's powershell wrapper propagates as
-            # the STEP's exit code at script end, failing the job with no
-            # error text. A race: only when the skip path runs (LLVM already
-            # current - i.e. only on the self-hosted fleet), and only when
-            # Select-Object wins it. Confirmed on PR #445's clang-cl leg.
-            $verOutput = & $clangCl --version 2>&1
-            $verLine = $verOutput | Select-Object -First 1
-            # Major only - see this step's leading comment for why the exact
-            # point release isn't the right bar for "is this close enough".
-            if ($verLine -match 'version (\d+)\.' -and $matches[1] -eq $pinnedMajor) {
-              $alreadyCurrent = $true
-            }
-          }
+ $alreadyCurrent = $false
+ if (Test-Path $clangCl) {
+ # Collect ALL of clang-cl's output before taking the first line.
+ # The previous form (`& $clangCl ... | Select-Object -First 1`)
+ # early-terminated the pipeline, which can kill clang-cl before
+ # it finishes writing - the killed process leaves a non-zero
+ # $LASTEXITCODE that GitHub's powershell wrapper propagates as
+ # the STEP's exit code at script end, failing the job with no
+ # error text. A race: only when the skip path runs (LLVM already
+ # current - i.e. only on the self-hosted fleet), and only when
+ # Select-Object wins it. Confirmed on PR #445's clang-cl leg.
+ $verOutput = & $clangCl --version 2>&1
+ $verLine = $verOutput | Select-Object -First 1
+ # Major only - see this step's leading comment for why the exact
+ # point release isn't the right bar for "is this close enough".
+ if ($verLine -match 'version (\d+)\.' -and $matches[1] -eq $pinnedMajor) {
+ $alreadyCurrent = $true
+ }
+ }
 
-          if ($alreadyCurrent) {
-            Write-Host "LLVM $($matches[1]).x already installed at $clangCl (pinned major $pinnedMajor) - skipping download/install"
-          } else {
-            if (Test-Path $llvmDir) {
-              # NOT a delete. GitHub-hosted windows-latest images ship their
-              # own pre-installed LLVM at this same path, and BOTH
-              # Remove-Item -Recurse -Force and cmd's rd /s /q hung
-              # indefinitely against it - confirmed the hard way, twice, each
-              # running the full 90-minute CI timeout with zero progress
-              # after printing this line. Since two independently-implemented
-              # deletion paths hit the identical wall, this isn't a
-              # PowerShell-recursion-algorithm problem, it's something (most
-              # likely realtime antivirus scanning, possibly a lingering
-              # handle from image provisioning) holding the tree busy on a
-              # per-file basis. A rename is a single directory-level metadata
-              # operation - no per-file access at all - so it sidesteps
-              # whatever that is entirely, and is effectively instant
-              # regardless of tree size (confirmed: 9ms against a real test
-              # tree). The renamed-away copy is simply abandoned: harmless on
-              # windows-latest (VM is discarded after the job) and expected
-              # to be rare on self-hosted post ci-runners#10 (only happens
-              # between an ac3forge pin bump and the next template rebuild).
-              $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
-              Write-Host "Existing LLVM install is not major $pinnedMajor - renaming out of the way ($staleName) before installing $version"
-              Rename-Item -Path $llvmDir -NewName $staleName
-            }
-            $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
-            $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
-            Invoke-WebRequest -Uri $url -OutFile $exe
-            # NSIS installer; /S is a silent install into the default location.
-            $installer = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow -PassThru
-            if ($installer.ExitCode -ne 0) {
-              throw "LLVM installer exited with code $($installer.ExitCode)"
-            }
-          }
+ if ($alreadyCurrent) {
+ Write-Host "LLVM $($matches[1]).x already installed at $clangCl (pinned major $pinnedMajor) - skipping download/install"
+ } else {
+ if (Test-Path $llvmDir) {
+ # NOT a delete. GitHub-hosted windows-latest images ship their
+ # own pre-installed LLVM at this same path, and BOTH
+ # Remove-Item -Recurse -Force and cmd's rd /s /q hung
+ # indefinitely against it - confirmed the hard way, twice, each
+ # running the full 90-minute CI timeout with zero progress
+ # after printing this line. Since two independently-implemented
+ # deletion paths hit the identical wall, this isn't a
+ # PowerShell-recursion-algorithm problem, it's something (most
+ # likely realtime antivirus scanning, possibly a lingering
+ # handle from image provisioning) holding the tree busy on a
+ # per-file basis. A rename is a single directory-level metadata
+ # operation - no per-file access at all - so it sidesteps
+ # whatever that is entirely, and is effectively instant
+ # regardless of tree size (confirmed: 9ms against a real test
+ # tree). The renamed-away copy is simply abandoned: harmless on
+ # windows-latest (VM is discarded after the job) and expected
+ # to be rare on self-hosted post ci-runners#10 (only happens
+ # between an ac3forge pin bump and the next template rebuild).
+ $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+ Write-Host "Existing LLVM install is not major $pinnedMajor - renaming out of the way ($staleName) before installing $version"
+ Rename-Item -Path $llvmDir -NewName $staleName
+ }
+ $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
+ $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
+ Invoke-WebRequest -Uri $url -OutFile $exe
+ # NSIS installer; /S is a silent install into the default location.
+ $installer = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow -PassThru
+ if ($installer.ExitCode -ne 0) {
+ throw "LLVM installer exited with code $($installer.ExitCode)"
+ }
+ }
 
-          "$llvmDir\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          # Belt and braces for the $LASTEXITCODE propagation above: nothing
-          # after the probe re-runs a native command, so make the step's
-          # success explicit rather than inheriting whatever the last native
-          # invocation happened to leave behind.
-          exit 0
+ "$llvmDir\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+ # Belt and braces for the $LASTEXITCODE propagation above: nothing
+ # after the probe re-runs a native command, so make the step's
+ # success explicit rather than inheriting whatever the last native
+ # invocation happened to leave behind.
+ exit 0
 
-      - name: Install ffmpeg (Windows)
-        if: matrix.gold_reference && runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
-        shell: bash
-        run: choco install ffmpeg -y --no-progress --requirechecksums
+ - name: Install ffmpeg (Windows)
+ if: matrix.gold_reference && runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
+ shell: bash
+ run: choco install ffmpeg -y --no-progress --requirechecksums
 
-      # choco's ffmpeg package is x64-only (Chocolatey packages here are
-      # typically x64 binaries) - there is no arm64 equivalent to install the
-      # same way. BtbN/FFmpeg-Builds publishes static win-arm64 GPL builds
-      # instead (confirmed for real - see the release page's asset list under
-      # the "latest" tag); the n8.1 release build is used rather than the
-      # "master" one for the same reason choco's package tracks an actual
-      # FFmpeg release rather than a git snapshot. The zip's ffmpeg.exe is
-      # nested under a versioned subfolder that can drift between builds, so
-      # this searches for it instead of hardcoding that path.
-      - name: Install ffmpeg (Windows ARM64)
-        if: matrix.gold_reference && matrix.preset == 'windows-msvc-arm64'
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          # See the LLVM (Windows) step's leading comment - default progress-bar
-          # rendering can dominate an Invoke-WebRequest download's wall time in
-          # a non-interactive CI console.
-          $ProgressPreference = 'SilentlyContinue'
-          $zip = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64.zip'
-          $dest = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64'
-          Invoke-WebRequest -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-winarm64-gpl-8.1.zip' -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath $dest
-          $exe = Get-ChildItem -Path $dest -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
-          if (-not $exe) {
-              throw "ffmpeg.exe not found anywhere under $dest after extracting $zip"
-          }
-          Write-Host "Found ffmpeg.exe at $($exe.FullName)"
-          $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+ # choco's ffmpeg package is x64-only (Chocolatey packages here are
+ # typically x64 binaries) - there is no arm64 equivalent to install the
+ # same way. BtbN/FFmpeg-Builds publishes static win-arm64 GPL builds
+ # instead (confirmed for real - see the release page's asset list under
+ # the "latest" tag); the n8.1 release build is used rather than the
+ # "master" one for the same reason choco's package tracks an actual
+ # FFmpeg release rather than a git snapshot. The zip's ffmpeg.exe is
+ # nested under a versioned subfolder that can drift between builds, so
+ # this searches for it instead of hardcoding that path.
+ - name: Install ffmpeg (Windows ARM64)
+ if: matrix.gold_reference && matrix.preset == 'windows-msvc-arm64'
+ shell: powershell
+ run: |
+ $ErrorActionPreference = 'Stop'
+ # See the LLVM (Windows) step's leading comment - default progress-bar
+ # rendering can dominate an Invoke-WebRequest download's wall time in
+ # a non-interactive CI console.
+ $ProgressPreference = 'SilentlyContinue'
+ $zip = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64.zip'
+ $dest = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64'
+ Invoke-WebRequest -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-winarm64-gpl-8.1.zip' -OutFile $zip
+ Expand-Archive -Path $zip -DestinationPath $dest
+ $exe = Get-ChildItem -Path $dest -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
+ if (-not $exe) {
+ throw "ffmpeg.exe not found anywhere under $dest after extracting $zip"
+ }
+ Write-Host "Found ffmpeg.exe at $($exe.FullName)"
+ $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      # DR7: makensis is what turns the NSIS block in cmake/Packaging.cmake
-      # from a graceful, silent no-op into a real installer. Installed fresh
-      # here rather than baked into the ci-runners Packer image, same
-      # reasoning as ffmpeg/Ninja above - see
-      # docs/ci-self-hosted-runners.md's "Measuring whether it's actually
-      # worth it": nothing is pre-baked onto the self-hosted image without
-      # data justifying it, and there is none for NSIS specifically yet.
-      # Scoped to the same condition as the Package step below (only
-      # windows-msvc packages on Windows today) so a leg that never runs
-      # cpack doesn't pay for an installer it won't use.
-      #
-      # PowerShell, not bash: both GitHub-hosted windows-latest AND (per a
-      # real CI run) this fleet's self-hosted runners already carry NSIS -
-      # `choco install nsis` reports "already installed" and exits without
-      # running the shim-creation step a fresh install would, so makensis
-      # was on disk but never on PATH, and find_program(makensis) still
-      # missed it (confirmed empirically: cpack packaged ZIP-only with the
-      # cmake/Packaging.cmake warning firing, even though choco reported
-      # success). Probing both Program Files roots and appending to
-      # GITHUB_PATH explicitly - rather than assuming choco's shim exists -
-      # is what actually fixes that, on a fresh runner or an already-primed
-      # one alike.
-      - name: Install NSIS (Windows)
-        if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package)) && runner.os == 'Windows'
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          choco install nsis -y --no-progress --requirechecksums
-          $nsisDir = @(
-            (Join-Path ${env:ProgramFiles(x86)} 'NSIS'),
-            (Join-Path $env:ProgramFiles 'NSIS')
-          ) | Where-Object { Test-Path (Join-Path $_ 'makensis.exe') } | Select-Object -First 1
-          if (-not $nsisDir) {
-            throw "makensis.exe not found under Program Files after 'choco install nsis' - the package layout may have changed."
-          }
-          Write-Host "Adding $nsisDir to PATH"
-          $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+ # DR7: makensis is what turns the NSIS block in cmake/Packaging.cmake
+ # from a graceful, silent no-op into a real installer. Installed fresh
+ # here rather than baked into the ci-runners Packer image, same
+ # reasoning as ffmpeg/Ninja above - see
+ # docs/ci-self-hosted-runners.md's "Measuring whether it's actually
+ # worth it": nothing is pre-baked onto the self-hosted image without
+ # data justifying it, and there is none for NSIS specifically yet.
+ # Scoped to the same condition as the Package step below (only
+ # windows-msvc packages on Windows today) so a leg that never runs
+ # cpack doesn't pay for an installer it won't use.
+ #
+ # PowerShell, not bash: both GitHub-hosted windows-latest AND (per a
+ # real CI run) this fleet's self-hosted runners already carry NSIS -
+ # `choco install nsis` reports "already installed" and exits without
+ # running the shim-creation step a fresh install would, so makensis
+ # was on disk but never on PATH, and find_program(makensis) still
+ # missed it (confirmed empirically: cpack packaged ZIP-only with the
+ # cmake/Packaging.cmake warning firing, even though choco reported
+ # success). Probing both Program Files roots and appending to
+ # GITHUB_PATH explicitly - rather than assuming choco's shim exists -
+ # is what actually fixes that, on a fresh runner or an already-primed
+ # one alike.
+ - name: Install NSIS (Windows)
+ if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package)) && runner.os == 'Windows'
+ shell: powershell
+ run: |
+ $ErrorActionPreference = 'Stop'
+ choco install nsis -y --no-progress --requirechecksums
+ $nsisDir = @(
+ (Join-Path ${env:ProgramFiles(x86)} 'NSIS'),
+ (Join-Path $env:ProgramFiles 'NSIS')
+ ) | Where-Object { Test-Path (Join-Path $_ 'makensis.exe') } | Select-Object -First 1
+ if (-not $nsisDir) {
+ throw "makensis.exe not found under Program Files after 'choco install nsis' - the package layout may have changed."
+ }
+ Write-Host "Adding $nsisDir to PATH"
+ $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      # cl.exe, INCLUDE and LIB are not on the default PATH, and Ninja does not
-      # set them up itself (unlike MSBuild). clang-cl needs them too.
-      - name: Setup MSVC environment
-        if: matrix.msvc
-        uses: ./.github/actions/setup-msvc-env
-        with:
-          arch: ${{ matrix.msvc_arch || 'x64' }}
+ # cl.exe, INCLUDE and LIB are not on the default PATH, and Ninja does not
+ # set them up itself (unlike MSBuild). clang-cl needs them too.
+ - name: Setup MSVC environment
+ if: matrix.msvc
+ uses: ./.github/actions/setup-msvc-env
+ with:
+ arch: ${{ matrix.msvc_arch || 'x64' }}
 
-      # Unconditional here (the original step's `if: !matrix.container` is
-      # always true on this platform - no Windows leg ever sets `container`,
-      # unlike _ci-linux.yml's own copy of this step, where it still matters).
-      - name: Install Ninja
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "$RUNNER_OS" in
-            macOS)   brew install ninja ;;
-            Windows) choco install ninja -y --no-progress --requirechecksums ;;
-          esac
+ # Unconditional here (the original step's `if: !matrix.container` is
+ # always true on this platform - no Windows leg ever sets `container`,
+ # unlike _ci-linux.yml's own copy of this step, where it still matters).
+ - name: Install Ninja
+ shell: bash
+ run: |
+ set -euo pipefail
+ case "$RUNNER_OS" in
+ macOS) brew install ninja ;;
+ Windows) choco install ninja -y --no-progress --requirechecksums ;;
+ esac
 
-      # AC3FORGE_BUILD_GUI is ON only on the two Windows presets (see
-      # CMakePresets.json), and cmake/FindQt6.cmake only widens
-      # CMAKE_PREFIX_PATH to LOCAL install roots (C:/Qt/6.x/msvc2022_64, and
-      # so on) - it has no notion of a CI runner, so a Windows leg with no
-      # Qt kit on the image at all would fail at find_package(Qt6 ...)
-      # without this. clang-cl (windows-llvm) targets the MSVC ABI, so it
-      # shares this same msvc2022_64 kit with windows-msvc rather than
-      # needing its own. Version pinned to the exact kit already verified
-      # locally (see docs/building.md's Verified configuration table); the
-      # pinned action itself is CountdownSolver's own precedent
-      # (R:\CountdownSolver\.github\workflows\release.yml), the other
-      # project sharing this same "prebuilt Qt, never vcpkg" convention.
-      # windows-msvc-arm64 is excluded: no gui: true on that leg (see its
-      # matrix comment above), so there is no Qt kit to install for it here.
-      #
-      # modules: the AC3Forge Crucible's room is drawn with Qt Quick 3D,
-      # which is not part of the base kit (aqtinstall calls it qtquick3d, and
-      # its own shader tooling qtshadertools - both present in the local
-      # C:/Qt/6.8.3/msvc2022_64 kit this pin matches). apps/crucible/
-      # CMakeLists.txt treats Quick3D as optional and skips the 3D view with a
-      # warning when it is absent, so without these the packaged window would
-      # quietly ship with a 2D-only room and the ctest suite would exercise
-      # the skipped path instead of the real one.
-      - name: Install Qt (prebuilt)
-        if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
-        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
-        with:
-          version: ${{ inputs.qt_version }}
-          modules: qtquick3d qtshadertools
-          cache: true
+ # AC3FORGE_BUILD_GUI is ON only on the two Windows presets (see
+ # CMakePresets.json), and cmake/FindQt6.cmake only widens
+ # CMAKE_PREFIX_PATH to LOCAL install roots (C:/Qt/6.x/msvc2022_64, and
+ # so on) - it has no notion of a CI runner, so a Windows leg with no
+ # Qt kit on the image at all would fail at find_package(Qt6 ...)
+ # without this. clang-cl (windows-llvm) targets the MSVC ABI, so it
+ # shares this same msvc2022_64 kit with windows-msvc rather than
+ # needing its own. Version pinned to the exact kit already verified
+ # locally (see docs/building.md's Verified configuration table); the
+ # pinned action itself is CountdownSolver's own precedent
+ # (R:\CountdownSolver\.github\workflows\release.yml), the other
+ # project sharing this same "prebuilt Qt, never vcpkg" convention.
+ # windows-msvc-arm64 is excluded: no gui: true on that leg (see its
+ # matrix comment above), so there is no Qt kit to install for it here.
+ #
+ # modules: the AC3Forge Crucible's room is drawn with Qt Quick 3D,
+ # which is not part of the base kit (aqtinstall calls it qtquick3d, and
+ # its own shader tooling qtshadertools - both present in the local
+ # C:/Qt/6.8.3/msvc2022_64 kit this pin matches). apps/crucible/
+ # CMakeLists.txt treats Quick3D as optional and skips the 3D view with a
+ # warning when it is absent, so without these the packaged window would
+ # quietly ship with a 2D-only room and the ctest suite would exercise
+ # the skipped path instead of the real one.
+ - name: Install Qt (prebuilt)
+ if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
+ uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
+ with:
+ version: ${{ inputs.qt_version }}
+ modules: qtquick3d qtshadertools
+ cache: true
 
-      # CMakePresets.json declares the project's real minimum (cmakeMinimumRequired);
-      # this asserts the RUNNER actually meets it rather than letting a stale image
-      # fail later with a confusing "unknown preset field" error. gcc/llvm/msvc are
-      # asserted the same way, all against the pins toolchain-versions resolved
-      # above - see docs/ci-self-hosted-runners.md.
-      # ---------------------------------------------------------------------
-      # Configure / build / test
-      # ---------------------------------------------------------------------
-      # Toolchain assert, vcpkg setup, Configure (presets carry generator,
-      # compiler, Release, AC3FORGE_BUILD_GUI=OFF - `cmake --preset
-      # config-<leg>` locally reproduces this exactly except for the
-      # QT_ROOT_DIR/-DAC3FORGE_BUILD_GUI overrides the action bolts on),
-      # Build (-k 0, warnings-as-errors) and Test - extracted into
-      # ./.github/actions/build-leg (docs/ci-lanes.md, CI lane partitions
-      # plan) so splitting this file into one reusable workflow per platform
-      # does not duplicate the sequence into each of them. See that action's
-      # own header and step comments for what each piece does and why;
-      # nothing about what runs or in what order changed by moving it there -
-      # composite action steps execute in this same job/workspace.
-      - uses: ./.github/actions/build-leg
-        with:
-          preset: ${{ matrix.preset }}
-          # No Windows leg sets matrix.gui (AC3FORGE_BUILD_GUI is ON by
-          # default on both Windows presets - see CMakePresets.json), so
-          # this is always effectively "false" here, same as
-          # `${{ matrix.gui }}` used to evaluate on this platform.
-          gui: "false"
-          crucible: ${{ matrix.crucible }}
-          version-tag: ${{ inputs.version_tag }}
-          # No Windows leg needs a GCC version to assert - see build-leg's
-          # own toolchain-assert step, which only reads this inside its
-          # linux-gcc*/case branch.
-          gcc-version: ""
-          llvm-version: ${{ inputs.llvm_version }}
-          msvc-toolset: ${{ inputs.msvc_toolset }}
-          cmake-min: ${{ inputs.cmake_min }}
-          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+ # CMakePresets.json declares the project's real minimum (cmakeMinimumRequired);
+ # this asserts the RUNNER actually meets it rather than letting a stale image
+ # fail later with a confusing "unknown preset field" error. gcc/llvm/msvc are
+ # asserted the same way, all against the pins toolchain-versions resolved
+ # above - see docs/ci-self-hosted-runners.md.
+ # ---------------------------------------------------------------------
+ # Configure / build / test
+ # ---------------------------------------------------------------------
+ # Toolchain assert, vcpkg setup, Configure (presets carry generator,
+ # compiler, Release, AC3FORGE_BUILD_GUI=OFF - `cmake --preset
+ # config-<leg>` locally reproduces this exactly except for the
+ # QT_ROOT_DIR/-DAC3FORGE_BUILD_GUI overrides the action bolts on),
+ # Build (-k 0, warnings-as-errors) and Test - extracted into
+ # ./.github/actions/build-leg (docs/ci-lanes.md, CI lane partitions
+ # plan) so splitting this file into one reusable workflow per platform
+ # does not duplicate the sequence into each of them. See that action's
+ # own header and step comments for what each piece does and why;
+ # nothing about what runs or in what order changed by moving it there -
+ # composite action steps execute in this same job/workspace.
+ - uses: ./.github/actions/build-leg
+ with:
+ preset: ${{ matrix.preset }}
+ # No Windows leg sets matrix.gui (AC3FORGE_BUILD_GUI is ON by
+ # default on both Windows presets - see CMakePresets.json), so
+ # this is always effectively "false" here, same as
+ # `${{ matrix.gui }}` used to evaluate on this platform.
+ gui: "false"
+ crucible: ${{ matrix.crucible }}
+ version-tag: ${{ inputs.version_tag }}
+ # No Windows leg needs a GCC version to assert - see build-leg's
+ # own toolchain-assert step, which only reads this inside its
+ # linux-gcc*/case branch.
+ gcc-version: ""
+ llvm-version: ${{ inputs.llvm_version }}
+ msvc-toolset: ${{ inputs.msvc_toolset }}
+ cmake-min: ${{ inputs.cmake_min }}
+ vcpkg-commit: ${{ inputs.vcpkg_commit }}
 
-      # The window is optional in CMake (Qt6 QUIET, and Quick3D optional
-      # inside that), which is right for a source build on a machine with no
-      # Qt kit and wrong here: this leg installed the kit on purpose, so a
-      # skipped ac3crucible or a 2D-only room means that install broke rather
-      # than a deliberate choice - the same "failing loudly beats degrading
-      # quietly" reasoning as the NSIS assert further down.
-      # The same drift check the GUI catalogues get further down, for
-      # Crucible's six. It runs here and not on a Linux leg because
-      # ac3crucible_lupdate exists only where Crucible is configured, and the
-      # matrix build tree carries Crucible on Windows alone - Linux builds it
-      # in a pass of its own with its own tree.
-      #
-      # windows-msvc and not both Windows legs: one is enough to catch a
-      # source string changed without regenerating, and the llvm leg already
-      # carries the coverage gate.
-      - name: Check the Crucible translations are up to date
-        if: matrix.crucible && matrix.preset == 'windows-msvc'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cmake --build "build/config-${{ matrix.preset }}" --target ac3crucible_lupdate
-          git diff --exit-code -- apps/crucible/translations || {
-            echo "::error::a qsTr() string changed without regenerating the catalogues -           build the ac3crucible_lupdate target and commit apps/crucible/translations"
-            exit 1
-          }
+ # The window is optional in CMake (Qt6 QUIET, and Quick3D optional
+ # inside that), which is right for a source build on a machine with no
+ # Qt kit and wrong here: this leg installed the kit on purpose, so a
+ # skipped ac3crucible or a 2D-only room means that install broke rather
+ # than a deliberate choice - the same "failing loudly beats degrading
+ # quietly" reasoning as the NSIS assert further down.
+ # The same drift check the GUI catalogues get further down, for
+ # Crucible's six. It runs here and not on a Linux leg because
+ # ac3crucible_lupdate exists only where Crucible is configured, and the
+ # matrix build tree carries Crucible on Windows alone - Linux builds it
+ # in a pass of its own with its own tree.
+ #
+ # windows-msvc and not both Windows legs: one is enough to catch a
+ # source string changed without regenerating, and the llvm leg already
+ # carries the coverage gate.
+ - name: Check the Crucible translations are up to date
+ if: matrix.crucible && matrix.preset == 'windows-msvc'
+ shell: bash
+ run: |
+ set -euo pipefail
+ cmake --build "build/config-${{ matrix.preset }}" --target ac3crucible_lupdate
+ git diff --exit-code -- apps/crucible/translations || {
+ echo "::error::a qsTr() string changed without regenerating the catalogues - build the ac3crucible_lupdate target and commit apps/crucible/translations"
+ exit 1
+ }
 
-      - name: Assert the AC3Forge Crucible was built
-        # Windows and macOS, which are the two platforms whose matrix build
-        # tree carries Crucible; on Linux that tree deliberately has none
-        # (see the Configure step above), and the dedicated Linux pass makes
-        # its own assertions in its own tree.
-        #
-        # This matters more on macOS than anywhere else. That half has never
-        # been compiled by anyone - it was written without a Mac - so a leg
-        # that quietly built no window would be the difference between "it
-        # compiles" and "nobody checked", and the whole macOS claim rests on
-        # the first of those.
-        if: matrix.crucible && (runner.os == 'Windows' || runner.os == 'macOS')
-        shell: bash
-        run: |
-          set -euo pipefail
-          build="build/config-${{ matrix.preset }}"
-          suffix=''
-          [ "$RUNNER_OS" = "Windows" ] && suffix='.exe'
-          # ac3crucible is a MACOSX_BUNDLE target (apps/crucible/CMakeLists.txt),
-          # so on macOS the product is bin/ac3crucible.app/Contents/MacOS/
-          # ac3crucible and there is no plain file at bin/ac3crucible. Its two
-          # companions are not bundles - ac3crucible-run is a plain
-          # add_executable, and qt_add_executable does not set MACOSX_BUNDLE -
-          # so only this one needs the longer path. The ac3gui smoke test
-          # further down branches the same way for the same reason.
-          window="$build/bin/ac3crucible$suffix"
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            window="$build/bin/ac3crucible.app/Contents/MacOS/ac3crucible"
-          fi
-          missing=0
-          if [ ! -f "$window" ]; then
-            echo "::error::$window was not built - was Qt6 found? Check the configure log's warnings."
-            missing=1
-          fi
-          for exe in ac3crucible-run ac3crucible_qmltests; do
-            if [ ! -f "$build/bin/$exe$suffix" ]; then
-              echo "::error::$exe$suffix was not built - was Qt6 found? Check the configure log's warnings."
-              missing=1
-            fi
-          done
-          [ "$missing" -eq 0 ]
-          # Quick3D resolves through find_package, so the cache is where its
-          # presence is recorded; a build without it still links, which is
-          # exactly why this is asserted rather than assumed.
-          if ! grep -q '^Qt6Quick3D_DIR' "$build/CMakeCache.txt"; then
-            echo "::error::Qt Quick 3D was not found, so the room's 3D view is missing from this build - the 'Install Qt (prebuilt)' step's modules list is what provides it"
-            exit 1
-          fi
-          ls -1 "$window" "$build/bin/ac3crucible-run$suffix"
+ - name: Assert the AC3Forge Crucible was built
+ # Windows and macOS, which are the two platforms whose matrix build
+ # tree carries Crucible; on Linux that tree deliberately has none
+ # (see the Configure step above), and the dedicated Linux pass makes
+ # its own assertions in its own tree.
+ #
+ # This matters more on macOS than anywhere else. That half has never
+ # been compiled by anyone - it was written without a Mac - so a leg
+ # that quietly built no window would be the difference between "it
+ # compiles" and "nobody checked", and the whole macOS claim rests on
+ # the first of those.
+ if: matrix.crucible && (runner.os == 'Windows' || runner.os == 'macOS')
+ shell: bash
+ run: |
+ set -euo pipefail
+ build="build/config-${{ matrix.preset }}"
+ suffix=''
+ [ "$RUNNER_OS" = "Windows" ] && suffix='.exe'
+ # ac3crucible is a MACOSX_BUNDLE target (apps/crucible/CMakeLists.txt),
+ # so on macOS the product is bin/ac3crucible.app/Contents/MacOS/
+ # ac3crucible and there is no plain file at bin/ac3crucible. Its two
+ # companions are not bundles - ac3crucible-run is a plain
+ # add_executable, and qt_add_executable does not set MACOSX_BUNDLE -
+ # so only this one needs the longer path. The ac3gui smoke test
+ # further down branches the same way for the same reason.
+ window="$build/bin/ac3crucible$suffix"
+ if [ "$RUNNER_OS" = "macOS" ]; then
+ window="$build/bin/ac3crucible.app/Contents/MacOS/ac3crucible"
+ fi
+ missing=0
+ if [ ! -f "$window" ]; then
+ echo "::error::$window was not built - was Qt6 found? Check the configure log's warnings."
+ missing=1
+ fi
+ for exe in ac3crucible-run ac3crucible_qmltests; do
+ if [ ! -f "$build/bin/$exe$suffix" ]; then
+ echo "::error::$exe$suffix was not built - was Qt6 found? Check the configure log's warnings."
+ missing=1
+ fi
+ done
+ [ "$missing" -eq 0 ]
+ # Quick3D resolves through find_package, so the cache is where its
+ # presence is recorded; a build without it still links, which is
+ # exactly why this is asserted rather than assumed.
+ if ! grep -q '^Qt6Quick3D_DIR' "$build/CMakeCache.txt"; then
+ echo "::error::Qt Quick 3D was not found, so the room's 3D view is missing from this build - the 'Install Qt (prebuilt)' step's modules list is what provides it"
+ exit 1
+ fi
+ ls -1 "$window" "$build/bin/ac3crucible-run$suffix"
 
-      # The AC3Forge Crucible's coverage floor - what ci.yml's `coverage` job
-      # is for the library, for the one first-party tree that job cannot see.
-      #
-      # It cannot see it for the reason its own header gives about apps/gui:
-      # instrumenting a Qt application needs a Qt kit on the instrumented leg,
-      # and no Linux leg installs one. Crucible is worse off than apps/gui
-      # there, because more of it lives behind Qt - the window, its controller,
-      # and the Qt Quick suites that are the ONLY thing driving the Linux
-      # platform seams (tests/crucible/platform_services_stub.cpp is what the
-      # Catch2 binary links). So the figure is taken where the kit already is.
-      #
-      # One extra pass inside this leg rather than a job of its own, the same
-      # shape as the ALSA fallback and the Linux Crucible pass below: what it
-      # needs is a different BUILD of what this leg already has - clang-cl,
-      # the pinned LLVM (llvm-profdata and llvm-cov ship in the same install,
-      # at the C:\Program Files\LLVM the script defaults to) and the Qt kit
-      # with Quick3D - rather than a different machine. On this fleet the
-      # scarce resource is a queue slot and not a core (see
-      # docs/ci-self-hosted-runners.md), so a second tree inside a leg that
-      # is already running costs less than a job waiting for a runner.
-      #
-      # windows-llvm and not windows-msvc: config-windows-llvm-coverage is a
-      # clang-cl preset (-fprofile-instr-generate/-fcoverage-mapping) and MSVC
-      # has no counterpart llvm-cov could read. It roughly doubles this leg's
-      # build time, which is the price of the gate; the alternative was a
-      # number nothing checked.
-      #
-      # tools/checks/coverage_crucible.ps1 runs the `crucible` and
-      # `crucible-ui` labels itself under LLVM_PROFILE_FILE, merges the
-      # profiles, gates apps/crucible's line and branch figures against the
-      # floors in its own header, and prints a per-file breakdown under them.
-      # It is shared verbatim with a local run (docs/crucible/design/promotion.md),
-      # so CI and a developer machine cannot drift onto different thresholds -
-      # the same rule coverage_report.sh follows for the library.
-      #
-      # Windows PowerShell, not pwsh: the self-hosted fleet's Windows image
-      # does not ship PowerShell 7 (see the LLVM install step's own note).
-      - name: Crucible coverage floor (Windows, clang-cl)
-        if: matrix.crucible && matrix.preset == 'windows-llvm'
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          # The same -DCMAKE_PREFIX_PATH the Configure step above bolts onto
-          # every Windows leg, for the reason it gives: install-qt-action puts
-          # the kit under a runner-specific QT_ROOT_DIR that
-          # cmake/FindQt6.cmake's local search roots (C:/Qt/6.x/msvc2022_64
-          # and friends) do not cover, so the preset alone finds no Qt6 here.
-          # Without it this configure does not degrade into a smaller number -
-          # it fails outright, because AC3FORGE_BUILD_GUI is ON for every
-          # windows-llvm preset (CMakePresets.json) and apps/gui/CMakeLists.txt
-          # asks for Qt6 REQUIRED.
-          #
-          # Asserted rather than assumed: an empty QT_ROOT_DIR would pass an
-          # empty prefix path and leave find_package to whatever kit happened
-          # to be on the image, which is a measurement of a different build
-          # from the one this leg tested.
-          if (-not $env:QT_ROOT_DIR) {
-            throw "QT_ROOT_DIR is not set - did the 'Install Qt (prebuilt)' step run on this leg?"
-          }
-          cmake --preset config-windows-llvm-coverage "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
-          if ($LASTEXITCODE -ne 0) { throw "the instrumented configure failed ($LASTEXITCODE)" }
-          cmake --build --preset build-windows-llvm-coverage
-          if ($LASTEXITCODE -ne 0) { throw "the instrumented build failed ($LASTEXITCODE)" }
-          .\tools\checks\coverage_crucible.ps1 -BuildDir build\config-windows-llvm-coverage
-          if ($LASTEXITCODE -ne 0) { throw "the Crucible coverage gate failed ($LASTEXITCODE)" }
+ # The AC3Forge Crucible's coverage floor - what ci.yml's `coverage` job
+ # is for the library, for the one first-party tree that job cannot see.
+ #
+ # It cannot see it for the reason its own header gives about apps/gui:
+ # instrumenting a Qt application needs a Qt kit on the instrumented leg,
+ # and no Linux leg installs one. Crucible is worse off than apps/gui
+ # there, because more of it lives behind Qt - the window, its controller,
+ # and the Qt Quick suites that are the ONLY thing driving the Linux
+ # platform seams (tests/crucible/platform_services_stub.cpp is what the
+ # Catch2 binary links). So the figure is taken where the kit already is.
+ #
+ # One extra pass inside this leg rather than a job of its own, the same
+ # shape as the ALSA fallback and the Linux Crucible pass below: what it
+ # needs is a different BUILD of what this leg already has - clang-cl,
+ # the pinned LLVM (llvm-profdata and llvm-cov ship in the same install,
+ # at the C:\Program Files\LLVM the script defaults to) and the Qt kit
+ # with Quick3D - rather than a different machine. On this fleet the
+ # scarce resource is a queue slot and not a core (see
+ # docs/ci-self-hosted-runners.md), so a second tree inside a leg that
+ # is already running costs less than a job waiting for a runner.
+ #
+ # windows-llvm and not windows-msvc: config-windows-llvm-coverage is a
+ # clang-cl preset (-fprofile-instr-generate/-fcoverage-mapping) and MSVC
+ # has no counterpart llvm-cov could read. It roughly doubles this leg's
+ # build time, which is the price of the gate; the alternative was a
+ # number nothing checked.
+ #
+ # tools/checks/coverage_crucible.ps1 runs the `crucible` and
+ # `crucible-ui` labels itself under LLVM_PROFILE_FILE, merges the
+ # profiles, gates apps/crucible's line and branch figures against the
+ # floors in its own header, and prints a per-file breakdown under them.
+ # It is shared verbatim with a local run (docs/crucible/design/promotion.md),
+ # so CI and a developer machine cannot drift onto different thresholds -
+ # the same rule coverage_report.sh follows for the library.
+ #
+ # Windows PowerShell, not pwsh: the self-hosted fleet's Windows image
+ # does not ship PowerShell 7 (see the LLVM install step's own note).
+ - name: Crucible coverage floor (Windows, clang-cl)
+ if: matrix.crucible && matrix.preset == 'windows-llvm'
+ shell: powershell
+ run: |
+ $ErrorActionPreference = 'Stop'
+ # The same -DCMAKE_PREFIX_PATH the Configure step above bolts onto
+ # every Windows leg, for the reason it gives: install-qt-action puts
+ # the kit under a runner-specific QT_ROOT_DIR that
+ # cmake/FindQt6.cmake's local search roots (C:/Qt/6.x/msvc2022_64
+ # and friends) do not cover, so the preset alone finds no Qt6 here.
+ # Without it this configure does not degrade into a smaller number -
+ # it fails outright, because AC3FORGE_BUILD_GUI is ON for every
+ # windows-llvm preset (CMakePresets.json) and apps/gui/CMakeLists.txt
+ # asks for Qt6 REQUIRED.
+ #
+ # Asserted rather than assumed: an empty QT_ROOT_DIR would pass an
+ # empty prefix path and leave find_package to whatever kit happened
+ # to be on the image, which is a measurement of a different build
+ # from the one this leg tested.
+ if (-not $env:QT_ROOT_DIR) {
+ throw "QT_ROOT_DIR is not set - did the 'Install Qt (prebuilt)' step run on this leg?"
+ }
+ cmake --preset config-windows-llvm-coverage "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
+ if ($LASTEXITCODE -ne 0) { throw "the instrumented configure failed ($LASTEXITCODE)" }
+ cmake --build --preset build-windows-llvm-coverage
+ if ($LASTEXITCODE -ne 0) { throw "the instrumented build failed ($LASTEXITCODE)" }
+ .\tools\checks\coverage_crucible.ps1 -BuildDir build\config-windows-llvm-coverage
+ if ($LASTEXITCODE -ne 0) { throw "the Crucible coverage gate failed ($LASTEXITCODE)" }
 
-      # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
-      # lightweight L4 SNR check from the project's original validation-
-      # pyramid design, now docs/verification.md). Proven on macOS alone
-      # first; now every leg has it except linux-llvm-asan-ubsan, which
-      # stays diagnostic-only (same reasoning as its `packageable` exclusion
-      # below - a sanitizer build's job is catching memory/UB errors, not
-      # re-proving codec correctness a plain build already did).
-      #
-      # Extracted into ./.github/actions/gold-reference-gate alongside
-      # build-leg above, for the same reason (docs/ci-lanes.md). Unlike
-      # build-leg this call still carries its own `if:` here - the action
-      # has no notion of matrix.gold_reference, so the caller still decides
-      # whether to run it at all, the same way the setup-msvc-env call above
-      # stays gated on `matrix.msvc`.
-      - name: Gold reference gate
-        if: matrix.gold_reference
-        uses: ./.github/actions/gold-reference-gate
-        with:
-          preset: ${{ matrix.preset }}
-          persist-quality-trend: ${{ inputs.persist_quality_trend }}
+ # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
+ # lightweight L4 SNR check from the project's original validation-
+ # pyramid design, now docs/verification.md). Proven on macOS alone
+ # first; now every leg has it except linux-llvm-asan-ubsan, which
+ # stays diagnostic-only (same reasoning as its `packageable` exclusion
+ # below - a sanitizer build's job is catching memory/UB errors, not
+ # re-proving codec correctness a plain build already did).
+ #
+ # Extracted into ./.github/actions/gold-reference-gate alongside
+ # build-leg above, for the same reason (docs/ci-lanes.md). Unlike
+ # build-leg this call still carries its own `if:` here - the action
+ # has no notion of matrix.gold_reference, so the caller still decides
+ # whether to run it at all, the same way the setup-msvc-env call above
+ # stays gated on `matrix.msvc`.
+ - name: Gold reference gate
+ if: matrix.gold_reference
+ uses: ./.github/actions/gold-reference-gate
+ with:
+ preset: ${{ matrix.preset }}
+ persist-quality-trend: ${{ inputs.persist_quality_trend }}
 
-      # Handed off to the quality-trend job below, which runs once (not once
-      # per leg) after every gold_reference leg has passed - see that job's
-      # own header comment for why it is a separate job rather than each leg
-      # pushing its own commit.
-      - name: Upload gold-reference results
-        if: matrix.gold_reference && inputs.persist_quality_trend
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: gold-reference-${{ matrix.preset }}
-          path: ${{ runner.temp }}/gold-reference-results/*.json
-          if-no-files-found: error
+ # Handed off to the quality-trend job below, which runs once (not once
+ # per leg) after every gold_reference leg has passed - see that job's
+ # own header comment for why it is a separate job rather than each leg
+ # pushing its own commit.
+ - name: Upload gold-reference results
+ if: matrix.gold_reference && inputs.persist_quality_trend
+ uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+ with:
+ name: gold-reference-${{ matrix.preset }}
+ path: ${{ runner.temp }}/gold-reference-results/*.json
+ if-no-files-found: error
 
-      # Packaging. windows-msvc always packages, on every push, as a
-      # continuous smoke test of the packaging path itself. For a real
-      # release (do_package set, from release.yml), only one leg per
-      # OS/arch actually packages as the release's own canonical artifact -
-      # `release_package: true` on windows-msvc, linux-gcc and
-      # linux-gcc-arm64 - rather than every packageable leg. A release ships
-      # one canonical build per platform for people to download, not a build
-      # per compiler-toolchain leg: windows-llvm and linux-llvm exist to
-      # catch compiler-specific bugs in CI, which they still do in full
-      # (build+test, unchanged) - packaging them too would just be two
-      # redundant, unlabelled-as-to-which-is-canonical zips per OS with
-      # nothing to tell a downloader apart. A packaging failure on a
-      # release_package leg blocks like any other leg's would, rather than
-      # being absorbed by continue-on-error. linux-llvm-asan-ubsan is never
-      # packaged at all (not `packageable` - see the matrix entry): there is
-      # no pack-linux-llvm-asan-ubsan preset, a sanitizer-instrumented debug
-      # build is a diagnostic tool, not something to ship.
-      #
-      # macOS (DR8) is neither of the two shapes above any more: macos-llvm
-      # and macos-llvm-x64 are each `packageable` but never `release_package`
-      # - a release doesn't want either leg's own single-arch .dmg as "the"
-      # macOS package now that a universal one exists. They still package on
-      # every ORDINARY push (the windows-msvc-style continuous smoke test,
-      # extended to both of them - useful as an independent per-arch check
-      # that packaging itself still works), just never on a do_package
-      # release run, where they instead run the install-tree steps below for
-      # package-macos-universal to lipo-merge, and that job uploads the
-      # actual release artifact.
-      #
-      # cpack reuses the same build/config-<leg> tree the Configure and Build
-      # steps above already produced - pack-<leg> points at the same
-      # config-<leg> configurePreset - so this proves the packaging path
-      # against the exact build that was just tested, not a separate one.
-      - name: Package
-        if: >-
-          matrix.packageable &&
-          (matrix.preset == 'windows-msvc' ||
-           (inputs.do_package && matrix.release_package) ||
-           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
-        shell: bash
-        run: cpack --preset pack-${{ matrix.preset }}
+ # Packaging. windows-msvc always packages, on every push, as a
+ # continuous smoke test of the packaging path itself. For a real
+ # release (do_package set, from release.yml), only one leg per
+ # OS/arch actually packages as the release's own canonical artifact -
+ # `release_package: true` on windows-msvc, linux-gcc and
+ # linux-gcc-arm64 - rather than every packageable leg. A release ships
+ # one canonical build per platform for people to download, not a build
+ # per compiler-toolchain leg: windows-llvm and linux-llvm exist to
+ # catch compiler-specific bugs in CI, which they still do in full
+ # (build+test, unchanged) - packaging them too would just be two
+ # redundant, unlabelled-as-to-which-is-canonical zips per OS with
+ # nothing to tell a downloader apart. A packaging failure on a
+ # release_package leg blocks like any other leg's would, rather than
+ # being absorbed by continue-on-error. linux-llvm-asan-ubsan is never
+ # packaged at all (not `packageable` - see the matrix entry): there is
+ # no pack-linux-llvm-asan-ubsan preset, a sanitizer-instrumented debug
+ # build is a diagnostic tool, not something to ship.
+ #
+ # macOS (DR8) is neither of the two shapes above any more: macos-llvm
+ # and macos-llvm-x64 are each `packageable` but never `release_package`
+ # - a release doesn't want either leg's own single-arch .dmg as "the"
+ # macOS package now that a universal one exists. They still package on
+ # every ORDINARY push (the windows-msvc-style continuous smoke test,
+ # extended to both of them - useful as an independent per-arch check
+ # that packaging itself still works), just never on a do_package
+ # release run, where they instead run the install-tree steps below for
+ # package-macos-universal to lipo-merge, and that job uploads the
+ # actual release artifact.
+ #
+ # cpack reuses the same build/config-<leg> tree the Configure and Build
+ # steps above already produced - pack-<leg> points at the same
+ # config-<leg> configurePreset - so this proves the packaging path
+ # against the exact build that was just tested, not a separate one.
+ - name: Package
+ if: >-
+ matrix.packageable &&
+ (matrix.preset == 'windows-msvc' ||
+ (inputs.do_package && matrix.release_package) ||
+ ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+ shell: bash
+ run: cpack --preset pack-${{ matrix.preset }}
 
-      # DR7: the whole point of installing makensis above is that its
-      # absence stops being silent. cmake/Packaging.cmake's find_program()
-      # gate degrades to a ZIP-only package with just a message(WARNING ...)
-      # rather than failing cpack outright - the right behaviour for a local
-      # dev build without NSIS installed, the wrong one here, where makensis
-      # was just installed on purpose and a missing .exe means that install
-      # broke rather than a deliberate choice. Failing loudly on this leg is
-      # what keeps DR7 fixed instead of quietly regressing the same way
-      # again - see docs/releasing.md#winget-manifest.
-      - name: Assert the NSIS installer was produced (Windows)
-        if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package)) && runner.os == 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          exes=(packages/*.exe)
-          if [ ${#exes[@]} -eq 0 ]; then
-            echo "::error::cpack produced no NSIS installer (.exe) - makensis is missing or cmake/Packaging.cmake's find_program() gate silently dropped NSIS again. Check the 'Install NSIS (Windows)' step and the configure log's warnings above."
-            exit 1
-          fi
+ # DR7: the whole point of installing makensis above is that its
+ # absence stops being silent. cmake/Packaging.cmake's find_program()
+ # gate degrades to a ZIP-only package with just a message(WARNING ...)
+ # rather than failing cpack outright - the right behaviour for a local
+ # dev build without NSIS installed, the wrong one here, where makensis
+ # was just installed on purpose and a missing .exe means that install
+ # broke rather than a deliberate choice. Failing loudly on this leg is
+ # what keeps DR7 fixed instead of quietly regressing the same way
+ # again - see docs/releasing.md#winget-manifest.
+ - name: Assert the NSIS installer was produced (Windows)
+ if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package)) && runner.os == 'Windows'
+ shell: bash
+ run: |
+ set -euo pipefail
+ shopt -s nullglob
+ exes=(packages/*.exe)
+ if [ ${#exes[@]} -eq 0 ]; then
+ echo "::error::cpack produced no NSIS installer (.exe) - makensis is missing or cmake/Packaging.cmake's find_program() gate silently dropped NSIS again. Check the 'Install NSIS (Windows)' step and the configure log's warnings above."
+ exit 1
+ fi
 
-      # The demo's own archive (cmake/Packaging.cmake's crucible component).
-      # Without this the component could stop being packaged - a stale
-      # CPACK_COMPONENTS_ALL, a rename, the option not reaching cpack - and
-      # the only symptom would be a release quietly missing an asset.
-      - name: Assert the AC3Forge Crucible was packaged (Windows)
-        if: matrix.crucible && matrix.release_package && (matrix.preset == 'windows-msvc' || inputs.do_package)
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          zips=(packages/ac3forge-crucible-*.zip)
-          if [ ${#zips[@]} -eq 0 ]; then
-            echo "::error::cpack produced no ac3forge-crucible-*.zip - the crucible component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake) or its install rules produced nothing (apps/crucible/CMakeLists.txt)."
-            ls -1 packages/ || true
-            exit 1
-          fi
-          printf 'packaged: %s\n' "${zips[@]}"
-          # A plausible archive with no Qt beside the window is the real
-          # failure mode here, not an empty one - see the script's own header.
-          python tools/ci/check_crucible_package.py "${zips[0]}"
+ # The demo's own archive (cmake/Packaging.cmake's crucible component).
+ # Without this the component could stop being packaged - a stale
+ # CPACK_COMPONENTS_ALL, a rename, the option not reaching cpack - and
+ # the only symptom would be a release quietly missing an asset.
+ - name: Assert the AC3Forge Crucible was packaged (Windows)
+ if: matrix.crucible && matrix.release_package && (matrix.preset == 'windows-msvc' || inputs.do_package)
+ shell: bash
+ run: |
+ set -euo pipefail
+ shopt -s nullglob
+ zips=(packages/ac3forge-crucible-*.zip)
+ if [ ${#zips[@]} -eq 0 ]; then
+ echo "::error::cpack produced no ac3forge-crucible-*.zip - the crucible component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake) or its install rules produced nothing (apps/crucible/CMakeLists.txt)."
+ ls -1 packages/ || true
+ exit 1
+ fi
+ printf 'packaged: %s\n' "${zips[@]}"
+ # A plausible archive with no Qt beside the window is the real
+ # failure mode here, not an empty one - see the script's own header.
+ python tools/ci/check_crucible_package.py "${zips[0]}"
 
-      - name: Upload package artifacts
-        if: >-
-          matrix.packageable &&
-          (matrix.preset == 'windows-msvc' ||
-           (inputs.do_package && matrix.release_package) ||
-           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: packages-${{ matrix.preset }}
-          # An explicit extension allowlist, not packages/* - CPack leaves its
-          # per-generator staging tree behind under packages/_CPack_Packages/
-          # (never cleaned up; this is normal CPack behaviour, not a bug
-          # here), and a bare packages/* glob matches that directory too.
-          # DragNDrop's staging tree in particular contains a symlink to
-          # /Applications for the drag-to-install UX - upload-artifact
-          # dereferences symlinks by default, so on a macOS runner that walks
-          # straight into the real /Applications (Xcode's framework tree is
-          # notorious for symlink cycles) and OOMs the upload step's Node
-          # process trying to archive it. See actions/upload-artifact#619 and
-          # #590. Restricting the glob to real package files and their
-          # checksums - the same extensions github-release's own glob looks
-          # for - sidesteps the staging tree entirely rather than trying to
-          # outrun it with excludes.
-          path: |
-            packages/*.zip
-            packages/*.zip.sha512
-            packages/*.tar.gz
-            packages/*.tar.gz.sha512
-            packages/*.deb
-            packages/*.deb.sha512
-            packages/*.rpm
-            packages/*.rpm.sha512
-            packages/*.exe
-            packages/*.exe.sha512
-            packages/*.dmg
-            packages/*.dmg.sha512
-          if-no-files-found: error
+ - name: Upload package artifacts
+ if: >-
+ matrix.packageable &&
+ (matrix.preset == 'windows-msvc' ||
+ (inputs.do_package && matrix.release_package) ||
+ ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+ uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+ with:
+ name: packages-${{ matrix.preset }}
+ # An explicit extension allowlist, not packages/* - CPack leaves its
+ # per-generator staging tree behind under packages/_CPack_Packages/
+ # (never cleaned up; this is normal CPack behaviour, not a bug
+ # here), and a bare packages/* glob matches that directory too.
+ # DragNDrop's staging tree in particular contains a symlink to
+ # /Applications for the drag-to-install UX - upload-artifact
+ # dereferences symlinks by default, so on a macOS runner that walks
+ # straight into the real /Applications (Xcode's framework tree is
+ # notorious for symlink cycles) and OOMs the upload step's Node
+ # process trying to archive it. See actions/upload-artifact#619 and
+ # #590. Restricting the glob to real package files and their
+ # checksums - the same extensions github-release's own glob looks
+ # for - sidesteps the staging tree entirely rather than trying to
+ # outrun it with excludes.
+ path: |
+ packages/*.zip
+ packages/*.zip.sha512
+ packages/*.tar.gz
+ packages/*.tar.gz.sha512
+ packages/*.deb
+ packages/*.deb.sha512
+ packages/*.rpm
+ packages/*.rpm.sha512
+ packages/*.exe
+ packages/*.exe.sha512
+ packages/*.dmg
+ packages/*.dmg.sha512
+ if-no-files-found: error
 

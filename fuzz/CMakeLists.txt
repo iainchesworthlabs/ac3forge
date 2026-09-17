@@ -11,17 +11,17 @@
 # ---------------------------------------------------------------------------
 
 if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang"))
-    message(FATAL_ERROR
-        "AC3FORGE_BUILD_FUZZERS needs upstream Clang: libFuzzer (-fsanitize=fuzzer) is an "
-        "LLVM built-in, not available under GCC or MSVC. Configure with "
-        "-DCMAKE_CXX_COMPILER=clang++, or run fuzz/run.sh, which does this for you.")
+ message(FATAL_ERROR
+ "AC3FORGE_BUILD_FUZZERS needs upstream Clang: libFuzzer (-fsanitize=fuzzer) is an "
+ "LLVM built-in, not available under GCC or MSVC. Configure with "
+ "-DCMAKE_CXX_COMPILER=clang++, or run fuzz/run.sh, which does this for you.")
 endif()
 if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-    message(FATAL_ERROR
-        "AC3FORGE_BUILD_FUZZERS targets upstream Clang on Linux/macOS (the linux-llvm / "
-        "macos-llvm toolchain), not clang-cl: this project has never verified libFuzzer "
-        "under the MSVC-ABI frontend, and the fuzzing task this serves asks for Linux-or-"
-        "macOS specifically.")
+ message(FATAL_ERROR
+ "AC3FORGE_BUILD_FUZZERS targets upstream Clang on Linux/macOS (the linux-llvm / "
+ "macos-llvm toolchain), not clang-cl: this project has never verified libFuzzer "
+ "under the MSVC-ABI frontend, and the fuzzing task this serves asks for Linux-or-"
+ "macOS specifically.")
 endif()
 
 # ASan+UBSan+SanitizerCoverage on the LIBRARY, not only the harness main: a
@@ -53,12 +53,12 @@ endif()
 # fire on the ASan runtime's own interceptors, and the mutation engine would
 # be blind to every branch inside it.
 function(ac3forge_instrument_for_fuzzing target)
-    target_compile_options(${target} PUBLIC
-        -fsanitize=address,undefined,fuzzer-no-link
-        -fno-sanitize-recover=undefined
-        -fno-omit-frame-pointer
-        -g)
-    target_link_options(${target} PUBLIC -fsanitize=address,undefined,fuzzer-no-link)
+ target_compile_options(${target} PUBLIC
+ -fsanitize=address,undefined,fuzzer-no-link
+ -fno-sanitize-recover=undefined
+ -fno-omit-frame-pointer
+ -g)
+ target_link_options(${target} PUBLIC -fsanitize=address,undefined,fuzzer-no-link)
 endfunction()
 
 ac3forge_instrument_for_fuzzing(forge_objects)
@@ -75,13 +75,13 @@ ac3forge_instrument_for_fuzzing(signing_objects)
 # usage requirements propagate through the static/shared wrappers to
 # whatever finally links matroska::matroska - here, each harness.
 foreach(container_target IN ITEMS matroska_objects mp4_objects mpegts_objects)
-    target_compile_options(${container_target} PUBLIC
-        -fsanitize=address,undefined,fuzzer-no-link
-        -fno-sanitize-recover=undefined
-        -fno-omit-frame-pointer
-        -g)
-    target_link_options(${container_target} PUBLIC
-        -fsanitize=address,undefined,fuzzer-no-link)
+ target_compile_options(${container_target} PUBLIC
+ -fsanitize=address,undefined,fuzzer-no-link
+ -fno-sanitize-recover=undefined
+ -fno-omit-frame-pointer
+ -g)
+ target_link_options(${container_target} PUBLIC
+ -fsanitize=address,undefined,fuzzer-no-link)
 endforeach()
 
 # ac4_objects and ac3iab_objects, for the same reason: fuzz_ac4_parse and
@@ -115,13 +115,13 @@ endforeach()
 # and each harness below sits under the same guard, so turning one of those
 # options off drops its harness instead of failing the configure.
 if(AC3FORGE_BUILD_AC4)
-    ac3forge_instrument_for_fuzzing(ac4_objects)
+ ac3forge_instrument_for_fuzzing(ac4_objects)
 endif()
 if(AC3FORGE_BUILD_IAB)
-    ac3forge_instrument_for_fuzzing(ac3iab_objects)
+ ac3forge_instrument_for_fuzzing(ac3iab_objects)
 endif()
 if(AC3FORGE_BUILD_ADM)
-    ac3forge_instrument_for_fuzzing(ac3adm_objects)
+ ac3forge_instrument_for_fuzzing(ac3adm_objects)
 endif()
 
 add_custom_target(ac3forge_fuzzers)
@@ -148,13 +148,13 @@ add_custom_target(ac3forge_fuzzers)
 # above, or the harness links it without coverage counters or sanitizer
 # checks.
 function(ac3forge_add_fuzzer name)
-    add_executable(${name} "${name}.cpp")
-    target_link_libraries(${name} PRIVATE ac3::forge ac3::warnings ${ARGN})
-    target_compile_options(${name} PRIVATE -fsanitize=fuzzer)
-    target_link_options(${name} PRIVATE -fsanitize=fuzzer)
-    set_target_properties(${name} PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-    add_dependencies(ac3forge_fuzzers ${name})
+ add_executable(${name} "${name}.cpp")
+ target_link_libraries(${name} PRIVATE ac3::forge ac3::warnings ${ARGN})
+ target_compile_options(${name} PRIVATE -fsanitize=fuzzer)
+ target_link_options(${name} PRIVATE -fsanitize=fuzzer)
+ set_target_properties(${name} PROPERTIES
+ RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+ add_dependencies(ac3forge_fuzzers ${name})
 endfunction()
 
 # Same, for a harness whose subject is a container library rather than the
@@ -163,13 +163,13 @@ endfunction()
 # because every EXISTING harness takes ac3::forge and would gain a noise
 # argument for it.
 function(ac3forge_add_container_fuzzer name library)
-    add_executable(${name} "${name}.cpp")
-    target_link_libraries(${name} PRIVATE ${library} ac3::warnings)
-    target_compile_options(${name} PRIVATE -fsanitize=fuzzer)
-    target_link_options(${name} PRIVATE -fsanitize=fuzzer)
-    set_target_properties(${name} PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-    add_dependencies(ac3forge_fuzzers ${name})
+ add_executable(${name} "${name}.cpp")
+ target_link_libraries(${name} PRIVATE ${library} ac3::warnings)
+ target_compile_options(${name} PRIVATE -fsanitize=fuzzer)
+ target_link_options(${name} PRIVATE -fsanitize=fuzzer)
+ set_target_properties(${name} PROPERTIES
+ RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+ add_dependencies(ac3forge_fuzzers ${name})
 endfunction()
 
 # ac3::io::scan: format-sniffing over an unidentified byte stream, before any
@@ -213,7 +213,7 @@ ac3forge_add_container_fuzzer(fuzz_mpegts_demux mpegts::mpegts)
 # input the uninstrumented runs never reached. Fixed, with the input under
 # fuzz/regressions/fuzz_iab_parse/.
 if(AC3FORGE_BUILD_IAB)
-    ac3forge_add_fuzzer(fuzz_iab_parse ac3iab::ac3iab)
+ ac3forge_add_fuzzer(fuzz_iab_parse ac3iab::ac3iab)
 endif()
 
 # ac4::scan + ac4::parse_raw_frame: sync search, then the TOC - a presentation
@@ -234,7 +234,7 @@ endif()
 # presentation_config_ext_info() overflowed an int. Both are fixed, with
 # reproducers under fuzz/regressions/fuzz_ac4_parse/.
 if(AC3FORGE_BUILD_AC4)
-    ac3forge_add_fuzzer(fuzz_ac4_parse ac4::ac4)
+ ac3forge_add_fuzzer(fuzz_ac4_parse ac4::ac4)
 endif()
 
 # split_frames + FrameDecoder::decode_frame, driven the way ac3cli's 'decode'
@@ -257,7 +257,7 @@ ac3forge_add_fuzzer(fuzz_wav_read)
 # HDMI capture - and whose Pd word is an attacker-chosen length.
 ac3forge_add_fuzzer(fuzz_iec61937_unwrap)
 
-# --- Differential mode (roadmap G3) -----------------------------------------
+# --- Differential mode (differential decoder fuzzing) -----------------------------------------
 # Same decode paths as fuzz_ac3_decode/fuzz_eac3_decode above, but instead of
 # only checking for a crash/sanitizer trip, these also decode the same
 # mutated bytes with FFmpeg and diff the PCM (fuzz/differential_oracle.hpp
@@ -267,7 +267,7 @@ ac3forge_add_fuzzer(fuzz_iec61937_unwrap)
 ac3forge_add_fuzzer(fuzz_differential_ac3_decode)
 ac3forge_add_fuzzer(fuzz_differential_eac3_decode)
 
-# --- The object and metadata layer (roadmap VX3) -----------------------------
+# --- The object and metadata layer (legacy item VX3) -----------------------------
 # The three parsers below sit behind a skip field in every Atmos frame, which
 # is where this codec's differentiating feature - object audio - actually
 # lives, and they are the deepest attacker-controlled bytes in the tree: a
@@ -293,7 +293,7 @@ ac3forge_add_fuzzer(fuzz_oamd_parse)
 # own numbers (src/forge/src/oba/joc.cpp).
 ac3forge_add_fuzzer(fuzz_joc_parse)
 
-# --- Live position input (roadmap UX4) ---------------------------------------
+# --- Live position input (legacy item UX4) ---------------------------------------
 # ac3::oba::parse_osc_packet: the OSC 1.0 wire form of a live scene update
 # (src/forge/src/oba/scene_osc.cpp). Not behind the bitstream at all - this
 # is the project's first NETWORK-facing parser, reached straight from a UDP
@@ -318,7 +318,7 @@ ac3forge_add_fuzzer(fuzz_signing_verify ac3::signing)
 # without that this harness simply is not built, exactly as ac3adm itself is
 # not.
 if(AC3FORGE_BUILD_ADM)
-    ac3forge_add_fuzzer(fuzz_adm_parse ac3adm::ac3adm)
+ ac3forge_add_fuzzer(fuzz_adm_parse ac3adm::ac3adm)
 endif()
 
 # ac4::Decoder::parse: every substream of an AC-4 frame below the table of
@@ -334,8 +334,8 @@ endif()
 # the escape to 21 bits, which the decoder now enforces; the input is under
 # fuzz/regressions/fuzz_ac4_decode/.
 if(AC3FORGE_BUILD_AC4)
-    ac3forge_instrument_for_fuzzing(ac4dec_objects)
-    ac3forge_add_fuzzer(fuzz_ac4_decode ac4::decoder)
+ ac3forge_instrument_for_fuzzing(ac4dec_objects)
+ ac3forge_add_fuzzer(fuzz_ac4_decode ac4::decoder)
 endif()
 
 # --- Sendspin (planning/hearth-reference-player.md, A4) ----------------------
@@ -344,23 +344,23 @@ endif()
 # library; fuzz/run.sh turns it on with AC3FORGE_SENDSPIN_CORE_ONLY, which
 # builds the library's dependency-free core and keeps this build free of vcpkg.
 if(TARGET ac3sendspin)
-    ac3forge_instrument_for_fuzzing(ac3sendspin)
+ ac3forge_instrument_for_fuzzing(ac3sendspin)
 
-    # ac3::sendspin::json::Document::parse, with a write-and-reparse check
-    # (src/sendspin/src/json.cpp).
-    ac3forge_add_container_fuzzer(fuzz_sendspin_json ac3::sendspin)
+ # ac3::sendspin::json::Document::parse, with a write-and-reparse check
+ # (src/sendspin/src/json.cpp).
+ ac3forge_add_container_fuzzer(fuzz_sendspin_json ac3::sendspin)
 
-    # ac3::sendspin::Reassembler in both fragment forms, and the player@v1 and
-    # _ac3forge_player@v1 chunk parsers (src/sendspin/src/frames.cpp, chunks.cpp).
-    ac3forge_add_container_fuzzer(fuzz_sendspin_frames ac3::sendspin)
+ # ac3::sendspin::Reassembler in both fragment forms, and the player@v1 and
+ # _ac3forge_player@v1 chunk parsers (src/sendspin/src/frames.cpp, chunks.cpp).
+ ac3forge_add_container_fuzzer(fuzz_sendspin_frames ac3::sendspin)
 
-    # The handshake phase's messages - client/init, server/init, server/error,
-    # noise/handshake and the two Noise payloads - read and written back
-    # (src/sendspin/src/handshake.cpp).
-    ac3forge_add_container_fuzzer(fuzz_sendspin_handshake ac3::sendspin)
+ # The handshake phase's messages - client/init, server/init, server/error,
+ # noise/handshake and the two Noise payloads - read and written back
+ # (src/sendspin/src/handshake.cpp).
+ ac3forge_add_container_fuzzer(fuzz_sendspin_handshake ac3::sendspin)
 
-    # The core and pairing messages after the handshake, every reader in both dialects, with a
-    # check that what is written back reads and writes back to itself
-    # (src/sendspin/src/messages.cpp, pairing_messages.cpp).
-    ac3forge_add_container_fuzzer(fuzz_sendspin_messages ac3::sendspin)
+ # The core and pairing messages after the handshake, every reader in both dialects, with a
+ # check that what is written back reads and writes back to itself
+ # (src/sendspin/src/messages.cpp, pairing_messages.cpp).
+ ac3forge_add_container_fuzzer(fuzz_sendspin_messages ac3::sendspin)
 endif()

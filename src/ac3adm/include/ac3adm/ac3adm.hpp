@@ -13,7 +13,7 @@
 // sub-4 GB RIFF/WAVE carrying the same chunks) file into an AdmDocument -
 // the ADM object graph plus the <chna> join table plus the decoded PCM.
 //
-// Roadmap item B1 phase 1 of 3 (see ROADMAP.md's "ADM BWF reader feeding the
+// ADM BWF reader, phase 1 (the ADM BWF reader feeding the
 // JOC encoder" entry): this module knows nothing about AC-3, E-AC-3 or the
 // JOC/Atmos object layer - it is a container + XML metadata reader only, the
 // same "codec-blind" shape as matroska::matroska, mp4::mp4 and
@@ -33,43 +33,43 @@
 // Primary sources these two libraries themselves implement, and that this
 // module's own translation code (src/ac3adm/src/adm_model.cpp) cites where
 // it makes a choice beyond "trust the library"):
-//   - Recommendation ITU-R BS.2088-1 (10/2019), Annex 1: the BW64 container
-//     - <ds64>, <fmt>, <data>, <chna>, <axml> chunk layouts.
-//   - Recommendation ITU-R BS.2076-2 (10/2019), Annex 1: the Audio
-//     Definition Model XML schema (audioProgramme/audioContent/audioObject/
-//     audioPackFormat/audioChannelFormat/audioBlockFormat/audioStreamFormat/
-//     audioTrackFormat/audioTrackUID) and its ID/coordinate/time-format
-//     conventions.
+// - Recommendation ITU-R BS.2088-1 (10/2019), Annex 1: the BW64 container
+// - <ds64>, <fmt>, <data>, <chna>, <axml> chunk layouts.
+// - Recommendation ITU-R BS.2076-2 (10/2019), Annex 1: the Audio
+// Definition Model XML schema (audioProgramme/audioContent/audioObject/
+// audioPackFormat/audioChannelFormat/audioBlockFormat/audioStreamFormat/
+// audioTrackFormat/audioTrackUID) and its ID/coordinate/time-format
+// conventions.
 
 namespace ac3adm {
 
 enum class AdmError : std::uint8_t {
-    kCannotOpen,        // path could not be opened for reading, OR libbw64 opened it and then
-                         // rejected it (not RIFF at all, a missing mandatory chunk, an
-                         // unsupported <fmt > format) - all reported through the same untyped
-                         // exception family, with no distinguishing type this module could map
-                         // from, so every case in that family collapses to kCannotOpen rather
-                         // than inventing false precision - see adm.cpp's own comment on
-                         // parse_bw64_path
-    kNotRiff,            // the file's chunk table is internally inconsistent - a chunk other
-                         // than <data> declaring more bytes than the file contains, which
-                         // adm.cpp's chunk_sizes_fit() refuses before libbw64 can allocate from
-                         // that number
-    kMalformedXml,       // <axml> content failed to parse: genuinely malformed XML (an
-                         // unterminated tag, say), OR well-formed XML missing a mandatory ADM
-                         // attribute/element - libadm's own parser reports both through the same
-                         // plain, untyped std::runtime_error (confirmed directly: a missing
-                         // audioObjectID surfaces exactly this way, not as one of libadm's own
-                         // typed exceptions), so this module cannot reliably tell them apart
-                         // and does not claim to.
-    kMalformedAdm,       // libadm rejected the document with one of its own typed
-                         // adm::error::AdmException diagnostics - duplicate IDs, an unresolved
-                         // reference, an invalid enumerated value, the audioFormatExtended root
-                         // not found, ...
-    kOther,              // any other failure surfaced by libbw64/libadm; see the exception message
-                         // this can't carry - kept broad deliberately since neither library's
-                         // own exception hierarchy is exposed through this API (see this
-                         // header's own top comment on why not).
+ kCannotOpen, // path could not be opened for reading, OR libbw64 opened it and then
+ // rejected it (not RIFF at all, a missing mandatory chunk, an
+ // unsupported <fmt > format) - all reported through the same untyped
+ // exception family, with no distinguishing type this module could map
+ // from, so every case in that family collapses to kCannotOpen rather
+ // than inventing false precision - see adm.cpp's own comment on
+ // parse_bw64_path
+ kNotRiff, // the file's chunk table is internally inconsistent - a chunk other
+ // than <data> declaring more bytes than the file contains, which
+ // adm.cpp's chunk_sizes_fit() refuses before libbw64 can allocate from
+ // that number
+ kMalformedXml, // <axml> content failed to parse: genuinely malformed XML (an
+ // unterminated tag, say), OR well-formed XML missing a mandatory ADM
+ // attribute/element - libadm's own parser reports both through the same
+ // plain, untyped std::runtime_error (confirmed directly: a missing
+ // audioObjectID surfaces exactly this way, not as one of libadm's own
+ // typed exceptions), so this module cannot reliably tell them apart
+ // and does not claim to.
+ kMalformedAdm, // libadm rejected the document with one of its own typed
+ // adm::error::AdmException diagnostics - duplicate IDs, an unresolved
+ // reference, an invalid enumerated value, the audioFormatExtended root
+ // not found, ...
+ kOther, // any other failure surfaced by libbw64/libadm; see the exception message
+ // this can't carry - kept broad deliberately since neither library's
+ // own exception hierarchy is exposed through this API (see this
+ // header's own top comment on why not).
 };
 
 [[nodiscard]] AC3ADM_EXPORT std::string_view describe(AdmError error);
@@ -85,24 +85,24 @@ enum class AdmError : std::uint8_t {
 // directly.
 [[nodiscard]] AC3ADM_EXPORT std::expected<AdmDocument, AdmError> parse_bw64(std::istream& in);
 
-// Roadmap item IM2 ("JOC -> ADM BWF writer"): the write-side counterpart of parse_bw64, using the
+// feature IM2 ("JOC -> ADM BWF writer"): the write-side counterpart of parse_bw64, using the
 // same two vendored libraries in the other direction - libadm's document-builder API
 // (adm::AudioObject::create() and friends, see src/ac3adm/src/adm_model.cpp) to turn an AdmModel
 // into a libadm adm::Document, adm::writeXml() to serialize it, and libbw64's Bw64Writer
 // (bw64::writeFile()) to write the BW64 container (<fmt >, <chna>, <axml>, <data>).
 enum class AdmWriteError : std::uint8_t {
-    kInvalidDocument,  // an AdmModel cross-reference (a *_refs entry, or an AdmDocument::chna
-                       // entry's uid) did not resolve to another element `document` itself
-                       // carries, or named an element type this writer does not support (Matrix/
-                       // HOA/Binaural channel/pack formats, nested audioObject/audioPackFormat
-                       // references, a block whose `position` is polar rather than cartesian -
-                       // this writer only emits the Dolby Atmos Master ADM Profile's cartesian
-                       // shape). A caller bug, not a hostile-input case: unlike parse_bw64's
-                       // AdmError, nothing here comes from an untrusted file.
-    kCannotOpen,       // the output path could not be opened for writing
-    kOther,            // any other failure surfaced by libbw64/libadm; see the exception message
-                       // this can't carry - kept broad deliberately, same reasoning as AdmError::
-                       // kOther above.
+ kInvalidDocument, // an AdmModel cross-reference (a *_refs entry, or an AdmDocument::chna
+ // entry's uid) did not resolve to another element `document` itself
+ // carries, or named an element type this writer does not support (Matrix/
+ // HOA/Binaural channel/pack formats, nested audioObject/audioPackFormat
+ // references, a block whose `position` is polar rather than cartesian -
+ // this writer only emits the Dolby Atmos Master ADM Profile's cartesian
+ // shape). A caller bug, not a hostile-input case: unlike parse_bw64's
+ // AdmError, nothing here comes from an untrusted file.
+ kCannotOpen, // the output path could not be opened for writing
+ kOther, // any other failure surfaced by libbw64/libadm; see the exception message
+ // this can't carry - kept broad deliberately, same reasoning as AdmError::
+ // kOther above.
 };
 
 [[nodiscard]] AC3ADM_EXPORT std::string_view describe(AdmWriteError error);
@@ -126,6 +126,6 @@ enum class AdmWriteError : std::uint8_t {
 // function derives the real trackRef/packRef strings itself from the resolved AudioTrackUid's own
 // references, so a caller populating an AdmDocument purely to write it may leave both empty.
 [[nodiscard]] AC3ADM_EXPORT std::expected<void, AdmWriteError> write_bw64(const std::string& path,
-                                                                          const AdmDocument& document);
+ const AdmDocument& document);
 
-}  // namespace ac3adm
+} // namespace ac3adm

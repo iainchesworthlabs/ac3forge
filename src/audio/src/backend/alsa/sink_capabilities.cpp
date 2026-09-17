@@ -1,6 +1,6 @@
 #include "ac3/audio/sink_capabilities.hpp"
 
-// The ALSA EDID/ELD backend (roadmap UX9). CMake compiles this directory's
+// The ALSA EDID/ELD backend (legacy item UX9). CMake compiles this directory's
 // sink_capabilities.cpp on the same host that gets passthrough.cpp's real
 // implementation, so there is no #ifdef - the file's path is what says
 // "ALSA".
@@ -39,46 +39,46 @@ namespace fs = std::filesystem;
 // not need to be - a PCM has exactly one), so this looks for whichever file
 // starts with "eld#<device>." rather than assuming a port number.
 [[nodiscard]] std::optional<fs::path> find_eld_file(const alsa::Candidate& candidate) {
-    std::error_code ec;
-    const fs::path card_dir = fs::path("/proc/asound") / candidate.card_id;
-    const std::string prefix = fmt::format("eld#{}.", candidate.device);
-    fs::directory_iterator it(card_dir, ec);
-    if (ec) {
-        return std::nullopt;
-    }
-    for (const auto& entry : it) {
-        if (entry.path().filename().string().starts_with(prefix)) {
-            return entry.path();
-        }
-    }
-    return std::nullopt;
+ std::error_code ec;
+ const fs::path card_dir = fs::path("/proc/asound") / candidate.card_id;
+ const std::string prefix = fmt::format("eld#{}.", candidate.device);
+ fs::directory_iterator it(card_dir, ec);
+ if (ec) {
+ return std::nullopt;
+ }
+ for (const auto& entry : it) {
+ if (entry.path().filename().string().starts_with(prefix)) {
+ return entry.path();
+ }
+ }
+ return std::nullopt;
 }
 
-}  // namespace
+} // namespace
 
 std::expected<SinkAudioCapabilities, EdidError> read_sink_capabilities(
-    const std::string& device_id) {
-    for (const auto& candidate : alsa::find_candidates()) {
-        if (candidate.name != device_id) {
-            continue;
-        }
-        const auto eld_file = find_eld_file(candidate);
-        if (!eld_file) {
-            // A real, expected outcome: the port has no display/AVR attached
-            // (or the driver has not populated an eld# file for it yet, e.g.
-            // an S/PDIF output that carries no ELD at all), not a failure -
-            // see EdidError::kNoEdid's own doc comment.
-            return std::unexpected(EdidError::kNoEdid);
-        }
-        std::ifstream in(*eld_file);
-        if (!in) {
-            return std::unexpected(EdidError::kNoEdid);
-        }
-        std::ostringstream contents;
-        contents << in.rdbuf();
-        return alsa::parse_eld_proc_text(contents.str());
-    }
-    return std::unexpected(EdidError::kDeviceNotFound);
+ const std::string& device_id) {
+ for (const auto& candidate : alsa::find_candidates()) {
+ if (candidate.name != device_id) {
+ continue;
+ }
+ const auto eld_file = find_eld_file(candidate);
+ if (!eld_file) {
+ // A real, expected outcome: the port has no display/AVR attached
+ // (or the driver has not populated an eld# file for it yet, e.g.
+ // an S/PDIF output that carries no ELD at all), not a failure -
+ // see EdidError::kNoEdid's own doc comment.
+ return std::unexpected(EdidError::kNoEdid);
+ }
+ std::ifstream in(*eld_file);
+ if (!in) {
+ return std::unexpected(EdidError::kNoEdid);
+ }
+ std::ostringstream contents;
+ contents << in.rdbuf();
+ return alsa::parse_eld_proc_text(contents.str());
+ }
+ return std::unexpected(EdidError::kDeviceNotFound);
 }
 
-}  // namespace ac3::audio
+} // namespace ac3::audio

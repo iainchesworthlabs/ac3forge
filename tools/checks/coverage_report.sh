@@ -11,7 +11,7 @@
 # src/forge - and "which module is thin" is exactly the question a
 # per-component table exists to answer.
 #
-# apps/cli is gated here too (roadmap VX15), not just src/. It is about 6,500
+# apps/cli is gated here too (coverage floors), not just src/. It is about 6,500
 # lines across seven command modules, it is the executable the codec matrix,
 # the gold-reference gate and the encoder-space fuzzer all drive, and it had
 # no floor at all - while the two CLI bugs this project has actually shipped
@@ -80,10 +80,10 @@ if [[ ! -f CMakePresets.json ]]; then
 fi
 
 # Component floors, one row per component: <path> <line%> <branch%>. A path,
-# not a bare name, since roadmap VX15 added apps/ alongside src/.
+# not a bare name, since coverage floors added apps/ alongside src/.
 #
 # Calibrated 2026-08-20 (src/*) and 2026-08-24 (apps/cli, re-measured after
-# merging roadmap IO2's container-reader/probe work) against WSL2 runs on
+# merging container readers (mkv/mp4/ts)'s container-reader/probe work) against WSL2 runs on
 # the CI toolchain pins (gcov 15.2.0, gcovr 8.6), measured per component as:
 #
 #   forge 93.2/86.0 audio 34.2/22.8   signing 89.2/68.9  matroska 92.9/87.7

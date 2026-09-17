@@ -29,11 +29,11 @@ namespace {
 // §6.6.4: joc_mix_mtx_dq = (q - nquant/2) * 820 / (4096 * (1 + quant_idx)).
 [[nodiscard]] constexpr int quant_steps(bool fine) { return fine ? 192 : 96; }
 [[nodiscard]] constexpr double quant_scale(bool fine) {
-    return 820.0 / (4096.0 * (fine ? 2.0 : 1.0));
+ return 820.0 / (4096.0 * (fine ? 2.0 : 1.0));
 }
 
 void put_code(BitWriter& w, const HuffCode& code) {
-    w.put(code.code, code.bits);
+ w.put(code.code, code.bits);
 }
 
 // §6.6.3 Pseudocode 4, decoding by longest match rather than walking a tree:
@@ -44,305 +44,305 @@ void put_code(BitWriter& w, const HuffCode& code) {
 // them, not with build_payload's own logic, is what that test proved). This
 // promotes the same algorithm to production decode.
 [[nodiscard]] int huff_decode(std::span<const HuffCode> table, BitReader& r) {
-    std::uint32_t accumulated = 0;
-    for (int bits = 1; bits <= 32; ++bits) {
-        accumulated = (accumulated << 1) | r.read_bit();
-        if (r.overflowed()) {
-            return -1;
-        }
-        for (std::size_t value = 0; value < table.size(); ++value) {
-            if (table[value].bits == bits && table[value].code == accumulated) {
-                return static_cast<int>(value);
-            }
-        }
-    }
-    return -1;
+ std::uint32_t accumulated = 0;
+ for (int bits = 1; bits <= 32; ++bits) {
+ accumulated = (accumulated << 1) | r.read_bit();
+ if (r.overflowed()) {
+ return -1;
+ }
+ for (std::size_t value = 0; value < table.size(); ++value) {
+ if (table[value].bits == bits && table[value].code == accumulated) {
+ return static_cast<int>(value);
+ }
+ }
+ }
+ return -1;
 }
 
-}  // namespace
+} // namespace
 
 int quantize(double coefficient, bool fine_quant) {
-    const int steps = quant_steps(fine_quant);
-    const long code = std::lround(coefficient / quant_scale(fine_quant)) + steps / 2;
-    return static_cast<int>(std::clamp(code, 0L, static_cast<long>(steps) - 1));
+ const int steps = quant_steps(fine_quant);
+ const long code = std::lround(coefficient / quant_scale(fine_quant)) + steps / 2;
+ return static_cast<int>(std::clamp(code, 0L, static_cast<long>(steps) - 1));
 }
 
 double dequantize(int code, bool fine_quant) {
-    // Both step counts are even, so the origin is exact and the subtraction
-    // stays in integers until the scale is applied.
-    const int origin = quant_steps(fine_quant) / 2;
-    return static_cast<double>(code - origin) * quant_scale(fine_quant);
+ // Both step counts are even, so the origin is exact and the subtraction
+ // stays in integers until the scale is applied.
+ const int origin = quant_steps(fine_quant) / 2;
+ return static_cast<double>(code - origin) * quant_scale(fine_quant);
 }
 
 std::vector<std::byte> build_payload(const FrameParameters& params) {
-    assert(params.objects >= 1 && params.objects <= kMaxObjects);
-    assert(params.channels == kNumChannels5X);
-    assert(params.matrix.size() == params.coefficient_count());
+ assert(params.objects >= 1 && params.objects <= kMaxObjects);
+ assert(params.channels == kNumChannels5X);
+ assert(params.matrix.size() == params.coefficient_count());
 
-    const int bands = params.bands();
-    const int steps = quant_steps(params.fine_quant);
-    // The two tables differ in length, so they only meet as a span.
-    const std::span<const HuffCode> table =
-        params.fine_quant ? std::span<const HuffCode>{kMtxFine}
-                          : std::span<const HuffCode>{kMtxCoarse};
+ const int bands = params.bands();
+ const int steps = quant_steps(params.fine_quant);
+ // The two tables differ in length, so they only meet as a span.
+ const std::span<const HuffCode> table =
+ params.fine_quant ? std::span<const HuffCode>{kMtxFine}
+ : std::span<const HuffCode>{kMtxCoarse};
 
-    BitWriter w;
+ BitWriter w;
 
-    // --- joc_header (§6.2.2) ---
-    w.put(kDmxConfig5X, 3);
-    w.put(static_cast<std::uint32_t>(params.objects - 1), 6);  // joc_num_objects_bits
-    w.put(0, 3);  // joc_ext_config_idx: no extensional configuration data
+ // --- joc_header (§6.2.2) ---
+ w.put(kDmxConfig5X, 3);
+ w.put(static_cast<std::uint32_t>(params.objects - 1), 6); // joc_num_objects_bits
+ w.put(0, 3); // joc_ext_config_idx: no extensional configuration data
 
-    // --- joc_info (§6.2.3) ---
-    // §6.3.3.2's equation renders ambiguously in the published PDF - the
-    // fraction, the power of two and the bracketing all collide - but every
-    // reading of it agrees that zero for both fields is joc_clipgain = 1. This
-    // encoder applies no clip protection, so unity is the honest value and the
-    // ambiguity does not bite.
-    w.put(0, 3);  // joc_clipgain_x_bits
-    w.put(0, 5);  // joc_clipgain_y_bits
-    w.put(static_cast<std::uint32_t>(params.seq_count), 10);
+ // --- joc_info (§6.2.3) ---
+ // §6.3.3.2's equation renders ambiguously in the published PDF - the
+ // fraction, the power of two and the bracketing all collide - but every
+ // reading of it agrees that zero for both fields is joc_clipgain = 1. This
+ // encoder applies no clip protection, so unity is the honest value and the
+ // ambiguity does not bite.
+ w.put(0, 3); // joc_clipgain_x_bits
+ w.put(0, 5); // joc_clipgain_y_bits
+ w.put(static_cast<std::uint32_t>(params.seq_count), 10);
 
-    for (int object = 0; object < params.objects; ++object) {
-        w.put(1, 1);  // b_joc_obj_present: every object is coded every frame
-        w.put(static_cast<std::uint32_t>(params.num_bands_idx), 3);
-        // Sparse mode codes one channel per band and gives every other channel
-        // a fixed value - and that value is joc_num_quant/2 + 2 (§6.6.2), not
-        // the quantizer's zero, so the channels it does not name still leak
-        // about 0,4 into the object. The whole-matrix mode says what it means
-        // for every channel, which for a downmix this encoder built itself is
-        // both cheap enough and exactly right.
-        w.put(0, 1);  // b_joc_sparse
-        w.put(params.fine_quant ? 1u : 0u, 1);  // joc_num_quant_idx
+ for (int object = 0; object < params.objects; ++object) {
+ w.put(1, 1); // b_joc_obj_present: every object is coded every frame
+ w.put(static_cast<std::uint32_t>(params.num_bands_idx), 3);
+ // Sparse mode codes one channel per band and gives every other channel
+ // a fixed value - and that value is joc_num_quant/2 + 2 (§6.6.2), not
+ // the quantizer's zero, so the channels it does not name still leak
+ // about 0,4 into the object. The whole-matrix mode says what it means
+ // for every channel, which for a downmix this encoder built itself is
+ // both cheap enough and exactly right.
+ w.put(0, 1); // b_joc_sparse
+ w.put(params.fine_quant ? 1u : 0u, 1); // joc_num_quant_idx
 
-        // --- joc_data_point_info (§6.2.4) ---
-        // Smooth interpolation with a single data point: §6.6.5 then ramps the
-        // matrix linearly from the previous frame's values across all the
-        // frame's QMF timeslots. A steep slope would step at the frame edge,
-        // which is audible on a moving object; two data points would let the
-        // ramp bend mid-frame, which one OAMD update per frame cannot use.
-        w.put(0, 1);  // joc_slope_idx: smooth
-        w.put(0, 1);  // joc_num_dpoints_bits => one data point
-    }
+ // --- joc_data_point_info (§6.2.4) ---
+ // Smooth interpolation with a single data point: §6.6.5 then ramps the
+ // matrix linearly from the previous frame's values across all the
+ // frame's QMF timeslots. A steep slope would step at the frame edge,
+ // which is audible on a moving object; two data points would let the
+ // ramp bend mid-frame, which one OAMD update per frame cannot use.
+ w.put(0, 1); // joc_slope_idx: smooth
+ w.put(0, 1); // joc_num_dpoints_bits => one data point
+ }
 
-    // --- joc_data (§6.2.5) ---
-    // §6.6.2 Pseudocode 3 runs the differential the other way: the decoder
-    // accumulates modulo nquant along the bands, starting from nquant/2 - the
-    // quantizer's zero - so the first band's codeword is the coefficient
-    // itself and every later one is a step. Working modulo nquant means the
-    // difference always fits the alphabet, however far apart two bands are.
-    for (int object = 0; object < params.objects; ++object) {
-        // One offset walk per object, not one per coefficient encoded - see
-        // FrameParameters::ObjectMatrixView.
-        const auto view = params.object_view(object);
-        for (int channel = 0; channel < params.channels; ++channel) {
-            int previous = steps / 2;
-            for (int band = 0; band < bands; ++band) {
-                const int code = quantize(view.at(0, channel, band), params.fine_quant);
-                const int difference = ((code - previous) % steps + steps) % steps;
-                put_code(w, table[static_cast<std::size_t>(difference)]);
-                previous = code;
-            }
-        }
-    }
+ // --- joc_data (§6.2.5) ---
+ // §6.6.2 Pseudocode 3 runs the differential the other way: the decoder
+ // accumulates modulo nquant along the bands, starting from nquant/2 - the
+ // quantizer's zero - so the first band's codeword is the coefficient
+ // itself and every later one is a step. Working modulo nquant means the
+ // difference always fits the alphabet, however far apart two bands are.
+ for (int object = 0; object < params.objects; ++object) {
+ // One offset walk per object, not one per coefficient encoded - see
+ // FrameParameters::ObjectMatrixView.
+ const auto view = params.object_view(object);
+ for (int channel = 0; channel < params.channels; ++channel) {
+ int previous = steps / 2;
+ for (int band = 0; band < bands; ++band) {
+ const int code = quantize(view.at(0, channel, band), params.fine_quant);
+ const int difference = ((code - previous) % steps + steps) % steps;
+ put_code(w, table[static_cast<std::size_t>(difference)]);
+ previous = code;
+ }
+ }
+ }
 
-    return w.take();  // padding_bits (§6.2.1) to the byte boundary
+ return w.take(); // padding_bits (§6.2.1) to the byte boundary
 }
 
 std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload) {
-    BitReader r{payload};
+ BitReader r{payload};
 
-    // --- joc_header (§6.2.2) ---
-    const int dmx_config_idx = static_cast<int>(r.read(3));
-    const int channels = dmx_channel_count(dmx_config_idx);
-    if (channels == 0) {
-        // Table 48 gives indices 5..7 no channel count, so joc_data has no
-        // loop bound and nothing after this point can be located.
-        return std::nullopt;
-    }
-    const int objects = static_cast<int>(r.read(6)) + 1;  // joc_num_objects_bits
-    if (objects > kMaxObjects) {
-        return std::nullopt;
-    }
-    if (r.read(3) != 0) {
-        // joc_ext_config_idx. Table 49 reserves every nonzero value and
-        // §6.2.1 gives joc_ext_data() no syntax and no length, so there is
-        // nothing to read and nothing to skip.
-        return std::nullopt;
-    }
+ // --- joc_header (§6.2.2) ---
+ const int dmx_config_idx = static_cast<int>(r.read(3));
+ const int channels = dmx_channel_count(dmx_config_idx);
+ if (channels == 0) {
+ // Table 48 gives indices 5..7 no channel count, so joc_data has no
+ // loop bound and nothing after this point can be located.
+ return std::nullopt;
+ }
+ const int objects = static_cast<int>(r.read(6)) + 1; // joc_num_objects_bits
+ if (objects > kMaxObjects) {
+ return std::nullopt;
+ }
+ if (r.read(3) != 0) {
+ // joc_ext_config_idx. Table 49 reserves every nonzero value and
+ // §6.2.1 gives joc_ext_data() no syntax and no length, so there is
+ // nothing to read and nothing to skip.
+ return std::nullopt;
+ }
 
-    // --- joc_info (§6.2.3) ---
-    // §6.3.3.2 renders ambiguously in the published PDF - the fraction, the
-    // power of two and the bracketing all collide - and the only reading the
-    // fragments support, (1 + y/32) * 2^x, does not agree with the clause's
-    // own stated range of [1; 8,75]: a real DEE stream sends x = 4, y = 0,
-    // which that reading makes 16. Nothing in TS 103 420 says where in the
-    // decode chain the gain is applied either. So it is computed, reported
-    // and left alone rather than folded into audio on a formula this
-    // codebase cannot verify.
-    const auto clipgain_x = r.read(3);
-    const auto clipgain_y = r.read(5);
-    const double clip_gain =
-        (1.0 + static_cast<double>(clipgain_y) / 32.0) * std::exp2(static_cast<double>(clipgain_x));
-    const int seq_count = static_cast<int>(r.read(10));
+ // --- joc_info (§6.2.3) ---
+ // §6.3.3.2 renders ambiguously in the published PDF - the fraction, the
+ // power of two and the bracketing all collide - and the only reading the
+ // fragments support, (1 + y/32) * 2^x, does not agree with the clause's
+ // own stated range of [1; 8,75]: a real DEE stream sends x = 4, y = 0,
+ // which that reading makes 16. Nothing in TS 103 420 says where in the
+ // decode chain the gain is applied either. So it is computed, reported
+ // and left alone rather than folded into audio on a formula this
+ // codebase cannot verify.
+ const auto clipgain_x = r.read(3);
+ const auto clipgain_y = r.read(5);
+ const double clip_gain =
+ (1.0 + static_cast<double>(clipgain_y) / 32.0) * std::exp2(static_cast<double>(clipgain_x));
+ const int seq_count = static_cast<int>(r.read(10));
 
-    FrameParameters params;
-    params.objects = objects;
-    params.channels = channels;
-    params.dmx_config_idx = dmx_config_idx;
-    params.clip_gain = clip_gain;
-    params.seq_count = seq_count;
-    params.shapes.assign(static_cast<std::size_t>(objects), ObjectShape{});
+ FrameParameters params;
+ params.objects = objects;
+ params.channels = channels;
+ params.dmx_config_idx = dmx_config_idx;
+ params.clip_gain = clip_gain;
+ params.seq_count = seq_count;
+ params.shapes.assign(static_cast<std::size_t>(objects), ObjectShape{});
 
-    // Object 0's own fields, captured as scalars rather than read back from
-    // `shapes` afterward - `objects` is always >= 1 (joc_num_objects_bits + 1)
-    // so params.shapes is never empty, but a read through it later is exactly
-    // the shape GCC's -Wnull-dereference cannot see through at -O3.
-    int first_num_bands_idx = params.num_bands_idx;
-    bool first_fine_quant = params.fine_quant;
+ // Object 0's own fields, captured as scalars rather than read back from
+ // `shapes` afterward - `objects` is always >= 1 (joc_num_objects_bits + 1)
+ // so params.shapes is never empty, but a read through it later is exactly
+ // the shape GCC's -Wnull-dereference cannot see through at -O3.
+ int first_num_bands_idx = params.num_bands_idx;
+ bool first_fine_quant = params.fine_quant;
 
-    for (int object = 0; object < objects; ++object) {
-        auto& shape = params.shapes[static_cast<std::size_t>(object)];
-        shape.present = r.read(1) != 0;  // b_joc_obj_present
-        if (!shape.present) {
-            shape.data_points = 0;
-            continue;
-        }
-        shape.num_bands_idx = static_cast<int>(r.read(3));
-        shape.sparse = r.read(1) != 0;             // b_joc_sparse
-        shape.fine_quant = r.read(1) != 0;         // joc_num_quant_idx
-        // --- joc_data_point_info (§6.2.4) ---
-        shape.steep = r.read(1) != 0;              // joc_slope_idx, Table 52
-        shape.data_points = static_cast<int>(r.read(1)) + 1;
-        if (shape.steep) {
-            for (int dp = 0; dp < shape.data_points; ++dp) {
-                // §6.3.4.4: joc_offset_ts = joc_offset_ts_bits + 1.
-                shape.offset_ts[static_cast<std::size_t>(dp)] = static_cast<int>(r.read(5)) + 1;
-            }
-        }
-        if (object == 0) {
-            first_num_bands_idx = shape.num_bands_idx;
-            first_fine_quant = shape.fine_quant;
-        }
-    }
+ for (int object = 0; object < objects; ++object) {
+ auto& shape = params.shapes[static_cast<std::size_t>(object)];
+ shape.present = r.read(1) != 0; // b_joc_obj_present
+ if (!shape.present) {
+ shape.data_points = 0;
+ continue;
+ }
+ shape.num_bands_idx = static_cast<int>(r.read(3));
+ shape.sparse = r.read(1) != 0; // b_joc_sparse
+ shape.fine_quant = r.read(1) != 0; // joc_num_quant_idx
+ // --- joc_data_point_info (§6.2.4) ---
+ shape.steep = r.read(1) != 0; // joc_slope_idx, Table 52
+ shape.data_points = static_cast<int>(r.read(1)) + 1;
+ if (shape.steep) {
+ for (int dp = 0; dp < shape.data_points; ++dp) {
+ // §6.3.4.4: joc_offset_ts = joc_offset_ts_bits + 1.
+ shape.offset_ts[static_cast<std::size_t>(dp)] = static_cast<int>(r.read(5)) + 1;
+ }
+ }
+ if (object == 0) {
+ first_num_bands_idx = shape.num_bands_idx;
+ first_fine_quant = shape.fine_quant;
+ }
+ }
 
-    // The frame-wide fields stay meaningful for the uniform case every
-    // in-repo caller works with; `shapes` is authoritative regardless.
-    params.num_bands_idx = first_num_bands_idx;
-    params.fine_quant = first_fine_quant;
-    params.matrix.assign(params.coefficient_count(), 0.0);
+ // The frame-wide fields stay meaningful for the uniform case every
+ // in-repo caller works with; `shapes` is authoritative regardless.
+ params.num_bands_idx = first_num_bands_idx;
+ params.fine_quant = first_fine_quant;
+ params.matrix.assign(params.coefficient_count(), 0.0);
 
-    // --- joc_data (§6.2.5) ---
-    for (int object = 0; object < objects; ++object) {
-        const auto& shape = params.shapes[static_cast<std::size_t>(object)];
-        if (!shape.present) {
-            continue;
-        }
-        const int steps = quant_steps(shape.fine_quant);
-        const int bands = shape.bands();
-        // One offset walk per object rather than one per coefficient written
-        // - parse fills channels * bands * data_points of them, and at()
-        // re-walks every earlier object's sizes on each call. See
-        // FrameParameters::ObjectMatrixView.
-        const auto wview = params.object_view_mut(object);
-        for (int dp = 0; dp < shape.data_points; ++dp) {
-            if (shape.sparse) {
-                // §6.2.5: one raw 3-bit channel index for band 0, then a
-                // Huffman codeword per remaining band, then one coefficient
-                // codeword per band. §6.6.2 Pseudocode 2 turns the pair into
-                // a single named channel per band, every other channel
-                // holding the sparse offset.
-                const std::span<const HuffCode> idx_table =
-                    channels == kNumChannels5X ? std::span<const HuffCode>{kIdx5ch}
-                                               : std::span<const HuffCode>{kIdx7ch};
-                std::array<int, 23> channel_idx{};  // kNumBands caps at 23
-                channel_idx[0] = static_cast<int>(r.read(3));
-                if (channel_idx[0] >= channels) {
-                    return std::nullopt;
-                }
-                for (int band = 1; band < bands; ++band) {
-                    const int value = huff_decode(idx_table, r);
-                    if (value < 0) {
-                        return std::nullopt;
-                    }
-                    channel_idx[static_cast<std::size_t>(band)] = value;
-                }
-                // §6.6.2 offset: 50 coarse / 100 fine, which is NOT the
-                // quantizer's zero - both dequantize to about +0,4, so the
-                // channels a band does not name still leak into the object.
-                const int sparse_offset = shape.fine_quant ? 100 : 50;
-                const std::span<const HuffCode> vec_table =
-                    shape.fine_quant ? std::span<const HuffCode>{kVecFine}
-                                     : std::span<const HuffCode>{kVecCoarse};
-                for (int channel = 0; channel < channels; ++channel) {
-                    for (int band = 0; band < bands; ++band) {
-                        wview.at(dp, channel, band) =
-                            dequantize(sparse_offset, shape.fine_quant);
-                    }
-                }
-                // Pseudocode 2's coefficient differential is against
-                // joc_mix_mtx_q[ch][pb-1] for the channel THIS band names -
-                // which is the previous band's decoded value only if that
-                // band named the same channel, and the sparse offset
-                // otherwise, since that is what every unnamed channel holds.
-                // A single running "previous" would carry a value across a
-                // channel change that the clause never puts there.
-                std::array<int, kMaxChannels> previous{};
-                previous.fill(sparse_offset);
-                for (int band = 0; band < bands; ++band) {
-                    const int value = huff_decode(vec_table, r);
-                    if (value < 0) {
-                        return std::nullopt;
-                    }
-                    // Pseudocode 2 names the RAW transmitted index of the
-                    // previous band here, not the reconstructed one - and
-                    // joc_channel_idx_mod is a scalar recomputed each band,
-                    // with no array of reconstructed values to accumulate
-                    // from, so that is deliberate rather than a typo.
-                    const int raw = channel_idx[static_cast<std::size_t>(band)];
-                    const int named =
-                        band == 0 ? raw
-                                  : (channel_idx[static_cast<std::size_t>(band - 1)] + raw) %
-                                        channels;
-                    const int code =
-                        (previous[static_cast<std::size_t>(named)] + value) % steps;
-                    previous.fill(sparse_offset);
-                    previous[static_cast<std::size_t>(named)] = code;
-                    wview.at(dp, named, band) = dequantize(code, shape.fine_quant);
-                }
-            } else {
-                // §6.6.2 Pseudocode 3 runs the differential the other way:
-                // the decoder accumulates modulo nquant along the bands,
-                // starting from nquant/2 - the quantizer's zero - so the
-                // first band's codeword is the coefficient itself and every
-                // later one is a step.
-                const std::span<const HuffCode> table =
-                    shape.fine_quant ? std::span<const HuffCode>{kMtxFine}
-                                     : std::span<const HuffCode>{kMtxCoarse};
-                for (int channel = 0; channel < channels; ++channel) {
-                    int previous = steps / 2;
-                    for (int band = 0; band < bands; ++band) {
-                        const int difference = huff_decode(table, r);
-                        if (difference < 0) {
-                            return std::nullopt;
-                        }
-                        const int code = (previous + difference) % steps;
-                        previous = code;
-                        wview.at(dp, channel, band) = dequantize(code, shape.fine_quant);
-                    }
-                }
-            }
-        }
-    }
+ // --- joc_data (§6.2.5) ---
+ for (int object = 0; object < objects; ++object) {
+ const auto& shape = params.shapes[static_cast<std::size_t>(object)];
+ if (!shape.present) {
+ continue;
+ }
+ const int steps = quant_steps(shape.fine_quant);
+ const int bands = shape.bands();
+ // One offset walk per object rather than one per coefficient written
+ // - parse fills channels * bands * data_points of them, and at()
+ // re-walks every earlier object's sizes on each call. See
+ // FrameParameters::ObjectMatrixView.
+ const auto wview = params.object_view_mut(object);
+ for (int dp = 0; dp < shape.data_points; ++dp) {
+ if (shape.sparse) {
+ // §6.2.5: one raw 3-bit channel index for band 0, then a
+ // Huffman codeword per remaining band, then one coefficient
+ // codeword per band. §6.6.2 Pseudocode 2 turns the pair into
+ // a single named channel per band, every other channel
+ // holding the sparse offset.
+ const std::span<const HuffCode> idx_table =
+ channels == kNumChannels5X ? std::span<const HuffCode>{kIdx5ch}
+ : std::span<const HuffCode>{kIdx7ch};
+ std::array<int, 23> channel_idx{}; // kNumBands caps at 23
+ channel_idx[0] = static_cast<int>(r.read(3));
+ if (channel_idx[0] >= channels) {
+ return std::nullopt;
+ }
+ for (int band = 1; band < bands; ++band) {
+ const int value = huff_decode(idx_table, r);
+ if (value < 0) {
+ return std::nullopt;
+ }
+ channel_idx[static_cast<std::size_t>(band)] = value;
+ }
+ // §6.6.2 offset: 50 coarse / 100 fine, which is NOT the
+ // quantizer's zero - both dequantize to about +0,4, so the
+ // channels a band does not name still leak into the object.
+ const int sparse_offset = shape.fine_quant ? 100 : 50;
+ const std::span<const HuffCode> vec_table =
+ shape.fine_quant ? std::span<const HuffCode>{kVecFine}
+ : std::span<const HuffCode>{kVecCoarse};
+ for (int channel = 0; channel < channels; ++channel) {
+ for (int band = 0; band < bands; ++band) {
+ wview.at(dp, channel, band) =
+ dequantize(sparse_offset, shape.fine_quant);
+ }
+ }
+ // Pseudocode 2's coefficient differential is against
+ // joc_mix_mtx_q[ch][pb-1] for the channel THIS band names -
+ // which is the previous band's decoded value only if that
+ // band named the same channel, and the sparse offset
+ // otherwise, since that is what every unnamed channel holds.
+ // A single running "previous" would carry a value across a
+ // channel change that the clause never puts there.
+ std::array<int, kMaxChannels> previous{};
+ previous.fill(sparse_offset);
+ for (int band = 0; band < bands; ++band) {
+ const int value = huff_decode(vec_table, r);
+ if (value < 0) {
+ return std::nullopt;
+ }
+ // Pseudocode 2 names the RAW transmitted index of the
+ // previous band here, not the reconstructed one - and
+ // joc_channel_idx_mod is a scalar recomputed each band,
+ // with no array of reconstructed values to accumulate
+ // from, so that is deliberate rather than a typo.
+ const int raw = channel_idx[static_cast<std::size_t>(band)];
+ const int named =
+ band == 0 ? raw
+ : (channel_idx[static_cast<std::size_t>(band - 1)] + raw) %
+ channels;
+ const int code =
+ (previous[static_cast<std::size_t>(named)] + value) % steps;
+ previous.fill(sparse_offset);
+ previous[static_cast<std::size_t>(named)] = code;
+ wview.at(dp, named, band) = dequantize(code, shape.fine_quant);
+ }
+ } else {
+ // §6.6.2 Pseudocode 3 runs the differential the other way:
+ // the decoder accumulates modulo nquant along the bands,
+ // starting from nquant/2 - the quantizer's zero - so the
+ // first band's codeword is the coefficient itself and every
+ // later one is a step.
+ const std::span<const HuffCode> table =
+ shape.fine_quant ? std::span<const HuffCode>{kMtxFine}
+ : std::span<const HuffCode>{kMtxCoarse};
+ for (int channel = 0; channel < channels; ++channel) {
+ int previous = steps / 2;
+ for (int band = 0; band < bands; ++band) {
+ const int difference = huff_decode(table, r);
+ if (difference < 0) {
+ return std::nullopt;
+ }
+ const int code = (previous + difference) % steps;
+ previous = code;
+ wview.at(dp, channel, band) = dequantize(code, shape.fine_quant);
+ }
+ }
+ }
+ }
+ }
 
-    // At most a byte of padding_bits should remain (§6.2.1), same bound
-    // tests/oba/test_oba.cpp's own encode-side test holds build_payload to - a
-    // corrupt object/band count that made this decode stop short leaves
-    // more than that unaccounted for.
-    if (r.overflowed() || payload.size() * 8 - r.bit_position() >= 8) {
-        return std::nullopt;
-    }
-    return params;
+ // At most a byte of padding_bits should remain (§6.2.1), same bound
+ // tests/oba/test_oba.cpp's own encode-side test holds build_payload to - a
+ // corrupt object/band count that made this decode stop short leaves
+ // more than that unaccounted for.
+ if (r.overflowed() || payload.size() * 8 - r.bit_position() >= 8) {
+ return std::nullopt;
+ }
+ return params;
 }
 
 namespace {
@@ -362,33 +362,33 @@ namespace {
 // flags to true, so a real decode never takes this branch and never pays for
 // them; a validation run does, and does not care.
 void forward_512(std::span<const recon_scalar_t, 512> windowed,
-                 std::span<recon_scalar_t, 256> coeffs, bool fast) {
-    if (fast) {
-        mdct512_forward(windowed, coeffs);
-        return;
-    }
-    std::array<double, 512> wide{};
-    std::array<double, 256> narrow{};
-    std::ranges::copy(windowed, wide.begin());
-    mdct512_forward(wide, narrow, /*fast=*/false);
-    for (std::size_t i = 0; i < narrow.size(); ++i) {
-        coeffs[i] = static_cast<recon_scalar_t>(narrow[i]);
-    }
+ std::span<recon_scalar_t, 256> coeffs, bool fast) {
+ if (fast) {
+ mdct512_forward(windowed, coeffs);
+ return;
+ }
+ std::array<double, 512> wide{};
+ std::array<double, 256> narrow{};
+ std::ranges::copy(windowed, wide.begin());
+ mdct512_forward(wide, narrow, /*fast=*/false);
+ for (std::size_t i = 0; i < narrow.size(); ++i) {
+ coeffs[i] = static_cast<recon_scalar_t>(narrow[i]);
+ }
 }
 
 void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
-                 std::span<recon_scalar_t, 512> x, bool fast) {
-    if (fast) {
-        imdct512_windowed(coeffs, x);
-        return;
-    }
-    std::array<double, 256> wide{};
-    std::array<double, 512> out{};
-    std::ranges::copy(coeffs, wide.begin());
-    imdct512_windowed(wide, out, /*fast=*/false);
-    for (std::size_t i = 0; i < out.size(); ++i) {
-        x[i] = static_cast<recon_scalar_t>(out[i]);
-    }
+ std::span<recon_scalar_t, 512> x, bool fast) {
+ if (fast) {
+ imdct512_windowed(coeffs, x);
+ return;
+ }
+ std::array<double, 256> wide{};
+ std::array<double, 512> out{};
+ std::ranges::copy(coeffs, wide.begin());
+ imdct512_windowed(wide, out, /*fast=*/false);
+ for (std::size_t i = 0; i < out.size(); ++i) {
+ x[i] = static_cast<recon_scalar_t>(out[i]);
+ }
 }
 
 
@@ -413,27 +413,27 @@ void inverse_512(std::span<const recon_scalar_t, 256> coeffs,
 // single-precision FPU that profile targets.
 template <typename Scalar>
 [[nodiscard]] Scalar interpolate(const ObjectShape& shape, Scalar previous,
-                                 const std::array<Scalar, kMaxDataPoints>& dq, int ts, int slots) {
-    if (!shape.steep) {
-        if (shape.data_points == 1) {
-            return previous + static_cast<Scalar>(ts + 1) * (dq[0] - previous) /
-                                  static_cast<Scalar>(slots);
-        }
-        const int half = slots / 2;
-        if (ts < half) {
-            return previous +
-                   static_cast<Scalar>(ts + 1) * (dq[0] - previous) / static_cast<Scalar>(half);
-        }
-        return dq[0] + static_cast<Scalar>(ts - half + 1) * (dq[1] - dq[0]) /
-                           static_cast<Scalar>(slots - half);
-    }
-    if (ts < shape.offset_ts[0]) {
-        return previous;
-    }
-    if (shape.data_points == 1 || ts < shape.offset_ts[1]) {
-        return dq[0];
-    }
-    return dq[1];
+ const std::array<Scalar, kMaxDataPoints>& dq, int ts, int slots) {
+ if (!shape.steep) {
+ if (shape.data_points == 1) {
+ return previous + static_cast<Scalar>(ts + 1) * (dq[0] - previous) /
+ static_cast<Scalar>(slots);
+ }
+ const int half = slots / 2;
+ if (ts < half) {
+ return previous +
+ static_cast<Scalar>(ts + 1) * (dq[0] - previous) / static_cast<Scalar>(half);
+ }
+ return dq[0] + static_cast<Scalar>(ts - half + 1) * (dq[1] - dq[0]) /
+ static_cast<Scalar>(slots - half);
+ }
+ if (ts < shape.offset_ts[0]) {
+ return previous;
+ }
+ if (shape.data_points == 1 || ts < shape.offset_ts[1]) {
+ return dq[0];
+ }
+ return dq[1];
 }
 
 // §6.6.5's ramp with its per-block fractions resolved once. interpolate()
@@ -447,45 +447,45 @@ template <typename Scalar>
 // reconstruction is unchanged to the bit.
 template <typename Scalar>
 struct RampFractions {
-    Scalar whole{0};        // (ts + 1) / slots, the single-data-point ramp
-    Scalar first_half{0};   // (ts + 1) / half
-    Scalar second_half{0};  // (ts - half + 1) / (slots - half)
+ Scalar whole{0}; // (ts + 1) / slots, the single-data-point ramp
+ Scalar first_half{0}; // (ts + 1) / half
+ Scalar second_half{0}; // (ts - half + 1) / (slots - half)
 };
 
 template <typename Scalar>
 [[nodiscard]] RampFractions<Scalar> ramp_fractions(int ts, int slots) {
-    const int half = slots / 2;
-    return RampFractions<Scalar>{
-        .whole = static_cast<Scalar>(ts + 1) / static_cast<Scalar>(slots),
-        .first_half = static_cast<Scalar>(ts + 1) / static_cast<Scalar>(half),
-        .second_half = static_cast<Scalar>(ts - half + 1) / static_cast<Scalar>(slots - half)};
+ const int half = slots / 2;
+ return RampFractions<Scalar>{
+ .whole = static_cast<Scalar>(ts + 1) / static_cast<Scalar>(slots),
+ .first_half = static_cast<Scalar>(ts + 1) / static_cast<Scalar>(half),
+ .second_half = static_cast<Scalar>(ts - half + 1) / static_cast<Scalar>(slots - half)};
 }
 
 template <typename Scalar>
 [[nodiscard]] Scalar interpolate_ramp(const ObjectShape& shape, Scalar previous, Scalar dq0,
-                                      Scalar dq1, const RampFractions<Scalar>& fraction, int ts,
-                                      int slots) {
-    if constexpr (std::is_same_v<Scalar, float>) {
-        if (!shape.steep) {
-            if (shape.data_points == 1) {
-                return previous + fraction.whole * (dq0 - previous);
-            }
-            if (ts < slots / 2) {
-                return previous + fraction.first_half * (dq0 - previous);
-            }
-            return dq0 + fraction.second_half * (dq1 - dq0);
-        }
-        if (ts < shape.offset_ts[0]) {
-            return previous;
-        }
-        if (shape.data_points == 1 || ts < shape.offset_ts[1]) {
-            return dq0;
-        }
-        return dq1;
-    } else {
-        const std::array<Scalar, kMaxDataPoints> dq = {dq0, dq1};
-        return interpolate<Scalar>(shape, previous, dq, ts, slots);
-    }
+ Scalar dq1, const RampFractions<Scalar>& fraction, int ts,
+ int slots) {
+ if constexpr (std::is_same_v<Scalar, float>) {
+ if (!shape.steep) {
+ if (shape.data_points == 1) {
+ return previous + fraction.whole * (dq0 - previous);
+ }
+ if (ts < slots / 2) {
+ return previous + fraction.first_half * (dq0 - previous);
+ }
+ return dq0 + fraction.second_half * (dq1 - dq0);
+ }
+ if (ts < shape.offset_ts[0]) {
+ return previous;
+ }
+ if (shape.data_points == 1 || ts < shape.offset_ts[1]) {
+ return dq0;
+ }
+ return dq1;
+ } else {
+ const std::array<Scalar, kMaxDataPoints> dq = {dq0, dq1};
+ return interpolate<Scalar>(shape, previous, dq, ts, slots);
+ }
 }
 
 // The widest parameter-band count Table 50 allows, for the per-object
@@ -500,341 +500,341 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
 // is what lets an object change its band count from one frame to the next
 // and still have something meaningful to ramp from.
 [[nodiscard]] std::vector<std::vector<float>> reconstruct_mdct_band(
-    std::span<const std::span<const float>> bed, const FrameParameters& params,
-    ReconstructionState& state, bool fast_mdct, bool fast_imdct) {
-    const int objects = params.objects;
-    const int channels = params.channels;
-    // The frame's own length, from the bed itself: an ordinary frame is six
-    // 256-sample blocks, a short syncframe (§E2.3.1.4) one, two or three.
-    // Everything below that used to count to kBlocksPerFrame/kSamplesPerFrame
-    // counts to these instead; at six blocks every value is identical to what
-    // the fixed constants produced, so the ordinary path is unchanged.
-    const int frame_samples = static_cast<int>(bed[0].size());
-    const int nblocks = frame_samples / kSamplesPerBlock;
-    const int slots = nblocks * (kQmfTimeslots / kBlocksPerFrame);
+ std::span<const std::span<const float>> bed, const FrameParameters& params,
+ ReconstructionState& state, bool fast_mdct, bool fast_imdct) {
+ const int objects = params.objects;
+ const int channels = params.channels;
+ // The frame's own length, from the bed itself: an ordinary frame is six
+ // 256-sample blocks, a short syncframe (§E2.3.1.4) one, two or three.
+ // Everything below that used to count to kBlocksPerFrame/kSamplesPerFrame
+ // counts to these instead; at six blocks every value is identical to what
+ // the fixed constants produced, so the ordinary path is unchanged.
+ const int frame_samples = static_cast<int>(bed[0].size());
+ const int nblocks = frame_samples / kSamplesPerBlock;
+ const int slots = nblocks * (kQmfTimeslots / kBlocksPerFrame);
 
-    // §6.3.3.3: no ramp on the first frame or right after a splice, and
-    // equally none if the previous frame's matrix does not even have the
-    // same shape to ramp from (an object or channel count change this
-    // project's own AtmosEncoder never makes mid-stream, but a general JOC
-    // stream could in principle) - both collapse to "this frame's matrix
-    // applies to the whole frame outright", the same as ReconstructionState's
-    // own default-constructed (never-reconstructed-before) state.
-    const std::size_t previous_size = static_cast<std::size_t>(objects) *
-                                      static_cast<std::size_t>(channels) *
-                                      static_cast<std::size_t>(kQmfSubbands);
-    const bool has_ramp = params.seq_count != 0 && state.previous_objects == objects &&
-                          state.previous_channels == channels &&
-                          state.previous_matrix.size() == previous_size;
-    if (state.previous_matrix.size() != previous_size) {
-        state.previous_matrix.assign(previous_size, 0.0);
-    }
+ // §6.3.3.3: no ramp on the first frame or right after a splice, and
+ // equally none if the previous frame's matrix does not even have the
+ // same shape to ramp from (an object or channel count change this
+ // project's own AtmosEncoder never makes mid-stream, but a general JOC
+ // stream could in principle) - both collapse to "this frame's matrix
+ // applies to the whole frame outright", the same as ReconstructionState's
+ // own default-constructed (never-reconstructed-before) state.
+ const std::size_t previous_size = static_cast<std::size_t>(objects) *
+ static_cast<std::size_t>(channels) *
+ static_cast<std::size_t>(kQmfSubbands);
+ const bool has_ramp = params.seq_count != 0 && state.previous_objects == objects &&
+ state.previous_channels == channels &&
+ state.previous_matrix.size() == previous_size;
+ if (state.previous_matrix.size() != previous_size) {
+ state.previous_matrix.assign(previous_size, 0.0);
+ }
 
-    if (static_cast<int>(state.object_history.size()) != objects) {
-        // A changed object count invalidates any old per-object history
-        // anyway (index i no longer names the same object), so this also
-        // covers the very first call, where object_history starts empty.
-        state.object_history.assign(static_cast<std::size_t>(objects), {});
-    }
+ if (static_cast<int>(state.object_history.size()) != objects) {
+ // A changed object count invalidates any old per-object history
+ // anyway (index i no longer names the same object), so this also
+ // covers the very first call, where object_history starts empty.
+ state.object_history.assign(static_cast<std::size_t>(objects), {});
+ }
 
-    // The per-object scratches follow the same count. They hold nothing
-    // between calls - every entry is written before it is read within one
-    // reconstruct() - so unlike the history above this is purely about not
-    // provisioning for objects the stream does not carry.
-    if (static_cast<int>(state.object_mdct_scratch.size()) != objects) {
-        state.object_mdct_scratch.assign(static_cast<std::size_t>(objects), {});
-        state.synth_scratch.assign(static_cast<std::size_t>(objects), {});
-    }
+ // The per-object scratches follow the same count. They hold nothing
+ // between calls - every entry is written before it is read within one
+ // reconstruct() - so unlike the history above this is purely about not
+ // provisioning for objects the stream does not carry.
+ if (static_cast<int>(state.object_mdct_scratch.size()) != objects) {
+ state.object_mdct_scratch.assign(static_cast<std::size_t>(objects), {});
+ state.synth_scratch.assign(static_cast<std::size_t>(objects), {});
+ }
 
-    std::vector<std::vector<float>> out(
-        static_cast<std::size_t>(objects),
-        std::vector<float>(static_cast<std::size_t>(frame_samples)));
+ std::vector<std::vector<float>> out(
+ static_cast<std::size_t>(objects),
+ std::vector<float>(static_cast<std::size_t>(frame_samples)));
 
-    auto& bed_mdct = state.bed_mdct_scratch;
-    auto& time = state.time_scratch;
-    auto& windowed = state.windowed_scratch;
-    auto& object_mdct = state.object_mdct_scratch;
-    auto& x = state.synth_scratch;
+ auto& bed_mdct = state.bed_mdct_scratch;
+ auto& time = state.time_scratch;
+ auto& windowed = state.windowed_scratch;
+ auto& object_mdct = state.object_mdct_scratch;
+ auto& x = state.synth_scratch;
 
-    // The mixing below runs in the decoder's own scalar. params.matrix is
-    // double whatever the build - it is the parsed, dequantised matrix, part
-    // of the public FrameParameters - so a float decoder narrows it ONCE per
-    // frame here rather than once per read: at 2 reads per (object, channel,
-    // subband) per block that is 23,000 narrowings a frame, each a software
-    // routine on the FPU the minimum-footprint profile targets. A double
-    // decoder reads the matrix directly, as it always did.
-    using Scalar = internal::decode_scalar_t;
-    // Every scalar but double reads the narrowed copy; the fixed-point tier
-    // converts each read from it (planning/arithmetic-tiers.md, Phase C).
-    constexpr bool kNarrowed = !std::is_same_v<Scalar, double>;
-    if constexpr (kNarrowed) {
-        state.matrix_scratch.resize(params.matrix.size());
-        for (std::size_t i = 0; i < params.matrix.size(); ++i) {
-            state.matrix_scratch[i] = static_cast<float>(params.matrix[i]);
-        }
-    }
-    // One object's coefficient, from whichever copy this build reads.
-    // `base` is the object's offset into the matrix and `nbands` its band
-    // count - the same index arithmetic as FrameParameters::ObjectMatrixView,
-    // which the double branch simply is.
-    const auto coefficient = [&](FrameParameters::ObjectMatrixView view, std::size_t base,
-                                 int nbands, int data_point, int ch, int band) -> Scalar {
-        if constexpr (kNarrowed) {
-            // The cast is a no-op here and exists for the OTHER build: this
-            // lambda is not a template, so a double decoder still checks this
-            // branch, where a float would otherwise promote implicitly and
-            // -Wdouble-promotion (clang, -Werror) refuses it.
-            return static_cast<Scalar>(
-                state.matrix_scratch[base + ((static_cast<std::size_t>(data_point) *
-                                                  static_cast<std::size_t>(channels) +
-                                              static_cast<std::size_t>(ch)) *
-                                             static_cast<std::size_t>(nbands)) +
-                                     static_cast<std::size_t>(band)]);
-        } else {
-            // Explicit for the same reason as the cast above: the fixed-point
-            // tier's Scalar converts from double only by name, and this
-            // branch is checked in that build too.
-            return static_cast<Scalar>(view.at(data_point, ch, band));
-        }
-    };
+ // The mixing below runs in the decoder's own scalar. params.matrix is
+ // double whatever the build - it is the parsed, dequantised matrix, part
+ // of the public FrameParameters - so a float decoder narrows it ONCE per
+ // frame here rather than once per read: at 2 reads per (object, channel,
+ // subband) per block that is 23,000 narrowings a frame, each a software
+ // routine on the FPU the minimum-footprint profile targets. A double
+ // decoder reads the matrix directly, as it always did.
+ using Scalar = internal::decode_scalar_t;
+ // Every scalar but double reads the narrowed copy; the fixed-point tier
+ // converts each read from it (planning/arithmetic-tiers.md, Phase C).
+ constexpr bool kNarrowed = !std::is_same_v<Scalar, double>;
+ if constexpr (kNarrowed) {
+ state.matrix_scratch.resize(params.matrix.size());
+ for (std::size_t i = 0; i < params.matrix.size(); ++i) {
+ state.matrix_scratch[i] = static_cast<float>(params.matrix[i]);
+ }
+ }
+ // One object's coefficient, from whichever copy this build reads.
+ // `base` is the object's offset into the matrix and `nbands` its band
+ // count - the same index arithmetic as FrameParameters::ObjectMatrixView,
+ // which the double branch simply is.
+ const auto coefficient = [&](FrameParameters::ObjectMatrixView view, std::size_t base,
+ int nbands, int data_point, int ch, int band) -> Scalar {
+ if constexpr (kNarrowed) {
+ // The cast is a no-op here and exists for the OTHER build: this
+ // lambda is not a template, so a double decoder still checks this
+ // branch, where a float would otherwise promote implicitly and
+ // -Wdouble-promotion (clang, -Werror) refuses it.
+ return static_cast<Scalar>(
+ state.matrix_scratch[base + ((static_cast<std::size_t>(data_point) *
+ static_cast<std::size_t>(channels) +
+ static_cast<std::size_t>(ch)) *
+ static_cast<std::size_t>(nbands)) +
+ static_cast<std::size_t>(band)]);
+ } else {
+ // Explicit for the same reason as the cast above: the fixed-point
+ // tier's Scalar converts from double only by name, and this
+ // branch is checked in that build too.
+ return static_cast<Scalar>(view.at(data_point, ch, band));
+ }
+ };
 
-    for (int block = 0; block < nblocks; ++block) {
-        AC3_ZONE_SCOPED_N("joc_block");
-        // --- analyze this block of the downmix, one MDCT per bed channel ---
-        // Only block 0 ever reads negative indices (into the previous
-        // frame's tail); every later block's window sits entirely inside
-        // THIS frame's own already-decoded samples.
-        // Gather-and-window one channel into lane `lane` of the windowed
-        // scratch. Split out so the batched and one-at-a-time paths below
-        // share it verbatim rather than restating the §7.9.4 window walk.
-        const auto gather_and_window = [&](int ch, std::size_t lane) {
-            for (int n = 0; n < 512; ++n) {
-                const int index = block * kSamplesPerBlock + n - 256;
-                time[static_cast<std::size_t>(n)] =
-                    index >= 0
-                        ? static_cast<recon_scalar_t>(
-                              bed[static_cast<std::size_t>(ch)][static_cast<std::size_t>(index)])
-                        : state.bed_history[static_cast<std::size_t>(ch)]
-                                           [static_cast<std::size_t>(256 + index)];
-            }
-            apply_analysis_window(time, windowed[lane]);
-        };
-        // Four channels' forward transforms at a time (ROADMAP PF5 phase
-        // 4c), the forward twin of the object loop's batching below:
-        // mdct512_forward_batch4 checks has_avx2() internally and falls
-        // back to four ordinary calls, so this is bit-identical either
-        // way. channels is kNumChannels5X = 5, so this is one batch of
-        // four plus one ordinary call; mode=reference (fast_mdct false)
-        // never batches, exactly as the object loop does not.
-        int bed_ch = 0;
-        AC3_ZONE_BEGIN(analysis_zone, "joc_bed_analysis");
-        while (bed_ch < channels) {
-            if (fast_mdct && bed_ch + 4 <= channels) {
-                for (std::size_t lane = 0; lane < 4; ++lane) {
-                    gather_and_window(bed_ch + static_cast<int>(lane), lane);
-                }
-                mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3],
-                                       bed_mdct[static_cast<std::size_t>(bed_ch)],
-                                       bed_mdct[static_cast<std::size_t>(bed_ch + 1)],
-                                       bed_mdct[static_cast<std::size_t>(bed_ch + 2)],
-                                       bed_mdct[static_cast<std::size_t>(bed_ch + 3)]);
-                bed_ch += 4;
-                continue;
-            }
-            gather_and_window(bed_ch, 0);
-            forward_512(windowed[0], bed_mdct[static_cast<std::size_t>(bed_ch)], fast_mdct);
-            ++bed_ch;
-        }
-        AC3_ZONE_END(analysis_zone);
+ for (int block = 0; block < nblocks; ++block) {
+ AC3_ZONE_SCOPED_N("joc_block");
+ // --- analyze this block of the downmix, one MDCT per bed channel ---
+ // Only block 0 ever reads negative indices (into the previous
+ // frame's tail); every later block's window sits entirely inside
+ // THIS frame's own already-decoded samples.
+ // Gather-and-window one channel into lane `lane` of the windowed
+ // scratch. Split out so the batched and one-at-a-time paths below
+ // share it verbatim rather than restating the §7.9.4 window walk.
+ const auto gather_and_window = [&](int ch, std::size_t lane) {
+ for (int n = 0; n < 512; ++n) {
+ const int index = block * kSamplesPerBlock + n - 256;
+ time[static_cast<std::size_t>(n)] =
+ index >= 0
+ ? static_cast<recon_scalar_t>(
+ bed[static_cast<std::size_t>(ch)][static_cast<std::size_t>(index)])
+ : state.bed_history[static_cast<std::size_t>(ch)]
+ [static_cast<std::size_t>(256 + index)];
+ }
+ apply_analysis_window(time, windowed[lane]);
+ };
+ // Four channels' forward transforms at a time (SIMD batched MDCT
+ // 4c), the forward twin of the object loop's batching below:
+ // mdct512_forward_batch4 checks has_avx2() internally and falls
+ // back to four ordinary calls, so this is bit-identical either
+ // way. channels is kNumChannels5X = 5, so this is one batch of
+ // four plus one ordinary call; mode=reference (fast_mdct false)
+ // never batches, exactly as the object loop does not.
+ int bed_ch = 0;
+ AC3_ZONE_BEGIN(analysis_zone, "joc_bed_analysis");
+ while (bed_ch < channels) {
+ if (fast_mdct && bed_ch + 4 <= channels) {
+ for (std::size_t lane = 0; lane < 4; ++lane) {
+ gather_and_window(bed_ch + static_cast<int>(lane), lane);
+ }
+ mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3],
+ bed_mdct[static_cast<std::size_t>(bed_ch)],
+ bed_mdct[static_cast<std::size_t>(bed_ch + 1)],
+ bed_mdct[static_cast<std::size_t>(bed_ch + 2)],
+ bed_mdct[static_cast<std::size_t>(bed_ch + 3)]);
+ bed_ch += 4;
+ continue;
+ }
+ gather_and_window(bed_ch, 0);
+ forward_512(windowed[0], bed_mdct[static_cast<std::size_t>(bed_ch)], fast_mdct);
+ ++bed_ch;
+ }
+ AC3_ZONE_END(analysis_zone);
 
-        // §6.6.5 counts in QMF timeslots, four to a 256-sample block. Taking
-        // each block's LAST timeslot keeps the smooth single-data-point case
-        // exactly the (block + 1) / nblocks ramp this used to compute, and
-        // atmos.cpp's own bed ramp still agrees with it - at any nblocks,
-        // since both sides scale off the same frame length.
-        const int ts = (block + 1) * slots / nblocks - 1;
+ // §6.6.5 counts in QMF timeslots, four to a 256-sample block. Taking
+ // each block's LAST timeslot keeps the smooth single-data-point case
+ // exactly the (block + 1) / nblocks ramp this used to compute, and
+ // atmos.cpp's own bed ramp still agrees with it - at any nblocks,
+ // since both sides scale off the same frame length.
+ const int ts = (block + 1) * slots / nblocks - 1;
 
-        // §6.6.6 spectrum accumulation, unchanged, but into
-        // object_mdct[object] rather than a single shared scratch: every
-        // present object's spectrum now coexists once this pass finishes,
-        // which is what lets the synthesis pass below batch four at a time
-        // instead of one at a time (ROADMAP PF5's batch-axis follow-on).
-        // Absent objects drain their overlap tail immediately here, same as
-        // before, and never enter `present` below - synthesis only ever
-        // runs on objects that actually have a spectrum to transform.
-        std::array<int, kMaxObjects> present{};
-        int n_present = 0;
-        AC3_ZONE_BEGIN(mix_zone, "joc_mix");
-        for (int object = 0; object < objects; ++object) {
-            const auto shape = params.shape(object);
-            if (!shape.present) {
-                // Nothing was coded for this object this frame. Its overlap
-                // tail still has to drain, or the next frame it reappears in
-                // would start from a stale one.
-                auto& pcm = out[static_cast<std::size_t>(object)];
-                auto& history = state.object_history[static_cast<std::size_t>(object)];
-                for (int n = 0; n < kSamplesPerBlock; ++n) {
-                    pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] =
-                        static_cast<float>(2.0F * history[static_cast<std::size_t>(n)]);
-                    history[static_cast<std::size_t>(n)] = 0.0;
-                }
-                continue;
-            }
-            present[static_cast<std::size_t>(n_present++)] = object;
-            // One offset walk per object per block instead of one per
-            // coefficient read - see FrameParameters::ObjectMatrixView.
-            const auto view = params.object_view(object);
-            const std::size_t base = params.object_offset(object);
-            const int nbands = shape.bands();
-            const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+ // §6.6.6 spectrum accumulation, unchanged, but into
+ // object_mdct[object] rather than a single shared scratch: every
+ // present object's spectrum now coexists once this pass finishes,
+ // which is what lets the synthesis pass below batch four at a time
+ // instead of one at a time (batched SIMD kernels).
+ // Absent objects drain their overlap tail immediately here, same as
+ // before, and never enter `present` below - synthesis only ever
+ // runs on objects that actually have a spectrum to transform.
+ std::array<int, kMaxObjects> present{};
+ int n_present = 0;
+ AC3_ZONE_BEGIN(mix_zone, "joc_mix");
+ for (int object = 0; object < objects; ++object) {
+ const auto shape = params.shape(object);
+ if (!shape.present) {
+ // Nothing was coded for this object this frame. Its overlap
+ // tail still has to drain, or the next frame it reappears in
+ // would start from a stale one.
+ auto& pcm = out[static_cast<std::size_t>(object)];
+ auto& history = state.object_history[static_cast<std::size_t>(object)];
+ for (int n = 0; n < kSamplesPerBlock; ++n) {
+ pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] =
+ static_cast<float>(2.0F * history[static_cast<std::size_t>(n)]);
+ history[static_cast<std::size_t>(n)] = 0.0;
+ }
+ continue;
+ }
+ present[static_cast<std::size_t>(n_present++)] = object;
+ // One offset walk per object per block instead of one per
+ // coefficient read - see FrameParameters::ObjectMatrixView.
+ const auto view = params.object_view(object);
+ const std::size_t base = params.object_offset(object);
+ const int nbands = shape.bands();
+ const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
 
-            // --- §6.6.6: this object's spectrum is a per-band linear
-            // combination of the downmix's ---
-            //
-            // band (and therefore each channel's mixing coefficient m) is
-            // constant across the 4 MDCT bins one QMF subband covers - the
-            // interpolation/ramp state a bin's own coefficient depends on is
-            // keyed by (object, channel, subband), never by bin. The loop
-            // below computes each channel's m once per subband and reuses
-            // it across those 4 bins instead of recomputing an identical
-            // value 4 times; the per-bin summation itself (order, operands)
-            // is untouched, so this is the same arithmetic, done less often.
-            // The two data points of every (channel, band), read once per
-            // object per block rather than once per subband: a band spans
-            // several subbands, and the index arithmetic behind each read
-            // cost more than the ramp it fed. The values are the same reads.
-            std::array<std::array<Scalar, kMaxChannels>, kMaxParameterBands> dq0{};
-            std::array<std::array<Scalar, kMaxChannels>, kMaxParameterBands> dq1{};
-            for (int band = 0; band < nbands; ++band) {
-                const auto ub = static_cast<std::size_t>(band);
-                for (int ch = 0; ch < channels; ++ch) {
-                    const auto uc = static_cast<std::size_t>(ch);
-                    dq0[ub][uc] = coefficient(view, base, nbands, 0, ch, band);
-                    dq1[ub][uc] = shape.data_points > 1
-                                      ? coefficient(view, base, nbands, 1, ch, band)
-                                      : dq0[ub][uc];
-                }
-            }
-            const RampFractions<Scalar> fraction = ramp_fractions<Scalar>(ts, slots);
-            const std::size_t previous_base =
-                static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) *
-                static_cast<std::size_t>(kQmfSubbands);
-            std::array<Scalar, kMaxChannels> m{};
-            for (int subband = 0; subband < kQmfSubbands; ++subband) {
-                const auto band = static_cast<std::size_t>(mapping[static_cast<std::size_t>(subband)]);
-                for (int ch = 0; ch < channels; ++ch) {
-                    const auto uc = static_cast<std::size_t>(ch);
-                    if (!has_ramp) {
-                        m[uc] = shape.data_points > 1 ? dq1[band][uc] : dq0[band][uc];
-                        continue;
-                    }
-                    const std::size_t previous_index =
-                        previous_base + uc * static_cast<std::size_t>(kQmfSubbands) +
-                        static_cast<std::size_t>(subband);
-                    const Scalar previous =
-                        static_cast<Scalar>(state.previous_matrix[previous_index]);
-                    m[uc] = interpolate_ramp<Scalar>(shape, previous, dq0[band][uc], dq1[band][uc],
-                                                     fraction, ts, slots);
-                }
-                for (int bin = subband * 4; bin < subband * 4 + 4; ++bin) {
-                    Scalar sum{0};
-                    for (int ch = 0; ch < channels; ++ch) {
-                        sum += m[static_cast<std::size_t>(ch)] *
-                               static_cast<Scalar>(bed_mdct[static_cast<std::size_t>(ch)]
-                                                           [static_cast<std::size_t>(bin)]);
-                    }
-                    object_mdct[static_cast<std::size_t>(object)][static_cast<std::size_t>(bin)] =
-                        static_cast<recon_scalar_t>(sum);
-                }
-            }
-        }
-        AC3_ZONE_END(mix_zone);
+ // --- §6.6.6: this object's spectrum is a per-band linear
+ // combination of the downmix's ---
+ //
+ // band (and therefore each channel's mixing coefficient m) is
+ // constant across the 4 MDCT bins one QMF subband covers - the
+ // interpolation/ramp state a bin's own coefficient depends on is
+ // keyed by (object, channel, subband), never by bin. The loop
+ // below computes each channel's m once per subband and reuses
+ // it across those 4 bins instead of recomputing an identical
+ // value 4 times; the per-bin summation itself (order, operands)
+ // is untouched, so this is the same arithmetic, done less often.
+ // The two data points of every (channel, band), read once per
+ // object per block rather than once per subband: a band spans
+ // several subbands, and the index arithmetic behind each read
+ // cost more than the ramp it fed. The values are the same reads.
+ std::array<std::array<Scalar, kMaxChannels>, kMaxParameterBands> dq0{};
+ std::array<std::array<Scalar, kMaxChannels>, kMaxParameterBands> dq1{};
+ for (int band = 0; band < nbands; ++band) {
+ const auto ub = static_cast<std::size_t>(band);
+ for (int ch = 0; ch < channels; ++ch) {
+ const auto uc = static_cast<std::size_t>(ch);
+ dq0[ub][uc] = coefficient(view, base, nbands, 0, ch, band);
+ dq1[ub][uc] = shape.data_points > 1
+ ? coefficient(view, base, nbands, 1, ch, band)
+ : dq0[ub][uc];
+ }
+ }
+ const RampFractions<Scalar> fraction = ramp_fractions<Scalar>(ts, slots);
+ const std::size_t previous_base =
+ static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) *
+ static_cast<std::size_t>(kQmfSubbands);
+ std::array<Scalar, kMaxChannels> m{};
+ for (int subband = 0; subband < kQmfSubbands; ++subband) {
+ const auto band = static_cast<std::size_t>(mapping[static_cast<std::size_t>(subband)]);
+ for (int ch = 0; ch < channels; ++ch) {
+ const auto uc = static_cast<std::size_t>(ch);
+ if (!has_ramp) {
+ m[uc] = shape.data_points > 1 ? dq1[band][uc] : dq0[band][uc];
+ continue;
+ }
+ const std::size_t previous_index =
+ previous_base + uc * static_cast<std::size_t>(kQmfSubbands) +
+ static_cast<std::size_t>(subband);
+ const Scalar previous =
+ static_cast<Scalar>(state.previous_matrix[previous_index]);
+ m[uc] = interpolate_ramp<Scalar>(shape, previous, dq0[band][uc], dq1[band][uc],
+ fraction, ts, slots);
+ }
+ for (int bin = subband * 4; bin < subband * 4 + 4; ++bin) {
+ Scalar sum{0};
+ for (int ch = 0; ch < channels; ++ch) {
+ sum += m[static_cast<std::size_t>(ch)] *
+ static_cast<Scalar>(bed_mdct[static_cast<std::size_t>(ch)]
+ [static_cast<std::size_t>(bin)]);
+ }
+ object_mdct[static_cast<std::size_t>(object)][static_cast<std::size_t>(bin)] =
+ static_cast<recon_scalar_t>(sum);
+ }
+ }
+ }
+ AC3_ZONE_END(mix_zone);
 
-        // --- synthesize, same overlap-add eac3_decoder.cpp's own channel
-        // reconstruction uses --- four present objects at a time via
-        // imdct512_windowed_batch4 (ROADMAP PF5's batch-axis follow-on: it
-        // internally checks has_avx2() and falls back to four ordinary
-        // calls when there is no AVX2 tier, so this is bit-identical to the
-        // scalar loop either way, just potentially slower without AVX2),
-        // batching only ever applies to the fast fold - fast_imdct==false
-        // (mode=reference) always takes the one-at-a-time branch below, at
-        // every present object, exactly as it always has.
-        int idx = 0;
-        AC3_ZONE_BEGIN(synthesis_zone, "joc_synthesis");
-        while (idx < n_present) {
-            if (fast_imdct && idx + 4 <= n_present) {
-                const int o0 = present[static_cast<std::size_t>(idx)];
-                const int o1 = present[static_cast<std::size_t>(idx + 1)];
-                const int o2 = present[static_cast<std::size_t>(idx + 2)];
-                const int o3 = present[static_cast<std::size_t>(idx + 3)];
-                imdct512_windowed_batch4(object_mdct[static_cast<std::size_t>(o0)],
-                                         object_mdct[static_cast<std::size_t>(o1)],
-                                         object_mdct[static_cast<std::size_t>(o2)],
-                                         object_mdct[static_cast<std::size_t>(o3)],
-                                         x[static_cast<std::size_t>(o0)],
-                                         x[static_cast<std::size_t>(o1)],
-                                         x[static_cast<std::size_t>(o2)],
-                                         x[static_cast<std::size_t>(o3)]);
-                idx += 4;
-                continue;
-            }
-            const int o = present[static_cast<std::size_t>(idx)];
-            inverse_512(object_mdct[static_cast<std::size_t>(o)],
-                        x[static_cast<std::size_t>(o)], fast_imdct);
-            ++idx;
-        }
+ // --- synthesize, same overlap-add eac3_decoder.cpp's own channel
+ // reconstruction uses --- four present objects at a time via
+ // imdct512_windowed_batch4 (batched SIMD kernels: it
+ // internally checks has_avx2() and falls back to four ordinary
+ // calls when there is no AVX2 tier, so this is bit-identical to the
+ // scalar loop either way, just potentially slower without AVX2),
+ // batching only ever applies to the fast fold - fast_imdct==false
+ // (mode=reference) always takes the one-at-a-time branch below, at
+ // every present object, exactly as it always has.
+ int idx = 0;
+ AC3_ZONE_BEGIN(synthesis_zone, "joc_synthesis");
+ while (idx < n_present) {
+ if (fast_imdct && idx + 4 <= n_present) {
+ const int o0 = present[static_cast<std::size_t>(idx)];
+ const int o1 = present[static_cast<std::size_t>(idx + 1)];
+ const int o2 = present[static_cast<std::size_t>(idx + 2)];
+ const int o3 = present[static_cast<std::size_t>(idx + 3)];
+ imdct512_windowed_batch4(object_mdct[static_cast<std::size_t>(o0)],
+ object_mdct[static_cast<std::size_t>(o1)],
+ object_mdct[static_cast<std::size_t>(o2)],
+ object_mdct[static_cast<std::size_t>(o3)],
+ x[static_cast<std::size_t>(o0)],
+ x[static_cast<std::size_t>(o1)],
+ x[static_cast<std::size_t>(o2)],
+ x[static_cast<std::size_t>(o3)]);
+ idx += 4;
+ continue;
+ }
+ const int o = present[static_cast<std::size_t>(idx)];
+ inverse_512(object_mdct[static_cast<std::size_t>(o)],
+ x[static_cast<std::size_t>(o)], fast_imdct);
+ ++idx;
+ }
 
-        for (int i = 0; i < n_present; ++i) {
-            const int object = present[static_cast<std::size_t>(i)];
-            auto& pcm = out[static_cast<std::size_t>(object)];
-            auto& history = state.object_history[static_cast<std::size_t>(object)];
-            const auto& xo = x[static_cast<std::size_t>(object)];
-            for (int n = 0; n < kSamplesPerBlock; ++n) {
-                pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] = static_cast<float>(
-                    2.0F * (xo[static_cast<std::size_t>(n)] + history[static_cast<std::size_t>(n)]));
-                history[static_cast<std::size_t>(n)] = xo[static_cast<std::size_t>(256 + n)];
-            }
-        }
-        AC3_ZONE_END(synthesis_zone);
-    }
+ for (int i = 0; i < n_present; ++i) {
+ const int object = present[static_cast<std::size_t>(i)];
+ auto& pcm = out[static_cast<std::size_t>(object)];
+ auto& history = state.object_history[static_cast<std::size_t>(object)];
+ const auto& xo = x[static_cast<std::size_t>(object)];
+ for (int n = 0; n < kSamplesPerBlock; ++n) {
+ pcm[static_cast<std::size_t>(block * kSamplesPerBlock + n)] = static_cast<float>(
+ 2.0F * (xo[static_cast<std::size_t>(n)] + history[static_cast<std::size_t>(n)]));
+ history[static_cast<std::size_t>(n)] = xo[static_cast<std::size_t>(256 + n)];
+ }
+ }
+ AC3_ZONE_END(synthesis_zone);
+ }
 
-    for (int ch = 0; ch < channels; ++ch) {
-        for (int n = 0; n < 256; ++n) {
-            state.bed_history[static_cast<std::size_t>(ch)][static_cast<std::size_t>(n)] =
-                static_cast<recon_scalar_t>(
-                    bed[static_cast<std::size_t>(ch)]
-                       [static_cast<std::size_t>(frame_samples - 256 + n)]);
-        }
-    }
-    // §6.6.5's own tail: joc_mix_mtx_prev takes the LAST data point, per
-    // subband rather than per parameter band, so a band-count change next
-    // frame still has something to ramp from.
-    for (int object = 0; object < objects; ++object) {
-        const auto shape = params.shape(object);
-        const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
-        // One offset walk per object, not one per (channel, subband) -
-        // see FrameParameters::ObjectMatrixView.
-        const auto wb_view = params.object_view(object);
-        const std::size_t wb_base = params.object_offset(object);
-        const int wb_bands = shape.bands();
-        for (int ch = 0; ch < channels; ++ch) {
-            for (int subband = 0; subband < kQmfSubbands; ++subband) {
-                const std::size_t index =
-                    (static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) +
-                     static_cast<std::size_t>(ch)) *
-                        static_cast<std::size_t>(kQmfSubbands) +
-                    static_cast<std::size_t>(subband);
-                state.previous_matrix[index] = static_cast<recon_scalar_t>(
-                    shape.present ? coefficient(wb_view, wb_base, wb_bands, shape.data_points - 1,
-                                                ch, mapping[static_cast<std::size_t>(subband)])
-                                  : Scalar{0});
-            }
-        }
-    }
-    state.previous_objects = objects;
-    state.previous_channels = channels;
+ for (int ch = 0; ch < channels; ++ch) {
+ for (int n = 0; n < 256; ++n) {
+ state.bed_history[static_cast<std::size_t>(ch)][static_cast<std::size_t>(n)] =
+ static_cast<recon_scalar_t>(
+ bed[static_cast<std::size_t>(ch)]
+ [static_cast<std::size_t>(frame_samples - 256 + n)]);
+ }
+ }
+ // §6.6.5's own tail: joc_mix_mtx_prev takes the LAST data point, per
+ // subband rather than per parameter band, so a band-count change next
+ // frame still has something to ramp from.
+ for (int object = 0; object < objects; ++object) {
+ const auto shape = params.shape(object);
+ const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+ // One offset walk per object, not one per (channel, subband) -
+ // see FrameParameters::ObjectMatrixView.
+ const auto wb_view = params.object_view(object);
+ const std::size_t wb_base = params.object_offset(object);
+ const int wb_bands = shape.bands();
+ for (int ch = 0; ch < channels; ++ch) {
+ for (int subband = 0; subband < kQmfSubbands; ++subband) {
+ const std::size_t index =
+ (static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) +
+ static_cast<std::size_t>(ch)) *
+ static_cast<std::size_t>(kQmfSubbands) +
+ static_cast<std::size_t>(subband);
+ state.previous_matrix[index] = static_cast<recon_scalar_t>(
+ shape.present ? coefficient(wb_view, wb_base, wb_bands, shape.data_points - 1,
+ ch, mapping[static_cast<std::size_t>(subband)])
+ : Scalar{0});
+ }
+ }
+ }
+ state.previous_objects = objects;
+ state.previous_channels = channels;
 
-    return out;
+ return out;
 }
 
 // Domain::kQmf. §6.6.6 as written: analyse the downmix into §7.1's 64
@@ -873,425 +873,425 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
 // hashes, and rebuilding it on this FIFO - though cleaner - would move every
 // existing six-block stream's output. Short frames have no such pins.
 [[nodiscard]] std::vector<std::vector<float>> reconstruct_qmf_short(
-    std::span<const std::span<const float>> bed, const FrameParameters& params,
-    ReconstructionState& state, const int slots) {
-    const int objects = params.objects;
+ std::span<const std::span<const float>> bed, const FrameParameters& params,
+ ReconstructionState& state, const int slots) {
+ const int objects = params.objects;
 
-    if (!state.qmf) {
-        state.qmf = std::make_unique<ReconstructionState::QmfState>();
-    }
-    auto& qmf = *state.qmf;
-    if (static_cast<int>(qmf.objects.size()) != objects) {
-        // A changed object count means index i no longer names the same
-        // object: neither a filterbank tail nor a scheduled coefficient set
-        // is worth keeping (see reconstruct_mdct_band's own reasoning).
-        qmf.objects.assign(static_cast<std::size_t>(objects), dsp::QmfSynthesis{});
-        qmf.pending.clear();
-    }
+ if (!state.qmf) {
+ state.qmf = std::make_unique<ReconstructionState::QmfState>();
+ }
+ auto& qmf = *state.qmf;
+ if (static_cast<int>(qmf.objects.size()) != objects) {
+ // A changed object count means index i no longer names the same
+ // object: neither a filterbank tail nor a scheduled coefficient set
+ // is worth keeping (see reconstruct_mdct_band's own reasoning).
+ qmf.objects.assign(static_cast<std::size_t>(objects), dsp::QmfSynthesis{});
+ qmf.pending.clear();
+ }
 
-    const std::size_t coeffs = static_cast<std::size_t>(objects) *
-                               static_cast<std::size_t>(kNumChannels5X) *
-                               static_cast<std::size_t>(kQmfSubbands);
-    const bool has_ramp = params.seq_count != 0 && state.previous_objects == objects &&
-                          state.previous_channels == kNumChannels5X &&
-                          state.previous_matrix.size() == coeffs;
-    if (state.previous_matrix.size() != coeffs) {
-        state.previous_matrix.assign(coeffs, 0.0);
-    }
+ const std::size_t coeffs = static_cast<std::size_t>(objects) *
+ static_cast<std::size_t>(kNumChannels5X) *
+ static_cast<std::size_t>(kQmfSubbands);
+ const bool has_ramp = params.seq_count != 0 && state.previous_objects == objects &&
+ state.previous_channels == kNumChannels5X &&
+ state.previous_matrix.size() == coeffs;
+ if (state.previous_matrix.size() != coeffs) {
+ state.previous_matrix.assign(coeffs, 0.0);
+ }
 
-    // --- schedule this frame's per-timeslot coefficients --------------------
-    for (int ts = 0; ts < slots; ++ts) {
-        std::vector<double> mix(coeffs, 0.0);
-        for (int object = 0; object < objects; ++object) {
-            const auto shape = params.shape(object);
-            if (!shape.present) {
-                continue;  // silent contribution - the zeros stand
-            }
-            const auto view = params.object_view(object);
-            const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
-            for (int ch = 0; ch < kNumChannels5X; ++ch) {
-                for (int subband = 0; subband < kQmfSubbands; ++subband) {
-                    const int band = mapping[static_cast<std::size_t>(subband)];
-                    const std::array<double, kMaxDataPoints> dq = {
-                        view.at(0, ch, band),
-                        shape.data_points > 1 ? view.at(1, ch, band) : view.at(0, ch, band)};
-                    const std::size_t index =
-                        (static_cast<std::size_t>(object) *
-                             static_cast<std::size_t>(kNumChannels5X) +
-                         static_cast<std::size_t>(ch)) *
-                            static_cast<std::size_t>(kQmfSubbands) +
-                        static_cast<std::size_t>(subband);
-                    const double previous =
-                        has_ramp ? static_cast<double>(state.previous_matrix[index]) : dq[0];
-                    mix[index] = has_ramp
-                                     ? interpolate(shape, previous, dq, ts, slots)
-                                     : dq[static_cast<std::size_t>(shape.data_points - 1)];
-                }
-            }
-        }
-        qmf.pending.push_back(std::move(mix));
-    }
-    // First frame: nothing was scheduled kQmfDelaySlots ago, so the delay
-    // line primes with this frame's own first coefficients - "the first
-    // matrix applies from the start", which is what the 24-slot path's
-    // no-ramp first frame does too.
-    while (qmf.pending.size() < static_cast<std::size_t>(slots + dsp::kQmfDelaySlots)) {
-        qmf.pending.push_front(std::vector<double>(qmf.pending.front()));
-    }
+ // --- schedule this frame's per-timeslot coefficients --------------------
+ for (int ts = 0; ts < slots; ++ts) {
+ std::vector<double> mix(coeffs, 0.0);
+ for (int object = 0; object < objects; ++object) {
+ const auto shape = params.shape(object);
+ if (!shape.present) {
+ continue; // silent contribution - the zeros stand
+ }
+ const auto view = params.object_view(object);
+ const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+ for (int ch = 0; ch < kNumChannels5X; ++ch) {
+ for (int subband = 0; subband < kQmfSubbands; ++subband) {
+ const int band = mapping[static_cast<std::size_t>(subband)];
+ const std::array<double, kMaxDataPoints> dq = {
+ view.at(0, ch, band),
+ shape.data_points > 1 ? view.at(1, ch, band) : view.at(0, ch, band)};
+ const std::size_t index =
+ (static_cast<std::size_t>(object) *
+ static_cast<std::size_t>(kNumChannels5X) +
+ static_cast<std::size_t>(ch)) *
+ static_cast<std::size_t>(kQmfSubbands) +
+ static_cast<std::size_t>(subband);
+ const double previous =
+ has_ramp ? static_cast<double>(state.previous_matrix[index]) : dq[0];
+ mix[index] = has_ramp
+ ? interpolate(shape, previous, dq, ts, slots)
+ : dq[static_cast<std::size_t>(shape.data_points - 1)];
+ }
+ }
+ }
+ qmf.pending.push_back(std::move(mix));
+ }
+ // First frame: nothing was scheduled kQmfDelaySlots ago, so the delay
+ // line primes with this frame's own first coefficients - "the first
+ // matrix applies from the start", which is what the 24-slot path's
+ // no-ramp first frame does too.
+ while (qmf.pending.size() < static_cast<std::size_t>(slots + dsp::kQmfDelaySlots)) {
+ qmf.pending.push_front(std::vector<double>(qmf.pending.front()));
+ }
 
-    // --- emit ---------------------------------------------------------------
-    std::vector<std::vector<float>> out(
-        static_cast<std::size_t>(objects),
-        std::vector<float>(static_cast<std::size_t>(slots) * dsp::kQmfHop));
+ // --- emit ---------------------------------------------------------------
+ std::vector<std::vector<float>> out(
+ static_cast<std::size_t>(objects),
+ std::vector<float>(static_cast<std::size_t>(slots) * dsp::kQmfHop));
 
-    for (int slot = 0; slot < slots; ++slot) {
-        for (int ch = 0; ch < kNumChannels5X; ++ch) {
-            const std::span<const float, dsp::kQmfHop> hop{
-                bed[static_cast<std::size_t>(ch)].data() + slot * dsp::kQmfHop,
-                static_cast<std::size_t>(dsp::kQmfHop)};
-            qmf.bed[static_cast<std::size_t>(ch)].push(hop,
-                                                       qmf.bed_real[static_cast<std::size_t>(ch)],
-                                                       qmf.bed_imag[static_cast<std::size_t>(ch)]);
-        }
-        const std::vector<double>& mix = qmf.pending.front();
-        for (int object = 0; object < objects; ++object) {
-            auto& synth = qmf.objects[static_cast<std::size_t>(object)];
-            for (int k = 0; k < kQmfSubbands; ++k) {
-                double real = 0.0;
-                double imag = 0.0;
-                for (int ch = 0; ch < kNumChannels5X; ++ch) {
-                    const std::size_t index =
-                        (static_cast<std::size_t>(object) *
-                             static_cast<std::size_t>(kNumChannels5X) +
-                         static_cast<std::size_t>(ch)) *
-                            static_cast<std::size_t>(kQmfSubbands) +
-                        static_cast<std::size_t>(k);
-                    const double m = mix[index];
-                    real += m * qmf.bed_real[static_cast<std::size_t>(ch)]
-                                            [static_cast<std::size_t>(k)];
-                    imag += m * qmf.bed_imag[static_cast<std::size_t>(ch)]
-                                            [static_cast<std::size_t>(k)];
-                }
-                qmf.object_real[static_cast<std::size_t>(k)] = real;
-                qmf.object_imag[static_cast<std::size_t>(k)] = imag;
-            }
-            const std::span<float, dsp::kQmfHop> emitted{
-                out[static_cast<std::size_t>(object)].data() + slot * dsp::kQmfHop,
-                static_cast<std::size_t>(dsp::kQmfHop)};
-            synth.pull(qmf.object_real, qmf.object_imag, emitted);
-        }
-        qmf.pending.pop_front();
-    }
+ for (int slot = 0; slot < slots; ++slot) {
+ for (int ch = 0; ch < kNumChannels5X; ++ch) {
+ const std::span<const float, dsp::kQmfHop> hop{
+ bed[static_cast<std::size_t>(ch)].data() + slot * dsp::kQmfHop,
+ static_cast<std::size_t>(dsp::kQmfHop)};
+ qmf.bed[static_cast<std::size_t>(ch)].push(hop,
+ qmf.bed_real[static_cast<std::size_t>(ch)],
+ qmf.bed_imag[static_cast<std::size_t>(ch)]);
+ }
+ const std::vector<double>& mix = qmf.pending.front();
+ for (int object = 0; object < objects; ++object) {
+ auto& synth = qmf.objects[static_cast<std::size_t>(object)];
+ for (int k = 0; k < kQmfSubbands; ++k) {
+ double real = 0.0;
+ double imag = 0.0;
+ for (int ch = 0; ch < kNumChannels5X; ++ch) {
+ const std::size_t index =
+ (static_cast<std::size_t>(object) *
+ static_cast<std::size_t>(kNumChannels5X) +
+ static_cast<std::size_t>(ch)) *
+ static_cast<std::size_t>(kQmfSubbands) +
+ static_cast<std::size_t>(k);
+ const double m = mix[index];
+ real += m * qmf.bed_real[static_cast<std::size_t>(ch)]
+ [static_cast<std::size_t>(k)];
+ imag += m * qmf.bed_imag[static_cast<std::size_t>(ch)]
+ [static_cast<std::size_t>(k)];
+ }
+ qmf.object_real[static_cast<std::size_t>(k)] = real;
+ qmf.object_imag[static_cast<std::size_t>(k)] = imag;
+ }
+ const std::span<float, dsp::kQmfHop> emitted{
+ out[static_cast<std::size_t>(object)].data() + slot * dsp::kQmfHop,
+ static_cast<std::size_t>(dsp::kQmfHop)};
+ synth.pull(qmf.object_real, qmf.object_imag, emitted);
+ }
+ qmf.pending.pop_front();
+ }
 
-    // §6.6.5's own tail, same as both other paths: joc_mix_mtx_prev takes
-    // the LAST data point, per subband.
-    for (int object = 0; object < objects; ++object) {
-        const auto shape = params.shape(object);
-        const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
-        const auto tail_view = params.object_view(object);
-        for (int ch = 0; ch < kNumChannels5X; ++ch) {
-            for (int subband = 0; subband < kQmfSubbands; ++subband) {
-                const std::size_t index =
-                    (static_cast<std::size_t>(object) * static_cast<std::size_t>(kNumChannels5X) +
-                     static_cast<std::size_t>(ch)) *
-                        static_cast<std::size_t>(kQmfSubbands) +
-                    static_cast<std::size_t>(subband);
-                state.previous_matrix[index] =
-                    static_cast<recon_scalar_t>(shape.present ? tail_view.at(shape.data_points - 1, ch,
-                                                 mapping[static_cast<std::size_t>(subband)])
-                                  : 0.0);
-            }
-        }
-    }
-    state.previous_objects = objects;
-    state.previous_channels = kNumChannels5X;
+ // §6.6.5's own tail, same as both other paths: joc_mix_mtx_prev takes
+ // the LAST data point, per subband.
+ for (int object = 0; object < objects; ++object) {
+ const auto shape = params.shape(object);
+ const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+ const auto tail_view = params.object_view(object);
+ for (int ch = 0; ch < kNumChannels5X; ++ch) {
+ for (int subband = 0; subband < kQmfSubbands; ++subband) {
+ const std::size_t index =
+ (static_cast<std::size_t>(object) * static_cast<std::size_t>(kNumChannels5X) +
+ static_cast<std::size_t>(ch)) *
+ static_cast<std::size_t>(kQmfSubbands) +
+ static_cast<std::size_t>(subband);
+ state.previous_matrix[index] =
+ static_cast<recon_scalar_t>(shape.present ? tail_view.at(shape.data_points - 1, ch,
+ mapping[static_cast<std::size_t>(subband)])
+ : 0.0);
+ }
+ }
+ }
+ state.previous_objects = objects;
+ state.previous_channels = kNumChannels5X;
 
-    return out;
+ return out;
 }
 
 [[nodiscard]] std::vector<std::vector<float>> reconstruct_qmf(
-    std::span<const std::span<const float>> bed, const FrameParameters& params,
-    ReconstructionState& state) {
-    static_assert(dsp::kQmfSlotsPerFrame * dsp::kQmfHop == kSamplesPerFrame,
-                  "the QMF hop has to divide the frame exactly");
+ std::span<const std::span<const float>> bed, const FrameParameters& params,
+ ReconstructionState& state) {
+ static_assert(dsp::kQmfSlotsPerFrame * dsp::kQmfHop == kSamplesPerFrame,
+ "the QMF hop has to divide the frame exactly");
 
-    // A short syncframe takes the explicit-delay path above; the ordinary
-    // six-block frame keeps this one, byte-identical to what it always
-    // produced.
-    if (const int slots = static_cast<int>(bed[0].size()) / dsp::kQmfHop;
-        slots != dsp::kQmfSlotsPerFrame) {
-        return reconstruct_qmf_short(bed, params, state, slots);
-    }
+ // A short syncframe takes the explicit-delay path above; the ordinary
+ // six-block frame keeps this one, byte-identical to what it always
+ // produced.
+ if (const int slots = static_cast<int>(bed[0].size()) / dsp::kQmfHop;
+ slots != dsp::kQmfSlotsPerFrame) {
+ return reconstruct_qmf_short(bed, params, state, slots);
+ }
 
-    const int objects = params.objects;
+ const int objects = params.objects;
 
-    if (!state.qmf) {
-        state.qmf = std::make_unique<ReconstructionState::QmfState>();
-    }
-    auto& qmf = *state.qmf;
-    if (static_cast<int>(qmf.objects.size()) != objects) {
-        // Same reasoning as object_history above: a changed object count
-        // means index i no longer names the same object, so its filterbank
-        // tail is not worth keeping either.
-        qmf.objects.assign(static_cast<std::size_t>(objects), dsp::QmfSynthesis{});
-    }
+ if (!state.qmf) {
+ state.qmf = std::make_unique<ReconstructionState::QmfState>();
+ }
+ auto& qmf = *state.qmf;
+ if (static_cast<int>(qmf.objects.size()) != objects) {
+ // Same reasoning as object_history above: a changed object count
+ // means index i no longer names the same object, so its filterbank
+ // tail is not worth keeping either.
+ qmf.objects.assign(static_cast<std::size_t>(objects), dsp::QmfSynthesis{});
+ }
 
-    const std::size_t previous_size = static_cast<std::size_t>(objects) *
-                                      static_cast<std::size_t>(kNumChannels5X) *
-                                      static_cast<std::size_t>(kQmfSubbands);
-    const bool has_previous = params.seq_count != 0 && state.previous_objects == objects &&
-                              state.previous_channels == kNumChannels5X &&
-                              state.previous_matrix.size() == previous_size;
-    const bool has_older = has_previous && state.older_matrix.size() == previous_size;
-    if (state.previous_matrix.size() != previous_size) {
-        state.previous_matrix.assign(previous_size, 0.0);
-    }
+ const std::size_t previous_size = static_cast<std::size_t>(objects) *
+ static_cast<std::size_t>(kNumChannels5X) *
+ static_cast<std::size_t>(kQmfSubbands);
+ const bool has_previous = params.seq_count != 0 && state.previous_objects == objects &&
+ state.previous_channels == kNumChannels5X &&
+ state.previous_matrix.size() == previous_size;
+ const bool has_older = has_previous && state.older_matrix.size() == previous_size;
+ if (state.previous_matrix.size() != previous_size) {
+ state.previous_matrix.assign(previous_size, 0.0);
+ }
 
-    std::vector<std::vector<float>> out(
-        static_cast<std::size_t>(objects),
-        std::vector<float>(static_cast<std::size_t>(kSamplesPerFrame)));
+ std::vector<std::vector<float>> out(
+ static_cast<std::size_t>(objects),
+ std::vector<float>(static_cast<std::size_t>(kSamplesPerFrame)));
 
-    for (int slot = 0; slot < dsp::kQmfSlotsPerFrame; ++slot) {
-        for (int ch = 0; ch < kNumChannels5X; ++ch) {
-            const std::span<const float, dsp::kQmfHop> hop{
-                bed[static_cast<std::size_t>(ch)].data() + slot * dsp::kQmfHop,
-                static_cast<std::size_t>(dsp::kQmfHop)};
-            qmf.bed[static_cast<std::size_t>(ch)].push(hop,
-                                                       qmf.bed_real[static_cast<std::size_t>(ch)],
-                                                       qmf.bed_imag[static_cast<std::size_t>(ch)]);
-        }
+ for (int slot = 0; slot < dsp::kQmfSlotsPerFrame; ++slot) {
+ for (int ch = 0; ch < kNumChannels5X; ++ch) {
+ const std::span<const float, dsp::kQmfHop> hop{
+ bed[static_cast<std::size_t>(ch)].data() + slot * dsp::kQmfHop,
+ static_cast<std::size_t>(dsp::kQmfHop)};
+ qmf.bed[static_cast<std::size_t>(ch)].push(hop,
+ qmf.bed_real[static_cast<std::size_t>(ch)],
+ qmf.bed_imag[static_cast<std::size_t>(ch)]);
+ }
 
-        // §6.6.5's ramp, but over the timeslots this call actually EMITS
-        // rather than the ones it analyses. The pair's kQmfDelay means the
-        // first kQmfDelaySlots of them carry the previous frame's audio, so
-        // they finish out THAT frame's own ramp; only the rest belong to the
-        // frame just parsed. Getting this wrong is silent - it just applies
-        // every matrix 576 samples early on 37% of the audio - which is why
-        // the two cases are spelled out.
-        //
-        // The delayed tail (previous_frame) is replayed as a plain linear
-        // blend between two stored matrix snapshots, never per-object
-        // interpolation: by the time this call runs, the PREVIOUS frame's
-        // own ObjectShape (steep? how many data points?) is gone - only the
-        // numbers it produced survive in older_matrix/previous_matrix. This
-        // is not a regression - a plain blend is what this segment has
-        // always used, from before per-object shapes existed.
-        const bool previous_frame = slot < dsp::kQmfDelaySlots;
-        const double tail_frac =
-            static_cast<double>(dsp::kQmfSlotsPerFrame - dsp::kQmfDelaySlots + slot + 1) /
-            static_cast<double>(dsp::kQmfSlotsPerFrame);
-        // This frame's own content is only ever visible here for its first
-        // (kQmfSlotsPerFrame - kQmfDelaySlots) timeslots; the rest of its
-        // 24-timeslot window falls into the delayed-tail branch of the NEXT
-        // call instead, the same approximation the plain blend above makes.
-        const int ts = slot - dsp::kQmfDelaySlots;
+ // §6.6.5's ramp, but over the timeslots this call actually EMITS
+ // rather than the ones it analyses. The pair's kQmfDelay means the
+ // first kQmfDelaySlots of them carry the previous frame's audio, so
+ // they finish out THAT frame's own ramp; only the rest belong to the
+ // frame just parsed. Getting this wrong is silent - it just applies
+ // every matrix 576 samples early on 37% of the audio - which is why
+ // the two cases are spelled out.
+ //
+ // The delayed tail (previous_frame) is replayed as a plain linear
+ // blend between two stored matrix snapshots, never per-object
+ // interpolation: by the time this call runs, the PREVIOUS frame's
+ // own ObjectShape (steep? how many data points?) is gone - only the
+ // numbers it produced survive in older_matrix/previous_matrix. This
+ // is not a regression - a plain blend is what this segment has
+ // always used, from before per-object shapes existed.
+ const bool previous_frame = slot < dsp::kQmfDelaySlots;
+ const double tail_frac =
+ static_cast<double>(dsp::kQmfSlotsPerFrame - dsp::kQmfDelaySlots + slot + 1) /
+ static_cast<double>(dsp::kQmfSlotsPerFrame);
+ // This frame's own content is only ever visible here for its first
+ // (kQmfSlotsPerFrame - kQmfDelaySlots) timeslots; the rest of its
+ // 24-timeslot window falls into the delayed-tail branch of the NEXT
+ // call instead, the same approximation the plain blend above makes.
+ const int ts = slot - dsp::kQmfDelaySlots;
 
-        for (int object = 0; object < objects; ++object) {
-            const auto shape = params.shape(object);
-            auto& synth = qmf.objects[static_cast<std::size_t>(object)];
-            if (!shape.present) {
-                // Nothing coded this frame: still pull every slot, with a
-                // silent contribution, so the filter's own internal state
-                // drains through its natural zero-input response instead of
-                // being cut off - the QMF-domain equivalent of
-                // reconstruct_mdct_band's explicit history[] drain.
-                std::ranges::fill(qmf.object_real, 0.0);
-                std::ranges::fill(qmf.object_imag, 0.0);
-                const std::span<float, dsp::kQmfHop> emitted{
-                    out[static_cast<std::size_t>(object)].data() + slot * dsp::kQmfHop,
-                    static_cast<std::size_t>(dsp::kQmfHop)};
-                synth.pull(qmf.object_real, qmf.object_imag, emitted);
-                continue;
-            }
-            // One offset walk per object per block instead of one per
-            // coefficient read - see FrameParameters::ObjectMatrixView.
-            const auto view = params.object_view(object);
-            const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+ for (int object = 0; object < objects; ++object) {
+ const auto shape = params.shape(object);
+ auto& synth = qmf.objects[static_cast<std::size_t>(object)];
+ if (!shape.present) {
+ // Nothing coded this frame: still pull every slot, with a
+ // silent contribution, so the filter's own internal state
+ // drains through its natural zero-input response instead of
+ // being cut off - the QMF-domain equivalent of
+ // reconstruct_mdct_band's explicit history[] drain.
+ std::ranges::fill(qmf.object_real, 0.0);
+ std::ranges::fill(qmf.object_imag, 0.0);
+ const std::span<float, dsp::kQmfHop> emitted{
+ out[static_cast<std::size_t>(object)].data() + slot * dsp::kQmfHop,
+ static_cast<std::size_t>(dsp::kQmfHop)};
+ synth.pull(qmf.object_real, qmf.object_imag, emitted);
+ continue;
+ }
+ // One offset walk per object per block instead of one per
+ // coefficient read - see FrameParameters::ObjectMatrixView.
+ const auto view = params.object_view(object);
+ const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
 
-            // --- pass 1: this timeslot's mixing coefficients -------------
-            //
-            // Every branch that decides WHICH formula §6.6.5 applies depends
-            // only on the object's shape and on `ts` - never on the channel
-            // or the subband - so all of them resolve once here instead of
-            // 320 times (kNumChannels5X * kQmfSubbands) inside the loop that
-            // used to carry them. `interpolate` above is the readable
-            // statement of the same rules and stays the reference this agrees
-            // with; each arm below is one of its branches with the operands
-            // written in the identical order, so the coefficients are
-            // bit-identical rather than merely equivalent.
-            enum class MixRule : std::uint8_t {
-                kTailBlend,     // the delayed tail: blend two stored snapshots
-                kFlat,          // no history to ramp from: this frame outright
-                kSmoothWhole,   // one data point: one ramp across the window
-                kSmoothFirst,   // two data points, first half
-                kSmoothSecond,  // two data points, second half
-                kSteepPrevious, // steep, before the step
-                kSteepFirst,    // steep, at or after the first step
-                kSteepSecond,   // steep, at or after the second
-            };
-            constexpr int kHalfWindow = kQmfTimeslots / 2;
-            const MixRule rule = [&] {
-                if (previous_frame) {
-                    return MixRule::kTailBlend;
-                }
-                if (!has_previous) {
-                    return MixRule::kFlat;
-                }
-                if (!shape.steep) {
-                    if (shape.data_points == 1) {
-                        return MixRule::kSmoothWhole;
-                    }
-                    return ts < kHalfWindow ? MixRule::kSmoothFirst : MixRule::kSmoothSecond;
-                }
-                if (ts < shape.offset_ts[0]) {
-                    return MixRule::kSteepPrevious;
-                }
-                if (shape.data_points == 1 || ts < shape.offset_ts[1]) {
-                    return MixRule::kSteepFirst;
-                }
-                return MixRule::kSteepSecond;
-            }();
+ // --- pass 1: this timeslot's mixing coefficients -------------
+ //
+ // Every branch that decides WHICH formula §6.6.5 applies depends
+ // only on the object's shape and on `ts` - never on the channel
+ // or the subband - so all of them resolve once here instead of
+ // 320 times (kNumChannels5X * kQmfSubbands) inside the loop that
+ // used to carry them. `interpolate` above is the readable
+ // statement of the same rules and stays the reference this agrees
+ // with; each arm below is one of its branches with the operands
+ // written in the identical order, so the coefficients are
+ // bit-identical rather than merely equivalent.
+ enum class MixRule : std::uint8_t {
+ kTailBlend, // the delayed tail: blend two stored snapshots
+ kFlat, // no history to ramp from: this frame outright
+ kSmoothWhole, // one data point: one ramp across the window
+ kSmoothFirst, // two data points, first half
+ kSmoothSecond, // two data points, second half
+ kSteepPrevious, // steep, before the step
+ kSteepFirst, // steep, at or after the first step
+ kSteepSecond, // steep, at or after the second
+ };
+ constexpr int kHalfWindow = kQmfTimeslots / 2;
+ const MixRule rule = [&] {
+ if (previous_frame) {
+ return MixRule::kTailBlend;
+ }
+ if (!has_previous) {
+ return MixRule::kFlat;
+ }
+ if (!shape.steep) {
+ if (shape.data_points == 1) {
+ return MixRule::kSmoothWhole;
+ }
+ return ts < kHalfWindow ? MixRule::kSmoothFirst : MixRule::kSmoothSecond;
+ }
+ if (ts < shape.offset_ts[0]) {
+ return MixRule::kSteepPrevious;
+ }
+ if (shape.data_points == 1 || ts < shape.offset_ts[1]) {
+ return MixRule::kSteepFirst;
+ }
+ return MixRule::kSteepSecond;
+ }();
 
-            const auto object_base = (static_cast<std::size_t>(object) *
-                                      static_cast<std::size_t>(kNumChannels5X)) *
-                                     static_cast<std::size_t>(kQmfSubbands);
-            for (int ch = 0; ch < kNumChannels5X; ++ch) {
-                auto& mix_ch = qmf.mix[static_cast<std::size_t>(ch)];
-                const std::size_t row =
-                    object_base + (static_cast<std::size_t>(ch) *
-                                   static_cast<std::size_t>(kQmfSubbands));
-                for (int k = 0; k < dsp::kQmfSubbands; ++k) {
-                    const auto band = mapping[static_cast<std::size_t>(k)];
-                    const std::size_t index = row + static_cast<std::size_t>(k);
-                    const double dq0 = view.at(0, ch, band);
-                    // Every enumerator is handled below, but MSVC cannot see
-                    // that a switch over a complete enum leaves nothing
-                    // unassigned (C4701), and this file is built -Werror.
-                    double m = 0.0;
-                    switch (rule) {
-                        case MixRule::kTailBlend: {
-                            const double previous_val =
-                                has_previous ? static_cast<double>(state.previous_matrix[index])
-                                             : dq0;
-                            const double older_val =
-                                has_older ? static_cast<double>(state.older_matrix[index])
-                                          : previous_val;
-                            m = older_val + tail_frac * (previous_val - older_val);
-                            break;
-                        }
-                        case MixRule::kFlat:
-                            m = shape.data_points > 1 ? view.at(1, ch, band) : dq0;
-                            break;
-                        case MixRule::kSmoothWhole:
-                            m = static_cast<double>(state.previous_matrix[index]) +
-                                static_cast<double>(ts + 1) *
-                                    (dq0 - static_cast<double>(state.previous_matrix[index])) /
-                                    static_cast<double>(kQmfTimeslots);
-                            break;
-                        case MixRule::kSmoothFirst:
-                            m = static_cast<double>(state.previous_matrix[index]) +
-                                static_cast<double>(ts + 1) *
-                                    (dq0 - static_cast<double>(state.previous_matrix[index])) /
-                                    static_cast<double>(kHalfWindow);
-                            break;
-                        case MixRule::kSmoothSecond:
-                            m = dq0 + static_cast<double>(ts - kHalfWindow + 1) *
-                                          (view.at(1, ch, band) - dq0) /
-                                          static_cast<double>(kQmfTimeslots - kHalfWindow);
-                            break;
-                        case MixRule::kSteepPrevious:
-                            m = static_cast<double>(state.previous_matrix[index]);
-                            break;
-                        case MixRule::kSteepFirst:
-                            m = dq0;
-                            break;
-                        case MixRule::kSteepSecond:
-                            m = view.at(1, ch, band);
-                            break;
-                    }
-                    mix_ch[static_cast<std::size_t>(k)] = m;
-                }
-            }
+ const auto object_base = (static_cast<std::size_t>(object) *
+ static_cast<std::size_t>(kNumChannels5X)) *
+ static_cast<std::size_t>(kQmfSubbands);
+ for (int ch = 0; ch < kNumChannels5X; ++ch) {
+ auto& mix_ch = qmf.mix[static_cast<std::size_t>(ch)];
+ const std::size_t row =
+ object_base + (static_cast<std::size_t>(ch) *
+ static_cast<std::size_t>(kQmfSubbands));
+ for (int k = 0; k < dsp::kQmfSubbands; ++k) {
+ const auto band = mapping[static_cast<std::size_t>(k)];
+ const std::size_t index = row + static_cast<std::size_t>(k);
+ const double dq0 = view.at(0, ch, band);
+ // Every enumerator is handled below, but MSVC cannot see
+ // that a switch over a complete enum leaves nothing
+ // unassigned (C4701), and this file is built -Werror.
+ double m = 0.0;
+ switch (rule) {
+ case MixRule::kTailBlend: {
+ const double previous_val =
+ has_previous ? static_cast<double>(state.previous_matrix[index])
+ : dq0;
+ const double older_val =
+ has_older ? static_cast<double>(state.older_matrix[index])
+ : previous_val;
+ m = older_val + tail_frac * (previous_val - older_val);
+ break;
+ }
+ case MixRule::kFlat:
+ m = shape.data_points > 1 ? view.at(1, ch, band) : dq0;
+ break;
+ case MixRule::kSmoothWhole:
+ m = static_cast<double>(state.previous_matrix[index]) +
+ static_cast<double>(ts + 1) *
+ (dq0 - static_cast<double>(state.previous_matrix[index])) /
+ static_cast<double>(kQmfTimeslots);
+ break;
+ case MixRule::kSmoothFirst:
+ m = static_cast<double>(state.previous_matrix[index]) +
+ static_cast<double>(ts + 1) *
+ (dq0 - static_cast<double>(state.previous_matrix[index])) /
+ static_cast<double>(kHalfWindow);
+ break;
+ case MixRule::kSmoothSecond:
+ m = dq0 + static_cast<double>(ts - kHalfWindow + 1) *
+ (view.at(1, ch, band) - dq0) /
+ static_cast<double>(kQmfTimeslots - kHalfWindow);
+ break;
+ case MixRule::kSteepPrevious:
+ m = static_cast<double>(state.previous_matrix[index]);
+ break;
+ case MixRule::kSteepFirst:
+ m = dq0;
+ break;
+ case MixRule::kSteepSecond:
+ m = view.at(1, ch, band);
+ break;
+ }
+ mix_ch[static_cast<std::size_t>(k)] = m;
+ }
+ }
 
-            // --- pass 2: §6.6.6's per-subband linear combination ----------
-            //
-            // Nothing conditional left: a contiguous walk over subbands,
-            // accumulating each one over the five bed channels in the same
-            // order the fused loop did, so every sum is bit-identical.
-            for (int k = 0; k < dsp::kQmfSubbands; ++k) {
-                const auto j = static_cast<std::size_t>(k);
-                double real = 0.0;
-                double imag = 0.0;
-                for (int ch = 0; ch < kNumChannels5X; ++ch) {
-                    const auto c = static_cast<std::size_t>(ch);
-                    const double m = qmf.mix[c][j];
-                    real += m * qmf.bed_real[c][j];
-                    imag += m * qmf.bed_imag[c][j];
-                }
-                qmf.object_real[j] = real;
-                qmf.object_imag[j] = imag;
-            }
+ // --- pass 2: §6.6.6's per-subband linear combination ----------
+ //
+ // Nothing conditional left: a contiguous walk over subbands,
+ // accumulating each one over the five bed channels in the same
+ // order the fused loop did, so every sum is bit-identical.
+ for (int k = 0; k < dsp::kQmfSubbands; ++k) {
+ const auto j = static_cast<std::size_t>(k);
+ double real = 0.0;
+ double imag = 0.0;
+ for (int ch = 0; ch < kNumChannels5X; ++ch) {
+ const auto c = static_cast<std::size_t>(ch);
+ const double m = qmf.mix[c][j];
+ real += m * qmf.bed_real[c][j];
+ imag += m * qmf.bed_imag[c][j];
+ }
+ qmf.object_real[j] = real;
+ qmf.object_imag[j] = imag;
+ }
 
-            const std::span<float, dsp::kQmfHop> emitted{
-                out[static_cast<std::size_t>(object)].data() + slot * dsp::kQmfHop,
-                static_cast<std::size_t>(dsp::kQmfHop)};
-            synth.pull(qmf.object_real, qmf.object_imag, emitted);
-        }
-    }
+ const std::span<float, dsp::kQmfHop> emitted{
+ out[static_cast<std::size_t>(object)].data() + slot * dsp::kQmfHop,
+ static_cast<std::size_t>(dsp::kQmfHop)};
+ synth.pull(qmf.object_real, qmf.object_imag, emitted);
+ }
+ }
 
-    // The move keeps this at one matrix copy a frame: older_matrix inherits
-    // the buffer previous_matrix is about to give up, then previous_matrix
-    // is rebuilt at subband resolution from this frame's own last data
-    // point - see reconstruct_mdct_band's own tail for why that resolution,
-    // not params.matrix's own (variable, per-object) one.
-    state.older_matrix = std::move(state.previous_matrix);
-    state.previous_matrix.assign(previous_size, 0.0);
-    for (int object = 0; object < objects; ++object) {
-        const auto shape = params.shape(object);
-        const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
-        // One offset walk per object, not one per (channel, subband) -
-        // see FrameParameters::ObjectMatrixView.
-        const auto wb_view = params.object_view(object);
-        for (int ch = 0; ch < kNumChannels5X; ++ch) {
-            for (int subband = 0; subband < kQmfSubbands; ++subband) {
-                const std::size_t index =
-                    (static_cast<std::size_t>(object) *
-                         static_cast<std::size_t>(kNumChannels5X) +
-                     static_cast<std::size_t>(ch)) *
-                        static_cast<std::size_t>(kQmfSubbands) +
-                    static_cast<std::size_t>(subband);
-                state.previous_matrix[index] =
-                    static_cast<recon_scalar_t>(shape.present ? wb_view.at(shape.data_points - 1, ch,
-                                               mapping[static_cast<std::size_t>(subband)])
-                                  : 0.0);
-            }
-        }
-    }
-    state.previous_objects = objects;
-    state.previous_channels = kNumChannels5X;
+ // The move keeps this at one matrix copy a frame: older_matrix inherits
+ // the buffer previous_matrix is about to give up, then previous_matrix
+ // is rebuilt at subband resolution from this frame's own last data
+ // point - see reconstruct_mdct_band's own tail for why that resolution,
+ // not params.matrix's own (variable, per-object) one.
+ state.older_matrix = std::move(state.previous_matrix);
+ state.previous_matrix.assign(previous_size, 0.0);
+ for (int object = 0; object < objects; ++object) {
+ const auto shape = params.shape(object);
+ const auto& mapping = kSubbandToBand[static_cast<std::size_t>(shape.num_bands_idx)];
+ // One offset walk per object, not one per (channel, subband) -
+ // see FrameParameters::ObjectMatrixView.
+ const auto wb_view = params.object_view(object);
+ for (int ch = 0; ch < kNumChannels5X; ++ch) {
+ for (int subband = 0; subband < kQmfSubbands; ++subband) {
+ const std::size_t index =
+ (static_cast<std::size_t>(object) *
+ static_cast<std::size_t>(kNumChannels5X) +
+ static_cast<std::size_t>(ch)) *
+ static_cast<std::size_t>(kQmfSubbands) +
+ static_cast<std::size_t>(subband);
+ state.previous_matrix[index] =
+ static_cast<recon_scalar_t>(shape.present ? wb_view.at(shape.data_points - 1, ch,
+ mapping[static_cast<std::size_t>(subband)])
+ : 0.0);
+ }
+ }
+ }
+ state.previous_objects = objects;
+ state.previous_channels = kNumChannels5X;
 
-    return out;
+ return out;
 }
 
-}  // namespace
+} // namespace
 
 std::vector<std::vector<float>> reconstruct(std::span<const std::span<const float>> bed,
-                                            const FrameParameters& params,
-                                            ReconstructionState& state, bool fast_mdct,
-                                            bool fast_imdct, Domain domain) {
-    assert(bed.size() == static_cast<std::size_t>(params.channels));
-    assert(params.channels >= 1 && params.channels <= kMaxChannels);
-    assert(domain != Domain::kQmf || params.channels == kNumChannels5X);
-    assert(params.matrix.size() == params.coefficient_count());
+ const FrameParameters& params,
+ ReconstructionState& state, bool fast_mdct,
+ bool fast_imdct, Domain domain) {
+ assert(bed.size() == static_cast<std::size_t>(params.channels));
+ assert(params.channels >= 1 && params.channels <= kMaxChannels);
+ assert(domain != Domain::kQmf || params.channels == kNumChannels5X);
+ assert(params.matrix.size() == params.coefficient_count());
 
-    // Each domain function maintains its own previous_matrix/older_matrix/
-    // previous_objects/previous_channels internally, at the subband
-    // resolution its own comment explains, so there is no generic
-    // post-processing step here - unlike params.matrix itself, that state
-    // cannot be copied verbatim between calls once band counts and data
-    // points are allowed to vary per object.
-    return domain == Domain::kQmf ? reconstruct_qmf(bed, params, state)
-                                  : reconstruct_mdct_band(bed, params, state, fast_mdct, fast_imdct);
+ // Each domain function maintains its own previous_matrix/older_matrix/
+ // previous_objects/previous_channels internally, at the subband
+ // resolution its own comment explains, so there is no generic
+ // post-processing step here - unlike params.matrix itself, that state
+ // cannot be copied verbatim between calls once band counts and data
+ // points are allowed to vary per object.
+ return domain == Domain::kQmf ? reconstruct_qmf(bed, params, state)
+ : reconstruct_mdct_band(bed, params, state, fast_mdct, fast_imdct);
 }
 
-}  // namespace ac3::oba::joc
+} // namespace ac3::oba::joc

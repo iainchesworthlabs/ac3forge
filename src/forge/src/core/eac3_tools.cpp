@@ -32,17 +32,17 @@ namespace {
 // cos(j(2m+1)pi/12) for j, m in 0..5 - the shared kernel of both directions.
 // Six by six of them, so a table rather than a call to cos per coefficient.
 struct AhtKernel {
-    std::array<std::array<double, kBlocksPerFrameSize>, kBlocksPerFrameSize> cell{};
+ std::array<std::array<double, kBlocksPerFrameSize>, kBlocksPerFrameSize> cell{};
 
-    AhtKernel() {
-        for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
-            for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
-                cell[j][m] = std::cos(static_cast<double>(j) *
-                                      (2.0 * static_cast<double>(m) + 1.0) *
-                                      std::numbers::pi / 12.0);
-            }
-        }
-    }
+ AhtKernel() {
+ for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
+ for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
+ cell[j][m] = std::cos(static_cast<double>(j) *
+ (2.0 * static_cast<double>(m) + 1.0) *
+ std::numbers::pi / 12.0);
+ }
+ }
+ }
 };
 
 // The constructor only fills a std::array via std::cos, which cannot throw
@@ -55,15 +55,15 @@ const AhtKernel kKernel{};
 // double table stays the source, so the two agree to a rounding rather than
 // to two separate evaluations of cos.
 struct AhtKernelF {
-    std::array<std::array<float, kBlocksPerFrameSize>, kBlocksPerFrameSize> cell{};
+ std::array<std::array<float, kBlocksPerFrameSize>, kBlocksPerFrameSize> cell{};
 
-    AhtKernelF() {
-        for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
-            for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
-                cell[j][m] = static_cast<float>(kKernel.cell[j][m]);
-            }
-        }
-    }
+ AhtKernelF() {
+ for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
+ for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
+ cell[j][m] = static_cast<float>(kKernel.cell[j][m]);
+ }
+ }
+ }
 };
 
 // Reads kKernel, which is initialised above it in this translation unit;
@@ -72,11 +72,11 @@ struct AhtKernelF {
 const AhtKernelF kKernelF{};
 
 // §E3.4.5's synthesis weights. The standard writes
-//     C(k,m) = 2 * sum_j R_j X(k,j) cos(j(2m+1)pi/12),  R_j = 1, R_0 = 1/2
+// C(k,m) = 2 * sum_j R_j X(k,j) cos(j(2m+1)pi/12), R_j = 1, R_0 = 1/2
 // but a plain-text extraction of the PDF renders a radical sign as nothing at
 // all, and BOTH constants in that equation carry one. The real weights are
 // sqrt(2) and R_0 = 1/sqrt(2), which is to say the synthesis basis is
-//     w_0 = 1,  w_j = sqrt(2)
+// w_0 = 1, w_j = sqrt(2)
 // - the classic DCT-III, orthogonal with every column at norm-squared 6.
 //
 // The misreading is not one an internal check can catch. Dropping both
@@ -90,55 +90,55 @@ const AhtKernelF kKernelF{};
 constexpr double kW0 = 1.0;
 const double kWj = std::numbers::sqrt2;
 
-}  // namespace
+} // namespace
 
 void aht_forward(std::span<const double, kBlocksPerFrameSize> blocks,
-                 std::span<double, kBlocksPerFrameSize> out) {
-    for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
-        double sum = 0.0;
-        for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
-            sum += blocks[m] * kKernel.cell[j][m];
-        }
-        // Analysis is synthesis transposed, divided by the basis norms: 6 at
-        // j = 0 and 3 elsewhere, each over that index's synthesis weight.
-        out[j] = j == 0 ? sum / (6.0 * kW0) : sum / (3.0 * kWj);
-    }
+ std::span<double, kBlocksPerFrameSize> out) {
+ for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
+ double sum = 0.0;
+ for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
+ sum += blocks[m] * kKernel.cell[j][m];
+ }
+ // Analysis is synthesis transposed, divided by the basis norms: 6 at
+ // j = 0 and 3 elsewhere, each over that index's synthesis weight.
+ out[j] = j == 0 ? sum / (6.0 * kW0) : sum / (3.0 * kWj);
+ }
 }
 
 void aht_inverse(std::span<const double, kBlocksPerFrameSize> coefficients,
-                 std::span<double, kBlocksPerFrameSize> out) {
-    for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
-        double sum = 0.0;
-        for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
-            sum += (j == 0 ? kW0 : kWj) * coefficients[j] * kKernel.cell[j][m];
-        }
-        out[m] = sum;
-    }
+ std::span<double, kBlocksPerFrameSize> out) {
+ for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
+ double sum = 0.0;
+ for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
+ sum += (j == 0 ? kW0 : kWj) * coefficients[j] * kKernel.cell[j][m];
+ }
+ out[m] = sum;
+ }
 }
 
 void aht_inverse(std::span<const float, kBlocksPerFrameSize> coefficients,
-                 std::span<float, kBlocksPerFrameSize> out) {
-    // The same sum in the same order, in float throughout. kWj narrowed once
-    // here rather than per product.
-    const auto w0 = static_cast<float>(kW0);
-    const auto wj = static_cast<float>(kWj);
-    for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
-        float sum = 0.0F;
-        for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
-            sum += (j == 0 ? w0 : wj) * coefficients[j] * kKernelF.cell[j][m];
-        }
-        out[m] = sum;
-    }
+ std::span<float, kBlocksPerFrameSize> out) {
+ // The same sum in the same order, in float throughout. kWj narrowed once
+ // here rather than per product.
+ const auto w0 = static_cast<float>(kW0);
+ const auto wj = static_cast<float>(kWj);
+ for (std::size_t m = 0; m < kBlocksPerFrameSize; ++m) {
+ float sum = 0.0F;
+ for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
+ sum += (j == 0 ? w0 : wj) * coefficients[j] * kKernelF.cell[j][m];
+ }
+ out[m] = sum;
+ }
 }
 
 int aht_bin_bits(int hebap) {
-    if (hebap <= 0) {
-        return 0;
-    }
-    if (hebap <= 7) {
-        return tables::kAhtVqIndexBits[static_cast<std::size_t>(hebap)];
-    }
-    return 6 * aht_mantissa_bits(hebap);
+ if (hebap <= 0) {
+ return 0;
+ }
+ if (hebap <= 7) {
+ return tables::kAhtVqIndexBits[static_cast<std::size_t>(hebap)];
+ }
+ return 6 * aht_mantissa_bits(hebap);
 }
 
 namespace {
@@ -150,78 +150,78 @@ namespace {
 // a software routine of some hundreds of cycles. Same expression, same
 // values, so every existing double path reads identically through it.
 struct SpxAttenuationTable {
-    std::array<std::array<double, 3>, kSpxAttenCodes> cell{};
+ std::array<std::array<double, 3>, kSpxAttenCodes> cell{};
 
-    SpxAttenuationTable() {
-        for (int code = 0; code < kSpxAttenCodes; ++code) {
-            for (int tap = 0; tap < 3; ++tap) {
-                cell[static_cast<std::size_t>(code)][static_cast<std::size_t>(tap)] =
-                    std::exp2(-static_cast<double>(code + 1) * static_cast<double>(tap + 1) /
-                              15.0);
-            }
-        }
-    }
+ SpxAttenuationTable() {
+ for (int code = 0; code < kSpxAttenCodes; ++code) {
+ for (int tap = 0; tap < 3; ++tap) {
+ cell[static_cast<std::size_t>(code)][static_cast<std::size_t>(tap)] =
+ std::exp2(-static_cast<double>(code + 1) * static_cast<double>(tap + 1) /
+ 15.0);
+ }
+ }
+ }
 };
 
 // std::exp2 of a finite argument cannot throw; nothing here allocates.
 // NOLINTNEXTLINE(cert-err58-cpp,bugprone-throwing-static-initialization)
 const SpxAttenuationTable kSpxAttenuation{};
 
-}  // namespace
+} // namespace
 
 double spx_attenuation(int spxattencod, int index) {
-    assert(spxattencod >= 0 && spxattencod < kSpxAttenCodes);
-    // The table's three stored taps are the first three of a symmetric five,
-    // so an index past the middle mirrors back.
-    const int tap = index < 3 ? index : kSpxAttenTaps - 1 - index;
-    return kSpxAttenuation.cell[static_cast<std::size_t>(spxattencod)][static_cast<std::size_t>(tap)];
+ assert(spxattencod >= 0 && spxattencod < kSpxAttenCodes);
+ // The table's three stored taps are the first three of a symmetric five,
+ // so an index past the middle mirrors back.
+ const int tap = index < 3 ? index : kSpxAttenTaps - 1 - index;
+ return kSpxAttenuation.cell[static_cast<std::size_t>(spxattencod)][static_cast<std::size_t>(tap)];
 }
 
 namespace {
 
 template <typename Scalar>
 void spx_apply_notch_impl(std::span<Scalar> synth, int startmant, const BandLayout& bands,
-                          std::span<const bool> wrapflag, int spxattencod) {
-    if (spxattencod < 0) {
-        return;
-    }
-    const auto notch = [&](int centre) {
-        for (int tap = 0; tap < kSpxAttenTaps; ++tap) {
-            const int at = centre - 2 + tap - startmant;
-            if (at < 0 || at >= static_cast<int>(synth.size())) {
-                continue;
-            }
-            // In the spectrum's own type: at double this is the product it
-            // always was; at float it is one float multiply by the
-            // attenuation narrowed, rather than a promotion, a double
-            // multiply and a narrowing back.
-            synth[static_cast<std::size_t>(at)] =
-                synth[static_cast<std::size_t>(at)] *
-                static_cast<Scalar>(spx_attenuation(spxattencod, tap));
-        }
-    };
-    notch(startmant);
-    for (int bnd = 1; bnd < bands.count; ++bnd) {
-        if (wrapflag[static_cast<std::size_t>(bnd)]) {
-            notch(bands.start[static_cast<std::size_t>(bnd)]);
-        }
-    }
+ std::span<const bool> wrapflag, int spxattencod) {
+ if (spxattencod < 0) {
+ return;
+ }
+ const auto notch = [&](int centre) {
+ for (int tap = 0; tap < kSpxAttenTaps; ++tap) {
+ const int at = centre - 2 + tap - startmant;
+ if (at < 0 || at >= static_cast<int>(synth.size())) {
+ continue;
+ }
+ // In the spectrum's own type: at double this is the product it
+ // always was; at float it is one float multiply by the
+ // attenuation narrowed, rather than a promotion, a double
+ // multiply and a narrowing back.
+ synth[static_cast<std::size_t>(at)] =
+ synth[static_cast<std::size_t>(at)] *
+ static_cast<Scalar>(spx_attenuation(spxattencod, tap));
+ }
+ };
+ notch(startmant);
+ for (int bnd = 1; bnd < bands.count; ++bnd) {
+ if (wrapflag[static_cast<std::size_t>(bnd)]) {
+ notch(bands.start[static_cast<std::size_t>(bnd)]);
+ }
+ }
 }
 
-}  // namespace
+} // namespace
 
 void spx_apply_notch(std::span<double> synth, int startmant, const BandLayout& bands,
-                     std::span<const bool> wrapflag, int spxattencod) {
-    spx_apply_notch_impl<double>(synth, startmant, bands, wrapflag, spxattencod);
+ std::span<const bool> wrapflag, int spxattencod) {
+ spx_apply_notch_impl<double>(synth, startmant, bands, wrapflag, spxattencod);
 }
 
 void spx_apply_notch(std::span<float> synth, int startmant, const BandLayout& bands,
-                     std::span<const bool> wrapflag, int spxattencod) {
-    spx_apply_notch_impl<float>(synth, startmant, bands, wrapflag, spxattencod);
+ std::span<const bool> wrapflag, int spxattencod) {
+ spx_apply_notch_impl<float>(synth, startmant, bands, wrapflag, spxattencod);
 }
 
 double spx_noise_ratio(int band_start, int band_size, int endmant, int blend) {
-    return spx_noise_ratio_as<double>(band_start, band_size, endmant, blend);
+ return spx_noise_ratio_as<double>(band_start, band_size, endmant, blend);
 }
 
 // sqrt(3): a uniform distribution on [-a, a] has variance a^2/3, so that is
@@ -230,224 +230,224 @@ double spx_noise_ratio(int band_start, int band_size, int endmant, int blend) {
 double SpxNoise::next() { return next_as<double>(); }
 
 std::span<const int> aht_gaq_gains(int gaqmod) {
-    // Table E3.3. Mode 1's gains reach only to hebap 11; modes 2 and 3 reach
-    // to 16, which aht_gaq_endbap encodes.
-    static constexpr std::array<int, 1> kNone = {1};
-    static constexpr std::array<int, 2> kDouble = {1, 2};
-    static constexpr std::array<int, 2> kQuad = {1, 4};
-    static constexpr std::array<int, 3> kBoth = {1, 2, 4};
-    switch (gaqmod) {
-        case 1: return kDouble;
-        case 2: return kQuad;
-        case 3: return kBoth;
-        default: return kNone;
-    }
+ // Table E3.3. Mode 1's gains reach only to hebap 11; modes 2 and 3 reach
+ // to 16, which aht_gaq_endbap encodes.
+ static constexpr std::array<int, 1> kNone = {1};
+ static constexpr std::array<int, 2> kDouble = {1, 2};
+ static constexpr std::array<int, 2> kQuad = {1, 4};
+ static constexpr std::array<int, 3> kBoth = {1, 2, 4};
+ switch (gaqmod) {
+ case 1: return kDouble;
+ case 2: return kQuad;
+ case 3: return kBoth;
+ default: return kNone;
+ }
 }
 
 AhtMantissaCode aht_quantize_mantissa(double value, int mantissa_bits, int gain) {
-    assert(mantissa_bits >= 3);
-    AhtMantissaCode out;
-    const auto mask = [](int bits) {
-        return (static_cast<std::uint32_t>(1) << static_cast<unsigned>(bits)) - 1;
-    };
+ assert(mantissa_bits >= 3);
+ AhtMantissaCode out;
+ const auto mask = [](int bits) {
+ return (static_cast<std::uint32_t>(1) << static_cast<unsigned>(bits)) - 1;
+ };
 
-    if (gain == 1) {
-        // Table E3.5's unity-gain column, which is AC-3's symmetric quantizer:
-        // 2^m - 1 levels spanning [-1, 1], the full-scale-negative symbol left
-        // unused so it can serve as a tag under the other gains.
-        const int levels = (1 << mantissa_bits) - 1;
-        const int limit = (1 << (mantissa_bits - 1)) - 1;
-        const int code =
-            std::clamp(static_cast<int>(std::lround(value * levels / 2.0)), -limit, limit);
-        out.code = static_cast<std::uint32_t>(code) & mask(mantissa_bits);
-        out.bits = mantissa_bits;
-        out.recon = 2.0 * code / levels;
-        return out;
-    }
+ if (gain == 1) {
+ // Table E3.5's unity-gain column, which is AC-3's symmetric quantizer:
+ // 2^m - 1 levels spanning [-1, 1], the full-scale-negative symbol left
+ // unused so it can serve as a tag under the other gains.
+ const int levels = (1 << mantissa_bits) - 1;
+ const int limit = (1 << (mantissa_bits - 1)) - 1;
+ const int code =
+ std::clamp(static_cast<int>(std::lround(value * levels / 2.0)), -limit, limit);
+ out.code = static_cast<std::uint32_t>(code) & mask(mantissa_bits);
+ out.bits = mantissa_bits;
+ out.recon = 2.0 * code / levels;
+ return out;
+ }
 
-    const int small_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits - 2;
-    const int large_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits;
-    const int small_half = 1 << (small_bits - 1);
-    const double dead_zone = 1.0 / gain;
-    const double large_step =
-        gain == 2 ? 1.0 / ((1 << (mantissa_bits - 1)) - 1)
-                  : 3.0 / ((1 << (mantissa_bits + 1)) - 2);
+ const int small_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits - 2;
+ const int large_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits;
+ const int small_half = 1 << (small_bits - 1);
+ const double dead_zone = 1.0 / gain;
+ const double large_step =
+ gain == 2 ? 1.0 / ((1 << (mantissa_bits - 1)) - 1)
+ : 3.0 / ((1 << (mantissa_bits + 1)) - 2);
 
-    // The small quantizer reads as a plain fractional two's complement value
-    // and is then divided by the gain, so its reach stops just short of the
-    // dead zone - which is exactly where the large one starts.
-    const auto small = static_cast<int>(std::lround(value * small_half * gain));
-    if (std::abs(small) < small_half) {
-        out.code = static_cast<std::uint32_t>(small) & mask(small_bits);
-        out.bits = small_bits;
-        out.recon = static_cast<double>(small) / (small_half * gain);
-        return out;
-    }
+ // The small quantizer reads as a plain fractional two's complement value
+ // and is then divided by the gain, so its reach stops just short of the
+ // dead zone - which is exactly where the large one starts.
+ const auto small = static_cast<int>(std::lround(value * small_half * gain));
+ if (std::abs(small) < small_half) {
+ out.code = static_cast<std::uint32_t>(small) & mask(small_bits);
+ out.bits = small_bits;
+ out.recon = static_cast<double>(small) / (small_half * gain);
+ return out;
+ }
 
-    // Large: the tag, then a dead-zone codeword whose sign lives in the two's
-    // complement wrap - non-negative codes count outwards from +dead_zone,
-    // negative ones from -dead_zone.
-    const int steps = (1 << (large_bits - 1)) - 1;
-    const int k = std::clamp(
-        static_cast<int>(std::lround((std::abs(value) - dead_zone) / large_step)), 0,
-        steps);
-    const int code = value >= 0.0 ? k : -k - 1;
-    out.code = static_cast<std::uint32_t>(-small_half) & mask(small_bits);
-    out.bits = small_bits;
-    out.escape = static_cast<std::uint32_t>(code) & mask(large_bits);
-    out.escape_bits = large_bits;
-    out.recon = (value >= 0.0 ? 1.0 : -1.0) * (dead_zone + k * large_step);
-    return out;
+ // Large: the tag, then a dead-zone codeword whose sign lives in the two's
+ // complement wrap - non-negative codes count outwards from +dead_zone,
+ // negative ones from -dead_zone.
+ const int steps = (1 << (large_bits - 1)) - 1;
+ const int k = std::clamp(
+ static_cast<int>(std::lround((std::abs(value) - dead_zone) / large_step)), 0,
+ steps);
+ const int code = value >= 0.0 ? k : -k - 1;
+ out.code = static_cast<std::uint32_t>(-small_half) & mask(small_bits);
+ out.bits = small_bits;
+ out.escape = static_cast<std::uint32_t>(code) & mask(large_bits);
+ out.escape_bits = large_bits;
+ out.recon = (value >= 0.0 ? 1.0 : -1.0) * (dead_zone + k * large_step);
+ return out;
 }
 
 double aht_dequantize_mantissa(std::uint32_t code, std::uint32_t escape, bool has_escape,
-                               int mantissa_bits, int gain) {
-    // The header's template at double, operation for operation what this
-    // function computed before it existed.
-    return aht_dequantize_mantissa_as<double>(code, escape, has_escape, mantissa_bits, gain);
+ int mantissa_bits, int gain) {
+ // The header's template at double, operation for operation what this
+ // function computed before it existed.
+ return aht_dequantize_mantissa_as<double>(code, escape, has_escape, mantissa_bits, gain);
 }
 
 int aht_bin_gaq_bits(std::span<const double, kBlocksPerFrameSize> values,
-                     int mantissa_bits, int gain) {
-    // Only the WIDTH of each codeword is wanted here, never the codeword, its
-    // reconstruction or its escape payload - and the width follows from one
-    // predicate per value, not from quantizing it. Spelling that out matters
-    // because aht_choose_gain calls this once per candidate gain and was
-    // therefore running a full aht_quantize_mantissa (clamp, mask, two
-    // divisions for `recon`) three times over for every value, to read one
-    // integer off each result. Measured before this: aht_quantize_mantissa
-    // was ~38% of an E-AC-3 encode profile, eac3_tools.cpp ~43%.
-    //
-    // Every branch of aht_quantize_mantissa below agrees with this by
-    // construction - see the widths it assigns:
-    //   gain == 1        -> bits = mantissa_bits, escape_bits = 0 (always)
-    //   otherwise, small -> bits = small_bits,    escape_bits = 0
-    //   otherwise, large -> bits = small_bits,    escape_bits = large_bits
-    // so the total is a fixed part plus large_bits per escape.
-    const int n = static_cast<int>(values.size());
+ int mantissa_bits, int gain) {
+ // Only the WIDTH of each codeword is wanted here, never the codeword, its
+ // reconstruction or its escape payload - and the width follows from one
+ // predicate per value, not from quantizing it. Spelling that out matters
+ // because aht_choose_gain calls this once per candidate gain and was
+ // therefore running a full aht_quantize_mantissa (clamp, mask, two
+ // divisions for `recon`) three times over for every value, to read one
+ // integer off each result. Measured before this: aht_quantize_mantissa
+ // was ~38% of an E-AC-3 encode profile, eac3_tools.cpp ~43%.
+ //
+ // Every branch of aht_quantize_mantissa below agrees with this by
+ // construction - see the widths it assigns:
+ // gain == 1 -> bits = mantissa_bits, escape_bits = 0 (always)
+ // otherwise, small -> bits = small_bits, escape_bits = 0
+ // otherwise, large -> bits = small_bits, escape_bits = large_bits
+ // so the total is a fixed part plus large_bits per escape.
+ const int n = static_cast<int>(values.size());
 
-    // Unity gain has no escape path at all: its branch returns before
-    // escape_bits is ever set, whatever the value. The total is a constant
-    // and the values need not be read.
-    if (gain == 1) {
-        return n * mantissa_bits;
-    }
+ // Unity gain has no escape path at all: its branch returns before
+ // escape_bits is ever set, whatever the value. The total is a constant
+ // and the values need not be read.
+ if (gain == 1) {
+ return n * mantissa_bits;
+ }
 
-    const int small_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits - 2;
-    const int large_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits;
-    const int small_half = 1 << (small_bits - 1);
+ const int small_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits - 2;
+ const int large_bits = gain == 2 ? mantissa_bits - 1 : mantissa_bits;
+ const int small_half = 1 << (small_bits - 1);
 
-    // The escape predicate, transcribed exactly from aht_quantize_mantissa's
-    // own `small` computation and its `std::abs(small) < small_half` test -
-    // identical operations on identical values, so the count, and therefore
-    // this function's result, is bit-for-bit what the quantizing form
-    // returned.
-    int escapes = 0;
-    for (const double value : values) {
-        const auto small = static_cast<int>(std::lround(value * small_half * gain));
-        if (std::abs(small) >= small_half) {
-            ++escapes;
-        }
-    }
-    return (n * small_bits) + (escapes * large_bits);
+ // The escape predicate, transcribed exactly from aht_quantize_mantissa's
+ // own `small` computation and its `std::abs(small) < small_half` test -
+ // identical operations on identical values, so the count, and therefore
+ // this function's result, is bit-for-bit what the quantizing form
+ // returned.
+ int escapes = 0;
+ for (const double value : values) {
+ const auto small = static_cast<int>(std::lround(value * small_half * gain));
+ if (std::abs(small) >= small_half) {
+ ++escapes;
+ }
+ }
+ return (n * small_bits) + (escapes * large_bits);
 }
 
 int aht_choose_gain(std::span<const double, kBlocksPerFrameSize> values,
-                    int mantissa_bits, int gaqmod) {
-    AC3_ZONE_SCOPED_N("aht_choose_gain");
-    int best = 1;
-    int best_bits = std::numeric_limits<int>::max();
-    for (const int gain : aht_gaq_gains(gaqmod)) {
-        // Gk = 4 needs two bits of headroom in the small codeword, so the
-        // narrowest quantizer cannot offer it.
-        if (gain == 4 && mantissa_bits < 3) {
-            continue;
-        }
-        const int bits = aht_bin_gaq_bits(values, mantissa_bits, gain);
-        // Ties go to the LARGER gain. The gains are listed smallest first and
-        // each one's large quantizer is finer than the last - Gk = 4 steps by
-        // 1.5/(2^m - 1) where Gk = 1 steps by 2/(2^m - 1) - while their small
-        // quantizers share a step. So when two gains cost the same, the
-        // larger one reconstructs at least as well.
-        if (bits <= best_bits) {
-            best_bits = bits;
-            best = gain;
-        }
-    }
-    return best;
+ int mantissa_bits, int gaqmod) {
+ AC3_ZONE_SCOPED_N("aht_choose_gain");
+ int best = 1;
+ int best_bits = std::numeric_limits<int>::max();
+ for (const int gain : aht_gaq_gains(gaqmod)) {
+ // Gk = 4 needs two bits of headroom in the small codeword, so the
+ // narrowest quantizer cannot offer it.
+ if (gain == 4 && mantissa_bits < 3) {
+ continue;
+ }
+ const int bits = aht_bin_gaq_bits(values, mantissa_bits, gain);
+ // Ties go to the LARGER gain. The gains are listed smallest first and
+ // each one's large quantizer is finer than the last - Gk = 4 steps by
+ // 1.5/(2^m - 1) where Gk = 1 steps by 2/(2^m - 1) - while their small
+ // quantizers share a step. So when two gains cost the same, the
+ // larger one reconstructs at least as well.
+ if (bits <= best_bits) {
+ best_bits = bits;
+ best = gain;
+ }
+ }
+ return best;
 }
 
 int aht_vector_quantize(std::span<double, kBlocksPerFrameSize> values, int hebap) {
-    AC3_ZONE_SCOPED_N("aht_vector_quantize");
-    assert(hebap >= 1 && hebap <= 7);
-    const auto book = tables::aht_vq_table(hebap);
-    int best = 0;
-    double best_distance = std::numeric_limits<double>::infinity();
-    for (std::size_t entry = 0; entry < book.size(); ++entry) {
-        double distance = 0.0;
-        for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
-            const double candidate =
-                static_cast<double>(book[entry][j]) / 32768.0;
-            const double error = values[j] - candidate;
-            distance += error * error;
-            if (distance >= best_distance) {
-                break;  // no way back once it is already worse
-            }
-        }
-        if (distance < best_distance) {
-            best_distance = distance;
-            best = static_cast<int>(entry);
-        }
-    }
-    for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
-        values[j] = static_cast<double>(book[static_cast<std::size_t>(best)][j]) / 32768.0;
-    }
-    return best;
+ AC3_ZONE_SCOPED_N("aht_vector_quantize");
+ assert(hebap >= 1 && hebap <= 7);
+ const auto book = tables::aht_vq_table(hebap);
+ int best = 0;
+ double best_distance = std::numeric_limits<double>::infinity();
+ for (std::size_t entry = 0; entry < book.size(); ++entry) {
+ double distance = 0.0;
+ for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
+ const double candidate =
+ static_cast<double>(book[entry][j]) / 32768.0;
+ const double error = values[j] - candidate;
+ distance += error * error;
+ if (distance >= best_distance) {
+ break; // no way back once it is already worse
+ }
+ }
+ if (distance < best_distance) {
+ best_distance = distance;
+ best = static_cast<int>(entry);
+ }
+ }
+ for (std::size_t j = 0; j < kBlocksPerFrameSize; ++j) {
+ values[j] = static_cast<double>(book[static_cast<std::size_t>(best)][j]) / 32768.0;
+ }
+ return best;
 }
 
 BandLayout group_bands(int first_bin, int subbands, int bins_per_subband,
-                       std::span<const bool> structure) {
-    assert(subbands >= 1 && subbands <= kMaxSubBands);
-    assert(structure.size() >= static_cast<std::size_t>(subbands));
+ std::span<const bool> structure) {
+ assert(subbands >= 1 && subbands <= kMaxSubBands);
+ assert(structure.size() >= static_cast<std::size_t>(subbands));
 
-    BandLayout out;
-    out.count = 1;
-    out.start[0] = first_bin;
-    out.size[0] = bins_per_subband;
-    for (int sbnd = 1; sbnd < subbands; ++sbnd) {
-        const auto band = static_cast<std::size_t>(out.count);
-        if (structure[static_cast<std::size_t>(sbnd)]) {
-            out.size[band - 1] += bins_per_subband;
-        } else {
-            out.start[band] = first_bin + sbnd * bins_per_subband;
-            out.size[band] = bins_per_subband;
-            ++out.count;
-        }
-    }
-    return out;
+ BandLayout out;
+ out.count = 1;
+ out.start[0] = first_bin;
+ out.size[0] = bins_per_subband;
+ for (int sbnd = 1; sbnd < subbands; ++sbnd) {
+ const auto band = static_cast<std::size_t>(out.count);
+ if (structure[static_cast<std::size_t>(sbnd)]) {
+ out.size[band - 1] += bins_per_subband;
+ } else {
+ out.start[band] = first_bin + sbnd * bins_per_subband;
+ out.size[band] = bins_per_subband;
+ ++out.count;
+ }
+ }
+ return out;
 }
 
 BandLayout ecpl_group_bands(int begin_subbnd, int end_subbnd, std::span<const bool> structure) {
-    assert(begin_subbnd >= 0 && end_subbnd <= kEcplSubBands && begin_subbnd < end_subbnd);
-    assert(structure.size() >= static_cast<std::size_t>(end_subbnd));
+ assert(begin_subbnd >= 0 && end_subbnd <= kEcplSubBands && begin_subbnd < end_subbnd);
+ assert(structure.size() >= static_cast<std::size_t>(end_subbnd));
 
-    BandLayout out;
-    out.count = 1;
-    out.start[0] = kEcplSubBandTab[static_cast<std::size_t>(begin_subbnd)];
-    out.size[0] = kEcplSubBandTab[static_cast<std::size_t>(begin_subbnd) + 1] - out.start[0];
-    for (int sbnd = begin_subbnd + 1; sbnd < end_subbnd; ++sbnd) {
-        const int start = kEcplSubBandTab[static_cast<std::size_t>(sbnd)];
-        const int width = kEcplSubBandTab[static_cast<std::size_t>(sbnd) + 1] - start;
-        const auto band = static_cast<std::size_t>(out.count);
-        if (structure[static_cast<std::size_t>(sbnd)]) {
-            out.size[band - 1] += width;
-        } else {
-            out.start[band] = start;
-            out.size[band] = width;
-            ++out.count;
-        }
-    }
-    return out;
+ BandLayout out;
+ out.count = 1;
+ out.start[0] = kEcplSubBandTab[static_cast<std::size_t>(begin_subbnd)];
+ out.size[0] = kEcplSubBandTab[static_cast<std::size_t>(begin_subbnd) + 1] - out.start[0];
+ for (int sbnd = begin_subbnd + 1; sbnd < end_subbnd; ++sbnd) {
+ const int start = kEcplSubBandTab[static_cast<std::size_t>(sbnd)];
+ const int width = kEcplSubBandTab[static_cast<std::size_t>(sbnd) + 1] - start;
+ const auto band = static_cast<std::size_t>(out.count);
+ if (structure[static_cast<std::size_t>(sbnd)]) {
+ out.size[band - 1] += width;
+ } else {
+ out.start[band] = start;
+ out.size[band] = width;
+ ++out.count;
+ }
+ }
+ return out;
 }
 
 namespace {
@@ -455,10 +455,10 @@ namespace {
 // Table E3.10: {exptab, manttab} for ecplamp 0..30. Index 31 is handled as a
 // special case (amplitude 0) rather than stored here.
 constexpr std::array<std::pair<int, int>, 31> kEcplAmpTab = {{
-    {0, 0x20}, {0, 0x1b}, {0, 0x17}, {0, 0x13}, {0, 0x10}, {1, 0x1b}, {1, 0x17}, {1, 0x13},
-    {1, 0x10}, {2, 0x1b}, {2, 0x17}, {2, 0x13}, {2, 0x10}, {3, 0x1b}, {3, 0x17}, {3, 0x13},
-    {3, 0x10}, {4, 0x1b}, {4, 0x17}, {4, 0x13}, {4, 0x10}, {5, 0x1b}, {5, 0x17}, {5, 0x13},
-    {5, 0x10}, {6, 0x1b}, {6, 0x17}, {6, 0x13}, {6, 0x10}, {7, 0x1b}, {7, 0x17},
+ {0, 0x20}, {0, 0x1b}, {0, 0x17}, {0, 0x13}, {0, 0x10}, {1, 0x1b}, {1, 0x17}, {1, 0x13},
+ {1, 0x10}, {2, 0x1b}, {2, 0x17}, {2, 0x13}, {2, 0x10}, {3, 0x1b}, {3, 0x17}, {3, 0x13},
+ {3, 0x10}, {4, 0x1b}, {4, 0x17}, {4, 0x13}, {4, 0x10}, {5, 0x1b}, {5, 0x17}, {5, 0x13},
+ {5, 0x10}, {6, 0x1b}, {6, 0x17}, {6, 0x13}, {6, 0x10}, {7, 0x1b}, {7, 0x17},
 }};
 
 // Table E3.10 in the caller's scalar: mant/32, then 2^-exp, both exact in
@@ -466,66 +466,66 @@ constexpr std::array<std::pair<int, int>, 31> kEcplAmpTab = {{
 // form is the std::ldexp this used to call, value for value.
 template <typename Scalar>
 Scalar decode_ecplamp_as(int ecplamp) {
-    assert(ecplamp >= 0 && ecplamp <= 31);
-    if (ecplamp == 31) {
-        return Scalar{0};
-    }
-    const auto [exp, mant] = kEcplAmpTab[static_cast<std::size_t>(ecplamp)];
-    return static_cast<Scalar>(mant) / Scalar{32} * exponent_scale<Scalar>(exp);
+ assert(ecplamp >= 0 && ecplamp <= 31);
+ if (ecplamp == 31) {
+ return Scalar{0};
+ }
+ const auto [exp, mant] = kEcplAmpTab[static_cast<std::size_t>(ecplamp)];
+ return static_cast<Scalar>(mant) / Scalar{32} * exponent_scale<Scalar>(exp);
 }
 
-}  // namespace
+} // namespace
 
 double decode_ecplamp(int ecplamp) { return decode_ecplamp_as<double>(ecplamp); }
 
 int quantize_ecplamp(double value) {
-    if (!(value > 0.0)) {
-        return 31;
-    }
-    int best = 0;
-    double best_error = std::numeric_limits<double>::infinity();
-    for (int i = 0; i < 31; ++i) {
-        const double error = std::abs(decode_ecplamp(i) - value);
-        if (error < best_error) {
-            best_error = error;
-            best = i;
-        }
-    }
-    // A value quieter than every real entry reconstructs closer to silence
-    // (index 31) than to the smallest real step.
-    if (std::abs(0.0 - value) < best_error) {
-        return 31;
-    }
-    return best;
+ if (!(value > 0.0)) {
+ return 31;
+ }
+ int best = 0;
+ double best_error = std::numeric_limits<double>::infinity();
+ for (int i = 0; i < 31; ++i) {
+ const double error = std::abs(decode_ecplamp(i) - value);
+ if (error < best_error) {
+ best_error = error;
+ best = i;
+ }
+ }
+ // A value quieter than every real entry reconstructs closer to silence
+ // (index 31) than to the smallest real step.
+ if (std::abs(0.0 - value) < best_error) {
+ return 31;
+ }
+ return best;
 }
 
 int quantize_ecplangle(double angle) {
-    const long raw = std::lround(angle * 32.0);
-    return static_cast<int>(((raw % 64) + 64) % 64);
+ const long raw = std::lround(angle * 32.0);
+ return static_cast<int>(((raw % 64) + 64) % 64);
 }
 
 int quantize_ecplchaos(double chaos) {
-    return std::clamp(static_cast<int>(std::lround(-chaos * 7.0)), 0, 7);
+ return std::clamp(static_cast<int>(std::lround(-chaos * 7.0)), 0, 7);
 }
 
 namespace {
 
 // y[m] = cos(2*pi*(N/4 + 0.5)/N*(m + 0.5)), N = 512, m = 0..255 (§3.5.5.4).
 struct EcplYTable {
-    std::array<double, 256> value{};
-    EcplYTable() {
-        constexpr double kPi = std::numbers::pi;
-        constexpr double kN = 512.0;
-        for (int m = 0; m < 256; ++m) {
-            value[static_cast<std::size_t>(m)] =
-                std::cos(2.0 * kPi * (kN / 4.0 + 0.5) / kN * (static_cast<double>(m) + 0.5));
-        }
-    }
+ std::array<double, 256> value{};
+ EcplYTable() {
+ constexpr double kPi = std::numbers::pi;
+ constexpr double kN = 512.0;
+ for (int m = 0; m < 256; ++m) {
+ value[static_cast<std::size_t>(m)] =
+ std::cos(2.0 * kPi * (kN / 4.0 + 0.5) / kN * (static_cast<double>(m) + 0.5));
+ }
+ }
 };
 
 const EcplYTable& ecpl_y() {
-    static const EcplYTable t;
-    return t;
+ static const EcplYTable t;
+ return t;
 }
 
 // §3.5.5.4 step 3: xcos3[i] = cos(pi*i/512), xsin3[i] = -sin(pi*i/512) for
@@ -535,21 +535,21 @@ const EcplYTable& ecpl_y() {
 // fixed pair of arrays on every call: tabulated once here instead of
 // std::cos/std::sin (x4 per sample) inside the 256-iteration loop.
 struct Xcos3Table {
-    std::array<double, 512> cos{};
-    std::array<double, 512> sin{};
-    Xcos3Table() {
-        constexpr double kPi = std::numbers::pi;
-        for (int i = 0; i < 512; ++i) {
-            const double angle = kPi * static_cast<double>(i) / 512.0;
-            cos[static_cast<std::size_t>(i)] = std::cos(angle);
-            sin[static_cast<std::size_t>(i)] = -std::sin(angle);
-        }
-    }
+ std::array<double, 512> cos{};
+ std::array<double, 512> sin{};
+ Xcos3Table() {
+ constexpr double kPi = std::numbers::pi;
+ for (int i = 0; i < 512; ++i) {
+ const double angle = kPi * static_cast<double>(i) / 512.0;
+ cos[static_cast<std::size_t>(i)] = std::cos(angle);
+ sin[static_cast<std::size_t>(i)] = -std::sin(angle);
+ }
+ }
 };
 
 const Xcos3Table& xcos3_table() {
-    static const Xcos3Table t;
-    return t;
+ static const Xcos3Table t;
+ return t;
 }
 
 // ecpl_channel_spectrum's eight 512-sample double arrays (PREfast's C6262,
@@ -560,7 +560,7 @@ const Xcos3Table& xcos3_table() {
 // heap-allocating per call would trade the stack-size warning for real
 // allocation churn; a thread_local reused buffer avoids both.
 //
-// One scratch per scalar (roadmap PF7's float32 gap): the double one is the
+// One scratch per scalar (minimum-footprint decoder profile's float32 gap): the double one is the
 // encoder's and a double decoder's, the float one a float decoder's. The
 // float one also carries the tables its transforms read - the analysis
 // window, the xcos3/xsin3 twiddle and §3.5.5.4's y - narrowed once from the
@@ -574,23 +574,23 @@ struct EcplTables {};
 
 template <>
 struct EcplTables<float> {
-    std::array<float, 512> window{};
-    std::array<float, 512> cos3{};
-    std::array<float, 512> sin3{};
-    std::array<float, 256> y{};
+ std::array<float, 512> window{};
+ std::array<float, 512> cos3{};
+ std::array<float, 512> sin3{};
+ std::array<float, 256> y{};
 
-    EcplTables() {
-        const auto& xcos3 = xcos3_table();
-        for (std::size_t i = 0; i < 512; ++i) {
-            window[i] = static_cast<float>(kAnalysisWindow[i]);
-            cos3[i] = static_cast<float>(xcos3.cos[i]);
-            sin3[i] = static_cast<float>(xcos3.sin[i]);
-        }
-        const auto& y_table = ecpl_y().value;
-        for (std::size_t m = 0; m < 256; ++m) {
-            y[m] = static_cast<float>(y_table[m]);
-        }
-    }
+ EcplTables() {
+ const auto& xcos3 = xcos3_table();
+ for (std::size_t i = 0; i < 512; ++i) {
+ window[i] = static_cast<float>(kAnalysisWindow[i]);
+ cos3[i] = static_cast<float>(xcos3.cos[i]);
+ sin3[i] = static_cast<float>(xcos3.sin[i]);
+ }
+ const auto& y_table = ecpl_y().value;
+ for (std::size_t m = 0; m < 256; ++m) {
+ y[m] = static_cast<float>(y_table[m]);
+ }
+ }
 };
 
 // The fixed-point tier's copies of the same four tables, narrowed from the
@@ -598,35 +598,35 @@ struct EcplTables<float> {
 // in magnitude, so the format holds them with the whole of its fraction.
 template <>
 struct EcplTables<internal::Fixed32> {
-    std::array<internal::Fixed32, 512> window{};
-    std::array<internal::Fixed32, 512> cos3{};
-    std::array<internal::Fixed32, 512> sin3{};
-    std::array<internal::Fixed32, 256> y{};
+ std::array<internal::Fixed32, 512> window{};
+ std::array<internal::Fixed32, 512> cos3{};
+ std::array<internal::Fixed32, 512> sin3{};
+ std::array<internal::Fixed32, 256> y{};
 
-    EcplTables() {
-        const auto& xcos3 = xcos3_table();
-        for (std::size_t i = 0; i < 512; ++i) {
-            window[i] = internal::Fixed32{kAnalysisWindow[i]};
-            cos3[i] = internal::Fixed32{xcos3.cos[i]};
-            sin3[i] = internal::Fixed32{xcos3.sin[i]};
-        }
-        const auto& y_table = ecpl_y().value;
-        for (std::size_t m = 0; m < 256; ++m) {
-            y[m] = internal::Fixed32{y_table[m]};
-        }
-    }
+ EcplTables() {
+ const auto& xcos3 = xcos3_table();
+ for (std::size_t i = 0; i < 512; ++i) {
+ window[i] = internal::Fixed32{kAnalysisWindow[i]};
+ cos3[i] = internal::Fixed32{xcos3.cos[i]};
+ sin3[i] = internal::Fixed32{xcos3.sin[i]};
+ }
+ const auto& y_table = ecpl_y().value;
+ for (std::size_t m = 0; m < 256; ++m) {
+ y[m] = internal::Fixed32{y_table[m]};
+ }
+ }
 };
 
 template <typename Scalar>
 struct EcplSpectrumScratch : EcplTables<Scalar> {
-    std::array<Scalar, 512> x_prev{};
-    std::array<Scalar, 512> x_curr{};
-    std::array<Scalar, 512> x_next{};
-    std::array<Scalar, 512> pcm{};
-    std::array<Scalar, 512> pcm_real{};
-    std::array<Scalar, 512> pcm_imag{};
-    std::array<Scalar, 512> zr{};
-    std::array<Scalar, 512> zi{};
+ std::array<Scalar, 512> x_prev{};
+ std::array<Scalar, 512> x_curr{};
+ std::array<Scalar, 512> x_next{};
+ std::array<Scalar, 512> pcm{};
+ std::array<Scalar, 512> pcm_real{};
+ std::array<Scalar, 512> pcm_imag{};
+ std::array<Scalar, 512> zr{};
+ std::array<Scalar, 512> zi{};
 };
 
 // The storage is on the heap and only the POINTER is thread_local. The reason
@@ -671,28 +671,28 @@ struct EcplSpectrumScratch : EcplTables<Scalar> {
 // releasing it.
 template <typename Scalar>
 bool& ecpl_scratch_ever_built() {
-    static thread_local bool built = false;
-    return built;
+ static thread_local bool built = false;
+ return built;
 }
 
 template <typename Scalar>
 std::unique_ptr<EcplSpectrumScratch<Scalar>>& ecpl_spectrum_scratch_slot() {
-    static thread_local std::unique_ptr<EcplSpectrumScratch<Scalar>> scratch;
-    return scratch;
+ static thread_local std::unique_ptr<EcplSpectrumScratch<Scalar>> scratch;
+ return scratch;
 }
 
 template <typename Scalar>
 EcplSpectrumScratch<Scalar>& ecpl_spectrum_scratch() {
-    auto& scratch = ecpl_spectrum_scratch_slot<Scalar>();
-    // Built on first use rather than on first entry, so release_ecpl_scratch()
-    // below can put it back and the next call rebuilds it. A null check per
-    // call against 24-32 KB that would otherwise be resident for the life of
-    // the task.
-    if (!scratch) {
-        scratch = std::make_unique<EcplSpectrumScratch<Scalar>>();
-        ecpl_scratch_ever_built<Scalar>() = true;
-    }
-    return *scratch;
+ auto& scratch = ecpl_spectrum_scratch_slot<Scalar>();
+ // Built on first use rather than on first entry, so release_ecpl_scratch()
+ // below can put it back and the next call rebuilds it. A null check per
+ // call against 24-32 KB that would otherwise be resident for the life of
+ // the task.
+ if (!scratch) {
+ scratch = std::make_unique<EcplSpectrumScratch<Scalar>>();
+ ecpl_scratch_ever_built<Scalar>() = true;
+ }
+ return *scratch;
 }
 
 // cos(pi a) and sin(pi a) for a in [-1, 1], in float, without libm. The
@@ -706,119 +706,119 @@ EcplSpectrumScratch<Scalar>& ecpl_spectrum_scratch() {
 // or so, and the reconstruction ran two of them per bin of every coupled
 // channel of every block (docs/platforms/bare-metal/esp32-s3.md).
 void sincos_pi(float a, float& sine, float& cosine) {
-    const float twice = a * 2.0F;
-    const int q = static_cast<int>(twice + (twice >= 0.0F ? 0.5F : -0.5F));
-    const float r = (a - static_cast<float>(q) * 0.5F) * std::numbers::pi_v<float>;
-    const float r2 = r * r;
-    const float sr =
-        r * (1.0F - r2 * (1.0F / 6.0F -
-                          r2 * (1.0F / 120.0F - r2 * (1.0F / 5040.0F - r2 * (1.0F / 362880.0F)))));
-    const float cr =
-        1.0F - r2 * (0.5F - r2 * (1.0F / 24.0F - r2 * (1.0F / 720.0F - r2 * (1.0F / 40320.0F))));
-    switch (((q % 4) + 4) % 4) {
-        case 0:
-            sine = sr;
-            cosine = cr;
-            break;
-        case 1:
-            sine = cr;
-            cosine = -sr;
-            break;
-        case 2:
-            sine = -sr;
-            cosine = -cr;
-            break;
-        default:
-            sine = -cr;
-            cosine = sr;
-            break;
-    }
+ const float twice = a * 2.0F;
+ const int q = static_cast<int>(twice + (twice >= 0.0F ? 0.5F : -0.5F));
+ const float r = (a - static_cast<float>(q) * 0.5F) * std::numbers::pi_v<float>;
+ const float r2 = r * r;
+ const float sr =
+ r * (1.0F - r2 * (1.0F / 6.0F -
+ r2 * (1.0F / 120.0F - r2 * (1.0F / 5040.0F - r2 * (1.0F / 362880.0F)))));
+ const float cr =
+ 1.0F - r2 * (0.5F - r2 * (1.0F / 24.0F - r2 * (1.0F / 720.0F - r2 * (1.0F / 40320.0F))));
+ switch (((q % 4) + 4) % 4) {
+ case 0:
+ sine = sr;
+ cosine = cr;
+ break;
+ case 1:
+ sine = cr;
+ cosine = -sr;
+ break;
+ case 2:
+ sine = -sr;
+ cosine = -cr;
+ break;
+ default:
+ sine = -cr;
+ cosine = sr;
+ break;
+ }
 }
 
 template <typename Scalar>
 void ecpl_channel_spectrum_impl(std::span<const Scalar, 256> prev_mant,
-                                std::span<const Scalar, 256> curr_mant,
-                                std::span<const Scalar, 256> next_mant,
-                                std::span<Scalar, 256> real_out, std::span<Scalar, 256> imag_out,
-                                bool fast) {
-    AC3_ZONE_SCOPED_N("ecpl_channel_spectrum");
-    auto& s = ecpl_spectrum_scratch<Scalar>();
-    // Step 1: three independent 512-sample normative IMDCTs (§7.9.4.1
-    // steps 1-5, the exact machinery every other coefficient set in this
-    // decoder already goes through), down `fast`'s branch of that
-    // transform - three inverses per coupled channel per block, and the
-    // bulk of this function's cost either way. The float inverse takes no
-    // `fast`: the direct form is double-only, and a float caller has
-    // nothing to choose.
-    if constexpr (std::is_same_v<Scalar, float>) {
-        (void)fast;
-        imdct512_windowed(prev_mant, s.x_prev);
-        imdct512_windowed(curr_mant, s.x_curr);
-        imdct512_windowed(next_mant, s.x_next);
-    } else {
-        imdct512_windowed(prev_mant, s.x_prev, fast);
-        imdct512_windowed(curr_mant, s.x_curr, fast);
-        imdct512_windowed(next_mant, s.x_next, fast);
-    }
+ std::span<const Scalar, 256> curr_mant,
+ std::span<const Scalar, 256> next_mant,
+ std::span<Scalar, 256> real_out, std::span<Scalar, 256> imag_out,
+ bool fast) {
+ AC3_ZONE_SCOPED_N("ecpl_channel_spectrum");
+ auto& s = ecpl_spectrum_scratch<Scalar>();
+ // Step 1: three independent 512-sample normative IMDCTs (§7.9.4.1
+ // steps 1-5, the exact machinery every other coefficient set in this
+ // decoder already goes through), down `fast`'s branch of that
+ // transform - three inverses per coupled channel per block, and the
+ // bulk of this function's cost either way. The float inverse takes no
+ // `fast`: the direct form is double-only, and a float caller has
+ // nothing to choose.
+ if constexpr (std::is_same_v<Scalar, float>) {
+ (void)fast;
+ imdct512_windowed(prev_mant, s.x_prev);
+ imdct512_windowed(curr_mant, s.x_curr);
+ imdct512_windowed(next_mant, s.x_next);
+ } else {
+ imdct512_windowed(prev_mant, s.x_prev, fast);
+ imdct512_windowed(curr_mant, s.x_curr, fast);
+ imdct512_windowed(next_mant, s.x_next, fast);
+ }
 
-    // Step 2: overlap the second half of the previous block and the first
-    // half of the next block with the current one.
-    for (int n = 0; n < 256; ++n) {
-        s.pcm[static_cast<std::size_t>(n)] =
-            s.x_prev[static_cast<std::size_t>(n) + 256] + s.x_curr[static_cast<std::size_t>(n)];
-        s.pcm[static_cast<std::size_t>(n) + 256] =
-            s.x_curr[static_cast<std::size_t>(n) + 256] + s.x_next[static_cast<std::size_t>(n)];
-    }
+ // Step 2: overlap the second half of the previous block and the first
+ // half of the next block with the current one.
+ for (int n = 0; n < 256; ++n) {
+ s.pcm[static_cast<std::size_t>(n)] =
+ s.x_prev[static_cast<std::size_t>(n) + 256] + s.x_curr[static_cast<std::size_t>(n)];
+ s.pcm[static_cast<std::size_t>(n) + 256] =
+ s.x_curr[static_cast<std::size_t>(n) + 256] + s.x_next[static_cast<std::size_t>(n)];
+ }
 
-    // Step 3: window again and apply the xcos3/xsin3 twiddle so the
-    // subsequent DFT lands as an oddly-stacked filterbank, matching the
-    // MDCT. w[N/2-n-1] mirrors from the OPPOSITE end of the window than
-    // w[n] does for the first half - not the same value as w[n] itself.
-    // The double form reads the shared tables; the float form its own
-    // narrowed copies, which came from those same tables.
-    const auto& xcos3 = xcos3_table();
-    const auto window = [&](std::size_t i) -> Scalar {
-        if constexpr (std::is_same_v<Scalar, float>) {
-            return s.window[i];
-        } else {
-            return kAnalysisWindow[i];
-        }
-    };
-    const auto cos3 = [&](std::size_t i) -> Scalar {
-        if constexpr (std::is_same_v<Scalar, float>) {
-            return s.cos3[i];
-        } else {
-            return xcos3.cos[i];
-        }
-    };
-    const auto sin3 = [&](std::size_t i) -> Scalar {
-        if constexpr (std::is_same_v<Scalar, float>) {
-            return s.sin3[i];
-        } else {
-            return xcos3.sin[i];
-        }
-    };
-    for (int n = 0; n < 256; ++n) {
-        const auto un = static_cast<std::size_t>(n);
-        const std::size_t un2 = un + 256;
-        const Scalar xcos3_n = cos3(un);
-        const Scalar xsin3_n = sin3(un);
-        const Scalar xcos3_n2 = cos3(un2);
-        const Scalar xsin3_n2 = sin3(un2);
-        s.pcm_real[un] = s.pcm[un] * window(un) * xcos3_n;
-        s.pcm_imag[un] = s.pcm[un] * window(un) * xsin3_n;
-        s.pcm_real[un2] = s.pcm[un2] * window(255 - un) * xcos3_n2;
-        s.pcm_imag[un2] = s.pcm[un2] * window(255 - un) * xsin3_n2;
-    }
+ // Step 3: window again and apply the xcos3/xsin3 twiddle so the
+ // subsequent DFT lands as an oddly-stacked filterbank, matching the
+ // MDCT. w[N/2-n-1] mirrors from the OPPOSITE end of the window than
+ // w[n] does for the first half - not the same value as w[n] itself.
+ // The double form reads the shared tables; the float form its own
+ // narrowed copies, which came from those same tables.
+ const auto& xcos3 = xcos3_table();
+ const auto window = [&](std::size_t i) -> Scalar {
+ if constexpr (std::is_same_v<Scalar, float>) {
+ return s.window[i];
+ } else {
+ return kAnalysisWindow[i];
+ }
+ };
+ const auto cos3 = [&](std::size_t i) -> Scalar {
+ if constexpr (std::is_same_v<Scalar, float>) {
+ return s.cos3[i];
+ } else {
+ return xcos3.cos[i];
+ }
+ };
+ const auto sin3 = [&](std::size_t i) -> Scalar {
+ if constexpr (std::is_same_v<Scalar, float>) {
+ return s.sin3[i];
+ } else {
+ return xcos3.sin[i];
+ }
+ };
+ for (int n = 0; n < 256; ++n) {
+ const auto un = static_cast<std::size_t>(n);
+ const std::size_t un2 = un + 256;
+ const Scalar xcos3_n = cos3(un);
+ const Scalar xsin3_n = sin3(un);
+ const Scalar xcos3_n2 = cos3(un2);
+ const Scalar xsin3_n2 = sin3(un2);
+ s.pcm_real[un] = s.pcm[un] * window(un) * xcos3_n;
+ s.pcm_imag[un] = s.pcm[un] * window(un) * xsin3_n;
+ s.pcm_real[un2] = s.pcm[un2] * window(255 - un) * xcos3_n2;
+ s.pcm_imag[un2] = s.pcm[un2] * window(255 - un) * xsin3_n2;
+ }
 
-    // Step 4: the full complex DFT, in the scratch's own scalar. Only bins
-    // 0..255 are ever consumed downstream (§3.5.5.4), so only those are
-    // copied out.
-    dft512(s.pcm_real, s.pcm_imag, s.zr, s.zi);
-    for (int k = 0; k < 256; ++k) {
-        real_out[static_cast<std::size_t>(k)] = s.zr[static_cast<std::size_t>(k)];
-        imag_out[static_cast<std::size_t>(k)] = s.zi[static_cast<std::size_t>(k)];
-    }
+ // Step 4: the full complex DFT, in the scratch's own scalar. Only bins
+ // 0..255 are ever consumed downstream (§3.5.5.4), so only those are
+ // copied out.
+ dft512(s.pcm_real, s.pcm_imag, s.zr, s.zi);
+ for (int k = 0; k < 256; ++k) {
+ real_out[static_cast<std::size_t>(k)] = s.zr[static_cast<std::size_t>(k)];
+ imag_out[static_cast<std::size_t>(k)] = s.zi[static_cast<std::size_t>(k)];
+ }
 }
 
 // --- the fixed-point tier (planning/arithmetic-tiers.md, Phase C) ----------
@@ -835,7 +835,7 @@ void ecpl_channel_spectrum_impl(std::span<const Scalar, 256> prev_mant,
 // exponent n stands for v * 2^-n. Each function takes the exponents of what
 // it is given and reports the exponent of what it produces.
 
-}  // namespace
+} // namespace
 
 namespace {
 
@@ -844,7 +844,7 @@ using internal::Fixed32;
 // One past the highest set bit of a magnitude, as block_norm.hpp's raw_width
 // is for a stored value.
 [[nodiscard]] int width64(std::int64_t magnitude) {
-    return magnitude <= 0 ? 0 : 64 - std::countl_zero(static_cast<std::uint64_t>(magnitude));
+ return magnitude <= 0 ? 0 : 64 - std::countl_zero(static_cast<std::uint64_t>(magnitude));
 }
 
 // The 512-point DFT in the tier, for the one caller that needs it, with block
@@ -871,182 +871,182 @@ using internal::Fixed32;
 // at most four, so a stage entered at sixteen leaves at sixty-four and the
 // format holds a hundred and twenty-eight.
 [[nodiscard]] int dft512_fixed(std::span<const Fixed32, 512> real_in,
-                               std::span<const Fixed32, 512> imag_in,
-                               std::span<Fixed32, 512> real_out,
-                               std::span<Fixed32, 512> imag_out) {
-    static const internal::FftTables<512, Fixed32> tables;
-    for (std::size_t n = 0; n < 512; ++n) {
-        real_out[tables.bitrev[n]] = real_in[n];
-        imag_out[tables.bitrev[n]] = imag_in[n];
-    }
-    constexpr int kStageCeiling = Fixed32::kFractionBits + 4;
-    const auto shed = [&]() {
-        std::int32_t peak = 0;
-        for (std::size_t k = 0; k < 512; ++k) {
-            const std::int32_t re = real_out[k].raw < 0 ? -real_out[k].raw : real_out[k].raw;
-            const std::int32_t im = imag_out[k].raw < 0 ? -imag_out[k].raw : imag_out[k].raw;
-            peak = std::max({peak, re, im});
-        }
-        const int excess = width64(peak) - kStageCeiling;
-        if (excess <= 0) {
-            return 0;
-        }
-        for (std::size_t k = 0; k < 512; ++k) {
-            real_out[k] = real_out[k].scaled_by_pow2(-excess);
-            imag_out[k] = imag_out[k].scaled_by_pow2(-excess);
-        }
-        return excess;
-    };
-    int applied = 0;
-    internal::fft_radix4_stage<512, 4, Fixed32, Fixed32>(tables, real_out, imag_out);
-    applied += shed();
-    internal::fft_radix4_stage<512, 16, Fixed32, Fixed32>(tables, real_out, imag_out);
-    applied += shed();
-    internal::fft_radix4_stage<512, 64, Fixed32, Fixed32>(tables, real_out, imag_out);
-    applied += shed();
-    internal::fft_radix4_stage<512, 256, Fixed32, Fixed32>(tables, real_out, imag_out);
-    applied += shed();
-    internal::fft_radix2_final_stage<512, Fixed32, Fixed32>(tables, real_out, imag_out);
-    // The last stage needs no ceiling of its own - nothing follows it - but
-    // what it did to the magnitude still belongs in the exponent.
-    applied += shed();
-    // 1/N is nine bits; the stages have already taken `applied` of them.
-    return 9 - applied;
+ std::span<const Fixed32, 512> imag_in,
+ std::span<Fixed32, 512> real_out,
+ std::span<Fixed32, 512> imag_out) {
+ static const internal::FftTables<512, Fixed32> tables;
+ for (std::size_t n = 0; n < 512; ++n) {
+ real_out[tables.bitrev[n]] = real_in[n];
+ imag_out[tables.bitrev[n]] = imag_in[n];
+ }
+ constexpr int kStageCeiling = Fixed32::kFractionBits + 4;
+ const auto shed = [&]() {
+ std::int32_t peak = 0;
+ for (std::size_t k = 0; k < 512; ++k) {
+ const std::int32_t re = real_out[k].raw < 0 ? -real_out[k].raw : real_out[k].raw;
+ const std::int32_t im = imag_out[k].raw < 0 ? -imag_out[k].raw : imag_out[k].raw;
+ peak = std::max({peak, re, im});
+ }
+ const int excess = width64(peak) - kStageCeiling;
+ if (excess <= 0) {
+ return 0;
+ }
+ for (std::size_t k = 0; k < 512; ++k) {
+ real_out[k] = real_out[k].scaled_by_pow2(-excess);
+ imag_out[k] = imag_out[k].scaled_by_pow2(-excess);
+ }
+ return excess;
+ };
+ int applied = 0;
+ internal::fft_radix4_stage<512, 4, Fixed32, Fixed32>(tables, real_out, imag_out);
+ applied += shed();
+ internal::fft_radix4_stage<512, 16, Fixed32, Fixed32>(tables, real_out, imag_out);
+ applied += shed();
+ internal::fft_radix4_stage<512, 64, Fixed32, Fixed32>(tables, real_out, imag_out);
+ applied += shed();
+ internal::fft_radix4_stage<512, 256, Fixed32, Fixed32>(tables, real_out, imag_out);
+ applied += shed();
+ internal::fft_radix2_final_stage<512, Fixed32, Fixed32>(tables, real_out, imag_out);
+ // The last stage needs no ceiling of its own - nothing follows it - but
+ // what it did to the magnitude still belongs in the exponent.
+ applied += shed();
+ // 1/N is nine bits; the stages have already taken `applied` of them.
+ return 9 - applied;
 }
 
 // Shift `values` so its largest magnitude sits at `target` bits, and report
 // how far it moved - positive where the values grew, so the exponent grows
 // with them. An all-zero range keeps the exponent it had.
 [[nodiscard]] int normalise_to(std::span<std::int64_t> values, int target) {
-    std::int64_t peak = 0;
-    for (const std::int64_t v : values) {
-        peak = std::max(peak, v < 0 ? -v : v);
-    }
-    if (peak == 0) {
-        return 0;
-    }
-    const int shift = target - width64(peak);
-    if (shift > 0) {
-        for (std::int64_t& v : values) {
-            v <<= shift;
-        }
-    } else if (shift < 0) {
-        for (std::int64_t& v : values) {
-            v >>= -shift;
-        }
-    }
-    return shift;
+ std::int64_t peak = 0;
+ for (const std::int64_t v : values) {
+ peak = std::max(peak, v < 0 ? -v : v);
+ }
+ if (peak == 0) {
+ return 0;
+ }
+ const int shift = target - width64(peak);
+ if (shift > 0) {
+ for (std::int64_t& v : values) {
+ v <<= shift;
+ }
+ } else if (shift < 0) {
+ for (std::int64_t& v : values) {
+ v >>= -shift;
+ }
+ }
+ return shift;
 }
 
-}  // namespace
+} // namespace
 
 void ecpl_channel_spectrum_fixed(std::span<const Fixed32, 256> prev_mant, int prev_norm,
-                                 std::span<const Fixed32, 256> curr_mant, int curr_norm,
-                                 std::span<const Fixed32, 256> next_mant, int next_norm,
-                                 std::span<Fixed32, 256> real_out,
-                                 std::span<Fixed32, 256> imag_out, int& out_norm) {
-    AC3_ZONE_SCOPED_N("ecpl_channel_spectrum");
-    auto& s = ecpl_spectrum_scratch<Fixed32>();
+ std::span<const Fixed32, 256> curr_mant, int curr_norm,
+ std::span<const Fixed32, 256> next_mant, int next_norm,
+ std::span<Fixed32, 256> real_out,
+ std::span<Fixed32, 256> imag_out, int& out_norm) {
+ AC3_ZONE_SCOPED_N("ecpl_channel_spectrum");
+ auto& s = ecpl_spectrum_scratch<Fixed32>();
 
-    // Step 1: the three normative inverses, in the tier's own transform
-    // (mdct_fixed.hpp). Each block's coefficients meet that transform's
-    // precondition by construction - the decoder stores them under an
-    // exponent that puts the largest below one half - and each output carries
-    // its own block's exponent, a linear transform having changed no scale.
-    internal::imdct512_windowed_fixed(prev_mant, s.x_prev);
-    internal::imdct512_windowed_fixed(curr_mant, s.x_curr);
-    internal::imdct512_windowed_fixed(next_mant, s.x_next);
+ // Step 1: the three normative inverses, in the tier's own transform
+ // (mdct_fixed.hpp). Each block's coefficients meet that transform's
+ // precondition by construction - the decoder stores them under an
+ // exponent that puts the largest below one half - and each output carries
+ // its own block's exponent, a linear transform having changed no scale.
+ internal::imdct512_windowed_fixed(prev_mant, s.x_prev);
+ internal::imdct512_windowed_fixed(curr_mant, s.x_curr);
+ internal::imdct512_windowed_fixed(next_mant, s.x_next);
 
-    // Step 2: the overlap, in 64 bits and at one exponent. The three blocks
-    // arrive under three, so they are aligned to the SMALLEST - the loudest
-    // block's scale, the one with no bits to give up - and summed there. 64
-    // bits because the sum of two of this transform's outputs can leave the
-    // format where neither of them does.
-    const int base = std::min({prev_norm, curr_norm, next_norm});
-    const auto aligned = [](Fixed32 v, int from, int to) {
-        const int shift = from - to;  // never negative: `to` is the smallest
-        return shift >= 63 ? std::int64_t{0} : static_cast<std::int64_t>(v.raw) >> shift;
-    };
-    std::array<std::int64_t, 512> wide{};
-    for (std::size_t n = 0; n < 256; ++n) {
-        wide[n] =
-            aligned(s.x_prev[n + 256], prev_norm, base) + aligned(s.x_curr[n], curr_norm, base);
-        wide[n + 256] =
-            aligned(s.x_curr[n + 256], curr_norm, base) + aligned(s.x_next[n], next_norm, base);
-    }
+ // Step 2: the overlap, in 64 bits and at one exponent. The three blocks
+ // arrive under three, so they are aligned to the SMALLEST - the loudest
+ // block's scale, the one with no bits to give up - and summed there. 64
+ // bits because the sum of two of this transform's outputs can leave the
+ // format where neither of them does.
+ const int base = std::min({prev_norm, curr_norm, next_norm});
+ const auto aligned = [](Fixed32 v, int from, int to) {
+ const int shift = from - to; // never negative: `to` is the smallest
+ return shift >= 63 ? std::int64_t{0} : static_cast<std::int64_t>(v.raw) >> shift;
+ };
+ std::array<std::int64_t, 512> wide{};
+ for (std::size_t n = 0; n < 256; ++n) {
+ wide[n] =
+ aligned(s.x_prev[n + 256], prev_norm, base) + aligned(s.x_curr[n], curr_norm, base);
+ wide[n + 256] =
+ aligned(s.x_curr[n + 256], curr_norm, base) + aligned(s.x_next[n], next_norm, base);
+ }
 
-    // Normalised to the top of the format, and back into it. The window and
-    // the twiddle below only shrink what they multiply, and the transform
-    // sheds its own bits as it goes (dft512_fixed), so nothing here has to
-    // leave headroom for either.
-    int norm = base + normalise_to(wide, Fixed32::kFractionBits);
-    for (std::size_t n = 0; n < 512; ++n) {
-        s.pcm[n] = Fixed32::from_raw(static_cast<std::int32_t>(wide[n]));
-    }
+ // Normalised to the top of the format, and back into it. The window and
+ // the twiddle below only shrink what they multiply, and the transform
+ // sheds its own bits as it goes (dft512_fixed), so nothing here has to
+ // leave headroom for either.
+ int norm = base + normalise_to(wide, Fixed32::kFractionBits);
+ for (std::size_t n = 0; n < 512; ++n) {
+ s.pcm[n] = Fixed32::from_raw(static_cast<std::int32_t>(wide[n]));
+ }
 
-    // Step 3: the window and the xcos3/xsin3 twiddle, as the floating forms
-    // do them and from the same tables narrowed once (EcplTables above).
-    for (std::size_t n = 0; n < 256; ++n) {
-        const std::size_t n2 = n + 256;
-        const Fixed32 first = s.pcm[n] * s.window[n];
-        const Fixed32 second = s.pcm[n2] * s.window[255 - n];
-        s.pcm_real[n] = first * s.cos3[n];
-        s.pcm_imag[n] = first * s.sin3[n];
-        s.pcm_real[n2] = second * s.cos3[n2];
-        s.pcm_imag[n2] = second * s.sin3[n2];
-    }
+ // Step 3: the window and the xcos3/xsin3 twiddle, as the floating forms
+ // do them and from the same tables narrowed once (EcplTables above).
+ for (std::size_t n = 0; n < 256; ++n) {
+ const std::size_t n2 = n + 256;
+ const Fixed32 first = s.pcm[n] * s.window[n];
+ const Fixed32 second = s.pcm[n2] * s.window[255 - n];
+ s.pcm_real[n] = first * s.cos3[n];
+ s.pcm_imag[n] = first * s.sin3[n];
+ s.pcm_real[n2] = second * s.cos3[n2];
+ s.pcm_imag[n2] = second * s.sin3[n2];
+ }
 
-    // Step 4: the transform, which reports what its own scaling did to the
-    // exponent, and then the exponent the caller reconstructs under. A
-    // spectrum whose peak sits below the top of the format - the ordinary
-    // case, an audio block's bins being nothing like uniform - has room left
-    // over; recovering it here, once over the 256 bins anything downstream
-    // reads, is a pass and a shift for whatever it comes to.
-    norm += dft512_fixed(s.pcm_real, s.pcm_imag, s.zr, s.zi);
-    std::int64_t peak = 0;
-    for (std::size_t k = 0; k < 256; ++k) {
-        const auto re = static_cast<std::int64_t>(s.zr[k].raw);
-        const auto im = static_cast<std::int64_t>(s.zi[k].raw);
-        peak = std::max({peak, re < 0 ? -re : re, im < 0 ? -im : im});
-    }
-    const int recovered = peak == 0 ? 0 : (Fixed32::kFractionBits - 1) - width64(peak);
-    norm += recovered;
-    for (std::size_t k = 0; k < 256; ++k) {
-        real_out[k] = s.zr[k].scaled_by_pow2(recovered);
-        imag_out[k] = s.zi[k].scaled_by_pow2(recovered);
-    }
-    out_norm = norm;
+ // Step 4: the transform, which reports what its own scaling did to the
+ // exponent, and then the exponent the caller reconstructs under. A
+ // spectrum whose peak sits below the top of the format - the ordinary
+ // case, an audio block's bins being nothing like uniform - has room left
+ // over; recovering it here, once over the 256 bins anything downstream
+ // reads, is a pass and a shift for whatever it comes to.
+ norm += dft512_fixed(s.pcm_real, s.pcm_imag, s.zr, s.zi);
+ std::int64_t peak = 0;
+ for (std::size_t k = 0; k < 256; ++k) {
+ const auto re = static_cast<std::int64_t>(s.zr[k].raw);
+ const auto im = static_cast<std::int64_t>(s.zi[k].raw);
+ peak = std::max({peak, re < 0 ? -re : re, im < 0 ? -im : im});
+ }
+ const int recovered = peak == 0 ? 0 : (Fixed32::kFractionBits - 1) - width64(peak);
+ norm += recovered;
+ for (std::size_t k = 0; k < 256; ++k) {
+ real_out[k] = s.zr[k].scaled_by_pow2(recovered);
+ imag_out[k] = s.zi[k].scaled_by_pow2(recovered);
+ }
+ out_norm = norm;
 }
 
 void release_ecpl_scratch() {
-    if (ecpl_scratch_ever_built<double>()) {
-        ecpl_spectrum_scratch_slot<double>().reset();
-    }
-    if (ecpl_scratch_ever_built<float>()) {
-        ecpl_spectrum_scratch_slot<float>().reset();
-    }
-    if (ecpl_scratch_ever_built<internal::Fixed32>()) {
-        ecpl_spectrum_scratch_slot<internal::Fixed32>().reset();
-    }
+ if (ecpl_scratch_ever_built<double>()) {
+ ecpl_spectrum_scratch_slot<double>().reset();
+ }
+ if (ecpl_scratch_ever_built<float>()) {
+ ecpl_spectrum_scratch_slot<float>().reset();
+ }
+ if (ecpl_scratch_ever_built<internal::Fixed32>()) {
+ ecpl_spectrum_scratch_slot<internal::Fixed32>().reset();
+ }
 }
 
 void ecpl_channel_spectrum(std::span<const double, 256> prev_mant,
-                           std::span<const double, 256> curr_mant,
-                           std::span<const double, 256> next_mant, std::span<double, 256> real_out,
-                           std::span<double, 256> imag_out, bool fast) {
-    ecpl_channel_spectrum_impl<double>(prev_mant, curr_mant, next_mant, real_out, imag_out, fast);
+ std::span<const double, 256> curr_mant,
+ std::span<const double, 256> next_mant, std::span<double, 256> real_out,
+ std::span<double, 256> imag_out, bool fast) {
+ ecpl_channel_spectrum_impl<double>(prev_mant, curr_mant, next_mant, real_out, imag_out, fast);
 }
 
 void ecpl_channel_spectrum(std::span<const float, 256> prev_mant,
-                           std::span<const float, 256> curr_mant,
-                           std::span<const float, 256> next_mant, std::span<float, 256> real_out,
-                           std::span<float, 256> imag_out) {
-    ecpl_channel_spectrum_impl<float>(prev_mant, curr_mant, next_mant, real_out, imag_out,
-                                      /*fast=*/true);
+ std::span<const float, 256> curr_mant,
+ std::span<const float, 256> next_mant, std::span<float, 256> real_out,
+ std::span<float, 256> imag_out) {
+ ecpl_channel_spectrum_impl<float>(prev_mant, curr_mant, next_mant, real_out, imag_out,
+ /*fast=*/true);
 }
 
 double ecpl_rand_notrans(int channel, int bin) {
-    return ecpl_rand_notrans_as<double>(channel, bin);
+ return ecpl_rand_notrans_as<double>(channel, bin);
 }
 
 double EcplNoise::next() { return next_as<double>(); }
@@ -1055,44 +1055,44 @@ namespace {
 
 template <typename Scalar>
 void ecpl_amplitudes_impl(std::span<const int> ecplamp, std::span<const int> ecplchaos,
-                          bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
-                          std::span<const bool> structure, std::span<Scalar> amp_out) {
-    int band = -1;
-    std::size_t cursor = 0;
-    for (int sbnd = begin_subbnd; sbnd < end_subbnd; ++sbnd) {
-        if (sbnd == begin_subbnd || !structure[static_cast<std::size_t>(sbnd)]) {
-            ++band;
-        }
-        const auto b = static_cast<std::size_t>(band);
-        Scalar amp = decode_ecplamp_as<Scalar>(ecplamp[b]);
-        // §3.5.5.2: the chaos modification is skipped for the first coupled
-        // channel (whose chaos is defined as zero) and whenever this
-        // channel's block carries a transient.
-        if (!is_first_channel && !ecpltrans) {
-            amp *= Scalar{1} + static_cast<Scalar>(0.38) * decode_ecplchaos_as<Scalar>(ecplchaos[b]);
-        }
-        const int start = kEcplSubBandTab[static_cast<std::size_t>(sbnd)];
-        const int width = kEcplSubBandTab[static_cast<std::size_t>(sbnd) + 1] - start;
-        for (int i = 0; i < width; ++i) {
-            amp_out[cursor++] = amp;
-        }
-    }
+ bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
+ std::span<const bool> structure, std::span<Scalar> amp_out) {
+ int band = -1;
+ std::size_t cursor = 0;
+ for (int sbnd = begin_subbnd; sbnd < end_subbnd; ++sbnd) {
+ if (sbnd == begin_subbnd || !structure[static_cast<std::size_t>(sbnd)]) {
+ ++band;
+ }
+ const auto b = static_cast<std::size_t>(band);
+ Scalar amp = decode_ecplamp_as<Scalar>(ecplamp[b]);
+ // §3.5.5.2: the chaos modification is skipped for the first coupled
+ // channel (whose chaos is defined as zero) and whenever this
+ // channel's block carries a transient.
+ if (!is_first_channel && !ecpltrans) {
+ amp *= Scalar{1} + static_cast<Scalar>(0.38) * decode_ecplchaos_as<Scalar>(ecplchaos[b]);
+ }
+ const int start = kEcplSubBandTab[static_cast<std::size_t>(sbnd)];
+ const int width = kEcplSubBandTab[static_cast<std::size_t>(sbnd) + 1] - start;
+ for (int i = 0; i < width; ++i) {
+ amp_out[cursor++] = amp;
+ }
+ }
 }
 
-}  // namespace
+} // namespace
 
 void ecpl_amplitudes(std::span<const int> ecplamp, std::span<const int> ecplchaos, bool ecpltrans,
-                     bool is_first_channel, int begin_subbnd, int end_subbnd,
-                     std::span<const bool> structure, std::span<double> amp_out) {
-    ecpl_amplitudes_impl<double>(ecplamp, ecplchaos, ecpltrans, is_first_channel, begin_subbnd,
-                                 end_subbnd, structure, amp_out);
+ bool is_first_channel, int begin_subbnd, int end_subbnd,
+ std::span<const bool> structure, std::span<double> amp_out) {
+ ecpl_amplitudes_impl<double>(ecplamp, ecplchaos, ecpltrans, is_first_channel, begin_subbnd,
+ end_subbnd, structure, amp_out);
 }
 
 void ecpl_amplitudes(std::span<const int> ecplamp, std::span<const int> ecplchaos, bool ecpltrans,
-                     bool is_first_channel, int begin_subbnd, int end_subbnd,
-                     std::span<const bool> structure, std::span<float> amp_out) {
-    ecpl_amplitudes_impl<float>(ecplamp, ecplchaos, ecpltrans, is_first_channel, begin_subbnd,
-                                end_subbnd, structure, amp_out);
+ bool is_first_channel, int begin_subbnd, int end_subbnd,
+ std::span<const bool> structure, std::span<float> amp_out) {
+ ecpl_amplitudes_impl<float>(ecplamp, ecplchaos, ecpltrans, is_first_channel, begin_subbnd,
+ end_subbnd, structure, amp_out);
 }
 
 namespace {
@@ -1100,17 +1100,17 @@ namespace {
 // §3.5.5.3: every emitted angle is a fraction of pi on (-1, 1].
 template <typename Scalar>
 Scalar wrap_angle(Scalar angle) {
-    while (angle > Scalar{1}) {
-        angle -= Scalar{2};
-    }
-    while (angle < Scalar{-1}) {
-        angle += Scalar{2};
-    }
-    return angle;
+ while (angle > Scalar{1}) {
+ angle -= Scalar{2};
+ }
+ while (angle < Scalar{-1}) {
+ angle += Scalar{2};
+ }
+ return angle;
 }
 
 constexpr bool is_even(int value) {
-    return value % 2 == 0;
+ return value % 2 == 0;
 }
 
 // §3.5.5.3's interpolated band-to-bin conversion (ecplangleintrp == 1),
@@ -1127,85 +1127,85 @@ constexpr bool is_even(int value) {
 // the pseudocode places the first sample either side of it.
 template <typename Scalar>
 void interpolate_band_angles(std::span<const Scalar> band_angle, std::span<const int> band_bins,
-                             std::span<Scalar> bin_angle) {
-    const auto nbands = static_cast<int>(band_angle.size());
-    if (nbands <= 0 || bin_angle.empty()) {
-        return;
-    }
-    if (nbands == 1) {
-        // No second centre to ramp towards; the band's own angle stands.
-        std::ranges::fill(bin_angle, wrap_angle(band_angle[0]));
-        return;
-    }
+ std::span<Scalar> bin_angle) {
+ const auto nbands = static_cast<int>(band_angle.size());
+ if (nbands <= 0 || bin_angle.empty()) {
+ return;
+ }
+ if (nbands == 1) {
+ // No second centre to ramp towards; the band's own angle stands.
+ std::ranges::fill(bin_angle, wrap_angle(band_angle[0]));
+ return;
+ }
 
-    const auto total = static_cast<int>(bin_angle.size());
-    const auto emit = [&](int at, Scalar value) {
-        if (at >= 0 && at < total) {
-            bin_angle[static_cast<std::size_t>(at)] = wrap_angle(value);
-        }
-    };
+ const auto total = static_cast<int>(bin_angle.size());
+ const auto emit = [&](int at, Scalar value) {
+ if (at >= 0 && at < total) {
+ bin_angle[static_cast<std::size_t>(at)] = wrap_angle(value);
+ }
+ };
 
-    int bin = 0;
-    Scalar y{0};
-    Scalar slope{0};
-    int nbins_curr = band_bins[0];
-    for (int bnd = 1; bnd < nbands; ++bnd) {
-        const int nbins_prev = band_bins[static_cast<std::size_t>(bnd) - 1];
-        nbins_curr = band_bins[static_cast<std::size_t>(bnd)];
-        const Scalar angle_prev = band_angle[static_cast<std::size_t>(bnd) - 1];
-        Scalar angle_curr = band_angle[static_cast<std::size_t>(bnd)];
-        // Unwrap the pair before differencing: two angles either side of the
-        // wrap are adjacent in phase but a whole turn apart as numbers.
-        while (angle_curr - angle_prev > Scalar{1}) {
-            angle_curr -= Scalar{2};
-        }
-        while (angle_prev - angle_curr > Scalar{1}) {
-            angle_curr += Scalar{2};
-        }
-        slope = (angle_curr - angle_prev) /
-                (static_cast<Scalar>(nbins_curr + nbins_prev) / Scalar{2});
+ int bin = 0;
+ Scalar y{0};
+ Scalar slope{0};
+ int nbins_curr = band_bins[0];
+ for (int bnd = 1; bnd < nbands; ++bnd) {
+ const int nbins_prev = band_bins[static_cast<std::size_t>(bnd) - 1];
+ nbins_curr = band_bins[static_cast<std::size_t>(bnd)];
+ const Scalar angle_prev = band_angle[static_cast<std::size_t>(bnd) - 1];
+ Scalar angle_curr = band_angle[static_cast<std::size_t>(bnd)];
+ // Unwrap the pair before differencing: two angles either side of the
+ // wrap are adjacent in phase but a whole turn apart as numbers.
+ while (angle_curr - angle_prev > Scalar{1}) {
+ angle_curr -= Scalar{2};
+ }
+ while (angle_prev - angle_curr > Scalar{1}) {
+ angle_curr += Scalar{2};
+ }
+ slope = (angle_curr - angle_prev) /
+ (static_cast<Scalar>(nbins_curr + nbins_prev) / Scalar{2});
 
-        if (bnd == 1 && nbins_prev > 1) {
-            // The first band's lower half, walked DOWNWARD from just below
-            // its own centre.
-            int cursor = 0;
-            if (is_even(nbins_prev)) {
-                y = angle_prev - slope / Scalar{2};
-                cursor = nbins_prev / 2 - 1;
-            } else {
-                y = angle_prev - slope;
-                cursor = (nbins_prev - 3) / 2;
-            }
-            const int count = cursor + 1;
-            for (int j = 0; j < count; ++j) {
-                emit(cursor--, y);
-                y -= slope;
-            }
-            bin = count;
-        }
+ if (bnd == 1 && nbins_prev > 1) {
+ // The first band's lower half, walked DOWNWARD from just below
+ // its own centre.
+ int cursor = 0;
+ if (is_even(nbins_prev)) {
+ y = angle_prev - slope / Scalar{2};
+ cursor = nbins_prev / 2 - 1;
+ } else {
+ y = angle_prev - slope;
+ cursor = (nbins_prev - 3) / 2;
+ }
+ const int count = cursor + 1;
+ for (int j = 0; j < count; ++j) {
+ emit(cursor--, y);
+ y -= slope;
+ }
+ bin = count;
+ }
 
-        int count = 0;
-        if (is_even(nbins_prev)) {
-            y = angle_prev + slope / Scalar{2};
-            count = nbins_curr / 2 + nbins_prev / 2;
-        } else {
-            y = angle_prev;
-            count = nbins_curr / 2 + (nbins_prev + 1) / 2;
-        }
-        for (int j = 0; j < count; ++j) {
-            emit(bin++, y);
-            y += slope;
-        }
-    }
+ int count = 0;
+ if (is_even(nbins_prev)) {
+ y = angle_prev + slope / Scalar{2};
+ count = nbins_curr / 2 + nbins_prev / 2;
+ } else {
+ y = angle_prev;
+ count = nbins_curr / 2 + (nbins_prev + 1) / 2;
+ }
+ for (int j = 0; j < count; ++j) {
+ emit(bin++, y);
+ y += slope;
+ }
+ }
 
-    // The last band's upper half, continuing the final slope - `y` and
-    // `slope` are where the loop above left them, which is what the
-    // pseudocode relies on too.
-    const int count = is_even(nbins_curr) ? nbins_curr / 2 : nbins_curr / 2 + 1;
-    for (int j = 0; j < count; ++j) {
-        emit(bin++, y);
-        y += slope;
-    }
+ // The last band's upper half, continuing the final slope - `y` and
+ // `slope` are where the loop above left them, which is what the
+ // pseudocode relies on too.
+ const int count = is_even(nbins_curr) ? nbins_curr / 2 : nbins_curr / 2 + 1;
+ for (int j = 0; j < count; ++j) {
+ emit(bin++, y);
+ y += slope;
+ }
 }
 
 // The widest region enhanced coupling can span, in bins: every sub-band of
@@ -1214,189 +1214,189 @@ void interpolate_band_angles(std::span<const Scalar> band_angle, std::span<const
 // they used to be a thread_local std::vector, which on a bare-metal target
 // was 1,440 bytes retained for the life of the task.
 constexpr std::size_t kEcplMaxBins =
-    static_cast<std::size_t>(kEcplSubBandTab[kEcplSubBands] - kEcplSubBandTab[0]);
+ static_cast<std::size_t>(kEcplSubBandTab[kEcplSubBands] - kEcplSubBandTab[0]);
 
 template <typename Scalar>
 void ecpl_angles_impl(int channel, std::span<const int> ecplangle, std::span<const int> ecplchaos,
-                      bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
-                      std::span<const bool> structure, EcplNoise& noise,
-                      std::span<Scalar> angle_out, bool interpolate) {
-    // Band-indexed state first - the angle a band carries, how many bins it
-    // covers, and the per-band chaos and rand_trans that modify it. Both
-    // band-to-bin conversions below start from exactly this.
-    std::array<Scalar, kEcplSubBands> band_angle{};
-    std::array<Scalar, kEcplSubBands> band_chaos{};
-    std::array<Scalar, kEcplSubBands> band_rand{};
-    std::array<int, kEcplSubBands> band_bins{};
-    int nbands = 0;
-    for (int sbnd = begin_subbnd; sbnd < end_subbnd; ++sbnd) {
-        if (sbnd == begin_subbnd || !structure[static_cast<std::size_t>(sbnd)]) {
-            const auto b = static_cast<std::size_t>(nbands);
-            band_angle[b] = is_first_channel ? Scalar{0} : decode_ecplangle_as<Scalar>(ecplangle[b]);
-            band_chaos[b] = is_first_channel ? Scalar{0} : decode_ecplchaos_as<Scalar>(ecplchaos[b]);
-            // rand_trans is per-BAND (unlike rand_notrans, which is per-bin
-            // and drawn below instead) - one fresh draw per band, every
-            // block, then duplicated across that band's bins same as chaos.
-            band_rand[b] = ecpltrans ? noise.template next_as<Scalar>() : Scalar{0};
-            ++nbands;
-        }
-        const int start = kEcplSubBandTab[static_cast<std::size_t>(sbnd)];
-        band_bins[static_cast<std::size_t>(nbands) - 1] +=
-            kEcplSubBandTab[static_cast<std::size_t>(sbnd) + 1] - start;
-    }
+ bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
+ std::span<const bool> structure, EcplNoise& noise,
+ std::span<Scalar> angle_out, bool interpolate) {
+ // Band-indexed state first - the angle a band carries, how many bins it
+ // covers, and the per-band chaos and rand_trans that modify it. Both
+ // band-to-bin conversions below start from exactly this.
+ std::array<Scalar, kEcplSubBands> band_angle{};
+ std::array<Scalar, kEcplSubBands> band_chaos{};
+ std::array<Scalar, kEcplSubBands> band_rand{};
+ std::array<int, kEcplSubBands> band_bins{};
+ int nbands = 0;
+ for (int sbnd = begin_subbnd; sbnd < end_subbnd; ++sbnd) {
+ if (sbnd == begin_subbnd || !structure[static_cast<std::size_t>(sbnd)]) {
+ const auto b = static_cast<std::size_t>(nbands);
+ band_angle[b] = is_first_channel ? Scalar{0} : decode_ecplangle_as<Scalar>(ecplangle[b]);
+ band_chaos[b] = is_first_channel ? Scalar{0} : decode_ecplchaos_as<Scalar>(ecplchaos[b]);
+ // rand_trans is per-BAND (unlike rand_notrans, which is per-bin
+ // and drawn below instead) - one fresh draw per band, every
+ // block, then duplicated across that band's bins same as chaos.
+ band_rand[b] = ecpltrans ? noise.template next_as<Scalar>() : Scalar{0};
+ ++nbands;
+ }
+ const int start = kEcplSubBandTab[static_cast<std::size_t>(sbnd)];
+ band_bins[static_cast<std::size_t>(nbands) - 1] +=
+ kEcplSubBandTab[static_cast<std::size_t>(sbnd) + 1] - start;
+ }
 
-    const auto bands = static_cast<std::size_t>(nbands);
-    assert(angle_out.size() <= kEcplMaxBins);
-    std::array<Scalar, kEcplMaxBins> bin_angle_store{};
-    const std::span<Scalar> bin_angle{bin_angle_store.data(),
-                                      std::min(angle_out.size(), kEcplMaxBins)};
-    if (interpolate) {
-        interpolate_band_angles<Scalar>(std::span{band_angle}.first(bands),
-                                        std::span{band_bins}.first(bands), bin_angle);
-    } else {
-        std::size_t at = 0;
-        for (int bnd = 0; bnd < nbands; ++bnd) {
-            for (int i = 0; i < band_bins[static_cast<std::size_t>(bnd)]; ++i) {
-                bin_angle[at++] = band_angle[static_cast<std::size_t>(bnd)];
-            }
-        }
-    }
+ const auto bands = static_cast<std::size_t>(nbands);
+ assert(angle_out.size() <= kEcplMaxBins);
+ std::array<Scalar, kEcplMaxBins> bin_angle_store{};
+ const std::span<Scalar> bin_angle{bin_angle_store.data(),
+ std::min(angle_out.size(), kEcplMaxBins)};
+ if (interpolate) {
+ interpolate_band_angles<Scalar>(std::span{band_angle}.first(bands),
+ std::span{band_bins}.first(bands), bin_angle);
+ } else {
+ std::size_t at = 0;
+ for (int bnd = 0; bnd < nbands; ++bnd) {
+ for (int i = 0; i < band_bins[static_cast<std::size_t>(bnd)]; ++i) {
+ bin_angle[at++] = band_angle[static_cast<std::size_t>(bnd)];
+ }
+ }
+ }
 
-    // Chaos and the de-correlating noise are per BIN and applied after the
-    // conversion either way (§3.5.5.3's last pseudocode block) - they are
-    // never interpolated, only duplicated across a band's bins.
-    const int first_bin = kEcplSubBandTab[static_cast<std::size_t>(begin_subbnd)];
-    std::size_t cursor = 0;
-    for (int bnd = 0; bnd < nbands; ++bnd) {
-        for (int i = 0; i < band_bins[static_cast<std::size_t>(bnd)]; ++i) {
-            const int bin = first_bin + static_cast<int>(cursor);
-            const Scalar rand = ecpltrans ? band_rand[static_cast<std::size_t>(bnd)]
-                                          : ecpl_rand_notrans_as<Scalar>(channel, bin);
-            angle_out[cursor] =
-                wrap_angle(bin_angle[cursor] + band_chaos[static_cast<std::size_t>(bnd)] * rand);
-            ++cursor;
-        }
-    }
+ // Chaos and the de-correlating noise are per BIN and applied after the
+ // conversion either way (§3.5.5.3's last pseudocode block) - they are
+ // never interpolated, only duplicated across a band's bins.
+ const int first_bin = kEcplSubBandTab[static_cast<std::size_t>(begin_subbnd)];
+ std::size_t cursor = 0;
+ for (int bnd = 0; bnd < nbands; ++bnd) {
+ for (int i = 0; i < band_bins[static_cast<std::size_t>(bnd)]; ++i) {
+ const int bin = first_bin + static_cast<int>(cursor);
+ const Scalar rand = ecpltrans ? band_rand[static_cast<std::size_t>(bnd)]
+ : ecpl_rand_notrans_as<Scalar>(channel, bin);
+ angle_out[cursor] =
+ wrap_angle(bin_angle[cursor] + band_chaos[static_cast<std::size_t>(bnd)] * rand);
+ ++cursor;
+ }
+ }
 }
 
 template <typename Scalar>
 void ecpl_channel_coefficients_impl(std::span<const Scalar, 256> real_in,
-                                    std::span<const Scalar, 256> imag_in,
-                                    std::span<const Scalar> amp_bin,
-                                    std::span<const Scalar> angle_bin, int begin_mant,
-                                    int end_mant, std::span<Scalar, 256> mant_out) {
-    // §3.5.5.4's y, from the shared double table or the float scratch's
-    // narrowed copy (built by ecpl_channel_spectrum, which always runs first
-    // in a decode; built here if it somehow has not).
-    const std::array<Scalar, 256>* y_table = nullptr;
-    if constexpr (std::is_same_v<Scalar, float>) {
-        y_table = &ecpl_spectrum_scratch<float>().y;
-    } else {
-        y_table = &ecpl_y().value;
-    }
-    const auto& y = *y_table;
-    constexpr double kPi = std::numbers::pi;
-    for (int bin = begin_mant; bin < end_mant; ++bin) {
-        const auto idx = static_cast<std::size_t>(bin - begin_mant);
-        const Scalar amp = amp_bin[idx];
-        const Scalar angle = angle_bin[idx];
-        Scalar c{0};
-        Scalar s{0};
-        if constexpr (std::is_same_v<Scalar, float>) {
-            sincos_pi(angle, s, c);
-        } else {
-            c = std::cos(kPi * angle);
-            s = std::sin(kPi * angle);
-        }
-        const Scalar zr = real_in[static_cast<std::size_t>(bin)];
-        const Scalar zi = imag_in[static_cast<std::size_t>(bin)];
-        const Scalar zr_ch = zr * amp * c - zi * amp * s;
-        const Scalar zi_ch = zi * amp * c + zr * amp * s;
-        // N/2 - 1 - bin, N = 512.
-        const auto mirror = static_cast<std::size_t>(255 - bin);
-        mant_out[static_cast<std::size_t>(bin)] =
-            Scalar{-2} * (y[static_cast<std::size_t>(bin)] * zr_ch + y[mirror] * zi_ch);
-    }
+ std::span<const Scalar, 256> imag_in,
+ std::span<const Scalar> amp_bin,
+ std::span<const Scalar> angle_bin, int begin_mant,
+ int end_mant, std::span<Scalar, 256> mant_out) {
+ // §3.5.5.4's y, from the shared double table or the float scratch's
+ // narrowed copy (built by ecpl_channel_spectrum, which always runs first
+ // in a decode; built here if it somehow has not).
+ const std::array<Scalar, 256>* y_table = nullptr;
+ if constexpr (std::is_same_v<Scalar, float>) {
+ y_table = &ecpl_spectrum_scratch<float>().y;
+ } else {
+ y_table = &ecpl_y().value;
+ }
+ const auto& y = *y_table;
+ constexpr double kPi = std::numbers::pi;
+ for (int bin = begin_mant; bin < end_mant; ++bin) {
+ const auto idx = static_cast<std::size_t>(bin - begin_mant);
+ const Scalar amp = amp_bin[idx];
+ const Scalar angle = angle_bin[idx];
+ Scalar c{0};
+ Scalar s{0};
+ if constexpr (std::is_same_v<Scalar, float>) {
+ sincos_pi(angle, s, c);
+ } else {
+ c = std::cos(kPi * angle);
+ s = std::sin(kPi * angle);
+ }
+ const Scalar zr = real_in[static_cast<std::size_t>(bin)];
+ const Scalar zi = imag_in[static_cast<std::size_t>(bin)];
+ const Scalar zr_ch = zr * amp * c - zi * amp * s;
+ const Scalar zi_ch = zi * amp * c + zr * amp * s;
+ // N/2 - 1 - bin, N = 512.
+ const auto mirror = static_cast<std::size_t>(255 - bin);
+ mant_out[static_cast<std::size_t>(bin)] =
+ Scalar{-2} * (y[static_cast<std::size_t>(bin)] * zr_ch + y[mirror] * zi_ch);
+ }
 }
 
-}  // namespace
+} // namespace
 
 void ecpl_angles(int channel, std::span<const int> ecplangle, std::span<const int> ecplchaos,
-                 bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
-                 std::span<const bool> structure, EcplNoise& noise, std::span<double> angle_out,
-                 bool interpolate) {
-    ecpl_angles_impl<double>(channel, ecplangle, ecplchaos, ecpltrans, is_first_channel,
-                             begin_subbnd, end_subbnd, structure, noise, angle_out, interpolate);
+ bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
+ std::span<const bool> structure, EcplNoise& noise, std::span<double> angle_out,
+ bool interpolate) {
+ ecpl_angles_impl<double>(channel, ecplangle, ecplchaos, ecpltrans, is_first_channel,
+ begin_subbnd, end_subbnd, structure, noise, angle_out, interpolate);
 }
 
 void ecpl_angles(int channel, std::span<const int> ecplangle, std::span<const int> ecplchaos,
-                 bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
-                 std::span<const bool> structure, EcplNoise& noise, std::span<float> angle_out,
-                 bool interpolate) {
-    ecpl_angles_impl<float>(channel, ecplangle, ecplchaos, ecpltrans, is_first_channel,
-                            begin_subbnd, end_subbnd, structure, noise, angle_out, interpolate);
+ bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
+ std::span<const bool> structure, EcplNoise& noise, std::span<float> angle_out,
+ bool interpolate) {
+ ecpl_angles_impl<float>(channel, ecplangle, ecplchaos, ecpltrans, is_first_channel,
+ begin_subbnd, end_subbnd, structure, noise, angle_out, interpolate);
 }
 
 void ecpl_channel_coefficients(std::span<const double, 256> real_in,
-                               std::span<const double, 256> imag_in,
-                               std::span<const double> amp_bin, std::span<const double> angle_bin,
-                               int begin_mant, int end_mant, std::span<double, 256> mant_out) {
-    ecpl_channel_coefficients_impl<double>(real_in, imag_in, amp_bin, angle_bin, begin_mant,
-                                           end_mant, mant_out);
+ std::span<const double, 256> imag_in,
+ std::span<const double> amp_bin, std::span<const double> angle_bin,
+ int begin_mant, int end_mant, std::span<double, 256> mant_out) {
+ ecpl_channel_coefficients_impl<double>(real_in, imag_in, amp_bin, angle_bin, begin_mant,
+ end_mant, mant_out);
 }
 
 void ecpl_channel_coefficients(std::span<const float, 256> real_in,
-                               std::span<const float, 256> imag_in, std::span<const float> amp_bin,
-                               std::span<const float> angle_bin, int begin_mant, int end_mant,
-                               std::span<float, 256> mant_out) {
-    ecpl_channel_coefficients_impl<float>(real_in, imag_in, amp_bin, angle_bin, begin_mant,
-                                          end_mant, mant_out);
+ std::span<const float, 256> imag_in, std::span<const float> amp_bin,
+ std::span<const float> angle_bin, int begin_mant, int end_mant,
+ std::span<float, 256> mant_out) {
+ ecpl_channel_coefficients_impl<float>(real_in, imag_in, amp_bin, angle_bin, begin_mant,
+ end_mant, mant_out);
 }
 
 void ecpl_amplitudes_fixed(std::span<const int> ecplamp, std::span<const int> ecplchaos,
-                           bool ecpltrans, bool is_first_channel, int begin_subbnd,
-                           int end_subbnd, std::span<const bool> structure,
-                           std::span<Fixed32> amp_out) {
-    ecpl_amplitudes_impl<Fixed32>(ecplamp, ecplchaos, ecpltrans, is_first_channel, begin_subbnd,
-                                  end_subbnd, structure, amp_out);
+ bool ecpltrans, bool is_first_channel, int begin_subbnd,
+ int end_subbnd, std::span<const bool> structure,
+ std::span<Fixed32> amp_out) {
+ ecpl_amplitudes_impl<Fixed32>(ecplamp, ecplchaos, ecpltrans, is_first_channel, begin_subbnd,
+ end_subbnd, structure, amp_out);
 }
 
 void ecpl_angles_fixed(int channel, std::span<const int> ecplangle, std::span<const int> ecplchaos,
-                       bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
-                       std::span<const bool> structure, EcplNoise& noise,
-                       std::span<Fixed32> angle_out, bool interpolate) {
-    ecpl_angles_impl<Fixed32>(channel, ecplangle, ecplchaos, ecpltrans, is_first_channel,
-                              begin_subbnd, end_subbnd, structure, noise, angle_out, interpolate);
+ bool ecpltrans, bool is_first_channel, int begin_subbnd, int end_subbnd,
+ std::span<const bool> structure, EcplNoise& noise,
+ std::span<Fixed32> angle_out, bool interpolate) {
+ ecpl_angles_impl<Fixed32>(channel, ecplangle, ecplchaos, ecpltrans, is_first_channel,
+ begin_subbnd, end_subbnd, structure, noise, angle_out, interpolate);
 }
 
 void ecpl_channel_coefficients_fixed(std::span<const Fixed32, 256> real_in,
-                                     std::span<const Fixed32, 256> imag_in,
-                                     std::span<const Fixed32> amp_bin,
-                                     std::span<const Fixed32> angle_bin, int begin_mant,
-                                     int end_mant, int out_shift,
-                                     std::span<Fixed32, 256> mant_out) {
-    // The same sum as the floating forms', from the same y (the tier's
-    // narrowed copy) and with the tier's own sine and cosine
-    // (eac3_tools_fixed.hpp). `out_shift` is the difference between the
-    // spectrum's exponent and the one the receiving channel is stored under;
-    // applying it here is a shift per bin rather than a pass of its own.
-    const auto& y = ecpl_spectrum_scratch<Fixed32>().y;
-    for (int bin = begin_mant; bin < end_mant; ++bin) {
-        const auto idx = static_cast<std::size_t>(bin - begin_mant);
-        const Fixed32 amp = amp_bin[idx];
-        Fixed32 c{};
-        Fixed32 s{};
-        sincos_pi(angle_bin[idx], s, c);
-        const Fixed32 zr = real_in[static_cast<std::size_t>(bin)];
-        const Fixed32 zi = imag_in[static_cast<std::size_t>(bin)];
-        const Fixed32 zr_ch = zr * amp * c - zi * amp * s;
-        const Fixed32 zi_ch = zi * amp * c + zr * amp * s;
-        // N/2 - 1 - bin, N = 512.
-        const auto mirror = static_cast<std::size_t>(255 - bin);
-        const Fixed32 value =
-            Fixed32{-2} * (y[static_cast<std::size_t>(bin)] * zr_ch + y[mirror] * zi_ch);
-        mant_out[static_cast<std::size_t>(bin)] = value.scaled_by_pow2(out_shift);
-    }
+ std::span<const Fixed32, 256> imag_in,
+ std::span<const Fixed32> amp_bin,
+ std::span<const Fixed32> angle_bin, int begin_mant,
+ int end_mant, int out_shift,
+ std::span<Fixed32, 256> mant_out) {
+ // The same sum as the floating forms', from the same y (the tier's
+ // narrowed copy) and with the tier's own sine and cosine
+ // (eac3_tools_fixed.hpp). `out_shift` is the difference between the
+ // spectrum's exponent and the one the receiving channel is stored under;
+ // applying it here is a shift per bin rather than a pass of its own.
+ const auto& y = ecpl_spectrum_scratch<Fixed32>().y;
+ for (int bin = begin_mant; bin < end_mant; ++bin) {
+ const auto idx = static_cast<std::size_t>(bin - begin_mant);
+ const Fixed32 amp = amp_bin[idx];
+ Fixed32 c{};
+ Fixed32 s{};
+ sincos_pi(angle_bin[idx], s, c);
+ const Fixed32 zr = real_in[static_cast<std::size_t>(bin)];
+ const Fixed32 zi = imag_in[static_cast<std::size_t>(bin)];
+ const Fixed32 zr_ch = zr * amp * c - zi * amp * s;
+ const Fixed32 zi_ch = zi * amp * c + zr * amp * s;
+ // N/2 - 1 - bin, N = 512.
+ const auto mirror = static_cast<std::size_t>(255 - bin);
+ const Fixed32 value =
+ Fixed32{-2} * (y[static_cast<std::size_t>(bin)] * zr_ch + y[mirror] * zi_ch);
+ mant_out[static_cast<std::size_t>(bin)] = value.scaled_by_pow2(out_shift);
+ }
 }
 
-}  // namespace ac3::eac3
+} // namespace ac3::eac3

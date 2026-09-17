@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# ac3forge_c - roadmap item F1: a stable, minimal C-callable surface over
+# ac3forge_c - C API: a stable, minimal C-callable surface over
 # ac3::forge's encode/decode core (AC-3, E-AC-3, Atmos/OAMD/JOC), for bindings
 # and embedding by callers that cannot or do not want to link C++23. The
 # public header (include/ac3forge_c/ac3forge.h) is plain C11 - no C++ type
@@ -31,29 +31,29 @@ target_link_libraries(forge_c_shared PUBLIC forge_c_objects)
 add_library(ac3::forge_c_static ALIAS forge_c_static)
 add_library(ac3::forge_c_shared ALIAS forge_c_shared)
 if(BUILD_SHARED_LIBS)
-    add_library(ac3::forge_c ALIAS forge_c_shared)
+ add_library(ac3::forge_c ALIAS forge_c_shared)
 else()
-    add_library(ac3::forge_c ALIAS forge_c_static)
+ add_library(ac3::forge_c ALIAS forge_c_static)
 endif()
 
 target_sources(forge_c_objects
-    PRIVATE
-        src/atmos.cpp
-        src/common.cpp
-        src/decoder.cpp
-        src/eac3.cpp
-        src/eac3_encoder.cpp
-        src/encoder.cpp
-        src/levels.cpp
-        src/loudness.cpp
-        src/qc.cpp
-        src/scan.cpp)
+ PRIVATE
+ src/atmos.cpp
+ src/common.cpp
+ src/decoder.cpp
+ src/eac3.cpp
+ src/eac3_encoder.cpp
+ src/encoder.cpp
+ src/levels.cpp
+ src/loudness.cpp
+ src/qc.cpp
+ src/scan.cpp)
 
 target_include_directories(forge_c_objects
-    PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
-        "$<INSTALL_INTERFACE:include>")
+ PUBLIC
+ "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+ "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
+ "$<INSTALL_INTERFACE:include>")
 
 target_compile_features(forge_c_objects PUBLIC cxx_std_23)
 
@@ -65,24 +65,24 @@ target_compile_features(forge_c_objects PUBLIC cxx_std_23)
 # ac3::forge_static itself, which forge_c_static/forge_c_shared's install(EXPORT)
 # already resolves via forgeTargets.
 target_link_libraries(forge_c_objects
-    PRIVATE
-        ac3::forge_static
-        "$<BUILD_INTERFACE:ac3::warnings>"
-        "$<BUILD_INTERFACE:ac3::coverage>")
+ PRIVATE
+ ac3::forge_static
+ "$<BUILD_INTERFACE:ac3::warnings>"
+ "$<BUILD_INTERFACE:ac3::coverage>")
 
 set_target_properties(forge_c_objects PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON)
+ POSITION_INDEPENDENT_CODE ON
+ CXX_VISIBILITY_PRESET hidden
+ VISIBILITY_INLINES_HIDDEN ON)
 
 include(GenerateExportHeader)
 set_target_properties(forge_c_shared PROPERTIES DEFINE_SYMBOL "AC3FORGEC_BUILDING_SHARED")
 generate_export_header(forge_c_shared
-    BASE_NAME AC3FORGEC
-    EXPORT_MACRO_NAME AC3FORGEC_EXPORT
-    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3forge_c/export.h"
-    DEFINE_NO_DEPRECATED
-    STATIC_DEFINE AC3FORGEC_STATIC_DEFINE)
+ BASE_NAME AC3FORGEC
+ EXPORT_MACRO_NAME AC3FORGEC_EXPORT
+ EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3forge_c/export.h"
+ DEFINE_NO_DEPRECATED
+ STATIC_DEFINE AC3FORGEC_STATIC_DEFINE)
 target_compile_definitions(forge_c_objects PRIVATE AC3FORGEC_BUILDING_SHARED)
 target_compile_definitions(forge_c_static PUBLIC AC3FORGEC_STATIC_DEFINE)
 
@@ -102,13 +102,13 @@ set(AC3FORGEC_VERSION_MAJOR "${CMAKE_MATCH_1}")
 set(AC3FORGEC_VERSION_MINOR "${CMAKE_MATCH_2}")
 set(AC3FORGEC_VERSION_PATCH "${CMAKE_MATCH_3}")
 configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/ac3forge_c/version.h.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3forge_c/version.h"
-    @ONLY)
+ "${CMAKE_CURRENT_SOURCE_DIR}/include/ac3forge_c/version.h.in"
+ "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3forge_c/version.h"
+ @ONLY)
 
 set_target_properties(forge_c_shared PROPERTIES
-    VERSION "${PROJECT_VERSION}"
-    SOVERSION "${PROJECT_VERSION}")
+ VERSION "${PROJECT_VERSION}"
+ SOVERSION "${PROJECT_VERSION}")
 
 set_target_properties(forge_c_shared PROPERTIES OUTPUT_NAME "ac3forge_c")
 set_target_properties(forge_c_static PROPERTIES OUTPUT_NAME "ac3forge_c_static")

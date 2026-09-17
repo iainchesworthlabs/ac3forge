@@ -1,26 +1,26 @@
 # ---------------------------------------------------------------------------
-# ac3::admbridge - roadmap item B1 phase 2: maps the ADM object graph
+# ac3::admbridge - ADM BWF → JOC bridge, phase 2: maps the ADM object graph
 # ac3adm::ac3adm (src/ac3adm) parses onto ac3::oba::AtmosEncoder's input shape.
 #
 # A NEW standalone module, not folded into either side it bridges, for two
 # reasons that are each independently sufficient:
 #
-#   - src/ac3adm is documentedly codec-blind (see its own CMakeLists.txt/
-#     header comments) - it does not, and should not, gain a dependency on
-#     ac3::forge/ac3::oba just to know what an "object" or "bed" means in
-#     JOC/Atmos terms.
-#   - src/forge (-> ac3::forge, ac3::oba::AtmosEncoder) is always built,
-#     unconditionally, by every configuration of this project. It cannot
-#     gain a dependency on the opt-in, Boost-requiring ac3adm without
-#     breaking every default build - the exact reason ac3adm itself defaults
-#     AC3FORGE_BUILD_ADM off (see src/ac3adm/CMakeLists.txt's own header).
+# - src/ac3adm is documentedly codec-blind (see its own CMakeLists.txt/
+# header comments) - it does not, and should not, gain a dependency on
+# ac3::forge/ac3::oba just to know what an "object" or "bed" means in
+# JOC/Atmos terms.
+# - src/forge (-> ac3::forge, ac3::oba::AtmosEncoder) is always built,
+# unconditionally, by every configuration of this project. It cannot
+# gain a dependency on the opt-in, Boost-requiring ac3adm without
+# breaking every default build - the exact reason ac3adm itself defaults
+# AC3FORGE_BUILD_ADM off (see src/ac3adm/CMakeLists.txt's own header).
 #
 # Gated by the SAME AC3FORGE_BUILD_ADM option ac3adm itself uses, rather than
 # a new AC3FORGE_BUILD_ADMBRIDGE of its own: this module is meaningless
 # without ac3adm (there is nothing to bridge), and ac3::forge is
 # unconditionally available regardless, so a separate option would only ever
 # take the same value AC3FORGE_BUILD_ADM already does - one flag, not two
-# that must be kept in sync by hand. ROADMAP.md's B2 entry (a future DAMF
+# that must be kept in sync by hand. a future DAMF reader (out of scope; was B2
 # reader) names this module as the "mapping layer" it plans to share, which
 # is the other half of why this lives on its own rather than inside either
 # neighbour: a future second ADM-graph producer should be able to depend on
@@ -47,27 +47,27 @@ target_link_libraries(admbridge_shared PUBLIC admbridge_objects)
 add_library(ac3::admbridge_static ALIAS admbridge_static)
 add_library(ac3::admbridge_shared ALIAS admbridge_shared)
 if(BUILD_SHARED_LIBS)
-    add_library(ac3::admbridge ALIAS admbridge_shared)
+ add_library(ac3::admbridge ALIAS admbridge_shared)
 else()
-    add_library(ac3::admbridge ALIAS admbridge_static)
+ add_library(ac3::admbridge ALIAS admbridge_static)
 endif()
 
 target_sources(admbridge_objects
-    PRIVATE
-        src/coordinates.cpp
-        src/bridge.cpp
-        src/iab_bridge.cpp)
+ PRIVATE
+ src/coordinates.cpp
+ src/bridge.cpp
+ src/iab_bridge.cpp)
 
 target_include_directories(admbridge_objects
-    PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
-        "$<INSTALL_INTERFACE:include>")
+ PUBLIC
+ "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+ "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
+ "$<INSTALL_INTERFACE:include>")
 
 target_compile_features(admbridge_objects PUBLIC cxx_std_23)
 
 # PUBLIC: this module's own public headers (bridge.hpp, coordinates.hpp, iab_bridge.hpp) name
-# types from ac3::oba (ac3::forge), ac3adm::ac3adm AND (roadmap IM1 phase 3) ac3iab::ac3iab in
+# types from ac3::oba (ac3::forge), ac3adm::ac3adm AND (legacy item IM1 phase 3) ac3iab::ac3iab in
 # their signatures (ac3::oba::ObjectPath, ac3adm::AdmDocument, ac3iab::IABitstreamFrame, ...), so
 # anything linking ac3::admbridge needs all three transitively - the same PUBLIC-link-its-
 # dependency shape src/signing/CMakeLists.txt uses for ac3::forge.
@@ -81,33 +81,33 @@ target_compile_features(admbridge_objects PUBLIC cxx_std_23)
 # instead of a PRIVATE one. ac3iab is NOT pinned the same way: it is default-ON with both
 # variants in the install/export set, so the ambient alias is exactly right for it.
 target_link_libraries(admbridge_objects
-    PUBLIC
-        ac3::forge
-        ac3adm::ac3adm_shared
-        ac3iab::ac3iab
-    PRIVATE
-        "$<BUILD_INTERFACE:ac3::warnings>"
-        "$<BUILD_INTERFACE:ac3::coverage>")
+ PUBLIC
+ ac3::forge
+ ac3adm::ac3adm_shared
+ ac3iab::ac3iab
+ PRIVATE
+ "$<BUILD_INTERFACE:ac3::warnings>"
+ "$<BUILD_INTERFACE:ac3::coverage>")
 
 set_target_properties(admbridge_objects PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON)
+ POSITION_INDEPENDENT_CODE ON
+ CXX_VISIBILITY_PRESET hidden
+ VISIBILITY_INLINES_HIDDEN ON)
 
 include(GenerateExportHeader)
 set_target_properties(admbridge_shared PROPERTIES DEFINE_SYMBOL "ADMBRIDGE_BUILDING_SHARED")
 generate_export_header(admbridge_shared
-    BASE_NAME ADMBRIDGE
-    EXPORT_MACRO_NAME AC3ADMBRIDGE_EXPORT
-    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3/admbridge/export.hpp"
-    DEFINE_NO_DEPRECATED
-    STATIC_DEFINE ADMBRIDGE_STATIC_DEFINE)
+ BASE_NAME ADMBRIDGE
+ EXPORT_MACRO_NAME AC3ADMBRIDGE_EXPORT
+ EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3/admbridge/export.hpp"
+ DEFINE_NO_DEPRECATED
+ STATIC_DEFINE ADMBRIDGE_STATIC_DEFINE)
 target_compile_definitions(admbridge_objects PRIVATE ADMBRIDGE_BUILDING_SHARED)
 target_compile_definitions(admbridge_static PUBLIC ADMBRIDGE_STATIC_DEFINE)
 
 set_target_properties(admbridge_shared PROPERTIES
-    VERSION "${PROJECT_VERSION}"
-    SOVERSION "${PROJECT_VERSION}")
+ VERSION "${PROJECT_VERSION}"
+ SOVERSION "${PROJECT_VERSION}")
 
 set_target_properties(admbridge_shared PROPERTIES OUTPUT_NAME "admbridge")
 set_target_properties(admbridge_static PROPERTIES OUTPUT_NAME "admbridge_static")

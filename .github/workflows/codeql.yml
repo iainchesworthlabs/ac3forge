@@ -27,7 +27,7 @@
 # CMakePresets.json), so this is the same build ci.yml's static-analysis
 # (clang-tidy) nightly already proves clean.
 #
-# The other two legs (roadmap VX14) cover code the C++ leg never saw: ~30
+# The other two legs (non-C++ lint and scan) cover code the C++ leg never saw: ~30
 # Python files (the oracles and CI gates under tools/, plus the python/
 # binding package) and apps/wasm/demo.js. They take build-mode: none -
 # nothing needs compiling for CodeQL to extract them - and so run straight on
@@ -63,311 +63,311 @@
 name: CodeQL
 
 on:
-  schedule:
-    # Nightly against main - see docs/ci-self-hosted-runners.md "Nightly
-    # analysis window": ac3forge owns 02:00-03:15 UTC on the shared fleet,
-    # aqualink-automate owns ~04:00. Off-minute per GitHub's own advice.
-    - cron: "17 2 * * *"
-  workflow_dispatch:
+ schedule:
+ # Nightly against main - see docs/ci-self-hosted-runners.md "Nightly
+ # analysis window": ac3forge owns 02:00-03:15 UTC on the shared fleet,
+ # aqualink-automate owns ~04:00. Off-minute per GitHub's own advice.
+ - cron: "17 2 * * *"
+ workflow_dispatch:
 
 concurrency:
-  # One nightly at a time; a manual dispatch queues behind a running nightly
-  # rather than cancelling it (an analysis that never finishes uploads nothing).
-  group: codeql-nightly
-  cancel-in-progress: false
+ # One nightly at a time; a manual dispatch queues behind a running nightly
+ # rather than cancelling it (an analysis that never finishes uploads nothing).
+ group: codeql-nightly
+ cancel-in-progress: false
 
 permissions:
-  contents: read
+ contents: read
 
 jobs:
-  # Single source of truth for the vcpkg pin below - see
-  # docs/ci-self-hosted-runners.md and _toolchain-versions.yml's own header.
-  toolchain-versions:
-    uses: ./.github/workflows/_toolchain-versions.yml
-    permissions:
-      contents: read
-      actions: read
-    secrets:
-      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
+ # Single source of truth for the vcpkg pin below - see
+ # docs/ci-self-hosted-runners.md and _toolchain-versions.yml's own header.
+ toolchain-versions:
+ uses: ./.github/workflows/_toolchain-versions.yml
+ permissions:
+ contents: read
+ actions: read
+ secrets:
+ ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
-  # Same self-hosted/GitHub-hosted routing ci.yml's check-runner gives its
-  # single-leg jobs (see docs/ci-self-hosted-runners.md). The C++ analyze
-  # leg is a full tracer build inside the same pinned ubuntu:26.04
-  # container the CI matrix uses, so it runs identically on either pool;
-  # the interpreted legs are seconds long either way. At 02:17 the fleet is
-  # normally idle, so `auto` lands every leg on self-hosted whenever a Linux
-  # runner is online. The job itself is control-plane, routed by
-  # vars.CONTROL_RUNNER_JSON with the same delete-the-variable kill switch as
-  # ci.yml's check-runner. No fork-PR pin here: with no pull_request trigger,
-  # decide-runner only ever runs from a checkout of a ref in this repository
-  # (main on the schedule, whichever branch a workflow_dispatch names), never
-  # from a fork.
-  check-runner:
-    name: Check self-hosted runner availability
-    runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
-    permissions:
-      contents: read
-      actions: read
-    outputs:
-      runner: ${{ steps.decide.outputs.runner }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - id: decide
-        uses: ./.github/actions/decide-runner
-        with:
-          os-label: Linux
-          hosted-json: '["ubuntu-latest"]'
-          mode: ${{ vars.RUNNER_LINUX_MODE || 'auto' }}
-          org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
+ # Same self-hosted/GitHub-hosted routing ci.yml's check-runner gives its
+ # single-leg jobs (see docs/ci-self-hosted-runners.md). The C++ analyze
+ # leg is a full tracer build inside the same pinned ubuntu:26.04
+ # container the CI matrix uses, so it runs identically on either pool;
+ # the interpreted legs are seconds long either way. At 02:17 the fleet is
+ # normally idle, so `auto` lands every leg on self-hosted whenever a Linux
+ # runner is online. The job itself is control-plane, routed by
+ # vars.CONTROL_RUNNER_JSON with the same delete-the-variable kill switch as
+ # ci.yml's check-runner. No fork-PR pin here: with no pull_request trigger,
+ # decide-runner only ever runs from a checkout of a ref in this repository
+ # (main on the schedule, whichever branch a workflow_dispatch names), never
+ # from a fork.
+ check-runner:
+ name: Check self-hosted runner availability
+ runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+ permissions:
+ contents: read
+ actions: read
+ outputs:
+ runner: ${{ steps.decide.outputs.runner }}
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
+ - id: decide
+ uses: ./.github/actions/decide-runner
+ with:
+ os-label: Linux
+ hosted-json: '["ubuntu-latest"]'
+ mode: ${{ vars.RUNNER_LINUX_MODE || 'auto' }}
+ org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
-  # `display`, not `language`, in the job name, and "C++" spelled as it was
-  # before this became a matrix. No ruleset selects these check names any
-  # more (nothing here reports on a PR), but the rendered name is what the
-  # run history filters by and the `category` on the analyze step is what
-  # the Security > Code scanning alert history is keyed by - keep both
-  # stable. Adding a leg is free; renaming one splits its history.
-  analyze:
-    name: Analyze (${{ matrix.display }})
-    needs: [toolchain-versions, check-runner]
-    # matrix.runner overrides check-runner's decision for a leg that cannot
-    # take the fleet - java-kotlin needs the hosted image's preinstalled
-    # Android SDK, which the fleet image does not ship (the
-    # follow-the-toolchain rule from docs/ci-self-hosted-runners.md). Empty
-    # for every other leg, which routes normally.
-    runs-on: ${{ matrix.runner && fromJSON(matrix.runner) || fromJSON(needs.check-runner.outputs.runner) }}
-    # C++ leg 8.6 min median on the fleet (2026-09-04); the interpreted legs
-    # are seconds; java-kotlin is a Gradle build, bounded by the same 45 that
-    # _build.yml's build-android job uses. A hung run would otherwise hold a
-    # Linux fleet slot for GitHub's 360-minute default, into
-    # aqualink-automate's 04:00 window. Unmeasured on ubuntu-latest (the
-    # fallback when no Linux runner is online) - raise this if a hosted run
-    # trips it.
-    timeout-minutes: 45
-    # Empty for every leg but C++, so only that one pays for the pinned
-    # ubuntu:26.04 image (and the bootstrap/toolchain/vcpkg steps that
-    # follow). java-kotlin needs the hosted image's own Android SDK, so it
-    # must not run in a container either.
-    container: ${{ matrix.container }}
-    permissions:
-      security-events: write
-      contents: read
-    strategy:
-      # One language's extractor failing should not hide the others' results.
-      fail-fast: false
-      matrix:
-        include:
-          - language: cpp
-            display: C++
-            build-mode: manual
-            container: ubuntu:26.04
-            runner: ""
-          - language: python
-            display: Python
-            build-mode: none
-            container: ""
-            runner: ""
-          - language: javascript-typescript
-            display: JavaScript
-            build-mode: none
-            container: ""
-            runner: ""
-          - language: java-kotlin
-            display: Kotlin
-            build-mode: manual
-            container: ""
-            runner: '["ubuntu-latest"]'
-    steps:
-      # Before checkout: the bare ubuntu image has no git, and actions/checkout
-      # silently degrades to a REST tarball download without it. Also installs
-      # what the toolchain script assumes is present (lsb_release,
-      # add-apt-repository, curl+gnupg) - the same package list ci.yml's
-      # static-analysis job uses. No libasound2-dev: this build never enables
-      # AC3FORGE_BUILD_GUI, and the ALSA backend is optional, auto-detected,
-      # and irrelevant to what CodeQL is scanning for here.
-      - name: Bootstrap container
-        if: matrix.container
-        run: |
-          set -eu
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends \
-            build-essential ca-certificates cmake curl git gnupg lsb-release \
-            ninja-build pkg-config software-properties-common tar unzip wget zip
+ # `display`, not `language`, in the job name, and "C++" spelled as it was
+ # before this became a matrix. No ruleset selects these check names any
+ # more (nothing here reports on a PR), but the rendered name is what the
+ # run history filters by and the `category` on the analyze step is what
+ # the Security > Code scanning alert history is keyed by - keep both
+ # stable. Adding a leg is free; renaming one splits its history.
+ analyze:
+ name: Analyze (${{ matrix.display }})
+ needs: [toolchain-versions, check-runner]
+ # matrix.runner overrides check-runner's decision for a leg that cannot
+ # take the fleet - java-kotlin needs the hosted image's preinstalled
+ # Android SDK, which the fleet image does not ship (the
+ # follow-the-toolchain rule from docs/ci-self-hosted-runners.md). Empty
+ # for every other leg, which routes normally.
+ runs-on: ${{ matrix.runner && fromJSON(matrix.runner) || fromJSON(needs.check-runner.outputs.runner) }}
+ # C++ leg 8.6 min median on the fleet (2026-09-04); the interpreted legs
+ # are seconds; java-kotlin is a Gradle build, bounded by the same 45 that
+ # _build.yml's build-android job uses. A hung run would otherwise hold a
+ # Linux fleet slot for GitHub's 360-minute default, into
+ # aqualink-automate's 04:00 window. Unmeasured on ubuntu-latest (the
+ # fallback when no Linux runner is online) - raise this if a hosted run
+ # trips it.
+ timeout-minutes: 45
+ # Empty for every leg but C++, so only that one pays for the pinned
+ # ubuntu:26.04 image (and the bootstrap/toolchain/vcpkg steps that
+ # follow). java-kotlin needs the hosted image's own Android SDK, so it
+ # must not run in a container either.
+ container: ${{ matrix.container }}
+ permissions:
+ security-events: write
+ contents: read
+ strategy:
+ # One language's extractor failing should not hide the others' results.
+ fail-fast: false
+ matrix:
+ include:
+ - language: cpp
+ display: C++
+ build-mode: manual
+ container: ubuntu:26.04
+ runner: ""
+ - language: python
+ display: Python
+ build-mode: none
+ container: ""
+ runner: ""
+ - language: javascript-typescript
+ display: JavaScript
+ build-mode: none
+ container: ""
+ runner: ""
+ - language: java-kotlin
+ display: Kotlin
+ build-mode: manual
+ container: ""
+ runner: '["ubuntu-latest"]'
+ steps:
+ # Before checkout: the bare ubuntu image has no git, and actions/checkout
+ # silently degrades to a REST tarball download without it. Also installs
+ # what the toolchain script assumes is present (lsb_release,
+ # add-apt-repository, curl+gnupg) - the same package list ci.yml's
+ # static-analysis job uses. No libasound2-dev: this build never enables
+ # AC3FORGE_BUILD_GUI, and the ALSA backend is optional, auto-detected,
+ # and irrelevant to what CodeQL is scanning for here.
+ - name: Bootstrap container
+ if: matrix.container
+ run: |
+ set -eu
+ export DEBIAN_FRONTEND=noninteractive
+ apt-get update -qq
+ apt-get install -y -qq --no-install-recommends \
+ build-essential ca-certificates cmake curl git gnupg lsb-release \
+ ninja-build pkg-config software-properties-common tar unzip wget zip
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
 
-      - name: Install GCC 16
-        if: matrix.language == 'cpp'
-        run: bash .github/toolchain/02-gcc-toolchain.sh
+ - name: Install GCC 16
+ if: matrix.language == 'cpp'
+ run: bash .github/toolchain/02-gcc-toolchain.sh
 
-      - uses: ./.github/actions/setup-vcpkg
-        if: matrix.language == 'cpp'
-        with:
-          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+ - uses: ./.github/actions/setup-vcpkg
+ if: matrix.language == 'cpp'
+ with:
+ vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
-      # CodeQL's TypeScript extraction shells out to `node` (first needed
-      # when js/'s .ts sources landed with UX5). The GitHub-hosted image
-      # ships Node; the self-hosted fleet image does not - and since #466
-      # this leg runs bare on whichever pool check-runner picks, so pin
-      # Node explicitly on the one leg that needs it rather than routing
-      # the leg away (the follow-the-toolchain rule from
-      # docs/ci-self-hosted-runners.md).
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: matrix.language == 'javascript-typescript'
-        with:
-          node-version: "24"
+ # CodeQL's TypeScript extraction shells out to `node` (first needed
+ # when js/'s .ts sources landed with UX5). The GitHub-hosted image
+ # ships Node; the self-hosted fleet image does not - and since #466
+ # this leg runs bare on whichever pool check-runner picks, so pin
+ # Node explicitly on the one leg that needs it rather than routing
+ # the leg away (the follow-the-toolchain rule from
+ # docs/ci-self-hosted-runners.md).
+ - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+ if: matrix.language == 'javascript-typescript'
+ with:
+ node-version: "24"
 
-      # apps/android/gradle/wrapper/gradle-wrapper.jar is a committed binary
-      # (OpenSSF Scorecard's Binary-Artifacts check, alert #65) - it can't be
-      # dropped since gradlew needs it, so this verifies its checksum against
-      # Gradle's own known-good release hashes instead. Same step
-      # _build.yml's build-android job runs before its own build.
-      - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
-        if: matrix.language == 'java-kotlin'
+ # apps/android/gradle/wrapper/gradle-wrapper.jar is a committed binary
+ # (OpenSSF Scorecard's Binary-Artifacts check, alert #65) - it can't be
+ # dropped since gradlew needs it, so this verifies its checksum against
+ # Gradle's own known-good release hashes instead. Same step
+ # _build.yml's build-android job runs before its own build.
+ - uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+ if: matrix.language == 'java-kotlin'
 
-      # ubuntu-latest ships several Temurin JDKs preinstalled, each with its
-      # own JAVA_HOME_<version>_X64 env var (see actions/runner-images) -
-      # selecting one this way needs no extra pinned action for a JDK AGP
-      # already requires (compileOptions targets 17 - see build.gradle.kts).
-      - name: Select JDK 17
-        if: matrix.language == 'java-kotlin'
-        shell: bash
-        run: echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+ # ubuntu-latest ships several Temurin JDKs preinstalled, each with its
+ # own JAVA_HOME_<version>_X64 env var (see actions/runner-images) -
+ # selecting one this way needs no extra pinned action for a JDK AGP
+ # already requires (compileOptions targets 17 - see build.gradle.kts).
+ - name: Select JDK 17
+ if: matrix.language == 'java-kotlin'
+ shell: bash
+ run: echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
 
-      # The Android SDK cmdline-tools ship preinstalled on this image
-      # (ANDROID_HOME already set), but not necessarily the exact NDK version
-      # build.gradle.kts pins (26.1.10909125, see docs/platforms/android.md) -
-      # install it explicitly rather than trust whatever the image happens to
-      # have cached. `yes | sdkmanager --licenses` can exit non-zero even
-      # after accepting everything (the piped `yes` closes before sdkmanager
-      # reads EOF) - a known quirk, not a real failure - so only the actual
-      # NDK install is allowed to fail the job.
-      #
-      # No object-signing key here, unlike build-android: signing.key is a
-      # runtime asset the app reads, not something the Kotlin extractor sees,
-      # and this leg does not package or run the APK.
-      - name: Install pinned Android NDK
-        if: matrix.language == 'java-kotlin'
-        shell: bash
-        run: |
-          set -euo pipefail
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;26.1.10909125"
+ # The Android SDK cmdline-tools ship preinstalled on this image
+ # (ANDROID_HOME already set), but not necessarily the exact NDK version
+ # build.gradle.kts pins (26.1.10909125, see docs/platforms/android.md) -
+ # install it explicitly rather than trust whatever the image happens to
+ # have cached. `yes | sdkmanager --licenses` can exit non-zero even
+ # after accepting everything (the piped `yes` closes before sdkmanager
+ # reads EOF) - a known quirk, not a real failure - so only the actual
+ # NDK install is allowed to fail the job.
+ #
+ # No object-signing key here, unlike build-android: signing.key is a
+ # runtime asset the app reads, not something the Kotlin extractor sees,
+ # and this leg does not package or run the APK.
+ - name: Install pinned Android NDK
+ if: matrix.language == 'java-kotlin'
+ shell: bash
+ run: |
+ set -euo pipefail
+ yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+ "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;26.1.10909125"
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
-          # Path filtering only - see the file's own header.
-          config-file: ./.github/codeql/codeql-config.yml
-          # security-and-quality layers CodeQL's maintainability/reliability
-          # queries on top of the default security set - the same
-          # deterministic rule layer GitHub's paid Code Quality product runs,
-          # which doesn't cover C++ (and isn't available on this org's plan)
-          # anyway, so this suite is how this repo gets that analysis. Not
-          # adopted a priori: a measured dispatch run on this codebase first
-          # (2026-08-22, the same discipline as .clang-tidy's curation)
-          # showed 179 rules and ZERO findings against the default suite's
-          # 58 rules / zero - the suite starts from a clean baseline, so any
-          # future finding is new signal, not inherited noise.
-          #
-          # The same suite is used for Python and JavaScript, but that
-          # measurement does NOT transfer - it was taken against the C++
-          # extractor's rule set. Both were dispatched on this branch before
-          # landing (run 32637028120, 2026-08-23) and completed clean, so
-          # they start from the same zero-findings baseline the C++ leg does.
-          queries: security-and-quality
+ - name: Initialize CodeQL
+ uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+ with:
+ languages: ${{ matrix.language }}
+ build-mode: ${{ matrix.build-mode }}
+ # Path filtering only - see the file's own header.
+ config-file: ./.github/codeql/codeql-config.yml
+ # security-and-quality layers CodeQL's maintainability/reliability
+ # queries on top of the default security set - the same
+ # deterministic rule layer GitHub's paid Code Quality product runs,
+ # which doesn't cover C++ (and isn't available on this org's plan)
+ # anyway, so this suite is how this repo gets that analysis. Not
+ # adopted a priori: a measured dispatch run on this codebase first
+ # (2026-08-22, the same discipline as .clang-tidy's curation)
+ # showed 179 rules and ZERO findings against the default suite's
+ # 58 rules / zero - the suite starts from a clean baseline, so any
+ # future finding is new signal, not inherited noise.
+ #
+ # The same suite is used for Python and JavaScript, but that
+ # measurement does NOT transfer - it was taken against the C++
+ # extractor's rule set. Both were dispatched on this branch before
+ # landing (run 32637028120, 2026-08-23) and completed clean, so
+ # they start from the same zero-findings baseline the C++ leg does.
+ queries: security-and-quality
 
-      - name: Configure
-        if: matrix.language == 'cpp'
-        run: cmake --preset config-linux-gcc
+ - name: Configure
+ if: matrix.language == 'cpp'
+ run: cmake --preset config-linux-gcc
 
-      - name: Build
-        if: matrix.language == 'cpp'
-        run: cmake --build --preset build-linux-gcc -- -k 0
+ - name: Build
+ if: matrix.language == 'cpp'
+ run: cmake --build --preset build-linux-gcc -- -k 0
 
-      # The build CodeQL traces for java-kotlin. Debug, and assembleDebug
-      # only: the extractor wants compilation, not a packaged or signed
-      # artifact, and _build.yml still owns producing those.
-      - name: Build debug APK
-        if: matrix.language == 'java-kotlin'
-        working-directory: apps/android
-        shell: bash
-        run: |
-          set -euo pipefail
-          chmod +x gradlew
-          ./gradlew :app:assembleDebug --console=plain
+ # The build CodeQL traces for java-kotlin. Debug, and assembleDebug
+ # only: the extractor wants compilation, not a packaged or signed
+ # artifact, and _build.yml still owns producing those.
+ - name: Build debug APK
+ if: matrix.language == 'java-kotlin'
+ working-directory: apps/android
+ shell: bash
+ run: |
+ set -euo pipefail
+ chmod +x gradlew
+ ./gradlew :app:assembleDebug --console=plain
 
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
-        with:
-          category: "/language:${{ matrix.language }}"
+ - name: Perform CodeQL Analysis
+ uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+ with:
+ category: "/language:${{ matrix.language }}"
 
-  # Turns "a new CodeQL alert appeared on main" into something a person sees
-  # the next morning. codeql-action/analyze never fails on findings and
-  # GitHub does not notify on new default-branch alerts, so this job asks
-  # the code-scanning API for CodeQL alerts on refs/heads/main created inside
-  # the last nightly window and fails if there are any; that failure, or the
-  # analyze matrix failing, is handed to the shared report-nightly-failure
-  # action, which opens (or comments on) one `nightly-analysis` issue for
-  # this engine. `!cancelled()` rather than `always()`: an analyze failure is
-  # still reported rather than skipped past, but a run someone cancelled by
-  # hand does not open an issue over it. analyze keeps codeql-action's
-  # default wait-for-processing: true, so the alerts exist by the time this
-  # runs. The query is pinned to refs/heads/main, the ref the schedule
-  # analyses; a workflow_dispatch from another branch uploads against that
-  # branch and this job does not see it, so the alert-to-issue path can only
-  # be exercised on main.
-  surface:
-    name: Surface findings
-    needs: analyze
-    if: ${{ !cancelled() }}
-    runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
-    permissions:
-      contents: read
-      security-events: read
-      issues: write
-    env:
-      TOOL: CodeQL
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
+ # Turns "a new CodeQL alert appeared on main" into something a person sees
+ # the next morning. codeql-action/analyze never fails on findings and
+ # GitHub does not notify on new default-branch alerts, so this job asks
+ # the code-scanning API for CodeQL alerts on refs/heads/main created inside
+ # the last nightly window and fails if there are any; that failure, or the
+ # analyze matrix failing, is handed to the shared report-nightly-failure
+ # action, which opens (or comments on) one `nightly-analysis` issue for
+ # this engine. `!cancelled()` rather than `always()`: an analyze failure is
+ # still reported rather than skipped past, but a run someone cancelled by
+ # hand does not open an issue over it. analyze keeps codeql-action's
+ # default wait-for-processing: true, so the alerts exist by the time this
+ # runs. The query is pinned to refs/heads/main, the ref the schedule
+ # analyses; a workflow_dispatch from another branch uploads against that
+ # branch and this job does not see it, so the alert-to-issue path can only
+ # be exercised on main.
+ surface:
+ name: Surface findings
+ needs: analyze
+ if: ${{ !cancelled() }}
+ runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+ permissions:
+ contents: read
+ security-events: read
+ issues: write
+ env:
+ TOOL: CodeQL
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
 
-      - name: Fail on code-scanning alerts created since the last nightly
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # Nightly cadence plus an hour of slack for a late-starting run.
-          # The 25 h window overlaps the previous run by about an hour, so an
-          # alert from night N is listed again on night N+1 while it stays
-          # open - a second comment on the same issue, not a second finding.
-          WINDOW_HOURS: "25"
-        shell: bash
-        run: |
-          set -euo pipefail
-          since="$(date -u -d "-${WINDOW_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)"
-          # The alerts endpoint has no created-since filter: ask for the
-          # newest first and filter client-side. One page of 100 bounds the
-          # call; more than 100 new alerts in one night would be truncated,
-          # which is acceptable for a "did anything new appear" signal.
-          gh api "repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&ref=refs/heads/main&tool_name=${TOOL}&sort=created&direction=desc&per_page=100" \
-            --jq ".[] | select(.created_at > \"${since}\") | \"\\(.number)\\t\\(.rule.id)\\t\\(.most_recent_instance.location.path):\\(.most_recent_instance.location.start_line)\\t\\(.html_url)\"" \
-            > new-alerts.tsv
-          count="$(wc -l < new-alerts.tsv | tr -d '[:space:]')"
-          if [ "${count}" -gt 0 ]; then
-            echo "::error::${count} new ${TOOL} alert(s) on main since ${since}:"
-            cat new-alerts.tsv
-            exit 1
-          fi
-          echo "No new ${TOOL} alerts on main since ${since}."
+ - name: Fail on code-scanning alerts created since the last nightly
+ env:
+ GH_TOKEN: ${{ github.token }}
+ # Nightly cadence plus an hour of slack for a late-starting run.
+ # The 25 h window overlaps the previous run by about an hour, so an
+ # alert from night N is listed again on night N+1 while it stays
+ # open - a second comment on the same issue, not a second finding.
+ WINDOW_HOURS: "25"
+ shell: bash
+ run: |
+ set -euo pipefail
+ since="$(date -u -d "-${WINDOW_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)"
+ # The alerts endpoint has no created-since filter: ask for the
+ # newest first and filter client-side. One page of 100 bounds the
+ # call; more than 100 new alerts in one night would be truncated,
+ # which is acceptable for a "did anything new appear" signal.
+ gh api "repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&ref=refs/heads/main&tool_name=${TOOL}&sort=created&direction=desc&per_page=100" \
+ --jq ".[] | select(.created_at > \"${since}\") | \"\\(.number)\\t\\(.rule.id)\\t\\(.most_recent_instance.location.path):\\(.most_recent_instance.location.start_line)\\t\\(.html_url)\"" \
+ > new-alerts.tsv
+ count="$(wc -l < new-alerts.tsv | tr -d '[:space:]')"
+ if [ "${count}" -gt 0 ]; then
+ echo "::error::${count} new ${TOOL} alert(s) on main since ${since}:"
+ cat new-alerts.tsv
+ exit 1
+ fi
+ echo "No new ${TOOL} alerts on main since ${since}."
 
-      - uses: ./.github/actions/report-nightly-failure
-        if: failure() || needs.analyze.result != 'success'
-        with:
-          engine: ${{ env.TOOL }}
-          detail: "New CodeQL alerts on main since the previous nightly, or the analysis itself failed. See the run log, then Security > Code scanning filtered to refs/heads/main and tool CodeQL."
+ - uses: ./.github/actions/report-nightly-failure
+ if: failure() || needs.analyze.result != 'success'
+ with:
+ engine: ${{ env.TOOL }}
+ detail: "New CodeQL alerts on main since the previous nightly, or the analysis itself failed. See the run log, then Security > Code scanning filtered to refs/heads/main and tool CodeQL."

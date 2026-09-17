@@ -22,38 +22,38 @@
 namespace ac3::audio {
 
 enum class CaptureError : std::uint8_t {
-    kNoBackend,          // built without a platform capture backend
-    kComFailure,         // COM/WASAPI call failed
-    kDeviceNotFound,
-    kFormatUnsupported,  // endpoint delivers a format we cannot convert
-    kAlreadyRunning,
-    // start_process_loopback() only, where this machine or this call cannot
-    // use a tap: Windows before 10 build 20348, macOS before 14.2, PipeWire
-    // asked for kExcludeProcessTree (which it has no way to express), and
-    // ALSA always - it has no per-application concept at all. The posix and
-    // Android backends refuse with kNoBackend instead, having no capture
-    // backend to refuse from.
-    kProcessLoopbackUnavailable,
-    // start_process_loopback() only: no process has that id. Checked here
-    // because the OS does not: a tap on an id nobody owns activates, starts,
-    // and delivers zeros forever.
-    kProcessNotFound,
+ kNoBackend, // built without a platform capture backend
+ kComFailure, // COM/WASAPI call failed
+ kDeviceNotFound,
+ kFormatUnsupported, // endpoint delivers a format we cannot convert
+ kAlreadyRunning,
+ // start_process_loopback() only, where this machine or this call cannot
+ // use a tap: Windows before 10 build 20348, macOS before 14.2, PipeWire
+ // asked for kExcludeProcessTree (which it has no way to express), and
+ // ALSA always - it has no per-application concept at all. The posix and
+ // Android backends refuse with kNoBackend instead, having no capture
+ // backend to refuse from.
+ kProcessLoopbackUnavailable,
+ // start_process_loopback() only: no process has that id. Checked here
+ // because the OS does not: a tap on an id nobody owns activates, starts,
+ // and delivers zeros forever.
+ kProcessNotFound,
 };
 
 [[nodiscard]] std::string_view describe(CaptureError error);
 
 enum class DeviceKind : std::uint8_t {
-    kInput,     // microphone, line in
-    kLoopback,  // what the machine is playing (a render endpoint)
+ kInput, // microphone, line in
+ kLoopback, // what the machine is playing (a render endpoint)
 };
 
 struct DeviceInfo {
-    std::string id;    // endpoint id; stable across sessions
-    std::string name;  // friendly name for a UI
-    DeviceKind kind = DeviceKind::kInput;
-    std::uint32_t sample_rate = 0;  // the endpoint's mixer rate
-    std::uint16_t channels = 0;
-    bool is_default = false;
+ std::string id; // endpoint id; stable across sessions
+ std::string name; // friendly name for a UI
+ DeviceKind kind = DeviceKind::kInput;
+ std::uint32_t sample_rate = 0; // the endpoint's mixer rate
+ std::uint16_t channels = 0;
+ bool is_default = false;
 };
 
 // Every active input endpoint, plus every active render endpoint offered as
@@ -71,8 +71,8 @@ struct DeviceInfo {
 [[nodiscard]] bool process_loopback_available();
 
 enum class ProcessLoopbackMode : std::uint8_t {
-    kIncludeProcessTree,  // only what this process and its children render
-    kExcludeProcessTree,  // everything except this process and its children
+ kIncludeProcessTree, // only what this process and its children render
+ kExcludeProcessTree, // everything except this process and its children
 };
 
 // The shape a process-loopback tap delivers. There is no endpoint whose
@@ -92,68 +92,68 @@ enum class ProcessLoopbackMode : std::uint8_t {
 // src/audio/src/backend/macos/capture.cpp's own header comment, for the rest
 // of that platform's narrower contract.
 struct ProcessLoopbackFormat {
-    std::uint32_t sample_rate = 48000;
-    std::uint16_t channels = 2;
+ std::uint32_t sample_rate = 48000;
+ std::uint16_t channels = 2;
 };
 
 struct CaptureStats {
-    std::uint64_t frames_captured = 0;
-    // Frames of silence synthesised to cover a loopback gap. A render
-    // endpoint in loopback mode delivers nothing at all while the machine is
-    // silent, so a continuous timeline has to be filled in. A process tap
-    // behaves the same way while its process is quiet.
-    std::uint64_t frames_silence_filled = 0;
-    std::uint64_t frames_dropped = 0;  // ring buffer overruns (consumer too slow)
+ std::uint64_t frames_captured = 0;
+ // Frames of silence synthesised to cover a loopback gap. A render
+ // endpoint in loopback mode delivers nothing at all while the machine is
+ // silent, so a continuous timeline has to be filled in. A process tap
+ // behaves the same way while its process is quiet.
+ std::uint64_t frames_silence_filled = 0;
+ std::uint64_t frames_dropped = 0; // ring buffer overruns (consumer too slow)
 };
 
 class Capture {
 public:
-    Capture();
-    ~Capture();
-    Capture(const Capture&) = delete;
-    Capture& operator=(const Capture&) = delete;
+ Capture();
+ ~Capture();
+ Capture(const Capture&) = delete;
+ Capture& operator=(const Capture&) = delete;
 
-    // Opens `device_id` (empty selects the default endpoint of `kind`) and
-    // starts the capture thread. Samples land in buffer(), interleaved, at
-    // sample_rate() x channels().
-    [[nodiscard]] std::expected<void, CaptureError> start(const std::string& device_id,
-                                                          DeviceKind kind,
-                                                          std::size_t ring_capacity_samples = 1u
-                                                                                              << 18);
+ // Opens `device_id` (empty selects the default endpoint of `kind`) and
+ // starts the capture thread. Samples land in buffer(), interleaved, at
+ // sample_rate() x channels().
+ [[nodiscard]] std::expected<void, CaptureError> start(const std::string& device_id,
+ DeviceKind kind,
+ std::size_t ring_capacity_samples = 1u
+ << 18);
 
-    // Roadmap UX11. Taps what `process_id` (and, in kIncludeProcessTree
-    // mode, its child processes) renders, whichever endpoint that is, and
-    // starts the capture thread; samples land in buffer() at exactly
-    // `format`. Refuses with kProcessLoopbackUnavailable where the platform
-    // has no such tap (see process_loopback_available()), and with
-    // kProcessNotFound when no process has that id.
-    //
-    // Two things the tap does NOT do, both found the hard way
-    // (apps/crucible/spikes/README.md, S1): it does not survive the
-    // process's audio session being muted - the tap sits after session
-    // volume, so a muted session taps as silence - and it does not end when
-    // the process does. A tap outlives its process delivering zeros, so a
-    // caller that wants to know the process stopped playing has to watch
-    // the audio session list, not this capture.
-    [[nodiscard]] std::expected<void, CaptureError> start_process_loopback(
-        std::uint32_t process_id,
-        ProcessLoopbackMode mode = ProcessLoopbackMode::kIncludeProcessTree,
-        ProcessLoopbackFormat format = {},
-        std::size_t ring_capacity_samples = 1u << 18);
+ // Roadmap UX11. Taps what `process_id` (and, in kIncludeProcessTree
+ // mode, its child processes) renders, whichever endpoint that is, and
+ // starts the capture thread; samples land in buffer() at exactly
+ // `format`. Refuses with kProcessLoopbackUnavailable where the platform
+ // has no such tap (see process_loopback_available()), and with
+ // kProcessNotFound when no process has that id.
+ //
+ // Two things the tap does NOT do, both found the hard way
+ // (apps/crucible/spikes/README.md, S1): it does not survive the
+ // process's audio session being muted - the tap sits after session
+ // volume, so a muted session taps as silence - and it does not end when
+ // the process does. A tap outlives its process delivering zeros, so a
+ // caller that wants to know the process stopped playing has to watch
+ // the audio session list, not this capture.
+ [[nodiscard]] std::expected<void, CaptureError> start_process_loopback(
+ std::uint32_t process_id,
+ ProcessLoopbackMode mode = ProcessLoopbackMode::kIncludeProcessTree,
+ ProcessLoopbackFormat format = {},
+ std::size_t ring_capacity_samples = 1u << 18);
 
-    void stop();
+ void stop();
 
-    [[nodiscard]] bool running() const;
-    [[nodiscard]] std::uint32_t sample_rate() const;
-    [[nodiscard]] std::uint16_t channels() const;
-    [[nodiscard]] CaptureStats stats() const;
+ [[nodiscard]] bool running() const;
+ [[nodiscard]] std::uint32_t sample_rate() const;
+ [[nodiscard]] std::uint16_t channels() const;
+ [[nodiscard]] CaptureStats stats() const;
 
-    // Valid while running; the consumer reads from here.
-    [[nodiscard]] RingBuffer* buffer();
+ // Valid while running; the consumer reads from here.
+ [[nodiscard]] RingBuffer* buffer();
 
 private:
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
+ struct Impl;
+ std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace ac3::audio
+} // namespace ac3::audio

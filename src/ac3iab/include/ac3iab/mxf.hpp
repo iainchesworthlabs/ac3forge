@@ -7,7 +7,7 @@
 #include "ac3iab/ac3iab.hpp"
 #include "ac3iab/export.hpp"
 
-// Roadmap item IM1 phase 2 of 3 (see ROADMAP.md): minimal SMPTE ST 336:2017 KLV extraction for an
+// IAB reader phase 2 of 3 (): minimal SMPTE ST 336:2017 KLV extraction for an
 // IAB Track File, the way a real IMF/Dolby Atmos cinema master actually delivers ST 2098-2's
 // Immersive Audio Bitstream - a bare elementary `.iab` file is the exception, not the rule.
 //
@@ -16,7 +16,7 @@
 // which in turn references the base MXF standards (ST 377-1 file format, ST 379-1/-2 Generic/
 // Constrained Generic Container, ST 336 KLV/BER encoding). Every citation in mxf_reader.cpp names
 // one of those five documents' own clause/table numbers - all five are free from
-// https://pub.smpte.org, confirming ROADMAP.md's claim.
+// https://pub.smpte.org, confirming the IAB MXF planning record.
 //
 // The one fact that makes this "minimal" rather than "a general MXF library": ST 2067-201 §5.5
 // clip-wraps the Immersive Audio Bitstream - "the entire duration of the essence container shall
@@ -58,8 +58,8 @@ namespace ac3iab {
 // BER encoding rules. kTruncated: fewer bytes remained than a Key or a declared Length/Value
 // needed.
 [[nodiscard]] AC3IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError> parse_mxf_iab(
-    const std::string& path);
+ const std::string& path);
 [[nodiscard]] AC3IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError> parse_mxf_iab(
-    std::istream& in);
+ std::istream& in);
 
-}  // namespace ac3iab
+} // namespace ac3iab

@@ -1,4 +1,4 @@
-# Python wheels for the ac3forge PyPI package (roadmap F2, python/) - separate from
+# Python wheels for the ac3forge PyPI package (Python on PyPI, python/) - separate from
 # _build.yml/ci.yml's C++ matrix, which knows nothing about Python packaging. Builds via
 # cibuildwheel, configured from python/pyproject.toml's own [tool.cibuildwheel] table so a local
 # `cibuildwheel python` run matches this workflow exactly rather than drifting from workflow-only
@@ -13,263 +13,263 @@
 name: Python Wheels
 
 on:
-  # CI lane partitions (docs/ci-lanes.md): PR/main-push validation now comes
-  # from ci.yml's own `wheels` job-call, gated on the `python` lane, not from
-  # this workflow's own trigger - see that job's comment in ci.yml. Only the
-  # release-publish path stays a direct trigger here: `tags` with no
-  # `branches` fires ONLY for a pushed v* tag (never a branch push), and
-  # ci.yml itself never runs on a tag push, so the two never overlap or race.
-  # `paths` on this `push` block is unchanged from before the split and
-  # applies the same way it always has to a tag push - nothing about that
-  # interaction was touched, only the now-redundant `pull_request` trigger
-  # and this `push`'s own `branches: [main]` were removed.
-  push:
-    paths:
-      - "python/**"
-      - "src/forge/**"
-      - "examples/python/**"
-      - "CMakeLists.txt"
-      - ".github/workflows/wheels.yml"
-    tags:
-      - "v*"
-  workflow_dispatch:
-  workflow_call:
-    secrets:
-      ORG_RUNNERS_TOKEN:
-        description: "Forwarded to check-runners' decide-runner call, same as ci.yml's own call to _build.yml. Optional - see that job's own description."
-        required: false
+ # CI lane partitions (docs/ci-lanes.md): PR/main-push validation now comes
+ # from ci.yml's own `wheels` job-call, gated on the `python` lane, not from
+ # this workflow's own trigger - see that job's comment in ci.yml. Only the
+ # release-publish path stays a direct trigger here: `tags` with no
+ # `branches` fires ONLY for a pushed v* tag (never a branch push), and
+ # ci.yml itself never runs on a tag push, so the two never overlap or race.
+ # `paths` on this `push` block is unchanged from before the split and
+ # applies the same way it always has to a tag push - nothing about that
+ # interaction was touched, only the now-redundant `pull_request` trigger
+ # and this `push`'s own `branches: [main]` were removed.
+ push:
+ paths:
+ - "python/**"
+ - "src/forge/**"
+ - "examples/python/**"
+ - "CMakeLists.txt"
+ - ".github/workflows/wheels.yml"
+ tags:
+ - "v*"
+ workflow_dispatch:
+ workflow_call:
+ secrets:
+ ORG_RUNNERS_TOKEN:
+ description: "Forwarded to check-runners' decide-runner call, same as ci.yml's own call to _build.yml. Optional - see that job's own description."
+ required: false
 
 concurrency:
-  group: wheels-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+ group: wheels-${{ github.workflow }}-${{ github.ref }}
+ cancel-in-progress: true
 
 permissions:
-  contents: read
+ contents: read
 
 jobs:
-  # Windows-only fan-out onto self-hosted (see docs/ci-self-hosted-runners.md),
-  # via the shared decide-runner composite action - its own decider rather
-  # than ci.yml's check-runner or _build.yml's check-runners: this workflow
-  # has no `needs:` access to either of those (they live in a different
-  # workflow file, even on the PR-time path where ci.yml calls this one -
-  # `needs:` cannot cross a `workflow_call` boundary any more than it could
-  # before the CI lane partitions split, docs/ci-lanes.md, made that call
-  # exist at all). macOS stays GitHub-hosted unconditionally: there is
-  # no self-hosted macOS capacity, and AWS's Mac instances bill in 24-hour
-  # minimum blocks, a poor fit for a ~5-minute job that runs on every push.
-  # Linux stays GitHub-hosted too, for now: the self-hosted Linux pool's
-  # Python toolchain has no pip (`No module named pip`, confirmed against a
-  # real run - cibuildwheel needs to install itself into a venv before it
-  # can do anything), unlike ubuntu-latest's image. Re-enable once that
-  # image gets a pip-complete Python, the same way the Windows leg below
-  # already works today.
-  check-runners:
-    name: Check self-hosted runner availability
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-    outputs:
-      windows_runner: ${{ steps.windows.outputs.runner }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - id: windows
-        uses: ./.github/actions/decide-runner
-        with:
-          os-label: Windows
-          hosted-json: '["windows-latest"]'
-          mode: ${{ vars.RUNNER_WINDOWS_MODE || 'auto' }}
-          org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
+ # Windows-only fan-out onto self-hosted (see docs/ci-self-hosted-runners.md),
+ # via the shared decide-runner composite action - its own decider rather
+ # than ci.yml's check-runner or _build.yml's check-runners: this workflow
+ # has no `needs:` access to either of those (they live in a different
+ # workflow file, even on the PR-time path where ci.yml calls this one -
+ # `needs:` cannot cross a `workflow_call` boundary any more than it could
+ # before the CI lane partitions split, docs/ci-lanes.md, made that call
+ # exist at all). macOS stays GitHub-hosted unconditionally: there is
+ # no self-hosted macOS capacity, and AWS's Mac instances bill in 24-hour
+ # minimum blocks, a poor fit for a ~5-minute job that runs on every push.
+ # Linux stays GitHub-hosted too, for now: the self-hosted Linux pool's
+ # Python toolchain has no pip (`No module named pip`, confirmed against a
+ # real run - cibuildwheel needs to install itself into a venv before it
+ # can do anything), unlike ubuntu-latest's image. Re-enable once that
+ # image gets a pip-complete Python, the same way the Windows leg below
+ # already works today.
+ check-runners:
+ name: Check self-hosted runner availability
+ runs-on: ubuntu-latest
+ permissions:
+ contents: read
+ actions: read
+ outputs:
+ windows_runner: ${{ steps.windows.outputs.runner }}
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
+ - id: windows
+ uses: ./.github/actions/decide-runner
+ with:
+ os-label: Windows
+ hosted-json: '["windows-latest"]'
+ mode: ${{ vars.RUNNER_WINDOWS_MODE || 'auto' }}
+ org-token: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
-  build:
-    name: Build wheels (${{ matrix.name }})
-    needs: check-runners
-    # Belt-and-braces, same as _build.yml's build job: check-runners' own
-    # fork-PR branch already forces hosted labels for a fork PR, so this
-    # only matters if a gap ever opened up in that logic.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ fromJSON(matrix.runner) }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Every row names its archs explicitly (CIBW_ARCHS below): the
-          # per-platform tables in python/pyproject.toml describe the ORIGINAL
-          # three runners, and a platform now appears here on two different
-          # architectures - the intel-mac row must not inherit the arm table
-          # and cross-compile (clang rejects -mavx2 under -arch arm64, and a
-          # cross wheel is not what these rows exist to add), nor the arm-linux
-          # row grind out x86_64 under emulation.
-          - name: windows-latest
-            runner: ${{ needs.check-runners.outputs.windows_runner }}
-            cibw_archs: AMD64
-          - name: macos-latest
-            runner: '["macos-latest"]'
-            cibw_archs: arm64
-          - name: ubuntu-latest
-            runner: '["ubuntu-latest"]'
-            cibw_archs: x86_64
-          # The two platforms AP6's record called out as documented-but-wheelless:
-          # manylinux aarch64 (Raspberry Pi is a documented platform - a Pi 4B
-          # runs the live-HDMI matrix in docs/platforms/raspberry-pi.md - and
-          # GitHub's hosted arm runner builds native wheels without QEMU), and
-          # Intel macOS (macos-latest went Apple-silicon-only; macos-15-intel
-          # still exists as a hosted image and x86_64 Macs still exist as
-          # hardware).
-          - name: ubuntu-24.04-arm
-            runner: '["ubuntu-24.04-arm"]'
-            cibw_archs: aarch64
-          - name: macos-15-intel
-            runner: '["macos-15-intel"]'
-            cibw_archs: x86_64
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          # setuptools_scm (python/pyproject.toml's version provider) needs real tag history to
-          # derive a real version the same way cmake/GitVersionDerivation.cmake's own `git
-          # describe` does on the C++ side - a shallow clone here would build every wheel as an
-          # indistinguishable 0.0.0 rather than a real per-commit dev version.
-          fetch-depth: 0
+ build:
+ name: Build wheels (${{ matrix.name }})
+ needs: check-runners
+ # Belt-and-braces, same as _build.yml's build job: check-runners' own
+ # fork-PR branch already forces hosted labels for a fork PR, so this
+ # only matters if a gap ever opened up in that logic.
+ if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+ runs-on: ${{ fromJSON(matrix.runner) }}
+ strategy:
+ fail-fast: false
+ matrix:
+ include:
+ # Every row names its archs explicitly (CIBW_ARCHS below): the
+ # per-platform tables in python/pyproject.toml describe the ORIGINAL
+ # three runners, and a platform now appears here on two different
+ # architectures - the intel-mac row must not inherit the arm table
+ # and cross-compile (clang rejects -mavx2 under -arch arm64, and a
+ # cross wheel is not what these rows exist to add), nor the arm-linux
+ # row grind out x86_64 under emulation.
+ - name: windows-latest
+ runner: ${{ needs.check-runners.outputs.windows_runner }}
+ cibw_archs: AMD64
+ - name: macos-latest
+ runner: '["macos-latest"]'
+ cibw_archs: arm64
+ - name: ubuntu-latest
+ runner: '["ubuntu-latest"]'
+ cibw_archs: x86_64
+ # The two platforms AP6's record called out as documented-but-wheelless:
+ # manylinux aarch64 (Raspberry Pi is a documented platform - a Pi 4B
+ # runs the live-HDMI matrix in docs/platforms/raspberry-pi.md - and
+ # GitHub's hosted arm runner builds native wheels without QEMU), and
+ # Intel macOS (macos-latest went Apple-silicon-only; macos-15-intel
+ # still exists as a hosted image and x86_64 Macs still exist as
+ # hardware).
+ - name: ubuntu-24.04-arm
+ runner: '["ubuntu-24.04-arm"]'
+ cibw_archs: aarch64
+ - name: macos-15-intel
+ runner: '["macos-15-intel"]'
+ cibw_archs: x86_64
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
+ # setuptools_scm (python/pyproject.toml's version provider) needs real tag history to
+ # derive a real version the same way cmake/GitVersionDerivation.cmake's own `git
+ # describe` does on the C++ side - a shallow clone here would build every wheel as an
+ # indistinguishable 0.0.0 rather than a real per-commit dev version.
+ fetch-depth: 0
 
-      - name: Build wheels
-        uses: pypa/cibuildwheel@e090b81e30c4d855ea63bf4b6e59204c09a101ae # v4.2.1
-        with:
-          package-dir: python
-        env:
-          CIBW_ARCHS: ${{ matrix.cibw_archs }}
+ - name: Build wheels
+ uses: pypa/cibuildwheel@e090b81e30c4d855ea63bf4b6e59204c09a101ae # v4.2.1
+ with:
+ package-dir: python
+ env:
+ CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
-      - name: Upload wheels
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: wheels-${{ matrix.name }}
-          path: wheelhouse/*.whl
-          if-no-files-found: error
+ - name: Upload wheels
+ uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+ with:
+ name: wheels-${{ matrix.name }}
+ path: wheelhouse/*.whl
+ if-no-files-found: error
 
-  # A coverage floor for python/ (roadmap VX15), the Python-side counterpart to
-  # ci.yml's per-component gcov gate.
-  #
-  # Its own job rather than folding --cov into [tool.cibuildwheel]'s
-  # test-command: that command runs once per interpreter per platform - fifteen
-  # times for this matrix - and the answer does not vary between them. One
-  # ubuntu wheel, installed and measured once, is the whole signal.
-  #
-  # What this does and does not measure, stated plainly because the number
-  # looks better than it is. python/src/ac3forge/__init__.py is a re-export
-  # shim: an import block, a version lookup, and __all__. Nearly all of the
-  # binding surface is C++ (python/src/ac3forge_ext/bindings.cpp), which
-  # coverage.py cannot see at all - so a high percentage here means "the
-  # package imports and its Python-level surface executes", not "the bindings
-  # are tested". That is still worth gating: a name dropped from the import
-  # list, a broken __version__ lookup, or a module that no longer imports on
-  # some interpreter all show up here and nowhere else. The C++ underneath is
-  # covered by ci.yml's gate over src/forge, which is where those lines live.
-  python-coverage:
-    name: Python coverage
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
+ # A coverage floor for python/ (coverage floors), the Python-side counterpart to
+ # ci.yml's per-component gcov gate.
+ #
+ # Its own job rather than folding --cov into [tool.cibuildwheel]'s
+ # test-command: that command runs once per interpreter per platform - fifteen
+ # times for this matrix - and the answer does not vary between them. One
+ # ubuntu wheel, installed and measured once, is the whole signal.
+ #
+ # What this does and does not measure, stated plainly because the number
+ # looks better than it is. python/src/ac3forge/__init__.py is a re-export
+ # shim: an import block, a version lookup, and __all__. Nearly all of the
+ # binding surface is C++ (python/src/ac3forge_ext/bindings.cpp), which
+ # coverage.py cannot see at all - so a high percentage here means "the
+ # package imports and its Python-level surface executes", not "the bindings
+ # are tested". That is still worth gating: a name dropped from the import
+ # list, a broken __version__ lookup, or a module that no longer imports on
+ # some interpreter all show up here and nowhere else. The C++ underneath is
+ # covered by ci.yml's gate over src/forge, which is where those lines live.
+ python-coverage:
+ name: Python coverage
+ needs: build
+ runs-on: ubuntu-latest
+ steps:
+ - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+ with:
+ persist-credentials: false
 
-      # The wheel the build job just produced, not a fresh build: this
-      # measures what would actually ship, and reuses several minutes of
-      # compilation rather than repeating it.
-      - name: Download the Linux wheel
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: wheels-ubuntu-latest
-          path: wheelhouse
+ # The wheel the build job just produced, not a fresh build: this
+ # measures what would actually ship, and reuses several minutes of
+ # compilation rather than repeating it.
+ - name: Download the Linux wheel
+ uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+ with:
+ name: wheels-ubuntu-latest
+ path: wheelhouse
 
-      # A venv rather than a bare pip install, for the same PEP 668 reason as
-      # ci.yml's script-lint job. requirements/requirements-pytest.txt is a
-      # pip-compile --generate-hashes lock like the other three under
-      # requirements/, so pytest, its coverage plugin and the wheel's own numpy
-      # dependency are all pinned by hash before the wheel is installed
-      # offline on top - see that .in file's header for why numpy is satisfied
-      # here rather than left to pip during the wheel install.
-      # requirements-pip-bootstrap.txt pins the venv's own pip upgrade the
-      # same way - see that file's header for why it can't just live in the
-      # pip-compile lock above.
-      - name: Install the wheel and the pinned test tooling
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m venv .pyvenv
-          .pyvenv/bin/python -m pip install --quiet --require-hashes \
-            -r requirements/requirements-pip-bootstrap.txt
-          .pyvenv/bin/python -m pip install --quiet --require-hashes \
-            -r requirements/requirements-pytest.txt
-          # --find-links, not `pip install wheelhouse/*.whl`: cibuildwheel
-          # produces one wheel per interpreter (cp310-cp314), so the glob would
-          # hand pip five files and four of them are "not a supported wheel on
-          # this platform" for whatever Python the runner image ships. Naming
-          # the project and pointing pip at the directory lets it pick the one
-          # that matches, whichever that turns out to be. --no-index so it can
-          # only ever pick from wheelhouse/ - with the index reachable, pip
-          # would be free to prefer a released ac3forge from PyPI over the
-          # locally built wheel this job exists to measure.
-          .pyvenv/bin/python -m pip install --quiet --no-index \
-            --find-links wheelhouse ac3forge
-          .pyvenv/bin/python -c "import ac3forge; print(ac3forge.__version__)"
+ # A venv rather than a bare pip install, for the same PEP 668 reason as
+ # ci.yml's script-lint job. requirements/requirements-pytest.txt is a
+ # pip-compile --generate-hashes lock like the other three under
+ # requirements/, so pytest, its coverage plugin and the wheel's own numpy
+ # dependency are all pinned by hash before the wheel is installed
+ # offline on top - see that .in file's header for why numpy is satisfied
+ # here rather than left to pip during the wheel install.
+ # requirements-pip-bootstrap.txt pins the venv's own pip upgrade the
+ # same way - see that file's header for why it can't just live in the
+ # pip-compile lock above.
+ - name: Install the wheel and the pinned test tooling
+ shell: bash
+ run: |
+ set -euo pipefail
+ python3 -m venv .pyvenv
+ .pyvenv/bin/python -m pip install --quiet --require-hashes \
+ -r requirements/requirements-pip-bootstrap.txt
+ .pyvenv/bin/python -m pip install --quiet --require-hashes \
+ -r requirements/requirements-pytest.txt
+ # --find-links, not `pip install wheelhouse/*.whl`: cibuildwheel
+ # produces one wheel per interpreter (cp310-cp314), so the glob would
+ # hand pip five files and four of them are "not a supported wheel on
+ # this platform" for whatever Python the runner image ships. Naming
+ # the project and pointing pip at the directory lets it pick the one
+ # that matches, whichever that turns out to be. --no-index so it can
+ # only ever pick from wheelhouse/ - with the index reachable, pip
+ # would be free to prefer a released ac3forge from PyPI over the
+ # locally built wheel this job exists to measure.
+ .pyvenv/bin/python -m pip install --quiet --no-index \
+ --find-links wheelhouse ac3forge
+ .pyvenv/bin/python -c "import ac3forge; print(ac3forge.__version__)"
 
-      # --cov-fail-under is the gate. The floor is deliberately well under the
-      # measurement for the same reason every floor in
-      # tools/checks/coverage_report.sh is: it should trip on a real
-      # regression, not on ordinary churn. Raise it as python/ grows real
-      # Python code rather than leaving the headroom in place indefinitely.
-      - name: pytest with a coverage floor
-        shell: bash
-        run: |
-          set -euo pipefail
-          .pyvenv/bin/python -m pytest python/tests \
-            --cov=ac3forge --cov-report=term-missing --cov-fail-under=85
+ # --cov-fail-under is the gate. The floor is deliberately well under the
+ # measurement for the same reason every floor in
+ # tools/checks/coverage_report.sh is: it should trip on a real
+ # regression, not on ordinary churn. Raise it as python/ grows real
+ # Python code rather than leaving the headroom in place indefinitely.
+ - name: pytest with a coverage floor
+ shell: bash
+ run: |
+ set -euo pipefail
+ .pyvenv/bin/python -m pytest python/tests \
+ --cov=ac3forge --cov-report=term-missing --cov-fail-under=85
 
-      # The hand-written .pyi against the wheel's actual runtime surface
-      # (roadmap AP6): every function the stub promises must exist with a
-      # compatible signature, and additions to the module must not go
-      # unstubbed silently. mypy comes from the same hash-pinned lock as
-      # pytest. The allowlist names the submodule-as-class stubs (eac3/meta/
-      # signing/containers/verify are m.def_submodule at runtime, classes in
-      # the stub - the documented convention at each one's declaration) so
-      # stubtest checks their CONTENTS without objecting to the shape.
-      - name: stubtest the type stubs against the wheel
-        shell: bash
-        run: |
-          set -euo pipefail
-          .pyvenv/bin/python -m mypy.stubtest ac3forge             --allowlist python/tests/stubtest-allowlist.txt
+ # The hand-written .pyi against the wheel's actual runtime surface
+ # (Python bindings completeness): every function the stub promises must exist with a
+ # compatible signature, and additions to the module must not go
+ # unstubbed silently. mypy comes from the same hash-pinned lock as
+ # pytest. The allowlist names the submodule-as-class stubs (eac3/meta/
+ # signing/containers/verify are m.def_submodule at runtime, classes in
+ # the stub - the documented convention at each one's declaration) so
+ # stubtest checks their CONTENTS without objecting to the shape.
+ - name: stubtest the type stubs against the wheel
+ shell: bash
+ run: |
+ set -euo pipefail
+ .pyvenv/bin/python -m mypy.stubtest ac3forge --allowlist python/tests/stubtest-allowlist.txt
 
-  # Publishes via PyPI trusted publishing (OIDC) against the `pypi` GitHub environment - both are
-  # provisioned; see docs/releasing.md's "Publishing to PyPI". Gated on a v* tag push, same as
-  # release.yml; the build job above and its wheel artifacts run on every push regardless.
-  publish:
-    name: Publish to PyPI
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write
-    steps:
-      - name: Download wheels
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: wheels-*
-          path: dist
-          merge-multiple: true
+ # Publishes via PyPI trusted publishing (OIDC) against the `pypi` GitHub environment - both are
+ # provisioned; see docs/releasing.md's "Publishing to PyPI". Gated on a v* tag push, same as
+ # release.yml; the build job above and its wheel artifacts run on every push regardless.
+ publish:
+ name: Publish to PyPI
+ needs: build
+ if: startsWith(github.ref, 'refs/tags/v')
+ runs-on: ubuntu-latest
+ environment: pypi
+ permissions:
+ id-token: write
+ steps:
+ - name: Download wheels
+ uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+ with:
+ pattern: wheels-*
+ path: dist
+ merge-multiple: true
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
-        with:
-          packages-dir: dist
-          # Make a re-run idempotent rather than fatal. The action defaults to
-          # skip-existing: false, so re-pushing a tag - to pick up a release-
-          # workflow fix, which is exactly what v0.10.0-beta.1 needed - fails here
-          # on "file already exists" even though the wheels published correctly
-          # the first time. Uploading is still the only way a version reaches
-          # PyPI; this only stops a second attempt at an already-published one
-          # from reporting a failure that is not one.
-          skip-existing: true
+ - name: Publish to PyPI
+ uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+ with:
+ packages-dir: dist
+ # Make a re-run idempotent rather than fatal. The action defaults to
+ # skip-existing: false, so re-pushing a tag - to pick up a release-
+ # workflow fix, which is exactly what v0.10.0-beta.1 needed - fails here
+ # on "file already exists" even though the wheels published correctly
+ # the first time. Uploading is still the only way a version reaches
+ # PyPI; this only stops a second attempt at an already-published one
+ # from reporting a failure that is not one.
+ skip-existing: true

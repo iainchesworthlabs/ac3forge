@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-// The seam between the probe and whatever starts it (roadmap PF7).
+// The seam between the probe and whatever starts it (minimum-footprint decoder profile).
 //
 // probe.cpp used to define main() directly, which worked while the only two
 // shapes were "the host's C runtime calls main" and "newlib's crt0 calls main".
@@ -13,8 +13,8 @@
 //
 // So probe.cpp now defines run(), and something small calls it:
 //
-//   apps/baremetal/main.cpp                    int main()      - host and arm-none-eabi
-//   apps/baremetal/platform/esp32s3/main/      void app_main() - ESP-IDF
+// apps/baremetal/main.cpp int main() - host and arm-none-eabi
+// apps/baremetal/platform/esp32s3/main/ void app_main() - ESP-IDF
 //
 // The two hosted targets share one main.cpp rather than getting a directory
 // each, because they do not actually differ: the split here is "a C runtime
@@ -41,4 +41,4 @@ int run();
 // truth. The number this profile actually cares about comes from real silicon.
 std::uint64_t now_us();
 
-}  // namespace ac3probe
+} // namespace ac3probe

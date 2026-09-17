@@ -32,7 +32,7 @@
 #     Those streams skip the FFmpeg check too; the in-repo decoder round trip
 #     still covers them.
 #   - Two whole COMMANDS, not just one FFmpeg check each, are conditional:
-#     `atmos-adm` (roadmap B1) and `atmos-iab` (roadmap IM1 phase 3) only run
+#     `atmos-adm` (ADM BWF reader) and `atmos-iab` (IAB reader phase 3) only run
 #     for real when this build was configured with -DAC3FORGE_BUILD_ADM=ON,
 #     which neither of this script's two CI callers' presets turn on - see
 #     each command's own block below for the detection and the reasoning.
@@ -183,7 +183,7 @@ for layout in mono stereo 51; do
     run_ffmpeg_check "enc_${layout}.ac3"
 done
 
-# --- The §7.8 output stage and §7.10 concealment (ROADMAP DC1/DC2) ---------
+# --- The §7.8 output stage and §7.10 concealment (decoder output stage and concealment) ---------
 # Every new decode token, over a real 5.1 stream rather than silence, because
 # a fold of silence is silence whatever the matrix says. The unit suite
 # (tests/decoder/test_output_stage.cpp) is what checks the coefficients
@@ -425,7 +425,7 @@ for layout in 71 512 714; do
     fi
 done
 
-# --- E-AC-3 encoder/decoder mirror self-check (roadmap VX2) -----------------
+# --- E-AC-3 encoder/decoder mirror self-check (E-AC-3 mirror self-check) -----------------
 # `verify` decodes every access unit as it is encoded and diffs the decoder's
 # model against the encoder's own - per-substream, per-block bit offsets,
 # exponents, bit allocation, delta, AHT gains and the coupling/spectral-
@@ -504,7 +504,7 @@ run eac3-encode bootstrap_51.wav eac3_mixdef_reserved.ec3 192 none mono \
 run decode eac3_mixdef_reserved.ec3 eac3_mixdef_reserved.wav
 run_ffmpeg_check eac3_mixdef_reserved.ec3
 
-# --- E-AC-3 short syncframes (roadmap EQ11): numblkscod 0/1/2, each a real
+# --- E-AC-3 short syncframes (E-AC-3 short syncframes): numblkscod 0/1/2, each a real
 # stream through both decoders for the first time - the decoder's own
 # numblkscod != 3 path existed only because it is spec-derived, never because
 # a real stream had driven it. "cpl+numblkscod:1" covers an explicit tool
@@ -588,7 +588,7 @@ run_ffmpeg_check eac3enc_11_twofile.ec3
 
 # --- Multiple independent substreams: two PROGRAMMES, not two layers -------
 # §E2.3.1.2's I0/I1 - the multi-language / associated-service shape of
-# broadcast DD+ (roadmap DC5). Not the same thing as 1+1 above: 1+1 puts two
+# broadcast DD+ (broadcast DD+ decode). Not the same thing as 1+1 above: 1+1 puts two
 # programmes in ONE substream's two coded channels, this puts them in two
 # substreams with independent layouts, rates and dialnorms.
 #
@@ -705,7 +705,7 @@ run atmos-path atmos_path.ec3 atmos_paths.txt 3 256 2
 run decode atmos_path.ec3 atmos_path.wav
 run_ffmpeg_check atmos_path.ec3
 
-# atmos-adm (roadmap B1): only exercised for real when THIS build actually has it.
+# atmos-adm (ADM BWF reader): only exercised for real when THIS build actually has it.
 # ac3adm::ac3adm/ac3::admbridge are this project's one opt-in, non-default library
 # (AC3FORGE_BUILD_ADM, default off - see the root CMakeLists.txt's own option()), and it needs
 # Boost plus a dedicated vcpkg feature neither of this script's two CI callers (the ASan+UBSan
@@ -713,7 +713,7 @@ run_ffmpeg_check atmos_path.ec3
 # default preset. Detected the same way ac3cli's own usage listing already answers this
 # (main.cpp's Needs::kAdm/unmet(): a build without the flag lists the row as "UNAVAILABLE HERE"
 # rather than omitting it), not guessed from a preset name, so this stays correct automatically
-# if that ever changes (e.g. roadmap B1's own adm-validate CI job, which DOES build with the flag
+# if that ever changes (e.g. ADM BWF reader's own adm-validate CI job, which DOES build with the flag
 # on, were ever pointed at this same script). When available, examples/encode_adm's own
 # --write-fixture mode reuses its existing BW64/ADM fixture-writing code (see that file's own
 # header comment on why this exists rather than a fourth copy of the same chunk-writing helpers)
@@ -738,7 +738,7 @@ else
     run_ffmpeg_check atmos_adm.ec3
 fi
 
-# atmos-iab (roadmap IM1 phase 3): the identical conditional-command shape atmos-adm above uses,
+# atmos-iab (IAB reader phase 3): the identical conditional-command shape atmos-adm above uses,
 # and for the same reason - it needs ac3::admbridge's own IAB mapping, gated by the same
 # AC3FORGE_BUILD_ADM flag (see apps/cli/adm/atmos_iab.hpp's own header comment: ac3iab::ac3iab
 # itself is on by default, but build_iab() only exists once admbridge is). Detected the same
@@ -758,7 +758,7 @@ else
     run_ffmpeg_check atmos_iab.ec3
 fi
 
-# --- Stream tools (roadmap DC9): no re-encode except where one is the point -
+# --- Stream tools (stream tools): no re-encode except where one is the point -
 # transcode is the DD+-to-DD path and is the only one of the five that
 # re-encodes; metadata/normalize rewrite bsi in place and re-stamp the CRCs;
 # cut/cat move whole access units. Every stream any of them produces goes
@@ -819,7 +819,7 @@ run cat cat_eac3.ec3 cut_eac3.ec3 cut_eac3.ec3
 run_ffmpeg_check cat_eac3.ec3
 
 # --- Reporting / container passes over a representative subset -------------
-# probe (roadmap IO1): the table form, the JSON contract, and both detail
+# probe (probe command): the table form, the JSON contract, and both detail
 # levels - over an AC-3 stream, a plain E-AC-3 one and an Atmos one so its
 # object-layer/EMDF fields see a real OAMD+JOC container at least once. Its
 # own exit code is non-zero on a CRC or parse failure (see the command's own
@@ -836,7 +836,7 @@ run levels bootstrap_51.wav
 run levels enc_stereo.ac3
 run levels eac3enc_none.ec3
 run loudness bootstrap_51.wav
-# qc (roadmap C2): bitstream-aware loudness QC over an already-encoded
+# qc (bitstream-aware loudness QC): bitstream-aware loudness QC over an already-encoded
 # stream. Measure-only (no preset=) always exits 0 on a clean decode, same
 # as every other `run` call in this script. preset=/preset=all additionally
 # gate the measurement against a named delivery spec - a real PASS/FAIL
@@ -916,7 +916,7 @@ cat fmp4_atmos/init.mp4 "${fmp4_segments[@]}" > fmp4_atmos_combined.mp4
 run_ffmpeg_check fmp4_atmos_combined.mp4
 run_ffmpeg_check fmp4_atmos/audio.m3u8
 # --- Self-description: help, the generated man page, the generated shell
-# completions (roadmap IO8). Cheap, but they are generated from main.cpp's
+# completions (CLI shell completions). Cheap, but they are generated from main.cpp's
 # command table at runtime, so a command or option row that cannot render at
 # all fails right here rather than in whatever packaging step consumes the
 # man page later. `help <command>` is run against a command with every topic
@@ -928,7 +928,7 @@ run man
 for shell in bash zsh fish powershell; do
     run completions "$shell"
 done
-# The documented exit-code scheme itself (roadmap IO8): a usage error, an
+# The documented exit-code scheme itself (CLI shell completions): a usage error, an
 # unreadable input and a failed QC gate each come back with their own code
 # now, not the undifferentiated 1 every failure used to return. Captured with
 # `|| rc=$?` rather than run through `run`, which asserts a clean 0 - and
@@ -954,7 +954,7 @@ rc=0
 run ts enc_51.ac3 enc_51.ts
 run ts eac3enc_none.ec3 eac3enc_none.ts
 run ts atmos_4.ec3 atmos_4.ts
-# Both broadcast profiles (roadmap IO6). ATSC and DVB identify the same
+# Both broadcast profiles (MPEG-TS broadcast profiles). ATSC and DVB identify the same
 # elementary stream with different stream_type values AND different
 # descriptors, so each combination of profile and codec is its own PMT layout
 # - four in total, all of which a demuxer has to accept. mainid=/asvc= carry
@@ -968,7 +968,7 @@ run_ffmpeg_check enc_51_atsc.ts
 run_ffmpeg_check eac3enc_none_atsc.ts
 run_ffmpeg_check atmos_4_atsc.ts
 
-# --- Object-layer strip (roadmap IO7) --------------------------------------
+# --- Object-layer strip (object-layer strip) --------------------------------------
 # The claim is that the bed audio does not change at all, so this checks it
 # the only way that settles it: decode both streams and compare the PCM byte
 # for byte. FFmpeg then decodes the stripped stream independently, and reports
@@ -1069,7 +1069,7 @@ cmp -s atmos_4.ec3 demux_ts_atmos.ec3 || {
 }
 run_ffmpeg_check demux_ts_atmos.ec3
 
-# remux (roadmap IO2) is mkv/mp4/ts themselves accepting a container as their
+# remux (container readers (mkv/mp4/ts)) is mkv/mp4/ts themselves accepting a container as their
 # own input, so it is checked the same way demux above is: byte-identical
 # through a demux on the far side, not just a clean exit. Two container hops
 # rather than one, since remux's whole point is skipping the raw elementary

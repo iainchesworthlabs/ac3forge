@@ -12,7 +12,7 @@
 #   fuzz/run.sh minimize <target> <path-to-crash-file>
 #
 # The differential harnesses (fuzz_differential_ac3_decode,
-# fuzz_differential_eac3_decode - roadmap G3: same mutated bytes decoded by
+# fuzz_differential_eac3_decode - differential decoder fuzzing: same mutated bytes decoded by
 # both ac3forge and FFmpeg, PCM diffed - see fuzz/differential_oracle.hpp)
 # are NOT in the default target list `run`/`regress` use with no arguments:
 # they need `ffmpeg` on PATH and are much slower per-exec, so name them
@@ -38,7 +38,7 @@ SECONDS_PER_TARGET="${AC3FORGE_FUZZ_SECONDS:-60}"
 
 # The crash-only targets fuzz-regress/fuzz-short/fuzz-nightly run by
 # default. The two differential targets (fuzz_differential_ac3_decode,
-# fuzz_differential_eac3_decode - roadmap G3) are deliberately NOT in this
+# fuzz_differential_eac3_decode - differential decoder fuzzing) are deliberately NOT in this
 # list: they need `ffmpeg` on PATH and are much slower per-exec (a real
 # FFmpeg process per comparable input), so they get their own CI job
 # (fuzz.yml's fuzz-differential) that names them explicitly, the same way
@@ -118,7 +118,7 @@ target_binary() {
     echo "$BUILD_DIR/bin/$1"
 }
 
-# A differential target (roadmap G3) shares its crash-only sibling's seed
+# A differential target (differential decoder fuzzing) shares its crash-only sibling's seed
 # corpus rather than duplicating those files under a second directory - it
 # drives the exact same decode path, just with an extra FFmpeg comparison on
 # top (see fuzz/differential_oracle.hpp). Every other target is its own seed

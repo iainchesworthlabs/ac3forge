@@ -70,12 +70,12 @@ was clean but showed pathologically low throughput on the decode harnesses
 with optimizations on even under sanitizers - fixed that. Numbers below are
 the second pass, 180s/harness:
 
-| Harness             | Executions | Corpus grown to  | Result |
+| Harness | Executions | Corpus grown to | Result |
 |----------------------|-----------:|------------------|--------|
-| `fuzz_scan`          |      ~25.9M | 116 files / 1.0MB | clean  |
-| `fuzz_ac3_decode`    |       3,011 | 184 files / 5.8MB | clean  |
-| `fuzz_eac3_decode`   |       2,796 | 166 files / 7.6MB | clean  |
-| `fuzz_wav_read`      |      13,370 | 56 files / 14MB   | clean  |
+| `fuzz_scan` | ~25.9M | 116 files / 1.0MB | clean |
+| `fuzz_ac3_decode` | 3,011 | 184 files / 5.8MB | clean |
+| `fuzz_eac3_decode` | 2,796 | 166 files / 7.6MB | clean |
+| `fuzz_wav_read` | 13,370 | 56 files / 14MB | clean |
 
 No crash, hang, or sanitizer report across ~45M total executions between the
 two passes; `fuzz/regressions/` was empty at that commit (it is not any
@@ -90,24 +90,24 @@ Same caveat as the section above - a point-in-time result, not a standing
 guarantee. Measured on WSL2 Ubuntu 26.04, Clang 21, `RelWithDebInfo` +
 ASan/UBSan, 300 s per harness from the committed seed corpus:
 
-| Harness              | Executions | exec/s  | cov  | Result |
+| Harness | Executions | exec/s | cov | Result |
 |-----------------------|-----------:|--------:|-----:|--------|
-| `fuzz_emdf_parse`     |  4,982,134 |  16,551 |  120 | clean  |
-| `fuzz_oamd_parse`     | 49,730,651 | 165,218 |  173 | clean  |
-| `fuzz_joc_parse`      | 12,319,988 |  40,930 |   99 | clean  |
-| `fuzz_signing_verify` |    ~70,000 |     n/a | 870+ | **three memory errors, one after the other** |
-| `fuzz_adm_parse`      |     ~1,000 |     n/a |  n/a | **out-of-memory in the first minute, three times over** |
+| `fuzz_emdf_parse` | 4,982,134 | 16,551 | 120 | clean |
+| `fuzz_oamd_parse` | 49,730,651 | 165,218 | 173 | clean |
+| `fuzz_joc_parse` | 12,319,988 | 40,930 | 99 | clean |
+| `fuzz_signing_verify` | ~70,000 | n/a | 870+ | **three memory errors, one after the other** |
+| `fuzz_adm_parse` | ~1,000 | n/a | n/a | **out-of-memory in the first minute, three times over** |
 
 The two harnesses that found something stopped at the first report each time,
 so their numbers are where they stopped, not a budget they survived. Both are
 clean over a full budget once the findings below are fixed:
 
-| Harness               | Executions | exec/s | cov  | Result |
+| Harness | Executions | exec/s | cov | Result |
 |------------------------|-----------:|-------:|-----:|--------|
-| `fuzz_signing_verify` |     91,865 |    218 | 1358 | clean, 420 s, fresh corpus |
-| `fuzz_adm_parse`      |     47,732 |    158 |  116 | clean, 300 s |
-| `fuzz_ac3_decode`     |     14,724 |     43 |  827 | clean, mutator on |
-| `fuzz_eac3_decode`    |      3,583 |     12 | 1231 | clean, mutator on |
+| `fuzz_signing_verify` | 91,865 | 218 | 1358 | clean, 420 s, fresh corpus |
+| `fuzz_adm_parse` | 47,732 | 158 | 116 | clean, 300 s |
+| `fuzz_ac3_decode` | 14,724 | 43 | 827 | clean, mutator on |
+| `fuzz_eac3_decode` | 3,583 | 12 | 1231 | clean, mutator on |
 
 The two decode harnesses are in that table because the mutator gives them
 reach they did not have before, and because the guards added for the findings
@@ -140,17 +140,17 @@ build had nothing between a hostile frame and the memory error. Three
 reports, each surfacing once the one before it was fixed:
 
 - an EMPTY region indexed `kMaskTab` at `SIZE_MAX`. §7.2.2.4's band walk ends
-  at `kMaskTab[end - 1]`, and `end - 1` on `end == 0` is `-1`. (UBSan.)
+ at `kMaskTab[end - 1]`, and `end - 1` on `end == 0` is `-1`. (UBSan.)
 - a region LONGER than the 253-mantissa ceiling §7.2.2.2's `psd` array is
-  sized to wrote one element past the end of it. (ASan
-  `stack-buffer-overflow`: a 4-byte write at offset 1076 of a 1012-byte frame
-  object.)
+ sized to wrote one element past the end of it. (ASan
+ `stack-buffer-overflow`: a 4-byte write at offset 1076 of a 1012-byte frame
+ object.)
 - `ac3::signing`'s own per-channel tally took `subspan(0, endmant)` of the
-  exponent array the walk had actually recovered, without checking that
-  `endmant` fits in it. That is a precondition, not a clamp: on an empty
-  span it manufactures one with a null data pointer and a non-zero size,
-  which `compute_bit_allocation` then dereferenced. (UBSan, "reference
-  binding to null pointer".)
+ exponent array the walk had actually recovered, without checking that
+ `endmant` fits in it. That is a precondition, not a clamp: on an empty
+ span it manufactures one with a null data pointer and a non-zero size,
+ which `compute_bit_allocation` then dereferenced. (UBSan, "reference
+ binding to null pointer".)
 
 The first two are guarded in the library, so the decoder is covered as well
 as the signer, and `region.start` was folded into the same guard rather than
@@ -165,16 +165,16 @@ for.
 two distinct causes:
 
 - `read_pcm` sized its PCM buffer from the DECLARED `<data>` chunk size, so a
-  104-byte file claiming ~4 GB of audio allocated ~4 GB
-  (`malloc(8321498636)`). Bounded by the real file size now, which for a
-  well-formed file never binds.
+ 104-byte file claiming ~4 GB of audio allocated ~4 GB
+ (`malloc(8321498636)`). Bounded by the real file size now, which for a
+ well-formed file never binds.
 - any OTHER over-claiming chunk did the same thing one layer down: libbw64
-  materialises every chunk it reads except `<data>` into a `std::vector`
-  sized straight from the chunk header, inside `readFile()`, before any
-  ac3forge code runs. Reported twice, at two different chunk ids, one of them
-  using RF64's `0xFFFFFFFF` escape value. `adm.cpp`'s `chunk_sizes_fit()`
-  refuses it. The allocation itself is in third-party code, and the residual
-  gap is stated in that function's own comment rather than papered over.
+ materialises every chunk it reads except `<data>` into a `std::vector`
+ sized straight from the chunk header, inside `readFile()`, before any
+ ac3forge code runs. Reported twice, at two different chunk ids, one of them
+ using RF64's `0xFFFFFFFF` escape value. `adm.cpp`'s `chunk_sizes_fit()`
+ refuses it. The allocation itself is in third-party code, and the residual
+ gap is stated in that function's own comment rather than papered over.
 
 **`verify_atmos_frame` inherited the SIGNER's debug subset assertion**, so a
 Debug build aborted on `ac3cli decode <plain stereo>.ec3 out.wav
@@ -191,12 +191,12 @@ compiled out. Both grown corpora were then replayed through the SAME binary
 with `-runs=0`, so the coverage figures are comparable rather than each
 being read off its own build:
 
-| Harness            | Mutator | Executions | Corpus | `cov` | `ft` |
+| Harness | Mutator | Executions | Corpus | `cov` | `ft` |
 |---------------------|---------|-----------:|-------:|------:|-----:|
-| `fuzz_eac3_decode` | off     |      3,366 |    271 |  1151 | 3851 |
-| `fuzz_eac3_decode` | on      |      4,546 |    233 |  **1284** | **4147** |
-| `fuzz_ac3_decode`  | off     |     12,739 |    283 |   713 | 2384 |
-| `fuzz_ac3_decode`  | on      |     12,860 |    295 |  **787** | **2723** |
+| `fuzz_eac3_decode` | off | 3,366 | 271 | 1151 | 3851 |
+| `fuzz_eac3_decode` | on | 4,546 | 233 | **1284** | **4147** |
+| `fuzz_ac3_decode` | off | 12,739 | 283 | 713 | 2384 |
+| `fuzz_ac3_decode` | on | 12,860 | 295 | **787** | **2723** |
 
 +11.6% and +10.4% edge coverage, +7.7% and +14.2% features, for the same
 wall-clock budget. The E-AC-3 execution count went up as well (4,546 against
@@ -232,12 +232,12 @@ below. The replay column feeds each grown corpus, plus the committed seeds and
 regressions, through the same instrumented binary with `-runs=0`, so the two
 rows of each pair are comparable:
 
-| Harness          | Build  | Executions | exec/s | `cov` / `ft` (own build) | Replay `cov` / `ft` |
+| Harness | Build | Executions | exec/s | `cov` / `ft` (own build) | Replay `cov` / `ft` |
 |------------------|--------|-----------:|-------:|--------------------------|---------------------|
-| `fuzz_ac4_parse` | before |  6,980,996 | 23,192 | 62 / 315                 | 1,064 / 4,399       |
-| `fuzz_ac4_parse` | after  |    377,064 |  1,252 | 1,270 / 6,424            | **1,270 / 6,423**   |
-| `fuzz_iab_parse` | before |  7,279,906 | 24,185 | 101 / 488                | 564 / 2,665         |
-| `fuzz_iab_parse` | after  |  4,130,921 | 13,723 | 711 / 3,425              | **711 / 3,424**     |
+| `fuzz_ac4_parse` | before | 6,980,996 | 23,192 | 62 / 315 | 1,064 / 4,399 |
+| `fuzz_ac4_parse` | after | 377,064 | 1,252 | 1,270 / 6,424 | **1,270 / 6,423** |
+| `fuzz_iab_parse` | before | 7,279,906 | 24,185 | 101 / 488 | 564 / 2,665 |
+| `fuzz_iab_parse` | after | 4,130,921 | 13,723 | 711 / 3,425 | **711 / 3,424** |
 
 The instrumented AC-4 run made about an eighteenth of the executions and still
 reached more of the parser. libFuzzer keeps an input only when it reaches
@@ -250,21 +250,21 @@ Each is fixed, with a test in `tests/ac4/` or `tests/ac3iab/` that fails on the
 old code under ASan+UBSan:
 
 - **Before any mutation**, replaying the committed AC-4 corpus: a
-  stack-buffer-overflow. `n_objects_code` and both `isf_config` fields are 3
-  bits wide and indexed six-entry count tables, so codes 6 and 7 read past
-  them. The input was `fuzz/regressions/fuzz_ac4_parse/ac4-substream-size-not-transmitted`,
-  committed for an earlier fix; the uninstrumented runs read whatever followed
-  the table and carried on.
+ stack-buffer-overflow. `n_objects_code` and both `isf_config` fields are 3
+ bits wide and indexed six-entry count tables, so codes 6 and 7 read past
+ them. The input was `fuzz/regressions/fuzz_ac4_parse/ac4-substream-size-not-transmitted`,
+ committed for an earlier fix; the uninstrumented runs read whatever followed
+ the table and carried on.
 - **After 8,606 executions**, a UBSan signed overflow:
-  `presentation_config_ext_info()` computed its skip as `8 * n_skip_bytes` in
-  `int`, with `n_skip_bytes` escaping through `variable_bits()` to 2^32
-  (`fuzz/regressions/fuzz_ac4_parse/ac4-presentation-config-ext-skip-overflow`).
+ `presentation_config_ext_info()` computed its skip as `8 * n_skip_bytes` in
+ `int`, with `n_skip_bytes` escaping through `variable_bits()` to 2^32
+ (`fuzz/regressions/fuzz_ac4_parse/ac4-presentation-config-ext-skip-overflow`).
 - **After 1.67 million executions**, a timeout in `fuzz_iab_parse`:
-  `parse_mxf_iab`'s KLV walk bounded a Value with `value_offset + length`, and a
-  Length of `0xFFFFFFFFFFFFFFE7` at offset 25 wrapped that sum to 0, so the
-  walk returned to the start of the file forever
-  (`fuzz/regressions/fuzz_iab_parse/mxf-klv-length-wraps-to-start`). This one
-  hangs the uninstrumented build too; its runs never reached it.
+ `parse_mxf_iab`'s KLV walk bounded a Value with `value_offset + length`, and a
+ Length of `0xFFFFFFFFFFFFFFE7` at offset 25 wrapped that sum to 0, so the
+ walk returned to the start of the file forever
+ (`fuzz/regressions/fuzz_iab_parse/mxf-klv-length-wraps-to-start`). This one
+ hangs the uninstrumented build too; its runs never reached it.
 
 Reading the AC-4 code around those fixes turned up the same shapes elsewhere,
 fixed in the same change: `parse_raw_frame()`'s substream bound could wrap into
@@ -289,10 +289,10 @@ patch for the constructor above and the fixes below applied. The replay column
 feeds each grown corpus, plus the committed seeds and regressions, through the
 same instrumented binary with `-runs=0`:
 
-| Build    | Executions | exec/s | `cov` / `ft` (own build) | Replay `cov` / `ft` |
+| Build | Executions | exec/s | `cov` / `ft` (own build) | Replay `cov` / `ft` |
 |----------|-----------:|-------:|--------------------------|---------------------|
-| before   |     76,299 |    253 | 114 / 166                | 1,425 / 1,655       |
-| after    |    147,230 |    489 | 1,656 / 3,143            | **1,654 / 3,124**   |
+| before | 76,299 | 253 | 114 / 166 | 1,425 / 1,655 |
+| after | 147,230 | 489 | 1,656 / 3,143 | **1,654 / 3,124** |
 
 The committed seeds and regressions replay at 1,379 / 1,573 on their own, so that
 is the floor each grown corpus is adding to.
@@ -307,34 +307,34 @@ execution, and the instrumented run reached 489 exec/s once they were gone.
 own code. Each has a reproducer under `fuzz/regressions/fuzz_adm_parse/`:
 
 - **`&buffer[0]` of an empty `std::vector<char>`**, in libbw64's `UnknownChunk`
-  constructor (any zero-length chunk of an id it has no class for) and in
-  `Bw64Reader::read()` (a zero-length `<data>`). Undefined behaviour, which UBSan
-  reports and a standard library with its bounds checks enabled aborts over.
-  (`zero-length-unknown-chunk`, `zero-length-data-chunk`, and `tests/adm/`.)
+ constructor (any zero-length chunk of an id it has no class for) and in
+ `Bw64Reader::read()` (a zero-length `<data>`). Undefined behaviour, which UBSan
+ reports and a standard library with its bounds checks enabled aborts over.
+ (`zero-length-unknown-chunk`, `zero-length-data-chunk`, and `tests/adm/`.)
 - **A heap overread the length of a whole frame**, from a `<fmt >` whose channel
-  count and sample width overflow libbw64's `uint16_t` block alignment: the read
-  buffer is sized from the wrapped value and decoded against the real one. WAVE's
-  own `nBlockAlign` field is 16 bits too, so the file's declared value matches the
-  wrapped one and libbw64's sanity check passes. The 32,768-channel form divides
-  by the wrapped 0 instead. An uninstrumented `ac3adm` runs the overread as a
-  clean execution and returns it as audio. (`block-align-wraps-to-zero`.)
+ count and sample width overflow libbw64's `uint16_t` block alignment: the read
+ buffer is sized from the wrapped value and decoded against the real one. WAVE's
+ own `nBlockAlign` field is 16 bits too, so the file's declared value matches the
+ wrapped one and libbw64's sanity check passes. The 32,768-channel form divides
+ by the wrapped 0 instead. An uninstrumented `ac3adm` runs the overread as a
+ clean execution and returns it as audio. (`block-align-wraps-to-zero`.)
 - **A 1.7 GB allocation**, from an RF64 `<data>` declaring more bytes than the
-  file holds: `chunk_sizes_fit()` allows that, since a truncated recording is an
-  ordinary file, but stopped checking there — while libbw64 resolves `<data>`'s
-  real size through `<ds64>` and carries on into the chunks behind it.
-  (`oversized-chunk-after-escaped-data`.)
+ file holds: `chunk_sizes_fit()` allows that, since a truncated recording is an
+ ordinary file, but stopped checking there — while libbw64 resolves `<data>`'s
+ real size through `<ds64>` and carries on into the chunks behind it.
+ (`oversized-chunk-after-escaped-data`.)
 - **A loop of 4.26 billion reads**, from a 28-byte `<ds64>` declaring that many
-  12-byte table entries. (`ds64-table-length-past-chunk-end`.)
+ 12-byte table entries. (`ds64-table-length-past-chunk-end`.)
 - **`malloc(4278190080)` out of a 19-byte file**, whose chunk table ends in a
-  fragment too short to hold a header: libbw64 reads one anyway, and its size
-  field keeps whatever was on the stack. (`truncated-chunk-header-fragment`.)
+ fragment too short to hold a header: libbw64 reads one anyway, and its size
+ field keeps whatever was on the stack. (`truncated-chunk-header-fragment`.)
 - **A hang in this project's own code**, 265 s into the first full-budget run,
-  and at the time the only finding not in libbw64: this module used to detect a
-  float master by walking the chunk table itself, ahead of libbw64
-  (`float_pcm_bw64.cpp`, since retired - see below), and that walk's own
-  `find_chunk()` stepped over each chunk in 32-bit arithmetic. A size of
-  `0xFFFFFFF7` carries `8 + declared + pad` to exactly 2^32, which wraps to
-  zero, and every file went through that walk. (`chunk-size-wraps-the-walk`.)
+ and at the time the only finding not in libbw64: this module used to detect a
+ float master by walking the chunk table itself, ahead of libbw64
+ (`float_pcm_bw64.cpp`, since retired - see below), and that walk's own
+ `find_chunk()` stepped over each chunk in 32-bit arithmetic. A size of
+ `0xFFFFFFF7` carries `8 + declared + pad` to exactly 2^32, which wraps to
+ zero, and every file went through that walk. (`chunk-size-wraps-the-walk`.)
 
 One gap was left open at this point: `<ds64>`'s table can give any chunk id a
 64-bit size, which libbw64 prefers over the 32-bit header and which
@@ -350,17 +350,17 @@ file's own header comment for why, and `docs/library/adm.md`/`docs/threat-model.
 for what changed. Two consequences for this harness:
 
 - The fork carries the EBU's own upstream hardening forward (77 commits past the
-  `0.10.0` tag this module used to pin, none of them ever tagged in a release),
-  which **closes the gap left open above**: its chunk-header scan resolves every
-  chunk's size through the `<ds64>` table, not only `<data>`'s, and refuses
-  anything that then runs past the real end of the file - confirmed empirically
-  by replaying both crafted inputs from that gap (now clean) and by
-  `tests/adm/test_adm.cpp`'s own dedicated case for it.
+ `0.10.0` tag this module used to pin, none of them ever tagged in a release),
+ which **closes the gap left open above**: its chunk-header scan resolves every
+ chunk's size through the `<ds64>` table, not only `<data>`'s, and refuses
+ anything that then runs past the real end of the file - confirmed empirically
+ by replaying both crafted inputs from that gap (now clean) and by
+ `tests/adm/test_adm.cpp`'s own dedicated case for it.
 - The fork also added native `WAVE_FORMAT_IEEE_FLOAT` support, which this module
-  did not have a use for before: `float_pcm_bw64.cpp`/`.hpp`, the hand-rolled
-  container walk that used to exist purely to read float samples libbw64
-  refused to open, is retired. Both integer PCM and float now go through the
-  same libbw64 read - see `docs/library/adm.md`'s "PCM formats" section.
+ did not have a use for before: `float_pcm_bw64.cpp`/`.hpp`, the hand-rolled
+ container walk that used to exist purely to read float samples libbw64
+ refused to open, is retired. Both integer PCM and float now go through the
+ same libbw64 read - see `docs/library/adm.md`'s "PCM formats" section.
 
 Two things the fork does not do differently from the EBU's own upstream, both
 caught by this project's own tests rather than by fuzzing - neither is a
@@ -368,17 +368,17 @@ memory-safety finding, just a capability gap against what this module's own
 docs claimed:
 
 - Its chunk-header scan has no exception for `<data>` running past the file,
-  so a recording truncated mid-capture - which `tests/adm/test_adm.cpp`
-  requires to still parse, and which every prior version of libbw64 allowed -
-  is refused outright.
+ so a recording truncated mid-capture - which `tests/adm/test_adm.cpp`
+ requires to still parse, and which every prior version of libbw64 allowed -
+ is refused outright.
 - `FormatInfoChunk`'s constructor (`chunks.hpp`) accepts `bitsPerSample` 16, 24
-  or 32 only, regardless of format - so a 64-bit `WAVE_FORMAT_IEEE_FLOAT`
-  `<fmt >` is refused at open time even though the fork's own
-  `decodeFloatSamples`/`encodeFloatSamples` (`utils.hpp`) both handle 64-bit
-  float correctly; they are simply never reached. `model.hpp`'s own `PcmAudio`
-  comment had claimed 32/64-bit float both read since before this module was
-  first vendored, and no test had ever exercised the 64-bit half of that claim
-  until this pass added one - which is what surfaced this.
+ or 32 only, regardless of format - so a 64-bit `WAVE_FORMAT_IEEE_FLOAT`
+ `<fmt >` is refused at open time even though the fork's own
+ `decodeFloatSamples`/`encodeFloatSamples` (`utils.hpp`) both handle 64-bit
+ float correctly; they are simply never reached. `model.hpp`'s own `PcmAudio`
+ comment had claimed 32/64-bit float both read since before this module was
+ first vendored, and no test had ever exercised the 64-bit half of that claim
+ until this pass added one - which is what surfaced this.
 
 `src/ac3adm/patch_libbw64.cmake` carves out both; see its own comment for the
 reasoning and for the upstream PRs proposing the same fixes, which would let
@@ -391,7 +391,7 @@ not the instrumentation):
 
 | Executions | exec/s | `cov` / `ft` (own build) | Replay `cov` / `ft` |
 |-----------:|-------:|--------------------------|----------------------|
-|    575,498 |  1,911 | 1,754 / 3,529            | **1,752 / 3,528**    |
+| 575,498 | 1,911 | 1,754 / 3,529 | **1,752 / 3,528** |
 
 Clean over the full budget: no crash, hang or sanitizer report. Every input
 from the first pass - the six findings above, the residual-gap probes, and the
@@ -405,25 +405,25 @@ way the fixed findings used to.
 
 ## Entry points covered
 
-| Harness              | Calls                                                              |
+| Harness | Calls |
 |-----------------------|--------------------------------------------------------------------|
-| `fuzz_scan`            | `ac3::io::scan` - format-sniffing before any decoder commits to a layout |
-| `fuzz_ac3_decode`      | `ac3::split_frames` + `ac3::FrameDecoder::decode_frame`, one decoder across all frames, the way `ac3cli decode` drives it |
-| `fuzz_eac3_decode`     | `ac3::split_access_units` + `ac3::Eac3Decoder::decode_access_unit` (which calls `decode_substream` internally), the way `ac3cli decode` drives it for E-AC-3 |
-| `fuzz_wav_read`        | `ac3::io::read_wav` - a realistic input too (a truncated or hand-edited WAV), not only an adversarial one |
+| `fuzz_scan` | `ac3::io::scan` - format-sniffing before any decoder commits to a layout |
+| `fuzz_ac3_decode` | `ac3::split_frames` + `ac3::FrameDecoder::decode_frame`, one decoder across all frames, the way `ac3cli decode` drives it |
+| `fuzz_eac3_decode` | `ac3::split_access_units` + `ac3::Eac3Decoder::decode_access_unit` (which calls `decode_substream` internally), the way `ac3cli decode` drives it for E-AC-3 |
+| `fuzz_wav_read` | `ac3::io::read_wav` - a realistic input too (a truncated or hand-edited WAV), not only an adversarial one |
 | `fuzz_iec61937_unwrap` | `ac3::iec61937::BurstReader` + `unwrap_stream` - IEC 61937 burst de-framing, driven the way `ac3cli unspdif` drives it. The input is by definition off a wire (an S/PDIF or HDMI capture), and `Pd` states a length the parser must not believe past its data type's repetition period. Pushed as two chunks split at a mutation-chosen point, so the state machine's carry-across-a-chunk-boundary paths are reachable |
-| `fuzz_emdf_parse`      | `ac3::emdf::parse_container` - ETSI TS 102 366 Annex H's container, located by a bit-by-bit sync scan and sized by its own 16-bit length field |
-| `fuzz_oamd_parse`      | `ac3::oba::parse_payload` - TS 103 420 §5's `object_audio_metadata_payload`, as recovered from an EMDF payload with id 11 |
-| `fuzz_joc_parse`       | `ac3::oba::joc::parse_payload` - TS 103 420 §6's `joc()` payload: Huffman-coded coefficients into a matrix sized from the stream's own numbers |
-| `fuzz_signing_verify`  | `ac3::signing::verify_atmos_stream` + `verify_atmos_frame` - operator-supplied stream, operator-supplied key, no CRC check in front of either |
-| `fuzz_osc_parse`       | `ac3::oba::parse_osc_packet` - the OSC 1.0 wire form of a live object-position update (roadmap UX4), reached straight from a UDP datagram by `ac3::audio::LivePositionSource` whenever `positions=osc:<port>` is in play. No CRC, no container, no bitstream ahead of it at all - this project's first NETWORK-facing input rather than a file or capture-device one; see `docs/threat-model.md` |
-| `fuzz_adm_parse`       | `ac3adm::parse_bw64(std::istream&)` - BW64/RF64 chunks plus an arbitrary ADM XML document. Opt-in, see below |
-| `fuzz_sendspin_json`   | `ac3::sendspin::json::Document::parse` - the JSON of every Sendspin message, the first code a network peer's bytes reach on ac3hearth's server and on a sink. Every accessor runs on every value parsed, and the document is written back out and parsed again, which must give the same text |
+| `fuzz_emdf_parse` | `ac3::emdf::parse_container` - ETSI TS 102 366 Annex H's container, located by a bit-by-bit sync scan and sized by its own 16-bit length field |
+| `fuzz_oamd_parse` | `ac3::oba::parse_payload` - TS 103 420 §5's `object_audio_metadata_payload`, as recovered from an EMDF payload with id 11 |
+| `fuzz_joc_parse` | `ac3::oba::joc::parse_payload` - TS 103 420 §6's `joc()` payload: Huffman-coded coefficients into a matrix sized from the stream's own numbers |
+| `fuzz_signing_verify` | `ac3::signing::verify_atmos_stream` + `verify_atmos_frame` - operator-supplied stream, operator-supplied key, no CRC check in front of either |
+| `fuzz_osc_parse` | `ac3::oba::parse_osc_packet` - the OSC 1.0 wire form of a live object-position update (legacy item UX4), reached straight from a UDP datagram by `ac3::audio::LivePositionSource` whenever `positions=osc:<port>` is in play. No CRC, no container, no bitstream ahead of it at all - this project's first NETWORK-facing input rather than a file or capture-device one; see `docs/threat-model.md` |
+| `fuzz_adm_parse` | `ac3adm::parse_bw64(std::istream&)` - BW64/RF64 chunks plus an arbitrary ADM XML document. Opt-in, see below |
+| `fuzz_sendspin_json` | `ac3::sendspin::json::Document::parse` - the JSON of every Sendspin message, the first code a network peer's bytes reach on ac3hearth's server and on a sink. Every accessor runs on every value parsed, and the document is written back out and parsed again, which must give the same text |
 | `fuzz_sendspin_handshake` | `ac3::sendspin::handshake`'s parsers - `client/init` (read by a server from a client nothing has authenticated), `server/init`, `server/error`, `noise/handshake`, and the payloads of the two Noise messages. Whatever parses is written back out and must parse to the same value |
 | `fuzz_sendspin_messages` | `ac3::sendspin::messages`' and `ac3::sendspin::pairing_messages`' readers - the core messages after the handshake, from `client/hello` to `group/update`, with the `_ac3forge_player@v1` objects four of them carry, and the pairing messages, each read in the specification's dialect and aiosendspin 9.1.1's. Whatever reads is written back out, and that text must read and write back to itself |
 | `fuzz_sendspin_frames` | `ac3::sendspin::Reassembler`, `parse_player_chunk` and `parse_burst_chunk` - transport-mode fragment reassembly in the specification's form and aiosendspin 9.1.1's, and the `player@v1` chunk parser, in both forms of its header, and the `_ac3forge_player@v1` one. The input is a control byte and length-prefixed frames; for one input in eight, chosen by three control bits, the input is also repeated past two frames, split in both fragment forms, and checked to reassemble |
 
-### The object and metadata layer (roadmap VX3)
+### The object and metadata layer (legacy item VX3)
 
 The last five rows are the parsers behind a skip field in every Atmos frame -
 this project's differentiating feature, and the deepest attacker-controlled
@@ -479,7 +479,7 @@ there. `ac3::io::read_wav` takes a path rather than a byte span, so
 beyond calling the real function directly, since there is no in-memory
 overload to call instead.
 
-## The CRC-repairing mutator (roadmap VX3)
+## The CRC-repairing mutator (legacy item VX3)
 
 "Differential mode" below records the problem in passing: "the overwhelming
 majority of mutations get rejected immediately by this project's own decoder
@@ -513,21 +513,21 @@ the splitter a frame boundary that is not there).
 Two deliberate limits:
 
 - **Nothing else is repaired.** Frame lengths, reserved fields and the
-  bsi/audblk syntax are left exactly as the mutation left them. The goal is
-  to stop losing inputs at the checksum, not to constrain the engine to valid
-  streams.
+ bsi/audblk syntax are left exactly as the mutation left them. The goal is
+ to stop losing inputs at the checksum, not to constrain the engine to valid
+ streams.
 - **One mutation in four is left unrepaired**, keyed off libFuzzer's own
-  `Seed` argument. Always repairing would make a bad CRC unreachable by
-  mutation, and the decoders' behaviour on a frame whose checksum is the only
-  thing wrong with it is exactly what a re-stamping mutator would stop anyone
-  from ever checking again.
+ `Seed` argument. Always repairing would make a bad CRC unreachable by
+ mutation, and the decoders' behaviour on a frame whose checksum is the only
+ thing wrong with it is exactly what a re-stamping mutator would stop anyone
+ from ever checking again.
 
 The differential harnesses do not define one. They share their crash-only
 siblings' seed corpora, so they inherit the deeper inputs this finds, but
 adding the mutator there would multiply the number of inputs both decoders
 accept - and every one of those spawns a real FFmpeg process.
 
-## Differential mode (roadmap G3)
+## Differential mode (differential decoder fuzzing)
 
 `fuzz_differential_ac3_decode` and `fuzz_differential_eac3_decode` drive the
 exact same decode paths as `fuzz_ac3_decode`/`fuzz_eac3_decode` above, but
@@ -538,37 +538,37 @@ with FFmpeg and diff the resulting PCM against this project's own decode.
 short version:
 
 - Both decoders have to accept the ENTIRE input - every frame/access unit,
-  one unchanging acmod/sample rate throughout - before FFmpeg is even
-  invoked. The overwhelming majority of mutations get rejected immediately
-  by this project's own decoder (bad sync word, bad CRC, a reserved field),
-  and none of those are worth a real FFmpeg process.
+ one unchanging acmod/sample rate throughout - before FFmpeg is even
+ invoked. The overwhelming majority of mutations get rejected immediately
+ by this project's own decoder (bad sync word, bad CRC, a reserved field),
+ and none of those are worth a real FFmpeg process.
 - A **PCM mismatch is only reported as a divergence when both decoders
-  accepted the input and produced comparably-shaped audio.** FFmpeg's own
-  error-concealment on a mutated (i.e. potentially malformed) frame can
-  legitimately differ from this project's spec-strict decode - that proves
-  nothing about which one is right, so it is treated as "no oracle for this
-  one," the same stance `tools/ci/run_codec_matrix.sh` already takes for the
-  Annex E tool combinations FFmpeg has no reading of at all (enhanced
-  coupling, transient pre-noise processing, a second dependent substream/
-  7.1.4 - see `docs/verification.md`'s "Where the oracles don't reach").
+ accepted the input and produced comparably-shaped audio.** FFmpeg's own
+ error-concealment on a mutated (i.e. potentially malformed) frame can
+ legitimately differ from this project's spec-strict decode - that proves
+ nothing about which one is right, so it is treated as "no oracle for this
+ one," the same stance `tools/ci/run_codec_matrix.sh` already takes for the
+ Annex E tool combinations FFmpeg has no reading of at all (enhanced
+ coupling, transient pre-noise processing, a second dependent substream/
+ 7.1.4 - see `docs/verification.md`'s "Where the oracles don't reach").
 - Where a comparison IS eligible, the floor - `kMinAgreementDb = 6.0` in
-  `fuzz/differential_oracle.hpp` - is deliberately loose relative to what a
-  clean, non-fuzzed stream actually measures at (`docs/verification.md`:
-  float32-precision parity for the plain path, 98+ dB for coupling/spectral
-  extension, 62-89 dB for AHT). It started from
-  `tools/checks/verify_gold_reference.sh`'s own `CPLBNDSTRCE0_MIN_SNR_DB=15`
-  precedent - this project's one existing floor for "two decodes of a
-  bitstream neither side controls" - and was then calibrated down to 6 dB
-  after `fuzz/measure-agreement.sh` found committed seeds that legitimately
-  measure below 15 dB (real, unmutated content whose bap-0 reconstruction
-  FFmpeg dithers and this decoder zeros).
+ `fuzz/differential_oracle.hpp` - is deliberately loose relative to what a
+ clean, non-fuzzed stream actually measures at (`docs/verification.md`:
+ float32-precision parity for the plain path, 98+ dB for coupling/spectral
+ extension, 62-89 dB for AHT). It started from
+ `tools/checks/verify_gold_reference.sh`'s own `CPLBNDSTRCE0_MIN_SNR_DB=15`
+ precedent - this project's one existing floor for "two decodes of a
+ bitstream neither side controls" - and was then calibrated down to 6 dB
+ after `fuzz/measure-agreement.sh` found committed seeds that legitimately
+ measure below 15 dB (real, unmutated content whose bap-0 reconstruction
+ FFmpeg dithers and this decoder zeros).
 - `fuzz/measure-agreement.sh` is the calibration method behind that floor:
-  it runs every committed seed through the differential harnesses in
-  measure-only mode and reports the worst-channel SNR each one lands on.
-  Re-run it after adding seed content, and after any change to
-  `compare_pcm`'s own alignment/silence-skip logic - a new corner of
-  legitimate decoder disagreement needs the floor reconsidered, not
-  assumed.
+ it runs every committed seed through the differential harnesses in
+ measure-only mode and reports the worst-channel SNR each one lands on.
+ Re-run it after adding seed content, and after any change to
+ `compare_pcm`'s own alignment/silence-skip logic - a new corner of
+ legitimate decoder disagreement needs the floor reconsidered, not
+ assumed.
 
 Because every comparable input spawns a real FFmpeg process, these two
 harnesses are much slower per-exec than every other harness here and are
@@ -618,9 +618,9 @@ was verified by reverting the fix and running it (see the file's own header).
 
 ```bash
 AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/ci/fuzz_encoder_space.py --seconds 120
-python3 tools/ci/fuzz_encoder_space.py --check-envelope      # re-measure the rate floors it draws from
-python3 tools/ci/fuzz_encoder_space.py --replay <case-seed>  # rerun one exact failing case
-python3 tools/ci/fuzz_encoder_space.py --regressions         # replay every recorded past failure
+python3 tools/ci/fuzz_encoder_space.py --check-envelope # re-measure the rate floors it draws from
+python3 tools/ci/fuzz_encoder_space.py --replay <case-seed> # rerun one exact failing case
+python3 tools/ci/fuzz_encoder_space.py --regressions # replay every recorded past failure
 ```
 
 Every case is a pure function of one 64-bit case seed, printed beside any
@@ -633,7 +633,7 @@ Scope: AC-3 `encode` only.
 ### The E-AC-3 half
 
 E-AC-3's own configuration space is **`tools/ci/fuzz_eac3_encoder_space.py`**
-(roadmap VX1), which the file above used to name as its own remaining gap. It
+(E-AC-3 encoder fuzzing), which the file above used to name as its own remaining gap. It
 asks the same question of `eac3-encode` and `atmos-encode`, over the part of
 the space that is E-AC-3's alone: Annex E tool tokens with their band-edge
 pins (`cpl`, `ecpl`, `spx`, `aht`, `tpn`, `auto`), the `fscod2` half sample
@@ -664,17 +664,17 @@ an empty gesture, because framing can be checked without decoding anything.
 Two things do it:
 
 - **`syncframe_walk()`**, the harness's own walk over the four fields that
-  decide E-AC-3's framing - syncword, `strmtyp`, `substreamid`, `frmsiz`, all
-  at fixed bit offsets right after the syncword. No tables, no coding tools,
-  nothing shared with the encoder, and it works at **every** layout. If a
-  `frmsiz` does not describe its own syncframe, the next read lands somewhere
-  that is not a syncword and it says so - which is exactly what a bit-offset
-  defect produces, and the shape of the `deltbaie` bug that motivated the AC-3
-  harness.
+ decide E-AC-3's framing - syncword, `strmtyp`, `substreamid`, `frmsiz`, all
+ at fixed bit offsets right after the syncword. No tables, no coding tools,
+ nothing shared with the encoder, and it works at **every** layout. If a
+ `frmsiz` does not describe its own syncframe, the next read lands somewhere
+ that is not a syncword and it says so - which is exactly what a bit-offset
+ defect produces, and the shape of the `deltbaie` bug that motivated the AC-3
+ harness.
 - **`ffprobe`**, where FFmpeg can be trusted to walk one: access-unit count,
-  exact byte tiling, sample rate. It is *not* asked about a layout needing two
-  dependent substreams, and that is measurement rather than caution - see
-  below.
+ exact byte tiling, sample rate. It is *not* asked about a layout needing two
+ dependent substreams, and that is measurement rather than caution - see
+ below.
 
 What the class does *not* prove is stated in the script too: a misreading of
 the spec shared by this project's encoder and its decoder would survive it,
@@ -715,8 +715,8 @@ limit, `--check-envelope` gates the refusal staying a clean exit 1, and
 
 ```bash
 AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/ci/fuzz_eac3_encoder_space.py --seconds 120
-python3 tools/ci/fuzz_eac3_encoder_space.py --check-envelope   # rate floors + the frmsiz ceiling
-python3 tools/ci/fuzz_eac3_encoder_space.py --check-oracles    # what this FFmpeg can actually read
+python3 tools/ci/fuzz_eac3_encoder_space.py --check-envelope # rate floors + the frmsiz ceiling
+python3 tools/ci/fuzz_eac3_encoder_space.py --check-oracles # what this FFmpeg can actually read
 python3 tools/ci/fuzz_eac3_encoder_space.py --replay <case-seed>
 python3 tools/ci/fuzz_eac3_encoder_space.py --regressions
 ```
@@ -731,10 +731,10 @@ regenerable from the seed). Both harnesses run bounded in `ci.yml`'s
 ```bash
 # One-time: any Clang 18+ with libFuzzer works; CI pins LLVM 22 the same way
 # ci.yml's linux-llvm leg does (.github/toolchain/03-llvm-toolchain.sh).
-fuzz/run.sh                    # build, then run every default-list harness for 60s each
-fuzz/run.sh fuzz_scan          # just one harness
-AC3FORGE_FUZZ_SECONDS=600 fuzz/run.sh   # a deeper local run
-fuzz/run.sh regress            # replay seeds + regressions, no mutation (fast)
+fuzz/run.sh # build, then run every default-list harness for 60s each
+fuzz/run.sh fuzz_scan # just one harness
+AC3FORGE_FUZZ_SECONDS=600 fuzz/run.sh # a deeper local run
+fuzz/run.sh regress # replay seeds + regressions, no mutation (fast)
 fuzz/run.sh minimize fuzz_scan fuzz/artifacts/fuzz_scan-crash-<hash>
 
 # Differential harnesses need `ffmpeg` on PATH and are named explicitly -
@@ -763,19 +763,19 @@ Three of the corpora are not raw `ac3cli` output and are built by
 `fuzz/metadata-seeds.py`, which `generate-seeds.sh` calls:
 
 - `fuzz_emdf_parse`, `fuzz_oamd_parse`, `fuzz_joc_parse` - `metadata-seeds.py
-  extract` reads the Atmos streams just encoded, locates each frame's EMDF
-  container by the same bit-by-bit sync scan `emdf::parse_container` does,
-  repacks it from that bit offset, and writes out both the container and the
-  OAMD/JOC payloads inside it. Capped at six per stream per kind:
-  consecutive frames genuinely differ (an object moves, so its position
-  fields and JOC coefficients change), but the fiftieth position update
-  teaches the engine nothing the sixth did not.
+ extract` reads the Atmos streams just encoded, locates each frame's EMDF
+ container by the same bit-by-bit sync scan `emdf::parse_container` does,
+ repacks it from that bit offset, and writes out both the container and the
+ OAMD/JOC payloads inside it. Capped at six per stream per kind:
+ consecutive frames genuinely differ (an object moves, so its position
+ fields and JOC coefficients change), but the fiftieth position update
+ teaches the engine nothing the sixth did not.
 - `fuzz_adm_parse` - `metadata-seeds.py adm` synthesises BW64/RF64 fixtures,
-  because nothing `ac3cli` produces is an ADM file. They mirror the ones
-  `tests/adm/test_adm.cpp` builds in memory: BS.2088-1 chunk layout,
-  BS.2076-2 ADM XML, one Objects document and one DirectSpeakers document,
-  plus an RF64 whose `<data>` size resolves through `<ds64>` and a file with
-  no `<axml>` at all.
+ because nothing `ac3cli` produces is an ADM file. They mirror the ones
+ `tests/adm/test_adm.cpp` builds in memory: BS.2088-1 chunk layout,
+ BS.2076-2 ADM XML, one Objects document and one DirectSpeakers document,
+ plus an RF64 whose `<data>` size resolves through `<ds64>` and a file with
+ no `<axml>` at all.
 
 `fuzz_signing_verify`'s corpus is built inline in `generate-seeds.sh`, since
 its input is a key-prefixed stream rather than a file `ac3cli` writes: a
@@ -807,52 +807,52 @@ gitignored; `fuzz/run.sh` creates it on demand.
 ## When a fuzzer finds something
 
 1. libFuzzer minimizes automatically (or run `fuzz/run.sh minimize <target>
-   <path>` on a saved artifact).
+ <path>` on a saved artifact).
 2. The minimized input is added to `fuzz/regressions/<harness>/` and
-   committed - `fuzz/run.sh regress` (and `fuzz-regress` in CI) replays every
-   file there on every run, so a fixed bug can never silently regress.
+ committed - `fuzz/run.sh regress` (and `fuzz-regress` in CI) replays every
+ file there on every run, so a fixed bug can never silently regress.
 3. The underlying bug gets a real, spec-grounded fix in the library - never
-   just enough to make the fuzzer stop finding it.
+ just enough to make the fuzzer stop finding it.
 4. Before considering it fixed: check out the pre-fix commit and confirm the
-   *original* minimized input actually reproduces the crash there. A
-   regression test that was never shown to fail is not proof of anything.
+ *original* minimized input actually reproduces the crash there. A
+ regression test that was never shown to fail is not proof of anything.
 
 ## CI
 
 `.github/workflows/fuzz.yml`:
 
 - `fuzz-regress` - replays `fuzz/seeds/` + `fuzz/regressions/` with no
-  mutation, on every push/PR to `main`. Seconds, not minutes, and
-  not marked experimental: a failure here means a previously-fixed bug came
-  back, which should always be loud.
+ mutation, on every push/PR to `main`. Seconds, not minutes, and
+ not marked experimental: a failure here means a previously-fixed bug came
+ back, which should always be loud.
 - `fuzz-short` - a 60-second-per-harness mutation budget over the crash-only
-  harnesses, push only (not pull_request, to keep PR turnaround unaffected).
+ harnesses, push only (not pull_request, to keep PR turnaround unaffected).
 - `fuzz-differential` - the same 60-second-per-harness mutation budget, push
-  only, but over ONLY the two differential harnesses (see "Differential
-  mode" above) - a separate job rather than folded into `fuzz-short` because
-  it needs `ffmpeg` installed and is much slower per-exec (a real FFmpeg
-  process per comparable input), so sharing a budget with the crash-only
-  harnesses would have starved them of iterations. Also replays
-  `fuzz/regressions/fuzz_differential_*` first, same shape as `fuzz-regress`.
+ only, but over ONLY the two differential harnesses (see "Differential
+ mode" above) - a separate job rather than folded into `fuzz-short` because
+ it needs `ffmpeg` installed and is much slower per-exec (a real FFmpeg
+ process per comparable input), so sharing a budget with the crash-only
+ harnesses would have starved them of iterations. Also replays
+ `fuzz/regressions/fuzz_differential_*` first, same shape as `fuzz-regress`.
 - `fuzz-nightly` - a 10-minute-per-harness mutation budget on a daily
-  schedule, plus `workflow_dispatch` with a configurable budget for an
-  on-demand deeper run. Crash-only harnesses only - see `fuzz-differential`.
+ schedule, plus `workflow_dispatch` with a configurable budget for an
+ on-demand deeper run. Crash-only harnesses only - see `fuzz-differential`.
 - `fuzz-adm-nightly` - `fuzz_adm_parse` on its own, same daily schedule and
-  `workflow_dispatch`. Its own job because it is the only harness here not
-  built by default: it needs vcpkg's `adm` feature plus the `FetchContent`
-  pulls of libbw64 and libadm, which nothing else in this file touches. See
-  "The ADM harness is opt-in" above.
+ `workflow_dispatch`. Its own job because it is the only harness here not
+ built by default: it needs vcpkg's `adm` feature plus the `FetchContent`
+ pulls of libbw64 and libadm, which nothing else in this file touches. See
+ "The ADM harness is opt-in" above.
 - `encoder-space-nightly` - the encoder input-space searches above, both of
-  them, on the same daily schedule and `workflow_dispatch`, with a 15-minute
-  default budget each (`encoder_space_seconds` and
-  `eac3_encoder_space_seconds`). Shares none of the machinery of the other
-  five (no libFuzzer, no sanitizer runtime, not in `fuzz/run.sh`): it builds
-  the plain `linux-llvm` CLI with vcpkg and a pinned `ffmpeg`, the way
-  `ci.yml`'s `ffmpeg-validate` job does. The E-AC-3 half runs its
-  `--check-oracles` and `--check-envelope` gates first, for the same reason
-  the AC-3 envelope check runs first: a search whose acceptance table or
-  oracle table has gone stale comes back green having checked less than it
-  claims.
+ them, on the same daily schedule and `workflow_dispatch`, with a 15-minute
+ default budget each (`encoder_space_seconds` and
+ `eac3_encoder_space_seconds`). Shares none of the machinery of the other
+ five (no libFuzzer, no sanitizer runtime, not in `fuzz/run.sh`): it builds
+ the plain `linux-llvm` CLI with vcpkg and a pinned `ffmpeg`, the way
+ `ci.yml`'s `ffmpeg-validate` job does. The E-AC-3 half runs its
+ `--check-oracles` and `--check-envelope` gates first, for the same reason
+ the AC-3 envelope check runs first: a search whose acceptance table or
+ oracle table has gone stale comes back green having checked less than it
+ claims.
 
 The bounded per-PR counterpart to `encoder-space-nightly` is a step in
 `ci.yml`'s `ffmpeg-validate` job (~2 minutes, plus the envelope check), not a

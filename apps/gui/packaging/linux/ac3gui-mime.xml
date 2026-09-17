@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  shared-mime-info package fragment (roadmap UX2): declares audio/ac3 and
+  shared-mime-info package fragment (GUI AppStream packaging): declares audio/ac3 and
   audio/eac3 (both registered IANA media types) with the *.ac3/*.ec3 globs
   ac3gui.desktop's own MimeType= line names - a .desktop file can only
   CLAIM a MIME type an installed package has DECLARED, and neither is

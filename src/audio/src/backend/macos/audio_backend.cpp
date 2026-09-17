@@ -47,33 +47,33 @@
 // version gate, and the watcher contract case, which starts and stops a
 // watcher for real. Nothing else has executed: no tap has been created, no
 // audio has passed through any of it, and no Mac has run the application
-// (ROADMAP.md DR9).
+// (hardware verification on real Macs).
 
 namespace ac3::audio {
 
 const AudioBackend& audio_backend() {
-    static const AudioBackend kBackend = [] {
-        AudioBackend backend{
-            .capture = {.available = true, .reason = {}},
-            .passthrough = {.available = true, .reason = {}},
-            .monitor = {.available = true, .reason = {}},
-            .spatial = {.available = false,
-                        .reason = "this build has no spatial backend: "
-                                  "ISpatialAudioObjectRenderStream is a Windows-only API"},
-            .process_loopback = {.available = true, .reason = {}},
-            .device_watch = {.available = true, .reason = {}},
-        };
-        // Keeps audio_backend().process_loopback and
-        // process_loopback_available() saying the same thing, which the
-        // backend contract test (tests/audio/test_audio_backend.cpp) requires
-        // of every platform.
-        if (!process_loopback_available()) {
-            backend.process_loopback = {.available = false,
-                                        .reason = coreaudio::system_audio_tap_refusal()};
-        }
-        return backend;
-    }();
-    return kBackend;
+ static const AudioBackend kBackend = [] {
+ AudioBackend backend{
+ .capture = {.available = true, .reason = {}},
+ .passthrough = {.available = true, .reason = {}},
+ .monitor = {.available = true, .reason = {}},
+ .spatial = {.available = false,
+ .reason = "this build has no spatial backend: "
+ "ISpatialAudioObjectRenderStream is a Windows-only API"},
+ .process_loopback = {.available = true, .reason = {}},
+ .device_watch = {.available = true, .reason = {}},
+ };
+ // Keeps audio_backend().process_loopback and
+ // process_loopback_available() saying the same thing, which the
+ // backend contract test (tests/audio/test_audio_backend.cpp) requires
+ // of every platform.
+ if (!process_loopback_available()) {
+ backend.process_loopback = {.available = false,
+ .reason = coreaudio::system_audio_tap_refusal()};
+ }
+ return backend;
+ }();
+ return kBackend;
 }
 
-}  // namespace ac3::audio
+} // namespace ac3::audio

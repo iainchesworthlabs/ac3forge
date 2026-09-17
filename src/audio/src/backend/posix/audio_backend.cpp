@@ -23,31 +23,31 @@
 namespace ac3::audio {
 
 const AudioBackend& audio_backend() {
-    static constexpr AudioBackend kBackend{
-        .capture = {.available = false,
-                    .reason = "this build has no capture backend: install libasound2-dev "
-                              "(Debian/Ubuntu) or alsa-lib-devel (Fedora) and reconfigure"},
-        .passthrough = {.available = false,
-                        .reason = "this build has no passthrough backend: exclusive-mode "
-                                  "IEC 61937 needs direct ALSA hw: access, which needs "
-                                  "libasound2-dev (Debian/Ubuntu) or alsa-lib-devel (Fedora)"},
-        .monitor = {.available = false,
-                   .reason = "this build has no monitor backend: shared-mode PCM playback "
-                             "needs ALSA/PipeWire, which needs libasound2-dev (Debian/Ubuntu) "
-                             "or alsa-lib-devel (Fedora)"},
-        .spatial = {.available = false,
-                   .reason = "this build has no spatial backend: "
-                             "ISpatialAudioObjectRenderStream is a Windows-only API"},
-        .process_loopback = {.available = false,
-                             .reason = "per-process loopback capture needs a per-application tap "
-                                       "this backend does not have. The PipeWire backend links "
-                                       "a capture stream to one application node; Windows uses "
-                                       "AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK; macOS has "
-                                       "had Core Audio process taps since 14.2 (roadmap UX7)"},
-                .device_watch = {.available = false,
-                         .reason = "no device-notification backend in this build: endpoint arrival, removal and default-change events are IMMNotificationClient on Windows only so far"},
-    };
-    return kBackend;
+ static constexpr AudioBackend kBackend{
+ .capture = {.available = false,
+ .reason = "this build has no capture backend: install libasound2-dev "
+ "(Debian/Ubuntu) or alsa-lib-devel (Fedora) and reconfigure"},
+ .passthrough = {.available = false,
+ .reason = "this build has no passthrough backend: exclusive-mode "
+ "IEC 61937 needs direct ALSA hw: access, which needs "
+ "libasound2-dev (Debian/Ubuntu) or alsa-lib-devel (Fedora)"},
+ .monitor = {.available = false,
+ .reason = "this build has no monitor backend: shared-mode PCM playback "
+ "needs ALSA/PipeWire, which needs libasound2-dev (Debian/Ubuntu) "
+ "or alsa-lib-devel (Fedora)"},
+ .spatial = {.available = false,
+ .reason = "this build has no spatial backend: "
+ "ISpatialAudioObjectRenderStream is a Windows-only API"},
+ .process_loopback = {.available = false,
+ .reason = "per-process loopback capture needs a per-application tap "
+ "this backend does not have. The PipeWire backend links "
+ "a capture stream to one application node; Windows uses "
+ "AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK; macOS has "
+ "had Core Audio process taps since 14.2 (legacy item UX7)"},
+ .device_watch = {.available = false,
+ .reason = "no device-notification backend in this build: endpoint arrival, removal and default-change events are IMMNotificationClient on Windows only so far"},
+ };
+ return kBackend;
 }
 
-}  // namespace ac3::audio
+} // namespace ac3::audio

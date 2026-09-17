@@ -12,9 +12,9 @@
 // there is no per-device registration to keep in step with a device list the
 // way a naive reading of the header's DeviceChange enum might suggest:
 //
-//   kAudioHardwarePropertyDevices             -> kAdded / kRemoved
-//   kAudioHardwarePropertyDefaultOutputDevice -> kDefaultRenderChanged
-//   kAudioHardwarePropertyDefaultInputDevice  -> kDefaultCaptureChanged
+// kAudioHardwarePropertyDevices -> kAdded / kRemoved
+// kAudioHardwarePropertyDefaultOutputDevice -> kDefaultRenderChanged
+// kAudioHardwarePropertyDefaultInputDevice -> kDefaultCaptureChanged
 //
 // The first of those is the one with work behind it. IMMNotificationClient
 // hands Windows separate OnDeviceAdded/OnDeviceRemoved calls and PipeWire's
@@ -31,7 +31,7 @@
 // reported as kRemoved. A caller that re-probes on kAdded/kRemoved sees
 // everything this platform has to say.
 //
-// The default-INPUT listener is a third registration where roadmap UX12's
+// The default-INPUT listener is a third registration where Crucible cross-platform promotion's
 // plan for this backend named two. It is here because DeviceChange has a
 // kDefaultCaptureChanged case that both other backends raise - Windows from
 // OnDefaultDeviceChanged with eCapture, PipeWire from the metadata key
@@ -121,9 +121,9 @@ namespace {
 // The three system-object properties this watcher listens to, in the order
 // they are registered and the reverse of the order they are removed.
 [[nodiscard]] std::array<AudioObjectPropertyAddress, 3> watched_addresses() {
-    return {coreaudio::address(kAudioHardwarePropertyDevices),
-            coreaudio::address(kAudioHardwarePropertyDefaultOutputDevice),
-            coreaudio::address(kAudioHardwarePropertyDefaultInputDevice)};
+ return {coreaudio::address(kAudioHardwarePropertyDevices),
+ coreaudio::address(kAudioHardwarePropertyDefaultOutputDevice),
+ coreaudio::address(kAudioHardwarePropertyDefaultInputDevice)};
 }
 
 // Every device UID the machine currently has, sorted so that two snapshots
@@ -133,205 +133,205 @@ namespace {
 // could match against a list it already holds, which is the whole purpose of
 // DeviceChangeEvent::device_id.
 [[nodiscard]] std::vector<std::string> snapshot() {
-    std::vector<std::string> uids;
-    for (const auto device : coreaudio::device_list()) {
-        std::string uid = coreaudio::device_uid(device);
-        if (!uid.empty()) {
-            uids.push_back(std::move(uid));
-        }
-    }
-    // std::sort rather than std::ranges::sort, for the reason diff_devices()
-    // gives below for preferring the iterator-pair std::set_difference: the
-    // ranges overloads return a value this has no use for, some standard
-    // libraries mark that return [[nodiscard]], and -Werror turns a discarded
-    // one into a build failure on a leg nobody here can try first. The
-    // classic algorithms return void or an iterator nobody objects to
-    // dropping.
-    std::sort(uids.begin(), uids.end());
-    return uids;
+ std::vector<std::string> uids;
+ for (const auto device : coreaudio::device_list()) {
+ std::string uid = coreaudio::device_uid(device);
+ if (!uid.empty()) {
+ uids.push_back(std::move(uid));
+ }
+ }
+ // std::sort rather than std::ranges::sort, for the reason diff_devices()
+ // gives below for preferring the iterator-pair std::set_difference: the
+ // ranges overloads return a value this has no use for, some standard
+ // libraries mark that return [[nodiscard]], and -Werror turns a discarded
+ // one into a build failure on a leg nobody here can try first. The
+ // classic algorithms return void or an iterator nobody objects to
+ // dropping.
+ std::sort(uids.begin(), uids.end());
+ return uids;
 }
 
-}  // namespace
+} // namespace
 
 std::string_view describe(DeviceWatchError error) {
-    switch (error) {
-        case DeviceWatchError::kNoBackend: return "no device-notification backend on this platform";
-        case DeviceWatchError::kComFailure:
-            return "a Core Audio HAL call failed while registering for property notifications";
-        case DeviceWatchError::kAlreadyRunning: return "the device watcher is already running";
-    }
-    return "unknown device watch error";
+ switch (error) {
+ case DeviceWatchError::kNoBackend: return "no device-notification backend on this platform";
+ case DeviceWatchError::kComFailure:
+ return "a Core Audio HAL call failed while registering for property notifications";
+ case DeviceWatchError::kAlreadyRunning: return "the device watcher is already running";
+ }
+ return "unknown device watch error";
 }
 
 struct DeviceWatcher::Impl {
-    std::mutex mutex;
-    Callback callback;
-    // Sorted device UIDs as of the last notification (or of start(), before
-    // the first one). Read and written only under `mutex`.
-    std::vector<std::string> known;
-    std::atomic_bool running{false};
-    std::atomic<std::uint64_t> events{0};
-    // How many of watched_addresses() were registered, so a partial failure
-    // removes exactly what it added.
-    std::size_t registered = 0;
+ std::mutex mutex;
+ Callback callback;
+ // Sorted device UIDs as of the last notification (or of start(), before
+ // the first one). Read and written only under `mutex`.
+ std::vector<std::string> known;
+ std::atomic_bool running{false};
+ std::atomic<std::uint64_t> events{0};
+ // How many of watched_addresses() were registered, so a partial failure
+ // removes exactly what it added.
+ std::size_t registered = 0;
 
-    // Called with `mutex` held and `callback` known non-empty.
-    void emit(DeviceChange change, std::string device_id) {
-        events.fetch_add(1, std::memory_order_relaxed);
-        callback(DeviceChangeEvent{.change = change, .device_id = std::move(device_id)});
-    }
+ // Called with `mutex` held and `callback` known non-empty.
+ void emit(DeviceChange change, std::string device_id) {
+ events.fetch_add(1, std::memory_order_relaxed);
+ callback(DeviceChangeEvent{.change = change, .device_id = std::move(device_id)});
+ }
 
-    // Called with `mutex` held. Core Audio says only that the list changed,
-    // so the difference in both directions is the event.
-    void diff_devices() {
-        std::vector<std::string> current = snapshot();
-        // The iterator-pair form rather than std::ranges::set_difference: the
-        // ranges overload returns a result aggregate this has no use for, and
-        // a discarded return is a warning waiting to happen under a standard
-        // library that marks it [[nodiscard]] - which -Werror would turn into
-        // a build failure on a leg nobody here can try first.
-        std::vector<std::string> gone;
-        std::set_difference(known.begin(), known.end(), current.begin(), current.end(),
-                            std::back_inserter(gone));
-        std::vector<std::string> arrived;
-        std::set_difference(current.begin(), current.end(), known.begin(), known.end(),
-                            std::back_inserter(arrived));
-        known = std::move(current);
-        // Removals first: a caller re-probing its list wants what went away
-        // before what replaced it, and a device that was swapped for another
-        // on the same physical port reads more sensibly in that order.
-        for (auto& uid : gone) {
-            emit(DeviceChange::kRemoved, std::move(uid));
-        }
-        for (auto& uid : arrived) {
-            emit(DeviceChange::kAdded, std::move(uid));
-        }
-    }
+ // Called with `mutex` held. Core Audio says only that the list changed,
+ // so the difference in both directions is the event.
+ void diff_devices() {
+ std::vector<std::string> current = snapshot();
+ // The iterator-pair form rather than std::ranges::set_difference: the
+ // ranges overload returns a result aggregate this has no use for, and
+ // a discarded return is a warning waiting to happen under a standard
+ // library that marks it [[nodiscard]] - which -Werror would turn into
+ // a build failure on a leg nobody here can try first.
+ std::vector<std::string> gone;
+ std::set_difference(known.begin(), known.end(), current.begin(), current.end(),
+ std::back_inserter(gone));
+ std::vector<std::string> arrived;
+ std::set_difference(current.begin(), current.end(), known.begin(), known.end(),
+ std::back_inserter(arrived));
+ known = std::move(current);
+ // Removals first: a caller re-probing its list wants what went away
+ // before what replaced it, and a device that was swapped for another
+ // on the same physical port reads more sensibly in that order.
+ for (auto& uid : gone) {
+ emit(DeviceChange::kRemoved, std::move(uid));
+ }
+ for (auto& uid : arrived) {
+ emit(DeviceChange::kAdded, std::move(uid));
+ }
+ }
 
-    void handle(const AudioObjectPropertyAddress& addr) {
-        const std::lock_guard<std::mutex> lock(mutex);
-        if (!callback) {
-            return;
-        }
-        switch (addr.mSelector) {
-            case kAudioHardwarePropertyDevices:
-                diff_devices();
-                break;
-            case kAudioHardwarePropertyDefaultOutputDevice:
-                // An empty id where there is no default at all - the last
-                // output went away - which is exactly what
-                // device_watcher.hpp says to report for that case.
-                emit(DeviceChange::kDefaultRenderChanged,
-                     coreaudio::device_uid(coreaudio::default_device(/*input=*/false)));
-                break;
-            case kAudioHardwarePropertyDefaultInputDevice:
-                emit(DeviceChange::kDefaultCaptureChanged,
-                     coreaudio::device_uid(coreaudio::default_device(/*input=*/true)));
-                break;
-            default:
-                // Not one of ours. The HAL may batch several addresses into
-                // one call and there is nothing to say every one of them was
-                // asked for by this listener.
-                break;
-        }
-    }
+ void handle(const AudioObjectPropertyAddress& addr) {
+ const std::lock_guard<std::mutex> lock(mutex);
+ if (!callback) {
+ return;
+ }
+ switch (addr.mSelector) {
+ case kAudioHardwarePropertyDevices:
+ diff_devices();
+ break;
+ case kAudioHardwarePropertyDefaultOutputDevice:
+ // An empty id where there is no default at all - the last
+ // output went away - which is exactly what
+ // device_watcher.hpp says to report for that case.
+ emit(DeviceChange::kDefaultRenderChanged,
+ coreaudio::device_uid(coreaudio::default_device(/*input=*/false)));
+ break;
+ case kAudioHardwarePropertyDefaultInputDevice:
+ emit(DeviceChange::kDefaultCaptureChanged,
+ coreaudio::device_uid(coreaudio::default_device(/*input=*/true)));
+ break;
+ default:
+ // Not one of ours. The HAL may batch several addresses into
+ // one call and there is nothing to say every one of them was
+ // asked for by this listener.
+ break;
+ }
+ }
 
-    // A static member for the reason capture.cpp's Impl::io_proc is one:
-    // AudioObjectPropertyListenerProc is a plain C function pointer, and
-    // `Impl` is private to DeviceWatcher, so nothing outside the class can
-    // name it. The PipeWire backend's Impl::on_global does the same job for
-    // the same pair of constraints.
-    static OSStatus listener(AudioObjectID object, UInt32 address_count,
-                             const AudioObjectPropertyAddress* addresses, void* client_data);
+ // A static member for the reason capture.cpp's Impl::io_proc is one:
+ // AudioObjectPropertyListenerProc is a plain C function pointer, and
+ // `Impl` is private to DeviceWatcher, so nothing outside the class can
+ // name it. The PipeWire backend's Impl::on_global does the same job for
+ // the same pair of constraints.
+ static OSStatus listener(AudioObjectID object, UInt32 address_count,
+ const AudioObjectPropertyAddress* addresses, void* client_data);
 };
 
 OSStatus DeviceWatcher::Impl::listener(AudioObjectID /*object*/, UInt32 address_count,
-                                       const AudioObjectPropertyAddress* addresses,
-                                       void* client_data) {
-    auto* impl = static_cast<Impl*>(client_data);
-    if (impl == nullptr || addresses == nullptr) {
-        return noErr;
-    }
-    for (UInt32 i = 0; i < address_count; ++i) {
-        impl->handle(addresses[i]);
-    }
-    return noErr;
+ const AudioObjectPropertyAddress* addresses,
+ void* client_data) {
+ auto* impl = static_cast<Impl*>(client_data);
+ if (impl == nullptr || addresses == nullptr) {
+ return noErr;
+ }
+ for (UInt32 i = 0; i < address_count; ++i) {
+ impl->handle(addresses[i]);
+ }
+ return noErr;
 }
 
 DeviceWatcher::DeviceWatcher() : impl_(std::make_unique<Impl>()) {}
 
 DeviceWatcher::~DeviceWatcher() {
-    stop();
+ stop();
 }
 
 bool DeviceWatcher::running() const {
-    return impl_->running.load(std::memory_order_acquire);
+ return impl_->running.load(std::memory_order_acquire);
 }
 
 DeviceWatchStats DeviceWatcher::stats() const {
-    return DeviceWatchStats{.events_delivered = impl_->events.load(std::memory_order_relaxed)};
+ return DeviceWatchStats{.events_delivered = impl_->events.load(std::memory_order_relaxed)};
 }
 
 std::expected<void, DeviceWatchError> DeviceWatcher::start(Callback callback) {
-    if (running()) {
-        return std::unexpected(DeviceWatchError::kAlreadyRunning);
-    }
+ if (running()) {
+ return std::unexpected(DeviceWatchError::kAlreadyRunning);
+ }
 
-    // Both of these before the first listener is registered, so a
-    // notification that arrives during registration finds a callback to call
-    // and a list to diff against rather than an empty one - which would
-    // report every device on the machine as newly added.
-    {
-        const std::lock_guard<std::mutex> lock(impl_->mutex);
-        impl_->callback = std::move(callback);
-        impl_->known = snapshot();
-    }
-    impl_->events.store(0, std::memory_order_relaxed);
-    impl_->registered = 0;
+ // Both of these before the first listener is registered, so a
+ // notification that arrives during registration finds a callback to call
+ // and a list to diff against rather than an empty one - which would
+ // report every device on the machine as newly added.
+ {
+ const std::lock_guard<std::mutex> lock(impl_->mutex);
+ impl_->callback = std::move(callback);
+ impl_->known = snapshot();
+ }
+ impl_->events.store(0, std::memory_order_relaxed);
+ impl_->registered = 0;
 
-    const auto addresses = watched_addresses();
-    for (const auto& addr : addresses) {
-        if (AudioObjectAddPropertyListener(kAudioObjectSystemObject, &addr, &Impl::listener,
-                                           impl_.get()) != noErr) {
-            // Unwind exactly what was added: all three listeners or none. A
-            // watcher that reported success while missing one of its events
-            // would be worse than one that refused.
-            for (std::size_t i = 0; i < impl_->registered; ++i) {
-                AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &addresses[i],
-                                                  &Impl::listener, impl_.get());
-            }
-            impl_->registered = 0;
-            const std::lock_guard<std::mutex> lock(impl_->mutex);
-            impl_->callback = nullptr;
-            impl_->known.clear();
-            return std::unexpected(DeviceWatchError::kComFailure);
-        }
-        ++impl_->registered;
-    }
+ const auto addresses = watched_addresses();
+ for (const auto& addr : addresses) {
+ if (AudioObjectAddPropertyListener(kAudioObjectSystemObject, &addr, &Impl::listener,
+ impl_.get()) != noErr) {
+ // Unwind exactly what was added: all three listeners or none. A
+ // watcher that reported success while missing one of its events
+ // would be worse than one that refused.
+ for (std::size_t i = 0; i < impl_->registered; ++i) {
+ AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &addresses[i],
+ &Impl::listener, impl_.get());
+ }
+ impl_->registered = 0;
+ const std::lock_guard<std::mutex> lock(impl_->mutex);
+ impl_->callback = nullptr;
+ impl_->known.clear();
+ return std::unexpected(DeviceWatchError::kComFailure);
+ }
+ ++impl_->registered;
+ }
 
-    impl_->running.store(true, std::memory_order_release);
-    return {};
+ impl_->running.store(true, std::memory_order_release);
+ return {};
 }
 
 void DeviceWatcher::stop() {
-    if (!impl_->running.exchange(false, std::memory_order_acq_rel)) {
-        return;
-    }
-    // Order matters, and is the Windows watcher's: unregister first so the
-    // HAL stops calling, then take the lock and clear the callback so that
-    // anything already inside handle() has finished and anything blocked on
-    // the lock finds nothing left to invoke. Once this returns the caller's
-    // callback cannot be invoked again - see this file's header comment for
-    // what that does and does not say about a HAL thread still unwinding.
-    const auto addresses = watched_addresses();
-    for (std::size_t i = 0; i < impl_->registered; ++i) {
-        AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &addresses[i], &Impl::listener,
-                                          impl_.get());
-    }
-    impl_->registered = 0;
-    const std::lock_guard<std::mutex> lock(impl_->mutex);
-    impl_->callback = nullptr;
-    impl_->known.clear();
+ if (!impl_->running.exchange(false, std::memory_order_acq_rel)) {
+ return;
+ }
+ // Order matters, and is the Windows watcher's: unregister first so the
+ // HAL stops calling, then take the lock and clear the callback so that
+ // anything already inside handle() has finished and anything blocked on
+ // the lock finds nothing left to invoke. Once this returns the caller's
+ // callback cannot be invoked again - see this file's header comment for
+ // what that does and does not say about a HAL thread still unwinding.
+ const auto addresses = watched_addresses();
+ for (std::size_t i = 0; i < impl_->registered; ++i) {
+ AudioObjectRemovePropertyListener(kAudioObjectSystemObject, &addresses[i], &Impl::listener,
+ impl_.get());
+ }
+ impl_->registered = 0;
+ const std::lock_guard<std::mutex> lock(impl_->mutex);
+ impl_->callback = nullptr;
+ impl_->known.clear();
 }
 
-}  // namespace ac3::audio
+} // namespace ac3::audio

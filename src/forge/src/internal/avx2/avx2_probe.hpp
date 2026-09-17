@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 // The whole point of this file: prove the AVX2 build/link/dispatch/test
 // pipeline end to end with something that carries no bit-exactness stakes
-// at all, before any real kernel is built on top of it (ROADMAP PF5's
+// at all, before any real kernel is built on top of it (SIMD kernels's
 // dynamic-dispatch follow-on).
 //
 // avx2_probe.cpp is compiled with an AVX2 target flag (/arch:AVX2 or
@@ -36,4 +36,4 @@ namespace ac3::internal::avx2 {
 // is exactly the illegal-instruction fault that check exists to prevent.
 [[nodiscard]] bool avx2_probe_matches_expected() noexcept;
 
-}  // namespace ac3::internal::avx2
+} // namespace ac3::internal::avx2

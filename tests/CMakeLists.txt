@@ -15,144 +15,144 @@ set(AC3FORGE_CATCH2_VERSION 3.15.3)
 find_package(Catch2 3 CONFIG QUIET)
 
 if(NOT Catch2_FOUND)
-    if(NOT AC3FORGE_FETCH_CATCH2)
-        message(FATAL_ERROR
-            "Catch2 3 was not found and AC3FORGE_FETCH_CATCH2 is OFF.\n"
-            "Supply it with -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake "
-            "or -DCMAKE_PREFIX_PATH=<prefix>, allow the download by setting "
-            "AC3FORGE_FETCH_CATCH2=ON, or build without tests using "
-            "-DAC3FORGE_BUILD_TESTS=OFF.")
-    endif()
+ if(NOT AC3FORGE_FETCH_CATCH2)
+ message(FATAL_ERROR
+ "Catch2 3 was not found and AC3FORGE_FETCH_CATCH2 is OFF.\n"
+ "Supply it with -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake "
+ "or -DCMAKE_PREFIX_PATH=<prefix>, allow the download by setting "
+ "AC3FORGE_FETCH_CATCH2=ON, or build without tests using "
+ "-DAC3FORGE_BUILD_TESTS=OFF.")
+ endif()
 
-    message(STATUS
-        "Catch2 not found locally; fetching v${AC3FORGE_CATCH2_VERSION} "
-        "(-DAC3FORGE_FETCH_CATCH2=OFF to require a local copy)")
+ message(STATUS
+ "Catch2 not found locally; fetching v${AC3FORGE_CATCH2_VERSION} "
+ "(-DAC3FORGE_FETCH_CATCH2=OFF to require a local copy)")
 
-    include(FetchContent)
-    FetchContent_Declare(Catch2
-        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG "v${AC3FORGE_CATCH2_VERSION}"
-        GIT_SHALLOW TRUE
-        # SYSTEM keeps Catch2's headers out of reach of /W4 /WX, matching how
-        # the installed package presents itself; EXCLUDE_FROM_ALL keeps its
-        # install rules out of ours.
-        SYSTEM
-        EXCLUDE_FROM_ALL)
-    FetchContent_MakeAvailable(Catch2)
+ include(FetchContent)
+ FetchContent_Declare(Catch2
+ GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+ GIT_TAG "v${AC3FORGE_CATCH2_VERSION}"
+ GIT_SHALLOW TRUE
+ # SYSTEM keeps Catch2's headers out of reach of /W4 /WX, matching how
+ # the installed package presents itself; EXCLUDE_FROM_ALL keeps its
+ # install rules out of ours.
+ SYSTEM
+ EXCLUDE_FROM_ALL)
+ FetchContent_MakeAvailable(Catch2)
 
-    # catch_discover_tests() lives in Catch2's extras/. The installed package
-    # config puts that directory on CMAKE_MODULE_PATH; a source build does not.
-    list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
+ # catch_discover_tests() lives in Catch2's extras/. The installed package
+ # config puts that directory on CMAKE_MODULE_PATH; a source build does not.
+ list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 endif()
 
 add_executable(ac3tests
-    ac4/test_ac4.cpp
-    ac4/test_ac4_presentation_configs.cpp
-    ac4dec/test_ac4dec_decoder.cpp
-    ac4dec/test_ac4dec_syntax.cpp
-    analysis/test_analysis.cpp
-    encoder/test_assignment.cpp
-    encoder/test_bandwidth.cpp
-    oba/test_atmos.cpp
-    oba/test_dee_joc_fixture.cpp
-    oba/test_atmos_motion.cpp
-    audio/test_audio_backend.cpp
-    core/test_bitalloc.cpp
-    core/test_fixed32.cpp
-    core/test_mdct_fixed.cpp
-    decoder/test_block_norm.cpp
-    core/test_bitwriter.cpp
-    meta/test_bsi.cpp
-    encoder/test_bit_reservoir.cpp
-    encoder/test_coupling.cpp
-    core/test_crc16.cpp
-    decoder/test_concealment.cpp
-    core/test_crc_mutator.cpp
-    decoder/test_decoder.cpp
-    decoder/test_diagnostics.cpp
-    meta/test_drc.cpp
-    dsp/test_dsp_biquad.cpp
-    dsp/test_dsp_qmf.cpp
-    dsp/test_dsp_resampler.cpp
-    encoder/test_eac3.cpp
-    encoder/test_eac3_short_syncframes.cpp
-    decoder/test_eac3_decoder.cpp
-    decoder/test_eac3_programmes.cpp
-    io/test_elementary.cpp
-    io/test_stream_accumulator.cpp
-    io/test_improv.cpp
-    io/test_interleave.cpp
-    io/test_sink_plan.cpp
-    io/test_block_ring.cpp
-    io/test_unit_hold.cpp
-    render/test_layout.cpp
-    render/test_object_lfe_timing.cpp
-    render/test_identify.cpp
-    render/test_routing.cpp
-    render/test_serving.cpp
-    render/test_trim_delay.cpp
-    io/test_dac_queue_model.cpp
-    io/test_playout.cpp
-    io/test_metadata_edit.cpp
-    io/test_probe.cpp
-    emdf/test_emdf.cpp
-    encoder/test_encoder.cpp
-    encoder/test_enhanced_coupling.cpp
-    encoder/test_exp_strategy.cpp
-    core/test_exponents.cpp
-    core/test_fft.cpp
-    containers/test_fmp4.cpp
-    core/test_frame.cpp
-    iec61937/test_iec61937.cpp
-    decoder/test_latency.cpp
-    iec61937/test_iec61937_unwrap.cpp
-    decoder/test_live_downmix.cpp
-    decoder/test_output_stage.cpp
-    meta/test_loudness.cpp
-    core/test_mantissas.cpp
-    containers/test_container_input.cpp
-    containers/test_matroska.cpp
-    containers/test_matroska_reader.cpp
-    core/test_mdct.cpp
-    core/test_mdct_fast.cpp
-    meta/test_meta_qc.cpp
-    meta/test_mixing.cpp
-    containers/test_mp4.cpp
-    containers/test_mp4_reader.cpp
-    containers/test_mpegts.cpp
-    containers/test_mpegts_reader.cpp
-    io/test_object_strip.cpp
-    quality/test_distortion.cpp
-    quality/test_perceptual.cpp
-    quality/test_search.cpp
-    quality/test_eac3_search.cpp
-    oba/test_oba.cpp
-    encoder/test_plan.cpp
-    audio/test_live_positions.cpp
-    audio/test_monitor_live.cpp
-    audio/test_passthrough_live.cpp
-    audio/test_pcm_output.cpp
-    audio/test_playback_counter.cpp
-    audio/test_render_devices.cpp
-    audio/test_resampler.cpp
-    audio/test_ring_buffer.cpp
-    audio/test_speakers.cpp
-    oba/test_scene.cpp
-    oba/test_scene_osc.cpp
-    verify/test_eac3_selfcheck.cpp
-    verify/test_selfcheck.cpp
-    verify/test_trace_export.cpp
-    signing/test_signing.cpp
-    spatial/test_spatial.cpp
-    core/test_simd_kernels.cpp
-    core/test_tables.cpp
-    encoder/test_scalar_math.cpp
-    encoder/test_transient.cpp
-    decoder/test_transient_prenoise.cpp
-    audio/test_watchdog.cpp
-    io/test_wav.cpp
-    io/test_wav_stream_reader.cpp
-    io/test_wav_stream_writer.cpp)
+ ac4/test_ac4.cpp
+ ac4/test_ac4_presentation_configs.cpp
+ ac4dec/test_ac4dec_decoder.cpp
+ ac4dec/test_ac4dec_syntax.cpp
+ analysis/test_analysis.cpp
+ encoder/test_assignment.cpp
+ encoder/test_bandwidth.cpp
+ oba/test_atmos.cpp
+ oba/test_dee_joc_fixture.cpp
+ oba/test_atmos_motion.cpp
+ audio/test_audio_backend.cpp
+ core/test_bitalloc.cpp
+ core/test_fixed32.cpp
+ core/test_mdct_fixed.cpp
+ decoder/test_block_norm.cpp
+ core/test_bitwriter.cpp
+ meta/test_bsi.cpp
+ encoder/test_bit_reservoir.cpp
+ encoder/test_coupling.cpp
+ core/test_crc16.cpp
+ decoder/test_concealment.cpp
+ core/test_crc_mutator.cpp
+ decoder/test_decoder.cpp
+ decoder/test_diagnostics.cpp
+ meta/test_drc.cpp
+ dsp/test_dsp_biquad.cpp
+ dsp/test_dsp_qmf.cpp
+ dsp/test_dsp_resampler.cpp
+ encoder/test_eac3.cpp
+ encoder/test_eac3_short_syncframes.cpp
+ decoder/test_eac3_decoder.cpp
+ decoder/test_eac3_programmes.cpp
+ io/test_elementary.cpp
+ io/test_stream_accumulator.cpp
+ io/test_improv.cpp
+ io/test_interleave.cpp
+ io/test_sink_plan.cpp
+ io/test_block_ring.cpp
+ io/test_unit_hold.cpp
+ render/test_layout.cpp
+ render/test_object_lfe_timing.cpp
+ render/test_identify.cpp
+ render/test_routing.cpp
+ render/test_serving.cpp
+ render/test_trim_delay.cpp
+ io/test_dac_queue_model.cpp
+ io/test_playout.cpp
+ io/test_metadata_edit.cpp
+ io/test_probe.cpp
+ emdf/test_emdf.cpp
+ encoder/test_encoder.cpp
+ encoder/test_enhanced_coupling.cpp
+ encoder/test_exp_strategy.cpp
+ core/test_exponents.cpp
+ core/test_fft.cpp
+ containers/test_fmp4.cpp
+ core/test_frame.cpp
+ iec61937/test_iec61937.cpp
+ decoder/test_latency.cpp
+ iec61937/test_iec61937_unwrap.cpp
+ decoder/test_live_downmix.cpp
+ decoder/test_output_stage.cpp
+ meta/test_loudness.cpp
+ core/test_mantissas.cpp
+ containers/test_container_input.cpp
+ containers/test_matroska.cpp
+ containers/test_matroska_reader.cpp
+ core/test_mdct.cpp
+ core/test_mdct_fast.cpp
+ meta/test_meta_qc.cpp
+ meta/test_mixing.cpp
+ containers/test_mp4.cpp
+ containers/test_mp4_reader.cpp
+ containers/test_mpegts.cpp
+ containers/test_mpegts_reader.cpp
+ io/test_object_strip.cpp
+ quality/test_distortion.cpp
+ quality/test_perceptual.cpp
+ quality/test_search.cpp
+ quality/test_eac3_search.cpp
+ oba/test_oba.cpp
+ encoder/test_plan.cpp
+ audio/test_live_positions.cpp
+ audio/test_monitor_live.cpp
+ audio/test_passthrough_live.cpp
+ audio/test_pcm_output.cpp
+ audio/test_playback_counter.cpp
+ audio/test_render_devices.cpp
+ audio/test_resampler.cpp
+ audio/test_ring_buffer.cpp
+ audio/test_speakers.cpp
+ oba/test_scene.cpp
+ oba/test_scene_osc.cpp
+ verify/test_eac3_selfcheck.cpp
+ verify/test_selfcheck.cpp
+ verify/test_trace_export.cpp
+ signing/test_signing.cpp
+ spatial/test_spatial.cpp
+ core/test_simd_kernels.cpp
+ core/test_tables.cpp
+ encoder/test_scalar_math.cpp
+ encoder/test_transient.cpp
+ decoder/test_transient_prenoise.cpp
+ audio/test_watchdog.cpp
+ io/test_wav.cpp
+ io/test_wav_stream_reader.cpp
+ io/test_wav_stream_writer.cpp)
 
 # -Wnull-dereference false positive, GNU only: "a rewrite really does
 # re-stamp the CRCs" hand-flips one bit of an already-encoded frame
@@ -173,7 +173,7 @@ add_executable(ac3tests
 # nothing else in this project has hit it, so silencing it everywhere would
 # risk hiding a genuine one elsewhere.
 set_source_files_properties(io/test_metadata_edit.cpp
-    PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
+ PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
 
 # The same GNU-only false positive, in a different disguise, on the hearth
 # queue tests: GCC at -O3 inlines std::operator==(const string&, const char*)
@@ -186,7 +186,7 @@ set_source_files_properties(io/test_metadata_edit.cpp
 # comparison itself is what gets inlined; scoped to these two files rather
 # than widened for the same reason the block above gives.
 set_source_files_properties(hearth/test_queue.cpp hearth/test_transport.cpp
-    PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
+ PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
 
 # test_signing.cpp reaches ac3::signing's internal crypto headers (sha256.hpp/
 # hmac_sha256.hpp) to run the FIPS/RFC known-answer vectors directly - they are
@@ -216,7 +216,7 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/c
 # library surface.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/decoder")
 
-# test_simd_kernels.cpp (roadmap PF5) needs the ONE architecture directory
+# test_simd_kernels.cpp (SIMD kernels) needs the ONE architecture directory
 # CMake selected in src/forge/CMakeLists.txt, so the test exercises the
 # f64x2/i32x4 the library was actually built with rather than a different
 # one - same white-box arrangement as src/signing/src just above and the ALSA
@@ -239,10 +239,10 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 # floating-point unit. A host has one, so the float directory; the tests name
 # both conversions explicitly wherever the choice matters.
 target_include_directories(ac3tests PRIVATE
-    "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/include"
-    "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/conversion/float")
+ "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/include"
+ "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/conversion/float")
 
-# test_simd_kernels.cpp's CPU-feature-detection cases (ROADMAP PF5's
+# test_simd_kernels.cpp's CPU-feature-detection cases (SIMD kernels's
 # dynamic-dispatch follow-on) need cpu_features.cpp compiled a SECOND time,
 # directly into this target, against the same resolved probe directory
 # src/forge/CMakeLists.txt selected for the library - rather than calling
@@ -254,11 +254,11 @@ target_include_directories(ac3tests PRIVATE
 # worth testing as it answering "true" where one exists.
 target_sources(ac3tests PRIVATE "${AC3FORGE_CPU_FEATURES_SOURCE}")
 target_include_directories(ac3tests PRIVATE
-    "${AC3FORGE_CPU_FEATURES_INCLUDE_DIR}"
-    "${AC3FORGE_CPU_PROBE_INCLUDE_DIR}")
+ "${AC3FORGE_CPU_FEATURES_INCLUDE_DIR}"
+ "${AC3FORGE_CPU_PROBE_INCLUDE_DIR}")
 if(AC3FORGE_IS_MSVC_LIKE)
-    set_source_files_properties("${AC3FORGE_CPU_FEATURES_SOURCE}" PROPERTIES
-        COMPILE_OPTIONS "/wd4996")
+ set_source_files_properties("${AC3FORGE_CPU_FEATURES_SOURCE}" PROPERTIES
+ COMPILE_OPTIONS "/wd4996")
 endif()
 
 # The AVX2 kernel side of the same follow-on: avx2_probe.cpp and
@@ -271,34 +271,34 @@ endif()
 # them (a #ifdef is fine in tests/ - tools/checks/check_platform_macros.ps1
 # scans src/ and apps/ only).
 if(AC3FORGE_AVX2_INCLUDE_DIR)
-    target_sources(ac3tests PRIVATE
-        "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
-        "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp")
-    target_include_directories(ac3tests PRIVATE "${AC3FORGE_AVX2_INCLUDE_DIR}")
-    target_compile_definitions(ac3tests PRIVATE AC3FORGE_HAVE_AVX2_TIER)
-    if(AC3FORGE_IS_MSVC_LIKE)
-        set_source_files_properties(
-            "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
-            "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp" PROPERTIES
-            COMPILE_OPTIONS "/arch:AVX2")
-    else()
-        set_source_files_properties(
-            "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
-            "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp" PROPERTIES
-            COMPILE_OPTIONS "-mavx2")
-    endif()
+ target_sources(ac3tests PRIVATE
+ "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
+ "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp")
+ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AVX2_INCLUDE_DIR}")
+ target_compile_definitions(ac3tests PRIVATE AC3FORGE_HAVE_AVX2_TIER)
+ if(AC3FORGE_IS_MSVC_LIKE)
+ set_source_files_properties(
+ "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
+ "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp" PROPERTIES
+ COMPILE_OPTIONS "/arch:AVX2")
+ else()
+ set_source_files_properties(
+ "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
+ "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp" PROPERTIES
+ COMPILE_OPTIONS "-mavx2")
+ endif()
 endif()
 
 # core/test_simd_kernels.cpp's own AVX2_REQUIRE knob reads std::getenv too -
 # same C4996 reasoning as cpu_features.cpp above - and so does
 # ac4dec/test_ac4dec_syntax.cpp, for its trace and census directories.
 if(AC3FORGE_IS_MSVC_LIKE)
-    set_source_files_properties(core/test_simd_kernels.cpp ac4dec/test_ac4dec_syntax.cpp
-        PROPERTIES COMPILE_OPTIONS "/wd4996")
+ set_source_files_properties(core/test_simd_kernels.cpp ac4dec/test_ac4dec_syntax.cpp
+ PROPERTIES COMPILE_OPTIONS "/wd4996")
 endif()
 
 # core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
-# half of the libFuzzer custom mutator (roadmap VX3). The mutator itself only
+# half of the libFuzzer custom mutator (legacy item VX3). The mutator itself only
 # builds under Clang with -fsanitize=fuzzer, but the header's
 # restamp_syncframe_crcs is ordinary portable C++ over ac3::crc16 and the
 # frame-size tables, and whether it produces a crc1 the decoder accepts is
@@ -317,34 +317,34 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/fuzz")
 # silence. Passed as a path rather than resolved from argv[0]: ctest runs the binary from
 # the build tree, which is nowhere near the fixtures.
 target_compile_definitions(ac3tests
-    PRIVATE "AC3FORGE_GOLDEN_AUDIO_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/audio\"")
+ PRIVATE "AC3FORGE_GOLDEN_AUDIO_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/audio\"")
 
 # The third-party Dolby fixture tests/oba/test_dee_joc_fixture.cpp reads, on the
 # same reasoning: a path, because ctest runs from the build tree.
 target_compile_definitions(ac3tests
-    PRIVATE "AC3FORGE_GOLDEN_OBJECT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/object-fixture\"")
+ PRIVATE "AC3FORGE_GOLDEN_OBJECT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/object-fixture\"")
 
 # tests/ac4/test_ac4.cpp reads the real DEE-produced AC-4 fixtures under
 # here (tools/generators/gen_ac4_baseline.py) - same reasoning as the two
 # defines above.
 target_compile_definitions(ac3tests
-    PRIVATE "AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
+ PRIVATE "AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
 
 # tests/ac4dec/test_ac4dec_syntax.cpp holds the AC-4 decoder's syntax trace to
 # the digests tools/references/ac4_syntax.py wrote for the same streams.
 target_compile_definitions(ac3tests
-    PRIVATE "AC4DEC_GOLDEN_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/ac4dec\"")
+ PRIVATE "AC4DEC_GOLDEN_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/ac4dec\"")
 
 # crucible/test_translations.cpp reads the Crucible's six Qt Linguist
 # catalogues as files (no Qt in this target), on the same reasoning: a
 # source-tree path, because ctest runs the binary from the build tree.
 target_compile_definitions(ac3tests
-    PRIVATE "AC3FORGE_CRUCIBLE_TS_DIR=\"${CMAKE_SOURCE_DIR}/apps/crucible/translations\""
-    # The GUI's seven catalogues are held to the same two rules as Crucible's
-    # six, from the same parser. They were filled on 2026-09-06 and a rule
-    # that holds them there belongs beside the one that holds Crucible's,
-    # rather than in a workflow step on one leg.
-    PRIVATE "AC3FORGE_GUI_TS_DIR=\"${CMAKE_SOURCE_DIR}/apps/gui/translations\"")
+ PRIVATE "AC3FORGE_CRUCIBLE_TS_DIR=\"${CMAKE_SOURCE_DIR}/apps/crucible/translations\""
+ # The GUI's seven catalogues are held to the same two rules as Crucible's
+ # six, from the same parser. They were filled on 2026-09-06 and a rule
+ # that holds them there belongs beside the one that holds Crucible's,
+ # rather than in a workflow step on one leg.
+ PRIVATE "AC3FORGE_GUI_TS_DIR=\"${CMAKE_SOURCE_DIR}/apps/gui/translations\"")
 
 # Where every test that writes a file writes it. Each such file's own scratch_dir()
 # helper appends its own leaf name under here, so the artefacts stay separated by
@@ -367,7 +367,7 @@ target_compile_definitions(ac3tests
 # directory with every other build's, and `rm -rf` on a build tree takes them with
 # it. Supplied the same way AC3CLI_EXE and AC3FORGE_GOLDEN_AUDIO_DIR above are.
 target_compile_definitions(ac3tests
-    PRIVATE "AC3FORGE_TEST_SCRATCH_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/scratch\"")
+ PRIVATE "AC3FORGE_TEST_SCRATCH_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/scratch\"")
 
 # ---------------------------------------------------------------------------
 # Toolchain hook: keep a failing assert from opening a modal dialog that hangs
@@ -378,9 +378,9 @@ target_compile_definitions(ac3tests
 # for clang-cl too) rather than on WIN32.
 # ---------------------------------------------------------------------------
 if(MSVC)
-    target_sources(ac3tests PRIVATE crt/msvc/crt_report.cpp)
+ target_sources(ac3tests PRIVATE crt/msvc/crt_report.cpp)
 else()
-    target_sources(ac3tests PRIVATE crt/stub/crt_report.cpp)
+ target_sources(ac3tests PRIVATE crt/stub/crt_report.cpp)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -396,36 +396,36 @@ endif()
 # the contract EVERY backend keeps, including the one that refuses everything.
 # ---------------------------------------------------------------------------
 if(AC3FORGE_AUDIO_BACKEND STREQUAL "alsa")
-    target_sources(ac3tests PRIVATE
-        backend/alsa/test_alsa_device_names.cpp
-        backend/alsa/test_alsa_eld_parsing.cpp)
-    # The backend's internal header. Not part of the library's public
-    # interface and deliberately not installed - it is on the include path for
-    # this target only, and only in this configuration.
-    target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
+ target_sources(ac3tests PRIVATE
+ backend/alsa/test_alsa_device_names.cpp
+ backend/alsa/test_alsa_eld_parsing.cpp)
+ # The backend's internal header. Not part of the library's public
+ # interface and deliberately not installed - it is on the include path for
+ # this target only, and only in this configuration.
+ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
 elseif(AC3FORGE_AUDIO_BACKEND STREQUAL "pipewire")
-    target_sources(ac3tests PRIVATE backend/pipewire/test_pipewire_support.cpp)
-    target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
-    # test_pipewire_support.cpp includes pipewire_support.hpp directly, which
-    # in turn includes PipeWire's own headers - the same PkgConfig::PipeWire
-    # target src/audio/CMakeLists.txt linked ac3audio against, needed again
-    # here since this is a separate translation unit in a separate target.
-    target_link_libraries(ac3tests PRIVATE PkgConfig::PipeWire)
+ target_sources(ac3tests PRIVATE backend/pipewire/test_pipewire_support.cpp)
+ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
+ # test_pipewire_support.cpp includes pipewire_support.hpp directly, which
+ # in turn includes PipeWire's own headers - the same PkgConfig::PipeWire
+ # target src/audio/CMakeLists.txt linked ac3audio against, needed again
+ # here since this is a separate translation unit in a separate target.
+ target_link_libraries(ac3tests PRIVATE PkgConfig::PipeWire)
 elseif(AC3FORGE_AUDIO_BACKEND STREQUAL "android")
-    # Desktop-hosted ac3tests never actually selects the android backend (it
-    # only exists under NDK cross-compilation, which this target is not) -
-    # this branch is future-proofing should that ever change, matching the
-    # alsa branch's shape exactly rather than assuming android can never
-    # reach here.
-    target_sources(ac3tests PRIVATE backend/android/test_android_support.cpp)
-    target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
+ # Desktop-hosted ac3tests never actually selects the android backend (it
+ # only exists under NDK cross-compilation, which this target is not) -
+ # this branch is future-proofing should that ever change, matching the
+ # alsa branch's shape exactly rather than assuming android can never
+ # reach here.
+ target_sources(ac3tests PRIVATE backend/android/test_android_support.cpp)
+ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
 elseif(AC3FORGE_AUDIO_BACKEND STREQUAL "macos")
-    # Unlike alsa/android above, this branch DOES run on desktop-hosted
-    # ac3tests for real: src/audio/CMakeLists.txt selects macos/
-    # unconditionally under APPLE, so every macOS CI leg's ac3tests build
-    # compiles and runs this file.
-    target_sources(ac3tests PRIVATE backend/macos/test_macos_support.cpp)
-    target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
+ # Unlike alsa/android above, this branch DOES run on desktop-hosted
+ # ac3tests for real: src/audio/CMakeLists.txt selects macos/
+ # unconditionally under APPLE, so every macOS CI leg's ac3tests build
+ # compiles and runs this file.
+ target_sources(ac3tests PRIVATE backend/macos/test_macos_support.cpp)
+ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
 endif()
 
 # audio/test_live_positions.cpp needs UdpSocket (src/audio/src/net/udp_socket.hpp)
@@ -450,31 +450,31 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_NET_DIR}")
 # ---------------------------------------------------------------------------
 # cli/test_cli_live.cpp rides the same gate and the same AC3CLI_EXE: it covers
 # the device-facing commands (devices/outputs/record/live/monitor), which no
-# test touched at all until roadmap VX15 measured commands/audio_io.cpp and
+# test touched at all until coverage floors measured commands/audio_io.cpp and
 # commands/live_audio.cpp at 0.0% line coverage. Its cases assert what holds
 # with or without an endpoint present - see that file's own header - and carry
 # the [concurrency] tag, so the ThreadSanitizer leg reaches them through
-# `ctest -L concurrency` (roadmap VX16).
+# `ctest -L concurrency` (ThreadSanitizer leg).
 if(TARGET ac3cli)
-    target_sources(ac3tests PRIVATE
-        cli/test_cli.cpp cli/test_cli_containers.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp
-        cli/test_cli_stream_tools.cpp)
-    target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
-    # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
-    # well as this encoder's own output - they exercise syntax ac3forge never
-    # emits (AHT, spectral extension, and frames this decoder declines
-    # outright), which is the only way to check that `probe` describes a FORMAT
-    # rather than this project's dialect of it. Passed as a path for the same
-    # reason AC3FORGE_GOLDEN_AUDIO_DIR is: ctest runs the binary from the build
-    # tree, nowhere near the fixtures.
-    target_compile_definitions(ac3tests PRIVATE
-        "AC3FORGE_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
-    # cli/test_cli.cpp decodes one fuzz seed under `quiet`: the DEE-encoded
-    # E-AC-3 stream a quiet decode was first seen failing on, whose report
-    # carries infomdat lines that FFmpeg's encode of the same programme does
-    # not. A path for the same reason AC3FORGE_EXTERNAL_BASELINE_DIR is one.
-    target_compile_definitions(ac3tests PRIVATE
-        "AC3FORGE_FUZZ_SEED_DIR=\"${CMAKE_SOURCE_DIR}/fuzz/seeds\"")
+ target_sources(ac3tests PRIVATE
+ cli/test_cli.cpp cli/test_cli_containers.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp
+ cli/test_cli_stream_tools.cpp)
+ target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
+ # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
+ # well as this encoder's own output - they exercise syntax ac3forge never
+ # emits (AHT, spectral extension, and frames this decoder declines
+ # outright), which is the only way to check that `probe` describes a FORMAT
+ # rather than this project's dialect of it. Passed as a path for the same
+ # reason AC3FORGE_GOLDEN_AUDIO_DIR is: ctest runs the binary from the build
+ # tree, nowhere near the fixtures.
+ target_compile_definitions(ac3tests PRIVATE
+ "AC3FORGE_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
+ # cli/test_cli.cpp decodes one fuzz seed under `quiet`: the DEE-encoded
+ # E-AC-3 stream a quiet decode was first seen failing on, whose report
+ # carries infomdat lines that FFmpeg's encode of the same programme does
+ # not. A path for the same reason AC3FORGE_EXTERNAL_BASELINE_DIR is one.
+ target_compile_definitions(ac3tests PRIVATE
+ "AC3FORGE_FUZZ_SEED_DIR=\"${CMAKE_SOURCE_DIR}/fuzz/seeds\"")
 endif()
 
 # RecordingSink (gui/test_recording_sink.cpp) is deliberately Qt-free - std::
@@ -486,13 +486,13 @@ endif()
 # surface to link against. The fragmented-MP4 cases exercise Fmp4FolderWriter,
 # RecordingSink's own kFmp4 backend, so its source comes along too.
 #
-# Ungated since roadmap IO9 moved both to apps/common: both front ends write
+# Ungated since wide-layout record/live paths moved both to apps/common: both front ends write
 # their takes through them now, so the bytes they produce are worth checking
 # in a CLI-only build too - and apps/common, unlike apps/gui, is present
 # whatever AC3FORGE_BUILD_GUI says. The test file itself stays under
 # tests/gui/ so its history and its "[gui]" tag are unbroken.
 #
-# container_input.cpp (roadmap IO2) joined the same way for the same reason:
+# container_input.cpp (legacy item IO2) joined the same way for the same reason:
 # ac3::apps::sniff_container/elementary_stream_from_bytes are what
 # decode/qc/levels/play/monitor and the GUI's QC/Inspect pickers all call, so
 # a sniffing regression belongs in the plain Catch2 suite rather than only in
@@ -513,19 +513,19 @@ endif()
 # this target also compiles the Crucible's own diagnostics.cpp and has both
 # directories on its include path.
 target_sources(ac3tests PRIVATE
-    gui/test_recording_sink.cpp
-    gui/test_gui_diagnostics.cpp
-    decoder/test_stream_playback.cpp
-    "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/common/stream_playback.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/gui/gui_diagnostics.cpp")
+ gui/test_recording_sink.cpp
+ gui/test_gui_diagnostics.cpp
+ decoder/test_stream_playback.cpp
+ "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/common/stream_playback.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/gui/gui_diagnostics.cpp")
 target_include_directories(ac3tests PRIVATE
-    "${CMAKE_SOURCE_DIR}/apps/common"
-    "${CMAKE_SOURCE_DIR}/apps/gui")
+ "${CMAKE_SOURCE_DIR}/apps/common"
+ "${CMAKE_SOURCE_DIR}/apps/gui")
 
-# AC3Forge Crucible's engine core (roadmap UX11/UX12, apps/crucible/
+# AC3Forge Crucible's engine core (Crucible Windows demo/UX12, apps/crucible/
 # engine/): the slot plan, the bed mixer, placement smoothing and the
 # output-mode policy. All four are plain C++ over ac3::oba types with no
 # platform in them - the platform layer next to them is what talks to WASAPI
@@ -564,30 +564,30 @@ target_include_directories(ac3tests PRIVATE
 # reported as running, which is what the window's status strip prints and
 # what the QML suites' "the engine did not start here" skips test for.
 target_sources(ac3tests PRIVATE
-    crucible/test_slots.cpp
-    crucible/test_bed_mixer.cpp
-    crucible/test_placement.cpp
-    crucible/test_output_policy.cpp
-    crucible/test_tap_pool.cpp
-    crucible/test_output_stage.cpp
-    crucible/test_engine_start.cpp
-    crucible/test_nullsink_position.cpp
-    crucible/test_platform_seams.cpp
-    crucible/test_diagnostics.cpp
-    crucible/test_desktop_entries.cpp
-    crucible/test_translations.cpp
-    crucible/test_engine.cpp
-    crucible/platform_services_stub.cpp
-    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/slots.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/bed_mixer.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/placement.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_policy.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/tap_pool.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/diagnostics.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_stage.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/signing_hook.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/crucible/engine/engine.cpp"
-    "${CMAKE_SOURCE_DIR}/apps/crucible/ui/desktop_entries.cpp")
+ crucible/test_slots.cpp
+ crucible/test_bed_mixer.cpp
+ crucible/test_placement.cpp
+ crucible/test_output_policy.cpp
+ crucible/test_tap_pool.cpp
+ crucible/test_output_stage.cpp
+ crucible/test_engine_start.cpp
+ crucible/test_nullsink_position.cpp
+ crucible/test_platform_seams.cpp
+ crucible/test_diagnostics.cpp
+ crucible/test_desktop_entries.cpp
+ crucible/test_translations.cpp
+ crucible/test_engine.cpp
+ crucible/platform_services_stub.cpp
+ "${CMAKE_SOURCE_DIR}/apps/crucible/engine/slots.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/crucible/engine/bed_mixer.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/crucible/engine/placement.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_policy.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/crucible/engine/tap_pool.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/crucible/engine/diagnostics.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/crucible/engine/output_stage.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/crucible/engine/signing_hook.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/crucible/engine/engine.cpp"
+ "${CMAKE_SOURCE_DIR}/apps/crucible/ui/desktop_entries.cpp")
 # The null-sink driver's position clock (apps/windows/driver/Source/Main/
 # position.h) is a header with no kernel dependencies, kept that way so the
 # one piece of the driver that is logic rather than framework plumbing is
@@ -596,9 +596,9 @@ target_sources(ac3tests PRIVATE
 # plain C++ over std::filesystem for the same reason and rides the same
 # target, Qt-free, on every platform.
 target_include_directories(ac3tests PRIVATE
-    "${CMAKE_SOURCE_DIR}/apps/crucible/engine"
-    "${CMAKE_SOURCE_DIR}/apps/crucible/ui"
-    "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main")
+ "${CMAKE_SOURCE_DIR}/apps/crucible/engine"
+ "${CMAKE_SOURCE_DIR}/apps/crucible/ui"
+ "${CMAKE_SOURCE_DIR}/apps/windows/driver/Source/Main")
 # The profiling header pair, for engine.cpp's Tracy zones: the same
 # generator expression apps/crucible/CMakeLists.txt uses for
 # ac3crucible_engine, and for the same reason - the header is PRIVATE to
@@ -606,7 +606,7 @@ target_include_directories(ac3tests PRIVATE
 # picking it up from ac3::forge. Which of the two identically-pathed
 # variants is chosen is CMake's decision, never an #ifdef.
 target_include_directories(ac3tests PRIVATE
-    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
+ "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
 target_link_libraries(ac3tests PRIVATE ac3::tracy)
 
 # The Linux Foreground's X11 half has a pure policy (x11_foreground.cpp: when
@@ -629,12 +629,12 @@ target_link_libraries(ac3tests PRIVATE ac3::tracy)
 # into this case, and the .cpp that includes it stays in ac3crucible_engine
 # where libpipewire is.
 if(LINUX)
-    target_sources(ac3tests PRIVATE
-        crucible/platform/linux/test_x11_foreground.cpp
-        crucible/platform/linux/test_session_facts.cpp
-        "${CMAKE_SOURCE_DIR}/apps/crucible/engine/platform/linux/x11_foreground.cpp")
-    target_include_directories(ac3tests PRIVATE
-        "${CMAKE_SOURCE_DIR}/apps/crucible/engine/platform/linux")
+ target_sources(ac3tests PRIVATE
+ crucible/platform/linux/test_x11_foreground.cpp
+ crucible/platform/linux/test_session_facts.cpp
+ "${CMAKE_SOURCE_DIR}/apps/crucible/engine/platform/linux/x11_foreground.cpp")
+ target_include_directories(ac3tests PRIVATE
+ "${CMAKE_SOURCE_DIR}/apps/crucible/engine/platform/linux")
 endif()
 
 # ac3adm::ac3adm is opt-in (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own
@@ -644,17 +644,17 @@ endif()
 # inside src/ac3adm/CMakeLists.txt's own add_subdirectory(), which never runs unless
 # AC3FORGE_BUILD_ADM is already ON - so the option itself is what's checked here instead.
 #
-# test_adm_bridge.cpp (ac3::admbridge, roadmap B1 phase 2, src/admbridge) rides the same gate:
+# test_adm_bridge.cpp (ac3::admbridge, ADM BWF reader phase 2, src/admbridge) rides the same gate:
 # it depends on ac3adm::ac3adm too, and src/admbridge is only add_subdirectory()'d from inside
 # the same if(AC3FORGE_BUILD_ADM) block in the root CMakeLists.txt.
 if(AC3FORGE_BUILD_ADM)
-    target_sources(ac3tests PRIVATE adm/test_adm.cpp admbridge/test_adm_bridge.cpp
-                                    admbridge/test_adm_bridge_write.cpp
-                                    admbridge/test_iab_bridge.cpp)
-    target_link_libraries(ac3tests PRIVATE ac3adm::ac3adm ac3::admbridge)
+ target_sources(ac3tests PRIVATE adm/test_adm.cpp admbridge/test_adm_bridge.cpp
+ admbridge/test_adm_bridge_write.cpp
+ admbridge/test_iab_bridge.cpp)
+ target_link_libraries(ac3tests PRIVATE ac3adm::ac3adm ac3::admbridge)
 endif()
 
-# test_cli_atmos_adm.cpp (roadmap B1 phase 3, ac3cli's 'atmos-adm' command) needs BOTH conditions
+# test_cli_atmos_adm.cpp (ADM BWF reader phase 3, ac3cli's 'atmos-adm' command) needs BOTH conditions
 # above to hold at once, not just AC3FORGE_BUILD_ADM alone: it runs the real, built ac3cli binary
 # as a subprocess (AC3CLI_EXE, defined only inside the `if(TARGET ac3cli)` block above) against an
 # ADM fixture, so the command it exercises only exists in that binary at all when
@@ -664,11 +664,11 @@ endif()
 # (AC3CLI_EXE might not be defined at all, e.g. AC3FORGE_BUILD_CLI=OFF) is sufficient by itself -
 # both are checked together here, after both blocks above have already run.
 if(AC3FORGE_BUILD_ADM AND TARGET ac3cli)
-    target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp cli/test_cli_atmos_iab.cpp
-                                    cli/test_cli_decode_adm.cpp)
+ target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp cli/test_cli_atmos_iab.cpp
+ cli/test_cli_decode_adm.cpp)
 endif()
 
-# ac3iab::ac3iab (roadmap IM1 phase 1, src/ac3iab) is gated by its own AC3FORGE_BUILD_IAB
+# ac3iab::ac3iab (legacy item IM1 phase 1, src/ac3iab) is gated by its own AC3FORGE_BUILD_IAB
 # (default ON, see the root CMakeLists.txt's own option()) rather than being linked
 # unconditionally in the matroska::matroska/mp4::mp4/mpegts::mpegts list below - nothing else
 # in this test binary depends on it, so there is no FATAL_ERROR guard forcing the option to
@@ -676,119 +676,119 @@ endif()
 # only linked, when AC3FORGE_BUILD_IAB actually turned the target on. Same conditional shape
 # as the AC3FORGE_BUILD_ADM block above.
 if(AC3FORGE_BUILD_IAB)
-    target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp ac3iab/test_mxf_reader.cpp)
-    target_link_libraries(ac3tests PRIVATE ac3iab::ac3iab)
+ target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp ac3iab/test_mxf_reader.cpp)
+ target_link_libraries(ac3tests PRIVATE ac3iab::ac3iab)
 endif()
 
-# iamf::iamf (roadmap IM3 phase 1, src/iamf) is gated by its own AC3FORGE_BUILD_IAMF (default ON,
+# iamf::iamf (legacy item IM3 phase 1, src/iamf) is gated by its own AC3FORGE_BUILD_IAMF (default ON,
 # see the root CMakeLists.txt's own option()), same conditional shape as the AC3FORGE_BUILD_IAB
 # block immediately above.
 if(AC3FORGE_BUILD_IAMF)
-    target_sources(ac3tests PRIVATE iamf/test_iamf.cpp)
-    target_link_libraries(ac3tests PRIVATE iamf::iamf)
+ target_sources(ac3tests PRIVATE iamf/test_iamf.cpp)
+ target_link_libraries(ac3tests PRIVATE iamf::iamf)
 endif()
 
 # ac3::forge_c is an optional component (AC3FORGE_BUILD_CAPI, default ON - see the root
-# CMakeLists.txt) - test_capi.cpp (roadmap F1) only exists to build when it was actually built,
+# CMakeLists.txt) - test_capi.cpp (legacy item F1) only exists to build when it was actually built,
 # the same shape as the AC3FORGE_BUILD_ADM-gated sources above.
 if(AC3FORGE_BUILD_CAPI)
-    target_sources(ac3tests PRIVATE capi/test_capi.cpp)
-    target_link_libraries(ac3tests PRIVATE ac3::forge_c)
+ target_sources(ac3tests PRIVATE capi/test_capi.cpp)
+ target_link_libraries(ac3tests PRIVATE ac3::forge_c)
 endif()
 
 # ac3::sendspin (src/sendspin) is opt-in through AC3FORGE_BUILD_HEARTH, the same shape as the
 # AC3FORGE_BUILD_ADM block above.
 if(AC3FORGE_BUILD_HEARTH)
-    # The engine (apps/hearth/engine) comes first because it needs nothing from
-    # src/sendspin's player half: a core-only build still builds and tests it,
-    # unlike the test sink further down.
-    target_sources(ac3tests PRIVATE
-        hearth/test_ac3_transcoder.cpp
-        hearth/test_decoder_settings.cpp
-        hearth/test_diagnostics.cpp
-        hearth/test_engine.cpp
-        hearth/test_media_info.cpp
-        hearth/test_output_decision.cpp
-        hearth/test_output_selector.cpp
-        hearth/test_play_meters.cpp
-        hearth/test_player.cpp
-        hearth/test_player_bitstream.cpp
-        hearth/test_queue.cpp
-        hearth/test_session.cpp
-        hearth/test_settings_model.cpp
-        hearth/test_stream_decoder.cpp
-        hearth/test_transport.cpp)
-    target_link_libraries(ac3tests PRIVATE ac3hearth_engine)
+ # The engine (apps/hearth/engine) comes first because it needs nothing from
+ # src/sendspin's player half: a core-only build still builds and tests it,
+ # unlike the test sink further down.
+ target_sources(ac3tests PRIVATE
+ hearth/test_ac3_transcoder.cpp
+ hearth/test_decoder_settings.cpp
+ hearth/test_diagnostics.cpp
+ hearth/test_engine.cpp
+ hearth/test_media_info.cpp
+ hearth/test_output_decision.cpp
+ hearth/test_output_selector.cpp
+ hearth/test_play_meters.cpp
+ hearth/test_player.cpp
+ hearth/test_player_bitstream.cpp
+ hearth/test_queue.cpp
+ hearth/test_session.cpp
+ hearth/test_settings_model.cpp
+ hearth/test_stream_decoder.cpp
+ hearth/test_transport.cpp)
+ target_link_libraries(ac3tests PRIVATE ac3hearth_engine)
 
-    target_sources(ac3tests PRIVATE
-        sendspin/test_ac3forge_player.cpp
-        sendspin/test_arbiter.cpp
-        sendspin/test_base64.cpp
-        sendspin/test_base64url.cpp
-        sendspin/test_chunks.cpp
-        sendspin/test_clock_sync.cpp
-        sendspin/test_discovery.cpp
-        sendspin/test_frames.cpp
-        sendspin/test_handshake.cpp
-        sendspin/test_json.cpp
-        sendspin/test_messages.cpp
-        sendspin/test_pairing_messages.cpp
-        sendspin/test_state_roles.cpp
-        sendspin/test_stream_roles.cpp
-        sendspin/test_transport.cpp)
-    # The parts that need vcpkg's "hearth" feature, which AC3FORGE_SENDSPIN_CORE_ONLY leaves out.
-    if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
-        target_sources(ac3tests PRIVATE
-            sendspin/test_codec.cpp
-            sendspin/test_cpace.cpp
-            sendspin/test_crypto.cpp
-            sendspin/test_handshake_session.cpp
-            sendspin/test_mdns.cpp
-            sendspin/test_noise.cpp
-            sendspin/test_pairing.cpp
-            sendspin/test_pairing_flow.cpp
-            sendspin/test_session_driver.cpp
-            sendspin/test_sessions.cpp)
-        # test_mdns.cpp reads the mdns backend's packet layer, which is private to the library.
-        target_include_directories(ac3tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src/sendspin/src")
-        # test_websocket.cpp writes a WebSocket client's bytes by hand through cpp-httplib's socket
-        # functions, so it is compiled on its own with cpp-httplib configured as src/sendspin
-        # configures it (ac3sendspin_httplib), leaving the rest of the suite's flags alone.
-        add_library(ac3tests_websocket OBJECT sendspin/test_websocket.cpp)
-        target_link_libraries(ac3tests_websocket
-            PRIVATE ac3::sendspin ac3sendspin_httplib ac3::warnings ac3::coverage Catch2::Catch2)
-        target_link_libraries(ac3tests PRIVATE ac3tests_websocket)
-        # Hearth's test sink, run in process (apps/hearth/testsink), and the server's half of A4's
-        # exit with aiosendspin 9.1.1, which tools/sendspin/aiosendspin_exit.py runs.
-        target_sources(ac3tests PRIVATE hearth/test_aiosendspin.cpp hearth/test_group.cpp hearth/test_testsink.cpp)
-        # The engine's pairing records, which a core-only build leaves out.
-        target_sources(ac3tests PRIVATE hearth/test_pairing_store.cpp)
-        target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
-        # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
-        # as core/test_simd_kernels.cpp's.
-        if(AC3FORGE_IS_MSVC_LIKE)
-            set_source_files_properties(hearth/test_aiosendspin.cpp PROPERTIES COMPILE_OPTIONS "/wd4996")
-        endif()
-    endif()
-    target_link_libraries(ac3tests PRIVATE ac3::sendspin)
+ target_sources(ac3tests PRIVATE
+ sendspin/test_ac3forge_player.cpp
+ sendspin/test_arbiter.cpp
+ sendspin/test_base64.cpp
+ sendspin/test_base64url.cpp
+ sendspin/test_chunks.cpp
+ sendspin/test_clock_sync.cpp
+ sendspin/test_discovery.cpp
+ sendspin/test_frames.cpp
+ sendspin/test_handshake.cpp
+ sendspin/test_json.cpp
+ sendspin/test_messages.cpp
+ sendspin/test_pairing_messages.cpp
+ sendspin/test_state_roles.cpp
+ sendspin/test_stream_roles.cpp
+ sendspin/test_transport.cpp)
+ # The parts that need vcpkg's "hearth" feature, which AC3FORGE_SENDSPIN_CORE_ONLY leaves out.
+ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
+ target_sources(ac3tests PRIVATE
+ sendspin/test_codec.cpp
+ sendspin/test_cpace.cpp
+ sendspin/test_crypto.cpp
+ sendspin/test_handshake_session.cpp
+ sendspin/test_mdns.cpp
+ sendspin/test_noise.cpp
+ sendspin/test_pairing.cpp
+ sendspin/test_pairing_flow.cpp
+ sendspin/test_session_driver.cpp
+ sendspin/test_sessions.cpp)
+ # test_mdns.cpp reads the mdns backend's packet layer, which is private to the library.
+ target_include_directories(ac3tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src/sendspin/src")
+ # test_websocket.cpp writes a WebSocket client's bytes by hand through cpp-httplib's socket
+ # functions, so it is compiled on its own with cpp-httplib configured as src/sendspin
+ # configures it (ac3sendspin_httplib), leaving the rest of the suite's flags alone.
+ add_library(ac3tests_websocket OBJECT sendspin/test_websocket.cpp)
+ target_link_libraries(ac3tests_websocket
+ PRIVATE ac3::sendspin ac3sendspin_httplib ac3::warnings ac3::coverage Catch2::Catch2)
+ target_link_libraries(ac3tests PRIVATE ac3tests_websocket)
+ # Hearth's test sink, run in process (apps/hearth/testsink), and the server's half of A4's
+ # exit with aiosendspin 9.1.1, which tools/sendspin/aiosendspin_exit.py runs.
+ target_sources(ac3tests PRIVATE hearth/test_aiosendspin.cpp hearth/test_group.cpp hearth/test_testsink.cpp)
+ # The engine's pairing records, which a core-only build leaves out.
+ target_sources(ac3tests PRIVATE hearth/test_pairing_store.cpp)
+ target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
+ # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
+ # as core/test_simd_kernels.cpp's.
+ if(AC3FORGE_IS_MSVC_LIKE)
+ set_source_files_properties(hearth/test_aiosendspin.cpp PROPERTIES COMPILE_OPTIONS "/wd4996")
+ endif()
+ endif()
+ target_link_libraries(ac3tests PRIVATE ac3::sendspin)
 endif()
 
 target_include_directories(ac3tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
 target_link_libraries(ac3tests
-    PRIVATE
-        ac3::forge
-        ac3::audio
-        ac3::signing
-        matroska::matroska
-        mp4::mp4
-        mpegts::mpegts
-        ac4::ac4
-        ac4::decoder
-        ac3::warnings
-        ac3::coverage
-        ac3::fmt
-        Catch2::Catch2WithMain)
+ PRIVATE
+ ac3::forge
+ ac3::audio
+ ac3::signing
+ matroska::matroska
+ mp4::mp4
+ mpegts::mpegts
+ ac4::ac4
+ ac4::decoder
+ ac3::warnings
+ ac3::coverage
+ ac3::fmt
+ Catch2::Catch2WithMain)
 
 include(Catch)
 

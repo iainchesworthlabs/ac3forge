@@ -14,7 +14,7 @@
 // Top-level entry points for ac3iab::ac3iab: parses SMPTE ST 2098-2:2022's Immersive Audio
 // Bitstream into an IaFrame per frame (see model.hpp for the full element graph).
 //
-// Roadmap item IM1 phase 1 of 3 (see ROADMAP.md's "IAB (SMPTE ST 2098-2) reader" entry): a
+// IAB reader, phase 1: a
 // standalone bitstream reader, the "codec-blind" shape matroska::matroska, mp4::mp4 and
 // mpegts::mpegts already use for their own containers (bare `include/ac3iab/` prefix, not
 // `ac3/ac3iab/` - see CONTRIBUTING.md's repository-layout section on what that prefix means).
@@ -33,28 +33,28 @@
 namespace ac3iab {
 
 enum class IabError : std::uint8_t {
-    kCannotOpen,          // path could not be opened for reading
-    kTruncated,            // fewer bytes remained than a field, ElementSize, DLCSize,
-                           // PreambleLength or IAFrameLength declared
-    kBadEscape,             // a Plex(n) escape chain (§5.2) grew past this format's own 32-bit
-                           // ceiling (symbols are guaranteed <= 0xFFFFFFFE) without terminating -
-                           // either a corrupt stream or one using the reserved 0xFFFFFFFF value
-    kBadPreambleTag,        // PreambleTag != 0x01 (§8.1.1)
-    kBadFrameTag,           // IAFrameTag != 0x02 (§8.1.4)
-    kReservedVersion,       // IAFrame.Version is not 1 - 0 and 2 are explicitly forbidden (§10.2.1)
-    kReservedSampleRate,    // SampleRate code 0x2/0x3 (§10.2.2, Table 15 - Reserved)
-    kReservedBitDepth,      // BitDepth code 0x2/0x3 (§10.2.3, Table 16 - Reserved)
-    kReservedFrameRate,     // FrameRate code 0xA-0xF (§10.2.4, Table 17 - Reserved)
-    kUnterminatedString,    // a NUL-terminated ASCII field (AudioDescriptionText,
-                           // AuthoringToolURI) ran off the end of its element without a
-                           // terminating 0x00 byte
-    kMxfBadKlv,             // mxf.hpp: a KLV Length field violated SMPTE ST 336:2017's BER
-                           // encoding rules (the reserved 0x80 "indefinite length" token, or a
-                           // long form needing more than the 8 following bytes SMPTE ST 377-1's
-                           // 9-byte-total cap on a KLV Length field allows)
-    kMxfNoIabEssence,       // mxf.hpp: walked every top-level KLV in the file without finding one
-                           // whose Key matched SMPTE ST 2067-201 Table 4.2's registered IAB
-                           // Essence Element Key
+ kCannotOpen, // path could not be opened for reading
+ kTruncated, // fewer bytes remained than a field, ElementSize, DLCSize,
+ // PreambleLength or IAFrameLength declared
+ kBadEscape, // a Plex(n) escape chain (§5.2) grew past this format's own 32-bit
+ // ceiling (symbols are guaranteed <= 0xFFFFFFFE) without terminating -
+ // either a corrupt stream or one using the reserved 0xFFFFFFFF value
+ kBadPreambleTag, // PreambleTag != 0x01 (§8.1.1)
+ kBadFrameTag, // IAFrameTag != 0x02 (§8.1.4)
+ kReservedVersion, // IAFrame.Version is not 1 - 0 and 2 are explicitly forbidden (§10.2.1)
+ kReservedSampleRate, // SampleRate code 0x2/0x3 (§10.2.2, Table 15 - Reserved)
+ kReservedBitDepth, // BitDepth code 0x2/0x3 (§10.2.3, Table 16 - Reserved)
+ kReservedFrameRate, // FrameRate code 0xA-0xF (§10.2.4, Table 17 - Reserved)
+ kUnterminatedString, // a NUL-terminated ASCII field (AudioDescriptionText,
+ // AuthoringToolURI) ran off the end of its element without a
+ // terminating 0x00 byte
+ kMxfBadKlv, // mxf.hpp: a KLV Length field violated SMPTE ST 336:2017's BER
+ // encoding rules (the reserved 0x80 "indefinite length" token, or a
+ // long form needing more than the 8 following bytes SMPTE ST 377-1's
+ // 9-byte-total cap on a KLV Length field allows)
+ kMxfNoIabEssence, // mxf.hpp: walked every top-level KLV in the file without finding one
+ // whose Key matched SMPTE ST 2067-201 Table 4.2's registered IAB
+ // Essence Element Key
 };
 
 [[nodiscard]] AC3IAB_EXPORT std::string_view describe(IabError error);
@@ -63,8 +63,8 @@ enum class IabError : std::uint8_t {
 // content is "outside the scope of this specification") plus the decoded IAFrame that follows
 // it.
 struct IABitstreamFrame {
-    std::vector<std::byte> preamble;
-    IaFrame frame;
+ std::vector<std::byte> preamble;
+ IaFrame frame;
 };
 
 // Parses a whole IABitstream (§7): a sequential run of Preamble+IAFrame segment pairs read
@@ -75,9 +75,9 @@ struct IABitstreamFrame {
 // Container KLV Value, so there is no reframing to do, only extraction (see mxf.hpp's own
 // header comment).
 [[nodiscard]] AC3IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(
-    const std::string& path);
+ const std::string& path);
 [[nodiscard]] AC3IAB_EXPORT std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(
-    std::istream& in);
+ std::istream& in);
 
 // Parses a single already-extracted IAFrame element's payload (§9.1 Table 5) directly -
 // `payload` is exactly the element's own ElementSize bytes, with no ElementID/ElementSize
@@ -88,4 +88,4 @@ struct IABitstreamFrame {
 // synthetic test vector, or a future MXF track reader - actually has in hand.
 [[nodiscard]] AC3IAB_EXPORT std::expected<IaFrame, IabError> parse_iaframe(std::span<const std::byte> payload);
 
-}  // namespace ac3iab
+} // namespace ac3iab

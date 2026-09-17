@@ -59,8 +59,8 @@ namespace ac3::coreaudio {
 // the wire in exactly the sense WASAPI's WAVEFORMATEXTENSIBLE and ALSA's
 // device-name rate both do.
 [[nodiscard]] constexpr std::uint32_t carrier_rate(audio::BitstreamFormat format,
-                                                    std::uint32_t content_rate) {
-    return format == audio::BitstreamFormat::kEac3 ? content_rate * 4 : content_rate;
+ std::uint32_t content_rate) {
+ return format == audio::BitstreamFormat::kEac3 ? content_rate * 4 : content_rate;
 }
 
 // The physical-format fourCC a digital output stream is asked for.
@@ -82,8 +82,8 @@ namespace ac3::coreaudio {
 // comes back false, the honest answer under the same "a platform can gain
 // one and not the other" contract ac3::audio::RenderDeviceInfo already documents.
 [[nodiscard]] constexpr AudioFormatID physical_format_id(audio::BitstreamFormat format) {
-    return format == audio::BitstreamFormat::kEac3 ? kAudioFormatEnhancedAC3
-                                                     : kAudioFormat60958AC3;
+ return format == audio::BitstreamFormat::kEac3 ? kAudioFormatEnhancedAC3
+ : kAudioFormat60958AC3;
 }
 
 // Whether `formats` (as kAudioStreamPropertyAvailablePhysicalFormats returns
@@ -106,19 +106,19 @@ namespace ac3::coreaudio {
 // is a Float64 range and some drivers report it as [carrier, carrier] with
 // the double arithmetic not landing on an exact bit pattern.
 [[nodiscard]] inline std::optional<AudioStreamBasicDescription> find_physical_format(
-    std::span<const AudioStreamRangedDescription> formats, AudioFormatID format_id,
-    Float64 carrier_hz) {
-    constexpr Float64 kTolerance = 1.0;
-    for (const auto& candidate : formats) {
-        if (candidate.mFormat.mFormatID != format_id) {
-            continue;
-        }
-        if (carrier_hz >= candidate.mSampleRateRange.mMinimum - kTolerance &&
-            carrier_hz <= candidate.mSampleRateRange.mMaximum + kTolerance) {
-            return candidate.mFormat;
-        }
-    }
-    return std::nullopt;
+ std::span<const AudioStreamRangedDescription> formats, AudioFormatID format_id,
+ Float64 carrier_hz) {
+ constexpr Float64 kTolerance = 1.0;
+ for (const auto& candidate : formats) {
+ if (candidate.mFormat.mFormatID != format_id) {
+ continue;
+ }
+ if (carrier_hz >= candidate.mSampleRateRange.mMinimum - kTolerance &&
+ carrier_hz <= candidate.mSampleRateRange.mMaximum + kTolerance) {
+ return candidate.mFormat;
+ }
+ }
+ return std::nullopt;
 }
 
 // A display name that is never empty, matching the Windows/ALSA backends'
@@ -126,7 +126,7 @@ namespace ac3::coreaudio {
 // a blank row in a device list is always a rendering bug rather than data
 // this backend produced.
 [[nodiscard]] inline std::string fallback_name(const std::string& uid) {
-    return uid.empty() ? std::string{"Unnamed audio endpoint"} : "Unnamed endpoint " + uid;
+ return uid.empty() ? std::string{"Unnamed audio endpoint"} : "Unnamed endpoint " + uid;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +162,7 @@ namespace ac3::coreaudio {
 // instead, on reports of taps misbehaving on 14.2 and 14.3. Taking 14.4 here
 // would mean refusing a machine whose OS declares the API present, on the
 // strength of a report nobody on this project can check: no Mac has ever run
-// this backend (ROADMAP.md DR9), and neither figure has been observed to be
+// this backend (hardware verification on real Macs), and neither figure has been observed to be
 // right or wrong here. So the floor follows the SDK, and this comment records
 // the other number rather than losing it. If a 14.2 or 14.3 machine is ever
 // found to misbehave, this is the constant to move, and the four places
@@ -179,19 +179,19 @@ inline constexpr std::string_view kSystemAudioTapMinimumOs = "macOS 14.2";
 // kSystemAudioTapMinimumOs uses, which is what lets a test hold the two
 // against each other.
 inline constexpr std::string_view kSystemAudioTapVersionRefusal =
-    "per-process loopback capture needs Core Audio's process-tap API "
-    "(AudioHardwareCreateProcessTap), which arrived in macOS 14.2; this machine is older";
+ "per-process loopback capture needs Core Audio's process-tap API "
+ "(AudioHardwareCreateProcessTap), which arrived in macOS 14.2; this machine is older";
 
 // The sentence for the second gate below. It says what was seen rather than
 // what is forbidden, because that is all anyone here knows: the call that
 // hung is the one that registers an IOProc on the tap's aggregate device, and
 // it hung on a machine that satisfied every documented precondition for it.
 inline constexpr std::string_view kSystemAudioTapUnverifiedRefusal =
-    "per-process loopback capture is off on macOS: the one machine that has run it "
-    "(macOS 26.6.2) never returned from AudioDeviceCreateIOProcID on the tap's aggregate "
-    "device and took the rest of this process's Core Audio with it, so the path is not "
-    "entered until a Mac has been seen to complete it; set AC3FORGE_MACOS_PROCESS_TAP to "
-    "try it";
+ "per-process loopback capture is off on macOS: the one machine that has run it "
+ "(macOS 26.6.2) never returned from AudioDeviceCreateIOProcID on the tap's aggregate "
+ "device and took the rest of this process's Core Audio with it, so the path is not "
+ "entered until a Mac has been seen to complete it; set AC3FORGE_MACOS_PROCESS_TAP to "
+ "try it";
 
 // Whether this OS build is new enough to expose that API. A version gate
 // only: it requests no permission, creates no tap and touches no device, so
@@ -204,10 +204,10 @@ inline constexpr std::string_view kSystemAudioTapUnverifiedRefusal =
 // is why the two sit adjacent and the argument for the number lives on the
 // constant.
 [[nodiscard]] inline bool system_audio_tap_api_available() {
-    if (__builtin_available(macOS 14.2, *)) {
-        return true;
-    }
-    return false;
+ if (__builtin_available(macOS 14.2, *)) {
+ return true;
+ }
+ return false;
 }
 
 // The SECOND gate, and the reason it exists is an observation rather than a
@@ -247,7 +247,7 @@ inline constexpr std::string_view kSystemAudioTapUnverifiedRefusal =
 // samples on real hardware should delete this gate and the paragraph above
 // rather than leave the opt-in in place.
 [[nodiscard]] inline bool system_audio_tap_enabled() {
-    return std::getenv("AC3FORGE_MACOS_PROCESS_TAP") != nullptr;
+ return std::getenv("AC3FORGE_MACOS_PROCESS_TAP") != nullptr;
 }
 
 // Which of the two gates is turning a caller away, as the sentence to print.
@@ -256,8 +256,8 @@ inline constexpr std::string_view kSystemAudioTapUnverifiedRefusal =
 // process_loopback reason - so they cannot say different things, which is the
 // property tests/backend/macos/test_macos_support.cpp holds.
 [[nodiscard]] inline std::string_view system_audio_tap_refusal() {
-    return system_audio_tap_api_available() ? kSystemAudioTapUnverifiedRefusal
-                                            : kSystemAudioTapVersionRefusal;
+ return system_audio_tap_api_available() ? kSystemAudioTapUnverifiedRefusal
+ : kSystemAudioTapVersionRefusal;
 }
 
 // ---------------------------------------------------------------------------
@@ -275,59 +275,59 @@ inline constexpr std::string_view kSystemAudioTapUnverifiedRefusal =
 enum class SampleFormat : std::uint8_t { kFloat32, kPcm16, kPcm32, kUnsupported };
 
 [[nodiscard]] constexpr std::size_t bytes_per_sample(SampleFormat format) {
-    switch (format) {
-        case SampleFormat::kFloat32: return 4;
-        case SampleFormat::kPcm16: return 2;
-        case SampleFormat::kPcm32: return 4;
-        case SampleFormat::kUnsupported: return 0;
-    }
-    return 0;
+ switch (format) {
+ case SampleFormat::kFloat32: return 4;
+ case SampleFormat::kPcm16: return 2;
+ case SampleFormat::kPcm32: return 4;
+ case SampleFormat::kUnsupported: return 0;
+ }
+ return 0;
 }
 
 [[nodiscard]] inline SampleFormat classify_pcm(const AudioStreamBasicDescription& asbd) {
-    if (asbd.mFormatID != kAudioFormatLinearPCM) {
-        return SampleFormat::kUnsupported;
-    }
-    const bool is_float = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0;
-    const bool is_signed_int = (asbd.mFormatFlags & kAudioFormatFlagIsSignedInteger) != 0;
-    if (is_float && asbd.mBitsPerChannel == 32) {
-        return SampleFormat::kFloat32;
-    }
-    if (is_signed_int && asbd.mBitsPerChannel == 16) {
-        return SampleFormat::kPcm16;
-    }
-    if (is_signed_int && asbd.mBitsPerChannel == 32) {
-        return SampleFormat::kPcm32;
-    }
-    return SampleFormat::kUnsupported;
+ if (asbd.mFormatID != kAudioFormatLinearPCM) {
+ return SampleFormat::kUnsupported;
+ }
+ const bool is_float = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0;
+ const bool is_signed_int = (asbd.mFormatFlags & kAudioFormatFlagIsSignedInteger) != 0;
+ if (is_float && asbd.mBitsPerChannel == 32) {
+ return SampleFormat::kFloat32;
+ }
+ if (is_signed_int && asbd.mBitsPerChannel == 16) {
+ return SampleFormat::kPcm16;
+ }
+ if (is_signed_int && asbd.mBitsPerChannel == 32) {
+ return SampleFormat::kPcm32;
+ }
+ return SampleFormat::kUnsupported;
 }
 
 // Raw device samples turned into normalised float - the read side of the
 // pair, mirroring platform/alsa/capture.cpp's own convert().
 inline void samples_to_float(const std::byte* data, std::size_t count, SampleFormat format,
-                             std::span<float> out) {
-    switch (format) {
-        case SampleFormat::kFloat32:
-            std::memcpy(out.data(), data, count * sizeof(float));
-            break;
-        case SampleFormat::kPcm16:
-            for (std::size_t i = 0; i < count; ++i) {
-                std::int16_t value = 0;
-                std::memcpy(&value, data + i * 2, sizeof(value));
-                out[i] = static_cast<float>(value) / 32768.0f;
-            }
-            break;
-        case SampleFormat::kPcm32:
-            for (std::size_t i = 0; i < count; ++i) {
-                std::int32_t value = 0;
-                std::memcpy(&value, data + i * 4, sizeof(value));
-                out[i] = static_cast<float>(value) / 2147483648.0f;
-            }
-            break;
-        case SampleFormat::kUnsupported:
-            std::ranges::fill(out, 0.0f);
-            break;
-    }
+ std::span<float> out) {
+ switch (format) {
+ case SampleFormat::kFloat32:
+ std::memcpy(out.data(), data, count * sizeof(float));
+ break;
+ case SampleFormat::kPcm16:
+ for (std::size_t i = 0; i < count; ++i) {
+ std::int16_t value = 0;
+ std::memcpy(&value, data + i * 2, sizeof(value));
+ out[i] = static_cast<float>(value) / 32768.0f;
+ }
+ break;
+ case SampleFormat::kPcm32:
+ for (std::size_t i = 0; i < count; ++i) {
+ std::int32_t value = 0;
+ std::memcpy(&value, data + i * 4, sizeof(value));
+ out[i] = static_cast<float>(value) / 2147483648.0f;
+ }
+ break;
+ case SampleFormat::kUnsupported:
+ std::ranges::fill(out, 0.0f);
+ break;
+ }
 }
 
 // Normalised float turned into raw device samples - the write side of the
@@ -335,27 +335,27 @@ inline void samples_to_float(const std::byte* data, std::size_t count, SampleFor
 // same reason that one is: a decoded sample slightly outside [-1, 1] should
 // sound loud, not wrap around to the opposite polarity and click.
 inline void float_to_samples(std::span<const float> in, SampleFormat format, std::byte* out) {
-    switch (format) {
-        case SampleFormat::kFloat32:
-            std::memcpy(out, in.data(), in.size() * sizeof(float));
-            break;
-        case SampleFormat::kPcm16:
-            for (std::size_t i = 0; i < in.size(); ++i) {
-                const float clamped = std::clamp(in[i], -1.0f, 1.0f);
-                const auto value = static_cast<std::int16_t>(clamped * 32767.0f);
-                std::memcpy(out + i * 2, &value, sizeof(value));
-            }
-            break;
-        case SampleFormat::kPcm32:
-            for (std::size_t i = 0; i < in.size(); ++i) {
-                const float clamped = std::clamp(in[i], -1.0f, 1.0f);
-                const auto value = static_cast<std::int32_t>(clamped * 2147483520.0f);
-                std::memcpy(out + i * 4, &value, sizeof(value));
-            }
-            break;
-        case SampleFormat::kUnsupported:
-            break;
-    }
+ switch (format) {
+ case SampleFormat::kFloat32:
+ std::memcpy(out, in.data(), in.size() * sizeof(float));
+ break;
+ case SampleFormat::kPcm16:
+ for (std::size_t i = 0; i < in.size(); ++i) {
+ const float clamped = std::clamp(in[i], -1.0f, 1.0f);
+ const auto value = static_cast<std::int16_t>(clamped * 32767.0f);
+ std::memcpy(out + i * 2, &value, sizeof(value));
+ }
+ break;
+ case SampleFormat::kPcm32:
+ for (std::size_t i = 0; i < in.size(); ++i) {
+ const float clamped = std::clamp(in[i], -1.0f, 1.0f);
+ const auto value = static_cast<std::int32_t>(clamped * 2147483520.0f);
+ std::memcpy(out + i * 4, &value, sizeof(value));
+ }
+ break;
+ case SampleFormat::kUnsupported:
+ break;
+ }
 }
 
-}  // namespace ac3::coreaudio
+} // namespace ac3::coreaudio

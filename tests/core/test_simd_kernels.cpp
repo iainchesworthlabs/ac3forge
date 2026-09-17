@@ -24,7 +24,7 @@
 #include "mdct_avx2.hpp"
 #endif
 
-// ROADMAP PF5's correctness gate.
+// SIMD kernels's correctness gate.
 //
 // The vector kernels in the codec core are written once, against the two
 // 128-bit types src/forge/src/internal/arch/<arch>/ac3/internal/arch/simd.hpp
@@ -51,7 +51,7 @@
 // check against the direct-form oracle and by the cross-build corpus check
 // below.
 //
-// The FFT/DCT-IV kernel itself (fft_kernel.hpp, ROADMAP PF4) is NOT part of
+// The FFT/DCT-IV kernel itself (fft_kernel.hpp, FFT core follow-ups) is NOT part of
 // this seam: its radix-4 restructuring is an algorithmic change (fewer
 // operations), not a wider-lane one, and carries its own correctness
 // argument in that header's comment.
@@ -69,71 +69,71 @@ namespace arch = ac3::internal::arch;
 // equal) and has to fail rather than silently pass on a NaN pair (which
 // compare unequal to everything, themselves included).
 bool same_bits(double a, double b) {
-    return std::bit_cast<std::uint64_t>(a) == std::bit_cast<std::uint64_t>(b);
+ return std::bit_cast<std::uint64_t>(a) == std::bit_cast<std::uint64_t>(b);
 }
 
 // A deterministic spread of doubles across the ranges the kernels actually
 // see, plus the ones that break naive implementations. Seeded, so a failure
 // on a CI leg reproduces exactly.
 std::vector<double> adversarial_doubles() {
-    std::vector<double> v{
-        0.0,
-        -0.0,
-        0.5,
-        -0.5,
-        1.5,
-        -1.5,
-        2.5,
-        -2.5,
-        3.5,
-        -3.5,
-        // Either side of a tie by one ulp: the values a round-half-up
-        // implementation built on x + 0.5 gets wrong.
-        0.49999999999999994,
-        -0.49999999999999994,
-        std::nextafter(0.5, 1.0),
-        std::nextafter(2.5, 0.0),
-        // The magic-number constant the SSE2 path pivots on, and its
-        // neighbours.
-        4503599627370496.0,   // 2^52
-        4503599627370495.5,   // largest double below 2^52 with a fraction
-        -4503599627370496.0,
-        9007199254740992.0,  // 2^53
-        // Fixed-point clamp boundaries (to_fixed25's own range).
-        1.0,
-        -1.0,
-        0.9999999403953552,
-        -0.9999999403953552,
-        16777215.0 / 16777216.0,
-        -1.0000001,
-        1e-300,
-        -1e-300,
-        std::numeric_limits<double>::denorm_min(),
-        -std::numeric_limits<double>::denorm_min(),
-        std::numeric_limits<double>::min(),
-        std::numeric_limits<double>::max(),
-        std::numeric_limits<double>::infinity(),
-        -std::numeric_limits<double>::infinity(),
-    };
-    // Every half-integer up to 2048, both signs: the whole tie ladder in the
-    // range coefficients scaled by 2^24 actually reach.
-    for (int i = 0; i <= 2048; ++i) {
-        v.push_back(static_cast<double>(i) + 0.5);
-        v.push_back(-(static_cast<double>(i) + 0.5));
-    }
-    std::mt19937_64 rng(0x5f5d5c5b'5a595857ULL);
-    std::uniform_real_distribution<double> coefficient(-1.5, 1.5);
-    std::uniform_real_distribution<double> scaled(-2.0e7, 2.0e7);
-    for (int i = 0; i < 20000; ++i) {
-        v.push_back(coefficient(rng));
-        v.push_back(scaled(rng));
-    }
-    return v;
+ std::vector<double> v{
+ 0.0,
+ -0.0,
+ 0.5,
+ -0.5,
+ 1.5,
+ -1.5,
+ 2.5,
+ -2.5,
+ 3.5,
+ -3.5,
+ // Either side of a tie by one ulp: the values a round-half-up
+ // implementation built on x + 0.5 gets wrong.
+ 0.49999999999999994,
+ -0.49999999999999994,
+ std::nextafter(0.5, 1.0),
+ std::nextafter(2.5, 0.0),
+ // The magic-number constant the SSE2 path pivots on, and its
+ // neighbours.
+ 4503599627370496.0, // 2^52
+ 4503599627370495.5, // largest double below 2^52 with a fraction
+ -4503599627370496.0,
+ 9007199254740992.0, // 2^53
+ // Fixed-point clamp boundaries (to_fixed25's own range).
+ 1.0,
+ -1.0,
+ 0.9999999403953552,
+ -0.9999999403953552,
+ 16777215.0 / 16777216.0,
+ -1.0000001,
+ 1e-300,
+ -1e-300,
+ std::numeric_limits<double>::denorm_min(),
+ -std::numeric_limits<double>::denorm_min(),
+ std::numeric_limits<double>::min(),
+ std::numeric_limits<double>::max(),
+ std::numeric_limits<double>::infinity(),
+ -std::numeric_limits<double>::infinity(),
+ };
+ // Every half-integer up to 2048, both signs: the whole tie ladder in the
+ // range coefficients scaled by 2^24 actually reach.
+ for (int i = 0; i <= 2048; ++i) {
+ v.push_back(static_cast<double>(i) + 0.5);
+ v.push_back(-(static_cast<double>(i) + 0.5));
+ }
+ std::mt19937_64 rng(0x5f5d5c5b'5a595857ULL);
+ std::uniform_real_distribution<double> coefficient(-1.5, 1.5);
+ std::uniform_real_distribution<double> scaled(-2.0e7, 2.0e7);
+ for (int i = 0; i < 20000; ++i) {
+ v.push_back(coefficient(rng));
+ v.push_back(scaled(rng));
+ }
+ return v;
 }
 
 // The float32 counterpart, for f32x4. Same rule, 32 bits.
 bool same_bits(float a, float b) {
-    return std::bit_cast<std::uint32_t>(a) == std::bit_cast<std::uint32_t>(b);
+ return std::bit_cast<std::uint32_t>(a) == std::bit_cast<std::uint32_t>(b);
 }
 
 // The float32 spread. The interesting values are not the doubles' values
@@ -147,268 +147,268 @@ bool same_bits(float a, float b) {
 // claim is false for - which is exactly what AArch32's Advanced SIMD did to
 // single precision, and what -ffast-math asks for on any target.
 std::vector<float> adversarial_floats() {
-    std::vector<float> v{
-        0.0F,
-        -0.0F,
-        0.5F,
-        -0.5F,
-        1.5F,
-        -1.5F,
-        2.5F,
-        -2.5F,
-        // Either side of a tie by one ulp, at float precision.
-        0.49999997F,
-        -0.49999997F,
-        std::nextafterf(0.5F, 1.0F),
-        std::nextafterf(2.5F, 0.0F),
-        // A float's integer-resolution boundary and its neighbours.
-        8388608.0F,   // 2^23
-        8388607.5F,   // largest float below 2^23 with a fraction
-        -8388608.0F,
-        16777216.0F,  // 2^24
-        // Coefficient-range boundaries.
-        1.0F,
-        -1.0F,
-        0.99999994F,
-        -1.0000001F,
-        // Denormals themselves, and the smallest normal either side of them.
-        std::numeric_limits<float>::denorm_min(),
-        -std::numeric_limits<float>::denorm_min(),
-        std::numeric_limits<float>::min(),
-        -std::numeric_limits<float>::min(),
-        std::nextafterf(std::numeric_limits<float>::min(), 0.0F),
-        std::numeric_limits<float>::max(),
-        std::numeric_limits<float>::infinity(),
-        -std::numeric_limits<float>::infinity(),
-    };
-    // The tie ladder, over the range twiddle-scaled coefficients reach.
-    for (int i = 0; i <= 2048; ++i) {
-        v.push_back(static_cast<float>(i) + 0.5F);
-        v.push_back(-(static_cast<float>(i) + 0.5F));
-    }
-    // Seeded, so a failure on a CI leg reproduces exactly. The test below
-    // pairs lane j of a block of eight with lane j of the next four, so both
-    // halves of each pair come from the same run of pushes - which is what
-    // makes the tiny*tiny block below produce denormal products rather than
-    // merely containing small numbers.
-    std::mt19937_64 rng(0x4e4d4c4b'4a494847ULL);
-    std::uniform_real_distribution<float> coefficient(-1.5F, 1.5F);
-    std::uniform_real_distribution<float> tiny(-1.0e-20F, 1.0e-20F);
-    for (int i = 0; i < 10000; ++i) {
-        v.push_back(coefficient(rng));
-        v.push_back(coefficient(rng));
-    }
-    // ~1e-20 squared is ~1e-40, an order of magnitude below FLT_MIN.
-    for (int i = 0; i < 10000; ++i) {
-        v.push_back(tiny(rng));
-        v.push_back(tiny(rng));
-    }
-    return v;
+ std::vector<float> v{
+ 0.0F,
+ -0.0F,
+ 0.5F,
+ -0.5F,
+ 1.5F,
+ -1.5F,
+ 2.5F,
+ -2.5F,
+ // Either side of a tie by one ulp, at float precision.
+ 0.49999997F,
+ -0.49999997F,
+ std::nextafterf(0.5F, 1.0F),
+ std::nextafterf(2.5F, 0.0F),
+ // A float's integer-resolution boundary and its neighbours.
+ 8388608.0F, // 2^23
+ 8388607.5F, // largest float below 2^23 with a fraction
+ -8388608.0F,
+ 16777216.0F, // 2^24
+ // Coefficient-range boundaries.
+ 1.0F,
+ -1.0F,
+ 0.99999994F,
+ -1.0000001F,
+ // Denormals themselves, and the smallest normal either side of them.
+ std::numeric_limits<float>::denorm_min(),
+ -std::numeric_limits<float>::denorm_min(),
+ std::numeric_limits<float>::min(),
+ -std::numeric_limits<float>::min(),
+ std::nextafterf(std::numeric_limits<float>::min(), 0.0F),
+ std::numeric_limits<float>::max(),
+ std::numeric_limits<float>::infinity(),
+ -std::numeric_limits<float>::infinity(),
+ };
+ // The tie ladder, over the range twiddle-scaled coefficients reach.
+ for (int i = 0; i <= 2048; ++i) {
+ v.push_back(static_cast<float>(i) + 0.5F);
+ v.push_back(-(static_cast<float>(i) + 0.5F));
+ }
+ // Seeded, so a failure on a CI leg reproduces exactly. The test below
+ // pairs lane j of a block of eight with lane j of the next four, so both
+ // halves of each pair come from the same run of pushes - which is what
+ // makes the tiny*tiny block below produce denormal products rather than
+ // merely containing small numbers.
+ std::mt19937_64 rng(0x4e4d4c4b'4a494847ULL);
+ std::uniform_real_distribution<float> coefficient(-1.5F, 1.5F);
+ std::uniform_real_distribution<float> tiny(-1.0e-20F, 1.0e-20F);
+ for (int i = 0; i < 10000; ++i) {
+ v.push_back(coefficient(rng));
+ v.push_back(coefficient(rng));
+ }
+ // ~1e-20 squared is ~1e-40, an order of magnitude below FLT_MIN.
+ for (int i = 0; i < 10000; ++i) {
+ v.push_back(tiny(rng));
+ v.push_back(tiny(rng));
+ }
+ return v;
 }
 
-}  // namespace
+} // namespace
 
 TEST_CASE("arch seam reports which directory was compiled", "[simd]") {
-    // Not an assertion about WHICH one - a generic build is legitimate
-    // everywhere and is what -DAC3FORGE_SIMD=generic asks for. Printed so a
-    // CI log records what the rest of this file actually exercised, which is
-    // the difference between a meaningful run and a tautological one.
-    std::printf("arch seam: %s\n", arch::kSimdName);
-    CHECK(arch::kSimdName != nullptr);
+ // Not an assertion about WHICH one - a generic build is legitimate
+ // everywhere and is what -DAC3FORGE_SIMD=generic asks for. Printed so a
+ // CI log records what the rest of this file actually exercised, which is
+ // the difference between a meaningful run and a tautological one.
+ std::printf("arch seam: %s\n", arch::kSimdName);
+ CHECK(arch::kSimdName != nullptr);
 }
 
 TEST_CASE("f64x2 load, store, set and broadcast keep lane order", "[simd]") {
-    const std::array<double, 2> src{-3.25, 7.5};
-    std::array<double, 2> dst{};
-    arch::f64x2::load(src.data()).store(dst.data());
-    CHECK(same_bits(dst[0], src[0]));
-    CHECK(same_bits(dst[1], src[1]));
+ const std::array<double, 2> src{-3.25, 7.5};
+ std::array<double, 2> dst{};
+ arch::f64x2::load(src.data()).store(dst.data());
+ CHECK(same_bits(dst[0], src[0]));
+ CHECK(same_bits(dst[1], src[1]));
 
-    const auto pair = arch::f64x2::set(1.5, -2.5);
-    CHECK(same_bits(pair.lane0(), 1.5));
-    CHECK(same_bits(pair.lane1(), -2.5));
+ const auto pair = arch::f64x2::set(1.5, -2.5);
+ CHECK(same_bits(pair.lane0(), 1.5));
+ CHECK(same_bits(pair.lane1(), -2.5));
 
-    const auto both = arch::f64x2::broadcast(-0.0);
-    CHECK(same_bits(both.lane0(), -0.0));
-    CHECK(same_bits(both.lane1(), -0.0));
+ const auto both = arch::f64x2::broadcast(-0.0);
+ CHECK(same_bits(both.lane0(), -0.0));
+ CHECK(same_bits(both.lane1(), -0.0));
 }
 
 TEST_CASE("f64x2 arithmetic is lane-wise IEEE-754", "[simd]") {
-    const auto values = adversarial_doubles();
-    std::size_t mismatches = 0;
-    for (std::size_t i = 0; i + 1 < values.size(); i += 2) {
-        const double a = values[i];
-        const double b = values[i + 1];
-        const auto va = arch::f64x2::set(a, b);
-        const auto vb = arch::f64x2::set(b, a);
-        const auto sum = va + vb;
-        const auto diff = va - vb;
-        const auto prod = va * vb;
-        const auto neg = -va;
-        // Skip the pairs whose scalar answer is a NaN: same_bits cannot
-        // compare NaN payloads meaningfully, and nothing in the codec
-        // produces one.
-        if (std::isnan(a + b) || std::isnan(a - b) || std::isnan(a * b)) {
-            continue;
-        }
-        if (!same_bits(sum.lane0(), a + b) || !same_bits(sum.lane1(), b + a) ||
-            !same_bits(diff.lane0(), a - b) || !same_bits(diff.lane1(), b - a) ||
-            !same_bits(prod.lane0(), a * b) || !same_bits(prod.lane1(), b * a) ||
-            !same_bits(neg.lane0(), -a) || !same_bits(neg.lane1(), -b)) {
-            ++mismatches;
-        }
-    }
-    CHECK(mismatches == 0);
+ const auto values = adversarial_doubles();
+ std::size_t mismatches = 0;
+ for (std::size_t i = 0; i + 1 < values.size(); i += 2) {
+ const double a = values[i];
+ const double b = values[i + 1];
+ const auto va = arch::f64x2::set(a, b);
+ const auto vb = arch::f64x2::set(b, a);
+ const auto sum = va + vb;
+ const auto diff = va - vb;
+ const auto prod = va * vb;
+ const auto neg = -va;
+ // Skip the pairs whose scalar answer is a NaN: same_bits cannot
+ // compare NaN payloads meaningfully, and nothing in the codec
+ // produces one.
+ if (std::isnan(a + b) || std::isnan(a - b) || std::isnan(a * b)) {
+ continue;
+ }
+ if (!same_bits(sum.lane0(), a + b) || !same_bits(sum.lane1(), b + a) ||
+ !same_bits(diff.lane0(), a - b) || !same_bits(diff.lane1(), b - a) ||
+ !same_bits(prod.lane0(), a * b) || !same_bits(prod.lane1(), b * a) ||
+ !same_bits(neg.lane0(), -a) || !same_bits(neg.lane1(), -b)) {
+ ++mismatches;
+ }
+ }
+ CHECK(mismatches == 0);
 }
 
 TEST_CASE("round_ties_away is exactly std::round", "[simd]") {
-    // The seam's one non-obvious contract, and the one whose x86_64
-    // implementation is arithmetic rather than an instruction: SSE2 has no
-    // rounding instruction, SSE4.1's rounds ties to EVEN, and the usual
-    // trunc(x + copysign(0.5, x)) shortcut is wrong at 0.49999999999999994
-    // (which is in the value set above). If this ever fails, to_fixed25_block
-    // is producing different fixed-point values from to_fixed25 and every
-    // encode on the leg is suspect.
-    const auto values = adversarial_doubles();
-    std::size_t mismatches = 0;
-    for (std::size_t i = 0; i + 1 < values.size(); i += 2) {
-        const double a = values[i];
-        const double b = values[i + 1];
-        const auto rounded = arch::round_ties_away(arch::f64x2::set(a, b));
-        if (std::isnan(a) || std::isnan(b)) {
-            continue;
-        }
-        if (!same_bits(rounded.lane0(), std::round(a)) ||
-            !same_bits(rounded.lane1(), std::round(b))) {
-            ++mismatches;
-        }
-    }
-    CHECK(mismatches == 0);
+ // The seam's one non-obvious contract, and the one whose x86_64
+ // implementation is arithmetic rather than an instruction: SSE2 has no
+ // rounding instruction, SSE4.1's rounds ties to EVEN, and the usual
+ // trunc(x + copysign(0.5, x)) shortcut is wrong at 0.49999999999999994
+ // (which is in the value set above). If this ever fails, to_fixed25_block
+ // is producing different fixed-point values from to_fixed25 and every
+ // encode on the leg is suspect.
+ const auto values = adversarial_doubles();
+ std::size_t mismatches = 0;
+ for (std::size_t i = 0; i + 1 < values.size(); i += 2) {
+ const double a = values[i];
+ const double b = values[i + 1];
+ const auto rounded = arch::round_ties_away(arch::f64x2::set(a, b));
+ if (std::isnan(a) || std::isnan(b)) {
+ continue;
+ }
+ if (!same_bits(rounded.lane0(), std::round(a)) ||
+ !same_bits(rounded.lane1(), std::round(b))) {
+ ++mismatches;
+ }
+ }
+ CHECK(mismatches == 0);
 }
 
 TEST_CASE("f32x4 load, store, set and broadcast keep lane order", "[simd]") {
-    const std::array<float, 4> src{-3.25F, 7.5F, 0.125F, -64.0F};
-    std::array<float, 4> dst{};
-    arch::f32x4::load(src.data()).store(dst.data());
-    for (std::size_t lane = 0; lane < 4; ++lane) {
-        CHECK(same_bits(dst[lane], src[lane]));
-    }
+ const std::array<float, 4> src{-3.25F, 7.5F, 0.125F, -64.0F};
+ std::array<float, 4> dst{};
+ arch::f32x4::load(src.data()).store(dst.data());
+ for (std::size_t lane = 0; lane < 4; ++lane) {
+ CHECK(same_bits(dst[lane], src[lane]));
+ }
 
-    // Lane 0 first, which is the order the seam states and the order
-    // _mm_setr_ps takes but _mm_set_ps does not.
-    const auto quad = arch::f32x4::set(1.5F, -2.5F, 3.5F, -4.5F);
-    CHECK(same_bits(quad.lane0(), 1.5F));
-    CHECK(same_bits(quad.lane1(), -2.5F));
-    CHECK(same_bits(quad.lane2(), 3.5F));
-    CHECK(same_bits(quad.lane3(), -4.5F));
+ // Lane 0 first, which is the order the seam states and the order
+ // _mm_setr_ps takes but _mm_set_ps does not.
+ const auto quad = arch::f32x4::set(1.5F, -2.5F, 3.5F, -4.5F);
+ CHECK(same_bits(quad.lane0(), 1.5F));
+ CHECK(same_bits(quad.lane1(), -2.5F));
+ CHECK(same_bits(quad.lane2(), 3.5F));
+ CHECK(same_bits(quad.lane3(), -4.5F));
 
-    const auto all = arch::f32x4::broadcast(-0.0F);
-    CHECK(same_bits(all.lane0(), -0.0F));
-    CHECK(same_bits(all.lane1(), -0.0F));
-    CHECK(same_bits(all.lane2(), -0.0F));
-    CHECK(same_bits(all.lane3(), -0.0F));
+ const auto all = arch::f32x4::broadcast(-0.0F);
+ CHECK(same_bits(all.lane0(), -0.0F));
+ CHECK(same_bits(all.lane1(), -0.0F));
+ CHECK(same_bits(all.lane2(), -0.0F));
+ CHECK(same_bits(all.lane3(), -0.0F));
 }
 
 TEST_CASE("f32x4 arithmetic is lane-wise IEEE-754", "[simd]") {
-    // The f64x2 argument at single precision: every operation is one IEEE-754
-    // add, subtract or multiply per lane, so mdct.cpp's float32 twiddle
-    // stages produce the same floats the scalar loops they replaced produced.
-    // The float32 decode path feeds the same exponent extraction the double
-    // one does, so a last-place difference here is still 6.02 dB downstream.
-    const auto values = adversarial_floats();
-    std::size_t mismatches = 0;
-    std::size_t denormal_products = 0;
-    for (std::size_t i = 0; i + 8 <= values.size(); i += 8) {
-        const auto va =
-            arch::f32x4::set(values[i], values[i + 1], values[i + 2], values[i + 3]);
-        const auto vb =
-            arch::f32x4::set(values[i + 4], values[i + 5], values[i + 6], values[i + 7]);
-        const auto sum = va + vb;
-        const auto diff = va - vb;
-        const auto prod = va * vb;
-        const auto neg = -va;
-        const std::array<float, 4> got_sum{sum.lane0(), sum.lane1(), sum.lane2(), sum.lane3()};
-        const std::array<float, 4> got_diff{diff.lane0(), diff.lane1(), diff.lane2(),
-                                            diff.lane3()};
-        const std::array<float, 4> got_prod{prod.lane0(), prod.lane1(), prod.lane2(),
-                                            prod.lane3()};
-        const std::array<float, 4> got_neg{neg.lane0(), neg.lane1(), neg.lane2(), neg.lane3()};
-        for (std::size_t lane = 0; lane < 4; ++lane) {
-            const float a = values[i + lane];
-            const float b = values[i + 4 + lane];
-            // Skip the pairs whose scalar answer is a NaN, as the f64x2 case
-            // does and for the same reason.
-            if (std::isnan(a + b) || std::isnan(a - b) || std::isnan(a * b)) {
-                continue;
-            }
-            if (std::fpclassify(a * b) == FP_SUBNORMAL) {
-                ++denormal_products;
-            }
-            if (!same_bits(got_sum[lane], a + b) || !same_bits(got_diff[lane], a - b) ||
-                !same_bits(got_prod[lane], a * b) || !same_bits(got_neg[lane], -a)) {
-                ++mismatches;
-            }
-        }
-    }
-    CHECK(mismatches == 0);
-    // A flush-to-zero vector unit is only detectable above if the value set
-    // actually reaches the denormal range, so assert that it did rather than
-    // trusting the constants to stay where they are.
-    CHECK(denormal_products > 0);
+ // The f64x2 argument at single precision: every operation is one IEEE-754
+ // add, subtract or multiply per lane, so mdct.cpp's float32 twiddle
+ // stages produce the same floats the scalar loops they replaced produced.
+ // The float32 decode path feeds the same exponent extraction the double
+ // one does, so a last-place difference here is still 6.02 dB downstream.
+ const auto values = adversarial_floats();
+ std::size_t mismatches = 0;
+ std::size_t denormal_products = 0;
+ for (std::size_t i = 0; i + 8 <= values.size(); i += 8) {
+ const auto va =
+ arch::f32x4::set(values[i], values[i + 1], values[i + 2], values[i + 3]);
+ const auto vb =
+ arch::f32x4::set(values[i + 4], values[i + 5], values[i + 6], values[i + 7]);
+ const auto sum = va + vb;
+ const auto diff = va - vb;
+ const auto prod = va * vb;
+ const auto neg = -va;
+ const std::array<float, 4> got_sum{sum.lane0(), sum.lane1(), sum.lane2(), sum.lane3()};
+ const std::array<float, 4> got_diff{diff.lane0(), diff.lane1(), diff.lane2(),
+ diff.lane3()};
+ const std::array<float, 4> got_prod{prod.lane0(), prod.lane1(), prod.lane2(),
+ prod.lane3()};
+ const std::array<float, 4> got_neg{neg.lane0(), neg.lane1(), neg.lane2(), neg.lane3()};
+ for (std::size_t lane = 0; lane < 4; ++lane) {
+ const float a = values[i + lane];
+ const float b = values[i + 4 + lane];
+ // Skip the pairs whose scalar answer is a NaN, as the f64x2 case
+ // does and for the same reason.
+ if (std::isnan(a + b) || std::isnan(a - b) || std::isnan(a * b)) {
+ continue;
+ }
+ if (std::fpclassify(a * b) == FP_SUBNORMAL) {
+ ++denormal_products;
+ }
+ if (!same_bits(got_sum[lane], a + b) || !same_bits(got_diff[lane], a - b) ||
+ !same_bits(got_prod[lane], a * b) || !same_bits(got_neg[lane], -a)) {
+ ++mismatches;
+ }
+ }
+ }
+ CHECK(mismatches == 0);
+ // A flush-to-zero vector unit is only detectable above if the value set
+ // actually reaches the denormal range, so assert that it did rather than
+ // trusting the constants to stay where they are.
+ CHECK(denormal_products > 0);
 }
 
 TEST_CASE("i32x4 widening, shift and subtract match the scalar form", "[simd]") {
-    // Every byte value, four at a time, through the §7.2.2.2 expression the
-    // bit allocator uses it for: psd = 3072 - (exp << 7).
-    std::array<std::uint8_t, 260> exps{};
-    for (std::size_t i = 0; i < exps.size(); ++i) {
-        exps[i] = static_cast<std::uint8_t>(i % 256);
-    }
-    const auto base = arch::i32x4::broadcast(3072);
-    std::size_t mismatches = 0;
-    for (std::size_t i = 0; i + 4 <= exps.size(); ++i) {
-        std::array<std::int32_t, 4> got{};
-        (base - arch::shift_left<7>(arch::i32x4::load_u8_widen(exps.data() + i)))
-            .store(got.data());
-        for (std::size_t lane = 0; lane < 4; ++lane) {
-            if (got[lane] != 3072 - (exps[i + lane] << 7)) {
-                ++mismatches;
-            }
-        }
-    }
-    CHECK(mismatches == 0);
+ // Every byte value, four at a time, through the §7.2.2.2 expression the
+ // bit allocator uses it for: psd = 3072 - (exp << 7).
+ std::array<std::uint8_t, 260> exps{};
+ for (std::size_t i = 0; i < exps.size(); ++i) {
+ exps[i] = static_cast<std::uint8_t>(i % 256);
+ }
+ const auto base = arch::i32x4::broadcast(3072);
+ std::size_t mismatches = 0;
+ for (std::size_t i = 0; i + 4 <= exps.size(); ++i) {
+ std::array<std::int32_t, 4> got{};
+ (base - arch::shift_left<7>(arch::i32x4::load_u8_widen(exps.data() + i)))
+ .store(got.data());
+ for (std::size_t lane = 0; lane < 4; ++lane) {
+ if (got[lane] != 3072 - (exps[i + lane] << 7)) {
+ ++mismatches;
+ }
+ }
+ }
+ CHECK(mismatches == 0);
 }
 
 TEST_CASE("to_fixed25_block agrees with to_fixed25 element by element", "[simd]") {
-    const auto values = adversarial_doubles();
-    std::vector<std::int32_t> batched(values.size());
-    ac3::to_fixed25_block(values, batched);
-    std::size_t mismatches = 0;
-    for (std::size_t i = 0; i < values.size(); ++i) {
-        // to_fixed25 narrows with a C++ cast, which is undefined for a NaN
-        // or an out-of-range value; the clamp rules those out for everything
-        // except a NaN, which nothing in the codec produces and which
-        // adversarial_doubles() therefore does not include.
-        if (batched[i] != ac3::to_fixed25(values[i])) {
-            ++mismatches;
-        }
-    }
-    CHECK(mismatches == 0);
+ const auto values = adversarial_doubles();
+ std::vector<std::int32_t> batched(values.size());
+ ac3::to_fixed25_block(values, batched);
+ std::size_t mismatches = 0;
+ for (std::size_t i = 0; i < values.size(); ++i) {
+ // to_fixed25 narrows with a C++ cast, which is undefined for a NaN
+ // or an out-of-range value; the clamp rules those out for everything
+ // except a NaN, which nothing in the codec produces and which
+ // adversarial_doubles() therefore does not include.
+ if (batched[i] != ac3::to_fixed25(values[i])) {
+ ++mismatches;
+ }
+ }
+ CHECK(mismatches == 0);
 
-    // Odd lengths matter: every legal AC-3 mantissa count is odd (37, 61,
-    // ... 253), so the batch form's scalar tail runs on every real call.
-    for (const std::size_t n : {std::size_t{0}, std::size_t{1}, std::size_t{37},
-                                std::size_t{253}}) {
-        std::vector<std::int32_t> tail(n);
-        ac3::to_fixed25_block(std::span{values}.first(n), tail);
-        for (std::size_t i = 0; i < n; ++i) {
-            CHECK(tail[i] == ac3::to_fixed25(values[i]));
-        }
-    }
+ // Odd lengths matter: every legal AC-3 mantissa count is odd (37, 61,
+ // ... 253), so the batch form's scalar tail runs on every real call.
+ for (const std::size_t n : {std::size_t{0}, std::size_t{1}, std::size_t{37},
+ std::size_t{253}}) {
+ std::vector<std::int32_t> tail(n);
+ ac3::to_fixed25_block(std::span{values}.first(n), tail);
+ for (std::size_t i = 0; i < n; ++i) {
+ CHECK(tail[i] == ac3::to_fixed25(values[i]));
+ }
+ }
 }
 
 // ---------------------------------------------------------------------------
-// Runtime CPU-feature dispatch (ROADMAP PF5's dynamic-dispatch follow-on).
+// Runtime CPU-feature dispatch (runtime SIMD dispatch).
 //
 // Unlike the tests above, this is not about a compile-time-selected tier's
 // arithmetic - it is about whether the RUNTIME decision of which tier to
@@ -421,96 +421,96 @@ TEST_CASE("to_fixed25_block agrees with to_fixed25 element by element", "[simd]"
 // ---------------------------------------------------------------------------
 
 TEST_CASE("cpu::has_avx2 reports a stable answer for this process", "[simd][avx2]") {
-    // Not an assertion about which answer - a machine with no AVX2 is a
-    // legitimate, common case (has_avx2() answering false there is exactly
-    // correct), and even a build with AC3FORGE_AVX2=OFF or a non-x86_64
-    // target must still answer unconditionally false rather than fail to
-    // link or crash. Printed so a CI log records what the rest of this
-    // file's [avx2] cases actually exercised.
-    const bool avx2 = ac3::internal::cpu::has_avx2();
-    std::printf("cpu::has_avx2(): %s\n", avx2 ? "true" : "false");
-    // Resolved exactly once per process (a function-local static) - calling
-    // it twice must never disagree with itself.
-    CHECK(ac3::internal::cpu::has_avx2() == avx2);
+ // Not an assertion about which answer - a machine with no AVX2 is a
+ // legitimate, common case (has_avx2() answering false there is exactly
+ // correct), and even a build with AC3FORGE_AVX2=OFF or a non-x86_64
+ // target must still answer unconditionally false rather than fail to
+ // link or crash. Printed so a CI log records what the rest of this
+ // file's [avx2] cases actually exercised.
+ const bool avx2 = ac3::internal::cpu::has_avx2();
+ std::printf("cpu::has_avx2(): %s\n", avx2 ? "true" : "false");
+ // Resolved exactly once per process (a function-local static) - calling
+ // it twice must never disagree with itself.
+ CHECK(ac3::internal::cpu::has_avx2() == avx2);
 }
 
 TEST_CASE("AVX2 probe executes correctly where the CPU actually supports it",
-         "[simd][avx2]") {
+ "[simd][avx2]") {
 #ifdef AC3FORGE_HAVE_AVX2_TIER
-    // Compile-everywhere, execute-if-capable (docs/building.md): the AVX2
-    // TU above this test case in the same binary already proves the code
-    // compiles and links on every x86_64 leg, MSVC/clang-cl/GCC/Clang/
-    // AppleClang alike, with zero hardware dependency. This case proves the
-    // other half - that it actually EXECUTES correctly - which can only be
-    // checked on a machine that truly has AVX2. The four x86_64 CI legs
-    // resolve to self-hosted-or-GitHub-hosted dynamically per run and
-    // self-hosted CPU features are not documented anywhere in this repo,
-    // so this must never assume the current host qualifies.
-    if (!ac3::internal::cpu::has_avx2()) {
-        // A loud, explicit skip - never a silent pass - unless
-        // AC3FORGE_REQUIRE_AVX2=1 asks for a hard failure instead, which is
-        // what turns "the AVX2 path ran and passed" into a guaranteed,
-        // rather than aspirational, statement on whichever CI job sets it
-        // (see tools/ci/run_codec_matrix.sh and docs/building.md).
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
-    CHECK(ac3::internal::avx2::avx2_probe_matches_expected());
+ // Compile-everywhere, execute-if-capable (docs/building.md): the AVX2
+ // TU above this test case in the same binary already proves the code
+ // compiles and links on every x86_64 leg, MSVC/clang-cl/GCC/Clang/
+ // AppleClang alike, with zero hardware dependency. This case proves the
+ // other half - that it actually EXECUTES correctly - which can only be
+ // checked on a machine that truly has AVX2. The four x86_64 CI legs
+ // resolve to self-hosted-or-GitHub-hosted dynamically per run and
+ // self-hosted CPU features are not documented anywhere in this repo,
+ // so this must never assume the current host qualifies.
+ if (!ac3::internal::cpu::has_avx2()) {
+ // A loud, explicit skip - never a silent pass - unless
+ // AC3FORGE_REQUIRE_AVX2=1 asks for a hard failure instead, which is
+ // what turns "the AVX2 path ran and passed" into a guaranteed,
+ // rather than aspirational, statement on whichever CI job sets it
+ // (see tools/ci/run_codec_matrix.sh and docs/building.md).
+ const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+ const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+ INFO("this CPU does not report AVX2 support - nothing to execute here");
+ if (required) {
+ FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+ "it exists to prove - pin this job to hardware that actually has AVX2");
+ }
+ SKIP("AVX2 not available on this CPU");
+ }
+ CHECK(ac3::internal::avx2::avx2_probe_matches_expected());
 #else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+ SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
 #endif
 }
 
 TEST_CASE("AVX2 apply_analysis_window agrees with the scalar form bit-for-bit",
-         "[simd][avx2]") {
+ "[simd][avx2]") {
 #ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+ if (!ac3::internal::cpu::has_avx2()) {
+ const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+ const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+ INFO("this CPU does not report AVX2 support - nothing to execute here");
+ if (required) {
+ FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+ "it exists to prove - pin this job to hardware that actually has AVX2");
+ }
+ SKIP("AVX2 not available on this CPU");
+ }
 
-    // A deterministic pseudorandom 512-sample block, not the adversarial
-    // corpus above: this is a single elementwise multiply against a fixed
-    // table, so there is no rounding-mode edge case of its own to hunt for
-    // (round_ties_away is what that corpus exists for) - the only claim to
-    // check is that four lanes at a time produces the identical bits two
-    // lanes at a time does, on ordinary in-range values.
-    std::array<double, 512> x{};
-    std::mt19937_64 rng(0x61617732'6b657273ULL);
-    std::uniform_real_distribution<double> dist(-1.5, 1.5);
-    for (double& v : x) {
-        v = dist(rng);
-    }
+ // A deterministic pseudorandom 512-sample block, not the adversarial
+ // corpus above: this is a single elementwise multiply against a fixed
+ // table, so there is no rounding-mode edge case of its own to hunt for
+ // (round_ties_away is what that corpus exists for) - the only claim to
+ // check is that four lanes at a time produces the identical bits two
+ // lanes at a time does, on ordinary in-range values.
+ std::array<double, 512> x{};
+ std::mt19937_64 rng(0x61617732'6b657273ULL);
+ std::uniform_real_distribution<double> dist(-1.5, 1.5);
+ for (double& v : x) {
+ v = dist(rng);
+ }
 
-    std::array<double, 512> scalar{};
-    for (std::size_t n = 0; n < x.size(); ++n) {
-        scalar[n] = x[n] * ac3::kAnalysisWindow[n];
-    }
+ std::array<double, 512> scalar{};
+ for (std::size_t n = 0; n < x.size(); ++n) {
+ scalar[n] = x[n] * ac3::kAnalysisWindow[n];
+ }
 
-    std::array<double, 512> avx2_result{};
-    ac3::internal::avx2::apply_analysis_window(x, avx2_result);
+ std::array<double, 512> avx2_result{};
+ ac3::internal::avx2::apply_analysis_window(x, avx2_result);
 
-    std::size_t mismatches = 0;
-    for (std::size_t n = 0; n < x.size(); ++n) {
-        if (!same_bits(avx2_result[n], scalar[n])) {
-            ++mismatches;
-        }
-    }
-    CHECK(mismatches == 0);
+ std::size_t mismatches = 0;
+ for (std::size_t n = 0; n < x.size(); ++n) {
+ if (!same_bits(avx2_result[n], scalar[n])) {
+ ++mismatches;
+ }
+ }
+ CHECK(mismatches == 0);
 #else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+ SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
 #endif
 }
 
@@ -528,362 +528,362 @@ namespace {
 constexpr std::size_t kTestP = 128;
 
 std::vector<double> deterministic_doubles(std::size_t n, std::uint64_t seed) {
-    std::vector<double> v(n);
-    std::mt19937_64 rng(seed);
-    std::uniform_real_distribution<double> dist(-1.5, 1.5);
-    for (double& x : v) {
-        x = dist(rng);
-    }
-    return v;
+ std::vector<double> v(n);
+ std::mt19937_64 rng(seed);
+ std::uniform_real_distribution<double> dist(-1.5, 1.5);
+ for (double& x : v) {
+ x = dist(rng);
+ }
+ return v;
 }
 
 std::vector<std::uint16_t> identity_bitrev(std::size_t n) {
-    std::vector<std::uint16_t> v(n);
-    for (std::size_t i = 0; i < n; ++i) {
-        v[i] = static_cast<std::uint16_t>(i);
-    }
-    return v;
+ std::vector<std::uint16_t> v(n);
+ for (std::size_t i = 0; i < n; ++i) {
+ v[i] = static_cast<std::uint16_t>(i);
+ }
+ return v;
 }
 
 bool all_bits_equal(std::span<const double> a, std::span<const double> b) {
-    if (a.size() != b.size()) {
-        return false;
-    }
-    for (std::size_t i = 0; i < a.size(); ++i) {
-        if (!same_bits(a[i], b[i])) {
-            return false;
-        }
-    }
-    return true;
+ if (a.size() != b.size()) {
+ return false;
+ }
+ for (std::size_t i = 0; i < a.size(); ++i) {
+ if (!same_bits(a[i], b[i])) {
+ return false;
+ }
+ }
+ return true;
 }
 
-}  // namespace
+} // namespace
 #endif
 
 TEST_CASE("AVX2 dct4_pre_twiddle agrees with the scalar form bit-for-bit", "[simd][avx2]") {
 #ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+ if (!ac3::internal::cpu::has_avx2()) {
+ const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+ const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+ INFO("this CPU does not report AVX2 support - nothing to execute here");
+ if (required) {
+ FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+ "it exists to prove - pin this job to hardware that actually has AVX2");
+ }
+ SKIP("AVX2 not available on this CPU");
+ }
 
-    const auto u = deterministic_doubles(2 * kTestP, 0x64637434'70726574ULL);
-    const auto pre_re = deterministic_doubles(kTestP, 0x64637434'70725245ULL);
-    const auto pre_im = deterministic_doubles(kTestP, 0x64637434'70724946ULL);
-    const auto bitrev = identity_bitrev(kTestP);
-    const std::size_t m_len = u.size();
+ const auto u = deterministic_doubles(2 * kTestP, 0x64637434'70726574ULL);
+ const auto pre_re = deterministic_doubles(kTestP, 0x64637434'70725245ULL);
+ const auto pre_im = deterministic_doubles(kTestP, 0x64637434'70724946ULL);
+ const auto bitrev = identity_bitrev(kTestP);
+ const std::size_t m_len = u.size();
 
-    std::vector<double> scalar_re(kTestP), scalar_im(kTestP);
-    for (std::size_t m = 0; m < kTestP; ++m) {
-        const double a = u[2 * m];
-        const double b = u[m_len - 1 - 2 * m];
-        scalar_re[bitrev[m]] = a * pre_re[m] - b * pre_im[m];
-        scalar_im[bitrev[m]] = a * pre_im[m] + b * pre_re[m];
-    }
+ std::vector<double> scalar_re(kTestP), scalar_im(kTestP);
+ for (std::size_t m = 0; m < kTestP; ++m) {
+ const double a = u[2 * m];
+ const double b = u[m_len - 1 - 2 * m];
+ scalar_re[bitrev[m]] = a * pre_re[m] - b * pre_im[m];
+ scalar_im[bitrev[m]] = a * pre_im[m] + b * pre_re[m];
+ }
 
-    std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
-    ac3::internal::avx2::dct4_pre_twiddle(u, pre_re, pre_im, bitrev, avx2_re, avx2_im);
+ std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
+ ac3::internal::avx2::dct4_pre_twiddle(u, pre_re, pre_im, bitrev, avx2_re, avx2_im);
 
-    CHECK(all_bits_equal(avx2_re, scalar_re));
-    CHECK(all_bits_equal(avx2_im, scalar_im));
+ CHECK(all_bits_equal(avx2_re, scalar_re));
+ CHECK(all_bits_equal(avx2_im, scalar_im));
 #else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+ SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
 #endif
 }
 
 TEST_CASE("AVX2 dct4_post_twiddle agrees with the scalar form bit-for-bit", "[simd][avx2]") {
 #ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+ if (!ac3::internal::cpu::has_avx2()) {
+ const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+ const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+ INFO("this CPU does not report AVX2 support - nothing to execute here");
+ if (required) {
+ FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+ "it exists to prove - pin this job to hardware that actually has AVX2");
+ }
+ SKIP("AVX2 not available on this CPU");
+ }
 
-    const auto z_re = deterministic_doubles(kTestP, 0x706f7374'7a726530ULL);
-    const auto z_im = deterministic_doubles(kTestP, 0x706f7374'7a696d30ULL);
-    const auto post_re = deterministic_doubles(kTestP, 0x706f7374'52453031ULL);
-    const auto post_im = deterministic_doubles(kTestP, 0x706f7374'494d3031ULL);
-    constexpr double scale = -2.0 / 512.0;
-    const std::size_t m_len = 2 * kTestP;
+ const auto z_re = deterministic_doubles(kTestP, 0x706f7374'7a726530ULL);
+ const auto z_im = deterministic_doubles(kTestP, 0x706f7374'7a696d30ULL);
+ const auto post_re = deterministic_doubles(kTestP, 0x706f7374'52453031ULL);
+ const auto post_im = deterministic_doubles(kTestP, 0x706f7374'494d3031ULL);
+ constexpr double scale = -2.0 / 512.0;
+ const std::size_t m_len = 2 * kTestP;
 
-    std::vector<double> scalar_out(m_len);
-    for (std::size_t k = 0; k < kTestP; ++k) {
-        const double even = scale * (z_re[k] * post_re[k] - z_im[k] * post_im[k]);
-        const double odd = scale * (-(z_re[k] * post_im[k] + z_im[k] * post_re[k]));
-        scalar_out[2 * k] = even;
-        scalar_out[m_len - 1 - 2 * k] = odd;
-    }
+ std::vector<double> scalar_out(m_len);
+ for (std::size_t k = 0; k < kTestP; ++k) {
+ const double even = scale * (z_re[k] * post_re[k] - z_im[k] * post_im[k]);
+ const double odd = scale * (-(z_re[k] * post_im[k] + z_im[k] * post_re[k]));
+ scalar_out[2 * k] = even;
+ scalar_out[m_len - 1 - 2 * k] = odd;
+ }
 
-    std::vector<double> avx2_out(m_len);
-    ac3::internal::avx2::dct4_post_twiddle(z_re, z_im, post_re, post_im, scale, avx2_out);
+ std::vector<double> avx2_out(m_len);
+ ac3::internal::avx2::dct4_post_twiddle(z_re, z_im, post_re, post_im, scale, avx2_out);
 
-    CHECK(all_bits_equal(avx2_out, scalar_out));
+ CHECK(all_bits_equal(avx2_out, scalar_out));
 #else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+ SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
 #endif
 }
 
 TEST_CASE("AVX2 imdct512_pre_twiddle agrees with the scalar form bit-for-bit", "[simd][avx2]") {
 #ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+ if (!ac3::internal::cpu::has_avx2()) {
+ const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+ const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+ INFO("this CPU does not report AVX2 support - nothing to execute here");
+ if (required) {
+ FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+ "it exists to prove - pin this job to hardware that actually has AVX2");
+ }
+ SKIP("AVX2 not available on this CPU");
+ }
 
-    const auto coeffs = deterministic_doubles(4 * kTestP, 0x696d6463'74636f65ULL);
-    const auto cos1 = deterministic_doubles(kTestP, 0x696d6463'74636f73ULL);
-    const auto sin1 = deterministic_doubles(kTestP, 0x696d6463'74736e31ULL);
-    const auto bitrev = identity_bitrev(kTestP);
-    const std::size_t k_half_n = coeffs.size();
+ const auto coeffs = deterministic_doubles(4 * kTestP, 0x696d6463'74636f65ULL);
+ const auto cos1 = deterministic_doubles(kTestP, 0x696d6463'74636f73ULL);
+ const auto sin1 = deterministic_doubles(kTestP, 0x696d6463'74736e31ULL);
+ const auto bitrev = identity_bitrev(kTestP);
+ const std::size_t k_half_n = coeffs.size();
 
-    std::vector<double> scalar_re(kTestP), scalar_im(kTestP);
-    for (std::size_t k = 0; k < kTestP; ++k) {
-        const double a = coeffs[k_half_n - 2 * k - 1];
-        const double b = coeffs[2 * k];
-        scalar_re[bitrev[k]] = a * cos1[k] - b * sin1[k];
-        scalar_im[bitrev[k]] = -(b * cos1[k] + a * sin1[k]);
-    }
+ std::vector<double> scalar_re(kTestP), scalar_im(kTestP);
+ for (std::size_t k = 0; k < kTestP; ++k) {
+ const double a = coeffs[k_half_n - 2 * k - 1];
+ const double b = coeffs[2 * k];
+ scalar_re[bitrev[k]] = a * cos1[k] - b * sin1[k];
+ scalar_im[bitrev[k]] = -(b * cos1[k] + a * sin1[k]);
+ }
 
-    std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
-    ac3::internal::avx2::imdct512_pre_twiddle(coeffs, cos1, sin1, bitrev, avx2_re, avx2_im);
+ std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
+ ac3::internal::avx2::imdct512_pre_twiddle(coeffs, cos1, sin1, bitrev, avx2_re, avx2_im);
 
-    CHECK(all_bits_equal(avx2_re, scalar_re));
-    CHECK(all_bits_equal(avx2_im, scalar_im));
+ CHECK(all_bits_equal(avx2_re, scalar_re));
+ CHECK(all_bits_equal(avx2_im, scalar_im));
 #else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+ SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
 #endif
 }
 
 TEST_CASE("AVX2 imdct512_negate_copy agrees with the scalar form bit-for-bit", "[simd][avx2]") {
 #ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+ if (!ac3::internal::cpu::has_avx2()) {
+ const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+ const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+ INFO("this CPU does not report AVX2 support - nothing to execute here");
+ if (required) {
+ FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+ "it exists to prove - pin this job to hardware that actually has AVX2");
+ }
+ SKIP("AVX2 not available on this CPU");
+ }
 
-    const auto z_re = deterministic_doubles(kTestP, 0x6e656763'6f707930ULL);
-    const auto z_im = deterministic_doubles(kTestP, 0x6e656763'6f707931ULL);
+ const auto z_re = deterministic_doubles(kTestP, 0x6e656763'6f707930ULL);
+ const auto z_im = deterministic_doubles(kTestP, 0x6e656763'6f707931ULL);
 
-    std::vector<double> scalar_re(kTestP), scalar_im(kTestP);
-    for (std::size_t n = 0; n < kTestP; ++n) {
-        scalar_re[n] = z_re[n];
-        scalar_im[n] = -z_im[n];
-    }
+ std::vector<double> scalar_re(kTestP), scalar_im(kTestP);
+ for (std::size_t n = 0; n < kTestP; ++n) {
+ scalar_re[n] = z_re[n];
+ scalar_im[n] = -z_im[n];
+ }
 
-    std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
-    ac3::internal::avx2::imdct512_negate_copy(z_re, z_im, avx2_re, avx2_im);
+ std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
+ ac3::internal::avx2::imdct512_negate_copy(z_re, z_im, avx2_re, avx2_im);
 
-    CHECK(all_bits_equal(avx2_re, scalar_re));
-    CHECK(all_bits_equal(avx2_im, scalar_im));
+ CHECK(all_bits_equal(avx2_re, scalar_re));
+ CHECK(all_bits_equal(avx2_im, scalar_im));
 #else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+ SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
 #endif
 }
 
 TEST_CASE("AVX2 imdct512_post_twiddle agrees with the scalar form bit-for-bit", "[simd][avx2]") {
 #ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+ if (!ac3::internal::cpu::has_avx2()) {
+ const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+ const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+ INFO("this CPU does not report AVX2 support - nothing to execute here");
+ if (required) {
+ FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+ "it exists to prove - pin this job to hardware that actually has AVX2");
+ }
+ SKIP("AVX2 not available on this CPU");
+ }
 
-    const auto cos1 = deterministic_doubles(kTestP, 0x706f7374'636f7331ULL);
-    const auto sin1 = deterministic_doubles(kTestP, 0x706f7374'73696e31ULL);
-    const auto t_re = deterministic_doubles(kTestP, 0x706f7374'74726530ULL);
-    const auto t_im = deterministic_doubles(kTestP, 0x706f7374'74696d30ULL);
+ const auto cos1 = deterministic_doubles(kTestP, 0x706f7374'636f7331ULL);
+ const auto sin1 = deterministic_doubles(kTestP, 0x706f7374'73696e31ULL);
+ const auto t_re = deterministic_doubles(kTestP, 0x706f7374'74726530ULL);
+ const auto t_im = deterministic_doubles(kTestP, 0x706f7374'74696d30ULL);
 
-    std::vector<double> scalar_re(kTestP), scalar_im(kTestP);
-    for (std::size_t n = 0; n < kTestP; ++n) {
-        scalar_re[n] = t_re[n] * cos1[n] - t_im[n] * sin1[n];
-        scalar_im[n] = t_im[n] * cos1[n] + t_re[n] * sin1[n];
-    }
+ std::vector<double> scalar_re(kTestP), scalar_im(kTestP);
+ for (std::size_t n = 0; n < kTestP; ++n) {
+ scalar_re[n] = t_re[n] * cos1[n] - t_im[n] * sin1[n];
+ scalar_im[n] = t_im[n] * cos1[n] + t_re[n] * sin1[n];
+ }
 
-    std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
-    ac3::internal::avx2::imdct512_post_twiddle(cos1, sin1, t_re, t_im, avx2_re, avx2_im);
+ std::vector<double> avx2_re(kTestP), avx2_im(kTestP);
+ ac3::internal::avx2::imdct512_post_twiddle(cos1, sin1, t_re, t_im, avx2_re, avx2_im);
 
-    CHECK(all_bits_equal(avx2_re, scalar_re));
-    CHECK(all_bits_equal(avx2_im, scalar_im));
+ CHECK(all_bits_equal(avx2_re, scalar_re));
+ CHECK(all_bits_equal(avx2_im, scalar_im));
 #else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+ SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
 #endif
 }
 
 TEST_CASE("AVX2 imdct256_post_twiddle agrees with the scalar form bit-for-bit", "[simd][avx2]") {
 #ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+ if (!ac3::internal::cpu::has_avx2()) {
+ const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+ const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+ INFO("this CPU does not report AVX2 support - nothing to execute here");
+ if (required) {
+ FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+ "it exists to prove - pin this job to hardware that actually has AVX2");
+ }
+ SKIP("AVX2 not available on this CPU");
+ }
 
-    // kEighth = 64, not kTestP (128): the short pair's own real size, and a
-    // different multiple-of-4 value than the other cases here exercise.
-    constexpr std::size_t kEighth = 64;
-    const auto cos2 = deterministic_doubles(kEighth, 0x70323536'636f7332ULL);
-    const auto sin2 = deterministic_doubles(kEighth, 0x70323536'73696e32ULL);
-    const auto t1_re = deterministic_doubles(kEighth, 0x70323536'74317265ULL);
-    const auto t1_im = deterministic_doubles(kEighth, 0x70323536'74316d30ULL);
-    const auto t2_re = deterministic_doubles(kEighth, 0x70323536'74327265ULL);
-    const auto t2_im = deterministic_doubles(kEighth, 0x70323536'74326d30ULL);
+ // kEighth = 64, not kTestP (128): the short pair's own real size, and a
+ // different multiple-of-4 value than the other cases here exercise.
+ constexpr std::size_t kEighth = 64;
+ const auto cos2 = deterministic_doubles(kEighth, 0x70323536'636f7332ULL);
+ const auto sin2 = deterministic_doubles(kEighth, 0x70323536'73696e32ULL);
+ const auto t1_re = deterministic_doubles(kEighth, 0x70323536'74317265ULL);
+ const auto t1_im = deterministic_doubles(kEighth, 0x70323536'74316d30ULL);
+ const auto t2_re = deterministic_doubles(kEighth, 0x70323536'74327265ULL);
+ const auto t2_im = deterministic_doubles(kEighth, 0x70323536'74326d30ULL);
 
-    std::vector<double> scalar_y1_re(kEighth), scalar_y1_im(kEighth);
-    std::vector<double> scalar_y2_re(kEighth), scalar_y2_im(kEighth);
-    for (std::size_t n = 0; n < kEighth; ++n) {
-        scalar_y1_re[n] = t1_re[n] * cos2[n] - t1_im[n] * sin2[n];
-        scalar_y1_im[n] = t1_im[n] * cos2[n] + t1_re[n] * sin2[n];
-        scalar_y2_re[n] = t2_re[n] * cos2[n] - t2_im[n] * sin2[n];
-        scalar_y2_im[n] = t2_im[n] * cos2[n] + t2_re[n] * sin2[n];
-    }
+ std::vector<double> scalar_y1_re(kEighth), scalar_y1_im(kEighth);
+ std::vector<double> scalar_y2_re(kEighth), scalar_y2_im(kEighth);
+ for (std::size_t n = 0; n < kEighth; ++n) {
+ scalar_y1_re[n] = t1_re[n] * cos2[n] - t1_im[n] * sin2[n];
+ scalar_y1_im[n] = t1_im[n] * cos2[n] + t1_re[n] * sin2[n];
+ scalar_y2_re[n] = t2_re[n] * cos2[n] - t2_im[n] * sin2[n];
+ scalar_y2_im[n] = t2_im[n] * cos2[n] + t2_re[n] * sin2[n];
+ }
 
-    std::vector<double> avx2_y1_re(kEighth), avx2_y1_im(kEighth);
-    std::vector<double> avx2_y2_re(kEighth), avx2_y2_im(kEighth);
-    ac3::internal::avx2::imdct256_post_twiddle(cos2, sin2, t1_re, t1_im, t2_re, t2_im, avx2_y1_re,
-                                               avx2_y1_im, avx2_y2_re, avx2_y2_im);
+ std::vector<double> avx2_y1_re(kEighth), avx2_y1_im(kEighth);
+ std::vector<double> avx2_y2_re(kEighth), avx2_y2_im(kEighth);
+ ac3::internal::avx2::imdct256_post_twiddle(cos2, sin2, t1_re, t1_im, t2_re, t2_im, avx2_y1_re,
+ avx2_y1_im, avx2_y2_re, avx2_y2_im);
 
-    CHECK(all_bits_equal(avx2_y1_re, scalar_y1_re));
-    CHECK(all_bits_equal(avx2_y1_im, scalar_y1_im));
-    CHECK(all_bits_equal(avx2_y2_re, scalar_y2_re));
-    CHECK(all_bits_equal(avx2_y2_im, scalar_y2_im));
+ CHECK(all_bits_equal(avx2_y1_re, scalar_y1_re));
+ CHECK(all_bits_equal(avx2_y1_im, scalar_y1_im));
+ CHECK(all_bits_equal(avx2_y2_re, scalar_y2_re));
+ CHECK(all_bits_equal(avx2_y2_im, scalar_y2_im));
 #else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+ SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
 #endif
 }
 
 TEST_CASE("AVX2 mdct512_forward_batch4 agrees with four scalar calls bit-for-bit",
-         "[simd][avx2]") {
+ "[simd][avx2]") {
 #ifdef AC3FORGE_HAVE_AVX2_TIER
-    // Same shape, and for the same reason, as the inverse case below: the
-    // low-level AVX2 body needs FastMdctTables<512>, private to mdct.cpp,
-    // so this goes through the PUBLIC ac3::mdct512_forward_batch4, which
-    // only takes the AVX2 path when has_avx2() is true - guarded here
-    // exactly like every other [avx2] case in this file.
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+ // Same shape, and for the same reason, as the inverse case below: the
+ // low-level AVX2 body needs FastMdctTables<512>, private to mdct.cpp,
+ // so this goes through the PUBLIC ac3::mdct512_forward_batch4, which
+ // only takes the AVX2 path when has_avx2() is true - guarded here
+ // exactly like every other [avx2] case in this file.
+ if (!ac3::internal::cpu::has_avx2()) {
+ const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+ const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+ INFO("this CPU does not report AVX2 support - nothing to execute here");
+ if (required) {
+ FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+ "it exists to prove - pin this job to hardware that actually has AVX2");
+ }
+ SKIP("AVX2 not available on this CPU");
+ }
 
-    std::mt19937_64 rng(0x6d646374'6634666dULL);
-    std::uniform_real_distribution<double> dist(-1.5, 1.5);
-    std::array<std::array<double, 512>, 4> windowed{};
-    for (auto& one : windowed) {
-        for (double& v : one) {
-            v = dist(rng);
-        }
-    }
+ std::mt19937_64 rng(0x6d646374'6634666dULL);
+ std::uniform_real_distribution<double> dist(-1.5, 1.5);
+ std::array<std::array<double, 512>, 4> windowed{};
+ for (auto& one : windowed) {
+ for (double& v : one) {
+ v = dist(rng);
+ }
+ }
 
-    std::array<std::array<double, 256>, 4> scalar_c{};
-    for (std::size_t i = 0; i < 4; ++i) {
-        ac3::mdct512_forward(windowed[i], scalar_c[i], /*fast=*/true);
-    }
+ std::array<std::array<double, 256>, 4> scalar_c{};
+ for (std::size_t i = 0; i < 4; ++i) {
+ ac3::mdct512_forward(windowed[i], scalar_c[i], /*fast=*/true);
+ }
 
-    std::array<std::array<double, 256>, 4> batch_c{};
-    ac3::mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3], batch_c[0],
-                                batch_c[1], batch_c[2], batch_c[3]);
+ std::array<std::array<double, 256>, 4> batch_c{};
+ ac3::mdct512_forward_batch4(windowed[0], windowed[1], windowed[2], windowed[3], batch_c[0],
+ batch_c[1], batch_c[2], batch_c[3]);
 
-    std::size_t mismatches = 0;
-    for (std::size_t i = 0; i < 4; ++i) {
-        if (!all_bits_equal(batch_c[i], scalar_c[i])) {
-            ++mismatches;
-        }
-    }
-    CHECK(mismatches == 0);
+ std::size_t mismatches = 0;
+ for (std::size_t i = 0; i < 4; ++i) {
+ if (!all_bits_equal(batch_c[i], scalar_c[i])) {
+ ++mismatches;
+ }
+ }
+ CHECK(mismatches == 0);
 #else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+ SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
 #endif
 }
 
 TEST_CASE("AVX2 imdct512_windowed_batch4 agrees with four scalar calls bit-for-bit",
-         "[simd][avx2]") {
+ "[simd][avx2]") {
 #ifdef AC3FORGE_HAVE_AVX2_TIER
-    // Unlike the kernels above, this one is tested through the PUBLIC
-    // ac3::imdct512_windowed_batch4 (mdct.hpp) rather than
-    // ac3::internal::avx2:: directly: the low-level AVX2 body needs the
-    // twiddle/FFT tables mdct.cpp's own anonymous namespace holds
-    // (twiddles(), fast_mdct_tables<512>()), which are not visible outside
-    // that translation unit, so there is no way for a test to call it
-    // without going through the orchestrator that resolves them. The
-    // orchestrator itself checks has_avx2() internally and only takes the
-    // AVX2 path when it is true, so this is still only a meaningful check
-    // of the batched AVX2 kernel specifically on a machine that has one -
-    // guarded exactly like every other [avx2] case in this file, not run
-    // unconditionally.
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+ // Unlike the kernels above, this one is tested through the PUBLIC
+ // ac3::imdct512_windowed_batch4 (mdct.hpp) rather than
+ // ac3::internal::avx2:: directly: the low-level AVX2 body needs the
+ // twiddle/FFT tables mdct.cpp's own anonymous namespace holds
+ // (twiddles(), fast_mdct_tables<512>()), which are not visible outside
+ // that translation unit, so there is no way for a test to call it
+ // without going through the orchestrator that resolves them. The
+ // orchestrator itself checks has_avx2() internally and only takes the
+ // AVX2 path when it is true, so this is still only a meaningful check
+ // of the batched AVX2 kernel specifically on a machine that has one -
+ // guarded exactly like every other [avx2] case in this file, not run
+ // unconditionally.
+ if (!ac3::internal::cpu::has_avx2()) {
+ const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+ const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+ INFO("this CPU does not report AVX2 support - nothing to execute here");
+ if (required) {
+ FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+ "it exists to prove - pin this job to hardware that actually has AVX2");
+ }
+ SKIP("AVX2 not available on this CPU");
+ }
 
-    std::mt19937_64 rng(0x62617463'6834696dULL);
-    std::uniform_real_distribution<double> dist(-2.0e7, 2.0e7);
-    std::array<std::array<double, 256>, 4> coeffs{};
-    for (auto& one : coeffs) {
-        for (double& v : one) {
-            v = dist(rng);
-        }
-    }
+ std::mt19937_64 rng(0x62617463'6834696dULL);
+ std::uniform_real_distribution<double> dist(-2.0e7, 2.0e7);
+ std::array<std::array<double, 256>, 4> coeffs{};
+ for (auto& one : coeffs) {
+ for (double& v : one) {
+ v = dist(rng);
+ }
+ }
 
-    std::array<std::array<double, 512>, 4> scalar_x{};
-    for (std::size_t i = 0; i < 4; ++i) {
-        ac3::imdct512_windowed(coeffs[i], scalar_x[i], /*fast=*/true);
-    }
+ std::array<std::array<double, 512>, 4> scalar_x{};
+ for (std::size_t i = 0; i < 4; ++i) {
+ ac3::imdct512_windowed(coeffs[i], scalar_x[i], /*fast=*/true);
+ }
 
-    std::array<std::array<double, 512>, 4> batch_x{};
-    ac3::imdct512_windowed_batch4(coeffs[0], coeffs[1], coeffs[2], coeffs[3], batch_x[0],
-                                  batch_x[1], batch_x[2], batch_x[3]);
+ std::array<std::array<double, 512>, 4> batch_x{};
+ ac3::imdct512_windowed_batch4(coeffs[0], coeffs[1], coeffs[2], coeffs[3], batch_x[0],
+ batch_x[1], batch_x[2], batch_x[3]);
 
-    std::size_t mismatches = 0;
-    for (std::size_t i = 0; i < 4; ++i) {
-        if (!all_bits_equal(batch_x[i], scalar_x[i])) {
-            ++mismatches;
-        }
-    }
-    CHECK(mismatches == 0);
+ std::size_t mismatches = 0;
+ for (std::size_t i = 0; i < 4; ++i) {
+ if (!all_bits_equal(batch_x[i], scalar_x[i])) {
+ ++mismatches;
+ }
+ }
+ CHECK(mismatches == 0);
 #else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+ SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
 #endif
 }

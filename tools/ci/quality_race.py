@@ -17,7 +17,7 @@ Modes:
   eac3       - our E-AC-3 encoder, one row per Annex E tool set, vs FFmpeg's
                E-AC-3 encoder, at the low rates the tools exist to serve
   eac3-51    - the same for 5.1, with genuinely decorrelated channels
-  fgaincod   - roadmap EQ7's E-AC-3 half: whether §7.2.2.4's measured
+  fgaincod   - E-AC-3 fast-gain control's E-AC-3 half: whether §7.2.2.4's measured
                fast-gain curve still wins once E-AC-3 charges for the
                per-block fgaincode element §8.2.12's implied 0x4 avoids.
                Five legs a rate: the default, the default pinned
@@ -162,7 +162,7 @@ def make_material_transient():
     decays short enough that a frame's loudest block sits 20-30 dB above its
     quietest. That gap is the whole cost of one exponent set per frame - every
     quiet block quantized against a scale chosen by the loud one - so it is
-    what an exponent-run plan has to be measured on (roadmap EQ1).
+    what an exponent-run plan has to be measured on (legacy item EQ1).
 
     Stereo, same 2 s-per-segment shape and same seed discipline as the two
     generators above.
@@ -729,7 +729,7 @@ def race_eac3(original, source, seconds, rates=(96, 128, 192)):
 #               element it had to open to get there, which is the question.
 #   search-1ax- search=distortion with fgaincod pinned at the default, which
 #               takes it out of the candidate set: exactly the one-axis
-#               dbpbcod-only search EQ13 shipped, and the thing roadmap EQ8
+#               dbpbcod-only search EQ13 shipped, and the thing legacy item EQ8
 #               recorded as not moving the stereo/192 cell.
 #   search-2ax- search=distortion left to move both axes, refitting each
 #               candidate against its own side-info cost. The per-frame
@@ -1195,7 +1195,7 @@ CI_EAC3_THRESHOLDS = {
     # 6. The leg was calibrated, and passing, on material that omitted one of
     # the four cases it was built out of - and the one whose whole point is a
     # level swing inside a single frame, which is precisely what an exponent
-    # run plan has to cope with (roadmap EQ1).
+    # run plan has to cope with (legacy item EQ1).
     #
     # The corrected window scores seconds 1-7, so half of (d) now counts.
     # SNR rises by a uniform +0.35 dB across every variant (more material,
@@ -1235,7 +1235,7 @@ CI_EAC3_THRESHOLDS = {
 
 # Transient material (make_material_transient): onsets closer together than a
 # frame, hard gates, decays that leave a frame's loudest block 20-30 dB above
-# its quietest. It exists to hold the exponent-run plan (roadmap EQ1) against a
+# its quietest. It exists to hold the exponent-run plan (legacy item EQ1) against a
 # regression: one exponent set per frame quantizes every quiet block against a
 # scale chosen by the loud one, and this is the material where that costs the
 # most. Absolute scores here are far below the stationary stereo row's and are
@@ -1287,7 +1287,7 @@ def gate(name, ok, detail):
     return ok
 
 
-# Roadmap EQ13's search=, exercised THROUGH THE CLI.
+# legacy item EQ13's search=, exercised THROUGH THE CLI.
 #
 # The gap this closes is not that the search is untested - tests/quality's
 # test_search.cpp and test_eac3_search.cpp cover it well, including that it

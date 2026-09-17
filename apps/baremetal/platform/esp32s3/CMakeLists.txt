@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# The ESP32-S3 shape of the minimum-footprint probe (roadmap PF7).
+# The ESP32-S3 shape of the minimum-footprint probe (minimum-footprint decoder profile).
 #
 # An ESP-IDF project, driven by idf.py rather than by this repo's presets, for
 # the same reason apps/android is a Gradle project: the SDK owns the top-level
@@ -9,11 +9,11 @@
 #
 # Build it with the IDF environment exported:
 #
-#   idf.py set-target esp32s3
-#   idf.py build                                  # decode
-#   idf.py -DAC3FORGE_ESP_PROFILE=encoder build   # encode
-#   idf.py -p <PORT> flash monitor                # a real board
-#   idf.py qemu                                   # no board; see the PSRAM note below
+# idf.py set-target esp32s3
+# idf.py build # decode
+# idf.py -DAC3FORGE_ESP_PROFILE=encoder build # encode
+# idf.py -p <PORT> flash monitor # a real board
+# idf.py qemu # no board; see the PSRAM note below
 #
 # The two profiles are mutually exclusive and produce different applications
 # from the same project - see the profile block below. Switching between them
@@ -39,7 +39,7 @@ cmake_minimum_required(VERSION 3.28)
 # the one CI runs - breaks with it, rather than continuing to work through a
 # private path no integrator has.
 get_filename_component(AC3FORGE_ESP_COMPONENTS
-                       "${CMAKE_CURRENT_SOURCE_DIR}/../../../../esp-idf" ABSOLUTE)
+ "${CMAKE_CURRENT_SOURCE_DIR}/../../../../esp-idf" ABSOLUTE)
 set(EXTRA_COMPONENT_DIRS "${AC3FORGE_ESP_COMPONENTS}")
 
 # Decode or encode. Declared here, before project(), because the component
@@ -50,7 +50,7 @@ set(EXTRA_COMPONENT_DIRS "${AC3FORGE_ESP_COMPONENTS}")
 # AC3FORGE_MINIMAL_ENCODER explicitly on every invocation there. Here a bare
 # `idf.py build` has to mean something, and decode is the useful something.
 set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
-    "Which probe to build: decoder or encoder")
+ "Which probe to build: decoder or encoder")
 
 # The decode-critical sources at -O2 (src/forge/minimal.cmake has the list
 # and why each file is on it). On here, off in the profile's own default:
@@ -60,7 +60,7 @@ set(AC3FORGE_ESP_PROFILE "decoder" CACHE STRING
 # docs/platforms/bare-metal/esp32-s3.md's Timing section, and the Atmos objects fixture
 # reaches real time only with it.
 set(AC3FORGE_MINIMAL_HOT_O2 ON CACHE BOOL
-    "Decode-critical sources at -O2; see src/forge/minimal.cmake")
+ "Decode-critical sources at -O2; see src/forge/minimal.cmake")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 

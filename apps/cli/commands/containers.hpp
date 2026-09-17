@@ -23,7 +23,7 @@ int run_mkv(std::string_view in_path, std::string_view out_path);
 // exact dac3/dec3 sample-entry payload straight off the bitstream.
 int run_mp4(std::string_view in_path, std::string_view out_path);
 
-// fMP4/CMAF segmenting plus HLS/DASH signaling (ROADMAP.md's A2) - writes a DIRECTORY of files
+// fMP4/CMAF segmenting plus HLS/DASH signaling (fMP4/CMAF segmenting) - writes a DIRECTORY of files
 // (an init segment, one media segment per fragment, an HLS media+master playlist pair, and a
 // DASH MPD) rather than one file, so a packager or CDN origin can be pointed at out_dir directly.
 // meta.hls_fallback_51 additionally writes the object-stripped 5.1 companion rendition into a
@@ -31,7 +31,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path);
 // Apple's HLS Authoring Specification asks for alongside CHANNELS="<N>/JOC" - see
 // ac3::io::strip_objects. Ignored for a stream with no object layer.
 int run_fmp4(std::string_view in_path, std::string_view out_dir, std::uint32_t frames_per_fragment,
-             const Options& meta);
+ const Options& meta);
 
 // Same shape as run_mkv: wraps as an MPEG-2 Transport Stream. `profile` selects which registry
 // identifies the stream in the PMT - "dvb" (the default: stream_type 0x06 plus ETSI EN 300 468
@@ -40,9 +40,9 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir, std::uint32_t f
 // service is read off the bitstream by ac3::io::scan, except the service associations meta
 // carries (mainid=, asvc=).
 int run_ts(std::string_view in_path, std::string_view out_path, std::string_view profile,
-           const Options& meta);
+ const Options& meta);
 
-// The inverse of the four above (ROADMAP.md's IO2): reads a container and writes the bare
+// The inverse of the four above (container readers (mkv/mp4/ts)): reads a container and writes the bare
 // AC-3/E-AC-3 elementary stream inside it, which is what every other command in this CLI takes
 // as input. The container is identified by its own magic bytes, not by the file name - a .mkv
 // that is really something else, or a rip with no extension at all, is the normal case here.
@@ -53,16 +53,16 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
 // as it comes out, so peak memory is a chunk plus a frame whatever the file's duration.
 int run_demux(std::string_view in_path, std::string_view out_path);
 
-// Container-to-container remux (ROADMAP.md's IO2): reads any of the three containers above (or a
+// Container-to-container remux (container readers (mkv/mp4/ts)): reads any of the three containers above (or a
 // bare elementary stream) and writes any of the three below, picking the target by `out_path`'s
 // extension since there is nothing else to pick it by - unlike sniffing the INPUT, a file that
 // does not exist yet has no bytes to identify it from. Everything the target container declares
 // still comes straight off the re-scanned bitstream (run_mkv/run_mp4/run_ts's own comments), never
 // off whatever the source container said, which is what makes this the dec3-repair case the old
-// roadmap A1 cited: a .mkv with a broken or missing Atmos dec3 flag remuxed to .mp4 gets a correct
+// Atmos dec3 repair remux cited: a .mkv with a broken or missing Atmos dec3 flag remuxed to .mp4 gets a correct
 // one, because the target's dec3 was never read from the source at all. `profile` is passed
 // through to run_ts unchanged when the target is a Transport Stream and ignored otherwise.
 int run_remux(std::string_view in_path, std::string_view out_path, std::string_view profile,
-              const Options& meta);
+ const Options& meta);
 
-}  // namespace ac3cli::commands
+} // namespace ac3cli::commands

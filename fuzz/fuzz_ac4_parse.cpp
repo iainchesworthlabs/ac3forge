@@ -5,7 +5,7 @@
 #include "ac4/ac4.hpp"
 
 // ac4::scan and ac4::parse_raw_frame (src/ac4/src/ac4.cpp) - the AC-4
-// bitstream inspector, roadmap IM4.
+// bitstream inspector, AC-4 bitstream inspector.
 //
 // AC-4 reaches this project the same way AC-3 does, as bytes from a file or a
 // stream nobody here produced, and the TOC is the densest untrusted structure
@@ -17,23 +17,23 @@
 //
 // Both entry points on the same input:
 //
-//   scan             walks ac4_syncframe() elements back to back, so it also
-//                    exercises sync search and the frame_size bound that
-//                    decides kLostSync from kTruncated
-//   parse_raw_frame  §4.2.1, taking `data` as one already-framed
-//                    raw_ac4_frame - the form scan() hands on, reached here
-//                    directly so the TOC parser is pressed without a
-//                    well-formed syncframe having to be guessed first
+// scan walks ac4_syncframe() elements back to back, so it also
+// exercises sync search and the frame_size bound that
+// decides kLostSync from kTruncated
+// parse_raw_frame §4.2.1, taking `data` as one already-framed
+// raw_ac4_frame - the form scan() hands on, reached here
+// directly so the TOC parser is pressed without a
+// well-formed syncframe having to be guessed first
 //
 // That second call is the point of the harness. Requiring the fuzzer to
 // produce a valid 0xAC40/0xAC41 syncframe before any TOC byte is read would
 // spend most executions in the sync search; feeding the same bytes straight
 // to parse_raw_frame puts them in front of the TOC parser immediately.
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
-    const std::span<const std::byte> bytes(reinterpret_cast<const std::byte*>(data), size);
+ const std::span<const std::byte> bytes(reinterpret_cast<const std::byte*>(data), size);
 
-    (void)ac4::scan(bytes);
-    (void)ac4::parse_raw_frame(bytes);
+ (void)ac4::scan(bytes);
+ (void)ac4::parse_raw_frame(bytes);
 
-    return 0;
+ return 0;
 }

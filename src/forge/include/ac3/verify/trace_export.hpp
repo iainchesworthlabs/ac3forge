@@ -8,7 +8,7 @@
 #include "ac3/verify/eac3_mirror.hpp"
 #include "ac3/verify/mirror.hpp"
 
-// Roadmap AP12: getting the encoder/decoder mirror trace (ac3/verify/mirror.hpp,
+// API freeze2: getting the encoder/decoder mirror trace (ac3/verify/mirror.hpp,
 // ac3/verify/eac3_mirror.hpp) out in a form someone doing codec research can
 // load into a notebook, not a new way to generate the data - see those headers
 // for how a FrameTrace/Eac3AccessUnitTrace gets filled (DecoderConfig::trace/
@@ -25,7 +25,7 @@
 // caller mixing the two formats (or mixing AC-3 and E-AC-3 output - see
 // `substream` below) gets one consistent table either way:
 //
-//   frame, substream, block, stream, kind, index, value
+// frame, substream, block, stream, kind, index, value
 //
 // `substream` is always 0 for AC-3 (FrameTrace has no substream layer) and
 // the E-AC-3 access unit's substream POSITION for Eac3AccessUnitTrace -
@@ -59,16 +59,16 @@ namespace ac3::verify {
 [[nodiscard]] AC3FORGE_EXPORT std::string_view trace_csv_header();
 
 AC3FORGE_EXPORT void append_trace_csv(const FrameTrace& trace, std::uint64_t frame_index,
-                                      std::string& out);
+ std::string& out);
 AC3FORGE_EXPORT void append_trace_csv(const Eac3AccessUnitTrace& trace, std::uint64_t frame_index,
-                                      std::string& out);
+ std::string& out);
 
 // JSON Lines (one compact object per row, same columns as the CSV form) -
 // not one JSON document per file, so a caller can append and flush frame by
 // frame the same way the CSV form does, without a closing bracket to manage.
 AC3FORGE_EXPORT void append_trace_json_lines(const FrameTrace& trace, std::uint64_t frame_index,
-                                             std::string& out);
+ std::string& out);
 AC3FORGE_EXPORT void append_trace_json_lines(const Eac3AccessUnitTrace& trace,
-                                             std::uint64_t frame_index, std::string& out);
+ std::uint64_t frame_index, std::string& out);
 
-}  // namespace ac3::verify
+} // namespace ac3::verify

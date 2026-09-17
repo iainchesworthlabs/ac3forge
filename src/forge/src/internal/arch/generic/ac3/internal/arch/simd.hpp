@@ -39,7 +39,7 @@
 // tests/core/test_simd_kernels.cpp asserts that bit-for-bit for every
 // primitive here, and the kernels built from them inherit the guarantee
 // rather than needing their own bit-exact unit test (see that file's own
-// header comment). fft_kernel.hpp's radix-4 FFT/DCT-IV core (ROADMAP PF4)
+// header comment). fft_kernel.hpp's radix-4 FFT/DCT-IV core (FFT core follow-ups)
 // is NOT part of this seam - it is an algorithmic change, not a
 // wider-lane one, and carries its own correctness argument.
 //
@@ -66,30 +66,30 @@ inline constexpr const char* kSimdName = "generic";
 // measured against, so every operation below should read as plainly the
 // scalar arithmetic the kernel would otherwise have written by hand.
 struct f64x2 {
-    double lo{};
-    double hi{};
+ double lo{};
+ double hi{};
 
-    [[nodiscard]] static f64x2 load(const double* p) { return f64x2{p[0], p[1]}; }
-    [[nodiscard]] static f64x2 set(double a, double b) { return f64x2{a, b}; }
-    [[nodiscard]] static f64x2 broadcast(double a) { return f64x2{a, a}; }
+ [[nodiscard]] static f64x2 load(const double* p) { return f64x2{p[0], p[1]}; }
+ [[nodiscard]] static f64x2 set(double a, double b) { return f64x2{a, b}; }
+ [[nodiscard]] static f64x2 broadcast(double a) { return f64x2{a, a}; }
 
-    void store(double* p) const {
-        p[0] = lo;
-        p[1] = hi;
-    }
+ void store(double* p) const {
+ p[0] = lo;
+ p[1] = hi;
+ }
 
-    [[nodiscard]] double lane0() const { return lo; }
-    [[nodiscard]] double lane1() const { return hi; }
+ [[nodiscard]] double lane0() const { return lo; }
+ [[nodiscard]] double lane1() const { return hi; }
 };
 
 [[nodiscard]] inline f64x2 operator+(f64x2 a, f64x2 b) {
-    return f64x2{a.lo + b.lo, a.hi + b.hi};
+ return f64x2{a.lo + b.lo, a.hi + b.hi};
 }
 [[nodiscard]] inline f64x2 operator-(f64x2 a, f64x2 b) {
-    return f64x2{a.lo - b.lo, a.hi - b.hi};
+ return f64x2{a.lo - b.lo, a.hi - b.hi};
 }
 [[nodiscard]] inline f64x2 operator*(f64x2 a, f64x2 b) {
-    return f64x2{a.lo * b.lo, a.hi * b.hi};
+ return f64x2{a.lo * b.lo, a.hi * b.hi};
 }
 [[nodiscard]] inline f64x2 operator-(f64x2 a) { return f64x2{-a.lo, -a.hi}; }
 
@@ -98,11 +98,11 @@ struct f64x2 {
 // holds to - see the x86_64 header for the one that has to construct it out
 // of SSE2 arithmetic rather than name it in a single instruction.
 [[nodiscard]] inline f64x2 round_ties_away(f64x2 a) {
-    return f64x2{std::round(a.lo), std::round(a.hi)};
+ return f64x2{std::round(a.lo), std::round(a.hi)};
 }
 
 // Four IEEE-754 single-precision floats: the float32 decode path's lane type
-// (roadmap PF7). src/internal/profile/minimal/'s decode_scalar_t is `float`
+// (minimum-footprint decoder profile). src/internal/profile/minimal/'s decode_scalar_t is `float`
 // and mdct.cpp's IMDCT twiddle stages are templated on it, so on that profile
 // those stages had nothing to vectorise against until this type existed.
 //
@@ -116,75 +116,75 @@ struct f64x2 {
 // tests/core/test_simd_kernels.cpp - the f64x2 ladder pivots on 2^52 and says
 // nothing about a float's 2^23.
 struct f32x4 {
-    float v0{};
-    float v1{};
-    float v2{};
-    float v3{};
+ float v0{};
+ float v1{};
+ float v2{};
+ float v3{};
 
-    [[nodiscard]] static f32x4 load(const float* p) { return f32x4{p[0], p[1], p[2], p[3]}; }
-    [[nodiscard]] static f32x4 set(float a, float b, float c, float d) {
-        return f32x4{a, b, c, d};
-    }
-    [[nodiscard]] static f32x4 broadcast(float a) { return f32x4{a, a, a, a}; }
+ [[nodiscard]] static f32x4 load(const float* p) { return f32x4{p[0], p[1], p[2], p[3]}; }
+ [[nodiscard]] static f32x4 set(float a, float b, float c, float d) {
+ return f32x4{a, b, c, d};
+ }
+ [[nodiscard]] static f32x4 broadcast(float a) { return f32x4{a, a, a, a}; }
 
-    void store(float* p) const {
-        p[0] = v0;
-        p[1] = v1;
-        p[2] = v2;
-        p[3] = v3;
-    }
+ void store(float* p) const {
+ p[0] = v0;
+ p[1] = v1;
+ p[2] = v2;
+ p[3] = v3;
+ }
 
-    [[nodiscard]] float lane0() const { return v0; }
-    [[nodiscard]] float lane1() const { return v1; }
-    [[nodiscard]] float lane2() const { return v2; }
-    [[nodiscard]] float lane3() const { return v3; }
+ [[nodiscard]] float lane0() const { return v0; }
+ [[nodiscard]] float lane1() const { return v1; }
+ [[nodiscard]] float lane2() const { return v2; }
+ [[nodiscard]] float lane3() const { return v3; }
 };
 
 [[nodiscard]] inline f32x4 operator+(f32x4 a, f32x4 b) {
-    return f32x4{a.v0 + b.v0, a.v1 + b.v1, a.v2 + b.v2, a.v3 + b.v3};
+ return f32x4{a.v0 + b.v0, a.v1 + b.v1, a.v2 + b.v2, a.v3 + b.v3};
 }
 [[nodiscard]] inline f32x4 operator-(f32x4 a, f32x4 b) {
-    return f32x4{a.v0 - b.v0, a.v1 - b.v1, a.v2 - b.v2, a.v3 - b.v3};
+ return f32x4{a.v0 - b.v0, a.v1 - b.v1, a.v2 - b.v2, a.v3 - b.v3};
 }
 [[nodiscard]] inline f32x4 operator*(f32x4 a, f32x4 b) {
-    return f32x4{a.v0 * b.v0, a.v1 * b.v1, a.v2 * b.v2, a.v3 * b.v3};
+ return f32x4{a.v0 * b.v0, a.v1 * b.v1, a.v2 * b.v2, a.v3 * b.v3};
 }
 [[nodiscard]] inline f32x4 operator-(f32x4 a) { return f32x4{-a.v0, -a.v1, -a.v2, -a.v3}; }
 
 // Four 32-bit signed integers. Only the operations §7.2.2.2's
 // exponent-to-PSD conversion needs, all of them exact by construction.
 struct i32x4 {
-    std::int32_t v0{};
-    std::int32_t v1{};
-    std::int32_t v2{};
-    std::int32_t v3{};
+ std::int32_t v0{};
+ std::int32_t v1{};
+ std::int32_t v2{};
+ std::int32_t v3{};
 
-    // Four consecutive unsigned bytes, zero-extended to 32 bits. AC-3
-    // exponents are 0..24, so nothing here ever sees a value that would make
-    // the widening lossy or the sign ambiguous.
-    [[nodiscard]] static i32x4 load_u8_widen(const std::uint8_t* p) {
-        return i32x4{static_cast<std::int32_t>(p[0]), static_cast<std::int32_t>(p[1]),
-                     static_cast<std::int32_t>(p[2]), static_cast<std::int32_t>(p[3])};
-    }
-    [[nodiscard]] static i32x4 broadcast(std::int32_t a) { return i32x4{a, a, a, a}; }
+ // Four consecutive unsigned bytes, zero-extended to 32 bits. AC-3
+ // exponents are 0..24, so nothing here ever sees a value that would make
+ // the widening lossy or the sign ambiguous.
+ [[nodiscard]] static i32x4 load_u8_widen(const std::uint8_t* p) {
+ return i32x4{static_cast<std::int32_t>(p[0]), static_cast<std::int32_t>(p[1]),
+ static_cast<std::int32_t>(p[2]), static_cast<std::int32_t>(p[3])};
+ }
+ [[nodiscard]] static i32x4 broadcast(std::int32_t a) { return i32x4{a, a, a, a}; }
 
-    void store(std::int32_t* p) const {
-        p[0] = v0;
-        p[1] = v1;
-        p[2] = v2;
-        p[3] = v3;
-    }
+ void store(std::int32_t* p) const {
+ p[0] = v0;
+ p[1] = v1;
+ p[2] = v2;
+ p[3] = v3;
+ }
 };
 
 [[nodiscard]] inline i32x4 operator-(i32x4 a, i32x4 b) {
-    return i32x4{a.v0 - b.v0, a.v1 - b.v1, a.v2 - b.v2, a.v3 - b.v3};
+ return i32x4{a.v0 - b.v0, a.v1 - b.v1, a.v2 - b.v2, a.v3 - b.v3};
 }
 
 // Logical left shift by a compile-time count. The inputs are the
 // zero-extended exponents above, so this never shifts a set sign bit out.
 template <int Bits>
 [[nodiscard]] i32x4 shift_left(i32x4 a) {
-    return i32x4{a.v0 << Bits, a.v1 << Bits, a.v2 << Bits, a.v3 << Bits};
+ return i32x4{a.v0 << Bits, a.v1 << Bits, a.v2 << Bits, a.v3 << Bits};
 }
 
-}  // namespace ac3::internal::arch
+} // namespace ac3::internal::arch

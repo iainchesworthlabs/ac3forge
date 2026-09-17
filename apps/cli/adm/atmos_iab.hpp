@@ -11,7 +11,7 @@
 #include "ac3/oba/motion.hpp"
 #include "ac3/audio/audio_backend.hpp"
 
-// Roadmap IM1 phase 3 of 3 ("IAB (SMPTE ST 2098-2) reader", see ROADMAP.md) - the narrow seam
+// IAB reader bridge, phase 3 - the narrow seam
 // between main.cpp's 'atmos-iab' command and ac3iab::ac3iab/ac3::admbridge, exactly the same
 // "library-linked-or-not is a build-time FILE choice, never a preprocessor conditional" shape
 // adm/atmos_adm.hpp already uses for 'atmos-adm' - see that header's own top comment for the full
@@ -40,13 +40,13 @@ namespace ac3cli {
 // ac3/admbridge/iab_bridge.hpp's own top comment on why); keep an IabAtmosSource alive for exactly
 // as long as its `pcm` spans are read.
 struct IabAtmosSource {
-    std::uint32_t sample_rate = 0;
-    std::vector<bool> is_bed;                 // parallel to paths/pcm; true = bed speaker feed
-    std::vector<ac3::oba::ObjectPath> paths;  // pass directly to ac3::oba::evaluate_placements
-    std::vector<std::span<const float>> pcm;  // one mono span per channel; see `handle` above
-    std::shared_ptr<void> handle;             // opaque - owns the bridged result, if any
+ std::uint32_t sample_rate = 0;
+ std::vector<bool> is_bed; // parallel to paths/pcm; true = bed speaker feed
+ std::vector<ac3::oba::ObjectPath> paths; // pass directly to ac3::oba::evaluate_placements
+ std::vector<std::span<const float>> pcm; // one mono span per channel; see `handle` above
+ std::shared_ptr<void> handle; // opaque - owns the bridged result, if any
 
-    [[nodiscard]] std::size_t channel_count() const { return paths.size(); }
+ [[nodiscard]] std::size_t channel_count() const { return paths.size(); }
 };
 
 // Reads `path` - a bare elementary `.iab` file or a real MXF IAB Track File, sniffed by its first
@@ -56,4 +56,4 @@ struct IabAtmosSource {
 // and BridgeError's own describe() - so main.cpp never needs either error enum's type.
 [[nodiscard]] std::expected<IabAtmosSource, std::string> load_iab_atmos_source(std::string_view path);
 
-}  // namespace ac3cli
+} // namespace ac3cli

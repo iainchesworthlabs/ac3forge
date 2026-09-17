@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
-#include "ac3/core/bitalloc.hpp"  // DeltaSegments
-#include "ac3/core/tables.hpp"    // kBlocksPerFrame
+#include "ac3/core/bitalloc.hpp" // DeltaSegments
+#include "ac3/core/tables.hpp" // kBlocksPerFrame
 #include "ac3/export.hpp"
 
 // Encoder/decoder mirror verification.
@@ -54,111 +54,111 @@ namespace ac3::verify {
 // internally: the full-bandwidth channels first, then the LFE, then - when
 // coupling is in use - the coupling channel as one more stream.
 struct StreamTrace {
-    // The DECODED exponents, indexed from bin 0 (a coupling stream's bins
-    // below cplstrtmant are kMaxExponent filler on both sides). Not the
-    // grouped/coded form: what is being compared is the model, and two sides
-    // agreeing on the wire bytes but disagreeing on what they mean is exactly
-    // the failure mode of interest.
-    std::vector<std::uint8_t> exponents;
-    // The bit allocation pointers derived from those exponents, same indexing.
-    // This is what sizes every mantissa field, so it is the value whose
-    // divergence actually breaks the stream.
-    std::vector<std::uint8_t> bap;
-    // §7.2.2.6: the delta correction IN FORCE for this block's allocation -
-    // not the deltbae code on the wire. The distinction is the whole point:
-    // the encoder writing a code whose meaning it has wrong is invisible at
-    // the wire level and obvious here. Always default-constructed for the LFE,
-    // which has no delta bit allocation field at all (§5.4.3.49).
-    DeltaSegments delta;
-    // --- roadmap AP12: research trace export --------------------------------
-    // Neither field below is compared by compare()/Field below - they exist
-    // for ac3/verify/trace_export.hpp, not the mirror self-check, and are
-    // populated on the DECODE side only (see mirror.cpp's own comment on
-    // where compute_bit_allocation is called from a real decode rather than
-    // an encoder's rate-control search). Zero on an encoder-only trace.
-    //
-    // §7.2.2.1's composite SNR offset in force for this stream this block -
-    // ac3::snr_offset(csnroffst, fsnroffst), already resolved from the
-    // transmitted codes rather than left for a reader to recompute.
-    int snr_offset = 0;
-    // §7.2.2.5's masking curve, the value bap is actually derived from -
-    // indexed by Table 7.13 band, same convention band_psd()/bin_to_band()
-    // use. A different index space from `exponents`/`bap` above (band, not
-    // bin) - deliberately: collapsing the two would either force a bogus
-    // per-bin repetition of each band's value or lose the curve's own
-    // resolution, and ac3/verify/trace_export.hpp exports both index spaces
-    // as what they are rather than pretending they line up.
-    std::array<int, 50> mask{};
+ // The DECODED exponents, indexed from bin 0 (a coupling stream's bins
+ // below cplstrtmant are kMaxExponent filler on both sides). Not the
+ // grouped/coded form: what is being compared is the model, and two sides
+ // agreeing on the wire bytes but disagreeing on what they mean is exactly
+ // the failure mode of interest.
+ std::vector<std::uint8_t> exponents;
+ // The bit allocation pointers derived from those exponents, same indexing.
+ // This is what sizes every mantissa field, so it is the value whose
+ // divergence actually breaks the stream.
+ std::vector<std::uint8_t> bap;
+ // §7.2.2.6: the delta correction IN FORCE for this block's allocation -
+ // not the deltbae code on the wire. The distinction is the whole point:
+ // the encoder writing a code whose meaning it has wrong is invisible at
+ // the wire level and obvious here. Always default-constructed for the LFE,
+ // which has no delta bit allocation field at all (§5.4.3.49).
+ DeltaSegments delta;
+ // --- AP12: research trace export --------------------------------
+ // Neither field below is compared by compare()/Field below - they exist
+ // for ac3/verify/trace_export.hpp, not the mirror self-check, and are
+ // populated on the DECODE side only (see mirror.cpp's own comment on
+ // where compute_bit_allocation is called from a real decode rather than
+ // an encoder's rate-control search). Zero on an encoder-only trace.
+ //
+ // §7.2.2.1's composite SNR offset in force for this stream this block -
+ // ac3::snr_offset(csnroffst, fsnroffst), already resolved from the
+ // transmitted codes rather than left for a reader to recompute.
+ int snr_offset = 0;
+ // §7.2.2.5's masking curve, the value bap is actually derived from -
+ // indexed by Table 7.13 band, same convention band_psd()/bin_to_band()
+ // use. A different index space from `exponents`/`bap` above (band, not
+ // bin) - deliberately: collapsing the two would either force a bogus
+ // per-bin repetition of each band's value or lose the curve's own
+ // resolution, and ac3/verify/trace_export.hpp exports both index spaces
+ // as what they are rather than pretending they line up.
+ std::array<int, 50> mask{};
 };
 
 struct BlockTrace {
-    // Set when this side reached the block at all. The decoder can stop
-    // early - a desynced stream usually gets refused before block 5 - and a
-    // trace that simply ends is itself a finding, so absence is recorded
-    // rather than inferred.
-    bool entered = false;
-    // Set when this side got as far as computing the block's bit allocation,
-    // i.e. `streams` below is populated. Between `entered` and `allocated`
-    // sits the whole of the block's side information, which is where a
-    // refusing decoder tends to stop.
-    bool allocated = false;
-    // Bits consumed/emitted from the start of the syncframe at the moment
-    // this block's audblk() begins - BitWriter::bit_count() on the encoder,
-    // BitReader::bit_position() on the decoder.
-    std::size_t bit_offset = 0;
-    // §5.4.3.47's gate bit as written/read. Recorded separately from `delta`
-    // above because the two answer different questions: this is what went on
-    // the wire, `delta` is what each side did about it.
-    bool deltbaie = false;
-    std::vector<StreamTrace> streams;
+ // Set when this side reached the block at all. The decoder can stop
+ // early - a desynced stream usually gets refused before block 5 - and a
+ // trace that simply ends is itself a finding, so absence is recorded
+ // rather than inferred.
+ bool entered = false;
+ // Set when this side got as far as computing the block's bit allocation,
+ // i.e. `streams` below is populated. Between `entered` and `allocated`
+ // sits the whole of the block's side information, which is where a
+ // refusing decoder tends to stop.
+ bool allocated = false;
+ // Bits consumed/emitted from the start of the syncframe at the moment
+ // this block's audblk() begins - BitWriter::bit_count() on the encoder,
+ // BitReader::bit_position() on the decoder.
+ std::size_t bit_offset = 0;
+ // §5.4.3.47's gate bit as written/read. Recorded separately from `delta`
+ // above because the two answer different questions: this is what went on
+ // the wire, `delta` is what each side did about it.
+ bool deltbaie = false;
+ std::vector<StreamTrace> streams;
 };
 
 // One side's view of one frame.
 struct FrameTrace {
-    int fbw_channels = 0;    // nfchans
-    int coded_channels = 0;  // nfchans + lfe; the coupling stream sits at this index
-    std::array<BlockTrace, kBlocksPerFrame> blocks{};
+ int fbw_channels = 0; // nfchans
+ int coded_channels = 0; // nfchans + lfe; the coupling stream sits at this index
+ std::array<BlockTrace, kBlocksPerFrame> blocks{};
 
-    // Returns the trace to its unvisited state, keeping whatever capacity the
-    // vectors already hold so a per-frame loop does not reallocate.
-    void reset();
+ // Returns the trace to its unvisited state, keeping whatever capacity the
+ // vectors already hold so a per-frame loop does not reallocate.
+ void reset();
 };
 
 enum class Field : std::uint8_t {
-    kBlockReached,       // one side stopped before the other
-    kBitOffset,          // the localiser: block-boundary bit position
-    kStreamCount,        // streams differ, e.g. a disagreement about cplinu
-    kDeltbaie,           // §5.4.3.47's gate bit
-    kDeltaSegmentCount,  // deltnseg
-    kDeltaOffset,        // deltoffst[i]
-    kDeltaLength,        // deltlen[i]
-    kDeltaValue,         // deltba[i]
-    kAllocationReached,  // one side computed a bit allocation for the block, the other did not
-    kExponentCount,      // the coded bandwidth itself differs
-    kExponent,           // a decoded exponent
-    kBapCount,
-    kBap,  // a bit allocation pointer - the value that sizes a mantissa field
+ kBlockReached, // one side stopped before the other
+ kBitOffset, // the localiser: block-boundary bit position
+ kStreamCount, // streams differ, e.g. a disagreement about cplinu
+ kDeltbaie, // §5.4.3.47's gate bit
+ kDeltaSegmentCount, // deltnseg
+ kDeltaOffset, // deltoffst[i]
+ kDeltaLength, // deltlen[i]
+ kDeltaValue, // deltba[i]
+ kAllocationReached, // one side computed a bit allocation for the block, the other did not
+ kExponentCount, // the coded bandwidth itself differs
+ kExponent, // a decoded exponent
+ kBapCount,
+ kBap, // a bit allocation pointer - the value that sizes a mantissa field
 };
 
 [[nodiscard]] AC3FORGE_EXPORT std::string_view describe(Field field);
 
 struct Mismatch {
-    std::uint64_t frame = 0;
-    int block = -1;
-    int stream = -1;  // -1 for a block-level field
-    // A bin index for kExponent/kBap, a segment index for the kDelta* fields,
-    // -1 where the field is not indexed.
-    int index = -1;
-    Field field = Field::kBitOffset;
-    long long encoder = 0;
-    long long decoder = 0;
+ std::uint64_t frame = 0;
+ int block = -1;
+ int stream = -1; // -1 for a block-level field
+ // A bin index for kExponent/kBap, a segment index for the kDelta* fields,
+ // -1 where the field is not indexed.
+ int index = -1;
+ Field field = Field::kBitOffset;
+ long long encoder = 0;
+ long long decoder = 0;
 };
 
 // "frame 12 block 3 channel 1: bap[87] encoder=5 decoder=4", with the stream
 // named the way a reader of A/52 would name it (channel N / LFE / coupling)
 // rather than by its internal index.
 [[nodiscard]] AC3FORGE_EXPORT std::string describe(const Mismatch& mismatch, int fbw_channels,
-                                                   int coded_channels);
+ int coded_channels);
 
 // Diffs the two views and returns what they disagree about, most useful first.
 //
@@ -175,12 +175,12 @@ struct Mismatch {
 inline constexpr int kMaxPerArray = 4;
 
 [[nodiscard]] AC3FORGE_EXPORT std::vector<Mismatch> compare(const FrameTrace& encoder,
-                                                            const FrameTrace& decoder,
-                                                            std::uint64_t frame_index);
+ const FrameTrace& decoder,
+ std::uint64_t frame_index);
 
 // The whole set as one multi-line block, one mismatch per line, for a test
 // failure message or a diagnostic dump. Empty string for an empty span.
 [[nodiscard]] AC3FORGE_EXPORT std::string report(std::span<const Mismatch> mismatches,
-                                                 int fbw_channels, int coded_channels);
+ int fbw_channels, int coded_channels);
 
-}  // namespace ac3::verify
+} // namespace ac3::verify
