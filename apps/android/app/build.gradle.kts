@@ -225,7 +225,7 @@ dependencyLocking {
 // versions with disclosed CVEs (Netty HTTP/2 Rapid Reset and several SNI-
 // handling issues through 4.1.93.Final; protobuf-java stack overflow
 // GHSA-735f-pc8j-v9w8; commons-io XmlStreamReader DoS GHSA-78wr-2p64-hpwj).
-// AGP 8.7.3 doesn't offer a newer UTP version to pick these up, so force
+// AGP 8.9.1 doesn't offer a newer UTP version to pick these up, so force
 // every configuration - including the UTP-internal ones, which don't
 // extend implementation/androidTestImplementation and so aren't reachable
 // via a `constraints` block - to patched releases. All netty artifacts are
