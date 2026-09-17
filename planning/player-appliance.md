@@ -1,8 +1,10 @@
 # A playback appliance: the player as a product
 
-!!! note "Status as of 2026-09-08: not started"
-    Written and decided 2026-09-07, and reframed the same day. Nothing here is built: there is
-    no `apps/hearth` in the tree, and no phase has an exit met.
+!!! note "Status as of 2026-09-16: replaced, not built in this form"
+    Written and decided 2026-09-07, and reframed the same day. This form — a headless daemon, a
+    web control page, a kiosk window and an HLS client — was replaced on 2026-09-15 by
+    [hearth-reference-player.md](hearth-reference-player.md). That later plan is being built:
+    `apps/hearth` and `src/sendspin` exist for it. Nothing on this page was shipped as specified.
 
     This page plans **Hearth**, the sink member: the project's decode and passthrough path as a
     product, on a machine that plays what it is given and turns it into sound in a room. It keeps

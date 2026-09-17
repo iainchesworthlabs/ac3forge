@@ -8,8 +8,8 @@ to backport to yet.
 
 ## Threat model
 
-Before linking this decoder against input you do not control, read
-[docs/threat-model.md](docs/threat-model.md). It states what is treated as untrusted (elementary
+Before linking this decoder against input you do not control, read the
+[threat model](https://iainchesworthlabs.github.io/ac3forge/threat-model/). It states what is treated as untrusted (elementary
 streams, EMDF/OAMD/JOC payloads, WAV headers, ADM documents, OSC live-position control packets)
 and what is not, the memory-safety
 posture and where the raw-pointer boundaries are (the C API, the WASM bindings, the JNI bridge),
@@ -35,7 +35,7 @@ If you found it while embedding the library, two things speed a fix up most: the
 `fuzz/regressions/`), and which entry point you called, since the allocating and `_into` decode
 forms have different contracts. `ac3cli --version` prints the version, commit and toolchain, which
 says whether what you hit is already fixed. See
-[docs/threat-model.md](docs/threat-model.md#reporting-an-issue).
+[Reporting an issue](https://iainchesworthlabs.github.io/ac3forge/threat-model/#reporting-an-issue).
 
 We aim to acknowledge new reports within 7 days and to agree a disclosure timeline once
 the issue is confirmed.

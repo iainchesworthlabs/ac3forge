@@ -1,55 +1,42 @@
 # Using ac3::forge
 
-The library is AC3Forge's codec, and the member the other two are built on. It turns PCM — or
-mono sources placed and moved in three dimensions — into AC-3, E-AC-3, or E-AC-3 carrying Dolby
-Atmos objects as Joint Object Coding, and reads those streams back. It is clean-room C++23
-written from the published standards, and nothing in it links FFmpeg or any other codec library.
-Loudness metering, level analysis and the decoded-domain quality measure are part of `ac3::forge`
-itself. Around it sit further targets, each linked only if you ask for it: MKV, MP4/CMAF and
-MPEG-TS muxing, IAB and ADM/BW64 reading, a bridge from a parsed ADM graph onto the object
-encoder, IAMF writing, and EMDF object signing. An AC-4 bitstream inspector (`ac4::ac4`) is
-built beside them — it is what `ac3cli probe` reads an AC-4 stream with — but nothing installs
-or exports it, so only an in-tree build can link it.
-[Capabilities](capabilities.md) is the exact list of what the codec does and does not do;
-[Validation](../verification.md) says how much of that has been checked, and against what.
+`ac3::forge` is the C++23 codec library used by Forge, Crucible, and Hearth. It encodes and
+decodes AC-3 and E-AC-3, including E-AC-3 streams with Dolby Atmos objects represented through
+Joint Object Coding (JOC). It also provides loudness metering, level analysis, and quality
+measurement.
 
-Reach for it when the codec belongs inside your own program rather than behind a command. A
-C++23 application links it directly; another language comes in through the [C API](c-api.md),
-the [Python](python-api.md) or [Rust](rust-api.md) bindings, or the
-[WebAssembly](../platforms/wasm.md) build, all over this same code. The family's other two
-members are themselves callers of it: [Forge](../forge/index.md)'s CLI and GUI make every coding
-decision by calling this API, and [Crucible](../crucible/index.md) encodes its live desktop scene
-through `ac3::oba::AtmosEncoder` the same way any other application would. It ships separately
-from them: the `ac3forge-dev-*` archives and, on Linux, the `libac3forge0` runtime package with
-`libac3forge-dev` (DEB) or `ac3forge-devel` (RPM), from each
-[release](https://github.com/iainchesworthlabs/ac3forge/releases) — see
-[Releasing](../releasing.md#what-gets-published) — plus `pip install ac3forge` for the
-[Python bindings](python-api.md). The rest of this page is how to link it and what holds across
-the API.
+Related targets provide container writing, IAB and ADM/BW64 reading, IAMF writing, object
+signing, platform audio, and an AC-4 bitstream inspector. Build and linkage requirements differ
+by target. [Capabilities](capabilities.md) lists supported formats and limits.
+[Validation](../verification.md) describes how output is checked.
 
-!!! note "The name"
-    `ac3forge` and `ac3::forge` name **the library** and the family's identifiers — the CMake
-    project, the packages, the C++ namespace, the C symbol prefix. **Forge**, capitalised and
-    standing alone, names the `ac3cli` + `ac3gui` pair built on top of it
-    ([what Forge is](../forge/index.md)). "AC3Forge" is the family in prose, so its three members
-    read as the library, Forge and [Crucible](../crucible/index.md); every identifier stays
-    lowercase, and "AC3Forge Forge" is never written. `ac3cli --version` prints
-    `ac3forge <version>`, which is this library's version line.
+Use this page to link the C++ library. Other interfaces are documented under the
+[C API](c-api.md), [Python](python-api.md), [Rust](rust-api.md), and
+[WebAssembly](../platforms/wasm.md) pages. Packages are listed under
+[Releasing](../releasing.md#what-gets-published).
 
-The public API is the headers under `src/forge/include/ac3/`. Link `ac3::forge`; link any of
-`matroska::matroska`, `mp4::mp4` and `mpegts::mpegts` as well if you want a container writer,
-`ac3::signing` if you want to apply the EMDF object-signing tag (see [Object signing](signing.md)),
-[`ac3iab::ac3iab`](iab.md) if you want to read a SMPTE ST 2098-2 Immersive Audio Bitstream, a bare
-elementary `.iab` file or a real MXF Track File alike (it links nothing from `ac3::forge` and knows
-nothing about AC-3 — phases 1-2), or
-`ac3adm::ac3adm` if you want to read or write a professional ADM BWF master — it does not need
-`ac3::forge` linked alongside it on its own (`ac3::admbridge` is the module that needs both, for
-mapping an ADM object graph onto/from `ac3::oba::AtmosEncoder`/`ac3::Eac3Decoder`). Unlike every
-other module here, `ac3adm::ac3adm` is opt-in: it is only built with
-`-DAC3FORGE_BUILD_ADM=ON` (default off), and needs several Boost header libraries pulled in via
-`-DVCPKG_MANIFEST_FEATURES=adm` — see [ADM / BW64 reading](adm.md) for why. Unlike every other
-module here, it and `ac3::admbridge` are **shared-only** even in an installed package — see the
-note below.
+The main public headers are under `src/forge/include/ac3/`.
+
+| CMake target | Purpose |
+|---|---|
+| `ac3::forge` | AC-3 and E-AC-3 encoding and decoding |
+| `matroska::matroska`, `mp4::mp4`, `mpegts::mpegts` | Container writers |
+| `ac3::signing` | EMDF object signing; see [Object signing](signing.md) |
+| `ac3iab::ac3iab` | SMPTE ST 2098-2 IAB reading; see [IAB](iab.md) |
+| `iamf::iamf` | IAMF OBU and ISOBMFF writing; see [IAMF](iamf.md) |
+| `ac3adm::ac3adm` | ADM/BW64 reading and writing; opt-in with `AC3FORGE_BUILD_ADM=ON` |
+| `ac3::admbridge` | Mapping between ADM objects and the Atmos encoder or decoder |
+| `ac4::ac4` | AC-4 inspection used by in-tree applications; in-tree only, not installed or exported |
+
+`ac3adm::ac3adm` and `ac3::admbridge` need the root dependency manifest's `adm` feature
+(`-DVCPKG_MANIFEST_FEATURES=adm`) when building this repository with vcpkg, and are installed as
+shared libraries. The packaged `ac3forge` port has no `adm` feature and does not package either
+target. Their [ADM](adm.md) and [ADM bridge](adm-bridge.md) pages explain the dependency and
+linkage details.
+
+`ac4::ac4` is available only while this repository is part of the build.
+`cmake/InstallLibrary.cmake` has no AC-4 export or install rule, so it is not available through
+`find_package(ac3forge)`.
 
 **In-tree** (this repo `add_subdirectory`'d into a larger build, or as a git submodule):
 

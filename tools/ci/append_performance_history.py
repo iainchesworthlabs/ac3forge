@@ -10,8 +10,8 @@ because it also failed the run).
 This is the trend-tracking HALF of the performance suite, not the hard
 real-time gate - that is tests/performance/test_performance.cpp's ac3perf
 target, a separate CI-blocking ctest run on every push/PR. This script only
-ever runs on develop/main pushes (mirrors persist_quality_trend's own
-gating), records numbers ac3perf's pass/fail already implicitly bounds, and
+ever runs on main pushes (mirrors persist_quality_trend's own gating),
+records numbers ac3perf's pass/fail already implicitly bounds, and
 raises a softer, trend-relative signal on top: not "did this exceed the
 absolute real-time budget" (ac3perf's job) but "is this drifting slower over
 time even while still passing that gate".
@@ -43,6 +43,8 @@ import json
 import os
 import sys
 from pathlib import Path
+
+from append_quality_history import write_recent_window
 
 # How many trailing same-(branch,leg,config) entries the regression check
 # averages over - same window append_quality_history.py uses, for the same
@@ -240,6 +242,7 @@ def main() -> int:
             f.write(line + "\n")
 
     print(f"Appended {len(lines)} record(s) to {history_path}")
+    write_recent_window(history_path)
     emit_github_output("hard_regression", "true" if hard_regression else "false")
     return 0
 

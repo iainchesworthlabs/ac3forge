@@ -47,6 +47,8 @@ import os
 import sys
 from pathlib import Path
 
+from append_quality_history import write_recent_window
+
 REGRESSION_TRAILING_WINDOW = 10
 REGRESSION_GROWTH_FRACTION = 0.20
 HARD_REGRESSION_GROWTH_FRACTION = 1.0
@@ -290,6 +292,7 @@ def main() -> int:
             f.write(line + "\n")
 
     print(f"Appended {len(lines)} record(s) to {history_path}")
+    write_recent_window(history_path)
     emit_github_output("hard_regression", "true" if hard_regression else "false")
     return 0
 

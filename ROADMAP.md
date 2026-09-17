@@ -1,20 +1,16 @@
 # Roadmap
 
-Ideas under consideration — a candidate list, not a commitment.
+Candidate work and the record of work completed against earlier candidates. An item under
+consideration is not a commitment.
 
-Organised by theme, and within each theme by where things stand: what's **shipped**, what's **in
-progress**, and what's still a **candidate**. Each item keeps a stable ID (`EQ1`, `IO4`) so pull
-requests and discussions can reference it, but the ID is a label, not the point — read for the
-state of the work, not the numbering. Sizes are rough guesses: **S** (an afternoon), **M** (a
-day or two), **L** (a focused week), **XL** (several PRs). The full record for an item —
-measurements, file paths, dead ends — sits behind its "Full record" toggle; nothing has been
-cut, just moved out of the way of a first read.
+Items are organised by theme and state: **shipped**, **in progress**, or **considering**. Stable
+IDs (`EQ1`, `IO4`) remain available to pull requests and discussions. Sizes are estimates:
+**S** (an afternoon), **M** (a day or two), **L** (a focused week), **XL** (several PRs).
+Measurements, file paths, and decisions remain under each item's "Full record" toggle.
 
-Each item also says which member of the family it belongs to — **the library**, **Forge**
-(`ac3cli` and `ac3gui`) or **Crucible** — or **shared**, where the work landed in more than one
-of them. A theme whose items are all the same member says so once, under its heading, and only
-an item that differs carries its own tag: `**UX12 (XL, Crucible)**`. IM, AP, UX and DR tag
-every item; each of those headings says why.
+Each item belongs to **the library**, **Forge** (`ac3cli` and `ac3gui`), **Crucible**,
+**Hearth**, or **shared** where work spans members. A theme whose items share one member states
+it under the heading. IM, AP, UX and DR tag every item because their membership varies.
 
 ## Overview
 
@@ -27,12 +23,12 @@ every item; each of those headings says why.
 | VX — Verification and oracles | shared | 20 | 2 | 1 |
 | PF — Performance and portability | the library | 8 | 0 | 0 |
 | AP — Library surface, bindings and v1.0 | the library | 9 | 1 | 2 |
-| UX — Applications | Forge, Crucible, the library | 9 | 2 | 1 |
+| UX — Applications | Forge, Crucible, Hearth, the library | 9 | 2 | 1 |
 | CR — Crucible | Crucible | 0 | 0 | 1 |
 | DR — Distribution, release engineering and hardware | shared | 5 | 1 | 3 |
 
 The Member column is the theme's. Where a theme's items differ, the item's own tag is the
-answer; the counts are of the sections below, and each was recounted against them on 2026-09-06.
+answer; the counts are of the sections below, and each was recounted against them on 2026-09-17.
 
 ## Where this starts from
 
@@ -40,24 +36,12 @@ Rebuilt at v0.9.0-beta.1 (2026-08-22) from the 2026-08-15 roadmap, most of which
 then; the handful of items still open carried forward under new IDs — old references still
 resolve, see the bottom of this file.
 
-The capability tables live in `docs/index.md`; this file is organised around where the remaining
-room is, which the tree mostly names itself:
-
-- The E-AC-3 encoder never got the decision-quality passes the AC-3 encoder got in 0.7.0: one
-  exponent set per frame, one SNR offset for every channel, dither hard-off, every coupling
-  decision static. It is the one landscape leg still behind both FFmpeg and Dolby's encoder.
-- Both decoders parse every syntax element but have no consumer output stage: dialnorm is
-  reported and never applied, there is no downmix, no concealment, and most metadata is
-  discarded on the way through.
-- The three container modules are write-only and the CLI has no inspector, so a real `.mkv`,
-  `.mp4` or `.ts` cannot be read without FFmpeg — the one tool the project otherwise treats as an
-  oracle rather than a dependency.
-- Three public specifications have become usable since the last draft: SMPTE opened its whole
-  catalogue on 2026-06-17 (so ST 2098-2, the Atmos master bitstream, is now a free PDF), IAMF has
-  a v2.0.0 working-group-approved draft with object-based elements, and AC-4's texts are free.
-- The verification estate is broad, but E-AC-3 has neither the mirror self-check nor the
-  input-space fuzzer that AC-3 has, and the perceptual column has never carried a number in CI.
-- The v1.0 freeze has its mechanical pieces and none of its decisions.
+Current codec capabilities and limitations live in
+[`docs/library/capabilities.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md).
+Oracle coverage lives in
+[`docs/verification.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/verification.md).
+Product indexes state current product status.
+This file records candidate work and preserves the history behind stable roadmap IDs.
 
 ## EQ. Encoder decision quality
 
@@ -1935,8 +1919,8 @@ control surface — and their own design work are in
 [`planning/esp32-stream-set.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-stream-set.md)
 and
 [`planning/esp32-714-realtime.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-714-realtime.md).
-This profile is also Hearth's only real implementation today, ahead of its planned appliance
-form — see `docs/hearth/index.md`.
+Hearth's ESP32-S3 sink uses this profile. Desktop engine: `apps/hearth`. Protocol library:
+`src/sendspin`. See `docs/hearth/index.md`.
 </details>
 
 **PF8 (S)** — The decoder's JOC bed analysis was still running direct forward transforms — now
@@ -2268,8 +2252,8 @@ an oracle for the codec itself.
 
 ## UX. Applications
 
-**Member:** per item — Forge, Crucible, the library, or shared where the work landed in more
-than one of them. Crucible work opened after the promotion is numbered under `CR` instead.
+**Member:** per item — Forge, Crucible, Hearth, the library, or shared where the work landed in
+more than one of them. Crucible work opened after the promotion is numbered under `CR` instead.
 
 ### Shipped
 
@@ -2435,10 +2419,9 @@ falls back to decoded PCM (`monitor`'s own §7.8-aware path). `follow=off` resto
 refusal `play` always gave. Not verified against real EDID/ELD hardware this round (no Linux
 box in the loop) - see `docs/platforms/linux.md`.
 
-**Design record:** this sink-following logic is what a planned playback appliance, Hearth
-(`docs/hearth/index.md`), would build on, and six specific
-gaps in it are enumerated in
-[`planning/player-appliance.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/player-appliance.md#what-ux9-needs-before-it-can-carry-this).
+**Design record:** Hearth's desktop engine builds on this sink-following logic. Its current
+status and remaining work are in
+[`docs/hearth/design/player-appliance.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/design/player-appliance.md).
 The project's source/transport/sink framing this and Hearth both sit inside is
 [`planning/topology.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/topology.md).
 </details>

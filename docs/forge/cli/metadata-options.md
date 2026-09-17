@@ -128,6 +128,9 @@ metadata options (any order, after the positional arguments):
                     is for a run that needs bit-for-bit agreement between two decoders of the
                     same stream more than it needs dither's own perceptual benefit -
                     tools/checks/verify_gold_reference.sh is the one caller that does
+  delta=off         skip §7.2.2.6 delta bit allocation wherever this command encodes.
+                    For eac3-encode, the equivalent spelling inside the fourth positional
+                    [tools] argument is nodelta; it is not a tools=nodelta key/value option
   verify            eac3-encode: decode every access unit as it is encoded and diff the
                     decoder's model against the encoder's own, refusing the run at the first
                     disagreement - off by default, since it roughly doubles the work
@@ -237,7 +240,7 @@ Annex E coding tools, `+`-joined:
 
 ```text
 tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
-        nofastmdct | nodither | numblkscod:N | all
+        nofastmdct | nodither | nodelta | numblkscod:N | all
         (cpl:N / spx:N pin a band edge, aht:N the gain mode, ecpl selects
         enhanced coupling instead of standard, tpn selects transient
         pre-noise processing)
@@ -247,10 +250,10 @@ tools:  Annex E coding tools, '+'-joined — none | cpl | spx | aht | tpn |
         ecpl only takes effect alongside cpl (e.g. cpl+ecpl);
         nofastmdct forces the direct-form forward MDCT instead of the
         default §7.9.4 fast path, nodither pins dithflag at 0 instead of
-        deciding it from content — neither is a coding tool (nothing in
-        the bitstream's syntax changes either way), so 'none' and 'all'
-        both leave them alone, and the older opt-in spelling 'fastmdct'
-        still parses as a no-op;
+        deciding it from content, and nodelta skips delta bit allocation;
+        these control effort rather than enabling Annex E tools, so 'none'
+        and 'all' leave them alone, and the older opt-in spelling
+        'fastmdct' still parses as a no-op;
         numblkscod:N (0-3, default 3) shortens the syncframe to 1/2/3/6
         blocks (5.3/10.7/16/32 ms) — every substream of the access unit
         takes the same value, AHT is unavailable below 3 (Table E1.3 has
@@ -264,7 +267,8 @@ spectral extension pinned to band 5, and AHT with GAQ off; `cpl+ecpl+tpn` in the
 on enhanced coupling (auto band edge) and transient pre-noise processing together — `ecpl` and
 `tpn` are independent tools, not alternatives to each other or to `spx`/`aht`, so any
 combination the tools argument accepts is legal here. `all` does not currently imply `ecpl` or
-`tpn`; name them explicitly to get either.
+`tpn`; name them explicitly to get either. Use `nodelta` in this positional argument, such as
+`cpl+nodelta`; `delta=off` is the command-wide option spelling.
 
 `ac3cli eac3-encode in.wav out.ec3 192 cpl+numblkscod:1` couples and halves the syncframe to two
 blocks (10.7 ms) — useful where 32 ms of encode latency is too much (live monitoring, a

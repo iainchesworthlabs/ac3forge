@@ -73,21 +73,18 @@ def load_leg_results(results_dir: Path):
 
 # How many of the most recent COMMITS the sidecar window keeps.
 #
-# docs/quality-trend.md renders TABLE_ROWS (40) entries per series and computes
-# a REGRESSION_WINDOW (10) trailing baseline behind the oldest of them, so 50
-# commits is what the page actually needs. 80 is that with margin, and still
-# an order of magnitude smaller than the full history.
+# The trend pages render at most 40 entries per series and may compute a
+# 10-entry trailing baseline behind the oldest one. Eighty commits keeps that
+# working with margin while remaining much smaller than unbounded histories.
 RECENT_WINDOW_COMMITS = 80
 
 
 def write_recent_window(history_path: Path) -> None:
-    """Write a <branch>.recent.jsonl beside the full history.
+    """Write a whole-commit ``*.recent.jsonl`` beside a full JSONL history.
 
-    The history files are append-only and unbounded - main.jsonl passed 1.7 MB
-    and develop.jsonl 1.8 MB by September 2026 - and docs/quality-trend.md
-    fetches BOTH in full on every page load to render forty rows per series.
-    That is 3.5 MB of history to display fifty commits' worth of it, and it
-    grows with every merge.
+    All measurement histories are append-only and unbounded. Their pages need
+    only a recent display and baseline window, so each append producer calls
+    this shared helper after updating its authoritative full file.
 
     The obvious fix is an HTTP suffix Range request from the page, which does
     not work and cannot be made to: raw.githubusercontent.com serves ranges
@@ -103,8 +100,8 @@ def write_recent_window(history_path: Path) -> None:
     published before this file existed) reads the original.
 
     Whole commits, not the last N lines: a commit writes one record per
-    (leg, codec, check), so a line-count window would cut the newest commit in
-    half and the page would render a partial column for it.
+    series), so a line-count window could cut the newest commit in half and a
+    page would render a partial result.
     """
     if not history_path.exists():
         return
@@ -132,12 +129,8 @@ def write_recent_window(history_path: Path) -> None:
     # a real cost to writing it anyway: the sidecar would be a byte-for-byte
     # second copy, doubling this branch's size to save the reader nothing.
     # The page falls back to the full file when this is absent, which is
-    # exactly the right behaviour in that case. As of September 2026 the
-    # quality history is 65 commits deep and 1.7 MB - big because each
-    # commit writes ~73 records, not because it is long - so this returns
-    # here today and starts producing a window once the history outgrows
-    # RECENT_WINDOW_COMMITS. A stale window left by an earlier run is
-    # removed rather than left to go out of date.
+    # exactly the right behaviour in that case. A stale window left by an
+    # earlier run is removed rather than left to go out of date.
     if len(seen) <= RECENT_WINDOW_COMMITS:
         recent_path.unlink(missing_ok=True)
         print(f"History is {len(seen)} commit(s), within the {RECENT_WINDOW_COMMITS}-commit "

@@ -82,32 +82,24 @@ on:
       # caller that does not pass one of these - release.yml's call, today -
       # still builds and tests everything, unchanged.
       #
-      # windows/linux/macos gate only their single-purpose satellite job
-      # below (windows-driver, linux-appimage, package-macos-universal), NOT
-      # the `build` matrix's own Windows/Linux/macOS legs: a job's `if:`
-      # cannot see `matrix.*` (confirmed against actionlint - the `matrix`
-      # context is only available inside that job's own steps/strategy), so
-      # gating individual legs of the one `build` job by OS needs either a
-      # dynamically-computed `strategy.matrix.include` or threading a
-      # condition through dozens of already-conditional steps - both bigger,
-      # riskier changes than this phase. The `build` job always runs every
-      # leg until the CI lane partitions plan's split (phase 5) gives each
-      # OS its own job, where `if: inputs.run_<lane>` works directly. See
-      # docs/ci-lanes.md's "Known simplifications".
+      # Windows, Linux and macOS each have a reusable workflow call below.
+      # Their matrices live in _ci-windows.yml, _ci-linux.yml and
+      # _ci-macos.yml, so these inputs can gate each platform call and its
+      # satellites directly at this orchestration level.
       run_core:
-        description: "Reserved for the sanitizer/coverage legs the CI lane partitions plan moves out of this workflow's `linux` OS grouping and into their own lane; no matrix leg is split out yet, so nothing here reads this input."
+        description: "Reserved for caller compatibility. Core checks run in _ci-core.yml, called directly by ci.yml; no job in this workflow reads this input."
         type: boolean
         default: true
       run_windows:
-        description: "Gates windows-driver. Does NOT yet gate the `build` matrix's windows-msvc/windows-llvm/windows-msvc-arm64 legs - see the group comment above."
+        description: "Gates _ci-windows.yml's build matrix and windows-driver."
         type: boolean
         default: true
       run_linux:
-        description: "Gates linux-appimage. Does NOT yet gate the `build` matrix's linux-gcc/linux-llvm/linux-llvm-asan-ubsan/linux-llvm-tsan legs - see the group comment above."
+        description: "Gates _ci-linux.yml's build matrix and linux-appimage."
         type: boolean
         default: true
       run_macos:
-        description: "Gates package-macos-universal (together with do_package, which it already required). Does NOT yet gate the `build` matrix's macos-llvm/macos-llvm-x64 legs - see the group comment above."
+        description: "Gates _ci-macos.yml's build matrix and package-macos-universal (together with do_package)."
         type: boolean
         default: true
       run_android:
@@ -219,9 +211,9 @@ jobs:
           HOSTED_WINDOWS='["windows-latest"]'
           SELF_LINUX='["self-hosted","Linux","X64"]'
           SELF_WINDOWS='["self-hosted","Windows","X64"]'
-          # One check-runners call covers every plain Linux/Windows leg in
-          # the build matrix below - four Linux (GCC, LLVM, LLVM ASan+UBSan,
-          # LLVM TSan) and two Windows (MSVC, LLVM) today - plus, as legs 5-7,
+          # One check-runners call covers every self-hosted-eligible leg in
+          # the split Linux/Windows workflows - four Linux (GCC, LLVM, LLVM
+          # ASan+UBSan, LLVM TSan) and two Windows (MSVC, LLVM) - plus, as legs 5-7,
           # the standalone containerised build-footprint, build-esp32s3 and
           # build-esp32c3 jobs below the matrix. Bump these, and add a
           # matching numbered output above and matrix.runner (or job runs-on)
@@ -698,12 +690,12 @@ jobs:
   # PipeWire access works exactly like any other installed binary - see
   # docs/platforms/linux.md's own "AppImage" section for the full writeup.
   #
-  # Its own job, not a `build` matrix entry: the base image, the Qt install
+  # Its own job, outside the split Linux matrix: the base image, the Qt install
   # method and the packaging tool below all genuinely differ from every
   # other Linux leg, not just one cacheVariable.
   #
   # ubuntu:22.04 (glibc 2.35), deliberately OLDER than the ubuntu:26.04
-  # every other Linux leg pins (see the `build` matrix's own container
+  # every other Linux leg pins (see _ci-linux.yml's container
   # comment) - an AppImage's entire reason to exist is running on a distro
   # whose own glibc/Qt is older than what built it; compiling against
   # 26.04's much newer glibc would make the result LESS portable than the
@@ -723,14 +715,14 @@ jobs:
     needs: [toolchain-versions]
     if: inputs.run_linux
     runs-on: ubuntu-latest
-    # See the `build` matrix's own container comment for why this is pinned
-    # at all; unlike that matrix, this is the one Linux leg that pins an
+    # See _ci-linux.yml's container comment for why this is pinned at all;
+    # unlike that matrix, this is the one Linux leg that pins an
     # OLDER base on purpose.
     container: ubuntu:22.04
     timeout-minutes: 90
 
     steps:
-      # Same reasoning as the `build` matrix's own "Bootstrap container"
+      # Same reasoning as _ci-linux.yml's "Bootstrap container"
       # step: the bare ubuntu:22.04 image has no git (actions/checkout
       # silently degrades to a REST tarball download without it) and none of
       # the rest of this either. python3/python3-pip is aqtinstall's own
@@ -1213,7 +1205,7 @@ jobs:
           echo "ac3gui ran clean on debian:12-slim, which never had Qt installed and only gained ALSA/graphics-stack libraries as normal runtime dependencies"
 
   # The Shield app (apps/android): a Gradle/NDK build, not a CMake preset
-  # leg, so it is its own job rather than a `build` matrix entry - there is
+  # leg, so it is its own job outside the split platform workflows - there is
   # no config-android/build-android/pack-android preset to reuse, and trying
   # to force this into the same matrix shape as the CMake legs above would
   # buy nothing. debug builds every push (this job's own continuous
@@ -1250,8 +1242,8 @@ jobs:
     name: Android (Shield)
     if: inputs.run_android
     runs-on: ubuntu-latest
-    # Unset elsewhere in this file's `build` matrix (which sets 90 for the
-    # slowest desktop legs, see its own header) - this job had no bound at
+    # The split desktop workflows allow 90 minutes for their slowest legs;
+    # this job had no bound at
     # all before the emulator step below existed. An emulator boot that
     # never completes is the most likely hang in this job now, not the
     # Gradle/CMake build; 45 is generous for boot + connectedDebugAndroidTest
@@ -1484,9 +1476,9 @@ jobs:
 
   # The WASM browser decode demo (apps/wasm, roadmap F3): a real CMake
   # preset (config-wasm-emscripten) unlike build-android above, but still its
-  # own job rather than a `build` matrix entry, for the same reason
+  # own job outside the split platform workflows, for the same reason
   # build-android's own header gives - this leg has none of the shape that
-  # matrix's steps assume (no ctest suite to run, no cpack package to stage,
+  # desktop workflows' steps assume (no ctest suite, no cpack package,
   # no gold-reference gate), so folding it in would mean threading new `if:`
   # exclusions through most of that job's steps for no benefit. Runs on
   # every push - a continuous smoke test that the Emscripten toolchain and
@@ -1662,7 +1654,7 @@ jobs:
   # The Rust bindings (rust/, roadmap AP9): a Cargo workspace living in-tree but deliberately
   # never add_subdirectory()'d from the root CMakeLists.txt - see rust/README.md's "why this
   # lives in-tree" section. Its own job for the same reason build-wasm/build-footprint are: none
-  # of the `build` matrix's steps apply (no ctest suite, no cpack package, no gold-reference
+  # of the desktop workflows' steps apply (no ctest suite, no cpack package, no gold-reference
   # gate) - rust/ac3forge-sys/build.rs drives its own trimmed CMake configure of just
   # ac3::forge_c_shared rather than reusing a desktop preset.
   #
@@ -1722,8 +1714,8 @@ jobs:
   # the image's Visual Studio developer shell. GitHub's windows-latest image
   # carries what the packages do not: the "Windows Driver Kit" VS component
   # (the WindowsKernelModeDriver10.0 toolset) and the Spectre-mitigated
-  # libraries. Deliberately a GitHub-hosted job, not a `build` matrix leg: the
-  # self-hosted fleet has no WDK component, and none of the matrix's steps
+  # libraries. Deliberately a GitHub-hosted satellite, not a Windows matrix leg:
+  # the self-hosted fleet has no WDK component, and none of the desktop steps
   # (CMake, ctest, cpack, the gold-reference gate) apply to a .sys.
   #
   # What it gates on: the package builds (sys, stamped inf, cat, and the
@@ -1812,8 +1804,8 @@ jobs:
   # The minimum-footprint decoder profile (roadmap PF7, docs/building.md) built
   # for arm-none-eabi and run on QEMU's mps2-an385 - a Cortex-M3 with no
   # operating system, no filesystem and no hardware floating point. Its own job
-  # rather than a `build` matrix entry for the same reason build-wasm is: none
-  # of that matrix's steps apply here (no ctest suite, no cpack package, no
+  # outside the split platform workflows for the same reason build-wasm is:
+  # none of their steps apply here (no ctest suite, no cpack package, no
   # gold-reference gate, and the profile's own guard refuses the options those
   # steps assume).
   #

@@ -11,6 +11,8 @@ siblings, and `ac3::audio`, which belongs to the family rather than to any one m
 never installed. [Forge](../forge/index.md) (`ac3cli` and `ac3gui`) and
 [Crucible](../crucible/index.md) reach the codec through the public API described under
 [What it is](index.md), and link `ac3::audio` directly.
+The [application coverage matrix](application-coverage.md) shows which of these broad
+capabilities each application exposes.
 
 ## What it does
 

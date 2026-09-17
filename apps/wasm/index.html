@@ -139,10 +139,9 @@
   <div class="panel">
     <h2 style="font-size:1rem;margin:0 0 8px;">Realtime push-decode (AudioWorklet)</h2>
     <p class="hint" style="margin:0 0 12px;">
-      The same bundled stream, fed one access unit at a time through
-      <a href="https://www.npmjs.com/package/ac3forge-wasm-decoder"><code>ac3forge-wasm-decoder</code></a>'s
-      push-frame API into a real <code>AudioWorkletNode</code> - decoding happens in a Worker, off
-      this tab's main thread, and only a small ring-buffer drain runs on the audio thread itself.
+      The same bundled stream, fed one access unit at a time through the bundled
+      <code>ac3forge-wasm-decoder</code> push-frame API into an <code>AudioWorkletNode</code>.
+      Decoding happens in a Worker; a small ring-buffer drain runs on the audio thread.
       Needs cross-origin isolation (<code>SharedArrayBuffer</code>) - see
       <a href="https://iainchesworthlabs.github.io/ac3forge/platforms/wasm/">docs/platforms/wasm.md</a>
       if this button stays disabled.
@@ -158,7 +157,7 @@
     Part of <a href="https://github.com/iainchesworthlabs/ac3forge">ac3forge</a>, roadmap item UX5.
     Source: <code>apps/wasm/</code> (the demo) and
     <a href="https://github.com/iainchesworthlabs/ac3forge/tree/main/js"><code>js/</code></a> (the
-    published package). Licensed under
+    bundled JavaScript bindings). Licensed under
     <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/LICENSE">GPLv3</a>.
   </footer>
 </div>

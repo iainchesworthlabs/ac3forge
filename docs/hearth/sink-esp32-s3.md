@@ -1,16 +1,18 @@
 # An ESP32-S3 sink
 
-`hearth_sink` makes an ESP32-S3 board a network sink. It is a Sendspin player that Music
-Assistant can play stereo to, and that decodes AC-3 and E-AC-3, Atmos objects included, for its
-own speakers. This page takes a board from a checkout of this repository to playing in a group.
-The example's own [README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md)
-is the reference for everything here, with the measurements behind it.
+`hearth_sink` turns an ESP32-S3 board into a network audio player. It uses Sendspin to receive
+synchronised audio from a compatible server. The board can play stereo PCM, or decode AC-3 and
+E-AC-3 (including Atmos objects) for its configured speakers.
+
+This guide covers building, flashing, network setup, pairing, and group playback. The example
+[README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md)
+contains implementation details and measurements.
 
 !!! note "Status as of 2026-09-16: played in a group on two boards, with no DAC wired"
     Two boards played one E-AC-3 JOC programme for ten minutes as a group, one at 2.0 and one at
     5.1, with no underrun and their play times within 549 µs of each other. The 2.0 board's
-    levels matched a test sink's. Nothing was wired to either board's I2S pins, so nothing was
-    heard: the peripheral clocked the audio out with nothing listening. `ac3hearth` cannot play
+    levels matched a test sink's. No DAC was connected to either board's I2S pins.
+    `ac3hearth` cannot play
     to a sink yet. Until it can, a developer tool, `ac3hearth-testserver`, plays E-AC-3 to
     boards ([Play AC-3 and E-AC-3](#play-ac-3-and-e-ac-3)).
 
@@ -136,19 +138,18 @@ The board keeps eight pairings. Lines typed on the console are commands:
 | `pair forget` | Removes every pairing and gives the board a new identity and token; *Forget every server* on the page does the same |
 | `sendspin` | Prints the player's state: the server, the role, the clock, and the stream's counters |
 
-## Play from Music Assistant
+## Music Assistant compatibility
 
-Music Assistant finds the board over mDNS and lists it as a Sendspin player. Once paired, it
-plays stereo PCM at 48 kHz, 16 or 24 bits, to the board's `player@v1` role. The board renders
-that stereo pair onto its layout: left and right go to the layout's front left and right
-speakers, and the other speakers stay silent. On a one-speaker layout, the two channels are
-mixed. FLAC and Opus are not offered, because their decoders are not on the board.
+CI validates the sink against a scripted aiosendspin 9.1.1 server, the library version used by
+Music Assistant. Music Assistant itself has not been tested with a board. The validated server
+finds the board over mDNS, pairs with it, and plays stereo PCM at 48 kHz, 16 or 24 bits, through
+the `player@v1` role. The board renders left and right onto the layout's front speakers; other
+speakers stay silent. A one-speaker layout mixes the two channels. The sink does not offer FLAC
+or Opus.
 
-A board plays for one server at a time. Music Assistant stays connected to every player it has
-found, so a board usually holds its connection when another server dials. As the Sendspin
-specification sets out, a server that asks to play takes the board from one that is only
-connected or is already playing. The exception is a pairing in progress, which is not
-interrupted.
+A board plays for one server at a time. As the Sendspin specification sets out, a server that
+asks to play takes the board from one that is only connected or is already playing. A pairing
+in progress is not interrupted.
 
 ## Play AC-3 and E-AC-3
 
@@ -193,7 +194,7 @@ ac3hearth-testserver --play programme.ec3 \
   --player ws://192.168.1.41:8928/sendspin --token SP:0... --layout 5.1
 ```
 
-Music Assistant has groups of its own: group the boards there.
+Music Assistant group playback has not been tested.
 
 ## Wiring
 

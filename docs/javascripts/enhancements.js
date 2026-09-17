@@ -1,7 +1,4 @@
-/* AC3Forge docs: two small, independent, page-scoped enhancements.
-   Neither touches page content beyond adding a filter box or a small
-   inline marker — the caveats already written on these pages stay as
-   written; nothing here summarises or overrides them. */
+/* AC3Forge docs: small, independent, page-scoped enhancements. */
 (function () {
   "use strict";
 
@@ -79,8 +76,124 @@
     }
   }
 
+  // ---- Home page: product/platform/variant download selector ----
+  function uniqueValues(entries, field) {
+    var seen = Object.create(null);
+    return entries.reduce(function (values, entry) {
+      var value = entry[field];
+      if (!seen[value]) {
+        seen[value] = true;
+        values.push(value);
+      }
+      return values;
+    }, []);
+  }
+
+  function resetSelect(select, prompt, values) {
+    select.replaceChildren();
+    var promptOption = document.createElement("option");
+    promptOption.value = "";
+    promptOption.textContent = prompt;
+    select.appendChild(promptOption);
+    values.forEach(function (value) {
+      var option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      select.appendChild(option);
+    });
+    select.disabled = values.length === 0;
+  }
+
+  function renderDownloadResult(container, entry, catalogue) {
+    container.replaceChildren();
+
+    var status = document.createElement("p");
+    status.className = "ac3f-selector-status ac3f-selector-status-" + entry.state;
+    status.textContent = catalogue.states[entry.state].label;
+    status.title = catalogue.states[entry.state].description;
+
+    var title = document.createElement("h3");
+    title.textContent = entry.artifact;
+
+    var note = document.createElement("p");
+    note.textContent = entry.note;
+
+    var action = document.createElement("a");
+    action.className = "ac3f-btn ac3f-btn-primary";
+    action.href = new URL(entry.url, window.location.href).href;
+    action.textContent = entry.action;
+
+    container.appendChild(status);
+    container.appendChild(title);
+    container.appendChild(note);
+    container.appendChild(action);
+  }
+
+  function initDownloadSelector() {
+    var selector = document.getElementById("ac3f-download-selector");
+    if (!selector) return;
+
+    var product = selector.querySelector('[data-selector="product"]');
+    var platform = selector.querySelector('[data-selector="platform"]');
+    var variant = selector.querySelector('[data-selector="variant"]');
+    var result = document.getElementById("ac3f-download-result");
+    if (!product || !platform || !variant || !result) return;
+
+    fetch(selector.dataset.catalogueUrl, { credentials: "same-origin" })
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then(function (catalogue) {
+        var entries = catalogue.downloads;
+        resetSelect(product, "Choose a product", uniqueValues(entries, "product"));
+
+        product.addEventListener("change", function () {
+          var matches = entries.filter(function (entry) {
+            return entry.product === product.value;
+          });
+          resetSelect(platform, "Choose a platform", uniqueValues(matches, "platform"));
+          resetSelect(variant, "Choose a variant", []);
+          result.innerHTML =
+            "<p>Choose a platform and variant to see the available path.</p>";
+        });
+
+        platform.addEventListener("change", function () {
+          var matches = entries.filter(function (entry) {
+            return (
+              entry.product === product.value && entry.platform === platform.value
+            );
+          });
+          resetSelect(variant, "Choose a variant", uniqueValues(matches, "variant"));
+          result.innerHTML = "<p>Choose a variant to see the available path.</p>";
+        });
+
+        variant.addEventListener("change", function () {
+          var match = entries.find(function (entry) {
+            return (
+              entry.product === product.value &&
+              entry.platform === platform.value &&
+              entry.variant === variant.value
+            );
+          });
+          if (match) renderDownloadResult(result, match, catalogue);
+        });
+      })
+      .catch(function () {
+        result.replaceChildren();
+        var message = document.createElement("p");
+        message.textContent = "The download catalogue could not be loaded.";
+        var link = document.createElement("a");
+        link.href = new URL("platforms/", window.location.href).href;
+        link.textContent = "Open the platform support matrix";
+        result.appendChild(message);
+        result.appendChild(link);
+      });
+  }
+
   onReady(function () {
     initCapabilitiesFilter();
     initPlatformMarker();
+    initDownloadSelector();
   });
 })();
