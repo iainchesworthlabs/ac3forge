@@ -44,7 +44,13 @@ printf 'sdk.dir=%s\n' "$sdk" > "$android_dir/local.properties"
 cd "$android_dir"
 sed 's/\r$//' gradlew > gradlew.unix
 chmod +x gradlew.unix
-./gradlew.unix --write-locks
+# assembleDebug alone does not lock debugAndroidTestRuntimeClasspath
+# (connectedDebugAndroidTest in CI); include androidTest + release too.
+./gradlew.unix \
+  :app:assembleDebug \
+  :app:assembleDebugAndroidTest \
+  :app:assembleRelease \
+  --write-locks
 rm -f gradlew.unix
 
 echo "Updated $android_dir/app/gradle.lockfile"
