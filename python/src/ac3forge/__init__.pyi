@@ -79,7 +79,7 @@ TRANSFORM_DELAY_SAMPLES: int
 __version__: str
 
 _FloatArray = npt.NDArray[np.float32]
-# Every encode_frame/encode_access_unit `channels`/`objects` parameter (Python bindings completeness): either a
+# Every encode_frame/encode_access_unit `channels`/`objects` parameter: either a
 # single 2-D (n_channels, n_samples) array, or a sequence of 1-D per-channel arrays - both
 # zero-copy when already contiguous float32 (see python-api.md's "Zero-copy numpy" section).
 _ChannelsIn = _FloatArray | Sequence[_FloatArray]
@@ -542,7 +542,7 @@ class Eac3Decoder:
     @property
     def latency_samples(self) -> int: ...
 
-# ac3::verify - the encoder/decoder mirror trace and its research export (research trace export). A real
+# ac3::verify - the encoder/decoder mirror trace and its research export. A real
 # submodule (m.def_submodule) at runtime, stubbed as a nested-class namespace here for the same
 # reason `eac3` below is. Pass a FrameTrace/Eac3AccessUnitTrace to DecoderConfig(trace=...)/
 # (eac3_trace=...), decode, then read it back out with trace_to_csv/trace_to_json_lines.
@@ -588,7 +588,7 @@ class AtmosEncoder:
     @property
     def bed_latency(self) -> LatencyBudget: ...
 
-# ac3::eac3::FrameEncoder/AccessUnitEncoder - Python bindings completeness. A real submodule (m.def_submodule) at
+# ac3::eac3::FrameEncoder/AccessUnitEncoder. A real submodule (m.def_submodule) at
 # runtime, stubbed as a nested-class namespace here rather than a separate eac3.pyi, the way
 # pybind11-stubgen represents one too - `ac3forge.eac3.FrameConfig` resolves through this class the
 # same way it resolves through the runtime module.
@@ -700,7 +700,7 @@ class eac3:
 
 def build_codec_config_box(stream: bytes) -> bytes: ...
 
-# ac3::meta - loudness metering and QC (Python bindings completeness). A real submodule at runtime, stubbed as a
+# ac3::meta - loudness metering and QC. A real submodule at runtime, stubbed as a
 # nested-class namespace exactly like `eac3` above.
 class meta:
     class LoudnessMeter:
@@ -755,7 +755,7 @@ class meta:
         true_peak_dbtp: float | None,
     ) -> meta.QcVerdict: ...
 
-# ac3::signing - EMDF object-layer signing (Python bindings completeness). Same submodule-as-class convention.
+# ac3::signing - EMDF object-layer signing. Same submodule-as-class convention.
 class signing:
     class SigningKey:
         def __init__(self, content: bytes) -> None: ...

@@ -1,4 +1,4 @@
-"""ac3.eac3.FrameEncoder/AccessUnitEncoder (Python bindings completeness) round trips through ac3.Eac3Decoder,
+"""ac3.eac3.FrameEncoder/AccessUnitEncoder round trips through ac3.Eac3Decoder,
 plus the named-layout convenience (ac3.eac3.access_unit_config_for_layout) and the error paths
 KwargBinder/FrameError give every other encoder here.
 """

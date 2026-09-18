@@ -1,4 +1,4 @@
-"""Export a real decode's per-block bap/exponent/mask/SNR-offset trace as CSV (research trace export).
+"""Export a decode's per-block bap/exponent/mask/SNR-offset trace as CSV.
 
 docs/library/python-api.md excerpts the functions below directly - this file is what the build
 actually runs, not a snippet copied by hand. See ac3/verify/trace_export.hpp for the row schema

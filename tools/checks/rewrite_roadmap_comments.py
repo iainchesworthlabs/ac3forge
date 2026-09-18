@@ -123,7 +123,8 @@ REPLACEMENTS: list[tuple[str, str]] = [
         "IAB reader bridge, phase 3",
     ),
     (
-        r'roadmap item B1 phase 3 of 3 \("ADM BWF reader feeding the JOC encoder", see ROADMAP\.md\)',
+        r'roadmap item B1 phase 3 of 3 \("ADM BWF reader feeding the JOC '
+        r'encoder", see ROADMAP\.md\)',
         "ADM BWF → JOC bridge, phase 3",
     ),
     (
@@ -172,8 +173,16 @@ REPLACEMENTS: list[tuple[str, str]] = [
     (r"\(ROADMAP\s*\n\s*#\s*PF5", "(SIMD kernels"),
     (r"\(ROADMAP\s*\n\s*//\s*PF5", "(SIMD kernels"),
     (r"See ROADMAP\.md's\s*\n#\s*VX11 entry", "See cross-platform reproducibility notes below"),
-    (r"See cross-platform reproducibility \(VX11\)\s*\n#\s*VX11 entry", "See cross-platform reproducibility notes below"),
-    (r"See cross-platform bitstream reproducibility, which this pins the policy half\s*\n#\s*of\.", "See cross-platform bitstream reproducibility policy for the half this option pins."),
+    (
+        r"See cross-platform reproducibility \(VX11\)\s*\n#\s*VX11 entry",
+        "See cross-platform reproducibility notes below",
+    ),
+    (
+        r"See cross-platform bitstream reproducibility, which this pins the "
+        r"policy half\s*\n#\s*of\.",
+        "See cross-platform bitstream reproducibility policy for the half "
+        "this option pins.",
+    ),
     (r"See ROADMAP\.md's", "See the roadmap's"),
     (r", see ROADMAP\.md\)", ")"),
     (r"see ROADMAP\.md\)", ")"),

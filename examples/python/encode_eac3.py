@@ -1,6 +1,6 @@
 """Encode a 7.1 layout to E-AC-3 and decode it straight back.
 
-Mirrors examples/encode_eac3.cpp in spirit but through the Python bindings (Python bindings completeness), and uses
+Mirrors examples/encode_eac3.cpp in spirit but through the Python bindings, and uses
 ac3.eac3.access_unit_config_for_layout() so the dependent substream's chanmap never has to be
 hand-built - the whole point of the named-layout convenience.
 docs/library/python-api.md excerpts the functions below directly - this file is what the build

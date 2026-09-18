@@ -1,4 +1,4 @@
-"""Python bindings completeness's completeness surface: containers, metering, QC, signing and the decoder
+"""Bindings completeness surface: containers, metering, QC, signing and the decoder
 context manager - each through a real encode, never silence and never only frame 0 (see
 CONTRIBUTING.md's "Test with real audio")."""
 

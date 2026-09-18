@@ -24,8 +24,10 @@ section, which this script writes.
 Reproducibility: run it twice on one machine and every hash matches, which is
 what --check-determinism asserts. Hashes do NOT carry across compilers or
 architectures - docs/building.md records a measured cross-toolchain
-difference, and the arm64 legs sit 6 dB off the x86 gold numbers (cross-platform bitstream reproducibility/VX12) - so the manifest records the exact toolchain that produced it and
-a consumer compares hashes only against a bundle built the same way.
+difference, and the arm64 legs sit 6 dB off the x86 gold numbers
+(cross-platform bitstream reproducibility) - so the manifest records the
+exact toolchain that produced it and a consumer compares hashes only against
+a bundle built the same way.
 
 Usage (repo root, after a build):
 
@@ -861,8 +863,9 @@ def generate(
         "built_with": cli_version,
         "hash_scope": (
             "sha256 values are per-toolchain. Encoded output is not currently bit-identical "
-            "across compilers and architectures (docs/building.md; cross-platform bitstream reproducibility/VX12 - the "
-            "arm64 legs sit 6.0 dB off every x86 leg on the gold gate), so a bundle "
+            "across compilers and architectures (docs/building.md; cross-platform bitstream "
+            "reproducibility - the arm64 legs sit 6.0 dB off every x86 leg on the gold gate), "
+            "so a bundle "
             "regenerated with a different compiler or on a different architecture will differ. "
             "Regenerating with the toolchain named in built_with reproduces every hash here "
             "exactly."
