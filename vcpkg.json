@@ -2,7 +2,7 @@
   "name": "ac3forge",
   "$comment": "No \"version\" field: per vcpkg.json's own schema (learn.microsoft.com/vcpkg/reference/vcpkg-json), version is only required for a manifest describing a library/port - this one just declares this project's own build-time dependencies. The build's real version derives from git tags (cmake/GitVersionDerivation.cmake); the staged port's version-semver (packaging/vcpkg-port/ac3forge/vcpkg.json) is what tracks releases. See docs/releasing.md.",
   "description": "Clean-room AC-3 (ATSC A/52) encoder library and tools in C++23. Codec code has no third-party dependencies; vcpkg supplies test/tooling packages only.",
-  "builtin-baseline": "eaca4a577b6b678c6e10252754b6988a61746c19",
+  "builtin-baseline": "386d7c478221b7ee0c97bfe6ea61dcf65121d564",
   "dependencies": [
     "catch2",
     "fmt"

@@ -1,3 +1,6 @@
+# Workspace-local Android SDK bootstrap (legacy; prefer ~/.local/share/ac3forge/android-sdk in WSL).
+.tools/
+
 # Build output
 build/
 vcpkg_installed/
