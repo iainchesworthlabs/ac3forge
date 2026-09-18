@@ -20,7 +20,7 @@
 #include "ac3iab/ac3iab.hpp"
 #include "ac3iab/model.hpp"
 
-// ac3::admbridge::build_iab - roadmap item IM1 phase 3 ("IAB (SMPTE ST 2098-2) reader", see
+// ac3::admbridge::build_iab - IAB reader bridge, phase 3 ("IAB (SMPTE ST 2098-2) reader", see
 // ROADMAP.md). Most cases here construct ac3iab::IABitstreamFrame/IaFrame/BedDefinition/
 // ObjectDefinition values directly (plain aggregates, per ac3iab/model.hpp's own design - no
 // parser needed to build one), the same "construct the model directly, no byte-level round trip"

@@ -10,7 +10,7 @@
 #include "ac3iab/ac3iab.hpp"
 #include "ac3iab/mxf.hpp"
 
-// ac3iab::parse_mxf_iab (mxf.hpp) - roadmap item IM1 phase 2. These tests build MXF-level KLV
+// ac3iab::parse_mxf_iab (mxf.hpp) - IAB reader, phase 2. These tests build MXF-level KLV
 // fixtures byte-by-byte, independently of src/ac3iab/src/mxf_reader.cpp's own implementation - the
 // same "independent fixture" convention test_ac3iab.cpp already establishes for its own IAB
 // bitstream fixtures. Key byte values are transcribed directly from SMPTE ST 377-1:2019 Table 4/6

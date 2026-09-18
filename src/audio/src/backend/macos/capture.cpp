@@ -96,7 +96,7 @@
 // access); that prompt is keyed to the requesting binary's code-signing
 // identity and, per every report surveyed while writing this, never fires at
 // all for an unsigned binary - and ac3cli/ac3gui/Crucible ship unsigned today
-// (roadmap DR6, blocked on certificates). A denial and a prompt that never
+// (macOS code signing, blocked on certificates). A denial and a prompt that never
 // appeared both arrive here as one refusal from AudioHardwareCreateProcessTap
 // and are reported as kComFailure, because the API offers nothing to tell
 // them apart. And no Mac has ever run any of this backend (DR9): what is

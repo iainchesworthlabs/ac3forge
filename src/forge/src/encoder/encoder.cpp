@@ -127,7 +127,7 @@ int fgaincod_for(const EncoderConfig& config, int nfchans) {
         return config.fgaincod;
     }
     // The curve itself lives in bitalloc.hpp, because the E-AC-3 encoder
-    // takes the same measured line (roadmap EQ7's E-AC-3 half) and a
+    // takes the same measured line (E-AC-3 fast-gain control's E-AC-3 half) and a
     // measured constant stated twice is a constant that drifts.
     return rate_adaptive_fgaincod(static_cast<int>(config.bitrate_kbps), nfchans);
 }
@@ -226,7 +226,7 @@ struct FrameEncoder::Impl {
     // nothing observable. Not thread-safe for concurrent calls on the same
     // instance, same as history_ and the other per-frame state above.
     std::array<internal::encode_scalar_t, 512> time_scratch_{};
-    // Four windowed blocks, not one (ROADMAP PF5 phase 4c): step 1's
+    // Four windowed blocks, not one (batched MDCT (four blocks)): step 1's
     // per-channel loop batches four BLOCKS' forward transforms into one
     // ac3::mdct512_forward_batch4 call, which needs all four to coexist.
     // Six blocks a frame, so a channel whose first four blocks are all long
@@ -612,7 +612,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             return !(ch < nfchans &&
                      blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)]);
         };
-        // Four BLOCKS' forward transforms at a time (ROADMAP PF5 phase
+        // Four BLOCKS' forward transforms at a time (SIMD batched MDCT
         // 4c). mdct512_forward_batch4 checks has_avx2() internally and
         // falls back to four ordinary calls, so this is bit-identical
         // either way. Only a run of four LONG blocks can batch - a
@@ -1146,7 +1146,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         // only to transient detection in the former unzoned remainder.
         //
         // resize() with no clear() before it, unlike the push_back form this
-        // replaced (ROADMAP PF5 gave every slot a contiguous destination to
+        // replaced (SIMD kernels gave every slot a contiguous destination to
         // batch into, which needs the space to exist first). clear() would
         // drop the size to zero and make the resize value-initialize all ten
         // thousand elements again on every frame; without it, a steady-state
@@ -1178,7 +1178,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         for (int block = 0; block < kBlocksPerFrame; ++block) {
             const auto slot = static_cast<std::size_t>(s) * kBlocksPerFrame +
                               static_cast<std::size_t>(block);
-            // Batched rather than bin-by-bin (ROADMAP PF5): to_fixed25_block
+            // Batched rather than bin-by-bin (SIMD kernels): to_fixed25_block
             // rounds two coefficients at a time through the architecture
             // seam, and extract_exponents is the same per-element
             // exponent_from_fixed this loop used to call inline. Both

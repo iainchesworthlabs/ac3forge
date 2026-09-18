@@ -27,7 +27,7 @@
 # CMakePresets.json), so this is the same build ci.yml's static-analysis
 # (clang-tidy) nightly already proves clean.
 #
-# The other two legs (roadmap VX14) cover code the C++ leg never saw: ~30
+# The other two legs (non-C++ lint and scan) cover code the C++ leg never saw: ~30
 # Python files (the oracles and CI gates under tools/, plus the python/
 # binding package) and apps/wasm/demo.js. They take build-mode: none -
 # nothing needs compiling for CodeQL to extract them - and so run straight on

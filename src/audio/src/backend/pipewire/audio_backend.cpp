@@ -23,7 +23,7 @@
 // questions; a machine with no PipeWire session running enumerates nothing,
 // the same honest empty list a machine with no ALSA sound card returns.
 //
-// The two added for roadmap UX12 are different, so this table is computed
+// The two added for Crucible cross-platform promotion are different, so this table is computed
 // once at first use the way the Windows one is. A per-application tap and a
 // registry listener both need a session to talk to, and unlike enumeration -
 // where "no session" and "no devices" are indistinguishable and an empty

@@ -79,7 +79,7 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# The SIMD arch tree (ROADMAP PF5).
+# The SIMD arch tree (SIMD kernels).
 #
 # Exactly the mechanism directly above, on the architecture axis instead of
 # the profiling one: src/internal/arch/{generic,x86_64,aarch64}/ each hold an
@@ -148,7 +148,7 @@ set(AC3FORGE_ARCH_INCLUDE_DIR "${AC3FORGE_ARCH_INCLUDE_DIR}" PARENT_SCOPE)
 # directory that build actually compiled rather than assuming generic.
 set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
 
-# Roadmap PF7's minimum-footprint decoder profile builds something different
+# minimum-footprint decoder profile's minimum-footprint decoder profile builds something different
 # enough - static only, decode only, no exceptions, no direct-form transform
 # tables - that it gets its own file rather than a dozen conditionals through
 # this one. Off by default; the root CMakeLists.txt refuses the combination of
@@ -366,7 +366,7 @@ else()
 endif()
 
 # The same mechanism again, for the build-profile facts every source asks
-# through ac3/internal/profile.hpp (roadmap PF7): full/ says the direct-form
+# through ac3/internal/profile.hpp (minimum-footprint decoder profile): full/ says the direct-form
 # transform tables are present, minimal/ says they are not, and CMake picks
 # the directory rather than any source picking with an #ifdef.
 #
@@ -443,7 +443,7 @@ target_include_directories(forge_objects PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 
 
 # ---------------------------------------------------------------------------
-# Runtime CPU-feature detection (ROADMAP PF5's dynamic-dispatch follow-on).
+# Runtime CPU-feature detection (runtime SIMD dispatch).
 #
 # AC3FORGE_SIMD above is a compile-time choice: it bakes in exactly one of
 # SSE2/NEON/scalar, because those are architectural (guaranteed present, no
@@ -553,7 +553,7 @@ endif()
 # which is exactly the "compiled with -march= for a feature the deployment
 # machine might not have" mistake ac3::internal::cpu::has_avx2() exists to
 # let this project avoid - see cpu_features.hpp. avx2_probe.cpp proved the
-# whole build/link/dispatch/test pipeline (ROADMAP PF5's dynamic-dispatch
+# whole build/link/dispatch/test pipeline (SIMD kernels's dynamic-dispatch
 # follow-on, phase one) before any real kernel joined it; mdct_avx2.cpp is
 # the first real one - apply_analysis_window and the DCT-IV/IMDCT twiddle
 # stages, the two PF5 kernels phase one's own measurement (docs/building.md)

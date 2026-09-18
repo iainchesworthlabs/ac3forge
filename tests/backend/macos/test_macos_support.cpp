@@ -168,7 +168,7 @@ TEST_CASE("this CI runner's OS build exposes the Core Audio tap API") {
 }
 
 TEST_CASE("the process-tap refusal names the floor it is gating on") {
-    // Roadmap UX12's Phase 5. The version floor is named in four places
+    // Crucible cross-platform promotion's Phase 5. The version floor is named in four places
     // (coreaudio_names.hpp's own comment lists them), and three of those are
     // compiler tokens no test can read. What CAN be held here is the pair
     // that are ordinary values: the refusal sentence has to name the same

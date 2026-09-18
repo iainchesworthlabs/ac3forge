@@ -5,7 +5,7 @@ import QtQuick.Layouts
 
 import Ac3Forge
 
-// "QC a stream" — roadmap C3. Opening an already-encoded .ac3/.ec3 and
+// "QC a stream" — GUI QC verification. Opening an already-encoded .ac3/.ec3 and
 // checking it against its own embedded metadata is a fundamentally
 // different shape to every other surface in this window: open → decode →
 // measure → report, with no source, no plan and no encoder anywhere in the
@@ -36,7 +36,7 @@ Dialog {
     FileDialog {
         id: qcFileDialog
         title: qsTr("Choose an AC-3 / E-AC-3 stream")
-        // roadmap IO2: a Matroska/MP4/MPEG-TS container works too -
+        // container readers (mkv/mp4/ts): a Matroska/MP4/MPEG-TS container works too -
         // QcController sniffs the actual bytes rather than trusting the
         // extension, so this list is a convenience for the picker only.
         nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"),
@@ -128,7 +128,7 @@ Dialog {
             // anything but "All".
             // Built from QcController.presetNames rather than listed here.
             // The hand-written list this replaces was written when there were
-            // three presets and was never updated when roadmap IO11 inserted
+            // three presets and was never updated when QC preset refresh inserted
             // two more INTO THE MIDDLE of kQcPresetIds - so the button
             // labelled "Netflix" was resolving index 3 to
             // kQcPresetIds[2], atsc-a85-streaming, and reporting that

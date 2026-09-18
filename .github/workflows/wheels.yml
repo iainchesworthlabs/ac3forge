@@ -1,4 +1,4 @@
-# Python wheels for the ac3forge PyPI package (roadmap F2, python/) - separate from
+# Python wheels for the ac3forge PyPI package (Python on PyPI, python/) - separate from
 # _build.yml/ci.yml's C++ matrix, which knows nothing about Python packaging. Builds via
 # cibuildwheel, configured from python/pyproject.toml's own [tool.cibuildwheel] table so a local
 # `cibuildwheel python` run matches this workflow exactly rather than drifting from workflow-only
@@ -148,7 +148,7 @@ jobs:
           path: wheelhouse/*.whl
           if-no-files-found: error
 
-  # A coverage floor for python/ (roadmap VX15), the Python-side counterpart to
+  # A coverage floor for python/ (coverage floors), the Python-side counterpart to
   # ci.yml's per-component gcov gate.
   #
   # Its own job rather than folding --cov into [tool.cibuildwheel]'s
@@ -229,7 +229,7 @@ jobs:
             --cov=ac3forge --cov-report=term-missing --cov-fail-under=85
 
       # The hand-written .pyi against the wheel's actual runtime surface
-      # (roadmap AP6): every function the stub promises must exist with a
+      # (Python bindings completeness): every function the stub promises must exist with a
       # compatible signature, and additions to the module must not go
       # unstubbed silently. mypy comes from the same hash-pinned lock as
       # pytest. The allowlist names the submodule-as-class stubs (eac3/meta/

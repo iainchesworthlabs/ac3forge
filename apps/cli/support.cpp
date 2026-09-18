@@ -708,7 +708,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             continue;
         }
         if (key == "follow") {
-            // 'play' only: the sink-following fallback (roadmap UX9) toggle.
+            // 'play' only: the sink-following fallback (play/monitor follow mode) toggle.
             // Unlike downmix=, no other command reads this key, so there is
             // no value space to disambiguate against.
             if (value == "on") {
@@ -1320,7 +1320,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         if (key == "container") {
             // The same five containers RecordingSink streams incrementally,
             // shared verbatim with the GUI's own Container combo for a live
-            // take (roadmap IO9). Plain mp4 is deliberately absent: moov/stco
+            // take (wide-layout record/live paths). Plain mp4 is deliberately absent: moov/stco
             // need every frame's final offset, so the standalone 'mp4'
             // command wraps an already-finished file instead ('ts' IS
             // streamable, hence its own token below).

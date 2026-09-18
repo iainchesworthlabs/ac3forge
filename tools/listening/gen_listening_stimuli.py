@@ -128,7 +128,7 @@ ANCHOR_TAPS = 511
 # generous, but the case this guards against is not marginal - the committed
 # 5.1 fixture has 0.059% of its energy above 3.5 kHz, so BOTH anchors are
 # inaudible on both 5.1 legs. That is a property of synthetic fixture
-# material, and roadmap VX7 (real programme material) is what fixes it.
+# material, and legacy item VX7 (real programme material) is what fixes it.
 ANCHOR_MIN_BAND_ENERGY_DB = -20.0
 
 
@@ -471,7 +471,7 @@ def main() -> int:
     parser.add_argument("--seconds", type=float, default=None,
                         help="Excerpt length. Default: the whole item. BS.1534-3 asks for "
                              "items of about 10 s; the committed fixtures are 2.5-3.0 s, "
-                             "which is the shortfall roadmap VX7 exists to fix.")
+                             "which is the shortfall legacy item VX7 exists to fix.")
     args = parser.parse_args()
 
     if not MANIFEST.exists():
@@ -542,7 +542,7 @@ def main() -> int:
         print("A low-pass anchor over a band the material barely occupies is a transparent copy")
         print("of the reference, so it cannot pin the bottom of the MUSHRA scale and that leg's")
         print("scores are not comparable to any other panel's. Run ABX on those legs instead, or")
-        print("wait for roadmap VX7's real programme material. Recorded in session.json;")
+        print("wait for legacy item VX7's real programme material. Recorded in session.json;")
         print("docs/landscape.md's protocol says the same.")
 
     warned = [(leg, name, conditions[name][1])

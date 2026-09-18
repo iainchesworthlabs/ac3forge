@@ -64,7 +64,7 @@ struct f64x2 {
 // not what std::round does), so this is built out of arithmetic. The
 // alternative it replaces is a call to libm's round(), which MSVC and the
 // System V libraries both leave out of line - about 9,100 of them per
-// encoded frame (ROADMAP PF2).
+// encoded frame (inline to_fixed25 fusion).
 //
 // The construction, on the MAGNITUDE a = |x| so the tie case has only one
 // direction to worry about:

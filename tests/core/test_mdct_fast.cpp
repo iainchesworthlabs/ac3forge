@@ -243,7 +243,7 @@ TEST_CASE("fast imdct256_pair_windowed agrees with the direct 7.9.4.2 evaluation
     }
 }
 
-// --- the float32 inverse (roadmap PF7's float32 gap) -------------------------
+// --- the float32 inverse (minimum-footprint decoder profile's float32 gap) -------------------------
 //
 // imdct512_windowed has a float32 overload for the minimum-footprint profile,
 // where the target's FPU is single-precision and every double is either a

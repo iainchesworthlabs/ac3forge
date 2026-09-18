@@ -183,7 +183,7 @@ jobs:
       # inline moved there with the rest of the gcovr flags.
       #
       # The gate covers apps/cli as well as the nine library components since
-      # roadmap VX15 - which is why config-linux-gcc-coverage now builds the
+      # coverage floors - which is why config-linux-gcc-coverage now builds the
       # CLI, and why the Test step above takes longer than it used to. That
       # table also prints a per-command breakdown below the gate, so a
       # command module sitting at 0% is visible rather than averaged away.
@@ -192,7 +192,7 @@ jobs:
         run: bash tools/checks/coverage_report.sh -g gcov-16
 
       # apps/gui is the one first-party tree with no coverage number at all,
-      # and deliberately so (roadmap VX15 called it out as a separate
+      # and deliberately so (coverage floors called it out as a separate
       # decision): instrumenting its C++ needs a Qt kit on THIS job, and no
       # Linux leg installs one - _build.yml puts Qt only on its `gui: true`
       # matrix entries, which are plain builds. Adding it means either putting
@@ -248,7 +248,7 @@ jobs:
   # libadm's Boost header libraries, resolved only via -DVCPKG_MANIFEST_FEATURES=adm). No leg in
   # build-and-test's matrix (_build.yml) ever passes -DAC3FORGE_BUILD_ADM=ON; besides this job,
   # the only other build with it on is the coverage job's instrumented Debug preset, which turns
-  # the CLI and examples OFF - so without this job, roadmap B1 phase 3's CLI command and example
+  # the CLI and examples OFF - so without this job, ADM BWF reader phase 3's CLI command and example
   # (see below) would still have zero CI builds, and a change to the module or to its vendored
   # libbw64/libadm pins (src/ac3adm/CMakeLists.txt's GIT_TAG values) would never be exercised at
   # -O2 or under the full default configuration anybody actually installs.
@@ -269,7 +269,7 @@ jobs:
   # before landing (see the PR that introduced it, branch feature/adm-bw64-parser: Windows MSVC,
   # WSL2 gcc-15, WSL2 clang++-21, all green).
   #
-  # AC3FORGE_BUILD_CLI/EXAMPLES stay at their preset default (ON): roadmap B1 phase 3 (the
+  # AC3FORGE_BUILD_CLI/EXAMPLES stay at their preset default (ON): ADM BWF reader phase 3 (the
   # 'atmos-adm' ac3cli command, apps/cli/main.cpp's run_atmos_adm, and examples/encode_adm.cpp) is
   # the first code outside tests/ to link ac3adm::ac3adm/ac3::admbridge at all, so unlike phases 1
   # and 2 (when neither the CLI nor the examples touched this module, hence this job originally
@@ -474,7 +474,7 @@ jobs:
           STATUS: ${{ job.status }}
         run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
   # Encoder throughput, this PR against its own merge base, on one runner
-  # (roadmap VX17).
+  # (PR-time performance comparison).
   #
   # The gap this closes: persist-performance-trend below only runs on pushes to
   # main, so the relative "is this slower than it was" question is not
@@ -959,7 +959,7 @@ jobs:
         env:
           STATUS: ${{ job.status }}
         run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
-  # Roadmap AP4: an ABI gate for the shared libraries, over the
+  # legacy item AP4: an ABI gate for the shared libraries, over the
   # linux-llvm-shared build. Two independent checks, both against
   # config-linux-llvm-shared (already Debug - has DWARF - and
   # BUILD_SHARED_LIBS=ON):
@@ -1443,7 +1443,7 @@ jobs:
           AC3CLI: build/config-linux-llvm/bin/ac3cli
         run: python3 tools/ci/fuzz_encoder_space.py --seconds 120
 
-      # The same question asked of the E-AC-3 encoder (roadmap VX1), which the
+      # The same question asked of the E-AC-3 encoder (E-AC-3 encoder fuzzing), which the
       # AC-3 harness above deliberately does not cover: Annex E tool tokens,
       # fscod2 half rates, VBR, the layouts that need dependent substreams,
       # and atmos-encode's object counts.

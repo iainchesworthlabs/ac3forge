@@ -589,7 +589,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     }
     // The direct-form (reference) transform is a CMake-selected translation
     // unit, and the minimum-footprint decoder profile leaves its 1.81 MiB of
-    // tables out of the build (roadmap PF7; src/core/reference_transform.hpp).
+    // tables out of the build (minimum-footprint decoder profile; src/core/reference_transform.hpp).
     // Asking for it there is refused rather than silently served by the fast
     // path: fast_imdct == false exists so a caller can validate against the
     // arithmetic the spec writes down, and substituting a different one would
@@ -1415,7 +1415,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
                 // same routine, and `mask` is a value that routine already
                 // derives internally - so tracing this one call is free
                 // beyond the write into `mask[s]` itself; only bother when a
-                // trace is actually being kept (roadmap AP12).
+                // trace is actually being kept (research trace export).
                 if (impl_->config_.trace != nullptr) {
                     bap[us].assign(static_cast<std::size_t>(end), 0);
                     internal::compute_bit_allocation_traced(exps[us], sample_rate, codes, csnroffst,

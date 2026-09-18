@@ -11,7 +11,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Device-free coverage for PassthroughBridge (roadmap VX18b) - a plain
+ * Device-free coverage for PassthroughBridge (Android JNI instrumented coverage) - a plain
  * Kotlin class, not a JNI singleton (see its own header comment), so this
  * drives real android.media.AudioTrack/AudioFormat calls directly rather
  * than through NativeBridge. NativeBridgeInstrumentedTest covers the JNI

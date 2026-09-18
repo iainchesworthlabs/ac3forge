@@ -22,7 +22,7 @@
 #include "ac3/io/probe.hpp"
 #include "ac3/meta/mixing.hpp"
 
-// ac3::io::probe (roadmap IO1) and the two additions it is built on:
+// ac3::io::probe (probe command) and the two additions it is built on:
 // io::read_frame_header and DecoderConfig::skip_reconstruction.
 //
 // The strongest claim any of this makes is skip_reconstruction's: that a parse

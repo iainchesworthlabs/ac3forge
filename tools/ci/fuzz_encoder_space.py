@@ -61,7 +61,7 @@ Scope: AC-3 (`ac3cli encode`) only. The bug that motivated this is AC-3-only
 clears at block 0, so its state cannot go stale between blocks), and AC-3's
 configuration space is the one whose acceptance envelope this file pins
 below. E-AC-3's own space - the Annex E tool tokens, VBR, the wider layouts -
-is tools/ci/fuzz_eac3_encoder_space.py (roadmap VX1), a separate file for the
+is tools/ci/fuzz_eac3_encoder_space.py (E-AC-3 encoder fuzzing), a separate file for the
 same reason this one names the scope at all: its acceptance envelope has a
 ceiling as well as a floor (frmsiz is a word count, not a table index) and its
 ORACLE is a different shape, since FFmpeg does not read E-AC-3 whole. The two
@@ -200,7 +200,7 @@ SURMIXLEV = ["-3", "-6", "off"]
 
 # The two ways a generated configuration can be legitimately refused, keyed by
 # the CLI's own exact words - not by exit code, since the two land on
-# different codes in the CLI's own scheme (roadmap IO8): "header room" is a
+# different codes in the CLI's own scheme (CLI shell completions): "header room" is a
 # usage error (1, the configuration itself is invalid), "sub-gate loudness" is
 # a runtime one (5, the configuration is fine but this particular audio has
 # nothing to measure). Both are correct behaviour meeting a real limit, not
@@ -247,7 +247,7 @@ REGRESSION_SEEDS = {
         "1+1 48 kbit/s @ 48 kHz, steady/inverted audio: AC-3 at this rate "
         "codes exactly 192-byte frames - one of MPEG-TS's own three packet "
         "strides - and the low-entropy signal makes the encoder produce "
-        "near-identical bytes every frame, so 'decode' (roadmap IO2's "
+        "near-identical bytes every frame, so 'decode' (container readers (mkv/mp4/ts)'s "
         "container-sniffing widening) misdetected this perfectly ordinary "
         "elementary stream as an MPEG-TS capture and refused it; sniff_container "
         "must check for a valid AC-3/E-AC-3 frame header before trusting the "

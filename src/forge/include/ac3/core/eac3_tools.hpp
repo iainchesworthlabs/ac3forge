@@ -144,7 +144,7 @@ AC3FORGE_EXPORT void spx_apply_notch(std::span<double> synth, int startmant,
                                      int spxattencod);
 
 // The same notch over a float32 spectrum, for the minimum-footprint decoder
-// (roadmap PF7), whose coefficient store is float. The attenuation is the
+// (minimum-footprint decoder profile), whose coefficient store is float. The attenuation is the
 // same table entry either way (spx_attenuation is now a 96-entry table
 // filled once, since std::exp2 per tap was a software routine on the FPU
 // that profile targets); here it is narrowed to float before the multiply,

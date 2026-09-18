@@ -123,7 +123,7 @@ constexpr BitAllocCodes kAllocCodes{.sdcycod = 2,
                                     .dbpbcod = 3,
                                     .floorcod = 7,
                                     .fgaincod = kBamode0Codes.fgaincod};
-// Roadmap EQ7's E-AC-3 half. fgaincod is the one bit-allocation parameter
+// E-AC-3 fast-gain control's E-AC-3 half. fgaincod is the one bit-allocation parameter
 // baie does NOT carry, so where AC-3 gets its rate-adaptive value free -
 // §5.4.3.x hangs fgaincod off the snroffst element AC-3 already sends every
 // block - E-AC-3 has to pay for it separately: frmfgaincode opens a
@@ -540,7 +540,7 @@ struct Payload {
     // kFgaincodDefault's note), so it travels in the separate per-block
     // fgaincode element below and is chosen by its own fit, not by baie's.
     BitAllocCodes codes = kAllocCodes;
-    // Roadmap EQ7: true when codes.fgaincod is something other than Table
+    // E-AC-3 fast-gain control: true when codes.fgaincod is something other than Table
     // E1.4's implied 0x4 and the frame therefore opens the per-block
     // fgaincode element to say so. Set by encode_frame's step 7a once the
     // fit has decided the code is worth its side info; read by emit_frame,
@@ -2248,7 +2248,7 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
         // snroffststr == 0: the offsets came from audfrm, so the block
         // carries no SNR fields whatsoever.
         //
-        // fgaincode (Table E1.4), roadmap EQ7's E-AC-3 half. Sent in every
+        // fgaincode (Table E1.4), E-AC-3 fast-gain control's E-AC-3 half. Sent in every
         // block when the frame carries a non-default fast gain, because the
         // element has no persistence rule - unlike baie, a block that omits
         // it reverts every channel to 0x4 rather than keeping the last value
@@ -2567,7 +2567,7 @@ struct FrameEncoder::Impl {
     // function's stack frame) - see the AC-3 FrameEncoder for why reuse
     // across iterations and calls changes nothing observable.
     std::array<internal::encode_scalar_t, 512> time_scratch_{};
-    // Four windowed blocks, not one (ROADMAP PF5 phase 4c): step 2's
+    // Four windowed blocks, not one (batched MDCT (four blocks)): step 2's
     // per-channel loop batches four BLOCKS' forward transforms into one
     // ac3::mdct512_forward_batch4 call, which needs all four to coexist.
     // nblks is 1/2/3/6 (§E2.3.1), so only a six-block frame batches at all;
@@ -3084,7 +3084,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     // frame before this.
     Payload& payload = impl_->payload;
     payload.reset_for_frame();
-    // Roadmap EQ7: a pinned fast gain opens the per-block fgaincode element
+    // E-AC-3 fast-gain control: a pinned fast gain opens the per-block fgaincode element
     // for the whole frame. Applied here, before any sizing, so
     // measure_side_bits() prices the element from the real writer rather
     // than from a second, driftable accounting of it.
@@ -3183,7 +3183,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
             return !(ch < nfchans &&
                      blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(blk)]);
         };
-        // Four BLOCKS' forward transforms at a time (ROADMAP PF5 phase
+        // Four BLOCKS' forward transforms at a time (SIMD batched MDCT
         // 4c), identical in shape to encoder.cpp's own step 1 loop.
         // mdct512_forward_batch4 checks has_avx2() internally and falls
         // back to four ordinary calls, so this is bit-identical either
@@ -4163,7 +4163,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
                 const auto& source = coeffs_at(s, blk);
                 auto& out = fixed_at(s, blk);
                 // Two coefficients at a time through the architecture seam
-                // (ROADMAP PF5), identical values to the bin-by-bin form -
+                // (SIMD kernels), identical values to the bin-by-bin form -
                 // see to_fixed25_block in exponents.cpp.
                 to_fixed25_block(std::span<const internal::encode_scalar_t>{source}.subspan(
                                      static_cast<std::size_t>(plan.start), span),
@@ -5101,7 +5101,7 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
         if (!(kBamode0Codes == defaults) && !(kBamode0Codes == incumbent)) {
             consider(kBamode0Codes);
         }
-        // Roadmap EQ7/EQ13: the second axis, and the one direction of it that
+        // E-AC-3 fast-gain control/EQ13: the second axis, and the one direction of it that
         // measured as safe.
         //
         // EQ13's own entry recorded that a one-axis E-AC-3 search had little

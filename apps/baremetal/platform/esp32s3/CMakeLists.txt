@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# The ESP32-S3 shape of the minimum-footprint probe (roadmap PF7).
+# The ESP32-S3 shape of the minimum-footprint probe (minimum-footprint decoder profile).
 #
 # An ESP-IDF project, driven by idf.py rather than by this repo's presets, for
 # the same reason apps/android is a Gradle project: the SDK owns the top-level

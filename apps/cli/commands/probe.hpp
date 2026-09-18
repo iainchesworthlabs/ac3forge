@@ -4,7 +4,7 @@
 
 #include "../support.hpp"
 
-// `ac3cli probe` (roadmap IO1): what an elementary stream declares about
+// `ac3cli probe` (legacy item IO1): what an elementary stream declares about
 // itself, as a human-readable table or as the JSON document docs/forge/cli/
 // commands.md documents as a stable contract.
 //
@@ -19,4 +19,4 @@ namespace ac3cli::commands {
 
 int run_probe(std::string_view in_path, const Options& meta);
 
-}  // namespace ac3cli::commands
+} // namespace ac3cli::commands

@@ -8,7 +8,7 @@
 
 // The variant of src/core/reference_transform.hpp that carries NO direct-form
 // tables - what the minimum-footprint decoder profile compiles
-// (AC3FORGE_MINIMAL_DECODER, roadmap PF7). Selecting this file instead of
+// (AC3FORGE_MINIMAL_DECODER, minimum-footprint decoder profile). Selecting this file instead of
 // src/core/transform/reference/reference_transform.cpp removes 1,900,544
 // bytes of .bss from the link: the four (k, n) matrices §8.2.3.2's forward
 // MDCT and §7.9.4.2 step 3's inverse sums need. See the header for the

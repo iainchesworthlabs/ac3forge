@@ -9,7 +9,7 @@
 
 namespace ac3::audio {
 
-// Roadmap UX11. An audio endpoint arriving, leaving, changing state or
+// WASAPI loopback tap. An audio endpoint arriving, leaving, changing state or
 // becoming the default: the events an application that follows the sink
 // (docs/platforms/windows-demo.md, "Output modes and hot switching") needs
 // in order to re-probe and switch outputs, instead of polling

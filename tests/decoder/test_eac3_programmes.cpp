@@ -339,7 +339,7 @@ TEST_CASE("a second independent substream is a second programme, not more frames
         // and ScannedStream::access_units - what a muxer puts in it - is the
         // first programme's units alone. A box declaring two programmes over
         // a track holding one would be worse than no signalling at all; see
-        // build_codec_config_box's own comment and roadmap IO6.
+        // build_codec_config_box's own comment and MPEG-TS broadcast profiles.
         const auto low = std::to_integer<std::uint32_t>(box[1]);
         CHECK((low & 0x07) == 0);
         // data_rate describes those same units - the first programme's own

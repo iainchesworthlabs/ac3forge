@@ -39,7 +39,7 @@ std::int32_t clamp_fixed25(double scaled) {
 
 }  // namespace
 
-// Two coefficients per iteration through the arch seam (ROADMAP PF5).
+// Two coefficients per iteration through the arch seam (SIMD kernels).
 //
 // arch::round_ties_away is contractually std::round - IEEE-754
 // roundToIntegralTiesAway - on every member of the seam, so each lane's

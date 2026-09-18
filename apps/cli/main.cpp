@@ -113,7 +113,7 @@ struct Args {
 // needs kMonitor as a hard gate, the same way 'play'/'outputs' need
 // kPassthrough.
 //
-// kAdm ('atmos-adm', roadmap B1 phase 3): unlike the three audio ones, this is not a hardware
+// kAdm ('atmos-adm', ADM BWF reader phase 3): unlike the three audio ones, this is not a hardware
 // question - it is whether ac3adm::ac3adm/ac3::admbridge were linked into this build at all
 // (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own option()). Answered the
 // same way regardless: adm/atmos_adm.hpp's ac3cli::adm_capability(), backed by exactly one of
@@ -219,7 +219,7 @@ constexpr std::array<Command, 42> kCommands{{
                                  x.str(5));
      }},
     {"atmos-adm", 3, "<in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id]",
-     "a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, roadmap B1) straight to DD+ JOC "
+     "a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, ADM BWF reader) straight to DD+ JOC "
      "E-AC-3; every bed/object channel the resolved audioProgramme names becomes an AtmosEncoder "
      "object, driven by the file's own authored automation - no scene file needed. Only in "
      "builds with -DAC3FORGE_BUILD_ADM=ON",
@@ -230,7 +230,7 @@ constexpr std::array<Command, 42> kCommands{{
      }},
     {"atmos-iab", 3, "<in.iab|in.mxf> <out.ec3> [bitrate_kbps]",
      "a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2 Immersive Audio Bitstream, a bare "
-     "elementary .iab file or a real MXF Track File alike - roadmap IM1) straight to DD+ JOC "
+     "elementary .iab file or a real MXF Track File alike - IAB reader) straight to DD+ JOC "
      "E-AC-3; every Bed channel/Object the file names becomes an AtmosEncoder object, driven by "
      "the file's own authored panning - no scene file needed. Only in builds with "
      "-DAC3FORGE_BUILD_ADM=ON",
@@ -296,7 +296,7 @@ constexpr std::array<Command, 42> kCommands{{
      "AC-3 or E-AC-3, bare or inside a container; bsid decides. objects_dir (E-AC-3 Atmos only): "
      "export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 "
      "dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM "
-     "Profile BW64 there (roadmap IM2) - bed LFE plus every dynamic object, positioned by its own "
+     "Profile BW64 there (legacy item IM2) - bed LFE plus every dynamic object, positioned by its own "
      "decoded OAMD",
      topic::kStdio | topic::kDecode | topic::kObjects,
      Needs::kNothing,
@@ -426,7 +426,7 @@ constexpr std::array<Command, 42> kCommands{{
      [](const Args& x) { return run_monitor(x.str(1), x.i32(2, -1), x.meta); }},
     {"spatial", 2, "<in.ec3> [device_index]",
      "decode the object layer onto Windows Spatial Sound - dynamic objects at their OAMD "
-     "positions, the bed's LFE static (roadmap UX8)",
+     "positions, the bed's LFE static (Windows spatial object renderer)",
      topic::kDecode | topic::kObjects,
      Needs::kSpatial,
      [](const Args& x) { return run_spatial(x.str(1), x.i32(2, -1), x.meta); }},

@@ -1,4 +1,4 @@
-"""Gate a second decode scalar's path against the double one (roadmap PF7).
+"""Gate a second decode scalar's path against the double one (minimum-footprint decoder profile).
 
 Written for the float32 path and used for the fixed-point one too
 (planning/arithmetic-tiers.md): --float-cli names whichever build is under

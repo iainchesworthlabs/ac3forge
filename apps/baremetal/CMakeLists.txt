@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# ac3probe - the minimum-footprint probe (roadmap PF7). See probe.cpp's and
+# ac3probe - the minimum-footprint probe (minimum-footprint decoder profile). See probe.cpp's and
 # encode_probe.cpp's own headers for what each checks and why neither is a unit
 # test.
 #

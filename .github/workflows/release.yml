@@ -223,7 +223,7 @@ jobs:
       # so `git describe` alone would find nothing (or the previous release).
       fetch_depth: 0
       version_tag: ${{ needs.resolve-version.outputs.version_tag }}
-      # Roadmap VX20. The generator runs on the linux-gcc leg for every call
+      # conformance vectors publication. The generator runs on the linux-gcc leg for every call
       # to _build.yml; this flag adds the determinism re-run and the upload
       # that github-release below attaches. See docs/conformance-vectors.md.
       publish_conformance_vectors: true
@@ -296,7 +296,7 @@ jobs:
       # behind a find_program() gate in cmake/Packaging.cmake - so a missing
       # archive means that leg produced nothing at all. The DEB/RPM/NSIS
       # entries are checked as well, because that gate degrading silently is
-      # a real failure mode this repo has already shipped once (roadmap DR7,
+      # a real failure mode this repo has already shipped once (Windows NSIS installer,
       # the installer-less Windows releases).
       #
       # Deliberately NOT required: the macOS `ac3forge-dev-*` archive, which
@@ -383,7 +383,7 @@ jobs:
 
       # Unconditional - not folded into the GPG-gated step below the way it used to be.
       # GPG signing is optional (docs/releasing.md#provisioning-the-gpg-signing-key), but
-      # manifest-bump.yml (roadmap DR2) cross-checks the Homebrew cask's and winget's
+      # manifest-bump.yml (manifest bump automation) cross-checks the Homebrew cask's and winget's
       # digests against this file for every release, signed or not; gating it on a key
       # that may not be provisioned would silently break that cross-check instead of the
       # digests it protects.
@@ -675,7 +675,7 @@ jobs:
             echo "No tag $TAG on origin; nothing to clean up"
           fi
 
-  # Roadmap DR2. Runs for real (dry_run: false) only once github-release has actually
+  # manifest bump automation. Runs for real (dry_run: false) only once github-release has actually
   # published the release AND uploaded every asset - "Upload release assets" is that
   # job's last step, so by the time this job's `needs` is satisfied the SHA512SUMS,
   # Darwin.dmg and win64.zip assets manifest-bump.yml downloads and cross-checks are

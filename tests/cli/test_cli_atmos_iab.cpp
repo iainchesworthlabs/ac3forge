@@ -16,7 +16,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 
-// ac3cli's 'atmos-iab' command (roadmap IM1 phase 3 of 3 - see ROADMAP.md's "IAB (SMPTE ST 2098-2)
+// ac3cli's 'atmos-iab' command (IAB reader phase 3 of 3 - 's "IAB (SMPTE ST 2098-2)
 // reader" entry; apps/cli/commands/atmos.cpp's run_atmos_iab). Real, subprocess-level integration
 // tests, the same shape test_cli_atmos_adm.cpp already uses for 'atmos-adm' and for the identical
 // reason - main.cpp compiles everything into one binary with no library surface run_atmos_iab's

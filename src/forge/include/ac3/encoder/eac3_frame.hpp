@@ -190,7 +190,7 @@ struct FrameConfig {
     // chbwcod is not transmitted at all (§E3.3.3).
     int chbwcod = -1;
 
-    // §7.2.2.4 fast gain, Table 7.11 — roadmap EQ7's E-AC-3 half.
+    // §7.2.2.4 fast gain, Table 7.11 — E-AC-3 fast-gain control's E-AC-3 half.
     //
     // -1 (the default) leaves Table E1.4's implied 0x4 in place: frmfgaincode
     // stays 0, no fgaincode element is written, and the frame costs exactly
@@ -396,7 +396,7 @@ struct FrameConfig {
     // §7.2.2's transmitted bit allocation parameters (BitAllocCodes,
     // ac3/core/bitalloc.hpp), searched per frame from the reconstruction
     // error a decoder will produce, instead of the fixed dbpbcod == 3 EQ3
-    // measured its way to on average (roadmap EQ13; AC-3's own
+    // measured its way to on average (per-frame bit-allocation search; AC-3's own
     // EncoderConfig::search, encoder.cpp's step 9a, is the model this
     // mirrors). search=distortion minimises ac3::quality::accumulate_block's
     // decoded-domain noise, per stream, over the frame's six blocks.
@@ -411,12 +411,12 @@ struct FrameConfig {
     // materially bigger unit to wrap in an outer candidate loop than AC-3's
     // settle() is - the delta-segment with/without comparison and ABR's
     // stateful reservoir both assume one committed codes value per frame -
-    // and untangling that was scoped out too; see ROADMAP.md EQ13. Silently
+    // and untangling that was scoped out too;  EQ13. Silently
     // inert under VBR, the same way delta bit allocation is silently inert
     // on an AHT stream (EQ5) - a documented scope boundary, not a rejected
     // configuration.
     //
-    // Two axes, since roadmap EQ7's E-AC-3 half landed. dbpbcod varies
+    // Two axes, since E-AC-3 fast-gain control's E-AC-3 half landed. dbpbcod varies
     // between kAllocCodes' 3 and Table E1.4's 2 - the only two values baie
     // can carry that this encoder chooses between - and fgaincod varies
     // between §8.2.12's implied 0x4 and ac3::rate_adaptive_fgaincod()'s
@@ -516,7 +516,7 @@ inline constexpr std::uint32_t kMaxFrameWords = 2048;
 using AuxPayload = std::span<const std::byte>;
 
 // The latency budget a stream from this configuration imposes end to end
-// (roadmap PF6; ac3/latency.hpp documents the four terms).
+// (bare-metal probe harness; ac3/latency.hpp documents the four terms).
 //
 // Only transient_prenoise moves anything. Every other Annex E tool - AHT,
 // coupling, enhanced coupling, spectral extension - is a different way of
@@ -605,7 +605,7 @@ class AC3FORGE_EXPORT FrameEncoder {
     // How many samples per channel one call to encode_frame consumes.
     [[nodiscard]] int samples_per_frame() const;
 
-    // Roadmap PF6 - see ac3/latency.hpp for what each term means and
+    // bare-metal probe harness - see ac3/latency.hpp for what each term means and
     // eac3_latency() below for why transient_prenoise is the only field of
     // FrameConfig that moves any of them.
     [[nodiscard]] LatencyBudget latency() const;
@@ -732,7 +732,7 @@ class AC3FORGE_EXPORT AccessUnitEncoder {
     // encode_access_unit expects.
     [[nodiscard]] int channel_count() const;
 
-    // Roadmap PF6. Every substream of an access unit codes the same 1536
+    // bare-metal probe harness. Every substream of an access unit codes the same 1536
     // samples of the same program, so the frame and transform terms are
     // shared rather than summed - what a dependent substream CAN add is its
     // own §3.7 hold-back, since transproce is a per-substream flag and a

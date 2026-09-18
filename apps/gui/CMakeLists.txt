@@ -47,7 +47,7 @@ qt_add_executable(ac3gui
 
 # RecordingSink and its Fmp4FolderWriter moved to apps/common when
 # `ac3cli record`/`live` started writing their takes through the same classes
-# (roadmap IO9) - see recording_sink.hpp's own header comment, and
+# (wide-layout record/live paths) - see recording_sink.hpp's own header comment, and
 # Fmp4FolderWriter's own comment on the third near-identical copy this move
 # closes. `RecordingSink::Config::fmp4_window_segments` carries container=
 # fmp4's fmp4-window= knob through to Fmp4FolderWriter::open(), so there is no
@@ -55,7 +55,7 @@ qt_add_executable(ac3gui
 # always was (the source lines above); apps/common has no CMakeLists.txt and
 # no library target of its own, because a two-class static library shared by
 # exactly two executables in the same build would be more machinery than the
-# thing it wraps. container_input.cpp (roadmap IO2) joined it the same way,
+# thing it wraps. container_input.cpp (container readers (mkv/mp4/ts)) joined it the same way,
 # for the QC/Inspect pickers below to accept a container in place of a bare
 # elementary stream the same way ac3cli's decode/qc/levels/play/monitor do.
 target_include_directories(ac3gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
@@ -93,7 +93,7 @@ set(AC3_QML_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/ObjectInspectorDialog.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/StreamPlayerDialog.qml")
 
-# Roadmap UX3: one .ts per shipped language, French/German/Spanish/Arabic/
+# GUI localisation: one .ts per shipped language, French/German/Spanish/Arabic/
 # Hebrew/Yiddish - the same set and order LanguageManager's kLanguages uses
 # (language_manager.cpp), matching the canonical set already shipped by the
 # sibling CountdownSolver project (R:\CountdownSolver). Shared with
@@ -155,7 +155,7 @@ qt_add_qml_module(ac3gui
 # font axis selection is only dependable from Qt 6.7 up. main.cpp registers
 # these with QFontDatabase before the engine loads.
 #
-# NotoSansArabic/NotoSansHebrew (roadmap UX3, RTL languages) are the same
+# NotoSansArabic/NotoSansHebrew (GUI localisation, RTL languages) are the same
 # OFL-licensed faces the sibling CountdownSolver project already vets and
 # ships for exactly this purpose (Latin has no Arabic/Hebrew glyph coverage,
 # and Yiddish is written in Hebrew script) - copied verbatim rather than
@@ -186,7 +186,7 @@ qt_add_resources(ac3gui "ac3gui_icons"
         "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-256.png")
 
 # ---------------------------------------------------------------------------
-# Roadmap UX3: lupdate (scan every source SOURCE_TARGETS' own target already
+# GUI localisation: lupdate (scan every source SOURCE_TARGETS' own target already
 # lists - AC3_QML_FILES is the only source of qsTr() calls in this app; no
 # .cpp file has one) plus lrelease (.ts -> .qm) and a /i18n resource
 # embedding, all in one call. LanguageManager (language_manager.cpp) loads
@@ -340,7 +340,7 @@ elseif(APPLE)
     target_sources(ac3gui PRIVATE "${AC3_GUI_ICON_ICNS}")
     set_target_properties(ac3gui PROPERTIES MACOSX_BUNDLE_ICON_FILE ac3forge.icns)
 
-    # Roadmap UX2: a custom Info.plist (Info.plist.in, beside this file) so
+    # GUI AppStream packaging: a custom Info.plist (Info.plist.in, beside this file) so
     # .ac3/.ec3 get CFBundleDocumentTypes/UTExportedTypeDeclarations - the
     # default Info.plist CMake generates when MACOSX_BUNDLE_INFO_PLIST is
     # left unset carries neither, and supplying a template of our own means
@@ -528,7 +528,7 @@ if(WIN32 OR APPLE)
 endif()
 
 # ---------------------------------------------------------------------------
-# Roadmap UX2's Linux leg: what actually puts ac3gui in a desktop's own
+# GUI AppStream packaging's Linux leg: what actually puts ac3gui in a desktop's own
 # application menu, the gap the roadmap named directly ("ac3gui is absent
 # from Linux application menus"). Every file lives under packaging/linux/
 # beside this CMakeLists.txt rather than under icons/ (the macOS/Windows

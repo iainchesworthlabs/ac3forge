@@ -70,7 +70,7 @@ struct StreamTrace {
     // the wire level and obvious here. Always default-constructed for the LFE,
     // which has no delta bit allocation field at all (§5.4.3.49).
     DeltaSegments delta;
-    // --- roadmap AP12: research trace export --------------------------------
+    // --- AP12: research trace export --------------------------------
     // Neither field below is compared by compare()/Field below - they exist
     // for ac3/verify/trace_export.hpp, not the mirror self-check, and are
     // populated on the DECODE side only (see mirror.cpp's own comment on

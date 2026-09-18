@@ -1,6 +1,6 @@
 // Parses the same Immersive Audio Bitstream (SMPTE ST 2098-2:2022) content two ways: once as a
-// bare elementary `.iab` file (ac3iab::parse_iabitstream, roadmap IM1 phase 1) and once wrapped in
-// a synthetic MXF IAB Track File (ac3iab::parse_mxf_iab, roadmap IM1 phase 2), printing what each
+// bare elementary `.iab` file (ac3iab::parse_iabitstream, IAB reader phase 1) and once wrapped in
+// a synthetic MXF IAB Track File (ac3iab::parse_mxf_iab, IAB reader phase 2), printing what each
 // found to show the two agree - the point being that SMPTE ST 2067-201 clip-wraps the whole
 // IABitstream as a single Generic Container KLV Value, so an MXF Track File's essence really is
 // the identical byte sequence an elementary `.iab` file already has (see

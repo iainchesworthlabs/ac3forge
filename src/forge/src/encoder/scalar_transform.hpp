@@ -42,7 +42,7 @@ inline void forward_long(std::span<const float, 512> windowed, std::span<float, 
     mdct512_forward(windowed, coeffs);
 }
 
-// Four long blocks at once (ROADMAP PF5 phase 4c). The double form is the
+// Four long blocks at once (batched MDCT (four blocks)). The double form is the
 // batched kernel; the float one is four calls, which is what the float batch
 // entry point in mdct.cpp is as well.
 inline void forward_long_batch4(std::span<const double, 512> w0, std::span<const double, 512> w1,

@@ -85,7 +85,7 @@ TEST_CASE("the very first segment a detector sees never trips it", "[transient]"
 // A loud onset trips the detector at every one of A/52's six sample rates,
 // not just k48000 - the earlier tests above never varied it, so a rate that
 // somehow broke the RBJ coefficient formula (a divide-by-zero, a NaN, a
-// sign flip) had no test that could see it. See roadmap VX12: the biquad's
+// sign flip) had no test that could see it. See cross-toolchain bitstream audit: the biquad's
 // coefficients are runtime std::cos/std::sin calls, and this pins the
 // DISCRETE blksw outcome they feed (not the raw coefficients themselves,
 // which is what a cross-toolchain bit-exactness check operates on instead -
@@ -105,7 +105,7 @@ TEST_CASE("a loud onset trips the detector at every A/52 sample rate", "[transie
     // is always false at this one rate by construction. This is a
     // pre-existing property of the fixed cutoff constant versus a variable
     // rate, not something this test's own scope changes or fixes - see
-    // roadmap VX12's note on it.
+    // cross-toolchain bitstream audit's note on it.
     const std::array<Case, 6> cases{{
         {ac3::SampleRate::k48000, true},
         {ac3::SampleRate::k44100, true},

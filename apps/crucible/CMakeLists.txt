@@ -1,4 +1,4 @@
-# AC3Forge Crucible (roadmap UX11 and UX12): docs/crucible/design/promotion.md, and
+# AC3Forge Crucible (WASAPI loopback tap and UX12): docs/crucible/design/promotion.md, and
 # docs/platforms/windows-demo.md for the demo it grew out of. Windows, Linux
 # and macOS - the third arrived on 2026-09-06. It compiles: the first CI
 # attempt stopped at the install() rule below for want of a BUNDLE
@@ -41,7 +41,7 @@ target_link_libraries(ac3crucible_engine
 
 # The platform half, selected the way apps/cli/CMakeLists.txt selects its
 # platform/ directory: a platform is a directory, never a conditional inside
-# a source file. Three arms now (roadmap UX12) - Windows over COM and WASAPI,
+# a source file. Three arms now (Crucible cross-platform promotion) - Windows over COM and WASAPI,
 # Linux over PipeWire, macOS over the CoreAudio HAL and AppKit. The
 # application talks to each of those directly here for the same reason it
 # talks to COM directly on Windows: session enumeration, the default device
@@ -135,7 +135,7 @@ elseif(UNIX AND NOT APPLE)
     # This platform's notices directory (notices/notices.cmake).
     set(AC3CRUCIBLE_PLATFORM_DIR linux)
 elseif(APPLE)
-    # macOS (roadmap UX12, docs/crucible/design/promotion.md's Phase 5). The four
+    # macOS (Crucible cross-platform promotion, docs/crucible/design/promotion.md's Phase 5). The four
     # seams are the CoreAudio HAL's process object list, NSWorkspace, the HAL's
     # default output device, and a silent device that does not exist because
     # this platform silences at the tap instead. Read the header of each file
@@ -507,7 +507,7 @@ else()
             MACOSX_BUNDLE_ICON_FILE "ac3forge.icns")
     endif()
 
-    # The same language set as the GUI (roadmap UX3), the same pipeline:
+    # The same language set as the GUI (GUI localisation), the same pipeline:
     # lupdate scans this target's QML and C++, lrelease compiles the .ts
     # into :/i18n/ac3crucible_<code>.qm, which the shared LanguageManager loads
     # (main.cpp passes it the "ac3crucible" basename). Regenerate with

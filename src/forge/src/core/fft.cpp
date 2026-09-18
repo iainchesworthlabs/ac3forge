@@ -45,7 +45,7 @@ void dft512(std::span<const double, kDftLength> real_in,
     internal::fft_forward_bitrev<static_cast<std::size_t>(kDftLength), double>(t, real_out,
                                                                                 imag_out);
     // The spec sum's own 1/N normalisation (see fft.hpp), two bins at a time
-    // through the arch seam (ROADMAP PF5). Multiplication by the reciprocal
+    // through the arch seam (SIMD kernels). Multiplication by the reciprocal
     // rather than division: N is 512, so 1/N is exactly representable and
     // x * (1/512) and x / 512 are the correctly-rounded result of the same
     // exact real number - identical for every input, denormal results

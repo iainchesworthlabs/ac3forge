@@ -21,7 +21,7 @@
 // reasoning test_mpegts.cpp and test_matroska.cpp document for their own
 // independent readers/writers, applied in the opposite direction here since
 // ac3adm::ac3adm is a reader with no writer counterpart in this repo (phase 1
-// of roadmap item B1, see ROADMAP.md - a writer is not part of this
+// of roadmap item B1 - a writer is not part of this
 // project's own scope at all, ADM/BW64 masters are produced by third-party
 // production tools).
 //
@@ -652,7 +652,7 @@ TEST_CASE("a file with no axml chunk still parses, with an empty ADM model", "[a
     REQUIRE(doc->audio.frame_count() == 2);
 }
 
-// Found by fuzz/fuzz_adm_parse (roadmap VX3) in its first minute: bw64's
+// Found by fuzz/fuzz_adm_parse (signing-verify fuzz walk) in its first minute: bw64's
 // numberOfFrames() is the <data> chunk's DECLARED size over the block
 // alignment, so a sixty-byte file claiming four gigabytes of PCM made
 // read_pcm allocate four gigabytes. The reproducer is committed as

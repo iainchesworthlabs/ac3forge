@@ -86,10 +86,10 @@
 # explain three legs across two different C libraries agreeing to the
 # decimal. The next hypothesis, floating-point contraction into FMA (a base
 # ARMv8-A instruction, absent from baseline x86-64), was tested directly by
-# pinning -ffp-contract=off project-wide (roadmap PF5) - and DISPROVEN: every
+# pinning -ffp-contract=off project-wide (SIMD kernels) - and DISPROVEN: every
 # arm64 leg still measures ~61.8 dB with the flag on, unchanged from before it
 # existed. Architecture-specific libm sin/cos in the transform twiddle tables
-# was the next hypothesis and is ALSO disproven (roadmap VX11): every
+# was the next hypothesis and is ALSO disproven (cross-platform bitstream reproducibility): every
 # std::cos/std::sin call the twiddle-table construction makes is bit-identical
 # between native x86-64 and a real aarch64 cross-build (GCC 16, the same
 # -ffp-contract=off flag, the aarch64-neon SIMD kernel) run under qemu-user -
@@ -105,7 +105,7 @@
 # docs/building.md's "Floating-point contraction" for the full measurement.
 # The gate stays SNR-based for its own three checks; a separate cross-
 # platform bitstream-hash gate (tools/checks/check_cross_platform_hash.py,
-# also VX11) now pins the ENCODED bytes of every gold-reference stream per
+# also cross-platform bitstream reproducibility) now pins the ENCODED bytes of every gold-reference stream per
 # kernel/mode so this specific gap - resolved or not - cannot silently
 # change without CI noticing.
 #
@@ -116,8 +116,7 @@
 # 67.80/67.82/67.76 dB across its first three real runs, matching the x86
 # baseline every non-arm64 leg reports, not macos-llvm's ~61.8 dB. That rules
 # out an OS-specific contributor: the same OS/toolchain now sits on both
-# sides of the split, differing only by CPU architecture. See ROADMAP.md's
-# VX11 entry for the fuller note; the underlying mechanism itself is still
+# sides of the split, differing only by CPU architecture. See cross-platform reproducibility notes below for the fuller note; the underlying mechanism itself is still
 # open.
 #
 # Qt Quick Test harness: apps/gui/tests/ adds ac3gui_qml_tests_*, one real
@@ -415,7 +414,7 @@ jobs:
         run: ./tools/checks/check_platform_macros.ps1 -Root $PWD
 
   # Internal consistency of packaging/ (vcpkg port, Homebrew, winget, Conan), plus a
-  # latest-tag advisory (roadmap DR2) - see the script's own header for the split
+  # latest-tag advisory (manifest bump automation) - see the script's own header for the split
   # between the two and why only the first one fails the job. fetch-depth: 0, unlike
   # platform-macros above: the advisory half needs `git describe --tags` to see the
   # repository's tags, which a shallow (depth-1) clone would hide, silently disabling
@@ -458,8 +457,7 @@ jobs:
       - name: Check committed fixtures match the corpus manifest
         run: python3 tools/checks/check_corpus.py
 
-  # ruff, shellcheck and actionlint over the non-C++ half of the tree (roadmap
-  # VX14). Same shape as platform-macros and packaging-consistency above:
+  # ruff, shellcheck and actionlint over the non-C++ half of the tree (non-C++ lint and scan). Same shape as platform-macros and packaging-consistency above:
   # cheap, fast, and deliberately ungated by `changes` so a script edit is
   # reported even while a heavier leg is red.
   #
@@ -1044,7 +1042,7 @@ jobs:
           echo "::error::A workload's heap churn at least doubled against its trailing average (or it leaked past the absolute threshold) - see the job log above and docs/performance-trend.md's memory tables for the recorded numbers."
           exit 1
 
-  # A SECOND ac3bench series, on arm64 (roadmap VX17).
+  # A SECOND ac3bench series, on arm64 (PR-time performance comparison).
   #
   # ms/frame was measured on exactly one platform - x86-64, GCC, one hosted
   # image - so the trend could only ever answer "did this get slower on that

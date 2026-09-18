@@ -704,7 +704,7 @@ TEST_CASE("OAMD parse_payload rejects what it cannot cleanly interpret", "[oba][
     }
 }
 
-// --- roadmap DC6/DC7: the syntax the parsers used to refuse ----------------
+// --- DC6/DC7: the syntax the parsers used to refuse ----------------
 
 TEST_CASE("OAMD round-trips object size, snap and zone constraints", "[oba][oamd]") {
     // Table 17's three shapes, plus the two rendering flags §5.6.1.5/§5.6.1.6

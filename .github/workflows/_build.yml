@@ -73,7 +73,7 @@ on:
       publish_conformance_vectors:
         description: >-
           Run the conformance-vector generator's determinism check and upload the bundle as an
-          artifact for release.yml to attach (roadmap VX20, docs/conformance-vectors.md). The
+          artifact for release.yml to attach (conformance vectors publication, docs/conformance-vectors.md). The
           generator itself runs on the linux-gcc leg either way - see that step's own comment;
           this input only adds the second, verifying pass and the upload. Set by release.yml.
         type: boolean
@@ -670,7 +670,7 @@ jobs:
             ac3forge-dev-*-Darwin.zip.sha512
           if-no-files-found: error
 
-  # Roadmap DR8 (Reach): a self-contained AppImage for ac3gui, so a user on a
+  # Windows ARM64 / reach builds (Reach): a self-contained AppImage for ac3gui, so a user on a
   # distro whose own Qt 6 is too old, or split differently than
   # qt6-declarative-dev/qt6-declarative-dev-tools expect (the `linux-gcc`/
   # `linux-llvm` legs' own "Install Qt6 (Linux GUI)" step above), can still
@@ -1331,7 +1331,7 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:assembleDebug --console=plain
 
-      # Roadmap VX18(b): device-free instrumented coverage for
+      # WASM/mobile headless coverage(b): device-free instrumented coverage for
       # NativeBridge/PassthroughBridge (apps/android/app/src/androidTest/) -
       # nothing before this ran ANY Kotlin-level test, only the C++-side
       # pure logic on the desktop ctest suite (docs/platforms/android.md).
@@ -1474,7 +1474,7 @@ jobs:
             packages/*.apk.sha512
           if-no-files-found: error
 
-  # The WASM browser decode demo (apps/wasm, roadmap F3): a real CMake
+  # The WASM browser decode demo (apps/wasm, WASM browser demo): a real CMake
   # preset (config-wasm-emscripten) unlike build-android above, but still its
   # own job outside the split platform workflows, for the same reason
   # build-android's own header gives - this leg has none of the shape that
@@ -1502,7 +1502,7 @@ jobs:
       - uses: ./.github/actions/setup-emscripten
 
       # Moved ahead of the CMake build (unlike the setup-node this job used
-      # to do only for the Playwright harness below): roadmap UX5's
+      # to do only for the Playwright harness below): WASM streaming decoder package's
       # ac3forge-wasm-decoder package (js/) has to be built before the
       # "Assemble" step further down can copy its dist/ into the servable
       # wasm_decode_demo/ directory - the demo is a consumer of the package
@@ -1566,7 +1566,7 @@ jobs:
           path: build/config-wasm-emscripten/bin/wasm_encode_demo
           if-no-files-found: error
 
-      # Roadmap VX18(a): until this, "it compiles" was the only thing any CI
+      # WASM/mobile headless coverage(a): until this, "it compiles" was the only thing any CI
       # leg checked - docs/platforms/wasm.md's "Not yet verified" section
       # recorded decode/playback/render correctness as manual-only,
       # re-checked by eye every time either demo changed. apps/wasm/tests'
@@ -1651,14 +1651,14 @@ jobs:
           path: apps/wasm/tests/test-results/device-ui-coverage
           if-no-files-found: warn
 
-  # The Rust bindings (rust/, roadmap AP9): a Cargo workspace living in-tree but deliberately
+  # The Rust bindings (rust/, Rust bindings): a Cargo workspace living in-tree but deliberately
   # never add_subdirectory()'d from the root CMakeLists.txt - see rust/README.md's "why this
   # lives in-tree" section. Its own job for the same reason build-wasm/build-footprint are: none
   # of the desktop workflows' steps apply (no ctest suite, no cpack package, no gold-reference
   # gate) - rust/ac3forge-sys/build.rs drives its own trimmed CMake configure of just
   # ac3::forge_c_shared rather than reusing a desktop preset.
   #
-  # All three desktop OSes, one job each (roadmap AP9's completeness pass): the
+  # All three desktop OSes, one job each (Rust bindings's completeness pass): the
   # dynamic-linking approach was proven on Linux first and then validated on Windows locally -
   # where the FIRST MSVC build immediately found a real portability bug (bindgen types C enums
   # i32 on MSVC and u32 elsewhere; Error::Other's payload had baked the Linux answer in) -
@@ -1801,7 +1801,7 @@ jobs:
             ${{ env.AC3FORGE_DRIVER_CERT }}
           if-no-files-found: error
 
-  # The minimum-footprint decoder profile (roadmap PF7, docs/building.md) built
+  # The minimum-footprint decoder profile (minimum-footprint decoder profile, docs/building.md) built
   # for arm-none-eabi and run on QEMU's mps2-an385 - a Cortex-M3 with no
   # operating system, no filesystem and no hardware floating point. Its own job
   # outside the split platform workflows for the same reason build-wasm is:

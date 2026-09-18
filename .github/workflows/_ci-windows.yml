@@ -108,7 +108,7 @@ jobs:
             packageable: true
             release_package: true
             gold_reference: true
-            # AC3Forge Crucible (roadmap UX11/UX12, apps/crucible): built and
+            # AC3Forge Crucible (WASAPI loopback tap/UX12, apps/crucible): built and
             # tested on both Windows legs, packaged on this one (the Package
             # step's own condition already singles out windows-msvc), as its
             # own archive - see cmake/Packaging.cmake's crucible component. The
@@ -132,7 +132,7 @@ jobs:
             # step's condition).
             crucible: true
 
-          # ARM64 - GitHub's hosted windows-11-vs2026-arm runner (roadmap DR8). Real
+          # ARM64 - GitHub's hosted windows-11-vs2026-arm runner (Windows ARM64 / reach builds). Real
           # ARM64 hardware, not emulation. Deliberately NOT routed through
           # check-runners' self-hosted/hosted fan-out (the windows_runner_1/2
           # outputs the two legs above use) - that logic is sized for exactly

@@ -72,7 +72,7 @@ struct f64x4 {
     return f64x4{_mm256_xor_pd(a.v, _mm256_set1_pd(-0.0))};
 }
 
-// Broadcast-scalar multiply (ROADMAP PF5's batch-axis follow-on): a batched
+// Broadcast-scalar multiply (batched SIMD kernels): a batched
 // transform's DATA is one f64x4 per lane-of-independent-transform-instances,
 // but its TWIDDLES are a plain `double` - identical for every instance in
 // the batch, since they only depend on which bin/stage, not which instance
@@ -96,7 +96,7 @@ struct f64x4 {
 // f64x4::set from four scalar loads costs a serial insert chain per
 // vector, and lane0()..lane3() extraction the mirror image of one, so
 // moving 16 doubles across the layout seam that way is ~28 dependent
-// instructions where this is 8 independent ones (ROADMAP PF5's batch-axis
+// instructions where this is 8 independent ones (SIMD kernels's batch-axis
 // follow-on measured both earlier shapes losing to plain scalar because
 // of exactly that tax - see mdct_avx2.hpp's imdct512_windowed_batch4).
 // Pure data movement, no arithmetic, so it cannot perturb bit-exactness.

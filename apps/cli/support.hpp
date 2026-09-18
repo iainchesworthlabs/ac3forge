@@ -203,7 +203,7 @@ struct Options {
     // (EncoderController::recording_sink_container). Defaults to the bare
     // elementary stream, so a plain invocation writes exactly the .ac3/.ec3
     // it always has. Every one of the five is written incrementally through
-    // RecordingSink itself (roadmap IO9 - there is no accumulate-then-mux
+    // RecordingSink itself (wide-layout record/live paths - there is no accumulate-then-mux
     // path left on either command), kFmp4 included: RecordingSink's own
     // kFmp4 backend (Fmp4FolderWriter) now takes the rolling-window option
     // fmp4_window_segments below needs, so there is no separate writer left
@@ -220,7 +220,7 @@ struct Options {
     // derived from it or forced. Empty layout means stereo, which is what
     // both commands did before they could be told otherwise; codec unset
     // means "AC-3 unless the layout needs E-AC-3", plan::carries()'s own
-    // answer. Wide layouts on record/live are roadmap IO9 - the GUI has
+    // answer. Wide layouts on record/live are wide-layout record/live paths - the GUI has
     // always done them.
     std::string take_layout;
     std::optional<ac3::plan::Codec> take_codec;
@@ -242,13 +242,13 @@ struct Options {
     // 'live' only: whether an AC-3-only passthrough endpoint gets the
     // parallel 5.1 AC-3 downmix leg (the default, matching the GUI's
     // wants_downmix_leg) or a plain refusal (downmix=off, what the CLI did
-    // before roadmap IO9).
+    // before wide-layout record/live paths).
     bool downmix_leg = true;
     // 'play' only: whether a source format the chosen sink does not accept
     // gets an automatic fallback - an in-memory transcode to AC-3 when the
     // sink takes AC-3 but not E-AC-3, or a decoded PCM leg over MonitorSink
     // when it takes neither - or the plain refusal 'play' always gave before
-    // roadmap UX9 (follow=off). Same on-by-default, off-to-restore-the-old-
+    // play/monitor follow mode (follow=off). Same on-by-default, off-to-restore-the-old-
     // behaviour shape as downmix_leg above.
     bool follow_sink = true;
     // Off by default, matching every bare token here - keep whatever frames
@@ -439,7 +439,7 @@ struct Options {
     // every dependent substream's height/wide/rear channels included,
     // through BS.1770-5 Annex 3's extended algorithm. See run_qc.
     bool qc_rendered_layout = false;
-    // 'qc' only: objects=<layout> (roadmap IO12). Set when the stream's
+    // 'qc' only: objects=<layout> (legacy item IO12). Set when the stream's
     // dynamic objects should be re-rendered by their own OAMD position onto
     // the named advanced sound system layout and metered through BS.1770-5
     // Annex 4, instead of (or as well as - the two are independent switches)
@@ -697,7 +697,7 @@ std::vector<float> interleave_reordered(std::span<const std::vector<float>> chan
 std::vector<std::byte> read_all(std::string_view path);
 
 // The elementary stream at `in_path`: `in_path`'s own bytes verbatim if it is
-// already one, or (roadmap IO2) the first AC-3/E-AC-3 track demuxed out of a
+// already one, or (container readers (mkv/mp4/ts)) the first AC-3/E-AC-3 track demuxed out of a
 // recognised Matroska/MP4/MPEG-TS container, via apps/common/
 // container_input.hpp's ac3::apps::elementary_stream_from_bytes - the same
 // three readers `ac3cli demux` already streams through, run here in their
@@ -867,7 +867,7 @@ private:
 // plan::Plan, the label to print for it, and the two facts every caller
 // immediately needs from it (which codec, how many coded channels). Shared
 // because the two commands must agree exactly - a take is a take whether or
-// not it also monitors and passes through, and roadmap IO9's whole point is
+// not it also monitors and passes through, and wide-layout record/live paths's whole point is
 // that neither is stereo-AC-3-only any more.
 //
 // codec= forces the codec; without it, the codec is derived - AC-3 unless the
@@ -921,7 +921,7 @@ struct ObjectSlot {
 // error, so the caller decides what to do about it.
 //
 // Shared by `atmos-encode` and `live mode=atmos` so that the objects a given
-// map= produces are the same objects either way - roadmap IO9's actual point:
+// map= produces are the same objects either way - wide-layout record/live paths's actual point:
 // a GUI assignment reproduced headlessly has to reproduce.
 [[nodiscard]] std::vector<ObjectSlot> object_slots_from_assignment(
     const ac3::plan::Assignment& assignment, std::span<const ac3::plan::SourceShape> shapes);

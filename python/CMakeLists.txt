@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# The pybind11 extension backing the `ac3forge` PyPI package (roadmap F2).
+# The pybind11 extension backing the `ac3forge` PyPI package (Python on PyPI).
 # Bound straight onto ac3::forge's existing C++ classes (pybind11-direct, per
 # the roadmap's own dependency note) - no intermediate C API, unlike a normal
 # third-party-language binding, because pybind11 talks C++ ABI directly.
@@ -22,7 +22,7 @@ pybind11_add_module(_ac3forge src/ac3forge_ext/bindings.cpp)
 # that kind of consumer, just an in-tree one.
 target_link_libraries(_ac3forge PRIVATE ac3::forge)
 
-# Roadmap AP6's completeness surface. Both groups are conditional on the same
+# Python bindings completeness's completeness surface. Both groups are conditional on the same
 # configure that built (or skipped) the libraries, so a trimmed dev build -
 # codec only - still produces a working extension without them; the wheel
 # build (python/pyproject.toml) turns every one of these targets ON, so a

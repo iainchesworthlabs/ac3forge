@@ -10,7 +10,7 @@
 
 // ac3iab::parse_iabitstream(std::istream&) and ac3iab::parse_mxf_iab(std::istream&)
 // (src/ac3iab/src/iab_reader.cpp, mxf_reader.cpp), plus ac3iab::parse_iaframe
-// on the same bytes - the IAB reader, roadmap IM1 phases 1 and 2.
+// on the same bytes - the IAB reader, IAB reader phases 1 and 2.
 //
 // The whole of ac3iab exists to read files this project did not write: an
 // elementary .iab IABitstream, or an IAB track file that a mastering tool

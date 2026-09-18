@@ -13,7 +13,7 @@
 // sub-4 GB RIFF/WAVE carrying the same chunks) file into an AdmDocument -
 // the ADM object graph plus the <chna> join table plus the decoded PCM.
 //
-// Roadmap item B1 phase 1 of 3 (see ROADMAP.md's "ADM BWF reader feeding the
+// Roadmap item B1 phase 1 of 3 ('s "ADM BWF reader feeding the
 // JOC encoder" entry): this module knows nothing about AC-3, E-AC-3 or the
 // JOC/Atmos object layer - it is a container + XML metadata reader only, the
 // same "codec-blind" shape as matroska::matroska, mp4::mp4 and

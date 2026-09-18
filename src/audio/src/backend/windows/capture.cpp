@@ -68,7 +68,7 @@ constexpr IID kIidActivateCompletionHandler = {  // {41d949ab-9862-444a-80f6-c26
 constexpr IID kIidAgileObject = {  // {94ea2b94-e9cc-49e0-c0ff-ee64ca8f5b90}
     0x94ea2b94, 0xe9cc, 0x49e0, {0xc0, 0xff, 0xee, 0x64, 0xca, 0x8f, 0x5b, 0x90}};
 
-// Roadmap UX11: the process-loopback activation exists from Windows 10 build
+// WASAPI loopback tap: the process-loopback activation exists from Windows 10 build
 // 20348 on. Waiting for the activation to complete is bounded, because a
 // completion that never comes would otherwise hang start() for good.
 constexpr DWORD kProcessLoopbackMinBuild = 20348;

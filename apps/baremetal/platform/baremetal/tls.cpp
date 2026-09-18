@@ -1,4 +1,4 @@
-// Thread-local storage for a target that has no threads (roadmap PF7).
+// Thread-local storage for a target that has no threads (minimum-footprint decoder profile).
 //
 // ac3::eac3::ecpl_channel_spectrum keeps its 32 KB of §3.5.5 reconstruction
 // scratch in a `static thread_local` - the right answer for a library whose

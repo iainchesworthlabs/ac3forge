@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  AppStream metainfo for AC3Forge Crucible (roadmap UX12) - what puts it in a
+  AppStream metainfo for AC3Forge Crucible (Crucible cross-platform promotion) - what puts it in a
   Linux desktop's application menu and software centre, alongside
   ac3crucible.desktop. <id> matches the .desktop file's own basename, which
   the launchable requires to associate the two. Same shape as ac3gui's.

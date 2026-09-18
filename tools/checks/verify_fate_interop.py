@@ -1,6 +1,6 @@
 """Decode pinned FFmpeg FATE AC-3/E-AC-3 samples and hold them against FFmpeg.
 
-Roadmap VX4's second step. The first step decodes
+Third-party decode interop, step two. The first step decodes
 tests/golden/external-baseline/ - six streams from Dolby's Encoding Engine and
 FFmpeg's own encoder, produced from this repository's own source material -
 with the in-repo decoder on every gold-reference leg. That is real third-party

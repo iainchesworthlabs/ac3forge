@@ -88,7 +88,7 @@ Dialog {
     FileDialog {
         id: objFileDialog
         title: qsTr("Choose an E-AC-3 stream")
-        // roadmap IO2: a Matroska/MP4/MPEG-TS container works too -
+        // container readers (mkv/mp4/ts): a Matroska/MP4/MPEG-TS container works too -
         // ObjectDecodeController sniffs the actual bytes rather than
         // trusting the extension, so this list is a convenience for the
         // picker only.

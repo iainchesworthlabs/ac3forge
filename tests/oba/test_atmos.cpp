@@ -550,7 +550,7 @@ TEST_CASE("oba::joc::reconstruct recovers well-separated objects through the rea
 
 TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band path",
           "[atmos][joc][decoder][qmf]") {
-    // Roadmap DC10's actual question, measured rather than argued: the same
+    // legacy item DC10's actual question, measured rather than argued: the same
     // objects, the same placements, the same real encoded bytes, differing
     // only in which domain the matrix is estimated and applied in. Both legs
     // run encoder and decoder in the SAME domain, because that is the only
@@ -1057,7 +1057,7 @@ TEST_CASE("the splice counter starts at zero and wraps to one", "[atmos]") {
 
 
 // --------------------------------------------------------------------------
-// Roadmap EQ11's second half: the object layer over short syncframes
+// E-AC-3 short syncframes's second half: the object layer over short syncframes
 // (numblkscod 0-2). Everything the six-block path carries has to survive the
 // shortened frame: the OAMD update's ramp must cover exactly one (shortened)
 // frame, the JOC matrix must interpolate over the frame's own timeslot count,

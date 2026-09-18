@@ -13,7 +13,7 @@
 //
 // Every workload is fed real programme material through real_audio.hpp - see
 // that header for why a 440 Hz tone, which is what this bench ran on until
-// roadmap PF1, is a different workload rather than a cheaper one.
+// encoder/decode benchmarks, is a different workload rather than a cheaper one.
 //
 // The workload set covers both directions of both generations, plus the
 // object path: three encoders (AC-3, E-AC-3 with its tools on `auto`, and

@@ -314,7 +314,7 @@ TEST_CASE("sign_atmos_stream is a no-op without a key or a container", "[signing
     }
 }
 
-// Found by fuzz/fuzz_signing_verify (roadmap VX3): verify_atmos_stream walks
+// Found by fuzz/fuzz_signing_verify (signing-verify fuzz walk): verify_atmos_stream walks
 // a frame the caller did not produce, and on a malformed one the frame's own
 // endmant can exceed the exponent array the walk actually recovered. The
 // per-channel `tally` then took subspan(0, endmant) of a shorter - possibly

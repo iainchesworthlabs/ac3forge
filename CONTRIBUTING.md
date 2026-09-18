@@ -312,8 +312,15 @@ a mid-level developer who does not already know this audio domain.
 - `docs/performance-quality.md` and its trend pages own performance and quality reporting. Their
   client-side code reads append-only data from the `quality-history` branch. Preserve those page
   paths, element IDs, data names and branch-fed assets unless the data pipeline changes with them.
-- `CHANGELOG.md` records user-visible changes by release. `ROADMAP.md` records candidate work.
-  Detailed implementation decisions belong in `planning/` or a product's `design/` record.
+- `CHANGELOG.md` records user-visible changes by release.
+- `ROADMAP.md` is the **status board** for in-flight, partial, proposed, blocked, and out-of-scope
+  work. It uses plain-English names; do not allocate new numeric roadmap IDs (`EQ1`, `UX12`, …).
+  Legacy IDs at the bottom of `ROADMAP.md` resolve old PR references only.
+- Product index pages (`docs/*/index.md`) and [`docs/library/capabilities.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md)
+  state **what ships today**.
+- Detailed implementation decisions belong in [`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning)
+  or a product's `design/` record. When a plan lands, update CHANGELOG and the product index; trim
+  the roadmap row; leave or mark the plan superseded ([`planning/SUPERSEDED.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/SUPERSEDED.md)).
 
 **Each product page set follows one shape.** An `index.md` opens with a status callout (what's
 built, what isn't, what's verified on real hardware versus under emulation or in CI only),
@@ -326,10 +333,11 @@ are the pattern to follow for a new one.
 **Non-trivial design work starts in `planning/`, not `docs/`.** A phase plan, a naming decision,
 or a proposal that touches more than a page or two belongs in
 [`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning) first —
-see [`planning/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/README.md)
-for why these stay out of the published site. `docs/` describes what exists; `planning/` is
+see [`planning/README.md`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning/README.md)
+for the index and how it relates to the roadmap. `docs/` describes what exists; `planning/` is
 where what might exist gets argued out first, and a page only moves (or a `design/` record
-gets written) once the work has actually landed.
+gets written) once the work has actually landed. Plans link to the roadmap for status; they do
+not duplicate the roadmap's tables or allocate numeric roadmap IDs.
 
 ## Commits
 

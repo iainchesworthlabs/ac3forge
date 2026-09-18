@@ -3,10 +3,10 @@
 
 const { test, expect } = require('@playwright/test');
 
-// Closes roadmap VX18(a): docs/platforms/wasm.md records channel count,
+// Closes WASM/mobile headless coverage(a): docs/platforms/wasm.md records channel count,
 // sample rate, object count and "an object's position differs between two
 // timestamps" as manual-only verification, because build-wasm only proves
-// the module compiles. Roadmap UX5 replaced the demo's own bespoke Embind
+// the module compiles. WASM streaming decoder package replaced the demo's own bespoke Embind
 // Decoder class with the published ac3forge-wasm-decoder package
 // (js/src/decode-file.ts's decodeFile(), built on PushDecoder) - this test
 // now drives THAT, the same call apps/wasm/demo.js itself makes, against the

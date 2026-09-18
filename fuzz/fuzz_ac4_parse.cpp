@@ -5,7 +5,7 @@
 #include "ac4/ac4.hpp"
 
 // ac4::scan and ac4::parse_raw_frame (src/ac4/src/ac4.cpp) - the AC-4
-// bitstream inspector, roadmap IM4.
+// bitstream inspector, AC-4 bitstream inspector.
 //
 // AC-4 reaches this project the same way AC-3 does, as bytes from a file or a
 // stream nobody here produced, and the TOC is the densest untrusted structure

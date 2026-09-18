@@ -96,7 +96,7 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
     // (see its own comment: two programmes are alternatives, not layers, and
     // splicing their units into one track is not something a player can
     // undo). Carrying every programme in one track, with num_ind_sub > 1 and
-    // a per-substream block each, is roadmap IO6's job together with the
+    // a per-substream block each, is MPEG-TS broadcast profiles's job together with the
     // service granularity DC3 supplies - the two have to arrive together,
     // since a box declaring programmes the track does not contain is worse
     // than one describing what it does.

@@ -431,7 +431,7 @@ jobs:
 
       # The counterpart to the two Windows asserts above, for the files that
       # had no assertion at all: ac3cli's generated man page and its four
-      # shell completions (apps/cli/CMakeLists.txt, roadmap IO8). Those are
+      # shell completions (apps/cli/CMakeLists.txt, CLI shell completions). Those are
       # produced by running the freshly built ac3cli, so a cross build skips
       # them - and until #527 that test was CMAKE_CROSSCOMPILING, which is
       # TRUE on every native Linux and macOS build here (each
