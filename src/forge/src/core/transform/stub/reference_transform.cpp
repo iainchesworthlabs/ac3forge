@@ -29,58 +29,58 @@
 namespace ac3::internal {
 
 static_assert(!kReferenceTransformAvailable,
- "this translation unit is only for the profile that declares the direct-form "
- "transform absent; the other variant carries the tables");
+              "this translation unit is only for the profile that declares the direct-form "
+              "transform absent; the other variant carries the tables");
 
 namespace {
 
 void unreachable_fill(std::span<double> a, std::span<double> b) {
- for (double& value : a) {
- value = 0.0;
- }
- for (double& value : b) {
- value = 0.0;
- }
+    for (double& value : a) {
+        value = 0.0;
+    }
+    for (double& value : b) {
+        value = 0.0;
+    }
 }
 
-} // namespace
+}  // namespace
 
 // NOLINTNEXTLINE(cert-dcl03-c,misc-static-assert) - a runtime guard, not a
 // compile-time one: reaching here at all is the bug being reported.
 void reference_mdct512_forward(std::span<const double, 512> /*windowed*/,
- std::span<double, 256> coeffs) {
- assert(false && "direct-form MDCT is absent from this build (AC3FORGE_MINIMAL_DECODER)");
- unreachable_fill(coeffs, {});
+                               std::span<double, 256> coeffs) {
+    assert(false && "direct-form MDCT is absent from this build (AC3FORGE_MINIMAL_DECODER)");
+    unreachable_fill(coeffs, {});
 }
 
 // NOLINTNEXTLINE(cert-dcl03-c,misc-static-assert)
 void reference_mdct256_forward_first(std::span<const double, 256> /*windowed*/,
- std::span<double, 128> coeffs) {
- assert(false && "direct-form MDCT is absent from this build (AC3FORGE_MINIMAL_DECODER)");
- unreachable_fill(coeffs, {});
+                                     std::span<double, 128> coeffs) {
+    assert(false && "direct-form MDCT is absent from this build (AC3FORGE_MINIMAL_DECODER)");
+    unreachable_fill(coeffs, {});
 }
 
 // NOLINTNEXTLINE(cert-dcl03-c,misc-static-assert)
 void reference_mdct256_forward_second(std::span<const double, 256> /*windowed*/,
- std::span<double, 128> coeffs) {
- assert(false && "direct-form MDCT is absent from this build (AC3FORGE_MINIMAL_DECODER)");
- unreachable_fill(coeffs, {});
+                                      std::span<double, 128> coeffs) {
+    assert(false && "direct-form MDCT is absent from this build (AC3FORGE_MINIMAL_DECODER)");
+    unreachable_fill(coeffs, {});
 }
 
 // NOLINTNEXTLINE(cert-dcl03-c,misc-static-assert)
 void reference_inner_sum_128(std::span<const double, 128> /*z_re*/,
- std::span<const double, 128> /*z_im*/, std::span<double, 128> t_re,
- std::span<double, 128> t_im) {
- assert(false && "direct-form IMDCT is absent from this build (AC3FORGE_MINIMAL_DECODER)");
- unreachable_fill(t_re, t_im);
+                             std::span<const double, 128> /*z_im*/, std::span<double, 128> t_re,
+                             std::span<double, 128> t_im) {
+    assert(false && "direct-form IMDCT is absent from this build (AC3FORGE_MINIMAL_DECODER)");
+    unreachable_fill(t_re, t_im);
 }
 
 // NOLINTNEXTLINE(cert-dcl03-c,misc-static-assert)
 void reference_inner_sum_64(std::span<const double, 64> /*z_re*/,
- std::span<const double, 64> /*z_im*/, std::span<double, 64> t_re,
- std::span<double, 64> t_im) {
- assert(false && "direct-form IMDCT is absent from this build (AC3FORGE_MINIMAL_DECODER)");
- unreachable_fill(t_re, t_im);
+                            std::span<const double, 64> /*z_im*/, std::span<double, 64> t_re,
+                            std::span<double, 64> t_im) {
+    assert(false && "direct-form IMDCT is absent from this build (AC3FORGE_MINIMAL_DECODER)");
+    unreachable_fill(t_re, t_im);
 }
 
-} // namespace ac3::internal
+}  // namespace ac3::internal

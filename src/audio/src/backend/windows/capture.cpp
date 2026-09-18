@@ -29,7 +29,7 @@ namespace {
 using Microsoft::WRL::ComPtr;
 
 // 100-ns units: the unit every WASAPI duration is expressed in.
-constexpr REFERENCE_TIME kBufferDuration = 200'000; // 20 ms
+constexpr REFERENCE_TIME kBufferDuration = 200'000;  // 20 ms
 constexpr DWORD kPollIntervalMs = 5;
 
 // PKEY_Device_FriendlyName, spelled out rather than pulling in
@@ -38,13 +38,13 @@ constexpr DWORD kPollIntervalMs = 5;
 // easy to break and drags GUID definitions into this translation unit.
 // {a45c254e-df1c-4efd-8020-67d146a850e0}, property id 14.
 constexpr PROPERTYKEY kPkeyDeviceFriendlyName = {
- {0xa45c254e, 0xdf1c, 0x4efd, {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}}, 14};
+    {0xa45c254e, 0xdf1c, 0x4efd, {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}}, 14};
 // PKEY_Device_DeviceDesc - same fmtid, property id 2: the endpoint's own
 // short description ("Microphone") without the adapter suffix. The fallback
 // when an endpoint has no friendly name at all, which real machines produce
 // (a virtual endpoint whose driver never filled the property in).
 constexpr PROPERTYKEY kPkeyDeviceDescription = {
- {0xa45c254e, 0xdf1c, 0x4efd, {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}}, 2};
+    {0xa45c254e, 0xdf1c, 0x4efd, {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}}, 2};
 
 // The class and interface identifiers, spelled out for a related reason: the
 // SDK declares CLSID_MMDeviceEnumerator and the IAudio* IIDs but ships no
@@ -52,23 +52,23 @@ constexpr PROPERTYKEY kPkeyDeviceDescription = {
 // is __uuidof - an MSVC extension that clang rejects under -Wpedantic. The
 // values are the DECLSPEC_UUID / MIDL_INTERFACE strings in mmdeviceapi.h and
 // audioclient.h.
-constexpr CLSID kClsidMmDeviceEnumerator = { // {bcde0395-e52f-467c-8e3d-c4579291692e}
- 0xbcde0395, 0xe52f, 0x467c, {0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e}};
-constexpr IID kIidMmDeviceEnumerator = { // {a95664d2-9614-4f35-a746-de8db63617e6}
- 0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6}};
-constexpr IID kIidAudioClient = { // {1cb9ad4c-dbfa-4c32-b178-c2f568a703b2}
- 0x1cb9ad4c, 0xdbfa, 0x4c32, {0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2}};
-constexpr IID kIidAudioCaptureClient = { // {c8adbd64-e71e-48a0-a4de-185c395cd317}
- 0xc8adbd64, 0xe71e, 0x48a0, {0xa4, 0xde, 0x18, 0x5c, 0x39, 0x5c, 0xd3, 0x17}};
+constexpr CLSID kClsidMmDeviceEnumerator = {  // {bcde0395-e52f-467c-8e3d-c4579291692e}
+    0xbcde0395, 0xe52f, 0x467c, {0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e}};
+constexpr IID kIidMmDeviceEnumerator = {  // {a95664d2-9614-4f35-a746-de8db63617e6}
+    0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6}};
+constexpr IID kIidAudioClient = {  // {1cb9ad4c-dbfa-4c32-b178-c2f568a703b2}
+    0x1cb9ad4c, 0xdbfa, 0x4c32, {0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2}};
+constexpr IID kIidAudioCaptureClient = {  // {c8adbd64-e71e-48a0-a4de-185c395cd317}
+    0xc8adbd64, 0xe71e, 0x48a0, {0xa4, 0xde, 0x18, 0x5c, 0x39, 0x5c, 0xd3, 0x17}};
 // For the process-loopback activation's completion handler, same reason.
-constexpr IID kIidUnknown = { // {00000000-0000-0000-c000-000000000046}
- 0x00000000, 0x0000, 0x0000, {0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
-constexpr IID kIidActivateCompletionHandler = { // {41d949ab-9862-444a-80f6-c261334da5eb}
- 0x41d949ab, 0x9862, 0x444a, {0x80, 0xf6, 0xc2, 0x61, 0x33, 0x4d, 0xa5, 0xeb}};
-constexpr IID kIidAgileObject = { // {94ea2b94-e9cc-49e0-c0ff-ee64ca8f5b90}
- 0x94ea2b94, 0xe9cc, 0x49e0, {0xc0, 0xff, 0xee, 0x64, 0xca, 0x8f, 0x5b, 0x90}};
+constexpr IID kIidUnknown = {  // {00000000-0000-0000-c000-000000000046}
+    0x00000000, 0x0000, 0x0000, {0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
+constexpr IID kIidActivateCompletionHandler = {  // {41d949ab-9862-444a-80f6-c261334da5eb}
+    0x41d949ab, 0x9862, 0x444a, {0x80, 0xf6, 0xc2, 0x61, 0x33, 0x4d, 0xa5, 0xeb}};
+constexpr IID kIidAgileObject = {  // {94ea2b94-e9cc-49e0-c0ff-ee64ca8f5b90}
+    0x94ea2b94, 0xe9cc, 0x49e0, {0xc0, 0xff, 0xee, 0x64, 0xca, 0x8f, 0x5b, 0x90}};
 
-// Roadmap UX11: the process-loopback activation exists from Windows 10 build
+// WASAPI loopback tap: the process-loopback activation exists from Windows 10 build
 // 20348 on. Waiting for the activation to complete is bounded, because a
 // completion that never comes would otherwise hang start() for good.
 constexpr DWORD kProcessLoopbackMinBuild = 20348;
@@ -76,23 +76,23 @@ constexpr DWORD kActivationTimeoutMs = 5000;
 
 // KSDATAFORMAT_SUBTYPE_PCM and _IEEE_FLOAT from mmreg.h, which spells them as
 // __uuidof for the same reason. The low 16 bits of Data1 are the wFormatTag.
-constexpr GUID kSubtypePcm = { // {00000001-0000-0010-8000-00aa00389b71}
- 0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
-constexpr GUID kSubtypeIeeeFloat = { // {00000003-0000-0010-8000-00aa00389b71}
- 0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+constexpr GUID kSubtypePcm = {  // {00000001-0000-0010-8000-00aa00389b71}
+    0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
+constexpr GUID kSubtypeIeeeFloat = {  // {00000003-0000-0010-8000-00aa00389b71}
+    0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 
 std::string to_utf8(const wchar_t* wide) {
- if (wide == nullptr) {
- return {};
- }
- const int needed =
- WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
- if (needed <= 1) {
- return {};
- }
- std::string out(static_cast<std::size_t>(needed - 1), '\0');
- WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), needed, nullptr, nullptr);
- return out;
+    if (wide == nullptr) {
+        return {};
+    }
+    const int needed =
+        WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+    if (needed <= 1) {
+        return {};
+    }
+    std::string out(static_cast<std::size_t>(needed - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), needed, nullptr, nullptr);
+    return out;
 }
 
 // A display name that is never empty: the friendly name if the endpoint has
@@ -101,41 +101,41 @@ std::string to_utf8(const wchar_t* wide) {
 // a blank row is indistinguishable from a rendering bug - and the id keeps
 // two unnamed endpoints tellable apart.
 std::string endpoint_display_name(IMMDevice* device, const std::string& id) {
- Microsoft::WRL::ComPtr<IPropertyStore> properties;
- if (SUCCEEDED(device->OpenPropertyStore(STGM_READ, &properties))) {
- for (const auto& key : {kPkeyDeviceFriendlyName, kPkeyDeviceDescription}) {
- PROPVARIANT value;
- PropVariantInit(&value);
- std::string name;
- if (SUCCEEDED(properties->GetValue(key, &value)) && value.vt == VT_LPWSTR &&
- value.pwszVal != nullptr && value.pwszVal[0] != L'\0') {
- name = to_utf8(value.pwszVal);
- }
- PropVariantClear(&value);
- if (!name.empty()) {
- return name;
- }
- }
- }
- return id.empty() ? std::string{"Unnamed audio endpoint"} : "Unnamed endpoint " + id;
+    Microsoft::WRL::ComPtr<IPropertyStore> properties;
+    if (SUCCEEDED(device->OpenPropertyStore(STGM_READ, &properties))) {
+        for (const auto& key : {kPkeyDeviceFriendlyName, kPkeyDeviceDescription}) {
+            PROPVARIANT value;
+            PropVariantInit(&value);
+            std::string name;
+            if (SUCCEEDED(properties->GetValue(key, &value)) && value.vt == VT_LPWSTR &&
+                value.pwszVal != nullptr && value.pwszVal[0] != L'\0') {
+                name = to_utf8(value.pwszVal);
+            }
+            PropVariantClear(&value);
+            if (!name.empty()) {
+                return name;
+            }
+        }
+    }
+    return id.empty() ? std::string{"Unnamed audio endpoint"} : "Unnamed endpoint " + id;
 }
 
 // COM lifetime for one thread. WASAPI is apartment-sensitive, so every thread
 // that touches an interface initialises and uninitialises its own.
 class ComScope {
 public:
- ComScope() : hr_(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
- ~ComScope() {
- if (SUCCEEDED(hr_)) {
- CoUninitialize();
- }
- }
- ComScope(const ComScope&) = delete;
- ComScope& operator=(const ComScope&) = delete;
- [[nodiscard]] bool ok() const { return SUCCEEDED(hr_) || hr_ == RPC_E_CHANGED_MODE; }
+    ComScope() : hr_(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
+    ~ComScope() {
+        if (SUCCEEDED(hr_)) {
+            CoUninitialize();
+        }
+    }
+    ComScope(const ComScope&) = delete;
+    ComScope& operator=(const ComScope&) = delete;
+    [[nodiscard]] bool ok() const { return SUCCEEDED(hr_) || hr_ == RPC_E_CHANGED_MODE; }
 
 private:
- HRESULT hr_;
+    HRESULT hr_;
 };
 
 // How the endpoint hands us samples. WASAPI shared mode is almost always
@@ -143,160 +143,160 @@ private:
 enum class SampleFormat { kFloat32, kPcm16, kPcm24, kPcm32, kUnsupported };
 
 SampleFormat classify(const WAVEFORMATEX* format) {
- GUID subformat{};
- WORD bits = format->wBitsPerSample;
- if (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
- const auto* ext = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(format);
- subformat = ext->SubFormat;
- } else if (format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
- subformat = kSubtypeIeeeFloat;
- } else if (format->wFormatTag == WAVE_FORMAT_PCM) {
- subformat = kSubtypePcm;
- } else {
- return SampleFormat::kUnsupported;
- }
+    GUID subformat{};
+    WORD bits = format->wBitsPerSample;
+    if (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+        const auto* ext = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(format);
+        subformat = ext->SubFormat;
+    } else if (format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
+        subformat = kSubtypeIeeeFloat;
+    } else if (format->wFormatTag == WAVE_FORMAT_PCM) {
+        subformat = kSubtypePcm;
+    } else {
+        return SampleFormat::kUnsupported;
+    }
 
- if (IsEqualGUID(subformat, kSubtypeIeeeFloat) && bits == 32) {
- return SampleFormat::kFloat32;
- }
- if (IsEqualGUID(subformat, kSubtypePcm)) {
- switch (bits) {
- case 16: return SampleFormat::kPcm16;
- case 24: return SampleFormat::kPcm24;
- case 32: return SampleFormat::kPcm32;
- default: break;
- }
- }
- return SampleFormat::kUnsupported;
+    if (IsEqualGUID(subformat, kSubtypeIeeeFloat) && bits == 32) {
+        return SampleFormat::kFloat32;
+    }
+    if (IsEqualGUID(subformat, kSubtypePcm)) {
+        switch (bits) {
+            case 16: return SampleFormat::kPcm16;
+            case 24: return SampleFormat::kPcm24;
+            case 32: return SampleFormat::kPcm32;
+            default: break;
+        }
+    }
+    return SampleFormat::kUnsupported;
 }
 
 // Convert one endpoint packet into normalised float, in place into `out`.
 void convert(const BYTE* data, std::size_t sample_count, SampleFormat format,
- std::vector<float>& out) {
- out.resize(sample_count);
- switch (format) {
- case SampleFormat::kFloat32: {
- std::memcpy(out.data(), data, sample_count * sizeof(float));
- break;
- }
- case SampleFormat::kPcm16: {
- const auto* pcm = reinterpret_cast<const std::int16_t*>(data);
- for (std::size_t i = 0; i < sample_count; ++i) {
- out[i] = static_cast<float>(pcm[i]) / 32768.0f;
- }
- break;
- }
- case SampleFormat::kPcm24: {
- for (std::size_t i = 0; i < sample_count; ++i) {
- const BYTE* p = data + i * 3;
- const auto value = static_cast<std::int32_t>(
- (static_cast<std::uint32_t>(p[0]) << 8) |
- (static_cast<std::uint32_t>(p[1]) << 16) |
- (static_cast<std::uint32_t>(p[2]) << 24));
- out[i] = static_cast<float>(value) / 2147483648.0f;
- }
- break;
- }
- case SampleFormat::kPcm32: {
- const auto* pcm = reinterpret_cast<const std::int32_t*>(data);
- for (std::size_t i = 0; i < sample_count; ++i) {
- out[i] = static_cast<float>(pcm[i]) / 2147483648.0f;
- }
- break;
- }
- case SampleFormat::kUnsupported:
- std::ranges::fill(out, 0.0f);
- break;
- }
+             std::vector<float>& out) {
+    out.resize(sample_count);
+    switch (format) {
+        case SampleFormat::kFloat32: {
+            std::memcpy(out.data(), data, sample_count * sizeof(float));
+            break;
+        }
+        case SampleFormat::kPcm16: {
+            const auto* pcm = reinterpret_cast<const std::int16_t*>(data);
+            for (std::size_t i = 0; i < sample_count; ++i) {
+                out[i] = static_cast<float>(pcm[i]) / 32768.0f;
+            }
+            break;
+        }
+        case SampleFormat::kPcm24: {
+            for (std::size_t i = 0; i < sample_count; ++i) {
+                const BYTE* p = data + i * 3;
+                const auto value = static_cast<std::int32_t>(
+                    (static_cast<std::uint32_t>(p[0]) << 8) |
+                    (static_cast<std::uint32_t>(p[1]) << 16) |
+                    (static_cast<std::uint32_t>(p[2]) << 24));
+                out[i] = static_cast<float>(value) / 2147483648.0f;
+            }
+            break;
+        }
+        case SampleFormat::kPcm32: {
+            const auto* pcm = reinterpret_cast<const std::int32_t*>(data);
+            for (std::size_t i = 0; i < sample_count; ++i) {
+                out[i] = static_cast<float>(pcm[i]) / 2147483648.0f;
+            }
+            break;
+        }
+        case SampleFormat::kUnsupported:
+            std::ranges::fill(out, 0.0f);
+            break;
+    }
 }
 
 std::expected<ComPtr<IMMDeviceEnumerator>, CaptureError> make_enumerator() {
- ComPtr<IMMDeviceEnumerator> enumerator;
- const HRESULT hr = CoCreateInstance(kClsidMmDeviceEnumerator, nullptr, CLSCTX_ALL,
- kIidMmDeviceEnumerator, &enumerator);
- if (FAILED(hr)) {
- return std::unexpected(CaptureError::kComFailure);
- }
- return enumerator;
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    const HRESULT hr = CoCreateInstance(kClsidMmDeviceEnumerator, nullptr, CLSCTX_ALL,
+                                        kIidMmDeviceEnumerator, &enumerator);
+    if (FAILED(hr)) {
+        return std::unexpected(CaptureError::kComFailure);
+    }
+    return enumerator;
 }
 
 void append_devices(IMMDeviceEnumerator* enumerator, EDataFlow flow, DeviceKind kind,
- std::vector<DeviceInfo>& out) {
- ComPtr<IMMDevice> default_device;
- std::string default_id;
- if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(flow, eConsole, &default_device))) {
- LPWSTR id = nullptr;
- if (SUCCEEDED(default_device->GetId(&id))) {
- default_id = to_utf8(id);
- CoTaskMemFree(id);
- }
- }
+                    std::vector<DeviceInfo>& out) {
+    ComPtr<IMMDevice> default_device;
+    std::string default_id;
+    if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(flow, eConsole, &default_device))) {
+        LPWSTR id = nullptr;
+        if (SUCCEEDED(default_device->GetId(&id))) {
+            default_id = to_utf8(id);
+            CoTaskMemFree(id);
+        }
+    }
 
- ComPtr<IMMDeviceCollection> collection;
- if (FAILED(enumerator->EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE, &collection))) {
- return;
- }
- UINT count = 0;
- if (FAILED(collection->GetCount(&count))) {
- return;
- }
+    ComPtr<IMMDeviceCollection> collection;
+    if (FAILED(enumerator->EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE, &collection))) {
+        return;
+    }
+    UINT count = 0;
+    if (FAILED(collection->GetCount(&count))) {
+        return;
+    }
 
- for (UINT i = 0; i < count; ++i) {
- ComPtr<IMMDevice> device;
- if (FAILED(collection->Item(i, &device))) {
- continue;
- }
- DeviceInfo info;
- info.kind = kind;
+    for (UINT i = 0; i < count; ++i) {
+        ComPtr<IMMDevice> device;
+        if (FAILED(collection->Item(i, &device))) {
+            continue;
+        }
+        DeviceInfo info;
+        info.kind = kind;
 
- LPWSTR id = nullptr;
- if (FAILED(device->GetId(&id))) {
- // An entry without an id names a device nobody can open -
- // start() is handed the id back, so listing it would only offer
- // a choice that cannot work.
- continue;
- }
- info.id = to_utf8(id);
- CoTaskMemFree(id);
- info.is_default = !info.id.empty() && info.id == default_id;
- info.name = endpoint_display_name(device.Get(), info.id);
+        LPWSTR id = nullptr;
+        if (FAILED(device->GetId(&id))) {
+            // An entry without an id names a device nobody can open -
+            // start() is handed the id back, so listing it would only offer
+            // a choice that cannot work.
+            continue;
+        }
+        info.id = to_utf8(id);
+        CoTaskMemFree(id);
+        info.is_default = !info.id.empty() && info.id == default_id;
+        info.name = endpoint_display_name(device.Get(), info.id);
 
- // The mixer format tells the caller the rate and channel count it
- // will actually receive, before committing to a capture.
- ComPtr<IAudioClient> client;
- if (SUCCEEDED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
- WAVEFORMATEX* mix = nullptr;
- if (SUCCEEDED(client->GetMixFormat(&mix)) && mix != nullptr) {
- info.sample_rate = mix->nSamplesPerSec;
- info.channels = mix->nChannels;
- CoTaskMemFree(mix);
- }
- }
- if (kind == DeviceKind::kLoopback) {
- info.name += " (loopback)";
- }
- out.push_back(std::move(info));
- }
+        // The mixer format tells the caller the rate and channel count it
+        // will actually receive, before committing to a capture.
+        ComPtr<IAudioClient> client;
+        if (SUCCEEDED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
+            WAVEFORMATEX* mix = nullptr;
+            if (SUCCEEDED(client->GetMixFormat(&mix)) && mix != nullptr) {
+                info.sample_rate = mix->nSamplesPerSec;
+                info.channels = mix->nChannels;
+                CoTaskMemFree(mix);
+            }
+        }
+        if (kind == DeviceKind::kLoopback) {
+            info.name += " (loopback)";
+        }
+        out.push_back(std::move(info));
+    }
 }
 
 // Asked of the kernel through RtlGetVersion rather than GetVersionEx, which
 // answers for the executable's manifest rather than for the machine.
 bool os_build_at_least(DWORD build) {
- using RtlGetVersionFn = LONG(WINAPI*)(PRTL_OSVERSIONINFOW);
- const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
- if (ntdll == nullptr) {
- return false;
- }
- const auto fn = reinterpret_cast<RtlGetVersionFn>(GetProcAddress(ntdll, "RtlGetVersion"));
- if (fn == nullptr) {
- return false;
- }
- RTL_OSVERSIONINFOW info{};
- info.dwOSVersionInfoSize = sizeof(info);
- if (fn(&info) != 0) {
- return false;
- }
- return info.dwBuildNumber >= build;
+    using RtlGetVersionFn = LONG(WINAPI*)(PRTL_OSVERSIONINFOW);
+    const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (ntdll == nullptr) {
+        return false;
+    }
+    const auto fn = reinterpret_cast<RtlGetVersionFn>(GetProcAddress(ntdll, "RtlGetVersion"));
+    if (fn == nullptr) {
+        return false;
+    }
+    RTL_OSVERSIONINFOW info{};
+    info.dwOSVersionInfoSize = sizeof(info);
+    if (fn(&info) != 0) {
+        return false;
+    }
+    return info.dwBuildNumber >= build;
 }
 
 // The one-shot object ActivateAudioInterfaceAsync completes into. Hand-rolled
@@ -306,71 +306,71 @@ bool os_build_at_least(DWORD build) {
 // thread of COM's choosing and the interface has to be usable from there.
 class ActivationCompletion final : public IActivateAudioInterfaceCompletionHandler {
 public:
- ActivationCompletion() : done_(CreateEventW(nullptr, TRUE, FALSE, nullptr)) {}
- ActivationCompletion(const ActivationCompletion&) = delete;
- ActivationCompletion& operator=(const ActivationCompletion&) = delete;
+    ActivationCompletion() : done_(CreateEventW(nullptr, TRUE, FALSE, nullptr)) {}
+    ActivationCompletion(const ActivationCompletion&) = delete;
+    ActivationCompletion& operator=(const ActivationCompletion&) = delete;
 
- STDMETHODIMP_(ULONG) AddRef() override { return ++refs_; }
- STDMETHODIMP_(ULONG) Release() override {
- const ULONG remaining = --refs_;
- if (remaining == 0) {
- delete this;
- }
- return remaining;
- }
- STDMETHODIMP QueryInterface(REFIID riid, void** out) override {
- if (out == nullptr) {
- return E_POINTER;
- }
- if (IsEqualIID(riid, kIidUnknown) || IsEqualIID(riid, kIidActivateCompletionHandler)) {
- *out = static_cast<IActivateAudioInterfaceCompletionHandler*>(this);
- AddRef();
- return S_OK;
- }
- if (IsEqualIID(riid, kIidAgileObject)) {
- // IAgileObject adds no methods; any IUnknown of ours answers it.
- *out = static_cast<IUnknown*>(this);
- AddRef();
- return S_OK;
- }
- *out = nullptr;
- return E_NOINTERFACE;
- }
+    STDMETHODIMP_(ULONG) AddRef() override { return ++refs_; }
+    STDMETHODIMP_(ULONG) Release() override {
+        const ULONG remaining = --refs_;
+        if (remaining == 0) {
+            delete this;
+        }
+        return remaining;
+    }
+    STDMETHODIMP QueryInterface(REFIID riid, void** out) override {
+        if (out == nullptr) {
+            return E_POINTER;
+        }
+        if (IsEqualIID(riid, kIidUnknown) || IsEqualIID(riid, kIidActivateCompletionHandler)) {
+            *out = static_cast<IActivateAudioInterfaceCompletionHandler*>(this);
+            AddRef();
+            return S_OK;
+        }
+        if (IsEqualIID(riid, kIidAgileObject)) {
+            // IAgileObject adds no methods; any IUnknown of ours answers it.
+            *out = static_cast<IUnknown*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
 
- STDMETHODIMP ActivateCompleted(IActivateAudioInterfaceAsyncOperation* operation) override {
- HRESULT activation = E_FAIL;
- ComPtr<IUnknown> unknown;
- if (SUCCEEDED(operation->GetActivateResult(&activation, &unknown)) &&
- SUCCEEDED(activation) && unknown) {
- activation = unknown->QueryInterface(kIidAudioClient, &client_);
- }
- result_ = activation;
- SetEvent(done_);
- return S_OK;
- }
+    STDMETHODIMP ActivateCompleted(IActivateAudioInterfaceAsyncOperation* operation) override {
+        HRESULT activation = E_FAIL;
+        ComPtr<IUnknown> unknown;
+        if (SUCCEEDED(operation->GetActivateResult(&activation, &unknown)) &&
+            SUCCEEDED(activation) && unknown) {
+            activation = unknown->QueryInterface(kIidAudioClient, &client_);
+        }
+        result_ = activation;
+        SetEvent(done_);
+        return S_OK;
+    }
 
- // Blocks until the activation completed or the deadline passed.
- std::expected<ComPtr<IAudioClient>, CaptureError> wait(DWORD timeout_ms) {
- if (done_ == nullptr || WaitForSingleObject(done_, timeout_ms) != WAIT_OBJECT_0) {
- return std::unexpected(CaptureError::kComFailure);
- }
- if (FAILED(result_) || !client_) {
- return std::unexpected(CaptureError::kComFailure);
- }
- return client_;
- }
+    // Blocks until the activation completed or the deadline passed.
+    std::expected<ComPtr<IAudioClient>, CaptureError> wait(DWORD timeout_ms) {
+        if (done_ == nullptr || WaitForSingleObject(done_, timeout_ms) != WAIT_OBJECT_0) {
+            return std::unexpected(CaptureError::kComFailure);
+        }
+        if (FAILED(result_) || !client_) {
+            return std::unexpected(CaptureError::kComFailure);
+        }
+        return client_;
+    }
 
 private:
- ~ActivationCompletion() {
- if (done_ != nullptr) {
- CloseHandle(done_);
- }
- }
+    ~ActivationCompletion() {
+        if (done_ != nullptr) {
+            CloseHandle(done_);
+        }
+    }
 
- std::atomic<ULONG> refs_{1};
- HANDLE done_;
- HRESULT result_ = E_PENDING;
- ComPtr<IAudioClient> client_;
+    std::atomic<ULONG> refs_{1};
+    HANDLE done_;
+    HRESULT result_ = E_PENDING;
+    ComPtr<IAudioClient> client_;
 };
 
 // A process id nobody owns is the one refusal the OS will not make for us:
@@ -378,380 +378,380 @@ private:
 // OpenProcess says for an id that names nothing; access denied (a protected
 // process) is not the same thing, and such a process can still be tapped.
 bool process_exists(std::uint32_t process_id) {
- const HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
- if (handle != nullptr) {
- CloseHandle(handle);
- return true;
- }
- return GetLastError() != ERROR_INVALID_PARAMETER;
+    const HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
+    if (handle != nullptr) {
+        CloseHandle(handle);
+        return true;
+    }
+    return GetLastError() != ERROR_INVALID_PARAMETER;
 }
 
 // WAVEFORMATEXTENSIBLE speaker masks, spelled as the SPEAKER_* bits from
 // mmreg.h rather than ksmedia.h's KSAUDIO_SPEAKER_* names: that header
 // carries ks.h, whose GUID_NULL macro collides with cguid.h's declaration.
 DWORD speaker_mask_for(std::uint16_t channels) {
- switch (channels) {
- case 1: return 0x4; // FC
- case 2: return 0x3; // FL FR
- case 4: return 0x33; // FL FR BL BR
- case 6: return 0x3f; // 5.1
- case 8: return 0x63f; // 7.1 (side + back pairs)
- default: return 0; // unspecified; the engine still converts
- }
+    switch (channels) {
+        case 1: return 0x4;    // FC
+        case 2: return 0x3;    // FL FR
+        case 4: return 0x33;   // FL FR BL BR
+        case 6: return 0x3f;   // 5.1
+        case 8: return 0x63f;  // 7.1 (side + back pairs)
+        default: return 0;     // unspecified; the engine still converts
+    }
 }
 
-} // namespace
+}  // namespace
 
 std::string_view describe(CaptureError error) {
- switch (error) {
- case CaptureError::kNoBackend: return "no capture backend on this platform";
- case CaptureError::kComFailure: return "a Windows audio (WASAPI/COM) call failed";
- case CaptureError::kDeviceNotFound: return "the requested capture device was not found";
- case CaptureError::kFormatUnsupported: return "the device sample format is unsupported";
- case CaptureError::kAlreadyRunning: return "capture is already running";
- case CaptureError::kProcessLoopbackUnavailable:
- return "per-process loopback capture needs Windows 10 build 20348 or later";
- case CaptureError::kProcessNotFound: return "no process has the requested id";
- }
- return "unknown capture error";
+    switch (error) {
+        case CaptureError::kNoBackend: return "no capture backend on this platform";
+        case CaptureError::kComFailure: return "a Windows audio (WASAPI/COM) call failed";
+        case CaptureError::kDeviceNotFound: return "the requested capture device was not found";
+        case CaptureError::kFormatUnsupported: return "the device sample format is unsupported";
+        case CaptureError::kAlreadyRunning: return "capture is already running";
+        case CaptureError::kProcessLoopbackUnavailable:
+            return "per-process loopback capture needs Windows 10 build 20348 or later";
+        case CaptureError::kProcessNotFound: return "no process has the requested id";
+    }
+    return "unknown capture error";
 }
 
 std::expected<std::vector<DeviceInfo>, CaptureError> enumerate_devices() {
- ComScope com;
- if (!com.ok()) {
- return std::unexpected(CaptureError::kComFailure);
- }
- auto enumerator = make_enumerator();
- if (!enumerator) {
- return std::unexpected(enumerator.error());
- }
+    ComScope com;
+    if (!com.ok()) {
+        return std::unexpected(CaptureError::kComFailure);
+    }
+    auto enumerator = make_enumerator();
+    if (!enumerator) {
+        return std::unexpected(enumerator.error());
+    }
 
- std::vector<DeviceInfo> devices;
- append_devices(enumerator->Get(), eCapture, DeviceKind::kInput, devices);
- append_devices(enumerator->Get(), eRender, DeviceKind::kLoopback, devices);
- return devices;
+    std::vector<DeviceInfo> devices;
+    append_devices(enumerator->Get(), eCapture, DeviceKind::kInput, devices);
+    append_devices(enumerator->Get(), eRender, DeviceKind::kLoopback, devices);
+    return devices;
 }
 
 struct Capture::Impl {
- std::unique_ptr<RingBuffer> ring;
- std::jthread worker;
- std::atomic_bool running{false};
- std::atomic<std::uint64_t> frames_captured{0};
- std::atomic<std::uint64_t> frames_silence{0};
- std::uint32_t sample_rate = 0;
- std::uint16_t channels = 0;
+    std::unique_ptr<RingBuffer> ring;
+    std::jthread worker;
+    std::atomic_bool running{false};
+    std::atomic<std::uint64_t> frames_captured{0};
+    std::atomic<std::uint64_t> frames_silence{0};
+    std::uint32_t sample_rate = 0;
+    std::uint16_t channels = 0;
 
- // The capture thread both start paths share. `loopback` selects polled
- // reads with wall-clock silence synthesis (a render endpoint, or a
- // process, delivers nothing while quiet); otherwise the thread waits on
- // `sample_ready`, which the caller has already handed to the client.
- void launch(ComPtr<IAudioClient> client, ComPtr<IAudioCaptureClient> capture,
- HANDLE sample_ready, SampleFormat format, bool loopback, std::uint32_t rate,
- std::uint16_t channel_count, std::size_t ring_capacity_samples);
+    // The capture thread both start paths share. `loopback` selects polled
+    // reads with wall-clock silence synthesis (a render endpoint, or a
+    // process, delivers nothing while quiet); otherwise the thread waits on
+    // `sample_ready`, which the caller has already handed to the client.
+    void launch(ComPtr<IAudioClient> client, ComPtr<IAudioCaptureClient> capture,
+                HANDLE sample_ready, SampleFormat format, bool loopback, std::uint32_t rate,
+                std::uint16_t channel_count, std::size_t ring_capacity_samples);
 };
 
 void Capture::Impl::launch(ComPtr<IAudioClient> client, ComPtr<IAudioCaptureClient> capture,
- HANDLE sample_ready, SampleFormat format, bool loopback,
- std::uint32_t rate, std::uint16_t channel_count,
- std::size_t ring_capacity_samples) {
- ring = std::make_unique<RingBuffer>(ring_capacity_samples);
- sample_rate = rate;
- channels = channel_count;
- frames_captured.store(0, std::memory_order_relaxed);
- frames_silence.store(0, std::memory_order_relaxed);
- running.store(true, std::memory_order_release);
+                           HANDLE sample_ready, SampleFormat format, bool loopback,
+                           std::uint32_t rate, std::uint16_t channel_count,
+                           std::size_t ring_capacity_samples) {
+    ring = std::make_unique<RingBuffer>(ring_capacity_samples);
+    sample_rate = rate;
+    channels = channel_count;
+    frames_captured.store(0, std::memory_order_relaxed);
+    frames_silence.store(0, std::memory_order_relaxed);
+    running.store(true, std::memory_order_release);
 
- worker = std::jthread([this, client, capture, sample_ready, format, loopback,
- rate, channel_count](const std::stop_token& stop) mutable {
- ComScope thread_com;
- // Ask MMCSS for audio scheduling so a busy desktop cannot starve the
- // capture loop into dropping packets.
- DWORD mmcss_index = 0;
- HANDLE mmcss = AvSetMmThreadCharacteristicsW(L"Audio", &mmcss_index);
+    worker = std::jthread([this, client, capture, sample_ready, format, loopback,
+                                  rate, channel_count](const std::stop_token& stop) mutable {
+        ComScope thread_com;
+        // Ask MMCSS for audio scheduling so a busy desktop cannot starve the
+        // capture loop into dropping packets.
+        DWORD mmcss_index = 0;
+        HANDLE mmcss = AvSetMmThreadCharacteristicsW(L"Audio", &mmcss_index);
 
- std::vector<float> scratch;
- std::vector<float> silence;
- client->Start();
+        std::vector<float> scratch;
+        std::vector<float> silence;
+        client->Start();
 
- LARGE_INTEGER frequency{};
- LARGE_INTEGER started{};
- QueryPerformanceFrequency(&frequency);
- QueryPerformanceCounter(&started);
- std::uint64_t timeline_frames = 0;
+        LARGE_INTEGER frequency{};
+        LARGE_INTEGER started{};
+        QueryPerformanceFrequency(&frequency);
+        QueryPerformanceCounter(&started);
+        std::uint64_t timeline_frames = 0;
 
- while (!stop.stop_requested()) {
- if (loopback) {
- Sleep(kPollIntervalMs);
- } else if (sample_ready != nullptr) {
- WaitForSingleObject(sample_ready, 200);
- }
+        while (!stop.stop_requested()) {
+            if (loopback) {
+                Sleep(kPollIntervalMs);
+            } else if (sample_ready != nullptr) {
+                WaitForSingleObject(sample_ready, 200);
+            }
 
- for (;;) {
- UINT32 packet = 0;
- if (FAILED(capture->GetNextPacketSize(&packet)) || packet == 0) {
- break;
- }
- BYTE* data = nullptr;
- UINT32 frames = 0;
- DWORD packet_flags = 0;
- if (FAILED(capture->GetBuffer(&data, &frames, &packet_flags, nullptr, nullptr))) {
- break;
- }
- const std::size_t samples =
- static_cast<std::size_t>(frames) * channel_count;
- if ((packet_flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0) {
- scratch.assign(samples, 0.0f);
- } else {
- convert(data, samples, format, scratch);
- }
- ring->write(scratch);
- frames_captured.fetch_add(frames, std::memory_order_relaxed);
- timeline_frames += frames;
- capture->ReleaseBuffer(frames);
- }
+            for (;;) {
+                UINT32 packet = 0;
+                if (FAILED(capture->GetNextPacketSize(&packet)) || packet == 0) {
+                    break;
+                }
+                BYTE* data = nullptr;
+                UINT32 frames = 0;
+                DWORD packet_flags = 0;
+                if (FAILED(capture->GetBuffer(&data, &frames, &packet_flags, nullptr, nullptr))) {
+                    break;
+                }
+                const std::size_t samples =
+                    static_cast<std::size_t>(frames) * channel_count;
+                if ((packet_flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0) {
+                    scratch.assign(samples, 0.0f);
+                } else {
+                    convert(data, samples, format, scratch);
+                }
+                ring->write(scratch);
+                frames_captured.fetch_add(frames, std::memory_order_relaxed);
+                timeline_frames += frames;
+                capture->ReleaseBuffer(frames);
+            }
 
- if (loopback) {
- // Nothing is playing: fill the gap so downstream sees a
- // continuous 48 kHz (or whatever the mixer runs at) timeline.
- LARGE_INTEGER now{};
- QueryPerformanceCounter(&now);
- const auto elapsed_frames = static_cast<std::uint64_t>(
- static_cast<double>(now.QuadPart - started.QuadPart) /
- static_cast<double>(frequency.QuadPart) * rate);
- if (elapsed_frames > timeline_frames + rate / 100) {
- auto missing = elapsed_frames - timeline_frames;
- missing = std::min<std::uint64_t>(missing, rate); // cap a long stall
- silence.assign(static_cast<std::size_t>(missing) * channel_count, 0.0f);
- ring->write(silence);
- frames_silence.fetch_add(missing, std::memory_order_relaxed);
- timeline_frames += missing;
- }
- }
- }
+            if (loopback) {
+                // Nothing is playing: fill the gap so downstream sees a
+                // continuous 48 kHz (or whatever the mixer runs at) timeline.
+                LARGE_INTEGER now{};
+                QueryPerformanceCounter(&now);
+                const auto elapsed_frames = static_cast<std::uint64_t>(
+                    static_cast<double>(now.QuadPart - started.QuadPart) /
+                    static_cast<double>(frequency.QuadPart) * rate);
+                if (elapsed_frames > timeline_frames + rate / 100) {
+                    auto missing = elapsed_frames - timeline_frames;
+                    missing = std::min<std::uint64_t>(missing, rate);  // cap a long stall
+                    silence.assign(static_cast<std::size_t>(missing) * channel_count, 0.0f);
+                    ring->write(silence);
+                    frames_silence.fetch_add(missing, std::memory_order_relaxed);
+                    timeline_frames += missing;
+                }
+            }
+        }
 
- client->Stop();
- if (mmcss != nullptr) {
- AvRevertMmThreadCharacteristics(mmcss);
- }
- if (sample_ready != nullptr) {
- CloseHandle(sample_ready);
- }
- });
+        client->Stop();
+        if (mmcss != nullptr) {
+            AvRevertMmThreadCharacteristics(mmcss);
+        }
+        if (sample_ready != nullptr) {
+            CloseHandle(sample_ready);
+        }
+    });
 }
 
 Capture::Capture() : impl_(std::make_unique<Impl>()) {}
 
 Capture::~Capture() {
- stop();
+    stop();
 }
 
 bool Capture::running() const {
- return impl_->running.load(std::memory_order_acquire);
+    return impl_->running.load(std::memory_order_acquire);
 }
 
 std::uint32_t Capture::sample_rate() const {
- return impl_->sample_rate;
+    return impl_->sample_rate;
 }
 
 std::uint16_t Capture::channels() const {
- return impl_->channels;
+    return impl_->channels;
 }
 
 CaptureStats Capture::stats() const {
- return {.frames_captured = impl_->frames_captured.load(std::memory_order_relaxed),
- .frames_silence_filled = impl_->frames_silence.load(std::memory_order_relaxed),
- .frames_dropped = impl_->ring ? impl_->ring->dropped() /
- std::max<std::size_t>(impl_->channels, 1)
- : 0};
+    return {.frames_captured = impl_->frames_captured.load(std::memory_order_relaxed),
+            .frames_silence_filled = impl_->frames_silence.load(std::memory_order_relaxed),
+            .frames_dropped = impl_->ring ? impl_->ring->dropped() /
+                                                std::max<std::size_t>(impl_->channels, 1)
+                                          : 0};
 }
 
 RingBuffer* Capture::buffer() {
- return impl_->ring.get();
+    return impl_->ring.get();
 }
 
 void Capture::stop() {
- if (impl_->worker.joinable()) {
- impl_->worker.request_stop();
- impl_->worker.join();
- }
- impl_->running.store(false, std::memory_order_release);
+    if (impl_->worker.joinable()) {
+        impl_->worker.request_stop();
+        impl_->worker.join();
+    }
+    impl_->running.store(false, std::memory_order_release);
 }
 
 std::expected<void, CaptureError> Capture::start(const std::string& device_id, DeviceKind kind,
- std::size_t ring_capacity_samples) {
- if (running()) {
- return std::unexpected(CaptureError::kAlreadyRunning);
- }
+                                                 std::size_t ring_capacity_samples) {
+    if (running()) {
+        return std::unexpected(CaptureError::kAlreadyRunning);
+    }
 
- // Open the device on this thread so format negotiation failures are
- // reported synchronously, then hand the client to the capture thread.
- ComScope com;
- if (!com.ok()) {
- return std::unexpected(CaptureError::kComFailure);
- }
- auto enumerator = make_enumerator();
- if (!enumerator) {
- return std::unexpected(enumerator.error());
- }
- const EDataFlow flow = kind == DeviceKind::kLoopback ? eRender : eCapture;
+    // Open the device on this thread so format negotiation failures are
+    // reported synchronously, then hand the client to the capture thread.
+    ComScope com;
+    if (!com.ok()) {
+        return std::unexpected(CaptureError::kComFailure);
+    }
+    auto enumerator = make_enumerator();
+    if (!enumerator) {
+        return std::unexpected(enumerator.error());
+    }
+    const EDataFlow flow = kind == DeviceKind::kLoopback ? eRender : eCapture;
 
- ComPtr<IMMDevice> device;
- if (device_id.empty()) {
- if (FAILED((*enumerator)->GetDefaultAudioEndpoint(flow, eConsole, &device))) {
- return std::unexpected(CaptureError::kDeviceNotFound);
- }
- } else {
- const int wide_len =
- MultiByteToWideChar(CP_UTF8, 0, device_id.c_str(), -1, nullptr, 0);
- std::wstring wide(static_cast<std::size_t>(wide_len > 0 ? wide_len - 1 : 0), L'\0');
- MultiByteToWideChar(CP_UTF8, 0, device_id.c_str(), -1, wide.data(), wide_len);
- if (FAILED((*enumerator)->GetDevice(wide.c_str(), &device))) {
- return std::unexpected(CaptureError::kDeviceNotFound);
- }
- }
+    ComPtr<IMMDevice> device;
+    if (device_id.empty()) {
+        if (FAILED((*enumerator)->GetDefaultAudioEndpoint(flow, eConsole, &device))) {
+            return std::unexpected(CaptureError::kDeviceNotFound);
+        }
+    } else {
+        const int wide_len =
+            MultiByteToWideChar(CP_UTF8, 0, device_id.c_str(), -1, nullptr, 0);
+        std::wstring wide(static_cast<std::size_t>(wide_len > 0 ? wide_len - 1 : 0), L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, device_id.c_str(), -1, wide.data(), wide_len);
+        if (FAILED((*enumerator)->GetDevice(wide.c_str(), &device))) {
+            return std::unexpected(CaptureError::kDeviceNotFound);
+        }
+    }
 
- ComPtr<IAudioClient> client;
- if (FAILED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
- return std::unexpected(CaptureError::kComFailure);
- }
- WAVEFORMATEX* mix = nullptr;
- if (FAILED(client->GetMixFormat(&mix)) || mix == nullptr) {
- return std::unexpected(CaptureError::kFormatUnsupported);
- }
- const SampleFormat format = classify(mix);
- const auto rate = mix->nSamplesPerSec;
- const auto channel_count = mix->nChannels;
- if (format == SampleFormat::kUnsupported || channel_count == 0) {
- CoTaskMemFree(mix);
- return std::unexpected(CaptureError::kFormatUnsupported);
- }
+    ComPtr<IAudioClient> client;
+    if (FAILED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
+        return std::unexpected(CaptureError::kComFailure);
+    }
+    WAVEFORMATEX* mix = nullptr;
+    if (FAILED(client->GetMixFormat(&mix)) || mix == nullptr) {
+        return std::unexpected(CaptureError::kFormatUnsupported);
+    }
+    const SampleFormat format = classify(mix);
+    const auto rate = mix->nSamplesPerSec;
+    const auto channel_count = mix->nChannels;
+    if (format == SampleFormat::kUnsupported || channel_count == 0) {
+        CoTaskMemFree(mix);
+        return std::unexpected(CaptureError::kFormatUnsupported);
+    }
 
- // Loopback is polled rather than event-driven: a render endpoint signals
- // nothing at all while the machine is silent, so an event wait would
- // stall instead of letting us synthesise the silence.
- const bool loopback = kind == DeviceKind::kLoopback;
- DWORD flags = loopback ? AUDCLNT_STREAMFLAGS_LOOPBACK : AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
- const HRESULT init =
- client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, kBufferDuration, 0, mix, nullptr);
- CoTaskMemFree(mix);
- if (FAILED(init)) {
- return std::unexpected(CaptureError::kComFailure);
- }
+    // Loopback is polled rather than event-driven: a render endpoint signals
+    // nothing at all while the machine is silent, so an event wait would
+    // stall instead of letting us synthesise the silence.
+    const bool loopback = kind == DeviceKind::kLoopback;
+    DWORD flags = loopback ? AUDCLNT_STREAMFLAGS_LOOPBACK : AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
+    const HRESULT init =
+        client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, kBufferDuration, 0, mix, nullptr);
+    CoTaskMemFree(mix);
+    if (FAILED(init)) {
+        return std::unexpected(CaptureError::kComFailure);
+    }
 
- HANDLE sample_ready = nullptr;
- if (!loopback) {
- sample_ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
- if (sample_ready == nullptr || FAILED(client->SetEventHandle(sample_ready))) {
- if (sample_ready != nullptr) {
- CloseHandle(sample_ready);
- }
- return std::unexpected(CaptureError::kComFailure);
- }
- }
+    HANDLE sample_ready = nullptr;
+    if (!loopback) {
+        sample_ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (sample_ready == nullptr || FAILED(client->SetEventHandle(sample_ready))) {
+            if (sample_ready != nullptr) {
+                CloseHandle(sample_ready);
+            }
+            return std::unexpected(CaptureError::kComFailure);
+        }
+    }
 
- ComPtr<IAudioCaptureClient> capture;
- if (FAILED(client->GetService(kIidAudioCaptureClient, &capture))) {
- if (sample_ready != nullptr) {
- CloseHandle(sample_ready);
- }
- return std::unexpected(CaptureError::kComFailure);
- }
+    ComPtr<IAudioCaptureClient> capture;
+    if (FAILED(client->GetService(kIidAudioCaptureClient, &capture))) {
+        if (sample_ready != nullptr) {
+            CloseHandle(sample_ready);
+        }
+        return std::unexpected(CaptureError::kComFailure);
+    }
 
- impl_->launch(client, capture, sample_ready, format, loopback, rate, channel_count,
- ring_capacity_samples);
+    impl_->launch(client, capture, sample_ready, format, loopback, rate, channel_count,
+                  ring_capacity_samples);
 
- return {};
+    return {};
 }
 
 bool process_loopback_available() {
- return os_build_at_least(kProcessLoopbackMinBuild);
+    return os_build_at_least(kProcessLoopbackMinBuild);
 }
 
 std::expected<void, CaptureError> Capture::start_process_loopback(
- std::uint32_t process_id, ProcessLoopbackMode mode, ProcessLoopbackFormat format,
- std::size_t ring_capacity_samples) {
- if (running()) {
- return std::unexpected(CaptureError::kAlreadyRunning);
- }
- // Availability before argument checks, so a machine that cannot do this
- // at all says so whatever it was asked; the argument refusals below are
- // then reachable, and testable, without touching any device.
- if (!process_loopback_available()) {
- return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
- }
- if (process_id == 0 || !process_exists(process_id)) {
- return std::unexpected(CaptureError::kProcessNotFound);
- }
- if (format.channels == 0 || format.sample_rate == 0) {
- return std::unexpected(CaptureError::kFormatUnsupported);
- }
+    std::uint32_t process_id, ProcessLoopbackMode mode, ProcessLoopbackFormat format,
+    std::size_t ring_capacity_samples) {
+    if (running()) {
+        return std::unexpected(CaptureError::kAlreadyRunning);
+    }
+    // Availability before argument checks, so a machine that cannot do this
+    // at all says so whatever it was asked; the argument refusals below are
+    // then reachable, and testable, without touching any device.
+    if (!process_loopback_available()) {
+        return std::unexpected(CaptureError::kProcessLoopbackUnavailable);
+    }
+    if (process_id == 0 || !process_exists(process_id)) {
+        return std::unexpected(CaptureError::kProcessNotFound);
+    }
+    if (format.channels == 0 || format.sample_rate == 0) {
+        return std::unexpected(CaptureError::kFormatUnsupported);
+    }
 
- ComScope com;
- if (!com.ok()) {
- return std::unexpected(CaptureError::kComFailure);
- }
+    ComScope com;
+    if (!com.ok()) {
+        return std::unexpected(CaptureError::kComFailure);
+    }
 
- AUDIOCLIENT_ACTIVATION_PARAMS params{};
- params.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
- params.ProcessLoopbackParams.TargetProcessId = process_id;
- params.ProcessLoopbackParams.ProcessLoopbackMode =
- mode == ProcessLoopbackMode::kIncludeProcessTree
- ? PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
- : PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE;
- PROPVARIANT activation;
- PropVariantInit(&activation);
- activation.vt = VT_BLOB;
- activation.blob.cbSize = sizeof(params);
- activation.blob.pBlobData = reinterpret_cast<BYTE*>(&params);
+    AUDIOCLIENT_ACTIVATION_PARAMS params{};
+    params.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
+    params.ProcessLoopbackParams.TargetProcessId = process_id;
+    params.ProcessLoopbackParams.ProcessLoopbackMode =
+        mode == ProcessLoopbackMode::kIncludeProcessTree
+            ? PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
+            : PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE;
+    PROPVARIANT activation;
+    PropVariantInit(&activation);
+    activation.vt = VT_BLOB;
+    activation.blob.cbSize = sizeof(params);
+    activation.blob.pBlobData = reinterpret_cast<BYTE*>(&params);
 
- ComPtr<ActivationCompletion> completion;
- completion.Attach(new ActivationCompletion());
- ComPtr<IActivateAudioInterfaceAsyncOperation> operation;
- const HRESULT activate =
- ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, kIidAudioClient,
- &activation, completion.Get(), &operation);
- if (FAILED(activate)) {
- return std::unexpected(CaptureError::kComFailure);
- }
- auto client = completion->wait(kActivationTimeoutMs);
- if (!client) {
- return std::unexpected(client.error());
- }
+    ComPtr<ActivationCompletion> completion;
+    completion.Attach(new ActivationCompletion());
+    ComPtr<IActivateAudioInterfaceAsyncOperation> operation;
+    const HRESULT activate =
+        ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, kIidAudioClient,
+                                    &activation, completion.Get(), &operation);
+    if (FAILED(activate)) {
+        return std::unexpected(CaptureError::kComFailure);
+    }
+    auto client = completion->wait(kActivationTimeoutMs);
+    if (!client) {
+        return std::unexpected(client.error());
+    }
 
- // No GetMixFormat: a process tap is not an endpoint and has no mixer
- // format to ask for. The caller's shape is stated as float32 and the
- // engine converts to it; the buffer duration is documented as
- // irrelevant in this activation mode and 0 is what the tap was proven
- // with (apps/crucible/spikes/README.md, S1).
- WAVEFORMATEXTENSIBLE wave{};
- wave.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
- wave.Format.nChannels = format.channels;
- wave.Format.nSamplesPerSec = format.sample_rate;
- wave.Format.wBitsPerSample = 32;
- wave.Format.nBlockAlign = static_cast<WORD>(format.channels * sizeof(float));
- wave.Format.nAvgBytesPerSec = format.sample_rate * wave.Format.nBlockAlign;
- wave.Format.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
- wave.Samples.wValidBitsPerSample = 32;
- wave.dwChannelMask = speaker_mask_for(format.channels);
- wave.SubFormat = kSubtypeIeeeFloat;
- const HRESULT init = (*client)->Initialize(AUDCLNT_SHAREMODE_SHARED,
- AUDCLNT_STREAMFLAGS_LOOPBACK, 0, 0,
- &wave.Format, nullptr);
- if (FAILED(init)) {
- return std::unexpected(init == AUDCLNT_E_UNSUPPORTED_FORMAT
- ? CaptureError::kFormatUnsupported
- : CaptureError::kComFailure);
- }
- ComPtr<IAudioCaptureClient> capture;
- if (FAILED((*client)->GetService(kIidAudioCaptureClient, &capture))) {
- return std::unexpected(CaptureError::kComFailure);
- }
+    // No GetMixFormat: a process tap is not an endpoint and has no mixer
+    // format to ask for. The caller's shape is stated as float32 and the
+    // engine converts to it; the buffer duration is documented as
+    // irrelevant in this activation mode and 0 is what the tap was proven
+    // with (apps/crucible/spikes/README.md, S1).
+    WAVEFORMATEXTENSIBLE wave{};
+    wave.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+    wave.Format.nChannels = format.channels;
+    wave.Format.nSamplesPerSec = format.sample_rate;
+    wave.Format.wBitsPerSample = 32;
+    wave.Format.nBlockAlign = static_cast<WORD>(format.channels * sizeof(float));
+    wave.Format.nAvgBytesPerSec = format.sample_rate * wave.Format.nBlockAlign;
+    wave.Format.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
+    wave.Samples.wValidBitsPerSample = 32;
+    wave.dwChannelMask = speaker_mask_for(format.channels);
+    wave.SubFormat = kSubtypeIeeeFloat;
+    const HRESULT init = (*client)->Initialize(AUDCLNT_SHAREMODE_SHARED,
+                                               AUDCLNT_STREAMFLAGS_LOOPBACK, 0, 0,
+                                               &wave.Format, nullptr);
+    if (FAILED(init)) {
+        return std::unexpected(init == AUDCLNT_E_UNSUPPORTED_FORMAT
+                                   ? CaptureError::kFormatUnsupported
+                                   : CaptureError::kComFailure);
+    }
+    ComPtr<IAudioCaptureClient> capture;
+    if (FAILED((*client)->GetService(kIidAudioCaptureClient, &capture))) {
+        return std::unexpected(CaptureError::kComFailure);
+    }
 
- // Polled, like endpoint loopback: a quiet process delivers no packets and
- // no events, and the timeline downstream still has to advance.
- impl_->launch(*client, capture, nullptr, SampleFormat::kFloat32, /*loopback=*/true,
- format.sample_rate, format.channels, ring_capacity_samples);
- return {};
+    // Polled, like endpoint loopback: a quiet process delivers no packets and
+    // no events, and the timeline downstream still has to advance.
+    impl_->launch(*client, capture, nullptr, SampleFormat::kFloat32, /*loopback=*/true,
+                  format.sample_rate, format.channels, ring_capacity_samples);
+    return {};
 }
 
-} // namespace ac3::audio
+}  // namespace ac3::audio

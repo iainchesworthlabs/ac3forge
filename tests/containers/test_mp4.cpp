@@ -30,39 +30,39 @@ namespace {
 using Bytes = std::vector<std::byte>;
 
 Bytes frame_of(std::size_t size, std::uint8_t fill) {
- return Bytes(size, static_cast<std::byte>(fill));
+    return Bytes(size, static_cast<std::byte>(fill));
 }
 
 [[nodiscard]] std::uint8_t byte_at(std::span<const std::byte> data, std::size_t offset) {
- return std::to_integer<std::uint8_t>(data[offset]);
+    return std::to_integer<std::uint8_t>(data[offset]);
 }
 
 [[nodiscard]] std::uint32_t u32_at(std::span<const std::byte> data, std::size_t offset) {
- return (static_cast<std::uint32_t>(byte_at(data, offset)) << 24) |
- (static_cast<std::uint32_t>(byte_at(data, offset + 1)) << 16) |
- (static_cast<std::uint32_t>(byte_at(data, offset + 2)) << 8) |
- static_cast<std::uint32_t>(byte_at(data, offset + 3));
+    return (static_cast<std::uint32_t>(byte_at(data, offset)) << 24) |
+           (static_cast<std::uint32_t>(byte_at(data, offset + 1)) << 16) |
+           (static_cast<std::uint32_t>(byte_at(data, offset + 2)) << 8) |
+           static_cast<std::uint32_t>(byte_at(data, offset + 3));
 }
 
 [[nodiscard]] std::uint16_t u16_at(std::span<const std::byte> data, std::size_t offset) {
- return static_cast<std::uint16_t>((static_cast<std::uint32_t>(byte_at(data, offset)) << 8) |
- byte_at(data, offset + 1));
+    return static_cast<std::uint16_t>((static_cast<std::uint32_t>(byte_at(data, offset)) << 8) |
+                                      byte_at(data, offset + 1));
 }
 
 [[nodiscard]] std::string fourcc_at(std::span<const std::byte> data, std::size_t offset) {
- std::string s(4, '\0');
- for (std::size_t i = 0; i < 4; ++i) {
- s[i] = static_cast<char>(byte_at(data, offset + i));
- }
- return s;
+    std::string s(4, '\0');
+    for (std::size_t i = 0; i < 4; ++i) {
+        s[i] = static_cast<char>(byte_at(data, offset + i));
+    }
+    return s;
 }
 
 // One ISOBMFF box: size(4) + type(4) + body. `payload`/`length` describe the
 // body only (offset past the 8-byte header, and size - 8).
 struct Element {
- std::string type;
- std::size_t payload = 0;
- std::uint64_t length = 0;
+    std::string type;
+    std::size_t payload = 0;
+    std::uint64_t length = 0;
 };
 
 // Boxes whose body is a flat run of complete child boxes covering it exactly.
@@ -73,61 +73,61 @@ struct Element {
 // same way would misparse their leading fields as a box header, so they are
 // read with their own dedicated helpers below instead.
 bool is_container(const std::string& type) {
- return type == "moov" || type == "trak" || type == "edts" || type == "mdia" ||
- type == "minf" || type == "stbl" || type == "dinf";
+    return type == "moov" || type == "trak" || type == "edts" || type == "mdia" ||
+           type == "minf" || type == "stbl" || type == "dinf";
 }
 
 void walk(std::span<const std::byte> file, std::size_t pos, std::size_t end,
- std::vector<Element>& out) {
- while (pos < end) {
- REQUIRE(pos + 8 <= end);
- const auto size = u32_at(file, pos);
- const auto type = fourcc_at(file, pos + 4);
- // A size that overruns its parent, or undersizes its own header,
- // means the muxer wrote a bad length - exactly the failure this
- // walker exists to catch.
- REQUIRE(size >= 8);
- REQUIRE(pos + size <= end);
- out.push_back({type, pos + 8, size - 8});
- if (is_container(type)) {
- walk(file, pos + 8, pos + size, out);
- }
- pos += size;
- }
- REQUIRE(pos == end);
+         std::vector<Element>& out) {
+    while (pos < end) {
+        REQUIRE(pos + 8 <= end);
+        const auto size = u32_at(file, pos);
+        const auto type = fourcc_at(file, pos + 4);
+        // A size that overruns its parent, or undersizes its own header,
+        // means the muxer wrote a bad length - exactly the failure this
+        // walker exists to catch.
+        REQUIRE(size >= 8);
+        REQUIRE(pos + size <= end);
+        out.push_back({type, pos + 8, size - 8});
+        if (is_container(type)) {
+            walk(file, pos + 8, pos + size, out);
+        }
+        pos += size;
+    }
+    REQUIRE(pos == end);
 }
 
 std::vector<Element> parse(std::span<const std::byte> file) {
- std::vector<Element> out;
- walk(file, 0, file.size(), out);
- return out;
+    std::vector<Element> out;
+    walk(file, 0, file.size(), out);
+    return out;
 }
 
 const Element* find(const std::vector<Element>& elements, const std::string& type) {
- for (const auto& e : elements) {
- if (e.type == type) {
- return &e;
- }
- }
- return nullptr;
+    for (const auto& e : elements) {
+        if (e.type == type) {
+            return &e;
+        }
+    }
+    return nullptr;
 }
 
 std::size_t count(const std::vector<Element>& elements, const std::string& type) {
- std::size_t n = 0;
- for (const auto& e : elements) {
- if (e.type == type) {
- ++n;
- }
- }
- return n;
+    std::size_t n = 0;
+    for (const auto& e : elements) {
+        if (e.type == type) {
+            ++n;
+        }
+    }
+    return n;
 }
 
 struct SampleEntryInfo {
- std::string codec_id;
- std::uint16_t channels = 0;
- std::uint32_t samplerate_fixed = 0; // 16.16 fixed point
- std::string config_type; // "dac3" or "dec3"
- Bytes config_payload;
+    std::string codec_id;
+    std::uint16_t channels = 0;
+    std::uint32_t samplerate_fixed = 0;  // 16.16 fixed point
+    std::string config_type;             // "dac3" or "dec3"
+    Bytes config_payload;
 };
 
 // stsd body: version+flags(4), entry_count(4), then the sample entry box
@@ -135,263 +135,263 @@ struct SampleEntryInfo {
 // reserved(8), channelcount(2), samplesize(2), pre_defined(2), reserved(2),
 // samplerate(4), then this muxer's one child configuration box.
 SampleEntryInfo read_sample_entry(std::span<const std::byte> file, const Element& stsd) {
- const std::size_t entry_offset = stsd.payload + 8;
- const auto entry_size = u32_at(file, entry_offset);
- SampleEntryInfo info;
- info.codec_id = fourcc_at(file, entry_offset + 4);
- const std::size_t body = entry_offset + 8;
- info.channels = u16_at(file, body + 16);
- info.samplerate_fixed = u32_at(file, body + 24);
- const std::size_t config_offset = body + 28;
- const auto config_size = u32_at(file, config_offset);
- info.config_type = fourcc_at(file, config_offset + 4);
- REQUIRE(config_offset + config_size == entry_offset + entry_size);
- info.config_payload.assign(file.begin() + static_cast<std::ptrdiff_t>(config_offset + 8),
- file.begin() + static_cast<std::ptrdiff_t>(config_offset + config_size));
- return info;
+    const std::size_t entry_offset = stsd.payload + 8;
+    const auto entry_size = u32_at(file, entry_offset);
+    SampleEntryInfo info;
+    info.codec_id = fourcc_at(file, entry_offset + 4);
+    const std::size_t body = entry_offset + 8;
+    info.channels = u16_at(file, body + 16);
+    info.samplerate_fixed = u32_at(file, body + 24);
+    const std::size_t config_offset = body + 28;
+    const auto config_size = u32_at(file, config_offset);
+    info.config_type = fourcc_at(file, config_offset + 4);
+    REQUIRE(config_offset + config_size == entry_offset + entry_size);
+    info.config_payload.assign(file.begin() + static_cast<std::ptrdiff_t>(config_offset + 8),
+                               file.begin() + static_cast<std::ptrdiff_t>(config_offset + config_size));
+    return info;
 }
 
 struct MdhdInfo {
- std::uint32_t timescale = 0;
- std::uint32_t duration = 0;
- std::uint16_t language = 0;
+    std::uint32_t timescale = 0;
+    std::uint32_t duration = 0;
+    std::uint16_t language = 0;
 };
 
 // mdhd body: version+flags(4), creation_time(4), modification_time(4),
 // timescale(4), duration(4), language(2), pre_defined(2).
 MdhdInfo read_mdhd(std::span<const std::byte> file, const Element& mdhd) {
- return {.timescale = u32_at(file, mdhd.payload + 12),
- .duration = u32_at(file, mdhd.payload + 16),
- .language = u16_at(file, mdhd.payload + 20)};
+    return {.timescale = u32_at(file, mdhd.payload + 12),
+            .duration = u32_at(file, mdhd.payload + 16),
+            .language = u16_at(file, mdhd.payload + 20)};
 }
 
 // stts body: version+flags(4), entry_count(4), [sample_count(4),
 // sample_delta(4)] - this muxer always writes exactly one entry.
 std::pair<std::uint32_t, std::uint32_t> read_stts_first(std::span<const std::byte> file,
- const Element& stts) {
- return {u32_at(file, stts.payload + 8), u32_at(file, stts.payload + 12)};
+                                                        const Element& stts) {
+    return {u32_at(file, stts.payload + 8), u32_at(file, stts.payload + 12)};
 }
 
 // stsz body: version+flags(4), sample_size(4), sample_count(4),
 // [entry_size(4)]*sample_count.
 std::vector<std::uint32_t> read_stsz(std::span<const std::byte> file, const Element& stsz) {
- const auto sample_count = u32_at(file, stsz.payload + 8);
- std::vector<std::uint32_t> sizes(sample_count);
- for (std::uint32_t i = 0; i < sample_count; ++i) {
- sizes[i] = u32_at(file, stsz.payload + 12 + static_cast<std::size_t>(i) * 4);
- }
- return sizes;
+    const auto sample_count = u32_at(file, stsz.payload + 8);
+    std::vector<std::uint32_t> sizes(sample_count);
+    for (std::uint32_t i = 0; i < sample_count; ++i) {
+        sizes[i] = u32_at(file, stsz.payload + 12 + static_cast<std::size_t>(i) * 4);
+    }
+    return sizes;
 }
 
 // stco body: version+flags(4), entry_count(4), [chunk_offset(4)]*entry_count.
 std::vector<std::uint32_t> read_stco(std::span<const std::byte> file, const Element& stco) {
- const auto entry_count = u32_at(file, stco.payload + 4);
- std::vector<std::uint32_t> offsets(entry_count);
- for (std::uint32_t i = 0; i < entry_count; ++i) {
- offsets[i] = u32_at(file, stco.payload + 8 + static_cast<std::size_t>(i) * 4);
- }
- return offsets;
+    const auto entry_count = u32_at(file, stco.payload + 4);
+    std::vector<std::uint32_t> offsets(entry_count);
+    for (std::uint32_t i = 0; i < entry_count; ++i) {
+        offsets[i] = u32_at(file, stco.payload + 8 + static_cast<std::size_t>(i) * 4);
+    }
+    return offsets;
 }
 
 mp4::AudioTrack sample_track(int channels = 6) {
- return mp4::AudioTrack{.codec_id = std::string{mp4::kCodecEac3},
- .sample_rate = 48000,
- .channels = channels,
- .samples_per_frame = 1536,
- .codec_config = Bytes{std::byte{0xAA}, std::byte{0xBB}, std::byte{0xCC}}};
+    return mp4::AudioTrack{.codec_id = std::string{mp4::kCodecEac3},
+                           .sample_rate = 48000,
+                           .channels = channels,
+                           .samples_per_frame = 1536,
+                           .codec_config = Bytes{std::byte{0xAA}, std::byte{0xBB}, std::byte{0xCC}}};
 }
 
-} // namespace
+}  // namespace
 
 TEST_CASE("MP4 file parses as well-formed ISOBMFF boxes", "[mp4]") {
- // walk() REQUIREs every child to fit inside its parent and every box to
- // account for exactly its own declared size - the whole correctness
- // question for a muxer that computes offsets ahead of the data itself.
- const std::vector<Bytes> frames{frame_of(1792, 0x11), frame_of(1792, 0x22),
- frame_of(1792, 0x33)};
- const auto file = mp4::mux(sample_track(), frames);
- REQUIRE(file.has_value());
+    // walk() REQUIREs every child to fit inside its parent and every box to
+    // account for exactly its own declared size - the whole correctness
+    // question for a muxer that computes offsets ahead of the data itself.
+    const std::vector<Bytes> frames{frame_of(1792, 0x11), frame_of(1792, 0x22),
+                                    frame_of(1792, 0x33)};
+    const auto file = mp4::mux(sample_track(), frames);
+    REQUIRE(file.has_value());
 
- const auto elements = parse(*file);
- REQUIRE(find(elements, "ftyp") != nullptr);
- REQUIRE(find(elements, "moov") != nullptr);
- REQUIRE(find(elements, "mdat") != nullptr);
- REQUIRE(find(elements, "trak") != nullptr);
- REQUIRE(find(elements, "mdia") != nullptr);
- REQUIRE(find(elements, "minf") != nullptr);
- REQUIRE(find(elements, "stbl") != nullptr);
- REQUIRE(find(elements, "stsd") != nullptr);
- REQUIRE(find(elements, "stts") != nullptr);
- REQUIRE(find(elements, "stsc") != nullptr);
- REQUIRE(find(elements, "stsz") != nullptr);
- REQUIRE(find(elements, "stco") != nullptr);
- CHECK(count(elements, "trak") == 1);
+    const auto elements = parse(*file);
+    REQUIRE(find(elements, "ftyp") != nullptr);
+    REQUIRE(find(elements, "moov") != nullptr);
+    REQUIRE(find(elements, "mdat") != nullptr);
+    REQUIRE(find(elements, "trak") != nullptr);
+    REQUIRE(find(elements, "mdia") != nullptr);
+    REQUIRE(find(elements, "minf") != nullptr);
+    REQUIRE(find(elements, "stbl") != nullptr);
+    REQUIRE(find(elements, "stsd") != nullptr);
+    REQUIRE(find(elements, "stts") != nullptr);
+    REQUIRE(find(elements, "stsc") != nullptr);
+    REQUIRE(find(elements, "stsz") != nullptr);
+    REQUIRE(find(elements, "stco") != nullptr);
+    CHECK(count(elements, "trak") == 1);
 
- // major_brand must say isom or nothing generic will open it.
- const auto* ftyp = find(elements, "ftyp");
- CHECK(fourcc_at(*file, ftyp->payload) == "isom");
+    // major_brand must say isom or nothing generic will open it.
+    const auto* ftyp = find(elements, "ftyp");
+    CHECK(fourcc_at(*file, ftyp->payload) == "isom");
 }
 
 TEST_CASE("MP4 sample entry and mdhd describe the audio", "[mp4]") {
- const std::vector<Bytes> frames(63, frame_of(896, 0xAB));
- const auto track = sample_track(10);
- const auto file = mp4::mux(track, frames);
- REQUIRE(file.has_value());
- const auto elements = parse(*file);
+    const std::vector<Bytes> frames(63, frame_of(896, 0xAB));
+    const auto track = sample_track(10);
+    const auto file = mp4::mux(track, frames);
+    REQUIRE(file.has_value());
+    const auto elements = parse(*file);
 
- const auto* stsd = find(elements, "stsd");
- REQUIRE(stsd != nullptr);
- const auto entry = read_sample_entry(*file, *stsd);
- CHECK(entry.codec_id == "ec-3");
- CHECK(entry.channels == 10);
- CHECK(entry.samplerate_fixed == (48000U << 16));
- CHECK(entry.config_type == "dec3");
- CHECK(entry.config_payload == track.codec_config);
+    const auto* stsd = find(elements, "stsd");
+    REQUIRE(stsd != nullptr);
+    const auto entry = read_sample_entry(*file, *stsd);
+    CHECK(entry.codec_id == "ec-3");
+    CHECK(entry.channels == 10);
+    CHECK(entry.samplerate_fixed == (48000U << 16));
+    CHECK(entry.config_type == "dec3");
+    CHECK(entry.config_payload == track.codec_config);
 
- const auto* mdhd = find(elements, "mdhd");
- REQUIRE(mdhd != nullptr);
- const auto md = read_mdhd(*file, *mdhd);
- CHECK(md.timescale == 48000);
- // 63 frames of 1536 samples is 96768 samples exactly - at a movie/media
- // timescale equal to the sample rate, duration IS the sample count.
- CHECK(md.duration == 63U * 1536U);
- CHECK(md.language == 0x55C4); // "und", ISO/IEC 14496-12 §8.4.2.2's packing
+    const auto* mdhd = find(elements, "mdhd");
+    REQUIRE(mdhd != nullptr);
+    const auto md = read_mdhd(*file, *mdhd);
+    CHECK(md.timescale == 48000);
+    // 63 frames of 1536 samples is 96768 samples exactly - at a movie/media
+    // timescale equal to the sample rate, duration IS the sample count.
+    CHECK(md.duration == 63U * 1536U);
+    CHECK(md.language == 0x55C4);  // "und", ISO/IEC 14496-12 §8.4.2.2's packing
 
- const auto* stts = find(elements, "stts");
- REQUIRE(stts != nullptr);
- const auto [sample_count, sample_delta] = read_stts_first(*file, *stts);
- CHECK(sample_count == 63);
- CHECK(sample_delta == 1536);
+    const auto* stts = find(elements, "stts");
+    REQUIRE(stts != nullptr);
+    const auto [sample_count, sample_delta] = read_stts_first(*file, *stts);
+    CHECK(sample_count == 63);
+    CHECK(sample_delta == 1536);
 }
 
 TEST_CASE("MP4 chunk offsets index mdat exactly", "[mp4]") {
- // Distinct sizes AND distinct content per frame: identical frames could
- // pass this check by accident even with every offset shifted by one
- // frame's width.
- std::vector<Bytes> frames;
- for (std::uint8_t i = 0; i < 5; ++i) {
- frames.push_back(frame_of(100 + static_cast<std::size_t>(i) * 37,
- static_cast<std::uint8_t>(i + 1)));
- }
- const auto file = mp4::mux(sample_track(2), frames);
- REQUIRE(file.has_value());
- const auto elements = parse(*file);
+    // Distinct sizes AND distinct content per frame: identical frames could
+    // pass this check by accident even with every offset shifted by one
+    // frame's width.
+    std::vector<Bytes> frames;
+    for (std::uint8_t i = 0; i < 5; ++i) {
+        frames.push_back(frame_of(100 + static_cast<std::size_t>(i) * 37,
+                                  static_cast<std::uint8_t>(i + 1)));
+    }
+    const auto file = mp4::mux(sample_track(2), frames);
+    REQUIRE(file.has_value());
+    const auto elements = parse(*file);
 
- const auto* stsz = find(elements, "stsz");
- const auto* stco = find(elements, "stco");
- REQUIRE(stsz != nullptr);
- REQUIRE(stco != nullptr);
- const auto sizes = read_stsz(*file, *stsz);
- const auto offsets = read_stco(*file, *stco);
- REQUIRE(sizes.size() == frames.size());
- REQUIRE(offsets.size() == frames.size());
+    const auto* stsz = find(elements, "stsz");
+    const auto* stco = find(elements, "stco");
+    REQUIRE(stsz != nullptr);
+    REQUIRE(stco != nullptr);
+    const auto sizes = read_stsz(*file, *stsz);
+    const auto offsets = read_stco(*file, *stco);
+    REQUIRE(sizes.size() == frames.size());
+    REQUIRE(offsets.size() == frames.size());
 
- for (std::size_t i = 0; i < frames.size(); ++i) {
- CHECK(sizes[i] == frames[i].size());
- REQUIRE(static_cast<std::uint64_t>(offsets[i]) + sizes[i] <= file->size());
- const std::span<const std::byte> at{file->data() + offsets[i], sizes[i]};
- CHECK(std::equal(at.begin(), at.end(), frames[i].begin(), frames[i].end()));
- }
+    for (std::size_t i = 0; i < frames.size(); ++i) {
+        CHECK(sizes[i] == frames[i].size());
+        REQUIRE(static_cast<std::uint64_t>(offsets[i]) + sizes[i] <= file->size());
+        const std::span<const std::byte> at{file->data() + offsets[i], sizes[i]};
+        CHECK(std::equal(at.begin(), at.end(), frames[i].begin(), frames[i].end()));
+    }
 
- // mdat's own declared size must cover every byte stco points into -
- // otherwise a strict reader would refuse the file even though a lax one
- // might still find the right bytes.
- const auto* mdat = find(elements, "mdat");
- REQUIRE(mdat != nullptr);
- CHECK(mdat->payload + mdat->length == file->size());
+    // mdat's own declared size must cover every byte stco points into -
+    // otherwise a strict reader would refuse the file even though a lax one
+    // might still find the right bytes.
+    const auto* mdat = find(elements, "mdat");
+    REQUIRE(mdat != nullptr);
+    CHECK(mdat->payload + mdat->length == file->size());
 }
 
 TEST_CASE("MP4 muxer rejects what it cannot describe", "[mp4]") {
- const std::vector<Bytes> one{frame_of(16, 0)};
- const auto track = sample_track();
+    const std::vector<Bytes> one{frame_of(16, 0)};
+    const auto track = sample_track();
 
- // Explicit empty span: bare {} became ambiguous when the span-of-views
- // mux overload arrived alongside the owned-list one.
- CHECK(mp4::mux(track, std::span<const Bytes>{}).error() == mp4::MuxError::kNoFrames);
+    // Explicit empty span: bare {} became ambiguous when the span-of-views
+    // mux overload arrived alongside the owned-list one.
+    CHECK(mp4::mux(track, std::span<const Bytes>{}).error() == mp4::MuxError::kNoFrames);
 
- auto bad_channels = track;
- bad_channels.channels = 0;
- CHECK(mp4::mux(bad_channels, one).error() == mp4::MuxError::kInvalidTrack);
+    auto bad_channels = track;
+    bad_channels.channels = 0;
+    CHECK(mp4::mux(bad_channels, one).error() == mp4::MuxError::kInvalidTrack);
 
- auto bad_rate = track;
- bad_rate.sample_rate = 0;
- CHECK(mp4::mux(bad_rate, one).error() == mp4::MuxError::kInvalidTrack);
+    auto bad_rate = track;
+    bad_rate.sample_rate = 0;
+    CHECK(mp4::mux(bad_rate, one).error() == mp4::MuxError::kInvalidTrack);
 
- auto bad_codec = track;
- bad_codec.codec_id = "mp4a"; // this module only knows ac-3/ec-3
- CHECK(mp4::mux(bad_codec, one).error() == mp4::MuxError::kInvalidTrack);
+    auto bad_codec = track;
+    bad_codec.codec_id = "mp4a";  // this module only knows ac-3/ec-3
+    CHECK(mp4::mux(bad_codec, one).error() == mp4::MuxError::kInvalidTrack);
 
- auto no_config = track;
- no_config.codec_config.clear();
- CHECK(mp4::mux(no_config, one).error() == mp4::MuxError::kInvalidTrack);
+    auto no_config = track;
+    no_config.codec_config.clear();
+    CHECK(mp4::mux(no_config, one).error() == mp4::MuxError::kInvalidTrack);
 }
 
 TEST_CASE("MP4 muxer writes one edit, and presents the edit's duration", "[mp4]") {
- const std::vector<Bytes> frames(4, frame_of(512, 0x5A));
- mp4::MuxOptions options;
- options.edit = mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = 5000};
- const auto file = mp4::mux(sample_track(), frames, options);
- REQUIRE(file.has_value());
- const auto elements = parse(*file);
+    const std::vector<Bytes> frames(4, frame_of(512, 0x5A));
+    mp4::MuxOptions options;
+    options.edit = mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = 5000};
+    const auto file = mp4::mux(sample_track(), frames, options);
+    REQUIRE(file.has_value());
+    const auto elements = parse(*file);
 
- // §8.6.6's elst, version 0: entry_count, then segment_duration,
- // media_time and the rate's two halves.
- const auto* elst = find(elements, "elst");
- REQUIRE(elst != nullptr);
- CHECK(byte_at(*file, elst->payload) == 0);
- CHECK(u32_at(*file, elst->payload + 4) == 1);
- CHECK(u32_at(*file, elst->payload + 8) == 5000);
- CHECK(u32_at(*file, elst->payload + 12) == 256);
- CHECK(u16_at(*file, elst->payload + 16) == 1);
- CHECK(u16_at(*file, elst->payload + 18) == 0);
+    // §8.6.6's elst, version 0: entry_count, then segment_duration,
+    // media_time and the rate's two halves.
+    const auto* elst = find(elements, "elst");
+    REQUIRE(elst != nullptr);
+    CHECK(byte_at(*file, elst->payload) == 0);
+    CHECK(u32_at(*file, elst->payload + 4) == 1);
+    CHECK(u32_at(*file, elst->payload + 8) == 5000);
+    CHECK(u32_at(*file, elst->payload + 12) == 256);
+    CHECK(u16_at(*file, elst->payload + 16) == 1);
+    CHECK(u16_at(*file, elst->payload + 18) == 0);
 
- // In the trak between tkhd and mdia, the order §8.3.1 gives.
- std::vector<std::string> order;
- for (const auto& element : elements) {
- if (element.type == "tkhd" || element.type == "edts" || element.type == "mdia") {
- order.push_back(element.type);
- }
- }
- CHECK(order == std::vector<std::string>{"tkhd", "edts", "mdia"});
+    // In the trak between tkhd and mdia, the order §8.3.1 gives.
+    std::vector<std::string> order;
+    for (const auto& element : elements) {
+        if (element.type == "tkhd" || element.type == "edts" || element.type == "mdia") {
+            order.push_back(element.type);
+        }
+    }
+    CHECK(order == std::vector<std::string>{"tkhd", "edts", "mdia"});
 
- // The movie and the track last as long as the edit; the media as long as
- // its samples. mvhd: version+flags, creation, modification, timescale,
- // then duration; tkhd: version+flags, creation, modification, track_ID,
- // reserved, then duration.
- const auto* mvhd = find(elements, "mvhd");
- const auto* tkhd = find(elements, "tkhd");
- const auto* mdhd = find(elements, "mdhd");
- REQUIRE(mvhd != nullptr);
- REQUIRE(tkhd != nullptr);
- REQUIRE(mdhd != nullptr);
- CHECK(u32_at(*file, mvhd->payload + 16) == 5000);
- CHECK(u32_at(*file, tkhd->payload + 20) == 5000);
- CHECK(read_mdhd(*file, *mdhd).duration == 4U * 1536U);
+    // The movie and the track last as long as the edit; the media as long as
+    // its samples. mvhd: version+flags, creation, modification, timescale,
+    // then duration; tkhd: version+flags, creation, modification, track_ID,
+    // reserved, then duration.
+    const auto* mvhd = find(elements, "mvhd");
+    const auto* tkhd = find(elements, "tkhd");
+    const auto* mdhd = find(elements, "mdhd");
+    REQUIRE(mvhd != nullptr);
+    REQUIRE(tkhd != nullptr);
+    REQUIRE(mdhd != nullptr);
+    CHECK(u32_at(*file, mvhd->payload + 16) == 5000);
+    CHECK(u32_at(*file, tkhd->payload + 20) == 5000);
+    CHECK(read_mdhd(*file, *mdhd).duration == 4U * 1536U);
 
- // Without the option there is no edit list, and every duration is the
- // media's.
- const auto plain = mp4::mux(sample_track(), frames);
- REQUIRE(plain.has_value());
- const auto plain_elements = parse(*plain);
- CHECK(find(plain_elements, "edts") == nullptr);
- const auto* plain_mvhd = find(plain_elements, "mvhd");
- REQUIRE(plain_mvhd != nullptr);
- CHECK(u32_at(*plain, plain_mvhd->payload + 16) == 4U * 1536U);
+    // Without the option there is no edit list, and every duration is the
+    // media's.
+    const auto plain = mp4::mux(sample_track(), frames);
+    REQUIRE(plain.has_value());
+    const auto plain_elements = parse(*plain);
+    CHECK(find(plain_elements, "edts") == nullptr);
+    const auto* plain_mvhd = find(plain_elements, "mvhd");
+    REQUIRE(plain_mvhd != nullptr);
+    CHECK(u32_at(*plain, plain_mvhd->payload + 16) == 4U * 1536U);
 }
 
 TEST_CASE("MP4 muxer refuses an edit outside the frames", "[mp4]") {
- const std::vector<Bytes> two(2, frame_of(64, 0)); // 3,072 samples
- const auto with = [&two](std::uint64_t start, std::uint64_t duration) {
- mp4::MuxOptions options;
- options.edit = mp4::MuxOptions::Edit{.start_samples = start, .duration_samples = duration};
- return mp4::mux(sample_track(), two, options);
- };
- CHECK(with(0, 3072).has_value());
- CHECK(with(3071, 1).has_value());
- CHECK(with(0, 3073).error() == mp4::MuxError::kInvalidOptions);
- CHECK(with(1, 3072).error() == mp4::MuxError::kInvalidOptions);
- CHECK(with(3072, 1).error() == mp4::MuxError::kInvalidOptions);
- CHECK(with(100, 0).error() == mp4::MuxError::kInvalidOptions);
+    const std::vector<Bytes> two(2, frame_of(64, 0));  // 3,072 samples
+    const auto with = [&two](std::uint64_t start, std::uint64_t duration) {
+        mp4::MuxOptions options;
+        options.edit = mp4::MuxOptions::Edit{.start_samples = start, .duration_samples = duration};
+        return mp4::mux(sample_track(), two, options);
+    };
+    CHECK(with(0, 3072).has_value());
+    CHECK(with(3071, 1).has_value());
+    CHECK(with(0, 3073).error() == mp4::MuxError::kInvalidOptions);
+    CHECK(with(1, 3072).error() == mp4::MuxError::kInvalidOptions);
+    CHECK(with(3072, 1).error() == mp4::MuxError::kInvalidOptions);
+    CHECK(with(100, 0).error() == mp4::MuxError::kInvalidOptions);
 }
 
 // --- ac3::io::build_codec_config_box: the dec3/dac3 payload itself ---------
@@ -405,194 +405,194 @@ TEST_CASE("MP4 muxer refuses an edit outside the frames", "[mp4]") {
 // otherwise be invisible against an all-zero frame.
 
 TEST_CASE("dac3 box matches a real AC-3 stream's own bsi", "[dec3]") {
- ac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0}};
- std::vector<std::vector<float>> pcm(2, std::vector<float>(ac3::kSamplesPerFrame));
- for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
- const auto v = static_cast<float>(0.4 * std::sin(2.0 * std::numbers::pi * 1000.0 *
- static_cast<double>(n) / 48000.0));
- pcm[0][static_cast<std::size_t>(n)] = v;
- pcm[1][static_cast<std::size_t>(n)] = v;
- }
- const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
+    ac3::FrameEncoder encoder{{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0}};
+    std::vector<std::vector<float>> pcm(2, std::vector<float>(ac3::kSamplesPerFrame));
+    for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+        const auto v = static_cast<float>(0.4 * std::sin(2.0 * std::numbers::pi * 1000.0 *
+                                                          static_cast<double>(n) / 48000.0));
+        pcm[0][static_cast<std::size_t>(n)] = v;
+        pcm[1][static_cast<std::size_t>(n)] = v;
+    }
+    const std::vector<std::span<const float>> views{pcm[0], pcm[1]};
 
- std::vector<std::byte> stream;
- for (int f = 0; f < 4; ++f) {
- const auto frame = encoder.encode_frame(views);
- REQUIRE(frame.has_value());
- stream.insert(stream.end(), frame->begin(), frame->end());
- }
+    std::vector<std::byte> stream;
+    for (int f = 0; f < 4; ++f) {
+        const auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        stream.insert(stream.end(), frame->begin(), frame->end());
+    }
 
- const auto scanned = ac3::io::scan(stream);
- REQUIRE(scanned.has_value());
- REQUIRE(scanned->kind == ac3::io::StreamKind::kAc3);
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    REQUIRE(scanned->kind == ac3::io::StreamKind::kAc3);
 
- const auto payload = ac3::io::build_codec_config_box(*scanned);
- // ETSI TS 102 366 Annex F §F.4: 2+5+3+3+1+5+5 = 24 bits, exactly 3 bytes.
- REQUIRE(payload.size() == 3);
+    const auto payload = ac3::io::build_codec_config_box(*scanned);
+    // ETSI TS 102 366 Annex F §F.4: 2+5+3+3+1+5+5 = 24 bits, exactly 3 bytes.
+    REQUIRE(payload.size() == 3);
 
- const auto b0 = byte_at(payload, 0);
- const auto b1 = byte_at(payload, 1);
- const auto b2 = byte_at(payload, 2);
- const auto fscod = static_cast<std::uint32_t>(b0 >> 6);
- const auto bsid = static_cast<std::uint32_t>((b0 >> 1) & 0x1F);
- const auto bsmod = static_cast<std::uint32_t>(((b0 & 0x1) << 2) | (b1 >> 6));
- const auto acmod = static_cast<std::uint32_t>((b1 >> 3) & 0x7);
- const auto lfeon = static_cast<std::uint32_t>((b1 >> 2) & 0x1);
- const auto bit_rate_code = static_cast<std::uint32_t>(((b1 & 0x3) << 3) | (b2 >> 5));
- const auto reserved = static_cast<std::uint32_t>(b2 & 0x1F);
+    const auto b0 = byte_at(payload, 0);
+    const auto b1 = byte_at(payload, 1);
+    const auto b2 = byte_at(payload, 2);
+    const auto fscod = static_cast<std::uint32_t>(b0 >> 6);
+    const auto bsid = static_cast<std::uint32_t>((b0 >> 1) & 0x1F);
+    const auto bsmod = static_cast<std::uint32_t>(((b0 & 0x1) << 2) | (b1 >> 6));
+    const auto acmod = static_cast<std::uint32_t>((b1 >> 3) & 0x7);
+    const auto lfeon = static_cast<std::uint32_t>((b1 >> 2) & 0x1);
+    const auto bit_rate_code = static_cast<std::uint32_t>(((b1 & 0x3) << 3) | (b2 >> 5));
+    const auto reserved = static_cast<std::uint32_t>(b2 & 0x1F);
 
- CHECK(fscod == 0); // 48 kHz
- CHECK(bsid == 8); // A/52 base bsid - encoder.cpp always writes it
- CHECK(bsid == static_cast<std::uint32_t>(scanned->bsid));
- CHECK(bsmod == static_cast<std::uint32_t>(scanned->bsmod));
- CHECK(acmod == static_cast<std::uint32_t>(ac3::Acmod::k2_0));
- CHECK(lfeon == 0);
- CHECK(bit_rate_code == static_cast<std::uint32_t>(scanned->bit_rate_code));
- CHECK(reserved == 0);
+    CHECK(fscod == 0);  // 48 kHz
+    CHECK(bsid == 8);   // A/52 base bsid - encoder.cpp always writes it
+    CHECK(bsid == static_cast<std::uint32_t>(scanned->bsid));
+    CHECK(bsmod == static_cast<std::uint32_t>(scanned->bsmod));
+    CHECK(acmod == static_cast<std::uint32_t>(ac3::Acmod::k2_0));
+    CHECK(lfeon == 0);
+    CHECK(bit_rate_code == static_cast<std::uint32_t>(scanned->bit_rate_code));
+    CHECK(reserved == 0);
 }
 
 TEST_CASE("dec3 box matches a real E-AC-3 stream with no Atmos extension", "[dec3]") {
- using ac3::eac3::AccessUnitConfig;
- const AccessUnitConfig config{
- .independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
- ac3::eac3::AccessUnitEncoder encoder{config};
+    using ac3::eac3::AccessUnitConfig;
+    const AccessUnitConfig config{
+        .independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    ac3::eac3::AccessUnitEncoder encoder{config};
 
- std::vector<std::vector<float>> pcm(6, std::vector<float>(ac3::kSamplesPerFrame));
- constexpr std::array<double, 6> kTones{440.0, 660.0, 880.0, 1100.0, 1320.0, 55.0};
- for (std::size_t ch = 0; ch < 6; ++ch) {
- for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
- pcm[ch][static_cast<std::size_t>(n)] = static_cast<float>(
- 0.3 * std::sin(2.0 * std::numbers::pi * kTones[ch] * static_cast<double>(n) /
- 48000.0));
- }
- }
- std::vector<std::span<const float>> views;
- for (const auto& channel : pcm) {
- views.emplace_back(channel);
- }
+    std::vector<std::vector<float>> pcm(6, std::vector<float>(ac3::kSamplesPerFrame));
+    constexpr std::array<double, 6> kTones{440.0, 660.0, 880.0, 1100.0, 1320.0, 55.0};
+    for (std::size_t ch = 0; ch < 6; ++ch) {
+        for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            pcm[ch][static_cast<std::size_t>(n)] = static_cast<float>(
+                0.3 * std::sin(2.0 * std::numbers::pi * kTones[ch] * static_cast<double>(n) /
+                              48000.0));
+        }
+    }
+    std::vector<std::span<const float>> views;
+    for (const auto& channel : pcm) {
+        views.emplace_back(channel);
+    }
 
- std::vector<std::byte> stream;
- for (int f = 0; f < 4; ++f) {
- const auto unit = encoder.encode_access_unit(views);
- REQUIRE(unit.has_value());
- stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
- }
+    std::vector<std::byte> stream;
+    for (int f = 0; f < 4; ++f) {
+        const auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+        stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
+    }
 
- const auto scanned = ac3::io::scan(stream);
- REQUIRE(scanned.has_value());
- REQUIRE(scanned->kind == ac3::io::StreamKind::kEac3);
- CHECK_FALSE(scanned->oba_complexity_index.has_value());
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    REQUIRE(scanned->kind == ac3::io::StreamKind::kEac3);
+    CHECK_FALSE(scanned->oba_complexity_index.has_value());
 
- const auto payload = ac3::io::build_codec_config_box(*scanned);
- // §F.6: 16 (header) + 24 (one substream, no dependents) + 8 (extension,
- // flag clear) = 48 bits = 6 bytes.
- REQUIRE(payload.size() == 6);
+    const auto payload = ac3::io::build_codec_config_box(*scanned);
+    // §F.6: 16 (header) + 24 (one substream, no dependents) + 8 (extension,
+    // flag clear) = 48 bits = 6 bytes.
+    REQUIRE(payload.size() == 6);
 
- // Byte 2 starts the one independent substream's own fields: fscod(2),
- // bsid(5), reserved(2), bsmod(3), acmod(3), lfeon(1), reserved(3),
- // num_dep_sub(4).
- const auto b2 = byte_at(payload, 2);
- const auto b3 = byte_at(payload, 3);
- const auto b4 = byte_at(payload, 4);
- const auto fscod = static_cast<std::uint32_t>(b2 >> 6);
- const auto bsid = static_cast<std::uint32_t>((b2 >> 1) & 0x1F);
- const auto bsmod = static_cast<std::uint32_t>((b3 >> 4) & 0x7);
- const auto acmod = static_cast<std::uint32_t>((b3 >> 1) & 0x7);
- const auto lfeon = static_cast<std::uint32_t>(b3 & 0x1);
- const auto num_dep_sub = static_cast<std::uint32_t>((b4 >> 1) & 0xF);
+    // Byte 2 starts the one independent substream's own fields: fscod(2),
+    // bsid(5), reserved(2), bsmod(3), acmod(3), lfeon(1), reserved(3),
+    // num_dep_sub(4).
+    const auto b2 = byte_at(payload, 2);
+    const auto b3 = byte_at(payload, 3);
+    const auto b4 = byte_at(payload, 4);
+    const auto fscod = static_cast<std::uint32_t>(b2 >> 6);
+    const auto bsid = static_cast<std::uint32_t>((b2 >> 1) & 0x1F);
+    const auto bsmod = static_cast<std::uint32_t>((b3 >> 4) & 0x7);
+    const auto acmod = static_cast<std::uint32_t>((b3 >> 1) & 0x7);
+    const auto lfeon = static_cast<std::uint32_t>(b3 & 0x1);
+    const auto num_dep_sub = static_cast<std::uint32_t>((b4 >> 1) & 0xF);
 
- CHECK(fscod == 0); // 48 kHz family
- CHECK(bsid == static_cast<std::uint32_t>(scanned->bsid));
- CHECK(bsmod == static_cast<std::uint32_t>(scanned->bsmod));
- CHECK(acmod == static_cast<std::uint32_t>(ac3::Acmod::k3_2));
- CHECK(lfeon == 1);
- CHECK(num_dep_sub == 0);
+    CHECK(fscod == 0);  // 48 kHz family
+    CHECK(bsid == static_cast<std::uint32_t>(scanned->bsid));
+    CHECK(bsmod == static_cast<std::uint32_t>(scanned->bsmod));
+    CHECK(acmod == static_cast<std::uint32_t>(ac3::Acmod::k3_2));
+    CHECK(lfeon == 1);
+    CHECK(num_dep_sub == 0);
 
- // The Atmos extension's flag_ec3_extension_type_a bit must read clear.
- CHECK(byte_at(payload, 5) == 0x00);
+    // The Atmos extension's flag_ec3_extension_type_a bit must read clear.
+    CHECK(byte_at(payload, 5) == 0x00);
 }
 
 TEST_CASE("dec3 box signals Dolby Atmos objects", "[dec3]") {
- constexpr int kObjects = 3;
- ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
+    constexpr int kObjects = 3;
+    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
 
- std::vector<std::vector<float>> sources(kObjects, std::vector<float>(ac3::kSamplesPerFrame));
- std::vector<std::span<const float>> views;
- for (auto& source : sources) {
- views.emplace_back(source);
- }
- constexpr std::array<double, kObjects> kTones{440.0, 880.0, 1320.0};
- std::array<ac3::oba::ObjectPlacement, kObjects> placement{};
- for (auto& p : placement) {
- p = {.position = {.x = 0.5, .y = 0.5, .z = 0.0}, .gain = 1.0};
- }
+    std::vector<std::vector<float>> sources(kObjects, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::span<const float>> views;
+    for (auto& source : sources) {
+        views.emplace_back(source);
+    }
+    constexpr std::array<double, kObjects> kTones{440.0, 880.0, 1320.0};
+    std::array<ac3::oba::ObjectPlacement, kObjects> placement{};
+    for (auto& p : placement) {
+        p = {.position = {.x = 0.5, .y = 0.5, .z = 0.0}, .gain = 1.0};
+    }
 
- std::vector<std::byte> stream;
- for (int f = 0; f < 4; ++f) {
- for (std::size_t obj = 0; obj < kObjects; ++obj) {
- for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
- const double t =
- static_cast<double>(f * ac3::kSamplesPerFrame + n) / 48000.0;
- sources[obj][static_cast<std::size_t>(n)] = static_cast<float>(
- 0.3 * std::sin(2.0 * std::numbers::pi * kTones[obj] * t));
- }
- }
- const auto unit = encoder.encode_frame(views, placement);
- REQUIRE(unit.has_value());
- stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
- }
+    std::vector<std::byte> stream;
+    for (int f = 0; f < 4; ++f) {
+        for (std::size_t obj = 0; obj < kObjects; ++obj) {
+            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+                const double t =
+                    static_cast<double>(f * ac3::kSamplesPerFrame + n) / 48000.0;
+                sources[obj][static_cast<std::size_t>(n)] = static_cast<float>(
+                    0.3 * std::sin(2.0 * std::numbers::pi * kTones[obj] * t));
+            }
+        }
+        const auto unit = encoder.encode_frame(views, placement);
+        REQUIRE(unit.has_value());
+        stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
+    }
 
- const auto scanned = ac3::io::scan(stream);
- REQUIRE(scanned.has_value());
- REQUIRE(scanned->oba_complexity_index.has_value());
- // §5.6.4.8/§8.3.2.2: object_count is bed-first (this encoder's LFE) then
- // the dynamic objects.
- CHECK(*scanned->oba_complexity_index == kObjects + 1);
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    REQUIRE(scanned->oba_complexity_index.has_value());
+    // §5.6.4.8/§8.3.2.2: object_count is bed-first (this encoder's LFE) then
+    // the dynamic objects.
+    CHECK(*scanned->oba_complexity_index == kObjects + 1);
 
- const auto payload = ac3::io::build_codec_config_box(*scanned);
- // 16 (header) + 24 (one substream, no dependents) + 16 (extension, flag
- // set: 7 reserved + 1 flag + 8 complexity_index_type_a) = 56 bits = 7
- // bytes.
- REQUIRE(payload.size() == 7);
- // reserved(7)=0, flag_ec3_extension_type_a=1 packs to 0x01.
- CHECK(byte_at(payload, 5) == 0x01);
- CHECK(byte_at(payload, 6) == static_cast<std::uint8_t>(kObjects + 1));
+    const auto payload = ac3::io::build_codec_config_box(*scanned);
+    // 16 (header) + 24 (one substream, no dependents) + 16 (extension, flag
+    // set: 7 reserved + 1 flag + 8 complexity_index_type_a) = 56 bits = 7
+    // bytes.
+    REQUIRE(payload.size() == 7);
+    // reserved(7)=0, flag_ec3_extension_type_a=1 packs to 0x01.
+    CHECK(byte_at(payload, 5) == 0x01);
+    CHECK(byte_at(payload, 6) == static_cast<std::uint8_t>(kObjects + 1));
 }
 
 // --------------------------------------------------------------------------
-// AC-4 carriage (legacy item IM4): TS 103 190-2 Annex E.4's 'ac-4' sample entry
+// AC-4 carriage (AC-4 bitstream inspector): TS 103 190-2 Annex E.4's 'ac-4' sample entry
 // and 'dac4' configuration box, through the same box walk the A/52 entries
 // are proven with.
 
 TEST_CASE("MP4 carries an 'ac-4' sample entry with a 'dac4' box", "[mp4][ac4]") {
- mp4::AudioTrack track;
- track.codec_id = std::string{mp4::kCodecAc4};
- track.sample_rate = 48000;
- track.channels = 2; // E.4.5: "should be set to 2"
- track.samples_per_frame = 2048;
- track.codec_config = {std::byte{0x2A}, std::byte{0x04}, std::byte{0x10}, std::byte{0x00}};
- track.rfc6381 = "ac-4.02.01.00";
+    mp4::AudioTrack track;
+    track.codec_id = std::string{mp4::kCodecAc4};
+    track.sample_rate = 48000;
+    track.channels = 2;  // E.4.5: "should be set to 2"
+    track.samples_per_frame = 2048;
+    track.codec_config = {std::byte{0x2A}, std::byte{0x04}, std::byte{0x10}, std::byte{0x00}};
+    track.rfc6381 = "ac-4.02.01.00";
 
- const std::vector<Bytes> frames{frame_of(320, 0x5A), frame_of(320, 0x5B)};
- const auto file = mp4::mux(track, frames);
- REQUIRE(file.has_value());
+    const std::vector<Bytes> frames{frame_of(320, 0x5A), frame_of(320, 0x5B)};
+    const auto file = mp4::mux(track, frames);
+    REQUIRE(file.has_value());
 
- // The sample entry is stsd's child, which parse()'s flat walk does not
- // descend into - read_sample_entry is this file's own way in, the same
- // one the A/52 entry test uses.
- const auto elements = parse(*file);
- const auto* stsd = find(elements, "stsd");
- REQUIRE(stsd != nullptr);
- const auto entry = read_sample_entry(*file, *stsd);
- CHECK(entry.codec_id == "ac-4");
- CHECK(entry.config_type == "dac4");
- CHECK(entry.channels == 2);
- CHECK(entry.samplerate_fixed == (48000U << 16));
- // The config box carries exactly the payload handed in.
- CHECK(entry.config_payload == track.codec_config);
+    // The sample entry is stsd's child, which parse()'s flat walk does not
+    // descend into - read_sample_entry is this file's own way in, the same
+    // one the A/52 entry test uses.
+    const auto elements = parse(*file);
+    const auto* stsd = find(elements, "stsd");
+    REQUIRE(stsd != nullptr);
+    const auto entry = read_sample_entry(*file, *stsd);
+    CHECK(entry.codec_id == "ac-4");
+    CHECK(entry.config_type == "dac4");
+    CHECK(entry.channels == 2);
+    CHECK(entry.samplerate_fixed == (48000U << 16));
+    // The config box carries exactly the payload handed in.
+    CHECK(entry.config_payload == track.codec_config);
 
- // The manifest string is the override, not the fourcc, for this codec.
- CHECK(mp4::hls_codec_string(track) == "ac-4.02.01.00");
- track.rfc6381.clear();
- CHECK(mp4::hls_codec_string(track) == "ac-4");
+    // The manifest string is the override, not the fourcc, for this codec.
+    CHECK(mp4::hls_codec_string(track) == "ac-4.02.01.00");
+    track.rfc6381.clear();
+    CHECK(mp4::hls_codec_string(track) == "ac-4");
 }

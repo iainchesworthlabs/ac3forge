@@ -63,21 +63,21 @@ mappings (legacy WDM audio plumbing).
 ### Three things the port learnt, kept in the source
 
 - **A failed AddDevice names its step.** `NOTE_AND_RETURN_IF_FAILED` wraps every call that
- builds the device and the circuit. When one fails, `NullSink_NoteFailure` writes the call's
- text and status under the service's `Parameters` key (`LastFailedStep`, `LastFailedStatus`)
- before returning, first note wins, and `..\driver-vm\Test-Driver.ps1` prints it. Without it,
- a failed start is `CM_PROB_FAILED_ADD` with a status and no location, on a guest with no
- kernel debugger. It found the port's one start failure in one run: `AcxJackCreate` returns
- `STATUS_INVALID_PARAMETER` for a jack given a presence callback without the jack-detection
- flag, so the jack has neither, and ACX reports it always connected, which is right for a
- device with no socket.
+  builds the device and the circuit. When one fails, `NullSink_NoteFailure` writes the call's
+  text and status under the service's `Parameters` key (`LastFailedStep`, `LastFailedStatus`)
+  before returning, first note wins, and `..\driver-vm\Test-Driver.ps1` prints it. Without it,
+  a failed start is `CM_PROB_FAILED_ADD` with a status and no location, on a guest with no
+  kernel debugger. It found the port's one start failure in one run: `AcxJackCreate` returns
+  `STATUS_INVALID_PARAMETER` for a jack given a presence callback without the jack-detection
+  flag, so the jack has neither, and ACX reports it always connected, which is right for a
+  device with no socket.
 - **Optional steps log, required steps fail.** The sample chains `RETURN_NTSTATUS_IF_FAILED`
- through prepare-hardware; here the S0 idle policy is best-effort and only adding the circuit
- can fail the start. The PortCls driver was stopped for a day by a "harmless" status
- promoted to a failure.
+  through prepare-hardware; here the S0 idle policy is best-effort and only adding the circuit
+  can fail the start. The PortCls driver was stopped for a day by a "harmless" status
+  promoted to a failure.
 - **Pool is never executable**, and the RT packet buffers ask for `POOL_FLAG_NON_PAGED`
- explicitly. HVCI enforces this; the mask in `NewDelete.cpp` is where the sample's allocator
- would have passed a caller's executable flag through.
+  explicitly. HVCI enforces this; the mask in `NewDelete.cpp` is where the sample's allocator
+  would have passed a caller's executable flag through.
 
 ### The clock
 
@@ -141,19 +141,19 @@ throwaway guest so a bugcheck is a guest reboot.
 **Static.** `Analyze-Driver.ps1` runs, and fails on anything reported by, all three:
 
 1. **Code Analysis with the driver rule set.** A rebuild with `RunCodeAnalysis` on and the
- WDK's `DriverRecommendedRules.ruleset`, which is the successor to PREfast for Drivers (the
- `/analyze` engine plus the driver-specific `__drv_` annotation and concurrency rules). It
- writes one `*.nativecodeanalysis.xml` per file. The rule set is copied to a path without
- spaces first, because the MSBuild property does not survive one through `cmd`.
+   WDK's `DriverRecommendedRules.ruleset`, which is the successor to PREfast for Drivers (the
+   `/analyze` engine plus the driver-specific `__drv_` annotation and concurrency rules). It
+   writes one `*.nativecodeanalysis.xml` per file. The rule set is copied to a path without
+   spaces first, because the MSBuild property does not survive one through `cmd`.
 2. **CodeQL with `microsoft/windows-drivers`.** A database built from the same rebuild,
- analysed with the pack's `mustfix` and `recommended` suites into SARIF. Get the CLI and the
- pack once: a CodeQL CLI on `PATH` (or point `-CodeQL` at it) and
- `codeql pack download microsoft/windows-drivers`. Waivers are per finding, in the script's
- `$known` list with the reason beside each; the PortCls driver's one waiver
- (`init-not-cleared`, a PortCls false positive) went with PortCls.
+   analysed with the pack's `mustfix` and `recommended` suites into SARIF. Get the CLI and the
+   pack once: a CodeQL CLI on `PATH` (or point `-CodeQL` at it) and
+   `codeql pack download microsoft/windows-drivers`. Waivers are per finding, in the script's
+   `$known` list with the reason beside each; the PortCls driver's one waiver
+   (`init-not-cleared`, a PortCls false positive) went with PortCls.
 3. **The Driver Verification Log** (`dvl.exe`, the kit's `dvl` MSBuild target), which bundles
- the results into `Ac3ForgeNullSink.DVL.XML`, the artefact the HLK Static Tools Logo test
- consumes for submission.
+   the results into `Ac3ForgeNullSink.DVL.XML`, the artefact the HLK Static Tools Logo test
+   consumes for submission.
 
 Its switches: `-BuildEnv` (the EWDK's `SetupBuildEnv.cmd`), `-CodeQL` (the CLI, when it is
 not on `PATH`), `-RuleSet` (`DriverRecommendedRules.ruleset` by default), `-Database` (where
@@ -204,15 +204,15 @@ A test-signed driver loads only with test signing on and memory integrity off:
 1. Windows Security > Device security > Core isolation > Memory integrity: off, then reboot.
 2. From an administrator prompt: `bcdedit /set testsigning on`, then reboot.
 3. `install.ps1` from an administrator PowerShell: trusts the build's test certificate, stages
- the package with `pnputil`, and creates the root-enumerated device through SetupAPI
- (`NullSinkDevice.ps1`: `SetupDiCreateDeviceInfo`, the hardware id, `DIF_REGISTERDEVICE`,
- `UpdateDriverForPlugAndPlayDevices`, the documented sequence the WDK's `devcon install`
- performs), as `ROOT\MEDIA\0000`. Nothing beyond Windows is needed, so the packaged demo
- carries the same three scripts. `SwDeviceCreate`, the newer software-device API, was
- tried first and returns `ERROR_MOD_NOT_FOUND` on the test guest from every session tried;
- the note in `NullSinkDevice.ps1` has the detail.
+   the package with `pnputil`, and creates the root-enumerated device through SetupAPI
+   (`NullSinkDevice.ps1`: `SetupDiCreateDeviceInfo`, the hardware id, `DIF_REGISTERDEVICE`,
+   `UpdateDriverForPlugAndPlayDevices`, the documented sequence the WDK's `devcon install`
+   performs), as `ROOT\MEDIA\0000`. Nothing beyond Windows is needed, so the packaged demo
+   carries the same three scripts. `SwDeviceCreate`, the newer software-device API, was
+   tried first and returns `ERROR_MOD_NOT_FOUND` on the test guest from every session tried;
+   the note in `NullSinkDevice.ps1` has the detail.
 4. `remove.ps1` reverses it: removes the device (`pnputil /remove-device`) and deletes the
- staged package.
+   staged package.
 
 Attestation signing through an EV certificate and Partner Center is what would let this load on
 other people's machines with memory integrity on; that is the last item of the demo's plan.

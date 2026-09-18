@@ -16,13 +16,13 @@
 // Two things make that safe rather than merely plausible, and both are checked
 // rather than assumed:
 //
-// - Size. platform/baremetal/mps2-an385.ld asserts SIZEOF(.tbss) fits, so
-// growing the scratch past this block fails the LINK instead of quietly
-// writing past it.
-// - Initialisation. The same script asserts .tdata is empty, i.e. every
-// thread_local in the image is zero-initialised. A non-zero initialiser
-// would need its image copied in here, and nothing does that - so the
-// assert refuses the build rather than letting one start life as garbage.
+//   - Size. platform/baremetal/mps2-an385.ld asserts SIZEOF(.tbss) fits, so
+//     growing the scratch past this block fails the LINK instead of quietly
+//     writing past it.
+//   - Initialisation. The same script asserts .tdata is empty, i.e. every
+//     thread_local in the image is zero-initialised. A non-zero initialiser
+//     would need its image copied in here, and nothing does that - so the
+//     assert refuses the build rather than letting one start life as garbage.
 //
 // This file exists only in the bare-metal build (apps/baremetal/CMakeLists.txt
 // adds this directory only when cross-compiling); the hosted build's C library
@@ -55,8 +55,8 @@ constexpr std::size_t kArmTcbBytes = 8;
 
 alignas(16) std::uint8_t g_tls_block[kTlsBlockBytes];
 
-} // namespace
+}  // namespace
 
 extern "C" void* __aeabi_read_tp() {
- return reinterpret_cast<void*>(reinterpret_cast<std::uintptr_t>(g_tls_block) - kArmTcbBytes);
+    return reinterpret_cast<void*>(reinterpret_cast<std::uintptr_t>(g_tls_block) - kArmTcbBytes);
 }

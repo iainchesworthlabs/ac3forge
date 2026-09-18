@@ -37,32 +37,32 @@
 namespace ac3::audio {
 
 const AudioBackend& audio_backend() {
- static const AudioBackend kBackend = [] {
- AudioBackend backend{
- .capture = {.available = true, .reason = {}},
- .passthrough = {.available = true, .reason = {}},
- .monitor = {.available = true, .reason = {}},
- .spatial = {.available = false,
- .reason = "this build has no spatial backend: "
- "ISpatialAudioObjectRenderStream is a Windows-only API"},
- .process_loopback = {.available = true, .reason = {}},
- .device_watch = {.available = true, .reason = {}},
- };
- // One walk answers both: it connects, lists and disconnects, and
- // returns false only for the "no session to ask" case.
- if (!process_loopback_available()) {
- backend.process_loopback = {
- .available = false,
- .reason = "per-process loopback capture needs a running PipeWire session, to "
- "link a capture stream to an application node; this machine has none"};
- backend.device_watch = {
- .available = false,
- .reason = "device notifications need a running PipeWire session, to register a "
- "registry listener with; this machine has none"};
- }
- return backend;
- }();
- return kBackend;
+    static const AudioBackend kBackend = [] {
+        AudioBackend backend{
+            .capture = {.available = true, .reason = {}},
+            .passthrough = {.available = true, .reason = {}},
+            .monitor = {.available = true, .reason = {}},
+            .spatial = {.available = false,
+                        .reason = "this build has no spatial backend: "
+                                  "ISpatialAudioObjectRenderStream is a Windows-only API"},
+            .process_loopback = {.available = true, .reason = {}},
+            .device_watch = {.available = true, .reason = {}},
+        };
+        // One walk answers both: it connects, lists and disconnects, and
+        // returns false only for the "no session to ask" case.
+        if (!process_loopback_available()) {
+            backend.process_loopback = {
+                .available = false,
+                .reason = "per-process loopback capture needs a running PipeWire session, to "
+                          "link a capture stream to an application node; this machine has none"};
+            backend.device_watch = {
+                .available = false,
+                .reason = "device notifications need a running PipeWire session, to register a "
+                          "registry listener with; this machine has none"};
+        }
+        return backend;
+    }();
+    return kBackend;
 }
 
-} // namespace ac3::audio
+}  // namespace ac3::audio

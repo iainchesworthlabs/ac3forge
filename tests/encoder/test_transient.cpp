@@ -15,71 +15,71 @@ namespace {
 // period, each carrying that period's NEW samples; the previous segment is
 // the comparison baseline via the persistent filter/tree state).
 std::vector<std::array<float, 256>> segments_of(const std::vector<float>& signal) {
- std::vector<std::array<float, 256>> out;
- for (std::size_t i = 0; i + 256 <= signal.size(); i += 256) {
- std::array<float, 256> s{};
- for (std::size_t n = 0; n < 256; ++n) {
- s[n] = signal[i + n];
- }
- out.push_back(s);
- }
- return out;
+    std::vector<std::array<float, 256>> out;
+    for (std::size_t i = 0; i + 256 <= signal.size(); i += 256) {
+        std::array<float, 256> s{};
+        for (std::size_t n = 0; n < 256; ++n) {
+            s[n] = signal[i + n];
+        }
+        out.push_back(s);
+    }
+    return out;
 }
 
 std::vector<float> tone(std::size_t from, std::size_t count, double amplitude,
- double fs = 48000.0) {
- std::vector<float> signal(from + count, 0.0F);
- for (std::size_t n = from; n < signal.size(); ++n) {
- signal[n] = static_cast<float>(
- amplitude * std::sin(2.0 * std::numbers::pi * 1000.0 / fs * static_cast<double>(n)));
- }
- return signal;
+                         double fs = 48000.0) {
+    std::vector<float> signal(from + count, 0.0F);
+    for (std::size_t n = from; n < signal.size(); ++n) {
+        signal[n] = static_cast<float>(
+            amplitude * std::sin(2.0 * std::numbers::pi * 1000.0 / fs * static_cast<double>(n)));
+    }
+    return signal;
 }
 
-} // namespace
+}  // namespace
 
 TEST_CASE("a steady tone never trips the transient detector", "[transient]") {
- ac3::TransientDetector detector(ac3::SampleRate::k48000);
- for (const auto& s : segments_of(tone(0, 256 * 16, 0.5))) {
- CHECK_FALSE(detector.detect(s));
- }
+    ac3::TransientDetector detector(ac3::SampleRate::k48000);
+    for (const auto& s : segments_of(tone(0, 256 * 16, 0.5))) {
+        CHECK_FALSE(detector.detect(s));
+    }
 }
 
 TEST_CASE("digital silence never trips the transient detector", "[transient]") {
- std::vector<float> signal(256 * 8, 0.0F);
- ac3::TransientDetector detector(ac3::SampleRate::k48000);
- for (const auto& s : segments_of(signal)) {
- CHECK_FALSE(detector.detect(s));
- }
+    std::vector<float> signal(256 * 8, 0.0F);
+    ac3::TransientDetector detector(ac3::SampleRate::k48000);
+    for (const auto& s : segments_of(signal)) {
+        CHECK_FALSE(detector.detect(s));
+    }
 }
 
 TEST_CASE("a sudden loud onset trips the detector in the onset's own segment",
- "[transient]") {
- // Seven segments of silence to settle history and clear the first-call
- // guard, then a loud 1 kHz tone from segment 7's own first sample -
- // exactly the case §8.2.2 defines blksw for: a transient in the 256 new
- // samples of one block period.
- const auto segments = segments_of(tone(256 * 7, 256 * 2, 0.9));
- ac3::TransientDetector detector(ac3::SampleRate::k48000);
- for (std::size_t i = 0; i < 7; ++i) {
- CHECK_FALSE(detector.detect(segments[i]));
- }
- CHECK(detector.detect(segments[7]));
- // The segment after the onset holds the tone steady at its new level -
- // no ratio jump against its own (now-loud) predecessor, so no switch.
- CHECK_FALSE(detector.detect(segments[8]));
+         "[transient]") {
+    // Seven segments of silence to settle history and clear the first-call
+    // guard, then a loud 1 kHz tone from segment 7's own first sample -
+    // exactly the case §8.2.2 defines blksw for: a transient in the 256 new
+    // samples of one block period.
+    const auto segments = segments_of(tone(256 * 7, 256 * 2, 0.9));
+    ac3::TransientDetector detector(ac3::SampleRate::k48000);
+    for (std::size_t i = 0; i < 7; ++i) {
+        CHECK_FALSE(detector.detect(segments[i]));
+    }
+    CHECK(detector.detect(segments[7]));
+    // The segment after the onset holds the tone steady at its new level -
+    // no ratio jump against its own (now-loud) predecessor, so no switch.
+    CHECK_FALSE(detector.detect(segments[8]));
 }
 
 TEST_CASE("the very first segment a detector sees never trips it", "[transient]") {
- // A fresh detector's only baseline is synthetic silence; §8.2.2's
- // comparisons against it would flag any non-silent opening - so the
- // first call's result is suppressed even for a full-scale onset. The
- // SECOND segment, steady at the same level, must not trip either (the
- // suppressed pass still primed real history).
- const auto segments = segments_of(tone(0, 256 * 2, 0.9));
- ac3::TransientDetector detector(ac3::SampleRate::k48000);
- CHECK_FALSE(detector.detect(segments[0]));
- CHECK_FALSE(detector.detect(segments[1]));
+    // A fresh detector's only baseline is synthetic silence; §8.2.2's
+    // comparisons against it would flag any non-silent opening - so the
+    // first call's result is suppressed even for a full-scale onset. The
+    // SECOND segment, steady at the same level, must not trip either (the
+    // suppressed pass still primed real history).
+    const auto segments = segments_of(tone(0, 256 * 2, 0.9));
+    ac3::TransientDetector detector(ac3::SampleRate::k48000);
+    CHECK_FALSE(detector.detect(segments[0]));
+    CHECK_FALSE(detector.detect(segments[1]));
 }
 
 // A loud onset trips the detector at every one of A/52's six sample rates,
@@ -91,53 +91,53 @@ TEST_CASE("the very first segment a detector sees never trips it", "[transient]"
 // which is what a cross-toolchain bit-exactness check operates on instead -
 // see that entry for the empirical result) at every rate this project ships.
 TEST_CASE("a loud onset trips the detector at every A/52 sample rate", "[transient]") {
- struct Case {
- ac3::SampleRate rate;
- bool onset_trips;
- };
- // k16000 is deliberately excluded from "trips": A/52's 8 kHz cutoff
- // (transient.cpp's kCutoffHz, fixed regardless of rate) IS that rate's
- // Nyquist frequency exactly, so the RBJ highpass's own passband
- // collapses to zero width there - std::cos(w0) lands on exactly -1.0,
- // making b0 and b2 exactly 0.0 and the filtered signal identically zero
- // for any input. Every ratio test then compares 0 against 0 (and never
- // even reaches them, since p1 stays below kSilenceThreshold), so blksw
- // is always false at this one rate by construction. This is a
- // pre-existing property of the fixed cutoff constant versus a variable
- // rate, not something this test's own scope changes or fixes - see
- // cross-toolchain bitstream audit's note on it.
- const std::array<Case, 6> cases{{
- {ac3::SampleRate::k48000, true},
- {ac3::SampleRate::k44100, true},
- {ac3::SampleRate::k32000, true},
- {ac3::SampleRate::k24000, true},
- {ac3::SampleRate::k22050, true},
- {ac3::SampleRate::k16000, false},
- }};
- for (const Case& c : cases) {
- const double fs = static_cast<double>(ac3::sample_rate_hz(c.rate));
- const auto segments = segments_of(tone(256 * 7, 256 * 2, 0.9, fs));
- ac3::TransientDetector detector(c.rate);
- for (std::size_t i = 0; i < 7; ++i) {
- CHECK_FALSE(detector.detect(segments[i]));
- }
- CHECK(detector.detect(segments[7]) == c.onset_trips);
- CHECK_FALSE(detector.detect(segments[8]));
- }
+    struct Case {
+        ac3::SampleRate rate;
+        bool onset_trips;
+    };
+    // k16000 is deliberately excluded from "trips": A/52's 8 kHz cutoff
+    // (transient.cpp's kCutoffHz, fixed regardless of rate) IS that rate's
+    // Nyquist frequency exactly, so the RBJ highpass's own passband
+    // collapses to zero width there - std::cos(w0) lands on exactly -1.0,
+    // making b0 and b2 exactly 0.0 and the filtered signal identically zero
+    // for any input. Every ratio test then compares 0 against 0 (and never
+    // even reaches them, since p1 stays below kSilenceThreshold), so blksw
+    // is always false at this one rate by construction. This is a
+    // pre-existing property of the fixed cutoff constant versus a variable
+    // rate, not something this test's own scope changes or fixes - see
+    // cross-toolchain bitstream audit's note on it.
+    const std::array<Case, 6> cases{{
+        {ac3::SampleRate::k48000, true},
+        {ac3::SampleRate::k44100, true},
+        {ac3::SampleRate::k32000, true},
+        {ac3::SampleRate::k24000, true},
+        {ac3::SampleRate::k22050, true},
+        {ac3::SampleRate::k16000, false},
+    }};
+    for (const Case& c : cases) {
+        const double fs = static_cast<double>(ac3::sample_rate_hz(c.rate));
+        const auto segments = segments_of(tone(256 * 7, 256 * 2, 0.9, fs));
+        ac3::TransientDetector detector(c.rate);
+        for (std::size_t i = 0; i < 7; ++i) {
+            CHECK_FALSE(detector.detect(segments[i]));
+        }
+        CHECK(detector.detect(segments[7]) == c.onset_trips);
+        CHECK_FALSE(detector.detect(segments[8]));
+    }
 }
 
 TEST_CASE("the float detector decides as the double one does on a loud onset", "[transient]") {
- // ac3::BasicTransientDetector<float> is the minimum-footprint profile's
- // form (ac3/internal/encode_scalar.hpp). The recipe is identical; only
- // the rounding differs, so on a clear onset the two must agree segment
- // by segment - and the tone's steady segments must not trip either.
- const auto segments = segments_of(tone(256 * 7, 256 * 2, 0.9));
- ac3::TransientDetector wide(ac3::SampleRate::k48000);
- ac3::BasicTransientDetector<float> narrow(ac3::SampleRate::k48000);
- for (std::size_t i = 0; i < segments.size(); ++i) {
- CAPTURE(i);
- const bool wide_hit = wide.detect(segments[i]);
- const bool narrow_hit = narrow.detect(segments[i]);
- CHECK(narrow_hit == wide_hit);
- }
+    // ac3::BasicTransientDetector<float> is the minimum-footprint profile's
+    // form (ac3/internal/encode_scalar.hpp). The recipe is identical; only
+    // the rounding differs, so on a clear onset the two must agree segment
+    // by segment - and the tone's steady segments must not trip either.
+    const auto segments = segments_of(tone(256 * 7, 256 * 2, 0.9));
+    ac3::TransientDetector wide(ac3::SampleRate::k48000);
+    ac3::BasicTransientDetector<float> narrow(ac3::SampleRate::k48000);
+    for (std::size_t i = 0; i < segments.size(); ++i) {
+        CAPTURE(i);
+        const bool wide_hit = wide.detect(segments[i]);
+        const bool narrow_hit = narrow.detect(segments[i]);
+        CHECK(narrow_hit == wide_hit);
+    }
 }

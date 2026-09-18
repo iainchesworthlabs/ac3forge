@@ -18,7 +18,7 @@ int run_devices();
 // Capture live audio and encode it straight to AC-3. The capture thread fills
 // a lock-free ring; this thread drains it a frame at a time.
 int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate,
- int device_index, const ac3cli::Options& meta);
+               int device_index, const ac3cli::Options& meta);
 
 int run_outputs();
 
@@ -36,7 +36,7 @@ int run_outputs();
 // The point of the patch argument is A2's own exit: a stream routed with two
 // channels swapped should be heard from the swapped speakers.
 int run_identify(int device_index, std::string_view layout_text, std::uint32_t seconds,
- std::string_view routing_text, double level_db);
+                 std::string_view routing_text, double level_db);
 
 // Stream an AC-3 or E-AC-3 file to a receiver in real time via exclusive-mode
 // IEC 61937. The sink's render thread pulls bursts; this loop keeps it fed.
@@ -46,16 +46,16 @@ int run_identify(int device_index, std::string_view layout_text, std::uint32_t s
 // Eac3BurstPacker's own comment on why - Annex E frames can cover as few as
 // one of the six blocks a burst period spans).
 //
-// sink-following play: when a specific device_index is named, this first asks what
+// play/monitor follow mode: when a specific device_index is named, this first asks what
 // it actually accepts - ac3::audio::read_sink_capabilities' EDID read where
 // a backend has one, enumerate_render_devices' own live probe otherwise (see
 // that header's comment for why the two are kept apart). A source format the
 // sink rejects gets an automatic fallback rather than a refusal: E-AC-3 on an
-// AC-3-only sink is transcoded to AC-3 first (legacy item DC9's transcode, feeding
+// AC-3-only sink is transcoded to AC-3 first (stream tools's transcode, feeding
 // this same passthrough path); a sink that bitstreams neither format falls
 // back to decoded PCM (run_monitor). meta.follow_sink (follow=off) restores
-// the plain refusal 'play' always gave before this feature, the same
+// the plain refusal 'play' always gave before this roadmap item, the same
 // on-by-default shape 'live's downmix_leg (downmix=off) already uses.
 int run_play(std::string_view in_path, int device_index, const ac3cli::Options& meta);
 
-} // namespace ac3cli::commands
+}  // namespace ac3cli::commands

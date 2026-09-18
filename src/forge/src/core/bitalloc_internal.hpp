@@ -26,8 +26,8 @@ namespace ac3::internal {
 // in full, on every path that function itself takes (including its two
 // early-exit, all-zero cases), never left holding a previous call's values.
 void compute_bit_allocation_traced(std::span<const std::uint8_t> exps, SampleRate sample_rate,
- const BitAllocCodes& codes, int csnroffst, int fsnroffst,
- std::span<std::uint8_t> bap, const BitAllocRegion& region,
- std::array<int, 50>& mask);
+                                   const BitAllocCodes& codes, int csnroffst, int fsnroffst,
+                                   std::span<std::uint8_t> bap, const BitAllocRegion& region,
+                                   std::array<int, 50>& mask);
 
-} // namespace ac3::internal
+}  // namespace ac3::internal

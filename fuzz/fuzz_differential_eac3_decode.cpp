@@ -28,72 +28,72 @@
 // already takes by skipping those streams outright rather than tolerating a
 // known failure.
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
- const std::span<const std::byte> bytes{reinterpret_cast<const std::byte*>(data), size};
- const auto units = ac3::split_access_units(bytes);
- if (!units || units->empty()) {
- return 0;
- }
+    const std::span<const std::byte> bytes{reinterpret_cast<const std::byte*>(data), size};
+    const auto units = ac3::split_access_units(bytes);
+    if (!units || units->empty()) {
+        return 0;
+    }
 
- ac3::Eac3Decoder decoder;
- std::vector<std::vector<float>> pcm;
- ac3::DecodedAccessUnit first{};
- bool have_first = false;
+    ac3::Eac3Decoder decoder;
+    std::vector<std::vector<float>> pcm;
+    ac3::DecodedAccessUnit first{};
+    bool have_first = false;
 
- // Mirrors ac3cli's own 'decode' path for E-AC-3 (apps/cli/main.cpp:
- // run_decode_eac3) exactly, including the §3.7 transient-pre-noise-
- // processing hold-back convention (decode_access_unit's own doc
- // comment) and the end-of-stream flush() below.
- for (const auto& unit : *units) {
- const auto decoded = decoder.decode_access_unit(unit);
- if (!decoded) {
- return 0; // our own decoder declined this input - nothing to compare
- }
- if (!decoded->has_value()) {
- continue; // held back pending transient pre-noise processing, not an error
- }
- const auto& out = **decoded;
- if (!have_first) {
- first = out;
- pcm.resize(out.channels.size());
- have_first = true;
- } else if (out.acmod != first.acmod || out.sample_rate != first.sample_rate) {
- // Format changed mid-stream: not a shape FFmpeg's single raw PCM
- // output could ever be compared against meaningfully.
- return 0;
- }
- for (std::size_t ch = 0; ch < out.channels.size(); ++ch) {
- pcm[ch].insert(pcm[ch].end(), out.channels[ch].begin(), out.channels[ch].end());
- }
- }
- for (auto& substream : decoder.flush()) {
- if (!have_first) {
- first.sample_rate = substream.sample_rate;
- first.acmod = substream.acmod;
- first.dialnorm = substream.dialnorm;
- first.substream_count = 1;
- first.layout = ac3::eac3::chanmap::expand(substream.location_map());
- pcm.resize(substream.channels.size());
- have_first = true;
- }
- for (std::size_t ch = 0; ch < substream.channels.size(); ++ch) {
- pcm[ch].insert(pcm[ch].end(), substream.channels[ch].begin(),
- substream.channels[ch].end());
- }
- }
- if (!have_first || pcm.empty()) {
- return 0;
- }
+    // Mirrors ac3cli's own 'decode' path for E-AC-3 (apps/cli/main.cpp:
+    // run_decode_eac3) exactly, including the §3.7 transient-pre-noise-
+    // processing hold-back convention (decode_access_unit's own doc
+    // comment) and the end-of-stream flush() below.
+    for (const auto& unit : *units) {
+        const auto decoded = decoder.decode_access_unit(unit);
+        if (!decoded) {
+            return 0;  // our own decoder declined this input - nothing to compare
+        }
+        if (!decoded->has_value()) {
+            continue;  // held back pending transient pre-noise processing, not an error
+        }
+        const auto& out = **decoded;
+        if (!have_first) {
+            first = out;
+            pcm.resize(out.channels.size());
+            have_first = true;
+        } else if (out.acmod != first.acmod || out.sample_rate != first.sample_rate) {
+            // Format changed mid-stream: not a shape FFmpeg's single raw PCM
+            // output could ever be compared against meaningfully.
+            return 0;
+        }
+        for (std::size_t ch = 0; ch < out.channels.size(); ++ch) {
+            pcm[ch].insert(pcm[ch].end(), out.channels[ch].begin(), out.channels[ch].end());
+        }
+    }
+    for (auto& substream : decoder.flush()) {
+        if (!have_first) {
+            first.sample_rate = substream.sample_rate;
+            first.acmod = substream.acmod;
+            first.dialnorm = substream.dialnorm;
+            first.substream_count = 1;
+            first.layout = ac3::eac3::chanmap::expand(substream.location_map());
+            pcm.resize(substream.channels.size());
+            have_first = true;
+        }
+        for (std::size_t ch = 0; ch < substream.channels.size(); ++ch) {
+            pcm[ch].insert(pcm[ch].end(), substream.channels[ch].begin(),
+                           substream.channels[ch].end());
+        }
+    }
+    if (!have_first || pcm.empty()) {
+        return 0;
+    }
 
- const auto sample_rate = ac3::sample_rate_hz(first.sample_rate);
- if (first.acmod == ac3::Acmod::kDualMono) {
- // §E1.3: two unrelated programmes, no Table E2.5 location to order
- // by - Ch1/Ch2 go out in coded order, the identity write_wav_f32's
- // default (empty channel_order) already gives.
- ac3forge::fuzzdiff::run_differential("eac3", bytes, ".ec3", pcm, sample_rate, {});
- return 0;
- }
- const auto map = ac3::plan::wav_order(
- std::span{first.layout.items}.first(static_cast<std::size_t>(first.layout.count)));
- ac3forge::fuzzdiff::run_differential("eac3", bytes, ".ec3", pcm, sample_rate, map);
- return 0;
+    const auto sample_rate = ac3::sample_rate_hz(first.sample_rate);
+    if (first.acmod == ac3::Acmod::kDualMono) {
+        // §E1.3: two unrelated programmes, no Table E2.5 location to order
+        // by - Ch1/Ch2 go out in coded order, the identity write_wav_f32's
+        // default (empty channel_order) already gives.
+        ac3forge::fuzzdiff::run_differential("eac3", bytes, ".ec3", pcm, sample_rate, {});
+        return 0;
+    }
+    const auto map = ac3::plan::wav_order(
+        std::span{first.layout.items}.first(static_cast<std::size_t>(first.layout.count)));
+    ac3forge::fuzzdiff::run_differential("eac3", bytes, ".ec3", pcm, sample_rate, map);
+    return 0;
 }

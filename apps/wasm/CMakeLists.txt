@@ -6,7 +6,7 @@
 # it's a normal add_subdirectory() from root CMakeLists.txt, gated on
 # EMSCRIPTEN there rather than needing a whole separate entry point.
 #
-# Roadmap F3: a browser demo that decodes a real E-AC-3/Atmos-in-DD+
+# WASM browser demo: a browser demo that decodes a real E-AC-3/Atmos-in-DD+
 # elementary stream via ac3::forge compiled to WASM, plays the decoded bed
 # audio through the Web Audio API, and visualizes real per-channel energy in
 # time with playback. See docs/platforms/wasm.md.
@@ -37,43 +37,43 @@ target_link_libraries(ac3forge_wasm_decode PRIVATE ac3::forge ac3::warnings)
 # browser is running than the modest code-size/perf cost of leaving them on.
 target_compile_options(ac3forge_wasm_decode PRIVATE "-fexceptions")
 target_link_options(ac3forge_wasm_decode PRIVATE
- "-fexceptions"
- "--bind"
- "-sMODULARIZE=1"
- "-sEXPORT_NAME=createAc3ForgeModule"
- "-sALLOW_MEMORY_GROWTH=1"
- # Growth needs a ceiling: without MAXIMUM_MEMORY the heap can climb to
- # wasm32's ~2 GB limit and the failure mode is the browser killing the
- # tab. With one, exhaustion is a std::bad_alloc (-fexceptions above)
- # that decoder_bindings.cpp turns into the demo's normal error path.
- # 1 GB comfortably holds the largest input demo.js accepts (see its
- # MAX_UPLOAD_BYTES); 64 MB up front covers the module and small clips
- # without a resize.
- "-sINITIAL_MEMORY=67108864"
- "-sMAXIMUM_MEMORY=1073741824"
- "-sENVIRONMENT=web"
- "-sNO_EXIT_RUNTIME=1")
+    "-fexceptions"
+    "--bind"
+    "-sMODULARIZE=1"
+    "-sEXPORT_NAME=createAc3ForgeModule"
+    "-sALLOW_MEMORY_GROWTH=1"
+    # Growth needs a ceiling: without MAXIMUM_MEMORY the heap can climb to
+    # wasm32's ~2 GB limit and the failure mode is the browser killing the
+    # tab. With one, exhaustion is a std::bad_alloc (-fexceptions above)
+    # that decoder_bindings.cpp turns into the demo's normal error path.
+    # 1 GB comfortably holds the largest input demo.js accepts (see its
+    # MAX_UPLOAD_BYTES); 64 MB up front covers the module and small clips
+    # without a resize.
+    "-sINITIAL_MEMORY=67108864"
+    "-sMAXIMUM_MEMORY=1073741824"
+    "-sENVIRONMENT=web"
+    "-sNO_EXIT_RUNTIME=1")
 
 set_target_properties(ac3forge_wasm_decode PROPERTIES
- OUTPUT_NAME "ac3forge_decode"
- RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo")
+    OUTPUT_NAME "ac3forge_decode"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo")
 
 add_custom_command(TARGET ac3forge_wasm_decode POST_BUILD
- COMMAND "${CMAKE_COMMAND}" -E copy_if_different
- "${CMAKE_CURRENT_SOURCE_DIR}/index.html"
- "${CMAKE_CURRENT_SOURCE_DIR}/demo.js"
- "${CMAKE_CURRENT_SOURCE_DIR}/favicon.svg"
- "${CMAKE_CURRENT_SOURCE_DIR}/favicon-32.png"
- "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo"
- COMMAND "${CMAKE_COMMAND}" -E make_directory
- "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/assets"
- COMMAND "${CMAKE_COMMAND}" -E copy_if_different
- "${CMAKE_CURRENT_SOURCE_DIR}/assets/demo.ec3"
- "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/assets"
- COMMENT "Assembling the servable wasm_decode_demo/ directory")
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/index.html"
+        "${CMAKE_CURRENT_SOURCE_DIR}/demo.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/favicon.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/favicon-32.png"
+        "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+        "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/assets"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/demo.ec3"
+        "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/assets"
+    COMMENT "Assembling the servable wasm_decode_demo/ directory")
 
 # ---------------------------------------------------------------------------
-# Roadmap UX6: the browser ENCODE page - a sibling module to the decode
+# in-browser encoding: the browser ENCODE page - a sibling module to the decode
 # target above, not a bigger version of it. Kept as a second .wasm/.js
 # rather than folded into ac3forge_wasm_decode so a page that only needs one
 # direction never pays for the other; see docs/platforms/wasm.md's "Encode
@@ -98,19 +98,19 @@ target_link_libraries(ac3forge_wasm_encode PRIVATE ac3::forge ac3::warnings)
 # bounded before reaching the decode module.
 target_compile_options(ac3forge_wasm_encode PRIVATE "-fexceptions")
 target_link_options(ac3forge_wasm_encode PRIVATE
- "-fexceptions"
- "--bind"
- "-sMODULARIZE=1"
- "-sEXPORT_NAME=createAc3ForgeEncodeModule"
- "-sALLOW_MEMORY_GROWTH=1"
- "-sINITIAL_MEMORY=67108864"
- "-sMAXIMUM_MEMORY=1073741824"
- "-sENVIRONMENT=web"
- "-sNO_EXIT_RUNTIME=1")
+    "-fexceptions"
+    "--bind"
+    "-sMODULARIZE=1"
+    "-sEXPORT_NAME=createAc3ForgeEncodeModule"
+    "-sALLOW_MEMORY_GROWTH=1"
+    "-sINITIAL_MEMORY=67108864"
+    "-sMAXIMUM_MEMORY=1073741824"
+    "-sENVIRONMENT=web"
+    "-sNO_EXIT_RUNTIME=1")
 
 set_target_properties(ac3forge_wasm_encode PROPERTIES
- OUTPUT_NAME "ac3forge_encode"
- RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo")
+    OUTPUT_NAME "ac3forge_encode"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo")
 
 # The round-trip preview (encode/app.js) loads the DECODE module too, and
 # wasm_encode_demo/ has to be independently servable ("cd .../wasm_encode_demo
@@ -124,15 +124,15 @@ set_target_properties(ac3forge_wasm_encode PROPERTIES
 add_dependencies(ac3forge_wasm_encode ac3forge_wasm_decode)
 
 add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
- COMMAND "${CMAKE_COMMAND}" -E copy_if_different
- "${CMAKE_CURRENT_SOURCE_DIR}/encode/index.html"
- "${CMAKE_CURRENT_SOURCE_DIR}/encode/app.js"
- "${CMAKE_CURRENT_SOURCE_DIR}/favicon.svg"
- "${CMAKE_CURRENT_SOURCE_DIR}/favicon-32.png"
- "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/ac3forge_decode.js"
- "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/ac3forge_decode.wasm"
- "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo"
- COMMENT "Assembling the servable wasm_encode_demo/ directory")
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/encode/index.html"
+        "${CMAKE_CURRENT_SOURCE_DIR}/encode/app.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/favicon.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/favicon-32.png"
+        "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/ac3forge_decode.js"
+        "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/ac3forge_decode.wasm"
+        "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo"
+    COMMENT "Assembling the servable wasm_encode_demo/ directory")
 
 # The Atmos object-authoring page (apps/wasm/atmos/) ships as a SUBDIRECTORY
 # of the encode demo rather than a third top-level demo: it loads the very
@@ -140,12 +140,12 @@ add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
 # directory that is copied around (docs site, local serving) with the
 # authoring page inside it for free.
 add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
- COMMAND "${CMAKE_COMMAND}" -E make_directory
- "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo/atmos"
- COMMAND "${CMAKE_COMMAND}" -E copy_if_different
- "${CMAKE_CURRENT_SOURCE_DIR}/atmos/index.html"
- "${CMAKE_CURRENT_SOURCE_DIR}/atmos/app.js"
- "${CMAKE_CURRENT_SOURCE_DIR}/favicon.svg"
- "${CMAKE_CURRENT_SOURCE_DIR}/favicon-32.png"
- "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo/atmos"
- COMMENT "Assembling the wasm_encode_demo/atmos/ authoring page")
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+        "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo/atmos"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/atmos/index.html"
+        "${CMAKE_CURRENT_SOURCE_DIR}/atmos/app.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/favicon.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/favicon-32.png"
+        "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo/atmos"
+    COMMENT "Assembling the wasm_encode_demo/atmos/ authoring page")

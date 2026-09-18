@@ -11,7 +11,7 @@
 #include "ac3/oba/motion.hpp"
 #include "ac3/audio/audio_backend.hpp"
 
-// ADM BWF → JOC bridge, phase 3 - the narrow
+// ADM BWF reader phase 3 of 3 ("ADM BWF reader feeding the JOC encoder") - the narrow
 // seam between main.cpp's 'atmos-adm' command and ac3adm::ac3adm/ac3::admbridge, this project's
 // one opt-in, non-default library (AC3FORGE_BUILD_ADM, default OFF - see root CMakeLists.txt's
 // own option() for why: libadm's Boost dependency).
@@ -50,13 +50,13 @@ namespace ac3cli {
 // long as its `pcm` spans are read, the same lifetime contract ac3::admbridge::BridgeResult
 // itself documents for its own `pcm` field.
 struct AdmAtmosSource {
- std::uint32_t sample_rate = 0;
- std::vector<bool> is_bed; // parallel to paths/pcm; true = bed speaker feed
- std::vector<ac3::oba::ObjectPath> paths; // pass directly to ac3::oba::evaluate_placements
- std::vector<std::span<const float>> pcm; // one mono span per channel; see `handle` above
- std::shared_ptr<void> handle; // opaque - owns the parsed document, if any
+    std::uint32_t sample_rate = 0;
+    std::vector<bool> is_bed;                 // parallel to paths/pcm; true = bed speaker feed
+    std::vector<ac3::oba::ObjectPath> paths;  // pass directly to ac3::oba::evaluate_placements
+    std::vector<std::span<const float>> pcm;  // one mono span per channel; see `handle` above
+    std::shared_ptr<void> handle;             // opaque - owns the parsed document, if any
 
- [[nodiscard]] std::size_t channel_count() const { return paths.size(); }
+    [[nodiscard]] std::size_t channel_count() const { return paths.size(); }
 };
 
 // Parses `path` (ac3adm::parse_bw64) and bridges it onto AtmosEncoder's input shape
@@ -65,6 +65,6 @@ struct AdmAtmosSource {
 // print. Empty `programme_id` means "the file's own default (lowest-ID) audioProgramme", the same
 // default ac3::admbridge::build itself documents.
 [[nodiscard]] std::expected<AdmAtmosSource, std::string> load_adm_atmos_source(
- std::string_view path, std::string_view programme_id);
+    std::string_view path, std::string_view programme_id);
 
-} // namespace ac3cli
+}  // namespace ac3cli

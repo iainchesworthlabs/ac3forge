@@ -28,7 +28,7 @@
 // ---------------------------------------------------------------------------
 // It compiles. That is the whole of the claim, and it is deliberately not
 // hedged anywhere else in these files so that it can be stated once, plainly,
-// here. No Mac has ever run this backend (hardware verification on real Macs), and the tap's TCC
+// here. No Mac has ever run this backend (ROADMAP.md DR9), and the tap's TCC
 // consent prompt is keyed to a code-signing identity this project's binaries
 // do not yet carry (DR6), so neither the tap nor the aggregate device
 // process_tap.mm builds has been observed to come into existence. Every
@@ -67,44 +67,44 @@ enum class TapScope : std::uint8_t { kOnlyListedProcess, kEverythingExceptListed
 // capture.cpp - the mapping lives there, next to the contract those errors
 // belong to, rather than here.
 enum class TapStatus : std::uint8_t {
- kOk,
- // This OS predates the tap API. See coreaudio_names.hpp's
- // kSystemAudioTapMinimumOs for which version, and why that one.
- kOsTooOld,
- // No audio process object answers to that process id. Note this is a
- // narrower question than "does that process exist": the HAL creates a
- // process object for a process that has touched Core Audio, so a live
- // process that has never played a sound has none either.
- kProcessNotFound,
- // There is no default output device to clock the aggregate against, and
- // to name as its main sub-device. A Mac with no output at all.
- kNoDefaultOutputDevice,
- // AudioHardwareCreateProcessTap refused. The consent denial lands here
- // too: a user who says no to the system-audio prompt, or a binary whose
- // signature means the prompt never appears, is a tap that was not
- // created rather than one that runs silent.
- kTapRefused,
- // The tap exists but AudioHardwareCreateAggregateDevice refused, so
- // there is no device to register an IOProc on. The tap is destroyed
- // before returning; the caller is left owning nothing.
- kAggregateRefused,
- // Neither the tap's own kAudioTapPropertyFormat nor anything else says
- // what shape it will deliver, so there is no way to size a ring buffer
- // or convert a sample. Both objects are destroyed before returning.
- kFormatUnreadable,
+    kOk,
+    // This OS predates the tap API. See coreaudio_names.hpp's
+    // kSystemAudioTapMinimumOs for which version, and why that one.
+    kOsTooOld,
+    // No audio process object answers to that process id. Note this is a
+    // narrower question than "does that process exist": the HAL creates a
+    // process object for a process that has touched Core Audio, so a live
+    // process that has never played a sound has none either.
+    kProcessNotFound,
+    // There is no default output device to clock the aggregate against, and
+    // to name as its main sub-device. A Mac with no output at all.
+    kNoDefaultOutputDevice,
+    // AudioHardwareCreateProcessTap refused. The consent denial lands here
+    // too: a user who says no to the system-audio prompt, or a binary whose
+    // signature means the prompt never appears, is a tap that was not
+    // created rather than one that runs silent.
+    kTapRefused,
+    // The tap exists but AudioHardwareCreateAggregateDevice refused, so
+    // there is no device to register an IOProc on. The tap is destroyed
+    // before returning; the caller is left owning nothing.
+    kAggregateRefused,
+    // Neither the tap's own kAudioTapPropertyFormat nor anything else says
+    // what shape it will deliver, so there is no way to size a ring buffer
+    // or convert a sample. Both objects are destroyed before returning.
+    kFormatUnreadable,
 };
 
 // A created tap and the private aggregate device that carries it. Both ids
 // are owned by the caller and are released by destroy_process_tap(); nothing
 // in this pair keeps a copy.
 struct ProcessTap {
- AudioObjectID tap = kAudioObjectUnknown;
- AudioObjectID aggregate_device = kAudioObjectUnknown;
- // What the tap says it will deliver - read from the tap object itself
- // rather than assumed, because a mixdown tap's rate is the rate of the
- // device it mixes down to and neither this code nor its caller chose
- // that. capture.cpp compares it against what the caller asked for.
- AudioStreamBasicDescription format{};
+    AudioObjectID tap = kAudioObjectUnknown;
+    AudioObjectID aggregate_device = kAudioObjectUnknown;
+    // What the tap says it will deliver - read from the tap object itself
+    // rather than assumed, because a mixdown tap's rate is the rate of the
+    // device it mixes down to and neither this code nor its caller chose
+    // that. capture.cpp compares it against what the caller asked for.
+    AudioStreamBasicDescription format{};
 };
 
 // Creates a tap over `process_id` (or over everything except it) and a
@@ -131,10 +131,10 @@ struct ProcessTap {
 // mute that one" - and it is the right answer for a mixer that is about to
 // render the same audio itself. It is the wrong answer for a caller that
 // wanted a global tap only to listen. Nobody has heard either happen: no Mac
-// has run this (hardware verification on real Macs), and the sentence above is what the mute
+// has run this (ROADMAP.md DR9), and the sentence above is what the mute
 // behaviour's documented meaning implies, not something observed.
 [[nodiscard]] TapStatus create_process_tap(std::uint32_t process_id, TapMixdown mixdown,
- TapScope scope, ProcessTap& out);
+                                           TapScope scope, ProcessTap& out);
 
 // Destroys the aggregate device and then the tap, in that order - the device
 // refers to the tap, so the reference goes first - and clears `tap` back to
@@ -145,4 +145,4 @@ struct ProcessTap {
 // to do if the HAL refuses to let go.
 void destroy_process_tap(ProcessTap& tap);
 
-} // namespace ac3::coreaudio
+}  // namespace ac3::coreaudio

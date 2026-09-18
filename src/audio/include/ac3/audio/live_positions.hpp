@@ -8,7 +8,7 @@
 
 #include "ac3/oba/scene.hpp"
 
-// A live object-position source over OSC (legacy item UX4): a UDP listener on
+// A live object-position source over OSC (live OSC object positions): a UDP listener on
 // its own thread, feeding an ac3::oba::SceneCursor once per encoder frame.
 // This is the socket-and-thread half; the OSC 1.0 wire form itself
 // (ac3::oba::parse_osc_packet/apply, src/forge) is pure and portable, and
@@ -26,10 +26,10 @@
 namespace ac3::audio {
 
 enum class PositionSourceError : std::uint8_t {
- kBadAddress, // bind_address did not parse as an IPv4 dotted-quad
- kSocketFailed, // the OS socket layer itself failed
- kBindFailed, // the OS refused the bind (port in use, permission, ...)
- kAlreadyRunning, // start() called on an instance that is already listening
+    kBadAddress,      // bind_address did not parse as an IPv4 dotted-quad
+    kSocketFailed,    // the OS socket layer itself failed
+    kBindFailed,      // the OS refused the bind (port in use, permission, ...)
+    kAlreadyRunning,  // start() called on an instance that is already listening
 };
 
 [[nodiscard]] std::string_view describe(PositionSourceError error);
@@ -40,10 +40,10 @@ enum class PositionSourceError : std::uint8_t {
 // malformed or unaddressed datagram is exactly what these count, not a
 // fault the session needs to know about any other way.
 struct PositionSourceStats {
- std::uint64_t datagrams = 0; // UDP datagrams received
- std::uint64_t packets_rejected = 0; // ac3::oba::OscParseStats::packets_rejected, summed
- std::uint64_t messages_dropped = 0; // ac3::oba::OscParseStats::messages_dropped, summed
- std::uint64_t updates_applied = 0; // SceneCursor::push calls this source has made
+    std::uint64_t datagrams = 0;          // UDP datagrams received
+    std::uint64_t packets_rejected = 0;   // ac3::oba::OscParseStats::packets_rejected, summed
+    std::uint64_t messages_dropped = 0;   // ac3::oba::OscParseStats::messages_dropped, summed
+    std::uint64_t updates_applied = 0;    // SceneCursor::push calls this source has made
 };
 
 // Owns a UDP socket and a receiver thread. Objects are addressed 0-based, up
@@ -55,42 +55,42 @@ struct PositionSourceStats {
 // messages_dropped.
 class LivePositionSource {
 public:
- explicit LivePositionSource(std::size_t objects);
- ~LivePositionSource();
- LivePositionSource(const LivePositionSource&) = delete;
- LivePositionSource& operator=(const LivePositionSource&) = delete;
- LivePositionSource(LivePositionSource&&) = delete;
- LivePositionSource& operator=(LivePositionSource&&) = delete;
+    explicit LivePositionSource(std::size_t objects);
+    ~LivePositionSource();
+    LivePositionSource(const LivePositionSource&) = delete;
+    LivePositionSource& operator=(const LivePositionSource&) = delete;
+    LivePositionSource(LivePositionSource&&) = delete;
+    LivePositionSource& operator=(LivePositionSource&&) = delete;
 
- // Binds and starts the receiver thread. bind_address is a dotted-quad
- // IPv4 literal ("127.0.0.1", "0.0.0.0") - never a hostname, so this
- // never blocks on DNS. port == 0 asks the OS for an ephemeral port;
- // local_port() reads back what it actually got, which is how a
- // hermetic test binds without racing a fixed port number.
- [[nodiscard]] std::expected<void, PositionSourceError> start(std::string_view bind_address,
- std::uint16_t port);
+    // Binds and starts the receiver thread. bind_address is a dotted-quad
+    // IPv4 literal ("127.0.0.1", "0.0.0.0") - never a hostname, so this
+    // never blocks on DNS. port == 0 asks the OS for an ephemeral port;
+    // local_port() reads back what it actually got, which is how a
+    // hermetic test binds without racing a fixed port number.
+    [[nodiscard]] std::expected<void, PositionSourceError> start(std::string_view bind_address,
+                                                                  std::uint16_t port);
 
- // Joins the receiver thread and closes the socket. Safe to call whether
- // or not start() succeeded; the destructor calls this too.
- void stop();
+    // Joins the receiver thread and closes the socket. Safe to call whether
+    // or not start() succeeded; the destructor calls this too.
+    void stop();
 
- [[nodiscard]] bool running() const;
- [[nodiscard]] std::uint16_t local_port() const;
- [[nodiscard]] PositionSourceStats stats() const;
+    [[nodiscard]] bool running() const;
+    [[nodiscard]] std::uint16_t local_port() const;
+    [[nodiscard]] PositionSourceStats stats() const;
 
- // Once per encode frame, before sampling `cursor` - the sampling
- // boundary this whole type exists to define. Merges whatever this
- // source has received since the last call onto `cursor`'s objects and
- // pushes the result; an object with a pending gain/lfe-only update and
- // no position yet is left pending rather than applied (see
- // ac3::oba::apply's own comment) and is retried on the next call, not
- // dropped. Allocates nothing: the pending-update slots are sized once,
- // at construction, to `objects`.
- void drain_into(ac3::oba::SceneCursor& cursor, double time_s);
+    // Once per encode frame, before sampling `cursor` - the sampling
+    // boundary this whole type exists to define. Merges whatever this
+    // source has received since the last call onto `cursor`'s objects and
+    // pushes the result; an object with a pending gain/lfe-only update and
+    // no position yet is left pending rather than applied (see
+    // ac3::oba::apply's own comment) and is retried on the next call, not
+    // dropped. Allocates nothing: the pending-update slots are sized once,
+    // at construction, to `objects`.
+    void drain_into(ac3::oba::SceneCursor& cursor, double time_s);
 
 private:
- struct Impl;
- std::unique_ptr<Impl> impl_;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
-} // namespace ac3::audio
+}  // namespace ac3::audio

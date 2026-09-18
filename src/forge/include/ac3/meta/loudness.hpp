@@ -17,7 +17,7 @@
 // (BS.1770-4 §2's un-gated block power at two window sizes), Loudness Range
 // (EBU Tech 3342's own gated-percentile statistic) and true-peak level
 // (BS.1770-4 Annex 2's oversampled peak, independent of the loudness path
-// entirely). feature C1.
+// entirely). Roadmap item C1.
 //
 // A/52 defines dialnorm as how far "the average dialogue level is below
 // digital 100 percent" and never says how to measure it — the standard is
@@ -71,112 +71,112 @@ namespace ac3::meta {
 // 0.02 dB, which is what makes ffmpeg a usable oracle for the Annex 1 path
 // and not for this one.
 [[nodiscard]] AC3FORGE_EXPORT std::optional<double> position_weight(
- eac3::chanmap::Location location);
+    eac3::chanmap::Location location);
 
 class AC3FORGE_EXPORT LoudnessMeter {
- public:
- // BS.1770 Annex 1's basic algorithm for the 3/2 multichannel system:
- // channel weights follow its Table 3 - unity for the front channels,
- // +1.5 dB for the surrounds, and the LFE excluded outright - keyed on the
- // Table 5.8 acmod, whose coded order push() then expects.
- //
- // Table 3 names exactly five channels (L, R, C, Ls, Rs), so the lone
- // surround of 2/1 and 3/1 is not in it. This constructor reads that
- // surround as the surround FIELD collapsed to one channel - the pair's
- // own +1.5 dB - which is what A/52's own downmix does with it (it feeds
- // both surround outputs). The Annex 3 constructor below reaches the other
- // answer for the same coded channel, because there it is Table E2.5's Cs,
- // a discrete rear centre at 180 degrees, and Table 4 puts 180 degrees
- // outside the +1.5 dB sector. Both are faithful to their own algorithm;
- // the two algorithms genuinely differ here, and that is the only layout
- // for which they do.
- LoudnessMeter(SampleRate rate, Acmod acmod, bool lfe);
+   public:
+    // BS.1770 Annex 1's basic algorithm for the 3/2 multichannel system:
+    // channel weights follow its Table 3 - unity for the front channels,
+    // +1.5 dB for the surrounds, and the LFE excluded outright - keyed on the
+    // Table 5.8 acmod, whose coded order push() then expects.
+    //
+    // Table 3 names exactly five channels (L, R, C, Ls, Rs), so the lone
+    // surround of 2/1 and 3/1 is not in it. This constructor reads that
+    // surround as the surround FIELD collapsed to one channel - the pair's
+    // own +1.5 dB - which is what A/52's own downmix does with it (it feeds
+    // both surround outputs). The Annex 3 constructor below reaches the other
+    // answer for the same coded channel, because there it is Table E2.5's Cs,
+    // a discrete rear centre at 180 degrees, and Table 4 puts 180 degrees
+    // outside the +1.5 dB sector. Both are faithful to their own algorithm;
+    // the two algorithms genuinely differ here, and that is the only layout
+    // for which they do.
+    LoudnessMeter(SampleRate rate, Acmod acmod, bool lfe);
 
- // BS.1770-5 Annex 3's extended algorithm over a rendered Table E2.5
- // layout - the wide layouts (7.1, 5.1.2, 5.1.4, 7.1.4) an acmod cannot
- // name, because a dependent substream's height/wide/rear channels are not
- // members of Table 5.8 at all. `layout` is the rendered program's channel
- // order exactly as Eac3Decoder::decode_access_unit reports it, and push()
- // expects spans in that same order.
- //
- // For any layout whose full-bandwidth channels are all Table 5.8's own
- // (mono through 5.1), this agrees with the acmod constructor above
- // channel for channel - Ls/Rs are M±110, squarely inside Table 4's
- // +1.5 dB sector, which is where Table 3's 1.41 came from in the first
- // place. 1+1 dual mono has no layout to pass here: it is two unrelated
- // programmes rather than one soundfield, so it keeps its own two meters.
- LoudnessMeter(SampleRate rate, const eac3::chanmap::Layout& layout);
- // Declared (and defined in loudness.cpp, where Impl below is complete)
- // rather than implicit: a dllexport class generates every implicit
- // special member whether or not called, and the unique_ptr member makes
- // the implicit copy deleted - which is fine - but move-assignment's
- // implicit reset() needs Impl complete, so it cannot stay implicit once
- // Impl is only forward-declared here.
- ~LoudnessMeter();
- LoudnessMeter(const LoudnessMeter&) = delete;
- LoudnessMeter& operator=(const LoudnessMeter&) = delete;
- LoudnessMeter(LoudnessMeter&&) noexcept;
- LoudnessMeter& operator=(LoudnessMeter&&) noexcept;
+    // BS.1770-5 Annex 3's extended algorithm over a rendered Table E2.5
+    // layout - the wide layouts (7.1, 5.1.2, 5.1.4, 7.1.4) an acmod cannot
+    // name, because a dependent substream's height/wide/rear channels are not
+    // members of Table 5.8 at all. `layout` is the rendered program's channel
+    // order exactly as Eac3Decoder::decode_access_unit reports it, and push()
+    // expects spans in that same order.
+    //
+    // For any layout whose full-bandwidth channels are all Table 5.8's own
+    // (mono through 5.1), this agrees with the acmod constructor above
+    // channel for channel - Ls/Rs are M±110, squarely inside Table 4's
+    // +1.5 dB sector, which is where Table 3's 1.41 came from in the first
+    // place. 1+1 dual mono has no layout to pass here: it is two unrelated
+    // programmes rather than one soundfield, so it keeps its own two meters.
+    LoudnessMeter(SampleRate rate, const eac3::chanmap::Layout& layout);
+    // Declared (and defined in loudness.cpp, where Impl below is complete)
+    // rather than implicit: a dllexport class generates every implicit
+    // special member whether or not called, and the unique_ptr member makes
+    // the implicit copy deleted - which is fine - but move-assignment's
+    // implicit reset() needs Impl complete, so it cannot stay implicit once
+    // Impl is only forward-declared here.
+    ~LoudnessMeter();
+    LoudnessMeter(const LoudnessMeter&) = delete;
+    LoudnessMeter& operator=(const LoudnessMeter&) = delete;
+    LoudnessMeter(LoudnessMeter&&) noexcept;
+    LoudnessMeter& operator=(LoudnessMeter&&) noexcept;
 
- // Any number of samples; spans are the coded channels in AC-3 order with
- // LFE last, matching the encoder's own input convention.
- void push(std::span<const std::span<const float>> channels);
+    // Any number of samples; spans are the coded channels in AC-3 order with
+    // LFE last, matching the encoder's own input convention.
+    void push(std::span<const std::span<const float>> channels);
 
- // std::nullopt until at least one 400 ms block has passed the absolute
- // gate — silence has no meaningful loudness, and inventing one would put
- // a wrong dialnorm on the stream.
- [[nodiscard]] std::optional<double> integrated_lkfs() const;
+    // std::nullopt until at least one 400 ms block has passed the absolute
+    // gate — silence has no meaningful loudness, and inventing one would put
+    // a wrong dialnorm on the stream.
+    [[nodiscard]] std::optional<double> integrated_lkfs() const;
 
- // BS.1770-4 §2's un-gated block loudness: the same 400 ms/75%-overlap
- // window integrated_lkfs() gates internally, reported directly instead.
- // Reflects the most recently completed 400 ms block; std::nullopt until
- // one has elapsed. A block whose power is exactly zero is also
- // std::nullopt rather than -inf LKFS, matching integrated_lkfs()'s own
- // "no meaningful loudness" stance on silence.
- [[nodiscard]] std::optional<double> momentary_lkfs() const;
+    // BS.1770-4 §2's un-gated block loudness: the same 400 ms/75%-overlap
+    // window integrated_lkfs() gates internally, reported directly instead.
+    // Reflects the most recently completed 400 ms block; std::nullopt until
+    // one has elapsed. A block whose power is exactly zero is also
+    // std::nullopt rather than -inf LKFS, matching integrated_lkfs()'s own
+    // "no meaningful loudness" stance on silence.
+    [[nodiscard]] std::optional<double> momentary_lkfs() const;
 
- // The same, over a 3 s window instead of 400 ms, still un-gated.
- // std::nullopt until 3 s have elapsed.
- [[nodiscard]] std::optional<double> short_term_lkfs() const;
+    // The same, over a 3 s window instead of 400 ms, still un-gated.
+    // std::nullopt until 3 s have elapsed.
+    [[nodiscard]] std::optional<double> short_term_lkfs() const;
 
- // EBU Tech 3342 §3.1 Loudness Range: the 95th minus the 10th percentile
- // of short-term loudness values, themselves passed through Tech 3342's
- // own cascaded gate — an absolute threshold at −70 LUFS then a relative
- // one at −20 LU below the mean of what survives it. This is NOT the same
- // relative gate integrated_lkfs() uses (−10 LU): Tech 3342 §3.1 specifies
- // −20 LU for LRA specifically, and the population being gated is
- // short-term (3 s) blocks rather than integrated-loudness (400 ms) ones.
- // std::nullopt until at least one short-term value survives both gates.
- [[nodiscard]] std::optional<double> loudness_range() const;
+    // EBU Tech 3342 §3.1 Loudness Range: the 95th minus the 10th percentile
+    // of short-term loudness values, themselves passed through Tech 3342's
+    // own cascaded gate — an absolute threshold at −70 LUFS then a relative
+    // one at −20 LU below the mean of what survives it. This is NOT the same
+    // relative gate integrated_lkfs() uses (−10 LU): Tech 3342 §3.1 specifies
+    // −20 LU for LRA specifically, and the population being gated is
+    // short-term (3 s) blocks rather than integrated-loudness (400 ms) ones.
+    // std::nullopt until at least one short-term value survives both gates.
+    [[nodiscard]] std::optional<double> loudness_range() const;
 
- // ITU-R BS.1770-4 Annex 2: the highest absolute sample value found in a
- // 4x-oversampled reconstruction of every pushed channel, LFE included —
- // true peak is about physical overload headroom, not perceived
- // loudness, so unlike every measure above it does not exclude LFE or
- // apply the surround weighting. In dBTP (decibels relative to 100% full
- // scale, true-peak measurement). std::nullopt until at least one sample
- // has been pushed.
- [[nodiscard]] std::optional<double> true_peak_dbtp() const;
+    // ITU-R BS.1770-4 Annex 2: the highest absolute sample value found in a
+    // 4x-oversampled reconstruction of every pushed channel, LFE included —
+    // true peak is about physical overload headroom, not perceived
+    // loudness, so unlike every measure above it does not exclude LFE or
+    // apply the surround weighting. In dBTP (decibels relative to 100% full
+    // scale, true-peak measurement). std::nullopt until at least one sample
+    // has been pushed.
+    [[nodiscard]] std::optional<double> true_peak_dbtp() const;
 
- [[nodiscard]] int channel_count() const;
+    [[nodiscard]] int channel_count() const;
 
- private:
- // Both constructors, once each has decided which pushed channel slots
- // carry loudness and with what weight: everything from the K-weighting
- // design down to the per-channel state sizing is common to Annex 1 and
- // Annex 3, which is exactly Annex 3's own "first, second and fourth
- // stages ... are the same".
- void init(SampleRate rate, int channels, std::span<const int> loudness_slots,
- std::span<const double> weights);
- void push_block();
- void push_true_peak(int channel, float sample);
+   private:
+    // Both constructors, once each has decided which pushed channel slots
+    // carry loudness and with what weight: everything from the K-weighting
+    // design down to the per-channel state sizing is common to Annex 1 and
+    // Annex 3, which is exactly Annex 3's own "first, second and fourth
+    // stages ... are the same".
+    void init(SampleRate rate, int channels, std::span<const int> loudness_slots,
+              std::span<const double> weights);
+    void push_block();
+    void push_true_peak(int channel, float sample);
 
- // Every private data member - the K-weighting filter state, the
- // loudness/true-peak accumulators, all of it - lives behind this one
- // pimpl, following the same pattern as ac3::io::WavStreamReader/Writer
- // and ac3::FrameEncoder. Impl is defined in loudness.cpp.
- struct Impl;
- std::unique_ptr<Impl> impl_;
+    // Every private data member - the K-weighting filter state, the
+    // loudness/true-peak accumulators, all of it - lives behind this one
+    // pimpl, following the same pattern as ac3::io::WavStreamReader/Writer
+    // and ac3::FrameEncoder. Impl is defined in loudness.cpp.
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 // §5.4.2.8: dialnorm is how many dB dialogue sits below digital 100%, valid
@@ -185,4 +185,4 @@ class AC3FORGE_EXPORT LoudnessMeter {
 // 31 is a poor default rather than a neutral one.
 [[nodiscard]] AC3FORGE_EXPORT int dialnorm_from_lkfs(double lkfs);
 
-} // namespace ac3::meta
+}  // namespace ac3::meta

@@ -12,12 +12,12 @@
 // the function is ever called. Measured on the object file
 // (dumpbin /HEADERS over mdct.cpp.obj):
 //
-// ForwardCosTable<512> 1,048,576 B forward, long
-// ForwardCosTable<256> x 2 524,288 B forward, the two short halves
-// InnerSumTable 262,144 B inverse, long
-// InnerSumPairTable 65,536 B inverse, short
-// ----------
-// 1,900,544 B (1.81 MiB) of .bss
+//     ForwardCosTable<512>      1,048,576 B   forward, long
+//     ForwardCosTable<256> x 2    524,288 B   forward, the two short halves
+//     InnerSumTable               262,144 B   inverse, long
+//     InnerSumPairTable            65,536 B   inverse, short
+//                                ----------
+//                                1,900,544 B  (1.81 MiB) of .bss
 //
 // - against about 12 KiB for every table the FAST paths need. A set-top box
 // or DSP port paying 1.81 MiB of RAM for the arithmetic it is not running is
@@ -43,23 +43,23 @@ namespace ac3::internal {
 // order as the fast paths' oracle has always used - moving the loop here
 // changes where the code lives, not what it computes.
 void reference_mdct512_forward(std::span<const double, 512> windowed,
- std::span<double, 256> coeffs);
+                               std::span<double, 256> coeffs);
 void reference_mdct256_forward_first(std::span<const double, 256> windowed,
- std::span<double, 128> coeffs);
+                                     std::span<double, 128> coeffs);
 void reference_mdct256_forward_second(std::span<const double, 256> windowed,
- std::span<double, 128> coeffs);
+                                      std::span<double, 128> coeffs);
 
 // §7.9.4.2 step 3's N/4-point (long) and N/8-point (short) complex "IFFT"
 // sums, evaluated as the pseudocode writes them:
-// t[n] = sum_k z[k] * (cos(2*pi*k*n/P) + j*sin(2*pi*k*n/P)).
+//   t[n] = sum_k z[k] * (cos(2*pi*k*n/P) + j*sin(2*pi*k*n/P)).
 // The short form is called twice per block-switched block, once per half -
 // the two sums are independent and share the one table, so running them as
 // two passes rather than one interleaved loop leaves every accumulation
 // order, and therefore every bit, exactly as it was.
 void reference_inner_sum_128(std::span<const double, 128> z_re,
- std::span<const double, 128> z_im, std::span<double, 128> t_re,
- std::span<double, 128> t_im);
+                             std::span<const double, 128> z_im, std::span<double, 128> t_re,
+                             std::span<double, 128> t_im);
 void reference_inner_sum_64(std::span<const double, 64> z_re, std::span<const double, 64> z_im,
- std::span<double, 64> t_re, std::span<double, 64> t_im);
+                            std::span<double, 64> t_re, std::span<double, 64> t_im);
 
-} // namespace ac3::internal
+}  // namespace ac3::internal

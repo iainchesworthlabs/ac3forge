@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # iamf::iamf - a standalone writer for AOM's IAMF (Immersive Audio Model and
-# Formats) v1.1.0, IAMF writer, phase 1 of 3: an
+# Formats) v1.1.0, IAMF writer, phase 1 of 3 (): an
 # `ipcm`-substream OBU/ISOBMFF writer for a channel-based 7.1.4 element,
 # fed from an E-AC-3 decode. E-AC-3 is not in IAMF's codec list (Opus,
 # AAC-LC, FLAC, LPCM only) and never can be, so this is a decode-then-rewrap
@@ -40,20 +40,20 @@ target_link_libraries(iamf_shared PUBLIC iamf_objects)
 add_library(iamf::iamf_static ALIAS iamf_static)
 add_library(iamf::iamf_shared ALIAS iamf_shared)
 if(BUILD_SHARED_LIBS)
- add_library(iamf::iamf ALIAS iamf_shared)
+    add_library(iamf::iamf ALIAS iamf_shared)
 else()
- add_library(iamf::iamf ALIAS iamf_static)
+    add_library(iamf::iamf ALIAS iamf_static)
 endif()
 
 target_sources(iamf_objects
- PRIVATE
- src/iamf.cpp)
+    PRIVATE
+        src/iamf.cpp)
 
 target_include_directories(iamf_objects
- PUBLIC
- "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
- "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
- "$<INSTALL_INTERFACE:include>")
+    PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>"
+        "$<INSTALL_INTERFACE:include>")
 
 target_compile_features(iamf_objects PUBLIC cxx_std_23)
 
@@ -62,28 +62,28 @@ target_compile_features(iamf_objects PUBLIC cxx_std_23)
 # plain PRIVATE link isn't enough for an OBJECT library that's part of an
 # install(EXPORT) set.
 target_link_libraries(iamf_objects PRIVATE
- "$<BUILD_INTERFACE:ac3::warnings>"
- "$<BUILD_INTERFACE:ac3::coverage>")
+    "$<BUILD_INTERFACE:ac3::warnings>"
+    "$<BUILD_INTERFACE:ac3::coverage>")
 
 set_target_properties(iamf_objects PROPERTIES
- POSITION_INDEPENDENT_CODE ON
- CXX_VISIBILITY_PRESET hidden
- VISIBILITY_INLINES_HIDDEN ON)
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON)
 
 include(GenerateExportHeader)
 set_target_properties(iamf_shared PROPERTIES DEFINE_SYMBOL "IAMF_BUILDING_SHARED")
 generate_export_header(iamf_shared
- BASE_NAME IAMF
- EXPORT_MACRO_NAME IAMF_EXPORT
- EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iamf/export.hpp"
- DEFINE_NO_DEPRECATED
- STATIC_DEFINE IAMF_STATIC_DEFINE)
+    BASE_NAME IAMF
+    EXPORT_MACRO_NAME IAMF_EXPORT
+    EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/iamf/export.hpp"
+    DEFINE_NO_DEPRECATED
+    STATIC_DEFINE IAMF_STATIC_DEFINE)
 target_compile_definitions(iamf_objects PRIVATE IAMF_BUILDING_SHARED)
 target_compile_definitions(iamf_static PUBLIC IAMF_STATIC_DEFINE)
 
 set_target_properties(iamf_shared PROPERTIES
- VERSION "${PROJECT_VERSION}"
- SOVERSION "${PROJECT_VERSION}")
+    VERSION "${PROJECT_VERSION}"
+    SOVERSION "${PROJECT_VERSION}")
 
 set_target_properties(iamf_shared PROPERTIES OUTPUT_NAME "iamf")
 set_target_properties(iamf_static PROPERTIES OUTPUT_NAME "iamf_static")

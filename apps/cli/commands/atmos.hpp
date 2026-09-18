@@ -18,8 +18,8 @@ namespace ac3cli::commands {
 // which JOC can actually pull them apart again. Heights are what makes this
 // worth doing at all: a 5.1 bed cannot carry them, and the object metadata can.
 int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate,
- std::uint32_t objects, std::uint32_t orbit_seconds, std::string_view mode,
- const ac3cli::Options& meta);
+             std::uint32_t objects, std::uint32_t orbit_seconds, std::string_view mode,
+             const ac3cli::Options& meta);
 
 // Objects driven by a hand-authored keyframe file rather than the built-in
 // orbit above - the CLI-side proof that ac3::oba's path primitive works end
@@ -27,7 +27,7 @@ int run_atmos(std::string_view out_path, std::uint32_t seconds, std::uint32_t bi
 // An object index the file never mentions holds still at room centre, the
 // same fallback the GUI uses for an object with no authored path.
 int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::uint32_t seconds,
- std::uint32_t bitrate, std::uint32_t objects_arg, const ac3cli::Options& meta);
+                   std::uint32_t bitrate, std::uint32_t objects_arg, const ac3cli::Options& meta);
 
 // Every channel of a real file as its own object, over a 5.1 bed with JOC and
 // OAMD beside it. The synthetic 'atmos' above shows what the object layer can
@@ -35,16 +35,16 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
 // actually recorded - and it is what the GUI's object mode runs, so the two
 // front ends can be compared on the same file.
 int run_atmos_encode(std::string_view in_path, std::string_view out_path,
- std::uint32_t bitrate, std::uint32_t objects,
- const ac3cli::Options& meta, std::string_view paths_path = {});
+                     std::uint32_t bitrate, std::uint32_t objects,
+                     const ac3cli::Options& meta, std::string_view paths_path = {});
 
-// The inverse of the four encoders above (legacy item IO7): takes the object layer OUT of a finished
+// The inverse of the four encoders above (object-layer strip): takes the object layer OUT of a finished
 // DD+ JOC stream, leaving a plain DD+ 5.1 stream whose bed audio is bit-identical - not decoded,
 // not re-encoded, just the EMDF container and its addbsi marker removed and the framing
 // re-derived around what is left. See ac3/io/object_strip.hpp for why that is lossless and why
 // the container is removed rather than emptied.
 int run_strip_objects(std::string_view in_path, std::string_view out_path,
- const ac3cli::Options& meta);
+                      const ac3cli::Options& meta);
 
 // ADM BWF reader phase 3 of 3 - a real ADM BWF master (BS.2076-2 ADM XML embedded in a BS.2088-1
 // BW64/RF64 container) straight to DD+ JOC E-AC-3, no WAV plus a hand-authored keyframe file the
@@ -53,7 +53,7 @@ int run_strip_objects(std::string_view in_path, std::string_view out_path,
 // comment for why this function is unconditional (ac3adm::ac3adm/ac3::admbridge
 // linked-or-not is a build-time FILE choice, never a preprocessor conditional).
 int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
- const ac3cli::Options& meta, std::string_view programme_id);
+                  const ac3cli::Options& meta, std::string_view programme_id);
 
 // IAB reader phase 3 of 3 - a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2's Immersive
 // Audio Bitstream, a bare elementary .iab file or a real MXF Track File alike) straight to DD+ JOC
@@ -63,6 +63,6 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
 // (ac3iab::ac3iab/ac3::admbridge linked-or-not is a build-time FILE choice, never a preprocessor
 // conditional) and why it rides run_atmos_adm's own AC3FORGE_BUILD_ADM gate rather than a new one.
 int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
- const ac3cli::Options& meta);
+                  const ac3cli::Options& meta);
 
-} // namespace ac3cli::commands
+}  // namespace ac3cli::commands

@@ -50,62 +50,62 @@
 // library target to link, the same arrangement the CLI's own support.cpp
 // has).
 class RecordingSink {
- public:
- enum class Container : std::uint8_t {
- kElementary,
- kMatroska,
- kSpdif,
- kMpegts,
- kFmp4,
- };
+   public:
+    enum class Container : std::uint8_t {
+        kElementary,
+        kMatroska,
+        kSpdif,
+        kMpegts,
+        kFmp4,
+    };
 
- struct Config {
- Container container = Container::kElementary;
- bool eac3 = false;
- std::uint32_t sample_rate = 48000;
- int channels = 2;
- // kFmp4 only: how many of the most recent media segments the HLS
- // playlist and DASH MPD list - a rolling live window
- // (Fmp4FolderWriter::open's own parameter). 0, the default, lists
- // every segment.
- std::uint32_t fmp4_window_segments = 0;
- };
+    struct Config {
+        Container container = Container::kElementary;
+        bool eac3 = false;
+        std::uint32_t sample_rate = 48000;
+        int channels = 2;
+        // kFmp4 only: how many of the most recent media segments the HLS
+        // playlist and DASH MPD list - a rolling live window
+        // (Fmp4FolderWriter::open's own parameter). 0, the default, lists
+        // every segment.
+        std::uint32_t fmp4_window_segments = 0;
+    };
 
- // Empty on success. A failure here happens before any capture is worth
- // starting - the file could not be created, or the track refused to
- // validate - so the caller can surface it immediately rather than at
- // the end of a take. For kFmp4 `path` names a DIRECTORY (the same choice
- // EncoderController::outputIsFolder already makes for that container),
- // created here; its writer, though, cannot exist until the first frame -
- // see push().
- [[nodiscard]] std::string open(const std::string& path, const Config& config);
+    // Empty on success. A failure here happens before any capture is worth
+    // starting - the file could not be created, or the track refused to
+    // validate - so the caller can surface it immediately rather than at
+    // the end of a take. For kFmp4 `path` names a DIRECTORY (the same choice
+    // EncoderController::outputIsFolder already makes for that container),
+    // created here; its writer, though, cannot exist until the first frame -
+    // see push().
+    [[nodiscard]] std::string open(const std::string& path, const Config& config);
 
- // Empty on success. On failure the bytes already written stay on disk -
- // a partial take is a take, unlike a failed file encode whose input
- // still exists - and the caller decides whether to keep recording.
- [[nodiscard]] std::string push(std::span<const std::byte> frame);
+    // Empty on success. On failure the bytes already written stay on disk -
+    // a partial take is a take, unlike a failed file encode whose input
+    // still exists - and the caller decides whether to keep recording.
+    [[nodiscard]] std::string push(std::span<const std::byte> frame);
 
- // Finalizes the container. With zero frames pushed, removes the file
- // and reports "Nothing was encoded." - the whole-buffer path this
- // replaces never created a file at all in that case.
- [[nodiscard]] std::string close();
+    // Finalizes the container. With zero frames pushed, removes the file
+    // and reports "Nothing was encoded." - the whole-buffer path this
+    // replaces never created a file at all in that case.
+    [[nodiscard]] std::string close();
 
- [[nodiscard]] std::size_t frames() const { return frames_; }
+    [[nodiscard]] std::size_t frames() const { return frames_; }
 
- private:
- [[nodiscard]] bool write_file(std::span<const std::byte> bytes);
+   private:
+    [[nodiscard]] bool write_file(std::span<const std::byte> bytes);
 
- Config config_;
- std::string path_;
- bool open_ = false;
- std::size_t frames_ = 0;
- // kElementary / kMatroska / kMpegts write here...
- std::ofstream file_;
- // ...through these; kSpdif goes through wav_ instead.
- std::optional<matroska::Writer> matroska_;
- std::optional<mpegts::Writer> mpegts_;
- ac3::io::WavPcm16StreamWriter wav_;
- ac3::iec61937::Eac3BurstPacker packer_;
- // ...and kFmp4 writes a folder of its own files through this.
- Fmp4FolderWriter fmp4_;
+    Config config_;
+    std::string path_;
+    bool open_ = false;
+    std::size_t frames_ = 0;
+    // kElementary / kMatroska / kMpegts write here...
+    std::ofstream file_;
+    // ...through these; kSpdif goes through wav_ instead.
+    std::optional<matroska::Writer> matroska_;
+    std::optional<mpegts::Writer> mpegts_;
+    ac3::io::WavPcm16StreamWriter wav_;
+    ac3::iec61937::Eac3BurstPacker packer_;
+    // ...and kFmp4 writes a folder of its own files through this.
+    Fmp4FolderWriter fmp4_;
 };

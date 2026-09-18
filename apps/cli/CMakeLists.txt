@@ -4,12 +4,12 @@
 add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp ../common/fmp4_folder_writer.cpp ../common/recording_sink.cpp ../common/container_input.cpp ../common/stream_playback.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/decode.cpp commands/analysis.cpp commands/probe.cpp commands/stream_tools.cpp)
 
 # ../common/recording_sink.cpp + fmp4_folder_writer.cpp: the take writer
-# 'record' and 'live' stream their output through (legacy item IO9), shared
+# 'record' and 'live' stream their output through (wide-layout record/live paths), shared
 # verbatim with the GUI rather than reimplemented - see
 # apps/common/recording_sink.hpp's own comment for why they sit there and not
 # in either app. Compiled straight in; apps/common has no library target,
 # matching how tests/CMakeLists.txt already compiles the same files into
-# ac3tests. ../common/container_input.cpp (legacy item IO2) is the same shape,
+# ac3tests. ../common/container_input.cpp (container readers (mkv/mp4/ts)) is the same shape,
 # for turning a container file into an elementary stream instead, and so is
 # ../common/stream_playback.cpp, the decoder choice and end-of-stream flush
 # 'monitor' and 'spatial' play a stream with.
@@ -32,12 +32,12 @@ target_include_directories(ac3cli PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common
 # names. PRIVATE and inside the WIN32 arm, so no other configuration sees a
 # definition that means nothing to it.
 if(WIN32)
- target_sources(ac3cli PRIVATE platform/windows/stdio_binary.cpp
- platform/windows/console_encoding.cpp)
- target_compile_definitions(ac3cli PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_sources(ac3cli PRIVATE platform/windows/stdio_binary.cpp
+                                  platform/windows/console_encoding.cpp)
+    target_compile_definitions(ac3cli PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 else()
- target_sources(ac3cli PRIVATE platform/posix/stdio_binary.cpp
- platform/posix/console_encoding.cpp)
+    target_sources(ac3cli PRIVATE platform/posix/stdio_binary.cpp
+                                  platform/posix/console_encoding.cpp)
 endif()
 
 # ../common/probe_json.cpp: probe's JSON stream summary and its vocabulary,
@@ -66,7 +66,7 @@ target_sources(ac3cli PRIVATE ../common/probe_json.cpp)
 # anywhere in this target's sources. See adm/atmos_adm.hpp's own top comment for the full
 # reasoning, including why this replaced an earlier #ifdef-based design once
 # tools/checks/check_platform_macros.ps1 was actually run against it.
-# 'atmos-iab' (legacy item IM1 phase 3) rides the exact same AC3FORGE_BUILD_ADM gate as 'atmos-adm'
+# 'atmos-iab' (IAB reader phase 3) rides the exact same AC3FORGE_BUILD_ADM gate as 'atmos-adm'
 # above, for the reason adm/atmos_iab.hpp's own top comment gives: ac3iab::ac3iab by itself
 # (AC3FORGE_BUILD_IAB, default ON) has nothing that can drive AtmosEncoder - only
 # ac3::admbridge's own build_iab() does that, and admbridge only exists when AC3FORGE_BUILD_ADM
@@ -75,12 +75,12 @@ target_sources(ac3cli PRIVATE ../common/probe_json.cpp)
 # root CMakeLists.txt's own AC3FORGE_BUILD_ADM-requires-AC3FORGE_BUILD_IAB guard for why that
 # combination cannot actually diverge.
 if(AC3FORGE_BUILD_ADM)
- target_sources(ac3cli PRIVATE adm/enabled/atmos_adm.cpp adm/enabled/decode_adm.cpp
- adm/enabled/atmos_iab.cpp)
- target_link_libraries(ac3cli PRIVATE ac3adm::ac3adm ac3::admbridge)
+    target_sources(ac3cli PRIVATE adm/enabled/atmos_adm.cpp adm/enabled/decode_adm.cpp
+                                  adm/enabled/atmos_iab.cpp)
+    target_link_libraries(ac3cli PRIVATE ac3adm::ac3adm ac3::admbridge)
 else()
- target_sources(ac3cli PRIVATE adm/disabled/atmos_adm.cpp adm/disabled/decode_adm.cpp
- adm/disabled/atmos_iab.cpp)
+    target_sources(ac3cli PRIVATE adm/disabled/atmos_adm.cpp adm/disabled/decode_adm.cpp
+                                  adm/disabled/atmos_iab.cpp)
 endif()
 
 # ac3::coverage (coverage floors) instruments this target's OWN sources. Linking
@@ -91,17 +91,17 @@ endif()
 # target that adds nothing when AC3FORGE_ENABLE_COVERAGE is off (the default),
 # so this costs every other configuration nothing.
 target_link_libraries(ac3cli
- PRIVATE
- ac3::forge
- ac3::audio
- ac3::signing
- matroska::matroska
- mp4::mp4
- mpegts::mpegts
- ac4::ac4
- ac3::warnings
- ac3::fmt
- ac3::coverage)
+    PRIVATE
+        ac3::forge
+        ac3::audio
+        ac3::signing
+        matroska::matroska
+        mp4::mp4
+        mpegts::mpegts
+        ac4::ac4
+        ac3::warnings
+        ac3::fmt
+        ac3::coverage)
 
 # ac3::forge, matroska::matroska, mp4::mp4 and mpegts::mpegts are link-only here, but
 # installed and packaged in their own right elsewhere - see
@@ -139,7 +139,7 @@ target_link_libraries(ac3cli
 # either of those guards: nothing else in this project has hit it, so
 # silencing it everywhere would risk hiding a genuine one elsewhere.
 set_source_files_properties(commands/stream_tools.cpp
- PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
+    PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
 
 include(GNUInstallDirs)
 
@@ -147,11 +147,11 @@ include(GNUInstallDirs)
 # "Unspecified" component, inconsistent once component-based packaging is
 # on for the library (see cmake/InstallLibrary.cmake, cmake/Packaging.cmake).
 install(TARGETS ac3cli
- RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT runtime
- BUNDLE DESTINATION "." COMPONENT runtime)
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT runtime
+    BUNDLE DESTINATION "." COMPONENT runtime)
 
 # ---------------------------------------------------------------------------
-# The man page and the four shell completions (CLI scripting ergonomics).
+# The man page and the four shell completions (CLI shell completions).
 #
 # GENERATED, not written: `ac3cli man` and `ac3cli completions <shell>` render
 # both from main.cpp's own command table (see apps/cli/usage.cpp), so a new
@@ -189,69 +189,69 @@ install(TARGETS ac3cli
 # silently goes stale. The status message says which happened rather than
 # leaving it to be discovered from a missing file.
 if(NOT "${CMAKE_HOST_SYSTEM_NAME}" STREQUAL "${CMAKE_SYSTEM_NAME}"
- OR NOT "${CMAKE_HOST_SYSTEM_PROCESSOR}" STREQUAL "${CMAKE_SYSTEM_PROCESSOR}")
- message(STATUS " CLI man page : skipped (a ${CMAKE_HOST_SYSTEM_NAME}/${CMAKE_HOST_SYSTEM_PROCESSOR} "
- "host cannot run a ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR} ac3cli)")
+        OR NOT "${CMAKE_HOST_SYSTEM_PROCESSOR}" STREQUAL "${CMAKE_SYSTEM_PROCESSOR}")
+    message(STATUS "  CLI man page   : skipped (a ${CMAKE_HOST_SYSTEM_NAME}/${CMAKE_HOST_SYSTEM_PROCESSOR} "
+                   "host cannot run a ${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR} ac3cli)")
 else()
- # The other half of "the status message says which happened": a
- # configure log that says nothing at all is how the skip above went
- # unnoticed on Linux and macOS for as long as it did.
- message(STATUS " CLI man page : generated (with bash/zsh/fish/PowerShell completions)")
+    # The other half of "the status message says which happened": a
+    # configure log that says nothing at all is how the skip above went
+    # unnoticed on Linux and macOS for as long as it did.
+    message(STATUS "  CLI man page   : generated (with bash/zsh/fish/PowerShell completions)")
 
- set(AC3CLI_DOC_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
- file(MAKE_DIRECTORY "${AC3CLI_DOC_DIR}")
+    set(AC3CLI_DOC_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    file(MAKE_DIRECTORY "${AC3CLI_DOC_DIR}")
 
- # DEPENDS ac3cli, not just $<TARGET_FILE:ac3cli>: the command table lives
- # in the binary, so the artefacts have to be regenerated whenever it is
- # relinked, not only when the file name changes.
- add_custom_command(
- OUTPUT "${AC3CLI_DOC_DIR}/ac3cli.1"
- COMMAND "${CMAKE_COMMAND}"
- "-DAC3_RUN_COMMAND=$<TARGET_FILE:ac3cli>;man"
- "-DAC3_RUN_OUTPUT=${AC3CLI_DOC_DIR}/ac3cli.1"
- -P "${PROJECT_SOURCE_DIR}/cmake/RunToFile.cmake"
- DEPENDS ac3cli
- COMMENT "Generating ac3cli.1 from ac3cli's own command table"
- VERBATIM)
+    # DEPENDS ac3cli, not just $<TARGET_FILE:ac3cli>: the command table lives
+    # in the binary, so the artefacts have to be regenerated whenever it is
+    # relinked, not only when the file name changes.
+    add_custom_command(
+        OUTPUT "${AC3CLI_DOC_DIR}/ac3cli.1"
+        COMMAND "${CMAKE_COMMAND}"
+                "-DAC3_RUN_COMMAND=$<TARGET_FILE:ac3cli>;man"
+                "-DAC3_RUN_OUTPUT=${AC3CLI_DOC_DIR}/ac3cli.1"
+                -P "${PROJECT_SOURCE_DIR}/cmake/RunToFile.cmake"
+        DEPENDS ac3cli
+        COMMENT "Generating ac3cli.1 from ac3cli's own command table"
+        VERBATIM)
 
- # <shell> -> the file name that shell's completion loader expects. bash
- # and zsh look their file up by a fixed name (the command / _command);
- # fish and PowerShell want a suffixed script. PowerShell has no
- # convention-driven search path at all, so its script goes under the
- # project's own share directory for the user to dot-source from $PROFILE
- # - which is what `ac3cli completions powershell` itself says.
- set(AC3CLI_COMPLETION_SHELLS bash zsh fish powershell)
- set(AC3CLI_COMPLETION_FILES ac3cli _ac3cli ac3cli.fish ac3cli.ps1)
- set(AC3CLI_COMPLETION_DESTS
- "${CMAKE_INSTALL_DATAROOTDIR}/bash-completion/completions"
- "${CMAKE_INSTALL_DATAROOTDIR}/zsh/site-functions"
- "${CMAKE_INSTALL_DATAROOTDIR}/fish/vendor_completions.d"
- "${CMAKE_INSTALL_DATAROOTDIR}/ac3forge/completions")
+    # <shell> -> the file name that shell's completion loader expects. bash
+    # and zsh look their file up by a fixed name (the command / _command);
+    # fish and PowerShell want a suffixed script. PowerShell has no
+    # convention-driven search path at all, so its script goes under the
+    # project's own share directory for the user to dot-source from $PROFILE
+    # - which is what `ac3cli completions powershell` itself says.
+    set(AC3CLI_COMPLETION_SHELLS bash zsh fish powershell)
+    set(AC3CLI_COMPLETION_FILES ac3cli _ac3cli ac3cli.fish ac3cli.ps1)
+    set(AC3CLI_COMPLETION_DESTS
+        "${CMAKE_INSTALL_DATAROOTDIR}/bash-completion/completions"
+        "${CMAKE_INSTALL_DATAROOTDIR}/zsh/site-functions"
+        "${CMAKE_INSTALL_DATAROOTDIR}/fish/vendor_completions.d"
+        "${CMAKE_INSTALL_DATAROOTDIR}/ac3forge/completions")
 
- set(AC3CLI_GENERATED_DOCS "${AC3CLI_DOC_DIR}/ac3cli.1")
- foreach(index RANGE 3)
- list(GET AC3CLI_COMPLETION_SHELLS ${index} shell)
- list(GET AC3CLI_COMPLETION_FILES ${index} completion_file)
- list(GET AC3CLI_COMPLETION_DESTS ${index} completion_dest)
- add_custom_command(
- OUTPUT "${AC3CLI_DOC_DIR}/${completion_file}"
- COMMAND "${CMAKE_COMMAND}"
- "-DAC3_RUN_COMMAND=$<TARGET_FILE:ac3cli>;completions;${shell}"
- "-DAC3_RUN_OUTPUT=${AC3CLI_DOC_DIR}/${completion_file}"
- -P "${PROJECT_SOURCE_DIR}/cmake/RunToFile.cmake"
- DEPENDS ac3cli
- COMMENT "Generating ${shell} completions for ac3cli"
- VERBATIM)
- list(APPEND AC3CLI_GENERATED_DOCS "${AC3CLI_DOC_DIR}/${completion_file}")
- install(FILES "${AC3CLI_DOC_DIR}/${completion_file}"
- DESTINATION "${completion_dest}" COMPONENT runtime)
- endforeach()
+    set(AC3CLI_GENERATED_DOCS "${AC3CLI_DOC_DIR}/ac3cli.1")
+    foreach(index RANGE 3)
+        list(GET AC3CLI_COMPLETION_SHELLS ${index} shell)
+        list(GET AC3CLI_COMPLETION_FILES ${index} completion_file)
+        list(GET AC3CLI_COMPLETION_DESTS ${index} completion_dest)
+        add_custom_command(
+            OUTPUT "${AC3CLI_DOC_DIR}/${completion_file}"
+            COMMAND "${CMAKE_COMMAND}"
+                    "-DAC3_RUN_COMMAND=$<TARGET_FILE:ac3cli>;completions;${shell}"
+                    "-DAC3_RUN_OUTPUT=${AC3CLI_DOC_DIR}/${completion_file}"
+                    -P "${PROJECT_SOURCE_DIR}/cmake/RunToFile.cmake"
+            DEPENDS ac3cli
+            COMMENT "Generating ${shell} completions for ac3cli"
+            VERBATIM)
+        list(APPEND AC3CLI_GENERATED_DOCS "${AC3CLI_DOC_DIR}/${completion_file}")
+        install(FILES "${AC3CLI_DOC_DIR}/${completion_file}"
+            DESTINATION "${completion_dest}" COMPONENT runtime)
+    endforeach()
 
- # ALL, so a plain `cmake --build` produces them: they are install()'d
- # unconditionally below, and an install of a target that was never built
- # is a hard CMake error rather than a missing file.
- add_custom_target(ac3cli_docs ALL DEPENDS ${AC3CLI_GENERATED_DOCS})
+    # ALL, so a plain `cmake --build` produces them: they are install()'d
+    # unconditionally below, and an install of a target that was never built
+    # is a hard CMake error rather than a missing file.
+    add_custom_target(ac3cli_docs ALL DEPENDS ${AC3CLI_GENERATED_DOCS})
 
- install(FILES "${AC3CLI_DOC_DIR}/ac3cli.1"
- DESTINATION "${CMAKE_INSTALL_MANDIR}/man1" COMPONENT runtime)
+    install(FILES "${AC3CLI_DOC_DIR}/ac3cli.1"
+        DESTINATION "${CMAKE_INSTALL_MANDIR}/man1" COMPONENT runtime)
 endif()

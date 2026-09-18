@@ -44,18 +44,18 @@ namespace ac3 {
 // says what is wrong with this decoder — the difference decides whether the
 // caller should reach for another file or another tool.
 std::string_view describe(DecodeError error) {
- switch (error) {
- case DecodeError::kTruncated: return "the stream ends part-way through a frame";
- case DecodeError::kBadSyncWord:
- return "no 0x0B77 sync word where a frame should begin";
- case DecodeError::kBadCrc: return "the frame's CRC does not check out";
- case DecodeError::kReservedValue: return "a header field holds a value A/52 reserves";
- case DecodeError::kUnsupported:
- return "valid AC-3 this decoder does not implement (bsid > 8)";
- case DecodeError::kInvalidStream:
- return "the frame contradicts a constraint A/52 requires of it";
- }
- return "unknown decode error";
+    switch (error) {
+        case DecodeError::kTruncated: return "the stream ends part-way through a frame";
+        case DecodeError::kBadSyncWord:
+            return "no 0x0B77 sync word where a frame should begin";
+        case DecodeError::kBadCrc: return "the frame's CRC does not check out";
+        case DecodeError::kReservedValue: return "a header field holds a value A/52 reserves";
+        case DecodeError::kUnsupported:
+            return "valid AC-3 this decoder does not implement (bsid > 8)";
+        case DecodeError::kInvalidStream:
+            return "the frame contradicts a constraint A/52 requires of it";
+    }
+    return "unknown decode error";
 }
 
 namespace {
@@ -66,69 +66,69 @@ namespace {
 // size completely differently: AC-3 looks frmsizecod up in Table 5.18, while
 // E-AC-3 states the word count outright in the 11-bit frmsiz.
 std::expected<std::size_t, DecodeError> syncframe_bytes(std::span<const std::byte> stream,
- std::size_t offset) {
- if (offset + 6 > stream.size()) {
- return std::unexpected(DecodeError::kTruncated);
- }
- const auto byte = [&](std::size_t i) {
- return std::to_integer<std::uint32_t>(stream[offset + i]);
- };
- if (byte(0) != 0x0B || byte(1) != 0x77) {
- return std::unexpected(DecodeError::kBadSyncWord);
- }
- const auto bsid = byte(5) >> 3;
- if (bsid >= eac3::kMinDecodableBsid && bsid <= eac3::kBsid) {
- const std::size_t frmsiz = ((byte(2) & 0x07) << 8) | byte(3);
- const std::size_t bytes = (frmsiz + 1) * 2;
- // frmsiz is free to say anything, including a size that does not even
- // cover the six header bytes just read. Callers index into the spans
- // this hands back, so a self-contradictory size is rejected here
- // rather than becoming a short span someone reads past.
- if (bytes < 6) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- return bytes;
- }
- if (bsid > 8) {
- return std::unexpected(DecodeError::kUnsupported);
- }
- const auto fscod = byte(4) >> 6;
- const auto frmsizecod = byte(4) & 0x3F;
- if (fscod == 3 || frmsizecod > 37) {
- return std::unexpected(DecodeError::kReservedValue);
- }
- const std::uint32_t kbps = kBitratesKbps[frmsizecod >> 1];
- // kbps came from the very table frame_size_bytes -> bitrate_index
- // searches for an exact match, so the lookup inside it always succeeds.
- // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
- return *frame_size_bytes(static_cast<SampleRate>(fscod), kbps, (frmsizecod & 1) != 0);
+                                                        std::size_t offset) {
+    if (offset + 6 > stream.size()) {
+        return std::unexpected(DecodeError::kTruncated);
+    }
+    const auto byte = [&](std::size_t i) {
+        return std::to_integer<std::uint32_t>(stream[offset + i]);
+    };
+    if (byte(0) != 0x0B || byte(1) != 0x77) {
+        return std::unexpected(DecodeError::kBadSyncWord);
+    }
+    const auto bsid = byte(5) >> 3;
+    if (bsid >= eac3::kMinDecodableBsid && bsid <= eac3::kBsid) {
+        const std::size_t frmsiz = ((byte(2) & 0x07) << 8) | byte(3);
+        const std::size_t bytes = (frmsiz + 1) * 2;
+        // frmsiz is free to say anything, including a size that does not even
+        // cover the six header bytes just read. Callers index into the spans
+        // this hands back, so a self-contradictory size is rejected here
+        // rather than becoming a short span someone reads past.
+        if (bytes < 6) {
+            return std::unexpected(DecodeError::kInvalidStream);
+        }
+        return bytes;
+    }
+    if (bsid > 8) {
+        return std::unexpected(DecodeError::kUnsupported);
+    }
+    const auto fscod = byte(4) >> 6;
+    const auto frmsizecod = byte(4) & 0x3F;
+    if (fscod == 3 || frmsizecod > 37) {
+        return std::unexpected(DecodeError::kReservedValue);
+    }
+    const std::uint32_t kbps = kBitratesKbps[frmsizecod >> 1];
+    // kbps came from the very table frame_size_bytes -> bitrate_index
+    // searches for an exact match, so the lookup inside it always succeeds.
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    return *frame_size_bytes(static_cast<SampleRate>(fscod), kbps, (frmsizecod & 1) != 0);
 }
 
-} // namespace
+}  // namespace
 
 std::expected<int, DecodeError> stream_bsid(std::span<const std::byte> frame) {
- if (frame.size() < 6) {
- return std::unexpected(DecodeError::kTruncated);
- }
- return static_cast<int>(std::to_integer<std::uint32_t>(frame[5]) >> 3);
+    if (frame.size() < 6) {
+        return std::unexpected(DecodeError::kTruncated);
+    }
+    return static_cast<int>(std::to_integer<std::uint32_t>(frame[5]) >> 3);
 }
 
 std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_frames(
- std::span<const std::byte> stream) {
- std::vector<std::span<const std::byte>> frames;
- std::size_t offset = 0;
- while (offset < stream.size()) {
- const auto bytes = syncframe_bytes(stream, offset);
- if (!bytes.has_value()) {
- return std::unexpected(bytes.error());
- }
- if (offset + *bytes > stream.size()) {
- return std::unexpected(DecodeError::kTruncated);
- }
- frames.push_back(stream.subspan(offset, *bytes));
- offset += *bytes;
- }
- return frames;
+    std::span<const std::byte> stream) {
+    std::vector<std::span<const std::byte>> frames;
+    std::size_t offset = 0;
+    while (offset < stream.size()) {
+        const auto bytes = syncframe_bytes(stream, offset);
+        if (!bytes.has_value()) {
+            return std::unexpected(bytes.error());
+        }
+        if (offset + *bytes > stream.size()) {
+            return std::unexpected(DecodeError::kTruncated);
+        }
+        frames.push_back(stream.subspan(offset, *bytes));
+        offset += *bytes;
+    }
+    return frames;
 }
 
 namespace {
@@ -149,173 +149,173 @@ namespace {
 // bit 40 in both generations, deliberately - so gating on it is the reading
 // that is correct for either.
 struct Identity {
- eac3::StreamType strmtyp;
- int substreamid;
+    eac3::StreamType strmtyp;
+    int substreamid;
 };
 
 [[nodiscard]] Identity frame_identity(std::span<const std::byte> frame) {
- const auto bsid = std::to_integer<std::uint32_t>(frame[5]) >> 3;
- if (bsid < eac3::kMinDecodableBsid || bsid > eac3::kBsid) {
- // An AC-3 syncframe is a whole programme's whole access unit on its
- // own: no substream layer, so nothing to be dependent on and no
- // second programme to number away from.
- return {eac3::StreamType::kIndependent, 0};
- }
- const auto byte = std::to_integer<std::uint32_t>(frame[2]);
- return {static_cast<eac3::StreamType>(byte >> 6), static_cast<int>((byte >> 3) & 0x07)};
+    const auto bsid = std::to_integer<std::uint32_t>(frame[5]) >> 3;
+    if (bsid < eac3::kMinDecodableBsid || bsid > eac3::kBsid) {
+        // An AC-3 syncframe is a whole programme's whole access unit on its
+        // own: no substream layer, so nothing to be dependent on and no
+        // second programme to number away from.
+        return {eac3::StreamType::kIndependent, 0};
+    }
+    const auto byte = std::to_integer<std::uint32_t>(frame[2]);
+    return {static_cast<eac3::StreamType>(byte >> 6), static_cast<int>((byte >> 3) & 0x07)};
 }
 
 // §E1.3.1: strmtyp 2 is an independent substream too - one whose programme was
 // previously coded as AC-3 - so it opens an access unit exactly as strmtyp 0
 // does.
 [[nodiscard]] bool begins_unit(eac3::StreamType strmtyp) {
- return strmtyp == eac3::StreamType::kIndependent ||
- strmtyp == eac3::StreamType::kConvertible;
+    return strmtyp == eac3::StreamType::kIndependent ||
+           strmtyp == eac3::StreamType::kConvertible;
 }
 
-} // namespace
+}  // namespace
 
 bool has_eac3_extension_substreams(std::span<const std::byte> stream) {
- const auto core_bsid = stream_bsid(stream);
- if (!core_bsid || *core_bsid > 8) {
- return false; // not AC-3-led, so not this arrangement
- }
- const auto core_bytes = syncframe_bytes(stream, 0);
- if (!core_bytes || *core_bytes >= stream.size()) {
- return false; // unreadable, or the core is the whole stream
- }
- const auto next = stream.subspan(*core_bytes);
- // syncframe_bytes rather than stream_bsid alone: it checks the sync word
- // and the declared size, so a second "frame" that is really trailing
- // rubbish does not get read as a dependent on the strength of five bits.
- const auto next_bytes = syncframe_bytes(next, 0);
- const auto next_bsid = stream_bsid(next);
- if (!next_bytes || !next_bsid || *next_bsid <= 8) {
- return false; // another AC-3 syncframe: plain AC-3
- }
- return static_cast<eac3::StreamType>(std::to_integer<std::uint32_t>(next[2]) >> 6) ==
- eac3::StreamType::kDependent;
+    const auto core_bsid = stream_bsid(stream);
+    if (!core_bsid || *core_bsid > 8) {
+        return false;  // not AC-3-led, so not this arrangement
+    }
+    const auto core_bytes = syncframe_bytes(stream, 0);
+    if (!core_bytes || *core_bytes >= stream.size()) {
+        return false;  // unreadable, or the core is the whole stream
+    }
+    const auto next = stream.subspan(*core_bytes);
+    // syncframe_bytes rather than stream_bsid alone: it checks the sync word
+    // and the declared size, so a second "frame" that is really trailing
+    // rubbish does not get read as a dependent on the strength of five bits.
+    const auto next_bytes = syncframe_bytes(next, 0);
+    const auto next_bsid = stream_bsid(next);
+    if (!next_bytes || !next_bsid || *next_bsid <= 8) {
+        return false;  // another AC-3 syncframe: plain AC-3
+    }
+    return static_cast<eac3::StreamType>(std::to_integer<std::uint32_t>(next[2]) >> 6) ==
+           eac3::StreamType::kDependent;
 }
 
 std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access_units(
- std::span<const std::byte> stream) {
- const auto frames = split_frames(stream);
- if (!frames.has_value()) {
- return std::unexpected(frames.error());
- }
- // An access unit is its substreams concatenated, so it is delimited rather
- // than framed: a new one starts wherever an independent substream does,
- // and everything up to the next one belongs to it.
- std::vector<std::span<const std::byte>> units;
- std::size_t start = 0;
- std::size_t offset = 0;
- for (const auto& frame : *frames) {
- if (begins_unit(frame_identity(frame).strmtyp) && offset != start) {
- units.push_back(stream.subspan(start, offset - start));
- start = offset;
- }
- offset += frame.size();
- }
- if (offset != start) {
- units.push_back(stream.subspan(start, offset - start));
- }
- // A stream whose very first syncframe is a dependent has lost its parent;
- // its channels have nothing to extend.
- if (!units.empty() &&
- frame_identity(units.front()).strmtyp == eac3::StreamType::kDependent) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- return units;
+    std::span<const std::byte> stream) {
+    const auto frames = split_frames(stream);
+    if (!frames.has_value()) {
+        return std::unexpected(frames.error());
+    }
+    // An access unit is its substreams concatenated, so it is delimited rather
+    // than framed: a new one starts wherever an independent substream does,
+    // and everything up to the next one belongs to it.
+    std::vector<std::span<const std::byte>> units;
+    std::size_t start = 0;
+    std::size_t offset = 0;
+    for (const auto& frame : *frames) {
+        if (begins_unit(frame_identity(frame).strmtyp) && offset != start) {
+            units.push_back(stream.subspan(start, offset - start));
+            start = offset;
+        }
+        offset += frame.size();
+    }
+    if (offset != start) {
+        units.push_back(stream.subspan(start, offset - start));
+    }
+    // A stream whose very first syncframe is a dependent has lost its parent;
+    // its channels have nothing to extend.
+    if (!units.empty() &&
+        frame_identity(units.front()).strmtyp == eac3::StreamType::kDependent) {
+        return std::unexpected(DecodeError::kInvalidStream);
+    }
+    return units;
 }
 
 // Every private data member, following the same pimpl pattern as
 // ac3::io::WavStreamReader/Writer and ac3::FrameEncoder.
 struct FrameDecoder::Impl {
- DecoderConfig config_{};
- std::array<std::array<internal::decode_scalar_t, 256>, 6> delay_{}; // overlap-add state
- // The exponent each channel's delay half is stored under (block_norm.hpp);
- // zero in the floating tiers.
- std::array<int, 6> delay_norm_ = internal::fresh_delay_norms<6>();
- // §7.3.4 dither, persisting across frames like delay_ above so a long
- // stream's substituted noise does not repeat every syncframe.
- DitherGenerator dither_{};
- // §7.8/§5.4.2.8, applied after the channels are reconstructed. Inert
- // unless DecoderConfig::output asks for something.
- OutputStage output_{};
- // What §7.10 concealment reconstructs from: the metadata of the last
- // frame that decoded, and the last BLOCK's windowed transform output per
- // coded channel (the whole 512, not only the half delay_ keeps).
- // Populated only while concealment is enabled, so a decoder configured
- // the way every existing caller configures it carries none of it.
- struct Retained {
- DecodedFrame shape;
- std::vector<std::array<double, 512>> last_block;
- int nchans = 0;
- };
- std::optional<Retained> retained_ = std::nullopt;
- // Where the block loop writes its last block while a frame is still in
- // progress. Committed into retained_ only once the frame has decoded
- // cleanly, so a frame that fails after five good blocks does not poison
- // the material the NEXT loss is concealed from. Sized lazily at first
- // use, so a decoder with concealment off never allocates it.
- std::vector<std::array<double, 512>> conceal_scratch_;
- // decode_frame_by_block's own frame of PCM. AC-3 writes its overlap-add
- // straight into whatever spans it is given, so the block form - which
- // promises the caller never needs more than a block - points the core at
- // this and hands it out in blocks once the output stage has run. Six
- // channels, the widest AC-3 layout; sized once at first use, so a decoder
- // that never takes the form never allocates it.
- std::vector<float> block_scratch_;
+    DecoderConfig config_{};
+    std::array<std::array<internal::decode_scalar_t, 256>, 6> delay_{};  // overlap-add state
+    // The exponent each channel's delay half is stored under (block_norm.hpp);
+    // zero in the floating tiers.
+    std::array<int, 6> delay_norm_ = internal::fresh_delay_norms<6>();
+    // §7.3.4 dither, persisting across frames like delay_ above so a long
+    // stream's substituted noise does not repeat every syncframe.
+    DitherGenerator dither_{};
+    // §7.8/§5.4.2.8, applied after the channels are reconstructed. Inert
+    // unless DecoderConfig::output asks for something.
+    OutputStage output_{};
+    // What §7.10 concealment reconstructs from: the metadata of the last
+    // frame that decoded, and the last BLOCK's windowed transform output per
+    // coded channel (the whole 512, not only the half delay_ keeps).
+    // Populated only while concealment is enabled, so a decoder configured
+    // the way every existing caller configures it carries none of it.
+    struct Retained {
+        DecodedFrame shape;
+        std::vector<std::array<double, 512>> last_block;
+        int nchans = 0;
+    };
+    std::optional<Retained> retained_ = std::nullopt;
+    // Where the block loop writes its last block while a frame is still in
+    // progress. Committed into retained_ only once the frame has decoded
+    // cleanly, so a frame that fails after five good blocks does not poison
+    // the material the NEXT loss is concealed from. Sized lazily at first
+    // use, so a decoder with concealment off never allocates it.
+    std::vector<std::array<double, 512>> conceal_scratch_;
+    // decode_frame_by_block's own frame of PCM. AC-3 writes its overlap-add
+    // straight into whatever spans it is given, so the block form - which
+    // promises the caller never needs more than a block - points the core at
+    // this and hands it out in blocks once the output stage has run. Six
+    // channels, the widest AC-3 layout; sized once at first use, so a decoder
+    // that never takes the form never allocates it.
+    std::vector<float> block_scratch_;
 
- // --- per-frame scratch --------------------------------------------------
- // Everything decode_frame_core used to declare as a local before its block
- // loop. Those were already hoisted once - out of the block loop, up to
- // frame scope, which stopped twenty-odd allocations per BLOCK - and this is
- // the same move again, from frame scope onto the decoder, which stops
- // roughly forty per FRAME. Measured on the bare-metal probe
- // (apps/baremetal/probe.cpp), where AC-3 5.1 was 47 allocations a frame and
- // this cluster was most of it.
- //
- // WHAT MAKES IT SAFE. A local is fresh every call; a member carries the
- // previous frame's contents, and stale state leaking from one frame into
- // the next is a fault that fixtures do not catch. So decode_frame_core
- // re-establishes every one of these at the top of the frame with exactly
- // the arguments its constructor used - `assign(n, v)` where the
- // declaration read `(n, v)`, `clear()` where it was default-constructed.
- // The contents a frame starts with are therefore identical to what they
- // were before, element for element; the only thing that survives is
- // capacity, which is the point.
- //
- // The vector-of-vector members get resize() plus a clear() of each inner
- // buffer rather than assign(n, {}), because assign would destroy the inner
- // allocations this exists to keep.
- std::vector<int> endmant_;
- std::vector<std::vector<std::uint8_t>> exps_;
- std::vector<int> fgaincod_;
- std::vector<int> fsnroffst_;
- std::vector<DeltaSegments> delta_;
- std::vector<bool> chincpl_;
- std::vector<int> subband_band_;
- std::vector<std::vector<internal::decode_scalar_t>> cplco_;
- // The fixed-point tier's split of a coordinate: cplco_ holds the mantissa
- // and this its power of two (coupling.hpp's coordinate_exponent). Empty
- // in the floating tiers, whose coordinate carries its own.
- std::vector<std::vector<int>> cplco_exp_;
- std::vector<int> band_exps_;
- // Each stream's block exponent (block_norm.hpp); all zero in the
- // floating tiers.
- std::vector<int> norm_;
- std::vector<bool> phsflg_;
- std::vector<internal::decode_scalar_t> band_values_;
- std::vector<ExpStrategy> strategy_;
- std::vector<std::uint8_t> groups_;
- std::vector<std::vector<std::uint8_t>> bap_;
- std::vector<std::array<int, 50>> mask_;
- // One per stream, grown with them: see bitalloc_memo.hpp for what it
- // keeps and why. A block whose inputs are the previous block's keeps the
- // allocation `bap_` already holds.
- std::vector<internal::BitAllocMemo> bitalloc_memo_;
- std::vector<std::array<internal::decode_scalar_t, 256>> coeffs_;
+    // --- per-frame scratch --------------------------------------------------
+    // Everything decode_frame_core used to declare as a local before its block
+    // loop. Those were already hoisted once - out of the block loop, up to
+    // frame scope, which stopped twenty-odd allocations per BLOCK - and this is
+    // the same move again, from frame scope onto the decoder, which stops
+    // roughly forty per FRAME. Measured on the bare-metal probe
+    // (apps/baremetal/probe.cpp), where AC-3 5.1 was 47 allocations a frame and
+    // this cluster was most of it.
+    //
+    // WHAT MAKES IT SAFE. A local is fresh every call; a member carries the
+    // previous frame's contents, and stale state leaking from one frame into
+    // the next is a fault that fixtures do not catch. So decode_frame_core
+    // re-establishes every one of these at the top of the frame with exactly
+    // the arguments its constructor used - `assign(n, v)` where the
+    // declaration read `(n, v)`, `clear()` where it was default-constructed.
+    // The contents a frame starts with are therefore identical to what they
+    // were before, element for element; the only thing that survives is
+    // capacity, which is the point.
+    //
+    // The vector-of-vector members get resize() plus a clear() of each inner
+    // buffer rather than assign(n, {}), because assign would destroy the inner
+    // allocations this exists to keep.
+    std::vector<int> endmant_;
+    std::vector<std::vector<std::uint8_t>> exps_;
+    std::vector<int> fgaincod_;
+    std::vector<int> fsnroffst_;
+    std::vector<DeltaSegments> delta_;
+    std::vector<bool> chincpl_;
+    std::vector<int> subband_band_;
+    std::vector<std::vector<internal::decode_scalar_t>> cplco_;
+    // The fixed-point tier's split of a coordinate: cplco_ holds the mantissa
+    // and this its power of two (coupling.hpp's coordinate_exponent). Empty
+    // in the floating tiers, whose coordinate carries its own.
+    std::vector<std::vector<int>> cplco_exp_;
+    std::vector<int> band_exps_;
+    // Each stream's block exponent (block_norm.hpp); all zero in the
+    // floating tiers.
+    std::vector<int> norm_;
+    std::vector<bool> phsflg_;
+    std::vector<internal::decode_scalar_t> band_values_;
+    std::vector<ExpStrategy> strategy_;
+    std::vector<std::uint8_t> groups_;
+    std::vector<std::vector<std::uint8_t>> bap_;
+    std::vector<std::array<int, 50>> mask_;
+    // One per stream, grown with them: see bitalloc_memo.hpp for what it
+    // keeps and why. A block whose inputs are the previous block's keeps the
+    // allocation `bap_` already holds.
+    std::vector<internal::BitAllocMemo> bitalloc_memo_;
+    std::vector<std::array<internal::decode_scalar_t, 256>> coeffs_;
 };
 
 namespace {
@@ -326,10 +326,10 @@ namespace {
 // and throw the inner allocations away, which is the opposite of the point.
 template <typename T>
 void reset_nested(std::vector<std::vector<T>>& v, std::size_t n) {
- v.resize(n);
- for (auto& inner : v) {
- inner.clear();
- }
+    v.resize(n);
+    for (auto& inner : v) {
+        inner.clear();
+    }
 }
 
 // One of xbsi1's two surround levels. Tables D2.4/D2.6 reserve '000'..'010',
@@ -339,11 +339,11 @@ void reset_nested(std::vector<std::vector<T>>& v, std::size_t n) {
 // the output stage folds with, and neither the report nor mix_levels() has to
 // remember the rule.
 meta::MixLevel read_surround_mix_level(BitReader& r) {
- const auto level = static_cast<meta::MixLevel>(r.read(3));
- return meta::valid_surround_mix_level(level) ? level : meta::MixLevel::kMinus1_5dB;
+    const auto level = static_cast<meta::MixLevel>(r.read(3));
+    return meta::valid_surround_mix_level(level) ? level : meta::MixLevel::kMinus1_5dB;
 }
 
-} // namespace
+}  // namespace
 
 FrameDecoder::FrameDecoder() : impl_(std::make_unique<Impl>()) {}
 
@@ -354,1464 +354,1464 @@ FrameDecoder& FrameDecoder::operator=(FrameDecoder&&) noexcept = default;
 int FrameDecoder::output_latency_samples() const { return impl_->output_.latency_samples(); }
 
 FrameDecoder::FrameDecoder(const DecoderConfig& config) : impl_(std::make_unique<Impl>()) {
- impl_->config_ = internal::resolve_operating_mode(config);
- impl_->output_ = OutputStage(config.output);
+    impl_->config_ = internal::resolve_operating_mode(config);
+    impl_->output_ = OutputStage(config.output);
 }
 
 std::expected<std::vector<std::span<const std::byte>>, DecodeError> split_access_units(
- std::span<const std::byte> stream, int programme) {
- auto units = split_access_units(stream);
- if (!units.has_value()) {
- return std::unexpected(units.error());
- }
- // Each unit begins with its programme's own independent substream, so the
- // selection is one field read per unit - no second walk of the frames.
- // A dependent's substreamid numbers in its parent's space (§E2.3.1.2) and
- // is never consulted here.
- std::erase_if(*units, [programme](std::span<const std::byte> unit) {
- return frame_identity(unit).substreamid != programme;
- });
- return units;
+    std::span<const std::byte> stream, int programme) {
+    auto units = split_access_units(stream);
+    if (!units.has_value()) {
+        return std::unexpected(units.error());
+    }
+    // Each unit begins with its programme's own independent substream, so the
+    // selection is one field read per unit - no second walk of the frames.
+    // A dependent's substreamid numbers in its parent's space (§E2.3.1.2) and
+    // is never consulted here.
+    std::erase_if(*units, [programme](std::span<const std::byte> unit) {
+        return frame_identity(unit).substreamid != programme;
+    });
+    return units;
 }
 
 std::expected<std::vector<int>, DecodeError> programme_ids(std::span<const std::byte> stream) {
- const auto units = split_access_units(stream);
- if (!units.has_value()) {
- return std::unexpected(units.error());
- }
- std::vector<int> ids;
- for (const auto& unit : *units) {
- const int id = frame_identity(unit).substreamid;
- // Ascending and unique: the stream repeats its programmes once per
- // frame period, so the same handful of ids arrives over and over. At
- // most eight of them (§E2.3.1.2), which is why this is a sorted
- // insert rather than a set.
- if (const auto at = std::ranges::lower_bound(ids, id);
- at == ids.end() || *at != id) {
- ids.insert(at, id);
- }
- }
- // A stream with no access units at all reports no programmes rather than
- // an empty-but-present one; split_frames already rejected anything that
- // was not framing.
- return ids;
+    const auto units = split_access_units(stream);
+    if (!units.has_value()) {
+        return std::unexpected(units.error());
+    }
+    std::vector<int> ids;
+    for (const auto& unit : *units) {
+        const int id = frame_identity(unit).substreamid;
+        // Ascending and unique: the stream repeats its programmes once per
+        // frame period, so the same handful of ids arrives over and over. At
+        // most eight of them (§E2.3.1.2), which is why this is a sorted
+        // insert rather than a set.
+        if (const auto at = std::ranges::lower_bound(ids, id);
+            at == ids.end() || *at != id) {
+            ids.insert(at, id);
+        }
+    }
+    // A stream with no access units at all reports no programmes rather than
+    // an empty-but-present one; split_frames already rejected anything that
+    // was not framing.
+    return ids;
 }
 
 std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame(
- std::span<const std::byte> frame) {
- auto decoded = decode_frame_core(frame, {});
- if (decoded.has_value()) {
- return decoded;
- }
- if (auto concealed = conceal(decoded.error(), {})) {
- return std::move(*concealed);
- }
- return decoded;
+    std::span<const std::byte> frame) {
+    auto decoded = decode_frame_core(frame, {});
+    if (decoded.has_value()) {
+        return decoded;
+    }
+    if (auto concealed = conceal(decoded.error(), {})) {
+        return std::move(*concealed);
+    }
+    return decoded;
 }
 
 std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_into(
- std::span<const std::byte> frame, std::span<const std::span<float>> channels) {
- auto decoded = decode_frame_core(frame, channels);
- if (decoded.has_value()) {
- return decoded;
- }
- if (auto concealed = conceal(decoded.error(), channels)) {
- return std::move(*concealed);
- }
- return decoded;
+    std::span<const std::byte> frame, std::span<const std::span<float>> channels) {
+    auto decoded = decode_frame_core(frame, channels);
+    if (decoded.has_value()) {
+        return decoded;
+    }
+    if (auto concealed = conceal(decoded.error(), channels)) {
+        return std::move(*concealed);
+    }
+    return decoded;
 }
 
 std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_by_block(
- std::span<const std::byte> frame, BlockSink sink) {
- // The core and conceal() write through spans; here those spans are the
- // decoder's own frame (see Impl::block_scratch_), which the sink then
- // reads a block at a time. Sized once, for the widest AC-3 layout.
- constexpr std::size_t kChannels = 6;
- auto& scratch = impl_->block_scratch_;
- if (scratch.empty()) {
- scratch.assign(kChannels * static_cast<std::size_t>(kSamplesPerFrame), 0.0F);
- }
- std::array<std::span<float>, kChannels> spans{};
- for (std::size_t ch = 0; ch < kChannels; ++ch) {
- spans[ch] = std::span<float>(scratch).subspan(ch * static_cast<std::size_t>(kSamplesPerFrame),
- static_cast<std::size_t>(kSamplesPerFrame));
- }
- auto decoded = decode_frame_core(frame, spans);
- if (!decoded.has_value()) {
- auto concealed = conceal(decoded.error(), spans);
- if (!concealed) {
- return decoded;
- }
- decoded = std::move(*concealed);
- }
- if (impl_->config_.skip_reconstruction) {
- return decoded; // nothing was written, so nothing is delivered
- }
- // One or two slots after a fold, the coded channels otherwise - the
- // count the *_into caller reads its spans by.
- const std::size_t slots = std::min(
- kChannels, output_channel_count(impl_->config_.output, decoded->acmod, decoded->lfe));
- std::array<std::span<const float>, kChannels> block_views{};
- {
- // Its own zone, so a caller's sink reads as the caller's time.
- AC3_ZONE_SCOPED_N("ac3_emit");
- for (int b = 0; b < kBlocksPerFrame; ++b) {
- for (std::size_t s = 0; s < slots; ++s) {
- block_views[s] = spans[s].subspan(
- static_cast<std::size_t>(b) * static_cast<std::size_t>(kSamplesPerBlock),
- static_cast<std::size_t>(kSamplesPerBlock));
- }
- // No objects: AC-3 has no object layer, so the three object
- // members stay empty - spelled out, since a designated
- // initializer that omits them is a -Wmissing-field-initializers
- // error on the profile's toolchain.
- sink(PcmBlock{.index = b,
- .blocks = kBlocksPerFrame,
- .channels = std::span<const std::span<const float>>(block_views)
- .first(slots),
- .objects = {},
- .object_indices = {},
- .object_metadata = nullptr});
- }
- }
- return decoded;
+    std::span<const std::byte> frame, BlockSink sink) {
+    // The core and conceal() write through spans; here those spans are the
+    // decoder's own frame (see Impl::block_scratch_), which the sink then
+    // reads a block at a time. Sized once, for the widest AC-3 layout.
+    constexpr std::size_t kChannels = 6;
+    auto& scratch = impl_->block_scratch_;
+    if (scratch.empty()) {
+        scratch.assign(kChannels * static_cast<std::size_t>(kSamplesPerFrame), 0.0F);
+    }
+    std::array<std::span<float>, kChannels> spans{};
+    for (std::size_t ch = 0; ch < kChannels; ++ch) {
+        spans[ch] = std::span<float>(scratch).subspan(ch * static_cast<std::size_t>(kSamplesPerFrame),
+                                                      static_cast<std::size_t>(kSamplesPerFrame));
+    }
+    auto decoded = decode_frame_core(frame, spans);
+    if (!decoded.has_value()) {
+        auto concealed = conceal(decoded.error(), spans);
+        if (!concealed) {
+            return decoded;
+        }
+        decoded = std::move(*concealed);
+    }
+    if (impl_->config_.skip_reconstruction) {
+        return decoded;  // nothing was written, so nothing is delivered
+    }
+    // One or two slots after a fold, the coded channels otherwise - the
+    // count the *_into caller reads its spans by.
+    const std::size_t slots = std::min(
+        kChannels, output_channel_count(impl_->config_.output, decoded->acmod, decoded->lfe));
+    std::array<std::span<const float>, kChannels> block_views{};
+    {
+        // Its own zone, so a caller's sink reads as the caller's time.
+        AC3_ZONE_SCOPED_N("ac3_emit");
+        for (int b = 0; b < kBlocksPerFrame; ++b) {
+            for (std::size_t s = 0; s < slots; ++s) {
+                block_views[s] = spans[s].subspan(
+                    static_cast<std::size_t>(b) * static_cast<std::size_t>(kSamplesPerBlock),
+                    static_cast<std::size_t>(kSamplesPerBlock));
+            }
+            // No objects: AC-3 has no object layer, so the three object
+            // members stay empty - spelled out, since a designated
+            // initializer that omits them is a -Wmissing-field-initializers
+            // error on the profile's toolchain.
+            sink(PcmBlock{.index = b,
+                          .blocks = kBlocksPerFrame,
+                          .channels = std::span<const std::span<const float>>(block_views)
+                                          .first(slots),
+                          .objects = {},
+                          .object_indices = {},
+                          .object_metadata = nullptr});
+        }
+    }
+    return decoded;
 }
 
 std::optional<DecodedFrame> FrameDecoder::conceal(DecodeError error,
- std::span<const std::span<float>> external) {
- // Nothing retained means this is the head of the stream: there is no
- // previous block to reconstruct from, and inventing one would be
- // substituting audio rather than concealing a gap in it.
- if (impl_->config_.concealment == ConcealmentPolicy::kNone || !impl_->retained_.has_value()) {
- return std::nullopt;
- }
- const bool repeat = impl_->config_.concealment == ConcealmentPolicy::kRepeatFade;
- const int nchans = impl_->retained_->nchans;
+                                                  std::span<const std::span<float>> external) {
+    // Nothing retained means this is the head of the stream: there is no
+    // previous block to reconstruct from, and inventing one would be
+    // substituting audio rather than concealing a gap in it.
+    if (impl_->config_.concealment == ConcealmentPolicy::kNone || !impl_->retained_.has_value()) {
+        return std::nullopt;
+    }
+    const bool repeat = impl_->config_.concealment == ConcealmentPolicy::kRepeatFade;
+    const int nchans = impl_->retained_->nchans;
 
- DecodedFrame out = impl_->retained_->shape;
- // No word was transmitted, so none is reported - the persistence rule in
- // §7.7.1.2 is about blocks within a syncframe, not about a syncframe that
- // never arrived.
- out.dynrng.fill(meta::kDynrngUnity);
- out.dynrng2.fill(meta::kDynrngUnity);
- out.concealed = Concealment{.error = error,
- .action = repeat ? ConcealmentAction::kRepeatFade
- : ConcealmentAction::kMute};
+    DecodedFrame out = impl_->retained_->shape;
+    // No word was transmitted, so none is reported - the persistence rule in
+    // §7.7.1.2 is about blocks within a syncframe, not about a syncframe that
+    // never arrived.
+    out.dynrng.fill(meta::kDynrngUnity);
+    out.dynrng2.fill(meta::kDynrngUnity);
+    out.concealed = Concealment{.error = error,
+                                .action = repeat ? ConcealmentAction::kRepeatFade
+                                                 : ConcealmentAction::kMute};
 
- std::array<std::span<float>, 6> pcm_target{};
- if (external.empty()) {
- out.channels.assign(static_cast<std::size_t>(nchans),
- std::vector<float>(kSamplesPerFrame, 0.0f));
- for (int ch = 0; ch < nchans; ++ch) {
- pcm_target[static_cast<std::size_t>(ch)] = out.channels[static_cast<std::size_t>(ch)];
- }
- } else {
- assert(static_cast<int>(external.size()) >= nchans);
- for (int ch = 0; ch < nchans; ++ch) {
- pcm_target[static_cast<std::size_t>(ch)] = external[static_cast<std::size_t>(ch)];
- }
- }
+    std::array<std::span<float>, 6> pcm_target{};
+    if (external.empty()) {
+        out.channels.assign(static_cast<std::size_t>(nchans),
+                            std::vector<float>(kSamplesPerFrame, 0.0f));
+        for (int ch = 0; ch < nchans; ++ch) {
+            pcm_target[static_cast<std::size_t>(ch)] = out.channels[static_cast<std::size_t>(ch)];
+        }
+    } else {
+        assert(static_cast<int>(external.size()) >= nchans);
+        for (int ch = 0; ch < nchans; ++ch) {
+            pcm_target[static_cast<std::size_t>(ch)] = external[static_cast<std::size_t>(ch)];
+        }
+    }
 
- // The concealed frame goes through the SAME overlap-add the real ones do,
- // which is what makes it join up at both ends. Under kRepeatFade each
- // block's transform output is the last good block's, decayed; under kMute
- // it is zero, and the first block still carries the previous frame's own
- // window tail out of impl_->delay_ - so silence arrives as the codec's own
- // fade rather than as a cut.
- //
- // 20 dB across the frame: enough that a lost frame audibly steps back
- // instead of ringing on, and gentle enough that one lost frame in an
- // otherwise clean stream is not itself the artefact. A run of losses
- // keeps decaying, because the retained block is scaled by where this
- // frame's decay finished.
- constexpr double kDecayPerBlock = 0.6812920690579611; // 10^(-20/(20*6))
- double gain = kDecayPerBlock;
- for (int block = 0; block < kBlocksPerFrame; ++block) {
- for (int ch = 0; ch < nchans; ++ch) {
- const auto& last = impl_->retained_->last_block[static_cast<std::size_t>(ch)];
- auto& delay = impl_->delay_[static_cast<std::size_t>(ch)];
- // The delay half's exponent (block_norm.hpp): read through it,
- // and zero once this loop has written true-scale values.
- int& delay_norm = impl_->delay_norm_[static_cast<std::size_t>(ch)];
- const int history_norm = delay_norm;
- delay_norm = repeat ? 0 : internal::kNormCeiling;
- const auto pcm = pcm_target[static_cast<std::size_t>(ch)];
- for (int n = 0; n < 256; ++n) {
- const auto un = static_cast<std::size_t>(n);
- const double head = repeat ? last[un] * gain : 0.0;
- pcm[static_cast<std::size_t>(block * 256 + n)] =
- static_cast<float>(2.0 * (head + internal::widen_stored(delay[un], history_norm)));
- delay[un] = repeat ? static_cast<internal::decode_scalar_t>(last[un + 256] * gain) : internal::decode_scalar_t{0};
- }
- }
- gain *= kDecayPerBlock;
- }
- if (repeat) {
- // Where the next consecutive loss picks the decay up from. Without
- // this a long dropout would repeat the same block at the same level
- // forever, which is the one concealment artefact worse than the gap.
- const double carried = gain / kDecayPerBlock;
- for (int ch = 0; ch < nchans; ++ch) {
- for (double& value : impl_->retained_->last_block[static_cast<std::size_t>(ch)]) {
- value *= carried;
- }
- }
- } else {
- // kMute has already driven impl_->delay_ to zero; clearing the retained
- // block keeps a later switch of policy from resurrecting audio from
- // before the dropout.
- for (int ch = 0; ch < nchans; ++ch) {
- impl_->retained_->last_block[static_cast<std::size_t>(ch)].fill(0.0);
- }
- }
+    // The concealed frame goes through the SAME overlap-add the real ones do,
+    // which is what makes it join up at both ends. Under kRepeatFade each
+    // block's transform output is the last good block's, decayed; under kMute
+    // it is zero, and the first block still carries the previous frame's own
+    // window tail out of impl_->delay_ - so silence arrives as the codec's own
+    // fade rather than as a cut.
+    //
+    // 20 dB across the frame: enough that a lost frame audibly steps back
+    // instead of ringing on, and gentle enough that one lost frame in an
+    // otherwise clean stream is not itself the artefact. A run of losses
+    // keeps decaying, because the retained block is scaled by where this
+    // frame's decay finished.
+    constexpr double kDecayPerBlock = 0.6812920690579611;  // 10^(-20/(20*6))
+    double gain = kDecayPerBlock;
+    for (int block = 0; block < kBlocksPerFrame; ++block) {
+        for (int ch = 0; ch < nchans; ++ch) {
+            const auto& last = impl_->retained_->last_block[static_cast<std::size_t>(ch)];
+            auto& delay = impl_->delay_[static_cast<std::size_t>(ch)];
+            // The delay half's exponent (block_norm.hpp): read through it,
+            // and zero once this loop has written true-scale values.
+            int& delay_norm = impl_->delay_norm_[static_cast<std::size_t>(ch)];
+            const int history_norm = delay_norm;
+            delay_norm = repeat ? 0 : internal::kNormCeiling;
+            const auto pcm = pcm_target[static_cast<std::size_t>(ch)];
+            for (int n = 0; n < 256; ++n) {
+                const auto un = static_cast<std::size_t>(n);
+                const double head = repeat ? last[un] * gain : 0.0;
+                pcm[static_cast<std::size_t>(block * 256 + n)] =
+                    static_cast<float>(2.0 * (head + internal::widen_stored(delay[un], history_norm)));
+                delay[un] = repeat ? static_cast<internal::decode_scalar_t>(last[un + 256] * gain) : internal::decode_scalar_t{0};
+            }
+        }
+        gain *= kDecayPerBlock;
+    }
+    if (repeat) {
+        // Where the next consecutive loss picks the decay up from. Without
+        // this a long dropout would repeat the same block at the same level
+        // forever, which is the one concealment artefact worse than the gap.
+        const double carried = gain / kDecayPerBlock;
+        for (int ch = 0; ch < nchans; ++ch) {
+            for (double& value : impl_->retained_->last_block[static_cast<std::size_t>(ch)]) {
+                value *= carried;
+            }
+        }
+    } else {
+        // kMute has already driven impl_->delay_ to zero; clearing the retained
+        // block keeps a later switch of policy from resurrecting audio from
+        // before the dropout.
+        for (int ch = 0; ch < nchans; ++ch) {
+            impl_->retained_->last_block[static_cast<std::size_t>(ch)].fill(0.0);
+        }
+    }
 
- const auto levels = mix_levels(out.acmod, out.cmixlev, out.surmixlev, out.alternate_bsi);
- if (external.empty()) {
- impl_->output_.apply(out.channels, out.acmod, out.lfe, levels, out.dialnorm, out.dialnorm2);
- } else {
- impl_->output_.apply(external.first(static_cast<std::size_t>(nchans)), out.acmod, out.lfe,
- levels, out.dialnorm, out.dialnorm2);
- }
- return out;
+    const auto levels = mix_levels(out.acmod, out.cmixlev, out.surmixlev, out.alternate_bsi);
+    if (external.empty()) {
+        impl_->output_.apply(out.channels, out.acmod, out.lfe, levels, out.dialnorm, out.dialnorm2);
+    } else {
+        impl_->output_.apply(external.first(static_cast<std::size_t>(nchans)), out.acmod, out.lfe,
+                      levels, out.dialnorm, out.dialnorm2);
+    }
+    return out;
 }
 
 std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
- std::span<const std::byte> frame, std::span<const std::span<float>> external) {
- AC3_ZONE_SCOPED_N("ac3_decode_frame");
- // Before the first early return, for the same reason FrameEncoder resets
- // its own: a caller reusing one trace across a file must never read a
- // previous frame's state out of a call that decoded nothing.
- if (impl_->config_.trace != nullptr) {
- impl_->config_.trace->reset();
- }
- if (impl_->config_.syntax != nullptr) {
- impl_->config_.syntax->reset();
- }
- // The direct-form (reference) transform is a CMake-selected translation
- // unit, and the minimum-footprint decoder profile leaves its 1.81 MiB of
- // tables out of the build (minimum-footprint decoder profile; src/core/reference_transform.hpp).
- // Asking for it there is refused rather than silently served by the fast
- // path: fast_imdct == false exists so a caller can validate against the
- // arithmetic the spec writes down, and substituting a different one would
- // defeat the only reason to set it. Constant-folded away in every ordinary
- // build, where kReferenceTransformAvailable is true.
- if (!impl_->config_.fast_imdct && !internal::kReferenceTransformAvailable) {
- return std::unexpected(DecodeError::kUnsupported);
- }
- if (frame.size() < 6) {
- return std::unexpected(DecodeError::kTruncated);
- }
- // bsid sits at bit 40 in both generations precisely so it can be read
- // before anything else is interpreted; every field below means something
- // different in an Annex E frame, so check it first rather than letting the
- // AC-3 reading of frmsizecod fail in some incidental way.
- if (*stream_bsid(frame) > 8) {
- return std::unexpected(DecodeError::kUnsupported);
- }
- BitReader r{frame};
- if (r.read(16) != kSyncWord) {
- return std::unexpected(DecodeError::kBadSyncWord);
- }
- (void)r.read(16); // crc1 (validated by register property below)
- const auto fscod = r.read(2);
- const auto frmsizecod = r.read(6);
- if (fscod == 3 || frmsizecod > 37) {
- return std::unexpected(DecodeError::kReservedValue);
- }
- const auto sample_rate = static_cast<SampleRate>(fscod);
- const std::uint32_t kbps = kBitratesKbps[frmsizecod >> 1];
- const auto expected_bytes = frame_size_bytes(sample_rate, kbps, (frmsizecod & 1) != 0);
- if (!expected_bytes || frame.size() != *expected_bytes) {
- return std::unexpected(DecodeError::kTruncated);
- }
- const std::uint32_t words = *expected_bytes / 2;
- const std::uint32_t words58 = frame_size_58_words(words);
- if (crc16(frame.subspan(2, 2 * words58 - 2)) != 0 || crc16(frame.subspan(2)) != 0) {
- // Reported here rather than only via the returned error: with
- // DecoderConfig::concealment set, this same call goes on to return a
- // SUCCESSFUL result (DecodedFrame::concealed), and this is the only
- // signal a caller not polling that field on every call gets.
- if (impl_->config_.diagnostics != nullptr) {
- impl_->config_.diagnostics({.event = DiagnosticEvent::kCrcMismatch},
- impl_->config_.diagnostics_context);
- }
- return std::unexpected(DecodeError::kBadCrc);
- }
+    std::span<const std::byte> frame, std::span<const std::span<float>> external) {
+    AC3_ZONE_SCOPED_N("ac3_decode_frame");
+    // Before the first early return, for the same reason FrameEncoder resets
+    // its own: a caller reusing one trace across a file must never read a
+    // previous frame's state out of a call that decoded nothing.
+    if (impl_->config_.trace != nullptr) {
+        impl_->config_.trace->reset();
+    }
+    if (impl_->config_.syntax != nullptr) {
+        impl_->config_.syntax->reset();
+    }
+    // The direct-form (reference) transform is a CMake-selected translation
+    // unit, and the minimum-footprint decoder profile leaves its 1.81 MiB of
+    // tables out of the build (minimum-footprint decoder profile; src/core/reference_transform.hpp).
+    // Asking for it there is refused rather than silently served by the fast
+    // path: fast_imdct == false exists so a caller can validate against the
+    // arithmetic the spec writes down, and substituting a different one would
+    // defeat the only reason to set it. Constant-folded away in every ordinary
+    // build, where kReferenceTransformAvailable is true.
+    if (!impl_->config_.fast_imdct && !internal::kReferenceTransformAvailable) {
+        return std::unexpected(DecodeError::kUnsupported);
+    }
+    if (frame.size() < 6) {
+        return std::unexpected(DecodeError::kTruncated);
+    }
+    // bsid sits at bit 40 in both generations precisely so it can be read
+    // before anything else is interpreted; every field below means something
+    // different in an Annex E frame, so check it first rather than letting the
+    // AC-3 reading of frmsizecod fail in some incidental way.
+    if (*stream_bsid(frame) > 8) {
+        return std::unexpected(DecodeError::kUnsupported);
+    }
+    BitReader r{frame};
+    if (r.read(16) != kSyncWord) {
+        return std::unexpected(DecodeError::kBadSyncWord);
+    }
+    (void)r.read(16);  // crc1 (validated by register property below)
+    const auto fscod = r.read(2);
+    const auto frmsizecod = r.read(6);
+    if (fscod == 3 || frmsizecod > 37) {
+        return std::unexpected(DecodeError::kReservedValue);
+    }
+    const auto sample_rate = static_cast<SampleRate>(fscod);
+    const std::uint32_t kbps = kBitratesKbps[frmsizecod >> 1];
+    const auto expected_bytes = frame_size_bytes(sample_rate, kbps, (frmsizecod & 1) != 0);
+    if (!expected_bytes || frame.size() != *expected_bytes) {
+        return std::unexpected(DecodeError::kTruncated);
+    }
+    const std::uint32_t words = *expected_bytes / 2;
+    const std::uint32_t words58 = frame_size_58_words(words);
+    if (crc16(frame.subspan(2, 2 * words58 - 2)) != 0 || crc16(frame.subspan(2)) != 0) {
+        // Reported here rather than only via the returned error: with
+        // DecoderConfig::concealment set, this same call goes on to return a
+        // SUCCESSFUL result (DecodedFrame::concealed), and this is the only
+        // signal a caller not polling that field on every call gets.
+        if (impl_->config_.diagnostics != nullptr) {
+            impl_->config_.diagnostics({.event = DiagnosticEvent::kCrcMismatch},
+                                       impl_->config_.diagnostics_context);
+        }
+        return std::unexpected(DecodeError::kBadCrc);
+    }
 
- // --- bsi ---
- const auto bsid = r.read(5);
- if (bsid > 8) {
- return std::unexpected(DecodeError::kUnsupported);
- }
- meta::BsiInfo info;
- const auto bsmod = r.read(3); // §5.4.2.1, also reported raw on DecodedFrame
- info.bsmod = static_cast<meta::BitstreamMode>(bsmod);
- const auto acmod_value = r.read(3);
- const auto acmod = static_cast<Acmod>(acmod_value);
- // §5.4.2.4/§5.4.2.5. Both fields are conditional on acmod, so "absent"
- // and "present and says the default" stay distinguishable on the result -
- // which is what lets ac3::mix_levels() apply §7.8's own fallbacks rather
- // than inventing values here. Code '11' is reserved for cmixlev and
- // §5.4.2.4 says to read it as the intermediate -4.5 dB, which is what
- // leaving it std::nullopt already produces.
- std::optional<meta::CentreMixLevel> cmixlev;
- std::optional<meta::SurroundMixLevel> surmixlev;
- if ((acmod_value & 0x1) != 0 && acmod != Acmod::k1_0) {
- const auto code = r.read(2);
- if (code <= static_cast<std::uint32_t>(meta::CentreMixLevel::kMinus6dB)) {
- cmixlev = static_cast<meta::CentreMixLevel>(code);
- }
- }
- if ((acmod_value & 0x4) != 0) {
- const auto code = r.read(2);
- // §5.4.2.5 leaves '11' reserved with no stated substitution; treating
- // it as "not indicated" gets §7.8's own -6 dB default, which is the
- // only reading that does not put a made-up level on the wire's behalf.
- if (code <= static_cast<std::uint32_t>(meta::SurroundMixLevel::kSilent)) {
- surmixlev = static_cast<meta::SurroundMixLevel>(code);
- }
- }
- if (acmod == Acmod::k2_0) {
- const auto code = r.read(2); // dsurmod
- if (code < 3) {
- info.dsurmod = static_cast<meta::SurroundMode>(code);
- }
- }
- const bool lfe = r.read(1) != 0;
- const auto dialnorm = static_cast<int>(r.read(5));
- std::optional<std::uint8_t> compr;
- if (r.read(1) != 0) { // compre (§5.4.2.9)
- compr = static_cast<std::uint8_t>(r.read(8));
- }
- // §5.4.2.12: langcod is a reserved 0xFF wherever it appears, so the byte
- // itself carries nothing and only its presence is worth reporting.
- const auto read_langcod = [&r] {
- const bool present = r.read(1) != 0;
- if (present) {
- r.skip(8);
- }
- return present;
- };
- const auto read_audprod = [&r]() -> std::optional<meta::AudioProduction> {
- if (r.read(1) == 0) { // audprodie
- return std::nullopt;
- }
- meta::AudioProduction production;
- production.mixlevel = static_cast<int>(r.read(5));
- const auto room = r.read(2);
- if (room < 3) { // Table 5.12's '11' reads as "not indicated"
- production.roomtyp = static_cast<meta::RoomType>(room);
- }
- // adconvtyp is not part of AC-3's audprodie - see AudioProduction's
- // own comment - so it keeps its default here and only Annex D's xbsi2
- // below can set it.
- return production;
- };
- info.langcod = read_langcod();
- info.audprod = read_audprod();
- std::optional<int> dialnorm2;
- std::optional<std::uint8_t> compr2;
- if (acmod == Acmod::kDualMono) {
- dialnorm2 = static_cast<int>(r.read(5));
- if (r.read(1) != 0) { // compr2e
- compr2 = static_cast<std::uint8_t>(r.read(8));
- }
- info.langcod2 = read_langcod();
- info.audprod2 = read_audprod();
- }
- info.copyrightb = r.read(1) != 0;
- info.origbs = r.read(1) != 0;
- std::optional<meta::AlternateBsi> alternate_bsi;
- if (bsid == 6) {
- // §D2.2: bsid 6 spends the two 14-bit timecod fields on xbsi1 and
- // xbsi2 instead. §D3.2 is explicit that a legacy decoder reading them
- // as a time code it ignores is harmless - the fields are the same
- // size - which is exactly why this branch can sit here and change
- // nothing about where addbsie lands.
- meta::AlternateBsi alternate;
- if (r.read(1) != 0) { // xbsi1e
- meta::MixMetadata mix;
- // dmixmod, kept as sent: Table D2.2's reserved '11' has an
- // enumerator of its own (see DownmixMode), so a report can say it
- // was there.
- mix.dmixmod = static_cast<meta::DownmixMode>(r.read(2));
- // Table D2.1's order: both Lt/Rt levels, then both Lo/Ro ones.
- mix.ltrtcmixlev = static_cast<meta::MixLevel>(r.read(3));
- mix.ltrtsurmixlev = read_surround_mix_level(r);
- mix.lorocmixlev = static_cast<meta::MixLevel>(r.read(3));
- mix.lorosurmixlev = read_surround_mix_level(r);
- // Annex D has no LFE mix level at all, so lfemixlevcod stays
- // std::nullopt. ac3::mix_levels() does not read that as E-AC-3's
- // "LFE mixing disabled" (§E2.3.1.10): an AC-3 fold keeps §7.8's
- // +10 dB ideal whichever bsid carried it.
- alternate.mix = mix;
- }
- if (r.read(1) != 0) { // xbsi2e
- meta::ExtendedBsi extended;
- extended.dsurexmod = static_cast<meta::SurroundExMode>(r.read(2));
- const auto headphone = r.read(2);
- if (headphone < 3) { // Table D2.8's '11' reads as "not indicated"
- extended.dheadphonmod = static_cast<meta::HeadphoneMode>(headphone);
- }
- extended.adconvtyp = static_cast<meta::AdConverterType>(r.read(1));
- extended.xbsi2 = static_cast<std::uint8_t>(r.read(8));
- extended.encinfo = r.read(1) != 0;
- alternate.extended = extended;
- }
- alternate_bsi = alternate;
- } else {
- if (r.read(1) != 0) { // timecod1e
- meta::TimeCodeCoarse coarse;
- coarse.hours = static_cast<int>(r.read(5));
- coarse.minutes = static_cast<int>(r.read(6));
- coarse.eight_seconds = static_cast<int>(r.read(3));
- info.timecod1 = coarse;
- }
- if (r.read(1) != 0) { // timecod2e
- meta::TimeCodeFine fine;
- fine.seconds = static_cast<int>(r.read(3));
- fine.frames = static_cast<int>(r.read(5));
- fine.sixty_fourths = static_cast<int>(r.read(6));
- info.timecod2 = fine;
- }
- }
- if (r.read(1) != 0) { // addbsie
- const auto addbsil = r.read(6);
- r.skip((addbsil + 1) * 8);
- }
+    // --- bsi ---
+    const auto bsid = r.read(5);
+    if (bsid > 8) {
+        return std::unexpected(DecodeError::kUnsupported);
+    }
+    meta::BsiInfo info;
+    const auto bsmod = r.read(3);  // §5.4.2.1, also reported raw on DecodedFrame
+    info.bsmod = static_cast<meta::BitstreamMode>(bsmod);
+    const auto acmod_value = r.read(3);
+    const auto acmod = static_cast<Acmod>(acmod_value);
+    // §5.4.2.4/§5.4.2.5. Both fields are conditional on acmod, so "absent"
+    // and "present and says the default" stay distinguishable on the result -
+    // which is what lets ac3::mix_levels() apply §7.8's own fallbacks rather
+    // than inventing values here. Code '11' is reserved for cmixlev and
+    // §5.4.2.4 says to read it as the intermediate -4.5 dB, which is what
+    // leaving it std::nullopt already produces.
+    std::optional<meta::CentreMixLevel> cmixlev;
+    std::optional<meta::SurroundMixLevel> surmixlev;
+    if ((acmod_value & 0x1) != 0 && acmod != Acmod::k1_0) {
+        const auto code = r.read(2);
+        if (code <= static_cast<std::uint32_t>(meta::CentreMixLevel::kMinus6dB)) {
+            cmixlev = static_cast<meta::CentreMixLevel>(code);
+        }
+    }
+    if ((acmod_value & 0x4) != 0) {
+        const auto code = r.read(2);
+        // §5.4.2.5 leaves '11' reserved with no stated substitution; treating
+        // it as "not indicated" gets §7.8's own -6 dB default, which is the
+        // only reading that does not put a made-up level on the wire's behalf.
+        if (code <= static_cast<std::uint32_t>(meta::SurroundMixLevel::kSilent)) {
+            surmixlev = static_cast<meta::SurroundMixLevel>(code);
+        }
+    }
+    if (acmod == Acmod::k2_0) {
+        const auto code = r.read(2);  // dsurmod
+        if (code < 3) {
+            info.dsurmod = static_cast<meta::SurroundMode>(code);
+        }
+    }
+    const bool lfe = r.read(1) != 0;
+    const auto dialnorm = static_cast<int>(r.read(5));
+    std::optional<std::uint8_t> compr;
+    if (r.read(1) != 0) {  // compre (§5.4.2.9)
+        compr = static_cast<std::uint8_t>(r.read(8));
+    }
+    // §5.4.2.12: langcod is a reserved 0xFF wherever it appears, so the byte
+    // itself carries nothing and only its presence is worth reporting.
+    const auto read_langcod = [&r] {
+        const bool present = r.read(1) != 0;
+        if (present) {
+            r.skip(8);
+        }
+        return present;
+    };
+    const auto read_audprod = [&r]() -> std::optional<meta::AudioProduction> {
+        if (r.read(1) == 0) {  // audprodie
+            return std::nullopt;
+        }
+        meta::AudioProduction production;
+        production.mixlevel = static_cast<int>(r.read(5));
+        const auto room = r.read(2);
+        if (room < 3) {  // Table 5.12's '11' reads as "not indicated"
+            production.roomtyp = static_cast<meta::RoomType>(room);
+        }
+        // adconvtyp is not part of AC-3's audprodie - see AudioProduction's
+        // own comment - so it keeps its default here and only Annex D's xbsi2
+        // below can set it.
+        return production;
+    };
+    info.langcod = read_langcod();
+    info.audprod = read_audprod();
+    std::optional<int> dialnorm2;
+    std::optional<std::uint8_t> compr2;
+    if (acmod == Acmod::kDualMono) {
+        dialnorm2 = static_cast<int>(r.read(5));
+        if (r.read(1) != 0) {  // compr2e
+            compr2 = static_cast<std::uint8_t>(r.read(8));
+        }
+        info.langcod2 = read_langcod();
+        info.audprod2 = read_audprod();
+    }
+    info.copyrightb = r.read(1) != 0;
+    info.origbs = r.read(1) != 0;
+    std::optional<meta::AlternateBsi> alternate_bsi;
+    if (bsid == 6) {
+        // §D2.2: bsid 6 spends the two 14-bit timecod fields on xbsi1 and
+        // xbsi2 instead. §D3.2 is explicit that a legacy decoder reading them
+        // as a time code it ignores is harmless - the fields are the same
+        // size - which is exactly why this branch can sit here and change
+        // nothing about where addbsie lands.
+        meta::AlternateBsi alternate;
+        if (r.read(1) != 0) {  // xbsi1e
+            meta::MixMetadata mix;
+            // dmixmod, kept as sent: Table D2.2's reserved '11' has an
+            // enumerator of its own (see DownmixMode), so a report can say it
+            // was there.
+            mix.dmixmod = static_cast<meta::DownmixMode>(r.read(2));
+            // Table D2.1's order: both Lt/Rt levels, then both Lo/Ro ones.
+            mix.ltrtcmixlev = static_cast<meta::MixLevel>(r.read(3));
+            mix.ltrtsurmixlev = read_surround_mix_level(r);
+            mix.lorocmixlev = static_cast<meta::MixLevel>(r.read(3));
+            mix.lorosurmixlev = read_surround_mix_level(r);
+            // Annex D has no LFE mix level at all, so lfemixlevcod stays
+            // std::nullopt. ac3::mix_levels() does not read that as E-AC-3's
+            // "LFE mixing disabled" (§E2.3.1.10): an AC-3 fold keeps §7.8's
+            // +10 dB ideal whichever bsid carried it.
+            alternate.mix = mix;
+        }
+        if (r.read(1) != 0) {  // xbsi2e
+            meta::ExtendedBsi extended;
+            extended.dsurexmod = static_cast<meta::SurroundExMode>(r.read(2));
+            const auto headphone = r.read(2);
+            if (headphone < 3) {  // Table D2.8's '11' reads as "not indicated"
+                extended.dheadphonmod = static_cast<meta::HeadphoneMode>(headphone);
+            }
+            extended.adconvtyp = static_cast<meta::AdConverterType>(r.read(1));
+            extended.xbsi2 = static_cast<std::uint8_t>(r.read(8));
+            extended.encinfo = r.read(1) != 0;
+            alternate.extended = extended;
+        }
+        alternate_bsi = alternate;
+    } else {
+        if (r.read(1) != 0) {  // timecod1e
+            meta::TimeCodeCoarse coarse;
+            coarse.hours = static_cast<int>(r.read(5));
+            coarse.minutes = static_cast<int>(r.read(6));
+            coarse.eight_seconds = static_cast<int>(r.read(3));
+            info.timecod1 = coarse;
+        }
+        if (r.read(1) != 0) {  // timecod2e
+            meta::TimeCodeFine fine;
+            fine.seconds = static_cast<int>(r.read(3));
+            fine.frames = static_cast<int>(r.read(5));
+            fine.sixty_fourths = static_cast<int>(r.read(6));
+            info.timecod2 = fine;
+        }
+    }
+    if (r.read(1) != 0) {  // addbsie
+        const auto addbsil = r.read(6);
+        r.skip((addbsil + 1) * 8);
+    }
 
- const int nfchans = fullbw_channel_count(acmod);
- const int nchans = nfchans + (lfe ? 1 : 0);
+    const int nfchans = fullbw_channel_count(acmod);
+    const int nchans = nfchans + (lfe ? 1 : 0);
 
- DecodedFrame out;
- out.sample_rate = sample_rate;
- out.bitrate_kbps = kbps;
- out.bsid = static_cast<int>(bsid);
- out.bsmod = static_cast<int>(bsmod);
- out.acmod = acmod;
- out.lfe = lfe;
- out.cmixlev = cmixlev;
- out.surmixlev = surmixlev;
- out.info = info;
- out.alternate_bsi = alternate_bsi;
- out.dialnorm = dialnorm;
- out.cmixlev = cmixlev;
- out.surmixlev = surmixlev;
- out.compr = compr;
- out.dynrng.fill(meta::kDynrngUnity);
- out.dialnorm2 = dialnorm2;
- out.compr2 = compr2;
- out.dynrng2.fill(meta::kDynrngUnity);
- out.blksw.assign(static_cast<std::size_t>(nfchans), {});
- // The PCM target: the caller's spans when decode_frame_into supplied
- // them, otherwise vectors allocated into the result exactly as before.
- // Every sample of every coded channel is written below (six blocks of
- // 256 each), so external storage needs no pre-clearing.
- // impl_->config_.skip_reconstruction leaves both forms untouched: nothing below
- // writes PCM at all, so the value form allocates none (its `channels`
- // comes back empty, as that option's own comment promises) and the
- // decode_frame_into form simply never writes through the caller's spans.
- std::array<std::span<float>, 6> pcm_target{};
- if (impl_->config_.skip_reconstruction) {
- // Nothing to point at.
- } else if (external.empty()) {
- out.channels.assign(static_cast<std::size_t>(nchans),
- std::vector<float>(kSamplesPerFrame, 0.0f));
- for (int ch = 0; ch < nchans; ++ch) {
- pcm_target[static_cast<std::size_t>(ch)] = out.channels[static_cast<std::size_t>(ch)];
- }
- } else {
- assert(static_cast<int>(external.size()) >= nchans);
- for (int ch = 0; ch < nchans; ++ch) {
- assert(external[static_cast<std::size_t>(ch)].size() >=
- static_cast<std::size_t>(kSamplesPerFrame));
- pcm_target[static_cast<std::size_t>(ch)] = external[static_cast<std::size_t>(ch)];
- }
- }
+    DecodedFrame out;
+    out.sample_rate = sample_rate;
+    out.bitrate_kbps = kbps;
+    out.bsid = static_cast<int>(bsid);
+    out.bsmod = static_cast<int>(bsmod);
+    out.acmod = acmod;
+    out.lfe = lfe;
+    out.cmixlev = cmixlev;
+    out.surmixlev = surmixlev;
+    out.info = info;
+    out.alternate_bsi = alternate_bsi;
+    out.dialnorm = dialnorm;
+    out.cmixlev = cmixlev;
+    out.surmixlev = surmixlev;
+    out.compr = compr;
+    out.dynrng.fill(meta::kDynrngUnity);
+    out.dialnorm2 = dialnorm2;
+    out.compr2 = compr2;
+    out.dynrng2.fill(meta::kDynrngUnity);
+    out.blksw.assign(static_cast<std::size_t>(nfchans), {});
+    // The PCM target: the caller's spans when decode_frame_into supplied
+    // them, otherwise vectors allocated into the result exactly as before.
+    // Every sample of every coded channel is written below (six blocks of
+    // 256 each), so external storage needs no pre-clearing.
+    // impl_->config_.skip_reconstruction leaves both forms untouched: nothing below
+    // writes PCM at all, so the value form allocates none (its `channels`
+    // comes back empty, as that option's own comment promises) and the
+    // decode_frame_into form simply never writes through the caller's spans.
+    std::array<std::span<float>, 6> pcm_target{};
+    if (impl_->config_.skip_reconstruction) {
+        // Nothing to point at.
+    } else if (external.empty()) {
+        out.channels.assign(static_cast<std::size_t>(nchans),
+                            std::vector<float>(kSamplesPerFrame, 0.0f));
+        for (int ch = 0; ch < nchans; ++ch) {
+            pcm_target[static_cast<std::size_t>(ch)] = out.channels[static_cast<std::size_t>(ch)];
+        }
+    } else {
+        assert(static_cast<int>(external.size()) >= nchans);
+        for (int ch = 0; ch < nchans; ++ch) {
+            assert(external[static_cast<std::size_t>(ch)].size() >=
+                   static_cast<std::size_t>(kSamplesPerFrame));
+            pcm_target[static_cast<std::size_t>(ch)] = external[static_cast<std::size_t>(ch)];
+        }
+    }
 
- // §7.10: whether the block loop below has to keep its last block for a
- // future loss to be reconstructed from. Sized here rather than in the
- // constructor because nchans is not known until now, and skipped
- // entirely with concealment off - which is what keeps a decoder
- // configured the way every existing caller configures it from carrying
- // 24 KB it will never read.
- const bool retain_last_block = impl_->config_.concealment != ConcealmentPolicy::kNone;
- if (retain_last_block) {
- impl_->conceal_scratch_.assign(static_cast<std::size_t>(nchans), std::array<double, 512>{});
- }
+    // §7.10: whether the block loop below has to keep its last block for a
+    // future loss to be reconstructed from. Sized here rather than in the
+    // constructor because nchans is not known until now, and skipped
+    // entirely with concealment off - which is what keeps a decoder
+    // configured the way every existing caller configures it from carrying
+    // 24 KB it will never read.
+    const bool retain_last_block = impl_->config_.concealment != ConcealmentPolicy::kNone;
+    if (retain_last_block) {
+        impl_->conceal_scratch_.assign(static_cast<std::size_t>(nchans), std::array<double, 512>{});
+    }
 
- // §7.7.1.2: an absent word inherits from the previous BLOCK, and block 0
- // without one is unity — never the previous frame's value, which is what
- // lets a decoder join a stream mid-programme at the right level.
- std::uint8_t dynrng_word = meta::kDynrngUnity;
- std::uint8_t dynrng2_word = meta::kDynrngUnity;
+    // §7.7.1.2: an absent word inherits from the previous BLOCK, and block 0
+    // without one is unity — never the previous frame's value, which is what
+    // lets a decoder join a stream mid-programme at the right level.
+    std::uint8_t dynrng_word = meta::kDynrngUnity;
+    std::uint8_t dynrng2_word = meta::kDynrngUnity;
 
- // Decode state persisting across blocks. Streams are the fbw channels,
- // then the LFE, then - when coupling is in use - the coupling channel as
- // one more stream, exactly as the encoder lays them out.
- const std::size_t max_streams = static_cast<std::size_t>(nchans) + 1;
- // Per-frame scratch, owned by Impl and re-established here with exactly the
- // arguments these declarations used to carry - see Impl's own note.
- auto& endmant = impl_->endmant_;
- endmant.assign(max_streams, kLfeEndmant);
- auto& exps = impl_->exps_;
- reset_nested(exps, max_streams);
- BitAllocCodes base_codes{};
- auto& fgaincod = impl_->fgaincod_;
- fgaincod.assign(max_streams, base_codes.fgaincod);
- int csnroffst = 0;
- auto& fsnroffst = impl_->fsnroffst_;
- fsnroffst.assign(max_streams, 0);
- // §7.2.2.6: per-stream delta bit allocation, reset to "no segments" at the
- // start of every syncframe (the spec's own recommended initialization),
- // then persisting block to block exactly like base_codes/fsnroffst above
- // until re-transmitted or explicitly cleared.
- auto& delta = impl_->delta_;
- delta.assign(max_streams, DeltaSegments{});
- std::array<bool, 4> rematflg{};
+    // Decode state persisting across blocks. Streams are the fbw channels,
+    // then the LFE, then - when coupling is in use - the coupling channel as
+    // one more stream, exactly as the encoder lays them out.
+    const std::size_t max_streams = static_cast<std::size_t>(nchans) + 1;
+    // Per-frame scratch, owned by Impl and re-established here with exactly the
+    // arguments these declarations used to carry - see Impl's own note.
+    auto& endmant = impl_->endmant_;
+    endmant.assign(max_streams, kLfeEndmant);
+    auto& exps = impl_->exps_;
+    reset_nested(exps, max_streams);
+    BitAllocCodes base_codes{};
+    auto& fgaincod = impl_->fgaincod_;
+    fgaincod.assign(max_streams, base_codes.fgaincod);
+    int csnroffst = 0;
+    auto& fsnroffst = impl_->fsnroffst_;
+    fsnroffst.assign(max_streams, 0);
+    // §7.2.2.6: per-stream delta bit allocation, reset to "no segments" at the
+    // start of every syncframe (the spec's own recommended initialization),
+    // then persisting block to block exactly like base_codes/fsnroffst above
+    // until re-transmitted or explicitly cleared.
+    auto& delta = impl_->delta_;
+    delta.assign(max_streams, DeltaSegments{});
+    std::array<bool, 4> rematflg{};
 
- // Coupling state (§7.4). All of it persists until re-transmitted.
- const int cpl_stream = nchans;
- bool cplinu = false;
- bool phsflginu = false;
- int cplbegf = 0;
- int cplstrtmant = 0;
- int ncplsubnd = 0;
- int cplfleak = 0;
- int cplsleak = 0;
- auto& chincpl = impl_->chincpl_;
- chincpl.assign(static_cast<std::size_t>(nfchans), false);
- // Which coupling band each sub-band belongs to (cplbndstrc expansion).
- auto& subband_band = impl_->subband_band_;
- subband_band.clear();
- int ncplbnd = 0;
- // [channel][sub-band] - already expanded from bands to sub-bands.
- auto& cplco = impl_->cplco_;
- reset_nested(cplco, static_cast<std::size_t>(nfchans));
- // The fixed-point tier's coupling-coordinate exponents (block_norm.hpp).
- // Only that tier reads them, so only that tier sizes and fills them: in
- // the floating tiers they stay empty, and cost the default build neither
- // heap nor an allocation.
- auto& cplco_exp = impl_->cplco_exp_;
- if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
- reset_nested(cplco_exp, static_cast<std::size_t>(nfchans));
- }
- auto& band_exps = impl_->band_exps_;
- auto& norm = impl_->norm_;
- norm.assign(max_streams, 0);
- auto& phsflg = impl_->phsflg_;
- phsflg.clear();
+    // Coupling state (§7.4). All of it persists until re-transmitted.
+    const int cpl_stream = nchans;
+    bool cplinu = false;
+    bool phsflginu = false;
+    int cplbegf = 0;
+    int cplstrtmant = 0;
+    int ncplsubnd = 0;
+    int cplfleak = 0;
+    int cplsleak = 0;
+    auto& chincpl = impl_->chincpl_;
+    chincpl.assign(static_cast<std::size_t>(nfchans), false);
+    // Which coupling band each sub-band belongs to (cplbndstrc expansion).
+    auto& subband_band = impl_->subband_band_;
+    subband_band.clear();
+    int ncplbnd = 0;
+    // [channel][sub-band] - already expanded from bands to sub-bands.
+    auto& cplco = impl_->cplco_;
+    reset_nested(cplco, static_cast<std::size_t>(nfchans));
+    // The fixed-point tier's coupling-coordinate exponents (block_norm.hpp).
+    // Only that tier reads them, so only that tier sizes and fills them: in
+    // the floating tiers they stay empty, and cost the default build neither
+    // heap nor an allocation.
+    auto& cplco_exp = impl_->cplco_exp_;
+    if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+        reset_nested(cplco_exp, static_cast<std::size_t>(nfchans));
+    }
+    auto& band_exps = impl_->band_exps_;
+    auto& norm = impl_->norm_;
+    norm.assign(max_streams, 0);
+    auto& phsflg = impl_->phsflg_;
+    phsflg.clear();
 
- // The self-check's decoder-side view (ac3/verify/mirror.hpp). nfchans and
- // nchans are frame-wide, so the shape is settled here; the per-block half
- // is filled twice below - the block-boundary bit position on entry, the
- // per-stream state once the allocation for the block exists - so that a
- // frame this decoder ends up REFUSING still leaves behind the offsets it
- // reached, which is what localises a desync to a block.
- if (impl_->config_.trace != nullptr) {
- impl_->config_.trace->fbw_channels = nfchans;
- impl_->config_.trace->coded_channels = nchans;
- }
- // The syntax trace's frame-wide shape (ac3/decoder/syntax_trace.hpp).
- // Every Annex E frame gate it carries stays false here: AC-3 has no
- // audfrm section at all, so blkswe/dithflage/bamode and the rest simply
- // do not exist, and every one of their per-block fields is unconditional
- // instead. per_block_exp_strategy is true for the same reason - Table
- // E2.10's hoisted frame codes are an Annex E addition.
- if (impl_->config_.syntax != nullptr) {
- impl_->config_.syntax->valid = true;
- impl_->config_.syntax->fbw_channels = nfchans;
- impl_->config_.syntax->lfe = lfe;
- impl_->config_.syntax->block_count = kBlocksPerFrame;
- }
+    // The self-check's decoder-side view (ac3/verify/mirror.hpp). nfchans and
+    // nchans are frame-wide, so the shape is settled here; the per-block half
+    // is filled twice below - the block-boundary bit position on entry, the
+    // per-stream state once the allocation for the block exists - so that a
+    // frame this decoder ends up REFUSING still leaves behind the offsets it
+    // reached, which is what localises a desync to a block.
+    if (impl_->config_.trace != nullptr) {
+        impl_->config_.trace->fbw_channels = nfchans;
+        impl_->config_.trace->coded_channels = nchans;
+    }
+    // The syntax trace's frame-wide shape (ac3/decoder/syntax_trace.hpp).
+    // Every Annex E frame gate it carries stays false here: AC-3 has no
+    // audfrm section at all, so blkswe/dithflage/bamode and the rest simply
+    // do not exist, and every one of their per-block fields is unconditional
+    // instead. per_block_exp_strategy is true for the same reason - Table
+    // E2.10's hoisted frame codes are an Annex E addition.
+    if (impl_->config_.syntax != nullptr) {
+        impl_->config_.syntax->valid = true;
+        impl_->config_.syntax->fbw_channels = nfchans;
+        impl_->config_.syntax->lfe = lfe;
+        impl_->config_.syntax->block_count = kBlocksPerFrame;
+    }
 
- // Per-block scratch, declared once ahead of the block loop rather than
- // freshly inside it: each is fully re-assigned or overwritten before it
- // is read within any block (the .assign() calls below keep the exact
- // clearing semantics the in-loop declarations had), so hoisting changes
- // nothing observable - it only stops the loop from re-allocating some
- // twenty buffers per block. `x` additionally carries no zero-init at
- // all: both imdct512_windowed and imdct256_pair_windowed write every
- // element of the 512-wide output (mdct.cpp's step 5 covers x[0..511] in
- // eight strided sequences), so a cleared buffer was never load-bearing.
- auto& band_values = impl_->band_values_;
- band_values.clear();
- auto& strategy = impl_->strategy_;
- strategy.clear();
- auto& groups = impl_->groups_;
- groups.clear();
- auto& bap = impl_->bap_;
- reset_nested(bap, max_streams);
- // The allocation memo describes what `bap` holds, and `bap` was just
- // emptied: every stream's first block this frame recomputes, and the memo
- // saves the blocks after it whose inputs are unchanged.
- for (auto& memo : impl_->bitalloc_memo_) {
- memo.valid = false;
- }
- // Only meaningful when trace != nullptr (see the bit-allocation loop
- // below) - reused across blocks the same way `bap` above is, so tracing
- // a whole file costs one allocation rather than one per block.
- auto& mask = impl_->mask_;
- mask.assign(max_streams, {});
- // coeffs is assign()ed again at the top of every block below, so this one
- // is only sizing the buffer - but it is left spelled out rather than
- // shortened to resize(), so that every member in this cluster is
- // re-established the same way and none of them depends on a reader
- // noticing which are and are not refreshed later.
- auto& coeffs = impl_->coeffs_;
- coeffs.assign(max_streams, {});
- std::array<internal::decode_scalar_t, 512> x;
+    // Per-block scratch, declared once ahead of the block loop rather than
+    // freshly inside it: each is fully re-assigned or overwritten before it
+    // is read within any block (the .assign() calls below keep the exact
+    // clearing semantics the in-loop declarations had), so hoisting changes
+    // nothing observable - it only stops the loop from re-allocating some
+    // twenty buffers per block. `x` additionally carries no zero-init at
+    // all: both imdct512_windowed and imdct256_pair_windowed write every
+    // element of the 512-wide output (mdct.cpp's step 5 covers x[0..511] in
+    // eight strided sequences), so a cleared buffer was never load-bearing.
+    auto& band_values = impl_->band_values_;
+    band_values.clear();
+    auto& strategy = impl_->strategy_;
+    strategy.clear();
+    auto& groups = impl_->groups_;
+    groups.clear();
+    auto& bap = impl_->bap_;
+    reset_nested(bap, max_streams);
+    // The allocation memo describes what `bap` holds, and `bap` was just
+    // emptied: every stream's first block this frame recomputes, and the memo
+    // saves the blocks after it whose inputs are unchanged.
+    for (auto& memo : impl_->bitalloc_memo_) {
+        memo.valid = false;
+    }
+    // Only meaningful when trace != nullptr (see the bit-allocation loop
+    // below) - reused across blocks the same way `bap` above is, so tracing
+    // a whole file costs one allocation rather than one per block.
+    auto& mask = impl_->mask_;
+    mask.assign(max_streams, {});
+    // coeffs is assign()ed again at the top of every block below, so this one
+    // is only sizing the buffer - but it is left spelled out rather than
+    // shortened to resize(), so that every member in this cluster is
+    // re-established the same way and none of them depends on a reader
+    // noticing which are and are not refreshed later.
+    auto& coeffs = impl_->coeffs_;
+    coeffs.assign(max_streams, {});
+    std::array<internal::decode_scalar_t, 512> x;
 
- for (int block = 0; block < kBlocksPerFrame; ++block) {
- AC3_ZONE_SCOPED_N("ac3_decode_block");
- if (impl_->config_.trace != nullptr) {
- auto& trace = impl_->config_.trace->blocks[static_cast<std::size_t>(block)];
- trace.entered = true;
- trace.bit_offset = r.bit_position();
- }
- BlockSyntax* syntax =
- impl_->config_.syntax != nullptr ? &impl_->config_.syntax->blocks[static_cast<std::size_t>(block)]
- : nullptr;
- if (syntax != nullptr) {
- syntax->entered = true;
- }
- std::array<bool, 5> blksw{}; // AC-3's widest acmod (3/2) has 5 fbw channels
- for (int ch = 0; ch < nfchans; ++ch) {
- blksw[static_cast<std::size_t>(ch)] = r.read(1) != 0;
- out.blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)] =
- blksw[static_cast<std::size_t>(ch)];
- if (syntax != nullptr && blksw[static_cast<std::size_t>(ch)]) {
- syntax->block_switch |= static_cast<std::uint8_t>(1U << ch);
- }
- }
- // §5.4.3.2/§7.3.4: per-channel, read fresh every block (unlike
- // E-AC-3's frame-gated dithflage). Reconstruction is done in
- // read_stream/the decoupling loop below; a coupled channel's own
- // bit still gates dither for its shared high band, applied there
- // after extraction rather than here.
- std::array<bool, 5> dithflag{};
- for (int ch = 0; ch < nfchans; ++ch) {
- dithflag[static_cast<std::size_t>(ch)] = r.read(1) != 0;
- if (syntax != nullptr && dithflag[static_cast<std::size_t>(ch)]) {
- syntax->dither |= static_cast<std::uint8_t>(1U << ch);
- }
- }
- if (r.read(1) != 0) { // dynrnge
- dynrng_word = static_cast<std::uint8_t>(r.read(8));
- }
- out.dynrng[static_cast<std::size_t>(block)] = dynrng_word;
- if (acmod == Acmod::kDualMono) {
- if (r.read(1) != 0) { // dynrng2e
- dynrng2_word = static_cast<std::uint8_t>(r.read(8));
- }
- out.dynrng2[static_cast<std::size_t>(block)] = dynrng2_word;
- }
+    for (int block = 0; block < kBlocksPerFrame; ++block) {
+        AC3_ZONE_SCOPED_N("ac3_decode_block");
+        if (impl_->config_.trace != nullptr) {
+            auto& trace = impl_->config_.trace->blocks[static_cast<std::size_t>(block)];
+            trace.entered = true;
+            trace.bit_offset = r.bit_position();
+        }
+        BlockSyntax* syntax =
+            impl_->config_.syntax != nullptr ? &impl_->config_.syntax->blocks[static_cast<std::size_t>(block)]
+                                      : nullptr;
+        if (syntax != nullptr) {
+            syntax->entered = true;
+        }
+        std::array<bool, 5> blksw{};  // AC-3's widest acmod (3/2) has 5 fbw channels
+        for (int ch = 0; ch < nfchans; ++ch) {
+            blksw[static_cast<std::size_t>(ch)] = r.read(1) != 0;
+            out.blksw[static_cast<std::size_t>(ch)][static_cast<std::size_t>(block)] =
+                blksw[static_cast<std::size_t>(ch)];
+            if (syntax != nullptr && blksw[static_cast<std::size_t>(ch)]) {
+                syntax->block_switch |= static_cast<std::uint8_t>(1U << ch);
+            }
+        }
+        // §5.4.3.2/§7.3.4: per-channel, read fresh every block (unlike
+        // E-AC-3's frame-gated dithflage). Reconstruction is done in
+        // read_stream/the decoupling loop below; a coupled channel's own
+        // bit still gates dither for its shared high band, applied there
+        // after extraction rather than here.
+        std::array<bool, 5> dithflag{};
+        for (int ch = 0; ch < nfchans; ++ch) {
+            dithflag[static_cast<std::size_t>(ch)] = r.read(1) != 0;
+            if (syntax != nullptr && dithflag[static_cast<std::size_t>(ch)]) {
+                syntax->dither |= static_cast<std::uint8_t>(1U << ch);
+            }
+        }
+        if (r.read(1) != 0) {  // dynrnge
+            dynrng_word = static_cast<std::uint8_t>(r.read(8));
+        }
+        out.dynrng[static_cast<std::size_t>(block)] = dynrng_word;
+        if (acmod == Acmod::kDualMono) {
+            if (r.read(1) != 0) {  // dynrng2e
+                dynrng2_word = static_cast<std::uint8_t>(r.read(8));
+            }
+            out.dynrng2[static_cast<std::size_t>(block)] = dynrng2_word;
+        }
 
- // --- coupling strategy (§5.3.3) ---
- if (r.read(1) != 0) { // cplstre: a new strategy, else the prior one stands
- cplinu = r.read(1) != 0;
- if (cplinu) {
- for (int ch = 0; ch < nfchans; ++ch) {
- chincpl[static_cast<std::size_t>(ch)] = r.read(1) != 0;
- }
- phsflginu = acmod == Acmod::k2_0 && r.read(1) != 0;
- cplbegf = static_cast<int>(r.read(4));
- const int cplendf = static_cast<int>(r.read(4));
- ncplsubnd = coupling::sub_band_count(cplbegf, cplendf);
- if (ncplsubnd < 1) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- cplstrtmant = coupling::start_mant(cplbegf);
- const int cplendmant = coupling::end_mant(cplendf);
- if (cplendmant > 253 || cplstrtmant >= cplendmant) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- endmant[static_cast<std::size_t>(cpl_stream)] = cplendmant;
+        // --- coupling strategy (§5.3.3) ---
+        if (r.read(1) != 0) {  // cplstre: a new strategy, else the prior one stands
+            cplinu = r.read(1) != 0;
+            if (cplinu) {
+                for (int ch = 0; ch < nfchans; ++ch) {
+                    chincpl[static_cast<std::size_t>(ch)] = r.read(1) != 0;
+                }
+                phsflginu = acmod == Acmod::k2_0 && r.read(1) != 0;
+                cplbegf = static_cast<int>(r.read(4));
+                const int cplendf = static_cast<int>(r.read(4));
+                ncplsubnd = coupling::sub_band_count(cplbegf, cplendf);
+                if (ncplsubnd < 1) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+                cplstrtmant = coupling::start_mant(cplbegf);
+                const int cplendmant = coupling::end_mant(cplendf);
+                if (cplendmant > 253 || cplstrtmant >= cplendmant) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+                endmant[static_cast<std::size_t>(cpl_stream)] = cplendmant;
 
- // cplbndstrc: a 1 folds this sub-band into the previous
- // coupling band, so coordinates are per band and duplicated
- // back out across the sub-bands they cover.
- subband_band.assign(static_cast<std::size_t>(ncplsubnd), 0);
- ncplbnd = 1;
- for (int bnd = 1; bnd < ncplsubnd; ++bnd) {
- const bool merged = r.read(1) != 0;
- if (!merged) {
- ++ncplbnd;
- }
- subband_band[static_cast<std::size_t>(bnd)] = ncplbnd - 1;
- }
- // Coordinates survive a re-sent strategy: cplcoe == 0 in this
- // very block legally means "reuse the previous coordinates"
- // (§5.4.3.14), so clearing them here would silence the
- // coupled high band. Only a change in geometry forces a
- // resize, and then only the new entries start at zero.
- for (auto& channel : cplco) {
- channel.resize(static_cast<std::size_t>(ncplsubnd), internal::decode_scalar_t{0});
- }
- if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
- for (auto& channel : cplco_exp) {
- channel.resize(static_cast<std::size_t>(ncplsubnd), 0);
- }
- }
- phsflg.resize(static_cast<std::size_t>(ncplbnd), false);
- // Coupled channels stop carrying their own coefficients here.
- for (int ch = 0; ch < nfchans; ++ch) {
- if (chincpl[static_cast<std::size_t>(ch)]) {
- endmant[static_cast<std::size_t>(ch)] = cplstrtmant;
- }
- }
- }
- }
+                // cplbndstrc: a 1 folds this sub-band into the previous
+                // coupling band, so coordinates are per band and duplicated
+                // back out across the sub-bands they cover.
+                subband_band.assign(static_cast<std::size_t>(ncplsubnd), 0);
+                ncplbnd = 1;
+                for (int bnd = 1; bnd < ncplsubnd; ++bnd) {
+                    const bool merged = r.read(1) != 0;
+                    if (!merged) {
+                        ++ncplbnd;
+                    }
+                    subband_band[static_cast<std::size_t>(bnd)] = ncplbnd - 1;
+                }
+                // Coordinates survive a re-sent strategy: cplcoe == 0 in this
+                // very block legally means "reuse the previous coordinates"
+                // (§5.4.3.14), so clearing them here would silence the
+                // coupled high band. Only a change in geometry forces a
+                // resize, and then only the new entries start at zero.
+                for (auto& channel : cplco) {
+                    channel.resize(static_cast<std::size_t>(ncplsubnd), internal::decode_scalar_t{0});
+                }
+                if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                    for (auto& channel : cplco_exp) {
+                        channel.resize(static_cast<std::size_t>(ncplsubnd), 0);
+                    }
+                }
+                phsflg.resize(static_cast<std::size_t>(ncplbnd), false);
+                // Coupled channels stop carrying their own coefficients here.
+                for (int ch = 0; ch < nfchans; ++ch) {
+                    if (chincpl[static_cast<std::size_t>(ch)]) {
+                        endmant[static_cast<std::size_t>(ch)] = cplstrtmant;
+                    }
+                }
+            }
+        }
 
- // --- coupling coordinates (§7.4.3) ---
- if (cplinu) {
- bool any_new = false;
- for (int ch = 0; ch < nfchans; ++ch) {
- if (!chincpl[static_cast<std::size_t>(ch)]) {
- continue;
- }
- if (r.read(1) == 0) { // cplcoe: reuse the previous values
- continue;
- }
- any_new = true;
- const int master = static_cast<int>(r.read(2));
- band_values.assign(static_cast<std::size_t>(ncplbnd), internal::decode_scalar_t{0});
- if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
- band_exps.assign(static_cast<std::size_t>(ncplbnd), 0);
- }
- for (int bnd = 0; bnd < ncplbnd; ++bnd) {
- const auto exp = static_cast<std::uint8_t>(r.read(4));
- const auto mant = static_cast<std::uint8_t>(r.read(4));
- const coupling::Coordinate coordinate{.exp = exp, .mant = mant};
- if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
- // The fixed-point store keeps the mantissa and the
- // power of two apart (block_norm.hpp): the product
- // with a coefficient is then a shift, and a small
- // coordinate loses nothing.
- band_values[static_cast<std::size_t>(bnd)] =
- coupling::coordinate_mantissa_as<internal::decode_scalar_t>(
- coordinate);
- band_exps[static_cast<std::size_t>(bnd)] =
- coupling::coordinate_exponent(coordinate, master);
- } else {
- band_values[static_cast<std::size_t>(bnd)] =
- coupling::decode_coordinate_as<internal::decode_scalar_t>(
- coordinate, master);
- }
- }
- for (int bnd = 0; bnd < ncplsubnd; ++bnd) {
- const auto band =
- static_cast<std::size_t>(subband_band[static_cast<std::size_t>(bnd)]);
- cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)] =
- band_values[band];
- if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
- cplco_exp[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)] =
- band_exps[band];
- }
- }
- }
- if (phsflginu && any_new) {
- for (int bnd = 0; bnd < ncplbnd; ++bnd) {
- phsflg[static_cast<std::size_t>(bnd)] = r.read(1) != 0;
- }
- }
- }
+        // --- coupling coordinates (§7.4.3) ---
+        if (cplinu) {
+            bool any_new = false;
+            for (int ch = 0; ch < nfchans; ++ch) {
+                if (!chincpl[static_cast<std::size_t>(ch)]) {
+                    continue;
+                }
+                if (r.read(1) == 0) {  // cplcoe: reuse the previous values
+                    continue;
+                }
+                any_new = true;
+                const int master = static_cast<int>(r.read(2));
+                band_values.assign(static_cast<std::size_t>(ncplbnd), internal::decode_scalar_t{0});
+                if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                    band_exps.assign(static_cast<std::size_t>(ncplbnd), 0);
+                }
+                for (int bnd = 0; bnd < ncplbnd; ++bnd) {
+                    const auto exp = static_cast<std::uint8_t>(r.read(4));
+                    const auto mant = static_cast<std::uint8_t>(r.read(4));
+                    const coupling::Coordinate coordinate{.exp = exp, .mant = mant};
+                    if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                        // The fixed-point store keeps the mantissa and the
+                        // power of two apart (block_norm.hpp): the product
+                        // with a coefficient is then a shift, and a small
+                        // coordinate loses nothing.
+                        band_values[static_cast<std::size_t>(bnd)] =
+                            coupling::coordinate_mantissa_as<internal::decode_scalar_t>(
+                                coordinate);
+                        band_exps[static_cast<std::size_t>(bnd)] =
+                            coupling::coordinate_exponent(coordinate, master);
+                    } else {
+                        band_values[static_cast<std::size_t>(bnd)] =
+                            coupling::decode_coordinate_as<internal::decode_scalar_t>(
+                                coordinate, master);
+                    }
+                }
+                for (int bnd = 0; bnd < ncplsubnd; ++bnd) {
+                    const auto band =
+                        static_cast<std::size_t>(subband_band[static_cast<std::size_t>(bnd)]);
+                    cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)] =
+                        band_values[band];
+                    if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                        cplco_exp[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)] =
+                            band_exps[band];
+                    }
+                }
+            }
+            if (phsflginu && any_new) {
+                for (int bnd = 0; bnd < ncplbnd; ++bnd) {
+                    phsflg[static_cast<std::size_t>(bnd)] = r.read(1) != 0;
+                }
+            }
+        }
 
- if (acmod == Acmod::k2_0) {
- if (r.read(1) != 0) { // rematstr: new flags; else prior flags persist
- // §7.5.2: coupling limits how many rematrix bands exist.
- const int nrematbd = !cplinu ? 4 : (cplbegf > 2 ? 4 : (cplbegf > 0 ? 3 : 2));
- rematflg.fill(false);
- for (int band = 0; band < nrematbd; ++band) {
- rematflg[static_cast<std::size_t>(band)] = r.read(1) != 0;
- }
- }
- }
+        if (acmod == Acmod::k2_0) {
+            if (r.read(1) != 0) {  // rematstr: new flags; else prior flags persist
+                // §7.5.2: coupling limits how many rematrix bands exist.
+                const int nrematbd = !cplinu ? 4 : (cplbegf > 2 ? 4 : (cplbegf > 0 ? 3 : 2));
+                rematflg.fill(false);
+                for (int band = 0; band < nrematbd; ++band) {
+                    rematflg[static_cast<std::size_t>(band)] = r.read(1) != 0;
+                }
+            }
+        }
 
- if (syntax != nullptr) {
- syntax->coupling = cplinu;
- syntax->rematrixing =
- acmod == Acmod::k2_0 && std::ranges::any_of(rematflg, [](bool on) { return on; });
- }
+        if (syntax != nullptr) {
+            syntax->coupling = cplinu;
+            syntax->rematrixing =
+                acmod == Acmod::k2_0 && std::ranges::any_of(rematflg, [](bool on) { return on; });
+        }
 
- // §5.3.3 exponent strategies: coupling channel first, then fbw, then LFE.
- strategy.assign(max_streams, ExpStrategy::kReuse);
- if (cplinu) {
- strategy[static_cast<std::size_t>(cpl_stream)] =
- static_cast<ExpStrategy>(r.read(2));
- }
- for (int ch = 0; ch < nfchans; ++ch) {
- strategy[static_cast<std::size_t>(ch)] = static_cast<ExpStrategy>(r.read(2));
- if (block == 0 && strategy[static_cast<std::size_t>(ch)] == ExpStrategy::kReuse) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- }
- if (lfe) {
- strategy[static_cast<std::size_t>(nfchans)] =
- r.read(1) != 0 ? ExpStrategy::kD15 : ExpStrategy::kReuse;
- if (block == 0 && strategy[static_cast<std::size_t>(nfchans)] == ExpStrategy::kReuse) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- }
- if (syntax != nullptr) {
- for (int ch = 0; ch < nfchans; ++ch) {
- syntax->exp_strategy[static_cast<std::size_t>(ch)] =
- strategy[static_cast<std::size_t>(ch)];
- }
- if (lfe) {
- syntax->exp_strategy[static_cast<std::size_t>(nfchans)] =
- strategy[static_cast<std::size_t>(nfchans)];
- }
- if (cplinu) {
- syntax->exp_strategy[kCouplingSyntaxStream] =
- strategy[static_cast<std::size_t>(cpl_stream)];
- }
- }
- // chbwcod exists only for fbw channels that are NOT coupled.
- for (int ch = 0; ch < nfchans; ++ch) {
- if (strategy[static_cast<std::size_t>(ch)] != ExpStrategy::kReuse &&
- !(cplinu && chincpl[static_cast<std::size_t>(ch)])) {
- const auto chbwcod = r.read(6);
- if (chbwcod > 60) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- endmant[static_cast<std::size_t>(ch)] =
- ((static_cast<int>(chbwcod) + 12) * 3) + 37;
- }
- }
+        // §5.3.3 exponent strategies: coupling channel first, then fbw, then LFE.
+        strategy.assign(max_streams, ExpStrategy::kReuse);
+        if (cplinu) {
+            strategy[static_cast<std::size_t>(cpl_stream)] =
+                static_cast<ExpStrategy>(r.read(2));
+        }
+        for (int ch = 0; ch < nfchans; ++ch) {
+            strategy[static_cast<std::size_t>(ch)] = static_cast<ExpStrategy>(r.read(2));
+            if (block == 0 && strategy[static_cast<std::size_t>(ch)] == ExpStrategy::kReuse) {
+                return std::unexpected(DecodeError::kInvalidStream);
+            }
+        }
+        if (lfe) {
+            strategy[static_cast<std::size_t>(nfchans)] =
+                r.read(1) != 0 ? ExpStrategy::kD15 : ExpStrategy::kReuse;
+            if (block == 0 && strategy[static_cast<std::size_t>(nfchans)] == ExpStrategy::kReuse) {
+                return std::unexpected(DecodeError::kInvalidStream);
+            }
+        }
+        if (syntax != nullptr) {
+            for (int ch = 0; ch < nfchans; ++ch) {
+                syntax->exp_strategy[static_cast<std::size_t>(ch)] =
+                    strategy[static_cast<std::size_t>(ch)];
+            }
+            if (lfe) {
+                syntax->exp_strategy[static_cast<std::size_t>(nfchans)] =
+                    strategy[static_cast<std::size_t>(nfchans)];
+            }
+            if (cplinu) {
+                syntax->exp_strategy[kCouplingSyntaxStream] =
+                    strategy[static_cast<std::size_t>(cpl_stream)];
+            }
+        }
+        // chbwcod exists only for fbw channels that are NOT coupled.
+        for (int ch = 0; ch < nfchans; ++ch) {
+            if (strategy[static_cast<std::size_t>(ch)] != ExpStrategy::kReuse &&
+                !(cplinu && chincpl[static_cast<std::size_t>(ch)])) {
+                const auto chbwcod = r.read(6);
+                if (chbwcod > 60) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+                endmant[static_cast<std::size_t>(ch)] =
+                    ((static_cast<int>(chbwcod) + 12) * 3) + 37;
+            }
+        }
 
- // Exponents, in the same order. The coupling channel's set is offset
- // to its own start bin and uses the even-valued absolute reference.
- if (cplinu && strategy[static_cast<std::size_t>(cpl_stream)] != ExpStrategy::kReuse) {
- const auto strat = strategy[static_cast<std::size_t>(cpl_stream)];
- const int end = endmant[static_cast<std::size_t>(cpl_stream)];
- const int span = end - cplstrtmant;
- const int group_size = exponent_group_size(strat);
- if (group_size == 0 || span % (3 * group_size) != 0) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- const int ngrps = span / (3 * group_size);
- const auto cplabsexp = static_cast<std::uint8_t>(r.read(4));
- groups.assign(static_cast<std::size_t>(ngrps), 0);
- for (auto& g : groups) {
- g = static_cast<std::uint8_t>(r.read(7));
- // §7.10.2 error condition 17: a grouped value above 124 is
- // not a legal triple of mapped values.
- if (g > 124) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- }
- auto& target = exps[static_cast<std::size_t>(cpl_stream)];
- target.assign(static_cast<std::size_t>(end), kMaxExponent);
- decode_coupling_exponents(
- cplabsexp, groups, strat,
- std::span{target}.subspan(static_cast<std::size_t>(cplstrtmant)));
- // §7.2.2.2: exponents are 0..24. A malformed differential chain
- // can walk outside that, and the reconstruction shifts by the
- // exponent - undefined behaviour, not merely wrong audio.
- for (std::size_t bin = static_cast<std::size_t>(cplstrtmant); bin < target.size();
- ++bin) {
- if (target[bin] > kMaxExponent) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- }
- }
- {
- AC3_ZONE_SCOPED_N("ac3_exponents");
- for (int ch = 0; ch < nchans; ++ch) {
- const auto strat = strategy[static_cast<std::size_t>(ch)];
- if (strat == ExpStrategy::kReuse) {
- continue;
- }
- const int end = endmant[static_cast<std::size_t>(ch)];
- const int ngrps = ch < nfchans ? exponent_group_count(strat, end) : 2;
- const auto absolute = static_cast<std::uint8_t>(r.read(4));
- groups.assign(static_cast<std::size_t>(ngrps), 0);
- for (auto& g : groups) {
- g = static_cast<std::uint8_t>(r.read(7));
- if (g > 124) { // §7.10.2 error condition 17
- return std::unexpected(DecodeError::kInvalidStream);
- }
- }
- exps[static_cast<std::size_t>(ch)].assign(static_cast<std::size_t>(end), 0);
- decode_exponents(absolute, groups, strat, exps[static_cast<std::size_t>(ch)]);
- // §7.2.2.2: exponents must stay within 0..24; the mantissa
- // reconstruction shifts by them.
- for (const auto exp : exps[static_cast<std::size_t>(ch)]) {
- if (exp > kMaxExponent) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- }
- if (ch < nfchans) {
- (void)r.read(2); // gainrng
- }
- }
- }
+        // Exponents, in the same order. The coupling channel's set is offset
+        // to its own start bin and uses the even-valued absolute reference.
+        if (cplinu && strategy[static_cast<std::size_t>(cpl_stream)] != ExpStrategy::kReuse) {
+            const auto strat = strategy[static_cast<std::size_t>(cpl_stream)];
+            const int end = endmant[static_cast<std::size_t>(cpl_stream)];
+            const int span = end - cplstrtmant;
+            const int group_size = exponent_group_size(strat);
+            if (group_size == 0 || span % (3 * group_size) != 0) {
+                return std::unexpected(DecodeError::kInvalidStream);
+            }
+            const int ngrps = span / (3 * group_size);
+            const auto cplabsexp = static_cast<std::uint8_t>(r.read(4));
+            groups.assign(static_cast<std::size_t>(ngrps), 0);
+            for (auto& g : groups) {
+                g = static_cast<std::uint8_t>(r.read(7));
+                // §7.10.2 error condition 17: a grouped value above 124 is
+                // not a legal triple of mapped values.
+                if (g > 124) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+            }
+            auto& target = exps[static_cast<std::size_t>(cpl_stream)];
+            target.assign(static_cast<std::size_t>(end), kMaxExponent);
+            decode_coupling_exponents(
+                cplabsexp, groups, strat,
+                std::span{target}.subspan(static_cast<std::size_t>(cplstrtmant)));
+            // §7.2.2.2: exponents are 0..24. A malformed differential chain
+            // can walk outside that, and the reconstruction shifts by the
+            // exponent - undefined behaviour, not merely wrong audio.
+            for (std::size_t bin = static_cast<std::size_t>(cplstrtmant); bin < target.size();
+                 ++bin) {
+                if (target[bin] > kMaxExponent) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+            }
+        }
+        {
+            AC3_ZONE_SCOPED_N("ac3_exponents");
+            for (int ch = 0; ch < nchans; ++ch) {
+                const auto strat = strategy[static_cast<std::size_t>(ch)];
+                if (strat == ExpStrategy::kReuse) {
+                    continue;
+                }
+                const int end = endmant[static_cast<std::size_t>(ch)];
+                const int ngrps = ch < nfchans ? exponent_group_count(strat, end) : 2;
+                const auto absolute = static_cast<std::uint8_t>(r.read(4));
+                groups.assign(static_cast<std::size_t>(ngrps), 0);
+                for (auto& g : groups) {
+                    g = static_cast<std::uint8_t>(r.read(7));
+                    if (g > 124) {  // §7.10.2 error condition 17
+                        return std::unexpected(DecodeError::kInvalidStream);
+                    }
+                }
+                exps[static_cast<std::size_t>(ch)].assign(static_cast<std::size_t>(end), 0);
+                decode_exponents(absolute, groups, strat, exps[static_cast<std::size_t>(ch)]);
+                // §7.2.2.2: exponents must stay within 0..24; the mantissa
+                // reconstruction shifts by them.
+                for (const auto exp : exps[static_cast<std::size_t>(ch)]) {
+                    if (exp > kMaxExponent) {
+                        return std::unexpected(DecodeError::kInvalidStream);
+                    }
+                }
+                if (ch < nfchans) {
+                    (void)r.read(2);  // gainrng
+                }
+            }
+        }
 
- if (r.read(1) != 0) { // baie
- base_codes.sdcycod = static_cast<int>(r.read(2));
- base_codes.fdcycod = static_cast<int>(r.read(2));
- base_codes.sgaincod = static_cast<int>(r.read(2));
- base_codes.dbpbcod = static_cast<int>(r.read(2));
- base_codes.floorcod = static_cast<int>(r.read(3));
- } else if (block == 0) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- if (r.read(1) != 0) { // snroffste
- csnroffst = static_cast<int>(r.read(6));
- if (cplinu) {
- fsnroffst[static_cast<std::size_t>(cpl_stream)] = static_cast<int>(r.read(4));
- fgaincod[static_cast<std::size_t>(cpl_stream)] = static_cast<int>(r.read(3));
- }
- for (int ch = 0; ch < nchans; ++ch) {
- fsnroffst[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(4));
- fgaincod[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(3));
- }
- } else if (block == 0) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- if (cplinu) {
- if (r.read(1) != 0) { // cplleake
- cplfleak = static_cast<int>(r.read(3));
- cplsleak = static_cast<int>(r.read(3));
- }
- }
- // Held in a named variable rather than tested inline: the self-check
- // records it, and what §5.4.3.47 makes of a CLEAR one (keep the
- // previous block's state, except in block 0) is exactly the rule an
- // encoder can get wrong invisibly.
- const bool deltbaie = r.read(1) != 0;
- if (deltbaie) {
- // §5.4.3.48-57: a segment set is (deltnseg+1) triples of
- // (deltoffst, deltlen, deltba); bounds are checked here, before
- // compute_bit_allocation ever sees them, since deltoffst/deltlen
- // are attacker-controlled and mask[] is exactly 50 bands wide.
- // band_start is bin_to_band(cplstrtmant) for the coupling
- // channel's segments, 0 for an fbw channel's - matching
- // compute_bit_allocation()'s own band-cursor origin (see its
- // note on the coupling channel's start band not being 0).
- const auto parse_segments =
- [&r](int band_start) -> std::expected<DeltaSegments, DecodeError> {
- DeltaSegments segs;
- segs.deltnseg = static_cast<int>(r.read(3)) + 1;
- int band = band_start;
- for (int seg = 0; seg < segs.deltnseg; ++seg) {
- segs.deltoffst[static_cast<std::size_t>(seg)] =
- static_cast<std::uint8_t>(r.read(5));
- segs.deltlen[static_cast<std::size_t>(seg)] =
- static_cast<std::uint8_t>(r.read(4));
- segs.deltba[static_cast<std::size_t>(seg)] =
- static_cast<std::uint8_t>(r.read(3));
- band += segs.deltoffst[static_cast<std::size_t>(seg)];
- const int len = segs.deltlen[static_cast<std::size_t>(seg)];
- if (band < 0 || band + len > 50) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- band += len;
- }
- return segs;
- };
- // §5.4.3.48-49's own syntax table reads every stream's 2-bit
- // cpldeltbae/deltbae[ch] code FIRST, then every stream's segment
- // data - the two are not interleaved per stream, so the codes
- // must all be read (and validated) before any segment parsing.
- // Table 5.16: 00 reuse, 01 new info follows, 10 no delta, 11
- // reserved. cplcode stays at the "reuse" value when coupling is
- // not in use, so the fbw loop below never touches delta[cpl_stream].
- int cplcode = 0;
- if (cplinu) {
- cplcode = static_cast<int>(r.read(2));
- if (cplcode == 3) {
- return std::unexpected(DecodeError::kReservedValue);
- }
- if (block == 0 && cplcode == 0) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- }
- // deltbae[ch]: fbw channels only (§5.4.3.49) - the LFE channel has
- // no delta bit allocation field at all. AC-3's widest acmod (3/2)
- // codes 5 full-bandwidth channels.
- std::array<int, 5> chcodes{};
- for (int ch = 0; ch < nfchans; ++ch) {
- chcodes[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(2));
- if (chcodes[static_cast<std::size_t>(ch)] == 3) {
- return std::unexpected(DecodeError::kReservedValue);
- }
- if (block == 0 && chcodes[static_cast<std::size_t>(ch)] == 0) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- }
- if (cplinu && cplcode == 1) {
- auto segs = parse_segments(bin_to_band(cplstrtmant));
- if (!segs.has_value()) {
- return std::unexpected(segs.error());
- }
- delta[static_cast<std::size_t>(cpl_stream)] = *segs;
- } else if (cplinu && cplcode == 2) {
- delta[static_cast<std::size_t>(cpl_stream)] = {};
- }
- for (int ch = 0; ch < nfchans; ++ch) {
- const int chcode = chcodes[static_cast<std::size_t>(ch)];
- if (chcode == 1) {
- auto segs = parse_segments(0);
- if (!segs.has_value()) {
- return std::unexpected(segs.error());
- }
- delta[static_cast<std::size_t>(ch)] = *segs;
- } else if (chcode == 2) {
- delta[static_cast<std::size_t>(ch)] = {};
- }
- }
- } else if (block == 0) {
- // §5.4.3.47: deltbaie == 0 in block 0 forces "no delta alloc" for
- // the coupling channel (if any) and every fbw channel.
- if (cplinu) {
- delta[static_cast<std::size_t>(cpl_stream)] = {};
- }
- for (int ch = 0; ch < nfchans; ++ch) {
- delta[static_cast<std::size_t>(ch)] = {};
- }
- }
- if (r.read(1) != 0) { // skiple
- const auto skipl = r.read(9);
- if (syntax != nullptr) {
- syntax->skip_field = true;
- syntax->skip_bytes = static_cast<std::uint16_t>(skipl);
- }
- r.skip(skipl * 8);
- }
+        if (r.read(1) != 0) {  // baie
+            base_codes.sdcycod = static_cast<int>(r.read(2));
+            base_codes.fdcycod = static_cast<int>(r.read(2));
+            base_codes.sgaincod = static_cast<int>(r.read(2));
+            base_codes.dbpbcod = static_cast<int>(r.read(2));
+            base_codes.floorcod = static_cast<int>(r.read(3));
+        } else if (block == 0) {
+            return std::unexpected(DecodeError::kInvalidStream);
+        }
+        if (r.read(1) != 0) {  // snroffste
+            csnroffst = static_cast<int>(r.read(6));
+            if (cplinu) {
+                fsnroffst[static_cast<std::size_t>(cpl_stream)] = static_cast<int>(r.read(4));
+                fgaincod[static_cast<std::size_t>(cpl_stream)] = static_cast<int>(r.read(3));
+            }
+            for (int ch = 0; ch < nchans; ++ch) {
+                fsnroffst[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(4));
+                fgaincod[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(3));
+            }
+        } else if (block == 0) {
+            return std::unexpected(DecodeError::kInvalidStream);
+        }
+        if (cplinu) {
+            if (r.read(1) != 0) {  // cplleake
+                cplfleak = static_cast<int>(r.read(3));
+                cplsleak = static_cast<int>(r.read(3));
+            }
+        }
+        // Held in a named variable rather than tested inline: the self-check
+        // records it, and what §5.4.3.47 makes of a CLEAR one (keep the
+        // previous block's state, except in block 0) is exactly the rule an
+        // encoder can get wrong invisibly.
+        const bool deltbaie = r.read(1) != 0;
+        if (deltbaie) {
+            // §5.4.3.48-57: a segment set is (deltnseg+1) triples of
+            // (deltoffst, deltlen, deltba); bounds are checked here, before
+            // compute_bit_allocation ever sees them, since deltoffst/deltlen
+            // are attacker-controlled and mask[] is exactly 50 bands wide.
+            // band_start is bin_to_band(cplstrtmant) for the coupling
+            // channel's segments, 0 for an fbw channel's - matching
+            // compute_bit_allocation()'s own band-cursor origin (see its
+            // note on the coupling channel's start band not being 0).
+            const auto parse_segments =
+                [&r](int band_start) -> std::expected<DeltaSegments, DecodeError> {
+                DeltaSegments segs;
+                segs.deltnseg = static_cast<int>(r.read(3)) + 1;
+                int band = band_start;
+                for (int seg = 0; seg < segs.deltnseg; ++seg) {
+                    segs.deltoffst[static_cast<std::size_t>(seg)] =
+                        static_cast<std::uint8_t>(r.read(5));
+                    segs.deltlen[static_cast<std::size_t>(seg)] =
+                        static_cast<std::uint8_t>(r.read(4));
+                    segs.deltba[static_cast<std::size_t>(seg)] =
+                        static_cast<std::uint8_t>(r.read(3));
+                    band += segs.deltoffst[static_cast<std::size_t>(seg)];
+                    const int len = segs.deltlen[static_cast<std::size_t>(seg)];
+                    if (band < 0 || band + len > 50) {
+                        return std::unexpected(DecodeError::kInvalidStream);
+                    }
+                    band += len;
+                }
+                return segs;
+            };
+            // §5.4.3.48-49's own syntax table reads every stream's 2-bit
+            // cpldeltbae/deltbae[ch] code FIRST, then every stream's segment
+            // data - the two are not interleaved per stream, so the codes
+            // must all be read (and validated) before any segment parsing.
+            // Table 5.16: 00 reuse, 01 new info follows, 10 no delta, 11
+            // reserved. cplcode stays at the "reuse" value when coupling is
+            // not in use, so the fbw loop below never touches delta[cpl_stream].
+            int cplcode = 0;
+            if (cplinu) {
+                cplcode = static_cast<int>(r.read(2));
+                if (cplcode == 3) {
+                    return std::unexpected(DecodeError::kReservedValue);
+                }
+                if (block == 0 && cplcode == 0) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+            }
+            // deltbae[ch]: fbw channels only (§5.4.3.49) - the LFE channel has
+            // no delta bit allocation field at all. AC-3's widest acmod (3/2)
+            // codes 5 full-bandwidth channels.
+            std::array<int, 5> chcodes{};
+            for (int ch = 0; ch < nfchans; ++ch) {
+                chcodes[static_cast<std::size_t>(ch)] = static_cast<int>(r.read(2));
+                if (chcodes[static_cast<std::size_t>(ch)] == 3) {
+                    return std::unexpected(DecodeError::kReservedValue);
+                }
+                if (block == 0 && chcodes[static_cast<std::size_t>(ch)] == 0) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+            }
+            if (cplinu && cplcode == 1) {
+                auto segs = parse_segments(bin_to_band(cplstrtmant));
+                if (!segs.has_value()) {
+                    return std::unexpected(segs.error());
+                }
+                delta[static_cast<std::size_t>(cpl_stream)] = *segs;
+            } else if (cplinu && cplcode == 2) {
+                delta[static_cast<std::size_t>(cpl_stream)] = {};
+            }
+            for (int ch = 0; ch < nfchans; ++ch) {
+                const int chcode = chcodes[static_cast<std::size_t>(ch)];
+                if (chcode == 1) {
+                    auto segs = parse_segments(0);
+                    if (!segs.has_value()) {
+                        return std::unexpected(segs.error());
+                    }
+                    delta[static_cast<std::size_t>(ch)] = *segs;
+                } else if (chcode == 2) {
+                    delta[static_cast<std::size_t>(ch)] = {};
+                }
+            }
+        } else if (block == 0) {
+            // §5.4.3.47: deltbaie == 0 in block 0 forces "no delta alloc" for
+            // the coupling channel (if any) and every fbw channel.
+            if (cplinu) {
+                delta[static_cast<std::size_t>(cpl_stream)] = {};
+            }
+            for (int ch = 0; ch < nfchans; ++ch) {
+                delta[static_cast<std::size_t>(ch)] = {};
+            }
+        }
+        if (r.read(1) != 0) {  // skiple
+            const auto skipl = r.read(9);
+            if (syntax != nullptr) {
+                syntax->skip_field = true;
+                syntax->skip_bytes = static_cast<std::uint16_t>(skipl);
+            }
+            r.skip(skipl * 8);
+        }
 
- // Bit allocation (recomputed every block: parameters are stored
- // state, so the result matches the decoder-update rule of §7.2.1).
- const int streams = nchans + (cplinu ? 1 : 0);
- // §7.2.2.1.1 is frame-wide: csnroffst plus EVERY channel's fine
- // offset, including the coupling channel's and the LFE's.
- bool snr_all_zero = csnroffst == 0;
- for (int s = 0; s < streams && snr_all_zero; ++s) {
- snr_all_zero = fsnroffst[static_cast<std::size_t>(s)] == 0;
- }
- {
- AC3_ZONE_SCOPED_N("ac3_bit_allocation");
- if (impl_->bitalloc_memo_.size() < static_cast<std::size_t>(streams)) {
- impl_->bitalloc_memo_.resize(static_cast<std::size_t>(streams));
- }
- for (int s = 0; s < streams; ++s) {
- const bool is_cpl = s == cpl_stream;
- const auto us = static_cast<std::size_t>(s);
- const int end = endmant[us];
- if (static_cast<int>(exps[us].size()) != end) {
- return std::unexpected(DecodeError::kInvalidStream);
- }
- BitAllocCodes codes = base_codes;
- codes.fgaincod = fgaincod[us];
- const BitAllocRegion region{.start = is_cpl ? cplstrtmant : 0,
- .coupling = is_cpl,
- .cplfleak = cplfleak,
- .cplsleak = cplsleak,
- .snr_all_zero = snr_all_zero,
- .delta = delta[us]};
- auto& memo = impl_->bitalloc_memo_[us];
- // The traced form costs nothing extra to compute - it is the
- // same routine, and `mask` is a value that routine already
- // derives internally - so tracing this one call is free
- // beyond the write into `mask[s]` itself; only bother when a
- // trace is actually being kept (legacy item AP12).
- if (impl_->config_.trace != nullptr) {
- bap[us].assign(static_cast<std::size_t>(end), 0);
- internal::compute_bit_allocation_traced(exps[us], sample_rate, codes, csnroffst,
- fsnroffst[us], bap[us], region,
- mask[us]);
- memo.valid = false;
- } else if (!memo.matches(exps[us], sample_rate, codes, csnroffst, fsnroffst[us],
- region)) {
- // Unchanged inputs keep the allocation `bap` already holds
- // from the block that computed it (bitalloc_memo.hpp).
- bap[us].assign(static_cast<std::size_t>(end), 0);
- compute_bit_allocation(exps[us], sample_rate, codes, csnroffst, fsnroffst[us],
- bap[us], region);
- memo.remember(exps[us], sample_rate, codes, csnroffst, fsnroffst[us], region);
- }
- }
- }
+        // Bit allocation (recomputed every block: parameters are stored
+        // state, so the result matches the decoder-update rule of §7.2.1).
+        const int streams = nchans + (cplinu ? 1 : 0);
+        // §7.2.2.1.1 is frame-wide: csnroffst plus EVERY channel's fine
+        // offset, including the coupling channel's and the LFE's.
+        bool snr_all_zero = csnroffst == 0;
+        for (int s = 0; s < streams && snr_all_zero; ++s) {
+            snr_all_zero = fsnroffst[static_cast<std::size_t>(s)] == 0;
+        }
+        {
+            AC3_ZONE_SCOPED_N("ac3_bit_allocation");
+            if (impl_->bitalloc_memo_.size() < static_cast<std::size_t>(streams)) {
+                impl_->bitalloc_memo_.resize(static_cast<std::size_t>(streams));
+            }
+            for (int s = 0; s < streams; ++s) {
+                const bool is_cpl = s == cpl_stream;
+                const auto us = static_cast<std::size_t>(s);
+                const int end = endmant[us];
+                if (static_cast<int>(exps[us].size()) != end) {
+                    return std::unexpected(DecodeError::kInvalidStream);
+                }
+                BitAllocCodes codes = base_codes;
+                codes.fgaincod = fgaincod[us];
+                const BitAllocRegion region{.start = is_cpl ? cplstrtmant : 0,
+                                            .coupling = is_cpl,
+                                            .cplfleak = cplfleak,
+                                            .cplsleak = cplsleak,
+                                            .snr_all_zero = snr_all_zero,
+                                            .delta = delta[us]};
+                auto& memo = impl_->bitalloc_memo_[us];
+                // The traced form costs nothing extra to compute - it is the
+                // same routine, and `mask` is a value that routine already
+                // derives internally - so tracing this one call is free
+                // beyond the write into `mask[s]` itself; only bother when a
+                // trace is actually being kept (research trace export).
+                if (impl_->config_.trace != nullptr) {
+                    bap[us].assign(static_cast<std::size_t>(end), 0);
+                    internal::compute_bit_allocation_traced(exps[us], sample_rate, codes, csnroffst,
+                                                            fsnroffst[us], bap[us], region,
+                                                            mask[us]);
+                    memo.valid = false;
+                } else if (!memo.matches(exps[us], sample_rate, codes, csnroffst, fsnroffst[us],
+                                         region)) {
+                    // Unchanged inputs keep the allocation `bap` already holds
+                    // from the block that computed it (bitalloc_memo.hpp).
+                    bap[us].assign(static_cast<std::size_t>(end), 0);
+                    compute_bit_allocation(exps[us], sample_rate, codes, csnroffst, fsnroffst[us],
+                                           bap[us], region);
+                    memo.remember(exps[us], sample_rate, codes, csnroffst, fsnroffst[us], region);
+                }
+            }
+        }
 
- // The other half of the self-check's per-block record: everything the
- // encoder's own model claims about this block, as this side derived it
- // from the wire. Placed after the allocation rather than after the
- // audio, so a block whose mantissas turn out to be unreadable still
- // reports the state that decided how wide they were.
- // §5.4.3.47's gate bit says what this block TRANSMITTED; the syntax
- // trace reports what is in FORCE, which is not the same question - a
- // clear deltbaie retains the previous block's segments rather than
- // clearing them (see verify/mirror.hpp for why that distinction has
- // its own bug attached).
- if (syntax != nullptr) {
- for (int stream = 0; stream < streams && !syntax->delta_bit_alloc; ++stream) {
- syntax->delta_bit_alloc = delta[static_cast<std::size_t>(stream)].deltnseg > 0;
- }
- }
- if (impl_->config_.trace != nullptr) {
- auto& trace = impl_->config_.trace->blocks[static_cast<std::size_t>(block)];
- trace.deltbaie = deltbaie;
- trace.streams.resize(static_cast<std::size_t>(streams));
- for (int s = 0; s < streams; ++s) {
- auto& stream = trace.streams[static_cast<std::size_t>(s)];
- stream.exponents = exps[static_cast<std::size_t>(s)];
- stream.bap = bap[static_cast<std::size_t>(s)];
- stream.delta = delta[static_cast<std::size_t>(s)];
- stream.snr_offset = snr_offset(csnroffst, fsnroffst[static_cast<std::size_t>(s)]);
- stream.mask = mask[static_cast<std::size_t>(s)];
- }
- trace.allocated = true;
- }
+        // The other half of the self-check's per-block record: everything the
+        // encoder's own model claims about this block, as this side derived it
+        // from the wire. Placed after the allocation rather than after the
+        // audio, so a block whose mantissas turn out to be unreadable still
+        // reports the state that decided how wide they were.
+        // §5.4.3.47's gate bit says what this block TRANSMITTED; the syntax
+        // trace reports what is in FORCE, which is not the same question - a
+        // clear deltbaie retains the previous block's segments rather than
+        // clearing them (see verify/mirror.hpp for why that distinction has
+        // its own bug attached).
+        if (syntax != nullptr) {
+            for (int stream = 0; stream < streams && !syntax->delta_bit_alloc; ++stream) {
+                syntax->delta_bit_alloc = delta[static_cast<std::size_t>(stream)].deltnseg > 0;
+            }
+        }
+        if (impl_->config_.trace != nullptr) {
+            auto& trace = impl_->config_.trace->blocks[static_cast<std::size_t>(block)];
+            trace.deltbaie = deltbaie;
+            trace.streams.resize(static_cast<std::size_t>(streams));
+            for (int s = 0; s < streams; ++s) {
+                auto& stream = trace.streams[static_cast<std::size_t>(s)];
+                stream.exponents = exps[static_cast<std::size_t>(s)];
+                stream.bap = bap[static_cast<std::size_t>(s)];
+                stream.delta = delta[static_cast<std::size_t>(s)];
+                stream.snr_offset = snr_offset(csnroffst, fsnroffst[static_cast<std::size_t>(s)]);
+                stream.mask = mask[static_cast<std::size_t>(s)];
+            }
+            trace.allocated = true;
+        }
 
- // Mantissas -> coefficients. §5.3.3 orders them by fbw channel, with
- // the coupling channel inserted after the FIRST coupled one, then the
- // LFE. Everything is unpacked before any reconstruction, because
- // decoupling and the rematrix undo both need whole channels.
- // The fixed-point tier's block exponents (block_norm.hpp), chosen
- // from the exponents and the coupling coordinates before any
- // mantissa is read; the floating tiers' stay zero.
- if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
- const auto ucpl = static_cast<std::size_t>(cpl_stream);
- for (int ch = 0; ch < nfchans; ++ch) {
- const auto uch = static_cast<std::size_t>(ch);
- int effective = internal::min_exponent(exps[uch], 0, endmant[uch]);
- if (cplinu && chincpl[uch]) {
- const int cplendmant = endmant[ucpl];
- for (int bnd = 0; bnd < ncplsubnd; ++bnd) {
- const int low = cplstrtmant + bnd * coupling::kBinsPerSubBand;
- const int high = std::min(low + coupling::kBinsPerSubBand, cplendmant);
- effective = std::min(
- effective,
- internal::coupled_exponent(
- internal::min_exponent(exps[ucpl], low, high),
- cplco_exp[uch][static_cast<std::size_t>(bnd)]));
- }
- }
- norm[uch] = internal::store_norm(effective);
- }
- if (cplinu) {
- norm[ucpl] = internal::store_norm(
- internal::min_exponent(exps[ucpl], cplstrtmant, endmant[ucpl]));
- }
- if (lfe) {
- const auto ulfe = static_cast<std::size_t>(nfchans);
- norm[ulfe] =
- internal::store_norm(internal::min_exponent(exps[ulfe], 0, endmant[ulfe]));
- }
- if (acmod == Acmod::k2_0 &&
- std::ranges::any_of(rematflg, [](bool on) { return on; })) {
- // §7.5.4 sums and differences the pair: one exponent for
- // both, with room for the sum.
- const int shared = std::max(
- std::min(norm[0], norm[1]) - internal::kRematrixGuardBits, internal::kNormFloor);
- norm[0] = shared;
- norm[1] = shared;
- }
- }
+        // Mantissas -> coefficients. §5.3.3 orders them by fbw channel, with
+        // the coupling channel inserted after the FIRST coupled one, then the
+        // LFE. Everything is unpacked before any reconstruction, because
+        // decoupling and the rematrix undo both need whole channels.
+        // The fixed-point tier's block exponents (block_norm.hpp), chosen
+        // from the exponents and the coupling coordinates before any
+        // mantissa is read; the floating tiers' stay zero.
+        if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+            const auto ucpl = static_cast<std::size_t>(cpl_stream);
+            for (int ch = 0; ch < nfchans; ++ch) {
+                const auto uch = static_cast<std::size_t>(ch);
+                int effective = internal::min_exponent(exps[uch], 0, endmant[uch]);
+                if (cplinu && chincpl[uch]) {
+                    const int cplendmant = endmant[ucpl];
+                    for (int bnd = 0; bnd < ncplsubnd; ++bnd) {
+                        const int low = cplstrtmant + bnd * coupling::kBinsPerSubBand;
+                        const int high = std::min(low + coupling::kBinsPerSubBand, cplendmant);
+                        effective = std::min(
+                            effective,
+                            internal::coupled_exponent(
+                                internal::min_exponent(exps[ucpl], low, high),
+                                cplco_exp[uch][static_cast<std::size_t>(bnd)]));
+                    }
+                }
+                norm[uch] = internal::store_norm(effective);
+            }
+            if (cplinu) {
+                norm[ucpl] = internal::store_norm(
+                    internal::min_exponent(exps[ucpl], cplstrtmant, endmant[ucpl]));
+            }
+            if (lfe) {
+                const auto ulfe = static_cast<std::size_t>(nfchans);
+                norm[ulfe] =
+                    internal::store_norm(internal::min_exponent(exps[ulfe], 0, endmant[ulfe]));
+            }
+            if (acmod == Acmod::k2_0 &&
+                std::ranges::any_of(rematflg, [](bool on) { return on; })) {
+                // §7.5.4 sums and differences the pair: one exponent for
+                // both, with room for the sum.
+                const int shared = std::max(
+                    std::min(norm[0], norm[1]) - internal::kRematrixGuardBits, internal::kNormFloor);
+                norm[0] = shared;
+                norm[1] = shared;
+            }
+        }
 
- MantissaBlockReader mantissa_reader;
- coeffs.assign(max_streams, {});
- // §7.3.4: dither is substituted at a bap-0 bin only for a stream that
- // has its OWN dithflag - a full-bandwidth channel's own spectrum
- // (s < nfchans). The LFE has no dithflag bit at all (§5.4.3.2's loop
- // is bounded by nfchans) and always reconstructs as zero; the shared
- // coupling stream (s == cpl_stream) is deliberately left silent HERE
- // too, because §7.3.4 requires dither to be "applied after the
- // individual channels are extracted from the coupling channel" so
- // that "the dither applied to each channel's upper frequencies is
- // uncorrelated" - see the decoupling loop below for that half.
- // Dequantised and scaled in the coefficient store's own type rather
- // than in double and narrowed - eac3_decoder.cpp's read_stream has the
- // measurement and the argument that the value is the same.
- const auto read_stream = [&](int s) {
- using Scalar = internal::decode_scalar_t;
- const int begin = s == cpl_stream ? cplstrtmant : 0;
- const int end = endmant[static_cast<std::size_t>(s)];
- const bool dither_eligible =
- s < nfchans && dithflag[static_cast<std::size_t>(s)];
- const int stream_norm = norm[static_cast<std::size_t>(s)];
- for (int bin = begin; bin < end; ++bin) {
- const int bap_value =
- bap[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)];
- const int exp =
- exps[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)];
- if (bap_value == 0) {
- coeffs[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)] =
- dither_eligible
- ? impl_->dither_.next_as<Scalar>() *
- exponent_scale<Scalar>(exp - stream_norm)
- : Scalar{0};
- continue;
- }
- const auto code = mantissa_reader.read(r, bap_value);
- coeffs[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)] =
- dequantize_mantissa_as<Scalar>(code, bap_value) *
- exponent_scale<Scalar>(exp - stream_norm);
- }
- };
- // Every stream's quantized mantissas off the wire, in the order
- // §5.4.3.28 packs them.
- {
- AC3_ZONE_SCOPED_N("ac3_mantissas");
- bool read_coupling = false;
- for (int ch = 0; ch < nfchans; ++ch) {
- read_stream(ch);
- if (cplinu && chincpl[static_cast<std::size_t>(ch)] && !read_coupling) {
- read_stream(cpl_stream);
- read_coupling = true;
- }
- }
- if (lfe) {
- read_stream(nfchans);
- }
- }
+        MantissaBlockReader mantissa_reader;
+        coeffs.assign(max_streams, {});
+        // §7.3.4: dither is substituted at a bap-0 bin only for a stream that
+        // has its OWN dithflag - a full-bandwidth channel's own spectrum
+        // (s < nfchans). The LFE has no dithflag bit at all (§5.4.3.2's loop
+        // is bounded by nfchans) and always reconstructs as zero; the shared
+        // coupling stream (s == cpl_stream) is deliberately left silent HERE
+        // too, because §7.3.4 requires dither to be "applied after the
+        // individual channels are extracted from the coupling channel" so
+        // that "the dither applied to each channel's upper frequencies is
+        // uncorrelated" - see the decoupling loop below for that half.
+        // Dequantised and scaled in the coefficient store's own type rather
+        // than in double and narrowed - eac3_decoder.cpp's read_stream has the
+        // measurement and the argument that the value is the same.
+        const auto read_stream = [&](int s) {
+            using Scalar = internal::decode_scalar_t;
+            const int begin = s == cpl_stream ? cplstrtmant : 0;
+            const int end = endmant[static_cast<std::size_t>(s)];
+            const bool dither_eligible =
+                s < nfchans && dithflag[static_cast<std::size_t>(s)];
+            const int stream_norm = norm[static_cast<std::size_t>(s)];
+            for (int bin = begin; bin < end; ++bin) {
+                const int bap_value =
+                    bap[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)];
+                const int exp =
+                    exps[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)];
+                if (bap_value == 0) {
+                    coeffs[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)] =
+                        dither_eligible
+                            ? impl_->dither_.next_as<Scalar>() *
+                                  exponent_scale<Scalar>(exp - stream_norm)
+                            : Scalar{0};
+                    continue;
+                }
+                const auto code = mantissa_reader.read(r, bap_value);
+                coeffs[static_cast<std::size_t>(s)][static_cast<std::size_t>(bin)] =
+                    dequantize_mantissa_as<Scalar>(code, bap_value) *
+                    exponent_scale<Scalar>(exp - stream_norm);
+            }
+        };
+        // Every stream's quantized mantissas off the wire, in the order
+        // §5.4.3.28 packs them.
+        {
+            AC3_ZONE_SCOPED_N("ac3_mantissas");
+            bool read_coupling = false;
+            for (int ch = 0; ch < nfchans; ++ch) {
+                read_stream(ch);
+                if (cplinu && chincpl[static_cast<std::size_t>(ch)] && !read_coupling) {
+                    read_stream(cpl_stream);
+                    read_coupling = true;
+                }
+            }
+            if (lfe) {
+                read_stream(nfchans);
+            }
+        }
 
- // §7.4.3 decoupling: each coupled channel's high band is the shared
- // channel scaled by that channel's coordinate, times 8 - undoing the
- // encoder's /8 headroom scaling.
- {
- AC3_ZONE_SCOPED_N("ac3_decoupling");
- if (cplinu) {
- const auto& shared = coeffs[static_cast<std::size_t>(cpl_stream)];
- const auto& cpl_bap = bap[static_cast<std::size_t>(cpl_stream)];
- const auto& cpl_exps = exps[static_cast<std::size_t>(cpl_stream)];
- const int cplendmant = endmant[static_cast<std::size_t>(cpl_stream)];
- const int shared_norm = norm[static_cast<std::size_t>(cpl_stream)];
- for (int ch = 0; ch < nfchans; ++ch) {
- if (!chincpl[static_cast<std::size_t>(ch)]) {
- continue;
- }
- auto& target = coeffs[static_cast<std::size_t>(ch)];
- const bool ch_dither = dithflag[static_cast<std::size_t>(ch)];
- // In the coefficient store's type, as eac3_decoder.cpp's
- // decoupling is, and for the same reason.
- using Scalar = internal::decode_scalar_t;
- for (int bnd = 0; bnd < ncplsubnd; ++bnd) {
- const Scalar coordinate =
- cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)];
- // §7.4.1: a set phase flag negates the right channel of a
- // 2/0 pair across that band, restoring the phase the
- // coupling sum discarded.
- const Scalar sign =
- (phsflginu && ch == 1 &&
- phsflg[static_cast<std::size_t>(
- subband_band[static_cast<std::size_t>(bnd)])])
- ? Scalar{-1}
- : Scalar{1};
- const int low = cplstrtmant + bnd * coupling::kBinsPerSubBand;
- const int high = std::min(low + coupling::kBinsPerSubBand, cplendmant);
- // The fixed-point store's shift from the shared
- // channel's exponent to this one's, with the
- // coordinate's power of two and the eight folded in
- // (block_norm.hpp); the floating tiers' coordinate
- // carries its own.
- int shift = 0;
- if constexpr (internal::kNormalisedStore<Scalar>) {
- shift = norm[static_cast<std::size_t>(ch)] - shared_norm -
- cplco_exp[static_cast<std::size_t>(ch)]
- [static_cast<std::size_t>(bnd)] +
- 3;
- }
- for (int bin = low; bin < high; ++bin) {
- const std::size_t ubin = static_cast<std::size_t>(bin);
- // §7.3.4: a zero-bap shared bin is dither-substituted
- // per RECEIVING channel, independently - reusing one
- // dithered coupling-domain sample for every coupled
- // channel would make their noise correlated (just
- // scaled differently), which is exactly what "applied
- // after the individual channels are extracted ...
- // uncorrelated" rules out. Each channel draws its own
- // sample and runs it through the same extraction
- // formula a real coupling coefficient would use.
- const Scalar coeff =
- (cpl_bap[ubin] == 0 && ch_dither)
- ? impl_->dither_.next_as<Scalar>() *
- exponent_scale<Scalar>(cpl_exps[ubin] - shared_norm)
- : shared[ubin];
- if constexpr (internal::kNormalisedStore<Scalar>) {
- target[ubin] =
- internal::scalar_ldexp(coeff * coordinate * sign, shift);
- } else {
- target[ubin] = coeff * coordinate * Scalar{8} * sign;
- }
- }
- }
- }
- }
- }
- if (acmod == Acmod::k2_0) {
- // §7.5.4: L = L' + R', R = L' - R' in flagged bands, applied up
- // to the lower bandwidth of the two channels.
- const int cap = std::min(endmant[0], endmant[1]) - 1;
- for (std::size_t band = 0; band < kRematrixBands.size(); ++band) {
- if (!rematflg[band]) {
- continue;
- }
- const int high = std::min(kRematrixBands[band][1], cap);
- for (int bin = kRematrixBands[band][0]; bin <= high; ++bin) {
- // Sum and difference of two stored coefficients - exact in
- // whatever type stores them, so this follows them rather
- // than detouring through double.
- const auto l = coeffs[0][static_cast<std::size_t>(bin)];
- const auto rr = coeffs[1][static_cast<std::size_t>(bin)];
- coeffs[0][static_cast<std::size_t>(bin)] = l + rr;
- coeffs[1][static_cast<std::size_t>(bin)] = l - rr;
- }
- }
- }
- // §7.7 gain, applied to the COEFFICIENTS rather than to the output
- // samples: the overlap-add window then cross-fades one block's gain
- // into the next, which is what keeps a per-block gain change from
- // clicking. Scaling the 256 output samples instead would step.
- // Applied to every coded channel including the LFE: §7.7.1 describes a
- // gain change to the audio block, not to a subset of its channels. The
- // coupling channel is skipped because decoupling has already spread it
- // into the channels above. Dual mono's two channels are independent
- // programmes, so Ch2 gets its own gain from its own words rather than
- // sharing Ch1's - applying one programme's compression to the other
- // would be exactly the cross-talk 1+1 exists to avoid.
- AC3_ZONE_BEGIN(drc_zone, "ac3_drc_gain");
- // Resolved once per programme per block rather than once per channel:
- // every channel of a programme takes the same gain, and resolving it
- // is double arithmetic - a run of software floating-point calls on a
- // part whose FPU has no double.
- const auto resolve = [&](double drc) {
- internal::BlockScale scale;
- if (drc != 1.0) {
- scale.apply = true;
- double gain = drc;
- if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
- // The gain's power of two goes into the block exponent
- // and only its mantissa, in [0.5, 1), into the
- // coefficients: a boost cannot leave the format and a
- // cut costs no bits (block_norm.hpp).
- gain = std::frexp(drc, &scale.power);
- }
- // Narrowed once, not per coefficient: one number for the whole
- // block, so this is a single rounding step rather than 256
- // round trips through double.
- scale.scale = static_cast<internal::decode_scalar_t>(gain);
- }
- return scale;
- };
- const internal::BlockScale first_programme =
- resolve(internal::block_gain(impl_->config_, dynrng_word, compr));
- const internal::BlockScale second_programme =
- acmod == Acmod::kDualMono
- ? resolve(internal::block_gain(impl_->config_, dynrng2_word, compr2))
- : internal::BlockScale{};
- for (int ch = 0; ch < nchans; ++ch) {
- const auto& scale = acmod == Acmod::kDualMono && ch == 1 ? second_programme
- : first_programme;
- if (!scale.apply) {
- continue;
- }
- if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
- norm[static_cast<std::size_t>(ch)] -= scale.power;
- }
- for (auto& value : coeffs[static_cast<std::size_t>(ch)]) {
- value *= scale.scale;
- }
- }
- AC3_ZONE_END(drc_zone);
- // Everything above this point read the wire; everything below turns
- // what it read into audio. impl_->config_.skip_reconstruction stops here -
- // see its own comment for why an inspection pass wants exactly that
- // cut, and note that it is the LAST thing in the block: no field this
- // frame still has to read depends on it, so a parse that stops here
- // reads the identical bits a full decode does.
- //
- // The transform pair plus the overlap-add that reconstructs PCM from it -
- // where a decode frame spends most of its time, and the stage
- // DecoderConfig::fast_imdct's default switched under in 0.9.0. Skipped
- // (zone included) whenever the reconstruction itself is.
- if (!impl_->config_.skip_reconstruction) {
- AC3_ZONE_SCOPED_N("ac3_imdct_overlap");
- for (int ch = 0; ch < nchans; ++ch) {
- const bool short_block = ch < nfchans && blksw[static_cast<std::size_t>(ch)];
- internal::inverse_transform_into(coeffs[static_cast<std::size_t>(ch)], x,
- short_block, impl_->config_.fast_imdct);
- auto& delay = impl_->delay_[static_cast<std::size_t>(ch)];
- const auto pcm = pcm_target[static_cast<std::size_t>(ch)];
- if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
- // The two halves under their own exponents, aligned and
- // scaled once (block_norm.hpp).
- internal::overlap_add_normalised(
- x, delay, impl_->delay_norm_[static_cast<std::size_t>(ch)],
- norm[static_cast<std::size_t>(ch)],
- pcm.subspan(static_cast<std::size_t>(block) * 256, 256));
- } else {
- for (int n = 0; n < 256; ++n) {
- const auto sample = static_cast<std::size_t>(n);
- pcm[static_cast<std::size_t>(block * 256 + n)] =
- static_cast<float>(internal::decode_scalar_t{2} * (x[sample] + delay[sample]));
- delay[sample] = x[static_cast<std::size_t>(256 + n)];
- }
- }
- // §7.10's raw material, captured into scratch rather than
- // straight into impl_->retained_: this frame may still be refused
- // below, and a refused frame must not become what the NEXT
- // loss is reconstructed from.
- if (retain_last_block && block == kBlocksPerFrame - 1) {
- // Element-wise: the retained block is double whatever the
- // store's scalar is (a loss path, not the decode's), and
- // the fixed-point scalar widens only explicitly.
- const int stored_norm = norm[static_cast<std::size_t>(ch)];
- std::transform(x.begin(), x.end(),
- impl_->conceal_scratch_[static_cast<std::size_t>(ch)].begin(),
- [stored_norm](internal::decode_scalar_t v) {
- return internal::widen_stored(v, stored_norm);
- });
- }
- }
- }
- if (r.overflowed()) {
- return std::unexpected(DecodeError::kTruncated);
- }
- }
- if (retain_last_block) {
- if (!impl_->retained_.has_value()) {
- // Aggregate-initialised rather than emplace()d: Retained is an
- // aggregate, and libstdc++'s optional::emplace() goes through
- // is_constructible_v, which clang does not satisfy for an
- // aggregate with no constructor of its own. MSVC accepts the
- // emplace form, so this is exactly the kind of difference the
- // Linux legs exist to catch.
- impl_->retained_ = Impl::Retained{};
- }
- impl_->retained_->nchans = nchans;
- // A swap rather than a copy: the buffer impl_->retained_ was holding comes
- // back the other way and is re-zeroed at the top of the next frame,
- // so neither side ever allocates again.
- impl_->retained_->last_block.swap(impl_->conceal_scratch_);
- // Metadata only - the PCM belongs to this frame and would be a
- // per-frame copy of every channel if it were kept.
- impl_->retained_->shape = out;
- impl_->retained_->shape.channels.clear();
- impl_->retained_->shape.concealed = std::nullopt;
- }
- // §5.4.2.8/§7.8, last: everything above reconstructs the CODED channels,
- // which is what the decoder is a reference for. Whatever the caller
- // wanted to hear instead happens here, once - except under
- // skip_reconstruction, where there is no PCM to fold: the value form's
- // `channels` is empty (harmless no-op below) but the decode_frame_into
- // form's `external` spans were never written through, and folding them
- // would read - and, for a caller who also asked for a downmix, silently
- // rewrite - buffers this call promised to leave untouched.
- if (!impl_->config_.skip_reconstruction) {
- AC3_ZONE_SCOPED_N("ac3_output");
- // Annex D's xbsi1 levels when the frame carries them (§D3.1.2), bsi's
- // cmixlev/surmixlev otherwise - see mix_levels()'s own comment.
- const auto levels = mix_levels(acmod, cmixlev, surmixlev, alternate_bsi);
- if (external.empty()) {
- impl_->output_.apply(out.channels, acmod, lfe, levels, dialnorm, dialnorm2);
- } else {
- impl_->output_.apply(external.first(static_cast<std::size_t>(nchans)), acmod, lfe, levels,
- dialnorm, dialnorm2);
- }
- }
- return out;
+        // §7.4.3 decoupling: each coupled channel's high band is the shared
+        // channel scaled by that channel's coordinate, times 8 - undoing the
+        // encoder's /8 headroom scaling.
+        {
+            AC3_ZONE_SCOPED_N("ac3_decoupling");
+            if (cplinu) {
+                const auto& shared = coeffs[static_cast<std::size_t>(cpl_stream)];
+                const auto& cpl_bap = bap[static_cast<std::size_t>(cpl_stream)];
+                const auto& cpl_exps = exps[static_cast<std::size_t>(cpl_stream)];
+                const int cplendmant = endmant[static_cast<std::size_t>(cpl_stream)];
+                const int shared_norm = norm[static_cast<std::size_t>(cpl_stream)];
+                for (int ch = 0; ch < nfchans; ++ch) {
+                    if (!chincpl[static_cast<std::size_t>(ch)]) {
+                        continue;
+                    }
+                    auto& target = coeffs[static_cast<std::size_t>(ch)];
+                    const bool ch_dither = dithflag[static_cast<std::size_t>(ch)];
+                    // In the coefficient store's type, as eac3_decoder.cpp's
+                    // decoupling is, and for the same reason.
+                    using Scalar = internal::decode_scalar_t;
+                    for (int bnd = 0; bnd < ncplsubnd; ++bnd) {
+                        const Scalar coordinate =
+                            cplco[static_cast<std::size_t>(ch)][static_cast<std::size_t>(bnd)];
+                        // §7.4.1: a set phase flag negates the right channel of a
+                        // 2/0 pair across that band, restoring the phase the
+                        // coupling sum discarded.
+                        const Scalar sign =
+                            (phsflginu && ch == 1 &&
+                             phsflg[static_cast<std::size_t>(
+                                 subband_band[static_cast<std::size_t>(bnd)])])
+                                ? Scalar{-1}
+                                : Scalar{1};
+                        const int low = cplstrtmant + bnd * coupling::kBinsPerSubBand;
+                        const int high = std::min(low + coupling::kBinsPerSubBand, cplendmant);
+                        // The fixed-point store's shift from the shared
+                        // channel's exponent to this one's, with the
+                        // coordinate's power of two and the eight folded in
+                        // (block_norm.hpp); the floating tiers' coordinate
+                        // carries its own.
+                        int shift = 0;
+                        if constexpr (internal::kNormalisedStore<Scalar>) {
+                            shift = norm[static_cast<std::size_t>(ch)] - shared_norm -
+                                    cplco_exp[static_cast<std::size_t>(ch)]
+                                            [static_cast<std::size_t>(bnd)] +
+                                    3;
+                        }
+                        for (int bin = low; bin < high; ++bin) {
+                            const std::size_t ubin = static_cast<std::size_t>(bin);
+                            // §7.3.4: a zero-bap shared bin is dither-substituted
+                            // per RECEIVING channel, independently - reusing one
+                            // dithered coupling-domain sample for every coupled
+                            // channel would make their noise correlated (just
+                            // scaled differently), which is exactly what "applied
+                            // after the individual channels are extracted ...
+                            // uncorrelated" rules out. Each channel draws its own
+                            // sample and runs it through the same extraction
+                            // formula a real coupling coefficient would use.
+                            const Scalar coeff =
+                                (cpl_bap[ubin] == 0 && ch_dither)
+                                    ? impl_->dither_.next_as<Scalar>() *
+                                          exponent_scale<Scalar>(cpl_exps[ubin] - shared_norm)
+                                    : shared[ubin];
+                            if constexpr (internal::kNormalisedStore<Scalar>) {
+                                target[ubin] =
+                                    internal::scalar_ldexp(coeff * coordinate * sign, shift);
+                            } else {
+                                target[ubin] = coeff * coordinate * Scalar{8} * sign;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (acmod == Acmod::k2_0) {
+            // §7.5.4: L = L' + R', R = L' - R' in flagged bands, applied up
+            // to the lower bandwidth of the two channels.
+            const int cap = std::min(endmant[0], endmant[1]) - 1;
+            for (std::size_t band = 0; band < kRematrixBands.size(); ++band) {
+                if (!rematflg[band]) {
+                    continue;
+                }
+                const int high = std::min(kRematrixBands[band][1], cap);
+                for (int bin = kRematrixBands[band][0]; bin <= high; ++bin) {
+                    // Sum and difference of two stored coefficients - exact in
+                    // whatever type stores them, so this follows them rather
+                    // than detouring through double.
+                    const auto l = coeffs[0][static_cast<std::size_t>(bin)];
+                    const auto rr = coeffs[1][static_cast<std::size_t>(bin)];
+                    coeffs[0][static_cast<std::size_t>(bin)] = l + rr;
+                    coeffs[1][static_cast<std::size_t>(bin)] = l - rr;
+                }
+            }
+        }
+        // §7.7 gain, applied to the COEFFICIENTS rather than to the output
+        // samples: the overlap-add window then cross-fades one block's gain
+        // into the next, which is what keeps a per-block gain change from
+        // clicking. Scaling the 256 output samples instead would step.
+        // Applied to every coded channel including the LFE: §7.7.1 describes a
+        // gain change to the audio block, not to a subset of its channels. The
+        // coupling channel is skipped because decoupling has already spread it
+        // into the channels above. Dual mono's two channels are independent
+        // programmes, so Ch2 gets its own gain from its own words rather than
+        // sharing Ch1's - applying one programme's compression to the other
+        // would be exactly the cross-talk 1+1 exists to avoid.
+        AC3_ZONE_BEGIN(drc_zone, "ac3_drc_gain");
+        // Resolved once per programme per block rather than once per channel:
+        // every channel of a programme takes the same gain, and resolving it
+        // is double arithmetic - a run of software floating-point calls on a
+        // part whose FPU has no double.
+        const auto resolve = [&](double drc) {
+            internal::BlockScale scale;
+            if (drc != 1.0) {
+                scale.apply = true;
+                double gain = drc;
+                if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                    // The gain's power of two goes into the block exponent
+                    // and only its mantissa, in [0.5, 1), into the
+                    // coefficients: a boost cannot leave the format and a
+                    // cut costs no bits (block_norm.hpp).
+                    gain = std::frexp(drc, &scale.power);
+                }
+                // Narrowed once, not per coefficient: one number for the whole
+                // block, so this is a single rounding step rather than 256
+                // round trips through double.
+                scale.scale = static_cast<internal::decode_scalar_t>(gain);
+            }
+            return scale;
+        };
+        const internal::BlockScale first_programme =
+            resolve(internal::block_gain(impl_->config_, dynrng_word, compr));
+        const internal::BlockScale second_programme =
+            acmod == Acmod::kDualMono
+                ? resolve(internal::block_gain(impl_->config_, dynrng2_word, compr2))
+                : internal::BlockScale{};
+        for (int ch = 0; ch < nchans; ++ch) {
+            const auto& scale = acmod == Acmod::kDualMono && ch == 1 ? second_programme
+                                                                    : first_programme;
+            if (!scale.apply) {
+                continue;
+            }
+            if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                norm[static_cast<std::size_t>(ch)] -= scale.power;
+            }
+            for (auto& value : coeffs[static_cast<std::size_t>(ch)]) {
+                value *= scale.scale;
+            }
+        }
+        AC3_ZONE_END(drc_zone);
+        // Everything above this point read the wire; everything below turns
+        // what it read into audio. impl_->config_.skip_reconstruction stops here -
+        // see its own comment for why an inspection pass wants exactly that
+        // cut, and note that it is the LAST thing in the block: no field this
+        // frame still has to read depends on it, so a parse that stops here
+        // reads the identical bits a full decode does.
+        //
+        // The transform pair plus the overlap-add that reconstructs PCM from it -
+        // where a decode frame spends most of its time, and the stage
+        // DecoderConfig::fast_imdct's default switched under in 0.9.0. Skipped
+        // (zone included) whenever the reconstruction itself is.
+        if (!impl_->config_.skip_reconstruction) {
+            AC3_ZONE_SCOPED_N("ac3_imdct_overlap");
+            for (int ch = 0; ch < nchans; ++ch) {
+                const bool short_block = ch < nfchans && blksw[static_cast<std::size_t>(ch)];
+                internal::inverse_transform_into(coeffs[static_cast<std::size_t>(ch)], x,
+                                                 short_block, impl_->config_.fast_imdct);
+                auto& delay = impl_->delay_[static_cast<std::size_t>(ch)];
+                const auto pcm = pcm_target[static_cast<std::size_t>(ch)];
+                if constexpr (internal::kNormalisedStore<internal::decode_scalar_t>) {
+                    // The two halves under their own exponents, aligned and
+                    // scaled once (block_norm.hpp).
+                    internal::overlap_add_normalised(
+                        x, delay, impl_->delay_norm_[static_cast<std::size_t>(ch)],
+                        norm[static_cast<std::size_t>(ch)],
+                        pcm.subspan(static_cast<std::size_t>(block) * 256, 256));
+                } else {
+                    for (int n = 0; n < 256; ++n) {
+                        const auto sample = static_cast<std::size_t>(n);
+                        pcm[static_cast<std::size_t>(block * 256 + n)] =
+                            static_cast<float>(internal::decode_scalar_t{2} * (x[sample] + delay[sample]));
+                        delay[sample] = x[static_cast<std::size_t>(256 + n)];
+                    }
+                }
+                // §7.10's raw material, captured into scratch rather than
+                // straight into impl_->retained_: this frame may still be refused
+                // below, and a refused frame must not become what the NEXT
+                // loss is reconstructed from.
+                if (retain_last_block && block == kBlocksPerFrame - 1) {
+                    // Element-wise: the retained block is double whatever the
+                    // store's scalar is (a loss path, not the decode's), and
+                    // the fixed-point scalar widens only explicitly.
+                    const int stored_norm = norm[static_cast<std::size_t>(ch)];
+                    std::transform(x.begin(), x.end(),
+                                   impl_->conceal_scratch_[static_cast<std::size_t>(ch)].begin(),
+                                   [stored_norm](internal::decode_scalar_t v) {
+                                       return internal::widen_stored(v, stored_norm);
+                                   });
+                }
+            }
+        }
+        if (r.overflowed()) {
+            return std::unexpected(DecodeError::kTruncated);
+        }
+    }
+    if (retain_last_block) {
+        if (!impl_->retained_.has_value()) {
+            // Aggregate-initialised rather than emplace()d: Retained is an
+            // aggregate, and libstdc++'s optional::emplace() goes through
+            // is_constructible_v, which clang does not satisfy for an
+            // aggregate with no constructor of its own. MSVC accepts the
+            // emplace form, so this is exactly the kind of difference the
+            // Linux legs exist to catch.
+            impl_->retained_ = Impl::Retained{};
+        }
+        impl_->retained_->nchans = nchans;
+        // A swap rather than a copy: the buffer impl_->retained_ was holding comes
+        // back the other way and is re-zeroed at the top of the next frame,
+        // so neither side ever allocates again.
+        impl_->retained_->last_block.swap(impl_->conceal_scratch_);
+        // Metadata only - the PCM belongs to this frame and would be a
+        // per-frame copy of every channel if it were kept.
+        impl_->retained_->shape = out;
+        impl_->retained_->shape.channels.clear();
+        impl_->retained_->shape.concealed = std::nullopt;
+    }
+    // §5.4.2.8/§7.8, last: everything above reconstructs the CODED channels,
+    // which is what the decoder is a reference for. Whatever the caller
+    // wanted to hear instead happens here, once - except under
+    // skip_reconstruction, where there is no PCM to fold: the value form's
+    // `channels` is empty (harmless no-op below) but the decode_frame_into
+    // form's `external` spans were never written through, and folding them
+    // would read - and, for a caller who also asked for a downmix, silently
+    // rewrite - buffers this call promised to leave untouched.
+    if (!impl_->config_.skip_reconstruction) {
+        AC3_ZONE_SCOPED_N("ac3_output");
+        // Annex D's xbsi1 levels when the frame carries them (§D3.1.2), bsi's
+        // cmixlev/surmixlev otherwise - see mix_levels()'s own comment.
+        const auto levels = mix_levels(acmod, cmixlev, surmixlev, alternate_bsi);
+        if (external.empty()) {
+            impl_->output_.apply(out.channels, acmod, lfe, levels, dialnorm, dialnorm2);
+        } else {
+            impl_->output_.apply(external.first(static_cast<std::size_t>(nchans)), acmod, lfe, levels,
+                          dialnorm, dialnorm2);
+        }
+    }
+    return out;
 }
 
-} // namespace ac3
+}  // namespace ac3

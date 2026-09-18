@@ -6,7 +6,7 @@
 #include <numbers>
 #include <span>
 
-#include "ac3/core/window.hpp" // kTransformLength
+#include "ac3/core/window.hpp"  // kTransformLength
 
 // The variant of src/core/reference_transform.hpp that CARRIES the direct-form
 // tables - what every build except the minimum-footprint decoder profile
@@ -22,7 +22,7 @@ namespace ac3::internal {
 
 namespace {
 
-constexpr int kN = kTransformLength; // 512
+constexpr int kN = kTransformLength;  // 512
 constexpr double kPi = std::numbers::pi;
 
 // §7.9.4.2 step 3's N/4-point complex "IFFT" over the kQuarter x kQuarter
@@ -39,45 +39,45 @@ constexpr double kPi = std::numbers::pi;
 // existing 1e-10 golden tolerances. Storing the exact expression this loop
 // already evaluated, just once instead of every call, has no such gap.
 struct InnerSumTable {
- static constexpr int kDim = kN / 4; // 128
- std::array<std::array<double, kDim>, kDim> cos{};
- std::array<std::array<double, kDim>, kDim> sin{};
- InnerSumTable() {
- for (int n = 0; n < kDim; ++n) {
- for (int k = 0; k < kDim; ++k) {
- const double angle = 8.0 * kPi * k * n / kN;
- cos[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::cos(angle);
- sin[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::sin(angle);
- }
- }
- }
+    static constexpr int kDim = kN / 4;  // 128
+    std::array<std::array<double, kDim>, kDim> cos{};
+    std::array<std::array<double, kDim>, kDim> sin{};
+    InnerSumTable() {
+        for (int n = 0; n < kDim; ++n) {
+            for (int k = 0; k < kDim; ++k) {
+                const double angle = 8.0 * kPi * k * n / kN;
+                cos[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::cos(angle);
+                sin[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::sin(angle);
+            }
+        }
+    }
 };
 
 const InnerSumTable& inner_sum_table() {
- static const InnerSumTable t;
- return t;
+    static const InnerSumTable t;
+    return t;
 }
 
 // The same idea, for the two independent N/8-point "IFFT" sums
 // (angle = 16*pi*k*n/N over the kEighth x kEighth grid).
 struct InnerSumPairTable {
- static constexpr int kDim = kN / 8; // 64
- std::array<std::array<double, kDim>, kDim> cos{};
- std::array<std::array<double, kDim>, kDim> sin{};
- InnerSumPairTable() {
- for (int n = 0; n < kDim; ++n) {
- for (int k = 0; k < kDim; ++k) {
- const double angle = 16.0 * kPi * k * n / kN;
- cos[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::cos(angle);
- sin[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::sin(angle);
- }
- }
- }
+    static constexpr int kDim = kN / 8;  // 64
+    std::array<std::array<double, kDim>, kDim> cos{};
+    std::array<std::array<double, kDim>, kDim> sin{};
+    InnerSumPairTable() {
+        for (int n = 0; n < kDim; ++n) {
+            for (int k = 0; k < kDim; ++k) {
+                const double angle = 16.0 * kPi * k * n / kN;
+                cos[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::cos(angle);
+                sin[static_cast<std::size_t>(n)][static_cast<std::size_t>(k)] = std::sin(angle);
+            }
+        }
+    }
 };
 
 const InnerSumPairTable& inner_sum_pair_table() {
- static const InnerSumPairTable t;
- return t;
+    static const InnerSumPairTable t;
+    return t;
 }
 
 // §8.2.3.2 direct form, generalized over the transform length and alpha:
@@ -98,47 +98,47 @@ const InnerSumPairTable& inner_sum_pair_table() {
 // runs changes) while removing that cost from the hot path entirely.
 template <int NLen>
 struct ForwardCosTable {
- static constexpr int kHalf = NLen / 2;
- std::array<std::array<double, static_cast<std::size_t>(NLen)>, static_cast<std::size_t>(kHalf)>
- value{};
- explicit ForwardCosTable(double alpha) {
- for (int k = 0; k < kHalf; ++k) {
- const double factor = 2.0 * k + 1.0;
- for (int n = 0; n < NLen; ++n) {
- const double phase = (2.0 * kPi / (4.0 * NLen)) * (2.0 * n + 1.0) * factor +
- (kPi / 4.0) * factor * (1.0 + alpha);
- value[static_cast<std::size_t>(k)][static_cast<std::size_t>(n)] = std::cos(phase);
- }
- }
- }
+    static constexpr int kHalf = NLen / 2;
+    std::array<std::array<double, static_cast<std::size_t>(NLen)>, static_cast<std::size_t>(kHalf)>
+        value{};
+    explicit ForwardCosTable(double alpha) {
+        for (int k = 0; k < kHalf; ++k) {
+            const double factor = 2.0 * k + 1.0;
+            for (int n = 0; n < NLen; ++n) {
+                const double phase = (2.0 * kPi / (4.0 * NLen)) * (2.0 * n + 1.0) * factor +
+                                      (kPi / 4.0) * factor * (1.0 + alpha);
+                value[static_cast<std::size_t>(k)][static_cast<std::size_t>(n)] = std::cos(phase);
+            }
+        }
+    }
 };
 
 const ForwardCosTable<512>& forward_cos_table_long() {
- static const ForwardCosTable<512> t(0.0);
- return t;
+    static const ForwardCosTable<512> t(0.0);
+    return t;
 }
 
 const ForwardCosTable<256>& forward_cos_table_first() {
- static const ForwardCosTable<256> t(-1.0);
- return t;
+    static const ForwardCosTable<256> t(-1.0);
+    return t;
 }
 
 const ForwardCosTable<256>& forward_cos_table_second() {
- static const ForwardCosTable<256> t(1.0);
- return t;
+    static const ForwardCosTable<256> t(1.0);
+    return t;
 }
 
 template <int NLen>
 void mdct_forward_core(std::span<const double> windowed, const ForwardCosTable<NLen>& table,
- std::span<double> coeffs) {
- for (int k = 0; k < NLen / 2; ++k) {
- double sum = 0.0;
- for (int n = 0; n < NLen; ++n) {
- sum += windowed[static_cast<std::size_t>(n)] *
- table.value[static_cast<std::size_t>(k)][static_cast<std::size_t>(n)];
- }
- coeffs[static_cast<std::size_t>(k)] = (-2.0 / NLen) * sum;
- }
+                       std::span<double> coeffs) {
+    for (int k = 0; k < NLen / 2; ++k) {
+        double sum = 0.0;
+        for (int n = 0; n < NLen; ++n) {
+            sum += windowed[static_cast<std::size_t>(n)] *
+                   table.value[static_cast<std::size_t>(k)][static_cast<std::size_t>(n)];
+        }
+        coeffs[static_cast<std::size_t>(k)] = (-2.0 / NLen) * sum;
+    }
 }
 
 // The two inner sums share this shape; P is the grid dimension and `table`
@@ -146,50 +146,50 @@ void mdct_forward_core(std::span<const double> windowed, const ForwardCosTable<N
 // the 128- and 64-point forms each keep their own compile-time bounds.
 template <std::size_t P, class Table>
 void inner_sum_core(const Table& table, std::span<const double, P> z_re,
- std::span<const double, P> z_im, std::span<double, P> t_re,
- std::span<double, P> t_im) {
- for (std::size_t n = 0; n < P; ++n) {
- double re = 0.0;
- double im = 0.0;
- const auto& row_c = table.cos[n];
- const auto& row_s = table.sin[n];
- for (std::size_t k = 0; k < P; ++k) {
- const double c = row_c[k];
- const double s = row_s[k];
- re += z_re[k] * c - z_im[k] * s;
- im += z_re[k] * s + z_im[k] * c;
- }
- t_re[n] = re;
- t_im[n] = im;
- }
+                    std::span<const double, P> z_im, std::span<double, P> t_re,
+                    std::span<double, P> t_im) {
+    for (std::size_t n = 0; n < P; ++n) {
+        double re = 0.0;
+        double im = 0.0;
+        const auto& row_c = table.cos[n];
+        const auto& row_s = table.sin[n];
+        for (std::size_t k = 0; k < P; ++k) {
+            const double c = row_c[k];
+            const double s = row_s[k];
+            re += z_re[k] * c - z_im[k] * s;
+            im += z_re[k] * s + z_im[k] * c;
+        }
+        t_re[n] = re;
+        t_im[n] = im;
+    }
 }
 
-} // namespace
+}  // namespace
 
 void reference_mdct512_forward(std::span<const double, 512> windowed,
- std::span<double, 256> coeffs) {
- mdct_forward_core<512>(windowed, forward_cos_table_long(), coeffs);
+                               std::span<double, 256> coeffs) {
+    mdct_forward_core<512>(windowed, forward_cos_table_long(), coeffs);
 }
 
 void reference_mdct256_forward_first(std::span<const double, 256> windowed,
- std::span<double, 128> coeffs) {
- mdct_forward_core<256>(windowed, forward_cos_table_first(), coeffs);
+                                     std::span<double, 128> coeffs) {
+    mdct_forward_core<256>(windowed, forward_cos_table_first(), coeffs);
 }
 
 void reference_mdct256_forward_second(std::span<const double, 256> windowed,
- std::span<double, 128> coeffs) {
- mdct_forward_core<256>(windowed, forward_cos_table_second(), coeffs);
+                                      std::span<double, 128> coeffs) {
+    mdct_forward_core<256>(windowed, forward_cos_table_second(), coeffs);
 }
 
 void reference_inner_sum_128(std::span<const double, 128> z_re,
- std::span<const double, 128> z_im, std::span<double, 128> t_re,
- std::span<double, 128> t_im) {
- inner_sum_core<128>(inner_sum_table(), z_re, z_im, t_re, t_im);
+                             std::span<const double, 128> z_im, std::span<double, 128> t_re,
+                             std::span<double, 128> t_im) {
+    inner_sum_core<128>(inner_sum_table(), z_re, z_im, t_re, t_im);
 }
 
 void reference_inner_sum_64(std::span<const double, 64> z_re, std::span<const double, 64> z_im,
- std::span<double, 64> t_re, std::span<double, 64> t_im) {
- inner_sum_core<64>(inner_sum_pair_table(), z_re, z_im, t_re, t_im);
+                            std::span<double, 64> t_re, std::span<double, 64> t_im) {
+    inner_sum_core<64>(inner_sum_pair_table(), z_re, z_im, t_re, t_im);
 }
 
-} // namespace ac3::internal
+}  // namespace ac3::internal

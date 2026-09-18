@@ -19,7 +19,7 @@
 // JOC codes no audio of its own. It carries a matrix: for each output object,
 // how much of each downmix channel to take, per QMF parameter band and
 // interpolated across the frame. The decoder (§6.6.6) computes
-// object[obj] = sum over channels of downmix[ch] * mix[obj][ch]
+//     object[obj] = sum over channels of downmix[ch] * mix[obj][ch]
 // in the complex QMF domain, so the "matrix" is really a set of per-band
 // gains, and the whole tool is 5 channels in, up to 16 objects out.
 //
@@ -49,10 +49,10 @@ inline constexpr int kMaxChannels = 7;
 // Table 48. 0 for the reserved indices 5..7, which is how a caller tells them
 // apart from a real configuration.
 [[nodiscard]] constexpr int dmx_channel_count(int dmx_config_idx) {
- constexpr std::array<int, 5> kCounts = {5, 7, 7, 5, 7};
- return (dmx_config_idx >= 0 && dmx_config_idx < 5)
- ? kCounts[static_cast<std::size_t>(dmx_config_idx)]
- : 0;
+    constexpr std::array<int, 5> kCounts = {5, 7, 7, 5, 7};
+    return (dmx_config_idx >= 0 && dmx_config_idx < 5)
+               ? kCounts[static_cast<std::size_t>(dmx_config_idx)]
+               : 0;
 }
 
 // §7.1: the complex QMF the reconstruction runs in is 64 subbands wide.
@@ -72,26 +72,26 @@ inline constexpr int kMaxDataPoints = 2;
 // object, so a frame can legally mix resolutions, quantizers and coding modes
 // between its objects - which real streams do.
 struct ObjectShape {
- // §6.3.3.4. An absent object contributes no coefficients at all.
- bool present = true;
- // Index into kNumBands (Table 50), not the band count itself.
- int num_bands_idx = 4; // 9 bands
- // §6.3.3.7. Coarse is 96 quantization steps over the range, fine is 192.
- // Fine halves the step at roughly one extra bit per coefficient.
- bool fine_quant = false;
- // §6.3.3.6. Sparse names one channel per band and gives every other
- // channel a fixed value - and that value is joc_num_quant/2 + 2
- // (§6.6.2), not the quantizer's zero, so the channels it does not name
- // still leak about 0,4 into the object.
- bool sparse = false;
- // §6.3.4.2 Table 52: false is smooth (linear interpolation across the
- // frame), true is steep (a step at joc_offset_ts, no interpolation).
- bool steep = false;
- int data_points = 1;
- // §6.3.4.4, one per data point, in QMF timeslots; steep mode only.
- std::array<int, kMaxDataPoints> offset_ts{};
+    // §6.3.3.4. An absent object contributes no coefficients at all.
+    bool present = true;
+    // Index into kNumBands (Table 50), not the band count itself.
+    int num_bands_idx = 4;  // 9 bands
+    // §6.3.3.7. Coarse is 96 quantization steps over the range, fine is 192.
+    // Fine halves the step at roughly one extra bit per coefficient.
+    bool fine_quant = false;
+    // §6.3.3.6. Sparse names one channel per band and gives every other
+    // channel a fixed value - and that value is joc_num_quant/2 + 2
+    // (§6.6.2), not the quantizer's zero, so the channels it does not name
+    // still leak about 0,4 into the object.
+    bool sparse = false;
+    // §6.3.4.2 Table 52: false is smooth (linear interpolation across the
+    // frame), true is steep (a step at joc_offset_ts, no interpolation).
+    bool steep = false;
+    int data_points = 1;
+    // §6.3.4.4, one per data point, in QMF timeslots; steep mode only.
+    std::array<int, kMaxDataPoints> offset_ts{};
 
- [[nodiscard]] int bands() const { return kNumBands[static_cast<std::size_t>(num_bands_idx)]; }
+    [[nodiscard]] int bands() const { return kNumBands[static_cast<std::size_t>(num_bands_idx)]; }
 };
 
 // The reconstruction matrix for one frame, in the dequantized units §6.6.4
@@ -105,139 +105,139 @@ struct ObjectShape {
 // at() then degenerates to exactly the [object][channel][band] layout this
 // struct has always had.
 struct FrameParameters {
- int objects = 0;
- int channels = kNumChannels5X;
- // Index into kNumBands (Table 50), not the band count itself. The
- // frame-wide value: what an object with no entry in `shapes` uses.
- int num_bands_idx = 4; // 9 bands
- bool fine_quant = false;
- // §6.3.3.3: a splice detector, not a timestamp. It counts frames from 1 to
- // 1023 and wraps to 1; 0 means "first frame, or first after a splice", so
- // the decoder knows joc_mix_mtx_prev is meaningless and must not
- // interpolate from it.
- int seq_count = 0;
- // §6.3.2.2 Table 47, which is also where `channels` comes from.
- int dmx_config_idx = kDmxConfig5X;
- // §6.3.3.2. Parsed and reported, never applied: no clause in TS 103 420
- // says where in the decode chain this gain belongs, and its own stated
- // range does not match the equation as printed (see parse_payload).
- double clip_gain = 1.0;
- // Per-object headers, or empty for a uniform frame - see above.
- std::vector<ObjectShape> shapes{};
- std::vector<double> matrix{};
+    int objects = 0;
+    int channels = kNumChannels5X;
+    // Index into kNumBands (Table 50), not the band count itself. The
+    // frame-wide value: what an object with no entry in `shapes` uses.
+    int num_bands_idx = 4;  // 9 bands
+    bool fine_quant = false;
+    // §6.3.3.3: a splice detector, not a timestamp. It counts frames from 1 to
+    // 1023 and wraps to 1; 0 means "first frame, or first after a splice", so
+    // the decoder knows joc_mix_mtx_prev is meaningless and must not
+    // interpolate from it.
+    int seq_count = 0;
+    // §6.3.2.2 Table 47, which is also where `channels` comes from.
+    int dmx_config_idx = kDmxConfig5X;
+    // §6.3.3.2. Parsed and reported, never applied: no clause in TS 103 420
+    // says where in the decode chain this gain belongs, and its own stated
+    // range does not match the equation as printed (see parse_payload).
+    double clip_gain = 1.0;
+    // Per-object headers, or empty for a uniform frame - see above.
+    std::vector<ObjectShape> shapes{};
+    std::vector<double> matrix{};
 
- [[nodiscard]] int bands() const { return kNumBands[static_cast<std::size_t>(num_bands_idx)]; }
+    [[nodiscard]] int bands() const { return kNumBands[static_cast<std::size_t>(num_bands_idx)]; }
 
- // This object's own header, or the frame-wide uniform one.
- [[nodiscard]] ObjectShape shape(int object) const {
- if (shapes.empty()) {
- return ObjectShape{.num_bands_idx = num_bands_idx, .fine_quant = fine_quant};
- }
- return shapes[static_cast<std::size_t>(object)];
- }
+    // This object's own header, or the frame-wide uniform one.
+    [[nodiscard]] ObjectShape shape(int object) const {
+        if (shapes.empty()) {
+            return ObjectShape{.num_bands_idx = num_bands_idx, .fine_quant = fine_quant};
+        }
+        return shapes[static_cast<std::size_t>(object)];
+    }
 
- // Where this object's coefficients start in `matrix`.
- [[nodiscard]] std::size_t object_offset(int object) const {
- if (shapes.empty()) {
- return static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) *
- static_cast<std::size_t>(bands());
- }
- std::size_t offset = 0;
- for (int i = 0; i < object; ++i) {
- const auto& earlier = shapes[static_cast<std::size_t>(i)];
- if (!earlier.present) {
- continue;
- }
- offset += static_cast<std::size_t>(earlier.data_points) *
- static_cast<std::size_t>(channels) *
- static_cast<std::size_t>(earlier.bands());
- }
- return offset;
- }
+    // Where this object's coefficients start in `matrix`.
+    [[nodiscard]] std::size_t object_offset(int object) const {
+        if (shapes.empty()) {
+            return static_cast<std::size_t>(object) * static_cast<std::size_t>(channels) *
+                   static_cast<std::size_t>(bands());
+        }
+        std::size_t offset = 0;
+        for (int i = 0; i < object; ++i) {
+            const auto& earlier = shapes[static_cast<std::size_t>(i)];
+            if (!earlier.present) {
+                continue;
+            }
+            offset += static_cast<std::size_t>(earlier.data_points) *
+                      static_cast<std::size_t>(channels) *
+                      static_cast<std::size_t>(earlier.bands());
+        }
+        return offset;
+    }
 
- [[nodiscard]] std::size_t coefficient_count() const {
- return object_offset(objects);
- }
+    [[nodiscard]] std::size_t coefficient_count() const {
+        return object_offset(objects);
+    }
 
- // A cursor into ONE object's slice of `matrix`.
- //
- // object_offset() is O(objects) - it sums every earlier object's size -
- // and index_of()/at() call it on EVERY access, so sweeping one object's
- // coefficients through at() costs O(objects) per coefficient and a whole
- // frame O(objects^2). The reconstruction loops do exactly that sweep:
- // 2 * channels * kQmfSubbands reads per object per block, each of which
- // was re-walking the offset list. Measured before this existed, that walk
- // (joc.hpp's lines 145-152 and 174) was ~44% of a 12-object
- // joc-domain=mdct decode profile - more than every transform in the codec
- // put together. A caller that is about to sweep an object takes a view
- // ONCE and indexes straight off it instead.
- //
- // Pure index arithmetic: a view resolves to the same matrix element the
- // same at() call would, so every value read through it is bit-identical
- // by construction - there is no arithmetic here to round differently.
- struct ObjectMatrixView {
- const double* base = nullptr;
- int channels = 0;
- int bands = 0;
+    // A cursor into ONE object's slice of `matrix`.
+    //
+    // object_offset() is O(objects) - it sums every earlier object's size -
+    // and index_of()/at() call it on EVERY access, so sweeping one object's
+    // coefficients through at() costs O(objects) per coefficient and a whole
+    // frame O(objects^2). The reconstruction loops do exactly that sweep:
+    // 2 * channels * kQmfSubbands reads per object per block, each of which
+    // was re-walking the offset list. Measured before this existed, that walk
+    // (joc.hpp's lines 145-152 and 174) was ~44% of a 12-object
+    // joc-domain=mdct decode profile - more than every transform in the codec
+    // put together. A caller that is about to sweep an object takes a view
+    // ONCE and indexes straight off it instead.
+    //
+    // Pure index arithmetic: a view resolves to the same matrix element the
+    // same at() call would, so every value read through it is bit-identical
+    // by construction - there is no arithmetic here to round differently.
+    struct ObjectMatrixView {
+        const double* base = nullptr;
+        int channels = 0;
+        int bands = 0;
 
- [[nodiscard]] double at(int data_point, int channel, int band) const {
- return base[((static_cast<std::size_t>(data_point) *
- static_cast<std::size_t>(channels) +
- static_cast<std::size_t>(channel)) *
- static_cast<std::size_t>(bands)) +
- static_cast<std::size_t>(band)];
- }
- };
+        [[nodiscard]] double at(int data_point, int channel, int band) const {
+            return base[((static_cast<std::size_t>(data_point) *
+                              static_cast<std::size_t>(channels) +
+                          static_cast<std::size_t>(channel)) *
+                         static_cast<std::size_t>(bands)) +
+                        static_cast<std::size_t>(band)];
+        }
+    };
 
- [[nodiscard]] ObjectMatrixView object_view(int object) const {
- return ObjectMatrixView{.base = matrix.data() + object_offset(object),
- .channels = channels,
- .bands = shape(object).bands()};
- }
+    [[nodiscard]] ObjectMatrixView object_view(int object) const {
+        return ObjectMatrixView{.base = matrix.data() + object_offset(object),
+                                .channels = channels,
+                                .bands = shape(object).bands()};
+    }
 
- // The write side of the same idea, for the parse and encode loops that
- // FILL one object's slice band by band.
- struct MutableObjectMatrixView {
- double* base = nullptr;
- int channels = 0;
- int bands = 0;
+    // The write side of the same idea, for the parse and encode loops that
+    // FILL one object's slice band by band.
+    struct MutableObjectMatrixView {
+        double* base = nullptr;
+        int channels = 0;
+        int bands = 0;
 
- [[nodiscard]] double& at(int data_point, int channel, int band) const {
- return base[((static_cast<std::size_t>(data_point) *
- static_cast<std::size_t>(channels) +
- static_cast<std::size_t>(channel)) *
- static_cast<std::size_t>(bands)) +
- static_cast<std::size_t>(band)];
- }
- };
+        [[nodiscard]] double& at(int data_point, int channel, int band) const {
+            return base[((static_cast<std::size_t>(data_point) *
+                              static_cast<std::size_t>(channels) +
+                          static_cast<std::size_t>(channel)) *
+                         static_cast<std::size_t>(bands)) +
+                        static_cast<std::size_t>(band)];
+        }
+    };
 
- [[nodiscard]] MutableObjectMatrixView object_view_mut(int object) {
- return MutableObjectMatrixView{.base = matrix.data() + object_offset(object),
- .channels = channels,
- .bands = shape(object).bands()};
- }
+    [[nodiscard]] MutableObjectMatrixView object_view_mut(int object) {
+        return MutableObjectMatrixView{.base = matrix.data() + object_offset(object),
+                                       .channels = channels,
+                                       .bands = shape(object).bands()};
+    }
 
- [[nodiscard]] std::size_t index_of(int object, int data_point, int channel, int band) const {
- const int object_bands = shape(object).bands();
- return object_offset(object) +
- ((static_cast<std::size_t>(data_point) * static_cast<std::size_t>(channels) +
- static_cast<std::size_t>(channel)) *
- static_cast<std::size_t>(object_bands)) +
- static_cast<std::size_t>(band);
- }
+    [[nodiscard]] std::size_t index_of(int object, int data_point, int channel, int band) const {
+        const int object_bands = shape(object).bands();
+        return object_offset(object) +
+               ((static_cast<std::size_t>(data_point) * static_cast<std::size_t>(channels) +
+                 static_cast<std::size_t>(channel)) *
+                static_cast<std::size_t>(object_bands)) +
+               static_cast<std::size_t>(band);
+    }
 
- [[nodiscard]] double& at(int object, int data_point, int channel, int band) {
- return matrix[index_of(object, data_point, channel, band)];
- }
- [[nodiscard]] double at(int object, int data_point, int channel, int band) const {
- return matrix[index_of(object, data_point, channel, band)];
- }
- [[nodiscard]] double& at(int object, int channel, int band) {
- return matrix[index_of(object, 0, channel, band)];
- }
- [[nodiscard]] double at(int object, int channel, int band) const {
- return matrix[index_of(object, 0, channel, band)];
- }
+    [[nodiscard]] double& at(int object, int data_point, int channel, int band) {
+        return matrix[index_of(object, data_point, channel, band)];
+    }
+    [[nodiscard]] double at(int object, int data_point, int channel, int band) const {
+        return matrix[index_of(object, data_point, channel, band)];
+    }
+    [[nodiscard]] double& at(int object, int channel, int band) {
+        return matrix[index_of(object, 0, channel, band)];
+    }
+    [[nodiscard]] double at(int object, int channel, int band) const {
+        return matrix[index_of(object, 0, channel, band)];
+    }
 };
 
 // §6.6.4's quantizer, and its inverse. The step is 820/(4096*(1+fine)) and the
@@ -266,24 +266,24 @@ struct FrameParameters {
 // in neither table, more objects than §6.3.2.4's own cap, and a payload that
 // does not end within a byte of where its coefficients do.
 [[nodiscard]] AC3FORGE_EXPORT std::optional<FrameParameters> parse_payload(
- std::span<const std::byte> payload);
+    std::span<const std::byte> payload);
 
 // --- Audio reconstruction -----------------------------------------------
 
 // Which domain reconstruct() applies the matrix in.
 enum class Domain : std::uint8_t {
- // The 512-sample MDCT, four bins to a §7.1 subband. Cheaper, and the
- // domain this project's own encoder estimated its matrices in before
- // the filterbank existed.
- kMdctBand,
- // §7.1's 64-band complex QMF - what §6.6.6 describes and what a
- // licensed decoder runs.
- kQmf,
+    // The 512-sample MDCT, four bins to a §7.1 subband. Cheaper, and the
+    // domain this project's own encoder estimated its matrices in before
+    // the filterbank existed.
+    kMdctBand,
+    // §7.1's 64-band complex QMF - what §6.6.6 describes and what a
+    // licensed decoder runs.
+    kQmf,
 };
 
 // How far the reconstruction lags the downmix it was given, in samples.
 [[nodiscard]] constexpr int reconstruction_delay(Domain domain) {
- return domain == Domain::kQmf ? dsp::kQmfDelay : 256;
+    return domain == Domain::kQmf ? dsp::kQmfDelay : 256;
 }
 
 // §6.6.6's reconstruction runs in the 64-band complex QMF of §7.1, and
@@ -329,17 +329,17 @@ enum class Domain : std::uint8_t {
 // hardware has and all the arithmetic needs - plus two this type has and they
 // do not:
 //
-// - ReconstructionState is INSTALLED. src/forge/include/ ships wholesale and
-// joc::reconstruct is exported, so an external caller declares one of
-// these. decode_scalar_t lives in a header deliberately never installed,
-// being a fact about how the library was built rather than part of its API;
-// putting it in a shipped struct's layout would make a build variant part
-// of the ABI.
-// - The size is why the type is being changed at all. At double this struct
-// is 147,504 bytes in ONE allocation - larger than the biggest contiguous
-// block an ESP32-S3 has free after any other decode, so it fails on
-// contiguity before any budget is consulted. A variant that is only smaller
-// in some builds does not answer that.
+//   - ReconstructionState is INSTALLED. src/forge/include/ ships wholesale and
+//     joc::reconstruct is exported, so an external caller declares one of
+//     these. decode_scalar_t lives in a header deliberately never installed,
+//     being a fact about how the library was built rather than part of its API;
+//     putting it in a shipped struct's layout would make a build variant part
+//     of the ABI.
+//   - The size is why the type is being changed at all. At double this struct
+//     is 147,504 bytes in ONE allocation - larger than the biggest contiguous
+//     block an ESP32-S3 has free after any other decode, so it fails on
+//     contiguity before any budget is consulted. A variant that is only smaller
+//     in some builds does not answer that.
 //
 // reconstruct() takes and returns float on both sides already, so nothing about
 // the API boundary moves; only what happens behind it. The accuracy cost is
@@ -348,104 +348,104 @@ enum class Domain : std::uint8_t {
 using recon_scalar_t = float;
 
 struct ReconstructionState {
- std::array<std::array<recon_scalar_t, 256>, kMaxChannels> bed_history{};
- std::vector<recon_scalar_t> previous_matrix{};
- int previous_objects = 0;
- int previous_channels = 0;
- std::vector<std::array<recon_scalar_t, 256>> object_history{};
+    std::array<std::array<recon_scalar_t, 256>, kMaxChannels> bed_history{};
+    std::vector<recon_scalar_t> previous_matrix{};
+    int previous_objects = 0;
+    int previous_channels = 0;
+    std::vector<std::array<recon_scalar_t, 256>> object_history{};
 
- // reconstruct()'s own per-call scratch (PREfast C6262: stack-declaring
- // these inside the function put it at ~24 KB of stack per call). Reused
- // across every (block, channel)/(block, object) iteration of a call
- // instead, the same reasoning Eac3Decoder's own imdct_scratch_/
- // ecpl_spectrum_*_ members already use - each is fully overwritten
- // before being read, so nothing here needs to persist meaningfully
- // BETWEEN calls the way bed_history/previous_matrix/object_history do.
- std::array<std::array<recon_scalar_t, 256>, kMaxChannels> bed_mdct_scratch{};
- std::array<recon_scalar_t, 512> time_scratch{};
- // Four windowed blocks, not one (batched MDCT (four blocks)): the bed
- // analysis batches four CHANNELS' forward transforms into one
- // ac3::mdct512_forward_batch4 call, which needs all four windowed
- // blocks to coexist. kNumChannels5X is 5, so a block runs one batch of
- // four plus one ordinary call; lane 0 doubles as the scalar path's own
- // buffer, so this costs 3 x 512 scalars over the previous single one.
- std::array<std::array<recon_scalar_t, 512>, 4> windowed_scratch{};
- // Per-object (batched SIMD kernels): every present
- // object's spectrum/synthesis output now coexists, so the imdct pass
- // can batch four objects at a time (ac3::imdct512_windowed_batch4)
- // instead of running strictly one object at a time - see
- // reconstruct_mdct_band's own object loop (joc.cpp).
- //
- // Sized to the STREAM, not to kMaxObjects. At the cap of 16 these two are
- // 16,384 and 32,768 bytes; the Atmos content this decoder has been pointed
- // at carries six objects, where they are 6,144 and 12,288. Two thirds of
- // this struct was provisioning for objects no stream in hand contains, on
- // targets chosen because memory is scarce - see docs/platforms/bare-metal/esp32-s3.md.
- //
- // Vectors rather than arrays for the same reason object_history above is
- // one, and resized in the same place by the same rule: a changed object
- // count invalidates the contents anyway, since index i stops naming the
- // same object.
- std::vector<std::array<recon_scalar_t, 256>> object_mdct_scratch{};
- std::vector<std::array<recon_scalar_t, 512>> synth_scratch{};
- // FrameParameters::matrix narrowed once per call, for a decoder whose
- // own scalar is float (the minimum-footprint profile): the mixing reads
- // each coefficient many times a frame and the matrix itself is double,
- // so narrowing per read was a software routine per read on that
- // profile's targets. A double decoder never touches this - it reads the
- // matrix directly - so the member stays empty there.
- std::vector<recon_scalar_t> matrix_scratch{};
+    // reconstruct()'s own per-call scratch (PREfast C6262: stack-declaring
+    // these inside the function put it at ~24 KB of stack per call). Reused
+    // across every (block, channel)/(block, object) iteration of a call
+    // instead, the same reasoning Eac3Decoder's own imdct_scratch_/
+    // ecpl_spectrum_*_ members already use - each is fully overwritten
+    // before being read, so nothing here needs to persist meaningfully
+    // BETWEEN calls the way bed_history/previous_matrix/object_history do.
+    std::array<std::array<recon_scalar_t, 256>, kMaxChannels> bed_mdct_scratch{};
+    std::array<recon_scalar_t, 512> time_scratch{};
+    // Four windowed blocks, not one (batched MDCT (four blocks)): the bed
+    // analysis batches four CHANNELS' forward transforms into one
+    // ac3::mdct512_forward_batch4 call, which needs all four windowed
+    // blocks to coexist. kNumChannels5X is 5, so a block runs one batch of
+    // four plus one ordinary call; lane 0 doubles as the scalar path's own
+    // buffer, so this costs 3 x 512 scalars over the previous single one.
+    std::array<std::array<recon_scalar_t, 512>, 4> windowed_scratch{};
+    // Per-object (batched SIMD kernels): every present
+    // object's spectrum/synthesis output now coexists, so the imdct pass
+    // can batch four objects at a time (ac3::imdct512_windowed_batch4)
+    // instead of running strictly one object at a time - see
+    // reconstruct_mdct_band's own object loop (joc.cpp).
+    //
+    // Sized to the STREAM, not to kMaxObjects. At the cap of 16 these two are
+    // 16,384 and 32,768 bytes; the Atmos content this decoder has been pointed
+    // at carries six objects, where they are 6,144 and 12,288. Two thirds of
+    // this struct was provisioning for objects no stream in hand contains, on
+    // targets chosen because memory is scarce - see docs/platforms/bare-metal/esp32-s3.md.
+    //
+    // Vectors rather than arrays for the same reason object_history above is
+    // one, and resized in the same place by the same rule: a changed object
+    // count invalidates the contents anyway, since index i stops naming the
+    // same object.
+    std::vector<std::array<recon_scalar_t, 256>> object_mdct_scratch{};
+    std::vector<std::array<recon_scalar_t, 512>> synth_scratch{};
+    // FrameParameters::matrix narrowed once per call, for a decoder whose
+    // own scalar is float (the minimum-footprint profile): the mixing reads
+    // each coefficient many times a frame and the matrix itself is double,
+    // so narrowing per read was a software routine per read on that
+    // profile's targets. A double decoder never touches this - it reads the
+    // matrix directly - so the member stays empty there.
+    std::vector<recon_scalar_t> matrix_scratch{};
 
- // --- Domain::kQmf only -------------------------------------------------
+    // --- Domain::kQmf only -------------------------------------------------
 
- // The filterbank pair - one analysis per downmix channel, one synthesis
- // per object - plus the one timeslot of subband values in flight.
- // Behind a pointer, and built on first use, so the MDCT path does not
- // pay for it.
- // Deliberately double, unlike the MDCT-path members above.
- //
- // This half is allocated only under Domain::kQmf, which is the domain the
- // clause describes and the one a licensed decoder reconstructs in - what
- // tests/oba/test_atmos.cpp pins at 321-325 dB against the direct form.
- // Narrowing it would change the arithmetic of the REFERENCE path to save
- // memory on a target that does not use it: the configuration that makes
- // objects fit in internal SRAM is kMdctBand, under which `qmf` stays null
- // and none of this is allocated at all.
- struct QmfState {
- std::array<dsp::QmfAnalysis, kNumChannels5X> bed{};
- std::vector<dsp::QmfSynthesis> objects{};
- std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> bed_real{};
- std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> bed_imag{};
- std::array<double, dsp::kQmfSubbands> object_real{};
- std::array<double, dsp::kQmfSubbands> object_imag{};
- // §6.6.5's mixing coefficient for one (object, timeslot), all
- // channels and subbands: filled in one branch-free pass, then read by
- // the accumulation pass. Splitting the two is what lets each be fast
- // - the coefficient's own shape/timeslot branches resolve once per
- // (object, timeslot) rather than once per (subband, channel), and the
- // accumulation that follows becomes a plain contiguous walk over
- // subbands with nothing conditional in it. Laid out channel-major so
- // both it and bed_real/bed_imag are contiguous in the subband index
- // the accumulation runs over.
- std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> mix{};
- // Short syncframes only (see reconstruct_qmf_short in joc.cpp): the
- // per-timeslot mixing coefficients scheduled but not yet emitted,
- // oldest first, each entry objects * channels * kQmfSubbands wide.
- // The QMF pair's kQmfDelaySlots can meet or exceed a short frame's
- // own slot count, so the delayed coefficients ride an explicit FIFO
- // instead of the 24-slot path's two-snapshot blend. Always empty on
- // the ordinary 24-slot path.
- std::deque<std::vector<double>> pending{};
- };
- std::unique_ptr<QmfState> qmf{};
+    // The filterbank pair - one analysis per downmix channel, one synthesis
+    // per object - plus the one timeslot of subband values in flight.
+    // Behind a pointer, and built on first use, so the MDCT path does not
+    // pay for it.
+    // Deliberately double, unlike the MDCT-path members above.
+    //
+    // This half is allocated only under Domain::kQmf, which is the domain the
+    // clause describes and the one a licensed decoder reconstructs in - what
+    // tests/oba/test_atmos.cpp pins at 321-325 dB against the direct form.
+    // Narrowing it would change the arithmetic of the REFERENCE path to save
+    // memory on a target that does not use it: the configuration that makes
+    // objects fit in internal SRAM is kMdctBand, under which `qmf` stays null
+    // and none of this is allocated at all.
+    struct QmfState {
+        std::array<dsp::QmfAnalysis, kNumChannels5X> bed{};
+        std::vector<dsp::QmfSynthesis> objects{};
+        std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> bed_real{};
+        std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> bed_imag{};
+        std::array<double, dsp::kQmfSubbands> object_real{};
+        std::array<double, dsp::kQmfSubbands> object_imag{};
+        // §6.6.5's mixing coefficient for one (object, timeslot), all
+        // channels and subbands: filled in one branch-free pass, then read by
+        // the accumulation pass. Splitting the two is what lets each be fast
+        // - the coefficient's own shape/timeslot branches resolve once per
+        // (object, timeslot) rather than once per (subband, channel), and the
+        // accumulation that follows becomes a plain contiguous walk over
+        // subbands with nothing conditional in it. Laid out channel-major so
+        // both it and bed_real/bed_imag are contiguous in the subband index
+        // the accumulation runs over.
+        std::array<std::array<double, dsp::kQmfSubbands>, kNumChannels5X> mix{};
+        // Short syncframes only (see reconstruct_qmf_short in joc.cpp): the
+        // per-timeslot mixing coefficients scheduled but not yet emitted,
+        // oldest first, each entry objects * channels * kQmfSubbands wide.
+        // The QMF pair's kQmfDelaySlots can meet or exceed a short frame's
+        // own slot count, so the delayed coefficients ride an explicit FIFO
+        // instead of the 24-slot path's two-snapshot blend. Always empty on
+        // the ordinary 24-slot path.
+        std::deque<std::vector<double>> pending{};
+    };
+    std::unique_ptr<QmfState> qmf{};
 
- // The matrix from TWO frames back. The MDCT path never needs it: every
- // block it emits belongs to the frame being decoded, so previous_matrix
- // is always the right thing to ramp from. The QMF pair's kQmfDelay means
- // the first kQmfDelaySlots timeslots a call emits belong to the PREVIOUS
- // frame's audio and must ramp across the previous frame's own pair -
- // without this they would get a matrix one whole frame too new.
- std::vector<recon_scalar_t> older_matrix{};
+    // The matrix from TWO frames back. The MDCT path never needs it: every
+    // block it emits belongs to the frame being decoded, so previous_matrix
+    // is always the right thing to ramp from. The QMF pair's kQmfDelay means
+    // the first kQmfDelaySlots timeslots a call emits belong to the PREVIOUS
+    // frame's audio and must ramp across the previous frame's own pair -
+    // without this they would get a matrix one whole frame too new.
+    std::vector<recon_scalar_t> older_matrix{};
 };
 
 // Reconstructs each JOC object's time-domain audio for one frame from the
@@ -490,8 +490,8 @@ struct ReconstructionState {
 // DecoderConfig::fast_mdct for the first and DecoderConfig::fast_imdct for
 // the second.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::vector<float>> reconstruct(
- std::span<const std::span<const float>> bed, const FrameParameters& params,
- ReconstructionState& state, bool fast_mdct = false, bool fast_imdct = false,
- Domain domain = Domain::kQmf);
+    std::span<const std::span<const float>> bed, const FrameParameters& params,
+    ReconstructionState& state, bool fast_mdct = false, bool fast_imdct = false,
+    Domain domain = Domain::kQmf);
 
-} // namespace ac3::oba::joc
+}  // namespace ac3::oba::joc

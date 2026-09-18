@@ -31,7 +31,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path);
 // Apple's HLS Authoring Specification asks for alongside CHANNELS="<N>/JOC" - see
 // ac3::io::strip_objects. Ignored for a stream with no object layer.
 int run_fmp4(std::string_view in_path, std::string_view out_dir, std::uint32_t frames_per_fragment,
- const Options& meta);
+             const Options& meta);
 
 // Same shape as run_mkv: wraps as an MPEG-2 Transport Stream. `profile` selects which registry
 // identifies the stream in the PMT - "dvb" (the default: stream_type 0x06 plus ETSI EN 300 468
@@ -40,7 +40,7 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir, std::uint32_t f
 // service is read off the bitstream by ac3::io::scan, except the service associations meta
 // carries (mainid=, asvc=).
 int run_ts(std::string_view in_path, std::string_view out_path, std::string_view profile,
- const Options& meta);
+           const Options& meta);
 
 // The inverse of the four above (container readers (mkv/mp4/ts)): reads a container and writes the bare
 // AC-3/E-AC-3 elementary stream inside it, which is what every other command in this CLI takes
@@ -63,6 +63,6 @@ int run_demux(std::string_view in_path, std::string_view out_path);
 // one, because the target's dec3 was never read from the source at all. `profile` is passed
 // through to run_ts unchanged when the target is a Transport Stream and ignored otherwise.
 int run_remux(std::string_view in_path, std::string_view out_path, std::string_view profile,
- const Options& meta);
+              const Options& meta);
 
-} // namespace ac3cli::commands
+}  // namespace ac3cli::commands

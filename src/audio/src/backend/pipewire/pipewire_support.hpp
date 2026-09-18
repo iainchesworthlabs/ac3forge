@@ -32,34 +32,34 @@
 namespace ac3::pipewire {
 
 struct ThreadLoopDeleter {
- void operator()(pw_thread_loop* loop) const { pw_thread_loop_destroy(loop); }
+    void operator()(pw_thread_loop* loop) const { pw_thread_loop_destroy(loop); }
 };
 using ThreadLoop = std::unique_ptr<pw_thread_loop, ThreadLoopDeleter>;
 
 struct MainLoopDeleter {
- void operator()(pw_main_loop* loop) const { pw_main_loop_destroy(loop); }
+    void operator()(pw_main_loop* loop) const { pw_main_loop_destroy(loop); }
 };
 using MainLoop = std::unique_ptr<pw_main_loop, MainLoopDeleter>;
 
 struct ContextDeleter {
- void operator()(pw_context* context) const { pw_context_destroy(context); }
+    void operator()(pw_context* context) const { pw_context_destroy(context); }
 };
 using Context = std::unique_ptr<pw_context, ContextDeleter>;
 
 struct CoreDeleter {
- void operator()(pw_core* core) const { pw_core_disconnect(core); }
+    void operator()(pw_core* core) const { pw_core_disconnect(core); }
 };
 using Core = std::unique_ptr<pw_core, CoreDeleter>;
 
 struct RegistryDeleter {
- void operator()(pw_registry* registry) const {
- pw_proxy_destroy(reinterpret_cast<pw_proxy*>(registry));
- }
+    void operator()(pw_registry* registry) const {
+        pw_proxy_destroy(reinterpret_cast<pw_proxy*>(registry));
+    }
 };
 using Registry = std::unique_ptr<pw_registry, RegistryDeleter>;
 
 struct StreamDeleter {
- void operator()(pw_stream* stream) const { pw_stream_destroy(stream); }
+    void operator()(pw_stream* stream) const { pw_stream_destroy(stream); }
 };
 using Stream = std::unique_ptr<pw_stream, StreamDeleter>;
 
@@ -72,8 +72,8 @@ using Stream = std::unique_ptr<pw_stream, StreamDeleter>;
 // makes, since the alternative is repeated init/deinit cycles nothing
 // upstream actually exercises.
 inline void ensure_initialized() {
- static std::once_flag once;
- std::call_once(once, [] { pw_init(nullptr, nullptr); });
+    static std::once_flag once;
+    std::call_once(once, [] { pw_init(nullptr, nullptr); });
 }
 
 // The link rate a carrier runs at to carry `content_rate` of `format` - the
@@ -82,13 +82,13 @@ inline void ensure_initialized() {
 // backend helper would, and the two backends have no other reason to share
 // code at all.
 [[nodiscard]] constexpr std::uint32_t carrier_rate(audio::BitstreamFormat format,
- std::uint32_t content_rate) {
- return format == audio::BitstreamFormat::kEac3 ? content_rate * 4 : content_rate;
+                                                    std::uint32_t content_rate) {
+    return format == audio::BitstreamFormat::kEac3 ? content_rate * 4 : content_rate;
 }
 
 [[nodiscard]] constexpr spa_audio_iec958_codec iec958_codec_for(audio::BitstreamFormat format) {
- return format == audio::BitstreamFormat::kEac3 ? SPA_AUDIO_IEC958_CODEC_EAC3
- : SPA_AUDIO_IEC958_CODEC_AC3;
+    return format == audio::BitstreamFormat::kEac3 ? SPA_AUDIO_IEC958_CODEC_EAC3
+                                                    : SPA_AUDIO_IEC958_CODEC_AC3;
 }
 
 // The carrier is a 2-channel 16-bit stream whatever rides inside it (see
@@ -118,61 +118,61 @@ inline constexpr std::size_t kCarrierFrameBytes = 4;
 // enumeration is a success rather than an error.
 template <typename Visitor>
 bool for_each_global(Visitor&& visit) {
- ensure_initialized();
+    ensure_initialized();
 
- MainLoop loop{pw_main_loop_new(nullptr)};
- if (!loop) {
- return false;
- }
- Context context{pw_context_new(pw_main_loop_get_loop(loop.get()), nullptr, 0)};
- if (!context) {
- return false;
- }
- Core core{pw_context_connect(context.get(), nullptr, 0)};
- if (!core) {
- return false;
- }
- Registry registry{pw_core_get_registry(core.get(), PW_VERSION_REGISTRY, 0)};
- if (!registry) {
- return false;
- }
+    MainLoop loop{pw_main_loop_new(nullptr)};
+    if (!loop) {
+        return false;
+    }
+    Context context{pw_context_new(pw_main_loop_get_loop(loop.get()), nullptr, 0)};
+    if (!context) {
+        return false;
+    }
+    Core core{pw_context_connect(context.get(), nullptr, 0)};
+    if (!core) {
+        return false;
+    }
+    Registry registry{pw_core_get_registry(core.get(), PW_VERSION_REGISTRY, 0)};
+    if (!registry) {
+        return false;
+    }
 
- struct State {
- pw_main_loop* loop;
- Visitor* visit;
- int pending_seq = -1;
- bool done = false;
- } state{loop.get(), &visit, -1, false};
+    struct State {
+        pw_main_loop* loop;
+        Visitor* visit;
+        int pending_seq = -1;
+        bool done = false;
+    } state{loop.get(), &visit, -1, false};
 
- spa_hook registry_listener{};
- pw_registry_events registry_events{};
- registry_events.version = PW_VERSION_REGISTRY_EVENTS;
- registry_events.global = [](void* data, uint32_t id, uint32_t /*permissions*/,
- const char* type, uint32_t /*version*/,
- const spa_dict* props) {
- auto& s = *static_cast<State*>(data);
- if (props != nullptr && type != nullptr) {
- (*s.visit)(id, std::string_view{type}, *props);
- }
- };
- pw_registry_add_listener(registry.get(), &registry_listener, &registry_events, &state);
+    spa_hook registry_listener{};
+    pw_registry_events registry_events{};
+    registry_events.version = PW_VERSION_REGISTRY_EVENTS;
+    registry_events.global = [](void* data, uint32_t id, uint32_t /*permissions*/,
+                                 const char* type, uint32_t /*version*/,
+                                 const spa_dict* props) {
+        auto& s = *static_cast<State*>(data);
+        if (props != nullptr && type != nullptr) {
+            (*s.visit)(id, std::string_view{type}, *props);
+        }
+    };
+    pw_registry_add_listener(registry.get(), &registry_listener, &registry_events, &state);
 
- spa_hook core_listener{};
- pw_core_events core_events{};
- core_events.version = PW_VERSION_CORE_EVENTS;
- core_events.done = [](void* data, uint32_t id, int seq) {
- auto& s = *static_cast<State*>(data);
- if (id == PW_ID_CORE && seq == s.pending_seq) {
- s.done = true;
- pw_main_loop_quit(s.loop);
- }
- };
- pw_core_add_listener(core.get(), &core_listener, &core_events, &state);
+    spa_hook core_listener{};
+    pw_core_events core_events{};
+    core_events.version = PW_VERSION_CORE_EVENTS;
+    core_events.done = [](void* data, uint32_t id, int seq) {
+        auto& s = *static_cast<State*>(data);
+        if (id == PW_ID_CORE && seq == s.pending_seq) {
+            s.done = true;
+            pw_main_loop_quit(s.loop);
+        }
+    };
+    pw_core_add_listener(core.get(), &core_listener, &core_events, &state);
 
- state.pending_seq = pw_core_sync(core.get(), PW_ID_CORE, 0);
- pw_main_loop_run(loop.get());
+    state.pending_seq = pw_core_sync(core.get(), PW_ID_CORE, 0);
+    pw_main_loop_run(loop.get());
 
- return state.done;
+    return state.done;
 }
 
 // Every Node in the graph, which is what this backend's device enumeration
@@ -180,11 +180,11 @@ bool for_each_global(Visitor&& visit) {
 // connect-list-disconnect round trip in this file.
 template <typename Visitor>
 bool for_each_audio_node(Visitor&& visit) {
- return for_each_global([&visit](std::uint32_t id, std::string_view type, const spa_dict& props) {
- if (type == PW_TYPE_INTERFACE_Node) {
- visit(id, props);
- }
- });
+    return for_each_global([&visit](std::uint32_t id, std::string_view type, const spa_dict& props) {
+        if (type == PW_TYPE_INTERFACE_Node) {
+            visit(id, props);
+        }
+    });
 }
 
 // "Audio/Source" (a real input) or "Audio/Sink" (a render endpoint, whose
@@ -194,13 +194,13 @@ bool for_each_audio_node(Visitor&& visit) {
 // no media.class at all) is silently not visited by for_each_audio_node's
 // caller-side filtering below.
 [[nodiscard]] inline bool is_audio_source(const spa_dict& props) {
- const char* class_name = spa_dict_lookup(&props, PW_KEY_MEDIA_CLASS);
- return class_name != nullptr && std::string_view{class_name} == "Audio/Source";
+    const char* class_name = spa_dict_lookup(&props, PW_KEY_MEDIA_CLASS);
+    return class_name != nullptr && std::string_view{class_name} == "Audio/Source";
 }
 
 [[nodiscard]] inline bool is_audio_sink(const spa_dict& props) {
- const char* class_name = spa_dict_lookup(&props, PW_KEY_MEDIA_CLASS);
- return class_name != nullptr && std::string_view{class_name} == "Audio/Sink";
+    const char* class_name = spa_dict_lookup(&props, PW_KEY_MEDIA_CLASS);
+    return class_name != nullptr && std::string_view{class_name} == "Audio/Sink";
 }
 
 // What PW_KEY_TARGET_OBJECT accepts for this node - see pw_stream_connect()'s
@@ -209,16 +209,16 @@ bool for_each_audio_node(Visitor&& visit) {
 // caller and as the value that caller's id is later handed back to
 // PW_KEY_TARGET_OBJECT, so the two must stay the same key.
 [[nodiscard]] inline std::string node_id(const spa_dict& props) {
- const char* name = spa_dict_lookup(&props, PW_KEY_NODE_NAME);
- return name != nullptr ? name : "";
+    const char* name = spa_dict_lookup(&props, PW_KEY_NODE_NAME);
+    return name != nullptr ? name : "";
 }
 
 [[nodiscard]] inline std::string node_friendly_name(const spa_dict& props) {
- if (const char* description = spa_dict_lookup(&props, PW_KEY_NODE_DESCRIPTION);
- description != nullptr && description[0] != '\0') {
- return description;
- }
- return node_id(props);
+    if (const char* description = spa_dict_lookup(&props, PW_KEY_NODE_DESCRIPTION);
+        description != nullptr && description[0] != '\0') {
+        return description;
+    }
+    return node_id(props);
 }
 
 // An application's own playback stream, as opposed to a device node.
@@ -228,21 +228,21 @@ bool for_each_audio_node(Visitor&& visit) {
 // (Crucible cross-platform promotion). A sink's monitor carries the whole mix; this is one
 // application on its own.
 [[nodiscard]] inline bool is_output_stream(const spa_dict& props) {
- const char* class_name = spa_dict_lookup(&props, PW_KEY_MEDIA_CLASS);
- return class_name != nullptr && std::string_view{class_name} == "Stream/Output/Audio";
+    const char* class_name = spa_dict_lookup(&props, PW_KEY_MEDIA_CLASS);
+    return class_name != nullptr && std::string_view{class_name} == "Stream/Output/Audio";
 }
 
 // A numeric property, or 0 when it is absent or unparsable.
 [[nodiscard]] inline std::uint32_t dict_u32(const spa_dict& props, const char* key) {
- const char* text = spa_dict_lookup(&props, key);
- if (text == nullptr) {
- return 0;
- }
- std::uint32_t value = 0;
- const auto* first = text;
- const auto* last = text + std::char_traits<char>::length(text);
- const auto result = std::from_chars(first, last, value);
- return result.ec == std::errc{} ? value : 0;
+    const char* text = spa_dict_lookup(&props, key);
+    if (text == nullptr) {
+        return 0;
+    }
+    std::uint32_t value = 0;
+    const auto* first = text;
+    const auto* last = text + std::char_traits<char>::length(text);
+    const auto result = std::from_chars(first, last, value);
+    return result.ec == std::errc{} ? value : 0;
 }
 
 // The application.* keys a client sets on itself, as one record: what the
@@ -261,32 +261,32 @@ bool for_each_audio_node(Visitor&& visit) {
 // alone. output_stream_nodes() therefore binds both, prefers the node's
 // values and lets the client's fill what the node left empty.
 struct StreamIdentity {
- std::string application; // application.name
- std::string icon_name; // application.icon-name: a freedesktop icon-theme name
- std::string binary; // application.process.binary: the executable's basename
- std::string app_id; // pipewire.access.portal.app_id (a Flatpak id), else application.id
- std::uint32_t claimed_pid = 0; // application.process.id: the pid the client says it has
+    std::string application;   // application.name
+    std::string icon_name;     // application.icon-name: a freedesktop icon-theme name
+    std::string binary;        // application.process.binary: the executable's basename
+    std::string app_id;        // pipewire.access.portal.app_id (a Flatpak id), else application.id
+    std::uint32_t claimed_pid = 0;   // application.process.id: the pid the client says it has
 };
 
 // Fills `into` from an info dictionary, keeping what is already there
 // wherever a key is absent or empty.
 inline void read_stream_identity(const spa_dict& props, StreamIdentity& into) {
- const auto take = [&props](const char* key, std::string& field) {
- if (const char* value = spa_dict_lookup(&props, key);
- value != nullptr && value[0] != '\0') {
- field = value;
- }
- };
- take(PW_KEY_APP_NAME, into.application);
- take(PW_KEY_APP_ICON_NAME, into.icon_name);
- take(PW_KEY_APP_PROCESS_BINARY, into.binary);
- take("pipewire.access.portal.app_id", into.app_id);
- if (into.app_id.empty()) {
- take(PW_KEY_APP_ID, into.app_id);
- }
- if (const std::uint32_t claimed = dict_u32(props, PW_KEY_APP_PROCESS_ID); claimed != 0) {
- into.claimed_pid = claimed;
- }
+    const auto take = [&props](const char* key, std::string& field) {
+        if (const char* value = spa_dict_lookup(&props, key);
+            value != nullptr && value[0] != '\0') {
+            field = value;
+        }
+    };
+    take(PW_KEY_APP_NAME, into.application);
+    take(PW_KEY_APP_ICON_NAME, into.icon_name);
+    take(PW_KEY_APP_PROCESS_BINARY, into.binary);
+    take("pipewire.access.portal.app_id", into.app_id);
+    if (into.app_id.empty()) {
+        take(PW_KEY_APP_ID, into.app_id);
+    }
+    if (const std::uint32_t claimed = dict_u32(props, PW_KEY_APP_PROCESS_ID); claimed != 0) {
+        into.claimed_pid = claimed;
+    }
 }
 
 // Whether the client that made a node speaks to the daemon through a relay,
@@ -300,7 +300,7 @@ inline void read_stream_identity(const spa_dict& props, StreamIdentity& into) {
 // way round: believing a relay's pid mixes every application it carries into
 // one, while binding a direct client's node changes nothing about the answer.
 [[nodiscard]] inline bool client_api_is_relay(const char* api) {
- return api != nullptr && std::string_view{api} != "pipewire";
+    return api != nullptr && std::string_view{api} != "pipewire";
 }
 
 // Which process a stream belongs to, from the two pids that describe it:
@@ -313,22 +313,22 @@ inline void read_stream_identity(const spa_dict& props, StreamIdentity& into) {
 // claimed pid is the answer in both of those cases, and 0 when there is
 // nothing to go on: a stream nobody can attribute is one nothing can tap.
 [[nodiscard]] inline std::uint32_t stream_owner_pid(std::uint32_t credentials_pid,
- std::uint32_t claimed_pid, bool relayed) {
- if ((relayed || credentials_pid == 0) && claimed_pid != 0) {
- return claimed_pid;
- }
- return credentials_pid;
+                                                    std::uint32_t claimed_pid, bool relayed) {
+    if ((relayed || credentials_pid == 0) && claimed_pid != 0) {
+        return claimed_pid;
+    }
+    return credentials_pid;
 }
 
 // One application's playback stream, with the process behind it.
 struct OutputStreamNode {
- std::uint32_t id = 0; // the registry global id
- std::string target; // what PW_KEY_TARGET_OBJECT accepts for it
- std::string application; // application.name, for a person to read
- std::uint32_t pid = 0; // the process that plays the sound (see the relay note below)
- std::string icon_name; // application.icon-name, or empty (see StreamIdentity)
- std::string binary; // application.process.binary, or empty
- std::string app_id; // the portal app id (Flatpak) or application.id, or empty
+    std::uint32_t id = 0;      // the registry global id
+    std::string target;        // what PW_KEY_TARGET_OBJECT accepts for it
+    std::string application;   // application.name, for a person to read
+    std::uint32_t pid = 0;     // the process that plays the sound (see the relay note below)
+    std::string icon_name;     // application.icon-name, or empty (see StreamIdentity)
+    std::string binary;        // application.process.binary, or empty
+    std::string app_id;        // the portal app id (Flatpak) or application.id, or empty
 };
 
 // Every application playback stream in the graph, each with the process id
@@ -389,257 +389,257 @@ struct OutputStreamNode {
 // asks for kWithInfo. A graph with no Pulse application in it costs
 // kRegistryOnly exactly what it always did: one round trip, no binds.
 enum class StreamIdentityDepth : std::uint8_t {
- kRegistryOnly, // names, target and pid; the identity fields are filled only
- // for relayed streams, which are bound anyway for their pid
- kWithInfo, // additionally bind each node and client for the identity on their info
+    kRegistryOnly,  // names, target and pid; the identity fields are filled only
+                    // for relayed streams, which are bound anyway for their pid
+    kWithInfo,      // additionally bind each node and client for the identity on their info
 };
 
 [[nodiscard]] inline std::vector<OutputStreamNode> output_stream_nodes(
- StreamIdentityDepth depth = StreamIdentityDepth::kRegistryOnly) {
- ensure_initialized();
+    StreamIdentityDepth depth = StreamIdentityDepth::kRegistryOnly) {
+    ensure_initialized();
 
- MainLoop loop{pw_main_loop_new(nullptr)};
- if (!loop) {
- return {};
- }
- Context context{pw_context_new(pw_main_loop_get_loop(loop.get()), nullptr, 0)};
- if (!context) {
- return {};
- }
- Core core{pw_context_connect(context.get(), nullptr, 0)};
- if (!core) {
- return {};
- }
- Registry registry{pw_core_get_registry(core.get(), PW_VERSION_REGISTRY, 0)};
- if (!registry) {
- return {};
- }
+    MainLoop loop{pw_main_loop_new(nullptr)};
+    if (!loop) {
+        return {};
+    }
+    Context context{pw_context_new(pw_main_loop_get_loop(loop.get()), nullptr, 0)};
+    if (!context) {
+        return {};
+    }
+    Core core{pw_context_connect(context.get(), nullptr, 0)};
+    if (!core) {
+        return {};
+    }
+    Registry registry{pw_core_get_registry(core.get(), PW_VERSION_REGISTRY, 0)};
+    if (!registry) {
+        return {};
+    }
 
- struct BoundNode {
- pw_proxy* proxy = nullptr;
- spa_hook listener{};
- pw_node_events events{};
- StreamIdentity identity;
- };
- struct BoundClient {
- pw_proxy* proxy = nullptr;
- spa_hook listener{};
- pw_client_events events{};
- StreamIdentity identity;
- };
- struct Pending {
- std::uint32_t id = 0;
- std::string target;
- std::string application;
- std::uint32_t client_id = 0;
- bool relayed = false; // client.api names a relay: trust the claimed pid
- BoundNode* bound = nullptr; // null when the bind failed
- };
- struct State {
- pw_registry* registry = nullptr;
- pw_main_loop* loop = nullptr;
- StreamIdentityDepth depth = StreamIdentityDepth::kRegistryOnly;
- std::vector<Pending> streams;
- std::unordered_map<std::uint32_t, std::uint32_t> client_pids;
- std::vector<std::unique_ptr<BoundNode>> nodes;
- std::unordered_map<std::uint32_t, std::unique_ptr<BoundClient>> clients;
- int pending = 0;
- bool bound_any = false; // something was bound, so info events are coming
- bool completed = false; // the sync this loop waits for came back
- bool failed = false; // the core reported an error: the walk is over
- } state{registry.get(), loop.get(), depth, {}, {}, {}, {}, 0, false, false, false};
+    struct BoundNode {
+        pw_proxy* proxy = nullptr;
+        spa_hook listener{};
+        pw_node_events events{};
+        StreamIdentity identity;
+    };
+    struct BoundClient {
+        pw_proxy* proxy = nullptr;
+        spa_hook listener{};
+        pw_client_events events{};
+        StreamIdentity identity;
+    };
+    struct Pending {
+        std::uint32_t id = 0;
+        std::string target;
+        std::string application;
+        std::uint32_t client_id = 0;
+        bool relayed = false;         // client.api names a relay: trust the claimed pid
+        BoundNode* bound = nullptr;   // null when the bind failed
+    };
+    struct State {
+        pw_registry* registry = nullptr;
+        pw_main_loop* loop = nullptr;
+        StreamIdentityDepth depth = StreamIdentityDepth::kRegistryOnly;
+        std::vector<Pending> streams;
+        std::unordered_map<std::uint32_t, std::uint32_t> client_pids;
+        std::vector<std::unique_ptr<BoundNode>> nodes;
+        std::unordered_map<std::uint32_t, std::unique_ptr<BoundClient>> clients;
+        int pending = 0;
+        bool bound_any = false;   // something was bound, so info events are coming
+        bool completed = false;   // the sync this loop waits for came back
+        bool failed = false;      // the core reported an error: the walk is over
+    } state{registry.get(), loop.get(), depth, {}, {}, {}, {}, 0, false, false, false};
 
- spa_hook registry_listener{};
- pw_registry_events registry_events{};
- registry_events.version = PW_VERSION_REGISTRY_EVENTS;
- registry_events.global = [](void* data, std::uint32_t global_id, std::uint32_t,
- const char* type, std::uint32_t, const spa_dict* props) {
- auto* self = static_cast<State*>(data);
- if (type == nullptr || props == nullptr) {
- return;
- }
- const std::string_view kind{type};
- if (kind == PW_TYPE_INTERFACE_Client) {
- // The registry fact, as before: which process owns this client.
- std::uint32_t pid = dict_u32(*props, "pipewire.sec.pid");
- if (pid == 0) {
- pid = dict_u32(*props, PW_KEY_APP_PROCESS_ID);
- }
- if (pid != 0) {
- self->client_pids.emplace(global_id, pid);
- }
- if (self->depth == StreamIdentityDepth::kRegistryOnly) {
- return;
- }
- // And a bind for the identity only its info carries.
- auto* client_proxy = static_cast<pw_proxy*>(
- pw_registry_bind(self->registry, global_id, type, PW_VERSION_CLIENT, 0));
- if (client_proxy == nullptr) {
- return;
- }
- auto client_bound = std::make_unique<BoundClient>();
- client_bound->proxy = client_proxy;
- client_bound->events.version = PW_VERSION_CLIENT_EVENTS;
- client_bound->events.info = [](void* bound_data, const pw_client_info* client_info) {
- auto* b = static_cast<BoundClient*>(bound_data);
- if (client_info == nullptr || client_info->props == nullptr) {
- return;
- }
- read_stream_identity(*client_info->props, b->identity);
- };
- pw_proxy_add_object_listener(client_proxy, &client_bound->listener,
- &client_bound->events, client_bound.get());
- self->bound_any = true;
- self->clients.emplace(global_id, std::move(client_bound));
- return;
- }
- if (kind != PW_TYPE_INTERFACE_Node || !is_output_stream(*props)) {
- return;
- }
- // The registry facts, as before.
- const char* name = spa_dict_lookup(props, PW_KEY_APP_NAME);
- const char* serial = spa_dict_lookup(props, PW_KEY_OBJECT_SERIAL);
- const char* node_name = spa_dict_lookup(props, PW_KEY_NODE_NAME);
- // Which protocol the owning client speaks. Absent, or "pipewire",
- // for one talking to the daemon itself; anything else - in practice
- // "pipewire-pulse" - is a relay, and its Client's credentials name
- // the relay rather than the application.
- const bool relayed = client_api_is_relay(spa_dict_lookup(props, "client.api"));
- Pending stream{.id = global_id,
- .target = serial != nullptr ? serial
- : node_name != nullptr ? node_name
- : std::string{},
- .application = name != nullptr ? name
- : node_name != nullptr ? node_name
- : std::string{},
- .client_id = dict_u32(*props, PW_KEY_CLIENT_ID),
- .relayed = relayed,
- .bound = nullptr};
- // And the bind, whose failure costs the identity - and, for a
- // relayed stream, the only pid that names the application.
- auto* node_proxy =
- self->depth == StreamIdentityDepth::kRegistryOnly && !relayed
- ? nullptr
- : static_cast<pw_proxy*>(
- pw_registry_bind(self->registry, global_id, type, PW_VERSION_NODE, 0));
- if (node_proxy != nullptr) {
- auto node_bound = std::make_unique<BoundNode>();
- node_bound->proxy = node_proxy;
- node_bound->events.version = PW_VERSION_NODE_EVENTS;
- node_bound->events.info = [](void* bound_data, const pw_node_info* node_info) {
- auto* b = static_cast<BoundNode*>(bound_data);
- if (node_info == nullptr || node_info->props == nullptr) {
- return;
- }
- read_stream_identity(*node_info->props, b->identity);
- };
- pw_proxy_add_object_listener(node_proxy, &node_bound->listener,
- &node_bound->events, node_bound.get());
- stream.bound = node_bound.get();
- self->bound_any = true;
- self->nodes.push_back(std::move(node_bound));
- }
- self->streams.push_back(std::move(stream));
- };
- pw_registry_add_listener(registry.get(), &registry_listener, &registry_events, &state);
+    spa_hook registry_listener{};
+    pw_registry_events registry_events{};
+    registry_events.version = PW_VERSION_REGISTRY_EVENTS;
+    registry_events.global = [](void* data, std::uint32_t global_id, std::uint32_t,
+                                const char* type, std::uint32_t, const spa_dict* props) {
+        auto* self = static_cast<State*>(data);
+        if (type == nullptr || props == nullptr) {
+            return;
+        }
+        const std::string_view kind{type};
+        if (kind == PW_TYPE_INTERFACE_Client) {
+            // The registry fact, as before: which process owns this client.
+            std::uint32_t pid = dict_u32(*props, "pipewire.sec.pid");
+            if (pid == 0) {
+                pid = dict_u32(*props, PW_KEY_APP_PROCESS_ID);
+            }
+            if (pid != 0) {
+                self->client_pids.emplace(global_id, pid);
+            }
+            if (self->depth == StreamIdentityDepth::kRegistryOnly) {
+                return;
+            }
+            // And a bind for the identity only its info carries.
+            auto* client_proxy = static_cast<pw_proxy*>(
+                pw_registry_bind(self->registry, global_id, type, PW_VERSION_CLIENT, 0));
+            if (client_proxy == nullptr) {
+                return;
+            }
+            auto client_bound = std::make_unique<BoundClient>();
+            client_bound->proxy = client_proxy;
+            client_bound->events.version = PW_VERSION_CLIENT_EVENTS;
+            client_bound->events.info = [](void* bound_data, const pw_client_info* client_info) {
+                auto* b = static_cast<BoundClient*>(bound_data);
+                if (client_info == nullptr || client_info->props == nullptr) {
+                    return;
+                }
+                read_stream_identity(*client_info->props, b->identity);
+            };
+            pw_proxy_add_object_listener(client_proxy, &client_bound->listener,
+                                         &client_bound->events, client_bound.get());
+            self->bound_any = true;
+            self->clients.emplace(global_id, std::move(client_bound));
+            return;
+        }
+        if (kind != PW_TYPE_INTERFACE_Node || !is_output_stream(*props)) {
+            return;
+        }
+        // The registry facts, as before.
+        const char* name = spa_dict_lookup(props, PW_KEY_APP_NAME);
+        const char* serial = spa_dict_lookup(props, PW_KEY_OBJECT_SERIAL);
+        const char* node_name = spa_dict_lookup(props, PW_KEY_NODE_NAME);
+        // Which protocol the owning client speaks. Absent, or "pipewire",
+        // for one talking to the daemon itself; anything else - in practice
+        // "pipewire-pulse" - is a relay, and its Client's credentials name
+        // the relay rather than the application.
+        const bool relayed = client_api_is_relay(spa_dict_lookup(props, "client.api"));
+        Pending stream{.id = global_id,
+                       .target = serial != nullptr    ? serial
+                                 : node_name != nullptr ? node_name
+                                                        : std::string{},
+                       .application = name != nullptr ? name
+                                      : node_name != nullptr ? node_name
+                                                             : std::string{},
+                       .client_id = dict_u32(*props, PW_KEY_CLIENT_ID),
+                       .relayed = relayed,
+                       .bound = nullptr};
+        // And the bind, whose failure costs the identity - and, for a
+        // relayed stream, the only pid that names the application.
+        auto* node_proxy =
+            self->depth == StreamIdentityDepth::kRegistryOnly && !relayed
+                ? nullptr
+                : static_cast<pw_proxy*>(
+                      pw_registry_bind(self->registry, global_id, type, PW_VERSION_NODE, 0));
+        if (node_proxy != nullptr) {
+            auto node_bound = std::make_unique<BoundNode>();
+            node_bound->proxy = node_proxy;
+            node_bound->events.version = PW_VERSION_NODE_EVENTS;
+            node_bound->events.info = [](void* bound_data, const pw_node_info* node_info) {
+                auto* b = static_cast<BoundNode*>(bound_data);
+                if (node_info == nullptr || node_info->props == nullptr) {
+                    return;
+                }
+                read_stream_identity(*node_info->props, b->identity);
+            };
+            pw_proxy_add_object_listener(node_proxy, &node_bound->listener,
+                                         &node_bound->events, node_bound.get());
+            stream.bound = node_bound.get();
+            self->bound_any = true;
+            self->nodes.push_back(std::move(node_bound));
+        }
+        self->streams.push_back(std::move(stream));
+    };
+    pw_registry_add_listener(registry.get(), &registry_listener, &registry_events, &state);
 
- spa_hook core_listener{};
- pw_core_events core_events{};
- core_events.version = PW_VERSION_CORE_EVENTS;
- core_events.done = [](void* data, std::uint32_t done_id, int seq) {
- auto* self = static_cast<State*>(data);
- if (done_id == PW_ID_CORE && seq == self->pending) {
- self->completed = true;
- pw_main_loop_quit(self->loop);
- }
- };
- // A core error (the daemon going away mid-walk) ends the wait rather
- // than leaving the monitor thread inside pw_main_loop_run for ever, and
- // records that it happened: a second sync on a dead core never comes
- // back either, so it is never issued, and a walk that did not finish
- // returns nothing rather than a short list that reads as the graph.
- core_events.error = [](void* data, std::uint32_t error_id, int, int, const char*) {
- auto* self = static_cast<State*>(data);
- if (error_id == PW_ID_CORE) {
- self->failed = true;
- pw_main_loop_quit(self->loop);
- }
- };
- pw_core_add_listener(core.get(), &core_listener, &core_events, &state);
+    spa_hook core_listener{};
+    pw_core_events core_events{};
+    core_events.version = PW_VERSION_CORE_EVENTS;
+    core_events.done = [](void* data, std::uint32_t done_id, int seq) {
+        auto* self = static_cast<State*>(data);
+        if (done_id == PW_ID_CORE && seq == self->pending) {
+            self->completed = true;
+            pw_main_loop_quit(self->loop);
+        }
+    };
+    // A core error (the daemon going away mid-walk) ends the wait rather
+    // than leaving the monitor thread inside pw_main_loop_run for ever, and
+    // records that it happened: a second sync on a dead core never comes
+    // back either, so it is never issued, and a walk that did not finish
+    // returns nothing rather than a short list that reads as the graph.
+    core_events.error = [](void* data, std::uint32_t error_id, int, int, const char*) {
+        auto* self = static_cast<State*>(data);
+        if (error_id == PW_ID_CORE) {
+            self->failed = true;
+            pw_main_loop_quit(self->loop);
+        }
+    };
+    pw_core_add_listener(core.get(), &core_listener, &core_events, &state);
 
- // First: every existing global, binding streams and clients as they arrive.
- state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
- pw_main_loop_run(loop.get());
- const bool listed = state.completed && !state.failed;
- if (listed && state.bound_any) {
- // Second: the info events those binds asked for. There are none to
- // wait for when nothing was bound - a kRegistryOnly walk of a graph
- // with no relayed stream in it - and the round trip is the cost.
- state.completed = false;
- state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
- pw_main_loop_run(loop.get());
- }
+    // First: every existing global, binding streams and clients as they arrive.
+    state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
+    pw_main_loop_run(loop.get());
+    const bool listed = state.completed && !state.failed;
+    if (listed && state.bound_any) {
+        // Second: the info events those binds asked for. There are none to
+        // wait for when nothing was bound - a kRegistryOnly walk of a graph
+        // with no relayed stream in it - and the round trip is the cost.
+        state.completed = false;
+        state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
+        pw_main_loop_run(loop.get());
+    }
 
- std::vector<OutputStreamNode> out;
- if (listed) {
- out.reserve(state.streams.size());
- for (auto& stream : state.streams) {
- const auto found = state.client_pids.find(stream.client_id);
- StreamIdentity identity;
- if (stream.bound != nullptr) {
- identity = stream.bound->identity;
- }
- if (const auto client = state.clients.find(stream.client_id);
- client != state.clients.end()) {
- // The node's info first; the client's fills what it left empty.
- const StreamIdentity& theirs = client->second->identity;
- if (identity.icon_name.empty()) {
- identity.icon_name = theirs.icon_name;
- }
- if (identity.binary.empty()) {
- identity.binary = theirs.binary;
- }
- if (identity.app_id.empty()) {
- identity.app_id = theirs.app_id;
- }
- if (identity.claimed_pid == 0) {
- identity.claimed_pid = theirs.claimed_pid;
- }
- }
- const std::uint32_t pid = stream_owner_pid(
- found == state.client_pids.end() ? 0 : found->second, identity.claimed_pid,
- stream.relayed);
- out.push_back({.id = stream.id,
- .target = std::move(stream.target),
- .application = identity.application.empty()
- ? std::move(stream.application)
- : std::move(identity.application),
- .pid = pid,
- .icon_name = std::move(identity.icon_name),
- .binary = std::move(identity.binary),
- .app_id = std::move(identity.app_id)});
- }
- }
- for (auto& node : state.nodes) {
- spa_hook_remove(&node->listener);
- pw_proxy_destroy(node->proxy);
- }
- for (auto& entry : state.clients) {
- spa_hook_remove(&entry.second->listener);
- pw_proxy_destroy(entry.second->proxy);
- }
- spa_hook_remove(&core_listener);
- spa_hook_remove(&registry_listener);
- return out;
+    std::vector<OutputStreamNode> out;
+    if (listed) {
+        out.reserve(state.streams.size());
+        for (auto& stream : state.streams) {
+            const auto found = state.client_pids.find(stream.client_id);
+            StreamIdentity identity;
+            if (stream.bound != nullptr) {
+                identity = stream.bound->identity;
+            }
+            if (const auto client = state.clients.find(stream.client_id);
+                client != state.clients.end()) {
+                // The node's info first; the client's fills what it left empty.
+                const StreamIdentity& theirs = client->second->identity;
+                if (identity.icon_name.empty()) {
+                    identity.icon_name = theirs.icon_name;
+                }
+                if (identity.binary.empty()) {
+                    identity.binary = theirs.binary;
+                }
+                if (identity.app_id.empty()) {
+                    identity.app_id = theirs.app_id;
+                }
+                if (identity.claimed_pid == 0) {
+                    identity.claimed_pid = theirs.claimed_pid;
+                }
+            }
+            const std::uint32_t pid = stream_owner_pid(
+                found == state.client_pids.end() ? 0 : found->second, identity.claimed_pid,
+                stream.relayed);
+            out.push_back({.id = stream.id,
+                           .target = std::move(stream.target),
+                           .application = identity.application.empty()
+                                              ? std::move(stream.application)
+                                              : std::move(identity.application),
+                           .pid = pid,
+                           .icon_name = std::move(identity.icon_name),
+                           .binary = std::move(identity.binary),
+                           .app_id = std::move(identity.app_id)});
+        }
+    }
+    for (auto& node : state.nodes) {
+        spa_hook_remove(&node->listener);
+        pw_proxy_destroy(node->proxy);
+    }
+    for (auto& entry : state.clients) {
+        spa_hook_remove(&entry.second->listener);
+        pw_proxy_destroy(entry.second->proxy);
+    }
+    spa_hook_remove(&core_listener);
+    spa_hook_remove(&registry_listener);
+    return out;
 }
 
 // What a human would call the application behind a stream node.
 [[nodiscard]] inline std::string node_application_name(const spa_dict& props) {
- if (const char* name = spa_dict_lookup(&props, PW_KEY_APP_NAME);
- name != nullptr && name[0] != '\0') {
- return name;
- }
- return node_id(props);
+    if (const char* name = spa_dict_lookup(&props, PW_KEY_APP_NAME);
+        name != nullptr && name[0] != '\0') {
+        return name;
+    }
+    return node_id(props);
 }
 
 // What to hand PW_KEY_TARGET_OBJECT to link to this node. object.serial is
@@ -648,11 +648,11 @@ enum class StreamIdentityDepth : std::uint8_t {
 // the graph. Falls back to node.name, which is what pw_stream_connect()
 // documents and what the device paths in this backend already use.
 [[nodiscard]] inline std::string node_target(const spa_dict& props) {
- if (const char* serial = spa_dict_lookup(&props, PW_KEY_OBJECT_SERIAL);
- serial != nullptr && serial[0] != '\0') {
- return serial;
- }
- return node_id(props);
+    if (const char* serial = spa_dict_lookup(&props, PW_KEY_OBJECT_SERIAL);
+        serial != nullptr && serial[0] != '\0') {
+        return serial;
+    }
+    return node_id(props);
 }
 
 // An Audio/Sink node with the properties only its *info* carries.
@@ -666,18 +666,18 @@ enum class StreamIdentityDepth : std::uint8_t {
 // info; a registry walk never sees it, which is how a gate on
 // iec958.codecs came to reject every sink on the first machine with one.
 struct SinkInfo {
- std::uint32_t id = 0; // registry global id
- std::string name; // node.name, this backend's device id
- std::string description; // node.description, else node.name
- std::string codecs; // iec958.codecs, verbatim, or empty
- // audio.channels, audio.position and audio.rate: what the node is
- // configured as, which for a device sink is what the device itself
- // renders. `position` is SPA's channel list ("[ FL FR FC LFE RL RR ]" or
- // "FL,FR"), whose names are the ones ALSA's channel maps use; 0 and empty
- // mean the node did not say.
- std::uint16_t channels = 0;
- std::string position;
- std::uint32_t rate = 0;
+    std::uint32_t id = 0;      // registry global id
+    std::string name;          // node.name, this backend's device id
+    std::string description;   // node.description, else node.name
+    std::string codecs;        // iec958.codecs, verbatim, or empty
+    // audio.channels, audio.position and audio.rate: what the node is
+    // configured as, which for a device sink is what the device itself
+    // renders. `position` is SPA's channel list ("[ FL FR FC LFE RL RR ]" or
+    // "FL,FR"), whose names are the ones ALSA's channel maps use; 0 and empty
+    // mean the node did not say.
+    std::uint16_t channels = 0;
+    std::string position;
+    std::uint32_t rate = 0;
 };
 
 // The frames a playback stream has handed over and not yet had heard, from a
@@ -688,14 +688,14 @@ struct SinkInfo {
 // is converted to the stream's frames; a negative delay, which a user's
 // offset can produce, counts as none.
 [[nodiscard]] inline std::uint64_t unplayed_frames(const pw_time& time, std::uint32_t stream_rate) {
- std::uint64_t delay = 0;
- if (time.delay > 0) {
- delay = static_cast<std::uint64_t>(time.delay);
- if (time.rate.denom != 0 && stream_rate != 0) {
- delay = delay * time.rate.num * stream_rate / time.rate.denom;
- }
- }
- return time.queued + time.buffered + delay;
+    std::uint64_t delay = 0;
+    if (time.delay > 0) {
+        delay = static_cast<std::uint64_t>(time.delay);
+        if (time.rate.denom != 0 && stream_rate != 0) {
+            delay = delay * time.rate.num * stream_rate / time.rate.denom;
+        }
+    }
+    return time.queued + time.buffered + delay;
 }
 
 // Whether an iec958.codecs list names `codec`. The list is a JSON array of
@@ -705,20 +705,20 @@ struct SinkInfo {
 // ("DTS-HD", "MPEG2-AAC"), so a hyphen is part of a name, and "DTS" is not
 // found inside "DTS-HD".
 [[nodiscard]] inline bool codec_listed(std::string_view list, std::string_view codec) {
- const auto name_char = [](char c) {
- return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '-' || c == '_';
- };
- std::size_t at = 0;
- while ((at = list.find(codec, at)) != std::string_view::npos) {
- const bool start_ok = at == 0 || !name_char(list[at - 1]);
- const std::size_t stop = at + codec.size();
- const bool end_ok = stop >= list.size() || !name_char(list[stop]);
- if (start_ok && end_ok) {
- return true;
- }
- at = stop;
- }
- return false;
+    const auto name_char = [](char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '-' || c == '_';
+    };
+    std::size_t at = 0;
+    while ((at = list.find(codec, at)) != std::string_view::npos) {
+        const bool start_ok = at == 0 || !name_char(list[at - 1]);
+        const std::size_t stop = at + codec.size();
+        const bool end_ok = stop >= list.size() || !name_char(list[stop]);
+        if (start_ok && end_ok) {
+            return true;
+        }
+        at = stop;
+    }
+    return false;
 }
 
 // Every Audio/Sink in the graph with its info properties. Two round trips:
@@ -726,126 +726,126 @@ struct SinkInfo {
 // for the info events those binds provoke. Returns an empty list when there
 // is no session to ask.
 [[nodiscard]] inline std::vector<SinkInfo> audio_sinks_with_info() {
- ensure_initialized();
+    ensure_initialized();
 
- MainLoop loop{pw_main_loop_new(nullptr)};
- if (!loop) {
- return {};
- }
- Context context{pw_context_new(pw_main_loop_get_loop(loop.get()), nullptr, 0)};
- if (!context) {
- return {};
- }
- Core core{pw_context_connect(context.get(), nullptr, 0)};
- if (!core) {
- return {};
- }
- Registry registry{pw_core_get_registry(core.get(), PW_VERSION_REGISTRY, 0)};
- if (!registry) {
- return {};
- }
+    MainLoop loop{pw_main_loop_new(nullptr)};
+    if (!loop) {
+        return {};
+    }
+    Context context{pw_context_new(pw_main_loop_get_loop(loop.get()), nullptr, 0)};
+    if (!context) {
+        return {};
+    }
+    Core core{pw_context_connect(context.get(), nullptr, 0)};
+    if (!core) {
+        return {};
+    }
+    Registry registry{pw_core_get_registry(core.get(), PW_VERSION_REGISTRY, 0)};
+    if (!registry) {
+        return {};
+    }
 
- struct Bound {
- pw_proxy* proxy = nullptr;
- spa_hook listener{};
- pw_node_events events{};
- SinkInfo info;
- };
- struct State {
- pw_registry* registry = nullptr;
- pw_main_loop* loop = nullptr;
- std::vector<std::unique_ptr<Bound>> bound;
- int pending = 0;
- } state{registry.get(), loop.get(), {}, 0};
+    struct Bound {
+        pw_proxy* proxy = nullptr;
+        spa_hook listener{};
+        pw_node_events events{};
+        SinkInfo info;
+    };
+    struct State {
+        pw_registry* registry = nullptr;
+        pw_main_loop* loop = nullptr;
+        std::vector<std::unique_ptr<Bound>> bound;
+        int pending = 0;
+    } state{registry.get(), loop.get(), {}, 0};
 
- spa_hook registry_listener{};
- pw_registry_events registry_events{};
- registry_events.version = PW_VERSION_REGISTRY_EVENTS;
- registry_events.global = [](void* data, std::uint32_t id, std::uint32_t, const char* type,
- std::uint32_t, const spa_dict* props) {
- auto* self = static_cast<State*>(data);
- if (type == nullptr || props == nullptr || std::string_view{type} != PW_TYPE_INTERFACE_Node) {
- return;
- }
- if (!is_audio_sink(*props)) {
- return;
- }
- auto* proxy = static_cast<pw_proxy*>(
- pw_registry_bind(self->registry, id, type, PW_VERSION_NODE, 0));
- if (proxy == nullptr) {
- return;
- }
- auto bound = std::make_unique<Bound>();
- bound->proxy = proxy;
- bound->info.id = id;
- bound->info.name = node_id(*props);
- bound->info.description = node_friendly_name(*props);
- bound->events.version = PW_VERSION_NODE_EVENTS;
- bound->events.info = [](void* bound_data, const pw_node_info* info) {
- auto* b = static_cast<Bound*>(bound_data);
- if (info == nullptr || info->props == nullptr) {
- return;
- }
- if (const char* codecs = spa_dict_lookup(info->props, "iec958.codecs");
- codecs != nullptr) {
- b->info.codecs = codecs;
- }
- const auto number = [&](const char* key) -> std::uint32_t {
- const char* text = spa_dict_lookup(info->props, key);
- if (text == nullptr) {
- return 0;
- }
- const std::string_view digits{text};
- std::uint32_t parsed = 0;
- const auto result =
- std::from_chars(digits.data(), digits.data() + digits.size(), parsed);
- return result.ec == std::errc{} ? parsed : 0;
- };
- if (const std::uint32_t channels = number("audio.channels");
- channels > 0 && channels <= 64) {
- b->info.channels = static_cast<std::uint16_t>(channels);
- }
- if (const char* position = spa_dict_lookup(info->props, "audio.position");
- position != nullptr) {
- b->info.position = position;
- }
- if (const std::uint32_t rate = number("audio.rate"); rate > 0 && rate <= 768000) {
- b->info.rate = rate;
- }
- };
- pw_proxy_add_object_listener(proxy, &bound->listener, &bound->events, bound.get());
- self->bound.push_back(std::move(bound));
- };
- pw_registry_add_listener(registry.get(), &registry_listener, &registry_events, &state);
+    spa_hook registry_listener{};
+    pw_registry_events registry_events{};
+    registry_events.version = PW_VERSION_REGISTRY_EVENTS;
+    registry_events.global = [](void* data, std::uint32_t id, std::uint32_t, const char* type,
+                                std::uint32_t, const spa_dict* props) {
+        auto* self = static_cast<State*>(data);
+        if (type == nullptr || props == nullptr || std::string_view{type} != PW_TYPE_INTERFACE_Node) {
+            return;
+        }
+        if (!is_audio_sink(*props)) {
+            return;
+        }
+        auto* proxy = static_cast<pw_proxy*>(
+            pw_registry_bind(self->registry, id, type, PW_VERSION_NODE, 0));
+        if (proxy == nullptr) {
+            return;
+        }
+        auto bound = std::make_unique<Bound>();
+        bound->proxy = proxy;
+        bound->info.id = id;
+        bound->info.name = node_id(*props);
+        bound->info.description = node_friendly_name(*props);
+        bound->events.version = PW_VERSION_NODE_EVENTS;
+        bound->events.info = [](void* bound_data, const pw_node_info* info) {
+            auto* b = static_cast<Bound*>(bound_data);
+            if (info == nullptr || info->props == nullptr) {
+                return;
+            }
+            if (const char* codecs = spa_dict_lookup(info->props, "iec958.codecs");
+                codecs != nullptr) {
+                b->info.codecs = codecs;
+            }
+            const auto number = [&](const char* key) -> std::uint32_t {
+                const char* text = spa_dict_lookup(info->props, key);
+                if (text == nullptr) {
+                    return 0;
+                }
+                const std::string_view digits{text};
+                std::uint32_t parsed = 0;
+                const auto result =
+                    std::from_chars(digits.data(), digits.data() + digits.size(), parsed);
+                return result.ec == std::errc{} ? parsed : 0;
+            };
+            if (const std::uint32_t channels = number("audio.channels");
+                channels > 0 && channels <= 64) {
+                b->info.channels = static_cast<std::uint16_t>(channels);
+            }
+            if (const char* position = spa_dict_lookup(info->props, "audio.position");
+                position != nullptr) {
+                b->info.position = position;
+            }
+            if (const std::uint32_t rate = number("audio.rate"); rate > 0 && rate <= 768000) {
+                b->info.rate = rate;
+            }
+        };
+        pw_proxy_add_object_listener(proxy, &bound->listener, &bound->events, bound.get());
+        self->bound.push_back(std::move(bound));
+    };
+    pw_registry_add_listener(registry.get(), &registry_listener, &registry_events, &state);
 
- spa_hook core_listener{};
- pw_core_events core_events{};
- core_events.version = PW_VERSION_CORE_EVENTS;
- core_events.done = [](void* data, std::uint32_t id, int seq) {
- auto* self = static_cast<State*>(data);
- if (id == PW_ID_CORE && seq == self->pending) {
- pw_main_loop_quit(self->loop);
- }
- };
- pw_core_add_listener(core.get(), &core_listener, &core_events, &state);
+    spa_hook core_listener{};
+    pw_core_events core_events{};
+    core_events.version = PW_VERSION_CORE_EVENTS;
+    core_events.done = [](void* data, std::uint32_t id, int seq) {
+        auto* self = static_cast<State*>(data);
+        if (id == PW_ID_CORE && seq == self->pending) {
+            pw_main_loop_quit(self->loop);
+        }
+    };
+    pw_core_add_listener(core.get(), &core_listener, &core_events, &state);
 
- // First: every existing global, binding the sinks as they arrive.
- state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
- pw_main_loop_run(loop.get());
- // Second: the info events those binds asked for.
- state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
- pw_main_loop_run(loop.get());
+    // First: every existing global, binding the sinks as they arrive.
+    state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
+    pw_main_loop_run(loop.get());
+    // Second: the info events those binds asked for.
+    state.pending = pw_core_sync(core.get(), PW_ID_CORE, 0);
+    pw_main_loop_run(loop.get());
 
- std::vector<SinkInfo> out;
- out.reserve(state.bound.size());
- for (auto& b : state.bound) {
- spa_hook_remove(&b->listener);
- pw_proxy_destroy(b->proxy);
- out.push_back(std::move(b->info));
- }
- spa_hook_remove(&core_listener);
- spa_hook_remove(&registry_listener);
- return out;
+    std::vector<SinkInfo> out;
+    out.reserve(state.bound.size());
+    for (auto& b : state.bound) {
+        spa_hook_remove(&b->listener);
+        pw_proxy_destroy(b->proxy);
+        out.push_back(std::move(b->info));
+    }
+    spa_hook_remove(&core_listener);
+    spa_hook_remove(&registry_listener);
+    return out;
 }
 
-} // namespace ac3::pipewire
+}  // namespace ac3::pipewire

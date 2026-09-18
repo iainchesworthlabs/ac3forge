@@ -1,6 +1,6 @@
 #pragma once
 
-#include <emmintrin.h> // SSE2
+#include <emmintrin.h>  // SSE2
 
 #include <cstdint>
 #include <cstring>
@@ -34,18 +34,18 @@ namespace ac3::internal::arch {
 inline constexpr const char* kSimdName = "x86_64-sse2";
 
 struct f64x2 {
- __m128d v;
+    __m128d v;
 
- [[nodiscard]] static f64x2 load(const double* p) { return f64x2{_mm_loadu_pd(p)}; }
- // Lane 0 is `a`, matching the generic header's {lo, hi} - note that
- // _mm_set_pd takes its arguments high-lane first.
- [[nodiscard]] static f64x2 set(double a, double b) { return f64x2{_mm_set_pd(b, a)}; }
- [[nodiscard]] static f64x2 broadcast(double a) { return f64x2{_mm_set1_pd(a)}; }
+    [[nodiscard]] static f64x2 load(const double* p) { return f64x2{_mm_loadu_pd(p)}; }
+    // Lane 0 is `a`, matching the generic header's {lo, hi} - note that
+    // _mm_set_pd takes its arguments high-lane first.
+    [[nodiscard]] static f64x2 set(double a, double b) { return f64x2{_mm_set_pd(b, a)}; }
+    [[nodiscard]] static f64x2 broadcast(double a) { return f64x2{_mm_set1_pd(a)}; }
 
- void store(double* p) const { _mm_storeu_pd(p, v); }
+    void store(double* p) const { _mm_storeu_pd(p, v); }
 
- [[nodiscard]] double lane0() const { return _mm_cvtsd_f64(v); }
- [[nodiscard]] double lane1() const { return _mm_cvtsd_f64(_mm_unpackhi_pd(v, v)); }
+    [[nodiscard]] double lane0() const { return _mm_cvtsd_f64(v); }
+    [[nodiscard]] double lane1() const { return _mm_cvtsd_f64(_mm_unpackhi_pd(v, v)); }
 };
 
 [[nodiscard]] inline f64x2 operator+(f64x2 a, f64x2 b) { return f64x2{_mm_add_pd(a.v, b.v)}; }
@@ -55,7 +55,7 @@ struct f64x2 {
 // unary operator on a double does, and not to -0.0 the way a subtraction
 // from positive zero would.
 [[nodiscard]] inline f64x2 operator-(f64x2 a) {
- return f64x2{_mm_xor_pd(a.v, _mm_set1_pd(-0.0))};
+    return f64x2{_mm_xor_pd(a.v, _mm_set1_pd(-0.0))};
 }
 
 // IEEE-754 roundToIntegralTiesAway - exactly std::round(), for every finite
@@ -69,44 +69,44 @@ struct f64x2 {
 // The construction, on the MAGNITUDE a = |x| so the tie case has only one
 // direction to worry about:
 //
-// t = (a + 2^52) - 2^52
-// The classic magic-number round. For a < 2^52 the addition forces
-// every fractional bit off the bottom of the significand and the
-// subtraction is exact, so t = a rounded to an integer under the
-// CURRENT rounding mode - round-to-nearest-EVEN, which is the mode
-// this project never changes and every other double in it assumes.
-// a - t == 0.5 <=> a was an exact tie that round-to-even took DOWNWARDS
-// (2.5 -> 2). Ties it took upwards (1.5 -> 2) are already the
-// ties-away answer, and non-ties are unaffected. Both a and t are
-// exactly representable and within a factor of two of each other, so
-// the difference is exact.
-// t + 1 in that case; then re-apply the sign bit of x.
+//   t = (a + 2^52) - 2^52
+//       The classic magic-number round. For a < 2^52 the addition forces
+//       every fractional bit off the bottom of the significand and the
+//       subtraction is exact, so t = a rounded to an integer under the
+//       CURRENT rounding mode - round-to-nearest-EVEN, which is the mode
+//       this project never changes and every other double in it assumes.
+//   a - t == 0.5  <=>  a was an exact tie that round-to-even took DOWNWARDS
+//       (2.5 -> 2). Ties it took upwards (1.5 -> 2) are already the
+//       ties-away answer, and non-ties are unaffected. Both a and t are
+//       exactly representable and within a factor of two of each other, so
+//       the difference is exact.
+//   t + 1 in that case; then re-apply the sign bit of x.
 //
-// a >= 2^52 (which includes +/-inf) means x is already an integer and the
-// magic-number step would be a no-op at best, so those lanes select x
-// unchanged. A NaN compares unordered, takes the arithmetic path, and
-// propagates through it.
+//   a >= 2^52 (which includes +/-inf) means x is already an integer and the
+//   magic-number step would be a no-op at best, so those lanes select x
+//   unchanged. A NaN compares unordered, takes the arithmetic path, and
+//   propagates through it.
 //
 // tests/core/test_simd_kernels.cpp pins this against std::round() over the
 // tie ladder, the powers of two either side of the magic number, denormals,
 // both zeros, infinities and a large pseudorandom spread.
 [[nodiscard]] inline f64x2 round_ties_away(f64x2 x) {
- const __m128d sign_mask = _mm_set1_pd(-0.0);
- const __m128d magic = _mm_set1_pd(4503599627370496.0); // 2^52
- const __m128d half = _mm_set1_pd(0.5);
- const __m128d one = _mm_set1_pd(1.0);
+    const __m128d sign_mask = _mm_set1_pd(-0.0);
+    const __m128d magic = _mm_set1_pd(4503599627370496.0);  // 2^52
+    const __m128d half = _mm_set1_pd(0.5);
+    const __m128d one = _mm_set1_pd(1.0);
 
- const __m128d sign = _mm_and_pd(x.v, sign_mask);
- const __m128d a = _mm_andnot_pd(sign_mask, x.v); // |x|
+    const __m128d sign = _mm_and_pd(x.v, sign_mask);
+    const __m128d a = _mm_andnot_pd(sign_mask, x.v);  // |x|
 
- const __m128d t = _mm_sub_pd(_mm_add_pd(a, magic), magic);
- const __m128d tie_down = _mm_cmpeq_pd(_mm_sub_pd(a, t), half);
- const __m128d rounded = _mm_add_pd(t, _mm_and_pd(tie_down, one));
+    const __m128d t = _mm_sub_pd(_mm_add_pd(a, magic), magic);
+    const __m128d tie_down = _mm_cmpeq_pd(_mm_sub_pd(a, t), half);
+    const __m128d rounded = _mm_add_pd(t, _mm_and_pd(tie_down, one));
 
- const __m128d already_integral = _mm_cmpge_pd(a, magic);
- const __m128d small = _mm_andnot_pd(already_integral, _mm_or_pd(rounded, sign));
- const __m128d large = _mm_and_pd(already_integral, x.v);
- return f64x2{_mm_or_pd(small, large)};
+    const __m128d already_integral = _mm_cmpge_pd(a, magic);
+    const __m128d small = _mm_andnot_pd(already_integral, _mm_or_pd(rounded, sign));
+    const __m128d large = _mm_and_pd(already_integral, x.v);
+    return f64x2{_mm_or_pd(small, large)};
 }
 
 // Four IEEE-754 single-precision floats. See the generic header for what this
@@ -124,31 +124,31 @@ struct f64x2 {
 // time. As in f64x2, nothing below uses an approximate reciprocal, rsqrt, or
 // a min/max instruction.
 struct f32x4 {
- __m128 v;
+    __m128 v;
 
- [[nodiscard]] static f32x4 load(const float* p) { return f32x4{_mm_loadu_ps(p)}; }
- // _mm_setr_ps, not _mm_set_ps: the r form takes its arguments lane 0
- // first, which is the order this seam states. f64x2::set above has to
- // reverse its two by hand for want of an _mm_setr_pd.
- [[nodiscard]] static f32x4 set(float a, float b, float c, float d) {
- return f32x4{_mm_setr_ps(a, b, c, d)};
- }
- [[nodiscard]] static f32x4 broadcast(float a) { return f32x4{_mm_set1_ps(a)}; }
+    [[nodiscard]] static f32x4 load(const float* p) { return f32x4{_mm_loadu_ps(p)}; }
+    // _mm_setr_ps, not _mm_set_ps: the r form takes its arguments lane 0
+    // first, which is the order this seam states. f64x2::set above has to
+    // reverse its two by hand for want of an _mm_setr_pd.
+    [[nodiscard]] static f32x4 set(float a, float b, float c, float d) {
+        return f32x4{_mm_setr_ps(a, b, c, d)};
+    }
+    [[nodiscard]] static f32x4 broadcast(float a) { return f32x4{_mm_set1_ps(a)}; }
 
- void store(float* p) const { _mm_storeu_ps(p, v); }
+    void store(float* p) const { _mm_storeu_ps(p, v); }
 
- // Pure lane selection - a shuffle moves bits and performs no arithmetic,
- // so an extracted lane is the float that lane holds.
- [[nodiscard]] float lane0() const { return _mm_cvtss_f32(v); }
- [[nodiscard]] float lane1() const {
- return _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1)));
- }
- [[nodiscard]] float lane2() const {
- return _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2)));
- }
- [[nodiscard]] float lane3() const {
- return _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3)));
- }
+    // Pure lane selection - a shuffle moves bits and performs no arithmetic,
+    // so an extracted lane is the float that lane holds.
+    [[nodiscard]] float lane0() const { return _mm_cvtss_f32(v); }
+    [[nodiscard]] float lane1() const {
+        return _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1)));
+    }
+    [[nodiscard]] float lane2() const {
+        return _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2)));
+    }
+    [[nodiscard]] float lane3() const {
+        return _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3)));
+    }
 };
 
 [[nodiscard]] inline f32x4 operator+(f32x4 a, f32x4 b) { return f32x4{_mm_add_ps(a.v, b.v)}; }
@@ -157,35 +157,35 @@ struct f32x4 {
 // Sign-bit flip rather than 0.0f - a, for the reason f64x2's negation gives:
 // -0.0f has to negate to +0.0f the way unary minus on a float does.
 [[nodiscard]] inline f32x4 operator-(f32x4 a) {
- return f32x4{_mm_xor_ps(a.v, _mm_set1_ps(-0.0F))};
+    return f32x4{_mm_xor_ps(a.v, _mm_set1_ps(-0.0F))};
 }
 
 struct i32x4 {
- __m128i v;
+    __m128i v;
 
- [[nodiscard]] static i32x4 load_u8_widen(const std::uint8_t* p) {
- // Four bytes in, four dwords out: two unpacks against zero. Loaded
- // through a 32-bit scalar rather than _mm_loadu_si128 so nothing is
- // read past the four bytes actually asked for.
- std::int32_t packed = 0;
- std::memcpy(&packed, p, sizeof(packed));
- const __m128i zero = _mm_setzero_si128();
- const __m128i bytes = _mm_cvtsi32_si128(packed);
- return i32x4{_mm_unpacklo_epi16(_mm_unpacklo_epi8(bytes, zero), zero)};
- }
- [[nodiscard]] static i32x4 broadcast(std::int32_t a) { return i32x4{_mm_set1_epi32(a)}; }
+    [[nodiscard]] static i32x4 load_u8_widen(const std::uint8_t* p) {
+        // Four bytes in, four dwords out: two unpacks against zero. Loaded
+        // through a 32-bit scalar rather than _mm_loadu_si128 so nothing is
+        // read past the four bytes actually asked for.
+        std::int32_t packed = 0;
+        std::memcpy(&packed, p, sizeof(packed));
+        const __m128i zero = _mm_setzero_si128();
+        const __m128i bytes = _mm_cvtsi32_si128(packed);
+        return i32x4{_mm_unpacklo_epi16(_mm_unpacklo_epi8(bytes, zero), zero)};
+    }
+    [[nodiscard]] static i32x4 broadcast(std::int32_t a) { return i32x4{_mm_set1_epi32(a)}; }
 
- // memcpy rather than _mm_storeu_si128 through a cast pointer: the
- // store is unaligned either way, and this needs no reinterpret_cast to
- // express. Every compiler here lowers it to the same single movdqu.
- void store(std::int32_t* p) const { std::memcpy(p, &v, sizeof(v)); }
+    // memcpy rather than _mm_storeu_si128 through a cast pointer: the
+    // store is unaligned either way, and this needs no reinterpret_cast to
+    // express. Every compiler here lowers it to the same single movdqu.
+    void store(std::int32_t* p) const { std::memcpy(p, &v, sizeof(v)); }
 };
 
 [[nodiscard]] inline i32x4 operator-(i32x4 a, i32x4 b) { return i32x4{_mm_sub_epi32(a.v, b.v)}; }
 
 template <int Bits>
 [[nodiscard]] i32x4 shift_left(i32x4 a) {
- return i32x4{_mm_slli_epi32(a.v, Bits)};
+    return i32x4{_mm_slli_epi32(a.v, Bits)};
 }
 
-} // namespace ac3::internal::arch
+}  // namespace ac3::internal::arch

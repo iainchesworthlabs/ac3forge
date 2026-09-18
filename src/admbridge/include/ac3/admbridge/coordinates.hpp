@@ -13,15 +13,15 @@
 // Clause 8, verified directly against the published Recommendation text (not transcribed from
 // any secondary source):
 //
-// "Azimuth - angle in the horizontal plane with 0 degrees as straight ahead, and positive
-// angles to the left (or anti-clockwise) when viewed from above."
-// "Elevation - angle in the vertical plane with 0 degrees horizontally ahead, and positive
-// angles going up."
-// "Distance - a normalized distance, where 1.0 is assumed to be the default radius of the
-// sphere."
-// "X - left to right, with positive values to the right."
-// "Y - front to back, with positive values to the front."
-// "Z - top to bottom, with positive values to the top."
+//   "Azimuth - angle in the horizontal plane with 0 degrees as straight ahead, and positive
+//   angles to the left (or anti-clockwise) when viewed from above."
+//   "Elevation - angle in the vertical plane with 0 degrees horizontally ahead, and positive
+//   angles going up."
+//   "Distance - a normalized distance, where 1.0 is assumed to be the default radius of the
+//   sphere."
+//   "X - left to right, with positive values to the right."
+//   "Y - front to back, with positive values to the front."
+//   "Z - top to bottom, with positive values to the top."
 //
 // (Table 16 adds the range: "the values 1.0 and -1.0 are on the surface of the cube.")
 //
@@ -66,30 +66,30 @@ namespace ac3::admbridge {
 // Cartesian axes describe. See this header's own top comment for the full derivation and the
 // three independent checks performed against it.
 [[nodiscard]] AC3ADMBRIDGE_EXPORT ac3adm::CartesianPosition polar_to_adm_cartesian(
- const ac3adm::PolarPosition& polar);
+    const ac3adm::PolarPosition& polar);
 
 // BS.2076-2's [-1, 1] unit-cube Cartesian convention to ac3::oba::Position's [0, 1]/[0, 1]/
 // [-1, 1] room-anchored one. Pure affine remap - see this header's own top comment.
 [[nodiscard]] AC3ADMBRIDGE_EXPORT ac3::oba::Position adm_cartesian_to_room(
- const ac3adm::CartesianPosition& cartesian);
+    const ac3adm::CartesianPosition& cartesian);
 
 // Dispatches on ac3adm::Position's own variant (ac3adm/model.hpp: PolarPosition or
 // CartesianPosition, selected by AudioBlockFormat::cartesian) and converts whichever alternative
 // is actually present straight to room coordinates.
 [[nodiscard]] AC3ADMBRIDGE_EXPORT ac3::oba::Position adm_position_to_room(
- const ac3adm::Position& position);
+    const ac3adm::Position& position);
 
-// The write-direction inverse of adm_cartesian_to_room() above, for JOC → ADM BWF writer (the JOC ->
+// The write-direction inverse of adm_cartesian_to_room() above, for roadmap item IM2 (the JOC ->
 // ADM BWF writer): x_adm = 2*x_room - 1, y_adm = 1 - 2*y_room, z_adm = z_room - the algebraic
 // inverse of the affine remap this header's own top comment derives, not a second, independently
 // checked formula. This writer only ever emits cartesian ADM (the Dolby Atmos Master ADM Profile's
 // own shape), so unlike the read side there is no matching room_to_adm_polar()/room_position_to_adm()
 // pair - a caller wanting a polar master would need one, and none of this project's own writers do.
 [[nodiscard]] AC3ADMBRIDGE_EXPORT ac3adm::CartesianPosition room_to_adm_cartesian(
- const ac3::oba::Position& room);
+    const ac3::oba::Position& room);
 
 // SMPTE ST 2098-2:2022 §11.1's unit cube to ac3::oba::Position's own room-anchored convention -
-// for IAB reader bridge, phase 3 (atmos-iab, mapping the IAB bed/object graph onto this same
+// for IAB reader bridge, phase 3 ("atmos-iab", mapping the IAB bed/object graph onto this same
 // ObjectPath layer). Unlike BS.2076-2's Cartesian convention above, this needs no formula at all:
 // §11.1 defines IAB's x ("0 corresponds to left wall... 1 corresponds to right wall") and y ("0
 // corresponds to front wall... 1 corresponds to back wall") identically to oba::Position's own
@@ -106,6 +106,6 @@ namespace ac3::admbridge {
 // is used and what is deliberately not carried across (ObjectSpread, the 9-zone
 // ObjectZoneControl).
 [[nodiscard]] AC3ADMBRIDGE_EXPORT ac3::oba::Position iab_position_to_room(
- const ac3iab::Position& position);
+    const ac3iab::Position& position);
 
-} // namespace ac3::admbridge
+}  // namespace ac3::admbridge

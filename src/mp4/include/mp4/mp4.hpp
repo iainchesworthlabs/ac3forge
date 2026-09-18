@@ -29,14 +29,14 @@
 //
 // Deliberately small. Enough to produce a file a player will open with the
 // right channel layout, duration and codec signalling:
-// - one audio track, ftyp/moov/mdat only,
-// - one sample per chunk (no interleaving/multi-track concerns to solve),
-// - stts/stsz/stco built straight off the frame sizes handed in.
+//   - one audio track, ftyp/moov/mdat only,
+//   - one sample per chunk (no interleaving/multi-track concerns to solve),
+//   - stts/stsz/stco built straight off the frame sizes handed in.
 // No multiple tracks, and an edit list only when MuxOptions::edit asks for
 // its one edit. Multiple tracks matter for multi-track muxing, not for
 // playing back what this project produces.
 //
-// fragment() below (fMP4/CMAF segmenting) is the fMP4/CMAF follow-up mux() itself
+// fragment() below (ROADMAP.md's A2) is the fMP4/CMAF follow-up mux() itself
 // used to defer: an initialization segment plus one or more media segments,
 // built from the same opaque AudioTrack/frame shape - see its own comment
 // further down. FragmentWriter beside it (IO4) is the incremental form of the
@@ -62,60 +62,60 @@ inline constexpr std::string_view kCodecEac3 = "ec-3";
 inline constexpr std::string_view kCodecAc4 = "ac-4";
 
 enum class MuxError : std::uint8_t {
- kNoFrames,
- kInvalidTrack, // zero/negative channels or sample rate, unrecognised codec id, or no
- // codec_config payload
- kFileTooLarge, // mdat would need a 64-bit chunk offset (co64), unsupported in this cut
- kInvalidOptions, // e.g. FragmentOptions::frames_per_fragment == 0, or a MuxOptions::edit
- // that runs past the frames
+    kNoFrames,
+    kInvalidTrack,    // zero/negative channels or sample rate, unrecognised codec id, or no
+                      // codec_config payload
+    kFileTooLarge,    // mdat would need a 64-bit chunk offset (co64), unsupported in this cut
+    kInvalidOptions,  // e.g. FragmentOptions::frames_per_fragment == 0, or a MuxOptions::edit
+                      // that runs past the frames
 };
 
 [[nodiscard]] MP4_EXPORT std::string_view describe(MuxError error);
 
 struct AudioTrack {
- // Selects the sample entry box ('ac-3' or 'ec-3') and, through it, which
- // configuration box wraps `codec_config` ('dac3' or 'dec3' respectively -
- // see ETSI TS 102 366 Annex F). Any other value is kInvalidTrack: this
- // module only knows how to describe an AC-3/E-AC-3 sample entry, the same
- // way matroska::AudioTrack::codec_id is free-form but this one is not -
- // an MP4 sample entry's box layout genuinely depends on which codec it
- // is, unlike Matroska's CodecID string.
- std::string codec_id{kCodecEac3};
- std::uint32_t sample_rate = 48000;
- int channels = 2;
- // Samples one frame represents, used to build stts and to compute the
- // track's duration. An E-AC-3/AC-3 access unit is 1536.
- std::uint32_t samples_per_frame = 1536;
- // The sample entry's one child configuration box, PAYLOAD ONLY (this
- // module writes the box's own size+FourCC header, choosing 'dac3' or
- // 'dec3' from codec_id above). Opaque to this module by design - see
- // ac3::io::build_codec_config_box (ac3/io/dec3.hpp) for how AC-3/E-AC-3
- // callers produce it, and examples/mux_mp4.cpp for the full round trip.
- std::vector<std::byte> codec_config;
- std::string language{"und"};
- // RFC 6381 codec string override for hls_codec_string()/the DASH
- // manifest, for the one codec here whose string is not its fourcc
- // (kCodecAc4 - see its comment). Empty means "the codec_id IS the
- // string", which stays true for AC-3/E-AC-3. Kept here rather than
- // parsed out of codec_config so this module stays codec-blind.
- std::string rfc6381{};
+    // Selects the sample entry box ('ac-3' or 'ec-3') and, through it, which
+    // configuration box wraps `codec_config` ('dac3' or 'dec3' respectively -
+    // see ETSI TS 102 366 Annex F). Any other value is kInvalidTrack: this
+    // module only knows how to describe an AC-3/E-AC-3 sample entry, the same
+    // way matroska::AudioTrack::codec_id is free-form but this one is not -
+    // an MP4 sample entry's box layout genuinely depends on which codec it
+    // is, unlike Matroska's CodecID string.
+    std::string codec_id{kCodecEac3};
+    std::uint32_t sample_rate = 48000;
+    int channels = 2;
+    // Samples one frame represents, used to build stts and to compute the
+    // track's duration. An E-AC-3/AC-3 access unit is 1536.
+    std::uint32_t samples_per_frame = 1536;
+    // The sample entry's one child configuration box, PAYLOAD ONLY (this
+    // module writes the box's own size+FourCC header, choosing 'dac3' or
+    // 'dec3' from codec_id above). Opaque to this module by design - see
+    // ac3::io::build_codec_config_box (ac3/io/dec3.hpp) for how AC-3/E-AC-3
+    // callers produce it, and examples/mux_mp4.cpp for the full round trip.
+    std::vector<std::byte> codec_config;
+    std::string language{"und"};
+    // RFC 6381 codec string override for hls_codec_string()/the DASH
+    // manifest, for the one codec here whose string is not its fourcc
+    // (kCodecAc4 - see its comment). Empty means "the codec_id IS the
+    // string", which stays true for AC-3/E-AC-3. Kept here rather than
+    // parsed out of codec_config so this module stays codec-blind.
+    std::string rfc6381{};
 };
 
 struct MuxOptions {
- std::string writing_app{"ac3forge"};
- // One edit (ISO/IEC 14496-12 §8.6.6): the presentation plays
- // `duration_samples` of the track, starting `start_samples` in - the
- // priming a decoder should drop, and where the audio ends before the last
- // frame's padding. Both count samples at the track's rate, which this
- // module also uses as the movie's and the media's timescale. The movie and
- // track durations become the edit's. Unset writes no edit list. An edit
- // that runs past the frames handed in, or plays nothing, is
- // kInvalidOptions.
- struct Edit {
- std::uint64_t start_samples = 0;
- std::uint64_t duration_samples = 0;
- };
- std::optional<Edit> edit = std::nullopt;
+    std::string writing_app{"ac3forge"};
+    // One edit (ISO/IEC 14496-12 §8.6.6): the presentation plays
+    // `duration_samples` of the track, starting `start_samples` in - the
+    // priming a decoder should drop, and where the audio ends before the last
+    // frame's padding. Both count samples at the track's rate, which this
+    // module also uses as the movie's and the media's timescale. The movie and
+    // track durations become the edit's. Unset writes no edit list. An edit
+    // that runs past the frames handed in, or plays nothing, is
+    // kInvalidOptions.
+    struct Edit {
+        std::uint64_t start_samples = 0;
+        std::uint64_t duration_samples = 0;
+    };
+    std::optional<Edit> edit = std::nullopt;
 };
 
 // Mux frames into a complete .mp4, returned as bytes. No file I/O here, so
@@ -123,12 +123,12 @@ struct MuxOptions {
 // applies unchanged. Frames arrive as views (matroska::mux's own reasoning
 // there too); the vector-list overload below forwards for owned lists.
 [[nodiscard]] MP4_EXPORT std::expected<std::vector<std::byte>, MuxError> mux(
- const AudioTrack& track, std::span<const std::span<const std::byte>> frames,
- const MuxOptions& options = {});
+    const AudioTrack& track, std::span<const std::span<const std::byte>> frames,
+    const MuxOptions& options = {});
 
 [[nodiscard]] MP4_EXPORT std::expected<std::vector<std::byte>, MuxError> mux(
- const AudioTrack& track, std::span<const std::vector<std::byte>> frames,
- const MuxOptions& options = {});
+    const AudioTrack& track, std::span<const std::vector<std::byte>> frames,
+    const MuxOptions& options = {});
 
 // --- Fragmented MP4 / CMAF --------------------------------------------------
 //
@@ -152,43 +152,43 @@ struct MuxOptions {
 // comment).
 
 struct FragmentOptions {
- std::string writing_app{"ac3forge"};
- // How many frames (access units) each fragment/media segment carries. A
- // fragment boundary is also wherever a player or CDN can start an
- // independent HTTP request, so this is really "how long is one HLS/DASH
- // segment" - 48 frames of 1536 samples at 48 kHz is 1.536 s, inside the
- // 1-10 s range the CMAF/DASH-IF interoperability guidelines assume most
- // packagers and CDNs are tuned for. Every AC-3/E-AC-3 access unit this
- // project produces is independently decodable (see
- // AudioTrack::samples_per_frame's own comment, and how ac3::io::scan
- // already groups a whole access unit - independent substream plus any
- // dependents - into the one opaque frame mp4:: ever sees), so any
- // grouping is valid; this only trades segment count for
- // segment-switch/start-up latency.
- std::uint32_t frames_per_fragment = 48;
- // Adds 'ceao' to the ftyp/styp compatible-brands list. ETSI TS 103 420
- // §E.5 ("Core object-based audio media profile"): "The FileTypeBox
- // compatibility brand shall be ceao and should be used to indicate media
- // tracks that conform to this media profile" - the object-based-audio
- // CMAF profile §E defines for a backward-compatible object-audio E-AC-3
- // track, which DASH-IF IOP Part 8 v5.0.0 §5.3.3 then repeats as
- // "Additionally, a compatibility brand of 'ceao' should be used".
- // Caller-supplied, exactly like HlsOptions::channels_attribute and
- // DashOptions::joc_complexity_index (mp4/hls.hpp, mp4/dash.hpp): whether a
- // stream carries TS 103 420's object layer is bitstream syntax this module
- // never reads - the caller that scanned oba_complexity_index off it to
- // build the dec3 box is the one that knows.
- bool object_audio_brand = false;
- // FragmentWriter only - fragment() returns every segment it built, so it
- // has nothing to window. How many of the most recent segments' SegmentInfo
- // FragmentWriter::window() keeps, for a rolling live HLS playlist and DASH
- // SegmentTimeline. 0 - the default - keeps every segment, which is what a
- // session published whole afterwards wants; a real live origin that
- // deletes segments behind itself sets this to its own time-shift buffer
- // depth in segments. RFC 8216 §6.2.2 wants a live Media Playlist to hold
- // at least three target durations of media, so a window below 3 is
- // accepted here but is not something a player will enjoy.
- std::uint32_t playlist_window_segments = 0;
+    std::string writing_app{"ac3forge"};
+    // How many frames (access units) each fragment/media segment carries. A
+    // fragment boundary is also wherever a player or CDN can start an
+    // independent HTTP request, so this is really "how long is one HLS/DASH
+    // segment" - 48 frames of 1536 samples at 48 kHz is 1.536 s, inside the
+    // 1-10 s range the CMAF/DASH-IF interoperability guidelines assume most
+    // packagers and CDNs are tuned for. Every AC-3/E-AC-3 access unit this
+    // project produces is independently decodable (see
+    // AudioTrack::samples_per_frame's own comment, and how ac3::io::scan
+    // already groups a whole access unit - independent substream plus any
+    // dependents - into the one opaque frame mp4:: ever sees), so any
+    // grouping is valid; this only trades segment count for
+    // segment-switch/start-up latency.
+    std::uint32_t frames_per_fragment = 48;
+    // Adds 'ceao' to the ftyp/styp compatible-brands list. ETSI TS 103 420
+    // §E.5 ("Core object-based audio media profile"): "The FileTypeBox
+    // compatibility brand shall be ceao and should be used to indicate media
+    // tracks that conform to this media profile" - the object-based-audio
+    // CMAF profile §E defines for a backward-compatible object-audio E-AC-3
+    // track, which DASH-IF IOP Part 8 v5.0.0 §5.3.3 then repeats as
+    // "Additionally, a compatibility brand of 'ceao' should be used".
+    // Caller-supplied, exactly like HlsOptions::channels_attribute and
+    // DashOptions::joc_complexity_index (mp4/hls.hpp, mp4/dash.hpp): whether a
+    // stream carries TS 103 420's object layer is bitstream syntax this module
+    // never reads - the caller that scanned oba_complexity_index off it to
+    // build the dec3 box is the one that knows.
+    bool object_audio_brand = false;
+    // FragmentWriter only - fragment() returns every segment it built, so it
+    // has nothing to window. How many of the most recent segments' SegmentInfo
+    // FragmentWriter::window() keeps, for a rolling live HLS playlist and DASH
+    // SegmentTimeline. 0 - the default - keeps every segment, which is what a
+    // session published whole afterwards wants; a real live origin that
+    // deletes segments behind itself sets this to its own time-shift buffer
+    // depth in segments. RFC 8216 §6.2.2 wants a live Media Playlist to hold
+    // at least three target durations of media, so a window below 3 is
+    // accepted here but is not something a player will enjoy.
+    std::uint32_t playlist_window_segments = 0;
 };
 
 // One media segment: styp + moof + mdat, ready to write out as-is (e.g.
@@ -196,17 +196,17 @@ struct FragmentOptions {
 // mp4/hls.hpp and mp4/dash.hpp need to build a playlist/MPD without
 // re-parsing the segment's own boxes back out.
 struct MediaSegment {
- std::vector<std::byte> bytes;
- std::uint32_t sequence_number = 0; // this fragment's mfhd sequence_number (1-based)
- std::uint32_t sample_count = 0; // frames carried in this fragment
- std::uint64_t duration_samples = 0; // sample_count * AudioTrack::samples_per_frame
- // This fragment's own tfdt baseMediaDecodeTime: where it starts on the
- // track's timeline, in AudioTrack::sample_rate units. Zero for the first
- // segment, and the running sum of every earlier segment's duration_samples
- // after that. A DASH SegmentTimeline's first <S t="..."> needs it whenever
- // the manifest describes a WINDOW of segments rather than the whole track
- // from zero - which is exactly the live case (see mp4/dash.hpp).
- std::uint64_t base_media_decode_time = 0;
+    std::vector<std::byte> bytes;
+    std::uint32_t sequence_number = 0;   // this fragment's mfhd sequence_number (1-based)
+    std::uint32_t sample_count = 0;      // frames carried in this fragment
+    std::uint64_t duration_samples = 0;  // sample_count * AudioTrack::samples_per_frame
+    // This fragment's own tfdt baseMediaDecodeTime: where it starts on the
+    // track's timeline, in AudioTrack::sample_rate units. Zero for the first
+    // segment, and the running sum of every earlier segment's duration_samples
+    // after that. A DASH SegmentTimeline's first <S t="..."> needs it whenever
+    // the manifest describes a WINDOW of segments rather than the whole track
+    // from zero - which is exactly the live case (see mp4/dash.hpp).
+    std::uint64_t base_media_decode_time = 0;
 };
 
 // The bookkeeping half of a MediaSegment - everything a playlist or an MPD
@@ -216,13 +216,13 @@ struct MediaSegment {
 // there instead would mean holding the entire time-shift buffer's audio in
 // memory purely to be able to name it.
 struct SegmentInfo {
- std::uint32_t sequence_number = 0;
- std::uint32_t sample_count = 0;
- std::uint64_t duration_samples = 0;
- std::uint64_t base_media_decode_time = 0;
- // MediaSegment::bytes.size() - what the HLS BANDWIDTH and DASH @bandwidth
- // averages are computed from (see src/mp4/src/manifest_detail.hpp).
- std::uint64_t byte_size = 0;
+    std::uint32_t sequence_number = 0;
+    std::uint32_t sample_count = 0;
+    std::uint64_t duration_samples = 0;
+    std::uint64_t base_media_decode_time = 0;
+    // MediaSegment::bytes.size() - what the HLS BANDWIDTH and DASH @bandwidth
+    // averages are computed from (see src/mp4/src/manifest_detail.hpp).
+    std::uint64_t byte_size = 0;
 };
 
 // The SegmentInfo describing one MediaSegment, for a caller holding
@@ -231,8 +231,8 @@ struct SegmentInfo {
 [[nodiscard]] MP4_EXPORT SegmentInfo segment_info(const MediaSegment& segment);
 
 struct FragmentedOutput {
- std::vector<std::byte> init_segment; // ftyp + moov (mvex/trex, zero samples)
- std::vector<MediaSegment> media_segments; // one per fragment, in sequence_number order
+    std::vector<std::byte> init_segment;       // ftyp + moov (mvex/trex, zero samples)
+    std::vector<MediaSegment> media_segments;  // one per fragment, in sequence_number order
 };
 
 // Fragments frames into an initialization segment plus media segments. No
@@ -240,14 +240,14 @@ struct FragmentedOutput {
 // offsets, for a single concatenated CMAF track file) for init_segment and
 // each media_segments[i].
 [[nodiscard]] MP4_EXPORT std::expected<FragmentedOutput, MuxError> fragment(
- const AudioTrack& track, std::span<const std::span<const std::byte>> frames,
- const FragmentOptions& options = {});
+    const AudioTrack& track, std::span<const std::span<const std::byte>> frames,
+    const FragmentOptions& options = {});
 
 [[nodiscard]] MP4_EXPORT std::expected<FragmentedOutput, MuxError> fragment(
- const AudioTrack& track, std::span<const std::vector<std::byte>> frames,
- const FragmentOptions& options = {});
+    const AudioTrack& track, std::span<const std::vector<std::byte>> frames,
+    const FragmentOptions& options = {});
 
-// matroska::Writer's and mpegts::Writer's sibling (Matroska/MP4/MPEG-TS muxers), for a
+// matroska::Writer's and mpegts::Writer's sibling (ROADMAP.md's IO4), for a
 // session whose length is not known up front - a live capture, where
 // fragment() above cannot help: it needs every frame before it can group them
 // into fragments at all. A fragmented movie is the one container shape this
@@ -279,54 +279,54 @@ struct FragmentedOutput {
 // bounded at one fragment's frames plus the playlist window
 // (FragmentOptions::playlist_window_segments) however long the session runs.
 class MP4_EXPORT FragmentWriter {
- public:
- // Validates the track and options exactly the way fragment() does. On
- // success init_segment() already holds the initialization segment.
- [[nodiscard]] static std::expected<FragmentWriter, MuxError> create(
- const AudioTrack& track, const FragmentOptions& options = {});
+   public:
+    // Validates the track and options exactly the way fragment() does. On
+    // success init_segment() already holds the initialization segment.
+    [[nodiscard]] static std::expected<FragmentWriter, MuxError> create(
+        const AudioTrack& track, const FragmentOptions& options = {});
 
- // Write this exactly once, before any bytes push() or finalize() return -
- // it is the "init.mp4" an HLS #EXT-X-MAP or a DASH SegmentTemplate
- // @initialization points at.
- [[nodiscard]] const std::vector<std::byte>& init_segment() const { return init_segment_; }
+    // Write this exactly once, before any bytes push() or finalize() return -
+    // it is the "init.mp4" an HLS #EXT-X-MAP or a DASH SegmentTemplate
+    // @initialization points at.
+    [[nodiscard]] const std::vector<std::byte>& init_segment() const { return init_segment_; }
 
- // Buffers one frame into the writer's current (in-progress) fragment.
- // Returns the media segment that just CLOSED to make room for it - so a
- // segment comes back on every options.frames_per_fragment-th call and
- // nullopt otherwise. Write whatever comes back, in order, as it comes back.
- [[nodiscard]] std::expected<std::optional<MediaSegment>, MuxError> push(
- std::span<const std::byte> frame);
+    // Buffers one frame into the writer's current (in-progress) fragment.
+    // Returns the media segment that just CLOSED to make room for it - so a
+    // segment comes back on every options.frames_per_fragment-th call and
+    // nullopt otherwise. Write whatever comes back, in order, as it comes back.
+    [[nodiscard]] std::expected<std::optional<MediaSegment>, MuxError> push(
+        std::span<const std::byte> frame);
 
- // Flushes the trailing partial fragment - call exactly once, when the
- // session ends. nullopt when the last push() happened to land on a
- // fragment boundary, or when nothing was ever pushed. Nothing else needs
- // closing: a fragmented movie has no trailer, and the init segment's
- // durations were never written as real numbers to begin with.
- [[nodiscard]] std::expected<std::optional<MediaSegment>, MuxError> finalize();
+    // Flushes the trailing partial fragment - call exactly once, when the
+    // session ends. nullopt when the last push() happened to land on a
+    // fragment boundary, or when nothing was ever pushed. Nothing else needs
+    // closing: a fragmented movie has no trailer, and the init segment's
+    // durations were never written as real numbers to begin with.
+    [[nodiscard]] std::expected<std::optional<MediaSegment>, MuxError> finalize();
 
- [[nodiscard]] std::size_t frames_written() const { return frames_written_; }
+    [[nodiscard]] std::size_t frames_written() const { return frames_written_; }
 
- // Every segment emitted so far, or the most recent
- // options.playlist_window_segments of them - the exact list to hand
- // mp4/hls.hpp's and mp4/dash.hpp's SegmentInfo overloads once a segment
- // closes, so a rolling playlist's EXT-X-MEDIA-SEQUENCE and an MPD's
- // SegmentTimeline advance with the window. Invalidated by the next
- // push()/finalize().
- [[nodiscard]] std::span<const SegmentInfo> window() const { return window_; }
+    // Every segment emitted so far, or the most recent
+    // options.playlist_window_segments of them - the exact list to hand
+    // mp4/hls.hpp's and mp4/dash.hpp's SegmentInfo overloads once a segment
+    // closes, so a rolling playlist's EXT-X-MEDIA-SEQUENCE and an MPD's
+    // SegmentTimeline advance with the window. Invalidated by the next
+    // push()/finalize().
+    [[nodiscard]] std::span<const SegmentInfo> window() const { return window_; }
 
- private:
- FragmentWriter(AudioTrack track, FragmentOptions options, std::vector<std::byte> init_segment);
+   private:
+    FragmentWriter(AudioTrack track, FragmentOptions options, std::vector<std::byte> init_segment);
 
- [[nodiscard]] std::expected<MediaSegment, MuxError> close_fragment();
+    [[nodiscard]] std::expected<MediaSegment, MuxError> close_fragment();
 
- AudioTrack track_;
- FragmentOptions options_;
- std::vector<std::byte> init_segment_;
- std::vector<std::vector<std::byte>> pending_;
- std::uint64_t decode_time_ = 0;
- std::uint32_t sequence_number_ = 1;
- std::size_t frames_written_ = 0;
- std::vector<SegmentInfo> window_;
+    AudioTrack track_;
+    FragmentOptions options_;
+    std::vector<std::byte> init_segment_;
+    std::vector<std::vector<std::byte>> pending_;
+    std::uint64_t decode_time_ = 0;
+    std::uint32_t sequence_number_ = 1;
+    std::size_t frames_written_ = 0;
+    std::vector<SegmentInfo> window_;
 };
 
-} // namespace mp4
+}  // namespace mp4

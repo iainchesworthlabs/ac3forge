@@ -7,7 +7,7 @@
 # Catch2) is pulled in as SYSTEM headers by their package configs, so these
 # flags never fire on dependency code.
 #
-# examples/capi_encode_decode.c (legacy item F1's C API example) is the one C,
+# examples/capi_encode_decode.c (C API's C API example) is the one C,
 # not C++, source in the whole tree, and it links this same target like every
 # other first-party one - so the warning lists below are split into a common
 # set (valid for both languages) and a C++-only set gated behind
@@ -20,69 +20,69 @@ add_library(ac3_warnings INTERFACE)
 add_library(ac3::warnings ALIAS ac3_warnings)
 
 set(AC3_GNU_CLANG_WARNINGS
- -Wall
- -Wextra
- -Wpedantic
- -Werror
- -Wshadow
- -Wcast-align
- -Wunused
- -Wconversion
- -Wsign-conversion
- -Wnull-dereference
- -Wdouble-promotion
- -Wimplicit-fallthrough
- -Wformat=2)
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Werror
+    -Wshadow
+    -Wcast-align
+    -Wunused
+    -Wconversion
+    -Wsign-conversion
+    -Wnull-dereference
+    -Wdouble-promotion
+    -Wimplicit-fallthrough
+    -Wformat=2)
 
 # C++-only: no equivalent concept in C (virtual dtors, overloaded virtuals,
 # the C++-style-cast-vs-C-style-cast distinction).
 set(AC3_GNU_CLANG_CXX_ONLY_WARNINGS
- -Wnon-virtual-dtor
- -Woverloaded-virtual
- -Wold-style-cast)
+    -Wnon-virtual-dtor
+    -Woverloaded-virtual
+    -Wold-style-cast)
 
 set(AC3_MSVC_WARNINGS
- /W4
- /WX)
+    /W4
+    /WX)
 
 # /permissive- is a C++ conformance switch, gated to CXX below the same way
 # the GNU/Clang C++-only set is - see this file's header comment.
 set(AC3_MSVC_CXX_ONLY_WARNINGS
- /permissive-)
+    /permissive-)
 
 # clang-cl reports CXX_COMPILER_ID "Clang" but binds -Wall to MSVC's /Wall
 # semantics ("everything, including off-by-default groups"), which fails on
 # ordinary C++23 code. /W4 is what clang-cl itself recommends instead.
 set(AC3_CLANG_CL_WARNINGS
- /W4
- -Wextra
- -Wpedantic
- -Werror
- -Wshadow
- -Wcast-align
- -Wunused
- -Wconversion
- -Wsign-conversion
- -Wnull-dereference
- -Wdouble-promotion
- -Wimplicit-fallthrough
- -Wformat=2)
+    /W4
+    -Wextra
+    -Wpedantic
+    -Werror
+    -Wshadow
+    -Wcast-align
+    -Wunused
+    -Wconversion
+    -Wsign-conversion
+    -Wnull-dereference
+    -Wdouble-promotion
+    -Wimplicit-fallthrough
+    -Wformat=2)
 
 set(AC3_CLANG_CL_CXX_ONLY_WARNINGS
- -Wnon-virtual-dtor
- -Woverloaded-virtual
- -Wold-style-cast)
+    -Wnon-virtual-dtor
+    -Woverloaded-virtual
+    -Wold-style-cast)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
- target_compile_options(ac3_warnings INTERFACE
- ${AC3_CLANG_CL_WARNINGS}
- "$<$<COMPILE_LANGUAGE:CXX>:${AC3_CLANG_CL_CXX_ONLY_WARNINGS}>")
+    target_compile_options(ac3_warnings INTERFACE
+        ${AC3_CLANG_CL_WARNINGS}
+        "$<$<COMPILE_LANGUAGE:CXX>:${AC3_CLANG_CL_CXX_ONLY_WARNINGS}>")
 else()
- target_compile_options(ac3_warnings INTERFACE
- "$<$<CXX_COMPILER_ID:MSVC>:${AC3_MSVC_WARNINGS}>"
- "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:${AC3_MSVC_CXX_ONLY_WARNINGS}>"
- "$<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:${AC3_GNU_CLANG_WARNINGS}>"
- "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>>:${AC3_GNU_CLANG_CXX_ONLY_WARNINGS}>")
+    target_compile_options(ac3_warnings INTERFACE
+        "$<$<CXX_COMPILER_ID:MSVC>:${AC3_MSVC_WARNINGS}>"
+        "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:${AC3_MSVC_CXX_ONLY_WARNINGS}>"
+        "$<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:${AC3_GNU_CLANG_WARNINGS}>"
+        "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>>:${AC3_GNU_CLANG_CXX_ONLY_WARNINGS}>")
 endif()
 
 # -Wpedantic on a sufficiently new Clang (first seen on macOS via Homebrew's
@@ -108,8 +108,8 @@ endif()
 # expression, since the compiler version is fixed at configure time and
 # does not vary per-config the way COMPILER_ID conceivably could.
 if(CMAKE_CXX_COMPILER_ID MATCHES "^(Clang|AppleClang)$" AND
- CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 20)
- target_compile_options(ac3_warnings INTERFACE -Wno-c2y-extensions)
+   CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 20)
+    target_compile_options(ac3_warnings INTERFACE -Wno-c2y-extensions)
 endif()
 
 # -Wnull-dereference false-positives inside libstdc++'s own headers under GCC
@@ -135,7 +135,7 @@ endif()
 # quietly weakening the check on the toolchain this project actually gates
 # on - it only helps machines (like this Pi) resolving an older distro GCC.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15)
- target_compile_options(ac3_warnings INTERFACE -Wno-null-dereference)
+    target_compile_options(ac3_warnings INTERFACE -Wno-null-dereference)
 endif()
 
 # -Warray-bounds false positive under GCC 16 at -O2/-O3 (Release), the same
@@ -158,7 +158,7 @@ endif()
 # specifically, mirroring the < 15 scoping above, so this stays a no-op on
 # any compiler that does not exhibit it.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
- target_compile_options(ac3_warnings INTERFACE -Wno-array-bounds)
+    target_compile_options(ac3_warnings INTERFACE -Wno-array-bounds)
 endif()
 
 # -Wmaybe-uninitialized false positive under GCC 16 at -O2/-O3 (Release), on
@@ -182,7 +182,7 @@ endif()
 # is only reliable post-toolchain-file, which runs after this file - so a
 # no-op on x86_64 costs nothing and keeps this one condition to maintain.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
- target_compile_options(ac3_warnings INTERFACE -Wno-maybe-uninitialized)
+    target_compile_options(ac3_warnings INTERFACE -Wno-maybe-uninitialized)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -215,8 +215,8 @@ endif()
 # non-MSVC's "-w" does. If a later Qt/cl combination stops emitting it, the
 # flag becomes a harmless no-op rather than something that needs removing.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
- set(AC3_WARNINGS_OFF_FLAG "/wd4702")
+    set(AC3_WARNINGS_OFF_FLAG "/wd4702")
 else()
- # clang-cl accepts the GNU spelling too, so this covers every non-cl case.
- set(AC3_WARNINGS_OFF_FLAG "-w")
+    # clang-cl accepts the GNU spelling too, so this covers every non-cl case.
+    set(AC3_WARNINGS_OFF_FLAG "-w")
 endif()

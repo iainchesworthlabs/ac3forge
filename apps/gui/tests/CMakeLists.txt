@@ -21,33 +21,33 @@
 find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
 
 qt_add_executable(ac3gui_qmltests
- tests/qml_test_main.cpp
- encoder_controller.cpp
- encoder_controller.hpp
- qc_controller.cpp
- qc_controller.hpp
- object_decode_controller.cpp
- object_decode_controller.hpp
- stream_player_controller.cpp
- stream_player_controller.hpp
- channel_geometry.cpp
- channel_geometry.hpp
- gui_diagnostics.cpp
- gui_diagnostics.hpp
- ../common/fmp4_folder_writer.cpp
- ../common/fmp4_folder_writer.hpp
- ../common/recording_sink.cpp
- ../common/recording_sink.hpp
- ../common/container_input.cpp
- ../common/container_input.hpp
- system_theme.cpp
- system_theme.hpp
- language_manager.cpp
- language_manager.hpp)
+    tests/qml_test_main.cpp
+    encoder_controller.cpp
+    encoder_controller.hpp
+    qc_controller.cpp
+    qc_controller.hpp
+    object_decode_controller.cpp
+    object_decode_controller.hpp
+    stream_player_controller.cpp
+    stream_player_controller.hpp
+    channel_geometry.cpp
+    channel_geometry.hpp
+    gui_diagnostics.cpp
+    gui_diagnostics.hpp
+    ../common/fmp4_folder_writer.cpp
+    ../common/fmp4_folder_writer.hpp
+    ../common/recording_sink.cpp
+    ../common/recording_sink.hpp
+    ../common/container_input.cpp
+    ../common/container_input.hpp
+    system_theme.cpp
+    system_theme.hpp
+    language_manager.cpp
+    language_manager.hpp)
 
 # apps/common, for the same reason ../CMakeLists.txt names it: RecordingSink
 # and Fmp4FolderWriter moved there when ac3cli's own takes started streaming
-# through them (legacy item IO9), and container_input.cpp joined them the same
+# through them (wide-layout record/live paths), and container_input.cpp joined them the same
 # way for container readers (mkv/mp4/ts). This target compiles the same files in, exactly as it
 # always did - qc_controller.cpp/object_decode_controller.cpp call
 # ac3::apps::elementary_stream_from_bytes too, so it needs the same
@@ -55,13 +55,13 @@ qt_add_executable(ac3gui_qmltests
 target_include_directories(ac3gui_qmltests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 qt_add_qml_module(ac3gui_qmltests
- URI Ac3Forge
- VERSION 1.0
- # Both targets embed the same URI; without this they'd both compute the
- # same "<binary dir>/Ac3Forge" output directory and collide - ac3gui's
- # own module lives there already.
- OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests/Ac3Forge"
- QML_FILES ${AC3_QML_FILES})
+    URI Ac3Forge
+    VERSION 1.0
+    # Both targets embed the same URI; without this they'd both compute the
+    # same "<binary dir>/Ac3Forge" output directory and collide - ac3gui's
+    # own module lives there already.
+    OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests/Ac3Forge"
+    QML_FILES ${AC3_QML_FILES})
 
 # Forces this target's own POST_BUILD windeployqt step (below) to run only
 # after ac3gui's has finished, not just after ac3gui's LINK step - confirmed
@@ -95,17 +95,17 @@ add_dependencies(ac3gui_qmltests ac3gui)
 # rules generate the same output".
 # ---------------------------------------------------------------------------
 set_source_files_properties(${AC3_TS_FILES} ${AC3_PSEUDO_TS_FILE} PROPERTIES
- OUTPUT_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/tests")
+    OUTPUT_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/tests")
 
 qt6_add_lrelease(ac3gui_qmltests
- TS_FILES ${AC3_TS_FILES} ${AC3_PSEUDO_TS_FILE}
- LRELEASE_TARGET ac3gui_qmltests_lrelease
- QM_FILES_OUTPUT_VARIABLE AC3_GUI_TEST_QM_FILES)
+    TS_FILES ${AC3_TS_FILES} ${AC3_PSEUDO_TS_FILE}
+    LRELEASE_TARGET ac3gui_qmltests_lrelease
+    QM_FILES_OUTPUT_VARIABLE AC3_GUI_TEST_QM_FILES)
 
 qt6_add_resources(ac3gui_qmltests "ac3gui_qmltests_translations"
- PREFIX "/i18n"
- BASE "${CMAKE_CURRENT_BINARY_DIR}/tests"
- FILES ${AC3_GUI_TEST_QM_FILES})
+    PREFIX "/i18n"
+    BASE "${CMAKE_CURRENT_BINARY_DIR}/tests"
+    FILES ${AC3_GUI_TEST_QM_FILES})
 
 # The standard Qt Quick Test hookup: QUICK_TEST_MAIN's generated main() reads
 # this macro to find the tst_*.qml files at run time. -input on the ctest
@@ -113,7 +113,7 @@ qt6_add_resources(ac3gui_qmltests "ac3gui_qmltests_translations"
 # belt and suspenders, since this is the one part of the setup this project
 # had no prior example of to copy from.
 target_compile_definitions(ac3gui_qmltests PRIVATE
- QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml")
+    QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml")
 
 # Same rationale as ../CMakeLists.txt's identical loop: Qt's generated
 # moc/rcc/qmlcachegen output for THIS target compiles under the strict
@@ -122,30 +122,30 @@ target_compile_definitions(ac3gui_qmltests PRIVATE
 get_target_property(AC3_GUI_TEST_SOURCES ac3gui_qmltests SOURCES)
 set(AC3_GUI_TEST_GENERATED_SOURCES "")
 foreach(source IN LISTS AC3_GUI_TEST_SOURCES)
- if(source MATCHES "^${CMAKE_CURRENT_BINARY_DIR}/.*\\.(cpp|cxx|cc)$")
- list(APPEND AC3_GUI_TEST_GENERATED_SOURCES "${source}")
- endif()
+    if(source MATCHES "^${CMAKE_CURRENT_BINARY_DIR}/.*\\.(cpp|cxx|cc)$")
+        list(APPEND AC3_GUI_TEST_GENERATED_SOURCES "${source}")
+    endif()
 endforeach()
 if(AC3_GUI_TEST_GENERATED_SOURCES)
- set_source_files_properties(${AC3_GUI_TEST_GENERATED_SOURCES}
- PROPERTIES COMPILE_OPTIONS "${AC3_WARNINGS_OFF_FLAG}")
+    set_source_files_properties(${AC3_GUI_TEST_GENERATED_SOURCES}
+        PROPERTIES COMPILE_OPTIONS "${AC3_WARNINGS_OFF_FLAG}")
 endif()
 
 target_link_libraries(ac3gui_qmltests
- PRIVATE
- ac3::forge
- ac3::audio
- matroska::matroska
- mp4::mp4
- mpegts::mpegts
- ac3::warnings
- ac3::fmt
- Qt6::Core
- Qt6::Gui
- Qt6::Quick
- Qt6::QuickControls2
- Qt6::QuickTest
- Qt6::Concurrent)
+    PRIVATE
+        ac3::forge
+        ac3::audio
+        matroska::matroska
+        mp4::mp4
+        mpegts::mpegts
+        ac3::warnings
+        ac3::fmt
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Quick
+        Qt6::QuickControls2
+        Qt6::QuickTest
+        Qt6::Concurrent)
 
 # QT_QPA_PLATFORM=offscreen on the test itself, not just -platform offscreen
 # on the command line: belt and suspenders again, and it means running the
@@ -181,7 +181,7 @@ target_link_libraries(ac3gui_qmltests
 # stays scoped to APPLE rather than applied everywhere untested.
 set(AC3_GUI_QMLTESTS_ENV "QT_QPA_PLATFORM=offscreen;QT_FORCE_STDERR_LOGGING=1")
 if(APPLE)
- list(APPEND AC3_GUI_QMLTESTS_ENV "QSG_RENDER_LOOP=basic")
+    list(APPEND AC3_GUI_QMLTESTS_ENV "QSG_RENDER_LOOP=basic")
 endif()
 
 # One ctest entry per tst_*.qml suite rather than a single ac3gui_qml_tests
@@ -212,39 +212,39 @@ endif()
 # (`ctest --preset test-<leg>` is unaffected - confirmed on a real 18-entry
 # run: ~277s serial, 77s at -j4).
 file(GLOB AC3_GUI_QML_TEST_FILES CONFIGURE_DEPENDS
- "${CMAKE_CURRENT_SOURCE_DIR}/tests/qml/tst_*.qml")
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/qml/tst_*.qml")
 
 foreach(AC3_GUI_QML_TEST_FILE IN LISTS AC3_GUI_QML_TEST_FILES)
- get_filename_component(AC3_GUI_QML_TEST_NAME "${AC3_GUI_QML_TEST_FILE}" NAME_WE)
- string(REGEX REPLACE "^tst_" "" AC3_GUI_QML_TEST_SUITE "${AC3_GUI_QML_TEST_NAME}")
- set(AC3_GUI_QML_TEST_CASE "ac3gui_qml_tests_${AC3_GUI_QML_TEST_SUITE}")
+    get_filename_component(AC3_GUI_QML_TEST_NAME "${AC3_GUI_QML_TEST_FILE}" NAME_WE)
+    string(REGEX REPLACE "^tst_" "" AC3_GUI_QML_TEST_SUITE "${AC3_GUI_QML_TEST_NAME}")
+    set(AC3_GUI_QML_TEST_CASE "ac3gui_qml_tests_${AC3_GUI_QML_TEST_SUITE}")
 
- # tst_localisation_pipeline.qml is the one suite that needs a locale
- # forced deterministically rather than whatever this machine's own
- # system locale happens to be - LanguageManager::applyInitialLanguage()
- # reads AC3GUI_LOCALE ahead of the persisted setting/system locale for
- # exactly this (language_manager.cpp), and "xx" selects the pseudo-
- # locale QA fixture (translations/ac3gui_xx.ts) every other suite has no
- # reason to load.
- set(AC3_GUI_QML_TEST_ENV "${AC3_GUI_QMLTESTS_ENV}")
- if(AC3_GUI_QML_TEST_SUITE STREQUAL "localisation_pipeline")
- list(APPEND AC3_GUI_QML_TEST_ENV "AC3GUI_LOCALE=xx")
- endif()
+    # tst_localisation_pipeline.qml is the one suite that needs a locale
+    # forced deterministically rather than whatever this machine's own
+    # system locale happens to be - LanguageManager::applyInitialLanguage()
+    # reads AC3GUI_LOCALE ahead of the persisted setting/system locale for
+    # exactly this (language_manager.cpp), and "xx" selects the pseudo-
+    # locale QA fixture (translations/ac3gui_xx.ts) every other suite has no
+    # reason to load.
+    set(AC3_GUI_QML_TEST_ENV "${AC3_GUI_QMLTESTS_ENV}")
+    if(AC3_GUI_QML_TEST_SUITE STREQUAL "localisation_pipeline")
+        list(APPEND AC3_GUI_QML_TEST_ENV "AC3GUI_LOCALE=xx")
+    endif()
 
- add_test(NAME ${AC3_GUI_QML_TEST_CASE}
- COMMAND ac3gui_qmltests -input "${AC3_GUI_QML_TEST_FILE}" -platform offscreen)
- set_tests_properties(${AC3_GUI_QML_TEST_CASE} PROPERTIES
- ENVIRONMENT "${AC3_GUI_QML_TEST_ENV}"
- # A safety net independent of whatever actually caused the macOS
- # hangs above, sized per-suite rather than for the whole harness -
- # see the comment above this loop for the measurement behind 300s.
- # A CTest TIMEOUT still counts as a captured failure, so
- # outputOnFailure (CMakePresets.json's test presets) prints
- # whatever the process wrote before it was killed - unlike an
- # external job-level cancellation, which discards it entirely,
- # exactly how the original macOS hang was first found.
- TIMEOUT 300
- LABELS "gui")
+    add_test(NAME ${AC3_GUI_QML_TEST_CASE}
+        COMMAND ac3gui_qmltests -input "${AC3_GUI_QML_TEST_FILE}" -platform offscreen)
+    set_tests_properties(${AC3_GUI_QML_TEST_CASE} PROPERTIES
+        ENVIRONMENT "${AC3_GUI_QML_TEST_ENV}"
+        # A safety net independent of whatever actually caused the macOS
+        # hangs above, sized per-suite rather than for the whole harness -
+        # see the comment above this loop for the measurement behind 300s.
+        # A CTest TIMEOUT still counts as a captured failure, so
+        # outputOnFailure (CMakePresets.json's test presets) prints
+        # whatever the process wrote before it was killed - unlike an
+        # external job-level cancellation, which discards it entirely,
+        # exactly how the original macOS hang was first found.
+        TIMEOUT 300
+        LABELS "gui")
 endforeach()
 
 # ---------------------------------------------------------------------------
@@ -255,29 +255,29 @@ endforeach()
 # already covers it, exactly as it does for ac3gui and for --smoke today.
 # ---------------------------------------------------------------------------
 if(WIN32)
- get_filename_component(AC3_QT_BIN_DIR "${Qt6_DIR}/../../../bin" ABSOLUTE)
- find_program(AC3_WINDEPLOYQT_EXECUTABLE
- NAMES windeployqt6 windeployqt
- HINTS "${AC3_QT_BIN_DIR}")
+    get_filename_component(AC3_QT_BIN_DIR "${Qt6_DIR}/../../../bin" ABSOLUTE)
+    find_program(AC3_WINDEPLOYQT_EXECUTABLE
+        NAMES windeployqt6 windeployqt
+        HINTS "${AC3_QT_BIN_DIR}")
 
- if(AC3_WINDEPLOYQT_EXECUTABLE)
- set(AC3_VCINSTALLDIR "$ENV{VCINSTALLDIR}")
- string(REGEX REPLACE "[\\\\/]+$" "" AC3_VCINSTALLDIR "${AC3_VCINSTALLDIR}")
- file(TO_CMAKE_PATH "${AC3_VCINSTALLDIR}" AC3_VCINSTALLDIR)
+    if(AC3_WINDEPLOYQT_EXECUTABLE)
+        set(AC3_VCINSTALLDIR "$ENV{VCINSTALLDIR}")
+        string(REGEX REPLACE "[\\\\/]+$" "" AC3_VCINSTALLDIR "${AC3_VCINSTALLDIR}")
+        file(TO_CMAKE_PATH "${AC3_VCINSTALLDIR}" AC3_VCINSTALLDIR)
 
- add_custom_command(TARGET ac3gui_qmltests POST_BUILD
- COMMAND "${CMAKE_COMMAND}" -E env "VCINSTALLDIR=${AC3_VCINSTALLDIR}"
- "${AC3_WINDEPLOYQT_EXECUTABLE}"
- --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml"
- --compiler-runtime
- "$<TARGET_FILE:ac3gui_qmltests>"
- COMMAND "${CMAKE_COMMAND}" -E copy_if_different
- "${AC3_QT_BIN_DIR}/../plugins/platforms/qoffscreen$<$<CONFIG:Debug>:d>.dll"
- "$<TARGET_FILE_DIR:ac3gui_qmltests>/platforms/"
- COMMENT "Deploying Qt runtime dependencies for ac3gui_qmltests")
- else()
- message(WARNING
- "windeployqt not found next to Qt6 (looked in ${AC3_QT_BIN_DIR}); "
- "ac3gui_qmltests.exe will not run standalone from the build tree.")
- endif()
+        add_custom_command(TARGET ac3gui_qmltests POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E env "VCINSTALLDIR=${AC3_VCINSTALLDIR}"
+                "${AC3_WINDEPLOYQT_EXECUTABLE}"
+                --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml"
+                --compiler-runtime
+                "$<TARGET_FILE:ac3gui_qmltests>"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${AC3_QT_BIN_DIR}/../plugins/platforms/qoffscreen$<$<CONFIG:Debug>:d>.dll"
+                "$<TARGET_FILE_DIR:ac3gui_qmltests>/platforms/"
+            COMMENT "Deploying Qt runtime dependencies for ac3gui_qmltests")
+    else()
+        message(WARNING
+            "windeployqt not found next to Qt6 (looked in ${AC3_QT_BIN_DIR}); "
+            "ac3gui_qmltests.exe will not run standalone from the build tree.")
+    endif()
 endif()

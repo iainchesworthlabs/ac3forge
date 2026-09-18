@@ -22,23 +22,23 @@
 // order of what they were worth (measured standalone at P = 64/128/512:
 // 1.70x / 1.59x / 1.75x against the previous core, same inputs):
 //
-// 1. Radix-4 stages. One radix-4 butterfly does the work of two radix-2
-// stages over the same four points with three complex multiplies
-// instead of four, and reads/writes the array once instead of twice.
-// log2(P) is odd for P = 128 and P = 512, so those two end on a single
-// radix-2 stage (see kHasTrailingRadix2); P = 64 is all radix-4.
-// 2. Trivial-twiddle elimination. Every stage's j = 0 group has all-unit
-// twiddles, and the FIRST radix-4 stage (len = 4) is nothing BUT that
-// group - a quarter of the transform's butterflies at P = 512, every
-// one of them previously doing 4 real multiplies against a tabulated
-// 1.0 and 0.0. That group is now multiply-free at every stage.
-// 3. The digit-reversal permutation is gone as a pass of its own. The
-// kernel takes its input ALREADY digit-reversed, and each caller folds
-// the permutation into the loop that produces that input - the DCT-IV
-// quarter-split in dct4_scaled, the §7.9.4.1 step-2 pre-twiddle in the
-// inverses, the input copy in dft512. Those loops were writing z[m]
-// anyway; writing z[bitrev[m]] costs one indexed store instead of a
-// whole extra P-length pass with a branch in it.
+//   1. Radix-4 stages. One radix-4 butterfly does the work of two radix-2
+//      stages over the same four points with three complex multiplies
+//      instead of four, and reads/writes the array once instead of twice.
+//      log2(P) is odd for P = 128 and P = 512, so those two end on a single
+//      radix-2 stage (see kHasTrailingRadix2); P = 64 is all radix-4.
+//   2. Trivial-twiddle elimination. Every stage's j = 0 group has all-unit
+//      twiddles, and the FIRST radix-4 stage (len = 4) is nothing BUT that
+//      group - a quarter of the transform's butterflies at P = 512, every
+//      one of them previously doing 4 real multiplies against a tabulated
+//      1.0 and 0.0. That group is now multiply-free at every stage.
+//   3. The digit-reversal permutation is gone as a pass of its own. The
+//      kernel takes its input ALREADY digit-reversed, and each caller folds
+//      the permutation into the loop that produces that input - the DCT-IV
+//      quarter-split in dct4_scaled, the §7.9.4.1 step-2 pre-twiddle in the
+//      inverses, the input copy in dft512. Those loops were writing z[m]
+//      anyway; writing z[bitrev[m]] costs one indexed store instead of a
+//      whole extra P-length pass with a branch in it.
 //
 // Both the caller-visible interfaces this feeds - the fast MDCT fold and the
 // fast IMDCT - remain the OPTIONAL half of a pair. Nothing here touches the
@@ -70,77 +70,77 @@ namespace ac3::internal {
 // Default double, so every existing instantiation is the one it always was.
 template <std::size_t P, typename Scalar = double>
 struct FftTables {
- static_assert((P & (P - 1)) == 0 && P >= 4, "these kernels need a power of two >= 4");
+    static_assert((P & (P - 1)) == 0 && P >= 4, "these kernels need a power of two >= 4");
 
- static constexpr int kLog2 = std::countr_zero(P);
- // Radix-4 halves the stage count, so an odd log2(P) leaves one radix-2
- // stage over. It runs LAST, at len = P: pairing the stages the other way
- // (radix-2 first, at len = 2) costs exactly the same number of complex
- // multiplies, but this way the first radix-4 stage sits at len = 4,
- // where every twiddle is 1 and the whole stage is multiply-free.
- static constexpr bool kHasTrailingRadix2 = (kLog2 % 2) != 0;
- static constexpr std::size_t kLastRadix4Len = kHasTrailingRadix2 ? P / 2 : P;
+    static constexpr int kLog2 = std::countr_zero(P);
+    // Radix-4 halves the stage count, so an odd log2(P) leaves one radix-2
+    // stage over. It runs LAST, at len = P: pairing the stages the other way
+    // (radix-2 first, at len = 2) costs exactly the same number of complex
+    // multiplies, but this way the first radix-4 stage sits at len = 4,
+    // where every twiddle is 1 and the whole stage is multiply-free.
+    static constexpr bool kHasTrailingRadix2 = (kLog2 % 2) != 0;
+    static constexpr std::size_t kLastRadix4Len = kHasTrailingRadix2 ? P / 2 : P;
 
- // Radix-2 bit-reversal permutation of 0..P-1. It is still the right
- // permutation for a radix-4 decimation-in-time pass: a radix-4 stage of
- // length len is exactly the radix-2 stages len/2 and len merged, so the
- // four length-(len/4) sub-blocks it combines are the same contiguous
- // blocks the radix-2 recursion already put there. Public because the
- // kernel below does NOT apply it - callers do, on the way in.
- std::array<std::uint16_t, P> bitrev{};
+    // Radix-2 bit-reversal permutation of 0..P-1. It is still the right
+    // permutation for a radix-4 decimation-in-time pass: a radix-4 stage of
+    // length len is exactly the radix-2 stages len/2 and len merged, so the
+    // four length-(len/4) sub-blocks it combines are the same contiguous
+    // blocks the radix-2 recursion already put there. Public because the
+    // kernel below does NOT apply it - callers do, on the way in.
+    std::array<std::uint16_t, P> bitrev{};
 
- // Stage twiddles, flattened into P-1 slots and packed so a stage's three
- // (or one) runs are contiguous:
- //
- // radix-4 stage of length len, quarter q = len/4, at offset q-1:
- // [q-1, q-1 + q) W1[j] = exp(-2*pi*i*j/len)
- // [q-1 + q, q-1 + 2q) W2[j] = exp(-2*pi*i*2j/len)
- // [q-1 + 2q, q-1 + 3q) W3[j] = exp(-2*pi*i*3j/len)
- // trailing radix-2 stage (odd log2(P) only), half = P/2, at offset
- // half-1: [half-1, half-1 + half) W[j] = exp(-2*pi*i*j/P)
- //
- // The q = 1, 4, 16, ... progression makes those runs tile exactly: a
- // stage occupying [q-1, 4q-1) is followed by one starting at 4q-1, and
- // the last run ends at P-1 either way.
- std::array<Scalar, P - 1> stage_re{};
- std::array<Scalar, P - 1> stage_im{};
+    // Stage twiddles, flattened into P-1 slots and packed so a stage's three
+    // (or one) runs are contiguous:
+    //
+    //   radix-4 stage of length len, quarter q = len/4, at offset q-1:
+    //     [q-1,     q-1 + q)   W1[j] = exp(-2*pi*i*j/len)
+    //     [q-1 + q, q-1 + 2q)  W2[j] = exp(-2*pi*i*2j/len)
+    //     [q-1 + 2q, q-1 + 3q) W3[j] = exp(-2*pi*i*3j/len)
+    //   trailing radix-2 stage (odd log2(P) only), half = P/2, at offset
+    //   half-1: [half-1, half-1 + half) W[j] = exp(-2*pi*i*j/P)
+    //
+    // The q = 1, 4, 16, ... progression makes those runs tile exactly: a
+    // stage occupying [q-1, 4q-1) is followed by one starting at 4q-1, and
+    // the last run ends at P-1 either way.
+    std::array<Scalar, P - 1> stage_re{};
+    std::array<Scalar, P - 1> stage_im{};
 
- FftTables() {
- for (std::size_t i = 1; i < P; ++i) {
- bitrev[i] = static_cast<std::uint16_t>(
- (bitrev[i >> 1] >> 1) | ((i & 1) != 0 ? P / 2 : 0));
- }
- for (std::size_t len = 4; len <= kLastRadix4Len; len <<= 2) {
- const std::size_t q = len / 4;
- const std::size_t base = q - 1;
- for (std::size_t j = 0; j < q; ++j) {
- for (std::size_t r = 1; r <= 3; ++r) {
- // r*j < 3q < len for every (r, j) here, so this angle is
- // already inside one period and needs no reduction. That
- // matters: std::cos of a large un-reduced angle is not
- // bit-identical to std::cos of the small angle it is
- // congruent to (mdct.cpp's InnerSumTable documents the
- // ~1.3e-13 gap it measured at ~792 radians), so a
- // tabulated twiddle is only trustworthy when its angle
- // was reduced before the library call.
- const double angle = -2.0 * std::numbers::pi *
- static_cast<double>(r * j) / static_cast<double>(len);
- stage_re[base + ((r - 1) * q) + j] = static_cast<Scalar>(std::cos(angle));
- stage_im[base + ((r - 1) * q) + j] = static_cast<Scalar>(std::sin(angle));
- }
- }
- }
- if constexpr (kHasTrailingRadix2) {
- const std::size_t half = P / 2;
- const std::size_t base = half - 1;
- for (std::size_t j = 0; j < half; ++j) {
- const double angle =
- -2.0 * std::numbers::pi * static_cast<double>(j) / static_cast<double>(P);
- stage_re[base + j] = static_cast<Scalar>(std::cos(angle));
- stage_im[base + j] = static_cast<Scalar>(std::sin(angle));
- }
- }
- }
+    FftTables() {
+        for (std::size_t i = 1; i < P; ++i) {
+            bitrev[i] = static_cast<std::uint16_t>(
+                (bitrev[i >> 1] >> 1) | ((i & 1) != 0 ? P / 2 : 0));
+        }
+        for (std::size_t len = 4; len <= kLastRadix4Len; len <<= 2) {
+            const std::size_t q = len / 4;
+            const std::size_t base = q - 1;
+            for (std::size_t j = 0; j < q; ++j) {
+                for (std::size_t r = 1; r <= 3; ++r) {
+                    // r*j < 3q < len for every (r, j) here, so this angle is
+                    // already inside one period and needs no reduction. That
+                    // matters: std::cos of a large un-reduced angle is not
+                    // bit-identical to std::cos of the small angle it is
+                    // congruent to (mdct.cpp's InnerSumTable documents the
+                    // ~1.3e-13 gap it measured at ~792 radians), so a
+                    // tabulated twiddle is only trustworthy when its angle
+                    // was reduced before the library call.
+                    const double angle = -2.0 * std::numbers::pi *
+                                         static_cast<double>(r * j) / static_cast<double>(len);
+                    stage_re[base + ((r - 1) * q) + j] = static_cast<Scalar>(std::cos(angle));
+                    stage_im[base + ((r - 1) * q) + j] = static_cast<Scalar>(std::sin(angle));
+                }
+            }
+        }
+        if constexpr (kHasTrailingRadix2) {
+            const std::size_t half = P / 2;
+            const std::size_t base = half - 1;
+            for (std::size_t j = 0; j < half; ++j) {
+                const double angle =
+                    -2.0 * std::numbers::pi * static_cast<double>(j) / static_cast<double>(P);
+                stage_re[base + j] = static_cast<Scalar>(std::cos(angle));
+                stage_im[base + j] = static_cast<Scalar>(std::sin(angle));
+            }
+        }
+    }
 };
 
 // One radix-4 decimation-in-time stage of length Len over the whole array.
@@ -150,9 +150,9 @@ struct FftTables {
 // sub-blocks A = [i, i+q), B = [i+q, i+2q), C = [i+2q, i+3q), D = [i+3q,
 // i+4q) gives, with u = exp(-2*pi*i*j/Len),
 //
-// a = A[j], b = u^2 * B[j], c = u * C[j], d = u^3 * D[j]
-// X[j] = (a + b) + (c + d) X[j+2q] = (a + b) - (c + d)
-// X[j+q] = (a - b) - i*(c - d) X[j+3q] = (a - b) + i*(c - d)
+//   a = A[j], b = u^2 * B[j], c = u * C[j], d = u^3 * D[j]
+//   X[j]      = (a + b) + (c + d)          X[j+2q] = (a + b) - (c + d)
+//   X[j+q]    = (a - b) - i*(c - d)        X[j+3q] = (a - b) + i*(c - d)
 //
 // B carries u^2 (it is the odd half of the FIRST length-Len/2 transform,
 // twiddled by exp(-2*pi*i*j/(Len/2))) while C carries u (it is the even half
@@ -175,110 +175,110 @@ struct FftTables {
 // the parameter existed.
 template <std::size_t P, std::size_t Len, typename VecType = double, typename Scalar = double>
 void fft_radix4_stage(const FftTables<P, Scalar>& t, std::span<VecType, P> re,
- std::span<VecType, P> im) {
- constexpr std::size_t kQ = Len / 4;
- constexpr std::size_t kBase = kQ - 1;
- for (std::size_t i = 0; i < P; i += Len) {
- // j == 0: W1 = W2 = W3 = 1, so this group is multiply-free. At
- // Len == 4 it is the only group there is, which is what makes the
- // whole first stage free.
- {
- const auto ar = re[i];
- const auto ai = im[i];
- const auto br = re[i + kQ];
- const auto bi = im[i + kQ];
- const auto cr = re[i + (2 * kQ)];
- const auto ci = im[i + (2 * kQ)];
- const auto dr = re[i + (3 * kQ)];
- const auto di = im[i + (3 * kQ)];
- const auto t0r = ar + br;
- const auto t0i = ai + bi;
- const auto t1r = ar - br;
- const auto t1i = ai - bi;
- const auto t2r = cr + dr;
- const auto t2i = ci + di;
- const auto t3r = cr - dr;
- const auto t3i = ci - di;
- re[i] = t0r + t2r;
- im[i] = t0i + t2i;
- re[i + kQ] = t1r + t3i;
- im[i + kQ] = t1i - t3r;
- re[i + (2 * kQ)] = t0r - t2r;
- im[i + (2 * kQ)] = t0i - t2i;
- re[i + (3 * kQ)] = t1r - t3i;
- im[i + (3 * kQ)] = t1i + t3r;
- }
- for (std::size_t j = 1; j < kQ; ++j) {
- const Scalar w1r = t.stage_re[kBase + j];
- const Scalar w1i = t.stage_im[kBase + j];
- const Scalar w2r = t.stage_re[kBase + kQ + j];
- const Scalar w2i = t.stage_im[kBase + kQ + j];
- const Scalar w3r = t.stage_re[kBase + (2 * kQ) + j];
- const Scalar w3i = t.stage_im[kBase + (2 * kQ) + j];
- const std::size_t i0 = i + j;
- const std::size_t i1 = i0 + kQ;
- const std::size_t i2 = i0 + (2 * kQ);
- const std::size_t i3 = i0 + (3 * kQ);
- const auto ar = re[i0];
- const auto ai = im[i0];
- const auto br = (re[i1] * w2r) - (im[i1] * w2i);
- const auto bi = (re[i1] * w2i) + (im[i1] * w2r);
- const auto cr = (re[i2] * w1r) - (im[i2] * w1i);
- const auto ci = (re[i2] * w1i) + (im[i2] * w1r);
- const auto dr = (re[i3] * w3r) - (im[i3] * w3i);
- const auto di = (re[i3] * w3i) + (im[i3] * w3r);
- const auto t0r = ar + br;
- const auto t0i = ai + bi;
- const auto t1r = ar - br;
- const auto t1i = ai - bi;
- const auto t2r = cr + dr;
- const auto t2i = ci + di;
- const auto t3r = cr - dr;
- const auto t3i = ci - di;
- re[i0] = t0r + t2r;
- im[i0] = t0i + t2i;
- re[i1] = t1r + t3i;
- im[i1] = t1i - t3r;
- re[i2] = t0r - t2r;
- im[i2] = t0i - t2i;
- re[i3] = t1r - t3i;
- im[i3] = t1i + t3r;
- }
- }
+                      std::span<VecType, P> im) {
+    constexpr std::size_t kQ = Len / 4;
+    constexpr std::size_t kBase = kQ - 1;
+    for (std::size_t i = 0; i < P; i += Len) {
+        // j == 0: W1 = W2 = W3 = 1, so this group is multiply-free. At
+        // Len == 4 it is the only group there is, which is what makes the
+        // whole first stage free.
+        {
+            const auto ar = re[i];
+            const auto ai = im[i];
+            const auto br = re[i + kQ];
+            const auto bi = im[i + kQ];
+            const auto cr = re[i + (2 * kQ)];
+            const auto ci = im[i + (2 * kQ)];
+            const auto dr = re[i + (3 * kQ)];
+            const auto di = im[i + (3 * kQ)];
+            const auto t0r = ar + br;
+            const auto t0i = ai + bi;
+            const auto t1r = ar - br;
+            const auto t1i = ai - bi;
+            const auto t2r = cr + dr;
+            const auto t2i = ci + di;
+            const auto t3r = cr - dr;
+            const auto t3i = ci - di;
+            re[i] = t0r + t2r;
+            im[i] = t0i + t2i;
+            re[i + kQ] = t1r + t3i;
+            im[i + kQ] = t1i - t3r;
+            re[i + (2 * kQ)] = t0r - t2r;
+            im[i + (2 * kQ)] = t0i - t2i;
+            re[i + (3 * kQ)] = t1r - t3i;
+            im[i + (3 * kQ)] = t1i + t3r;
+        }
+        for (std::size_t j = 1; j < kQ; ++j) {
+            const Scalar w1r = t.stage_re[kBase + j];
+            const Scalar w1i = t.stage_im[kBase + j];
+            const Scalar w2r = t.stage_re[kBase + kQ + j];
+            const Scalar w2i = t.stage_im[kBase + kQ + j];
+            const Scalar w3r = t.stage_re[kBase + (2 * kQ) + j];
+            const Scalar w3i = t.stage_im[kBase + (2 * kQ) + j];
+            const std::size_t i0 = i + j;
+            const std::size_t i1 = i0 + kQ;
+            const std::size_t i2 = i0 + (2 * kQ);
+            const std::size_t i3 = i0 + (3 * kQ);
+            const auto ar = re[i0];
+            const auto ai = im[i0];
+            const auto br = (re[i1] * w2r) - (im[i1] * w2i);
+            const auto bi = (re[i1] * w2i) + (im[i1] * w2r);
+            const auto cr = (re[i2] * w1r) - (im[i2] * w1i);
+            const auto ci = (re[i2] * w1i) + (im[i2] * w1r);
+            const auto dr = (re[i3] * w3r) - (im[i3] * w3i);
+            const auto di = (re[i3] * w3i) + (im[i3] * w3r);
+            const auto t0r = ar + br;
+            const auto t0i = ai + bi;
+            const auto t1r = ar - br;
+            const auto t1i = ai - bi;
+            const auto t2r = cr + dr;
+            const auto t2i = ci + di;
+            const auto t3r = cr - dr;
+            const auto t3i = ci - di;
+            re[i0] = t0r + t2r;
+            im[i0] = t0i + t2i;
+            re[i1] = t1r + t3i;
+            im[i1] = t1i - t3r;
+            re[i2] = t0r - t2r;
+            im[i2] = t0i - t2i;
+            re[i3] = t1r - t3i;
+            im[i3] = t1i + t3r;
+        }
+    }
 }
 
 // The single length-P radix-2 stage an odd log2(P) leaves over, run last.
 // VecType: see fft_radix4_stage's own comment above - the same shape.
 template <std::size_t P, typename VecType = double, typename Scalar = double>
 void fft_radix2_final_stage(const FftTables<P, Scalar>& t, std::span<VecType, P> re,
- std::span<VecType, P> im) {
- constexpr std::size_t kHalf = P / 2;
- constexpr std::size_t kBase = kHalf - 1;
- {
- // j == 0 again: w = 1.
- const auto ur = re[0];
- const auto ui = im[0];
- const auto vr = re[kHalf];
- const auto vi = im[kHalf];
- re[0] = ur + vr;
- im[0] = ui + vi;
- re[kHalf] = ur - vr;
- im[kHalf] = ui - vi;
- }
- for (std::size_t j = 1; j < kHalf; ++j) {
- const Scalar wr = t.stage_re[kBase + j];
- const Scalar wi = t.stage_im[kBase + j];
- const auto xr = re[j + kHalf];
- const auto xi = im[j + kHalf];
- const auto vr = (xr * wr) - (xi * wi);
- const auto vi = (xr * wi) + (xi * wr);
- const auto ur = re[j];
- const auto ui = im[j];
- re[j] = ur + vr;
- im[j] = ui + vi;
- re[j + kHalf] = ur - vr;
- im[j + kHalf] = ui - vi;
- }
+                            std::span<VecType, P> im) {
+    constexpr std::size_t kHalf = P / 2;
+    constexpr std::size_t kBase = kHalf - 1;
+    {
+        // j == 0 again: w = 1.
+        const auto ur = re[0];
+        const auto ui = im[0];
+        const auto vr = re[kHalf];
+        const auto vi = im[kHalf];
+        re[0] = ur + vr;
+        im[0] = ui + vi;
+        re[kHalf] = ur - vr;
+        im[kHalf] = ui - vi;
+    }
+    for (std::size_t j = 1; j < kHalf; ++j) {
+        const Scalar wr = t.stage_re[kBase + j];
+        const Scalar wi = t.stage_im[kBase + j];
+        const auto xr = re[j + kHalf];
+        const auto xi = im[j + kHalf];
+        const auto vr = (xr * wr) - (xi * wi);
+        const auto vi = (xr * wi) + (xi * wr);
+        const auto ur = re[j];
+        const auto ui = im[j];
+        re[j] = ur + vr;
+        im[j] = ui + vi;
+        re[j + kHalf] = ur - vr;
+        im[j + kHalf] = ui - vi;
+    }
 }
 
 // The radix-4 stage sequence len = 4, 16, 64, ..., unrolled at compile time
@@ -289,11 +289,11 @@ void fft_radix2_final_stage(const FftTables<P, Scalar>& t, std::span<VecType, P>
 // parameters before it (P, Len) are given explicitly.
 template <std::size_t P, std::size_t Len, typename VecType = double, typename Scalar = double>
 void fft_radix4_chain(const FftTables<P, Scalar>& t, std::span<VecType, P> re,
- std::span<VecType, P> im) {
- fft_radix4_stage<P, Len>(t, re, im);
- if constexpr (Len * 4 <= FftTables<P>::kLastRadix4Len) {
- fft_radix4_chain<P, Len * 4>(t, re, im);
- }
+                      std::span<VecType, P> im) {
+    fft_radix4_stage<P, Len>(t, re, im);
+    if constexpr (Len * 4 <= FftTables<P>::kLastRadix4Len) {
+        fft_radix4_chain<P, Len * 4>(t, re, im);
+    }
 }
 
 // In place over separate re/im arrays. INPUT MUST ALREADY BE DIGIT-REVERSED:
@@ -311,11 +311,11 @@ void fft_radix4_chain(const FftTables<P, Scalar>& t, std::span<VecType, P> re,
 // at once instead of calling this 4 separate times.
 template <std::size_t P, typename VecType = double, typename Scalar = double>
 void fft_forward_bitrev(const FftTables<P, Scalar>& t, std::span<VecType, P> re,
- std::span<VecType, P> im) {
- fft_radix4_chain<P, 4>(t, re, im);
- if constexpr (FftTables<P>::kHasTrailingRadix2) {
- fft_radix2_final_stage<P>(t, re, im);
- }
+                        std::span<VecType, P> im) {
+    fft_radix4_chain<P, 4>(t, re, im);
+    if constexpr (FftTables<P>::kHasTrailingRadix2) {
+        fft_radix2_final_stage<P>(t, re, im);
+    }
 }
 
-} // namespace ac3::internal
+}  // namespace ac3::internal

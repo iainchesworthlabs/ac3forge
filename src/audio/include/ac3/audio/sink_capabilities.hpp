@@ -22,17 +22,17 @@
 // platforms today (see each backend/<platform>/sink_capabilities.cpp), so a
 // caller that wants the AC-3/E-AC-3/PCM question answered unconditionally
 // should fall back to enumerate_render_devices() rather than treat kNoBackend
-// as a hard failure - see 'ac3cli play' (legacy item UX9) for that fallback.
+// as a hard failure - see 'ac3cli play' (play/monitor follow mode) for that fallback.
 
 namespace ac3::audio {
 
 enum class EdidError : std::uint8_t {
- kNoBackend, // this platform/backend has no EDID/ELD read path at all
- kDeviceNotFound,
- kNoEdid, // the endpoint exists but reports no descriptor (nothing
- // plugged in downstream, or a non-HDMI/DP output) - a
- // real, expected outcome, not a failure to alarm about
- kParseFailed, // a descriptor was read but did not parse
+    kNoBackend,    // this platform/backend has no EDID/ELD read path at all
+    kDeviceNotFound,
+    kNoEdid,       // the endpoint exists but reports no descriptor (nothing
+                   // plugged in downstream, or a non-HDMI/DP output) - a
+                   // real, expected outcome, not a failure to alarm about
+    kParseFailed,  // a descriptor was read but did not parse
 };
 
 [[nodiscard]] std::string_view describe(EdidError error);
@@ -41,16 +41,16 @@ enum class EdidError : std::uint8_t {
 // for AC-3/E-AC-3 - a receiver either has that decoder or it does not, unlike
 // LPCM's genuinely per-rate/per-channel-count support.
 struct SinkAudioCapabilities {
- bool pcm = false;
- bool ac3 = false;
- bool eac3 = false;
- // 0 when no LPCM descriptor was present to say - not "no channels".
- std::uint16_t max_pcm_channels = 0;
- // Every LPCM sample rate at least one LPCM descriptor advertised, in Hz.
- // Empty when pcm is false, or when pcm is true but no descriptor said
- // which rates (should not happen for a spec-conformant ELD, but a
- // truncated one is handled rather than assumed away).
- std::vector<std::uint32_t> pcm_sample_rates_hz;
+    bool pcm = false;
+    bool ac3 = false;
+    bool eac3 = false;
+    // 0 when no LPCM descriptor was present to say - not "no channels".
+    std::uint16_t max_pcm_channels = 0;
+    // Every LPCM sample rate at least one LPCM descriptor advertised, in Hz.
+    // Empty when pcm is false, or when pcm is true but no descriptor said
+    // which rates (should not happen for a spec-conformant ELD, but a
+    // truncated one is handled rather than assumed away).
+    std::vector<std::uint32_t> pcm_sample_rates_hz;
 };
 
 // Reads `device_id`'s own advertised capabilities (the same id
@@ -59,6 +59,6 @@ struct SinkAudioCapabilities {
 // kNoBackend rather than guessing - see that backend's own
 // sink_capabilities.cpp for which platforms that is true on today, and why.
 [[nodiscard]] std::expected<SinkAudioCapabilities, EdidError> read_sink_capabilities(
- const std::string& device_id);
+    const std::string& device_id);
 
-} // namespace ac3::audio
+}  // namespace ac3::audio

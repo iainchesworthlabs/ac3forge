@@ -3,17 +3,17 @@
 // Android: capture is absent by design (see capture.cpp); passthrough and
 // monitor are both real, but by two different mechanisms, not one:
 //
-// - monitor.cpp is genuine AAudio (the NDK's native audio API) - shared-mode
-// float PCM playback is exactly what AAudio is for, and it needs no Java.
-// - passthrough.cpp is NOT AAudio, despite that being the obvious guess for
-// an "NDK audio backend". AAudio has no support for compressed/IEC 61937
-// bitstream passthrough - it is a PCM API end to end, and would apply
-// volume scaling/format conversion that corrupts a bitstream. HDMI
-// passthrough on Android, Shield TV included, only exists through the
-// Java android.media.AudioTrack class (ENCODING_E_AC3/ENCODING_IEC61937),
-// so passthrough.cpp is a thin JNI shim to a Kotlin-owned AudioTrack, not
-// a native audio call. See docs/platforms/android.md for the full
-// background and for why this is also how Kodi/ExoPlayer do it.
+//  - monitor.cpp is genuine AAudio (the NDK's native audio API) - shared-mode
+//    float PCM playback is exactly what AAudio is for, and it needs no Java.
+//  - passthrough.cpp is NOT AAudio, despite that being the obvious guess for
+//    an "NDK audio backend". AAudio has no support for compressed/IEC 61937
+//    bitstream passthrough - it is a PCM API end to end, and would apply
+//    volume scaling/format conversion that corrupts a bitstream. HDMI
+//    passthrough on Android, Shield TV included, only exists through the
+//    Java android.media.AudioTrack class (ENCODING_E_AC3/ENCODING_IEC61937),
+//    so passthrough.cpp is a thin JNI shim to a Kotlin-owned AudioTrack, not
+//    a native audio call. See docs/platforms/android.md for the full
+//    background and for why this is also how Kodi/ExoPlayer do it.
 //
 // Both report available=true here because the backend is compiled in; per
 // the Windows backend's convention, no Capability carries a reason when
@@ -25,25 +25,25 @@
 namespace ac3::audio {
 
 const AudioBackend& audio_backend() {
- static constexpr AudioBackend kBackend{
- .capture = {.available = false,
- .reason = "this build has no capture backend: the app this backend serves "
- "has no microphone/loopback feature, so none was implemented"},
- .passthrough = {.available = true, .reason = {}},
- .monitor = {.available = true, .reason = {}},
- .spatial = {.available = false,
- .reason = "this build has no spatial backend: "
- "ISpatialAudioObjectRenderStream is a Windows-only API"},
- .process_loopback = {.available = false,
- .reason = "per-process loopback capture needs a per-application tap "
- "this backend does not have. The PipeWire backend links "
- "a capture stream to one application node; Windows uses "
- "AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK; macOS has "
- "had Core Audio process taps since 14.2 (legacy item UX7)"},
- .device_watch = {.available = false,
- .reason = "no device-notification backend: the app this backend serves opens one HDMI output and waits for it itself (see live_cursor.cpp); nothing here needs the events yet"},
- };
- return kBackend;
+    static constexpr AudioBackend kBackend{
+        .capture = {.available = false,
+                    .reason = "this build has no capture backend: the app this backend serves "
+                              "has no microphone/loopback feature, so none was implemented"},
+        .passthrough = {.available = true, .reason = {}},
+        .monitor = {.available = true, .reason = {}},
+        .spatial = {.available = false,
+                   .reason = "this build has no spatial backend: "
+                             "ISpatialAudioObjectRenderStream is a Windows-only API"},
+        .process_loopback = {.available = false,
+                             .reason = "per-process loopback capture needs a per-application tap "
+                                       "this backend does not have. The PipeWire backend links "
+                                       "a capture stream to one application node; Windows uses "
+                                       "AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK; macOS has "
+                                       "had Core Audio process taps since 14.2 (legacy item UX7)"},
+                .device_watch = {.available = false,
+                         .reason = "no device-notification backend: the app this backend serves opens one HDMI output and waits for it itself (see live_cursor.cpp); nothing here needs the events yet"},
+    };
+    return kBackend;
 }
 
-} // namespace ac3::audio
+}  // namespace ac3::audio

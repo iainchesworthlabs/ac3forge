@@ -70,9 +70,9 @@
 namespace ac4 {
 
 enum class Error : std::uint8_t {
- kTruncated,
- kLostSync,
- kUnsupportedBitstreamVersion, // > 2; TS 103 190-2 §6.3.2.1.1
+    kTruncated,
+    kLostSync,
+    kUnsupportedBitstreamVersion,  // > 2; TS 103 190-2 §6.3.2.1.1
 };
 
 [[nodiscard]] AC4_EXPORT std::string_view describe(Error error);
@@ -81,23 +81,23 @@ enum class Error : std::uint8_t {
 // span passed to parse_raw_frame() - everything between the frame_size
 // field and the optional trailing crc_word.
 struct SyncFrame {
- std::size_t offset = 0;
- std::uint16_t sync_word = 0; // 0xAC40 or 0xAC41 (Annex G.4.1)
- std::span<const std::byte> raw_ac4_frame;
- // nullopt when sync_word == 0xAC40 (no crc_word transmitted); Annex
- // G.4.2's CRC-16 (poly x^16+x^15+x^2+1, init 0, no reflection, no
- // final XOR) otherwise.
- std::optional<bool> crc_ok;
+    std::size_t offset = 0;
+    std::uint16_t sync_word = 0;  // 0xAC40 or 0xAC41 (Annex G.4.1)
+    std::span<const std::byte> raw_ac4_frame;
+    // nullopt when sync_word == 0xAC40 (no crc_word transmitted); Annex
+    // G.4.2's CRC-16 (poly x^16+x^15+x^2+1, init 0, no reflection, no
+    // final XOR) otherwise.
+    std::optional<bool> crc_ok;
 };
 
 struct ScanResult {
- std::vector<SyncFrame> frames;
- // Set when the walk stopped before consuming all of `data` - either a
- // sync word that did not match 0xAC40/0xAC41 (kLostSync) or a frame
- // whose declared frame_size runs past the end of `data` (kTruncated).
- // `frames` still holds everything found before that point.
- std::optional<Error> stopped_at;
- std::size_t stopped_at_offset = 0;
+    std::vector<SyncFrame> frames;
+    // Set when the walk stopped before consuming all of `data` - either a
+    // sync word that did not match 0xAC40/0xAC41 (kLostSync) or a frame
+    // whose declared frame_size runs past the end of `data` (kTruncated).
+    // `frames` still holds everything found before that point.
+    std::optional<Error> stopped_at;
+    std::size_t stopped_at_offset = 0;
 };
 
 // Walks ac4_syncframe() elements back to back. Never throws; a malformed
@@ -108,45 +108,45 @@ struct ScanResult {
 // --- §4.2.3.7 content_type --------------------------------------------------
 
 struct ContentType {
- int content_classifier = 0; // Table 91
- std::optional<std::vector<std::byte>> language_tag;
+    int content_classifier = 0;  // Table 91
+    std::optional<std::vector<std::byte>> language_tag;
 };
 
 // --- §4.2.3.6 ac4_substream_info (presentation_version 0) / §6.2.1.8
 // --- ac4_substream_info_chan (presentation_version 1) ----------------------
 
 struct OriginalContent {
- // §6.3.2.7.3-.5: whether channels the coded channel_mode implies exist
- // are actually populated in the source, or carry encoded silence.
- bool b_4_back_channels_present = false;
- bool b_centre_present = false;
- int top_channels_present = 0; // Table 59
+    // §6.3.2.7.3-.5: whether channels the coded channel_mode implies exist
+    // are actually populated in the source, or carry encoded silence.
+    bool b_4_back_channels_present = false;
+    bool b_centre_present = false;
+    int top_channels_present = 0;  // Table 59
 };
 
 struct ChannelSubstreamInfo {
- int channel_mode = 0; // raw code, Table 88 or Table 56
- std::string channel_mode_name; // e.g. "Stereo", "7.1.4"
- std::optional<int> ch_mode; // nullopt for a reserved code
- std::optional<OriginalContent> original_content;
- std::optional<int> sf_multiplier;
- std::optional<int> bitrate_kbps; // nullopt if unmapped ("unlimited" or reserved)
- std::optional<ContentType> content_type; // presentation_version 0 only
- std::optional<int> substream_index; // index into Toc::substream_sizes
- // §4.3.3.7.6: which channel pair the additional channels of a 5/2/0 or
- // 3/2/2 7.X mode are based on. Set only for those four channel modes.
- std::optional<bool> add_ch_base;
- // §4.3.3.7.8 b_iframe (presentation_version 0) or §6.3.2.7.6
- // b_audio_ndot (presentation_version 1): one entry per
- // frame_rate_factor, true where that substream instance depends on no
- // earlier frame. A decoder needs it to know whether I-frame-only
- // configuration is present.
- std::vector<bool> b_iframe;
- // §4.2.3.9 ac4_hsf_ext_substream_info: set only for the legacy
- // (bitstream_version <= 1) path's first role substream when its
- // presentation's b_hsf_ext is set - the v1 path's equivalent is
- // GroupSubstream::hsf_ext_substream_index instead, since that one
- // wrapper covers chan/ajoc/obj alike.
- std::optional<int> hsf_ext_substream_index;
+    int channel_mode = 0;           // raw code, Table 88 or Table 56
+    std::string channel_mode_name;  // e.g. "Stereo", "7.1.4"
+    std::optional<int> ch_mode;     // nullopt for a reserved code
+    std::optional<OriginalContent> original_content;
+    std::optional<int> sf_multiplier;
+    std::optional<int> bitrate_kbps;          // nullopt if unmapped ("unlimited" or reserved)
+    std::optional<ContentType> content_type;  // presentation_version 0 only
+    std::optional<int> substream_index;       // index into Toc::substream_sizes
+    // §4.3.3.7.6: which channel pair the additional channels of a 5/2/0 or
+    // 3/2/2 7.X mode are based on. Set only for those four channel modes.
+    std::optional<bool> add_ch_base;
+    // §4.3.3.7.8 b_iframe (presentation_version 0) or §6.3.2.7.6
+    // b_audio_ndot (presentation_version 1): one entry per
+    // frame_rate_factor, true where that substream instance depends on no
+    // earlier frame. A decoder needs it to know whether I-frame-only
+    // configuration is present.
+    std::vector<bool> b_iframe;
+    // §4.2.3.9 ac4_hsf_ext_substream_info: set only for the legacy
+    // (bitstream_version <= 1) path's first role substream when its
+    // presentation's b_hsf_ext is set - the v1 path's equivalent is
+    // GroupSubstream::hsf_ext_substream_index instead, since that one
+    // wrapper covers chan/ajoc/obj alike.
+    std::optional<int> hsf_ext_substream_index;
 };
 
 // --- §6.2.1.10 bed_dyn_obj_assignment / §6.3.2.10.8 -------------------------
@@ -154,16 +154,16 @@ struct ChannelSubstreamInfo {
 enum class ObjectKind : std::uint8_t { kBed, kDyn, kIsf };
 
 struct ObjectEntry {
- ObjectKind kind = ObjectKind::kDyn;
- bool lfe = false;
- bool ajoc_coded = false;
+    ObjectKind kind = ObjectKind::kDyn;
+    bool lfe = false;
+    bool ajoc_coded = false;
 };
 
 // --- §6.2.1.13 oamd_substream_info ------------------------------------------
 
 struct OamdSubstreamInfo {
- bool b_oamd_ndot = false;
- std::optional<int> substream_index;
+    bool b_oamd_ndot = false;
+    std::optional<int> substream_index;
 };
 
 // --- §6.2.8.13-16 tool_tb_to_f_s[_b] / tool_tf_to_f_s[_b], §6.2.9.9-10 -----
@@ -172,35 +172,35 @@ struct OamdSubstreamInfo {
 // names - one shared struct and reader.
 
 struct GainTool {
- std::optional<int> code_a;
- int code_b = 0; // read, or the derived value 7 (never transmitted)
- std::optional<int> code_c;
+    std::optional<int> code_a;
+    int code_b = 0;  // read, or the derived value 7 (never transmitted)
+    std::optional<int> code_c;
 };
 
 // --- §6.2.8.8a stereo_dmx_coeff ----------------------------------------------
 
 struct StereoDmxCoeff {
- int loro_centre_mixgain = 0;
- int loro_surround_mixgain = 0;
- std::optional<int> ltrt_centre_mixgain;
- std::optional<int> ltrt_surround_mixgain;
- std::optional<int> lfe_mixgain;
- int preferred_dmx_method = 0;
+    int loro_centre_mixgain = 0;
+    int loro_surround_mixgain = 0;
+    std::optional<int> ltrt_centre_mixgain;
+    std::optional<int> ltrt_surround_mixgain;
+    std::optional<int> lfe_mixgain;
+    int preferred_dmx_method = 0;
 };
 
 // --- §6.2.8.8 bed_render_info ------------------------------------------------
 
 struct BedRenderInfo {
- std::optional<StereoDmxCoeff> stereo_dmx_coeff;
- std::optional<int> gain_w_to_f_code;
- std::optional<int> gain_b4_to_b2_code;
- std::optional<GainTool> t2_to_f_s_b;
- std::optional<GainTool> t2_to_f_s;
- std::optional<GainTool> tb_to_f_s_b;
- std::optional<GainTool> tb_to_f_s;
- std::optional<GainTool> tf_to_f_s_b;
- std::optional<GainTool> tf_to_f_s;
- std::optional<int> gain_tfb_to_tm_code;
+    std::optional<StereoDmxCoeff> stereo_dmx_coeff;
+    std::optional<int> gain_w_to_f_code;
+    std::optional<int> gain_b4_to_b2_code;
+    std::optional<GainTool> t2_to_f_s_b;
+    std::optional<GainTool> t2_to_f_s;
+    std::optional<GainTool> tb_to_f_s_b;
+    std::optional<GainTool> tb_to_f_s;
+    std::optional<GainTool> tf_to_f_s_b;
+    std::optional<GainTool> tf_to_f_s;
+    std::optional<int> gain_tfb_to_tm_code;
 };
 
 // --- §6.2.8.9 trim / §6.2.8.9a headphone -------------------------------------
@@ -210,60 +210,60 @@ struct BedRenderInfo {
 // nothing else to report), disabled where b_disable_trim was set, the
 // balance fields trim_balance_presence names otherwise.
 struct TrimConfig {
- bool disabled = false;
- int presence = 0;
- std::optional<int> trim_centre;
- std::optional<int> trim_surround;
- std::optional<int> trim_height;
- std::optional<std::pair<int, int>> bal3d_y_tb; // sign, amount
- std::optional<std::pair<int, int>> bal3d_y_lis; // sign, amount
+    bool disabled = false;
+    int presence = 0;
+    std::optional<int> trim_centre;
+    std::optional<int> trim_surround;
+    std::optional<int> trim_height;
+    std::optional<std::pair<int, int>> bal3d_y_tb;   // sign, amount
+    std::optional<std::pair<int, int>> bal3d_y_lis;  // sign, amount
 };
 
 struct Trim {
- int warp_mode = 0;
- int global_trim_mode = 0;
- std::vector<std::optional<TrimConfig>> configs; // empty unless global_trim_mode == 0b10
+    int warp_mode = 0;
+    int global_trim_mode = 0;
+    std::vector<std::optional<TrimConfig>> configs;  // empty unless global_trim_mode == 0b10
 };
 
 struct Headphone {
- int hp_operation_mode = 0;
- std::optional<bool> b_head_track_disable_all;
+    int hp_operation_mode = 0;
+    std::optional<bool> b_head_track_disable_all;
 };
 
 // --- §6.2.8.1 oamd_common_data ------------------------------------------------
 
 struct OamdCommonData {
- bool b_default_screen_size_ratio = false;
- std::optional<int> master_screen_size_ratio_code;
- bool b_bed_object_chan_distribute = false;
- std::optional<Trim> trim;
- std::optional<BedRenderInfo> bed_render_info;
- std::optional<Headphone> headphone;
+    bool b_default_screen_size_ratio = false;
+    std::optional<int> master_screen_size_ratio_code;
+    bool b_bed_object_chan_distribute = false;
+    std::optional<Trim> trim;
+    std::optional<BedRenderInfo> bed_render_info;
+    std::optional<Headphone> headphone;
 };
 
 // --- §6.2.1.9 ac4_substream_info_ajoc ---------------------------------------
 
 struct AjocSubstreamInfo {
- bool b_lfe = false;
- bool b_static_dmx = false;
- int n_fullband_dmx_signals = 0;
- std::vector<ObjectEntry> static_objects; // empty when b_static_dmx
- std::optional<OamdCommonData> oamd_common_data;
- int n_fullband_upmix_signals = 0;
- std::vector<ObjectEntry> upmix_objects;
- std::optional<int> sf_multiplier;
- std::optional<int> bitrate_kbps;
- std::optional<int> substream_index;
+    bool b_lfe = false;
+    bool b_static_dmx = false;
+    int n_fullband_dmx_signals = 0;
+    std::vector<ObjectEntry> static_objects;   // empty when b_static_dmx
+    std::optional<OamdCommonData> oamd_common_data;
+    int n_fullband_upmix_signals = 0;
+    std::vector<ObjectEntry> upmix_objects;
+    std::optional<int> sf_multiplier;
+    std::optional<int> bitrate_kbps;
+    std::optional<int> substream_index;
 };
 
 // --- §6.2.1.11 ac4_substream_info_obj ---------------------------------------
 
 struct ObjSubstreamInfo {
- std::vector<ObjectEntry> objects;
- bool b_dynamic_objects = false;
- std::optional<int> sf_multiplier;
- std::optional<int> bitrate_kbps;
- std::optional<int> substream_index;
+    std::vector<ObjectEntry> objects;
+    bool b_dynamic_objects = false;
+    std::optional<int> sf_multiplier;
+    std::optional<int> bitrate_kbps;
+    std::optional<int> substream_index;
 };
 
 // --- §6.2.1.6 ac4_substream_group_info --------------------------------------
@@ -272,24 +272,24 @@ struct ObjSubstreamInfo {
 // `chan`/`ajoc`/`obj` is set, selected by `kind` - a tagged union rather
 // than std::variant so callers can query without visiting.
 struct GroupSubstream {
- enum class Kind : std::uint8_t { kChan, kAjoc, kObj };
- Kind kind = Kind::kChan;
- std::optional<ChannelSubstreamInfo> chan;
- std::optional<AjocSubstreamInfo> ajoc;
- std::optional<ObjSubstreamInfo> obj;
- // §4.2.3.9 ac4_hsf_ext_substream_info, read once per substream when the
- // group's own b_hsf_ext is set - covers chan/ajoc/obj alike, unlike
- // ChannelSubstreamInfo::hsf_ext_substream_index (the legacy path's own
- // field, which this struct does not exist for).
- std::optional<int> hsf_ext_substream_index;
+    enum class Kind : std::uint8_t { kChan, kAjoc, kObj };
+    Kind kind = Kind::kChan;
+    std::optional<ChannelSubstreamInfo> chan;
+    std::optional<AjocSubstreamInfo> ajoc;
+    std::optional<ObjSubstreamInfo> obj;
+    // §4.2.3.9 ac4_hsf_ext_substream_info, read once per substream when the
+    // group's own b_hsf_ext is set - covers chan/ajoc/obj alike, unlike
+    // ChannelSubstreamInfo::hsf_ext_substream_index (the legacy path's own
+    // field, which this struct does not exist for).
+    std::optional<int> hsf_ext_substream_index;
 };
 
 struct SubstreamGroupInfo {
- bool b_substreams_present = false;
- bool b_channel_coded = true;
- std::optional<OamdSubstreamInfo> oamd; // set only when !b_channel_coded and b_oamd_substream
- std::vector<GroupSubstream> substreams;
- std::optional<ContentType> content_type;
+    bool b_substreams_present = false;
+    bool b_channel_coded = true;
+    std::optional<OamdSubstreamInfo> oamd;  // set only when !b_channel_coded and b_oamd_substream
+    std::vector<GroupSubstream> substreams;
+    std::optional<ContentType> content_type;
 };
 
 // --- §4.2.3.2 ac4_presentation_info (bitstream_version <= 1) ---------------
@@ -298,16 +298,16 @@ struct SubstreamGroupInfo {
 // EMDF substreams and nothing else, so md_compat, presentation_id and
 // substreams stay empty.
 struct PresentationInfoV0 {
- int presentation_version = 0;
- std::optional<int>
- presentation_config; // Table 85; nullopt for a single-substream presentation
- std::optional<int> md_compat; // Table 86
- std::optional<int> presentation_id;
- std::vector<std::pair<std::string, ChannelSubstreamInfo>> substreams; // role, info
- bool b_pre_virtualized = false; // §4.3.3.3.5
- // Substreams holding emdf_payloads_substream() (§4.2.4.4), from the
- // presentation's emdf_info() and its additional EMDF substream list.
- std::vector<int> emdf_payloads_substream_indices;
+    int presentation_version = 0;
+    std::optional<int>
+        presentation_config;       // Table 85; nullopt for a single-substream presentation
+    std::optional<int> md_compat;  // Table 86
+    std::optional<int> presentation_id;
+    std::vector<std::pair<std::string, ChannelSubstreamInfo>> substreams;  // role, info
+    bool b_pre_virtualized = false;  // §4.3.3.3.5
+    // Substreams holding emdf_payloads_substream() (§4.2.4.4), from the
+    // presentation's emdf_info() and its additional EMDF substream list.
+    std::vector<int> emdf_payloads_substream_indices;
 };
 
 // --- §6.2.1.3 ac4_presentation_v1_info (bitstream_version >= 2) ------------
@@ -316,80 +316,80 @@ struct PresentationInfoV0 {
 // enable_presentation and group_refs stay empty, and frame_rate_factor stays
 // 1 because the presentation does not transmit one.
 struct PresentationInfoV1 {
- int presentation_version = 0;
- std::optional<int> presentation_config; // Table 53
- std::vector<int> group_refs; // ac4_sgi_specifier() group_index values
- std::optional<int> md_compat; // Table 55
- std::optional<bool> enable_presentation;
- int frame_rate_factor = 1; // Table 87; threaded into this frame's substream groups
- // §6.2.1.4 / Table 18: 1, or the 2 or 4 transmission frames one coded
- // frame is spread over in the efficient high frame rate mode. Above 1,
- // this frame's substreams are fragments, not whole substreams.
- int frame_rate_fraction = 1;
- std::optional<int> presentation_id;
- bool b_pre_virtualized = false; // §4.3.3.3.5
- // §6.2.1.12 ac4_presentation_substream_info(). Unset for an EMDF-only
- // presentation (presentation_config 6), which carries none.
- std::optional<int> presentation_substream_index;
- bool b_alternative = false;
- bool b_pres_ndot = false;
- // Substreams holding emdf_payloads_substream() (§4.2.4.4), from the
- // presentation's emdf_info() and its additional EMDF substream list.
- std::vector<int> emdf_payloads_substream_indices;
+    int presentation_version = 0;
+    std::optional<int> presentation_config;  // Table 53
+    std::vector<int> group_refs;             // ac4_sgi_specifier() group_index values
+    std::optional<int> md_compat;            // Table 55
+    std::optional<bool> enable_presentation;
+    int frame_rate_factor = 1;  // Table 87; threaded into this frame's substream groups
+    // §6.2.1.4 / Table 18: 1, or the 2 or 4 transmission frames one coded
+    // frame is spread over in the efficient high frame rate mode. Above 1,
+    // this frame's substreams are fragments, not whole substreams.
+    int frame_rate_fraction = 1;
+    std::optional<int> presentation_id;
+    bool b_pre_virtualized = false;  // §4.3.3.3.5
+    // §6.2.1.12 ac4_presentation_substream_info(). Unset for an EMDF-only
+    // presentation (presentation_config 6), which carries none.
+    std::optional<int> presentation_substream_index;
+    bool b_alternative = false;
+    bool b_pres_ndot = false;
+    // Substreams holding emdf_payloads_substream() (§4.2.4.4), from the
+    // presentation's emdf_info() and its additional EMDF substream list.
+    std::vector<int> emdf_payloads_substream_indices;
 };
 
 // --- §4.2.1 / §6.2.1.1 ac4_toc ---------------------------------------------
 
 struct Toc {
- int bitstream_version = 0;
- int sequence_counter = 0;
- std::optional<int> wait_frames; // Table 81
- int sample_rate_hz = 48000; // Table 82
- int frame_rate_index = 0; // Table 83/84
- bool b_iframe_global = false;
- int n_presentations = 0;
- int payload_base = 0; // bytes, relative to the end of the byte-aligned ac4_toc()
+    int bitstream_version = 0;
+    int sequence_counter = 0;
+    std::optional<int> wait_frames;  // Table 81
+    int sample_rate_hz = 48000;      // Table 82
+    int frame_rate_index = 0;        // Table 83/84
+    bool b_iframe_global = false;
+    int n_presentations = 0;
+    int payload_base = 0;  // bytes, relative to the end of the byte-aligned ac4_toc()
 
- // Exactly one of these two is populated, selected by bitstream_version
- // (see parse_toc()): presentations_v0 for <= 1, presentations_v1 and
- // substream_groups for >= 2.
- std::vector<PresentationInfoV0> presentations_v0;
- std::vector<PresentationInfoV1> presentations_v1;
- std::vector<SubstreamGroupInfo> substream_groups;
+    // Exactly one of these two is populated, selected by bitstream_version
+    // (see parse_toc()): presentations_v0 for <= 1, presentations_v1 and
+    // substream_groups for >= 2.
+    std::vector<PresentationInfoV0> presentations_v0;
+    std::vector<PresentationInfoV1> presentations_v1;
+    std::vector<SubstreamGroupInfo> substream_groups;
 
- int n_substreams = 0;
- std::vector<int> substream_sizes; // bytes, §4.3.3.12.4
+    int n_substreams = 0;
+    std::vector<int> substream_sizes;  // bytes, §4.3.3.12.4
 };
 
 // --- §4.2.4.2 / §6.2.2.2 ac4_substream: outer envelope only -----------------
 
 struct Substream {
- std::size_t offset = 0; // byte offset of ac4_substream_data() within the raw frame
- std::size_t size = 0; // bytes, from Toc::substream_sizes
- // True when this index was referenced by an ac4_substream_info()/
- // ac4_substream_info_chan()/ac4_substream_info_ajoc()/
- // ac4_substream_info_obj() element - i.e. this is an ac4_substream()
- // this parser knows how to read the audio_size header of (Table 50:
- // all four map to the same envelope). False covers
- // ac4_presentation_substream(), oamd_substream() and
- // emdf_payloads_substream() (§6.2.1.12, §6.2.2.4, §4.2.4.4) - different
- // shapes, reported by byte range only.
- bool is_audio = false;
- std::optional<int> audio_size; // §4.3.4.1, only set when is_audio
+    std::size_t offset = 0;  // byte offset of ac4_substream_data() within the raw frame
+    std::size_t size = 0;    // bytes, from Toc::substream_sizes
+    // True when this index was referenced by an ac4_substream_info()/
+    // ac4_substream_info_chan()/ac4_substream_info_ajoc()/
+    // ac4_substream_info_obj() element - i.e. this is an ac4_substream()
+    // this parser knows how to read the audio_size header of (Table 50:
+    // all four map to the same envelope). False covers
+    // ac4_presentation_substream(), oamd_substream() and
+    // emdf_payloads_substream() (§6.2.1.12, §6.2.2.4, §4.2.4.4) - different
+    // shapes, reported by byte range only.
+    bool is_audio = false;
+    std::optional<int> audio_size;  // §4.3.4.1, only set when is_audio
 };
 
 struct RawFrame {
- Toc toc;
- std::vector<Substream> substreams;
+    Toc toc;
+    std::vector<Substream> substreams;
 };
 
 // §4.2.1 raw_ac4_frame(): ac4_toc() then n_substreams substream payloads,
 // located via payload_base and substream_index_table()'s sizes
 // (§4.3.3.12.4's Pseudocode 1) rather than by parsing through audio_data.
 [[nodiscard]] AC4_EXPORT std::expected<RawFrame, Error> parse_raw_frame(
- std::span<const std::byte> raw_ac4_frame);
+    std::span<const std::byte> raw_ac4_frame);
 
-// --- Carriage (legacy item IM4's separable slice) -------------------------------
+// --- Carriage (AC-4 bitstream inspector's separable slice) -------------------------------
 //
 // Everything below serves putting AC-4 INTO a container, not parsing it:
 // the 'dac4' box an ISO-BMFF 'ac-4' sample entry carries (TS 103 190-2
@@ -430,4 +430,4 @@ struct RawFrame {
 // selects). An absent md_compat reads as 0.
 [[nodiscard]] AC4_EXPORT std::string rfc6381_codec_string(const Toc& toc);
 
-} // namespace ac4
+}  // namespace ac4

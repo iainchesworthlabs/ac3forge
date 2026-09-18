@@ -20,56 +20,56 @@
 namespace ac3::audio {
 
 struct Capability {
- bool available = false;
- // Empty when available. Otherwise one line saying what is missing and
- // why, printed verbatim by whoever had to turn a caller away - so the
- // wording lives beside the implementation it is making excuses for.
- std::string_view reason;
+    bool available = false;
+    // Empty when available. Otherwise one line saying what is missing and
+    // why, printed verbatim by whoever had to turn a caller away - so the
+    // wording lives beside the implementation it is making excuses for.
+    std::string_view reason;
 };
 
 struct AudioBackend {
- // Enumerating capture endpoints and reading samples from one:
- // ac3::audio, behind the CLI's 'devices' and 'record'.
- Capability capture;
- // Enumerating render endpoints and bitstreaming to one in exclusive
- // mode: ac3::audio, behind the CLI's 'outputs' and 'play'.
- //
- // Kept separate from capture rather than folded into one "audio" flag
- // because the two are separately hard: capture is an ordinary PCM stream,
- // while passthrough needs exclusive/hog-mode access to a device that will
- // accept a non-PCM format. A platform gaining one and not the other is
- // the expected order, not an edge case.
- Capability passthrough;
- // Enumerating render endpoints and playing ordinary shared-mode PCM to
- // one: ac3::audio::MonitorSink, behind the CLI's 'monitor' and 'live
- // --monitor'. Closer in difficulty to capture than to passthrough (no
- // exclusive-mode format negotiation), but kept as its own flag for the
- // same reason capture and passthrough are separate: a platform can gain
- // this without gaining bitstreamed passthrough, or vice versa.
- Capability monitor;
- // Rendering decoded Atmos objects and bed through an OS object renderer
- // (Windows' ISpatialAudioObjectRenderStream): ac3::audio::SpatialObjectSink,
- // behind the CLI's 'spatial'. "Available" here means the same thing it
- // does for the other three - this build has the code, not that any
- // particular endpoint on this machine currently has a spatial sound
- // format enabled. That per-endpoint question is start()'s own
- // SpatialError::kNoSpatialFormat, exactly parallel to passthrough's
- // per-device kFormatRejected split.
- Capability spatial;
- // Tapping one process's rendered audio on its own, whichever endpoint it
- // renders to: Capture::start_process_loopback (Crucible Windows demo). Separate
- // from `capture` because a platform with an ordinary loopback path can
- // still lack a per-process one - and Windows itself does, before build
- // 20348 - so this is the one report that depends on the machine the
- // build is RUNNING on, not just the one it was compiled for. The same
- // answer, as a bool, is process_loopback_available().
- Capability process_loopback;
- // Being told when an endpoint arrives, leaves, changes state or becomes
- // the default, rather than polling for it: ac3::audio::DeviceWatcher
- // (Crucible Windows demo).
- Capability device_watch;
+    // Enumerating capture endpoints and reading samples from one:
+    // ac3::audio, behind the CLI's 'devices' and 'record'.
+    Capability capture;
+    // Enumerating render endpoints and bitstreaming to one in exclusive
+    // mode: ac3::audio, behind the CLI's 'outputs' and 'play'.
+    //
+    // Kept separate from capture rather than folded into one "audio" flag
+    // because the two are separately hard: capture is an ordinary PCM stream,
+    // while passthrough needs exclusive/hog-mode access to a device that will
+    // accept a non-PCM format. A platform gaining one and not the other is
+    // the expected order, not an edge case.
+    Capability passthrough;
+    // Enumerating render endpoints and playing ordinary shared-mode PCM to
+    // one: ac3::audio::MonitorSink, behind the CLI's 'monitor' and 'live
+    // --monitor'. Closer in difficulty to capture than to passthrough (no
+    // exclusive-mode format negotiation), but kept as its own flag for the
+    // same reason capture and passthrough are separate: a platform can gain
+    // this without gaining bitstreamed passthrough, or vice versa.
+    Capability monitor;
+    // Rendering decoded Atmos objects and bed through an OS object renderer
+    // (Windows' ISpatialAudioObjectRenderStream): ac3::audio::SpatialObjectSink,
+    // behind the CLI's 'spatial'. "Available" here means the same thing it
+    // does for the other three - this build has the code, not that any
+    // particular endpoint on this machine currently has a spatial sound
+    // format enabled. That per-endpoint question is start()'s own
+    // SpatialError::kNoSpatialFormat, exactly parallel to passthrough's
+    // per-device kFormatRejected split.
+    Capability spatial;
+    // Tapping one process's rendered audio on its own, whichever endpoint it
+    // renders to: Capture::start_process_loopback (WASAPI loopback tap). Separate
+    // from `capture` because a platform with an ordinary loopback path can
+    // still lack a per-process one - and Windows itself does, before build
+    // 20348 - so this is the one report that depends on the machine the
+    // build is RUNNING on, not just the one it was compiled for. The same
+    // answer, as a bool, is process_loopback_available().
+    Capability process_loopback;
+    // Being told when an endpoint arrives, leaves, changes state or becomes
+    // the default, rather than polling for it: ac3::audio::DeviceWatcher
+    // (WASAPI loopback tap).
+    Capability device_watch;
 };
 
 [[nodiscard]] const AudioBackend& audio_backend();
 
-} // namespace ac3::audio
+}  // namespace ac3::audio

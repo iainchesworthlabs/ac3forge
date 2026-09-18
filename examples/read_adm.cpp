@@ -40,30 +40,30 @@ using Bytes = std::string;
 // directory - two runs on one fixed name read and delete each other's fixture.
 // Same ingredients as src/ac3adm/src/adm.cpp's make_temp_path, same reason.
 std::string scratch_path(std::string_view name) {
- static const std::string run = std::to_string(
- (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^
- static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
- const std::string leaf = "ac3forge_" + run + "_" + std::string(name);
- return (std::filesystem::temp_directory_path() / leaf).string();
+    static const std::string run = std::to_string(
+        (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^
+        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const std::string leaf = "ac3forge_" + run + "_" + std::string(name);
+    return (std::filesystem::temp_directory_path() / leaf).string();
 }
 
 void put_u16le(Bytes& out, std::uint16_t value) {
- out.push_back(static_cast<char>(value & 0xFFu));
- out.push_back(static_cast<char>((value >> 8) & 0xFFu));
+    out.push_back(static_cast<char>(value & 0xFFu));
+    out.push_back(static_cast<char>((value >> 8) & 0xFFu));
 }
 
 void put_u32le(Bytes& out, std::uint32_t value) {
- put_u16le(out, static_cast<std::uint16_t>(value & 0xFFFFu));
- put_u16le(out, static_cast<std::uint16_t>((value >> 16) & 0xFFFFu));
+    put_u16le(out, static_cast<std::uint16_t>(value & 0xFFFFu));
+    put_u16le(out, static_cast<std::uint16_t>((value >> 16) & 0xFFFFu));
 }
 
 void append_chunk(Bytes& out, std::string_view id, const Bytes& content) {
- out += id;
- put_u32le(out, static_cast<std::uint32_t>(content.size()));
- out += content;
- if (content.size() % 2 != 0) {
- out.push_back('\0');
- }
+    out += id;
+    put_u32le(out, static_cast<std::uint32_t>(content.size()));
+    out += content;
+    if (content.size() % 2 != 0) {
+        out.push_back('\0');
+    }
 }
 
 // Writes a minimal, genuinely valid RIFF/WAVE ADM BWF file to `path`: one
@@ -71,122 +71,122 @@ void append_chunk(Bytes& out, std::string_view id, const Bytes& content) {
 // document describing one Objects-type audio object. See this file's own
 // header comment for where the XML is adapted from.
 bool write_fixture(const std::string& path) {
- Bytes fmt;
- put_u16le(fmt, 1); // WAVE_FORMAT_PCM
- put_u16le(fmt, 1); // mono
- put_u32le(fmt, 48000); // sample rate
- put_u32le(fmt, 48000 * 2);
- put_u16le(fmt, 2); // block align
- put_u16le(fmt, 16); // bits per sample
+    Bytes fmt;
+    put_u16le(fmt, 1);      // WAVE_FORMAT_PCM
+    put_u16le(fmt, 1);      // mono
+    put_u32le(fmt, 48000);  // sample rate
+    put_u32le(fmt, 48000 * 2);
+    put_u16le(fmt, 2);   // block align
+    put_u16le(fmt, 16);  // bits per sample
 
- Bytes chna;
- put_u16le(chna, 1); // numTracks
- put_u16le(chna, 1); // numUIDs
- put_u16le(chna, 1); // trackIndex
- chna += "ATU_00000001";
- chna += "AT_00031001_01";
- chna += "AP_00031001";
- chna.push_back('\0'); // pad byte, BS.2088-1 §8.2's audioID struct
+    Bytes chna;
+    put_u16le(chna, 1);  // numTracks
+    put_u16le(chna, 1);  // numUIDs
+    put_u16le(chna, 1);  // trackIndex
+    chna += "ATU_00000001";
+    chna += "AT_00031001_01";
+    chna += "AP_00031001";
+    chna.push_back('\0');  // pad byte, BS.2088-1 §8.2's audioID struct
 
- const Bytes axml = R"(<?xml version="1.0" encoding="UTF-8"?>
+    const Bytes axml = R"(<?xml version="1.0" encoding="UTF-8"?>
 <audioFormatExtended version="ITU-R_BS.2076-2">
- <audioProgramme audioProgrammeID="APR_1001" audioProgrammeName="CarsSounds">
- <audioContentIDRef>ACO_1001</audioContentIDRef>
- </audioProgramme>
- <audioContent audioContentID="ACO_1001" audioContentName="Cars">
- <audioObjectIDRef>AO_1001</audioObjectIDRef>
- </audioContent>
- <audioObject audioObjectID="AO_1001" audioObjectName="Car" start="00:00:00.00000">
- <audioPackFormatIDRef>AP_00031001</audioPackFormatIDRef>
- <audioTrackUIDRef>ATU_00000001</audioTrackUIDRef>
- </audioObject>
- <audioPackFormat audioPackFormatID="AP_00031001" audioPackFormatName="Car" typeLabel="0003" typeDefinition="Objects">
- <audioChannelFormatIDRef>AC_00031001</audioChannelFormatIDRef>
- </audioPackFormat>
- <audioChannelFormat audioChannelFormatID="AC_00031001" audioChannelFormatName="Car1" typeLabel="0003" typeDefinition="Objects">
- <audioBlockFormat audioBlockFormatID="AB_00031001_00000001">
- <position coordinate="azimuth">-22.5</position>
- <position coordinate="elevation">5.0</position>
- <position coordinate="distance">1.0</position>
- </audioBlockFormat>
- </audioChannelFormat>
- <audioStreamFormat audioStreamFormatID="AS_00031001" audioStreamFormatName="PCM_Car1" formatLabel="0001" formatDefinition="PCM">
- <audioChannelFormatIDRef>AC_00031001</audioChannelFormatIDRef>
- <audioTrackFormatIDRef>AT_00031001_01</audioTrackFormatIDRef>
- </audioStreamFormat>
- <audioTrackFormat audioTrackFormatID="AT_00031001_01" audioTrackFormatName="PCM_Car1" formatLabel="0001" formatDefinition="PCM">
- <audioStreamFormatIDRef>AS_00031001</audioStreamFormatIDRef>
- </audioTrackFormat>
- <audioTrackUID UID="ATU_00000001" sampleRate="48000" bitDepth="16">
- <audioTrackFormatIDRef>AT_00031001_01</audioTrackFormatIDRef>
- <audioPackFormatIDRef>AP_00031001</audioPackFormatIDRef>
- </audioTrackUID>
+  <audioProgramme audioProgrammeID="APR_1001" audioProgrammeName="CarsSounds">
+    <audioContentIDRef>ACO_1001</audioContentIDRef>
+  </audioProgramme>
+  <audioContent audioContentID="ACO_1001" audioContentName="Cars">
+    <audioObjectIDRef>AO_1001</audioObjectIDRef>
+  </audioContent>
+  <audioObject audioObjectID="AO_1001" audioObjectName="Car" start="00:00:00.00000">
+    <audioPackFormatIDRef>AP_00031001</audioPackFormatIDRef>
+    <audioTrackUIDRef>ATU_00000001</audioTrackUIDRef>
+  </audioObject>
+  <audioPackFormat audioPackFormatID="AP_00031001" audioPackFormatName="Car" typeLabel="0003" typeDefinition="Objects">
+    <audioChannelFormatIDRef>AC_00031001</audioChannelFormatIDRef>
+  </audioPackFormat>
+  <audioChannelFormat audioChannelFormatID="AC_00031001" audioChannelFormatName="Car1" typeLabel="0003" typeDefinition="Objects">
+    <audioBlockFormat audioBlockFormatID="AB_00031001_00000001">
+      <position coordinate="azimuth">-22.5</position>
+      <position coordinate="elevation">5.0</position>
+      <position coordinate="distance">1.0</position>
+    </audioBlockFormat>
+  </audioChannelFormat>
+  <audioStreamFormat audioStreamFormatID="AS_00031001" audioStreamFormatName="PCM_Car1" formatLabel="0001" formatDefinition="PCM">
+    <audioChannelFormatIDRef>AC_00031001</audioChannelFormatIDRef>
+    <audioTrackFormatIDRef>AT_00031001_01</audioTrackFormatIDRef>
+  </audioStreamFormat>
+  <audioTrackFormat audioTrackFormatID="AT_00031001_01" audioTrackFormatName="PCM_Car1" formatLabel="0001" formatDefinition="PCM">
+    <audioStreamFormatIDRef>AS_00031001</audioStreamFormatIDRef>
+  </audioTrackFormat>
+  <audioTrackUID UID="ATU_00000001" sampleRate="48000" bitDepth="16">
+    <audioTrackFormatIDRef>AT_00031001_01</audioTrackFormatIDRef>
+    <audioPackFormatIDRef>AP_00031001</audioPackFormatIDRef>
+  </audioTrackUID>
 </audioFormatExtended>
 )";
 
- Bytes data;
- for (int frame = 0; frame < 8; ++frame) {
- put_u16le(data, static_cast<std::uint16_t>(static_cast<std::int16_t>(frame * 2000 - 7000)));
- }
+    Bytes data;
+    for (int frame = 0; frame < 8; ++frame) {
+        put_u16le(data, static_cast<std::uint16_t>(static_cast<std::int16_t>(frame * 2000 - 7000)));
+    }
 
- Bytes body;
- append_chunk(body, "fmt ", fmt);
- append_chunk(body, "chna", chna);
- append_chunk(body, "axml", axml);
- append_chunk(body, "data", data);
+    Bytes body;
+    append_chunk(body, "fmt ", fmt);
+    append_chunk(body, "chna", chna);
+    append_chunk(body, "axml", axml);
+    append_chunk(body, "data", data);
 
- Bytes file;
- file += "RIFF";
- put_u32le(file, static_cast<std::uint32_t>(4 + body.size()));
- file += "WAVE";
- file += body;
+    Bytes file;
+    file += "RIFF";
+    put_u32le(file, static_cast<std::uint32_t>(4 + body.size()));
+    file += "WAVE";
+    file += body;
 
- // path is always a scratch_path() result (never a caller-chosen path), and the system temp
- // directory is shared/world-writable - noreplace fails instead of writing through a symlink
- // another local user pre-planted at this exact (astronomically unlikely to guess) name.
- std::ofstream out(path, std::ios::binary | std::ios::noreplace);
- if (!out) {
- return false;
- }
- out.write(file.data(), static_cast<std::streamsize>(file.size()));
- return static_cast<bool>(out);
+    // path is always a scratch_path() result (never a caller-chosen path), and the system temp
+    // directory is shared/world-writable - noreplace fails instead of writing through a symlink
+    // another local user pre-planted at this exact (astronomically unlikely to guess) name.
+    std::ofstream out(path, std::ios::binary | std::ios::noreplace);
+    if (!out) {
+        return false;
+    }
+    out.write(file.data(), static_cast<std::streamsize>(file.size()));
+    return static_cast<bool>(out);
 }
 
-} // namespace
+}  // namespace
 
 int main() {
- const auto fixture_path = scratch_path("adm_fixture.wav");
- if (!write_fixture(fixture_path)) {
- fmt::printf("could not write fixture file\n");
- return 1;
- }
+    const auto fixture_path = scratch_path("adm_fixture.wav");
+    if (!write_fixture(fixture_path)) {
+        fmt::printf("could not write fixture file\n");
+        return 1;
+    }
 
- const auto document = ac3adm::parse_bw64(fixture_path);
- if (!document) {
- fmt::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
- ac3adm::describe(document.error()).data());
- return 1;
- }
+    const auto document = ac3adm::parse_bw64(fixture_path);
+    if (!document) {
+        fmt::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
+                    ac3adm::describe(document.error()).data());
+        return 1;
+    }
 
- fmt::printf("PCM: %u Hz, %u-bit, %zu channel(s), %zu frame(s)\n", document->audio.sample_rate,
- document->audio.bits_per_sample, document->audio.channels.size(), document->audio.frame_count());
- fmt::printf("chna rows: %zu\n", document->chna.size());
- fmt::printf("ADM graph: %zu programme(s), %zu content(s), %zu object(s), %zu pack format(s), "
- "%zu channel format(s), %zu stream format(s), %zu track format(s), %zu track UID(s)\n",
- document->model.programmes.size(), document->model.contents.size(), document->model.objects.size(),
- document->model.pack_formats.size(), document->model.channel_formats.size(),
- document->model.stream_formats.size(), document->model.track_formats.size(),
- document->model.track_uids.size());
+    fmt::printf("PCM: %u Hz, %u-bit, %zu channel(s), %zu frame(s)\n", document->audio.sample_rate,
+                document->audio.bits_per_sample, document->audio.channels.size(), document->audio.frame_count());
+    fmt::printf("chna rows: %zu\n", document->chna.size());
+    fmt::printf("ADM graph: %zu programme(s), %zu content(s), %zu object(s), %zu pack format(s), "
+                "%zu channel format(s), %zu stream format(s), %zu track format(s), %zu track UID(s)\n",
+                document->model.programmes.size(), document->model.contents.size(), document->model.objects.size(),
+                document->model.pack_formats.size(), document->model.channel_formats.size(),
+                document->model.stream_formats.size(), document->model.track_formats.size(),
+                document->model.track_uids.size());
 
- for (const auto& programme : document->model.programmes) {
- fmt::printf(" programme %s (%s) -> %zu content(s)\n", programme.id.c_str(), programme.name.c_str(),
- programme.content_refs.size());
- }
- for (const auto& object : document->model.objects) {
- fmt::printf(" object %s (%s), start=%.5fs, %zu track UID ref(s)\n", object.id.c_str(), object.name.c_str(),
- object.start_s, object.track_uid_refs.size());
- }
+    for (const auto& programme : document->model.programmes) {
+        fmt::printf("  programme %s (%s) -> %zu content(s)\n", programme.id.c_str(), programme.name.c_str(),
+                    programme.content_refs.size());
+    }
+    for (const auto& object : document->model.objects) {
+        fmt::printf("  object %s (%s), start=%.5fs, %zu track UID ref(s)\n", object.id.c_str(), object.name.c_str(),
+                    object.start_s, object.track_uid_refs.size());
+    }
 
- std::filesystem::remove(fixture_path);
- return 0;
+    std::filesystem::remove(fixture_path);
+    return 0;
 }

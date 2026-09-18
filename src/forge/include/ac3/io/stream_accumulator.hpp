@@ -20,19 +20,19 @@
 // This is the same boundary rule, applied incrementally. The caller owns the
 // storage and drives the loop:
 //
-// std::array<std::byte, 16384> buf;
-// ac3::io::AccessUnitAccumulator acc{buf};
-// for (;;) {
-// auto unit = acc.next();
-// if (unit.status == Status::kNeedMoreInput) {
-// const auto n = read_from_somewhere(acc.writable());
-// if (n == 0) { acc.finish(); continue; }
-// acc.commit(n);
-// continue;
-// }
-// if (unit.status != Status::kUnit) break; // kEndOfStream or an error
-// decoder.decode_access_unit_into(unit.bytes, channels);
-// }
+//     std::array<std::byte, 16384> buf;
+//     ac3::io::AccessUnitAccumulator acc{buf};
+//     for (;;) {
+//         auto unit = acc.next();
+//         if (unit.status == Status::kNeedMoreInput) {
+//             const auto n = read_from_somewhere(acc.writable());
+//             if (n == 0) { acc.finish(); continue; }
+//             acc.commit(n);
+//             continue;
+//         }
+//         if (unit.status != Status::kUnit) break;   // kEndOfStream or an error
+//         decoder.decode_access_unit_into(unit.bytes, channels);
+//     }
 //
 // WHY ACCESS UNITS AND NOT SYNCFRAMES. Because that is what the decoder takes.
 // Eac3Decoder::decode_access_unit_into wants an independent substream together
@@ -73,81 +73,81 @@ inline constexpr std::size_t kMinimumBuffer = kMaxSyncframeBytes + 64;
 inline constexpr std::size_t kRecommendedBuffer = 16384;
 
 class AC3FORGE_EXPORT AccessUnitAccumulator {
- public:
- enum class Status : std::uint8_t {
- // `bytes` holds one complete access unit. Valid until the next call to
- // next(), writable() or commit() - it points into the caller's buffer,
- // which those may compact.
- kUnit,
- // Feed more bytes through writable()/commit(), or call finish() if
- // there are none.
- kNeedMoreInput,
- // finish() was called and everything buffered has been handed back.
- kEndOfStream,
- // The buffer cannot hold the access unit being assembled. Not
- // recoverable by feeding more: the caller needs a bigger buffer.
- kBufferTooSmall,
- // The bytes are not a stream this reader can walk. error() says which.
- kError,
- };
+   public:
+    enum class Status : std::uint8_t {
+        // `bytes` holds one complete access unit. Valid until the next call to
+        // next(), writable() or commit() - it points into the caller's buffer,
+        // which those may compact.
+        kUnit,
+        // Feed more bytes through writable()/commit(), or call finish() if
+        // there are none.
+        kNeedMoreInput,
+        // finish() was called and everything buffered has been handed back.
+        kEndOfStream,
+        // The buffer cannot hold the access unit being assembled. Not
+        // recoverable by feeding more: the caller needs a bigger buffer.
+        kBufferTooSmall,
+        // The bytes are not a stream this reader can walk. error() says which.
+        kError,
+    };
 
- struct Result {
- Status status = Status::kNeedMoreInput;
- std::span<const std::byte> bytes{};
- };
+    struct Result {
+        Status status = Status::kNeedMoreInput;
+        std::span<const std::byte> bytes{};
+    };
 
- // `storage` must be at least kMinimumBuffer. A smaller span is accepted
- // rather than asserted on - the first next() reports kBufferTooSmall - so
- // that a caller sizing a buffer from configuration finds out through the
- // same channel as one whose stream simply had a big access unit in it.
- explicit AccessUnitAccumulator(std::span<std::byte> storage) : storage_(storage) {}
+    // `storage` must be at least kMinimumBuffer. A smaller span is accepted
+    // rather than asserted on - the first next() reports kBufferTooSmall - so
+    // that a caller sizing a buffer from configuration finds out through the
+    // same channel as one whose stream simply had a big access unit in it.
+    explicit AccessUnitAccumulator(std::span<std::byte> storage) : storage_(storage) {}
 
- // Where the caller appends. Always a suffix of the storage; empty when the
- // buffer is full, which next() will report as kBufferTooSmall.
- [[nodiscard]] std::span<std::byte> writable() { return storage_.subspan(filled_); }
+    // Where the caller appends. Always a suffix of the storage; empty when the
+    // buffer is full, which next() will report as kBufferTooSmall.
+    [[nodiscard]] std::span<std::byte> writable() { return storage_.subspan(filled_); }
 
- // How many of writable()'s bytes were actually written.
- void commit(std::size_t bytes) { filled_ += bytes; }
+    // How many of writable()'s bytes were actually written.
+    void commit(std::size_t bytes) { filled_ += bytes; }
 
- // No more input will arrive. What is already buffered still comes out of
- // next(); after that it reports kEndOfStream.
- //
- // This is what closes the last access unit. A unit's end is normally found
- // by reading the START of the next one, so without an explicit end of
- // stream the final unit would sit in the buffer forever waiting for a
- // successor that is never coming.
- void finish() { finished_ = true; }
+    // No more input will arrive. What is already buffered still comes out of
+    // next(); after that it reports kEndOfStream.
+    //
+    // This is what closes the last access unit. A unit's end is normally found
+    // by reading the START of the next one, so without an explicit end of
+    // stream the final unit would sit in the buffer forever waiting for a
+    // successor that is never coming.
+    void finish() { finished_ = true; }
 
- [[nodiscard]] Result next();
+    [[nodiscard]] Result next();
 
- // Set when next() returns kError.
- [[nodiscard]] ScanError error() const { return error_; }
+    // Set when next() returns kError.
+    [[nodiscard]] ScanError error() const { return error_; }
 
- // Bytes skipped looking for a sync word, over the accumulator's life.
- // Non-zero means the stream did not begin on a frame boundary, or that
- // something between frames was not a frame - worth reporting rather than
- // silently absorbing, because it is the signature of a mis-muxed file or a
- // wrong byte offset.
- [[nodiscard]] std::size_t resynchronised_bytes() const { return resync_bytes_; }
+    // Bytes skipped looking for a sync word, over the accumulator's life.
+    // Non-zero means the stream did not begin on a frame boundary, or that
+    // something between frames was not a frame - worth reporting rather than
+    // silently absorbing, because it is the signature of a mis-muxed file or a
+    // wrong byte offset.
+    [[nodiscard]] std::size_t resynchronised_bytes() const { return resync_bytes_; }
 
- private:
- // Drops `count` bytes from the front and moves the remainder down.
- void consume_front(std::size_t count);
- Result emit();
- Result need_more();
- Result fail(ScanError error);
+   private:
+    // Drops `count` bytes from the front and moves the remainder down.
+    void consume_front(std::size_t count);
+    Result emit();
+    Result need_more();
+    Result fail(ScanError error);
 
- std::span<std::byte> storage_;
- std::size_t filled_ = 0;
- // Length of the access unit assembled so far, always a prefix of storage_.
- std::size_t unit_bytes_ = 0;
- // Length of the unit handed to the caller last time, still occupying the
- // front of the buffer because the span they hold points at it. Dropped at
- // the top of the next next().
- std::size_t emitted_ = 0;
- bool finished_ = false;
- ScanError error_ = ScanError::kEmpty;
- std::size_t resync_bytes_ = 0;
+    std::span<std::byte> storage_;
+    std::size_t filled_ = 0;
+    // Length of the access unit assembled so far, always a prefix of storage_.
+    std::size_t unit_bytes_ = 0;
+    // Length of the unit handed to the caller last time, still occupying the
+    // front of the buffer because the span they hold points at it. Dropped at
+    // the top of the next next().
+    std::size_t emitted_ = 0;
+    bool finished_ = false;
+    ScanError error_ = ScanError::kEmpty;
+    std::size_t resync_bytes_ = 0;
 };
 
-} // namespace ac3::io
+}  // namespace ac3::io

@@ -33,7 +33,7 @@
 namespace ac3::internal::cpu {
 
 bool has_avx2() noexcept {
- return false;
+    return false;
 }
 
-} // namespace ac3::internal::cpu
+}  // namespace ac3::internal::cpu

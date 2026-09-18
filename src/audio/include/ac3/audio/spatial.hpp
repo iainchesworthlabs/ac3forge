@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-// Windows Spatial Sound object rendering (legacy item UX8): hand decoded Atmos
+// Windows Spatial Sound object rendering (Windows spatial object renderer): hand decoded Atmos
 // objects to the OS's own object renderer - ISpatialAudioObjectRenderStream -
 // as DYNAMIC objects carrying their real OAMD positions, and the programme's
 // bed as STATIC ones.
@@ -38,18 +38,18 @@
 namespace ac3::audio {
 
 enum class SpatialError : std::uint8_t {
- kNoBackend, // built without a platform spatial backend
- kComFailure, // a Windows audio (WASAPI/COM) call failed
- kDeviceNotFound,
- // The endpoint exists and ISpatialAudioClient activates, but no spatial
- // sound format (Windows Sonic for Headphones, Dolby Atmos for Home
- // Theater/Headphones, DTS:X) is currently enabled on it - the clean
- // refusal the roadmap calls for, distinct from kNoBackend ("this build
- // cannot do this at all"). Fixed in Settings, not in code.
- kNoSpatialFormat,
- kFormatRejected, // the endpoint rejected the negotiated audio format
- kAlreadyRunning,
- kNotRunning,
+    kNoBackend,        // built without a platform spatial backend
+    kComFailure,       // a Windows audio (WASAPI/COM) call failed
+    kDeviceNotFound,
+    // The endpoint exists and ISpatialAudioClient activates, but no spatial
+    // sound format (Windows Sonic for Headphones, Dolby Atmos for Home
+    // Theater/Headphones, DTS:X) is currently enabled on it - the clean
+    // refusal the roadmap calls for, distinct from kNoBackend ("this build
+    // cannot do this at all"). Fixed in Settings, not in code.
+    kNoSpatialFormat,
+    kFormatRejected,   // the endpoint rejected the negotiated audio format
+    kAlreadyRunning,
+    kNotRunning,
 };
 
 [[nodiscard]] std::string_view describe(SpatialError error);
@@ -60,20 +60,20 @@ enum class SpatialError : std::uint8_t {
 // struct, so the two capabilities' device *indices* never have to agree,
 // only their device *ids*.
 struct SpatialDeviceCapability {
- // False when even ISpatialAudioClient itself could not be activated
- // (kNoBackend/kComFailure/kDeviceNotFound territory) - see `reason`.
- bool available = false;
- // 0 when unavailable, or when the endpoint has no spatial format enabled
- // (GetMaxDynamicObjectCount()'s own "no spatial audio option is engaged"
- // answer) - the same "unknown vs none" ambiguity RenderDeviceInfo::channels
- // documents does not apply here: 0 always means "cannot render a dynamic
- // object right now", never "cannot say".
- std::uint32_t max_dynamic_objects = 0;
- // Empty when max_dynamic_objects > 0; otherwise what to tell a user, e.g.
- // "no spatial sound format is enabled on this endpoint - enable Windows
- // Sonic for Headphones or Dolby Atmos for Home Theater/Headphones in
- // Settings > System > Sound".
- std::string reason;
+    // False when even ISpatialAudioClient itself could not be activated
+    // (kNoBackend/kComFailure/kDeviceNotFound territory) - see `reason`.
+    bool available = false;
+    // 0 when unavailable, or when the endpoint has no spatial format enabled
+    // (GetMaxDynamicObjectCount()'s own "no spatial audio option is engaged"
+    // answer) - the same "unknown vs none" ambiguity RenderDeviceInfo::channels
+    // documents does not apply here: 0 always means "cannot render a dynamic
+    // object right now", never "cannot say".
+    std::uint32_t max_dynamic_objects = 0;
+    // Empty when max_dynamic_objects > 0; otherwise what to tell a user, e.g.
+    // "no spatial sound format is enabled on this endpoint - enable Windows
+    // Sonic for Headphones or Dolby Atmos for Home Theater/Headphones in
+    // Settings > System > Sound".
+    std::string reason;
 };
 
 // Probes `device_id` (empty = default render endpoint) directly - this is a
@@ -82,18 +82,18 @@ struct SpatialDeviceCapability {
 // that changes the moment a user flips Settings > System > Sound, not
 // something a capability flag can precompute.
 [[nodiscard]] std::expected<SpatialDeviceCapability, SpatialError> probe_spatial_capability(
- const std::string& device_id);
+    const std::string& device_id);
 
 struct SpatialObjectStats {
- std::uint64_t updates_submitted = 0; // per-object blocks handed to submit()
- std::uint64_t updates_rendered = 0;
- // Render periods where an object's ring ran dry and silence went out
- // instead - counted per the whole stream, not hidden, matching
- // MonitorSink/PassthroughSink's underrun discipline.
- std::uint64_t underruns = 0;
- // How many of the dynamic object slots requested at start() the endpoint
- // actually granted (GetMaxDynamicObjectCount() may be lower than asked).
- std::uint32_t active_dynamic_objects = 0;
+    std::uint64_t updates_submitted = 0;  // per-object blocks handed to submit()
+    std::uint64_t updates_rendered = 0;
+    // Render periods where an object's ring ran dry and silence went out
+    // instead - counted per the whole stream, not hidden, matching
+    // MonitorSink/PassthroughSink's underrun discipline.
+    std::uint64_t underruns = 0;
+    // How many of the dynamic object slots requested at start() the endpoint
+    // actually granted (GetMaxDynamicObjectCount() may be lower than asked).
+    std::uint32_t active_dynamic_objects = 0;
 };
 
 // One block's worth of a dynamic object: mono PCM plus the OAMD position and
@@ -102,11 +102,11 @@ struct SpatialObjectStats {
 // submit() call, and the sink's own ring absorbs the difference between
 // decode cadence (1536 samples) and the endpoint's render period.
 struct DynamicObjectUpdate {
- std::span<const float> pcm;
- float x = 0.0F;
- float y = 0.0F;
- float z = 0.0F;
- float gain = 1.0F; // linear
+    std::span<const float> pcm;
+    float x = 0.0F;
+    float y = 0.0F;
+    float z = 0.0F;
+    float gain = 1.0F;  // linear
 };
 
 // One block's worth of a bed channel, anchored to a fixed speaker position
@@ -114,8 +114,8 @@ struct DynamicObjectUpdate {
 // bit (exactly one bit set) - see this header's own comment on why that
 // vocabulary and not a Windows-Spatial-API-specific enum.
 struct StaticObjectUpdate {
- std::span<const float> pcm;
- std::uint32_t channel = 0;
+    std::span<const float> pcm;
+    std::uint32_t channel = 0;
 };
 
 // Real-time, no-allocation contract: start() pre-activates every object this
@@ -126,46 +126,46 @@ struct StaticObjectUpdate {
 // ISpatialAudioObject buffers - nothing here allocates once start() returns.
 class SpatialObjectSink {
 public:
- SpatialObjectSink();
- ~SpatialObjectSink();
- SpatialObjectSink(const SpatialObjectSink&) = delete;
- SpatialObjectSink& operator=(const SpatialObjectSink&) = delete;
+    SpatialObjectSink();
+    ~SpatialObjectSink();
+    SpatialObjectSink(const SpatialObjectSink&) = delete;
+    SpatialObjectSink& operator=(const SpatialObjectSink&) = delete;
 
- // Opens `device_id` (empty selects the default render endpoint) and
- // activates a spatial audio object render stream at `sample_rate`.
- // `static_channels` fixes the bed's shape for the session (one bit per
- // static object this session will ever feed, OR'd together);
- // `max_dynamic_objects` is the dynamic pool size requested - the
- // endpoint's own ceiling (ISpatialAudioClient::GetMaxDynamicObjectCount)
- // wins if lower, and the granted count is in stats().active_dynamic_objects
- // after a successful start(). Returns kNoSpatialFormat, not a hard
- // failure, when the endpoint has no spatial format enabled at all.
- [[nodiscard]] std::expected<void, SpatialError> start(const std::string& device_id,
- std::uint32_t sample_rate,
- std::uint32_t static_channels,
- std::uint32_t max_dynamic_objects);
+    // Opens `device_id` (empty selects the default render endpoint) and
+    // activates a spatial audio object render stream at `sample_rate`.
+    // `static_channels` fixes the bed's shape for the session (one bit per
+    // static object this session will ever feed, OR'd together);
+    // `max_dynamic_objects` is the dynamic pool size requested - the
+    // endpoint's own ceiling (ISpatialAudioClient::GetMaxDynamicObjectCount)
+    // wins if lower, and the granted count is in stats().active_dynamic_objects
+    // after a successful start(). Returns kNoSpatialFormat, not a hard
+    // failure, when the endpoint has no spatial format enabled at all.
+    [[nodiscard]] std::expected<void, SpatialError> start(const std::string& device_id,
+                                                           std::uint32_t sample_rate,
+                                                           std::uint32_t static_channels,
+                                                           std::uint32_t max_dynamic_objects);
 
- // One decode block's worth of updates. `dynamic.size()` must not exceed
- // the granted dynamic pool size; `static_objects` must name only bits
- // present in the `static_channels` mask start() was given. Returns false
- // if any object's ring is too full to accept this block - the caller is
- // running ahead of real time and should wait rather than spin, exactly
- // like MonitorSink::submit().
- bool submit(std::span<const DynamicObjectUpdate> dynamic,
- std::span<const StaticObjectUpdate> static_objects);
+    // One decode block's worth of updates. `dynamic.size()` must not exceed
+    // the granted dynamic pool size; `static_objects` must name only bits
+    // present in the `static_channels` mask start() was given. Returns false
+    // if any object's ring is too full to accept this block - the caller is
+    // running ahead of real time and should wait rather than spin, exactly
+    // like MonitorSink::submit().
+    bool submit(std::span<const DynamicObjectUpdate> dynamic,
+                std::span<const StaticObjectUpdate> static_objects);
 
- // Room for at least one more block on every active object without
- // blocking.
- [[nodiscard]] bool can_submit() const;
+    // Room for at least one more block on every active object without
+    // blocking.
+    [[nodiscard]] bool can_submit() const;
 
- void stop();
+    void stop();
 
- [[nodiscard]] bool running() const;
- [[nodiscard]] SpatialObjectStats stats() const;
+    [[nodiscard]] bool running() const;
+    [[nodiscard]] SpatialObjectStats stats() const;
 
 private:
- struct Impl;
- std::unique_ptr<Impl> impl_;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
-} // namespace ac3::audio
+}  // namespace ac3::audio

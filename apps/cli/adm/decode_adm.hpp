@@ -9,7 +9,7 @@
 
 #include "ac3/oba/oamd.hpp"
 
-// feature IM2 ("JOC -> ADM BWF writer") - the write-direction sibling of atmos_adm.hpp's
+// Roadmap item IM2 ("JOC -> ADM BWF writer") - the write-direction sibling of atmos_adm.hpp's
 // AdmAtmosSource/load_adm_atmos_source. Same reason for existing: decode.cpp cannot
 // #include "ac3adm/ac3adm.hpp" or "ac3/admbridge/bridge.hpp" itself, not even behind a
 // preprocessor guard (tools/checks/check_platform_macros.ps1 refuses ANY #if/#ifdef/#ifndef
@@ -31,24 +31,24 @@ namespace ac3cli {
 // than reused directly for the same reason AdmAtmosSource mirrors BridgeResult rather than
 // including bridge.hpp - see this header's own top comment.
 struct AdmObjectUpdate {
- std::uint64_t sample_offset = 0;
- int ramp_duration_samples = 0;
- ac3::oba::DynamicObject state;
+    std::uint64_t sample_offset = 0;
+    int ramp_duration_samples = 0;
+    ac3::oba::DynamicObject state;
 };
 
 // One channel of the master being written - a bed channel (`bed_label` set, pinned at its own
 // room position, `updates` unused) or a JOC-reconstructed dynamic object (`bed_label` empty,
 // positioned by `updates`). Mirrors ac3::admbridge::WriteChannel.
 struct AdmMasterChannel {
- std::string name;
- std::vector<float> pcm;
- std::optional<ac3::oba::BedLabel> bed_label{};
- std::vector<AdmObjectUpdate> updates{};
+    std::string name;
+    std::vector<float> pcm;
+    std::optional<ac3::oba::BedLabel> bed_label{};
+    std::vector<AdmObjectUpdate> updates{};
 };
 
 struct AdmMasterInput {
- std::uint32_t sample_rate = 0;
- std::vector<AdmMasterChannel> channels;
+    std::uint32_t sample_rate = 0;
+    std::vector<AdmMasterChannel> channels;
 };
 
 // Writes `input` to `path` as a Dolby Atmos Master ADM Profile BW64 file (ac3::admbridge::write()
@@ -58,6 +58,6 @@ struct AdmMasterInput {
 // load_adm_atmos_source's own doc comment states for the read direction. Caller checks
 // ac3cli::adm_capability() first, same as run_atmos_adm does.
 [[nodiscard]] std::expected<void, std::string> write_adm_atmos_master(std::string_view path,
- const AdmMasterInput& input);
+                                                                       const AdmMasterInput& input);
 
-} // namespace ac3cli
+}  // namespace ac3cli

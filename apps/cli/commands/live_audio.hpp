@@ -46,12 +46,12 @@ int run_spatial(std::string_view in_path, int device_index, const ac3cli::Option
 // mode "atmos" additionally moves each object's placement every frame:
 // either the same orbiting math run_atmos's synthetic demo uses (elapsed
 // wall-clock time, recomputed every frame), or, when positions= names a
-// live source (legacy item UX4 - OSC today), a real one - ac3::audio::
+// live source (live OSC object positions - OSC today), a real one - ac3::audio::
 // LivePositionSource drained into an ac3::oba::SceneCursor at the same
 // frame-end instant the orbit already samples at, so switching the source
 // on changes WHERE objects go, never the shape of this loop.
 int run_live(std::string_view out_path, int capture_device, std::uint32_t seconds,
- std::uint32_t bitrate, int monitor_device, int passthrough_device,
- std::string_view mode, const ac3cli::Options& meta);
+            std::uint32_t bitrate, int monitor_device, int passthrough_device,
+            std::string_view mode, const ac3cli::Options& meta);
 
-} // namespace ac3cli::commands
+}  // namespace ac3cli::commands

@@ -38,13 +38,13 @@ set(CMAKE_CXX_COMPILER "${AC3FORGE_ARM_GXX}")
 # non-existent -B directory is silently ignored by GCC, which would turn a
 # packaging difference into a confusing "cannot read spec file" later.
 find_file(AC3FORGE_ARM_NANO_SPECS nano.specs
- PATHS /usr/lib/arm-none-eabi/newlib
- NO_DEFAULT_PATH)
+    PATHS /usr/lib/arm-none-eabi/newlib
+    NO_DEFAULT_PATH)
 if(AC3FORGE_ARM_NANO_SPECS)
- get_filename_component(AC3FORGE_ARM_NEWLIB_DIR "${AC3FORGE_ARM_NANO_SPECS}" DIRECTORY)
- set(_ac3_arm_prefix "-B ${AC3FORGE_ARM_NEWLIB_DIR}")
+    get_filename_component(AC3FORGE_ARM_NEWLIB_DIR "${AC3FORGE_ARM_NANO_SPECS}" DIRECTORY)
+    set(_ac3_arm_prefix "-B ${AC3FORGE_ARM_NEWLIB_DIR}")
 else()
- set(_ac3_arm_prefix "")
+    set(_ac3_arm_prefix "")
 endif()
 
 # -mcpu/-mthumb belong in the FLAGS_INIT rather than in add_compile_options()
@@ -81,4 +81,4 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 # than a compile definition: no source file branches on it - the platform
 # split is a directory (apps/baremetal/platform/) as everywhere else here.
 set(AC3FORGE_BAREMETAL_TARGET "mps2-an385" CACHE STRING
- "QEMU machine this bare-metal build targets" FORCE)
+    "QEMU machine this bare-metal build targets" FORCE)

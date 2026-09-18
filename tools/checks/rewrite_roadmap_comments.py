@@ -30,7 +30,7 @@ SKIP_FILES = {
     "rewrite_roadmap_comments.py",
 }
 
-SKIP_DIR_PARTS = {"planning"}
+SKIP_DIR_PARTS = {"planning", ".cxx", "build", "node_modules", ".venv"}
 
 LEGACY_ID_NAMES = {
     "A1": "Atmos dec3 repair remux",
@@ -263,13 +263,14 @@ def iter_files() -> list[Path]:
                 ".html",
                 ".xml",
                 ".ld",
-                ".json",
                 ".gradle",
                 ".sh",
                 ".ps1",
                 ".pyi",
                 ".toml",
             }:
+                continue
+            if "golden" in path.parts and path.suffix.lower() == ".json":
                 continue
             if path.name in SKIP_FILES:
                 continue
@@ -298,7 +299,7 @@ def main() -> int:
     for path in iter_files():
         original = path.read_text(encoding="utf-8")
         if not re.search(
-            r"ROADMAP(?!\.)|roadmap [A-Z]{1,2}[0-9]|roadmap item",
+            r"(?i)ROADMAP(?!\.)|roadmap [A-Z]{1,2}[0-9]|roadmap item",
             original,
         ):
             continue

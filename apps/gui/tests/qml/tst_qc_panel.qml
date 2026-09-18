@@ -3,7 +3,7 @@ import QtTest
 
 import Ac3Forge
 
-// Roadmap C3's own QC surface: QcController (a decode-and-measure pass over
+// GUI QC verification's own QC surface: QcController (a decode-and-measure pass over
 // an ALREADY-ENCODED file, deliberately separate from EncoderController - see
 // qc_controller.hpp's own header comment) plus QcDialog.qml/QcGateMeter.qml,
 // the report view it drives. QcController is a singleton, like
@@ -134,7 +134,7 @@ TestCase {
     //
     // This is a regression test with a real defect behind it. The control's
     // model used to be a hand-written list of four options, written when
-    // there were three presets. Roadmap IO11 then inserted two more INTO THE
+    // there were three presets. QC preset refresh then inserted two more INTO THE
     // MIDDLE of kQcPresetIds (atsc-a85-streaming at index 2, apple-music-atmos
     // at 4), and the QML was never updated - so the option labelled "Netflix"
     // was selecting index 3, which resolves to kQcPresetIds[2],
@@ -240,7 +240,7 @@ TestCase {
         verify(String(passFill.color) !== String(failFill.color));
     }
 
-    // Roadmap UX3: the same pass/fail distinction above, for what a screen
+    // GUI localisation: the same pass/fail distinction above, for what a screen
     // reader reports rather than what is drawn - QcGateMeter's own
     // Accessible.description is built from the identical hasValue/gated/
     // pass properties the fill colour reads, so a pass and a fail can never
