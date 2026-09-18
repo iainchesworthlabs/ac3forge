@@ -2,7 +2,7 @@
 
 Candidate and in-flight work only. This is not a commitment.
 
-For what already ships, see [CHANGELOG.md](CHANGELOG.md) and each product's index page. For the
+For what already ships, see [CHANGELOG.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md) and each product's index page. For the
 library's capability record, see
 [`docs/library/capabilities.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md).
 Detailed design lives in [`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning)
@@ -203,7 +203,7 @@ Full ledger text preserved in git history of this file before 2026-09-17.
 | CR | — | CR1 partial |
 | DR | DR1–DR2, DR5, DR7–DR8 | DR9 partial; DR3/DR4 proposed; DR6 blocked |
 
-For per-item detail on shipped work, see [CHANGELOG.md](CHANGELOG.md).
+For per-item detail on shipped work, see [CHANGELOG.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md).
 
 </details>
 

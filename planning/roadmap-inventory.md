@@ -104,7 +104,7 @@ as active roadmap rows; the new roadmap may mention them only in a legacy index 
 
 | Topic | ROADMAP | Code / docs truth | Inventory note |
 |---|---|---|---|
-| **AC-4 inspect** | IM4 Shipped | `src/ac4/ac4.hpp`: "INSPECTOR, not a decoder"; `capabilities.md` AC-4 row | Shipped scope = parse/inspect + carriage in MP4/TS |
+| **AC-4 inspect** | IM4 Shipped | `src/ac4/include/ac4/ac4.hpp`: "INSPECTOR, not a decoder"; `capabilities.md` AC-4 row | Shipped scope = parse/inspect + carriage in MP4/TS |
 | **AC-4 decode** | *(absent)* | `src/ac4dec/`: syntax only | **Partial** — separate row in section A |
 | **IAMF** | IM3 Shipped (phase 1) | `iamf/iamf.hpp`: "phase 1 of 3"; phases 2–3 wait on IAMF v2.0 final | Shipped = channel-based writer; object elements **blocked** |
 | **IAB reader** | IM1 Shipped | `ac3iab`: full header parse; **AudioDataDLC** opaque bytes only | Shipped = reader; Annex B DLC decode is **follow-on**, not ID'd |
