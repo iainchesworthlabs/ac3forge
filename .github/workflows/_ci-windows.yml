@@ -93,6 +93,7 @@ jobs:
           - name: "Windows MSVC"
             runner: ${{ inputs.windows_runner_1 }}
             preset: windows-msvc
+            hearth: true
             # Declared once, here, so `matrix.experimental` in continue-on-error
             # above resolves against a property the matrix actually defines -
             # without it every leg silently reads null and actionlint reports the
@@ -122,6 +123,7 @@ jobs:
           - name: "Windows LLVM (clang-cl)"
             runner: ${{ inputs.windows_runner_2 }}
             preset: windows-llvm
+            hearth: true
             msvc: true          # clang-cl targets the MSVC ABI: same headers, same libs
             llvm: true
             packageable: true
@@ -177,6 +179,7 @@ jobs:
           - name: "Windows MSVC (arm64)"
             runner: '["windows-11-vs2026-arm"]'
             preset: windows-msvc-arm64
+            hearth: true
             experimental: true
             msvc: true
             msvc_arch: arm64
@@ -463,6 +466,7 @@ jobs:
           # `${{ matrix.gui }}` used to evaluate on this platform.
           gui: "false"
           crucible: ${{ matrix.crucible }}
+          hearth: ${{ matrix.hearth }}
           version-tag: ${{ inputs.version_tag }}
           # No Windows leg needs a GCC version to assert - see build-leg's
           # own toolchain-assert step, which only reads this inside its

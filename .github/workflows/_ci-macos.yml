@@ -70,6 +70,7 @@ jobs:
           - name: "macOS LLVM (Homebrew)"
             runner: '["macos-latest"]'
             preset: macos-llvm
+            hearth: true
             # Crucible compiles here and cannot be run here; see the Configure
             # step's note.
             crucible: true
@@ -106,6 +107,7 @@ jobs:
           - name: "macOS LLVM x64 (Homebrew, Intel)"
             runner: '["macos-15-intel"]'
             preset: macos-llvm-x64
+            hearth: true
             crucible: true
             mac_arch: x64
             llvm: true
@@ -220,6 +222,7 @@ jobs:
           preset: ${{ matrix.preset }}
           gui: ${{ matrix.gui }}
           crucible: ${{ matrix.crucible }}
+          hearth: ${{ matrix.hearth }}
           version-tag: ${{ inputs.version_tag }}
           # No macOS leg needs a GCC version to assert - see build-leg's
           # own toolchain-assert step, which only reads this inside its

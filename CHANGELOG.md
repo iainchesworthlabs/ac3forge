@@ -803,6 +803,16 @@ The sections below contain the complete change list and fixes.
 
 **Verification and CI**
 
+- **Hearth builds and is tested on every build-and-test leg.** `src/sendspin` and
+  `apps/hearth` used to be compiled by one Linux job, so the `[sendspin]` and `[hearth]`
+  cases ran there and nowhere else, and neither Windows nor macOS had ever compiled
+  them in CI. Each leg now configures with vcpkg's `hearth` feature, and `ctest` runs
+  those cases with the rest of the suite. A leg with the feature takes a vcpkg cache key
+  of its own, since its install set is five ports larger.
+- **A change under `apps/hearth/` now lights the three desktop lanes**, not every lane.
+  It was an unmapped path, which the classifier deliberately treats as "build
+  everything"; it is one desktop program built on Windows, Linux and macOS, like
+  `apps/cli/` and `apps/crucible/` beside it.
 - **Heap churn is now gated before a merge, not only after one** (`Memory gate` in
   `ci.yml`): `ac3membench` used to run only on `push` to `main`, so a regression (E-AC-3
   encode churn 67→199 allocs/frame at PR #352) was found blocking nothing. The new job

@@ -179,9 +179,9 @@ CodeQL incident this constraint comes from.
 | `ci_self` | `.github/workflows/`, `.github/actions/`, `.github/toolchain/` | - |
 | `docs` | `docs/`, any `*.md`, `LICENSE`, `mkdocs.yml` | - |
 
-`apps/cli/`, `apps/gui/`, `apps/common/` and `apps/crucible/` light
-`windows`, `linux` and `macos` directly - they are one desktop program built
-and tested on all three, not three separate programs, so they are not
+`apps/cli/`, `apps/gui/`, `apps/common/`, `apps/crucible/` and `apps/hearth/`
+light `windows`, `linux` and `macos` directly - they are one desktop program
+built and tested on all three, not three separate programs, so they are not
 written as "core, therefore fanned out" but as a direct hit on each of the
 three lanes.
 
