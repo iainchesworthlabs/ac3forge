@@ -64,6 +64,8 @@ public:
         std::uint32_t closes = 0;
         std::uint32_t flushes = 0;
         std::size_t capacity = 16384;
+        // Set by lose_at_next_submit(), cleared by the submit that finds it.
+        bool losing = false;
 
         // The device's thread: `frames` more of the clock, what is held
         // heard first.
@@ -83,11 +85,13 @@ public:
             return open;
         }
 
-        // The device goes away: the sink stops itself without being closed,
-        // as ac3::audio's sinks do.
-        void lose() {
+        // The device goes away under the next submit, which is refused: the
+        // sink stops itself without being closed, as ac3::audio's sinks do.
+        // Taken there rather than from this thread so that the engine is in
+        // a pump when it happens, and has to pump again to find out.
+        void lose_at_next_submit() {
             const std::scoped_lock lock(mutex);
-            open = false;
+            losing = true;
         }
 
         [[nodiscard]] std::uint64_t heard_so_far() const {
@@ -121,6 +125,10 @@ public:
 
     bool submit(std::span<const std::span<const float>> /*slots*/, std::size_t frames) override {
         const std::scoped_lock lock(state_->mutex);
+        if (state_->losing) {
+            state_->losing = false;
+            state_->open = false;
+        }
         if (!state_->open || state_->submitted - state_->heard + frames > state_->capacity) {
             return false;
         }
@@ -519,7 +527,7 @@ TEST_CASE("engine: an output whose device goes away stops playback, and the stat
     REQUIRE(engine->status().state == TransportState::kPlaying);
     REQUIRE(eventually([&] { return state->heard_so_far() > 0; }));
 
-    state->lose();
+    state->lose_at_next_submit();
     EngineStatus status;
     REQUIRE(eventually([&] {
         status = engine->status();

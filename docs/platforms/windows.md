@@ -121,6 +121,16 @@ is deliberately explicit about the difference.
     Microsoft's own "Representing Formats for IEC 61937 Transmissions" documentation, plus
     round-trip and real-audio unit tests — all of which held up against the real device too.
 
+!!! note "An endpoint that goes away mid-stream"
+    Unplugging the cable, switching the receiver off or disabling the endpoint invalidates the
+    stream: WASAPI answers `AUDCLNT_E_DEVICE_INVALIDATED` to the render thread's next call, and
+    stops signalling the event it waits on, so a wait that times out asks the endpoint for its
+    padding rather than waiting again. Either answer stops the sink — `running()` turns false,
+    `position()` reports nothing, `submit()` refuses — and `start()` opens again with no
+    `stop()` first, on the same endpoint once it is back. `ac3tests "[passthrough-unplug]"` and
+    `"[monitor-unplug]"` are hidden cases that take a person through it; what the two of them
+    check has not yet been reported from this workstation's own receiver.
+
 !!! note "No EDID/ELD backend on Windows"
     `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
     see [CLI → Following the sink](../forge/cli/commands.md#following-the-sink) — and that read
