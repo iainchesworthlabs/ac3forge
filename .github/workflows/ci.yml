@@ -1002,8 +1002,13 @@ jobs:
             # routinely finish within seconds of each other, so losing the
             # push race is an expected outcome rather than an error - it is
             # what "! [rejected] (fetch first)" on main means. Each writes its
-            # own data file, so rebasing onto whichever sibling won is
-            # conflict-free; only a genuine conflict stops the retry.
+            # own data file, so rebasing onto whichever SIBLING won is
+            # conflict-free. Rebasing onto another run of THIS publisher is
+            # not: both runs add records to the end of the same file, which is
+            # what failed main's quality trend on 2026-09-18 (run
+            # 35317914064). resolve_history_conflict.py keeps both runs'
+            # records and writes the derived window again; anything it cannot
+            # account for it refuses, and this step then fails as it used to.
             pushed=""
             for attempt in 1 2 3 4 5; do
               if git push -q origin quality-history 2>/dev/null; then
@@ -1012,7 +1017,10 @@ jobs:
               fi
               echo "push rejected (attempt ${attempt}); rebasing onto origin/quality-history"
               git fetch -q origin quality-history
-              git rebase -q origin/quality-history
+              if ! git rebase -q origin/quality-history; then
+                python3 "${GITHUB_WORKSPACE}/tools/ci/resolve_history_conflict.py"
+                GIT_EDITOR=true git rebase --continue
+              fi
               sleep $(( (RANDOM % 5) + 1 ))
             done
             if [ -z "${pushed}" ]; then

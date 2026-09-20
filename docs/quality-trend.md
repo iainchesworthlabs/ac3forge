@@ -753,3 +753,14 @@ run but the last, silently dropping the gold-reference gate — and this
 page's append step with it — before either finished. Push runs are now keyed
 per-commit so this can't happen going forward; the specific commits already
 lost to it were backfilled by hand rather than left blank.
+
+Per-commit runs mean two of them can write here at once, which is what
+happens when several pull requests merge within a build's runtime. The run
+that pushes second is rejected, rebases onto the first, and meets a conflict:
+both runs added records to the end of the same file.
+[`tools/ci/resolve_history_conflict.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/resolve_history_conflict.py)
+settles it by keeping both runs' records and writing the `.recent.jsonl`
+window again from the result, so what this page reads carries every commit's
+numbers whichever run finishes first. Anything it cannot account for fails the
+publishing job rather than being guessed at, which is what happened to
+`main@681a083a` on 2026-09-18 before the script existed.
