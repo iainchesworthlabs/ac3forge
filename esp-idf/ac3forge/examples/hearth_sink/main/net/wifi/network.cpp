@@ -46,7 +46,10 @@ constexpr TickType_t kAddressWait = pdMS_TO_TICKS(kAddressWaitSeconds * 1000U);
 // caller waiting in network_up() is told the network failed. A try at a
 // network that is not there takes a scan's time, about 2.4 s on a board, so
 // the default five end about 15 s after the first try.
-constexpr int kQuickRetries = CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES;
+// Never negative, whatever the option says: below zero, a caller waiting in
+// network_up() would never be told the network failed.
+constexpr int kQuickRetries =
+    CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES > 0 ? CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES : 0;
 // After those the station waits before each try, longer each time up to the
 // last, and goes on trying for as long as it runs. An access point that
 // restarts is gone for 30 s to two minutes, and a board on the same socket
@@ -134,8 +137,12 @@ void retry_later() {
     (void)esp_timer_stop(g_retry_timer);
     if (esp_timer_start_once(g_retry_timer, std::uint64_t{kRetryWaitSeconds[step]} * 1000000U) !=
         ESP_OK) {
-        g_retry_due = false;
-        std::printf("error: the wifi station could not wait to try again, so it has stopped trying\n");
+        // Refused because the timer is running again already, which is what
+        // its own callback does when the event loop's queue was full. That
+        // wait is the shorter of the two and its post is the next try, so
+        // g_retry_due stays set for it rather than being let go here - a
+        // station that stopped trying is the whole thing this avoids.
+        std::printf("network: the wifi station keeps the wait it already had before trying again\n");
     }
 }
 
@@ -161,11 +168,11 @@ void on_failure() {
         request_connect();
         return;
     }
-    if (g_failures == kQuickRetries + 1) {
-        // The quick retries are spent, and a caller waiting in network_up()
-        // hears so now. The station goes on trying either way.
-        xEventGroupSetBits(g_events, kFailedBit);
-    }
+    // The quick retries are spent, and a caller waiting in network_up() hears
+    // so from the first try past them. Every try after that sets the bit
+    // again, which costs nothing and does not depend on the count passing
+    // through one particular value. The station goes on trying either way.
+    xEventGroupSetBits(g_events, kFailedBit);
     retry_later();
 }
 
