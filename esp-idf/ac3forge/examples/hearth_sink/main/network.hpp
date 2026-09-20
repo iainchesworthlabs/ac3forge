@@ -27,21 +27,32 @@
 namespace player {
 
 // Brings the network up and blocks until it holds an address, or returns
-// straight away if it already does. False means there is no network - no
-// build with one, nothing stored to join, or the association failed - and the
-// implementation has already said which on the console.
+// straight away if it holds one now. False means there is no network yet - no
+// build with one, nothing stored to join, or the station's quick retries
+// failed to join it - and the implementation has already said which on the
+// console.
 //
-// Safe to call again after it returns false, from any task: the next call
-// tries whatever is stored by then. That is how Improv moves a board that
-// could not join onto the network it has just been given, without a restart.
-// Whatever it returns, a build with a network has its IP stack running once it
-// has been called, so a server can listen before there is an address to
-// reach it at.
+// The WiFi station does not give up there. After a false return it goes on
+// trying the same network with a growing wait, up to 15 s between tries, and
+// it does the same for a network it has joined and then lost, such as an
+// access point that restarts. network_ready() says when it is back.
+//
+// Safe to call again after it returns false, from any task, and while a lost
+// network is being retried: the next call starts over with whatever is
+// stored by then. That is how Improv moves a board that is not on a network
+// onto the one it has just been given, without a restart. A board that holds
+// an address keeps its network, and one stored meanwhile (PUT /network) is
+// the one it joins at its next boot. Whatever it returns, a build with a
+// network has its IP stack running once it has been called, so a server can
+// listen before there is an address to reach it at.
 [[nodiscard]] bool network_up();
 
-// Whether network_up() has succeeded. Asked by anything that wants to know
-// whether to bother - mDNS, the Improv reply's device URL, app_main watching
-// for a network that comes up after boot - rather than to bring it up itself.
+// Whether the board holds an address on its network now. The WiFi station
+// clears it when it loses its network or its address and sets it again when
+// it rejoins; QEMU's Ethernet keeps it once set. Asked by anything that wants
+// to know whether to bother - mDNS, the Improv reply's device URL and state,
+// app_main watching for a network that comes up after boot - rather than to
+// bring the network up itself.
 [[nodiscard]] bool network_ready();
 
 // The address the board holds, as text ("192.168.1.45"), or empty when it

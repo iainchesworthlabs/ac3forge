@@ -334,13 +334,24 @@ config AC3FORGE_EXAMPLE_WIFI_PASSWORD
     default ""
 
 config AC3FORGE_EXAMPLE_WIFI_RETRIES
-    int "Association attempts before giving up"
+    int "Quick retries before a join is reported as failed"
     depends on AC3FORGE_EXAMPLE_NETWORK_WIFI
     default 5
     help
-        Bounded, so a wrong password fails and says so instead of retrying
-        forever. A player that silently never starts is harder to diagnose than
-        one that reports it could not associate.
+        How many times the station tries a network again at once, before a
+        join at boot or over Improv is reported as failed. Bounded, so a wrong
+        password is reported instead of the join waiting for good: a player
+        that silently never starts is harder to diagnose than one that says it
+        could not associate. At the default the report comes about 15 s after
+        the first try for a network that is not there, and about 25 s for a
+        wrong password.
+
+        The station keeps trying after that, waiting 1, 2, 4 and 8 s and then
+        15 s between tries, until it joins or is given another network. A
+        network the board loses after joining gets the same treatment: these
+        quick retries first, then the waits. A board whose access point
+        restarts, or that boots before its access point after a power cut,
+        joins once the network is back.
 
 config AC3FORGE_EXAMPLE_HTTP_URL
     string "URL of the bitstream"
