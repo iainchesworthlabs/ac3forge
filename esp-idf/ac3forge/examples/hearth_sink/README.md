@@ -487,9 +487,79 @@ A board that could not join its network at boot also listens: the network
 stored or built in may have gone, or its passphrase may be wrong. If a join
 over Improv fails, the client reports that it could not connect, and the board
 keeps listening for another network. A network that accepts the board but
-gives it no address within 30 s counts as a failed join. Once a join succeeds,
-the board advertises itself and starts the Sendspin player, as it would at
-boot. It does not restart.
+gives it no address within 30 s counts as a failed join, and the board stays
+associated in case an address comes later. Once a join succeeds, the board
+advertises itself and starts the Sendspin player, as it would at boot. It
+does not restart.
+
+### Keeping the network
+
+**A board does not give up on the network it has been given.** A join that
+fails, and a network the board has joined and then lost, are both retried the
+same way: `CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES` tries at once (five by
+default, about 15 s against a network that is not there), then after 1, 2, 4
+and 8 s, then every 15 s, for as long as the board runs or until it is given
+another network. So an access point that restarts, and a board that boots
+before its access point after a power cut, both end with the board back on
+the network by itself:
+
+```
+network: lost 'kitchen' (reason 200); rejoining
+network: back on 'kitchen' after 140 s, address 192.168.1.45
+```
+
+The quick tries are what `CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES` bounds, so a
+wrong passphrase is still *reported* in about 25 s rather than waited on for
+good: `network_up()` returns false, the console says why, and Improv answers
+`cannot_connect`. The board goes on trying in the background all the same, and
+says so:
+
+```
+error: could not associate with 'kitchen'
+network: still trying 'kitchen' in the background
+```
+
+While a board is off its network, `network_ready()` is false, and with it:
+
+- mDNS stops answering, and announces the board again when it has an address.
+- Improv's current state is *ready*, not *provisioned*, and carries no page
+  address. A client can hand such a board another network, which it joins at
+  once, dropping the one it was retrying. (A board that is *on* a network
+  keeps it: a network given to it over Improv or `PUT /network` is the one it
+  joins at its next boot, and the console says so.)
+- The page and the Sendspin player keep listening. Nothing is started again
+  when the network comes back; a server finds the board once mDNS answers and
+  connects to it as it did before.
+
+**What a board did**, on an ESP32-S3-DevKitC-1-N16R8 against an access point
+switched off and on — a second ESP32-S3 running a SoftAP on its own, so the
+outages are exact:
+
+| What happened | The board noticed | It was back |
+|---|---|---|
+| Access point off for 60 s, board idle | after 8.5 s (reason 200, beacon timeout) | 1.2 s after it returned |
+| Access point gone without a word for 125 s, as in a power cut | after 9.1 s | 14.7 s after it returned |
+| Board booted while the access point was off, which came back 45 s later | the join failed 15 s into the boot | 12.5 s after it returned |
+| Access point off for 35 s while a Sendspin stream played | after 8.5 s | 8.7 s after it returned |
+
+The board reports a loss only when its beacons stop arriving, which is why
+every outage above took about 9 s to notice; an access point that says goodbye
+first is noticed at once. Coming back takes at most the 15 s between tries
+plus the scan, which is the 14.7 s above.
+
+In the third row the board did at its own pace everything a join at boot would
+have: it advertised itself over mDNS and started the Sendspin player, 12.5 s
+after the access point came back, with no restart.
+
+**A stream that is playing when the network goes** ends where it stopped: the
+connection is closed with the network, the player prints the stream's figures
+and gives the sink back, and its memory goes with it — which matters, because
+the network shape runs with about a kilobyte of internal heap free while a
+stream plays. A few small internal allocations fail in the seconds between the
+access point going and the board noticing, with no effect on anything, and the
+board rejoined from there. The play that followed the rejoin started with 9
+chunks late and 3 underruns while the clock filter converged again, about a
+second of audio; the next play was clean (630 of 630 bursts, nothing late).
 
 ### Pairing
 
