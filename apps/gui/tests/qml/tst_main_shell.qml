@@ -31,7 +31,7 @@ TestCase {
         compare(EncoderController.sourcePath, "");
     }
 
-    // Roadmap UX3: the Guided/Advanced/Expert tier control is a
+    // GUI localisation: the Guided/Advanced/Expert tier control is a
     // SegmentedControl, always present regardless of source state, so it is
     // this suite's own natural place to prove the header actually carries
     // real accessible names rather than none at all - each segment's

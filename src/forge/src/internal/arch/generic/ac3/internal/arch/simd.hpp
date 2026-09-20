@@ -39,7 +39,7 @@
 // tests/core/test_simd_kernels.cpp asserts that bit-for-bit for every
 // primitive here, and the kernels built from them inherit the guarantee
 // rather than needing their own bit-exact unit test (see that file's own
-// header comment). fft_kernel.hpp's radix-4 FFT/DCT-IV core (ROADMAP PF4)
+// header comment). fft_kernel.hpp's radix-4 FFT/DCT-IV core (FFT core follow-ups)
 // is NOT part of this seam - it is an algorithmic change, not a
 // wider-lane one, and carries its own correctness argument.
 //
@@ -102,7 +102,7 @@ struct f64x2 {
 }
 
 // Four IEEE-754 single-precision floats: the float32 decode path's lane type
-// (roadmap PF7). src/internal/profile/minimal/'s decode_scalar_t is `float`
+// (minimum-footprint decoder profile). src/internal/profile/minimal/'s decode_scalar_t is `float`
 // and mdct.cpp's IMDCT twiddle stages are templated on it, so on that profile
 // those stages had nothing to vectorise against until this type existed.
 //

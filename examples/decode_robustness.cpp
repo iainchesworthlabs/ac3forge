@@ -8,7 +8,7 @@
 // caller can then skip exactly the damaged frame and keep decoding, rather
 // than aborting the whole stream on its account.
 //
-// DecoderConfig::diagnostics (roadmap AP11) rides alongside: it fires for the
+// DecoderConfig::diagnostics (decoder diagnostics describe()) rides alongside: it fires for the
 // same CRC failure the returned error already reports here, but it is the
 // only signal at all once ConcealmentPolicy is turned on (see
 // tests/decoder/test_diagnostics.cpp) - a concealed frame comes back as a

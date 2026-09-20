@@ -13,7 +13,7 @@
 // application's layout direction (LTR/RTL) and QQmlEngine::retranslate().
 // Modelled directly on CountdownSolver's own language_manager.{hpp,cpp}
 // (R:\CountdownSolver\src\app) - same shape, same canonical language set
-// (roadmap UX3: build to the set already shipped there rather than invent a
+// (GUI localisation: build to the set already shipped there rather than invent a
 // second one), ported to this app's plain-global-namespace controller
 // convention (SystemTheme, EncoderController, QcController).
 //

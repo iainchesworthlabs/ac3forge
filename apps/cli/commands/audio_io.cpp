@@ -72,7 +72,7 @@ int run_devices() {
 namespace {
 
 // Record what a bitstreaming source is actually sending, rather than
-// encoding it (roadmap IO3).
+// encoding it (IEC 61937 de-framing).
 //
 // An endpoint fed IEC 61937 hands its bursts over as ordinary PCM - the
 // capture API has no way to say "this is Dolby Digital" - so a recorder that
@@ -252,7 +252,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         default: encodable_rate = false; break;
     }
 
-    // layout=/codec= (roadmap IO9). Before this, 'record' was stereo AC-3 and
+    // layout=/codec= (wide-layout record/live paths). Before this, 'record' was stereo AC-3 and
     // nothing else, while the GUI recorded any layout the format allows - and
     // the two shared a capture path, an encoder and a container writer, so the
     // gap was entirely in what the CLI would let you ask for.
@@ -299,7 +299,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         }
     };
 
-    // Bitstream passthrough auto-detection (roadmap IO3): an endpoint fed
+    // Bitstream passthrough auto-detection (IEC 61937 de-framing): an endpoint fed
     // IEC 61937 hands its bursts over as ordinary PCM - the capture API has
     // no way to say "this is Dolby Digital" - so encoding them at face value
     // produces noise. A device whose advertised rate AC-3 cannot encode at
@@ -378,7 +378,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         (static_cast<std::uint64_t>(seconds) * rate_hz + ac3::kSamplesPerFrame - 1) /
         ac3::kSamplesPerFrame;
 
-    // Streamed to its container as it is produced (roadmap IO9), through the
+    // Streamed to its container as it is produced (wide-layout record/live paths), through the
     // same RecordingSink the GUI's own takes go through - so a take of any
     // length costs one frame of memory rather than the whole session, and a
     // crash an hour in no longer loses the hour. Opening is DEFERRED, though
@@ -585,7 +585,7 @@ int run_outputs() {
         // own header comment.
         if (const auto spatial = ac3::audio::probe_spatial_capability(d.id); spatial) {
             if (spatial->max_dynamic_objects > 0) {
-                fmt::println("       spatial: {} dynamic objects (ac3cli spatial, roadmap UX8)",
+                fmt::println("       spatial: {} dynamic objects (ac3cli spatial, Windows spatial object renderer)",
                              spatial->max_dynamic_objects);
             } else {
                 fmt::println("       spatial: {}", spatial->reason);
@@ -820,7 +820,7 @@ struct SplitStream {
 
 // Wraps `units` into IEC 61937 bursts and feeds them to `sink`, already
 // started - the tail every 'play' path shares: native passthrough, and
-// roadmap UX9's AC-3 transcode fallback.
+// play/monitor follow mode's AC-3 transcode fallback.
 int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
                          std::span<const std::span<const std::byte>> units, bool eac3) {
     ac3::iec61937::Eac3BurstPacker eac3_packer;
@@ -882,7 +882,7 @@ int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
     return static_cast<bool>(claim);
 }
 
-// Roadmap UX9's transcode-to-passthrough leg: DC9's transcode produces an
+// play/monitor follow mode's transcode-to-passthrough leg: DC9's transcode produces an
 // AC-3 file the sink already confirmed it accepts, then that file plays
 // exactly the way a plain AC-3 source file already does - the two commands
 // this was "two commands and knowing why" before, run back to back with the
@@ -996,7 +996,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
         device_name = chosen->name;
     }
 
-    // Roadmap UX9: what the chosen sink actually accepts. The default
+    // play/monitor follow mode: what the chosen sink actually accepts. The default
     // endpoint (chosen == nullptr) is taken at its word, exactly as before -
     // its capabilities were never probed either, and there is no id to read
     // EDID from. EDID first (real only on ALSA today -
@@ -1028,7 +1028,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
         if (ac3_leg) {
             status_println(status_stream(),
                            "\"{}\" does not accept E-AC-3 over IEC 61937; transcoding to AC-3 "
-                           "instead (roadmap DC9/UX9)",
+                           "instead (stream tools/UX9)",
                            chosen->name);
             return play_via_ac3_transcode(in_path, device_id, device_name, meta);
         }

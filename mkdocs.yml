@@ -1,5 +1,5 @@
 site_name: ac3forge
-site_description: A clean-room AC-3 / E-AC-3 / Dolby Atmos codec library in C++23, the Forge CLI and GUI over it, and Crucible, a desktop per-application Atmos mixer
+site_description: A clean-room AC-3 / E-AC-3 / Dolby Atmos codec library in C++23, the Forge CLI and GUI over it, Crucible, a desktop per-application Atmos mixer, and Hearth, the playback member
 site_url: https://iainchesworthlabs.github.io/ac3forge/
 repo_url: https://github.com/iainchesworthlabs/ac3forge
 repo_name: iainchesworthlabs/ac3forge
@@ -75,15 +75,16 @@ nav:
   - Home: index.md
   - Getting started:
       - Quick start: quickstart.md
-      - Building from source: building.md
-  - Library:
-      - Overview: library/index.md
-      - Capabilities: library/capabilities.md
       - Concepts:
           - Overview: concepts/index.md
           - AC-3 & E-AC-3: concepts/ac3-eac3.md
           - Atmos & JOC: concepts/atmos-joc.md
           - Object signing: concepts/object-signing.md
+      - Building from source: building.md
+  - Library:
+      - Overview: library/index.md
+      - Capabilities: library/capabilities.md
+      - Application coverage: library/application-coverage.md
       - Using the library:
           - Example programs: library/examples.md
           - Encoding AC-3: library/encoding-ac3.md
@@ -107,21 +108,17 @@ nav:
           - C API: library/c-api.md
           - Python: library/python-api.md
           - Rust: library/rust-api.md
-          - JavaScript / WebAssembly: platforms/wasm.md
-      - Validation:
-          - How output is checked: verification.md
-          - Threat model: threat-model.md
-          - Conformance vectors: conformance-vectors.md
-      - Performance & quality:
-          - Overview: performance-quality.md
-          - Performance trend: performance-trend.md
-          - Quality trend: quality-trend.md
-          - Tool comparison trend: tool-comparison-trend.md
-          - Object quality trend: object-quality-trend.md
-          - Landscape: landscape.md
-      - Live demos:
-          - Decode in the browser: wasm-demo.md
-          - Encode in the browser: wasm-encode-demo.md
+  - Validation:
+      - How output is checked: verification.md
+      - Threat model: threat-model.md
+      - Conformance vectors: conformance-vectors.md
+  - Performance & quality:
+      - Overview: performance-quality.md
+      - Performance trend: performance-trend.md
+      - Quality trend: quality-trend.md
+      - Tool comparison trend: tool-comparison-trend.md
+      - Object quality trend: object-quality-trend.md
+      - Landscape: landscape.md
   - Forge:
       - Overview: forge/index.md
       - CLI reference:
@@ -156,6 +153,7 @@ nav:
           - The Windows demo it grew from: platforms/windows-demo.md
   - Hearth:
       - Overview: hearth/index.md
+      - An ESP32-S3 sink: hearth/sink-esp32-s3.md
       - Design record: hearth/design/player-appliance.md
   - Platforms:
       - Which platform: platforms/index.md
@@ -164,7 +162,10 @@ nav:
       - Raspberry Pi: platforms/raspberry-pi.md
       - macOS: platforms/macos.md
       - Android (Shield demo): platforms/android.md
-      - WebAssembly (browser): platforms/wasm.md
+      - WebAssembly:
+          - Browser support: platforms/wasm.md
+          - Decode demo: wasm-demo.md
+          - Encode demo: wasm-encode-demo.md
       - Bare metal:
           - Overview: platforms/bare-metal/index.md
           - Cortex-M3 (QEMU reference): platforms/bare-metal/cortex-m3.md
@@ -175,6 +176,8 @@ nav:
       - Windows null-sink driver: platforms/windows-driver-acx.md
   - Project:
       - Contributing: contributing.md
+      - Security policy: security.md
+      - Release notes: https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md
       - Releasing: releasing.md
       - Self-hosted CI runners: ci-self-hosted-runners.md
       - CI lane partitions: ci-lanes.md

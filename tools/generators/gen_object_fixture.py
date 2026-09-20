@@ -18,7 +18,7 @@ only check that the object layer reads syntax nobody here writes:
     beside a JOC payload with it set, plus two further payloads whose
     configurations use duratione and discard_unknown_payload.
 
-Every one of those was refused outright before roadmap DC6.
+Every one of those was refused outright before legacy item DC6.
 
 Why channel-based immersive and not an ADM master: DEE's `atmos_mezz` input
 accepts BWF ADM, but its reader gates on content provenance ("Content was not

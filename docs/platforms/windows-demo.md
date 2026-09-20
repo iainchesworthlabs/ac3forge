@@ -1033,9 +1033,9 @@ now, and the field says only that no file is chosen. And the driver block put th
 build's tools (the folder, install, remove, whether a package is there) in front of what a
 person needs to know. It now leads with the two facts that matter, whether the silent
 device is installed and whether applications play to it, shows the test-signing state only
-while the device is missing, says in a sentence what to do (an installed copy of the
-application brings the driver with it; a source build points Advanced at a built package),
-and keeps the folder and the remove button under Advanced.
+while the device is missing, says that the current archive carries scripts but needs a
+source-built driver package selected under Advanced, and keeps the folder and the remove
+button under Advanced. An attestation-signed release can carry the driver later.
 
 ### Phase 6: docs, CI, release
 

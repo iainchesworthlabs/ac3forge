@@ -21,6 +21,10 @@
 // Assistant. The player owns the sink while a stream plays; a play from the
 // control surface (POST /play, kept for debugging) owns it otherwise, and the
 // two never run at once.
+//
+// sendspin_start() is app_main's. The rest may be called from any task: the
+// control surface's, the console's, app_main. Until the player has started they
+// find no player, and it has started only once its server has too.
 
 namespace player {
 
@@ -48,11 +52,13 @@ void sendspin_start(const ac3::render::OutputLayout& layout);
 // the board is not available, and a stream they send is not played.
 void sendspin_set_external(bool external);
 
-// The layout the control surface set, for streams no server sets one for.
+// The layout the control surface set, for streams no server sets one for. One
+// set before the player has started, or while it starts, is kept for it.
 [[nodiscard]] bool sendspin_set_layout(const ac3::render::OutputLayout& layout);
 
 // The board's name, slot width or wiring changed: what it tells servers in
-// its hello follows, and a server that was told otherwise connects again.
+// its hello follows, and a server that was told otherwise connects again. A
+// player that is starting takes the change up before it has started.
 void sendspin_board_changed();
 
 // GET /status's "sendspin" object, or nothing without a player.

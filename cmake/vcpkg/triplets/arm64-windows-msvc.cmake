@@ -1,4 +1,4 @@
-# Overlay triplet: arm64 Windows, MSVC (roadmap DR8).
+# Overlay triplet: arm64 Windows, MSVC (Windows ARM64 / reach builds).
 #
 # Linkage policy: dynamic CRT, static dependency libraries - see
 # x64-windows-msvc.cmake for the reasoning, which is the same here. ac3forge

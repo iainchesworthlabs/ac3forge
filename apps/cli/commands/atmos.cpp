@@ -381,7 +381,7 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
     return kExitOk;
 }
 
-// atmos-encode with src=/map= (roadmap IO9): several sources, and an explicit
+// atmos-encode with src=/map= (wide-layout record/live paths): several sources, and an explicit
 // statement of which of their channels become which objects, instead of the
 // single-file "every channel is an object, in file order" default.
 //
@@ -593,7 +593,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                      std::uint32_t bitrate, std::uint32_t objects,
                      const Options& meta, std::string_view paths_path) {
     // src=/map= route to the multi-source path above, which is what makes
-    // obj/objm real destinations on this command (roadmap IO9 - they parsed
+    // obj/objm real destinations on this command (wide-layout record/live paths - they parsed
     // and did nothing here before). Without either, everything below is
     // byte-identical to what this command always did.
     if (!meta.sources.empty() || meta.map_spec.has_value()) {

@@ -4,12 +4,12 @@
 add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp ../common/fmp4_folder_writer.cpp ../common/recording_sink.cpp ../common/container_input.cpp ../common/stream_playback.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/decode.cpp commands/analysis.cpp commands/probe.cpp commands/stream_tools.cpp)
 
 # ../common/recording_sink.cpp + fmp4_folder_writer.cpp: the take writer
-# 'record' and 'live' stream their output through (roadmap IO9), shared
+# 'record' and 'live' stream their output through (wide-layout record/live paths), shared
 # verbatim with the GUI rather than reimplemented - see
 # apps/common/recording_sink.hpp's own comment for why they sit there and not
 # in either app. Compiled straight in; apps/common has no library target,
 # matching how tests/CMakeLists.txt already compiles the same files into
-# ac3tests. ../common/container_input.cpp (roadmap IO2) is the same shape,
+# ac3tests. ../common/container_input.cpp (container readers (mkv/mp4/ts)) is the same shape,
 # for turning a container file into an elementary stream instead, and so is
 # ../common/stream_playback.cpp, the decoder choice and end-of-stream flush
 # 'monitor' and 'spatial' play a stream with.
@@ -45,7 +45,7 @@ endif()
 # in the same way as the apps/common files above.
 target_sources(ac3cli PRIVATE ../common/probe_json.cpp)
 
-# main.cpp's 'atmos-adm' command (roadmap B1 phase 3) needs ac3adm::ac3adm/ac3::admbridge - this
+# main.cpp's 'atmos-adm' command (ADM BWF reader phase 3) needs ac3adm::ac3adm/ac3::admbridge - this
 # project's one optional, non-default library dependency (AC3FORGE_BUILD_ADM, default OFF - see
 # the root CMakeLists.txt's own option() for why: libadm's Boost dependency). Unlike
 # matroska::matroska/mp4::mp4/mpegts::mpegts below (default ON, and a FATAL_ERROR guard in the
@@ -66,7 +66,7 @@ target_sources(ac3cli PRIVATE ../common/probe_json.cpp)
 # anywhere in this target's sources. See adm/atmos_adm.hpp's own top comment for the full
 # reasoning, including why this replaced an earlier #ifdef-based design once
 # tools/checks/check_platform_macros.ps1 was actually run against it.
-# 'atmos-iab' (roadmap IM1 phase 3) rides the exact same AC3FORGE_BUILD_ADM gate as 'atmos-adm'
+# 'atmos-iab' (IAB reader phase 3) rides the exact same AC3FORGE_BUILD_ADM gate as 'atmos-adm'
 # above, for the reason adm/atmos_iab.hpp's own top comment gives: ac3iab::ac3iab by itself
 # (AC3FORGE_BUILD_IAB, default ON) has nothing that can drive AtmosEncoder - only
 # ac3::admbridge's own build_iab() does that, and admbridge only exists when AC3FORGE_BUILD_ADM
@@ -83,7 +83,7 @@ else()
                                   adm/disabled/atmos_iab.cpp)
 endif()
 
-# ac3::coverage (roadmap VX15) instruments this target's OWN sources. Linking
+# ac3::coverage (coverage floors) instruments this target's OWN sources. Linking
 # an instrumented library is not enough and never was: --coverage is
 # target-scoped, so before this line every .cpp under apps/cli compiled
 # uninstrumented and produced no .gcno at all - a gcovr filter for apps/cli
@@ -151,7 +151,7 @@ install(TARGETS ac3cli
     BUNDLE DESTINATION "." COMPONENT runtime)
 
 # ---------------------------------------------------------------------------
-# The man page and the four shell completions (roadmap IO8).
+# The man page and the four shell completions (CLI shell completions).
 #
 # GENERATED, not written: `ac3cli man` and `ac3cli completions <shell>` render
 # both from main.cpp's own command table (see apps/cli/usage.cpp), so a new

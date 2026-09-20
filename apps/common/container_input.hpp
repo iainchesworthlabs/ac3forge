@@ -9,7 +9,7 @@
 #include <vector>
 
 // Turning a container file into the elementary stream ac3::forge actually
-// decodes (roadmap IO2) - shared by ac3cli (decode/qc/levels/play/monitor)
+// decodes (container readers (mkv/mp4/ts)) - shared by ac3cli (decode/qc/levels/play/monitor)
 // and ac3gui (the QC/Inspect pickers), compiled straight into both the same
 // way RecordingSink/Fmp4FolderWriter beside this file are: apps/common has no
 // library target of its own (see recording_sink.hpp's own comment), and this

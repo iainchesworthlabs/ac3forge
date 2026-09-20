@@ -4,7 +4,7 @@
 
 #include "eld_proc.hpp"
 
-// The ALSA EDID/ELD backend's pure half (roadmap UX9), tested on a machine
+// The ALSA EDID/ELD backend's pure half (play/monitor follow mode), tested on a machine
 // with no sound card and no /proc/asound at all - see
 // test_alsa_device_names.cpp's own header comment for why this directory
 // exists and how CMake gates it. sink_capabilities.cpp (finding which

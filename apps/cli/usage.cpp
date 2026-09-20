@@ -215,7 +215,7 @@ void print_play_topic() {
     fmt::println("       ALSA; other backends fall back to the same live probe 'outputs' uses,");
     fmt::println("       noted on stderr when that happens). A source format the sink rejects");
     fmt::println("       gets an automatic fallback rather than a refusal: E-AC-3 on an");
-    fmt::println("       AC-3-only sink is transcoded to AC-3 first (roadmap DC9 feeding this");
+    fmt::println("       AC-3-only sink is transcoded to AC-3 first (stream tools feeding this");
     fmt::println("       same passthrough, the \"no 5.1 PCM over optical\" case in one command");
     fmt::println("       instead of two); a sink that bitstreams neither format falls back to");
     fmt::println("       decoded PCM ('monitor's own path, so a wide programme is folded per");

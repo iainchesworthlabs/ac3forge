@@ -41,6 +41,8 @@ pages in this section.
 | Correctness | Checked in CI against the native decoder's own output, not by hand |
 | Real hardware | Not applicable — the browser is the target |
 
+--8<-- "docs-snippets/generated/platform-browser.md"
+
 ## Encode module
 
 The decode demo's own docs used to call WASM-encode "a separate, much larger undertaking" and leave

@@ -73,7 +73,7 @@ on:
       publish_conformance_vectors:
         description: >-
           Run the conformance-vector generator's determinism check and upload the bundle as an
-          artifact for release.yml to attach (roadmap VX20, docs/conformance-vectors.md). The
+          artifact for release.yml to attach (conformance vectors publication, docs/conformance-vectors.md). The
           generator itself runs on the linux-gcc leg either way - see that step's own comment;
           this input only adds the second, verifying pass and the upload. Set by release.yml.
         type: boolean
@@ -82,32 +82,24 @@ on:
       # caller that does not pass one of these - release.yml's call, today -
       # still builds and tests everything, unchanged.
       #
-      # windows/linux/macos gate only their single-purpose satellite job
-      # below (windows-driver, linux-appimage, package-macos-universal), NOT
-      # the `build` matrix's own Windows/Linux/macOS legs: a job's `if:`
-      # cannot see `matrix.*` (confirmed against actionlint - the `matrix`
-      # context is only available inside that job's own steps/strategy), so
-      # gating individual legs of the one `build` job by OS needs either a
-      # dynamically-computed `strategy.matrix.include` or threading a
-      # condition through dozens of already-conditional steps - both bigger,
-      # riskier changes than this phase. The `build` job always runs every
-      # leg until the CI lane partitions plan's split (phase 5) gives each
-      # OS its own job, where `if: inputs.run_<lane>` works directly. See
-      # docs/ci-lanes.md's "Known simplifications".
+      # Windows, Linux and macOS each have a reusable workflow call below.
+      # Their matrices live in _ci-windows.yml, _ci-linux.yml and
+      # _ci-macos.yml, so these inputs can gate each platform call and its
+      # satellites directly at this orchestration level.
       run_core:
-        description: "Reserved for the sanitizer/coverage legs the CI lane partitions plan moves out of this workflow's `linux` OS grouping and into their own lane; no matrix leg is split out yet, so nothing here reads this input."
+        description: "Reserved for caller compatibility. Core checks run in _ci-core.yml, called directly by ci.yml; no job in this workflow reads this input."
         type: boolean
         default: true
       run_windows:
-        description: "Gates windows-driver. Does NOT yet gate the `build` matrix's windows-msvc/windows-llvm/windows-msvc-arm64 legs - see the group comment above."
+        description: "Gates _ci-windows.yml's build matrix and windows-driver."
         type: boolean
         default: true
       run_linux:
-        description: "Gates linux-appimage. Does NOT yet gate the `build` matrix's linux-gcc/linux-llvm/linux-llvm-asan-ubsan/linux-llvm-tsan legs - see the group comment above."
+        description: "Gates _ci-linux.yml's build matrix and linux-appimage."
         type: boolean
         default: true
       run_macos:
-        description: "Gates package-macos-universal (together with do_package, which it already required). Does NOT yet gate the `build` matrix's macos-llvm/macos-llvm-x64 legs - see the group comment above."
+        description: "Gates _ci-macos.yml's build matrix and package-macos-universal (together with do_package)."
         type: boolean
         default: true
       run_android:
@@ -219,9 +211,9 @@ jobs:
           HOSTED_WINDOWS='["windows-latest"]'
           SELF_LINUX='["self-hosted","Linux","X64"]'
           SELF_WINDOWS='["self-hosted","Windows","X64"]'
-          # One check-runners call covers every plain Linux/Windows leg in
-          # the build matrix below - four Linux (GCC, LLVM, LLVM ASan+UBSan,
-          # LLVM TSan) and two Windows (MSVC, LLVM) today - plus, as legs 5-7,
+          # One check-runners call covers every self-hosted-eligible leg in
+          # the split Linux/Windows workflows - four Linux (GCC, LLVM, LLVM
+          # ASan+UBSan, LLVM TSan) and two Windows (MSVC, LLVM) - plus, as legs 5-7,
           # the standalone containerised build-footprint, build-esp32s3 and
           # build-esp32c3 jobs below the matrix. Bump these, and add a
           # matching numbered output above and matrix.runner (or job runs-on)
@@ -678,7 +670,7 @@ jobs:
             ac3forge-dev-*-Darwin.zip.sha512
           if-no-files-found: error
 
-  # Roadmap DR8 (Reach): a self-contained AppImage for ac3gui, so a user on a
+  # Windows ARM64 / reach builds (Reach): a self-contained AppImage for ac3gui, so a user on a
   # distro whose own Qt 6 is too old, or split differently than
   # qt6-declarative-dev/qt6-declarative-dev-tools expect (the `linux-gcc`/
   # `linux-llvm` legs' own "Install Qt6 (Linux GUI)" step above), can still
@@ -698,12 +690,12 @@ jobs:
   # PipeWire access works exactly like any other installed binary - see
   # docs/platforms/linux.md's own "AppImage" section for the full writeup.
   #
-  # Its own job, not a `build` matrix entry: the base image, the Qt install
+  # Its own job, outside the split Linux matrix: the base image, the Qt install
   # method and the packaging tool below all genuinely differ from every
   # other Linux leg, not just one cacheVariable.
   #
   # ubuntu:22.04 (glibc 2.35), deliberately OLDER than the ubuntu:26.04
-  # every other Linux leg pins (see the `build` matrix's own container
+  # every other Linux leg pins (see _ci-linux.yml's container
   # comment) - an AppImage's entire reason to exist is running on a distro
   # whose own glibc/Qt is older than what built it; compiling against
   # 26.04's much newer glibc would make the result LESS portable than the
@@ -723,14 +715,14 @@ jobs:
     needs: [toolchain-versions]
     if: inputs.run_linux
     runs-on: ubuntu-latest
-    # See the `build` matrix's own container comment for why this is pinned
-    # at all; unlike that matrix, this is the one Linux leg that pins an
+    # See _ci-linux.yml's container comment for why this is pinned at all;
+    # unlike that matrix, this is the one Linux leg that pins an
     # OLDER base on purpose.
     container: ubuntu:22.04
     timeout-minutes: 90
 
     steps:
-      # Same reasoning as the `build` matrix's own "Bootstrap container"
+      # Same reasoning as _ci-linux.yml's "Bootstrap container"
       # step: the bare ubuntu:22.04 image has no git (actions/checkout
       # silently degrades to a REST tarball download without it) and none of
       # the rest of this either. python3/python3-pip is aqtinstall's own
@@ -1213,7 +1205,7 @@ jobs:
           echo "ac3gui ran clean on debian:12-slim, which never had Qt installed and only gained ALSA/graphics-stack libraries as normal runtime dependencies"
 
   # The Shield app (apps/android): a Gradle/NDK build, not a CMake preset
-  # leg, so it is its own job rather than a `build` matrix entry - there is
+  # leg, so it is its own job outside the split platform workflows - there is
   # no config-android/build-android/pack-android preset to reuse, and trying
   # to force this into the same matrix shape as the CMake legs above would
   # buy nothing. debug builds every push (this job's own continuous
@@ -1250,8 +1242,8 @@ jobs:
     name: Android (Shield)
     if: inputs.run_android
     runs-on: ubuntu-latest
-    # Unset elsewhere in this file's `build` matrix (which sets 90 for the
-    # slowest desktop legs, see its own header) - this job had no bound at
+    # The split desktop workflows allow 90 minutes for their slowest legs;
+    # this job had no bound at
     # all before the emulator step below existed. An emulator boot that
     # never completes is the most likely hang in this job now, not the
     # Gradle/CMake build; 45 is generous for boot + connectedDebugAndroidTest
@@ -1339,7 +1331,7 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:assembleDebug --console=plain
 
-      # Roadmap VX18(b): device-free instrumented coverage for
+      # WASM/mobile headless coverage(b): device-free instrumented coverage for
       # NativeBridge/PassthroughBridge (apps/android/app/src/androidTest/) -
       # nothing before this ran ANY Kotlin-level test, only the C++-side
       # pure logic on the desktop ctest suite (docs/platforms/android.md).
@@ -1482,11 +1474,11 @@ jobs:
             packages/*.apk.sha512
           if-no-files-found: error
 
-  # The WASM browser decode demo (apps/wasm, roadmap F3): a real CMake
+  # The WASM browser decode demo (apps/wasm, WASM browser demo): a real CMake
   # preset (config-wasm-emscripten) unlike build-android above, but still its
-  # own job rather than a `build` matrix entry, for the same reason
+  # own job outside the split platform workflows, for the same reason
   # build-android's own header gives - this leg has none of the shape that
-  # matrix's steps assume (no ctest suite to run, no cpack package to stage,
+  # desktop workflows' steps assume (no ctest suite, no cpack package,
   # no gold-reference gate), so folding it in would mean threading new `if:`
   # exclusions through most of that job's steps for no benefit. Runs on
   # every push - a continuous smoke test that the Emscripten toolchain and
@@ -1510,7 +1502,7 @@ jobs:
       - uses: ./.github/actions/setup-emscripten
 
       # Moved ahead of the CMake build (unlike the setup-node this job used
-      # to do only for the Playwright harness below): roadmap UX5's
+      # to do only for the Playwright harness below): WASM streaming decoder package's
       # ac3forge-wasm-decoder package (js/) has to be built before the
       # "Assemble" step further down can copy its dist/ into the servable
       # wasm_decode_demo/ directory - the demo is a consumer of the package
@@ -1574,7 +1566,7 @@ jobs:
           path: build/config-wasm-emscripten/bin/wasm_encode_demo
           if-no-files-found: error
 
-      # Roadmap VX18(a): until this, "it compiles" was the only thing any CI
+      # WASM/mobile headless coverage(a): until this, "it compiles" was the only thing any CI
       # leg checked - docs/platforms/wasm.md's "Not yet verified" section
       # recorded decode/playback/render correctness as manual-only,
       # re-checked by eye every time either demo changed. apps/wasm/tests'
@@ -1659,14 +1651,14 @@ jobs:
           path: apps/wasm/tests/test-results/device-ui-coverage
           if-no-files-found: warn
 
-  # The Rust bindings (rust/, roadmap AP9): a Cargo workspace living in-tree but deliberately
+  # The Rust bindings (rust/, Rust bindings): a Cargo workspace living in-tree but deliberately
   # never add_subdirectory()'d from the root CMakeLists.txt - see rust/README.md's "why this
   # lives in-tree" section. Its own job for the same reason build-wasm/build-footprint are: none
-  # of the `build` matrix's steps apply (no ctest suite, no cpack package, no gold-reference
+  # of the desktop workflows' steps apply (no ctest suite, no cpack package, no gold-reference
   # gate) - rust/ac3forge-sys/build.rs drives its own trimmed CMake configure of just
   # ac3::forge_c_shared rather than reusing a desktop preset.
   #
-  # All three desktop OSes, one job each (roadmap AP9's completeness pass): the
+  # All three desktop OSes, one job each (Rust bindings's completeness pass): the
   # dynamic-linking approach was proven on Linux first and then validated on Windows locally -
   # where the FIRST MSVC build immediately found a real portability bug (bindgen types C enums
   # i32 on MSVC and u32 elsewhere; Error::Other's payload had baked the Linux answer in) -
@@ -1722,8 +1714,8 @@ jobs:
   # the image's Visual Studio developer shell. GitHub's windows-latest image
   # carries what the packages do not: the "Windows Driver Kit" VS component
   # (the WindowsKernelModeDriver10.0 toolset) and the Spectre-mitigated
-  # libraries. Deliberately a GitHub-hosted job, not a `build` matrix leg: the
-  # self-hosted fleet has no WDK component, and none of the matrix's steps
+  # libraries. Deliberately a GitHub-hosted satellite, not a Windows matrix leg:
+  # the self-hosted fleet has no WDK component, and none of the desktop steps
   # (CMake, ctest, cpack, the gold-reference gate) apply to a .sys.
   #
   # What it gates on: the package builds (sys, stamped inf, cat, and the
@@ -1809,11 +1801,11 @@ jobs:
             ${{ env.AC3FORGE_DRIVER_CERT }}
           if-no-files-found: error
 
-  # The minimum-footprint decoder profile (roadmap PF7, docs/building.md) built
+  # The minimum-footprint decoder profile (minimum-footprint decoder profile, docs/building.md) built
   # for arm-none-eabi and run on QEMU's mps2-an385 - a Cortex-M3 with no
   # operating system, no filesystem and no hardware floating point. Its own job
-  # rather than a `build` matrix entry for the same reason build-wasm is: none
-  # of that matrix's steps apply here (no ctest suite, no cpack package, no
+  # outside the split platform workflows for the same reason build-wasm is:
+  # none of their steps apply here (no ctest suite, no cpack package, no
   # gold-reference gate, and the profile's own guard refuses the options those
   # steps assume).
   #
@@ -2778,7 +2770,28 @@ jobs:
           ls -l "$image"
           rm -rf build sdkconfig
 
-      - name: Upload the Sendspin player's QEMU image
+      # The same player on WiFi with nothing stored and nothing built in
+      # (sdkconfig.ci-wifi), which hearth-esp32s3's Improv step boots: what a
+      # board runs before anyone has given it a network. Its images go into
+      # the same artifact, under wifi/.
+      - name: Build the unprovisioned WiFi player for QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-http;sdkconfig.ci-sendspin;sdkconfig.ci-wifi"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          image="$GITHUB_WORKSPACE/sendspin-qemu-image/wifi"
+          mkdir -p "$image"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          (cd build && esptool --chip esp32s3 merge-bin --output "$image/qemu_flash.bin" --pad-to-size 16MB @flash_args >/dev/null)
+          PYTHONPATH="$IDF_PATH/tools" IMAGE="$image" python3 -c "import os; from idf_py_actions.qemu_ext import QEMU_TARGETS; open(os.path.join(os.environ['IMAGE'], 'qemu_efuse.bin'), 'wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"
+          ls -l "$image"
+          rm -rf build sdkconfig
+
+      - name: Upload the Sendspin player's QEMU images
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: esp32s3-sendspin-qemu
@@ -2895,6 +2908,24 @@ jobs:
             --server build/config-linux-gcc/bin/ac3hearth-testserver \
             --out sendspin-qemu-run
 
+      # B2's Improv provisioning, which the step above never reaches: its
+      # board has a network from boot. tools/checks/run_improv_qemu.sh boots
+      # the same image with its link down, gives it a network over Improv,
+      # brings the link up while it waits, and plays to the player it starts
+      # then. It also boots the WiFi build with nothing stored, which must come
+      # up once with its control surface and answer Improv. Before #741 the
+      # first board aborted and the second restarted in a loop. Each boots a
+      # copy of its image, since QEMU writes its NVS into the one it runs.
+      - name: Give the emulated board a network over Improv, and play to it
+        shell: bash
+        run: |
+          tools/checks/run_improv_qemu.sh \
+            --qemu "$QEMU_XTENSA" \
+            --image sendspin-qemu-image \
+            --wifi-image sendspin-qemu-image/wifi \
+            --server build/config-linux-gcc/bin/ac3hearth-testserver \
+            --out improv-qemu-run
+
       - name: Upload the run
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -2904,6 +2935,17 @@ jobs:
             sendspin-qemu-run/qemu-sendspin.txt
             sendspin-qemu-run/server.txt
             sendspin-qemu-run/report.json
+          if-no-files-found: warn
+
+      - name: Upload the Improv run
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hearth-esp32s3-improv
+          path: |
+            improv-qemu-run/*/qemu-improv.txt
+            improv-qemu-run/late-network/server.txt
+            improv-qemu-run/late-network/report.json
           if-no-files-found: warn
 
   build-esp32c3:

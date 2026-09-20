@@ -818,7 +818,7 @@ TEST_CASE("mpegts::Writer refuses what mux() refuses", "[mpegts]") {
 }
 
 // --------------------------------------------------------------------------
-// AC-4 (roadmap IM4): EN 300 468 Annex D.7's DVB signalling - stream_type
+// AC-4 (AC-4 bitstream inspector): EN 300 468 Annex D.7's DVB signalling - stream_type
 // 0x06 plus the extension descriptor 0x7F/0x15 - with the ISO 13818-1 §2.6.8
 // registration descriptor ('AC-4') riding beside it for interop (it is what
 // FFmpeg's own TS demuxer keys AC-4 on, verified against ffprobe).

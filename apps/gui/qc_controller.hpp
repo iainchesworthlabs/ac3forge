@@ -51,7 +51,7 @@ struct RawResult {
 
 }  // namespace qc_detail
 
-// The QObject facade for roadmap C3 — "the same QC verification in the GUI".
+// The QObject facade for GUI QC verification — "the same QC verification in the GUI".
 //
 // This is deliberately NOT a member of EncoderController. Every other panel
 // in this app configures and runs an ENCODE: a source is loaded, a plan is

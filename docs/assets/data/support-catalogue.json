@@ -1,0 +1,693 @@
+{
+  "schema_version": 1,
+  "states": {
+    "published": {
+      "label": "Published",
+      "description": "A release or package can be downloaded now."
+    },
+    "live": {
+      "label": "Live",
+      "description": "Runs from the documentation site."
+    },
+    "source": {
+      "label": "Source",
+      "description": "Supported from source; no downloadable package is published."
+    },
+    "configured": {
+      "label": "Next release",
+      "description": "Release packaging is wired and tested, but no release has carried it yet."
+    },
+    "limited": {
+      "label": "Limited",
+      "description": "Only the capability stated in the cell is supported."
+    },
+    "development": {
+      "label": "In development",
+      "description": "Code exists, but there is no end-user package or complete application."
+    },
+    "unavailable": {
+      "label": "Unavailable",
+      "description": "This product or capability is not supported on this target."
+    }
+  },
+  "evidence": {
+    "hardware": "confirmed on hardware",
+    "ci": "required CI",
+    "experimental-ci": "experimental CI",
+    "emulated": "emulation",
+    "build": "build only",
+    "not-run": "not run",
+    "not-applicable": ""
+  },
+  "platform_groups": [
+    {
+      "id": "windows",
+      "label": "Windows",
+      "page": "platforms/windows.md"
+    },
+    {
+      "id": "linux",
+      "label": "Linux",
+      "page": "platforms/linux.md"
+    },
+    {
+      "id": "macos",
+      "label": "macOS",
+      "page": "platforms/macos.md"
+    },
+    {
+      "id": "browser",
+      "label": "Browser",
+      "page": "platforms/wasm.md"
+    },
+    {
+      "id": "android",
+      "label": "Android",
+      "page": "platforms/android.md"
+    },
+    {
+      "id": "esp32",
+      "label": "ESP32",
+      "page": "platforms/bare-metal/index.md"
+    },
+    {
+      "id": "bare-metal",
+      "label": "Bare metal",
+      "page": "platforms/bare-metal/cortex-m3.md"
+    }
+  ],
+  "feature_overview": [
+    {
+      "label": "AC-3 / E-AC-3 decode",
+      "page": "library/decoding.md",
+      "cells": {
+        "windows": ["source", "ci", "full codec"],
+        "linux": ["source", "hardware", "full codec"],
+        "macos": ["source", "ci", "full codec"],
+        "browser": ["live", "ci", "full codec"],
+        "android": ["source", "ci", "library builds; demo does not expose decode"],
+        "esp32": ["limited", "hardware", "S3 full; C3/C6 memory limits"],
+        "bare-metal": ["source", "emulated", "minimum-footprint profile"]
+      }
+    },
+    {
+      "label": "AC-3 / E-AC-3 encode",
+      "page": "library/encoding-eac3.md",
+      "cells": {
+        "windows": ["source", "hardware", "full codec"],
+        "linux": ["source", "hardware", "full codec"],
+        "macos": ["source", "ci", "full codec"],
+        "browser": ["live", "ci", "full codec"],
+        "android": ["source", "hardware", "Shield demo"],
+        "esp32": ["limited", "hardware", "S3 only; some layouts exceed real time"],
+        "bare-metal": ["source", "emulated", "separate encode profile"]
+      }
+    },
+    {
+      "label": "Atmos object encode",
+      "page": "library/spatial-and-atmos.md",
+      "cells": {
+        "windows": ["source", "hardware", "file and live"],
+        "linux": ["source", "hardware", "file and live"],
+        "macos": ["source", "ci", "file and live"],
+        "browser": ["live", "ci", "object-authoring demo"],
+        "android": ["source", "hardware", "Shield demo"],
+        "esp32": ["unavailable", "not-applicable", "not in the minimum profile"],
+        "bare-metal": ["unavailable", "not-applicable", "not in the minimum profile"]
+      }
+    },
+    {
+      "label": "Atmos object decode",
+      "page": "library/spatial-and-atmos.md",
+      "cells": {
+        "windows": ["source", "hardware", "decode and spatial output"],
+        "linux": ["source", "hardware", "decode"],
+        "macos": ["source", "ci", "decode; audio untested"],
+        "browser": ["live", "ci", "decode demo"],
+        "android": ["source", "ci", "library builds; demo does not expose decode"],
+        "esp32": ["limited", "hardware", "S3 full; C3/C6 7.1.4 exceeds heap"],
+        "bare-metal": ["source", "emulated", "fixture coverage"]
+      }
+    },
+    {
+      "label": "Live input or loopback capture",
+      "page": "library/muxing-and-sinks.md",
+      "cells": {
+        "windows": ["source", "hardware", "WASAPI"],
+        "linux": ["source", "hardware", "ALSA or PipeWire"],
+        "macos": ["source", "build", "Core Audio; no audio run"],
+        "browser": ["live", "ci", "microphone in encode demo"],
+        "android": ["unavailable", "not-applicable", "Shield demo is playback-only"],
+        "esp32": ["unavailable", "not-applicable", ""],
+        "bare-metal": ["unavailable", "not-applicable", ""]
+      }
+    },
+    {
+      "label": "PCM monitor playback",
+      "page": "library/muxing-and-sinks.md",
+      "cells": {
+        "windows": ["source", "hardware", "WASAPI"],
+        "linux": ["source", "hardware", "ALSA or PipeWire"],
+        "macos": ["source", "build", "Core Audio; no audio run"],
+        "browser": ["live", "ci", "Web Audio"],
+        "android": ["unavailable", "not-applicable", "Shield demo uses passthrough"],
+        "esp32": ["limited", "build", "S3 I2S examples run; Hearth DAC untested"],
+        "bare-metal": ["unavailable", "not-applicable", ""]
+      }
+    },
+    {
+      "label": "IEC 61937 passthrough output",
+      "page": "library/muxing-and-sinks.md",
+      "cells": {
+        "windows": ["source", "hardware", "WASAPI to an AVR"],
+        "linux": ["source", "hardware", "ALSA and PipeWire to an AVR"],
+        "macos": ["source", "build", "Core Audio; no receiver run"],
+        "browser": ["unavailable", "not-applicable", ""],
+        "android": ["source", "hardware", "Shield to an AVR"],
+        "esp32": ["unavailable", "not-applicable", ""],
+        "bare-metal": ["unavailable", "not-applicable", ""]
+      }
+    },
+    {
+      "label": "Per-application capture",
+      "page": "crucible/index.md",
+      "cells": {
+        "windows": ["source", "hardware", "process loopback"],
+        "linux": ["source", "hardware", "PipeWire"],
+        "macos": ["development", "not-run", "disabled after CI hang"],
+        "browser": ["unavailable", "not-applicable", ""],
+        "android": ["unavailable", "not-applicable", ""],
+        "esp32": ["unavailable", "not-applicable", ""],
+        "bare-metal": ["unavailable", "not-applicable", ""]
+      }
+    },
+    {
+      "label": "Sendspin network playback",
+      "page": "hearth/index.md",
+      "cells": {
+        "windows": ["development", "ci", "Hearth engine and test tools"],
+        "linux": ["development", "ci", "Hearth engine and test tools"],
+        "macos": ["development", "ci", "Hearth engine and test tools"],
+        "browser": ["unavailable", "not-applicable", ""],
+        "android": ["unavailable", "not-applicable", ""],
+        "esp32": ["source", "hardware", "S3 network sink"],
+        "bare-metal": ["unavailable", "not-applicable", ""]
+      }
+    }
+  ],
+  "overview": [
+    {
+      "label": "C++ library",
+      "page": "library/index.md",
+      "cells": {
+        "windows": ["published", "ci", "x64 and experimental ARM64"],
+        "linux": ["published", "hardware", "x86_64 and aarch64"],
+        "macos": ["published", "ci", "universal x86_64 + arm64"],
+        "browser": ["live", "ci", "WebAssembly"],
+        "android": ["source", "hardware", "linked into the Shield demo"],
+        "esp32": ["source", "hardware", "ESP-IDF component"],
+        "bare-metal": ["source", "emulated", "minimum-footprint profile"]
+      }
+    },
+    {
+      "label": "Forge CLI",
+      "page": "forge/cli/index.md",
+      "cells": {
+        "windows": ["published", "ci", "x64 and experimental ARM64"],
+        "linux": ["published", "hardware", "x86_64 and aarch64"],
+        "macos": ["published", "ci", "universal x86_64 + arm64"],
+        "browser": ["unavailable", "not-applicable", ""],
+        "android": ["unavailable", "not-applicable", ""],
+        "esp32": ["unavailable", "not-applicable", ""],
+        "bare-metal": ["unavailable", "not-applicable", ""]
+      }
+    },
+    {
+      "label": "Forge GUI",
+      "page": "forge/gui/index.md",
+      "cells": {
+        "windows": ["published", "hardware", "x64 only"],
+        "linux": ["published", "hardware", "x86_64 and aarch64"],
+        "macos": ["published", "ci", "universal; never used on a Mac"],
+        "browser": ["unavailable", "not-applicable", ""],
+        "android": ["unavailable", "not-applicable", ""],
+        "esp32": ["unavailable", "not-applicable", ""],
+        "bare-metal": ["unavailable", "not-applicable", ""]
+      }
+    },
+    {
+      "label": "Crucible",
+      "page": "crucible/index.md",
+      "cells": {
+        "windows": ["published", "hardware", "x64 UI/driver run; receiver output untested"],
+        "linux": ["configured", "hardware", "x86_64 and aarch64"],
+        "macos": ["development", "ci", "builds; application and audio untested"],
+        "browser": ["unavailable", "not-applicable", ""],
+        "android": ["unavailable", "not-applicable", ""],
+        "esp32": ["unavailable", "not-applicable", ""],
+        "bare-metal": ["unavailable", "not-applicable", ""]
+      }
+    },
+    {
+      "label": "Hearth desktop player",
+      "page": "hearth/index.md",
+      "cells": {
+        "windows": ["development", "ci", "engine only; no window or package"],
+        "linux": ["development", "ci", "engine only; no window or package"],
+        "macos": ["development", "ci", "engine only; no window or package"],
+        "browser": ["unavailable", "not-applicable", ""],
+        "android": ["unavailable", "not-applicable", ""],
+        "esp32": ["unavailable", "not-applicable", ""],
+        "bare-metal": ["unavailable", "not-applicable", ""]
+      }
+    },
+    {
+      "label": "Hearth network sink",
+      "page": "hearth/sink-esp32-s3.md",
+      "cells": {
+        "windows": ["unavailable", "not-applicable", ""],
+        "linux": ["unavailable", "not-applicable", ""],
+        "macos": ["unavailable", "not-applicable", ""],
+        "browser": ["unavailable", "not-applicable", ""],
+        "android": ["unavailable", "not-applicable", ""],
+        "esp32": ["source", "hardware", "S3 group run, no DAC; C6 overlay has no sink guide"],
+        "bare-metal": ["unavailable", "not-applicable", ""]
+      }
+    },
+    {
+      "label": "Browser modules and demos",
+      "page": "platforms/wasm.md",
+      "cells": {
+        "windows": ["unavailable", "not-applicable", ""],
+        "linux": ["unavailable", "not-applicable", ""],
+        "macos": ["unavailable", "not-applicable", ""],
+        "browser": ["live", "ci", "decode, encode and object authoring"],
+        "android": ["unavailable", "not-applicable", ""],
+        "esp32": ["unavailable", "not-applicable", ""],
+        "bare-metal": ["unavailable", "not-applicable", ""]
+      }
+    },
+    {
+      "label": "Shield Atmos Demo",
+      "page": "platforms/android.md",
+      "cells": {
+        "windows": ["unavailable", "not-applicable", ""],
+        "linux": ["unavailable", "not-applicable", ""],
+        "macos": ["unavailable", "not-applicable", ""],
+        "browser": ["unavailable", "not-applicable", ""],
+        "android": ["published", "hardware", "NVIDIA Shield arm64; sideload only"],
+        "esp32": ["unavailable", "not-applicable", ""],
+        "bare-metal": ["unavailable", "not-applicable", ""]
+      }
+    }
+  ],
+  "platform_details": {
+    "windows": {
+      "title": "Windows support by variant",
+      "variants": ["x64", "ARM64"],
+      "rows": [
+        ["C++ library", ["published", "ci", "release archive"], ["configured", "experimental-ci", "release archive"]],
+        ["Forge CLI", ["published", "hardware", "ZIP and NSIS installer"], ["configured", "experimental-ci", "ZIP and NSIS installer"]],
+        ["Forge GUI", ["published", "hardware", "ships with Forge"], ["unavailable", "not-applicable", "Qt kit is not wired"]],
+        ["Crucible", ["published", "hardware", "UI/driver run; receiver output untested"], ["unavailable", "not-applicable", ""]],
+        ["Hearth desktop player", ["development", "ci", "engine and test tools only"], ["unavailable", "not-applicable", ""]],
+        ["Live capture and PCM monitor", ["source", "hardware", "WASAPI"], ["source", "experimental-ci", "compiled with the CLI"]],
+        ["IEC 61937 output", ["source", "hardware", "AC-3, E-AC-3 and signed Atmos"], ["source", "experimental-ci", "no receiver run"]],
+        ["Per-application capture", ["source", "hardware", "Windows process loopback"], ["source", "experimental-ci", "compiled; runtime untested"]],
+        ["Atmos spatial rendering", ["source", "hardware", "Windows Sonic accepted the stream"], ["source", "experimental-ci", "compiled; runtime untested"]]
+      ]
+    },
+    "linux": {
+      "title": "Linux support by variant",
+      "variants": ["x86_64", "aarch64"],
+      "rows": [
+        ["C++ library", ["published", "ci", "TGZ, DEB and RPM"], ["published", "hardware", "TGZ, DEB and RPM"]],
+        ["Forge CLI", ["published", "ci", "TGZ, DEB and RPM"], ["published", "hardware", "TGZ, DEB and RPM"]],
+        ["Forge GUI", ["published", "ci", "packages plus AppImage"], ["published", "hardware", "packages; no AppImage"]],
+        ["Crucible", ["configured", "ci", "TGZ and DEB; check the release assets"], ["configured", "hardware", "TGZ and DEB; check the release assets"]],
+        ["Hearth desktop player", ["development", "ci", "engine and test tools only"], ["development", "ci", "engine and test tools only"]],
+        ["Live capture and PCM monitor", ["source", "ci", "ALSA or PipeWire"], ["source", "hardware", "ALSA or PipeWire"]],
+        ["IEC 61937 output", ["source", "ci", "hardware untried"], ["source", "hardware", "ALSA and PipeWire on one Pi 4B"]],
+        ["Per-application capture", ["source", "ci", "PipeWire"], ["source", "hardware", "PipeWire on one Pi 4B"]]
+      ]
+    },
+    "macos": {
+      "title": "macOS support by variant",
+      "variants": ["Apple Silicon", "Intel", "Universal package"],
+      "rows": [
+        ["C++ library", ["source", "ci", "native arm64"], ["source", "ci", "native x86_64"], ["published", "ci", "best-effort development archive"]],
+        ["Forge CLI", ["source", "ci", "native arm64"], ["source", "ci", "native x86_64"], ["published", "ci", "DMG"]],
+        ["Forge GUI", ["source", "ci", "native arm64"], ["source", "ci", "native x86_64"], ["published", "ci", "DMG; never used on a Mac"]],
+        ["Crucible", ["development", "ci", "builds and tests"], ["development", "ci", "builds and tests"], ["unavailable", "not-applicable", "no package"]],
+        ["Hearth desktop player", ["development", "ci", "engine only"], ["development", "ci", "engine only"], ["unavailable", "not-applicable", "no package"]],
+        ["Live capture and PCM monitor", ["source", "build", "Core Audio; no audio run"], ["source", "build", "Core Audio; no audio run"], ["unavailable", "not-applicable", ""]],
+        ["IEC 61937 output", ["source", "build", "no receiver run"], ["source", "build", "no receiver run"], ["unavailable", "not-applicable", ""]],
+        ["Per-application capture", ["development", "not-run", "disabled by default after a CI hang"], ["development", "not-run", "creation path unconfirmed"], ["unavailable", "not-applicable", ""]]
+      ]
+    },
+    "android": {
+      "title": "Android support by variant",
+      "variants": ["NVIDIA Shield arm64"],
+      "rows": [
+        ["C++ library", ["source", "hardware", "linked in-tree through the NDK"]],
+        ["Shield Atmos Demo", ["published", "hardware", "release APK; sideload with adb"]],
+        ["Forge CLI and GUI", ["unavailable", "not-applicable", "not ported"]],
+        ["Crucible", ["unavailable", "not-applicable", ""]],
+        ["Hearth", ["unavailable", "not-applicable", ""]],
+        ["Atmos encode and HDMI output", ["source", "hardware", "confirmed through an AV receiver"]],
+        ["Audio capture", ["unavailable", "not-applicable", "playback-only demo"]]
+      ]
+    },
+    "browser": {
+      "title": "Browser support",
+      "variants": ["WebAssembly"],
+      "rows": [
+        ["Decode demo", ["live", "ci", "AC-3, E-AC-3 and Atmos objects"]],
+        ["Encode demo", ["live", "ci", "AC-3, E-AC-3 and Atmos authoring"]],
+        ["JavaScript decoder package", ["source", "ci", "build from js/; unpublished on npm"]],
+        ["C++ WebAssembly modules", ["source", "ci", "decode and encode"]],
+        ["Forge, Crucible and Hearth apps", ["unavailable", "not-applicable", "not browser applications"]]
+      ]
+    },
+    "raspberry-pi": {
+      "title": "Raspberry Pi support by variant",
+      "variants": ["Pi 4B (64-bit)", "Pi 5 (64-bit)", "Pi 3"],
+      "rows": [
+        ["C++ library", ["published", "hardware", "Linux aarch64 packages"], ["published", "not-run", "expected through Linux aarch64"], ["unavailable", "not-applicable", "not supported"]],
+        ["Forge CLI and GUI", ["published", "hardware", "Linux aarch64 packages"], ["published", "not-run", "expected through Linux aarch64"], ["unavailable", "not-applicable", "not supported"]],
+        ["Crucible", ["configured", "hardware", "Linux aarch64 package path"], ["configured", "not-run", "expected through Linux aarch64"], ["unavailable", "not-applicable", "not supported"]],
+        ["Live capture and PCM monitor", ["source", "hardware", "Linux backends"], ["source", "not-run", "expected through Linux backends"], ["unavailable", "not-applicable", ""]],
+        ["IEC 61937 output", ["source", "hardware", "ALSA and PipeWire to an AVR"], ["source", "not-run", "expected; no receiver run"], ["unavailable", "not-applicable", ""]]
+      ]
+    },
+    "bare-metal": {
+      "title": "Bare-metal and ESP32 support by variant",
+      "variants": ["Cortex-M3", "ESP32-S3", "ESP32-C3", "ESP32-C6", "ESPHome/S3"],
+      "rows": [
+        ["AC-3 and E-AC-3 decode", ["source", "emulated", "all fixtures"], ["source", "hardware", "all fixtures in real time"], ["limited", "emulated", "12 of 14; 7.1.4 exceeds heap"], ["limited", "hardware", "all except 7.1.4 fit; most real time with Wi-Fi"], ["source", "ci", "wraps the S3 decoder"]],
+        ["AC-3 and E-AC-3 encode", ["source", "emulated", "six fixture rows"], ["limited", "hardware", "correct; widest layouts miss real time"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", ""]],
+        ["Atmos object reconstruction", ["source", "emulated", "fixture coverage"], ["source", "hardware", "placed onto 7.1.4"], ["unavailable", "not-applicable", "7.1.4 fixtures exceed heap"], ["unavailable", "not-applicable", "7.1.4 exceeds heap"], ["source", "ci", "inherits S3 component"]],
+        ["Hearth Sendspin sink", ["unavailable", "not-applicable", ""], ["source", "hardware", "two-board group run; no DAC connected"], ["unavailable", "not-applicable", ""], ["development", "build", "build overlay; no setup guide or Sendspin CI"], ["unavailable", "not-applicable", "not yet a media_player or speaker"]],
+        ["Downloadable firmware", ["unavailable", "not-applicable", "build from source"], ["unavailable", "not-applicable", "build and flash from source"], ["unavailable", "not-applicable", "probe target only"], ["unavailable", "not-applicable", "probe/overlay only"], ["unavailable", "not-applicable", "external component source"]]
+      ]
+    }
+  },
+  "application_capabilities": {
+    "columns": ["Library", "Forge CLI", "Forge GUI", "Crucible", "Hearth"],
+    "rows": [
+      ["AC-3 encode", "Public API", "File and live", "File and live", "Live output", "No"],
+      ["E-AC-3 encode", "Public API", "File and live", "File and live", "Live output", "No"],
+      ["AC-3 / E-AC-3 decode", "Public API", "File and playback", "File and monitor", "Output adaptation", "Desktop and ESP32"],
+      ["Atmos/JOC object encode", "Public API", "File and live", "File and live", "Placed applications", "No"],
+      ["Atmos/JOC object decode", "Public API", "Inspect and spatial play", "Inspect and monitor", "No", "Desktop and ESP32"],
+      ["Probe and JSON inspection", "Public API", "Yes", "Open stream", "No", "No"],
+      ["Metadata and loudness QC", "Public API", "Yes", "Yes", "Settings only", "No"],
+      ["Live device capture", "Internal audio layer", "Yes", "Yes", "Per application", "No"],
+      ["PCM monitor playback", "Internal audio layer", "Yes", "Yes", "Output fallback", "Desktop engine"],
+      ["IEC 61937 passthrough", "Internal audio layer", "Yes", "Yes", "Output policy", "Desktop engine"],
+      ["Sendspin network playback", "Sendspin module", "Test server only", "No", "No", "Desktop engine and ESP32 sink"]
+    ]
+  },
+  "downloads": [
+    {
+      "product": "Forge",
+      "platform": "Windows",
+      "variant": "x64",
+      "state": "published",
+      "artifact": "NSIS installer or ZIP containing ac3cli and ac3gui",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "The binaries are unsigned; Windows may show a SmartScreen warning."
+    },
+    {
+      "product": "Forge",
+      "platform": "Windows",
+      "variant": "ARM64",
+      "state": "configured",
+      "artifact": "NSIS installer or ZIP containing ac3cli",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "The CI leg is experimental and ac3gui is not included."
+    },
+    {
+      "product": "Forge",
+      "platform": "Linux",
+      "variant": "x86_64",
+      "state": "published",
+      "artifact": "TGZ, DEB or RPM; ac3gui is also available as an AppImage",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "Choose the package format used by your distribution."
+    },
+    {
+      "product": "Forge",
+      "platform": "Linux",
+      "variant": "aarch64",
+      "state": "published",
+      "artifact": "TGZ, DEB or RPM containing ac3cli and ac3gui",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "This is the Raspberry Pi 4/5 package when the operating system is 64-bit."
+    },
+    {
+      "product": "Forge",
+      "platform": "macOS",
+      "variant": "Universal (Apple Silicon + Intel)",
+      "state": "published",
+      "artifact": "Universal DMG containing ac3cli and ac3gui",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "The package is CI-tested; no project maintainer has used it on a Mac."
+    },
+    {
+      "product": "Crucible",
+      "platform": "Windows",
+      "variant": "x64",
+      "state": "published",
+      "artifact": "Separate Crucible ZIP",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "The archive has driver scripts. The test-signed driver must be built from source."
+    },
+    {
+      "product": "Crucible",
+      "platform": "Linux",
+      "variant": "x86_64",
+      "state": "configured",
+      "artifact": "TGZ or DEB when present in the release",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "Packaging is wired, but no tag has exercised this route; the x86_64 asset is best-effort."
+    },
+    {
+      "product": "Crucible",
+      "platform": "Linux",
+      "variant": "aarch64",
+      "state": "configured",
+      "artifact": "TGZ or DEB when present in the release",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "Packaging is wired, but no tag has exercised this route."
+    },
+    {
+      "product": "Crucible",
+      "platform": "macOS",
+      "variant": "Apple Silicon or Intel",
+      "state": "development",
+      "artifact": "No package",
+      "action": "Read macOS status",
+      "url": "platforms/macos/",
+      "note": "The code builds and tests in CI; the application and audio path have not been used on a Mac."
+    },
+    {
+      "product": "Hearth",
+      "platform": "Windows",
+      "variant": "x64",
+      "state": "development",
+      "artifact": "No desktop package",
+      "action": "Read Hearth status",
+      "url": "hearth/",
+      "note": "The engine and development tools exist; there is no desktop window."
+    },
+    {
+      "product": "Hearth",
+      "platform": "Linux",
+      "variant": "x86_64",
+      "state": "development",
+      "artifact": "No desktop package",
+      "action": "Read Hearth status",
+      "url": "hearth/",
+      "note": "The engine and development tools exist; there is no desktop window."
+    },
+    {
+      "product": "Hearth",
+      "platform": "Linux",
+      "variant": "aarch64",
+      "state": "development",
+      "artifact": "No desktop package",
+      "action": "Read Hearth status",
+      "url": "hearth/",
+      "note": "The engine and development tools exist; there is no desktop window."
+    },
+    {
+      "product": "Hearth",
+      "platform": "macOS",
+      "variant": "Apple Silicon or Intel",
+      "state": "development",
+      "artifact": "No desktop package",
+      "action": "Read Hearth status",
+      "url": "hearth/",
+      "note": "The engine and development tools exist; there is no desktop window."
+    },
+    {
+      "product": "Hearth",
+      "platform": "ESP32",
+      "variant": "ESP32-S3 with 8 MB PSRAM",
+      "state": "source",
+      "artifact": "Source project to build and flash",
+      "action": "Open the sink setup guide",
+      "url": "hearth/sink-esp32-s3/",
+      "note": "No firmware image is published; the network build requires 8 MB PSRAM and no DAC has been connected yet."
+    },
+    {
+      "product": "Hearth",
+      "platform": "ESP32",
+      "variant": "ESP32-C6",
+      "state": "development",
+      "artifact": "Build overlay only",
+      "action": "Read Hearth status",
+      "url": "hearth/",
+      "note": "There is no C6 sink setup guide or Sendspin CI job."
+    },
+    {
+      "product": "C++ library",
+      "platform": "Windows",
+      "variant": "x64",
+      "state": "published",
+      "artifact": "ac3forge-dev ZIP",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "Contains headers, libraries and CMake package files."
+    },
+    {
+      "product": "C++ library",
+      "platform": "Windows",
+      "variant": "ARM64",
+      "state": "configured",
+      "artifact": "ac3forge-dev ZIP",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "The CI leg is experimental."
+    },
+    {
+      "product": "C++ library",
+      "platform": "Linux",
+      "variant": "x86_64",
+      "state": "published",
+      "artifact": "ac3forge-dev TGZ, DEB or RPM development package",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "The system packages separate runtime libraries from headers and CMake files."
+    },
+    {
+      "product": "C++ library",
+      "platform": "Linux",
+      "variant": "aarch64",
+      "state": "published",
+      "artifact": "ac3forge-dev TGZ, DEB or RPM development package",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "Suitable for a 64-bit Raspberry Pi."
+    },
+    {
+      "product": "C++ library",
+      "platform": "macOS",
+      "variant": "Universal (Apple Silicon + Intel)",
+      "state": "configured",
+      "artifact": "Best-effort ac3forge-dev ZIP",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "The development archive may be absent from a release."
+    },
+    {
+      "product": "Python package",
+      "platform": "Windows",
+      "variant": "x64",
+      "state": "published",
+      "artifact": "ac3forge wheel from PyPI",
+      "action": "Open PyPI",
+      "url": "https://pypi.org/project/ac3forge/",
+      "note": "Install with pip install ac3forge."
+    },
+    {
+      "product": "Python package",
+      "platform": "Linux",
+      "variant": "x86_64",
+      "state": "published",
+      "artifact": "ac3forge wheel from PyPI",
+      "action": "Open PyPI",
+      "url": "https://pypi.org/project/ac3forge/",
+      "note": "Install with pip install ac3forge."
+    },
+    {
+      "product": "Python package",
+      "platform": "Linux",
+      "variant": "aarch64",
+      "state": "published",
+      "artifact": "ac3forge wheel from PyPI",
+      "action": "Open PyPI",
+      "url": "https://pypi.org/project/ac3forge/",
+      "note": "Install with pip install ac3forge."
+    },
+    {
+      "product": "Python package",
+      "platform": "macOS",
+      "variant": "Apple Silicon",
+      "state": "published",
+      "artifact": "ac3forge wheel from PyPI",
+      "action": "Open PyPI",
+      "url": "https://pypi.org/project/ac3forge/",
+      "note": "Install with pip install ac3forge."
+    },
+    {
+      "product": "Python package",
+      "platform": "macOS",
+      "variant": "Intel",
+      "state": "published",
+      "artifact": "ac3forge wheel from PyPI",
+      "action": "Open PyPI",
+      "url": "https://pypi.org/project/ac3forge/",
+      "note": "Install with pip install ac3forge."
+    },
+    {
+      "product": "Browser demos",
+      "platform": "Browser",
+      "variant": "WebAssembly",
+      "state": "live",
+      "artifact": "Decode and encode demos",
+      "action": "Open the demos",
+      "url": "wasm-demo/",
+      "note": "The encode demo and Atmos authoring page are linked from the demo."
+    },
+    {
+      "product": "JavaScript decoder",
+      "platform": "Browser",
+      "variant": "WebAssembly",
+      "state": "source",
+      "artifact": "Source package under js/",
+      "action": "Read the browser package guide",
+      "url": "platforms/wasm/",
+      "note": "ac3forge-wasm-decoder has not been published to npm."
+    },
+    {
+      "product": "Shield Atmos Demo",
+      "platform": "Android",
+      "variant": "NVIDIA Shield arm64",
+      "state": "published",
+      "artifact": "Release APK",
+      "action": "Open GitHub releases",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",
+      "note": "Sideload with adb; it is not distributed through the Play Store."
+    }
+  ]
+}

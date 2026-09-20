@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # fuzz/measure-agreement.sh - the calibration method behind
-# differential_oracle.hpp's kMinAgreementDb (roadmap G3). Runs every file in
+# differential_oracle.hpp's kMinAgreementDb (differential decoder fuzzing). Runs every file in
 # fuzz/seeds/fuzz_ac3_decode/ and fuzz/seeds/fuzz_eac3_decode/ - real,
 # already-shipping, unmutated content - through the differential harnesses
 # once each with AC3FORGE_DIFF_MEASURE_ONLY=1 (measures and prints; never

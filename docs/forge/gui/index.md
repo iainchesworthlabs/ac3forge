@@ -1,23 +1,12 @@
 # Window layout
 
-`ac3gui` (window title `ac3forge — <source>` once a source is loaded, QML module `Ac3Forge`) is a
-Qt Quick front end over the same
-`ac3::forge` library documented under [Library](../../library/index.md) — nothing in the GUI has
-logic the library doesn't also expose, and every setting it makes maps onto an equivalent
-[`ac3cli`](../cli/index.md) invocation shown live at the bottom of the window. See
-[Forge](../index.md#installing) for how to get it — the CLI and the GUI are one
-download in every generator and registry, and every platform's release archive carries both.
+`ac3gui` is Forge's graphical interface. It uses a two-pane workbench for sources, codec
+settings, objects, metadata, and results. The equivalent [`ac3cli`](../cli/index.md) command is
+shown at the bottom of the window.
 
-The screenshots in this guide are of the current two-pane "workbench" layout, drawn in the
-default **Signal** palette's light mode. The app ships four palettes — Signal (the design
-system's red), Ink (a cooler blue), Console (studio amber), and **System**, which takes the
-desktop's own accent colour (`QPalette::Accent`: the Windows accent, macOS's control accent,
-KDE's — Qt fills it natively, falling back to the highlight colour elsewhere, and an accent
-change in the OS Settings lands live). Each palette defines light **and dark by hand** — dark
-is not a mechanical inversion of the light ramp. Both the mode (Light / Dark / System) and the
-palette are set in [Preferences](#preferences). Earlier builds used a nine-card single-column
-design, then a first cut of this workbench; both are superseded, so a reference to either
-elsewhere in the repo's history predates this guide.
+The screenshots use the current workbench in the default Signal light theme. Theme and text-size
+settings are covered under [Preferences](#preferences). See [Install Forge](../index.md#installing)
+for packages and source-build instructions.
 
 ## First run
 

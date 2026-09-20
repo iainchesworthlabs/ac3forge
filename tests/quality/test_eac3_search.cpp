@@ -242,7 +242,7 @@ TEST_CASE("the E-AC-3 search stays inert under VBR", "[quality][search][eac3]") 
 }
 
 // --------------------------------------------------------------------------
-// Roadmap EQ7's E-AC-3 half: FrameConfig::fgaincod.
+// E-AC-3 fast-gain control's E-AC-3 half: FrameConfig::fgaincod.
 //
 // The risk here is not the same as the dbpbcod search's. dbpbcod moves the
 // masking curve and nothing else; fgaincod moves the curve AND opens the

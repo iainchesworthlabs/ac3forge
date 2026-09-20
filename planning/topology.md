@@ -28,8 +28,8 @@ and the repository now has four wrappers planned at once, written independently:
 |---|---|---|
 | [Host plugin study](host-plugin.md) | the encoder, in a DAW | Study done. No open plugin format carries object metadata; beds only. The VST 3 SDK is MIT, per Steinberg's licensing FAQ. |
 | [Delivery-QC report](qc-report.md) | the analysis code | Plan. |
-| [The playback appliance](player-appliance.md) | the decoder, in a room | Plan, parked on the question this page answers. |
-| The ESP32-S3 port | the decoder, on a microcontroller | **AC-3 and E-AC-3 both decode on an ESP32-S3**, inside internal SRAM. [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). |
+| [Hearth reference player](hearth-reference-player.md) | the decoder, in a room and on ESP32 sinks | **Being built** — replaced [the playback appliance](player-appliance.md) on 2026-09-15. |
+| The ESP32-S3 port | the decoder, on a microcontroller | **Shipped** as `hearth_sink` and bare-metal examples. [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). |
 
 Each was scoped as "what application is this". None of them asks what they have in common, and
 the player plan stalled precisely because it had no answer: it reached the whole-house question
@@ -241,7 +241,7 @@ because the population of possible sinks is no longer "a Pi or a PC".
 | A DAW **encode** plugin | source | whatever the host renders to; **bed-only, unconditionally** | [study](host-plugin.md) done; the constrained one |
 | The Shield demo | source | IEC 61937 over the Shield's HDMI | shipped |
 | The WASM encode page | source | none — it produces a file | shipped |
-| An out-of-tree GStreamer element or FFmpeg wrapper (**AP10**) | source | whatever the pipeline is muxing into | on the roadmap (`ROADMAP.md:2163`), unstarted, and its dependency AP5 is done |
+| An out-of-tree GStreamer element or FFmpeg wrapper | source | whatever the pipeline is muxing into | [Proposed in ROADMAP.md](../ROADMAP.md#proposed) (GStreamer / FFmpeg encode wrapper); AP5 (C API) is done |
 | A third-party AV receiver | sink | IEC 61937 | not ours; **cannot be synchronised** |
 | The playback appliance | sink | local files today; HTTP client is the new work | [plan](player-appliance.md), to be rewritten against this page |
 | An ESP32-S3 node | sink | HTTP client, then Sendspin | **both codecs decode, fits internal SRAM** ([#546](https://github.com/iainchesworthlabs/ac3forge/pull/546)); real time unmeasured |
@@ -426,8 +426,8 @@ is the one coordination item on this page with a real chance of landing a wrong 
 - **DRM, or any conditional-access story.**
 - **Making the QC reporter a node.**
 - **Renaming or moving anything.** No identifier, directory or package changes here.
-- **Editing `ROADMAP.md` or `CHANGELOG.md`** — the roadmap entry is proposed as text in each
-  plan, since no roadmap ID is allocated here.
+- **Editing the roadmap from this page** — status lives in [ROADMAP.md](../ROADMAP.md); this page
+  records the transport framework only.
 
 ## Decisions
 

@@ -1,6 +1,6 @@
 # The ESP32-S3 player: from two examples to a component and an ESPHome media player
 
-!!! note "Status as of 2026-09-10: Phases 0 and 1 met on a board; Phase 2 owes only the DSP board"
+!!! note "Status as of 2026-09-16: Phases 0 and 1 met on a board; Phase 2 owes only the DSP board; the Sendspin player is built"
     Written 2026-09-10 for a second `ESP32-S3-DevKitC-1-N16R8`, and run on it the same day - see
     [What the board showed](#what-the-board-showed). Phase 0: both examples measured on silicon,
     with the lines in their READMEs. Phase 1: `ac3forge::Player` and `ac3forge::Control` in the
@@ -22,6 +22,17 @@
     through an extension role; whether the player comes from `sendspin-cpp` or from the
     repository's own Sendspin library is measured and decided in that plan's phase B3. Slot width
     becomes a runtime setting there, which settles decision 5.
+
+    **On 2026-09-16 B3 made `hearth_sink` a Sendspin player** on the repository's own library,
+    `src/sendspin`. Measured against it, `sendspin-cpp` took 173,604 bytes more flash and left
+    50,504 bytes less internal RAM free while streaming, and it stopped 0.8 s into ten seconds of
+    PCM with `Lost sync`. Two boards played one E-AC-3 JOC programme as a group for ten minutes
+    with no underrun, and their reported play times stayed within 549 µs of each other. That is
+    what [Phase 6](#phase-6-a-sendspin-player-shape) asked for, with the offset taken from
+    reported play times: no two-channel capture of both boards exists. The E-AC-3 that Phase 7
+    wanted in the specification travels in the extension role.
+    `hearth-esp32s3` in CI plays to the player under QEMU. Slot width is a setting since B1, and
+    [An ESP32-S3 sink](../docs/hearth/sink-esp32-s3.md) is the guide.
 
     Shape follows [the topology](topology.md) and [the appliance plan](player-appliance.md):
     design sections say what changes and why, phases carry exit criteria and how each is

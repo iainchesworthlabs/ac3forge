@@ -43,7 +43,7 @@ struct BitAllocCodes {
 [[nodiscard]] AC3FORGE_EXPORT int fast_gain(int fgaincod);
 [[nodiscard]] AC3FORGE_EXPORT int slow_gain(int sgaincod);
 
-// Roadmap EQ7's measured fast-gain curve: the fgaincod a frame at
+// E-AC-3 fast-gain control's measured fast-gain curve: the fgaincod a frame at
 // `bitrate_kbps` across `nfchans` full-bandwidth channels should use, in
 // place of §8.2.12's fixed 4.
 //

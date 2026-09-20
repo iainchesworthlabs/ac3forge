@@ -1,4 +1,4 @@
-// Bitstream-aware loudness QC (roadmap C2): decode a stream, measure it with
+// Bitstream-aware loudness QC (bitstream-aware loudness QC): decode a stream, measure it with
 // the real BS.1770-4/EBU Tech 3342 meter, and check the result against a
 // named delivery-spec gate from ac3::meta::qc.hpp.
 //

@@ -25,7 +25,7 @@ constexpr double kPi = std::numbers::pi;
 
 // §7.9.4.1 step 2: xcos1[k] = -cos(2pi(8k+1)/8N), xsin1[k] = -sin(2pi(8k+1)/8N).
 //
-// Scalar (roadmap PF7's float32 gap): the type the twiddles are STORED in.
+// Scalar (minimum-footprint decoder profile's float32 gap): the type the twiddles are STORED in.
 // Computed in double and narrowed once on the way in, for the same reason
 // fft_kernel.hpp's FftTables does it - the angle here is small and exact and
 // deserves the library call at full precision whatever the table holds.
@@ -194,8 +194,8 @@ const FastMdctTables<NLen, Scalar>& fast_mdct_tables() {
 // whose tables carry this DCT-IV's twiddles (M = NLen/2), so the long
 // transform runs it at M = 256 and both short transforms at M = 128.
 // The pre- and post-twiddle loops run two m/k at a time through the arch
-// seam (ROADMAP PF5), four at a time on AVX2-capable hardware
-// (ac3::internal::cpu::has_avx2(), ROADMAP PF5's dynamic-dispatch
+// seam (SIMD kernels), four at a time on AVX2-capable hardware
+// (ac3::internal::cpu::has_avx2(), SIMD kernels's dynamic-dispatch
 // follow-on - see mdct_avx2.hpp/.cpp). Both are complex multiplies whose
 // ARITHMETIC is contiguous even though their memory access is not: the
 // pre-twiddle gathers u at stride +2 and stride -2 and scatters its result
@@ -226,7 +226,7 @@ void dct4_scaled(const FastMdctTables<NLen, Scalar>& t, std::span<const Scalar> 
     // templatization deliberately changes nothing it does.
     //
     // float takes the plain scalar loops below instead. The vector seam has an
-    // f32x4 now (ROADMAP PF5's follow-on), and using it here is worth doing -
+    // f32x4 now (SIMD kernels's follow-on), and using it here is worth doing -
     // but it is a separate change with its own measurement, and correctness on
     // a path that had no float form at all comes first. The AVX2 kernels are
     // double-only in any case: internal::avx2::dct4_pre_twiddle and friends
@@ -317,8 +317,7 @@ void mdct_forward_fast_core(std::span<const Scalar> windowed, std::span<Scalar> 
 
 }  // namespace
 
-// Two (four under AVX2) samples per iteration through the arch seam (ROADMAP
-// PF5, widened in PF5's dynamic-dispatch follow-on - see
+// Two (four under AVX2) samples per iteration through the arch seam (SIMD kernels, widened in runtime SIMD dispatch - see
 // docs/building.md's "Runtime AVX2 dispatch"). The plainest kernel in the
 // codec - 512 independent multiplies, unit stride on all three arrays - and
 // therefore both the one where the vector form is most obviously the same
@@ -348,7 +347,7 @@ void mdct512_forward(std::span<const double, 512> windowed, std::span<double, 25
     }
 }
 
-// The float32 forms of the two above (roadmap PF7's float32 gap), for the
+// The float32 forms of the two above (minimum-footprint decoder profile's float32 gap), for the
 // object reconstruction in src/oba/joc.cpp - which runs a FORWARD transform in
 // a decode, analysing the bed it is about to un-mix (PF8). Every other forward
 // caller is the encoder, and the encoder stays double: the fifteen bitstream
@@ -444,7 +443,7 @@ void mdct256_forward_second(std::span<const float, 256> windowed, std::span<floa
                             static_cast<float>(2.0 / 256));
 }
 
-// Templated on the coefficient type (roadmap PF7). Each vectorised section
+// Templated on the coefficient type (minimum-footprint decoder profile). Each vectorised section
 // below has three branches: f32x4 for a float instantiation, the AVX2 tier's
 // four-wide double kernels where the CPU has them, and f64x2 otherwise. The
 // float branch is separate because the AVX2 kernels take double spans and
@@ -484,7 +483,7 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
     // are the long fold's own, fast_mdct_tables<512>().fft). The direct
     // branch keeps the spec's own evaluation, now behind
     // src/core/reference_transform.hpp so its 256 KiB matrix can be left out
-    // of a build entirely (roadmap PF7) rather than merely never touched.
+    // of a build entirely (minimum-footprint decoder profile) rather than merely never touched.
     //
     // The fast branch writes step 2's output already conjugated and already
     // digit-reversed, which is what lets the kernel skip both the input
@@ -497,7 +496,7 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
     std::array<Scalar, kQuarter> t_im{};
     if (fast) {
         // Two k at a time through f64x2, four through f32x4 or the AVX2
-        // tier (ROADMAP PF5, ac3::internal::cpu::has_avx2()), the same
+        // tier (SIMD kernels, ac3::internal::cpu::has_avx2()), the same
         // gather-compute-scatter shape as dct4_scaled's pre-twiddle: the
         // coefficient gather runs at stride -2/+2 and the scatter target is
         // bitrev[k], so both ends stay scalar and only the six multiplies
@@ -592,7 +591,7 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
 
     // Step 4: post-transform complex multiply. y[n] = z[n] * (xcos1[n] + j*xsin1[n])
     // Unit stride on every one of the six arrays, so this one vectorises
-    // with nothing to gather or scatter, at every width (ROADMAP PF5).
+    // with nothing to gather or scatter, at every width (SIMD kernels).
     std::array<Scalar, kQuarter> y_re{};
     std::array<Scalar, kQuarter> y_im{};
     if constexpr (!kWide) {
@@ -640,7 +639,7 @@ void imdct512_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<Scala
     }
 }
 
-// ROADMAP PF5's batch-axis follow-on (docs/building.md's own section):
+// batched SIMD kernels (docs/building.md's own section):
 // four independent imdct512_windowed(..., /*fast=*/true) calls, one object
 // per SIMD lane, instead of four separate ones - see mdct.hpp's own doc
 // comment for the shape and mdct_avx2.hpp's imdct512_windowed_batch4 for
@@ -658,7 +657,7 @@ void imdct512_windowed(std::span<const double, 256> coeffs, std::span<double, 51
     imdct512_windowed_impl<double>(coeffs, x, fast);
 }
 
-// The float32 form (roadmap PF7). No `fast` parameter: the direct-form
+// The float32 form (minimum-footprint decoder profile). No `fast` parameter: the direct-form
 // evaluation is the spec's own and is the oracle the fast path is measured
 // against, so it stays double; narrowing it would defeat its purpose. The
 // parameter is omitted rather than accepted and ignored, so the absence of a
@@ -794,7 +793,7 @@ void imdct256_pair_windowed_impl(std::span<const Scalar, 256> coeffs, std::span<
 
     // Step 4: post-IFFT complex multiply. y1[n] = z1[n] * (xcos2[n] + j*xsin2[n]).
     // Both half-block sets: two n at a time through f64x2, four through
-    // f32x4 or the AVX2 tier, all unit stride (ROADMAP PF5,
+    // f32x4 or the AVX2 tier, all unit stride (SIMD kernels,
     // ac3::internal::cpu::has_avx2()).
     std::array<Scalar, kEighth> y1_re{};
     std::array<Scalar, kEighth> y1_im{};
@@ -872,7 +871,7 @@ void imdct256_pair_windowed(std::span<const float, 256> coeffs, std::span<float,
 // The float32 batch forms. Four independent calls, not four lanes.
 //
 // The double batch kernels exist because four transforms in lockstep keep an
-// AVX2 register full where four separate ones do not (ROADMAP PF5's batch
+// AVX2 register full where four separate ones do not (SIMD kernels's batch
 // axis). There is no float32 AVX2 kernel to fill, so batching would buy the
 // float path nothing today and would mean a second body to keep agreeing with
 // the scalar one. These are here so a caller can be written once against the

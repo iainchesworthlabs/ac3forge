@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and run the minimum-footprint decoder probe (roadmap PF7), then gate on
+# Build and run the minimum-footprint decoder probe (minimum-footprint decoder profile), then gate on
 # what it reports.
 #
 #   tools/checks/run_baremetal_probe.sh                  # arm-none-eabi under QEMU
@@ -134,7 +134,7 @@ declare -A ICOUNT_CEILING_ENCODE=(
 # table for the measured values these leave headroom over.
 #
 # AC3FORGE_MAX_IMAGE_BYTES was re-based from 400,000 to 465,000 after PF7's own
-# feature branch (roadmap PF6/PF7, PR #351) picked up several mid-flight merges
+# feature branch (bare-metal probe harness/PF7, PR #351) picked up several mid-flight merges
 # from `develop` - most significantly DC10's QMF-domain JOC reconstruction,
 # which the decode path now needs (src/forge/src/dsp/qmf.cpp and
 # src/forge/src/verify/eac3_mirror.cpp, both correctly added to

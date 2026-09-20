@@ -1,5 +1,5 @@
 # The ESP Component Registry manifest for ac3forge's minimum-footprint profile
-# (roadmap PF7). Read by `idf.py add-dependency` and by the registry's own
+# (minimum-footprint decoder profile). Read by `idf.py add-dependency` and by the registry's own
 # upload tooling; ignored by a build that reaches this component through
 # EXTRA_COMPONENT_DIRS, which is how this repo's own probe uses it.
 #

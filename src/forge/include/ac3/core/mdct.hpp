@@ -52,7 +52,7 @@ AC3FORGE_EXPORT void apply_analysis_window(std::span<const double, 512> x,
 AC3FORGE_EXPORT void mdct512_forward(std::span<const double, 512> windowed,
                                      std::span<double, 256> coeffs, bool fast = false);
 
-// The float32 forms of the two above (roadmap PF7's float32 gap). Their caller
+// The float32 forms of the two above (minimum-footprint decoder profile's float32 gap). Their caller
 // is oba::joc's object reconstruction, which runs a forward transform inside a
 // DECODE - it analyses the bed before un-mixing it (PF8). The encoder's own
 // forward path stays double and is untouched: the fifteen bitstream hashes in
@@ -72,7 +72,7 @@ AC3FORGE_EXPORT void mdct512_forward(std::span<const float, 512> windowed,
 AC3FORGE_EXPORT void imdct512_windowed(std::span<const double, 256> coeffs,
                                        std::span<double, 512> x, bool fast = false);
 
-// The float32 form of the inverse above (roadmap PF7's float32 gap), for the
+// The float32 form of the inverse above (minimum-footprint decoder profile's float32 gap), for the
 // minimum-footprint profile on a target whose FPU is single-precision - where
 // carrying the decoder's coefficient buffers in double costs both the memory
 // they occupy and a software-emulated multiply for every one of them.
@@ -84,7 +84,7 @@ AC3FORGE_EXPORT void imdct512_windowed(std::span<const double, 256> coeffs,
 AC3FORGE_EXPORT void imdct512_windowed(std::span<const float, 256> coeffs,
                                        std::span<float, 512> x);
 
-// ROADMAP PF5's batch-axis follow-on: four INDEPENDENT calls to
+// batched SIMD kernels: four INDEPENDENT calls to
 // imdct512_windowed(..., /*fast=*/true) run in lockstep, one object per
 // SIMD lane, instead of four separate scalar/SSE2 calls - the axis PF5's
 // own per-transform 2/4-lane seam cannot reach (there is no clean
@@ -106,7 +106,7 @@ AC3FORGE_EXPORT void imdct512_windowed_batch4(std::span<const double, 256> coeff
                                               std::span<double, 512> x0, std::span<double, 512> x1,
                                               std::span<double, 512> x2, std::span<double, 512> x3);
 
-// The forward twin of imdct512_windowed_batch4 above (ROADMAP PF5's
+// The forward twin of imdct512_windowed_batch4 above (SIMD kernels's
 // batch-axis follow-on, phase 4c): four INDEPENDENT
 // mdct512_forward(..., /*fast=*/true) calls run in lockstep, one
 // transform per SIMD lane. The four windowed blocks need not belong to
@@ -163,7 +163,7 @@ AC3FORGE_EXPORT void mdct256_forward_first(std::span<const double, 256> windowed
 AC3FORGE_EXPORT void mdct256_forward_second(std::span<const double, 256> windowed,
                                             std::span<double, 128> coeffs, bool fast = false);
 
-// The float32 forms of the short-block pair (roadmap PF7), for the encoders'
+// The float32 forms of the short-block pair (minimum-footprint decoder profile), for the encoders'
 // analysis front end under the minimum-footprint profile
 // (ac3/internal/encode_scalar.hpp). No `fast` parameter, as for the float32
 // mdct512_forward above: the direct evaluation stays double, and these are
@@ -180,7 +180,7 @@ AC3FORGE_EXPORT void mdct256_forward_second(std::span<const float, 256> windowed
 AC3FORGE_EXPORT void imdct256_pair_windowed(std::span<const double, 256> coeffs,
                                             std::span<double, 512> x, bool fast = false);
 
-// The float32 form of the short-block inverse (roadmap PF7). Same contract as
+// The float32 form of the short-block inverse (minimum-footprint decoder profile). Same contract as
 // the float32 imdct512_windowed above, including the absent `fast` parameter.
 AC3FORGE_EXPORT void imdct256_pair_windowed(std::span<const float, 256> coeffs,
                                             std::span<float, 512> x);

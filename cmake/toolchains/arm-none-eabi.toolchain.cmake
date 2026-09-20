@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# arm-none-eabi (bare metal, no OS) - the cross-compilation target roadmap PF7
+# arm-none-eabi (bare metal, no OS) - the cross-compilation target minimum-footprint decoder profile
 # names for the minimum-footprint decoder profile, and the one the CI leg runs
 # under QEMU.
 #

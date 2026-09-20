@@ -72,7 +72,7 @@ target_compile_definitions(ac3bench PRIVATE
 # simply does not exist there yet rather than carrying an untested port.
 # ---------------------------------------------------------------------------
 #
-# Not built on the ThreadSanitizer leg (roadmap VX16). The global operator
+# Not built on the ThreadSanitizer leg (ThreadSanitizer leg). The global operator
 # new/delete replacements above are the whole mechanism of this target, and
 # TSan's own runtime defines those same operators in
 # libclang_rt.tsan_cxx-x86_64.a - so linking it under -fsanitize=thread is a

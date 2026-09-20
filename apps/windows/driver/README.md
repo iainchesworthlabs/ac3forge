@@ -2,7 +2,7 @@
 
 A root-enumerated virtual audio device with one render endpoint, "Speakers (Desktop Atmos)",
 that advertises 7.1 at 48 kHz and discards everything it is given. The Desktop Atmos Demo
-(`../`, roadmap UX11, [docs/platforms/windows-demo.md](../../../docs/platforms/windows-demo.md))
+(`../`, WASAPI loopback tap, [docs/platforms/windows-demo.md](../../../docs/platforms/windows-demo.md))
 makes it the Windows default output so that every application renders into a device nobody
 hears while the demo taps each one individually; a game that can render surround renders 7.1
 into it and reaches the demo's bed intact.

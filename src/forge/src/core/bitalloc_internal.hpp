@@ -7,7 +7,7 @@
 
 // compute_bit_allocation, with its internal §7.2.2.5 masking curve exposed to
 // the caller - the one quantity that routine derives and then discards, and
-// the piece roadmap AP12's research trace export needs that exponents/bap
+// the piece research trace export's research trace export needs that exponents/bap
 // alone do not carry. Internal to src/forge/src/ (decoder.cpp and
 // eac3_decoder.cpp are its only two callers, feeding
 // verify::StreamTrace::mask/Eac3StreamTrace::mask), matching the convention

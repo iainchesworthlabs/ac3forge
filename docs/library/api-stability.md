@@ -45,7 +45,7 @@ it directly. Four tiers, assigned per header below:
 | `ac3/io/elementary.hpp`, `metadata_edit.hpp`, `probe.hpp`, `object_strip.hpp`, `dec3.hpp`, `wav.hpp` | Public. |
 | `ac3/meta/bsi.hpp`, `drc.hpp`, `loudness.hpp`, `mixing.hpp`, `qc.hpp` | Public. |
 | `ac3/spatial/spatial.hpp` | Public. |
-| `ac3/render/layout.hpp`, `render.hpp`, `serving.hpp`, `routing.hpp`, `trim_delay.hpp`, `identify.hpp`, `float_biquad.hpp` | **Experimental** — the output layout, renderer and speaker management the ESP32 player and Hearth share (`planning/hearth-reference-player.md`), outside the `v1.0.0` freeze while Hearth's phases settle their shape; see [Experimental modules](#experimental-modules). |
+| `ac3/render/layout.hpp`, `render.hpp`, `serving.hpp`, `routing.hpp`, `trim_delay.hpp`, `identify.hpp`, `float_biquad.hpp` | **Experimental** — the output layout, renderer and speaker management the ESP32 player and Hearth share ([Hearth reference-player plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md)), outside the `v1.0.0` freeze while Hearth's phases settle their shape; see [Experimental modules](#experimental-modules). |
 | `ac3/oba/atmos.hpp`, `joc.hpp`, `oamd.hpp`, `motion.hpp`, `scene.hpp` | Public — `ac3::oba::joc` included, now that AP2 folded it into `ac3::oba` proper. |
 | `ac3/emdf/emdf.hpp` | Public. |
 | `ac3/iec61937/iec61937.hpp` | Public. |
@@ -157,14 +157,13 @@ already covers the same case without it.
 ## Experimental modules
 
 Not every installed, default-on module is part of the `v1.0.0` freeze. `ac3iab::ac3iab` (the
-SMPTE ST 2098-2 IAB reader, phase 1 of 3) is real, tested, and default-built
-(`AC3FORGE_BUILD_IAB`), but nothing in the CLI or GUI consumes it yet and its own model is still
-being built out (`AudioDataDLC`'s Annex B coder is read by identity only, not decoded — see
-`header-map.md`). It is **Experimental**: installed, versioned, and functional, but explicitly
-outside the compatibility promise `v1.0.0` makes for the Public tier above, until `IM1` finishes
-and this page is updated to promote it. The same designation applies to any future codec-blind
-reader added the same way (an `iamf::` IAMF reader or an `ac4::` AC-4 reader, should either be
-started) and to `ac3::mlp` when the TrueHD/MLP branch lands (itself already
+SMPTE ST 2098-2 IAB reader) is real, tested, and default-built (`AC3FORGE_BUILD_IAB`).
+`ac3cli atmos-iab` consumes it through the opt-in `ac3::admbridge` module, while the GUI does
+not. Its own model is still being built out (`AudioDataDLC`'s Annex B coder is read by identity
+only, not decoded — see [Header map](header-map.md)). It is **Experimental**: installed,
+versioned, and functional, but explicitly outside the compatibility promise `v1.0.0` makes for
+the Public tier above until this page deliberately promotes it. The same designation applies to
+`ac3::mlp` when the TrueHD/MLP branch lands (itself already
 scoped as "an explicitly experimental module" gated behind its own `AC3FORGE_BUILD_MLP` — this
 page's policy just confirms that plan rather than overriding it; real interoperability, `IM6`,
 stays separately blocked on MLP/FBA source material that isn't public). A new module defaults to

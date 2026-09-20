@@ -263,7 +263,7 @@ TEST_CASE("render devices: a real watch agrees with what the backend reports",
     // Only the negative direction is guaranteed: a backend with no watcher
     // cannot have registered one. The converse is not an assertion - PipeWire's
     // watcher is built but needs a session daemon to register with, so an
-    // available capability can still refuse here (roadmap UX12).
+    // available capability can still refuse here (Crucible cross-platform promotion).
     if (!backend.device_watch.available) {
         CHECK_FALSE(watch.snapshot().watched);
     }

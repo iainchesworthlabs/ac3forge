@@ -6,7 +6,7 @@
 #include "ac3forge_c/export.h"
 #include "ac3forge_c/version.h"
 
-/* ac3forge's C API — roadmap item F1: a stable, minimal C-callable surface
+/* ac3forge's C API — C API: a stable, minimal C-callable surface
  * over the encode/decode core, for bindings and embedding by callers that
  * cannot or do not want to link C++23.
  *
@@ -153,7 +153,7 @@ typedef enum ac3forge_acmod {
 #define AC3FORGE_DECODER_MAX_CHANNELS 6
 
 /* --------------------------------------------------------------------- *
- * Latency (roadmap PF6)
+ * Latency (bare-metal probe harness)
  * --------------------------------------------------------------------- */
 
 /* Mirrors ac3::LatencyBudget: the ALGORITHMIC delay of an encode -> decode

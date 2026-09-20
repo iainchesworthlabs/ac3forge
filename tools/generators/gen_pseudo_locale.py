@@ -1,6 +1,6 @@
 """Generate ac3gui's pseudo-locale QA fixture from a real lupdate extraction.
 
-Roadmap UX3 needs a "stub locale that proves the [translation] pipeline works
+GUI localisation needs a "stub locale that proves the [translation] pipeline works
 end to end" without requiring an actual translation. A hand-picked handful of
 decorated strings would only prove the mechanism for the strings someone
 remembered to decorate; this generator instead pseudo-localizes EVERY message

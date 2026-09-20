@@ -55,7 +55,7 @@ Coordinate quantize_coordinate(double value, int master, int mantissa_bits) {
     // conformant platform by construction. floor(-std::log2(value)) computes
     // the same integer through a transcendental libm call, whose last-bit
     // behaviour is NOT required to be identical across implementations
-    // (roadmap VX12): for a value within a few ULPs of a power of two, one
+    // (cross-toolchain bitstream audit): for a value within a few ULPs of a power of two, one
     // platform's log2 can round the wrong way across the boundary and shift
     // lands one off from another platform's, silently taking a different
     // exponent field for the same input. std::ilogb(value) == n for value in
@@ -148,7 +148,7 @@ int choose_master(std::span<const double> values) {
         return kMaxMaster;
     }
     // Same shift as quantize_coordinate above, and for the same reason
-    // (roadmap VX12): std::ilogb rather than floor(-log2(...)), so the two
+    // (cross-toolchain bitstream audit): std::ilogb rather than floor(-log2(...)), so the two
     // functions agree exactly on what "the loudest value's own shift" means
     // instead of merely agreeing up to a libm rounding difference at a
     // power-of-two boundary.

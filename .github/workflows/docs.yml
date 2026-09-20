@@ -23,7 +23,7 @@ on:
       # needs the demo republished goes through apps/wasm/ (or one of
       # the paths below) too.
       - "apps/wasm/**"
-      # ac3forge-wasm-decoder (roadmap UX5) - the demo embeds js/dist/
+      # ac3forge-wasm-decoder (WASM streaming decoder package) - the demo embeds js/dist/
       # alongside the compiled decoder, so a package-only change also has
       # to trigger a redeploy, same reasoning as apps/wasm/** above.
       - "js/**"
@@ -42,7 +42,7 @@ on:
       - "CONTRIBUTING.md"
       - "ROADMAP.md"
       - "apps/wasm/**"
-      # ac3forge-wasm-decoder (roadmap UX5) - the demo embeds js/dist/
+      # ac3forge-wasm-decoder (WASM streaming decoder package) - the demo embeds js/dist/
       # alongside the compiled decoder, so a package-only change also has
       # to trigger a redeploy, same reasoning as apps/wasm/** above.
       - "js/**"
@@ -144,7 +144,7 @@ jobs:
 
       - run: pip install --require-hashes -r requirements/requirements-docs.txt
 
-      # Rebuilds both WASM demos (apps/wasm, roadmap F3 and UX6) fresh and
+      # Rebuilds both WASM demos (apps/wasm, WASM browser demo and UX6) fresh and
       # overwrites the committed docs/assets/wasm-{decode,encode}-demo/ copies
       # before `mkdocs gh-deploy` runs its own `mkdocs build` internally - so
       # what actually gets published always reflects current source, not
@@ -161,7 +161,7 @@ jobs:
 
       - uses: ./.github/actions/setup-emscripten
 
-      # ac3forge-wasm-decoder (roadmap UX5, js/) has to be built before the
+      # ac3forge-wasm-decoder (WASM streaming decoder package, js/) has to be built before the
       # Emscripten rebuild below, which copies js/dist/ alongside the
       # compiled decoder into the directory that overwrites docs/assets/
       # wasm-decode-demo/ - the demo is a consumer of the package (see

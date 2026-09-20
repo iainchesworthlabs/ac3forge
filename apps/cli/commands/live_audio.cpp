@@ -749,7 +749,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     }
     const std::size_t nobjects = slots.size();
 
-    // positions=: a real live object-position source (roadmap UX4) instead
+    // positions=: a real live object-position source (live OSC object positions) instead
     // of the built-in synthetic orbit below. Built here, right after
     // nobjects is fixed and before anything else in this session (capture,
     // encoders, the output file) opens, so a bind failure is refused early
@@ -861,7 +861,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
     }
 
-    // The parallel downmix leg (roadmap IO9, mirroring the GUI's
+    // The parallel downmix leg (wide-layout record/live paths, mirroring the GUI's
     // wants_downmix_leg): when the stream needs E-AC-3 but the chosen
     // receiver only bitstreams AC-3, an independent AC-3 encode of the bed
     // the main plan has ALREADY computed goes to the receiver, so a capped
@@ -1022,7 +1022,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     bool lost_is_slave = false;
     bool encode_failed = false;
 
-    // Roadmap IO3's capture-side half, as it applies here. Unlike 'record',
+    // IEC 61937 de-framing's capture-side half, as it applies here. Unlike 'record',
     // a live session has nothing useful to do with a bitstream: it mixes,
     // resamples a second device into lockstep, meters, monitors and can pan
     // objects, none of which mean anything applied to burst data. So this
@@ -1317,7 +1317,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     const auto stats = capture.stats();
     // Finalized whether or not the session ended early: every unit already
     // pushed is on disk and playable, which is the whole reason a take
-    // streams rather than accumulating (roadmap IO9). A close() complaint is
+    // streams rather than accumulating (wide-layout record/live paths). A close() complaint is
     // reported either way, but a lost device is the more useful diagnosis of
     // the two and wins the exit code - a session that captured nothing before
     // the device vanished ends as a device failure, not as a disk one.

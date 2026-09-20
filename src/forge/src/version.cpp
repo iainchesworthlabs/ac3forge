@@ -21,7 +21,7 @@ std::string version_details() {
         "ac3forge {}\n  release: {}\n  commit:  {}\n  branch:  {}\n  target:  {}", headline,
         git_describe, git_commit_full, git_branch, build_target);
     // Which src/forge/src/internal/arch/ directory the codec's vector
-    // kernels were compiled from (ROADMAP PF5). Read from the selected
+    // kernels were compiled from (SIMD kernels). Read from the selected
     // header itself rather than from a CMake-substituted string, so the
     // binary reports what it actually contains and cannot claim a
     // directory it was not built with.

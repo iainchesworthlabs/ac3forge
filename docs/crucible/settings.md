@@ -38,11 +38,10 @@ they are different actions and the page does not pretend otherwise; it is there 
 is no silent device. **Check again** stays, and re-reads the machine without changing anything.
 
 **On Windows** the silent device is a kernel driver, because Windows has no user-mode way to
-create a render endpoint. The button runs the package's install script elevated, so a UAC prompt
-belongs to it. While that driver is test-signed the machine also needs test signing on and memory
-integrity off, and it is that pair the third line names when the driver cannot load. An installed
-copy of Crucible brings the driver with it; a build from source has to be pointed at a built
-package.
+create a render endpoint. The release archive carries its install and remove scripts only.
+Until attestation signing is in place, build the driver from source and point Crucible at its
+package under Advanced. The install button runs the script elevated. A test-signed driver also
+requires Windows test signing on and memory integrity off.
 
 **On Linux** there is nothing to install. Crucible creates a PipeWire `support.null-audio-sink`
 node named "Crucible (silent)" while it runs and takes it away when it exits, so the action needs
@@ -60,9 +59,9 @@ run in CI, but nothing has launched on a Mac ([Install](install.md#macos)).
 A disclosure under the card, closed by default, holding what a source build and an unusual machine
 need.
 
-- **Driver folder** — where `install.ps1`, `remove.ps1` and the built package live: beside the
-  application by default, or `apps/windows/driver` in a source tree. Windows only; on Linux there
-  is no folder to point at, and the row is not shown.
+- **Driver folder** — where `install.ps1`, `remove.ps1` and a source-built driver package live.
+  The scripts are beside the application by default; a source tree uses `apps/windows/driver`.
+  Windows only; on Linux the row is not shown.
 - **Remove driver** / **Remove device** — undoes what the button above installed or created. On
   Linux this removes the application's own node, which also goes when the application does. It
   shares the Create device button's enabling condition there, so it greys once the node exists and

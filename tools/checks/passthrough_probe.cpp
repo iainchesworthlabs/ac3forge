@@ -1,5 +1,5 @@
 // Asks every render endpoint the library can see whether it will take an
-// AC-3 or E-AC-3 bitstream, which is roadmap DR9's per-backend question and,
+// AC-3 or E-AC-3 bitstream, which is hardware verification's per-backend question and,
 // since Crucible on Linux cannot use ALSA, the question that decides whether
 // Crucible has anywhere to send its output there
 // (docs/crucible/design/promotion.md, "ALSA or PipeWire").

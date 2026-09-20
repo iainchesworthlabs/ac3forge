@@ -158,6 +158,21 @@ names that file as its trailing argument, so the line it shows is finally someth
 reproduces this tab's authored motion from the command line, not just a static per-channel
 placement. See [CLI → `atmos-encode`](../cli/commands.md) for the argument itself.
 
+### Signed output
+
+Forge GUI Atmos output is unsigned. To produce signed output, export the object paths and rerun
+the equivalent `ac3cli atmos-encode` command shown in the command bar with `sign-objects` and a
+runtime-provided key:
+
+```bash
+ac3cli atmos-encode in.wav out.ec3 448 0 paths.json sign-objects signing-key=/path/to/key
+```
+
+Keep the command bar's source, bit rate, object count, paths, `src=`, and `map=` arguments when
+they differ from this example. Signing happens during the CLI encode; there is no supported
+command that post-processes an existing GUI output file. See
+[Object signing](../../library/signing.md) for key handling.
+
 **Author a path / Drive it live** (top right) are the two ways to get motion in. Live driving
 needs a monitored capture — the option points at [Live session](live-session.md) rather than
 offering a dead control; during a live Atmos session the room is dragged in real time instead of

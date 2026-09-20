@@ -1,4 +1,4 @@
-// pybind11 bindings for ac3forge (roadmap F2) - wraps ac3::FrameEncoder, ac3::FrameDecoder,
+// pybind11 bindings for ac3forge (Python on PyPI) - wraps ac3::FrameEncoder, ac3::FrameDecoder,
 // ac3::Eac3Decoder and ac3::oba::AtmosEncoder directly (pybind11-direct, per the roadmap's own
 // dependency note - no intermediate C API). Every C++ class kept here is exactly the one
 // declared in src/forge/include/ac3/{encoder/encoder,decoder/decoder,oba/atmos}.hpp; this file adds
@@ -12,7 +12,7 @@
 // through the block still runs it). This is deliberately explicit per call site rather than
 // py::call_guard, which only wraps the C++ invocation and not this file's own ordering.
 //
-// Channel PCM (roadmap AP6) is the one exception to "operating only on C++ locals": encode input
+// Channel PCM (Python bindings completeness) is the one exception to "operating only on C++ locals": encode input
 // and the *_into decode forms hold live py::array/py::array_t handles (ChannelViews/
 // MutableChannelViews below) across the release block, with std::span pointing directly into
 // their buffers - genuinely zero-copy when the caller already passed a contiguous float32 array,
@@ -71,7 +71,7 @@ namespace py = pybind11;
 
 namespace {
 
-// decode_frame_into/decode_access_unit_into's own `out` sizing contract (roadmap AP6) - see
+// decode_frame_into/decode_access_unit_into's own `out` sizing contract (Python bindings completeness) - see
 // ac3::FrameDecoder::decode_frame_into and ac3::Eac3Decoder::decode_access_unit_into's doc
 // comments ("six covers every AC-3 layout" / "16 covers §E3.8.2's cap"). Exposed to Python as
 // ac3.MAX_AC3_CHANNELS/ac3.eac3.MAX_RENDER_CHANNELS below so a caller doesn't have to hardcode
@@ -483,7 +483,7 @@ std::vector<std::string> chanmap_labels(std::uint16_t map) {
     return labels;
 }
 
-// The named-layout convenience roadmap AP6 asks for: a caller names a
+// The named-layout convenience Python bindings completeness asks for: a caller names a
 // LayoutId (e.g. k71) instead of hand-building the dependents' chanmaps -
 // ac3::plan::channel_plan_for() already carries that table
 // (ac3/encoder/plan.hpp), this just turns its ChannelPlan into a real
@@ -612,7 +612,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         .value("kDependent", ac3::eac3::StreamType::kDependent)
         .value("kConvertible", ac3::eac3::StreamType::kConvertible);
 
-    // ac3::io::StreamKind - roadmap AP6's scan(). A different question from StreamType above
+    // ac3::io::StreamKind - Python bindings completeness's scan(). A different question from StreamType above
     // (which frames belong to which E-AC-3 substream role); this is "is the stream AC-3, E-AC-3,
     // or an AC-3 core carrying E-AC-3 dependent extensions" - see ac3::io::StreamKind's own
     // header comment for kAc3CoreEac3Extension.
@@ -652,7 +652,7 @@ PYBIND11_MODULE(_ac3forge, m) {
     m.def("sample_rate_hz", &ac3::sample_rate_hz, py::arg("sample_rate"));
     // Three overloads of the same C++ name now (ac3::describe(DecodeError),
     // ac3::describe(FrameError) since AP2's FrameError::describe(), and
-    // ac3::describe(DiagnosticEvent), roadmap AP11's ac3/decoder/diagnostics.hpp) -
+    // ac3::describe(DiagnosticEvent), decoder diagnostics describe()'s ac3/decoder/diagnostics.hpp) -
     // &ac3::describe alone is ambiguous, so each bound overload is cast to its own
     // function-pointer type. DiagnosticEvent's overload is not surfaced to Python at
     // all (see docs/library/python-api.md's "What isn't exposed").
@@ -717,7 +717,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         },
         py::arg("frame"));
 
-    // --- scan() and friends (roadmap AP6) - ac3::io/elementary.hpp -------------------------
+    // --- scan() and friends (Python bindings completeness) - ac3::io/elementary.hpp -------------------------
     py::class_<ac3::io::SubstreamService>(
         m, "SubstreamService",
         "One associated independent substream's own bed, as ScannedStream.associated_substreams "
@@ -880,7 +880,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         "The one access-unit length every unit in the stream shares, or None when they differ.");
 
     // --- plain data types (kwargs-constructible where a caller builds one) -------------------
-    // --- latency (roadmap PF6) ---------------------------------------------
+    // --- latency (bare-metal probe harness) ---------------------------------------------
     py::class_<ac3::LatencyBudget>(
         m, "LatencyBudget",
         "Algorithmic delay of an encode->decode chain, in samples at the coded rate. "
@@ -1062,7 +1062,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_property_readonly("latency", &ac3::FrameEncoder::latency)
         .def_property_readonly("latency_samples", &ac3::FrameEncoder::latency_samples);
 
-    // --- research trace export (ac3::verify, roadmap AP12) ---------------------
+    // --- research trace export (ac3::verify, research trace export) ---------------------
     // The encoder/decoder mirror trace (ac3/verify/mirror.hpp, .../eac3_mirror.hpp),
     // added for the in-repo self-check, exported here in a form a caller doing
     // codec research can put in a DataFrame: per-frame bap, exponent, SNR-offset
@@ -1077,7 +1077,7 @@ PYBIND11_MODULE(_ac3forge, m) {
     py::module_ verify_module =
         m.def_submodule("verify",
                         "ac3::verify - the encoder/decoder mirror trace and its research export "
-                        "(roadmap AP12).");
+                        "(research trace export).");
 
     py::class_<ac3::verify::FrameTrace>(
         verify_module, "FrameTrace",
@@ -1138,7 +1138,7 @@ PYBIND11_MODULE(_ac3forge, m) {
     // --- decoder ---------------------------------------------------------------
     py::class_<ac3::DecoderConfig>(m, "DecoderConfig")
         .def(py::init([](py::kwargs kwargs) {
-            // trace/eac3_trace (roadmap AP12) hold pointers into caller-owned
+            // trace/eac3_trace (research trace export) hold pointers into caller-owned
             // ac3.verify.FrameTrace/Eac3AccessUnitTrace objects, not a shape
             // KwargBinder's generic value-member field() handles - popped by
             // hand before the rest goes through it exactly as before, so
@@ -1371,7 +1371,7 @@ PYBIND11_MODULE(_ac3forge, m) {
             "latency_samples", &ac3::Eac3Decoder::latency_samples,
             "The delay this decoder adds on top of the encoder's budget: 0 until some "
             "substream's frame sets transproce, SAMPLES_PER_FRAME from then on.")
-        // Context-manager support (roadmap AP6): `with ac3.eac3.Eac3Decoder() as d:` drains
+        // Context-manager support (Python bindings completeness): `with ac3.eac3.Eac3Decoder() as d:` drains
         // the decoder's transproce hold-back on scope exit, so a stream that engaged
         // transient pre-noise processing never leaves its final frame silently buffered in a
         // decoder that is about to be garbage-collected. Exit DISCARDS what it drains - a
@@ -1452,9 +1452,9 @@ PYBIND11_MODULE(_ac3forge, m) {
             "bed_latency", &ac3::oba::AtmosEncoder::bed_latency,
             "The 5.1 bed's budget: what a legacy decoder that ignores the container hears.");
 
-    // --- E-AC-3 encoder (ac3::eac3::FrameEncoder / AccessUnitEncoder), roadmap AP6 ------------
+    // --- E-AC-3 encoder (ac3::eac3::FrameEncoder / AccessUnitEncoder), Python bindings completeness ------------
     // A real submodule rather than flat top-level names like Eac3Decoder: ac3::FrameEncoder and
-    // ac3::eac3::FrameEncoder share a name across C++ namespaces (roadmap AP2), so ac3.FrameEncoder
+    // ac3::eac3::FrameEncoder share a name across C++ namespaces (legacy item AP2), so ac3.FrameEncoder
     // (AC-3) vs ac3.eac3.FrameEncoder (E-AC-3) is what keeps that collision out of the binding
     // surface. pybind11-direct on ac3::eac3::FrameEncoder/AccessUnitEncoder, same policy as every
     // other class here (see this file's own header comment) - not layered on the C API.
@@ -1683,7 +1683,7 @@ PYBIND11_MODULE(_ac3forge, m) {
              "dependent_bitrate_kbps defaults to half of bitrate_kbps, applied to every "
              "dependent.");
 
-    // --- Loudness metering and QC (roadmap AP6) ----------------------------
+    // --- Loudness metering and QC (Python bindings completeness) ----------------------------
     //
     // ac3::meta::LoudnessMeter and the QC gate, bound pybind11-direct like
     // everything above. The meter takes the same planar float32 input shape
@@ -1777,7 +1777,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         "box can describe.");
 
 #ifdef AC3FORGE_PY_HAVE_SIGNING
-    // --- Object signing (roadmap AP6) --------------------------------------
+    // --- Object signing (Python bindings completeness) --------------------------------------
     auto signing = m.def_submodule(
         "signing",
         "EMDF object-layer signing - see docs/concepts/object-signing.md. Sign an encoded "
@@ -1858,7 +1858,7 @@ PYBIND11_MODULE(_ac3forge, m) {
 #endif
 
 #ifdef AC3FORGE_PY_HAVE_CONTAINERS
-    // --- Containers (roadmap AP6) ------------------------------------------
+    // --- Containers (Python bindings completeness) ------------------------------------------
     //
     // The three writers and the batch read side, bytes in / bytes out. The
     // incremental Reader/Writer classes and the fragmented-MP4/HLS/DASH

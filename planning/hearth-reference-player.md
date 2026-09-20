@@ -11,10 +11,10 @@
         - A0's first design round is published and waits for review. A5 starts once it is
           signed off, and A6 to A8 follow A5.
     - **[The ESP32-S3 sink](#chip-b-the-esp32-s3-sink).**
-        - Merged: B1 (#709), B2 (#726), B3 (#737) and B4 (#738), with fixes in #741 and #743.
+        - Merged: B1 (#709), B2 (#726), B3 (#737), B4 (#738) and B5 (#756), with fixes in #741
+          and #743.
         - The exits on the boards wait for the TDM DAC boards, and B3's Music Assistant exit is
-          still open.
-        - B5 has not merged.
+          still open. So is B5's second check: someone setting up a board from the guide alone.
     - **[The ESP32-C6](#chip-c-the-esp32-c6).**
         - Merged: C1 (#677) and C2 (#678 and #701), with the C6's fixed-point speed-up in #694.
         - C2's exit on a TDM DAC waits for a board. C3 follows chip B.
@@ -167,7 +167,8 @@ yet, which is part of chip D.
 - Saved per output device, and on each sink for that sink's own wiring.
 
 This is speaker management: no measurement, no equalisation, no filters beyond the crossover.
-ROADMAP.md lists "Renderer and room-correction territory" under Deliberately not on the list;
+ROADMAP.md lists "Renderer and room-correction territory" under Out of scope; see
+[ROADMAP.md](../ROADMAP.md#out-of-scope).
 that line is amended when this lands, since the renderer already shipped in the ESP32 player and
 now reaches the desktop.
 
@@ -595,9 +596,8 @@ The `docs/hearth/` guide rewritten around the application and the sinks: index w
 table per platform, install, playing media, outputs and groups, speaker setup, decoder settings,
 monitor, media information, sinks and pairing (chip B writes the board pages), the test sink for
 contributors, troubleshooting, accessibility and localisation. Screenshots from `ac3hearth --shot`
-through the script. `docs/hearth/design/` points here. The `mkdocs.yml` nav, the README and
-`docs/index.md` rows, CHANGELOG, a ROADMAP entry with a new ID and the amended renderer line, and
-the threat-model section.
+through the script. `docs/hearth/design/` points here. Update the `mkdocs.yml` nav, the README and
+`docs/index.md` rows, CHANGELOG, and [ROADMAP.md](../ROADMAP.md) (plain-English status, no new ID).
 
 **Exit:** `mkdocs build --strict` and `tools/checks/check_doc_paths.py` pass; the script
 regenerates every screenshot from the shipped interface; a reader can go from the install page to

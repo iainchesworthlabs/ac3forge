@@ -21,7 +21,7 @@ namespace ac3 {
 // the current tree") persist from one 256-sample segment to the next, so
 // state belongs to the channel's stream, not to a single call.
 //
-// A template on the scalar the filter runs in (roadmap PF7's float32 gap).
+// A template on the scalar the filter runs in (minimum-footprint decoder profile's float32 gap).
 // TransientDetector below - the double instantiation - is what every
 // ordinary build and both encoders' double forms use, and its arithmetic is
 // exactly what the non-template class's was. The float instantiation is for

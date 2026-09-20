@@ -113,7 +113,7 @@ struct Args {
 // needs kMonitor as a hard gate, the same way 'play'/'outputs' need
 // kPassthrough.
 //
-// kAdm ('atmos-adm', roadmap B1 phase 3): unlike the three audio ones, this is not a hardware
+// kAdm ('atmos-adm', ADM BWF reader phase 3): unlike the three audio ones, this is not a hardware
 // question - it is whether ac3adm::ac3adm/ac3::admbridge were linked into this build at all
 // (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own option()). Answered the
 // same way regardless: adm/atmos_adm.hpp's ac3cli::adm_capability(), backed by exactly one of
@@ -219,7 +219,7 @@ constexpr std::array<Command, 42> kCommands{{
                                  x.str(5));
      }},
     {"atmos-adm", 3, "<in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id]",
-     "a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, roadmap B1) straight to DD+ JOC "
+     "a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, ADM BWF reader) straight to DD+ JOC "
      "E-AC-3; every bed/object channel the resolved audioProgramme names becomes an AtmosEncoder "
      "object, driven by the file's own authored automation - no scene file needed. Only in "
      "builds with -DAC3FORGE_BUILD_ADM=ON",
@@ -230,7 +230,7 @@ constexpr std::array<Command, 42> kCommands{{
      }},
     {"atmos-iab", 3, "<in.iab|in.mxf> <out.ec3> [bitrate_kbps]",
      "a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2 Immersive Audio Bitstream, a bare "
-     "elementary .iab file or a real MXF Track File alike - roadmap IM1) straight to DD+ JOC "
+     "elementary .iab file or a real MXF Track File alike - IAB reader) straight to DD+ JOC "
      "E-AC-3; every Bed channel/Object the file names becomes an AtmosEncoder object, driven by "
      "the file's own authored panning - no scene file needed. Only in builds with "
      "-DAC3FORGE_BUILD_ADM=ON",
@@ -296,14 +296,14 @@ constexpr std::array<Command, 42> kCommands{{
      "AC-3 or E-AC-3, bare or inside a container; bsid decides. objects_dir (E-AC-3 Atmos only): "
      "export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 "
      "dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM "
-     "Profile BW64 there (roadmap IM2) - bed LFE plus every dynamic object, positioned by its own "
+     "Profile BW64 there (legacy item IM2) - bed LFE plus every dynamic object, positioned by its own "
      "decoded OAMD",
      topic::kStdio | topic::kDecode | topic::kObjects,
      Needs::kNothing,
      [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3), x.str(4)); }},
-    {"probe", 2, "<in.ac3|in.ec3> [json=1] [detail=frames|blocks]",
-     "what the stream declares: layout, substreams, rates, metadata ranges, object layer, "
-     "tool usage and per-frame CRC - as a table, or as a documented JSON contract",
+    {"probe", 2, "<in.ac3|in.ec3|in.ac4> [json=1] [detail=frames|blocks]",
+     "inspect AC-3/E-AC-3 layout, substreams, metadata, objects, tools and CRC, or AC-4 "
+     "TOC/presentations/substream groups; table or documented JSON",
      topic::kStdio | topic::kProbe,
      Needs::kNothing, [](const Args& x) { return run_probe(x.str(1), x.meta); }},
     {"transcode", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout]",
@@ -369,8 +369,8 @@ constexpr std::array<Command, 42> kCommands{{
     {"mkv", 3, "<in.ac3|in.ec3> <out.mkv>", "wrap as a playable Matroska file", topic::kMkv,
      Needs::kNothing,
      [](const Args& x) { return run_mkv(x.str(1), x.str(2)); }},
-    {"mp4", 3, "<in.ac3|in.ec3> <out.mp4>",
-     "wrap as a playable MP4 with a spec-correct dac3/dec3 box", topic::kNone,
+    {"mp4", 3, "<in.ac3|in.ec3|in.ac4> <out.mp4>",
+     "wrap as playable MP4 with dac3/dec3 for AC-3/E-AC-3 or dac4 for AC-4", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_mp4(x.str(1), x.str(2)); }},
     {"fmp4", 3, "<in.ac3|in.ec3> <out_dir> [frames_per_fragment]",
@@ -379,8 +379,8 @@ constexpr std::array<Command, 42> kCommands{{
      topic::kFmp4 | topic::kMeta,
      Needs::kNothing,
      [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48), x.meta); }},
-    {"ts", 3, "<in.ac3|in.ec3> <out.ts> [dvb|atsc]",
-     "wrap as an MPEG-2 Transport Stream, DVB profile by default",
+    {"ts", 3, "<in.ac3|in.ec3|in.ac4> <out.ts> [dvb|atsc]",
+     "wrap as MPEG-2 TS; AC-4 supports DVB only",
      topic::kTs | topic::kMeta,
      Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2), x.str(3, "dvb"), x.meta); }},
     {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3>",
@@ -426,7 +426,7 @@ constexpr std::array<Command, 42> kCommands{{
      [](const Args& x) { return run_monitor(x.str(1), x.i32(2, -1), x.meta); }},
     {"spatial", 2, "<in.ec3> [device_index]",
      "decode the object layer onto Windows Spatial Sound - dynamic objects at their OAMD "
-     "positions, the bed's LFE static (roadmap UX8)",
+     "positions, the bed's LFE static (Windows spatial object renderer)",
      topic::kDecode | topic::kObjects,
      Needs::kSpatial,
      [](const Args& x) { return run_spatial(x.str(1), x.i32(2, -1), x.meta); }},
@@ -441,7 +441,7 @@ constexpr std::array<Command, 42> kCommands{{
 }};
 
 // kCommands as usage.hpp sees it: no handler, no Needs, and this build's own
-// answer to "can it run here" already resolved. Rebuilt on every call - 39
+// answer to "can it run here" already resolved. Rebuilt on every call - 42
 // rows of string_view, so there is nothing worth caching and nothing that can
 // go stale between the table and what gets printed.
 std::vector<CommandInfo> command_infos() {

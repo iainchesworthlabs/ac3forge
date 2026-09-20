@@ -503,7 +503,7 @@ class AC3FORGE_EXPORT FrameDecoder {
     [[nodiscard]] std::expected<DecodedFrame, DecodeError> decode_frame_by_block(
         std::span<const std::byte> frame, BlockSink sink);
 
-    // Roadmap PF6: the delay THIS decoder adds on top of whatever the
+    // bare-metal probe harness: the delay THIS decoder adds on top of whatever the
     // encoder's own budget (ac3/latency.hpp) already accounts for. Exactly
     // zero, and structurally so rather than by luck: decode_frame returns a
     // frame's full kSamplesPerFrame of PCM from the call that supplies that
@@ -859,7 +859,7 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // since by definition the assembly never completed.
     [[nodiscard]] std::vector<DecodedSubstream> flush();
 
-    // Roadmap PF6: the delay THIS decoder adds, same contract as
+    // bare-metal probe harness: the delay THIS decoder adds, same contract as
     // FrameDecoder::latency_samples(). Zero until some substream's frame sets
     // transproce, kSamplesPerFrame from then on - §3.7's hold-back is not a
     // property of the decoder but of the stream it is fed, and once a

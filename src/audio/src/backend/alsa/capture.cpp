@@ -447,7 +447,7 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
     return {};
 }
 
-// Roadmap UX11's per-process tap is a Windows 10 build 20348+ WASAPI
+// WASAPI loopback tap's per-process tap is a Windows 10 build 20348+ WASAPI
 // activation; nothing here has an equivalent, so the answer is a constant.
 bool process_loopback_available() {
     return false;

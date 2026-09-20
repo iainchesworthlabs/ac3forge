@@ -4,7 +4,7 @@
 const path = require('path');
 const { defineConfig } = require('@playwright/test');
 
-// roadmap VX18(a): headless-browser coverage for the WASM demos -
+// WASM/mobile headless coverage(a): headless-browser coverage for the WASM demos -
 // docs/platforms/wasm.md's "Not yet verified" section names every
 // functional claim this closes. WASM_DEMO_DIR/WASM_ENCODE_DEMO_DIR point at
 // the directories apps/wasm/CMakeLists.txt's build produces

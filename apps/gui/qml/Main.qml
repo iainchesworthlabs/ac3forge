@@ -26,7 +26,7 @@ ApplicationWindow {
     visible: true
     color: Theme.bg
 
-    // Roadmap UX3: mirrors every anchor/Row/ColumnLayout in the window (and,
+    // GUI localisation: mirrors every anchor/Row/ColumnLayout in the window (and,
     // via childrenInherit, every descendant item) for right-to-left
     // languages (Arabic, Hebrew, Yiddish). Qt.application.layoutDirection
     // follows the application's layout direction, which LanguageManager
@@ -138,11 +138,11 @@ ApplicationWindow {
     // Same reason as prefsDialog above - item 33's run details popover also
     // lives on the Overlay.
     readonly property alias runDetailsPopup: runDetailsDialog
-    // Same reason again - roadmap C3's QC report dialog.
+    // Same reason again - GUI QC verification's QC report dialog.
     readonly property alias qcDialogRef: qcDialog
     // Same reason again - the decode-side object inspector.
     readonly property alias objectInspectorDialogRef: objectInspectorDialog
-    // Same reason again - roadmap UX1's stream player.
+    // Same reason again - GUI stream player's stream player.
     readonly property alias streamPlayerDialogRef: streamPlayerDialog
 
     // The text size the person chose. Every size in the window is a multiple
@@ -979,7 +979,7 @@ ApplicationWindow {
         ObjectDecodeController.inspectFile(runPathUrl(path));
     }
 
-    // Roadmap UX2's single entry point for "a file arrived from outside the
+    // GUI AppStream packaging's single entry point for "a file arrived from outside the
     // app" - the rail's own DropArea (below) and `ac3gui <file...>`
     // (main.cpp, via QMetaObject::invokeMethod on this window) both funnel
     // through here, so there is exactly one place that decides what a
@@ -988,7 +988,7 @@ ApplicationWindow {
     // files…" does - addSourceFile() already falls back to loadSourceFile()
     // itself when nothing is loaded yet, so the first-file and
     // add-another-source cases share the one call. An .ac3/.ec3 opens
-    // roadmap UX1's stream player on it instead, the same "play/export what
+    // GUI stream player's stream player on it instead, the same "play/export what
     // already exists" path Open stream…'s own header button reaches.
     function openDroppedFile(url) {
         const path = url.toString().toLowerCase();
@@ -1166,7 +1166,7 @@ ApplicationWindow {
         }
     }
 
-    // Roadmap C3 — see docs/forge/gui/qc.md and QcDialog.qml's own header comment
+    // GUI QC verification — see docs/forge/gui/qc.md and QcDialog.qml's own header comment
     // for why this is a standalone dialog rather than a tab: opening and
     // verifying an already-encoded file is a different workflow shape to
     // every tab beside it, which all configure an encode still to come.
@@ -1182,7 +1182,7 @@ ApplicationWindow {
         id: objectInspectorDialog
     }
 
-    // Roadmap UX1 - the GUI twin of `ac3cli monitor`/`ac3cli decode`, the
+    // GUI stream player - the GUI twin of `ac3cli monitor`/`ac3cli decode`, the
     // third of this header's "distinct surface, reachable from the header"
     // dialogs alongside the two above - see StreamPlayerDialog.qml's own
     // header comment.
@@ -1447,7 +1447,7 @@ ApplicationWindow {
         RowLayout {
             Layout.fillWidth: true
             // Margins/spacing trimmed from 20/Theme.space4: a sixth header
-            // action ("Open stream…", roadmap UX1) pushed this row's own
+            // action ("Open stream…", GUI stream player) pushed this row's own
             // implicit width just far enough over the 1280 px minimum width
             // that the workbench RowLayout below it - an unrelated sibling,
             // sharing the same outer ColumnLayout - stopped being clamped to
@@ -6147,7 +6147,7 @@ ApplicationWindow {
                                     }
 
                                     // ---- positions=: a real live object-position
-                                    // source over OSC (roadmap UX4), instead of
+                                    // source over OSC (live OSC object positions), instead of
                                     // dragging objects by hand. Object mode only -
                                     // a channel session has no objects to drive.
                                     RowLayout {
@@ -6705,7 +6705,7 @@ ApplicationWindow {
                                                 // Network-driven: greyed and, below,
                                                 // undraggable - positions= owns this
                                                 // object for as long as it keeps
-                                                // addressing it (roadmap UX4).
+                                                // addressing it (live OSC object positions).
                                                 color: networkDriven ? Theme.neutral400
                                                                      : (isSelected ? Theme.accent : Theme.neutral800)
                                                 opacity: networkDriven ? 0.7 : 1.0
@@ -7285,7 +7285,7 @@ ApplicationWindow {
                                             }
                                         }
                                     }
-                                    // Roadmap UX1's own run-chip shortcut: docs/forge/gui/qc.md and
+                                    // GUI stream player's own run-chip shortcut: docs/forge/gui/qc.md and
                                     // docs/forge/gui/inspect-objects.md both used to end by saying
                                     // there was no way to jump from a finished run straight
                                     // into either dialog - this is that way. The first Menu
@@ -7530,7 +7530,7 @@ ApplicationWindow {
         }
     }
 
-    // Roadmap UX2 - spans the whole window rather than just the rail, so a
+    // GUI AppStream packaging - spans the whole window rather than just the rail, so a
     // drop lands the same way whether or not a source has ever been chosen
     // yet (the first-run screen above, or the rail once everHadSource is
     // true, both sit under this). openDroppedFile() owns the actual

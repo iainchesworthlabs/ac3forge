@@ -1,6 +1,6 @@
 # Commands
 
-The command list from the usage text, reproduced rather than paraphrased — forty-one commands, as
+The command list from the usage text, reproduced rather than paraphrased — 42 commands, as
 a Windows build without `-DAC3FORGE_BUILD_ADM=ON` prints them. The two ADM commands read
 `UNAVAILABLE HERE` because that flag is off; `spatial` does not, because Windows is the one
 platform with a spatial backend. Nothing in the build compares this block against the binary, so
@@ -28,7 +28,7 @@ Usage:
   ac3cli eac3-sine     <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
   ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source. programme2= is a different thing entirely - a second, independent E-AC-3 substream (its own layout/bitrate/dialnorm via programme2-layout=/-bitrate=/-dialnorm=), not another channel of this one)
   ac3cli decode        <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out] (AC-3 or E-AC-3, bare or inside a container; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 there - bed LFE plus every dynamic object, positioned by its own decoded OAMD)
-  ac3cli probe         <in.ac3|in.ec3> [json=1] [detail=frames|blocks] (what the stream declares: layout, substreams, rates, metadata ranges, object layer, tool usage and per-frame CRC - as a table, or as a documented JSON contract)
+  ac3cli probe         <in.ac3|in.ec3|in.ac4> [json=1] [detail=frames|blocks] (inspect AC-3/E-AC-3 layout, substreams, metadata, objects, tools and CRC, or AC-4 TOC/presentations/substream groups; table or documented JSON)
   ac3cli transcode     <in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the output name's suffix, or from codec=)
   ac3cli metadata      <in.ac3|in.ec3> <out.ac3|out.ec3>      (rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the audio is copied through untouched, not re-encoded)
   ac3cli normalize     <in.ac3|in.ec3> <out.ac3|out.ec3>      (measure BS.1770-4 loudness and write the dialnorm it implies (ATSC A/85 §8), audio untouched)
@@ -40,9 +40,9 @@ Usage:
   ac3cli spdif         <in.ac3> <out.wav>                     (IEC 61937 wrap as playable PCM16 WAV)
   ac3cli unspdif       <in.wav|in.raw|-> <out.ac3|out.ec3|->  (the inverse: recover the elementary stream from IEC 61937 bursts, as captured from an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end)
   ac3cli mkv           <in.ac3|in.ec3> <out.mkv>              (wrap as a playable Matroska file)
-  ac3cli mp4           <in.ac3|in.ec3> <out.mp4>              (wrap as a playable MP4 with a spec-correct dac3/dec3 box)
+  ac3cli mp4           <in.ac3|in.ec3|in.ac4> <out.mp4>       (wrap as playable MP4 with dac3/dec3 for AC-3/E-AC-3 or dac4 for AC-4)
   ac3cli fmp4          <in.ac3|in.ec3> <out_dir> [frames_per_fragment] (fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager; fallback-51 also writes an object-stripped 5.1 companion rendition)
-  ac3cli ts            <in.ac3|in.ec3> <out.ts> [dvb|atsc]    (wrap as an MPEG-2 Transport Stream, DVB profile by default)
+  ac3cli ts            <in.ac3|in.ec3|in.ac4> <out.ts> [dvb|atsc] (wrap as MPEG-2 TS; AC-4 supports DVB only)
   ac3cli demux         <in.mkv|in.mp4|in.ts> <out.ac3|out.ec3> (the inverse of 'mkv': unwrap the elementary stream a container carries. The container is identified by its own magic bytes, not by the file name)
   ac3cli remux         <in.mkv|in.mp4|in.ts> <out.mkv|out.mp4|out.ts> [dvb|atsc] (container-to-container: the input is identified by its magic bytes, the output by its extension, and everything either declares is re-derived from the bitstream - the dec3-repair case)
   ac3cli devices                                              (input and loopback capture endpoints)
@@ -618,12 +618,19 @@ other two `null`:
 - Every object list entry (`static_objects`/`upmix_objects`/`objects`) is `{kind: "bed"|"dyn"|
   "isf", lfe, ajoc_coded}`.
 
-`stream.integrity` (`crc_valid`, `crc_failures`, `parse_failures`, `first_parse_error`) is shared
-with the AC-3/E-AC-3 shape. The one payload this parser still refuses rather than reads is
-`oamd_common_data()` (§6.2.8.1, reachable only via an A-JOC substream's own
-`b_oamd_common_data_present` flag) — `first_parse_error` names it
-(`oamd_common_data_present`) when hit; **exit code** follows the same rule as AC-3/E-AC-3: 0 only
-when every sync frame's CRC passed and every frame parsed.
+An A-JOC substream's `oamd_common_data()` (§6.2.8.1), present when its
+`b_oamd_common_data_present` flag is set, is read as part of the table of contents: the fields
+that follow it can only be found by reading it. `probe` does not report its contents. Like audio
+content, an OAMD substream's payload (`oamd_substream()`, §6.2.2.4) is not parsed, including the
+second `oamd_common_data()` it can carry.
+
+`stream.integrity` has the same four members as the AC-3/E-AC-3 shape: `crc_valid`,
+`crc_failures`, `parse_failures` and `first_parse_error`. Two of them hold something different
+here. `crc_valid` is a boolean, true when no sync frame failed its CRC, where AC-3/E-AC-3 give the
+number of syncframes that passed. `parse_failures` is 0 or 1, because the walk keeps only the
+first error; `first_parse_error` names that error (`truncated`, `lost_sync` or
+`unsupported_bitstream_version`) and is `null` when there was none. **Exit code** follows the same
+rule as AC-3/E-AC-3: 0 only when every sync frame's CRC passed and every frame parsed.
 
 `qc` is `loudness`'s bitstream-aware counterpart: `loudness` measures a *source* WAV before encoding, `qc` measures what a stream actually *delivers* after encoding and decoding it back, and checks that against what the stream's own metadata claims:
 

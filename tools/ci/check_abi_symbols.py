@@ -1,5 +1,5 @@
 """Compare a built shared library's exported dynamic symbols against a
-checked-in allowlist (roadmap AP4).
+checked-in allowlist (legacy item AP4).
 
 Every library here already builds with CXX_VISIBILITY_PRESET hidden, so
 nm -D --defined-only is the exact set a consumer can link against - anything

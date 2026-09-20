@@ -2,7 +2,7 @@
 // what ac3adm::parse_bw64 found: programme/content/object/pack/channel/track
 // counts, the <chna> join table, and the decoded PCM's own shape.
 //
-// This demonstrates roadmap item B1 phase 1's own API working end to end -
+// This demonstrates ADM BWF reader, phase 1's own API working end to end -
 // it is NOT the "end-to-end example" phase 3 refers to, which will show a
 // full ADM -> ac3::oba::AtmosEncoder -> E-AC-3 pipeline once phase 2 (the
 // object/bed mapping layer) exists. ac3adm::ac3adm has no idea what AC-3,

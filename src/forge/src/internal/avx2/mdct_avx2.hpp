@@ -78,7 +78,7 @@ void imdct256_post_twiddle(std::span<const double> cos2, std::span<const double>
                            std::span<double> y1_re, std::span<double> y1_im,
                            std::span<double> y2_re, std::span<double> y2_im);
 
-// ROADMAP PF5's batch-axis follow-on (ac3::imdct512_windowed_batch4's own
+// batched SIMD kernels (ac3::imdct512_windowed_batch4's own
 // AVX2 body, see mdct.hpp): runs the SAME steps 2-5 imdct512_windowed's
 // fast branch does - pre-twiddle, in-place FFT, negate-copy, post-twiddle,
 // windowing/de-interleave - but with one f64x4 per BIN holding all four

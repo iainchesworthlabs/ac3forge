@@ -51,23 +51,23 @@ If you cannot cite where something came from, it does not go in.
 ## Repository layout
 
 **`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/forge` is
-the codec itself; `apps/{cli,gui,crucible,android,wasm,baremetal}` are its consumers, and
-`apps/common` is the code those consumers share, compiled straight in with no target of its own.
-`apps/windows` holds only Crucible's separately licensed null-sink driver and the guest VM it is
-verified in. Nothing under `src/` may depend on anything under `apps/`.
+the codec itself; `apps/{cli,gui,crucible,hearth,android,wasm,baremetal}` are its consumers, and
+`apps/common` is shared application code, compiled directly into its consumers. `apps/windows`
+holds Crucible's separately licensed null-sink driver and its guest VM. Nothing under `src/`
+may depend on anything under `apps/`.
 
-**The tree holds three products, and the directories say which is which.** `src/`
+**The tree holds four products, and the directories say which is which.** `src/`
 other than `src/audio`, the bindings under `python/`, `js/` and `rust/`, and `examples/`,
 `fuzz/` and `apps/baremetal` are **the library** — `ac3forge` and `ac3::forge` name it, and
 those identifiers name its packages too. `apps/cli`, `apps/gui` and `apps/common` are
 **Forge**, the tooling pair, built and packaged as one thing. `apps/crucible`, with the driver
-in `apps/windows`, is **Crucible**. `apps/android` and `apps/wasm` are demonstrations of the
-library rather than products of their own. `src/audio`, `tests/`, `tools/`, `cmake/`,
-`packaging/` and the version line are shared by all three and owned by none of them.
+in `apps/windows`, is **Crucible**. `apps/hearth`, `src/sendspin` and the `hearth_sink` example
+are **Hearth**. `apps/android` and `apps/wasm` are library demonstrations. `src/audio`, `tests/`,
+`tools/`, `cmake/`, `packaging/` and the version line are shared and owned by no one product.
 [The naming and scope plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/recasting.md)
 records what each member owns, down to the targets, packages and CI legs.
 
-**Three naming rules follow, and they govern prose as much as code.** `ac3forge` and
+**These naming rules govern prose and code.** `ac3forge` and
 `ac3::forge` name the library and the family's identifiers — the CMake project, the packages,
 the namespace, the C symbol prefix; **Forge**, capitalised and standing alone, names the
 `ac3cli` + `ac3gui` pair. "AC3Forge" is the family in prose, every identifier stays lowercase,
@@ -290,6 +290,38 @@ are the authority and must be updated with it. README.md's own summary of the sa
 should stay a summary, not grow back into a second copy. [docs/history.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/history.md) is a
 record of past work and is not maintained against the current state.
 
+**Voice.** No hyperbole, marketing copy, or flourishes. State the fact; do not set it up as
+"it is not A, it is B." Shorter is better. If two sentences say the same thing, keep one.
+
+Product and usage pages — Forge, Crucible, Hearth (except `design/`), install and first-run
+guides — are for a technical lay reader. Be clear, professional, and direct. Explain a domain
+term on the page that uses it, not in a summary that points there. Examples and screenshots
+belong where they show the thing being described, and they must match that context.
+
+Developer pages — the library, building, platforms, CI, `design/` records, `planning/` — assume
+a mid-level developer who does not already know this audio domain.
+
+**Put information in one place.**
+
+- README is the GitHub summary; `docs/index.md` routes readers into the site.
+- A product index states current status and links to tasks. A usage page explains one task.
+- A platform page records support and evidence for an operating system or device. Product
+  walkthroughs stay with the product and link to platform measurements.
+- `docs/concepts/` defines audio-domain terms. Developer pages link there when a term is not
+  explained locally.
+- `docs/performance-quality.md` and its trend pages own performance and quality reporting. Their
+  client-side code reads append-only data from the `quality-history` branch. Preserve those page
+  paths, element IDs, data names and branch-fed assets unless the data pipeline changes with them.
+- `CHANGELOG.md` records user-visible changes by release.
+- `ROADMAP.md` is the **status board** for in-flight, partial, proposed, blocked, and out-of-scope
+  work. It uses plain-English names; do not allocate new numeric roadmap IDs (`EQ1`, `UX12`, …).
+  Legacy IDs at the bottom of `ROADMAP.md` resolve old PR references only.
+- Product index pages (`docs/*/index.md`) and [`docs/library/capabilities.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md)
+  state **what ships today**.
+- Detailed implementation decisions belong in [`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning)
+  or a product's `design/` record. When a plan lands, update CHANGELOG and the product index; trim
+  the roadmap row; leave or mark the plan superseded ([`planning/SUPERSEDED.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/SUPERSEDED.md)).
+
 **Each product page set follows one shape.** An `index.md` opens with a status callout (what's
 built, what isn't, what's verified on real hardware versus under emulation or in CI only),
 sub-pages carry plain topic titles rather than repeating the product's binary name, and a
@@ -301,10 +333,11 @@ are the pattern to follow for a new one.
 **Non-trivial design work starts in `planning/`, not `docs/`.** A phase plan, a naming decision,
 or a proposal that touches more than a page or two belongs in
 [`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning) first —
-see [`planning/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/README.md)
-for why these stay out of the published site. `docs/` describes what exists; `planning/` is
+see [`planning/README.md`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning/README.md)
+for the index and how it relates to the roadmap. `docs/` describes what exists; `planning/` is
 where what might exist gets argued out first, and a page only moves (or a `design/` record
-gets written) once the work has actually landed.
+gets written) once the work has actually landed. Plans link to the roadmap for status; they do
+not duplicate the roadmap's tables or allocate numeric roadmap IDs.
 
 ## Commits
 

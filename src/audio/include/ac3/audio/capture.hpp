@@ -121,7 +121,7 @@ public:
                                                           std::size_t ring_capacity_samples = 1u
                                                                                               << 18);
 
-    // Roadmap UX11. Taps what `process_id` (and, in kIncludeProcessTree
+    // WASAPI loopback tap. Taps what `process_id` (and, in kIncludeProcessTree
     // mode, its child processes) renders, whichever endpoint that is, and
     // starts the capture thread; samples land in buffer() at exactly
     // `format`. Refuses with kProcessLoopbackUnavailable where the platform

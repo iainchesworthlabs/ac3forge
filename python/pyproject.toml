@@ -56,7 +56,7 @@ AC3FORGE_BUILD_TESTS = "OFF"
 AC3FORGE_BUILD_EXAMPLES = "OFF"
 AC3FORGE_BUILD_FUZZERS = "OFF"
 AC3FORGE_BUILD_ADM = "OFF"
-# ON since roadmap AP6: the wheel carries the container muxers/demuxers
+# ON since Python bindings completeness: the wheel carries the container muxers/demuxers
 # (ac3forge.containers) and object signing (ac3forge.signing) - the
 # "no containers, no signing" gap its record used to name.
 AC3FORGE_BUILD_MATROSKA = "ON"

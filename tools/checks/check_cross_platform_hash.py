@@ -1,4 +1,4 @@
-"""Cross-platform bitstream-hash gate (roadmap VX11).
+"""Cross-platform bitstream-hash gate (cross-platform bitstream reproducibility).
 
 verify_gold_reference.sh's own SNR checks compare two DECODES of the same
 bitstream, so they cannot see a divergence in the bitstream itself - and one

@@ -206,7 +206,7 @@ struct Capture::Impl {
     // application's own output node. Everything else about the two - the
     // thread loop, the ring, the format negotiation, the connect handshake
     // and the unwind on every failure path - is identical, so it lives here
-    // once (roadmap UX12).
+    // once (Crucible cross-platform promotion).
     std::expected<void, CaptureError> connect_stream(const std::string& target, bool capture_sink,
                                                      std::uint32_t rate, std::uint32_t channel_count,
                                                      std::size_t ring_capacity_samples);
@@ -421,7 +421,7 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
 }
 
 // Per-process capture on PipeWire is linking a capture stream to one
-// application's own output node instead of to a device (roadmap UX12). That
+// application's own output node instead of to a device (Crucible cross-platform promotion). That
 // needs a session to ask, and nothing else: no kernel version test, no
 // driver, no elevation. So the answer is whether a session is reachable
 // right now, which is the same question this returns on Windows - can this

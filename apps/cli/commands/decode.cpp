@@ -424,7 +424,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         }
         return true;
     };
-    // Roadmap IM2: the ADM master accumulates in memory across the whole decode (the bed's own
+    // legacy item IM2: the ADM master accumulates in memory across the whole decode (the bed's own
     // LFE channel plus each JOC-reconstructed dynamic object's full-duration PCM, and every OAMD
     // update block's absolute-sample-timestamped position/gain) and is written once, after the
     // decode loop below finishes - unlike the streaming per-object WAVs objects_dir writes above,

@@ -4,7 +4,7 @@
 #include <cstdint>
 
 // What apps/baremetal/encode_probe.cpp expects its own encode to produce
-// (roadmap PF7).
+// (minimum-footprint decoder profile).
 //
 // Unlike the decode side's fixture.hpp this is not generated from a committed
 // WAV by a committed tool - there is no WAV. The probe synthesises its input
@@ -17,9 +17,9 @@
 // target runs, so no second implementation of the generator has to be kept
 // agreeing with the first.
 //
-//     cmake --preset config-linux-gcc-minimal-encoder
-//     cmake --build --preset build-linux-gcc-minimal-encoder
-//     ./build/config-linux-gcc-minimal-encoder/bin/ac3probe
+// cmake --preset config-linux-gcc-minimal-encoder
+// cmake --build --preset build-linux-gcc-minimal-encoder
+// ./build/config-linux-gcc-minimal-encoder/bin/ac3probe
 //
 // Since 2026-09-10 the profile's encoders run their analysis front end -
 // transient detection, the block gather, the analysis window and the forward
@@ -129,4 +129,4 @@ inline constexpr std::uint64_t kEac3ToolsHash = 1673449135140366971ULL;
 inline constexpr std::size_t kEac3SevenOneBytes = 16128;
 inline constexpr std::uint64_t kEac3SevenOneHash = 0xbe1aad39df30dc74ULL;
 
-}  // namespace ac3probe
+} // namespace ac3probe

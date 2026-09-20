@@ -1,7 +1,7 @@
 # apps/windows: the Windows-only pieces of AC3Forge Crucible
 
 The application itself moved to [`apps/crucible/`](../crucible/) when it was promoted from a
-Windows demo to a cross-platform product (roadmap UX12,
+Windows demo to a cross-platform product (Crucible cross-platform promotion,
 [docs/crucible/design/promotion.md](../../docs/crucible/design/promotion.md)). What is left here is the part
 that cannot move, because it is Windows and nothing else:
 

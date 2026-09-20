@@ -1520,7 +1520,7 @@ TEST_CASE("keep-partial", "[cli][keep-partial]") {
     }
 }
 
-// Found by tools/ci/fuzz_eac3_encoder_space.py (roadmap VX1) on its first
+// Found by tools/ci/fuzz_eac3_encoder_space.py (E-AC-3 encoder fuzzing) on its first
 // sweep of the Annex E half sample rates.
 //
 // A nominal Table 5.18 bitrate and an Annex E `fscod2` half rate are each
@@ -1679,7 +1679,7 @@ TEST_CASE("bare heavy2 token turns on Ch2 heavy compression on a 1+1 encode",
     CHECK(heavy2_log.find("compr2 present") != std::string::npos);
 }
 
-// The "-" stdin/stdout convention (roadmap item A4): 'ac3cli encode - -'
+// The "-" stdin/stdout convention (CLI stdin/stdout streaming): 'ac3cli encode - -'
 // reads the WAV from stdin and writes AC-3 to stdout instead of opening
 // files by those literal names, and 'decode - -' the same in reverse - see
 // is_stdio_path() in main.cpp. This is also the binary-safety proof
@@ -1900,7 +1900,7 @@ TEST_CASE("dialnorm=auto and src=/map= keep '-' output free of interleaved statu
     }
 }
 
-// Roadmap C4: dialnorm=auto/dialnorm2=auto used to be unconditionally
+// legacy item C4: dialnorm=auto/dialnorm2=auto used to be unconditionally
 // rejected the moment src=/map= was in play (main.cpp's old "not yet
 // supported with src=/map=" error), regardless of whether the routing would
 // have made measurement ambiguous. The fix routes/renders the whole
@@ -2105,7 +2105,7 @@ TEST_CASE("map= to an object destination warns instead of silently discarding it
     }
 }
 
-// Roadmap C4's other half: dual mono (1+1) dialnorm=auto looked implemented
+// legacy item C4's other half: dual mono (1+1) dialnorm=auto looked implemented
 // already (measured_dialnorm_channel existed for Ch2), but Ch1's own
 // measurement went through measured_dialnorm() with the target's acmod
 // (kDualMono) instead - which runs a normal multi-channel BS.1770 pass
@@ -2185,7 +2185,7 @@ TEST_CASE("dialnorm=auto for 1+1 dual mono measures each programme's own channel
     }
 }
 
-// Roadmap C2: `ac3cli qc` - decode a stream, measure it with the real
+// bitstream-aware loudness QC: `ac3cli qc` - decode a stream, measure it with the real
 // BS.1770-4 meter, and compare against the embedded dialnorm/compr and,
 // optionally, a named delivery-spec gate. See main.cpp's run_qc/
 // report_qc_programme and ac3/meta/qc.hpp for the implementation these tests
@@ -2310,7 +2310,7 @@ TEST_CASE("qc reports the embedded dialnorm and a sane, self-consistent measured
     CHECK(*delta == Catch::Approx(*measured - *claimed).margin(0.01));
 }
 
-// Roadmap C2's own explicit ask: a case where the embedded dialnorm and the
+// bitstream-aware loudness QC's own explicit ask: a case where the embedded dialnorm and the
 // measured loudness deliberately disagree, so the delta-reporting path is
 // genuinely exercised rather than merely the agreement case above. dialnorm=1
 // claims the loudest legal dialogue level (-1 LKFS) against a deliberately
@@ -2456,7 +2456,7 @@ TEST_CASE(
     CHECK((rc == 0) == expect_success);
 }
 
-// Roadmap IO10: `ac3cli qc layout=rendered`. The bed pass measures only the
+// legacy item IO10: `ac3cli qc layout=rendered`. The bed pass measures only the
 // independent substream's Table 5.8 channels, so on a 7.1.4 stream it never
 // sees the two dependents' rear and height channels at all; the rendered pass
 // measures the assembled program through BS.1770-5 Annex 3's extended
@@ -2535,7 +2535,7 @@ TEST_CASE("qc layout=rendered measures a 7.1.4 program's dependents, layout=bed 
     CHECK(*rendered_tp == Catch::Approx(*bed_tp).margin(3.0));
 }
 
-// Roadmap IO12: `ac3cli qc objects=<layout>`. layout=bed's Annex 1 pass sees
+// legacy item IO12: `ac3cli qc objects=<layout>`. layout=bed's Annex 1 pass sees
 // only the flat 5.1 VBAP fold every dynamic object was panned into at encode
 // time - spatial.hpp's own "a raised object folds onto the ring... at full
 // level" - so an object authored at the ceiling measures no differently from
@@ -3269,7 +3269,7 @@ TEST_CASE("mode=reference is exactly the two transform off-switches together", "
 }
 
 // --------------------------------------------------------------------------
-// Roadmap IO8: the documented exit-code scheme, per-command help, quiet/
+// CLI shell completions: the documented exit-code scheme, per-command help, quiet/
 // verbose, and the generated man page and completions.
 // --------------------------------------------------------------------------
 
@@ -3636,7 +3636,7 @@ TEST_CASE("man and completions are generated from the command table", "[cli][man
 }
 
 // --------------------------------------------------------------------------
-// Roadmap IO9: record/live parity with the GUI session. The capture side
+// wide-layout record/live paths: record/live parity with the GUI session. The capture side
 // cannot run headlessly - there is no capture endpoint on a CI machine, and
 // on a platform with no capture backend at all `record`/`live` are refused
 // before their arguments are read - so what is checked here is the option
@@ -3762,7 +3762,7 @@ TEST_CASE("atmos-encode assembles real objects behind src=/map=",
     }
 }
 
-// --- roadmap IO7: the object-layer strip ----------------------------------
+// --- IO7: the object-layer strip ----------------------------------
 
 TEST_CASE("strip-objects leaves a decodable 5.1 stream with no object metadata",
           "[cli][strip-objects]") {
@@ -3806,7 +3806,7 @@ TEST_CASE("strip-objects refuses an AC-3 stream", "[cli][strip-objects]") {
     CHECK(read_log(log).find("E-AC-3") != std::string::npos);
 }
 
-// --- roadmap IO6: the MPEG-TS broadcast profiles ---------------------------
+// --- IO6: the MPEG-TS broadcast profiles ---------------------------
 
 TEST_CASE("ts writes the profile it is asked for", "[cli][ts]") {
     const auto dir = scratch_dir();
@@ -3891,7 +3891,7 @@ TEST_CASE("fmp4 fallback-51 writes the paired rendition into one EXT-X-MEDIA gro
     CHECK_FALSE(fs::exists(plain_dir / "bed51"));
 }
 
-// ROADMAP.md's IO2: 'demux' is the inverse of 'mkv', and the pair is only
+// container readers (mkv/mp4/ts): 'demux' is the inverse of 'mkv', and the pair is only
 // worth anything if it is a true inverse - the elementary stream that goes
 // into a container has to be the one that comes back out, byte for byte. A
 // container reader that dropped a frame, mis-split a block or trimmed a
@@ -4005,7 +4005,7 @@ TEST_CASE("demux refuses what is not a container it reads", "[cli][demux]") {
     }
 }
 
-// Roadmap IO2's remaining half: decode/qc/levels (play/monitor share the same
+// container readers (mkv/mp4/ts)'s remaining half: decode/qc/levels (play/monitor share the same
 // read_elementary_stream call and need real audio hardware to exercise, so
 // are not re-tested here) all take a container in place of a raw .ac3/.ec3,
 // sniffed by content rather than by extension - exactly what demux already
@@ -4061,7 +4061,7 @@ TEST_CASE("decode/qc/levels accept a container in place of a raw elementary stre
     }
 }
 
-// --- remux (roadmap IO2) -----------------------------------------------------
+// --- remux (container readers (mkv/mp4/ts)) -----------------------------------------------------
 
 TEST_CASE("remux converts one container straight to another", "[cli][remux]") {
     const auto dir = scratch_dir();
@@ -4129,7 +4129,7 @@ TEST_CASE("remux refuses an output extension it does not write", "[cli][remux]")
     CHECK(read_log(log).find("does not name a container this build writes") != std::string::npos);
 }
 
-// --- unspdif (roadmap IO3) ---------------------------------------------------
+// --- unspdif (IEC 61937 de-framing) ---------------------------------------------------
 
 TEST_CASE("cli: unspdif recovers the exact stream 'spdif' wrapped", "[cli][unspdif]") {
     const auto dir = scratch_dir();

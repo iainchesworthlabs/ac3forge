@@ -23,7 +23,9 @@ each run's own leg/codec history: a soft one (0.5 dB below the trailing
 10-run mean) that only annotates a row below, never fails anything, and a
 hard one (10 dB below that mean) that *does* fail the run — after the
 numbers are still recorded here, so a big regression is never silently
-un-recorded just because it also failed. See `REGRESSION_DROP_DB` and
+un-recorded just because it also failed. That failure is the `Publish quality
+trend` job in `_build.yml`, surfaced through `ci.yml`'s `build-and-test` call;
+it is not one of `_ci-core.yml`'s trend jobs. See `REGRESSION_DROP_DB` and
 `HARD_REGRESSION_DROP_DB` in `tools/ci/append_quality_history.py`.
 
 Every point below is measured against `tests/golden/audio/reference_51.wav`,
@@ -554,7 +556,7 @@ that question — see [Landscape](landscape.md) and
   }
 
   function render(allRecords, releasesBySha) {
-    // Leg view always looks at one branch's full history - the whole point
+    // Leg view looks at one branch's fetched history window - the whole point
     // is seeing a per-leg trend over many commits, so the develop-collapse
     // and other-branch filters that branch view uses don't apply here.
     const visible = state.view === "leg"
@@ -617,7 +619,8 @@ the chart rather than something you'd only catch by scanning the table leg
 by leg. Both views read the same underlying rows; nothing about which view
 is active changes what counts as a regression in the table below.
 
-`main`'s full history is the default view. Before 2026-08-25's move to
+`main`'s recent window is the default view, with the full history used while
+it still fits that window. Before 2026-08-25's move to
 trunk-based development (see "Where the data lives" below), `develop` was
 the everyday integration branch nearly every commit landed on and `main`
 only advanced on a release promotion, so the two really were separate
@@ -684,7 +687,8 @@ commit SHA already in quality-history, not a separate data source.
 
 `_fixed`-suffixed checks are the gate run against a decoder built with
 `-DAC3FORGE_DECODE_SCALAR=fixed` - Q7.24 integer arithmetic under a block
-exponent, the tier for a part with no FPU (`planning/arithmetic-tiers.md`).
+exponent, the tier for a part with no FPU
+([`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)).
 It differs from the double decode at 121 dB and above on the gold streams
 (`tools/checks/check_decode_scalar_snr.py`, held to 110 in CI), which is as
 far below this gate's coding noise as the float32 decode's 139, so the same
@@ -718,8 +722,9 @@ which is a comparison no single figure in a document can make.
 Results are appended to a dedicated `quality-history` branch (`develop.jsonl`
 / `main.jsonl`), not `gh-pages` — `mkdocs gh-deploy` replaces gh-pages'
 entire tree on every deploy, which would silently discard anything appended
-there outside of what `mkdocs build` itself generates. This page fetches the
-two files directly from `raw.githubusercontent.com` client-side, so a new
+there outside of what `mkdocs build` itself generates. This page prefers each
+history's generated `.recent.jsonl` window and falls back to the full file,
+both fetched from `raw.githubusercontent.com`, so a new
 push shows up here without waiting on a docs deploy (which,
 per [docs.yml](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/docs.yml),
 only runs on push to `main`).

@@ -29,7 +29,7 @@
 // they were also the only part of apps/cli that no test touched at all
 // (commands/audio_io.cpp and commands/live_audio.cpp both measured 0.0% line
 // coverage when tools/checks/coverage_report.sh was first pointed at apps/,
-// roadmap VX15).
+// coverage floors).
 //
 // Every case here is written to hold on a machine with a working capture or
 // render endpoint AND on a headless CI container with neither, because that
@@ -41,7 +41,7 @@
 // argv-mangling bugs in this CLI's history broke.
 //
 // [concurrency] on every case: this file and tests/audio/ are what the
-// ThreadSanitizer leg runs (roadmap VX16, `ctest -L concurrency` - see
+// ThreadSanitizer leg runs (ThreadSanitizer leg, `ctest -L concurrency` - see
 // CMakePresets.json's test-linux-llvm-tsan preset). A race between the
 // capture callback thread and the encoder thread is invisible to the
 // ASan+UBSan leg, and these are the paths that start those threads.
@@ -519,7 +519,7 @@ TEST_CASE("monitor either plays a stream or refuses by name", "[cli][audio-io][c
 
 // 'play' (apps/cli/commands/audio_io.cpp's run_play) had no test in this
 // suite at all until this one - unlike devices/outputs/record/live/monitor
-// above, added when this file was, roadmap VX15 never reached it.
+// above, added when this file was, coverage floors never reached it.
 
 TEST_CASE("play either streams to a device or refuses by name", "[cli][audio-io][concurrency]") {
     const auto dir = scratch_dir();

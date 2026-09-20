@@ -10,7 +10,7 @@
 #include "ac3/internal/profile.hpp"
 
 // The §7.9.4 inverse pair, selected by the scalar type the decoder stores its
-// coefficients in (ac3::internal::decode_scalar_t, roadmap PF7's float32 gap).
+// coefficients in (ac3::internal::decode_scalar_t, minimum-footprint decoder profile's float32 gap).
 // Shared by both decoders - decoder.cpp's AC-3 and eac3_decoder.cpp's Annex E -
 // because both make exactly this choice at exactly this point.
 //

@@ -1,4 +1,4 @@
-"""Roadmap AP6: zero-copy numpy encode/decode, 2-D planar channel arrays, and the
+"""Python bindings completeness: zero-copy numpy encode/decode, 2-D planar channel arrays, and the
 decode_*_into(out=) caller-buffer forms.
 
 Encode input and decode_*_into's `out` are validated by the binding layer itself (extract_

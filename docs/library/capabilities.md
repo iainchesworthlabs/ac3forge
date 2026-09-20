@@ -11,6 +11,8 @@ siblings, and `ac3::audio`, which belongs to the family rather than to any one m
 never installed. [Forge](../forge/index.md) (`ac3cli` and `ac3gui`) and
 [Crucible](../crucible/index.md) reach the codec through the public API described under
 [What it is](index.md), and link `ac3::audio` directly.
+The [application coverage matrix](application-coverage.md) shows which of these broad
+capabilities each application exposes.
 
 ## What it does
 
@@ -19,7 +21,7 @@ never installed. [Forge](../forge/index.md) (`ac3cli` and `ac3gui`) and
 | | AC-3 (bsid 8) | E-AC-3 (bsid 16) |
 |---|---|---|
 | Coding modes | 1+1 dual mono, 1/0, 2/0, 3/0, 2/1, 3/1, 2/2, 3/2, each with or without LFE (1+1 never carries one) | the same, plus 7.1, 5.1.2, 5.1.4 and 7.1.4 through dependent substreams |
-| Programmes per stream | one | up to eight, through independent substreams (§E2.3.1.2's I0–I7) — the multi-language / associated-service shape of broadcast DD+. Each has its own layout, rate and dialnorm; labelling one as a service (`bsmod`) and mixing it against another is not there yet |
+| Programmes per stream | one | up to eight independent substreams can be **authored** (§E2.3.1.2's I0–I7) — each with its own layout, rate and dialnorm. Receiver-side programme-mix metadata (`mixmdate`, `bsmod`, associated-service mixing) is not implemented yet |
 | Sample rates | 48, 44.1, 32 kHz | 48, 44.1, 32 kHz, plus the `fscod2` half rates 24, 22.05, 16 kHz (Annex E only) |
 | Bit rates | CBR only — the 19 nominal rates of Table 5.18, 32–640 kbps | CBR (the same 19, per substream) or VBR — a quality target with optional min/max kbps bounds, per substream |
 | Transform | long (512-point) or short (2x256-point) blocks, KBD window, chosen per block per channel by a §8.2.2 transient detector | same |
@@ -174,7 +176,7 @@ this library does not carry its own Parquet writer for one research-only export 
 |---|---|
 | `ac3::io::scan` | Finds access-unit boundaries in a raw elementary stream and reports what it renders, without being told — grouped by programme, so a stream with two independent substreams describes both rather than one at twice the frame rate. `ac3::io::read_frame_header` is the same per-syncframe walk exposed on its own. |
 | `ac3::io::probe` | The stream description above (`ac3cli probe`), as a human table or a versioned JSON contract. |
-| `ac4::ac4` | An AC-4 (ETSI TS 103 190-1/-2) sync-frame/TOC/presentation/substream-group bitstream inspector — channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike — the same probe/JSON contract extended to a second codec (`ac3cli probe` auto-detects it). Parse-and-inspect, not decode: audio content is reported by byte range, never decoded, and `oamd_common_data()` is refused cleanly rather than misparsed. Links nothing from `ac3::forge` and knows nothing about AC-3 — a peer codec, not an extension. See [Validation](../verification.md#ac-4). |
+| `ac4::ac4` | An AC-4 (ETSI TS 103 190-1/-2) sync-frame/TOC/presentation/substream-group bitstream inspector — channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike — the same probe/JSON contract extended to a second codec (`ac3cli probe` auto-detects it). Parse-and-inspect, not decode: audio content is reported by byte range, never decoded. An A-JOC substream's `oamd_common_data()` is parsed with the TOC; an OAMD substream's payload, which can carry a second `oamd_common_data()`, is reported by byte range like audio content. Links nothing from `ac3::forge` and knows nothing about AC-3 — a peer codec, not an extension. See [Validation](../verification.md#ac-4). |
 | `matroska::matroska` | A standalone MKV muxer. Links nothing from `ac3::forge` and knows nothing about AC-3. |
 | `mp4::mp4` | A standalone MP4/ISOBMFF muxer, same shape as `matroska::matroska`. `ac3::io::build_codec_config_box` builds a spec-correct `dac3`/`dec3` sample-entry box (ETSI TS 102 366 Annex F), Dolby Atmos extension included, straight off the bitstream. |
 | `mpegts::mpegts` | A standalone MPEG-2 Transport Stream muxer (PAT + PMT + one PES-wrapped elementary stream), identifying AC-3/E-AC-3 per either broadcast profile: DVB's ETSI EN 300 468 Annex D descriptors, or ATSC's `stream_type` 0x81/0x87 with A/52 Annex A and Annex G's own. Both descriptors' identification fields are filled in from what `ac3::io::scan` reads off the bitstream. Links nothing from `ac3::forge` beyond the A/52 field values it is handed. |

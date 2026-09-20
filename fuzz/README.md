@@ -58,8 +58,7 @@ fuzz build fails on both in each case.
 Like `ci.yml`'s own leg-status table, this is a point-in-time result, not a
 standing guarantee - re-run it yourself rather than trusting an old number.
 
-The section below is the original four harnesses' measurement; the roadmap
-VX3 harnesses have their own, further down under "Status: the VX3 harnesses",
+The section below is the original four harnesses' measurement; the signing-verify fuzz walk harnesses have their own, further down under "Status: the VX3 harnesses",
 along with what they found.
 
 Two full bounded passes ran locally before this landed (Docker: `ubuntu:26.04`
@@ -416,14 +415,14 @@ way the fixed findings used to.
 | `fuzz_oamd_parse`      | `ac3::oba::parse_payload` - TS 103 420 §5's `object_audio_metadata_payload`, as recovered from an EMDF payload with id 11 |
 | `fuzz_joc_parse`       | `ac3::oba::joc::parse_payload` - TS 103 420 §6's `joc()` payload: Huffman-coded coefficients into a matrix sized from the stream's own numbers |
 | `fuzz_signing_verify`  | `ac3::signing::verify_atmos_stream` + `verify_atmos_frame` - operator-supplied stream, operator-supplied key, no CRC check in front of either |
-| `fuzz_osc_parse`       | `ac3::oba::parse_osc_packet` - the OSC 1.0 wire form of a live object-position update (roadmap UX4), reached straight from a UDP datagram by `ac3::audio::LivePositionSource` whenever `positions=osc:<port>` is in play. No CRC, no container, no bitstream ahead of it at all - this project's first NETWORK-facing input rather than a file or capture-device one; see `docs/threat-model.md` |
+| `fuzz_osc_parse`       | `ac3::oba::parse_osc_packet` - the OSC 1.0 wire form of a live object-position update (live OSC object positions), reached straight from a UDP datagram by `ac3::audio::LivePositionSource` whenever `positions=osc:<port>` is in play. No CRC, no container, no bitstream ahead of it at all - this project's first NETWORK-facing input rather than a file or capture-device one; see `docs/threat-model.md` |
 | `fuzz_adm_parse`       | `ac3adm::parse_bw64(std::istream&)` - BW64/RF64 chunks plus an arbitrary ADM XML document. Opt-in, see below |
 | `fuzz_sendspin_json`   | `ac3::sendspin::json::Document::parse` - the JSON of every Sendspin message, the first code a network peer's bytes reach on ac3hearth's server and on a sink. Every accessor runs on every value parsed, and the document is written back out and parsed again, which must give the same text |
 | `fuzz_sendspin_handshake` | `ac3::sendspin::handshake`'s parsers - `client/init` (read by a server from a client nothing has authenticated), `server/init`, `server/error`, `noise/handshake`, and the payloads of the two Noise messages. Whatever parses is written back out and must parse to the same value |
 | `fuzz_sendspin_messages` | `ac3::sendspin::messages`' and `ac3::sendspin::pairing_messages`' readers - the core messages after the handshake, from `client/hello` to `group/update`, with the `_ac3forge_player@v1` objects four of them carry, and the pairing messages, each read in the specification's dialect and aiosendspin 9.1.1's. Whatever reads is written back out, and that text must read and write back to itself |
 | `fuzz_sendspin_frames` | `ac3::sendspin::Reassembler`, `parse_player_chunk` and `parse_burst_chunk` - transport-mode fragment reassembly in the specification's form and aiosendspin 9.1.1's, and the `player@v1` chunk parser, in both forms of its header, and the `_ac3forge_player@v1` one. The input is a control byte and length-prefixed frames; for one input in eight, chosen by three control bits, the input is also repeated past two frames, split in both fragment forms, and checked to reassemble |
 
-### The object and metadata layer (roadmap VX3)
+### The object and metadata layer (signing-verify fuzz walk)
 
 The last five rows are the parsers behind a skip field in every Atmos frame -
 this project's differentiating feature, and the deepest attacker-controlled
@@ -479,7 +478,7 @@ there. `ac3::io::read_wav` takes a path rather than a byte span, so
 beyond calling the real function directly, since there is no in-memory
 overload to call instead.
 
-## The CRC-repairing mutator (roadmap VX3)
+## The CRC-repairing mutator (signing-verify fuzz walk)
 
 "Differential mode" below records the problem in passing: "the overwhelming
 majority of mutations get rejected immediately by this project's own decoder
@@ -527,7 +526,7 @@ siblings' seed corpora, so they inherit the deeper inputs this finds, but
 adding the mutator there would multiply the number of inputs both decoders
 accept - and every one of those spawns a real FFmpeg process.
 
-## Differential mode (roadmap G3)
+## Differential mode (differential decoder fuzzing)
 
 `fuzz_differential_ac3_decode` and `fuzz_differential_eac3_decode` drive the
 exact same decode paths as `fuzz_ac3_decode`/`fuzz_eac3_decode` above, but
@@ -633,7 +632,7 @@ Scope: AC-3 `encode` only.
 ### The E-AC-3 half
 
 E-AC-3's own configuration space is **`tools/ci/fuzz_eac3_encoder_space.py`**
-(roadmap VX1), which the file above used to name as its own remaining gap. It
+(E-AC-3 encoder fuzzing), which the file above used to name as its own remaining gap. It
 asks the same question of `eac3-encode` and `atmos-encode`, over the part of
 the space that is E-AC-3's alone: Annex E tool tokens with their band-edge
 pins (`cpl`, `ecpl`, `spx`, `aht`, `tpn`, `auto`), the `fscod2` half sample

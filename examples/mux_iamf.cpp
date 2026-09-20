@@ -1,4 +1,4 @@
-// Roadmap IM3 phase 1's decode -> IAMF bridge: E-AC-3 can never be an IAMF codec (IAMF's codec
+// IAMF writer phase 1's decode -> IAMF bridge: E-AC-3 can never be an IAMF codec (IAMF's codec
 // list is Opus, AAC-LC, FLAC and LPCM only), so the route to that ecosystem is decode -> rewrap,
 // not a new encoder output. This encodes a synthetic 7.1.4 E-AC-3 stream (an independent 3/2+LFE
 // bed plus two dependent substreams, exactly examples/encode_eac3.cpp's own encode_714()), decodes

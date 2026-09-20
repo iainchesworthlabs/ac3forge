@@ -6,14 +6,9 @@ transform tables. What differs between the pages is the part it targets and, on 
 floating-point unit, the arithmetic tier it decodes in
 ([the plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)).
 
-| | [Cortex-M3](cortex-m3.md) | [ESP32-S3](esp32-s3.md) | [ESP32-C3](esp32-c3.md) | [ESP32-C6](esp32-c6.md) | [ESPHome](esphome.md) |
-|---|---|---|---|---|---|
-| What it is | The reference target: `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` | Espressif's dual-core Xtensa part, hardware single-precision FPU | Espressif's RISC-V part, **no FPU at all** | Espressif's RISC-V part with WiFi 6, no FPU, 512 KB of SRAM | An external component wrapping the ESP32-S3 decoder for ESPHome projects |
-| Arithmetic | Default (software `double`) and the fixed-point tier, both gated in CI | Default: the profile's scalar in `float`, hand-tuned against the ROM's software `double` | Fixed-point tier only — the arithmetic a part with no FPU wants | Fixed-point tier by default; float measured beside it | Whatever the wrapped ESP32-S3 component uses |
-| Decode | Correct, every fixture | **Correct, and real time on a board** — every fixture, including Atmos objects placed onto 7.1.4 | Correct on 12 of 14 fixtures under emulation; the two 7.1.4 rows don't fit the heap | Correct on every fixture on a board. With WiFi up, stereo and mono in real time and no 5.1 stream | N/A — plumbing only, not a decoder of its own |
-| Encode | Correct, six rows, separate profile | Correct; several rows real time on a board, the widest still over | Not validated — both encoders are floating-point | Not validated — both encoders are floating-point | N/A |
-| Real silicon | None — QEMU only | **Yes.** Every timing and memory figure on this page set is from a board | None — `qemu-riscv32` only | **Yes**, with and without a network running | Inherits the ESP32-S3 component's evidence |
-| CI | `build-footprint`, every push | `build-esp32s3`, under QEMU | The fixed-point `esp32c3` leg, under `qemu-riscv32` | Built beside the C3 leg; QEMU does not emulate the part | `esphome config` against the manifest, on every change |
+The variant table keeps codec support, Hearth support, distribution and evidence separate.
+
+--8<-- "docs-snippets/generated/platform-bare-metal.md"
 
 Whether a part is viable at all comes down to floating point, not RAM — the comparison across the
 wider ESP32 family, and why the ESP32-P4 was assessed and declined, is on
@@ -37,5 +32,5 @@ wider ESP32 family, and why the ESP32-P4 was assessed and declined, is on
 
 - [Platforms](../index.md) is one level up — the full routing table across every target, not only
   the bare-metal ones.
-- [Capabilities](../../library/capabilities.md) — what the codec does, the same everywhere; this
-  section is about where it runs, not what it can encode or decode.
+- [Capabilities](../../library/capabilities.md) — the complete codec surface; the table above
+  records where minimum-footprint targets narrow it.

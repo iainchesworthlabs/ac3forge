@@ -202,7 +202,7 @@ class AC3FORGE_EXPORT FrameEncoder {
     [[nodiscard]] const EncoderConfig& config() const;
     [[nodiscard]] int channel_count() const;
 
-    // Roadmap PF6. Constant for the life of the encoder - nothing in
+    // bare-metal probe harness. Constant for the life of the encoder - nothing in
     // EncoderConfig moves any term (see ac3/latency.hpp for what each one
     // is): AC-3 has one frame length, this encoder needs no lookahead, and
     // §3.7's hold-back is an Annex E tool AC-3 does not have. Reported as a

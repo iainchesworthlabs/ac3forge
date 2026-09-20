@@ -1,5 +1,5 @@
 /* Linker script for QEMU's mps2-an385 (Cortex-M3), for the minimum-footprint
- * decoder probe (roadmap PF7).
+ * decoder probe (minimum-footprint decoder profile).
  *
  * ONE memory region, and everything - code, initialised data, bss, heap and
  * stack - lives in it starting at address 0. That is not a simplification of

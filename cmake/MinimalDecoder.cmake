@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # MinimalDecoder.cmake
 #
-# Roadmap PF7: the minimum-footprint decoder profile. AC3FORGE_MINIMAL_DECODER
+# minimum-footprint decoder profile: the minimum-footprint decoder profile. AC3FORGE_MINIMAL_DECODER
 # turns src/forge into a single decode-only static library
 # (ac3::forge_minimal) built for a target that has a few hundred kilobytes of
 # RAM and no operating system - a set-top box, a receiver, a DSP port.

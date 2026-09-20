@@ -58,9 +58,12 @@ mkdir -p "$out"
 console="$out/qemu-sendspin.txt"
 : > "$console"
 
+# QEMU writes to its flash image, NVS included, so the board boots a copy and
+# leaves the image as it was for whatever boots it next.
+cp "$image/qemu_flash.bin" "$image/qemu_efuse.bin" "$out/"
 "$qemu" -M esp32s3 -m 32M \
-    -drive "file=$image/qemu_flash.bin,if=mtd,format=raw" \
-    -drive "file=$image/qemu_efuse.bin,if=none,format=raw,id=efuse" \
+    -drive "file=$out/qemu_flash.bin,if=mtd,format=raw" \
+    -drive "file=$out/qemu_efuse.bin,if=none,format=raw,id=efuse" \
     -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \
     -global driver=timer.esp32s3.timg,property=wdt_disable,value=true \
     -nic user,model=open_eth,hostfwd=tcp:127.0.0.1:18928-:8928,hostfwd=tcp:127.0.0.1:18080-:80 \

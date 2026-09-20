@@ -1581,7 +1581,7 @@ std::expected<RawFrame, Error> parse_raw_frame(std::span<const std::byte> raw_ac
 }
 
 
-// --- Carriage (roadmap IM4's separable slice) -------------------------------
+// --- Carriage (AC-4 bitstream inspector's separable slice) -------------------------------
 
 namespace {
 
