@@ -559,9 +559,9 @@ after the access point came back, with no restart.
 connection is closed with the network, the player prints the stream's figures
 and gives the sink back, and its memory goes with it — which matters, because
 the network shape runs with about a kilobyte of internal heap free while a
-stream plays. A few small internal allocations fail in the seconds between the
-access point going and the board noticing, with no effect on anything, and the
-board rejoined from there. The play that followed the rejoin started with 9
+stream plays. A few small internal allocations failed in the seconds between
+the access point going and the board noticing, with no effect on anything, and
+the board rejoined from there. The play that followed the rejoin started with 9
 chunks late and 3 underruns while the clock filter converged again, about a
 second of audio; the next play was clean (630 of 630 bursts, nothing late).
 
