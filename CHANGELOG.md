@@ -1168,6 +1168,41 @@ The sections below contain the complete change list and fixes.
   is now synced to the host as it is written; on a board, a `current_state` request is
   answered in 0.5 s, where before its answer arrived 10 s later with the next request's
   output.
+- **A Hearth sink stayed off its network once its access point restarted.** The WiFi
+  station retried a disconnect `CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES` times in quick
+  succession and then gave up for good, so an access point away for the 30 s to two
+  minutes a restart takes left the board off the network until someone power-cycled it.
+  A power cut was worse: the board booted long before the access point, spent its
+  retries in 15 s and never tried again. Meanwhile `network_ready()` never turned
+  false, so mDNS and the Sendspin player believed the board was online, and an Improv
+  client asking such a board was told *provisioned*, with the address of a page that no
+  longer answered.
+  - The station now keeps trying the network it has: the quick retries first, then
+    after 1, 2, 4 and 8 s, then every 15 s, until it joins or is given another network.
+    A network lost after joining is retried the same way. On two ESP32-S3 boards, one
+    running a SoftAP as the access point, a board idle when the access point went was
+    back 1.2 s after it returned, a board whose access point vanished without a word
+    for 125 s was back 14.7 s after, and a board that booted while the access point was
+    off joined 12.5 s after it came back and then advertised itself and started its
+    Sendspin player, with no restart.
+  - `network_ready()` now means the board holds an address now, not that it once did.
+    A disconnect or a lost address clears it and rejoining sets it again, so mDNS, the
+    Improv reply's URL and `app_main`'s watch for a network all follow the truth.
+  - Improv's current state is *ready* whenever the board is not on a network, where a
+    board with a network stored used to answer *provisioning*. The client
+    improv-wifi.com uses offers its Wi-Fi form for *ready* and a spinner with no way out
+    for *provisioning*, so a board whose network had gone could not be given another
+    one from the page it tells people to use.
+  - An Improv `wifi_settings` sent to a board that is off its network now joins the new
+    network at once, dropping the one being retried. A board that is on a network keeps
+    it and joins the new one at its next boot, as `PUT /network` does, and says so on
+    the console.
+  - A network that gives no address within 30 s no longer has its station stopped: the
+    board stays associated, and an address that arrives later still joins it.
+  - A Sendspin stream that is playing when the network goes now ends where it stopped,
+    freeing the player's memory, and the board rejoins from there: on a board with
+    about a kilobyte of internal heap free while streaming, the rejoin came 8.7 s after
+    the access point returned, and the next play was clean.
 - **A Hearth sink's page could reach its Sendspin player before the player had started,
   and after a failed start had freed it.** `hearth_sink` set two global pointers to the
   player and its server as it made them, on the task that starts them. The control

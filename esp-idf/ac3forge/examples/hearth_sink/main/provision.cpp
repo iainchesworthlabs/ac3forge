@@ -60,14 +60,17 @@ void send_result(improv::Command command, std::span<const std::string_view> stri
     send(std::span<const std::uint8_t>(out.data(), improv::write_result(command, strings, out)));
 }
 
-// Provisioned once there is a network to join, whether it came from Improv or
-// from the build: a client that asks should be told what is true, not what
-// this task happens to have done.
+// Provisioned while the board is on a network, whether that network came from
+// Improv or from the build, and ready otherwise: a client that asks should be
+// told what is true, not what this task happens to have done. A board whose
+// network is down is ready too, even while it keeps trying that network
+// (network.hpp). The specification's provisioning means "credentials
+// received, attempt to connect", which only the answer to wifi_settings says.
+// It is also a dead end in the client improv-wifi.com uses: that client shows
+// its Wi-Fi form only for ready, and a spinner for provisioning until the
+// state changes.
 [[nodiscard]] improv::State current_state() {
-    if (network_ready()) {
-        return improv::State::provisioned;
-    }
-    return settings().ssid[0] != '\0' ? improv::State::provisioning : improv::State::ready;
+    return network_ready() ? improv::State::provisioned : improv::State::ready;
 }
 
 // "http://192.168.1.45/" - where the board's own page is, which is what a
@@ -95,13 +98,22 @@ void answer(const improv::Rpc& rpc) {
             }
             // The credentials are stored before the association is tried, so a
             // board that is reset mid-attempt comes back with them. A board
-            // whose last attempt failed - a mistyped passphrase, a network
-            // that has gone - tries these now, and a client that got
-            // cannot_connect can send another pair straight away.
+            // that is not on a network - its last attempt failed, or its
+            // network has gone and it is still trying it - tries these now,
+            // and a client that got cannot_connect can send another pair
+            // straight away. A board that is on a network stays on it and
+            // joins the new one at its next boot, as with PUT /network: the
+            // answer is where its page is now.
+            const bool on_network = network_ready();
             if (!network_up()) {
                 send_error(improv::Error::cannot_connect);
                 send_state(improv::State::ready);
                 return;
+            }
+            if (on_network) {
+                std::printf("improv: stored '%.*s' for the next boot; the board stays on its "
+                            "network until then\n",
+                            static_cast<int>(rpc.ssid.size()), rpc.ssid.data());
             }
             send_error(improv::Error::none);
             const std::string url = page_url();
