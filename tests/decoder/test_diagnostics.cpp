@@ -15,7 +15,7 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 
-// DecoderConfig::diagnostics (roadmap AP11): a callback for the recoverable,
+// DecoderConfig::diagnostics (decoder diagnostics describe()): a callback for the recoverable,
 // informational events a caller otherwise has no way to hear about. Every
 // test damages a REAL encoded frame or injects a REAL (if synthetic) EMDF
 // payload rather than asserting on the callback mechanism in isolation - the

@@ -216,7 +216,7 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/c
 # library surface.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/decoder")
 
-# test_simd_kernels.cpp (roadmap PF5) needs the ONE architecture directory
+# test_simd_kernels.cpp (SIMD kernels) needs the ONE architecture directory
 # CMake selected in src/forge/CMakeLists.txt, so the test exercises the
 # f64x2/i32x4 the library was actually built with rather than a different
 # one - same white-box arrangement as src/signing/src just above and the ALSA
@@ -242,7 +242,7 @@ target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/include"
     "${CMAKE_SOURCE_DIR}/esp-idf/ac3forge/conversion/float")
 
-# test_simd_kernels.cpp's CPU-feature-detection cases (ROADMAP PF5's
+# test_simd_kernels.cpp's CPU-feature-detection cases (SIMD kernels's
 # dynamic-dispatch follow-on) need cpu_features.cpp compiled a SECOND time,
 # directly into this target, against the same resolved probe directory
 # src/forge/CMakeLists.txt selected for the library - rather than calling
@@ -298,7 +298,7 @@ if(AC3FORGE_IS_MSVC_LIKE)
 endif()
 
 # core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
-# half of the libFuzzer custom mutator (roadmap VX3). The mutator itself only
+# half of the libFuzzer custom mutator (signing-verify fuzz walk). The mutator itself only
 # builds under Clang with -fsanitize=fuzzer, but the header's
 # restamp_syncframe_crcs is ordinary portable C++ over ac3::crc16 and the
 # frame-size tables, and whether it produces a crc1 the decoder accepts is
@@ -450,11 +450,11 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_NET_DIR}")
 # ---------------------------------------------------------------------------
 # cli/test_cli_live.cpp rides the same gate and the same AC3CLI_EXE: it covers
 # the device-facing commands (devices/outputs/record/live/monitor), which no
-# test touched at all until roadmap VX15 measured commands/audio_io.cpp and
+# test touched at all until coverage floors measured commands/audio_io.cpp and
 # commands/live_audio.cpp at 0.0% line coverage. Its cases assert what holds
 # with or without an endpoint present - see that file's own header - and carry
 # the [concurrency] tag, so the ThreadSanitizer leg reaches them through
-# `ctest -L concurrency` (roadmap VX16).
+# `ctest -L concurrency` (ThreadSanitizer leg).
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
         cli/test_cli.cpp cli/test_cli_containers.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp
@@ -486,13 +486,13 @@ endif()
 # surface to link against. The fragmented-MP4 cases exercise Fmp4FolderWriter,
 # RecordingSink's own kFmp4 backend, so its source comes along too.
 #
-# Ungated since roadmap IO9 moved both to apps/common: both front ends write
+# Ungated since wide-layout record/live paths moved both to apps/common: both front ends write
 # their takes through them now, so the bytes they produce are worth checking
 # in a CLI-only build too - and apps/common, unlike apps/gui, is present
 # whatever AC3FORGE_BUILD_GUI says. The test file itself stays under
 # tests/gui/ so its history and its "[gui]" tag are unbroken.
 #
-# container_input.cpp (roadmap IO2) joined the same way for the same reason:
+# container_input.cpp (container readers (mkv/mp4/ts)) joined the same way for the same reason:
 # ac3::apps::sniff_container/elementary_stream_from_bytes are what
 # decode/qc/levels/play/monitor and the GUI's QC/Inspect pickers all call, so
 # a sniffing regression belongs in the plain Catch2 suite rather than only in
@@ -525,7 +525,7 @@ target_include_directories(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/common"
     "${CMAKE_SOURCE_DIR}/apps/gui")
 
-# AC3Forge Crucible's engine core (roadmap UX11/UX12, apps/crucible/
+# AC3Forge Crucible's engine core (WASAPI loopback tap/UX12, apps/crucible/
 # engine/): the slot plan, the bed mixer, placement smoothing and the
 # output-mode policy. All four are plain C++ over ac3::oba types with no
 # platform in them - the platform layer next to them is what talks to WASAPI
@@ -644,7 +644,7 @@ endif()
 # inside src/ac3adm/CMakeLists.txt's own add_subdirectory(), which never runs unless
 # AC3FORGE_BUILD_ADM is already ON - so the option itself is what's checked here instead.
 #
-# test_adm_bridge.cpp (ac3::admbridge, roadmap B1 phase 2, src/admbridge) rides the same gate:
+# test_adm_bridge.cpp (ac3::admbridge, ADM BWF reader phase 2, src/admbridge) rides the same gate:
 # it depends on ac3adm::ac3adm too, and src/admbridge is only add_subdirectory()'d from inside
 # the same if(AC3FORGE_BUILD_ADM) block in the root CMakeLists.txt.
 if(AC3FORGE_BUILD_ADM)
@@ -654,7 +654,7 @@ if(AC3FORGE_BUILD_ADM)
     target_link_libraries(ac3tests PRIVATE ac3adm::ac3adm ac3::admbridge)
 endif()
 
-# test_cli_atmos_adm.cpp (roadmap B1 phase 3, ac3cli's 'atmos-adm' command) needs BOTH conditions
+# test_cli_atmos_adm.cpp (ADM BWF reader phase 3, ac3cli's 'atmos-adm' command) needs BOTH conditions
 # above to hold at once, not just AC3FORGE_BUILD_ADM alone: it runs the real, built ac3cli binary
 # as a subprocess (AC3CLI_EXE, defined only inside the `if(TARGET ac3cli)` block above) against an
 # ADM fixture, so the command it exercises only exists in that binary at all when
@@ -668,7 +668,7 @@ if(AC3FORGE_BUILD_ADM AND TARGET ac3cli)
                                     cli/test_cli_decode_adm.cpp)
 endif()
 
-# ac3iab::ac3iab (roadmap IM1 phase 1, src/ac3iab) is gated by its own AC3FORGE_BUILD_IAB
+# ac3iab::ac3iab (IAB reader phase 1, src/ac3iab) is gated by its own AC3FORGE_BUILD_IAB
 # (default ON, see the root CMakeLists.txt's own option()) rather than being linked
 # unconditionally in the matroska::matroska/mp4::mp4/mpegts::mpegts list below - nothing else
 # in this test binary depends on it, so there is no FATAL_ERROR guard forcing the option to
@@ -680,7 +680,7 @@ if(AC3FORGE_BUILD_IAB)
     target_link_libraries(ac3tests PRIVATE ac3iab::ac3iab)
 endif()
 
-# iamf::iamf (roadmap IM3 phase 1, src/iamf) is gated by its own AC3FORGE_BUILD_IAMF (default ON,
+# iamf::iamf (IAMF writer phase 1, src/iamf) is gated by its own AC3FORGE_BUILD_IAMF (default ON,
 # see the root CMakeLists.txt's own option()), same conditional shape as the AC3FORGE_BUILD_IAB
 # block immediately above.
 if(AC3FORGE_BUILD_IAMF)
@@ -689,7 +689,7 @@ if(AC3FORGE_BUILD_IAMF)
 endif()
 
 # ac3::forge_c is an optional component (AC3FORGE_BUILD_CAPI, default ON - see the root
-# CMakeLists.txt) - test_capi.cpp (roadmap F1) only exists to build when it was actually built,
+# CMakeLists.txt) - test_capi.cpp (C API) only exists to build when it was actually built,
 # the same shape as the AC3FORGE_BUILD_ADM-gated sources above.
 if(AC3FORGE_BUILD_CAPI)
     target_sources(ac3tests PRIVATE capi/test_capi.cpp)

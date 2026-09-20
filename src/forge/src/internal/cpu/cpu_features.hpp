@@ -1,7 +1,7 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
-// Runtime CPU-feature detection, x86-64 only (ROADMAP PF5's follow-on
+// Runtime CPU-feature detection, x86-64 only (SIMD kernels's follow-on
 // dynamic-dispatch work).
 //
 // The arch seam (src/forge/src/internal/arch/{generic,x86_64,aarch64}/) is
@@ -46,4 +46,4 @@ namespace ac3::internal::cpu {
 // instruction fault stand in for one.
 [[nodiscard]] bool has_avx2() noexcept;
 
-}  // namespace ac3::internal::cpu
+} // namespace ac3::internal::cpu

@@ -14,7 +14,7 @@
 // A minimal IAMF (Immersive Audio Model and Formats) OBU/ISOBMFF writer, per the AOM IAMF
 // v1.1.0 specification (https://aomediacodec.github.io/iamf/v1.1.0.html, final).
 //
-// Roadmap item IM3 phase 1 of 3 (see ROADMAP.md): E-AC-3 is not in IAMF's codec list (Opus,
+// Roadmap item IM3 phase 1 of 3 (): E-AC-3 is not in IAMF's codec list (Opus,
 // AAC-LC, FLAC, LPCM only, per IAMF §3.5) and never can be, so this is not a new encoder output -
 // it is a decode-then-rewrap bridge to the IAMF/Eclipsa Audio ecosystem, writing the `ipcm`
 // (uncompressed LPCM) substreams IAMF §3.11.4 defines for a CHANNEL_BASED audio element whose one

@@ -17,7 +17,7 @@
 #include "ac3/io/wav.hpp"
 #include "ac3adm/ac3adm.hpp"
 
-// ac3cli's 'decode ... adm_out=' path (roadmap IM2's write direction - apps/cli/commands/decode.cpp's
+// ac3cli's 'decode ... adm_out=' path (legacy item IM2's write direction - apps/cli/commands/decode.cpp's
 // accumulate_adm/run_decode_eac3). Real, subprocess-level integration test: the same "run the actual
 // built binary, inspect what it wrote" shape tests/cli/test_cli_atmos_adm.cpp (IM2's read direction)
 // and tests/cli/test_cli.cpp's own atmos-encode tests use, and for the same reason - see

@@ -453,6 +453,10 @@ B3), on WiFi with the page on port 80:
 SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram;sdkconfig.sendspin" idf.py build
 ```
 
+[An ESP32-S3 sink](../../../../docs/hearth/sink-esp32-s3.md) takes a board
+through this step by step: flashing, joining a network, pairing, groups,
+wiring and slot widths.
+
 Nothing plays at boot. The player listens on port 8928 at `/sendspin`, the
 board advertises `_sendspin._tcp` under its name, and a server that finds it
 dials it. Two roles are offered:
@@ -560,6 +564,12 @@ and each output's peak and RMS over the last 100 ms. The same levels and
 counters reach the server in the extension role's `client/state`, up to ten
 times a second while a stream plays.
 
+The object is `null` until the player has started, which it has only once its
+WebSocket server is listening. A board that joins a network over Improv starts
+its player just as the client is given the page's address, so a page opened at
+once can see `null` for a moment. A `PUT /layout`, `/name`, `/wiring` or
+`/slot-width` sent before the player has started still reaches it.
+
 When a stream ends, the console prints its figures and each output's RMS
 over the whole stream:
 
@@ -653,6 +663,24 @@ by its token and then, on a fresh board, by the code it printed, all 315
 bursts played each time, with each output's RMS equal to the test sink's;
 with the firmware the two boards above ran, at least 43,700 bytes of internal
 heap were free.
+
+[Joining a network](#joining-a-network) is checked the same way, by
+`tools/checks/run_improv_qemu.sh`. It boots the same image with QEMU's link
+down, so the board's own attempt gives up after 30 s and it listens for
+Improv. `tools/checks/improv_qemu.py` then asks the board its state, gives it
+a network, and brings the link up while the board waits for an address. The
+board must answer with its page, `http://10.0.2.15/`, then advertise itself
+and start the player, which the test server plays to as above. The script
+also boots `sdkconfig.ci-wifi`, the player on WiFi with nothing stored and
+nothing built in. That board must boot once, with its control surface up, and
+answer Improv's state and device requests. It is never given a network: QEMU
+has no radio, and `esp_wifi_start()` does not return there. Each run boots a
+copy of its image, because QEMU writes the board's NVS into the file it runs.
+On 2026-09-17 the first board held its address 1.8 s after the link came up,
+all 315 bursts played with each output's RMS equal to the test sink's, and at
+least 43,884 bytes of internal heap were free. Firmware from before
+2026-09-16 fails both: the first board aborts in the join Improv asked for,
+and the second restarts in a loop.
 
 ## The sources
 

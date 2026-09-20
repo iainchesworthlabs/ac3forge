@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn one bare-metal probe run into the footprint table (roadmap PF7).
+"""Turn one bare-metal probe run into the footprint table (minimum-footprint decoder profile).
 
     python3 tools/checks/footprint_report.py \\
         --probe /tmp/footprint.txt \\

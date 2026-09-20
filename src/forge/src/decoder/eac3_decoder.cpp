@@ -1450,7 +1450,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     }
     // The direct-form (reference) transform is a CMake-selected translation
     // unit, and the minimum-footprint decoder profile leaves its 1.81 MiB of
-    // tables out of the build (roadmap PF7; src/core/reference_transform.hpp).
+    // tables out of the build (minimum-footprint decoder profile; src/core/reference_transform.hpp).
     // Asking for it there is refused rather than silently served by the fast
     // path: fast_imdct == false exists so a caller can validate against the
     // arithmetic the spec writes down, and substituting a different one would
@@ -1658,7 +1658,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     for (auto& memo : impl_->bitalloc_memo_) {
         memo.valid = false;
     }
-    // Only meaningful when block_trace != nullptr below (roadmap AP12) - see
+    // Only meaningful when block_trace != nullptr below (research trace export) - see
     // decoder.cpp's identical comment on its own `mask` array.
     std::array<std::array<int, 50>, kMaxSubstreamStreams> mask{};
     BitAllocCodes codes = kBamode0Codes;

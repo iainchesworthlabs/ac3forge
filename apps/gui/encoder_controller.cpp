@@ -4381,7 +4381,7 @@ void EncoderController::startLiveSession(int captureDeviceIndex, bool monitor,
         live_object_network_driven_.assign(static_cast<std::size_t>(object_count_), false);
     }
 
-    // positions=: a real live object-position source (roadmap UX4) instead
+    // positions=: a real live object-position source (live OSC object positions) instead
     // of manual room placement. Opened here, right after object_count_/
     // live_object_snapshot_ are final for this session and before the
     // worker launches - a bind failure refuses the WHOLE session rather

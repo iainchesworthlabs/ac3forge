@@ -43,7 +43,7 @@ constexpr std::size_t kBlocksPerFrame = 6;
 constexpr int kSupportedStrmtyp = 0;  // independent
 constexpr int kSupportedAcmod = 7;    // 3/2
 constexpr int kSupportedNumblkscod = 3;
-constexpr int kSupportedBamode = 1;   // roadmap EQ3: the encoder transmits its own
+constexpr int kSupportedBamode = 1;   // E-AC-3 bamode transmission: the encoder transmits its own
                                       // allocation parameters rather than taking
                                       // Table E1.4's bamode == 0 defaults
 
@@ -595,7 +595,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
             lfeexps.assign(static_cast<std::size_t>(kLfeEndmant), 0);
             decode_exponents(absexp, grps, ExpStrategy::kD15, lfeexps);
         }
-        // roadmap EQ3: bamode is pinned to 1 above, so every block carries its
+        // E-AC-3 bamode transmission: bamode is pinned to 1 above, so every block carries its
         // own baie flag (§7.2.1) rather than the shape omitting it entirely
         // the way it still does for snroffste below. This encoder's own
         // block 0 always sets it and states the codes; the remaining five
@@ -738,7 +738,7 @@ FrameLayout walk_frame(std::span<const std::byte> frame) {
             // null data pointer and a non-zero size, which
             // compute_bit_allocation then dereferences (the defect
             // ac3::signing::emdf_atmos_signer.cpp's own tally hit first -
-            // roadmap VX3, fuzz_signing_verify - before this walk existed;
+            // signing-verify fuzz walk, fuzz_signing_verify - before this walk existed;
             // ported here since verify_atmos_stream now runs through it).
             // Disagreement here means the bit walk has already lost sync, so
             // this frame is out of scope rather than tallied against a

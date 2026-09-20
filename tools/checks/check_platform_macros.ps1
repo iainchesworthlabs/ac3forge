@@ -20,7 +20,7 @@
 # Include guards are not affected: the codebase uses #pragma once.
 #
 # One other narrow exception, added for src/capi/include/ac3forge_c/ac3forge.h
-# (roadmap F1): `#ifdef __cplusplus` / `extern "C" {` / `#endif` is the
+# (C API): `#ifdef __cplusplus` / `extern "C" {` / `#endif` is the
 # standard idiom that lets one header be included from both a C and a C++
 # translation unit, which a C-callable public header genuinely needs -
 # `extern "C"` is not even legal syntax outside `#ifdef __cplusplus`, since a

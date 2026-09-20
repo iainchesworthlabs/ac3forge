@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-// Windows Spatial Sound object rendering (roadmap UX8): hand decoded Atmos
+// Windows Spatial Sound object rendering (Windows spatial object renderer): hand decoded Atmos
 // objects to the OS's own object renderer - ISpatialAudioObjectRenderStream -
 // as DYNAMIC objects carrying their real OAMD positions, and the programme's
 // bed as STATIC ones.

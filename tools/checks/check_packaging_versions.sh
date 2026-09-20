@@ -10,7 +10,7 @@
 #    of the wrong length, a URL that does not name the version it is filed under.
 # 2. A latest-tag advisory (::warning::, never fails the check): does each manifest
 #    actually point at the latest release. This was deliberately left out entirely
-#    until roadmap DR2 (.github/workflows/manifest-bump.yml) automated the bump - before
+#    until manifest bump automation (.github/workflows/manifest-bump.yml) automated the bump - before
 #    that, the four packaging bumps were a manual follow-up step done asynchronously
 #    after a release went out (sometimes days later, in a separate PR), not atomically
 #    with the tag, so a hard "must match the latest tag" gate would have failed by
@@ -173,7 +173,7 @@ fi
 
 # --- licence identifier: vcpkg.json, conanfile.py, the Homebrew formula and pyproject.toml must
 # all agree on the SPDX identifier - a drift here is real legal-metadata inconsistency, not
-# cosmetic (roadmap AP7: pyproject.toml drifted to GPL-3.0-only while everything else already
+# cosmetic (packaging metadata parity: pyproject.toml drifted to GPL-3.0-only while everything else already
 # said GPL-3.0-or-later, unnoticed until it was checked by hand). ---
 vcpkg_json="$root/packaging/vcpkg-port/ac3forge/vcpkg.json"
 conanfile="$root/packaging/conan/conanfile.py"
@@ -197,7 +197,7 @@ fi
 
 # --- vcpkg feature <-> portfile.cmake parity: every feature vcpkg.json declares must be wired
 # into portfile.cmake's vcpkg_check_features() call, and vice versa - the exact class of gap
-# roadmap AP7's "capi" feature closed (a CMake option existed, a vcpkg feature didn't). Catches
+# packaging metadata parity's "capi" feature closed (a CMake option existed, a vcpkg feature didn't). Catches
 # it for any future feature too, not just this one. ---
 if [[ -f "$vcpkg_json" ]] && [[ -f "$portfile" ]]; then
     vcpkg_features="$(awk '/"features":/{found=1; next} found' "$vcpkg_json" \
@@ -231,7 +231,7 @@ fi
 
 # --- pkg-config completeness: cmake/InstallLibrary.cmake's install(TARGETS ... EXPORT ...)
 # component blocks and its ac3forge_install_pkgconfig() calls must be in 1:1 count - a future
-# component that adds one but forgets the other (roadmap AP7's original gap: no pkg-config files
+# component that adds one but forgets the other (packaging metadata parity's original gap: no pkg-config files
 # existed for any component) fails here immediately. ---
 install_lib="$root/cmake/InstallLibrary.cmake"
 if [[ -f "$install_lib" ]]; then

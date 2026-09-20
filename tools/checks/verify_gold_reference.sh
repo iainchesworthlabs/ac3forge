@@ -46,7 +46,7 @@ COMPARE="$REPO_ROOT/tools/checks/compare_wav.py"
 # the "macOS libm" and "arm64 and macOS" readings earlier versions of this
 # comment carried.
 #
-# Roadmap VX11 resolved what it is: one bit of arithmetic difference, visible
+# cross-platform bitstream reproducibility resolved what it is: one bit of arithmetic difference, visible
 # only where the comparison is ALREADY rounding-dominated. Sorting all 52
 # (check, channel) pairs by their x86 SNR shows a step, not a gradient -
 # every pair below 67 dB has an arm64 delta of 0.00-0.11 dB, every pair above
@@ -86,7 +86,7 @@ MIN_SNR_DB="${MIN_SNR_DB:-55}"
 #
 # The 1.0 dB covers commit-to-commit noise and nothing else, because
 # min_observed has already absorbed everything else. That is the correction
-# roadmap VX11 produced, and it is worth stating because the first version of
+# cross-platform bitstream reproducibility produced, and it is worth stating because the first version of
 # these vectors got it wrong: they used 6.02 dB, reasoning that a floor tighter
 # than the arm64/x86 split would risk a new platform tripping it. But
 # min_observed is a MINIMUM ACROSS LEGS, so wherever that split appears it is
@@ -126,7 +126,7 @@ EAC3_CPL_GOLD_FLOORS="80,80,73,81,60,65"
 # which behaves exactly as before this existed.
 RESULTS_JSON_DIR="${RESULTS_JSON_DIR:-}"
 
-# Optional (roadmap VX10): "reference" makes every ac3cli encode and decode
+# Optional (reference-mode end-to-end gate): "reference" makes every ac3cli encode and decode
 # below take mode=reference, so the whole gate runs on the spec's own direct
 # transform evaluations - the §8.2.3.2 forward MDCT and §7.9.4's step-3
 # inverse - instead of the fast paths that have been the default since 0.9.0.
@@ -416,7 +416,7 @@ fi
 check_one "eac3_cplbndstrce0" "$CPLBNDSTRCE0_EC3" "eac3" 448 \
     "$CPLBNDSTRCE0_MIN_SNR_DB" "$CPLBNDSTRCE0_FLOORS"
 
-# --- Third-party decode interop (roadmap VX4) -------------------------------
+# --- Third-party decode interop (third-party decode interop) -------------------------------
 # This check gates six bitstreams from two real third-party encoders - Dolby
 # Encoding Engine 6.5.4 and FFmpeg 8.0.1 - across three legs: ac3-51-448,
 # eac3-51-256 and eac3-stereo-192, each in a dee/ and an ffmpeg/ copy (see
@@ -551,7 +551,7 @@ done
 check_against_source "ext_eac3_stereo_192_dee" "$DEE_STEREO_EC3" "$STEREO_WAV" "eac3" 192 \
     25 "32,33"
 
-# --- Cross-platform bitstream-hash gate (roadmap VX11) ----------------------
+# --- Cross-platform bitstream-hash gate (cross-platform bitstream reproducibility) ----------------------
 # Every check above compares two DECODES of the same bitstream, which cannot
 # see a divergence in the bitstream itself - the ~6.02 dB gap the arm64/macOS
 # legs measure against x86 on this same gate is exactly that kind of

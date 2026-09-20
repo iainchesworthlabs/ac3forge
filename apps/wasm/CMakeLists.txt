@@ -6,7 +6,7 @@
 # it's a normal add_subdirectory() from root CMakeLists.txt, gated on
 # EMSCRIPTEN there rather than needing a whole separate entry point.
 #
-# Roadmap F3: a browser demo that decodes a real E-AC-3/Atmos-in-DD+
+# WASM browser demo: a browser demo that decodes a real E-AC-3/Atmos-in-DD+
 # elementary stream via ac3::forge compiled to WASM, plays the decoded bed
 # audio through the Web Audio API, and visualizes real per-channel energy in
 # time with playback. See docs/platforms/wasm.md.
@@ -73,7 +73,7 @@ add_custom_command(TARGET ac3forge_wasm_decode POST_BUILD
     COMMENT "Assembling the servable wasm_decode_demo/ directory")
 
 # ---------------------------------------------------------------------------
-# Roadmap UX6: the browser ENCODE page - a sibling module to the decode
+# in-browser encoding: the browser ENCODE page - a sibling module to the decode
 # target above, not a bigger version of it. Kept as a second .wasm/.js
 # rather than folded into ac3forge_wasm_decode so a page that only needs one
 # direction never pays for the other; see docs/platforms/wasm.md's "Encode

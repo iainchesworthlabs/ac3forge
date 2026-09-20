@@ -51,7 +51,7 @@ std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte>
 // independent substream is authored in) is the only one there is. Ignored for
 // AC-3, which has no substream layer.
 //
-// `objects_layout` is objects=<name> (roadmap IO12, see
+// `objects_layout` is objects=<name> (legacy item IO12, see
 // Options::qc_objects_layout) - when set, dynamic objects are additionally
 // re-rendered by their own position onto that layout and metered through
 // BS.1770-5 Annex 4, independently of `rendered_layout` above.

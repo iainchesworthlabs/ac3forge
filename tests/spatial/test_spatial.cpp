@@ -175,7 +175,7 @@ TEST_CASE("orbiting object lands in the right channels end to end", "[spatial]")
     CHECK(argmax_per_frame == std::vector<int>{kC, kL, kSL, kSR, kR});
 }
 
-// --- height-aware panning (roadmap IO12) ------------------------------------
+// --- height-aware panning (legacy item IO12) ------------------------------------
 
 TEST_CASE("position_direction reads a room position's azimuth and elevation", "[spatial]") {
     using ac3::spatial::position_direction;

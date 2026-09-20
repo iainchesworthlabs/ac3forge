@@ -120,6 +120,7 @@ PLANNED_PATHS = {
     "apps/forge/gui": "proposed by the recasting plan, not created yet",
     "apps/forge/common": "proposed by the recasting plan, not created yet",
     "apps/hearth": "proposed by the playback-appliance plan, not created yet",
+    "apps/hearth/ui": "Hearth window phase; engine exists, Qt UI tree does not yet",
     "apps/hearth/platform/linux": "proposed by the playback-appliance plan, not created yet",
     "apps/hearth/platform/windows": "proposed by the playback-appliance plan, not created yet",
     "apps/hearth/platform/macos": "proposed by the playback-appliance plan, not created yet",
@@ -151,6 +152,9 @@ PROSE_PATHS_UNCHECKED = {
     ),
     "planning/hearth-sendspin-extension.md": (
         "specification; names the Sendspin library and test tools it defines"
+    ),
+    "planning/roadmap-inventory.md": (
+        "inventory; names missing paths (e.g. apps/hearth/ui) as gaps against the tree"
     ),
     "docs/crucible/design/promotion.md": (
         "phase record; names the pre-promotion apps/windows layout"

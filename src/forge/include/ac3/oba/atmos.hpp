@@ -168,7 +168,7 @@ class AC3FORGE_EXPORT AtmosEncoder {
         std::span<const std::span<const float>> objects,
         std::span<const ObjectPlacement> placement);
 
-    // Roadmap PF6. The OBJECT path's budget - what this encoder is for.
+    // bare-metal probe harness. The OBJECT path's budget - what this encoder is for.
     //
     // Its transform term is the bed's own MDCT overlap PLUS
     // joc::reconstruction_delay(config_.joc_domain) - not a fixed number,

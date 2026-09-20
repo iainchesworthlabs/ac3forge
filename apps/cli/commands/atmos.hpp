@@ -7,7 +7,7 @@
 
 // The Atmos/object-layer commands: two synthetic generators (a built-in orbit, and one driven by
 // a hand-authored keyframe file), one real-material encoder (every source channel becomes an
-// object), one ADM BWF reader (roadmap B1 phase 3, the ac3adm/admbridge integration), and the
+// object), one ADM BWF reader (ADM BWF reader phase 3, the ac3adm/admbridge integration), and the
 // one that goes the other way - taking an object layer back out of a finished stream. Split
 // out of main.cpp as part of the repo-structure review's H4 monolith split.
 namespace ac3cli::commands {
@@ -38,7 +38,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                      std::uint32_t bitrate, std::uint32_t objects,
                      const ac3cli::Options& meta, std::string_view paths_path = {});
 
-// The inverse of the four encoders above (roadmap IO7): takes the object layer OUT of a finished
+// The inverse of the four encoders above (object-layer strip): takes the object layer OUT of a finished
 // DD+ JOC stream, leaving a plain DD+ 5.1 stream whose bed audio is bit-identical - not decoded,
 // not re-encoded, just the EMDF container and its addbsi marker removed and the framing
 // re-derived around what is left. See ac3/io/object_strip.hpp for why that is lossless and why
@@ -46,7 +46,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
 int run_strip_objects(std::string_view in_path, std::string_view out_path,
                       const ac3cli::Options& meta);
 
-// Roadmap B1 phase 3 of 3 - a real ADM BWF master (BS.2076-2 ADM XML embedded in a BS.2088-1
+// ADM BWF reader phase 3 of 3 - a real ADM BWF master (BS.2076-2 ADM XML embedded in a BS.2088-1
 // BW64/RF64 container) straight to DD+ JOC E-AC-3, no WAV plus a hand-authored keyframe file the
 // way atmos-encode above needs, because the master already carries every bed speaker feed's and
 // dynamic object's own position/gain automation (§10.3). See adm/atmos_adm.hpp's own header
@@ -55,7 +55,7 @@ int run_strip_objects(std::string_view in_path, std::string_view out_path,
 int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                   const ac3cli::Options& meta, std::string_view programme_id);
 
-// Roadmap IM1 phase 3 of 3 - a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2's Immersive
+// IAB reader phase 3 of 3 - a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2's Immersive
 // Audio Bitstream, a bare elementary .iab file or a real MXF Track File alike) straight to DD+ JOC
 // E-AC-3, the identical shape run_atmos_adm above has for ADM: every Bed channel/Object the file
 // names becomes an AtmosEncoder object, driven by the file's own authored panning, no scene file

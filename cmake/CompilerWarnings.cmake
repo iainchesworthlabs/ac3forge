@@ -7,7 +7,7 @@
 # Catch2) is pulled in as SYSTEM headers by their package configs, so these
 # flags never fire on dependency code.
 #
-# examples/capi_encode_decode.c (roadmap F1's C API example) is the one C,
+# examples/capi_encode_decode.c (C API's C API example) is the one C,
 # not C++, source in the whole tree, and it links this same target like every
 # other first-party one - so the warning lists below are split into a common
 # set (valid for both languages) and a C++-only set gated behind

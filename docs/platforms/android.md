@@ -19,6 +19,8 @@ platforms, see [Building from source](../building.md) and the other pages in thi
 | Distribution | Personal sideload via `adb install`, **never the Play Store** |
 | CI | A required build leg; the hardware behaviour is not reproducible in CI |
 
+--8<-- "docs-snippets/generated/platform-android.md"
+
 Distribution is **personal sideload only, via `adb install` — never the Play Store**. That is a
 deliberate choice, not a placeholder: the app can be built with [object signing](#object-signing)
 enabled, and that build (which carries the key) must never leave the user's own device (see below).

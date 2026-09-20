@@ -3,7 +3,7 @@ import QtTest
 
 import Ac3Forge
 
-// Roadmap UX3's accessibility half. The discipline this suite enforces is
+// GUI localisation's accessibility half. The discipline this suite enforces is
 // the QC preset regression's own lesson (tst_qc_panel.qml's
 // test_presetControlOffersEveryPresetAndSelectsWhatItNames): that control's
 // model silently drifted from its backing data for two releases because

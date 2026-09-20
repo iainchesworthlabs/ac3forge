@@ -1552,7 +1552,7 @@ TEST_CASE("describe returns a distinct, non-empty string for every Error", "[ac4
 }
 
 // --------------------------------------------------------------------------
-// Carriage helpers (roadmap IM4): the 'dac4' box, per-frame timing and the
+// Carriage helpers (AC-4 bitstream inspector): the 'dac4' box, per-frame timing and the
 // RFC 6381 string, all against the real DEE fixture's own parsed TOC.
 
 TEST_CASE("build_dac4 carries the TOC's stream-level facts", "[ac4][carriage]") {

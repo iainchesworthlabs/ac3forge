@@ -35,7 +35,7 @@ mp4::ReadTrack track_with(std::vector<mp4::EditListEntry> edits, std::uint32_t t
 
 }  // namespace
 
-// Roadmap IO2's own regression (tools/ci/fuzz_encoder_space.py's
+// container readers (mkv/mp4/ts)'s own regression (tools/ci/fuzz_encoder_space.py's
 // REGRESSION_SEEDS, seed 3600083275727211684): AC-3 at 48 kbit/s and 48 kHz
 // codes exactly 192-byte frames - one of MPEG-TS's own three packet grid
 // strides - so a stream whose frames repeat a byte at that same offset every

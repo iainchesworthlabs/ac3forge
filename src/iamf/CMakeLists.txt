@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # iamf::iamf - a standalone writer for AOM's IAMF (Immersive Audio Model and
-# Formats) v1.1.0, roadmap item IM3 phase 1 of 3 (see ROADMAP.md): an
+# Formats) v1.1.0, IAMF writer, phase 1 of 3 (): an
 # `ipcm`-substream OBU/ISOBMFF writer for a channel-based 7.1.4 element,
 # fed from an E-AC-3 decode. E-AC-3 is not in IAMF's codec list (Opus,
 # AAC-LC, FLAC, LPCM only) and never can be, so this is a decode-then-rewrap

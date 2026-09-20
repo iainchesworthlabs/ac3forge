@@ -10,7 +10,7 @@ separate library from `ac3::forge`: link `ac3::forge_c` instead, not both.
 [`examples/capi_encode_decode.c`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/capi_encode_decode.c)
 is a complete, buildable program (compiled as C, not C++, so the build itself proves the header
 is C-usable) — the excerpts below are drawn from it. `tests/capi/test_capi.cpp` covers the
-rest of the surface, including E-AC-3/Atmos decode and the error paths, from Catch2.
+rest of the surface, including Atmos encode/decode and the error paths, from Catch2.
 
 ```cmake
 target_link_libraries(your_target PRIVATE ac3::forge_c)
@@ -138,6 +138,37 @@ and writes an owned `ac3forge_eac3_access_unit_t` — `..._data`/`..._size` for 
 bytes, `..._substream_count`/`..._substream_bytes` for the per-substream boundaries `crc2`
 recomputation or demuxing needs. Full program:
 [`examples/capi_encode_eac3.c`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/capi_encode_eac3.c).
+
+## Atmos encoding
+
+`ac3forge_atmos_encoder_t` encodes mono object signals into a legacy-playable 5.1 E-AC-3 bed
+with OAMD and JOC. Create it with a fixed object count, then provide one 1536-sample signal and
+one room placement per object for each frame:
+
+```c
+ac3forge_atmos_config_t config;
+ac3forge_atmos_config_init(&config);
+
+ac3forge_atmos_encoder_t* encoder = NULL;
+status = ac3forge_atmos_encoder_create(&config, 1, &encoder);
+
+ac3forge_object_placement_t placement;
+ac3forge_object_placement_init(&placement);
+placement.x = 0.75;  /* right side of the room */
+const float* objects[1] = {mono_object};
+
+ac3forge_bytes_t* unit = NULL;
+status = ac3forge_atmos_encoder_encode_frame(
+    encoder, objects, 1, AC3FORGE_SAMPLES_PER_FRAME, &placement, 1, &unit);
+/* write ac3forge_bytes_data(unit), ac3forge_bytes_size(unit) */
+ac3forge_bytes_destroy(unit);
+ac3forge_atmos_encoder_destroy(encoder);
+```
+
+Positions use the room-anchored coordinates described under
+[Spatial & Atmos objects](spatial-and-atmos.md): `x` and `y` are in `[0,1]`, and `z` is in
+`[-1,1]`. The C API emits unsigned object containers. Object signing remains the separate
+`ac3::signing` C++ library or the CLI workflow documented under [Object signing](signing.md).
 
 ## Decoding
 

@@ -62,7 +62,7 @@ int calc_lowcomp(int a, int b0, int b1, int bin) {
 }
 
 // §7.2.2.2: exponents -> 13-bit signed log PSD, four bins at a time through
-// the arch seam (ROADMAP PF5).
+// the arch seam (SIMD kernels).
 //
 // The only loop in the allocator that vectorises at all, which is worth
 // saying explicitly so nobody goes looking for the other two: §7.2.2.4's
@@ -177,7 +177,7 @@ namespace {
 //
 // A region outside 1..kMaxMantissas allocates nothing, and says so here
 // rather than walking off the end of the arrays below. Both ends are
-// real, and fuzz_signing_verify (roadmap VX3) reported both:
+// real, and fuzz_signing_verify (signing-verify fuzz walk) reported both:
 //
 //  - Empty. §7.2.2.4's band walk runs from kMaskTab[start] to
 //    kMaskTab[end - 1], and `end - 1` on end == 0 is -1, indexing that
@@ -432,7 +432,7 @@ void compute_bit_allocation_impl(std::span<const std::uint8_t> exps, SampleRate 
     masking_curve(exps, sample_rate, codes, region, mask);
     add_delta(mask, kMaskTab[static_cast<std::size_t>(region.start)], region.delta);
     // The masking curve's final state - nothing below reads or writes `mask`
-    // again, only `psd` against it - so this is the value roadmap AP12's
+    // again, only `psd` against it - so this is the value research trace export's
     // trace export wants, not a snapshot of a routine still in progress.
     if (mask_out != nullptr) {
         *mask_out = mask;

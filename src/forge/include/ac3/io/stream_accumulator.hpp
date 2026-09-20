@@ -43,7 +43,7 @@
 //
 // NO ALLOCATION, ANYWHERE. The storage is the caller's span and nothing here
 // grows it - which is what lets this be used from the minimum-footprint profile
-// (roadmap PF7) whose whole subject is not allocating during decode. The cost
+// (minimum-footprint decoder profile) whose whole subject is not allocating during decode. The cost
 // of that choice is that the buffer has to be big enough for the largest access
 // unit in the stream, and the caller finds out it was not by getting
 // kBufferTooSmall rather than by silently reallocating. See kMinimumBuffer.

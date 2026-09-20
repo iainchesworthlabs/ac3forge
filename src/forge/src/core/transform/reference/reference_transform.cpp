@@ -10,7 +10,7 @@
 
 // The variant of src/core/reference_transform.hpp that CARRIES the direct-form
 // tables - what every build except the minimum-footprint decoder profile
-// compiles (roadmap PF7; see the header for the seam and the byte counts, and
+// compiles (minimum-footprint decoder profile; see the header for the seam and the byte counts, and
 // src/forge/CMakeLists.txt for the selection).
 //
 // Nothing here is new code: the tables and the two evaluation loops moved

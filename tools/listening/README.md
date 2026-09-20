@@ -37,7 +37,7 @@ read at all, and both are true of the material committed today:
   removing the band above the cutoff is audible. `reference_51.wav` carries
   0.059% of its energy above 3.5 kHz, so **both anchors are inaudible on both
   5.1 legs** and a MUSHRA session there cannot be scaled against any other
-  panel's. The stereo leg's anchors are fine. Roadmap VX7 (real programme
+  panel's. The stereo leg's anchors are fine. legacy item VX7 (real programme
   material) is what fixes this; until then, run MUSHRA on the stereo leg and
   ABX on the 5.1 legs.
 - **Decoder complaints.** FFmpeg reports two out-of-range exponents decoding

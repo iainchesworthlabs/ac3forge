@@ -9,7 +9,7 @@ description: >-
 inputs:
   arch:
     description: >-
-      Target architecture: "x64" (default) or "arm64" (roadmap DR8). x64 loads
+      Target architecture: "x64" (default) or "arm64" (Windows ARM64 / reach builds). x64 loads
       vcvars64.bat exactly as this action always has; arm64 is new and probes
       vcvarsall.bat with more than one candidate argument - see the step below.
     required: false

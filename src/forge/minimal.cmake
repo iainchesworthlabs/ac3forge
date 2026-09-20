@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # ac3::forge_minimal - the whole of src/forge under the minimum-footprint
-# decoder profile (AC3FORGE_MINIMAL_DECODER, roadmap PF7). Included and
+# decoder profile (AC3FORGE_MINIMAL_DECODER, minimum-footprint decoder profile). Included and
 # returned from by CMakeLists.txt in this directory, so the ordinary
 # static+shared build below it cannot be perturbed by this profile at all:
 # there is exactly one `if` between the two shapes, at the top of that file,
@@ -73,7 +73,7 @@ target_sources(forge_minimal
         # decode half made the encode profile fail to link.
         src/verify/mirror.cpp
         src/verify/eac3_mirror.cpp
-        # ROADMAP PF5's runtime-dispatch follow-on. mdct.cpp asks
+        # SIMD kernels's runtime-dispatch follow-on. mdct.cpp asks
         # ac3::internal::cpu::has_avx2() before each vectorised kernel, so
         # this profile has to answer - and both answers must LINK, not just
         # compile.
@@ -198,7 +198,7 @@ target_include_directories(forge_minimal
         # above this target_sources() block: the application supplies the
         # clock and the table, the library only calls in.
         "${_ac3_minimal_profiling_dir}"
-        # Roadmap PF5's SIMD arch seam, resolved by src/forge/CMakeLists.txt
+        # SIMD kernels's SIMD arch seam, resolved by src/forge/CMakeLists.txt
         # above the branch that included this file - see the comment there for
         # why it is resolved that early. mdct.cpp/bitalloc.cpp/exponents.cpp
         # include ac3/internal/arch/simd.hpp unconditionally, so this profile

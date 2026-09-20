@@ -3,7 +3,7 @@
 
 const { test, expect } = require('@playwright/test');
 
-// Closes roadmap VX18(a) for the encode module the same way decode.spec.js
+// Closes WASM/mobile headless coverage(a) for the encode module the same way decode.spec.js
 // closes it for the decode one: drives the real Embind API
 // (apps/wasm/encoder_bindings.cpp's Encoder/QcMeter classes, called the same
 // way apps/wasm/encode/app.js does) end to end - encode a real signal,

@@ -619,7 +619,7 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
             }
             apply_analysis_window(time, windowed[lane]);
         };
-        // Four channels' forward transforms at a time (ROADMAP PF5 phase
+        // Four channels' forward transforms at a time (SIMD batched MDCT
         // 4c), the forward twin of the object loop's batching below:
         // mdct512_forward_batch4 checks has_avx2() internally and falls
         // back to four ordinary calls, so this is bit-identical either
@@ -658,7 +658,7 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
         // object_mdct[object] rather than a single shared scratch: every
         // present object's spectrum now coexists once this pass finishes,
         // which is what lets the synthesis pass below batch four at a time
-        // instead of one at a time (ROADMAP PF5's batch-axis follow-on).
+        // instead of one at a time (batched SIMD kernels).
         // Absent objects drain their overlap tail immediately here, same as
         // before, and never enter `present` below - synthesis only ever
         // runs on objects that actually have a spectrum to transform.
@@ -752,7 +752,7 @@ constexpr std::size_t kMaxParameterBands = static_cast<std::size_t>(kNumBands.ba
 
         // --- synthesize, same overlap-add eac3_decoder.cpp's own channel
         // reconstruction uses --- four present objects at a time via
-        // imdct512_windowed_batch4 (ROADMAP PF5's batch-axis follow-on: it
+        // imdct512_windowed_batch4 (batched SIMD kernels: it
         // internally checks has_avx2() and falls back to four ordinary
         // calls when there is no AVX2 tier, so this is bit-identical to the
         // scalar loop either way, just potentially slower without AVX2),

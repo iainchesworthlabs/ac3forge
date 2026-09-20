@@ -87,7 +87,7 @@ target_sources(ac3audio PRIVATE src/live_positions.cpp)
 # The backend tree.
 #
 # Live capture, IEC 61937 passthrough, shared-mode monitor playback, reading
-# a render endpoint's own EDID/ELD-carried capabilities (roadmap UX9), and
+# a render endpoint's own EDID/ELD-carried capabilities (play/monitor follow mode), and
 # the report saying which of the first three exists are the only OS-specific
 # code in the project. Each is one file of the SAME name under
 # src/backend/<backend>/, and CMake compiles exactly one directory of them -
@@ -144,7 +144,7 @@ if(WIN32)
 
     # WASAPI: COM for the device enumerator, MMCSS for capture-thread priority,
     # and mmdevapi for ActivateAudioInterfaceAsync (the per-process loopback
-    # tap, roadmap UX11).
+    # tap, WASAPI loopback tap).
     target_link_libraries(ac3audio PRIVATE ole32 avrt mmdevapi)
 
     set(AC3FORGE_AUDIO_BACKEND windows)
@@ -436,7 +436,7 @@ if(APPLE)
     # objects process_tap.mm creates would need hand-written retain/release
     # and a toll-free bridge spelled as a C cast; with it the compiler owns
     # both, which is one fewer thing to get wrong in a file that cannot be
-    # run to find out (no Mac has ever run this backend - ROADMAP.md DR9).
+    # run to find out (no Mac has ever run this backend - hardware verification on real Macs).
     # A file property rather than a target one: every other source here is
     # C++ and -fobjc-arc means nothing to them.
     set_source_files_properties(src/backend/macos/process_tap.mm

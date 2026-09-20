@@ -170,7 +170,7 @@ TEST_CASE("monotonicity: more snr offset never allocates fewer bits", "[bitalloc
     }
 }
 
-// Found by fuzz/fuzz_signing_verify (roadmap VX3), through
+// Found by fuzz/fuzz_signing_verify (signing-verify fuzz walk), through
 // ac3::signing's own frame walk: a frame whose fields make an allocation
 // region empty reached the §7.2.2.4 band walk, whose upper bound is
 // kMaskTab[end - 1] - and `end - 1` on end == 0 indexes that 256-entry table

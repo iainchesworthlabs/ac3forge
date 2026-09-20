@@ -1,4 +1,4 @@
-"""Conformance vector set generator (roadmap VX20).
+"""Conformance vector set generator (conformance vectors publication).
 
 Builds the versioned bundle of AC-3 / E-AC-3 / Atmos streams this project
 publishes as a release artifact, so another decoder implementer has something
@@ -24,9 +24,10 @@ section, which this script writes.
 Reproducibility: run it twice on one machine and every hash matches, which is
 what --check-determinism asserts. Hashes do NOT carry across compilers or
 architectures - docs/building.md records a measured cross-toolchain
-difference, and the arm64 legs sit 6 dB off the x86 gold numbers (roadmap
-VX11/VX12) - so the manifest records the exact toolchain that produced it and
-a consumer compares hashes only against a bundle built the same way.
+difference, and the arm64 legs sit 6 dB off the x86 gold numbers
+(cross-platform bitstream reproducibility) - so the manifest records the
+exact toolchain that produced it and a consumer compares hashes only against
+a bundle built the same way.
 
 Usage (repo root, after a build):
 
@@ -96,7 +97,7 @@ UNMODELLED_TOOLS = ("ecpl", "tpn")
 # first principles rather than by resampling or by decoding one of our own
 # encodes. Stdlib only, and deterministic - a fixed seed per channel.
 #
-# Roadmap VX7 will add redistributable (CC0) speech and music beside the
+# legacy item VX7 will add redistributable (CC0) speech and music beside the
 # synthetic fixtures. When it lands, this is where those files join the set;
 # until then every vector's source is synthetic, which the README states
 # plainly because it bounds what the set proves.
@@ -862,8 +863,9 @@ def generate(
         "built_with": cli_version,
         "hash_scope": (
             "sha256 values are per-toolchain. Encoded output is not currently bit-identical "
-            "across compilers and architectures (docs/building.md; roadmap VX11/VX12 - the "
-            "arm64 legs sit 6.0 dB off every x86 leg on the gold gate), so a bundle "
+            "across compilers and architectures (docs/building.md; cross-platform bitstream "
+            "reproducibility - the arm64 legs sit 6.0 dB off every x86 leg on the gold gate), "
+            "so a bundle "
             "regenerated with a different compiler or on a different architecture will differ. "
             "Regenerating with the toolchain named in built_with reproduces every hash here "
             "exactly."

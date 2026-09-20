@@ -605,7 +605,7 @@ class EncoderController : public QObject {
     // also makes true (the leg always carries less than the main encode).
     Q_PROPERTY(bool liveDownmixLeg READ liveDownmixLeg NOTIFY liveActiveChanged)
 
-    // ---- live object-position source over OSC (roadmap UX4) ----------------
+    // ---- live object-position source over OSC (live OSC object positions) ----------------
     // A real live position source for the live room's objects instead of
     // manual placement - ac3::audio::LivePositionSource drained into an
     // ac3::oba::SceneCursor once per encode frame, the same seam
@@ -1897,7 +1897,7 @@ private:
     double live_drift_ppm_ = 0.0;
     // ---- parallel downmix receiver leg -----------------------------------
     bool live_downmix_leg_ = false;
-    // ---- live object-position source over OSC (roadmap UX4) -------------
+    // ---- live object-position source over OSC (live OSC object positions) -------------
     // Pre-flight, same convention as live_wav_safety_copy_ above.
     bool live_osc_enabled_ = false;
     int live_osc_port_ = 9000;

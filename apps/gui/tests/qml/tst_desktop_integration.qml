@@ -3,7 +3,7 @@ import QtTest
 
 import Ac3Forge
 
-// Roadmap UX2 - the rail's own DropArea and `ac3gui <file...>`'s launch-time
+// GUI AppStream packaging - the rail's own DropArea and `ac3gui <file...>`'s launch-time
 // argv handling (main.cpp) both funnel through Main.qml's own
 // window.openDroppedFile(url), so this suite exercises that single dispatch
 // point directly rather than trying to simulate an OS-level drag-and-drop or

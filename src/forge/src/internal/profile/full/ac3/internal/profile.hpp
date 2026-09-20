@@ -1,7 +1,7 @@
 #pragma once
 
 // Build-profile facts, in the variant every ORDINARY build compiles
-// (roadmap PF7). The minimum-footprint decoder profile compiles the
+// (minimum-footprint decoder profile). The minimum-footprint decoder profile compiles the
 // identically-pathed header under src/internal/profile/minimal/ instead;
 // src/forge/CMakeLists.txt picks the directory, so no source file here asks
 // which profile it is in with a preprocessor conditional
@@ -29,4 +29,4 @@ inline constexpr bool kReferenceTransformAvailable = true;
 // to measure it against. See that header.
 
 
-}  // namespace ac3::internal
+} // namespace ac3::internal

@@ -19,7 +19,7 @@ struct LanguageInfo {
 
 // "en" first (no .qm - the untranslated source strings are already English),
 // then every language apps/gui/translations/ ships - the same set, same
-// order, as CountdownSolver's own kLanguages (roadmap UX3: build to that
+// order, as CountdownSolver's own kLanguages (GUI localisation: build to that
 // project's already-shipped canonical set rather than invent a second one).
 // Real translation coverage is partial today (see docs/forge/gui/localisation.md);
 // a language appears here once its .ts exists, whether or not every string

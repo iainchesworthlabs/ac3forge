@@ -14,7 +14,7 @@
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/io/metadata_edit.hpp"
 
-// `ac3cli probe` (roadmap IO1), at the level its consumers actually use it:
+// `ac3cli probe` (probe command), at the level its consumers actually use it:
 // the real binary, run as a subprocess, and the text it puts on stdout.
 //
 // tests/io/test_probe.cpp already holds the library's own contract - what the

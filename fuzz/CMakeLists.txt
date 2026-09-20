@@ -257,7 +257,7 @@ ac3forge_add_fuzzer(fuzz_wav_read)
 # HDMI capture - and whose Pd word is an attacker-chosen length.
 ac3forge_add_fuzzer(fuzz_iec61937_unwrap)
 
-# --- Differential mode (roadmap G3) -----------------------------------------
+# --- Differential mode (differential decoder fuzzing) -----------------------------------------
 # Same decode paths as fuzz_ac3_decode/fuzz_eac3_decode above, but instead of
 # only checking for a crash/sanitizer trip, these also decode the same
 # mutated bytes with FFmpeg and diff the PCM (fuzz/differential_oracle.hpp
@@ -267,7 +267,7 @@ ac3forge_add_fuzzer(fuzz_iec61937_unwrap)
 ac3forge_add_fuzzer(fuzz_differential_ac3_decode)
 ac3forge_add_fuzzer(fuzz_differential_eac3_decode)
 
-# --- The object and metadata layer (roadmap VX3) -----------------------------
+# --- The object and metadata layer (signing-verify fuzz walk) -----------------------------
 # The three parsers below sit behind a skip field in every Atmos frame, which
 # is where this codec's differentiating feature - object audio - actually
 # lives, and they are the deepest attacker-controlled bytes in the tree: a
@@ -293,7 +293,7 @@ ac3forge_add_fuzzer(fuzz_oamd_parse)
 # own numbers (src/forge/src/oba/joc.cpp).
 ac3forge_add_fuzzer(fuzz_joc_parse)
 
-# --- Live position input (roadmap UX4) ---------------------------------------
+# --- Live position input (live OSC object positions) ---------------------------------------
 # ac3::oba::parse_osc_packet: the OSC 1.0 wire form of a live scene update
 # (src/forge/src/oba/scene_osc.cpp). Not behind the bitstream at all - this
 # is the project's first NETWORK-facing parser, reached straight from a UDP

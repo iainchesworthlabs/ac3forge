@@ -3,7 +3,7 @@ import QtTest
 
 import Ac3Forge
 
-// StreamPlayerController (roadmap UX1) - the GUI twin of `ac3cli monitor`/
+// StreamPlayerController (GUI stream player) - the GUI twin of `ac3cli monitor`/
 // `ac3cli decode`, opened from the header's "Open stream…" button and from a
 // finished run chip's own "More…" menu (see tst_run_history.qml's sibling
 // coverage of the encode side that menu's items reach into). Like

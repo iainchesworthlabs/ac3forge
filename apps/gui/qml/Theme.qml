@@ -309,7 +309,7 @@ QtObject {
         return installed.indexOf("Archivo") >= 0 ? "Archivo" : Application.font.family;
     }
 
-    // Roadmap UX3: Arabic/Hebrew (and Yiddish, written in Hebrew script) need
+    // GUI localisation: Arabic/Hebrew (and Yiddish, written in Hebrew script) need
     // a face with actual glyph coverage - Archivo has none. Named here as a
     // single source of truth (and for parity with CountdownSolver's own
     // Theme.qml, which threads the equivalent map through every Text's

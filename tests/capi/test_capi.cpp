@@ -1,4 +1,4 @@
-// ac3forge_c (roadmap F1) round-trips and error paths, exercised from C++ via
+// ac3forge_c (C API) round-trips and error paths, exercised from C++ via
 // Catch2 like every other test here - see examples/capi_encode_decode.c for
 // the companion check that the header genuinely compiles as C, not merely as
 // C++ parsing valid-C syntax.
@@ -1500,7 +1500,7 @@ TEST_CASE("AC-3 dual mono metadata crosses the C boundary per channel", "[capi]"
 }
 
 TEST_CASE("the C latency surface reports the same budget as the C++ one", "[capi][latency]") {
-    // Roadmap PF6. The numbers themselves are established empirically in
+    // bare-metal probe harness. The numbers themselves are established empirically in
     // tests/decoder/test_latency.cpp (an impulse through a real encode ->
     // decode, located to the sample); this checks that the C translation
     // layer hands them across unchanged and that the free helpers agree with
@@ -1602,7 +1602,7 @@ TEST_CASE("the C latency accessors tolerate null the way the rest of the surface
     CHECK(sentinel.holdback_samples == -7);
 }
 
-// --- decode_frame_into / decode_access_unit_into (roadmap AP5) -----------
+// --- decode_frame_into / decode_access_unit_into (legacy item AP5) -----------
 
 TEST_CASE("ac3forge_decoder_decode_frame_into writes the same samples the value form allocates",
           "[capi]") {
@@ -1985,7 +1985,7 @@ TEST_CASE(
     ac3forge_eac3_decoder_destroy(decoder);
 }
 
-// --- scan / ScannedStream (roadmap AP5) -----------------------------------
+// --- scan / ScannedStream (legacy item AP5) -----------------------------------
 
 TEST_CASE("ac3forge_scan reports the same shape ac3::io::scan does for an AC-3 stream",
           "[capi][scan]") {
@@ -2272,7 +2272,7 @@ TEST_CASE("ac3forge_scan rejects bad arguments and reports ScanError codes", "[c
     ac3forge_bytes_destroy(encoded);
 }
 
-// --- Loudness / level / QC metering (roadmap AP5) -------------------------
+// --- Loudness / level / QC metering (legacy item AP5) -------------------------
 
 TEST_CASE("ac3forge_loudness_meter measures a stereo tone", "[capi][loudness]") {
     ac3forge_loudness_meter_t* meter = nullptr;

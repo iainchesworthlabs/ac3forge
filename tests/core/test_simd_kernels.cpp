@@ -24,7 +24,7 @@
 #include "mdct_avx2.hpp"
 #endif
 
-// ROADMAP PF5's correctness gate.
+// SIMD kernels's correctness gate.
 //
 // The vector kernels in the codec core are written once, against the two
 // 128-bit types src/forge/src/internal/arch/<arch>/ac3/internal/arch/simd.hpp
@@ -51,7 +51,7 @@
 // check against the direct-form oracle and by the cross-build corpus check
 // below.
 //
-// The FFT/DCT-IV kernel itself (fft_kernel.hpp, ROADMAP PF4) is NOT part of
+// The FFT/DCT-IV kernel itself (fft_kernel.hpp, FFT core follow-ups) is NOT part of
 // this seam: its radix-4 restructuring is an algorithmic change (fewer
 // operations), not a wider-lane one, and carries its own correctness
 // argument in that header's comment.
@@ -408,7 +408,7 @@ TEST_CASE("to_fixed25_block agrees with to_fixed25 element by element", "[simd]"
 }
 
 // ---------------------------------------------------------------------------
-// Runtime CPU-feature dispatch (ROADMAP PF5's dynamic-dispatch follow-on).
+// Runtime CPU-feature dispatch (runtime SIMD dispatch).
 //
 // Unlike the tests above, this is not about a compile-time-selected tier's
 // arithmetic - it is about whether the RUNTIME decision of which tier to

@@ -17,7 +17,7 @@
 // mirrors one bitstream element or one field group, with prefix/escape codes already resolved
 // into their final linear/physical values (gains, positions, spreads) rather than left as the
 // raw bitstream code - matching how ac3adm::AudioBlockFormat::gain is always linear regardless
-// of the source's own gainUnit. Roadmap item IM1 phase 1 (see ROADMAP.md): a standalone
+// of the source's own gainUnit. Roadmap item IM1 phase 1 (): a standalone
 // `ac3iab::` reader in the `ac3adm::` mould - it knows nothing about AC-3, E-AC-3 or JOC, and a
 // later phase 3 (mapping onto ac3::admbridge's ObjectPath layer) is what will finally make this
 // module's output useful to the codec.
@@ -212,7 +212,7 @@ struct ObjectDefinition {
 // element's own identity - the forward-adaptive lattice predictor plus Rice/Golomb or
 // direct-PCM entropy-coded residual, including its sample-rate-scalable 48/96 kHz base and
 // extension layering, is Annex B's own separate piece of work and is left here as an opaque,
-// unparsed byte span rather than decoded (see ROADMAP.md's IM1 entry). `coded` is exactly
+// unparsed byte span rather than decoded (see IAB reader scope). `coded` is exactly
 // DLCSize bytes (§10.7.2) - the element's own declared size, not independently re-derived.
 struct AudioDataDlc {
     std::uint32_t audio_data_id = 0;  // §10.7.1, Plex(8); never 0 for a real asset

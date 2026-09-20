@@ -43,7 +43,7 @@
 namespace {
 
 // The demo stored its settings under ac3forge/DesktopAtmos; the product
-// stores them under ac3forge/Crucible (roadmap UX12, Phase 1). Copy the old
+// stores them under ac3forge/Crucible (Crucible cross-platform promotion, Phase 1). Copy the old
 // tree across the first time the new one is empty, so a machine that ran the
 // demo keeps its signing-key path, endpoint choice and appearance. The old
 // tree is left where it is rather than deleted: nothing here is large enough

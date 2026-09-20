@@ -1,4 +1,4 @@
-"""The latency budget (roadmap PF6) through the Python bindings.
+"""The latency budget (bare-metal probe harness) through the Python bindings.
 
 The numbers themselves are established empirically on the C++ side
 (tests/decoder/test_latency.cpp: an impulse and a tone burst through a real

@@ -63,7 +63,7 @@ if(WIN32)
         # user looks - the Start Menu folder CPack always makes held nothing
         # but the Uninstall shortcut, so an installed copy was reachable only
         # by browsing to the folder it went into. The Linux .deb has had a
-        # menu entry since roadmap UX2 (apps/gui/packaging/linux/ac3gui.desktop);
+        # menu entry since GUI AppStream packaging (apps/gui/packaging/linux/ac3gui.desktop);
         # Windows had never been given the same thing.
         #
         # CPACK_PACKAGE_EXECUTABLES is the shape CPack's NSIS generator wants:
@@ -131,9 +131,9 @@ if(WIN32)
             ]])
         endif()
 
-        # Roadmap UX2: .ac3/.ec3 open in ac3gui - the same "double-click a
+        # GUI AppStream packaging: .ac3/.ec3 open in ac3gui - the same "double-click a
         # stream you already have" gesture the app's own DropArea and
-        # `ac3gui <file>` launch handling (roadmap UX2's other two legs)
+        # `ac3gui <file>` launch handling (GUI AppStream packaging's other two legs)
         # already understand once the file reaches the app; this is what
         # gets it there from Explorer. One ProgID for both extensions - they
         # are the same stream format (bsid decides AC-3 vs E-AC-3, the same
@@ -170,7 +170,7 @@ if(WIN32)
         # packaged alone with no diagnostic anywhere, which is how the
         # Windows release shipped installer-less for several releases running
         # before anyone noticed (see docs/releasing.md#winget-manifest and
-        # ROADMAP.md's DR7). CI now installs makensis explicitly
+        # Windows NSIS installer). CI now installs makensis explicitly
         # (.github/workflows/_build.yml's "Install NSIS (Windows)" step) and
         # asserts packages/*.exe exists after Package, so this warning firing
         # THERE means that install broke and the leg fails outright; degrading
@@ -290,7 +290,7 @@ elseif(UNIX)
         set(CPACK_DEBIAN_RUNTIME_PACKAGE_NAME "ac3forge")
         set(CPACK_DEBIAN_LIBRUNTIME_PACKAGE_NAME "libac3forge0")
         set(CPACK_DEBIAN_LIBRARY_PACKAGE_NAME "libac3forge-dev")
-        # AC3Forge Crucible (roadmap UX12): its own package, since it is its
+        # AC3Forge Crucible (Crucible cross-platform promotion): its own package, since it is its
         # own download everywhere else. shlibdeps resolves libpipewire-0.3 and
         # the Qt runtime from the binary; what it cannot see is that the
         # application needs the PipeWire *daemon* and a session manager
@@ -441,7 +441,7 @@ endif()
 # DEB/RPM get their own *_COMPONENT_INSTALL switch, set inside their own
 # find_program() blocks above, now that the split is real work rather than
 # a placeholder.
-# The `runtime` component is ac3cli/ac3gui plus, since roadmap IO8, the
+# The `runtime` component is ac3cli/ac3gui plus, since CLI shell completions, the
 # generated ac3cli.1 man page and the bash/zsh/fish/PowerShell completion
 # scripts - all install()'d with COMPONENT runtime from
 # apps/cli/CMakeLists.txt, so every generator below picks them up with the
@@ -453,7 +453,7 @@ endif()
 # macOS package for as long as it stood).
 set(CPACK_COMPONENTS_ALL runtime library libruntime)
 
-# The AC3Forge Crucible (roadmap UX11) as a fourth component, and so its own
+# The AC3Forge Crucible (WASAPI loopback tap) as a fourth component, and so its own
 # archive rather than part of the runtime one: on Windows and macOS it carries
 # a second Qt deployment of its own (Linux leaves Qt to the system loader),
 # and on Windows its null-sink driver is still test-signed, so someone

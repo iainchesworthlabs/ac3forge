@@ -47,7 +47,7 @@ namespace {
 // their units into one track is not something a player can undo - so a stream
 // carrying more than one loses the rest here. Said out loud rather than left
 // for someone to notice a missing commentary later; carrying every programme,
-// a track each, is roadmap IO2/IO6.
+// a track each, is container readers (mkv/mp4/ts)/IO6.
 void warn_if_programmes_dropped(const ac3::io::ScannedStream& scanned) {
     if (scanned.programmes.size() <= 1) {
         return;
@@ -122,7 +122,7 @@ bool write_text_to_path(const std::filesystem::path& path, std::string_view text
 }
 }  // namespace
 
-// AC-4 input for the mp4/ts commands (roadmap IM4's carriage slice). The
+// AC-4 input for the mp4/ts commands (AC-4 bitstream inspector's carriage slice). The
 // ac3::io::scan above rejects a TS 103 190 stream outright (different sync
 // word), so the commands that can carry AC-4 retry with ac4::scan and take
 // this path instead. Two framings come out of one scan because the two
@@ -177,7 +177,7 @@ std::optional<Ac4Input> try_ac4_input(std::span<const std::byte> raw) {
 }
 
 int run_mkv(std::string_view in_path, std::string_view out_path) {
-    // read_elementary_stream (roadmap IO2) also accepts an MP4 or MPEG-TS
+    // read_elementary_stream (container readers (mkv/mp4/ts)) also accepts an MP4 or MPEG-TS
     // input here, not just a raw .ac3/.ec3 - which is what makes this
     // container-to-container remux (`ac3cli mkv broken.mp4 fixed.mkv`) rather
     // than only ever an encode target. Nothing below has to know the
@@ -249,10 +249,10 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
 }
 
 int run_mp4(std::string_view in_path, std::string_view out_path) {
-    // read_elementary_stream (roadmap IO2) also accepts a Matroska or
+    // read_elementary_stream (container readers (mkv/mp4/ts)) also accepts a Matroska or
     // MPEG-TS input here, so this doubles as container-to-container remux
     // (`ac3cli mp4 broken.mkv fixed.mp4`). That is what makes it the
-    // dec3-repair case the old roadmap A1 cited: codec_config below is
+    // dec3-repair case the Atmos dec3-repair remux case: codec_config below is
     // built by ac3::io::build_codec_config_box(*scanned), which reads the
     // real bitstream ac3::io::scan just walked - never whatever dec3 (or
     // its absence) the SOURCE container declared - so a source whose Atmos
@@ -264,7 +264,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
     const auto scanned = ac3::io::scan(raw);
     if (!scanned.has_value()) {
         // Not A/52? It may be AC-4, which this command can also carry
-        // (roadmap IM4): TS 103 190-2 Annex E's 'ac-4' sample entry and
+        // (AC-4 bitstream inspector): TS 103 190-2 Annex E's 'ac-4' sample entry and
         // 'dac4' box, timing from Table 84, RFC 6381 string for a
         // downstream HLS/DASH packager.
         if (const auto ac4_in = try_ac4_input(raw)) {
@@ -630,7 +630,7 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
         fmt::println(stderr, "error: unknown TS profile '{}' (expected dvb or atsc)", profile_name);
         return kExitUsage;
     }
-    // read_elementary_stream (roadmap IO2) also accepts a Matroska or MP4
+    // read_elementary_stream (container readers (mkv/mp4/ts)) also accepts a Matroska or MP4
     // input here - container-to-container remux, same as run_mkv/run_mp4
     // above.
     const auto raw = read_elementary_stream(in_path);
@@ -731,7 +731,7 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
     return kExitOk;
 }
 
-// --- container input (ROADMAP.md's IO2) -------------------------------------
+// --- container input (container readers (mkv/mp4/ts)) -------------------------------------
 //
 // ContainerKind/sniff_container used to live here alone; both are now
 // apps/common/container_input.hpp's, promoted so ac3cli's own

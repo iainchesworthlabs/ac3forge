@@ -176,7 +176,7 @@ TEST_CASE("every capture error describes itself", "[audio-backend][concurrency]"
 
 TEST_CASE("process loopback refusals agree with the reported capability",
           "[audio-backend][concurrency]") {
-    // Roadmap UX11. Two reports of the same fact have to agree, and the one
+    // WASAPI loopback tap. Two reports of the same fact have to agree, and the one
     // refusal that reaches no device - process id 0, which no process ever
     // has - has to come back with the right code on every platform: "there
     // is no such tap here" where there is none, "no such process" where
@@ -255,7 +255,7 @@ TEST_CASE("device watching agrees with the reported capability",
         // but needs a session daemon to register with, so on a container or
         // a CI runner with none it reports the platform refusal instead -
         // which is the truthful answer, and why this accepts either
-        // (roadmap UX12).
+        // (Crucible cross-platform promotion).
         REQUIRE_FALSE(started.has_value());
         CHECK((started.error() == DeviceWatchError::kNoBackend ||
                started.error() == DeviceWatchError::kComFailure));

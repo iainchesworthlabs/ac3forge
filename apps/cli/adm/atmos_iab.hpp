@@ -11,7 +11,7 @@
 #include "ac3/oba/motion.hpp"
 #include "ac3/audio/audio_backend.hpp"
 
-// Roadmap IM1 phase 3 of 3 ("IAB (SMPTE ST 2098-2) reader", see ROADMAP.md) - the narrow seam
+// IAB reader bridge, phase 3 - the narrow seam
 // between main.cpp's 'atmos-iab' command and ac3iab::ac3iab/ac3::admbridge, exactly the same
 // "library-linked-or-not is a build-time FILE choice, never a preprocessor conditional" shape
 // adm/atmos_adm.hpp already uses for 'atmos-adm' - see that header's own top comment for the full

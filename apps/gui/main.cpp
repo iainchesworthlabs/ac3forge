@@ -633,7 +633,7 @@ int main(int argc, char* argv[]) {
     }
     if (args.size() >= 2 && !args[1].startsWith(QLatin1Char('-'))) {
         // Opening the app on one or more files is the same gesture as
-        // dropping them on it (roadmap UX2's own DropArea), and both funnel
+        // dropping them on it (GUI AppStream packaging's own DropArea), and both funnel
         // through Main.qml's openDroppedFile() - a WAV becomes a source, an
         // .ac3/.ec3 opens the stream player - so there is exactly one place
         // that decides what a file argument means. Every positional here is

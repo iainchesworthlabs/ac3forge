@@ -14,6 +14,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "esp_app_desc.h"
@@ -104,14 +105,37 @@ struct Reported {
 };
 
 SeamSink g_sink;
-std::unique_ptr<ac3forge::BurstPlayer> g_player;
-std::unique_ptr<ac3forge::SendspinHost> g_host;
+
+// The player and its host. start_player makes and starts both on the key
+// task, and only then hands them to every other task through g_running: one
+// load gives both or neither, and nothing takes them down afterwards, so a
+// pointer a task has loaded stays good. A start that fails frees what it made
+// before anything else could reach it. The server's events and the player's
+// clock have pointers of their own (Events, BurstPlayerConfig::local_time),
+// since both can run before the hand-over.
+struct Running {
+    std::unique_ptr<ac3forge::BurstPlayer> player;
+    std::unique_ptr<ac3forge::SendspinHost> host;
+};
+Running g_started;  // start_player's until g_running points at it
+std::atomic<const Running*> g_running{nullptr};
+
 std::atomic<bool> g_external{false};
 std::mutex g_mutex;  // guards what follows
 Reported g_player_reported;
 Reported g_role_reported;
 std::optional<ac::State> g_last_role_state;
 std::int64_t g_last_role_report_us = 0;
+// What the control surface asked for while no player was running, for
+// start_player to take up: a layout, on the heap only while one waits (a
+// layout is some 600 bytes, which internal RAM would otherwise hold for
+// good); and a change to the board, which a hello made before it would not
+// show.
+std::unique_ptr<ac3::render::OutputLayout> g_pending_layout;
+bool g_board_changed = false;
+
+// The player and its host, or nothing until both have started.
+[[nodiscard]] const Running* running() { return g_running.load(); }
 
 [[nodiscard]] m::PlayerState player_state(const Reported& r) {
     return m::PlayerState{.volume = r.volume,
@@ -125,7 +149,7 @@ std::int64_t g_last_role_report_us = 0;
                           .format = std::nullopt};
 }
 
-[[nodiscard]] ac::Support support() {
+[[nodiscard]] ac::Support support(const ac3forge::BurstPlayer& player) {
     ac::Support s;
     s.data_types = {ac::DataType::kAc3, ac::DataType::kEac3};
     s.sample_rates = {static_cast<std::int32_t>(kSampleRate)};
@@ -146,7 +170,7 @@ std::int64_t g_last_role_report_us = 0;
                                  ac3::render::LayoutRenderer::kMaxCrossoverHz};
     s.management.identify = true;
     s.decoder_settings = kDecoderSettings;
-    s.buffer_capacity = g_player ? g_player->buffer_capacity() : 0;
+    s.buffer_capacity = player.buffer_capacity();
     return s;
 }
 
@@ -161,7 +185,7 @@ std::int64_t g_last_role_report_us = 0;
     return text.data();
 }
 
-[[nodiscard]] ss::PlayerConfig player_config() {
+[[nodiscard]] ss::PlayerConfig player_config(const ac3forge::BurstPlayer& player) {
     ss::PlayerConfig config;
     config.suite = kSuite == 1 ? ss::noise::Suite::kAesGcmSha256 : ss::noise::Suite::kChaChaPolySha256;
     config.name = settings().name.data();
@@ -174,7 +198,7 @@ std::int64_t g_last_role_report_us = 0;
     if (kOfferPcm) {
         config.supported_roles.emplace_back("player@v1");
     }
-    const std::uint64_t capacity = g_player ? g_player->buffer_capacity() : 0;
+    const std::uint64_t capacity = player.buffer_capacity();
     // PCM only: FLAC and Opus would need their decoders on the board, which
     // the player has not measured room for (planning/hearth-reference-player.md,
     // B3). Stereo at 48 kHz, which is the only rate the board plays.
@@ -183,7 +207,7 @@ std::int64_t g_last_role_report_us = 0;
                               {.codec = m::Codec::kPcm, .channels = 2, .sample_rate = 48000, .bit_depth = 16}},
         .buffer_capacity = capacity,
         .commands = {m::PlayerCommand::kVolume, m::PlayerCommand::kMute}};
-    config.ac3forge_support = support();
+    config.ac3forge_support = support(player);
     config.pair_methods = {
         {.method = m::PairMethod::kPairingPsk,
          .locations = {m::SecretLocation::kOperator},
@@ -256,11 +280,16 @@ std::int64_t g_last_role_report_us = 0;
 
 class Events final : public ac3forge::SendspinEvents {
    public:
-    void on_stream_start(const m::PlayerStream& stream) override { g_player->start_pcm(stream.format); }
-    void on_stream_clear() override { g_player->clear(); }
-    void on_stream_end() override { g_player->end(); }
+    // Set by start_player before the host starts, and so before its first
+    // event, which can come before the two are handed to the other tasks.
+    ac3forge::BurstPlayer* player = nullptr;
+    ac3forge::SendspinHost* host = nullptr;
+
+    void on_stream_start(const m::PlayerStream& stream) override { player->start_pcm(stream.format); }
+    void on_stream_clear() override { player->clear(); }
+    void on_stream_end() override { player->end(); }
     void on_audio(std::span<const std::uint8_t> frame, std::int64_t server_time, std::int64_t local_time) override {
-        g_player->pcm(frame, server_time, local_time);
+        player->pcm(frame, server_time, local_time);
     }
     void on_player_command(const m::PlayerCommandMessage& command) override {
         m::PlayerState state;
@@ -271,16 +300,16 @@ class Events final : public ac3forge::SendspinEvents {
                                                                                   : Change::kDelay,
                   command.volume, command.mute, command.output_delay_ms);
             state = player_state(g_player_reported);
-            g_player->set_volume(g_player_reported.volume, g_player_reported.muted);
+            player->set_volume(g_player_reported.volume, g_player_reported.muted);
         }
-        g_host->set_player_state(state);
+        host->set_player_state(state);
     }
 
-    void on_burst_stream_start(const ac::StreamStart& stream) override { g_player->start_bursts(stream); }
-    void on_burst_stream_clear() override { g_player->clear(); }
-    void on_burst_stream_end() override { g_player->end(); }
-    void on_burst(const ss::BurstChunk& chunk, std::int64_t local_time) override { g_player->burst(chunk, local_time); }
-    void on_invalid_burst() override { g_player->invalid_chunk(); }
+    void on_burst_stream_start(const ac::StreamStart& stream) override { player->start_bursts(stream); }
+    void on_burst_stream_clear() override { player->clear(); }
+    void on_burst_stream_end() override { player->end(); }
+    void on_burst(const ss::BurstChunk& chunk, std::int64_t local_time) override { player->burst(chunk, local_time); }
+    void on_invalid_burst() override { player->invalid_chunk(); }
 
     void on_ac3forge_command(const ac::CommandMessage& command) override {
         switch (command.command) {
@@ -292,11 +321,11 @@ class Events final : public ac3forge::SendspinEvents {
                                        : command.command == ac::Command::kMute ? Change::kMute
                                                                                : Change::kDelay,
                       command.volume, command.mute, command.output_delay_ms);
-                g_player->set_volume(g_role_reported.volume, g_role_reported.muted);
+                player->set_volume(g_role_reported.volume, g_role_reported.muted);
                 break;
             }
             case ac::Command::kSettings: {
-                const std::optional<std::string> why = g_player->settings(command.settings, support());
+                const std::optional<std::string> why = player->settings(command.settings, support(*player));
                 const std::lock_guard lock(g_mutex);
                 if (why) {
                     g_role_reported.settings_error = ac::SettingsError{.revision = command.settings.revision, .why = *why};
@@ -308,7 +337,7 @@ class Events final : public ac3forge::SendspinEvents {
                 break;
             }
             case ac::Command::kIdentify:
-                g_player->identify(command.identify);
+                player->identify(command.identify);
                 break;
         }
         report_now();
@@ -352,8 +381,8 @@ class Events final : public ac3forge::SendspinEvents {
 
 Events g_events;
 
-void print_token() {
-    const ac3forge::SendspinStore& store = g_host->store();
+void print_token(const ac3forge::SendspinHost& host) {
+    const ac3forge::SendspinStore& store = host.store();
     std::array<std::uint8_t, 64> payload{};
     std::copy(store.identity().public_key().begin(), store.identity().public_key().end(), payload.begin());
     std::copy(store.pairing_psk().begin(), store.pairing_psk().end(), payload.begin() + 32);
@@ -414,7 +443,7 @@ void start_player(const ac3::render::OutputLayout& layout);
 bool sendspin_built() { return true; }
 
 void sendspin_start(const ac3::render::OutputLayout& layout) {
-    if (g_host || !network_ready()) {
+    if (running() != nullptr || !network_ready()) {
         if (!network_ready()) {
             std::printf("sendspin: no network, so no player\n");
         }
@@ -426,6 +455,8 @@ void sendspin_start(const ac3::render::OutputLayout& layout) {
 namespace {
 
 void start_player(const ac3::render::OutputLayout& layout) {
+    // The host is made first and started last: the player's clock reads it.
+    auto host = std::make_unique<ac3forge::SendspinHost>();
     ac3forge::BurstPlayerConfig config;
     config.sample_rate = kSampleRate;
     config.ring_bytes = kRingBytes;
@@ -441,71 +472,128 @@ void start_player(const ac3::render::OutputLayout& layout) {
     config.core = kDecodeCore;
     config.stack_bytes = kDecodeStackBytes;
     config.report_every_chunks = kReportEveryChunks;
-    // g_host is made just below and kept while the player runs; no chunk
-    // comes before it.
-    config.local_time = [](std::int64_t server_us) -> std::optional<std::int64_t> {
-        return g_host ? g_host->local_time(server_us) : std::nullopt;
-    };
+    config.local_time = [clock = host.get()](std::int64_t server_us) { return clock->local_time(server_us); };
     config.layout = layout;
+    {
+        // A layout the control surface set after the caller read its own:
+        // app_main applies the command carrying it only after this returns.
+        const std::lock_guard lock(g_mutex);
+        if (g_pending_layout) {
+            config.layout = *g_pending_layout;
+            g_pending_layout.reset();
+        }
+    }
     config.decoder.output.mode = kMode;
     config.decoder.joc_domain = kJocDomain;
     config.stereo_fold = kStereoFold;
     config.objects = kObjects;
-    g_player = std::make_unique<ac3forge::BurstPlayer>(config, g_sink);
-    if (!g_player->start()) {
-        g_player.reset();
+    auto player = std::make_unique<ac3forge::BurstPlayer>(config, g_sink);
+    if (!player->start()) {
         return;
     }
-    ac3forge::SendspinHostConfig host;
-    host.port = kSendspinPort;
-    host.stack_bytes = kServerStackBytes;
-    host.core = 0;
-    host.player = player_config();
-    g_host = std::make_unique<ac3forge::SendspinHost>();
-    if (!g_host->start(std::move(host), g_events)) {
-        g_host.reset();
-        g_player->stop();
-        g_player.reset();
+    g_events.player = player.get();
+    g_events.host = host.get();
+    ac3forge::SendspinHostConfig host_config;
+    host_config.port = kSendspinPort;
+    host_config.stack_bytes = kServerStackBytes;
+    host_config.core = 0;
+    {
+        // The hello is made from the board as it is now; a change from here
+        // on is taken up below.
+        const std::lock_guard lock(g_mutex);
+        g_board_changed = false;
+    }
+    host_config.player = player_config(*player);
+    if (!host->start(std::move(host_config), g_events)) {
+        // The player's task reads the host's clock, so it goes first.
+        player.reset();
         return;
     }
-    print_token();
+
+    // Handed to the other tasks, with what the control surface asked for
+    // meanwhile: a layout for the player, and a changed board for the host's
+    // hello. Both requests take the lock this publishes under, so each one
+    // lands either here or on the running player.
+    g_started.player = std::move(player);
+    g_started.host = std::move(host);
+    while (true) {
+        {
+            const std::lock_guard lock(g_mutex);
+            if (g_pending_layout) {
+                if (!g_started.player->set_layout(*g_pending_layout)) {
+                    std::printf("sendspin: the player cannot take layout %s\n", g_pending_layout->text().data());
+                }
+                g_pending_layout.reset();
+            }
+            if (!std::exchange(g_board_changed, false)) {
+                g_running.store(&g_started);
+                break;
+            }
+        }
+        // Outside the lock, which player_config() takes.
+        g_started.host->set_player_config(player_config(*g_started.player));
+    }
+    print_token(*g_started.host);
 }
 
 }  // namespace
 
-bool sendspin_running() { return g_host != nullptr; }
+bool sendspin_running() { return running() != nullptr; }
 
-bool sendspin_playing() { return g_player && g_player->active(); }
+bool sendspin_playing() {
+    const Running* const r = running();
+    return r != nullptr && r->player->active();
+}
 
 void sendspin_set_external(bool external) {
-    if (!g_host || g_external.exchange(external) == external) {
+    const Running* const r = running();
+    if (r == nullptr || g_external.exchange(external) == external) {
         return;
     }
     // The servers are told the board is not available, and their sessions
     // drop what they are still sent. The player stops writing before this
     // returns, so whatever takes the sink next has it to itself.
-    g_host->set_external_source(external);
-    if (g_player && !g_player->hold(external)) {
+    r->host->set_external_source(external);
+    if (!r->player->hold(external)) {
         std::printf("sendspin: the player did not stop writing in time\n");
     }
 }
 
 bool sendspin_set_layout(const ac3::render::OutputLayout& layout) {
-    return !g_player || g_player->set_layout(layout);
+    const std::lock_guard lock(g_mutex);
+    if (const Running* const r = running()) {
+        return r->player->set_layout(layout);
+    }
+    // For a player that has yet to start, or is starting.
+    if (g_pending_layout) {
+        *g_pending_layout = layout;
+    } else {
+        g_pending_layout = std::make_unique<ac3::render::OutputLayout>(layout);
+    }
+    return true;
 }
 
 void sendspin_board_changed() {
-    if (g_host) {
-        g_host->set_player_config(player_config());
+    const Running* r = nullptr;
+    {
+        const std::lock_guard lock(g_mutex);
+        r = running();
+        if (r == nullptr) {
+            // For a player that has yet to start, or is starting.
+            g_board_changed = true;
+            return;
+        }
     }
+    r->host->set_player_config(player_config(*r->player));
 }
 
 std::optional<ac3forge::ControlSendspin> sendspin_status() {
-    if (!g_host || !g_player) {
+    const Running* const r = running();
+    if (r == nullptr) {
         return std::nullopt;
     }
-    const ac3forge::SendspinStatus host = g_host->status();
-    const ac3forge::BurstPlayerStatus play = g_player->status();
+    const ac3forge::SendspinStatus host = r->host->status();
+    const ac3forge::BurstPlayerStatus play = r->player->status();
     ac3forge::ControlSendspin s;
     s.server = host.server_name.data();
     s.server_id = host.server_id.data();
@@ -534,7 +622,7 @@ std::optional<ac3forge::ControlSendspin> sendspin_status() {
     s.worst_error_us = play.playout.worst_error_us;
     if (play.have_play) {
         s.play_frame = play.play_frame;
-        if (const std::optional<std::int64_t> server = g_host->server_time(play.play_local_us)) {
+        if (const std::optional<std::int64_t> server = r->host->server_time(play.play_local_us)) {
             s.play_server_us = *server;
             // When frame 0 played, by the same measure: what two boards in a
             // group compare, whichever frames each last reported.
@@ -559,25 +647,27 @@ std::optional<ac3forge::ControlSendspin> sendspin_status() {
 }
 
 bool sendspin_pairing(std::string_view action) {
-    if (!g_host) {
+    const Running* const r = running();
+    if (r == nullptr) {
         return false;
     }
     if (action == "reset") {
-        g_host->reset_pairing_rounds();
+        r->host->reset_pairing_rounds();
         return true;
     }
     if (action == "cancel") {
-        g_host->cancel_pairing();
+        r->host->cancel_pairing();
         return true;
     }
     if (action == "forget") {
         bool forgotten = false;
-        if (!on_key_stack("forgetting every pairing", [&forgotten] { forgotten = g_host->forget_pairings(); })) {
+        if (!on_key_stack("forgetting every pairing",
+                          [r, &forgotten] { forgotten = r->host->forget_pairings(); })) {
             return false;
         }
         std::printf("sendspin: pairings %s\n", forgotten ? "forgotten; a new identity" : "could not all be forgotten");
         if (forgotten) {
-            print_token();
+            print_token(*r->host);
         }
         return forgotten;
     }
@@ -585,7 +675,8 @@ bool sendspin_pairing(std::string_view action) {
 }
 
 bool sendspin_console(std::string_view line) {
-    if (!g_host) {
+    const Running* const r = running();
+    if (r == nullptr) {
         return false;
     }
     if (line == "pair reset") {
@@ -598,7 +689,7 @@ bool sendspin_console(std::string_view line) {
         return sendspin_pairing("forget");
     }
     if (line == "pair token") {
-        print_token();
+        print_token(*r->host);
         return true;
     }
     if (line == "sendspin") {
@@ -617,10 +708,11 @@ bool sendspin_console(std::string_view line) {
 }
 
 void sendspin_poll() {
-    if (!g_host || !g_player) {
+    const Running* const r = running();
+    if (r == nullptr) {
         return;
     }
-    const ac3forge::BurstPlayerStatus status = g_player->status();
+    const ac3forge::BurstPlayerStatus status = r->player->status();
     const bool playing = status.stream != std::string_view("idle");
     const std::int64_t now = esp_timer_get_time();
     ac::State state = role_state(status, playing);
@@ -640,7 +732,7 @@ void sendspin_poll() {
         }
     }
     if (send) {
-        g_host->set_ac3forge_state(state);
+        r->host->set_ac3forge_state(state);
     }
 }
 

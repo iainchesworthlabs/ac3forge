@@ -15,9 +15,9 @@
         <p class="ac3f-kicker">AC&#8209;3 &middot; E&#8209;AC&#8209;3 &middot; Dolby Atmos</p>
         <h1>AC3Forge</h1>
         <p class="ac3f-lede">A clean-room AC-3, E-AC-3 and Dolby Atmos codec, written from the
-          published standards in C++23 — <strong>Library</strong> — and the two applications
-          built on it: <strong>Forge</strong>, the CLI and GUI, and <strong>Crucible</strong>, a
-          desktop per-application Atmos mixer.</p>
+          published standards in C++23 — <strong>Library</strong> — with <strong>Forge</strong>,
+          the CLI and GUI; <strong>Crucible</strong>, a desktop per-application Atmos mixer; and
+          <strong>Hearth</strong>, the playback project.</p>
         <div class="ac3f-cta-row">
           <a class="ac3f-btn ac3f-btn-primary" href="{{ 'quickstart/'|url }}">Getting started</a>
           <a class="ac3f-btn ac3f-btn-ghost" href="{{ 'library/'|url }}">Browse the reference</a>
@@ -54,6 +54,54 @@
             Linux run it; the macOS half compiles but has never been launched.</p>
           <span class="ac3f-fam-go">Read the Crucible docs &rarr;</span>
         </a>
+        <a class="ac3f-fam-card" href="{{ 'hearth/'|url }}">
+          <span class="ac3f-fam-tag">desktop &middot; ESP32</span>
+          <h3>Hearth</h3>
+          <p>Plays through local speakers, a receiver, or a synchronised ESP32 network sink.
+            The ESP32-S3 sink works today; the desktop player is in development.</p>
+          <span class="ac3f-fam-go">Read the Hearth docs &rarr;</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="ac3f-hero-section">
+      <div class="ac3f-block-head">
+        <h2>Find a download or build path</h2>
+        <a class="ac3f-fam-go" href="{{ 'platforms/'|url }}">Compare platform support &rarr;</a>
+      </div>
+      <p class="ac3f-selector-intro">Choose the product, operating system or device, and
+        architecture. The result says when a package is unavailable or has not appeared in a
+        release.</p>
+      <div class="ac3f-selector"
+           id="ac3f-download-selector"
+           data-catalogue-url="{{ 'assets/data/support-catalogue.json'|url }}">
+        <div class="ac3f-selector-fields">
+          <label>
+            <span>Product</span>
+            <select data-selector="product" aria-controls="ac3f-download-result">
+              <option value="">Choose a product</option>
+            </select>
+          </label>
+          <label>
+            <span>Platform</span>
+            <select data-selector="platform" aria-controls="ac3f-download-result" disabled>
+              <option value="">Choose a platform</option>
+            </select>
+          </label>
+          <label>
+            <span>Variant</span>
+            <select data-selector="variant" aria-controls="ac3f-download-result" disabled>
+              <option value="">Choose a variant</option>
+            </select>
+          </label>
+        </div>
+        <div class="ac3f-selector-result" id="ac3f-download-result" aria-live="polite">
+          <p>Make a selection to see the available package or source instructions.</p>
+        </div>
+        <noscript>
+          <p>JavaScript is needed for the selector. Use the
+            <a href="{{ 'platforms/'|url }}">platform support matrix</a> instead.</p>
+        </noscript>
       </div>
     </section>
 

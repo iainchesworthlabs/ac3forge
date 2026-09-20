@@ -560,7 +560,7 @@ TEST_CASE("dec3 box signals Dolby Atmos objects", "[dec3]") {
 }
 
 // --------------------------------------------------------------------------
-// AC-4 carriage (roadmap IM4): TS 103 190-2 Annex E.4's 'ac-4' sample entry
+// AC-4 carriage (AC-4 bitstream inspector): TS 103 190-2 Annex E.4's 'ac-4' sample entry
 // and 'dac4' configuration box, through the same box walk the A/52 entries
 // are proven with.
 

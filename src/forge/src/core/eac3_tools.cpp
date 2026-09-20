@@ -560,7 +560,7 @@ const Xcos3Table& xcos3_table() {
 // heap-allocating per call would trade the stack-size warning for real
 // allocation churn; a thread_local reused buffer avoids both.
 //
-// One scratch per scalar (roadmap PF7's float32 gap): the double one is the
+// One scratch per scalar (minimum-footprint decoder profile's float32 gap): the double one is the
 // encoder's and a double decoder's, the float one a float decoder's. The
 // float one also carries the tables its transforms read - the analysis
 // window, the xcos3/xsin3 twiddle and §3.5.5.4's y - narrowed once from the

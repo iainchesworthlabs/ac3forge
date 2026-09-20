@@ -31,7 +31,7 @@
 // reported as kRemoved. A caller that re-probes on kAdded/kRemoved sees
 // everything this platform has to say.
 //
-// The default-INPUT listener is a third registration where roadmap UX12's
+// The default-INPUT listener is a third registration where Crucible cross-platform promotion's
 // plan for this backend named two. It is here because DeviceChange has a
 // kDefaultCaptureChanged case that both other backends raise - Windows from
 // OnDefaultDeviceChanged with eCapture, PipeWire from the metadata key

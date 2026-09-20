@@ -2,7 +2,7 @@
 """Assert a runtime package carries ac3cli's man page and its four completions.
 
 apps/cli/CMakeLists.txt generates ac3cli.1 and the bash/zsh/fish/PowerShell
-completion scripts by running the freshly built ac3cli (roadmap IO8), so a
+completion scripts by running the freshly built ac3cli (CLI shell completions), so a
 cross build - which cannot run its own output - installs none of them. The
 test for "is this a cross build" was CMAKE_CROSSCOMPILING until #527, and that
 variable is TRUE on every native Linux and macOS build in this tree, because

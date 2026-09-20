@@ -50,7 +50,7 @@
     {
       "name": "windows-msvc-arm64",
       "hidden": true,
-      "description": "Windows/MSVC toolchain selection, arm64 target (roadmap DR8, GitHub's hosted windows-11-vs2026-arm runner). Same chainloaded toolchain file as windows-msvc - cmake/toolchains/windows.msvc.toolchain.cmake resolves the target-appropriate MSVC tools subdirectory from AC3_MSVC_TARGET_ARCH the same way linux.gcc.toolchain.cmake/macos.llvm.toolchain.cmake already resolve their own arm64 legs from VCPKG_TARGET_ARCHITECTURE - only the vcpkg triplet differs. AC3FORGE_BUILD_GUI is OFF here, unlike windows-msvc: not because ac3gui cannot be built for arm64, but because at authoring time Qt's only Windows arm64 kit for the pinned 6.9.3 (win64_msvc2022_arm64_cross_compiled) is a cross-compile kit expecting a paired win64_msvc2022_64 install for its host tools, and aqtinstall has a documented CI bug against exactly that combination - real complexity this leg's native-arm64-host build doesn't need to take on for a first pass. The same 'Qt kit not assumed present' shape linux-gcc/linux-llvm/macos-llvm already use, not a new pattern - see those presets' own descriptions and docs/platforms/windows.md's ARM64 section.",
+      "description": "Windows/MSVC toolchain selection, arm64 target (Windows ARM64 / reach builds, GitHub's hosted windows-11-vs2026-arm runner). Same chainloaded toolchain file as windows-msvc - cmake/toolchains/windows.msvc.toolchain.cmake resolves the target-appropriate MSVC tools subdirectory from AC3_MSVC_TARGET_ARCH the same way linux.gcc.toolchain.cmake/macos.llvm.toolchain.cmake already resolve their own arm64 legs from VCPKG_TARGET_ARCHITECTURE - only the vcpkg triplet differs. AC3FORGE_BUILD_GUI is OFF here, unlike windows-msvc: not because ac3gui cannot be built for arm64, but because at authoring time Qt's only Windows arm64 kit for the pinned 6.9.3 (win64_msvc2022_arm64_cross_compiled) is a cross-compile kit expecting a paired win64_msvc2022_64 install for its host tools, and aqtinstall has a documented CI bug against exactly that combination - real complexity this leg's native-arm64-host build doesn't need to take on for a first pass. The same 'Qt kit not assumed present' shape linux-gcc/linux-llvm/macos-llvm already use, not a new pattern - see those presets' own descriptions and docs/platforms/windows.md's ARM64 section.",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-windows-msvc",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/windows.msvc.toolchain.cmake",
@@ -198,7 +198,7 @@
     {
       "name": "sanitize-tsan",
       "hidden": true,
-      "description": "ThreadSanitizer. A SEPARATE preset from sanitize-asan-ubsan rather than more entries in its list, because the two runtimes are mutually exclusive - clang refuses -fsanitize=address,thread outright - and because they answer different questions: ASan/UBSan ask whether a single thread's memory and arithmetic are sound, TSan asks whether two threads agree on who owns what. Nothing in the ASan+UBSan leg can see a data race, which is the whole reason this exists (roadmap VX16): src/audio is a lock-free SPSC ring, a silence watchdog and a clock-drift servo shared between a real-time callback thread and the encoder thread, and a missing acquire/release there is invisible to every other gate in this repository. cmake/Sanitizers.cmake already took an arbitrary comma-separated list, so this preset adds no build-system machinery of its own.",
+      "description": "ThreadSanitizer. A SEPARATE preset from sanitize-asan-ubsan rather than more entries in its list, because the two runtimes are mutually exclusive - clang refuses -fsanitize=address,thread outright - and because they answer different questions: ASan/UBSan ask whether a single thread's memory and arithmetic are sound, TSan asks whether two threads agree on who owns what. Nothing in the ASan+UBSan leg can see a data race, which is the whole reason this exists (ThreadSanitizer leg): src/audio is a lock-free SPSC ring, a silence watchdog and a clock-drift servo shared between a real-time callback thread and the encoder thread, and a missing acquire/release there is invisible to every other gate in this repository. cmake/Sanitizers.cmake already took an arbitrary comma-separated list, so this preset adds no build-system machinery of its own.",
       "cacheVariables": {
         "AC3FORGE_SANITIZERS": "thread"
       }
@@ -206,7 +206,7 @@
     {
       "name": "coverage",
       "hidden": true,
-      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - ac3::forge, ac3::audio, ac3::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3cli and ac3tests. AC3FORGE_BUILD_CLI is ON here (roadmap VX15): apps/cli is ~6,500 lines that front every other CI gate, tests/cli/test_cli.cpp runs the real built binary as a subprocess, and tools/checks/coverage_report.sh now gates it alongside the library components, so leaving it out meant the most-exercised executable in the tree had no floor at all. Examples stay off - they are documentation that happens to compile, tests/ already covers the same API surface, and each one is its own ctest process. AC3FORGE_BUILD_GUI stays off too: the GUI needs a Qt kit no Linux CI leg installs (see coverage_report.sh's own note).",
+      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - ac3::forge, ac3::audio, ac3::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3cli and ac3tests. AC3FORGE_BUILD_CLI is ON here (coverage floors): apps/cli is ~6,500 lines that front every other CI gate, tests/cli/test_cli.cpp runs the real built binary as a subprocess, and tools/checks/coverage_report.sh now gates it alongside the library components, so leaving it out meant the most-exercised executable in the tree had no floor at all. Examples stay off - they are documentation that happens to compile, tests/ already covers the same API surface, and each one is its own ctest process. AC3FORGE_BUILD_GUI stays off too: the GUI needs a Qt kit no Linux CI leg installs (see coverage_report.sh's own note).",
       "cacheVariables": {
         "AC3FORGE_ENABLE_COVERAGE": "ON",
         "AC3FORGE_BUILD_CLI": "ON",
@@ -218,7 +218,7 @@
     {
       "name": "minimal-decoder",
       "hidden": true,
-      "description": "Roadmap PF7's minimum-footprint decoder profile: ONE decode-only static library (ac3::forge_minimal) plus apps/baremetal's probe, built without exceptions, without RTTI and without the direct-form transform tables. Every other component is off - not as a time saving but because the root CMakeLists.txt refuses the combination: nothing under apps/, tests/, examples/ or the container modules builds against a decode-only archive. See cmake/MinimalDecoder.cmake and docs/building.md.",
+      "description": "minimum-footprint decoder profile's minimum-footprint decoder profile: ONE decode-only static library (ac3::forge_minimal) plus apps/baremetal's probe, built without exceptions, without RTTI and without the direct-form transform tables. Every other component is off - not as a time saving but because the root CMakeLists.txt refuses the combination: nothing under apps/, tests/, examples/ or the container modules builds against a decode-only archive. See cmake/MinimalDecoder.cmake and docs/building.md.",
       "cacheVariables": {
         "AC3FORGE_MINIMAL_DECODER": "ON",
         "AC3FORGE_BUILD_CLI": "OFF",
@@ -368,7 +368,7 @@
     {
       "name": "minimal-encoder",
       "hidden": true,
-      "description": "Roadmap PF7's minimum-footprint profile pointed at ENCODE instead of decode: one encode-only static library (ac3::forge_minimal) carrying both codecs, plus apps/baremetal's encode probe, built without exceptions or RTTI. Mutually exclusive with minimal-decoder, and measured to be: on an ESP32-S3 with 277,400 bytes of internal SRAM free, decode peaks at 233,546, AC-3 encode at 201,770 and E-AC-3 encode at 243,770 - each fits alone, no two fit at once. See src/forge/minimal.cmake and docs/building.md.",
+      "description": "minimum-footprint decoder profile's minimum-footprint profile pointed at ENCODE instead of decode: one encode-only static library (ac3::forge_minimal) carrying both codecs, plus apps/baremetal's encode probe, built without exceptions or RTTI. Mutually exclusive with minimal-decoder, and measured to be: on an ESP32-S3 with 277,400 bytes of internal SRAM free, decode peaks at 233,546, AC-3 encode at 201,770 and E-AC-3 encode at 243,770 - each fits alone, no two fit at once. See src/forge/minimal.cmake and docs/building.md.",
       "cacheVariables": {
         "AC3FORGE_MINIMAL_ENCODER": "ON",
         "AC3FORGE_BUILD_CLI": "OFF",
@@ -403,7 +403,7 @@
       "name": "config-arm-none-eabi-minimal",
       "inherits": [ "minimal-decoder" ],
       "displayName": "arm-none-eabi (Cortex-M3, bare metal) minimum-footprint decoder",
-      "description": "arm-none-eabi (Cortex-M3, no OS) cross build of the minimum-footprint decoder profile - the concrete target roadmap PF7 names, run under QEMU's mps2-an385 machine by tools/checks/run_baremetal_probe.sh. Like the Emscripten preset and for the same reasons, this does NOT inherit \"core\": there is no vcpkg triplet for bare-metal arm and nothing this profile builds has a third-party dependency, so the generator, binaryDir and options are set here directly rather than inherited from a preset meant for a hosted build.",
+      "description": "arm-none-eabi (Cortex-M3, no OS) cross build of the minimum-footprint decoder profile - the concrete target minimum-footprint decoder profile names, run under QEMU's mps2-an385 machine by tools/checks/run_baremetal_probe.sh. Like the Emscripten preset and for the same reasons, this does NOT inherit \"core\": there is no vcpkg triplet for bare-metal arm and nothing this profile builds has a third-party dependency, so the generator, binaryDir and options are set here directly rather than inherited from a preset meant for a hosted build.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "toolchainFile": "${sourceDir}/cmake/toolchains/arm-none-eabi.toolchain.cmake",
@@ -424,7 +424,7 @@
       "name": "config-arm-none-eabi-minimal-encoder",
       "inherits": [ "minimal-encoder" ],
       "displayName": "arm-none-eabi (Cortex-M3, bare metal) minimum-footprint encoder",
-      "description": "arm-none-eabi (Cortex-M3, no OS) cross build of the minimum-footprint decoder profile - the concrete target roadmap PF7 names, run under QEMU's mps2-an385 machine by tools/checks/run_baremetal_probe.sh. Like the Emscripten preset and for the same reasons, this does NOT inherit \"core\": there is no vcpkg triplet for bare-metal arm and nothing this profile builds has a third-party dependency, so the generator, binaryDir and options are set here directly rather than inherited from a preset meant for a hosted build.",
+      "description": "arm-none-eabi (Cortex-M3, no OS) cross build of the minimum-footprint decoder profile - the concrete target minimum-footprint decoder profile names, run under QEMU's mps2-an385 machine by tools/checks/run_baremetal_probe.sh. Like the Emscripten preset and for the same reasons, this does NOT inherit \"core\": there is no vcpkg triplet for bare-metal arm and nothing this profile builds has a third-party dependency, so the generator, binaryDir and options are set here directly rather than inherited from a preset meant for a hosted build.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "toolchainFile": "${sourceDir}/cmake/toolchains/arm-none-eabi.toolchain.cmake",

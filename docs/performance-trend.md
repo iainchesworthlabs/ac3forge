@@ -1,6 +1,6 @@
 # Performance trend
 
-Four separate mechanisms, not one, and it matters which is which:
+Five separate mechanisms, not one, and it matters which is which:
 
 - **The hard gate**: `ac3perf` (`tests/performance/test_performance.cpp`) asserts the
   encoder stays faster than real time (with a 2x safety margin), on every push and
@@ -9,6 +9,11 @@ Four separate mechanisms, not one, and it matters which is which:
   Not run under the ASan/UBSan leg: instrumented code has nothing useful to say about
   throughput at any slack factor, so that leg excludes the `Performance` label entirely
   (`CMakePresets.json`'s `test-linux-llvm-asan-ubsan` preset).
+- **The pull-request comparison and gate**: `performance-compare` measures the
+  PR head against its merge base and publishes the table. Its infrastructure is
+  informational (`continue-on-error`), but an explicit hard-regression verdict
+  is passed to the separate blocking `performance-gate` job. No measurement or
+  an approved `perf-regression-approved` label passes the gate.
 - **This page's whole-frame tables**: `ac3bench` (`tests/performance/bench_encoder.cpp`)
   runs the same configurations for longer (200 frames) and records the actual
   ms/frame number, not just a pass/fail, on every push to `main`. It exists
@@ -58,10 +63,10 @@ number. `ac3kernelbench` had this rule from the start; PF1 applied it to the oth
 two. The fixture is 78 frames long and the benches run 200, so frame indices wrap;
 the seam that creates lands in the same place on every run.
 
-Only `linux-gcc` is measured, not the full CI matrix — see the note below the append
-scripts for why. Every number on this page is that one runner's; nothing here is a
-cross-platform comparison, and a number from a developer machine is not comparable
-to one of these rows.
+The persistent x86 series uses `linux-gcc`; whole-frame performance also has an
+arm64 series from `linux-gcc-arm64`. Kernel and memory histories remain x86-only.
+These are fixed-runner trends, not comparisons across the 11 split platform
+legs, and developer-machine numbers are not comparable to these rows.
 
 Roadmap PF2 (inlining `to_fixed25` and fusing it with exponent extraction) does not
 show as a clean step in the whole-frame series above: the ~7% of a fast-path frame it
@@ -165,8 +170,9 @@ data* block beneath it instead.
 
 ## Whole-frame trend
 
-Each series below is a chart first, table second. The chart plots that
-series' *entire* recorded history (not just the table's last 20 rows) as
+Each series below is a chart first, table second. The chart plots the
+generated recent window (or the full history while it still fits that window),
+not just the table's last 20 rows, as
 ms/frame against commit date, with a dashed red line for the throughput
 budget and a dashed ring around any point whose commit was tagged as a
 GitHub release - hover a point for the exact commit, date and number. A
@@ -274,22 +280,24 @@ follow the same convention, table-only (no chart to style).
   // How many of each (leg, config) series' most recent rows to show in the
   // table - a trend readout, not a full audit log. Mirrors quality-trend.md's
   // own TABLE_ROWS in spirit, just scoped per-series instead of globally,
-  // since performance-trend.md only ever has one leg (linux-gcc) rather than
-  // quality-trend's five. The chart above each table is NOT capped to this -
-  // it plots the series' full history so a release from further back than
-  // the last 20 runs still shows up as a ring.
+  // since performance-trend.md has two whole-frame legs rather than
+  // quality-trend's five. The chart is not capped to this table limit; it
+  // plots every row in the fetched recent window.
   const ROWS_PER_SERIES = 20;
 
   const root = document.getElementById("performance-trend-app");
 
   async function fetchBranch(branch) {
-    try {
-      const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, `performance-${branch}.jsonl`));
-      if (!resp.ok) return [];
-      return perfTrendParseJsonl(await resp.text());
-    } catch (e) {
-      return [];
+    for (const file of [`performance-${branch}.recent.jsonl`, `performance-${branch}.jsonl`]) {
+      try {
+        const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, file));
+        if (!resp.ok) continue;
+        return perfTrendParseJsonl(await resp.text());
+      } catch (e) {
+        // fall through to the authoritative full history
+      }
     }
+    return [];
   }
 
   // Same best-effort tag->commit join quality-trend.md already relies on:
@@ -502,13 +510,16 @@ decode spends; the bare row is what the oracle costs.
   const root = document.getElementById("kernel-trend-app");
 
   async function fetchBranch(branch) {
-    try {
-      const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, `kernels-${branch}.jsonl`));
-      if (!resp.ok) return [];
-      return perfTrendParseJsonl(await resp.text());
-    } catch (e) {
-      return [];
+    for (const file of [`kernels-${branch}.recent.jsonl`, `kernels-${branch}.jsonl`]) {
+      try {
+        const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, file));
+        if (!resp.ok) continue;
+        return perfTrendParseJsonl(await resp.text());
+      } catch (e) {
+        // fall through to the authoritative full history
+      }
     }
+    return [];
   }
 
   function formatNs(ns) {
@@ -1005,7 +1016,8 @@ run's own lines, and the ceilings above hold the same headroom the other gates d
 
 The same clock on the same leg with the decoder built as its fixed-point tier
 (`tools/checks/run_baremetal_probe.sh --scalar=fixed --icount`,
-`planning/arithmetic-tiers.md`), measured 2026-09-10. Integer arithmetic where the
+[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)),
+measured 2026-09-10. Integer arithmetic where the
 row above it is software floating point: a Q7.24 multiply is one `smull` and a
 shift where a soft-float one is a call. The ceilings are `ICOUNT_CEILING_FIXED`
 in the runner, with the same headroom rule as every other gate here. Both
@@ -1124,13 +1136,16 @@ has what the encode direction cannot fit on an ESP32-S3, with the host profile's
   const root = document.getElementById("memory-trend-app");
 
   async function fetchBranch(branch) {
-    try {
-      const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, `memory-${branch}.jsonl`));
-      if (!resp.ok) return [];
-      return perfTrendParseJsonl(await resp.text());
-    } catch (e) {
-      return [];
+    for (const file of [`memory-${branch}.recent.jsonl`, `memory-${branch}.jsonl`]) {
+      try {
+        const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, file));
+        if (!resp.ok) continue;
+        return perfTrendParseJsonl(await resp.text());
+      } catch (e) {
+        // fall through to the authoritative full history
+      }
     }
+    return [];
   }
 
   function formatBytes(b) {

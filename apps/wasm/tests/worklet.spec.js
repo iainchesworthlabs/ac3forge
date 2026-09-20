@@ -3,7 +3,7 @@
 
 const { test, expect } = require('@playwright/test');
 
-// Roadmap UX5's AudioWorklet pipeline (js/src/decoder-node.ts,
+// WASM streaming decoder package's AudioWorklet pipeline (js/src/decoder-node.ts,
 // decoder-worker.ts, worklet-processor.ts, ring-buffer.ts): a real
 // AudioWorkletNode, backed by a real Worker doing the WASM decode and a
 // real SharedArrayBuffer ring buffer between them - not just "the worker

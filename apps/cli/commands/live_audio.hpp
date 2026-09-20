@@ -27,7 +27,7 @@ namespace ac3cli::commands {
 int run_monitor(std::string_view in_path, int device_index, const ac3cli::Options& meta);
 
 // Decode an E-AC-3 stream's object layer and hand it to the OS's own spatial
-// object renderer (Windows' ISpatialAudioObjectRenderStream, roadmap UX8):
+// object renderer (Windows' ISpatialAudioObjectRenderStream, Windows spatial object renderer):
 // every JOC-reconstructed object goes out as a DYNAMIC object at its real
 // OAMD position, and the bed's LFE (never a JOC output - TS 103 420 §6.3.2.2
 // bypasses it) goes out as a STATIC one. This is the one path that lets
@@ -46,7 +46,7 @@ int run_spatial(std::string_view in_path, int device_index, const ac3cli::Option
 // mode "atmos" additionally moves each object's placement every frame:
 // either the same orbiting math run_atmos's synthetic demo uses (elapsed
 // wall-clock time, recomputed every frame), or, when positions= names a
-// live source (roadmap UX4 - OSC today), a real one - ac3::audio::
+// live source (live OSC object positions - OSC today), a real one - ac3::audio::
 // LivePositionSource drained into an ac3::oba::SceneCursor at the same
 // frame-end instant the orbit already samples at, so switching the source
 // on changes WHERE objects go, never the shape of this loop.

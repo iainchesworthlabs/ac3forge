@@ -33,6 +33,15 @@ resolution the CLI's `signing-key=<path>` uses. `decode_signing_key` is the shar
 all three: base64 when the content is valid base64 (the CI/secret-transport form — a GitHub
 secret is text and cannot carry a raw binary key), otherwise taken as raw bytes.
 
+The CLI signs during an Atmos encode:
+
+```bash
+ac3cli atmos-encode in.wav out.ec3 448 0 paths.json sign-objects signing-key=/path/to/key
+```
+
+`atmos` and `atmos-path` accept the same two options. There is no CLI command that signs an
+existing stream after encoding.
+
 The HMAC-SHA-256 construction (RFC 2104 / FIPS 180-4) and the choice of which frame regions are
 authenticated are clean-room: derived from this codec's own public container layout
 (`ac3::emdf`, `ETSI TS 103 420`) and built on this project's own parsing primitives. The *key*

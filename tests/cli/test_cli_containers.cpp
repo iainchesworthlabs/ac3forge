@@ -25,8 +25,8 @@
 
 // apps/cli/commands/containers.cpp measured 0.0% line coverage when roadmap
 // VX15 first pointed the apps/cli coverage gate at apps/ (re-measured at
-// 30.4% after roadmap IO2's container-reader/probe work landed and
-// incidentally exercised some of it - see ROADMAP.md's VX22). mkv/mp4/ts were
+// 30.4% after container readers (mkv/mp4/ts)'s container-reader/probe work landed and
+// incidentally exercised some of it - see CLI container command tests). mkv/mp4/ts were
 // already reached as fixture-building helpers inside test_cli.cpp's demux
 // round-trip test, but never asserted on their OWN output; three real
 // branches (reject_legacy_core, the non-uniform-access-unit refusal, and
@@ -324,7 +324,7 @@ TEST_CASE("demux reports what each container told it, sample rate included or no
 }
 
 // --------------------------------------------------------------------------
-// AC-4 carriage (roadmap IM4): the real DEE fixture through mp4 and ts, and
+// AC-4 carriage (AC-4 bitstream inspector): the real DEE fixture through mp4 and ts, and
 // back out through demux.
 
 namespace {

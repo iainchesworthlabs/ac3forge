@@ -1,4 +1,4 @@
-// The minimum-footprint ENCODER probe (roadmap PF7): ac3::forge_minimal
+// The minimum-footprint ENCODER probe (minimum-footprint decoder profile): ac3::forge_minimal
 // encoding real audio on a target with no operating system, no filesystem and
 // no C++ exceptions, and reporting what that cost.
 //

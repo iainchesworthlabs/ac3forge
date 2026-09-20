@@ -2,7 +2,7 @@
 
 Mirrors examples/encode_ac3.cpp in spirit (same kind of real, distinct-per-channel audio,
 per CONTRIBUTING.md's own "silence is not a test signal" rule) but through the Python bindings
-(roadmap F2), and adds the decode half so it demonstrates the full round trip in one script.
+(Python on PyPI), and adds the decode half so it demonstrates the full round trip in one script.
 docs/library/python-api.md excerpts the functions below directly - this file is what the build
 actually runs, not a snippet copied by hand.
 

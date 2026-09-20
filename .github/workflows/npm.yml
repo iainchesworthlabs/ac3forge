@@ -1,4 +1,4 @@
-# ac3forge-wasm-decoder, the browser streaming decoder package (roadmap UX5, js/) - separate
+# ac3forge-wasm-decoder, the browser streaming decoder package (WASM streaming decoder package, js/) - separate
 # from _build.yml/ci.yml's C++ matrix and from build-wasm's Emscripten build, neither of which
 # this needs: js/'s own build (tsc) and test suite (node:test - the fMP4 box walker against a
 # committed fixture, the ring buffer, the MediaSource shim) are pure TypeScript/JavaScript with

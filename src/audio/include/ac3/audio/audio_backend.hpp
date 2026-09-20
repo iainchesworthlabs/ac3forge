@@ -57,7 +57,7 @@ struct AudioBackend {
     // per-device kFormatRejected split.
     Capability spatial;
     // Tapping one process's rendered audio on its own, whichever endpoint it
-    // renders to: Capture::start_process_loopback (roadmap UX11). Separate
+    // renders to: Capture::start_process_loopback (WASAPI loopback tap). Separate
     // from `capture` because a platform with an ordinary loopback path can
     // still lack a per-process one - and Windows itself does, before build
     // 20348 - so this is the one report that depends on the machine the
@@ -66,7 +66,7 @@ struct AudioBackend {
     Capability process_loopback;
     // Being told when an endpoint arrives, leaves, changes state or becomes
     // the default, rather than polling for it: ac3::audio::DeviceWatcher
-    // (roadmap UX11).
+    // (WASAPI loopback tap).
     Capability device_watch;
 };
 

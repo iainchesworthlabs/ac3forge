@@ -1,5 +1,5 @@
 // Embind wrapper around ac3::forge's decode path, for the reusable push-frame
-// package (roadmap UX5, js/) and the docs demo built on top of it
+// package (WASM streaming decoder package, js/) and the docs demo built on top of it
 // (apps/wasm/index.html - see js/src/decode-file.ts for the whole-file
 // convenience helper the demo actually calls).
 //

@@ -19,10 +19,10 @@
     and one unmeasured number ([here](#real-time-safety)).
 
     **For a media pipeline the answer is different**, and Part 2 does not plan it because the
-    roadmap already does: `ROADMAP.md`'s AP10 names an out-of-tree GStreamer element or FFmpeg
-    wrapper, and [that section](#the-other-kind-of-host-media-pipelines) is the study it has not
-    had. The short version: a pipeline element runs on a streaming thread rather than an audio
-    callback, so the constraint that makes an encode plugin "not yet" for a DAW does not apply,
+    roadmap already lists it: [GStreamer / FFmpeg encode wrapper](../ROADMAP.md#proposed).
+    [That section](#the-other-kind-of-host-media-pipelines) is the study behind that item. The
+    short version: a pipeline element runs on a streaming thread rather than an audio callback, so
+    the constraint that makes an encode plugin "not yet" for a DAW does not apply,
     and the encoder becomes the cheap case rather than the hard one.
 
 **The two plugins on this page occupy different roles in the family's topology, and the
@@ -251,11 +251,10 @@ Everything above is about a **DAW** plugin — a loadable object on an audio thr
 media pipeline is a different host with different constraints, and the answers invert almost
 line for line.
 
-**The roadmap already names this.** `ROADMAP.md:2163` carries **AP10**: "An out-of-tree
-GStreamer element or FFmpeg external-encoder wrapper, the way >5.1 and JOC encode would reach the
-transcode ecosystem", over the C API, "GPL-3 framed (`--enable-gpl --enable-version3`)", with
-FFmpeg staying an oracle for the codec itself. It is unstarted, and its stated dependency —
-AP5, the C API — is done. This section is the study AP10 has not had, not a new proposal.
+**The roadmap already names the media-pipeline item.** See [ROADMAP.md](../ROADMAP.md) Proposed —
+GStreamer / FFmpeg encode wrapper (formerly AP10): out-of-tree element over the C API for >5.1 and
+JOC encode, GPL-3 framed, with FFmpeg staying an oracle. Unstarted; C API (AP5) is done. This
+section is the study that item has not had, not a new proposal.
 
 **AP10's premise still holds in 2026, and it was worth re-checking.** Its supporting claim dates
 from a 2014 FFmpeg ticket. Read against FFmpeg's current master on 2026-09-07,
@@ -755,9 +754,8 @@ links, so that a reader can check it rather than trust it.
 
 ### 14. Signing and install
 
-**DR6 is unresolved.** `ROADMAP.md:2909` records it as Developer ID and notarisation for macOS,
-Authenticode for Windows, blocked on certificates rather than on code, and a Known gap in every
-release since 0.8.0-beta.2.
+**Code signing is unresolved.** See [ROADMAP.md](../ROADMAP.md) Blocked — macOS notarisation and
+Windows Authenticode, blocked on certificates rather than on code (Known gap since 0.8.0-beta.2).
 
 **For a plugin, DR6 is closer to a prerequisite than it is for an application**, and the reason
 is that a user can talk their way past Gatekeeper for an application they downloaded
@@ -855,28 +853,22 @@ The macOS bundle layouts, and AU only if DR6 has landed and
 [What cannot be verified](#what-cannot-be-verified-and-why), this cannot be established on CI,
 and the phase does not close on a green build.
 
-## The proposed ROADMAP entry
+## Roadmap status
 
-This plan does not allocate a roadmap ID, so the following is text to place rather than an edit to make. `ROADMAP.md`
-is deliberately untouched by this plan.
+**Media pipeline:** covered in [ROADMAP.md](../ROADMAP.md) as the proposed GStreamer / FFmpeg
+encode wrapper (formerly AP10). This page's
+[media-pipeline section](#the-other-kind-of-host-media-pipelines) is the study behind that item,
+not a competing proposal.
 
-**The media-pipeline half needs no new entry.** AP10 already covers it, and this page's
-[media-pipeline section](#the-other-kind-of-host-media-pipelines) is the study behind it rather
-than a competing proposal. Two amendments to AP10's record would be worth making when someone
-next edits it, and both are verifications rather than changes of direction: that its 5.1-ceiling
-premise was re-checked against FFmpeg master on 2026-09-07 and still holds, and that GStreamer
-and FFmpeg are not equal-cost options — GStreamer has an out-of-tree plugin ABI and FFmpeg has
-none, so "GStreamer element **or** FFmpeg wrapper" is really "GStreamer element, and separately
-a much larger upstream proposition".
+**DAW plugin (metering/QC):** not started. If pursued after the study's open decisions, add a
+plain-English row to [ROADMAP.md](../ROADMAP.md) Proposed — do not allocate a numeric ID. Summary:
 
-The entry below is for the DAW plugin only.
+> AC3Forge Assay — a CLAP/VST3 metering and QC analyser (mono through 7.1.4), blocked on
+> `LoudnessMeter` bounded for continuous operation and on macOS code signing (DR6). Object panner
+> and encode plugin are out of scope per this study.
 
-> **UX13 (L, needs decisions, blocked on DR6 for macOS)** — AC3Forge Assay, a metering and QC
-> host plugin — CLAP and VST3, an analyser over the library's BS.1770 loudness, true-peak, LRA
-> and broadcast-preset instruments, for mono through 7.1.4. Study and design record in
-> `docs/family/host-plugin.md`, which concludes that an object panner is not possible in any open
-> plugin format and that an encode plugin waits on a worst-case block-time measurement. Needs
-> `LoudnessMeter` bounded for continuous operation first. macOS distribution is blocked on DR6.
+Detail stays in this file. [Code signing](../ROADMAP.md#blocked) is tracked under Blocked in the
+roadmap.
 
 ## What cannot be verified, and why
 
@@ -919,8 +911,8 @@ code is finished.
 - **Changing any existing member's identifiers**, packages or paths.
 - **Solving the family icon gap** ([section 11](#11-identity-assets)), which is named here and
   fixed elsewhere.
-- **Editing `ROADMAP.md` or `CHANGELOG.md`.** The roadmap entry is
-  [proposed as text](#the-proposed-roadmap-entry); the ID is allocated separately.
+- **Editing the roadmap from this plan.** Status summaries belong in [ROADMAP.md](../ROADMAP.md);
+  this file holds the study.
 
 ## Decisions
 

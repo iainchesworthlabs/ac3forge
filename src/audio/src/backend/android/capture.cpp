@@ -47,7 +47,7 @@ std::uint16_t Capture::channels() const { return 0; }
 CaptureStats Capture::stats() const { return {}; }
 RingBuffer* Capture::buffer() { return nullptr; }
 
-// Roadmap UX11's per-process tap is a Windows 10 build 20348+ WASAPI
+// WASAPI loopback tap's per-process tap is a Windows 10 build 20348+ WASAPI
 // activation; nothing here has an equivalent, so the answer is a constant.
 bool process_loopback_available() {
     return false;

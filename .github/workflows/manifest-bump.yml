@@ -1,5 +1,5 @@
 # Automates docs/releasing.md's "Bump the four packaging manifests" post-release step
-# (roadmap DR2): computes the digests a new release's four staged manifests need
+# (manifest bump automation): computes the digests a new release's four staged manifests need
 # (packaging/vcpkg-port, packaging/homebrew, packaging/conan, packaging/winget) straight
 # from the release's own published assets, opens a PR with the bump, and pushes the
 # Homebrew Formula/Cask to the live iainchesworthlabs/homebrew-ac3forge tap. This is what
@@ -215,7 +215,7 @@ jobs:
             {
               echo "Bumps the vcpkg port, Homebrew formula/cask, winget manifest and Conan"
               echo "recipe to ${VERSION_TAG} - opened automatically by .github/workflows/manifest-bump.yml"
-              echo "(roadmap DR2). Digests were computed from the release's own downloaded"
+              echo "(manifest bump automation). Digests were computed from the release's own downloaded"
               echo "assets and cross-checked against its published SHA512SUMS where one of"
               echo "those assets exists to check against - see that workflow's own comments."
               echo

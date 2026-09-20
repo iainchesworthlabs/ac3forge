@@ -46,12 +46,12 @@ int run_identify(int device_index, std::string_view layout_text, std::uint32_t s
 // Eac3BurstPacker's own comment on why - Annex E frames can cover as few as
 // one of the six blocks a burst period spans).
 //
-// Roadmap UX9: when a specific device_index is named, this first asks what
+// play/monitor follow mode: when a specific device_index is named, this first asks what
 // it actually accepts - ac3::audio::read_sink_capabilities' EDID read where
 // a backend has one, enumerate_render_devices' own live probe otherwise (see
 // that header's comment for why the two are kept apart). A source format the
 // sink rejects gets an automatic fallback rather than a refusal: E-AC-3 on an
-// AC-3-only sink is transcoded to AC-3 first (roadmap DC9's transcode, feeding
+// AC-3-only sink is transcoded to AC-3 first (stream tools's transcode, feeding
 // this same passthrough path); a sink that bitstreams neither format falls
 // back to decoded PCM (run_monitor). meta.follow_sink (follow=off) restores
 // the plain refusal 'play' always gave before this roadmap item, the same

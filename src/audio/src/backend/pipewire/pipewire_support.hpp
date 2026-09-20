@@ -225,7 +225,7 @@ bool for_each_audio_node(Visitor&& visit) {
 // PipeWire gives every client stream a media.class of Stream/Output/Audio
 // and tags it with the client's process id and name, which is what makes a
 // per-process tap possible here without any of the machinery Windows needs
-// (roadmap UX12). A sink's monitor carries the whole mix; this is one
+// (Crucible cross-platform promotion). A sink's monitor carries the whole mix; this is one
 // application on its own.
 [[nodiscard]] inline bool is_output_stream(const spa_dict& props) {
     const char* class_name = spa_dict_lookup(&props, PW_KEY_MEDIA_CLASS);

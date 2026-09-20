@@ -18,7 +18,7 @@
 #include "ac3/meta/loudness.hpp"
 
 // Momentary/short-term loudness, Loudness Range and true peak - the R128
-// metering roadmap item C1 adds on top of the pre-existing integrated_lkfs()
+// metering full R128 metering adds on top of the pre-existing integrated_lkfs()
 // (whose own calibration/surround-weighting/silence tests already live in
 // test_drc.cpp; this file only covers the new surface). All of it needs real,
 // multi-second, non-silent content: a 400 ms/3 s window, EBU Tech 3342's
@@ -256,7 +256,7 @@ TEST_CASE("true peak is undefined before any sample is pushed", "[loudness][true
 }
 
 
-// --- BS.1770-5 Annex 3 positional weighting (roadmap IO10) --------------------
+// --- BS.1770-5 Annex 3 positional weighting (legacy item IO10) --------------------
 
 namespace {
 

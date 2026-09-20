@@ -115,7 +115,7 @@ jobs:
             gui: true
             packageable: true
             gold_reference: true
-            # AC3Forge Crucible's Linux half (roadmap UX12). This leg and not
+            # AC3Forge Crucible's Linux half (Crucible cross-platform promotion). This leg and not
             # a GCC one because the GCC legs carry alsa_fallback, which
             # asserts that disabling ALSA falls back to posix - true only
             # while no PipeWire headers are installed, and the Crucible pass
@@ -150,7 +150,7 @@ jobs:
             gui: true
             packageable: true
             gold_reference: true
-            # AC3Forge Crucible's Linux half on aarch64 (roadmap UX12). The
+            # AC3Forge Crucible's Linux half on aarch64 (Crucible cross-platform promotion). The
             # Crucible pass further down is written against matrix.preset, so
             # this leg only has to ask for it: same apt list, same configure
             # assertions, same tests, same package as linux-llvm, and no
@@ -197,7 +197,7 @@ jobs:
             llvm: true
             sanitizer: true
 
-          # ThreadSanitizer (roadmap VX16). A DIFFERENT question from the
+          # ThreadSanitizer (ThreadSanitizer leg). A DIFFERENT question from the
           # ASan+UBSan leg above, not a duplicate of it: ASan/UBSan ask
           # whether one thread's memory and arithmetic are sound, TSan asks
           # whether two threads agree on who owns what - and no other gate in
@@ -262,7 +262,7 @@ jobs:
       # pull in qmlcachegen and the other build-time QML tooling
       # qt_add_qml_module needs; without them the GUI configure step fails
       # rather than quietly building without AOT-compiled QML. The LinguistTools
-      # component (roadmap UX3) needs BOTH of two separate Debian/Ubuntu
+      # component (GUI localisation) needs BOTH of two separate Debian/Ubuntu
       # packages, confirmed via packages.ubuntu.com's file lists after the
       # single-package version of this line still failed on arm64 with the
       # exact symptom below: qt6-l10n-tools ships only the lupdate/lrelease/
@@ -423,7 +423,7 @@ jobs:
           persist-quality-trend: ${{ inputs.persist_quality_trend }}
 
       # The same gate a second time, on the spec's own direct transform
-      # evaluations instead of the fast paths (roadmap VX10). 0.9.0 flipped
+      # evaluations instead of the fast paths (reference-mode end-to-end gate). 0.9.0 flipped
       # both transform defaults, and from then until this step existed every
       # CI gate that touched a real stream ran in performance mode: the
       # normative §8.2.3.2 forward MDCT and §7.9.4 step-3 inverse - the oracle
@@ -447,7 +447,7 @@ jobs:
         run: bash tools/checks/verify_gold_reference.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
 
       # A third run of the same gate, against a decoder built float32 rather
-      # than double (roadmap PF7). Unlike mode=reference above this cannot be a
+      # than double (minimum-footprint decoder profile). Unlike mode=reference above this cannot be a
       # token: AC3FORGE_DECODE_SCALAR is a BUILD option
       # (src/forge/src/internal/scalar/), so it needs its own binary.
       #
@@ -643,7 +643,7 @@ jobs:
             "$bin" "${smoke_args[@]}"
           fi
 
-      # Roadmap UX3's own literal ask: "newly added strings cannot silently
+      # GUI localisation's own literal ask: "newly added strings cannot silently
       # fall out of the catalogue". Re-runs lupdate (the ac3gui_lupdate
       # target qt_add_translations() creates - apps/gui/CMakeLists.txt)
       # against the same QML/C++ sources it scans at release time, then
@@ -700,7 +700,7 @@ jobs:
           AC3FORGE_CROSS_TIER_CHECK: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '0' }}
         run: bash tools/ci/run_codec_matrix.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
 
-      # Roadmap VX20: the conformance vector set - one stream per coding tool,
+      # conformance vectors publication: the conformance vector set - one stream per coding tool,
       # layout and sample rate this encoder can produce, each with the PCM it
       # was encoded from and the expected decode hashes, published as a
       # release asset so another decoder implementer has something concrete to
@@ -715,7 +715,7 @@ jobs:
       # is worth paying once per release and not once per push.
       #
       # One leg only. Encoded output is not bit-identical across compilers or
-      # architectures yet (docs/building.md; roadmap VX11/VX12), so a second
+      # architectures yet (docs/building.md; cross-platform bitstream reproducibility/VX12), so a second
       # leg's bundle would differ from this one's for no useful reason - the
       # manifest records the toolchain that built it either way. linux-gcc is
       # the leg that carries it because it is the x86-64 reference toolchain
@@ -779,7 +779,7 @@ jobs:
           cmake --build build/no-alsa -- -k 0
           ctest --test-dir build/no-alsa
 
-      # AC3Forge Crucible on Linux (roadmap UX12, docs/crucible/design/promotion.md).
+      # AC3Forge Crucible on Linux (Crucible cross-platform promotion, docs/crucible/design/promotion.md).
       # One extra pass inside this leg rather than a matrix entry, the same
       # shape as the ALSA fallback above, because it needs a different audio
       # backend rather than a different compiler.
@@ -1136,7 +1136,7 @@ jobs:
 
       # The counterpart to the two Windows asserts above, for the files that
       # had no assertion at all: ac3cli's generated man page and its four
-      # shell completions (apps/cli/CMakeLists.txt, roadmap IO8). Those are
+      # shell completions (apps/cli/CMakeLists.txt, CLI shell completions). Those are
       # produced by running the freshly built ac3cli, so a cross build skips
       # them - and until #527 that test was CMAKE_CROSSCOMPILING, which is
       # TRUE on every native Linux and macOS build here (each

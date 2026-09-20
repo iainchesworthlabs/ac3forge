@@ -10,7 +10,7 @@
 
 #include "pipewire_support.hpp"
 
-// The PipeWire device watcher (roadmap UX12). PipeWire already tells every
+// The PipeWire device watcher (Crucible cross-platform promotion). PipeWire already tells every
 // client what the graph is doing; this turns two of its streams of events
 // into the four this library's callers care about.
 //

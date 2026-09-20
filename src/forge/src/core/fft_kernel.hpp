@@ -59,7 +59,7 @@ namespace ac3::internal {
 // complex multiply (which carries j-1 accumulated rounding steps by its j-th
 // butterfly).
 //
-// Scalar (roadmap PF7's float32 gap): the type the twiddles are STORED in.
+// Scalar (minimum-footprint decoder profile's float32 gap): the type the twiddles are STORED in.
 // They are still COMPUTED in double - see the angle comment in the constructor
 // below, which is an argument about std::cos of a reduced angle and does not
 // survive being restated in float - and narrowed once on the way into the
@@ -160,7 +160,7 @@ struct FftTables {
 // swap and a sign, not a multiply, which is where radix-4's fourth complex
 // multiply went.
 //
-// VecType (ROADMAP PF5's batch-axis follow-on): every operation below is
+// VecType (batched SIMD kernels): every operation below is
 // `+`/`-`/`*` over a `re`/`im` element and (for the three complex multiplies)
 // a scalar `double` twiddle - the exact shape `f64x2`/`f64x4` already
 // support, so this same body runs N independent same-size transforms in
@@ -303,7 +303,7 @@ void fft_radix4_chain(const FftTables<P, Scalar>& t, std::span<VecType, P> re,
 // the butterfly's independent multiply-add chains stay visible to the
 // auto-vectorizer.
 //
-// VecType (ROADMAP PF5's batch-axis follow-on, default `double`): see
+// VecType (batched SIMD kernels, default `double`): see
 // fft_radix4_stage's own comment. Every existing caller passes
 // `std::span<double, P>` and gets the same `VecType = double` instantiation
 // this function always had; a batched caller instantiates this explicitly

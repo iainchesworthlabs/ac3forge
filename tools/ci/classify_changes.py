@@ -2,7 +2,7 @@
 """Classify a change's file list into CI lanes (roadmap: CI lane partitions).
 
 `ci.yml`'s `changes` job already tells a docs-only PR from a code one so the
-five-platform matrix can be skipped (`docs_re`, right above the step this
+split platform builds can be skipped (`docs_re`, right above the step this
 script is called from). This is the next cut of that same idea: which
 *lanes* - core library, each platform, each satellite toolchain - actually
 need to run, so a Windows-only change stops paying for ESP-IDF and Android.
@@ -21,11 +21,10 @@ Reads one path per line from stdin (repo-relative, the same shape `gh api
 diff to read against, and the merge queue's whole point is catching what an
 individual PR's own lane subset could not see.
 
-As of the classifier phase (see the CI lane partitions plan) nothing reads
-these outputs yet - `ci.yml` still gates every heavy job on `code` alone, so
-wiring this in today changes no PR's actual skip behaviour. See
-docs/ci-lanes.md for the lane table, the fan-out rule, and why an
-unrecognised path lights every lane rather than none of them.
+`ci.yml` consumes these outputs to gate the core workflow, split platform
+workflows, satellites and package workflows. See docs/ci-lanes.md for the
+mapping, the fan-out rule, and why an unrecognised path lights every lane
+rather than none of them.
 """
 
 from __future__ import annotations

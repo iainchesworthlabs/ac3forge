@@ -15,7 +15,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 
-// ac3cli's 'atmos-adm' command (roadmap B1 phase 3 of 3 - see ROADMAP.md's "ADM BWF reader
+// ac3cli's 'atmos-adm' command (ADM BWF reader phase 3 of 3 - 's "ADM BWF reader
 // feeding the JOC encoder" entry; apps/cli/main.cpp's run_atmos_adm). Real, subprocess-level
 // integration tests: the same "run the actual built binary, inspect what it wrote" shape
 // tests/cli/test_cli.cpp's own atmos-encode test uses, and for the same reason - main.cpp compiles

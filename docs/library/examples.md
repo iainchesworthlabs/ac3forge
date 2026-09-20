@@ -3,7 +3,8 @@
 Every program in [`examples/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/examples)
 builds by default (`AC3FORGE_BUILD_EXAMPLES=ON`) and registers as a `ctest` entry named
 `example.<name>`, so "the examples still work" is checked by the same command as everything else
-(`read_adm` and `encode_adm` additionally need `-DAC3FORGE_BUILD_ADM=ON`). These programs are
+(`read_adm`, `encode_adm`, and `encode_iab` additionally need
+`-DAC3FORGE_BUILD_ADM=ON`). These programs are
 also the source the library pages excerpt from — each page's "Full program" link lands on one of
 them.
 
@@ -43,18 +44,21 @@ them.
 
 | Example | What it shows | Discussed in |
 |---|---|---|
-| [`mux_mkv`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_mkv.cpp) | Wrap in Matroska, the track header kept accurest by a bitstream scan. | [Muxing & sinks](muxing-and-sinks.md) |
+| [`mux_mkv`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_mkv.cpp) | Wrap in Matroska, with the track header kept accurate by a bitstream scan. | [Muxing & sinks](muxing-and-sinks.md) |
 | [`mux_mp4`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_mp4.cpp) | Wrap in MP4, with the `dec3`/Atmos box built from the bitstream. | [Muxing & sinks](muxing-and-sinks.md) |
 | [`mux_fmp4`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_fmp4.cpp) | Fragment into CMAF and emit HLS/DASH manifests. | [Muxing & sinks](muxing-and-sinks.md) |
 | [`mux_ts`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_ts.cpp) | Wrap in MPEG-2 TS with the right PMT descriptor. | [Muxing & sinks](muxing-and-sinks.md) |
+| [`mux_iamf`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/mux_iamf.cpp) | Write an IAMF temporal unit sequence and wrap it in ISOBMFF. | [IAMF writing](iamf.md) |
 
-## File I/O & ADM
+## File I/O, ADM & IAB
 
 | Example | What it shows | Discussed in |
 |---|---|---|
 | [`wav_roundtrip`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/wav_roundtrip.cpp) | Real WAV in → encode → decode → WAV out, crossing the WAV↔A/52 channel order both ways. | [File I/O](file-io.md) |
 | [`read_adm`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) | Open an ADM BW64 file and print the parsed graph — needs `-DAC3FORGE_BUILD_ADM=ON`. | [ADM / BW64 reading](adm.md) |
 | [`encode_adm`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp) | The whole read direction end to end: `parse_bw64` → `admbridge::build` → `AtmosEncoder`, an ADM BWF master out to a DD+ JOC elementary stream. The one example needing `ac3::forge` and the ADM modules together — needs `-DAC3FORGE_BUILD_ADM=ON`. | [ADM → Atmos bridging](adm-bridge.md) |
+| [`read_iab`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_iab.cpp) | Parse a bare IAB stream and inspect its frame and element graph. | [IAB reading](iab.md) |
+| [`encode_iab`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_iab.cpp) | Map an IAB master through `admbridge::build_iab` and encode it as DD+ JOC — needs `-DAC3FORGE_BUILD_ADM=ON`. | [ADM → Atmos bridging](adm-bridge.md#bridging-iab) |
 
 ## C API
 
@@ -73,3 +77,4 @@ rather than built.
 |---|---|---|
 | [`encode_decode_roundtrip.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/encode_decode_roundtrip.py) | The same 5.1 encode `encode_ac3.cpp` does, plus decoding it straight back, through the `ac3forge` package. | [Python bindings](python-api.md) |
 | [`encode_eac3.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/encode_eac3.py) | 7.1 E-AC-3 via `ac3.eac3.access_unit_config_for_layout` — the named-layout convenience, no hand-built chanmap. | [Python bindings](python-api.md) |
+| [`trace_export.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/python/trace_export.py) | Decode frames and export the implementation trace as CSV and JSON Lines. | [Python bindings](python-api.md#research-trace-export) |

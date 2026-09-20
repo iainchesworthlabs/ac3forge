@@ -37,6 +37,8 @@ import json
 import sys
 from pathlib import Path
 
+from append_quality_history import write_recent_window
+
 # Same trailing window append_performance_history.py uses, for the same
 # reason (smooths run-to-run noise without going stale).
 REGRESSION_TRAILING_WINDOW = 10
@@ -139,6 +141,7 @@ def main() -> int:
             f.write(line + "\n")
 
     print(f"Appended {len(lines)} record(s) to {history_path}")
+    write_recent_window(history_path)
     return 0
 
 

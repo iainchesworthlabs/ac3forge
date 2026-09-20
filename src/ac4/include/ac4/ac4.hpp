@@ -389,7 +389,7 @@ struct RawFrame {
 [[nodiscard]] AC4_EXPORT std::expected<RawFrame, Error> parse_raw_frame(
     std::span<const std::byte> raw_ac4_frame);
 
-// --- Carriage (roadmap IM4's separable slice) -------------------------------
+// --- Carriage (AC-4 bitstream inspector's separable slice) -------------------------------
 //
 // Everything below serves putting AC-4 INTO a container, not parsing it:
 // the 'dac4' box an ISO-BMFF 'ac-4' sample entry carries (TS 103 190-2

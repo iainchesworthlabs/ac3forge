@@ -1,29 +1,25 @@
 # Changelog
 
-*For end users tracking what has shipped. How releases and version numbers are cut lives in
-[docs/releasing.md](docs/releasing.md); the project overview is in [README.md](README.md).*
-
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-See [docs/releasing.md](docs/releasing.md) for how releases and version numbers are cut.
+See [README.md](README.md) for the project overview and
+[Releasing](docs/releasing.md) for the release process.
 
 ## [Unreleased]
 
-The bare-metal profile gains a fixed-point decode tier and an ESP32-C3 target, and a
-sequence of profiling passes brings both E-AC-3 decode and encode to real time on the
-ESP32-S3. The Windows-only Desktop Atmos Demo becomes AC3Forge Crucible, a real desktop
-application: a Linux/PipeWire backend verified against an Atmos receiver, keyboard and
-screen-reader access, and per-platform packaging with third-party notices. The gold-
-reference quality gate moves to a per-channel SNR floor, and the ~6.02 dB cross-platform
-decode split turns out to be a last-bit arithmetic difference rather than a codec
-defect. AC-4 gains container carriage, the WASM encode demo gains wide layouts and live
-microphone capture, and the Rust bindings now cover the whole codec surface. Fixed
-issues span an AC-4 parser null-pointer and unbounded-allocation pair, an E-AC-3 legacy-
-core programme-selection bug, Crucible's startup and tap lifecycle on Linux and macOS,
-and release packaging.
+This release adds:
+
+- Hearth's ESP32-S3 Sendspin sink, desktop engine, and development tools;
+- fixed-point decoding for ESP32-C3 and ESP32-C6, with real-time ESP32-S3 work;
+- Crucible on Windows and Linux, with macOS code built and tested in CI;
+- per-channel quality gates and continued performance, quality, and memory histories;
+- AC-4 container support, wider WebAssembly encoding, microphone capture, and expanded Rust
+  bindings.
+
+The sections below contain the complete change list and fixes.
 
 ### Added
 
@@ -43,6 +39,25 @@ and release packaging.
   8 KB of internal RAM for mDNS on every shape; the Improv listener's 4 KB is only
   spent on a board that has no network to join, since that board is not decoding
   anything.
+- **A Hearth sink plays as a Sendspin player** (`hearth_sink` with `sdkconfig.sendspin`).
+  The board pairs with a server by its token or by a six-digit code on the console and its page,
+  over Noise, and follows the server's clock with Sendspin's time filter. Compatibility with the
+  aiosendspin 9.1.1 server library used by Music Assistant is validated in CI; Music Assistant
+  itself has not been tested. The `player@v1` role carries stereo PCM. Hearth's
+  `_ac3forge_player@v1` sends AC-3 or E-AC-3 with any Atmos objects, which the board decodes and
+  renders to its own layout, routed, trimmed and delayed as the server's settings say. Each
+  sample leaves the I2S port when the server asked:
+  playout is scheduled against the channel's end-of-frame interrupts, and corrections are made
+  to decoded PCM. Per-output peak and RMS, underruns and play times are reported on the page, in
+  `/status` and to the server. Two ESP32-S3 boards played one E-AC-3 JOC programme as a group
+  for ten minutes over Wi-Fi, one at 2.0 and one at 5.1, with no underrun and their play times
+  within 549 µs. The player is `src/sendspin`'s player half: measured against `sendspin-cpp`,
+  it took 173,604 bytes less flash and left 50,504 bytes more internal RAM free while streaming.
+  [An ESP32-S3 sink](docs/hearth/sink-esp32-s3.md) is the guide: flashing, Improv, pairing,
+  groups, wiring and slot widths. A new CI job, `Hearth Sendspin sink (ESP32-S3, QEMU)`, plays
+  to the emulated board from `ac3hearth-testserver` and holds its levels to a test sink's. In
+  this shape the console listens on every board, for the pairing commands, so the Improv
+  listener's 4 KB is spent whether or not the board has a network.
 - **Sixteen channels out of an ESP32-S3, and the slot width as a setting.** An I2S
   line carries 128 bits a frame, so the two the part has reach sixteen 16-bit slots or
   eight 32-bit ones — a 7.1.4 layout leaves through the `i2s` sink for the first time,
@@ -62,9 +77,9 @@ and release packaging.
   `planning/arithmetic-tiers.md`.
 - **An ESP32-C3 target** for the minimum-footprint profile
   (`apps/baremetal/platform/esp32c3/`), decoding in the fixed-point tier since the part
-  has no FPU. CI builds and runs it under `qemu-riscv32`: 11 of 12 fixtures decode with
-  PCM identical to the x86 host and Cortex-M3 legs; 7.1.4 needs more heap than the
-  part's largest free block and is declared skipped rather than silently missing. Speed
+  has no FPU. CI builds and runs it under `qemu-riscv32`: 12 of 14 fixtures decode with
+  PCM identical to the x86 host and Cortex-M3 legs; the two 7.1.4 rows need more heap than the
+  part's largest free block and are declared skipped rather than silently missing. Speed
   is unmeasured — QEMU isn't cycle-accurate.
 - **An ESP32-C6 target** (`apps/baremetal/platform/esp32c6/`), with `esp32c6` in the ESP-IDF
   component's manifest, timed on a board with no network and with WiFi connected and a
@@ -132,21 +147,18 @@ and release packaging.
 
 **Crucible desktop application**
 
-- The Desktop Atmos Demo is built, tested and packaged in CI (roadmap UX11 phase 6):
-  both Windows legs build and run the demo's 68 tests, and the MSVC leg packages
-  `ac3forge-desktop-atmos-<version>-win64.zip` as its own release asset.
+- **AC3Forge Crucible is built and tested on Windows and Linux, with its macOS code built and
+  tested in CI.** The Windows release asset is
+  `ac3forge-crucible-<version>-win64.zip`. It carries the driver's install and remove scripts
+  only. The test-signed driver must be built from source until attestation signing is in place.
 - **Per-process loopback capture and endpoint change notifications on Windows** (roadmap
   UX11): `Capture::start_process_loopback` taps one process tree's render output at a
   caller-stated format (Windows 10 build 20348+), and `DeviceWatcher` delivers endpoint
   add/remove/state/default-changed events on a callback instead of requiring polling.
   Every other backend refuses both honestly.
-- **The Desktop Atmos Demo for Windows** (roadmap UX11; `apps/windows/`, behind
-  `AC3FORGE_BUILD_WINDEMO`, default OFF): every application playing sound becomes an
-  Atmos object the user places in a room, streamed live as E-AC-3 JOC over HDMI or
-  AC-3/PCM/Spatial Sound/stereo as the endpoint requires. `ac3windemo` is the console
-  runner, `ac3desk` the Qt Quick window (six languages, tray residency, a 3D room).
-  `apps/windows/driver/` is `Ac3ForgeNullSink`, the silent 7.1 render endpoint, test-
-  signed and verified in a VMware guest under Driver Verifier and KASAN.
+- Crucible places each captured application in a room and streams E-AC-3 JOC over HDMI or
+  AC-3, PCM, Spatial Sound, or stereo as the endpoint requires. `ac3crucible-run` is the
+  console runner and `ac3crucible` is the Qt Quick window.
 - `MonitorSink::start` takes a `low_latency` flag: on Windows it asks `IAudioClient3`
   for the engine's smallest shared-mode period, falling back to the default where
   unsupported; other backends ignore it.
@@ -180,11 +192,19 @@ and release packaging.
 
 **Hearth**
 
+- **The Sendspin time filter learns faster and ignores delayed replies.** Once it has
+  converged, `ac3::sendspin::ClockSync` runs thirty bursts a second apart before settling to one
+  every ten seconds. It leaves out a burst whose best reply is well above the recent floor, since
+  clock replies that wait behind a stream's chunks would otherwise read as a change of offset.
+- **cpp-httplib's WebSocket reads wait out a frame split across packets.** Its 0.56 port
+  failed a connection when a read's timeout fell inside a frame, which on Wi-Fi broke pairing
+  with a board. The overlay port carries a patch: a read that has begun a frame waits for the
+  rest until the connection closes.
 - **`src/sendspin`, the first part of Hearth's Sendspin implementation**
   (`planning/hearth-sendspin-extension.md`): an in-tree JSON reader and writer, strict
   base64url, transport-mode fragments and the `player@v1` audio chunk in both the
-  specification's forms and those of aiosendspin 9.1.1 (Music Assistant's server), and the
-  `_ac3forge_player@v1` burst chunk. Built with `-DAC3FORGE_BUILD_HEARTH=ON`. The
+  specification's forms and those of aiosendspin 9.1.1 (the version used by Music Assistant),
+  and the `_ac3forge_player@v1` burst chunk. Built with `-DAC3FORGE_BUILD_HEARTH=ON`. The
   JSON reader parses into caller-owned storage without recursing, and refuses invalid
   UTF-8 and duplicate keys. Two fuzz harnesses (`fuzz_sendspin_json`,
   `fuzz_sendspin_frames`) and a CI job, `Hearth Sendspin (Linux, GCC)`, cover it.
@@ -367,17 +387,17 @@ and release packaging.
   the programme's timeline puts it. The released client refuses to offer Opus, so the player adds
   it to the SDK's decodable codecs for that run (`planning/hearth-sendspin-extension.md`, decision
   5). `hearth-validate` runs the script.
-- **Hearth's player against Music Assistant's server**, found with the scripts above: to an
-  aiosendspin 9.1.1 server a player reports `available: true` from its activation, as 9.1.1's own
+- **Hearth's player against an aiosendspin 9.1.1 server**, found with the scripts above: a player
+  reports `available: true` from its activation, as 9.1.1's own
   client does, because the server starts from `available: true` and takes `available: false` for an
   external source, which would move the player out of its group whenever it connected. From such a
   server the player also holds `player@v1` chunks that arrive before its first clock update, within
   its `buffer_capacity`, and drops a chunk whose timestamp is not later than the last one it took:
-  Music Assistant starts a stream with the activation, holds back what it sends before the player's
-  first `client/state`, and then sends it and replays the stream from its start as well
+  The scripted server starts a stream with the activation, holds back what it sends before the
+  player's first `client/state`, and then sends it and replays the stream from its start as well
   (`planning/hearth-sendspin-extension.md`, C13 and C14).
-- **Music Assistant's server scripted on aiosendspin 9.1.1** (`tools/sendspin/aiosendspin_server.py`),
-  a rehearsal of A4's exit with Music Assistant: it starts `ac3hearth-testsink`, dials it, pairs by
+- **An aiosendspin 9.1.1 server script** (`tools/sendspin/aiosendspin_server.py`), a rehearsal of
+  Music Assistant's Sendspin path: it starts `ac3hearth-testsink`, dials it, pairs by
   the sink's `SP:0` token or by the dynamic code the sink shows, and plays it three seconds of two
   tones in each codec, driving aiosendspin's `SendspinServer` as Music Assistant's provider does.
   The sink's WAV file is the programme sample for sample in PCM and FLAC and within 20 dB in Opus,
@@ -981,11 +1001,11 @@ and release packaging.
 
 - The Crucible guide gained its two missing pages ([The room](docs/crucible/room.md),
   [Settings](docs/crucible/settings.md)).
-- The library's docs page now presents it as a member in its own right, matching its two
-  siblings.
+- The library's docs page now presents it as a member in its own right, matching Forge,
+  Crucible, and Hearth.
 - The published-asset table now matches the pipeline: a Windows arm64 row, Crucible
   rows, and four stale claims corrected.
-- The CLI reference lists all forty-one commands, including the previously-undocumented
+- The CLI reference lists all forty-two commands, including the previously-undocumented
   `spatial`.
 
 **Release engineering**
@@ -1148,6 +1168,24 @@ and release packaging.
   is now synced to the host as it is written; on a board, a `current_state` request is
   answered in 0.5 s, where before its answer arrived 10 s later with the next request's
   output.
+- **A Hearth sink's page could reach its Sendspin player before the player had started,
+  and after a failed start had freed it.** `hearth_sink` set two global pointers to the
+  player and its server as it made them, on the task that starts them. The control
+  surface's task read the same pointers for `GET /status`, `PUT /layout`, `PUT /name`,
+  `/wiring`, `/slot-width` and `POST /pairing`, so a request could find a server that had
+  not started yet. A start that failed then freed both, whether or not a request was
+  still using them. A board that joins a network over Improv starts its player just
+  after Improv gives the client the page's address, so a browser that opens the page at
+  once can send requests during the start. The player and its server now reach the other
+  tasks together, once both have started, and nothing from a failed start reaches them.
+  `/status` has `"sendspin": null` until then. Two requests sent during the start used to
+  be lost, and now are not:
+  - A `PUT /layout` sent before the player had started reached the next control-surface
+    play only, and the player started with the layout from before. The player now starts
+    with the new layout, or receives it as its start completes.
+  - A `PUT /name`, `/wiring` or `/slot-width` sent while the player was starting could be
+    lost: the server started with the board's old description, which is what servers
+    read in its hello. The server now gets the new one.
 
 **Codec correctness**
 
@@ -1692,8 +1730,8 @@ trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
   doesn't work: hls.js drops an audio track outright the moment the real `addSourceBuffer` throws
   for an unsupported codec) and extracts access units from the fMP4 segments hls.js's own remuxer
   produces.
-- The docs site's WASM demo is now a consumer of the published package rather than its own
-  parallel implementation of the same decode/playback logic.
+- The docs site's WASM demo now consumes the bundled JavaScript bindings and their
+  decode/playback logic.
 
 **Shield Atmos Demo (Android)**
 
