@@ -24,6 +24,27 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 # decode fits in internal SRAM, and the streaming buffers are part of what has
 # to fit.
 
+# The console carries Improv Wi-Fi's binary packets as well as the lines this
+# example prints (main/provision.cpp), so nothing may rewrite a byte of it.
+# ESP-IDF's defaults do: CR from a client arrives as LF, and CR goes out before
+# every LF. Either one lands inside a packet - a length byte, a string, a
+# checksum - and the packet then fails its checksum at the other end. Measured
+# on 2026-09-17 with the defaults: a wifi_settings whose SSID is 13 bytes long
+# (its length byte is CR) was answered invalid_packet, so a board could not be
+# given a network named, for instance, MyHomeNetwork; and with a 10-character
+# name stored, the device_info and device_name answers left the board corrupt.
+#
+# LF both ways instead, which is no conversion at all. It costs the CR at the
+# end of each line the application prints; the ROM's own lines and anything
+# logged from an interrupt go out through esp_rom_printf, which never saw this
+# setting and still ends them CR LF. idf.py monitor and the checks under
+# tools/checks read either, and a terminal that needs the CR (PuTTY, picocom)
+# has a setting for it. Set here rather than in the code because it
+# also covers the secondary console - a board with its console on UART still
+# answers Improv over USB - which the per-console calls cannot reach.
+CONFIG_LIBC_STDIN_LINE_ENDING_LF=y
+CONFIG_LIBC_STDOUT_LINE_ENDING_LF=y
+
 # 240 MHz, asked for rather than inherited. ESP-IDF's default is 160, two
 # thirds of what the part does, and a player that has to finish each frame
 # inside the 32 ms the DAC takes to play it should name the clock it was
