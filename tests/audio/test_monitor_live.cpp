@@ -131,3 +131,75 @@ TEST_CASE("monitor live: the position follows the device, and pause and flush ho
     CHECK_FALSE(sink.paused());
     CHECK_FALSE(sink.position().has_value());
 }
+
+// An output that goes away mid-stream, with a person to take it away.
+//
+// Hidden, under a tag of its own so that "[monitor-live]" never waits for
+// one: run it deliberately and follow the prompt.
+//
+//   ac3tests "[monitor-unplug]"
+//
+// Within 30 seconds of the prompt, take the default output away: unplug a USB
+// or HDMI audio device, or disable it in the system's sound settings. A
+// shared-mode stream the platform moves to another output of its own accord
+// (PipeWire's session manager does) carries on playing, which this case then
+// reports rather than fails. Otherwise the sink has to notice on its own,
+// answer every call as a stopped sink does, and start() has to open whatever
+// the default output is now, with no stop() in between.
+TEST_CASE("monitor live: an output that goes away stops the sink, which can start again",
+          "[.][monitor-unplug]") {
+    using ac3::audio::MonitorError;
+    using namespace std::chrono_literals;
+
+    ac3::audio::MonitorSink sink;
+    const auto started = sink.start(/*device_id=*/"", kRate, kChannels);
+    if (!started) {
+        WARN("no default output device: " << ac3::audio::describe(started.error()));
+        return;
+    }
+    double phase = 0.0;
+
+    WARN("Take the default output away now: unplug it or disable it (30 s).");
+    const auto deadline = std::chrono::steady_clock::now() + 30s;
+    while (sink.running() && std::chrono::steady_clock::now() < deadline) {
+        if (!sink.submit(tone_chunk(phase))) {
+            std::this_thread::sleep_for(2ms);
+        }
+    }
+    if (sink.running()) {
+        WARN("still playing after 30 s: nothing was taken away, or the stream moved to "
+             "another output");
+        sink.stop();
+        return;
+    }
+
+    // A stopped sink's answers, each at once.
+    CHECK_FALSE(sink.position().has_value());
+    CHECK_FALSE(sink.can_submit());
+    CHECK_FALSE(sink.submit(tone_chunk(phase)));
+    CHECK_FALSE(sink.paused());
+    const auto before = std::chrono::steady_clock::now();
+    sink.flush();
+    CHECK(std::chrono::steady_clock::now() - before < 50ms);
+    const auto paused = sink.pause();
+    REQUIRE_FALSE(paused.has_value());
+    CHECK(paused.error() == MonitorError::kNotRunning);
+    const auto resumed = sink.resume();
+    REQUIRE_FALSE(resumed.has_value());
+    CHECK(resumed.error() == MonitorError::kNotRunning);
+
+    // start() again, with no stop() first, on whatever the default is now.
+    const auto again = sink.start(/*device_id=*/"", kRate, kChannels);
+    if (!again) {
+        WARN("no default output to start again on: " << ac3::audio::describe(again.error()));
+        return;
+    }
+    REQUIRE(sink.running());
+    feed(sink, phase, 25);
+    std::this_thread::sleep_for(200ms);
+    const auto playing = sink.position();
+    REQUIRE(playing.has_value());
+    CHECK(playing->frames_played > 0);
+    sink.stop();
+    CHECK_FALSE(sink.running());
+}

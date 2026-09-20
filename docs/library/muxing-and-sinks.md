@@ -652,6 +652,14 @@ either format, although an E-AC-3 link runs at four times the content's rate. A 
 link, and a receiver drops its lock when that happens, so the first moments after a resume can
 be silent.
 
+When the device goes away mid-stream (the cable pulled, the receiver switched off, the endpoint
+disabled), the sink stops itself. `running()` turns false, `position()` reports nothing,
+`submit()` and `can_submit()` refuse, `flush()` returns at once, and `pause()` and `resume()`
+refuse with `kNotRunning`. A caller that retries `submit()` while the queue is full has to check
+`running()` as well, because waiting does not bring a lost device back. `start()` can be called
+again without a `stop()` first. The hidden `[passthrough-unplug]` case in `ac3tests` takes a
+person through this on real hardware.
+
 Stated plainly, because this project's docs don't soften verification gaps: of the desktop
 platforms, only **Windows** has this sink confirmed against real bitstreaming hardware — an
 Onkyo TX-RZ740 over an Nvidia GPU's HDMI output locks AC-3, E-AC-3 and signed Atmos through
@@ -699,6 +707,10 @@ SADs: Windows' WASAPI and macOS' CoreAudio both answer negotiated-format questio
 playback — WASAPI, ALSA or CoreAudio, resampled and mixed like any other app — that decodes what is being
 encoded and plays it back on an ordinary output, for previewing a decode without a
 bitstream-capable receiver. Backs `ac3cli monitor` and `live`'s monitor leg.
+
+It stops itself when its device goes away, in the same way as `PassthroughSink`, and
+`[monitor-unplug]` is its hidden case. A shared-mode stream that the platform moves to another
+output keeps playing; PipeWire's session manager does this when a sink is removed.
 
 Unlike passthrough, **this one is confirmed against real hardware.** It has actually played
 decoded AC-3 and E-AC-3 (including an Atmos stream's 5.1 bed) through real Windows (Realtek)

@@ -230,7 +230,10 @@ struct PassthroughSink::Impl {
     // second, for position() and the IOProc's timestamps.
     std::uint32_t ratio = 1;
     std::uint32_t carrier_rate = 0;
+    // Raised by start(). Lowered by stop(), or by `alive` when the device
+    // dies under the stream, as MonitorSink's Core Audio backend has it.
     std::atomic_bool running{false};
+    coreaudio::AliveWatch alive{running};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
@@ -300,7 +303,8 @@ void PassthroughSink::flush() {
     }
     // Running: the IOProc drops the queue up to the mark. One that has not
     // got to it within the wait - a device that stopped calling back - makes
-    // the flush when it next runs, without dropping later bursts.
+    // the flush when it next runs, without dropping later bursts. A device
+    // that has died never runs it, and its lowered `running` ends the wait.
     const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
     impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
     impl_->flushing.store(true, std::memory_order_release);
@@ -344,11 +348,13 @@ std::expected<void, PassthroughError> PassthroughSink::resume() {
 }
 
 bool PassthroughSink::paused() const {
-    return impl_->paused.load(std::memory_order_acquire);
+    // A pause is a property of a running stream, so one whose device has
+    // died is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
 }
 
 bool PassthroughSink::can_submit() const {
-    if (!impl_->queue) {
+    if (!running() || !impl_->queue) {
         return false;
     }
     return impl_->queue->capacity() - impl_->queue->available() > impl_->burst_bytes;
@@ -370,17 +376,25 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
 }
 
 void PassthroughSink::stop() {
+    // Unwatched first, so nothing lowers the flag of a stream being taken
+    // down anyway.
+    impl_->alive.reset();
     if (impl_->io_proc_id != nullptr) {
         AudioDeviceStop(impl_->device, impl_->io_proc_id);
         AudioDeviceDestroyIOProcID(impl_->device, impl_->io_proc_id);
         impl_->io_proc_id = nullptr;
     }
     if (impl_->have_original_format) {
-        coreaudio::set_property(impl_->stream, coreaudio::address(kAudioStreamPropertyPhysicalFormat),
-                                impl_->original_format);
-        coreaudio::wait_for_physical_format(impl_->stream, impl_->original_format.mFormatID,
-                                            impl_->original_format.mSampleRate,
-                                            kFormatChangeTimeout);
+        // Waited for only once the device has taken the set: a device that
+        // has died takes nothing, and waiting for it to settle would hold
+        // stop() for the whole timeout.
+        if (coreaudio::set_property(impl_->stream,
+                                    coreaudio::address(kAudioStreamPropertyPhysicalFormat),
+                                    impl_->original_format)) {
+            coreaudio::wait_for_physical_format(impl_->stream, impl_->original_format.mFormatID,
+                                                impl_->original_format.mSampleRate,
+                                                kFormatChangeTimeout);
+        }
         impl_->have_original_format = false;
     }
     impl_->mixing.reset();
@@ -397,6 +411,10 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (running()) {
         return std::unexpected(PassthroughError::kAlreadyRunning);
     }
+    // A stream whose device died still holds its IOProc, its watch, and the
+    // hog and format it took; stop() gives all of them back. With nothing
+    // started it does nothing.
+    stop();
 
     const auto format_id = coreaudio::physical_format_id(format_kind);
     const auto carrier = static_cast<Float64>(coreaudio::carrier_rate(format_kind, sample_rate));
@@ -581,6 +599,12 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
 
     impl_->io_proc_id = proc_id;
     impl_->running.store(true, std::memory_order_release);
+    // Watched from here on, and asked once, as MonitorSink's Core Audio
+    // backend does it.
+    impl_->alive.watch(impl_->device);
+    if (!coreaudio::device_alive(impl_->device)) {
+        impl_->running.store(false, std::memory_order_release);
+    }
     return {};
 }
 

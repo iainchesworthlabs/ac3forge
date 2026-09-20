@@ -4,6 +4,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -459,6 +460,76 @@ public:
 private:
     AudioObjectID device_ = kAudioObjectUnknown;
     bool owned_ = false;
+};
+
+// Whether `device` is still there. kAudioDevicePropertyDeviceIsAlive reads 0
+// once the device has been removed, and the read itself fails once its object
+// has gone too.
+[[nodiscard]] inline bool device_alive(AudioObjectID device) {
+    return get_property<UInt32>(device, address(kAudioDevicePropertyDeviceIsAlive)).value_or(0) !=
+           0;
+}
+
+// Lowers a sink's running flag when its device dies: unplugged, or gone with
+// its driver. The HAL simply stops calling the IOProc of a device that has
+// gone, and there is no error for it to return anywhere, so a listener on
+// kAudioDevicePropertyDeviceIsAlive is how a sink finds out - the property
+// PortAudio's and VLC's Core Audio outputs watch for the same reason. The
+// listener runs on the HAL's notification thread, not the IOProc's realtime
+// one, so it may read the property; the flag is all it writes.
+//
+// Removing the listener stops future calls, and - as device_watcher.cpp sets
+// out - says nothing about one already under way. The flag such a call writes
+// belongs to the sink, which outlives the reset() its stop() makes, and the
+// device the call is about has to be the one being watched now, so a late
+// call from a device given up earlier writes nothing. What this shape does
+// not cover is the one device_watcher.cpp names for itself: a call still
+// under way when the sink is destroyed the moment its stop() returns.
+//
+// Written against Apple's documentation and those two implementations, with
+// no Mac to try it on (DR9): CI builds it, and nothing has seen it fire.
+class AliveWatch {
+public:
+    explicit AliveWatch(std::atomic_bool& running) : running_(running) {}
+    ~AliveWatch() { reset(); }
+    AliveWatch(const AliveWatch&) = delete;
+    AliveWatch& operator=(const AliveWatch&) = delete;
+
+    // False when the HAL refuses the listener; the sink then plays on
+    // unwatched, as every sink did before this existed.
+    bool watch(AudioObjectID device) {
+        reset();
+        device_.store(device, std::memory_order_release);
+        const auto addr = address(kAudioDevicePropertyDeviceIsAlive);
+        if (AudioObjectAddPropertyListener(device, &addr, &AliveWatch::listener, this) != noErr) {
+            device_.store(kAudioObjectUnknown, std::memory_order_release);
+            return false;
+        }
+        return true;
+    }
+
+    void reset() {
+        const AudioObjectID device =
+            device_.exchange(kAudioObjectUnknown, std::memory_order_acq_rel);
+        if (device != kAudioObjectUnknown) {
+            const auto addr = address(kAudioDevicePropertyDeviceIsAlive);
+            AudioObjectRemovePropertyListener(device, &addr, &AliveWatch::listener, this);
+        }
+    }
+
+private:
+    static OSStatus listener(AudioObjectID object, UInt32 /*address_count*/,
+                             const AudioObjectPropertyAddress* /*addresses*/, void* client_data) {
+        const auto* watch = static_cast<AliveWatch*>(client_data);
+        if (watch != nullptr && object == watch->device_.load(std::memory_order_acquire) &&
+            !device_alive(object)) {
+            watch->running_.store(false, std::memory_order_release);
+        }
+        return noErr;
+    }
+
+    std::atomic_bool& running_;
+    std::atomic<AudioObjectID> device_{kAudioObjectUnknown};
 };
 
 // kAudioDevicePropertySupportsMixing: best-effort, matching mpv's own

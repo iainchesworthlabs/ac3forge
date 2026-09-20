@@ -74,6 +74,19 @@ bool start_stream(AAudioStream* stream) {
     return state == AAUDIO_STREAM_STATE_STARTED;
 }
 
+// Whether the stream has been cut off from its device - its route gone,
+// headphones pulled - which AAudio reports once and no retry mends. Nothing
+// is written while the stream is paused or will not start, so no write fails
+// to say so; this asks instead. A wait of no time at all brings the stream's
+// own idea of its state up to date with the service's before it is read, and
+// its result can be the disconnection itself.
+bool disconnected(AAudioStream* stream) {
+    aaudio_stream_state_t state = AAUDIO_STREAM_STATE_UNKNOWN;
+    const aaudio_result_t result =
+        AAudioStream_waitForStateChange(stream, AAUDIO_STREAM_STATE_UNKNOWN, &state, 0);
+    return result == AAUDIO_ERROR_DISCONNECTED || state == AAUDIO_STREAM_STATE_DISCONNECTED;
+}
+
 }  // namespace
 
 std::string_view describe(MonitorError error) {
@@ -97,6 +110,8 @@ struct MonitorSink::Impl {
     // universal yet.
     std::thread worker;
     std::atomic_bool worker_stop_requested{false};
+    // Raised by start(). Lowered by stop(), or by the worker itself when the
+    // stream is cut off from its device (see the end of its loop).
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
@@ -167,10 +182,12 @@ void MonitorSink::flush() {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    // The worker did not get to it - a disconnected stream, or one whose
-    // state transitions are not settling. The flush is left for the worker to
-    // make when it next gets there. It drops only what was queued before the
-    // mark, so audio submitted after this call returned is kept.
+    // The worker did not get to it - a stream whose state transitions are not
+    // settling. The flush is left for the worker to make when it next gets
+    // there. It drops only what was queued before the mark, so audio
+    // submitted after this call returned is kept. A disconnected stream has
+    // ended the worker instead, which lowered `running` and ended the wait at
+    // once.
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
@@ -190,11 +207,13 @@ std::expected<void, MonitorError> MonitorSink::resume() {
 }
 
 bool MonitorSink::paused() const {
-    return impl_->paused.load(std::memory_order_acquire);
+    // A pause is a property of a running stream, so one cut off from its
+    // device is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
 }
 
 bool MonitorSink::can_submit() const {
-    if (!impl_->queue || impl_->channels == 0) {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
         return false;
     }
     // Same ~20ms-of-room heuristic as the Windows backend; see that file's
@@ -250,6 +269,10 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
     if (running()) {
         return std::unexpected(MonitorError::kAlreadyRunning);
     }
+    // A worker that ended because its stream was cut off is still joinable,
+    // and assigning a new std::thread over it would end the process. stop()
+    // joins it and closes the stream; with nothing started it does nothing.
+    stop();
     if (channels == 0) {
         return std::unexpected(MonitorError::kComFailure);
     }
@@ -299,6 +322,9 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
     impl_->worker = std::thread([this, channels] {
         std::vector<float> chunk(static_cast<std::size_t>(kFramesPerWrite) * channels);
         bool device_running = true;
+        // Set when the loop ends because the stream did - cut off from its
+        // device, or taking nothing - rather than because stop() asked it to.
+        bool lost = false;
         while (!impl_->worker_stop_requested.load(std::memory_order_acquire)) {
             // A pause stops the stream and leaves everything else standing:
             // the queue keeps what it holds and goes on taking frames. A
@@ -309,6 +335,10 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
                     device_running = !pause_stream(impl_->stream);
                 }
                 if (!impl_->flushing.load(std::memory_order_acquire)) {
+                    if (disconnected(impl_->stream)) {
+                        lost = true;
+                        break;
+                    }
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
                     continue;
                 }
@@ -346,7 +376,12 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
                 if (!start_stream(impl_->stream)) {
                     // Nothing can be written to a stream that will not start,
                     // and hammering it would spin this thread; wait and try
-                    // again, so a transient refusal recovers on its own.
+                    // again, so a transient refusal recovers on its own. A
+                    // stream cut off from its device never will.
+                    if (disconnected(impl_->stream)) {
+                        lost = true;
+                        break;
+                    }
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
                     continue;
                 }
@@ -384,6 +419,10 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
                                           std::memory_order_relaxed);
             }
             if (delivered < kFramesPerWrite) {
+                // A dead stream, or one that took nothing for a second: this
+                // thread is done either way, and unless stop() is what cut
+                // the write short, the stream has ended with it.
+                lost = !impl_->worker_stop_requested.load(std::memory_order_acquire);
                 break;
             }
 
@@ -405,6 +444,15 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& /*device
             impl_->counter.report(
                 static_cast<std::uint64_t>(std::max<std::int64_t>(0, handed_over - baseline)),
                 static_cast<std::uint64_t>(std::max<std::int64_t>(0, handed_over - position)));
+        }
+
+        if (lost) {
+            // As in the Windows and ALSA backends: the stream has ended, and
+            // running() says so as a stop() would have it, so position(),
+            // submit(), flush(), pause() and resume() answer at once. Only
+            // the flag is touched; stop() still joins this thread, closes the
+            // stream and lowers the caller's `paused` and `flushing`.
+            impl_->running.store(false, std::memory_order_release);
         }
     });
 

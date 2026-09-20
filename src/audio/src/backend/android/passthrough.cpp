@@ -293,6 +293,8 @@ struct PassthroughSink::Impl {
     std::size_t pending_offset = 0;
     std::uint64_t partial_writes = 0;
 
+    // Raised by start(). Lowered by stop(), or by submit() when the track has
+    // died under it, which closes the track there and then.
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
@@ -308,6 +310,22 @@ struct PassthroughSink::Impl {
     // Link frames to a content frame (carrier_ratio()).
     std::uint32_t ratio = 1;
     std::atomic_bool paused{false};
+
+    // Closes the Kotlin track and lets go of the buffer pool's references,
+    // with g_bridge_mutex held: what stop() does, what a start() whose open
+    // failed does, and what submit() does itself once the track has died.
+    void close_track(JNIEnv* env) {
+        env->CallVoidMethod(g_bridge, g_mid_close);
+        if (env->ExceptionCheck() != 0) {
+            env->ExceptionClear();
+        }
+        for (auto& buf : direct_buffers) {
+            if (buf != nullptr) {
+                env->DeleteGlobalRef(buf);
+                buf = nullptr;
+            }
+        }
+    }
 };
 
 PassthroughSink::PassthroughSink() : impl_(std::make_unique<Impl>()) {}
@@ -418,7 +436,9 @@ std::expected<void, PassthroughError> PassthroughSink::resume() {
 }
 
 bool PassthroughSink::paused() const {
-    return impl_->paused.load(std::memory_order_acquire);
+    // A pause is a property of a running stream, so one whose track has died
+    // is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
 }
 
 bool PassthroughSink::can_submit() const {
@@ -493,6 +513,23 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
                                     "resuming from the offset rather than resubmitting",
                                     static_cast<int>(written), remaining);
             }
+        } else if (android_audio::track_is_dead(written)) {
+            // The track has died - its output closed under it when the HDMI
+            // sink went away, or the audio server restarted - and will take
+            // nothing more. The stream ends here, as a stop() would end it:
+            // the track is closed now rather than whenever stop() comes, and
+            // running() says so, so position() reports nothing and every
+            // later call answers at once. Counted as an underrun first: it
+            // is a gap on the wire, and a rising count is the signal the
+            // Shield app's receiver check stops its encode loop on.
+            impl_->underruns.fetch_add(1, std::memory_order_relaxed);
+            __android_log_print(ANDROID_LOG_WARN, kLogTag,
+                                "submit: the AudioTrack is dead (ERROR_DEAD_OBJECT) - "
+                                "passthrough has stopped");
+            impl_->running.store(false, std::memory_order_release);
+            impl_->pending_offset = 0;
+            impl_->paused.store(false, std::memory_order_relaxed);
+            impl_->close_track(env);
         } else if (written < 0) {
             // A hard AudioTrack error. pending_offset is deliberately NOT
             // reset: if the track recovers, resuming is still correct, and
@@ -512,6 +549,8 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
 }
 
 void PassthroughSink::stop() {
+    // Not running: never started, stopped already, or ended by submit() on a
+    // dead track, which closed it then.
     if (!impl_->running.exchange(false, std::memory_order_acq_rel)) {
         return;
     }
@@ -526,19 +565,8 @@ void PassthroughSink::stop() {
     if (env == nullptr) {
         return;
     }
-    {
-        std::lock_guard lock(g_bridge_mutex);
-        env->CallVoidMethod(g_bridge, g_mid_close);
-        if (env->ExceptionCheck() != 0) {
-            env->ExceptionClear();
-        }
-        for (auto& buf : impl_->direct_buffers) {
-            if (buf != nullptr) {
-                env->DeleteGlobalRef(buf);
-                buf = nullptr;
-            }
-        }
-    }
+    std::lock_guard lock(g_bridge_mutex);
+    impl_->close_track(env);
 }
 
 std::expected<void, PassthroughError> PassthroughSink::start(const std::string& /*device_id*/,
@@ -597,6 +625,13 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         if (env->ExceptionCheck() != 0) {
             env->ExceptionClear();
             opened = false;
+        }
+        if (!opened) {
+            // Nothing takes a burst, and stop() will not run for a start()
+            // that failed, so the pool's references go now. Otherwise every
+            // refused start - one after a dead track among them - would leave
+            // three behind.
+            impl_->close_track(env);
         }
     }
 

@@ -993,7 +993,9 @@ Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
 
 void Player::close_output() {
     settle_unit_errors();
-    if (output_open()) {
+    // A lost output is closed too: its sink stopped by itself, and closing it
+    // releases whatever it still holds.
+    if (output_open() || output_lost()) {
         if (bitstreaming()) {
             bitstream_->close();
         } else {
@@ -1450,6 +1452,9 @@ void Player::play_out_then(const TransportOutcome& outcome, PumpReport& report, 
 
 PumpReport Player::pump(std::size_t budget) {
     PumpReport report;
+    if (stop_for_lost_output(report)) {
+        return report;
+    }
     if (after_drain_) {
         report.frames_submitted += drain(budget);
         // A reopen waits out a pause too: the next item starts on resume.
@@ -1524,6 +1529,30 @@ bool Player::stop_for_transcode(PumpReport& report) {
     // output, not the item, is at fault.
     last_error_ = fmt::format("The transcode to AC-3 failed: {}", *transcode_error_);
     perform(transport_.stop(), &report);
+    report.note = last_error_;
+    return true;
+}
+
+bool Player::stop_for_lost_output(PumpReport& report) {
+    if (!output_lost()) {
+        return false;
+    }
+    // The sink closed itself: its device was unplugged, switched off or
+    // taken by the system. Nothing submitted to it will be heard, and its
+    // clock has stopped, so a play-out waiting on that clock would wait for
+    // ever and the blocks waiting for room would never go in. Playback stops
+    // instead, and says why. The transport can be stopped already - the
+    // queue ran out and the output was playing its last - so the stop is
+    // carried out whatever the transport answers. Either way the output is
+    // closed, which is what releases whatever the sink still holds.
+    last_error_ = choice_.endpoint_name.empty()
+                      ? std::string{"Playback stopped: the output device went away."}
+                      : fmt::format("Playback stopped: the output device \"{}\" went away.",
+                                    choice_.endpoint_name);
+    note("output lost: its device went away");
+    TransportOutcome outcome = transport_.stop();
+    outcome.action = TransportAction::kStopOutput;
+    perform(outcome, &report);
     report.note = last_error_;
     return true;
 }

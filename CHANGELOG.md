@@ -1539,6 +1539,18 @@ The sections below contain the complete change list and fixes.
 
 **Audio backend and object signing**
 
+- **An output device that went away left the sink saying it was still playing.** A render
+  thread that met a device failure - an unplugged endpoint answering
+  `AUDCLNT_E_DEVICE_INVALIDATED`, ALSA giving up on `-ENODEV`, an AAudio write refused -
+  ended and left `running()` true behind it, so `position()` reported a clock that had
+  stopped, `submit()` went on filling a queue nobody read, and `flush()` waited out its
+  timeout. Every backend now stops its sink when this happens: `running()` says so,
+  `position()` reports nothing, `submit()` refuses, and `flush()`, `pause()` and
+  `resume()` answer at once. `start()` opens again with no `stop()` needed first. Hearth's
+  player stops playback and says which output went away, rather than waiting for a clock
+  that will not move again; before, a lost device left it playing for ever with nothing
+  said. Two hidden cases, `ac3tests "[passthrough-unplug]"` and `"[monitor-unplug]"`, take
+  a person through unplugging a real output.
 - **`PassthroughSink` crashed the instant a real exclusive-mode bitstream endpoint drove
   it** — surfaced once an Onkyo TX-RZ740 over HDMI locked AC-3, E-AC-3 and signed Atmos
   through it for the first time. `Activate`/`Initialize` ran on the calling thread while
