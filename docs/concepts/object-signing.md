@@ -190,7 +190,7 @@ target Evolution HMAC, parallel to but separate from the EMDF policy on this pag
 
 ## Planned decode modes
 
-Roadmap: [Object authenticity modes](../../ROADMAP.md) (Partial tail + Proposed). Three policies
+Roadmap: [Object authenticity modes](https://github.com/iainchesworthlabs/ac3forge/blob/main/ROADMAP.md) (Partial tail + Proposed). Three policies
 for decode into multi-channel / objects — only the first two ship today:
 
 | Mode | Intent | Today |
