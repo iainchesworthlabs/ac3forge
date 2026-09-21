@@ -44,9 +44,11 @@ license: "GPL-3.0-or-later"  # matches LICENSE at the repo root
 #   - The original ESP32 and the S2 have no FPU worth the name for this (the S2
 #     has none at all). The fixed tier is what they would want too, and neither
 #     has been built.
-#   - The ESP32-P4 is CLOSED, not deferred: its PIE vector unit is integer-only,
-#     so there is no float SIMD there to port to. See
-#     docs/platforms/bare-metal/esp32-s3.md and PR #551.
+#   - The ESP32-P4 is not a target here yet. Closed as an S3 Wi-Fi replacement
+#     (integer-only PIE; no on-die radio; S3 probe already real-time). Proposed
+#     as a complementary "best" module (Ethernet / hosted C6, dual ES9080 at
+#     16x32-bit on one I2S) in planning/esp32-sink-tiers.md — not listed until
+#     that study lands a probe.
 targets:
   - esp32s3
   - esp32c3

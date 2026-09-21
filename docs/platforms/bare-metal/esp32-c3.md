@@ -28,7 +28,7 @@ Whether a part is viable comes down to floating point, not RAM. Espressif measur
 | Part | Usable RAM | Clock | FPU | Vector unit | Viable |
 |---|---|---|---|---|---|
 | **ESP32-S3** | 341,760 DIRAM | 240 MHz | single | PIE, integer-only; 128-bit float load/store | **Yes** — [the primary target](esp32-s3.md) |
-| **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **No** — see below |
+| **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **Not as S3 replacement** — complementary **best** sink module Proposed ([sink tiers](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md)) |
 | ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
 | ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
 | **ESP32-C3**/C6 | 400/512 KB | 160 MHz | **none** | none | **Yes, in the fixed-point tier** — this page and [ESP32-C6](esp32-c6.md) |
@@ -36,11 +36,12 @@ Whether a part is viable comes down to floating point, not RAM. Espressif measur
 Every part with an FPU has a single-precision one, so `double` is soft-float across the whole
 family and `decode_scalar_t` earns its keep on all of them.
 
-### Why not the ESP32-P4
+### Why not the ESP32-P4 (as an S3 replacement)
 
-Assessed and declined on 2026-09-08. It is dual-core RISC-V at 400 MHz with 768 KB of SRAM, and
-holds the peak heap without the float32 work — so it reads as the answer if the S3 misses real
-time. Three things were checked and two settle it.
+Assessed and declined on 2026-09-08 **as a replacement for the ESP32-S3 Wi-Fi Sendspin
+sink**. It is dual-core RISC-V at 400 MHz with 768 KB of SRAM, and holds the peak heap without
+the float32 work — so it reads as the answer if the S3 misses real time. Three things were
+checked and two settle that closer.
 
 **Its vector extension has no floating point.** The P4 is `RV32IMAFC` plus `Xhwlp` and `Xesppie`,
 vendor extensions no other implementation carries — not the ratified RISC-V Vector extension.
@@ -48,15 +49,22 @@ Across the 360 instructions in ESP-IDF's own decoder test for it, the only data 
 `s16`, `s32`, `u8`, `u16`, `u32`. No `f32` anywhere. Espressif's own code agrees: in `esp-dsp`
 every `_arp4` file using a PIE instruction sits under `fixed/`, and the float32 kernels contain
 exactly one `esp.` instruction each — `esp.lp.setup`, the hardware loop — with scalar `fmadd.s`
-arithmetic. So an `f32x4` has nothing to compile to there either.
+arithmetic. So an `f32x4` has nothing to compile to there either. (The S3 has the same
+integer-only PIE limit and still decodes in scalar float.)
 
-**It has no radio, and the plan it would serve is a Wi-Fi plan.** No Wi-Fi and no Bluetooth; it
-needs a companion ESP32-C6 or -H2, making any networked build a two-chip design. That was a
-product-shape question and it is disqualifying on its own, whatever the S3 measures.
+**It has no radio, and the plan it would *replace* is a Wi-Fi plan.** No Wi-Fi and no Bluetooth;
+it needs a companion ESP32-C6 or -H2 (or Ethernet). That disqualifies it as a drop-in for the
+S3 node. The S3 probe has since cleared every fixture in real time, so the “rescue the decode”
+motivation is gone for that product shape.
 
 What the P4 would buy is clock — 12.8 M cycles per frame against the S3's 7.68 M, **1.67×**,
-per-core in both cases. The memory advantage is already spent, since the S3 port fits internal
+per-core in both cases — plus wider TDM (up to 16×32-bit on one controller) and more internal
 SRAM.
+
+**Reopened 2026-09-21 as a complementary “best” module** on a shared dual-ES9080 PCB (C6 =
+good ≤5.1 / one DAC; S3 = better ≤7.1.4 without enhanced coupling / both DACs @ 16-bit; P4 =
+best ≤9.1.6 with full tools desired / both DACs @ 32-bit). See
+[`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md).
 
 ## Building
 
