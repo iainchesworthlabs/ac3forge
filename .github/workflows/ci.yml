@@ -177,13 +177,14 @@ permissions:
   contents: read
 
 jobs:
-  # Enforce trunk-based branch naming on every PR. A topic branch is
-  # <type>/<name> where type is feature or bugfix - every topic branch (hotfix
-  # included) merges straight to main, so there is no separate release/hotfix/
-  # support vocabulary to allow. main itself is accepted as a PR head for the
-  # rare revert-by-PR case, and dependabot/** is accepted because Dependabot's
-  # branch names are not configurable. Required on main, so a misnamed branch
-  # cannot merge.
+  # Enforce trunk-based (GitHub Flow) branch naming on every PR. A topic branch
+  # is <type>/<name> where type is feature, bugfix, hotfix, docs, or chore —
+  # every topic branch merges straight to main. The name is lowercase
+  # alphanumeric segments separated by single hyphens (no underscores, dots,
+  # spaces, other special characters, or trailing hyphens). main itself is
+  # accepted as a PR head for the rare revert-by-PR case, and dependabot/** is
+  # accepted because Dependabot's branch names are not configurable. Required
+  # on main, so a misnamed branch cannot merge.
   branch-name:
     name: Branch Name
     needs: check-runner
@@ -204,12 +205,12 @@ jobs:
             echo "Dependabot branch '$HEAD_REF' - allowed (names are not configurable)."
             exit 0
           fi
-          pattern='^(feature|bugfix)/[a-z0-9._-]+$'
+          pattern='^(feature|bugfix|hotfix|docs|chore)/[a-z0-9]+(-[a-z0-9]+)*$'
           if [[ "$HEAD_REF" =~ $pattern ]]; then
             echo "Branch '$HEAD_REF' conforms to <type>/<name>."
             exit 0
           fi
-          echo "::error title=Invalid branch name::'$HEAD_REF' must be <type>/<name> where <type> is feature or bugfix (for example feature/eac3-decoder). See CONTRIBUTING.md."
+          echo "::error title=Invalid branch name::'$HEAD_REF' must be <type>/<kebab-name> where <type> is feature, bugfix, hotfix, docs, or chore; the name is lowercase letters and digits separated by single hyphens (no underscores, dots, spaces, or trailing hyphens). Example: feature/eac3-decoder. See CONTRIBUTING.md."
           exit 1
 
   # The RE-derived EMDF signer is quarantined to a local branch and must never

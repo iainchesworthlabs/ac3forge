@@ -15,12 +15,15 @@ something fails, that is your change or a regression, not noise.
 
 ## Branches and pull requests
 
-The branch model is trunk-based: `main` is the only long-lived branch, and every topic branch
-merges straight into it — there is no separate integration branch to land on first. Topic
-branches are named `<type>/<short-name>`, with `<type>` one of `feature` or `bugfix` (a hotfix
-is just a `bugfix/*` branch — there is no separate hotfix flow) — CI's `Branch Name` check
-enforces `^(feature|bugfix)/[a-z0-9._-]+$` on every PR, and its error message points back to
-this file.
+The branch model is trunk-based (GitHub Flow): `main` is the only long-lived branch, and every
+topic branch merges straight into it — there is no separate integration branch to land on
+first. Topic branches are named `<type>/<short-name>`, with `<type>` one of `feature`,
+`bugfix`, `hotfix`, `docs`, or `chore`. The short name is lowercase letters and digits
+separated by single hyphens — no underscores, dots, spaces, other special characters, or
+trailing hyphens (for example `feature/eac3-decoder`, `docs/development-status`,
+`chore/bump-packaging-manifests`). CI's `Branch Name` check enforces
+`^(feature|bugfix|hotfix|docs|chore)/[a-z0-9]+(-[a-z0-9]+)*$` on every PR, and its error
+message points back to this file.
 
 PRs target `main`. To merge, a PR must pass the required checks: `Branch Name`, the `CI Status`
 aggregate (every required CI job — the build/test matrix, coverage, the
