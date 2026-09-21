@@ -20,8 +20,8 @@ topic branch merges straight into it — there is no separate integration branch
 first. Topic branches are named `<type>/<short-name>`, with `<type>` one of `feature`,
 `bugfix`, `hotfix`, `docs`, or `chore`. The short name is lowercase letters and digits
 separated by single hyphens — no underscores, dots, spaces, other special characters, or
-trailing hyphens (for example `feature/eac3-decoder`, `docs/development-status`,
-`chore/bump-packaging-manifests`). CI's `Branch Name` check enforces
+trailing hyphens (for example `feature/eac3-decoder` or `chore/bump-packaging-manifests`).
+CI's `Branch Name` check enforces
 `^(feature|bugfix|hotfix|docs|chore)/[a-z0-9]+(-[a-z0-9]+)*$` on every PR, and its error
 message points back to this file.
 
