@@ -760,8 +760,8 @@ AC-4 data type (IEC 61937-14 defines AC-4 carriage, to be confirmed against the 
 
 ## Coordination
 
-- Before each phase: `gh pr list`. Branch names start with `feature/` or `bugfix/`, which CI's
-  branch-name gate requires.
+- Before each phase: `gh pr list`. Branch names are `<type>/<kebab-name>` with type one of
+  `feature`, `bugfix`, `hotfix`, `docs`, or `chore`, which CI's branch-name gate requires.
 - A1 moves headers the ESP-IDF component and its QEMU steps include. An open ESP32 branch that
   edits `layout.hpp` or `render.hpp` lands first, or rebases onto the move.
 - The 16-bit TDM interleave and planner change belong to whichever of C2 and B1 starts first; the

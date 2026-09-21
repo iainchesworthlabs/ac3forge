@@ -6,6 +6,11 @@ project's capability record: [CONTRIBUTING.md](../contributing.md) makes this pa
 [Validation](../verification.md) the authority, so a new capability or a newly found limitation
 lands here first and everything else summarises it.
 
+For a compact done / partial / not-started view across every codec and bitstream feature, see
+[Development status](development-status.md) — a parallel summary of this page, not a second
+authority. That page also carries a [standards cross-check](development-status.md#standards-cross-check)
+register of open gaps against the cited specs.
+
 Everything below is the library and the shared audio layer beneath it — `ac3::forge`, its
 siblings, and `ac3::audio`, which belongs to the family rather than to any one member and is
 never installed. [Forge](../forge/index.md) (`ac3cli` and `ac3gui`) and
