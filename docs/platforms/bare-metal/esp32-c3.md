@@ -36,7 +36,7 @@ Whether a part is viable comes down to floating point, not RAM. Espressif measur
 Every part with an FPU has a single-precision one, so `double` is soft-float across the whole
 family and `decode_scalar_t` earns its keep on all of them.
 
-### Why not the ESP32-P4 (as an S3 replacement)
+### Why not the ESP32-P4
 
 Assessed and declined on 2026-09-08 **as a replacement for the ESP32-S3 Wi-Fi Sendspin
 sink**. It is dual-core RISC-V at 400 MHz with 768 KB of SRAM, and holds the peak heap without
