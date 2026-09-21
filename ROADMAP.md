@@ -8,7 +8,7 @@ library's capability record, see
 Detailed design lives in [`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning)
 and product `design/` records — linked below, not copied here.
 
-Last reviewed: 2026-09-17. Reconciliation source:
+Last reviewed: 2026-09-21. Reconciliation source:
 [`planning/roadmap-inventory.md`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning/roadmap-inventory.md).
 
 ## How to read this
@@ -73,6 +73,13 @@ rebase, gate as `ac3::mlp` / `AC3FORGE_BUILD_MLP`, remove non-redistributable PD
 accurately (no real TrueHD decoder reads the current block layout). Forge front ends follow as a
 separate item (was UX10).
 
+**Authenticity note (for that branch):** TrueHD carries a separate keyed check from DD+ EMDF
+object signing — **Evolution frame protection**, a truncated HMAC-SHA-256 over the access unit
+and the Evolution frame. Open decoders (e.g. truehdd `--evo-key`) optionally verify it with an
+operator-supplied key; without a key they decode unchecked. When authenticity policy lands for
+MLP (multi-key verify / unchecked / licensed soft-gate), wire it to Evolution HMAC, not to
+`ac3::signing`'s EMDF path. See [Object signing](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/concepts/object-signing.md#sibling-truehd-evolution).
+
 ### Crucible — cross-platform product (was UX12, Partial)
 
 **Done:** rename to Crucible; Windows and Linux verified on real hardware (Pi PipeWire pass,
@@ -113,6 +120,7 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 |---|---|---|
 | **IAMF** (was IM3) | Channel-based 7.1.4 `ipcm` writer (`src/iamf`, phase 1 of 3) | Object elements and OBU reader — **blocked on IAMF v2.0 final** |
 | **IAB reader** (was IM1) | Full header and PCM essence parse | Annex B **AudioDataDLC** lossless decode — opaque bytes today |
+| **Object authenticity modes** | `ac3::signing` HMAC tag; `sign-objects`; single-key `verify-objects` (hard fail); default decode reconstructs objects **unchecked** (FOSS-style) | **Multi-key** verify (keyring / repeated `signing-key=`); **licensed** soft-gate (e.g. `gate-objects`: tag mismatch / unsigned → bed-only, decode continues); CLI + docs naming the three modes — [Object signing](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/concepts/object-signing.md#planned-decode-modes). TrueHD Evolution HMAC is the parallel on IM5, not EMDF |
 | **Multi-programme E-AC-3 encode** | `programme2=` authoring via CLI | Programme-mix metadata (`mixmdate`, `bsmod`, associated-service mixing) — see [capabilities](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md) |
 | **Encoder reproducibility** (was VX12) | Audit done; `ilogb` fix landed | Re-validate FP-gated bit-cost thresholds; fixed-point transient port optional |
 | **Listening test** (was VX9) | Apparatus in `tools/listening/` | **No session run yet** — see [`tools/listening/responses/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/listening/responses/README.md) |
@@ -128,6 +136,7 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 | GStreamer element or FFmpeg external encoder for >5.1 / JOC encode | Out of tree, over the C API; AP5 (C API) is done | AP10 |
 | Dolby Reference Player wider CI crosscheck | Extend beyond `none/cpl/spx/aht/all`; self-hosted Windows job | VX5 |
 | Perceptual encoder criterion calibration | EQ13 follow-on; `kPerceptual` | EQ14 |
+| Object authenticity: multi-key + licensed gate | Completes the Partial tail above — keyring verify and AVR-like bed-only soft-gate for EMDF; Evolution HMAC for TrueHD rides IM5 | — |
 | QC delivery report file | `ac3cli qc` writes stdout today | [`planning/qc-report.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/qc-report.md) |
 | DAW / NLE host plugin | Feasibility study only | [`planning/host-plugin.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/host-plugin.md) |
 | vcpkg git registry | Consumers install via `vcpkg install ac3forge` | DR3 |
@@ -147,7 +156,7 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 
 ## Out of scope
 
-- **Forging Dolby's authenticity tag** — see [`docs/concepts/object-signing.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/concepts/object-signing.md). The signer ships; the key is the operator's.
+- **Forging Dolby's authenticity tag** — see [`docs/concepts/object-signing.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/concepts/object-signing.md). The signer ships; the key is the operator's. Multi-key verify and licensed soft-gate (Partial / Proposed above) use **operator-provisioned** keys only — they do not recover or invent decoder secrets.
 - **AC-3 VBR** — structurally impossible; frame size indexes a fixed table.
 - **Renderer and room-correction territory** — covered by [Cavern](https://github.com/VoidXH/Cavern). A headphone/binaural preview for the WASM demo stays off unless that boundary is redrawn on purpose.
 - **A DAMF reader** — no public specification; IM1 / ADM BWF is the replacement.
@@ -195,7 +204,7 @@ Full ledger text preserved in git history of this file before 2026-09-17.
 | EQ | EQ1–EQ13 encoder quality work | EQ14 proposed; EQ2 out of scope |
 | DC | DC1–DC10 decoder and stream tools | Multi-programme mix metadata tail |
 | IO | IO1–IO12 containers, QC, loudness | QC report file proposed |
-| IM | IM1–IM4, IM7 | IM5 in progress; IM6 blocked; IM3/IAB tails |
+| IM | IM1–IM4, IM7 | IM5 in progress; IM6 blocked; IM3/IAB tails; object authenticity modes Partial |
 | VX | VX1–VX23 except VX9/VX12 tails | VX9/VX12 partial; VX5 proposed |
 | PF | PF1–PF8 performance | — |
 | AP | AP2–AP7, AP9, AP11–AP12 | AP1 in progress; AP8/AP10 proposed |

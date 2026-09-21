@@ -116,7 +116,10 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Scene timeline (`ObjectScene`) | 🟢 | Medium | Important | Shared by CLI / GUI / live |
 | | Live OSC object positions | 🟢 | Low | Optional | Scheme-prefixed; OSC only today |
 | **Signing** | EMDF protection HMAC | 🟡 | High | Essential | Mechanism ships; no project key — unsigned streams fall back to 5.1 in Dolby decoders |
-| | Authenticity-tag detect / verify | 🟢 | High | Essential | Probe and `signing::verify_*` |
+| | Authenticity-tag detect / verify | 🟢 | High | Essential | Probe and `signing::verify_*` (single key) |
+| | Unchecked object decode (default) | 🟢 | High | Essential | Reconstruct without MAC check — FOSS-style |
+| | Multi-key verify (keyring) | 🔴 | Medium | Important | Roadmap Partial / Proposed — [Object signing](../concepts/object-signing.md#planned-decode-modes) |
+| | Licensed soft-gate (bed on fail) | 🔴 | Medium | Important | AVR-like: mismatch → bed-only; decode continues |
 | **Tools** | Strip object layer (bitstream) | 🟢 | Medium | Important | Bit-identical bed; no re-encode |
 | | Object unlock in Dolby decoder | 🟡 | High | Essential | Spec-correct streams; proprietary key gate — see [Object signing](signing.md) |
 
@@ -154,6 +157,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | Category | Feature | Status | Priority | Criticality | Notes |
 |---|---|---|---|---|---|
 | **Codec** | Experimental TrueHD/MLP module | 🟡 | Medium | Important | Substantial work on `feature/truehd-atmos-support`; not on `main` (roadmap IM5) |
+| | Evolution frame HMAC (authenticity) | 🔴 | Medium | Important | Distinct from DD+ EMDF `ac3::signing`; truncated HMAC-SHA-256 on Evolution frames (cf. truehdd `--evo-key`). Note on IM5 / [Object signing](../concepts/object-signing.md#sibling-truehd-evolution) |
 | | Shipping TrueHD interop | 🔴 | Low | Out-of-scope | Blocked on DVD Forum reference material and clean-room ruling (IM6) |
 | | Passthrough device lists | 🟡 | Low | Nice-to-have | ELD / capability enums mention TrueHD; no codec on `main` |
 
@@ -325,6 +329,7 @@ this register is the checklist that those bounds appear here too.
 | Source | Open item | Status |
 |---|---|---|
 | Branch `feature/truehd-atmos-support` | Land as experimental module (IM5) | 🟡 |
+| Evolution frame HMAC | Authenticity policy on MLP (parallel to EMDF; not `ac3::signing`) | 🔴 |
 | DVD Forum MLP reference | Shipping interop (IM6) | 🔴 |
 
 ---
