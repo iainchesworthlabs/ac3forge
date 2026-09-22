@@ -214,6 +214,13 @@ constexpr int kPollMs = 60;
     return out;
 }
 
+[[nodiscard]] ac3::hearth::QueueItem queue_item_from_path(const QString& path) {
+    ac3::hearth::QueueItem item;
+    item.path = path.toStdString();
+    item.title = QFileInfo(path).fileName().toStdString();
+    return item;
+}
+
 [[nodiscard]] QVariantMap queue_row(const ac3::hearth::QueueItem& item, bool current) {
     QVariantMap row;
     row[QStringLiteral("path")] = QString::fromStdString(item.path);
@@ -314,10 +321,23 @@ void HearthController::addFiles(const QStringList& paths) {
     std::vector<ac3::hearth::QueueItem> items;
     items.reserve(static_cast<std::size_t>(paths.size()));
     for (const QString& path : paths) {
-        ac3::hearth::QueueItem item;
-        item.path = path.toStdString();
-        item.title = QFileInfo(path).fileName().toStdString();
-        items.push_back(std::move(item));
+        items.push_back(queue_item_from_path(path));
+    }
+    engine_->add(std::move(items));
+}
+
+void HearthController::addFolder(const QString& path) {
+    if (!engine_ || path.isEmpty()) {
+        return;
+    }
+    const std::vector<std::string> found = ac3::hearth::ui::list_folder_items(path.toStdString());
+    if (found.empty()) {
+        return;
+    }
+    std::vector<ac3::hearth::QueueItem> items;
+    items.reserve(found.size());
+    for (const std::string& item_path : found) {
+        items.push_back(queue_item_from_path(QString::fromStdString(item_path)));
     }
     engine_->add(std::move(items));
 }

@@ -43,11 +43,22 @@ Item {
                 }
             }
 
-            Button {
-                objectName: "addFiles"
-                text: qsTr("Add files…")
+            RowLayout {
                 Layout.fillWidth: true
-                onClicked: addFilesDialog.open()
+                spacing: Theme.gap
+
+                Button {
+                    objectName: "addFiles"
+                    text: qsTr("Add files…")
+                    Layout.fillWidth: true
+                    onClicked: addFilesDialog.open()
+                }
+                Button {
+                    objectName: "addFolder"
+                    text: qsTr("Add folder…")
+                    Layout.fillWidth: true
+                    onClicked: addFolderDialog.open()
+                }
             }
 
             ListView {
@@ -115,10 +126,43 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     visible: queueList.count === 0
-                    text: qsTr("Nothing in the queue.\nAdd files or drop them here.")
+                    // Names what item_loader.cpp actually reads today -
+                    // AC-3/E-AC-3 files, and now a folder of them. Not MP4/
+                    // MKV/TS: list_folder_items() finds those too, but
+                    // make_file_item_loader() still can't open them, and
+                    // naming a format that always lands "not playable"
+                    // would overpromise (docs/hearth/design/screenshots/
+                    // first-run.png's own text names them, for the slice
+                    // that makes it true).
+                    text: qsTr("Nothing in the queue.\nDrop AC-3 or E-AC-3 files or a folder here.")
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontBody
                     horizontalAlignment: Text.AlignHCenter
+                }
+            }
+
+            // A visible target for the page-wide DropArea below, which
+            // already accepts a drop anywhere on the page - this box only
+            // shows where, matching the design's own "01 QUEUE" box under
+            // the list (main-play.png), distinct from the list's own
+            // empty-state text above.
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: dropHint.implicitHeight + Theme.pad * 2
+                color: Theme.surface
+                border.color: Theme.border
+                border.width: 1
+                radius: Theme.radius
+
+                Text {
+                    id: dropHint
+                    anchors.centerIn: parent
+                    width: parent.width - Theme.pad * 2
+                    text: qsTr("Drop files or folders here to add them to the queue")
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontSmall
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
                 }
             }
         }
@@ -174,5 +218,11 @@ Item {
         fileMode: FileDialog.OpenFiles
         nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"), qsTr("All files (*)")]
         onAccepted: HearthController.addFiles(selectedFiles.map(function(u) { return u.toLocalFile(); }))
+    }
+
+    FolderDialog {
+        id: addFolderDialog
+        title: qsTr("Add folder")
+        onAccepted: HearthController.addFolder(selectedFolder.toLocalFile())
     }
 }

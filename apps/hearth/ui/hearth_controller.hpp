@@ -118,6 +118,12 @@ public:
     Q_INVOKABLE void removeAt(int index);
     // Each path becomes one queue item, titled by its file name.
     Q_INVOKABLE void addFiles(const QStringList& paths);
+    // Every media file item_loader.hpp's list_folder_items() finds under
+    // `path` (recursively), added the same way addFiles() adds a file
+    // picked directly - including a container list_folder_items() lists but
+    // make_file_item_loader() cannot yet open, which lands in the queue
+    // unplayable with a reason, same as addFiles() already does for one.
+    Q_INVOKABLE void addFolder(const QString& path);
 
     [[nodiscard]] QVariantMap decoderSettings() const { return decoder_settings_; }
     // Rebuilds a DecoderSettings from `settings` (every key
