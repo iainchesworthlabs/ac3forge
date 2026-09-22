@@ -156,6 +156,70 @@ TestCase {
         EncoderController.liveWavSafetyCopy = false;
     }
 
+    function test_oscToggleIsGatedOnAtmosAndRoundTripsItsProperties() {
+        const win = createTemporaryObject(mainWindowComponent, testCase);
+        verify(win !== null);
+        openLiveSessionTab(win);
+        // Same real-geometry reasoning as
+        // test_safetyCopyCheckboxIsGatedOnWriteToDiskAndRoundTripsTheProperty.
+        wait(300);
+
+        EncoderController.atmosEnabled = false;
+        EncoderController.liveOscEnabled = false;
+
+        let oscCheck = null;
+        let portField = null;
+        let anyCheck = null;
+        tryVerify(() => {
+            oscCheck = findChild(win.contentItem, "liveOscCheck");
+            portField = findChild(win.contentItem, "liveOscPortField");
+            anyCheck = findChild(win.contentItem, "liveOscAnyCheck");
+            return oscCheck !== null && portField !== null && anyCheck !== null;
+        });
+
+        // Object mode only - a channel session has no objects for positions=
+        // to drive.
+        compare(oscCheck.visible, false);
+        EncoderController.atmosEnabled = true;
+        compare(oscCheck.visible, true);
+        // The port/any-interface controls only make sense once OSC itself is
+        // on - same "enabled/visible gated on the checkbox above it" idiom
+        // liveWavSafetyCheck uses for write-to-disk.
+        compare(portField.visible, false);
+        compare(anyCheck.visible, false);
+
+        // Controller -> checkbox: a plain binding, reacts to a programmatic
+        // change same as test_safetyCopyCheckboxIsGatedOnWriteToDiskAndRoundTripsTheProperty.
+        EncoderController.liveOscEnabled = true;
+        compare(oscCheck.checked, true);
+        compare(portField.visible, true);
+        compare(anyCheck.visible, true);
+        EncoderController.liveOscEnabled = false;
+        compare(oscCheck.checked, false);
+
+        // Checkbox -> controller needs a real click (onToggled fires on
+        // interaction, not on assigning .checked directly). A short wait
+        // between the two clicks, unlike liveWavSafetyCheck's own back-to-
+        // back pair: this row's own layout reflows when liveOscEnabled
+        // flips (the port/any-interface controls appear), so the second
+        // click needs a moment for that reflow to settle before it lands.
+        mouseClick(oscCheck);
+        compare(EncoderController.liveOscEnabled, true);
+        wait(50);
+        mouseClick(oscCheck);
+        compare(EncoderController.liveOscEnabled, false);
+
+        // The port field is a plain controller -> SpinBox binding too.
+        EncoderController.liveOscPort = 12345;
+        compare(portField.value, 12345);
+
+        // Leave state clean for whichever test runs next.
+        EncoderController.liveOscEnabled = false;
+        EncoderController.liveOscPort = 9000;
+        EncoderController.liveOscAnyInterface = false;
+        EncoderController.atmosEnabled = false;
+    }
+
     function test_receiverComboExistsForBothPreFlightAndHotSwap() {
         const win = createTemporaryObject(mainWindowComponent, testCase);
         verify(win !== null);

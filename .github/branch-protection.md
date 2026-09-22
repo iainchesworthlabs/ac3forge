@@ -1,25 +1,46 @@
-# Branch protection for `main` and `develop`
+# Branch protection for `main`
 
 *Maintainer notes — repo administration; not published on the docs site.*
 
-GitHub branch/repo security settings can't be expressed as a workflow file -
-they're applied in **Settings → Branches** (or **Settings → Rules → Rulesets**)
-by someone with admin rights on the repo. Configure a protection rule (or
-ruleset) for `main` with:
+Trunk-based development: `main` is the only long-lived branch. Every topic branch
+(`feature/*`, `bugfix/*`, Dependabot's `dependabot/**`) targets it directly and merges
+straight there — there is no separate integration branch, no promotion PR, and no sync-back
+step. Releases are tags cut from `main` (see `docs/releasing.md`).
+
+GitHub branch/repo security settings can't be expressed as a workflow file - they're applied
+in **Settings → Branches** (or **Settings → Rules → Rulesets**) by someone with admin rights
+on the repo. Configure a protection rule (or ruleset) for `main` with:
 
 - **Require a pull request before merging**
-  - Require at least 1 approval
+  - Required approving review count: **0**
   - Dismiss stale approvals when new commits are pushed
-- **Require status checks to pass before merging** (enable "Require branches
-  to be up to date" too), selecting:
+
+  Zero, not one: this is a solo-maintainer repo, and GitHub does not count an
+  author's own approval toward their own PR, so "require 1 approval" was
+  unsatisfiable through the normal merge button - every PR in this repo's
+  history has landed via `gh pr merge --admin`, bypassing the requirement
+  rather than meeting it. Dropping the count to 0 keeps "require a pull
+  request before merging" itself (still blocks direct pushes, still requires
+  every required status check below to pass, still dismisses stale approvals
+  if a second maintainer ever does leave one) while letting a green PR merge
+  through the normal button instead of only through an admin override.
+- **Require status checks to pass before merging**, selecting:
   - `Branch Name` (from `ci.yml`)
-  - `No Quarantine On Main` (from `ci.yml`)
   - `CI Status` (from `ci.yml` - aggregates every required CI job; add or
     rename a matrix leg without ever touching this rule)
-  - `Analyze (C++)` (from `codeql.yml`)
   - `Scan dependency diff` (from `dependency-review.yml`) - fails on a
     moderate-or-worse known vulnerability newly introduced by the PR
     (`vcpkg.json` or a GitHub Actions dependency)
+
+  `No Quarantine On Main` is not selected in its own right - it sits in
+  `CI Status`'s `needs` list, so it still gates every merge through that one
+  aggregate check. `Analyze (C++)` was removed 2026-08-31: `codeql.yml`
+  `paths-ignore`s `docs/**`/`**/*.md`, so on a docs-only PR the required
+  context never reported and the PR sat green-but-BLOCKED forever (the
+  code-scanning ruleset section below records the fuller version of the same
+  trap). "Require branches to be up to date" is off: the merge queue below
+  makes each entry up to date server-side, without the rebase treadmill that
+  setting used to cause.
 - **Require conversation resolution before merging**
 - **Do not allow bypassing the above settings** (applies rules to admins too)
 - **Restrict who can push to matching branches** - only allow merges via PR;
@@ -27,19 +48,101 @@ ruleset) for `main` with:
 - **Block force pushes**
 - **Restrict deletions**
 
-`develop` is where `feature/*`/`bugfix/*` work actually lands and where
-Dependabot opens its PRs (`.github/dependabot.yml` targets `develop`, not
-`main`), so give it the same rule with the same required checks - that's
-where most vulnerable dependencies or CI regressions would actually be
-introduced, well before a release PR ever reaches `main`.
+### What the 2026-08 CI additions did and did not change here
 
-Since `main` only receives merges from `develop`, `release/*`, `hotfix/*` and
-`support/*` branches under this project's gitflow model (see
-`CONTRIBUTING.md` and the `branch-name` job in `ci.yml`), you may also want a
-rule restricting which branches can open PRs against `main` - GitHub
-rulesets support this directly (`main` ruleset → target branch pattern
-restrictions), whereas classic branch protection does not; the `branch-name`
-job enforces the naming convention as a required status check either way.
+Nothing in the `VX14`-`VX17` batch (script lint, the `apps/cli` coverage floor,
+the ThreadSanitizer leg, the PR-time performance comparison) **requires** a
+ruleset edit, and the list above is deliberately unchanged:
+
+- `Script Lint` (`ci.yml`) is in `CI Status`'s `needs` list, so it already
+  gates through the required check that exists. Selecting it as a required
+  check in its own right is optional - it would only make a lint failure name
+  itself in the merge box rather than showing up as `CI Status` failing.
+- `Linux LLVM TSan` is a `_build.yml` matrix leg, and `CI Status` covers the
+  whole matrix by design - that is what the parenthetical above means.
+- `Performance vs merge base` (`ci.yml`) must NOT be made required. It is
+  informational, carries `continue-on-error`, and is deliberately absent from
+  `CI Status`'s `needs`; requiring it would turn hosted-runner timing noise
+  into a merge blocker.
+- `codeql.yml` became a language matrix, but its C++ leg is still named
+  `Analyze (C++)` exactly - the job's `name:` interpolates a `display` value
+  chosen for that reason, since a rename would leave the required check above
+  pending forever. The two new legs report as `Analyze (Python)` and
+  `Analyze (JavaScript)`; adding them as required checks is optional, and
+  matches how the existing CodeQL leg is treated. (Historical since
+  2026-08-31 - no CodeQL leg is a required check any more, see above - but
+  the stable-`name:` practice is still worth keeping for `CI Status` itself.)
+- `Python coverage` (`wheels.yml`) is a new check on a workflow that has no
+  required checks today; leaving it that way is consistent with `Build wheels`.
+
+Ruleset edits are the repository admin's, not a pull request's. If any of the
+optional checks above are wanted as required ones, add them by their exact
+names as rendered here.
+
+## Merge queue
+
+With many topic branches open against `main` at once, "require branches to be up to date
+before merging" turns into a rebase treadmill: every merge invalidates every other open PR's
+up-to-date status, forcing a fresh rebase and a full CI re-run before the next one can land -
+this is exactly what happened during the 2026-08-24 concurrent-PR push under the old
+`develop`-as-integration-branch model, where PRs needed repeated rounds of rebase/re-run before
+landing. A repository ruleset (`merge-queue-main`, `target: branch`,
+`conditions.ref_name.include: refs/heads/main`, one `merge_queue` rule) fixes this the way
+GitHub intends: PRs enter the queue once their own checks and review pass, GitHub merges each
+entry against the current queue tip server-side and re-runs the required checks against that
+up-to-date state automatically, then merges when green - no manual rebase-and-rerun.
+
+Configured `merge_queue` rule parameters: `merge_method: MERGE` (matches
+this repo's real-merge-commit convention, not squash), `grouping_strategy:
+ALLGREEN`, `max_entries_to_build: 2` (deliberately low - self-hosted
+capacity is 3 Linux/2 Windows runners shared org-wide, see
+`docs/ci-self-hosted-runners.md`, and GitHub-hosted concurrency is capped at
+20 jobs account-wide on this org's Free plan; building more queue entries at
+once than that can bear just adds to the same backlog it's meant to
+relieve), `max_entries_to_merge: 5`, `min_entries_to_merge: 1`,
+`min_entries_to_merge_wait_minutes: 5`. Re-tune `max_entries_to_build` up if
+the self-hosted fleet grows or the account moves off the Free tier.
+
+**The queue alone does not fix a genuinely oversubscribed account.** On
+2026-08-24, ~30 topic branches were open and pushing at once; even with only
+2 entries building at a time, each PR's *own* pre-queue `pull_request` CI run
+still competed for the same ~20-job account-wide ceiling and 3/2-runner
+self-hosted fleet, so hundreds of job requests queued behind a handful of
+running slots regardless of the queue's throttling. The queue serializes the
+*merge* step; it does not - and cannot - create more CI capacity. Keep the
+number of topic branches actively pushing at once roughly within what the
+fleet above can run concurrently; a burst larger than that will still back
+up no matter how the branches are named or which branch they target.
+
+**Every workflow that produces one of `main`'s required status checks must
+also trigger on the `merge_group` event**, not just `push`/`pull_request` -
+GitHub only runs workflows that opt into `merge_group` on the queue's
+temporary `gh-readonly-queue/main/...` ref, so a workflow missing that
+trigger never reports its check there and every queue entry sits until
+`check_response_timeout_minutes` expires. `ci.yml`, `codeql.yml`, and
+`dependency-review.yml` all carry it (see each workflow's own `merge_group`
+comment) - add it to anything else that later becomes a required check on
+`main`.
+
+## Code-scanning gate (ruleset, currently disabled)
+
+A repository ruleset `code-scanning-gate-main` (`target: branch`,
+`refs/heads/main`, one `code_scanning` rule: PREfast at
+`errors_and_warnings`, CodeQL at `errors` alerts / `high_or_higher` security
+alerts) was created 2026-08-24 to block merges on new scanner findings. It
+was **disabled** on 2026-08-31 - enforcement only; the rule configuration is
+intact for re-enabling. Why: a `code_scanning` rule waits for every analysis
+category the target branch has previously seen, and `main` carries four
+CodeQL categories - `cpp`, `python`, `javascript-typescript` and
+`java-kotlin` - of which the last is produced only by `_build.yml`'s
+`build-android` job, which `ci.yml` gates behind
+`changes.outputs.code == 'true'`; `codeql.yml` and `msvc-analysis.yml` also
+`paths-ignore` docs. A docs-only PR therefore could never satisfy the rule
+and sat un-mergeable forever: no docs-only PR merged between the ruleset's
+creation and its disabling. Re-enabling is one field
+(`enforcement: active`) - but only do it once every expected category is
+produced on every PR, `java-kotlin` included, or the same trap returns
+immediately.
 
 ## Other scanners (visible-only)
 
@@ -47,12 +150,12 @@ job enforces the naming convention as a required status check either way.
 **Security → Code scanning** but don't fail PR checks - triage their alerts
 there rather than via a required status check (see each workflow's header
 comment for why). `msvc-analysis.yml` (MSVC Code Analysis, `/analyze`) is
-the same shape and runs on PRs to `main`/`develop` too (docs-only changes
-skipped): its findings land in code scanning for triage, not in a required
-status check. `scorecard.yml`'s branch-protection sub-check scores more
-completely with a fine-grained PAT (read-only, "Administration: read") added
-as a repo secret named `SCORECARD_READ_TOKEN`; without it, that one
-sub-check just degrades gracefully instead of failing.
+the same shape and runs on PRs to `main` too (docs-only changes skipped):
+its findings land in code scanning for triage, not in a required status
+check. `scorecard.yml`'s branch-protection sub-check scores more completely
+with a fine-grained PAT (read-only, "Administration: read") added as a repo
+secret named `SCORECARD_READ_TOKEN`; without it, that one sub-check just
+degrades gracefully instead of failing.
 
 ## Dependabot auto-merge
 
@@ -60,5 +163,5 @@ sub-check just degrades gracefully instead of failing.
 (non-major bumps only); GitHub still won't merge it until every required
 check above passes. It needs no extra configuration beyond the branch
 protection rule itself - once `Branch Name`, `CI Status` and
-`Scan dependency diff` are required on `develop`, auto-merge is safe to
+`Scan dependency diff` are required on `main`, auto-merge is safe to
 enable repo-wide in **Settings → General → Pull Requests → Allow auto-merge**.

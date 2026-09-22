@@ -1,6 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- The app's only permission. VIBRATE is a normal permission, granted at
+         install with no runtime prompt, and it is what lets the demo pulse the
+         CONTROLLER (not the box) as an object crosses overhead - see
+         Haptics.kt. Without it, InputDevice.getVibrator().vibrate() throws
+         SecurityException rather than silently doing nothing. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Needed only for the OPT-IN phone remote (WebRemote.kt), which binds a
+         listening socket on the local network so a phone in the room can drive
+         the object. Socket creation is kernel-enforced through the inet group,
+         so without this the ServerSocket fails at runtime rather than being
+         caught by any build-time check. The app makes no outbound requests of
+         any kind, and the remote does not start unless it is switched on in
+         the settings panel. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Android TV, not a phone/tablet fallback: a touchscreen is optional,
          leanback (the D-pad-navigable TV UI model) is required. Play would
          use this to keep the app off phones; irrelevant for a personal
@@ -11,6 +27,15 @@
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
+    <!-- A Shield Controller is the best way to drive this demo (two analog
+         sticks, shoulder buttons) but not a requirement: InputController
+         handles the bundled remote's D-pad as a first-class path, which is
+         why the D-pad-center axis-mode toggle exists at all. Declaring it
+         required=false says so explicitly rather than leaving it to be
+         inferred. -->
+    <uses-feature
+        android:name="android.hardware.gamepad"
+        android:required="false" />
 
     <application
         android:allowBackup="false"
@@ -18,13 +43,21 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:banner="@drawable/banner"
-        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        android:theme="@style/Theme.ShieldAtmosDemo">
 
+        <!-- configChanges lists every configuration change this Activity can
+             survive without being recreated. Recreation is not cosmetic here:
+             onDestroy tears down the AudioTrack, which drops the AVR's lock on
+             the bitstream and bounces the user back through the "Waiting for
+             receiver..." interstitial. navigation and keyboard are the ones
+             that actually fire on this device class - pairing or dropping a
+             Bluetooth controller changes both - and uiMode fires on a
+             day/night or TV-mode switch. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="landscape"
-            android:configChanges="orientation|screenSize|keyboardHidden">
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode|density">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <!-- LEANBACK_LAUNCHER, not just LAUNCHER: this is what puts

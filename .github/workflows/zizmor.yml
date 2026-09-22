@@ -11,9 +11,9 @@ name: Zizmor
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
   schedule:
     - cron: "50 3 * * 1"
   workflow_dispatch:
@@ -31,6 +31,13 @@ jobs:
   zizmor:
     name: Analyze workflows
     runs-on: ubuntu-latest
+    # vars.PAUSE_NONESSENTIAL_CI: a temporary, reversible-by-variable pause on
+    # non-required PR-time checks during a merge-queue drain, freeing hosted
+    # runner concurrency for the checks that actually gate merging (see
+    # .github/branch-protection.md's required list, which this is not on).
+    # push:main/schedule/workflow_dispatch runs are untouched. Clear/remove
+    # the variable to revert - no code change needed.
+    if: github.event_name != 'pull_request' || vars.PAUSE_NONESSENTIAL_CI != 'true'
     permissions:
       security-events: write
       contents: read
@@ -41,7 +48,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Run zizmor
         # continue-on-error: findings should surface in the Security tab, not
@@ -50,7 +57,7 @@ jobs:
         run: uvx "zizmor@${ZIZMOR_VERSION}" --format=sarif . > results.sarif
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           sarif_file: results.sarif
           category: zizmor

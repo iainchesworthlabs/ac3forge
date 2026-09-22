@@ -1,21 +1,35 @@
 name: Setup MSVC environment
 description: >-
-  Load the MSVC x64 developer environment (cl.exe, INCLUDE, LIB, PATH, ...) into
+  Load the MSVC developer environment (cl.exe, INCLUDE, LIB, PATH, ...) into
   $GITHUB_ENV for subsequent steps. For self-hosted Windows runners that bake in
   the VS Build Tools but do not expose the MSVC environment on the default PATH.
   Pure PowerShell (no Node.js) — replaces the third-party ilammy/msvc-dev-cmd,
   which only ships a deprecated Node 20 runtime.
 
+inputs:
+  arch:
+    description: >-
+      Target architecture: "x64" (default) or "arm64" (roadmap DR8). x64 loads
+      vcvars64.bat exactly as this action always has; arm64 is new and probes
+      vcvarsall.bat with more than one candidate argument - see the step below.
+    required: false
+    default: x64
+
 runs:
   using: composite
   steps:
-    - name: Load MSVC x64 environment
+    - name: Load MSVC environment
       if: runner.os == 'Windows'
       # Windows PowerShell (always present), NOT pwsh/PowerShell 7 which the
       # self-hosted runner image does not ship.
       shell: powershell
+      env:
+        AC3_MSVC_ARCH: ${{ inputs.arch }}
       run: |
         $ErrorActionPreference = 'Stop'
+
+        $msvcArch = $env:AC3_MSVC_ARCH
+        if ([string]::IsNullOrWhiteSpace($msvcArch)) { $msvcArch = 'x64' }
 
         # Locate the VS install (the VS Installer always ships vswhere.exe here).
         $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -30,14 +44,8 @@ runs:
             throw "vswhere found no Visual Studio install providing the VC.Tools.x86.x64 component."
         }
 
-        $vcvars = Join-Path $installPath 'VC\Auxiliary\Build\vcvars64.bat'
-        if (-not (Test-Path $vcvars)) {
-            throw "vcvars64.bat not found at '$vcvars'."
-        }
-        Write-Host "Loading MSVC x64 environment from $vcvars"
-
-        # Snapshot the environment, source vcvars64.bat in a child cmd, snapshot
-        # again, and export only the variables vcvars added or changed.
+        # Snapshot the environment, source the vcvars script in a child cmd,
+        # snapshot again, and export only the variables vcvars added or changed.
         function Read-CmdEnv([string]$command) {
             $table = @{}
             foreach ($line in (cmd /c $command)) {
@@ -47,11 +55,44 @@ runs:
         }
 
         $before = Read-CmdEnv 'set'
-        $after  = Read-CmdEnv "`"$vcvars`" >nul 2>&1 && set"
+        $after = $null
 
-        if (-not $after.ContainsKey('VCToolsInstallDir')) {
-            cmd /c "`"$vcvars`""   # re-run unsuppressed so the banner/error reaches the log
-            throw "vcvars64.bat did not initialise the MSVC environment (VCToolsInstallDir unset)."
+        if ($msvcArch -eq 'arm64') {
+            # Genuinely unconfirmed at authoring time whether this runner's VS
+            # Build Tools install carries a native ARM64 host toolset
+            # (vcvarsall.bat arm64) or only the amd64-hosted cross one
+            # (vcvarsall.bat amd64_arm64), or both - see
+            # docs/platforms/windows.md's ARM64 section for what a real CI run
+            # found. Try native first (no emulation), fall back to cross.
+            $vcvarsall = Join-Path $installPath 'VC\Auxiliary\Build\vcvarsall.bat'
+            if (-not (Test-Path $vcvarsall)) {
+                throw "vcvarsall.bat not found at '$vcvarsall'."
+            }
+            foreach ($candidateArg in @('arm64', 'amd64_arm64')) {
+                Write-Host "Trying vcvarsall.bat $candidateArg"
+                $candidate = Read-CmdEnv "`"$vcvarsall`" $candidateArg >nul 2>&1 && set"
+                if ($candidate.ContainsKey('VCToolsInstallDir')) {
+                    Write-Host "vcvarsall.bat $candidateArg succeeded"
+                    $after = $candidate
+                    break
+                }
+                Write-Host "vcvarsall.bat $candidateArg did not initialise the MSVC environment; trying the next candidate, if any"
+            }
+            if ($null -eq $after) {
+                throw "vcvarsall.bat did not initialise the MSVC environment for arm64 with any candidate argument (arm64, amd64_arm64)."
+            }
+        } else {
+            $vcvars = Join-Path $installPath 'VC\Auxiliary\Build\vcvars64.bat'
+            if (-not (Test-Path $vcvars)) {
+                throw "vcvars64.bat not found at '$vcvars'."
+            }
+            Write-Host "Loading MSVC x64 environment from $vcvars"
+            $after = Read-CmdEnv "`"$vcvars`" >nul 2>&1 && set"
+
+            if (-not $after.ContainsKey('VCToolsInstallDir')) {
+                cmd /c "`"$vcvars`""   # re-run unsuppressed so the banner/error reaches the log
+                throw "vcvars64.bat did not initialise the MSVC environment (VCToolsInstallDir unset)."
+            }
         }
 
         $lines = New-Object System.Collections.Generic.List[string]

@@ -3,11 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
+#include <fmt/base.h>
 #include <fstream>
+#include <iterator>
 #include <numbers>
 #include <optional>
-#include <print>
 #include <span>
 #include <string>
 #include <vector>
@@ -17,9 +17,11 @@
 #include "ac3/mlp/block.hpp"
 #include "ac3/mlp/mlp_tables.hpp"
 #include "ac3/mlp/stream.hpp"
-#include "ac3/oba/motion.hpp"
+#include "ac3/oba/atmos.hpp"
+#include "ac3/oba/oamd.hpp"
+#include "ac3/oba/scene.hpp"
+#include "../exit_codes.hpp"
 #include "../support.hpp"
-#include "atmos.hpp"
 
 namespace ac3cli::commands {
 
@@ -42,28 +44,28 @@ std::optional<ac3::mlp::SampleRate> mlp_sample_rate(std::uint32_t hz) {
 int run_truehd_encode(std::string_view in_path, std::string_view out_path) {
     const auto wav = ac3::io::read_wav_pcm(std::string{in_path});
     if (!wav) {
-        std::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
-        return 1;
+        fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
+        return kExitInput;
     }
     const auto rate = mlp_sample_rate(wav->sample_rate);
     if (!rate) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: {} Hz is not an MLP sample rate "
                      "(48000/96000/192000 or 44100/88200/176400)",
                      wav->sample_rate);
-        return 1;
+        return kExitInput;
     }
     const auto channel_count = wav->channels.size();
     if (channel_count > static_cast<std::size_t>(ac3::mlp::kMaxBlockChannels)) {
-        std::println(stderr, "error: {} channels (this encoder carries up to {})", channel_count,
+        fmt::println(stderr, "error: {} channels (this encoder carries up to {})", channel_count,
                      ac3::mlp::kMaxBlockChannels);
-        return 1;
+        return kExitUsage;
     }
     const auto frame = static_cast<std::size_t>(ac3::mlp::samples_per_access_unit(*rate));
     const std::size_t source_frames = wav->frame_count();
     if (source_frames == 0) {
-        std::println(stderr, "error: {} holds no samples", in_path);
-        return 1;
+        fmt::println(stderr, "error: {} holds no samples", in_path);
+        return kExitInput;
     }
     // An access unit is a fixed number of samples (40 at 48 kHz), so the tail
     // is filled with silence rather than dropped. The fill count rides in the
@@ -115,44 +117,44 @@ int run_truehd_encode(std::string_view in_path, std::string_view out_path) {
 
     std::ofstream out{std::string{out_path}, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot open {}", out_path);
-        return 1;
+        fmt::println(stderr, "error: cannot open {}", out_path);
+        return kExitOutput;
     }
     ac3::mlp::StreamEncoder encoder(config);
     const std::size_t written = encode_all(encoder, &out);
     if (!out) {
-        std::println(stderr, "error: writing {} failed", out_path);
-        return 1;
+        fmt::println(stderr, "error: writing {} failed", out_path);
+        return kExitOutput;
     }
     const std::size_t pcm_bytes =
         padded * channel_count * static_cast<std::size_t>(wav->bits) / 8;
-    std::println("wrote {} access units to {}", padded / frame, out_path);
-    std::println("{} PCM bytes -> {} MLP bytes ({:.1f}% of source, {}-bit, {} ch, {} Hz)",
+    fmt::println("wrote {} access units to {}", padded / frame, out_path);
+    fmt::println("{} PCM bytes -> {} MLP bytes ({:.1f}% of source, {}-bit, {} ch, {} Hz)",
                  pcm_bytes, written, 100.0 * static_cast<double>(written) / pcm_bytes, wav->bits,
                  channel_count, wav->sample_rate);
     // peak_data_rate is 1/16 bit per sample period; x rate / 16 is bit/s.
-    std::println("peak data rate {:.1f} kbit/s (measured; FBA channel ceiling {} kbit/s)",
+    fmt::println("peak data rate {:.1f} kbit/s (measured; FBA channel ceiling {} kbit/s)",
                  static_cast<double>(config.peak_data_rate_16ths) * wav->sample_rate / 16000.0,
                  ac3::mlp::kPeakDataRateBitsPerSecond / 1000);
     if (padded != source_frames) {
-        std::println("note: final access unit filled with {} silent samples "
+        fmt::println("note: final access unit filled with {} silent samples "
                      "(recorded in-stream; decode trims them)",
                      padded - source_frames);
     }
     if (encoder.rate_violations() != 0) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "warning: {} access units exceed the 18 Mbit/s FBA channel - a "
                      "spec-minimum decoder FIFO could underrun",
                      encoder.rate_violations());
     }
-    return 0;
+    return kExitOk;
 }
 
 int run_truehd_decode(std::string_view in_path, std::string_view out_path) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
-        std::println(stderr, "error: cannot read {}", in_path);
-        return 1;
+        fmt::println(stderr, "error: cannot read {}", in_path);
+        return kExitInput;
     }
     std::span<const std::byte> data{stream};
 
@@ -181,23 +183,23 @@ int run_truehd_decode(std::string_view in_path, std::string_view out_path) {
         // mlp_sync's length field frames the stream: the low 12 bits of the
         // first 16 bits are the access unit's length in 16-bit words.
         if (data.size() < 8) {
-            std::println(stderr, "error: {}: {} trailing bytes after access unit {}", in_path,
+            fmt::println(stderr, "error: {}: {} trailing bytes after access unit {}", in_path,
                          data.size(), units);
-            return 1;
+            return kExitInput;
         }
         const std::size_t length_words =
             (std::to_integer<std::size_t>(data[0]) & 0x0F) << 8 |
             std::to_integer<std::size_t>(data[1]);
         const std::size_t unit_bytes = length_words * 2;
         if (unit_bytes < 8 || unit_bytes > data.size()) {
-            std::println(stderr, "error: {}: access unit {} declares {} bytes, {} remain",
+            fmt::println(stderr, "error: {}: access unit {} declares {} bytes, {} remain",
                          in_path, units, unit_bytes, data.size());
-            return 1;
+            return kExitInput;
         }
         std::vector<std::vector<std::int32_t>> unit_channels;
         if (!decoder.decode_access_unit(data.first(unit_bytes), unit_channels)) {
-            std::println(stderr, "error: {}: access unit {} failed to decode", in_path, units);
-            return 1;
+            fmt::println(stderr, "error: {}: access unit {} failed to decode", in_path, units);
+            return kExitInput;
         }
         if (channels.empty()) {
             channels.resize(unit_channels.size());
@@ -210,8 +212,8 @@ int run_truehd_decode(std::string_view in_path, std::string_view out_path) {
         ++units;
     }
     if (channels.empty()) {
-        std::println(stderr, "error: {} holds no access units", in_path);
-        return 1;
+        fmt::println(stderr, "error: {} holds no access units", in_path);
+        return kExitInput;
     }
 
     // §4.6.4: the final access unit's zero_samples field records how much
@@ -229,35 +231,35 @@ int run_truehd_decode(std::string_view in_path, std::string_view out_path) {
     const int bits = decoder.wordlength() <= 16 ? 16 : 24;
     if (const auto result = ac3::io::write_wav_pcm(std::string{out_path}, channels, rate_hz, bits);
         !result) {
-        std::println(stderr, "error: {}: {}", out_path, ac3::io::describe(result.error()));
-        return 1;
+        fmt::println(stderr, "error: {}: {}", out_path, ac3::io::describe(result.error()));
+        return kExitOutput;
     }
-    std::println("decoded {} access units: {} samples, {}-bit, {} ch, {} Hz -> {}", units,
+    fmt::println("decoded {} access units: {} samples, {}-bit, {} ch, {} Hz -> {}", units,
                  channels.front().size(), decoder.wordlength(), channels.size(), rate_hz,
                  out_path);
     if (trim > 0) {
-        std::println("trimmed {} encoder-fill samples recorded by the stream's terminator", trim);
+        fmt::println("trimmed {} encoder-fill samples recorded by the stream's terminator", trim);
     }
     if (!decoder.end_of_stream()) {
-        std::println("note: stream carries no end-of-stream terminator (truncated capture?)");
+        fmt::println("note: stream carries no end-of-stream terminator (truncated capture?)");
     }
-    return 0;
+    return kExitOk;
 }
 
 int run_truehd_atmos(std::string_view in_path, std::string_view out_path,
                      std::uint32_t objects, std::string_view paths_path) {
     const auto wav = ac3::io::read_wav_pcm(std::string{in_path});
     if (!wav) {
-        std::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
-        return 1;
+        fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
+        return kExitInput;
     }
     const auto rate = mlp_sample_rate(wav->sample_rate);
     if (!rate) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "error: {} Hz is not an MLP sample rate "
                      "(48000/96000/192000 or 44100/88200/176400)",
                      wav->sample_rate);
-        return 1;
+        return kExitInput;
     }
     const std::size_t src_channels = wav->channels.size();
     // One object per source channel unless told otherwise; the presentation
@@ -265,16 +267,16 @@ int run_truehd_atmos(std::string_view in_path, std::string_view out_path,
     const auto count =
         objects == 0 ? src_channels : std::min<std::size_t>(objects, src_channels);
     if (count < 1 || count > 16) {
-        std::println(stderr, "error: 1 to 16 objects (§4.4.3's presentation ceiling); "
+        fmt::println(stderr, "error: 1 to 16 objects (§4.4.3's presentation ceiling); "
                              "this file has {} channels",
                      src_channels);
-        return 1;
+        return kExitUsage;
     }
     const auto frame = static_cast<std::size_t>(ac3::mlp::samples_per_access_unit(*rate));
     const std::size_t source_frames = wav->frame_count();
     if (source_frames == 0) {
-        std::println(stderr, "error: {} holds no samples", in_path);
-        return 1;
+        fmt::println(stderr, "error: {} holds no samples", in_path);
+        return kExitInput;
     }
     const std::size_t padded = (source_frames + frame - 1) / frame * frame;
     std::vector<std::vector<std::int32_t>> channels(wav->channels.begin(),
@@ -299,45 +301,58 @@ int run_truehd_atmos(std::string_view in_path, std::string_view out_path,
                         .lfe_send = 0.0};
     }
 
-    // An authored keyframe file (same format/addressing as atmos-path,
-    // object index == WAV channel index) drives motion instead.
-    std::optional<std::vector<ac3::oba::ObjectPath>> paths;
+    // A scene file (the keyframe grammar atmos-path takes, or the JSON
+    // object-scene form - see ac3/oba/scene.hpp; object index == WAV channel
+    // index) drives motion instead of the static fan-out above. An index the
+    // file skips holds the fan-out placement it already had, never moving.
+    std::optional<ac3::oba::ObjectScene> scene;
     if (!paths_path.empty()) {
-        const auto parsed = parse_path_file(paths_path);
-        if (!parsed) {
-            return 1;
+        std::ifstream in{std::string{paths_path}, std::ios::binary};
+        if (!in) {
+            fmt::println(stderr, "error: cannot open {}", paths_path);
+            return kExitInput;
         }
-        paths.emplace();
-        paths->reserve(count);
-        for (std::size_t i = 0; i < count; ++i) {
-            if (i < parsed->size() && !(*parsed)[i].empty()) {
-                auto created = ac3::oba::KeyframePath::create((*parsed)[i]);
-                if (!created) {
-                    std::println(stderr,
-                                 "error: object {} has two keyframes at the same time_s", i);
-                    return 1;
-                }
-                paths->emplace_back(std::move(*created));
-                continue;
+        const std::string text{std::istreambuf_iterator<char>{in},
+                               std::istreambuf_iterator<char>{}};
+        auto contents = ac3::oba::read_scene(text);
+        if (!contents) {
+            // Line 0 means the format had no line to point at (a JSON-level
+            // complaint about the scene as a whole).
+            if (contents.error().line != 0) {
+                fmt::println(stderr, "error: {}:{}: {}", paths_path, contents.error().line,
+                             contents.error().message);
+            } else {
+                fmt::println(stderr, "error: {}: {}", paths_path, contents.error().message);
             }
-            auto fallback = ac3::oba::KeyframePath::create({{.time_s = 0.0,
-                                                             .position = placement[i].position,
-                                                             .gain = placement[i].gain,
-                                                             .lfe_send = 0.0}});
-            paths->emplace_back(std::move(*fallback));
+            return kExitInput;
         }
+        contents->objects.resize(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            if (contents->objects[i].automation.empty()) {
+                contents->objects[i].automation.push_back({.time_s = 0.0,
+                                                            .position = placement[i].position,
+                                                            .gain = placement[i].gain,
+                                                            .lfe_send = 0.0});
+            }
+        }
+        auto created =
+            ac3::oba::ObjectScene::create(std::move(contents->objects), contents->orientation);
+        if (!created) {
+            fmt::println(stderr, "error: {}: {}", paths_path, created.error().message);
+            return kExitInput;
+        }
+        scene = std::move(*created);
     }
 
     // The per-frame object list handed to the encoder: positions from the
-    // (possibly moving) placement, evaluated at each frame's END time (the
-    // atmos-path/GUI convention); OAMD object gain from the placement's
-    // linear gain (0 dB at unity - the audio itself already carries its
-    // authored level, this is renderer trim only).
+    // (possibly moving) scene, evaluated at each frame's END time (the
+    // atmos-path/GUI convention); OAMD object gain from the scene's linear
+    // gain (0 dB at unity - the audio itself already carries its authored
+    // level, this is renderer trim only).
     const auto objects_at = [&](std::size_t end_sample) {
         std::vector<ac3::oba::DynamicObject> out(count);
         const auto placed =
-            paths ? ac3::oba::evaluate_placements(
-                        *paths, static_cast<double>(end_sample) /
+            scene ? scene->evaluate(static_cast<double>(end_sample) /
                                     static_cast<double>(wav->sample_rate))
                   : placement;
         for (std::size_t i = 0; i < count; ++i) {
@@ -388,41 +403,41 @@ int run_truehd_atmos(std::string_view in_path, std::string_view out_path,
 
     std::ofstream out{std::string{out_path}, std::ios::binary};
     if (!out) {
-        std::println(stderr, "error: cannot open {}", out_path);
-        return 1;
+        fmt::println(stderr, "error: cannot open {}", out_path);
+        return kExitOutput;
     }
     ac3::mlp::AtmosEncoder encoder(config);
     const std::size_t written = encode_all(encoder, &out);
     if (!out) {
-        std::println(stderr, "error: writing {} failed", out_path);
-        return 1;
+        fmt::println(stderr, "error: writing {} failed", out_path);
+        return kExitOutput;
     }
     const std::size_t pcm_bytes = padded * count * static_cast<std::size_t>(wav->bits) / 8;
-    std::println("wrote {} access units to {}: {} dynamic objects as discrete lossless channels",
+    fmt::println("wrote {} access units to {}: {} dynamic objects as discrete lossless channels",
                  padded / frame, out_path, count);
-    std::println("{} PCM bytes -> {} MLP bytes ({:.1f}% of source, {}-bit, {} Hz, "
+    fmt::println("{} PCM bytes -> {} MLP bytes ({:.1f}% of source, {}-bit, {} Hz, "
                  "OAMD every {} access units)",
                  pcm_bytes, written, 100.0 * static_cast<double>(written) / pcm_bytes, wav->bits,
                  wav->sample_rate, config.metadata_interval);
-    std::println("peak data rate {:.1f} kbit/s (measured; FBA channel ceiling {} kbit/s)",
+    fmt::println("peak data rate {:.1f} kbit/s (measured; FBA channel ceiling {} kbit/s)",
                  static_cast<double>(config.peak_data_rate_16ths) * wav->sample_rate / 16000.0,
                  ac3::mlp::kPeakDataRateBitsPerSecond / 1000);
     if (count < src_channels) {
-        std::println("note: only the first {} of {} source channels are carried", count,
+        fmt::println("note: only the first {} of {} source channels are carried", count,
                      src_channels);
     }
     if (padded != source_frames) {
-        std::println("note: final access unit filled with {} silent samples "
+        fmt::println("note: final access unit filled with {} silent samples "
                      "(recorded in-stream; decode trims them)",
                      padded - source_frames);
     }
     if (encoder.rate_violations() != 0) {
-        std::println(stderr,
+        fmt::println(stderr,
                      "warning: {} access units exceed the 18 Mbit/s FBA channel - a "
                      "spec-minimum decoder FIFO could underrun",
                      encoder.rate_violations());
     }
-    return 0;
+    return kExitOk;
 }
 
 }  // namespace ac3cli::commands

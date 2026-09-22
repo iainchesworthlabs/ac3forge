@@ -1,0 +1,6 @@
+ac3iab::describe(ac3iab::IabError)
+ac3iab::parse_iabitstream(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+ac3iab::parse_iabitstream(std::basic_istream<char, std::char_traits<char> >&)
+ac3iab::parse_iaframe(std::span<std::byte const, 18446744073709551615ul>)
+ac3iab::parse_mxf_iab(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+ac3iab::parse_mxf_iab(std::basic_istream<char, std::char_traits<char> >&)

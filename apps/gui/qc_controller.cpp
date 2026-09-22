@@ -9,6 +9,7 @@
 #include <fstream>
 #include <ios>
 #include <iterator>
+#include <memory>
 #include <span>
 #include <utility>
 #include <vector>
@@ -19,6 +20,7 @@
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/qc.hpp"
+#include "container_input.hpp"
 
 using qc_detail::RawProgramme;
 using qc_detail::RawResult;
@@ -37,7 +39,11 @@ QString preset_display_name(ac3::meta::QcPresetId id) {
     switch (id) {
         case ac3::meta::QcPresetId::kEbuR128S2: return QStringLiteral("EBU R 128 s2");
         case ac3::meta::QcPresetId::kAtscA85: return QStringLiteral("ATSC A/85");
+        case ac3::meta::QcPresetId::kAtscA85Streaming:
+            return QStringLiteral("ATSC A/85 streaming");
         case ac3::meta::QcPresetId::kNetflix: return QStringLiteral("Netflix");
+        case ac3::meta::QcPresetId::kAppleMusicAtmos:
+            return QStringLiteral("Apple Music Atmos");
     }
     return QString();
 }
@@ -116,16 +122,28 @@ std::optional<RawResult> measure_ac3(std::span<const std::byte> stream, QString&
             meter->push(views);
         }
     }
+    // frames is non-empty (checked above), so the loop above ran at least
+    // once and its first iteration always emplaces meter_ch1/meter_ch2 or
+    // meter, matching dual_mono - both are always engaged by this point.
     if (dual_mono) {
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[0].integrated_lkfs = meter_ch1->integrated_lkfs();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[0].lra_lu = meter_ch1->loudness_range();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[0].true_peak_dbtp = meter_ch1->true_peak_dbtp();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[1].integrated_lkfs = meter_ch2->integrated_lkfs();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[1].lra_lu = meter_ch2->loudness_range();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[1].true_peak_dbtp = meter_ch2->true_peak_dbtp();
     } else {
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[0].integrated_lkfs = meter->integrated_lkfs();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[0].lra_lu = meter->loudness_range();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[0].true_peak_dbtp = meter->true_peak_dbtp();
     }
     result.seconds = static_cast<double>(result.unit_count) *
@@ -144,7 +162,10 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
         error = QStringLiteral("Not a valid E-AC-3 stream.");
         return std::nullopt;
     }
-    ac3::Eac3Decoder decoder;
+    // Heap-allocated (PREfast's C6262, alert #91): Eac3Decoder's per-block
+    // scratch members pushed this stack declaration over the threshold -
+    // same pattern as examples/atmos_objects.cpp (PR #295).
+    auto decoder = std::make_unique<ac3::Eac3Decoder>();
     RawResult result;
     result.codec_label = QStringLiteral("E-AC-3");
     result.unit_label = QStringLiteral("access unit(s)");
@@ -197,7 +218,7 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
     };
 
     for (const auto& frame : *frames) {
-        const auto decoded = decoder.decode_substream(frame);
+        const auto decoded = decoder->decode_substream(frame);
         if (!decoded) {
             error = QStringLiteral("Decode failed (code %1).")
                         .arg(static_cast<int>(decoded.error()));
@@ -207,7 +228,7 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
             ingest(**decoded);
         }
     }
-    for (const auto& sub : decoder.flush()) {
+    for (const auto& sub : decoder->flush()) {
         ingest(sub);
     }
 
@@ -215,16 +236,28 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
         error = QStringLiteral("Stream carried no independent substream.");
         return std::nullopt;
     }
+    // have_first is checked just above and only ingest() sets it, in the same
+    // branch that emplaces meter_ch1/meter_ch2 or meter (matching dual_mono),
+    // so whichever one dual_mono selects is always engaged by this point.
     if (dual_mono) {
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[0].integrated_lkfs = meter_ch1->integrated_lkfs();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[0].lra_lu = meter_ch1->loudness_range();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[0].true_peak_dbtp = meter_ch1->true_peak_dbtp();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[1].integrated_lkfs = meter_ch2->integrated_lkfs();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[1].lra_lu = meter_ch2->loudness_range();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[1].true_peak_dbtp = meter_ch2->true_peak_dbtp();
     } else {
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[0].integrated_lkfs = meter->integrated_lkfs();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[0].lra_lu = meter->loudness_range();
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
         result.programmes[0].true_peak_dbtp = meter->true_peak_dbtp();
     }
     result.seconds = static_cast<double>(result.unit_count) *
@@ -248,10 +281,20 @@ MeasureOutcome measure_file(const QString& path) {
         outcome.error = QStringLiteral("%1 is empty.").arg(path);
         return outcome;
     }
-    std::vector<std::byte> stream(raw.size());
+    std::vector<std::byte> file_bytes(raw.size());
     for (std::size_t i = 0; i < raw.size(); ++i) {
-        stream[i] = static_cast<std::byte>(static_cast<unsigned char>(raw[i]));
+        file_bytes[i] = static_cast<std::byte>(static_cast<unsigned char>(raw[i]));
     }
+
+    // roadmap IO2: the file itself unchanged if it is not a container this
+    // build reads, or the first AC-3/E-AC-3 track demuxed out of one - the
+    // same sniff-and-demux ac3cli's own decode/qc/levels/play/monitor use.
+    auto demuxed = ac3::apps::elementary_stream_from_bytes(file_bytes);
+    if (!demuxed.error.empty()) {
+        outcome.error = QStringLiteral("%1 is a %2").arg(path, to_qstring(demuxed.error));
+        return outcome;
+    }
+    const auto stream = std::move(demuxed.bytes);
 
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
@@ -348,6 +391,14 @@ QVariantList QcController::programmes() const {
             preset_row[QStringLiteral("targetLkfs")] = preset.target_lkfs;
             preset_row[QStringLiteral("toleranceLu")] = preset.tolerance_lu;
             preset_row[QStringLiteral("maxTruePeakDbtp")] = preset.max_true_peak_dbtp;
+            // The document, version and date this row's numbers came out of,
+            // and whether its loudness figure is a band to sit inside or a
+            // ceiling not to exceed - a verdict against an unnamed edition,
+            // or a ceiling drawn as a band, is not a QC result anyone can act
+            // on. See ac3/meta/qc.hpp.
+            preset_row[QStringLiteral("source")] = to_qstring(preset.source);
+            preset_row[QStringLiteral("loudnessIsCeiling")] =
+                preset.loudness_limit == ac3::meta::QcLoudnessLimit::kCeiling;
             preset_row[QStringLiteral("loudnessDelta")] = verdict.loudness_delta_lu.value_or(0.0);
             preset_row[QStringLiteral("loudnessPass")] = verdict.loudness_pass;
             preset_row[QStringLiteral("truePeakMargin")] =

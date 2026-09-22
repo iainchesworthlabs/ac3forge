@@ -1,0 +1,17 @@
+[package]
+name = "ac3forge-sys"
+description = "Raw FFI bindings to ac3forge's C API (ac3forge_c/ac3forge.h), bindgen-generated at build time"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+links = "ac3forge_c"
+build = "build.rs"
+
+[dependencies]
+
+[build-dependencies]
+bindgen = "0.70"
+cmake = "0.1"

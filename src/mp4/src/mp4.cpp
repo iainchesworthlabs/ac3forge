@@ -2,7 +2,13 @@
 
 #include <array>
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
 #include <limits>
+#include <span>
+#include <string_view>
+#include <vector>
 
 #include "isobmff_detail.hpp"
 

@@ -1,20 +1,19 @@
-# ADM / BW64 reading: `ac3adm::ac3adm`
+# ADM / BW64 reading and writing: `ac3adm::ac3adm`
 
 `ac3adm/ac3adm.hpp`, library `ac3adm::ac3adm`. A standalone BW64/RF64 + Audio Definition Model
-(ADM) parser: the professional delivery format Netflix's and Apple's own Atmos ingest pipelines
-require. Like `matroska::matroska`, `mp4::mp4` and `mpegts::mpegts`, it links nothing from
-`ac3::forge` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist. It differs from
-those three in one way: they are container **writers**, this is a container **reader**, because
-that's the direction a professional master needs to travel to reach this project's own encoder
-in the first place.
+(ADM) parser and writer: the professional delivery format Netflix's and Apple's own Atmos ingest
+pipelines require. Like `matroska::matroska`, `mp4::mp4` and `mpegts::mpegts`, it links nothing
+from `ac3::forge` — it has no idea AC-3, E-AC-3 or the JOC/Atmos object layer exist.
 
-Mapping the graph this module parses onto `ac3::oba::AtmosEncoder` is a separate module,
-[`ac3::admbridge`](adm-bridge.md) (done); driving the two together end to end — a real ADM BWF
-master straight to a DD+ JOC E-AC-3 stream — is also done: `ac3cli atmos-adm` (see
-[Commands](../cli/commands.md)) and
+Mapping the graph this module parses onto `ac3::oba::AtmosEncoder` (ADM → encode) or building it
+from a decoded `ac3::Eac3Decoder` programme (decode → ADM, roadmap item IM2) is a separate module,
+[`ac3::admbridge`](adm-bridge.md); driving the read direction end to end — a real ADM BWF master
+straight to a DD+ JOC E-AC-3 stream — is `ac3cli atmos-adm`, and the write direction is
+`ac3cli decode ... adm_out` (see [Commands](../cli/commands.md)) and
 [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp). This page and
-[`examples/read_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) only demonstrate this module's own API — opening a file and walking the
-parsed graph; `encode_adm.cpp` is the one that shows the full pipeline.
+[`examples/read_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/read_adm.cpp) only demonstrate this module's own read-side API — opening a file and walking the
+parsed graph; `encode_adm.cpp` is the one that shows the full read-direction pipeline. See
+"Writing" below for `write_bw64()`.
 
 **Opt-in, unlike every other module in this library.** `AC3FORGE_BUILD_ADM` defaults **off**, and
 turning it on additionally needs `-DVCPKG_MANIFEST_FEATURES=adm` (see
@@ -31,7 +30,7 @@ unconditionally. See "Why opt-in" below for the reasoning.
 ```cpp
 const auto document = ac3adm::parse_bw64(fixture_path);
 if (!document) {
-    std::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
+    fmt::printf("parse_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(document.error()).size()),
                 ac3adm::describe(document.error()).data());
     return 1;
 }
@@ -39,11 +38,11 @@ if (!document) {
 
 ```cpp
 for (const auto& programme : document->model.programmes) {
-    std::printf("  programme %s (%s) -> %zu content(s)\n", programme.id.c_str(), programme.name.c_str(),
+    fmt::printf("  programme %s (%s) -> %zu content(s)\n", programme.id.c_str(), programme.name.c_str(),
                 programme.content_refs.size());
 }
 for (const auto& object : document->model.objects) {
-    std::printf("  object %s (%s), start=%.5fs, %zu track UID ref(s)\n", object.id.c_str(), object.name.c_str(),
+    fmt::printf("  object %s (%s), start=%.5fs, %zu track UID ref(s)\n", object.id.c_str(), object.name.c_str(),
                 object.start_s, object.track_uid_refs.size());
 }
 ```
@@ -56,10 +55,10 @@ back and prints what it found.
 ## What gets parsed
 
 - **The container** (Recommendation ITU-R BS.2088-1, Annex 1): `<fmt >`/`<data>` integer PCM
-  (8/16/24/32-bit — see "Known limitation" below for float32), the `<ds64>` 64-bit size table for
-  `RF64`/`BW64`-headed files, `<chna>` (the track-number ↔ ADM-ID join table) and `<axml>` (the
-  embedded ADM XML document itself). A plain `RIFF` header is accepted too, for the (very common)
-  case of a master that stays under the 4 GB threshold RF64 exists to lift.
+  (8/16/24/32-bit) and IEEE float (32/64-bit — see "PCM formats" below), the `<ds64>` 64-bit
+  size table for `RF64`/`BW64`-headed files, `<chna>` (the track-number ↔ ADM-ID join table) and
+  `<axml>` (the embedded ADM XML document itself). A plain `RIFF` header is accepted too, for
+  the (very common) case of a master that stays under the 4 GB threshold RF64 exists to lift.
 - **The ADM object graph** (Recommendation ITU-R BS.2076-2, Annex 1): `audioProgramme` →
   `audioContent` → `audioObject` → `audioPackFormat`/`audioChannelFormat` (with its
   `audioBlockFormat` time-divisions — position, gain, width/height/depth, `channelLock`,
@@ -90,6 +89,53 @@ module (see below) report almost everything through one broad exception family e
 real failures currently surface as `kCannotOpen` (bad/truncated container), `kMalformedXml` (axml
 isn't well-formed XML) or `kMalformedAdm` (well-formed XML that isn't a valid ADM document) — see
 [`src/ac3adm/src/adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/src/adm.cpp)'s own comments for exactly which library exception maps to which `AdmError`.
+
+## Writing
+
+`write_bw64(path, document)` is the read side's mirror image: it turns an `AdmModel` (the same
+plain-data graph `parse_bw64` produces) into a libadm `adm::Document` (a new translator,
+`build_libadm_document()` in `src/ac3adm/src/adm_model.cpp`, alongside the existing read-side
+`build_adm_model()`), serializes it with `adm::writeXml()`, and writes the BW64 container
+(`<fmt >`/`<chna>`/`<axml>`/`<data>`) with libbw64's `Bw64Writer` (`bw64::writeFile()`) — the same
+two vendored libraries as the read side, in the other direction. Always 24-bit integer PCM
+(`EBU Tech 3306`'s own framing; libbw64's writer has no IEEE-float path at all, matching its
+reader's refusal — see "PCM formats" below).
+
+```cpp
+ac3adm::AdmDocument document;
+// ... populate document.model / document.chna / document.audio ...
+const auto written = ac3adm::write_bw64(path, document);
+if (!written) {
+    fmt::printf("write_bw64 failed: %.*s\n", static_cast<int>(ac3adm::describe(written.error()).size()),
+                ac3adm::describe(written.error()).data());
+    return 1;
+}
+```
+
+One asymmetry from the read side: `AdmModel`'s own ID strings (`AudioObject::id`,
+`ChnaEntry::uid`, ...) are used only as correlation keys while the object graph is wired together
+— they never appear literally in the written file. Real, BS.2076-2-formatted IDs come from
+libadm's own `adm::reassignIds()`, called once the whole graph is built; `write_bw64` reads those
+back to build `<chna>`'s `AudioId` rows. A caller is therefore free to use any unique, stable
+strings for `id`/`uid` fields, not just the `"AO_1001"`-style ones `parse_bw64` itself produces.
+`ChnaEntry::track_ref`/`pack_ref` are consequently read-path-only fields — `write_bw64` derives
+the real `trackRef`/`packRef` strings itself, so a caller building a document purely to write it
+may leave both empty.
+
+`write_bw64`'s own translator supports exactly the element shapes [ADM → Atmos bridging](adm-bridge.md)'s
+write direction (`ac3::admbridge::write()`) produces: `audioProgramme` → `audioContent` →
+`audioObject` (no nesting) → `audioPackFormat` (`Objects` or `DirectSpeakers`, no nesting) →
+`audioChannelFormat` (cartesian `audioBlockFormat`s only) → `audioStreamFormat` → `audioTrackFormat`
+→ `audioTrackUID`. `ac3::admbridge::write()` always populates the full `audioStreamFormat`/
+`audioTrackFormat` chain rather than BS.2076-2's plain-PCM shortcut (`audioTrackUID` referencing
+`audioPackFormat`/`audioChannelFormat` directly, with no stream/track format at all) — libadm's own
+`adm::reassignIds()` zeroes out any `audioChannelFormat` no `audioStreamFormat` references ("get an
+Id with the value zero and are thereby marked as ADM elements which should be ignored" -
+`adm/utilities/id_assignment.hpp`'s own doc comment), which the shortcut alone triggers; every
+channel this writer produced collapsed to the same `AC_00000000` id before this chain was added.
+`AdmWriteError::kInvalidDocument` covers every case outside that shape: an unresolved `*_refs`
+entry, Matrix/HOA/Binaural pack or channel types, nested references, or a block whose position is
+polar rather than cartesian.
 
 ## Built on the EBU's own reference implementations
 
@@ -132,19 +178,39 @@ turning it on needs the dedicated `adm` vcpkg feature to resolve those Boost pac
 with `AC3FORGE_BUILD_ADM=OFF` (the default) never touches `find_package(Boost)`, never fetches
 libbw64/libadm, and behaves identically to a build of this project before this module existed.
 
-For the same reason, `ac3adm::ac3adm` is **not** part of the installed `find_package(ac3forge)`
-package (see [the library overview](index.md)) and is **not** wired into the Android/Shield NDK
-build — see `src/ac3adm/CMakeLists.txt`'s own header comment for both.
+`ac3adm::ac3adm` IS part of the installed `find_package(ac3forge)` package (see
+[the library overview](index.md)), but **shared-only** — unlike every other module here, there is
+no `ac3adm::ac3adm_static` to link against, since a static archive would leave a downstream
+consumer with unresolved symbols into libbw64/libadm (neither installed/exported by this project
+in its own right); a self-contained `.so` absorbs both at its own build step instead. It is
+**not** wired into the Android/Shield NDK build — see `src/ac3adm/CMakeLists.txt`'s own header
+comment for both points.
 
-## Known limitation: float32 PCM
+## PCM formats
 
-Only integer PCM (8/16/24/32-bit) is currently supported. libbw64's own `<fmt >` parsing rejects
-any other `formatTag` outright — including IEEE-float (`WAVE_FORMAT_IEEE_FLOAT`, formatTag 3) —
-at open time (`"format unsupported: <tag>"`), which this module surfaces as `AdmError::
-kCannotOpen`. A float32 source file is rejected, not silently misread as integer PCM. Virtually
-every real ADM BWF master is 16- or 24-bit integer PCM in practice (EBU Tech 3306/BS.2088-1
-Annex 2 §2's own PCM-only framing), so adding float32 support has not been worth doing for
-phase 1 — see [`ac3adm/model.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/include/ac3adm/model.hpp)'s own `PcmAudio` comment.
+Integer PCM (8/16/24/32-bit) and IEEE float (32/64-bit) both read, and both come back as the
+same `[-1, 1)` floats on `PcmAudio::channels`. `bits_per_sample` reports the container width and
+is not, on its own, a statement about which of the two it was.
+
+The two arrive by different routes. Integer PCM goes through the vendored libbw64, which is also
+this module's reference for the container itself. libbw64's own `<fmt >` parsing rejects any
+other `formatTag` outright at open time (`"format unsupported: <tag>"`), IEEE float included, so
+a float master never reaches any of its accessors and there is nothing to widen from the
+outside. Rather than patch a dependency fetched from upstream at a pinned tag, a float file is
+detected up front and read by this module's own container walk instead
+([`src/ac3adm/src/float_pcm_bw64.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/src/float_pcm_bw64.hpp)) —
+which re-implements the chunk walk and the `<chna>` record table and nothing else: the `<axml>`
+bytes go through the identical libadm parse the ordinary path uses, so the ADM metadata cannot
+come out differently depending on how the samples were stored.
+
+That path is also the only one that can report `AdmError::kNotRiff`/`kMissingFmt`/`kMissingData`/
+`kUnsupportedFormat` precisely, because it does the walk itself. A file libbw64 opens and then
+rejects still surfaces as `kCannotOpen`, since its exceptions carry no type this module could map
+from — see [`ac3adm.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/include/ac3adm/ac3adm.hpp)'s
+own comment on those four errors.
+
+Most real ADM BWF masters are 16- or 24-bit integer (EBU Tech 3306/BS.2088-1 Annex 2 §2's own
+PCM-only framing). Float ones exist, and used to be refused outright.
 
 ---
 

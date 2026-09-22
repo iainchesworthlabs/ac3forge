@@ -47,10 +47,9 @@ class ChannelMeterView @JvmOverloads constructor(
     private val choreographer = Choreographer.getInstance()
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
+            if (!tickerRunning) return
             invalidate()
-            if (isAttachedToWindow) {
-                choreographer.postFrameCallback(this)
-            }
+            choreographer.postFrameCallback(this)
         }
     }
 
@@ -85,12 +84,39 @@ class ChannelMeterView @JvmOverloads constructor(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        choreographer.postFrameCallback(frameCallback)
+        if (windowVisibility == View.VISIBLE) startTicker()
     }
 
     override fun onDetachedFromWindow() {
-        choreographer.removeFrameCallback(frameCallback)
+        stopTicker()
         super.onDetachedFromWindow()
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility == View.VISIBLE && isAttachedToWindow) startTicker() else stopTicker()
+    }
+
+    // The ticker is stopped whenever this view's window stops being visible,
+    // not only when the view is detached. Launching About (or pressing HOME)
+    // leaves this view attached to a window that is no longer on screen, so
+    // an isAttachedToWindow-only gate kept an invalidate-per-vsync loop -
+    // and the per-frame JNI calls in onDraw - running behind whatever came
+    // forward. tickerRunning is what keeps the two entry points
+    // (onAttachedToWindow, onWindowVisibilityChanged) from each posting their
+    // own self-reposting callback and doubling the frame rate.
+    private var tickerRunning = false
+
+    private fun startTicker() {
+        if (tickerRunning) return
+        tickerRunning = true
+        choreographer.postFrameCallback(frameCallback)
+    }
+
+    private fun stopTicker() {
+        if (!tickerRunning) return
+        tickerRunning = false
+        choreographer.removeFrameCallback(frameCallback)
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

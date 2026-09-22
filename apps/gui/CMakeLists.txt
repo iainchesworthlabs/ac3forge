@@ -7,7 +7,7 @@
 # macOS), never a vcpkg port. Machines with no Qt kit build the rest of the
 # project with -DAC3FORGE_BUILD_GUI=OFF.
 # ---------------------------------------------------------------------------
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concurrent)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concurrent LinguistTools)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -19,12 +19,37 @@ qt_add_executable(ac3gui
     qc_controller.hpp
     object_decode_controller.cpp
     object_decode_controller.hpp
-    recording_sink.cpp
-    recording_sink.hpp
+    stream_player_controller.cpp
+    stream_player_controller.hpp
+    channel_geometry.cpp
+    channel_geometry.hpp
+    ../common/fmp4_folder_writer.cpp
+    ../common/fmp4_folder_writer.hpp
+    ../common/recording_sink.cpp
+    ../common/recording_sink.hpp
+    ../common/container_input.cpp
+    ../common/container_input.hpp
     system_theme.cpp
     system_theme.hpp
     truehd_controller.cpp
-    truehd_controller.hpp)
+    truehd_controller.hpp
+    language_manager.cpp
+    language_manager.hpp)
+
+# RecordingSink and its Fmp4FolderWriter moved to apps/common when
+# `ac3cli record`/`live` started writing their takes through the same classes
+# (roadmap IO9) - see recording_sink.hpp's own header comment, and
+# Fmp4FolderWriter's own comment on the third near-identical copy this move
+# closes. `RecordingSink::Config::fmp4_window_segments` carries container=
+# fmp4's fmp4-window= knob through to Fmp4FolderWriter::open(), so there is no
+# separate writer for it any more. Compiled straight into this target as it
+# always was (the source lines above); apps/common has no CMakeLists.txt and
+# no library target of its own, because a two-class static library shared by
+# exactly two executables in the same build would be more machinery than the
+# thing it wraps. container_input.cpp (roadmap IO2) joined it the same way,
+# for the QC/Inspect pickers below to accept a container in place of a bare
+# elementary stream the same way ac3cli's decode/qc/levels/play/monitor do.
+target_include_directories(ac3gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 # The QML lives in qml/ on disk but belongs at the root of the QML module, so
 # every file is aliased to its bare name. Left alone, Qt lays the module out as
@@ -56,7 +81,37 @@ set(AC3_QML_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/QcGateMeter.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/QcDialog.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/ObjectInspectorDialog.qml"
-    "${CMAKE_CURRENT_SOURCE_DIR}/qml/TruehdDialog.qml")
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/TruehdDialog.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/StreamPlayerDialog.qml")
+
+# Roadmap UX3: one .ts per shipped language, French/German/Spanish/Arabic/
+# Hebrew/Yiddish - the same set and order LanguageManager's kLanguages uses
+# (language_manager.cpp), matching the canonical set already shipped by the
+# sibling CountdownSolver project (R:\CountdownSolver). Shared with
+# tests/CMakeLists.txt below for the same reason AC3_QML_FILES is: that file
+# is include()d into this one's own scope, not a separate directory, so a
+# plain variable set here is already visible there. See
+# docs/gui/localisation.md for how to update or add to this list, and
+# translations/ac3gui_xx.ts (tools/generators/gen_pseudo_locale.py) for the
+# separate pseudo-locale QA fixture, which is intentionally NOT part of this
+# list - it is loaded only through the AC3GUI_LOCALE test override, never
+# through the real qt_add_translations() pipeline below.
+set(AC3_TS_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_fr.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_de.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_es.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_ar.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_he.ts"
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_yi.ts")
+
+# The pseudo-locale QA fixture (see AC3_TS_FILES's own comment above) -
+# deliberately kept out of that list and out of ac3gui's own
+# qt_add_translations() call below, since production ac3gui.exe has no
+# reason to carry it. tests/CMakeLists.txt embeds it into ac3gui_qmltests
+# ALONGSIDE AC3_TS_FILES instead, purely for tst_localisation_pipeline.qml's
+# AC3GUI_LOCALE=xx suite.
+set(AC3_PSEUDO_TS_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3gui_xx.ts")
 
 foreach(qml_file IN LISTS AC3_QML_FILES)
     get_filename_component(qml_name "${qml_file}" NAME)
@@ -90,6 +145,12 @@ qt_add_qml_module(ac3gui
 # named static weights on every platform this builds for, while variable-
 # font axis selection is only dependable from Qt 6.7 up. main.cpp registers
 # these with QFontDatabase before the engine loads.
+#
+# NotoSansArabic/NotoSansHebrew (roadmap UX3, RTL languages) are the same
+# OFL-licensed faces the sibling CountdownSolver project already vets and
+# ships for exactly this purpose (Latin has no Arabic/Hebrew glyph coverage,
+# and Yiddish is written in Hebrew script) - copied verbatim rather than
+# re-sourced, license files included per font per Noto's own naming.
 qt_add_resources(ac3gui "ac3gui_fonts"
     PREFIX "/fonts"
     BASE "${CMAKE_CURRENT_SOURCE_DIR}/fonts"
@@ -98,7 +159,11 @@ qt_add_resources(ac3gui "ac3gui_fonts"
         "${CMAKE_CURRENT_SOURCE_DIR}/fonts/Archivo-Medium.ttf"
         "${CMAKE_CURRENT_SOURCE_DIR}/fonts/Archivo-SemiBold.ttf"
         "${CMAKE_CURRENT_SOURCE_DIR}/fonts/Archivo-ExtraBold.ttf"
-        "${CMAKE_CURRENT_SOURCE_DIR}/fonts/OFL.txt")
+        "${CMAKE_CURRENT_SOURCE_DIR}/fonts/OFL.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/fonts/NotoSansArabic.ttf"
+        "${CMAKE_CURRENT_SOURCE_DIR}/fonts/NotoSansArabic-OFL.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/fonts/NotoSansHebrew.ttf"
+        "${CMAKE_CURRENT_SOURCE_DIR}/fonts/NotoSansHebrew-OFL.txt")
 
 # The build-tree/window-icon PNGs (main.cpp's QGuiApplication::setWindowIcon)
 # plus AboutDialog.qml's own Image. Generated, along with every other
@@ -110,6 +175,30 @@ qt_add_resources(ac3gui "ac3gui_icons"
     FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-32.png"
         "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-256.png")
+
+# ---------------------------------------------------------------------------
+# Roadmap UX3: lupdate (scan every source SOURCE_TARGETS' own target already
+# lists - AC3_QML_FILES is the only source of qsTr() calls in this app; no
+# .cpp file has one) plus lrelease (.ts -> .qm) and a /i18n resource
+# embedding, all in one call. LanguageManager (language_manager.cpp) loads
+# the matching ac3gui_<code>.qm at runtime.
+#
+# IMMEDIATE_CALL, and SOURCE_TARGETS given explicitly rather than left to the
+# default auto-collection: CountdownSolver's own src/app/CMakeLists.txt
+# documents a real, reproduced Xcode "is attached to multiple targets"
+# failure from the deferred form's directory-scope mismatch (its
+# qt_add_translations() call and its QML module target lived in different
+# scopes; ac3gui doesn't have that split - qt_add_qml_module(ac3gui ...)
+# above backs the executable target directly - but there is no upside to
+# relying on the deferred/auto-collected path here either, so this avoids
+# the failure mode outright rather than trusting the scopes stay aligned).
+# ---------------------------------------------------------------------------
+qt_add_translations(ac3gui
+    IMMEDIATE_CALL
+    SOURCE_TARGETS ac3gui
+    TS_FILES ${AC3_TS_FILES}
+    LUPDATE_TARGET ac3gui_lupdate
+    LRELEASE_TARGET ac3gui_lrelease)
 
 # Qt generates a lot of C++ into this target - moc output, the QML type
 # registrations, the rcc resources and qmlcachegen's AOT-compiled QML - and it
@@ -186,6 +275,7 @@ target_link_libraries(ac3gui
         mp4::mp4
         mpegts::mpegts
         ac3::warnings
+        ac3::fmt
         Qt6::Core
         Qt6::Gui
         Qt6::Quick
@@ -231,6 +321,28 @@ elseif(APPLE)
         MACOSX_PACKAGE_LOCATION "Resources")
     target_sources(ac3gui PRIVATE "${AC3_GUI_ICON_ICNS}")
     set_target_properties(ac3gui PROPERTIES MACOSX_BUNDLE_ICON_FILE ac3forge.icns)
+
+    # Roadmap UX2: a custom Info.plist (Info.plist.in, beside this file) so
+    # .ac3/.ec3 get CFBundleDocumentTypes/UTExportedTypeDeclarations - the
+    # default Info.plist CMake generates when MACOSX_BUNDLE_INFO_PLIST is
+    # left unset carries neither, and supplying a template of our own means
+    # opting out of that default entirely, so every variable it would have
+    # substituted is set explicitly here too. These are plain CMake
+    # variables (not target properties) because that is what CMake's own
+    # bundle-generation logic - the same logic MACOSX_BUNDLE_ICON_FILE's
+    # target property above already reaches through - substitutes into
+    # Info.plist.in's ${VAR} tokens.
+    set(MACOSX_BUNDLE_EXECUTABLE_NAME "ac3gui")
+    set(MACOSX_BUNDLE_BUNDLE_NAME "ac3gui")
+    set(MACOSX_BUNDLE_INFO_STRING "${PROJECT_DESCRIPTION}")
+    set(MACOSX_BUNDLE_ICON_FILE "ac3forge.icns")
+    set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.iainchesworthlabs.ac3gui")
+    set(MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
+    set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
+    set(MACOSX_BUNDLE_LONG_VERSION_STRING "${PROJECT_VERSION_FULL}")
+    set(MACOSX_BUNDLE_COPYRIGHT "Copyright (c) Iain Chesworth")
+    set_target_properties(ac3gui PROPERTIES
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -353,7 +465,62 @@ if(WIN32 OR APPLE)
         TARGET ac3gui
         OUTPUT_SCRIPT AC3_GUI_DEPLOY_SCRIPT
         NO_UNSUPPORTED_PLATFORM_ERROR)
-    install(SCRIPT "${AC3_GUI_DEPLOY_SCRIPT}")
+    # COMPONENT runtime, not left implicit: install(SCRIPT) with no COMPONENT
+    # is filed under CPack's own "Unspecified" component, which only runs
+    # during a full (non-component-filtered) install - exactly what `cpack`
+    # always does here (CPACK_MONOLITHIC_INSTALL for DragNDrop, and the
+    # archive/DEB/RPM generators install every requested component in one
+    # pass), so this went unnoticed until something did a real
+    # component-scoped `cmake --install --component runtime` - .github/
+    # workflows/_build.yml's package-macos-universal job, which needs just
+    # the runtime component's tree, including this script's copied Qt
+    # Frameworks/PlugIns/QML, to lipo-merge against the other architecture's.
+    # Without this, that install would silently skip the whole deploy step
+    # and stage an ac3gui.app with no Qt inside it.
+    install(SCRIPT "${AC3_GUI_DEPLOY_SCRIPT}" COMPONENT runtime)
+endif()
+
+# ---------------------------------------------------------------------------
+# Roadmap UX2's Linux leg: what actually puts ac3gui in a desktop's own
+# application menu, the gap the roadmap named directly ("ac3gui is absent
+# from Linux application menus"). Every file lives under packaging/linux/
+# beside this CMakeLists.txt rather than under icons/ (the macOS/Windows
+# icon assets .rc.in/.icns wiring above already claims that directory for a
+# narrower, per-platform meaning) and installs under the standard XDG/FHS
+# paths GNUInstallDirs' own CMAKE_INSTALL_DATADIR already resolves
+# correctly for both a system prefix and a package's staging root. COMPONENT
+# runtime - same component ac3gui's own binary installs under, so a .deb/
+# .rpm split by component (cmake/Packaging.cmake) still ships every one of
+# these alongside the executable they describe rather than needing a
+# component of its own.
+#
+# LINUX, not "UNIX AND NOT APPLE": the same variable
+# cmake/Packaging.cmake's own CPACK_SYSTEM_NAME block already uses for
+# exactly this Linux-not-any-other-Unix distinction (a CMake >= 3.25
+# built-in, true only on Linux).
+# ---------------------------------------------------------------------------
+if(LINUX)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3gui.desktop"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
+        COMPONENT runtime)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3gui.metainfo.xml"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo"
+        COMPONENT runtime)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/ac3gui-mime.xml"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/mime/packages"
+        COMPONENT runtime)
+    # Both sizes generate_icons.py already produces (the same two the
+    # in-app window/taskbar icon above embeds via qt_add_resources) - the
+    # hicolor theme picks whichever fits, same convention every other
+    # freedesktop-menu application follows.
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-256.png"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps"
+        RENAME "ac3gui.png"
+        COMPONENT runtime)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-32.png"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/32x32/apps"
+        RENAME "ac3gui.png"
+        COMPONENT runtime)
 endif()
 
 # Qt Quick Test coverage for the interactive surfaces above - gated the same

@@ -25,6 +25,7 @@ using ac3::coreaudio::float_to_samples;
 using ac3::coreaudio::physical_format_id;
 using ac3::coreaudio::samples_to_float;
 using ac3::coreaudio::SampleFormat;
+using ac3::coreaudio::system_audio_tap_api_available;
 using ac3::audio::BitstreamFormat;
 
 TEST_CASE("E-AC-3 runs the carrier four times as fast as its content") {
@@ -145,6 +146,17 @@ TEST_CASE("32-bit integer samples round-trip within quantisation error") {
     for (std::size_t i = 0; i < in.size(); ++i) {
         CHECK(std::abs(out[i] - in[i]) < 0.0001f);
     }
+}
+
+TEST_CASE("this CI runner's OS build exposes the Core Audio tap API") {
+    // A real assertion, not a tautology: GitHub's macos-latest runners are
+    // real Apple Silicon Macs (see docs/platforms/macos.md), so this pins
+    // "the hosted image is new enough for AudioHardwareCreateProcessTap" as a
+    // regression - it would fail the day GitHub pins that image to something
+    // older than macOS 14.2, which is exactly the kind of drift a pure
+    // version gate can catch without a tap, a permission prompt or a Mac on
+    // someone's desk.
+    CHECK(system_audio_tap_api_available());
 }
 
 TEST_CASE("a device with no CFStringRef UID names nothing openable") {

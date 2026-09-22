@@ -88,12 +88,26 @@ Dialog {
     FileDialog {
         id: objFileDialog
         title: qsTr("Choose an E-AC-3 stream")
-        nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"), qsTr("All files (*)")]
+        // roadmap IO2: a Matroska/MP4/MPEG-TS container works too -
+        // ObjectDecodeController sniffs the actual bytes rather than
+        // trusting the extension, so this list is a convenience for the
+        // picker only.
+        nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"),
+                     qsTr("Containers (*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts)"),
+                     qsTr("All files (*)")]
         onAccepted: ObjectDecodeController.inspectFile(selectedFile)
     }
 
     contentItem: ColumnLayout {
         spacing: Theme.space4
+
+        // A Popup/Dialog is not itself an Item ("Accessible must be
+        // attached to an Item or an Action" at runtime otherwise) - its
+        // contentItem is. title is "" (a styled Text below draws the
+        // visible "Inspect objects" heading instead), so Dialog's own
+        // title-derived accessible name has nothing to read without this.
+        Accessible.role: Accessible.Dialog
+        Accessible.name: qsTr("Inspect objects")
 
         RowLayout {
             Layout.fillWidth: true
@@ -144,6 +158,8 @@ Dialog {
                 running: ObjectDecodeController.busy
                 implicitWidth: 24
                 implicitHeight: 24
+                Accessible.role: Accessible.Indicator
+                Accessible.name: qsTr("Decoding…")
             }
         }
 
@@ -223,6 +239,13 @@ Dialog {
                             root.playing = false;
                             root.frameIndex = Math.round(value);
                         }
+                        Accessible.name: qsTr("Frame")
+                        Accessible.description: root.currentFrame
+                            ? qsTr("%1 s, frame %2 of %3")
+                                  .arg(root.currentFrame.time.toFixed(2))
+                                  .arg(root.frameIndex + 1)
+                                  .arg(ObjectDecodeController.frameCount)
+                            : ""
                     }
                     Connections {
                         target: root
@@ -268,6 +291,15 @@ Dialog {
                             border.color: Theme.divider
                             border.width: 1
 
+                            // A picture of the same objects the list below
+                            // already states in full (position, gain, size,
+                            // lock) as text - so the alternative here points
+                            // there rather than re-deriving every coordinate
+                            // into a second sentence.
+                            Accessible.role: Accessible.Graphic
+                            Accessible.name: qsTr("Room plan, top-down")
+                            Accessible.description: qsTr("%1 object(s); positions are listed in full below").arg(root.currentObjects.length)
+
                             Rectangle {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 anchors.top: parent.top
@@ -310,9 +342,25 @@ Dialog {
                                     readonly property bool auditioning:
                                         index === ObjectDecodeController.auditioningIndex
 
-                                    width: auditioning ? 16 : 12
-                                    height: auditioning ? 16 : 12
+                                    // TS 103 420 §5.6.1.2's extent grows the
+                                    // dot: an object with width/depth/height
+                                    // is a region, not a point, and drawing
+                                    // both the same size hides the difference
+                                    // the bitstream actually carries.
+                                    readonly property real extent: Math.max(
+                                        planMarker.modelData.width || 0,
+                                        planMarker.modelData.depth || 0,
+                                        planMarker.modelData.height || 0)
+
+                                    width: (auditioning ? 16 : 12) + extent * 20
+                                    height: width
+                                    radius: width / 2
                                     color: auditioning ? Theme.accent : Theme.neutral800
+                                    // §5.6.1.5.1 b_object_snap: an object
+                                    // locked to a speaker is outlined rather
+                                    // than filled flat, so it reads as pinned.
+                                    border.width: planMarker.modelData.snap ? 2 : 0
+                                    border.color: Theme.textMuted
                                     x: planMarker.modelData.x * room.width - width / 2
                                     y: planMarker.modelData.y * room.height - height / 2
 
@@ -320,7 +368,11 @@ Dialog {
                                         anchors.left: parent.right
                                         anchors.leftMargin: 3
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: String(planMarker.index + 1)
+                                        // A bed channel names itself; a
+                                        // dynamic object only has an index.
+                                        text: planMarker.modelData.label
+                                            ? planMarker.modelData.label
+                                            : String(planMarker.index + 1)
                                         color: Theme.textMuted
                                         font.pixelSize: 9
                                         font.family: Theme.monoFamily
@@ -343,6 +395,14 @@ Dialog {
                             color: Theme.neutral100
                             border.color: Theme.divider
                             border.width: 1
+
+                            // Same objects as the plan view above, projected
+                            // side-on - see that Rectangle's own comment on
+                            // why the alternative text points at the list
+                            // below rather than repeating every coordinate.
+                            Accessible.role: Accessible.Graphic
+                            Accessible.name: qsTr("Room elevation, side-on")
+                            Accessible.description: qsTr("%1 object(s); positions are listed in full below").arg(root.currentObjects.length)
 
                             readonly property real earY: height * 0.66
                             function zToY(z) {
@@ -443,6 +503,24 @@ Dialog {
 
                                 readonly property bool auditioning:
                                     objectRow.index === ObjectDecodeController.auditioningIndex
+                                readonly property string label: objectRow.modelData.label
+                                    ? objectRow.modelData.label
+                                    : qsTr("obj %1").arg(objectRow.index + 1)
+
+                                // One compound summary for the whole row -
+                                // same "built from the fields already drawn"
+                                // discipline as QcDialog's own preset rows,
+                                // so this can never disagree with the five
+                                // separate Texts a sighted user reads.
+                                Accessible.role: Accessible.ListItem
+                                Accessible.name: objectRow.label
+                                Accessible.description: qsTr("x %1, y %2, z %3, %4 dB%5%6")
+                                    .arg(objectRow.modelData.x.toFixed(2))
+                                    .arg(objectRow.modelData.y.toFixed(2))
+                                    .arg(objectRow.modelData.z.toFixed(2))
+                                    .arg(objectRow.modelData.gainDb.toFixed(1))
+                                    .arg(objectRow.auditioning ? qsTr(", auditioning") : "")
+                                    .arg(objectRow.modelData.snap ? qsTr(", locked to a speaker") : "")
 
                                 Rectangle {
                                     Layout.preferredWidth: 10
@@ -451,7 +529,9 @@ Dialog {
                                 }
                                 Text {
                                     Layout.preferredWidth: 60
-                                    text: qsTr("obj %1").arg(objectRow.index + 1)
+                                    // A bed channel names itself ("L", "Tfr");
+                                    // a dynamic object only has an index.
+                                    text: objectRow.label
                                     font.pixelSize: 12
                                     font.family: Theme.monoFamily
                                     color: Theme.text
@@ -473,12 +553,39 @@ Dialog {
                                     font.family: Theme.monoFamily
                                     color: Theme.neutral700
                                 }
+                                Text {
+                                    // TS 103 420 §5.6.1.2's extent and
+                                    // §5.6.1.5.1's channel lock. Blank for a
+                                    // point source with neither, which is
+                                    // most objects and every bed channel.
+                                    Layout.preferredWidth: 150
+                                    text: {
+                                        const w = objectRow.modelData.width || 0;
+                                        const d = objectRow.modelData.depth || 0;
+                                        const hh = objectRow.modelData.height || 0;
+                                        let parts = [];
+                                        if (w > 0 || d > 0 || hh > 0) {
+                                            parts.push(qsTr("size %1/%2/%3")
+                                                .arg(w.toFixed(2)).arg(d.toFixed(2)).arg(hh.toFixed(2)));
+                                        }
+                                        if (objectRow.modelData.snap) {
+                                            parts.push(qsTr("snap"));
+                                        }
+                                        return parts.join("  ");
+                                    }
+                                    font.pixelSize: 10
+                                    font.family: Theme.monoFamily
+                                    color: Theme.neutral700
+                                }
                                 Item { Layout.fillWidth: true }
                                 Button {
                                     objectName: "oiAuditionButton-" + objectRow.index
                                     text: objectRow.auditioning ? qsTr("Stop") : qsTr("Audition")
                                     flat: true
                                     onClicked: ObjectDecodeController.auditionObject(objectRow.index)
+                                    Accessible.name: objectRow.auditioning
+                                        ? qsTr("Stop auditioning %1").arg(objectRow.label)
+                                        : qsTr("Audition %1").arg(objectRow.label)
                                 }
                             }
                         }
@@ -487,7 +594,7 @@ Dialog {
                             Layout.fillWidth: true
                             Layout.topMargin: Theme.space2
                             wrapMode: Text.WordWrap
-                            text: qsTr("Positions and gain are OAMD, read straight off this frame's own metadata. Audition plays JOC's reconstructed audio for that one object — a parametric estimate, not the original source (see docs/library/spatial-and-atmos.md).")
+                            text: qsTr("Positions, gain, extent and channel lock are OAMD, read straight off this frame's own metadata. A named row is a bed channel, drawn at the nominal room position of the speaker its label names rather than at a transmitted one. Audition plays JOC's reconstructed audio for that one object — a parametric estimate, not the original source (see docs/library/spatial-and-atmos.md).")
                             font.pixelSize: 10
                             color: Theme.neutral500
                         }

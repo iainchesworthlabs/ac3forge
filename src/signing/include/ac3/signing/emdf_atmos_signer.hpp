@@ -31,6 +31,7 @@
 #include <cstddef>
 #include <span>
 
+#include "ac3/signing/export.hpp"
 #include "ac3/signing/signing_key.hpp"
 
 namespace ac3::signing {
@@ -41,12 +42,32 @@ namespace ac3::signing {
 //
 // Scope: the ac3forge "atmos" output - a single independent 5.1 substream,
 // frame-level exponent strategy and SNR, no coupling. A frame outside that
-// subset asserts in debug and is left unsigned in release rather than signed
-// wrong.
-[[nodiscard]] int sign_atmos_stream(std::span<std::byte> stream, const SigningKey& key);
+// subset is left unsigned rather than signed wrong - the same "nothing to
+// do here" answer every entry point in this file gives a frame it does not
+// recognise, not a caller error - ac3::emdf::walk_frame's own `supported`
+// field (ac3/emdf/frame_layout.hpp) is what draws that scope.
+[[nodiscard]] AC3SIGNING_EXPORT int sign_atmos_stream(std::span<std::byte> stream,
+                                                       const SigningKey& key);
 
 // One syncframe. Returns true if it carried a container and was signed.
-[[nodiscard]] bool sign_atmos_frame(std::span<std::byte> frame, const SigningKey& key);
+[[nodiscard]] AC3SIGNING_EXPORT bool sign_atmos_frame(std::span<std::byte> frame,
+                                                       const SigningKey& key);
+
+// Whether this syncframe carries a non-zero authenticity tag - that is,
+// whether anyone has signed it - answered WITHOUT a key.
+//
+// Where the tag lives is fixed by the EMDF container's own protection-length
+// codes (§H.2.2.4); only whether it is the RIGHT tag needs the key. So the
+// two questions separate cleanly, and an inspection tool (`ac3cli probe`) can
+// report that a stream is signed, and by how many frames, while holding
+// nothing secret. False for a frame with no container, for one whose
+// container declares no primary protection field, and for one whose field is
+// all zeros - which is what this project's own writer leaves behind until
+// sign_atmos_frame replaces it.
+//
+// Note what this does NOT claim: a true here says a tag is present, never
+// that it is valid. Only verify_atmos_frame below, with the key, says that.
+[[nodiscard]] AC3SIGNING_EXPORT bool has_authenticity_tag(std::span<const std::byte> frame);
 
 // A frame with no EMDF object container is neither "verified" nor "failed" -
 // there is nothing in it to check - so that case is its own outcome
@@ -69,15 +90,21 @@ struct VerifySummary {
 };
 
 // Checks every syncframe in `stream` against `key`, without modifying it.
-[[nodiscard]] VerifySummary verify_atmos_stream(std::span<const std::byte> stream,
-                                                const SigningKey& key);
+//
+// Verifying runs on a stream the caller did not produce (`ac3cli decode
+// ... verify-objects` points it at whatever arrived), so a plain non-Atmos
+// E-AC-3 frame is an ordinary input here, answered with kNoContainer, not a
+// caller error - see sign_atmos_stream's own comment above for where that
+// tolerance actually lives.
+[[nodiscard]] AC3SIGNING_EXPORT VerifySummary verify_atmos_stream(std::span<const std::byte> stream,
+                                                                   const SigningKey& key);
 
 // One syncframe. Mirrors sign_atmos_frame's exact construction (excise the
 // framing/metadata/skip/CRC holes into message A, zero the tag bits in the
 // container to build message B, HMAC(key, A||B) truncated to the primary
 // protection field's width) but reads the existing protection_bits_primary
 // bits instead of writing computed ones, and compares.
-[[nodiscard]] VerifyResult verify_atmos_frame(std::span<const std::byte> frame,
-                                              const SigningKey& key);
+[[nodiscard]] AC3SIGNING_EXPORT VerifyResult verify_atmos_frame(std::span<const std::byte> frame,
+                                                                 const SigningKey& key);
 
 }  // namespace ac3::signing

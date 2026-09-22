@@ -13,7 +13,7 @@
 // value, holding the codeword in the low `bits` bits, MSB first - which is
 // the order §6.6.3 reads them in ("starting with the MSB").
 
-namespace ac3::joc {
+namespace ac3::oba::joc {
 
 struct HuffCode {
     std::uint32_t code;
@@ -222,4 +222,4 @@ inline constexpr std::array<std::array<std::uint8_t, 64>, 8> kSubbandToBand = {{
     {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16, 16, 17, 17, 17, 18, 18, 18, 18, 19, 19, 19, 19, 19, 20, 20, 20, 20, 20, 20, 21, 21, 21, 21, 21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22}},
 }};
 
-}  // namespace ac3::joc
+}  // namespace ac3::oba::joc

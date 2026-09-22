@@ -12,6 +12,7 @@
 #include <QtQmlIntegration>
 
 #include <atomic>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -23,12 +24,15 @@
 
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/capture.hpp"
+#include "ac3/audio/live_positions.hpp"
 #include "ac3/audio/resampler.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/oba/motion.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/oba/scene.hpp"
 #include "ac3/audio/monitor.hpp"
 #include "ac3/audio/passthrough.hpp"
 
@@ -311,7 +315,11 @@ class EncoderController : public QObject {
     Q_PROPERTY(bool extrasLocked READ extrasLocked NOTIFY planChanged)
     // "<ear-level count>.<LFE count>[.<ceiling count>]", read off the actual
     // location mask so an unnamed combination still reads honestly - 3/2 +
-    // LFE + LFE2 is "5.2", 3/2 + LFE + rear + both ceiling pairs is "7.1.4".
+    // LFE + rear + LFE2 is "7.2", 3/2 + LFE + rear + both ceiling pairs is
+    // "7.1.4". A bare 3/2 + LFE + LFE2 with no other extra would read as
+    // "5.2", but chanmap::allocate() (and so toggleExtra/extrasModel) never
+    // lets the picker reach it - LFE2 alone has no full-bandwidth channel to
+    // share its dependent substream with.
     Q_PROPERTY(QString channelShapeName READ channelShapeName NOTIFY planChanged)
     Q_PROPERTY(int channelBudgetUsed READ channelBudgetUsed NOTIFY planChanged)
     Q_PROPERTY(int channelBudgetMax READ channelBudgetMax CONSTANT)
@@ -369,6 +377,40 @@ class EncoderController : public QObject {
     Q_PROPERTY(int lfeMix READ lfeMix WRITE setLfeMix NOTIFY planChanged)
     Q_PROPERTY(int dmixIndex READ dmixIndex WRITE setDmixIndex NOTIFY planChanged)
     Q_PROPERTY(QStringList dmixNames READ dmixNames CONSTANT)
+    // ---- service and production metadata (§5.4.2 / Table E1.2's infomdat) --
+    // One set of choices for both codecs: AC-3 writes them into bsi
+    // unconditionally, E-AC-3 into the optional infomdat element, and the
+    // plan turns that element on for itself. Which of them reach the wire
+    // still depends on the layout exactly as the syntax says - a 3/2 stream
+    // sends no dsurmod - so QML gates visibility on the availability
+    // properties below rather than each field hiding itself.
+    Q_PROPERTY(int bsmodIndex READ bsmodIndex WRITE setBsmodIndex NOTIFY planChanged)
+    Q_PROPERTY(QStringList bsmodNames READ bsmodNames CONSTANT)
+    // dsurmod and dheadphonmod exist at 2/0 only (§5.4.2.6, Table E1.2).
+    Q_PROPERTY(bool surroundModeAvailable READ surroundModeAvailable NOTIFY planChanged)
+    Q_PROPERTY(int dsurmodIndex READ dsurmodIndex WRITE setDsurmodIndex NOTIFY planChanged)
+    Q_PROPERTY(QStringList dsurmodNames READ dsurmodNames CONSTANT)
+    Q_PROPERTY(int dheadphonIndex READ dheadphonIndex WRITE setDheadphonIndex NOTIFY planChanged)
+    Q_PROPERTY(QStringList dheadphonNames READ dheadphonNames CONSTANT)
+    // dsurexmod exists at 2/2 and 3/2 only (acmod >= 0x6).
+    Q_PROPERTY(bool surroundExAvailable READ surroundExAvailable NOTIFY planChanged)
+    Q_PROPERTY(int dsurexIndex READ dsurexIndex WRITE setDsurexIndex NOTIFY planChanged)
+    Q_PROPERTY(QStringList dsurexNames READ dsurexNames CONSTANT)
+    // §5.4.2.13-15's audprodie group. -1 on mixLevelDbSpl clears the flag,
+    // since "no production information" is a state of its own rather than a
+    // level of zero.
+    Q_PROPERTY(int mixLevelDbSpl READ mixLevelDbSpl WRITE setMixLevelDbSpl NOTIFY planChanged)
+    Q_PROPERTY(int roomTypeIndex READ roomTypeIndex WRITE setRoomTypeIndex NOTIFY planChanged)
+    Q_PROPERTY(QStringList roomTypeNames READ roomTypeNames CONSTANT)
+    Q_PROPERTY(int adConvIndex READ adConvIndex WRITE setAdConvIndex NOTIFY planChanged)
+    Q_PROPERTY(QStringList adConvNames READ adConvNames CONSTANT)
+    Q_PROPERTY(bool copyrightBit READ copyrightBit WRITE setCopyrightBit NOTIFY planChanged)
+    Q_PROPERTY(bool originalBitstream READ originalBitstream WRITE setOriginalBitstream NOTIFY planChanged)
+    // Annex D (bsid 6) is AC-3's only home for the Surround EX, Headphone and
+    // A/D flags - E-AC-3 carries them in infomdat and has no alternate syntax
+    // at all, so the toggle is offered only on AC-3.
+    Q_PROPERTY(bool annexDAvailable READ annexDAvailable NOTIFY planChanged)
+    Q_PROPERTY(bool annexD READ annexD WRITE setAnnexD NOTIFY planChanged)
     // Every non-default metadata choice as ac3cli's own trailing tokens
     // ("drc=film_standard dialnorm=auto heavy …"), space-joined and in
     // print_meta_usage()'s exact grammar; empty when everything is at its
@@ -558,6 +600,31 @@ class EncoderController : public QObject {
     // also makes true (the leg always carries less than the main encode).
     Q_PROPERTY(bool liveDownmixLeg READ liveDownmixLeg NOTIFY liveActiveChanged)
 
+    // ---- live object-position source over OSC (roadmap UX4) ----------------
+    // A real live position source for the live room's objects instead of
+    // manual placement - ac3::audio::LivePositionSource drained into an
+    // ac3::oba::SceneCursor once per encode frame, the same seam
+    // 'ac3cli live mode=atmos positions=osc:<port>' lands on. Pre-flight
+    // only, same reasoning as liveWavSafetyCopy above: startLiveSession
+    // reads these once, at session start, and they are fixed for that
+    // session's lifetime - the toggle re-enables for the NEXT session.
+    Q_PROPERTY(bool liveOscEnabled READ liveOscEnabled WRITE setLiveOscEnabled NOTIFY
+                   liveOscConfigChanged)
+    Q_PROPERTY(int liveOscPort READ liveOscPort WRITE setLiveOscPort NOTIFY liveOscConfigChanged)
+    // Off by default: the bind address is loopback (127.0.0.1) unless this
+    // is explicitly turned on, matching 'ac3cli live positions=osc:local:...'
+    // vs '...osc:any:...' - see docs/threat-model.md.
+    Q_PROPERTY(bool liveOscAnyInterface READ liveOscAnyInterface WRITE setLiveOscAnyInterface
+                   NOTIFY liveOscConfigChanged)
+    Q_PROPERTY(bool liveOscListening READ liveOscListening NOTIFY liveActiveChanged)
+    // Empty while listening; a bind failure's message otherwise - the same
+    // "explain rather than silently do nothing" idiom liveReceiverPlanText
+    // already uses for the passthrough leg.
+    Q_PROPERTY(QString liveOscStatus READ liveOscStatus NOTIFY liveActiveChanged)
+    Q_PROPERTY(qint64 liveOscDatagrams READ liveOscDatagrams NOTIFY liveStatsChanged)
+    Q_PROPERTY(qint64 liveOscUpdatesApplied READ liveOscUpdatesApplied NOTIFY liveStatsChanged)
+    Q_PROPERTY(qint64 liveOscDropped READ liveOscDropped NOTIFY liveStatsChanged)
+
 public:
     explicit EncoderController(QObject* parent = nullptr);
     ~EncoderController() override;
@@ -673,6 +740,34 @@ public:
     [[nodiscard]] int lfeMix() const { return meta_.lfemix.value_or(-1); }
     [[nodiscard]] int dmixIndex() const { return static_cast<int>(meta_.dmixmod); }
     [[nodiscard]] QStringList dmixNames() const;
+    [[nodiscard]] int bsmodIndex() const { return static_cast<int>(meta_.info.bsmod); }
+    [[nodiscard]] QStringList bsmodNames() const;
+    [[nodiscard]] bool surroundModeAvailable() const { return bed_acmod_ == ac3::Acmod::k2_0; }
+    [[nodiscard]] int dsurmodIndex() const { return static_cast<int>(meta_.info.dsurmod); }
+    [[nodiscard]] QStringList dsurmodNames() const;
+    [[nodiscard]] int dheadphonIndex() const {
+        return static_cast<int>(meta_.info.dheadphonmod);
+    }
+    [[nodiscard]] QStringList dheadphonNames() const;
+    [[nodiscard]] bool surroundExAvailable() const {
+        return static_cast<std::uint8_t>(bed_acmod_) >= 0x6;
+    }
+    [[nodiscard]] int dsurexIndex() const { return static_cast<int>(meta_.info.dsurexmod); }
+    [[nodiscard]] QStringList dsurexNames() const;
+    [[nodiscard]] int mixLevelDbSpl() const {
+        return meta_.info.audprod ? ac3::meta::mix_level_db_spl(meta_.info.audprod->mixlevel)
+                                  : -1;
+    }
+    [[nodiscard]] int roomTypeIndex() const {
+        return meta_.info.audprod ? static_cast<int>(meta_.info.audprod->roomtyp) : 0;
+    }
+    [[nodiscard]] QStringList roomTypeNames() const;
+    [[nodiscard]] int adConvIndex() const { return static_cast<int>(meta_.adconvtyp); }
+    [[nodiscard]] QStringList adConvNames() const;
+    [[nodiscard]] bool copyrightBit() const { return meta_.info.copyrightb; }
+    [[nodiscard]] bool originalBitstream() const { return meta_.info.origbs; }
+    [[nodiscard]] bool annexDAvailable() const { return codec_ == ac3::plan::Codec::kAc3; }
+    [[nodiscard]] bool annexD() const { return meta_.annexd; }
 
     [[nodiscard]] QString routingSummary() const { return routing_summary_; }
     [[nodiscard]] QVariantList plannedChannels() const;
@@ -712,6 +807,17 @@ public:
     [[nodiscard]] bool livePassthrough() const { return live_passthrough_; }
     [[nodiscard]] bool liveWritingToDisk() const { return live_writing_to_disk_; }
     [[nodiscard]] bool liveWavSafetyCopy() const { return live_wav_safety_copy_; }
+    [[nodiscard]] bool liveOscEnabled() const { return live_osc_enabled_; }
+    void setLiveOscEnabled(bool enabled);
+    [[nodiscard]] int liveOscPort() const { return live_osc_port_; }
+    void setLiveOscPort(int port);
+    [[nodiscard]] bool liveOscAnyInterface() const { return live_osc_any_interface_; }
+    void setLiveOscAnyInterface(bool any_interface);
+    [[nodiscard]] bool liveOscListening() const { return live_osc_listening_; }
+    [[nodiscard]] QString liveOscStatus() const { return live_osc_status_; }
+    [[nodiscard]] qint64 liveOscDatagrams() const { return live_osc_datagrams_; }
+    [[nodiscard]] qint64 liveOscUpdatesApplied() const { return live_osc_updates_applied_; }
+    [[nodiscard]] qint64 liveOscDropped() const { return live_osc_dropped_; }
     void setLiveWavSafetyCopy(bool on);
     [[nodiscard]] QString liveReceiverPlanText() const { return live_receiver_plan_text_; }
     [[nodiscard]] bool liveGap() const { return live_gap_; }
@@ -767,6 +873,16 @@ public:
     void setMixmeta(bool on);
     void setLfeMix(int value);
     void setDmixIndex(int index);
+    void setBsmodIndex(int index);
+    void setDsurmodIndex(int index);
+    void setDheadphonIndex(int index);
+    void setDsurexIndex(int index);
+    void setMixLevelDbSpl(int db_spl);
+    void setRoomTypeIndex(int index);
+    void setAdConvIndex(int index);
+    void setCopyrightBit(bool on);
+    void setOriginalBitstream(bool on);
+    void setAnnexD(bool on);
     void setAtmosEnabled(bool enabled);
     void setSelectedObjectIndex(int index);
 
@@ -783,8 +899,9 @@ public:
     // first half of the file; stopping and starting a new take is honest).
     Q_INVOKABLE void switchLiveLayout(const QString& presetName);
     // Sets bed + LFE + extras together - "stereo", "5.1", "7.1", "5.1.4",
-    // "7.1.4", "5.2" or "7.2.4" - the starting points the Format tab's
-    // preset buttons offer.
+    // "7.1.4" or "7.2.4" - the starting points the Format tab's preset
+    // buttons offer. No "5.2": a bare second LFE with no other extra is an
+    // AllocationError::kOrphanLfe2, so there is nothing valid to name it.
     // Upgrades AC-3 to E-AC-3 first if the preset needs a dependent substream,
     // the same way a manual extras tick would otherwise be refused outright.
     Q_INVOKABLE void applyChannelPreset(const QString& name);
@@ -849,6 +966,18 @@ public:
     // channels have no equivalent in atmos-encode's model and are not
     // written. Returns false if the file could not be opened for writing.
     Q_INVOKABLE bool exportObjectPaths(const QUrl& url) const;
+    // The same objects as an ac3::oba::ObjectScene in JSON (ac3/oba/scene.hpp)
+    // rather than as keyframe columns: named, with per-segment interpolation
+    // and an orientation the columns have nowhere to put, and reloadable
+    // without loss. ac3cli's atmos-path and atmos-encode read this form too,
+    // told apart from the column form by its first character, so the command
+    // bar's line works with either file. Where the column form SKIPS a
+    // bed-pinned channel's index, this one has to fill it - JSON identifies an
+    // object by its position in the array - so such a channel is written as a
+    // silent object holding at room centre, keeping every later object at the
+    // index atmos-encode would address it by. False if the file could not be
+    // written.
+    Q_INVOKABLE bool exportObjectScene(const QUrl& url) const;
     // Starts the audible motion preview: every current object rendered
     // through ac3::oba::AtmosEncoder the same way encodeObjects() would,
     // its 5.1 bed played back live and paced in real time (not run flat-
@@ -1120,6 +1249,7 @@ signals:
     void liveStatsChanged();
     void liveReconnectingChanged();
     void liveWavSafetyCopyChanged();
+    void liveOscConfigChanged();
     void motionPreviewActiveChanged();
     void motionPreviewTimeChanged();
     void sourceLevelsChanged();
@@ -1241,6 +1371,16 @@ private:
     // entry for this index's (source, channel) identity, sorted by time, or
     // empty if it has none.
     [[nodiscard]] std::vector<ac3::oba::Keyframe> sortedKeyframes(int objectIndex) const;
+    // Every object both export paths write, as ac3::oba::SceneObjects indexed
+    // by FLAT channel index - so a bed-pinned channel's index is present but
+    // empty, which is how the keyframe column form spells a skipped object.
+    // exportObjectScene fills those in; exportObjectPaths leaves them out, the
+    // behaviour that form has always had.
+    [[nodiscard]] std::vector<ac3::oba::SceneObject> exportableSceneObjects() const;
+    // Writes `text` to `url` (a local file where it names one), returning
+    // false if it could not be opened or fully written - the return both
+    // export entry points give QML.
+    static bool writeTextFile(const QUrl& url, const std::string& text);
     // flatIndex's (source, channel) pair in sourceShapes()'s own flat
     // addressing - the same loop objectSourceLabel uses to name it.
     [[nodiscard]] ObjectKey sourceChannelForFlatIndex(std::size_t flatIndex) const;
@@ -1300,6 +1440,10 @@ private:
     // the GUI thread, the worker reads it once per frame). Empty outside a
     // live Atmos session.
     [[nodiscard]] std::vector<int> liveSlotChannels() const;
+    // Parallel to liveObjectSnapshot, same guard: which slots
+    // ac3::audio::LivePositionSource is currently driving. Empty (never
+    // true) whenever liveOscEnabled was off at session start.
+    [[nodiscard]] std::vector<bool> liveObjectNetworkDriven() const;
 
     // Writes an elementary stream, or muxes Matroska/MP4/MPEG-TS, or wraps
     // fMP4/CMAF (a folder of files - see outputIsFolder()), according to the
@@ -1710,11 +1854,37 @@ private:
     double live_drift_ppm_ = 0.0;
     // ---- parallel downmix receiver leg -----------------------------------
     bool live_downmix_leg_ = false;
+    // ---- live object-position source over OSC (roadmap UX4) -------------
+    // Pre-flight, same convention as live_wav_safety_copy_ above.
+    bool live_osc_enabled_ = false;
+    int live_osc_port_ = 9000;
+    bool live_osc_any_interface_ = false;
+    bool live_osc_listening_ = false;
+    QString live_osc_status_;
+    qint64 live_osc_datagrams_ = 0;
+    qint64 live_osc_updates_applied_ = 0;
+    qint64 live_osc_dropped_ = 0;
     // Genuinely shared with the live worker thread (dragging the Live
     // session's room, or the Objects tab's, while a live Atmos session is
-    // running): every read and write goes through live_object_mutex_.
+    // running): every read and write goes through live_object_mutex_. With
+    // liveOscEnabled on, the DIRECTION reverses for whichever objects are
+    // network-driven - the worker writes live_object_snapshot_ (the
+    // position ac3::audio::LivePositionSource most recently pushed) instead
+    // of only reading it, and the GUI thread's setObjectPosition/
+    // setObjectLfeSend refuse to write a driven object rather than racing
+    // the worker's own write - see live_object_network_driven_ below and
+    // objectModel()'s own merge.
     mutable std::mutex live_object_mutex_;
     std::vector<ObjectConfig> live_object_snapshot_;
+    // Parallel to live_object_snapshot_, same size, same guard: true for a
+    // slot ac3::oba::SceneCursor::is_live() currently reports live - i.e.
+    // ac3::audio::LivePositionSource has pushed a placement for it and
+    // nothing has since released it. Read by objectModel() (which object to
+    // take from the snapshot instead of object_configs_) and by
+    // setObjectPosition/setObjectLfeSend (which object a manual drag must
+    // refuse). Empty, or all false, whenever liveOscEnabled is off - every
+    // object is manually placed exactly as before this existed.
+    std::vector<bool> live_object_network_driven_;
     // Slot -> capture-channel bindings (see liveSlotChannels' own comment);
     // -1 marks an allocated-but-unbound slot, which the worker encodes as
     // silence. Guarded by live_object_mutex_ alongside live_object_snapshot_
@@ -1724,6 +1894,13 @@ private:
     // thread, matching capture_'s own convention - only buffer()/submit()/
     // stats() are called from the worker while a session runs.
     std::unique_ptr<ac3::audio::Capture> live_capture_;
+    // Same convention as live_capture_ immediately above: opened on the GUI
+    // thread before the worker starts (startLiveSession), only
+    // drain_into()/stats() called from the worker while running, closed on
+    // the GUI thread once the session ends. Null whenever liveOscEnabled
+    // was off at session start - the orbit (or manual placement) path is
+    // then unchanged from before this existed.
+    std::unique_ptr<ac3::audio::LivePositionSource> live_position_source_;
     // The slave device, when a two-device session opened one - same
     // GUI-thread-owns-open/close, worker-thread-only-reads convention as
     // live_capture_ itself. Null for an ordinary single-device session.

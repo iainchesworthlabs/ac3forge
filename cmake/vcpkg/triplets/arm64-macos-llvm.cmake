@@ -1,7 +1,8 @@
 # Overlay triplet: arm64 macOS (Apple Silicon), LLVM (clang).
 #
-# Only arm64 is provided. An x64 macOS triplet is easy to add later, but a dead
-# triplet nobody configures is worse than no triplet at all.
+# Sibling: x64-macos-llvm.cmake, added for DR8's macOS universal binaries once
+# GitHub's macos-15-intel hosted runner made a real (not cross-compiled) x64
+# leg possible - see that file's own header.
 #
 # Linkage policy: dynamic runtime, static dependency libraries - see
 # x64-windows-msvc.cmake for the reasoning, which is the same here.
@@ -16,4 +17,5 @@ set(VCPKG_LIBRARY_LINKAGE static)
 # libc++ over the SDK's, while vcpkg will build the ports against the SDK's.
 # Both are libc++ so the ABI matches, but this is the platform where the
 # assumption is thinnest - and it is untested, since this project has no macOS
-# host to configure on.
+# host to configure on (CI is real hardware, but nobody has inspected the
+# resulting binary's ABI by hand).

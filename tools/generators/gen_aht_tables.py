@@ -14,6 +14,7 @@ property they must have - no two entries the same, or the encoder's nearest
 Run from the repo root:  python tools/generators/gen_aht_tables.py
 """
 
+import itertools
 import re
 from pathlib import Path
 
@@ -88,7 +89,7 @@ def verify_gaq_remap(text):
                     for h in (a_hex, b_hex)]
             got = gaq_reconstruction(hebap, gain, positive)
             # The table is 16-bit rounded, so one ulp of that is the tolerance.
-            for name, w, g in zip("ab", want, got):
+            for name, w, g in zip("ab", want, got, strict=True):
                 if abs(w - g) > 1.0 / 32768.0:
                     raise SystemExit(
                         f"E3.6 mismatch hebap {hebap} Gk={gain} "
@@ -121,8 +122,8 @@ def parse_hebaptab(text):
     for line in text[start:start + 120]:
         if "hebaptab" in line or "Address" in line:
             continue
-        for address, value in PAIR.findall(line):
-            address, value = int(address), int(value)
+        for address_text, value_text in PAIR.findall(line):
+            address, value = int(address_text), int(value_text)
             if address < 64 and address not in values:
                 values[address] = value
         if len(values) == 64:
@@ -132,7 +133,7 @@ def parse_hebaptab(text):
     table = [values[i] for i in range(64)]
     # The table is monotonically non-decreasing by construction: a louder bin
     # relative to its mask can never be allocated a coarser quantiser.
-    if any(b < a for a, b in zip(table, table[1:])):
+    if any(b < a for a, b in itertools.pairwise(table)):
         raise SystemExit("hebaptab is not monotonic; the parse is wrong")
     if table[0] != 0 or table[-1] != 19:
         raise SystemExit(f"hebaptab endpoints wrong: {table[0]}, {table[-1]}")

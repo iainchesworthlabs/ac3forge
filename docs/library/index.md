@@ -1,12 +1,19 @@
 # Using ac3::forge
 
-The public API is the headers under `src/forge/include/ac3/`. Link `ac3::forge`; link
-`matroska::matroska` and/or `mp4::mp4` as well if you want a container writer, or `ac3adm::ac3adm`
-if you want to read a professional ADM BWF master — the one module in this list that is a reader
-rather than a writer, and so does not need `ac3::forge` linked alongside it at all. Unlike every
-other module here, `ac3adm::ac3adm` is opt-in: it is only built with `-DAC3FORGE_BUILD_ADM=ON`
-(default off), and needs several Boost header libraries pulled in via
-`-DVCPKG_MANIFEST_FEATURES=adm` — see [ADM / BW64 reading](adm.md) for why.
+The public API is the headers under `src/forge/include/ac3/`. Link `ac3::forge`; link any of
+`matroska::matroska`, `mp4::mp4` and `mpegts::mpegts` as well if you want a container writer,
+`ac3::signing` if you want to apply the EMDF object-signing tag (see [Object signing](signing.md)),
+[`ac3iab::ac3iab`](iab.md) if you want to read a SMPTE ST 2098-2 Immersive Audio Bitstream, a bare
+elementary `.iab` file or a real MXF Track File alike (it links nothing from `ac3::forge` and knows
+nothing about AC-3 — roadmap IM1 phases 1-2), or
+`ac3adm::ac3adm` if you want to read or write a professional ADM BWF master — it does not need
+`ac3::forge` linked alongside it on its own (`ac3::admbridge` is the module that needs both, for
+mapping an ADM object graph onto/from `ac3::oba::AtmosEncoder`/`ac3::Eac3Decoder`). Unlike every
+other module here, `ac3adm::ac3adm` is opt-in: it is only built with
+`-DAC3FORGE_BUILD_ADM=ON` (default off), and needs several Boost header libraries pulled in via
+`-DVCPKG_MANIFEST_FEATURES=adm` — see [ADM / BW64 reading](adm.md) for why. Unlike every other
+module here, it and `ac3::admbridge` are **shared-only** even in an installed package — see the
+note below.
 
 **In-tree** (this repo `add_subdirectory`'d into a larger build, or as a git submodule):
 
@@ -27,10 +34,27 @@ target_link_libraries(your_target PRIVATE ac3::forge_static)   # or ac3::forge_s
 
 An installed package has no ambient `BUILD_SHARED_LIBS` default to resolve against, so it
 exports both variants explicitly rather than a bare `ac3::forge` — pick the one you want.
-Neither the package nor the codec itself has any dependency of its own to find: no
-`find_dependency()` calls, no system or third-party library, static or shared. (`ac3adm::ac3adm`
-is the sole exception project-wide — see the note above — and for that reason is not part of the
-installed `find_package(ac3forge)` package at all; consume it via `add_subdirectory` in-tree.)
+The package has nothing for a consumer to find: no `find_dependency()` calls, no system or
+third-party library to resolve, static or shared. The codec is not dependency-free, though —
+`ac3::forge` uses {fmt} for formatting (`cmake/Fmt.cmake`, and this repo's own `vcpkg.json`;
+it stands in for `<format>`, which NDK r26's libc++ does not implement). That link is PRIVATE
+and wrapped in `$<BUILD_INTERFACE:...>`, so it is absorbed at build time and never reaches the
+export graph, which is what leaves the installed package with nothing to declare.
+`ac3adm::ac3adm`/`ac3::admbridge` go further than that: they PRIVATE-embed the third-party
+libbw64/libadm (Apache-2.0, FetchContent'd — see [ADM / BW64 reading](adm.md)), neither of which
+this project installs or exports in its own right, so the installed package only ever exports
+their **shared** variant (`ac3adm::ac3adm_shared`/`ac3::admbridge_shared`, plus the bare
+`ac3adm::ac3adm`/`ac3::admbridge` alias — there is no `_static` counterpart here, unlike every
+other module on this page) regardless of `AC3FORGE_INSTALL_BOTH_LINKAGES`. A self-contained
+`.so` absorbs libbw64/libadm at its own build step; a static archive would leave a downstream
+consumer with genuinely unresolved symbols into a library this package doesn't ship. `ac3adm`
+still needs Boost at build time (see the note above) — that requirement doesn't go away just
+because the *installed* artifact is self-contained.
+
+`ac3::signing` follows this exact same shape — mandatory, not gated by an
+`AC3FORGE_BUILD_<NAME>` switch, same as `ac3::forge` itself — so it resolves the identical way in
+both cases: the bare `ac3::signing` alias in-tree, and explicit `ac3::signing_static`/
+`ac3::signing_shared` from an installed package.
 
 **vcpkg.** A port lives in this repo at
 [`packaging/vcpkg-port/ac3forge/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/vcpkg-port/ac3forge) and is pending
@@ -48,17 +72,15 @@ find_package(ac3forge CONFIG REQUIRED)
 target_link_libraries(your_target PRIVATE ac3::forge)
 ```
 
-The three container writers are the port's `matroska`/`mp4`/`mpegts` features — none on by
-default (a curated-registry port's `default-features` may only cover behaviors, not additional
-public APIs/targets/binaries, and each of these three is exactly that) — opt in with
-`vcpkg install ac3forge[matroska,mp4,mpegts]` (all three) or `ac3forge[mp4]` (just `mp4`) to get
-`matroska::matroska`/`mp4::mp4`/`mpegts::mpegts` available. `ac3adm::ac3adm` has no vcpkg
-feature — see the note above, it isn't part of this installed package at all — and neither does
-`ac3::forge_c` (the C API, see [C API](c-api.md)): its export set currently has a real bug under
-`AC3FORGE_INSTALL_BOTH_LINKAGES=OFF` (the single-linkage mode this port always uses), so the
-port excludes it entirely rather than exposing something broken. Once merged into
-`microsoft/vcpkg`, the same two snippets work with a plain `vcpkg install ac3forge` — no
-`--overlay-ports` needed.
+The three container writers and the C API are the port's `matroska`/`mp4`/`mpegts`/`capi`
+features — none on by default (a curated-registry port's `default-features` may only cover
+behaviors, not additional public APIs/targets/binaries, and each of these four is exactly that) —
+opt in with `vcpkg install ac3forge[matroska,mp4,mpegts,capi]` (all four) or `ac3forge[mp4]`
+(just `mp4`) to get `matroska::matroska`/`mp4::mp4`/`mpegts::mpegts`/`ac3::forge_c` (the C API,
+see [C API](c-api.md)) available. `ac3adm::ac3adm`/`ac3::admbridge` have no vcpkg feature — out
+of scope for this port for now, even though upstream now installs/exports both (shared-only, see
+the note above). Once merged into `microsoft/vcpkg`, the same two snippets work with a plain
+`vcpkg install ac3forge` — no `--overlay-ports` needed.
 
 **Conan.** A recipe lives in this repo at
 [`packaging/conan/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/conan)
@@ -67,10 +89,27 @@ and is pending submission to ConanCenter (see
 packaging/conan --version <tag>` from a clone of this repo builds it straight into your local
 Conan cache, after which a consumer's `conanfile.txt`/`conanfile.py` `requires = "ac3forge/<tag>"`
 resolves it the same way a published package would. Same scope and features as the
-vcpkg port above (`matroska`/`mp4`/`mpegts`, all on by default — `-o ac3forge/*:matroska=False`
-etc. to drop one), and the same two `find_package`/`target_link_libraries` snippets: the recipe
-installs `ac3forge`'s own CMake package config rather than generating a second one, so a Conan
-consumer's CMakeLists.txt looks identical to a vcpkg or plain-installed one.
+vcpkg port above (`matroska`/`mp4`/`mpegts` on by default — `-o ac3forge/*:matroska=False` etc.
+to drop one — plus `capi`, off by default like the vcpkg port's own feature, `-o
+ac3forge/*:capi=True` to opt in), and the same two `find_package`/`target_link_libraries`
+snippets: the recipe installs `ac3forge`'s own CMake package config rather than generating a
+second one, so a Conan consumer's CMakeLists.txt looks identical to a vcpkg or plain-installed one.
+
+**pkg-config.** Every installed component above also gets its own `.pc` file
+(`${libdir}/pkgconfig/<name>.pc` — `ac3forge`, `ac3signing`, `matroska`, `mp4`, `mpegts`,
+`iamf`, `ac3iab`, `ac3adm`, `admbridge`, `ac3forge_c`), for a non-CMake consumer:
+
+```bash
+pkg-config --cflags --libs ac3forge
+```
+
+Picks whichever linkage was actually installed (the shared name when
+`AC3FORGE_INSTALL_BOTH_LINKAGES`/`BUILD_SHARED_LIBS` selected it, else the `_static`-suffixed
+one — matching what's genuinely on disk), and chains `Requires:` for a component that PUBLIC-
+links another (`ac3signing` requires `ac3forge`; `admbridge` requires both `ac3forge` and
+`ac3adm`). The `prefix=` line resolves relative to wherever the `.pc` file itself ends up
+(`pkg-config`'s own `${pcfiledir}`), so it works the same whether that's a real system install or
+an unpacked `ac3forge-dev-*` archive.
 
 Live audio — capture, monitor playback, IEC 61937 passthrough — is `ac3::audio`
 (`src/audio/`), a separate target `ac3cli`/`ac3gui` link alongside `ac3::forge` for their own
@@ -100,16 +139,31 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
   (`mp4::fragment`, `mp4/hls.hpp`, `mp4/dash.hpp`), metering, the IEC 61937/passthrough/monitor
   sinks, and capture.
 - [File I/O](file-io.md) — reading and writing WAV.
+- [IAB (SMPTE ST 2098-2) reading](iab.md) — `ac3iab::ac3iab`, a standalone Immersive Audio
+  Bitstream reader, elementary `.iab` files and MXF Track Files alike (on by default).
 - [ADM / BW64 reading](adm.md) — `ac3adm::ac3adm`, a standalone BW64/RF64 + Audio Definition Model
   parser (opt-in, `-DAC3FORGE_BUILD_ADM=ON`).
 - [ADM → Atmos bridging](adm-bridge.md) — `ac3::admbridge`, mapping the parsed ADM graph onto
   `ac3::oba::AtmosEncoder` (same opt-in flag).
+- [IAMF writing](iamf.md) — `iamf::iamf`, a standalone writer re-wrapping a decoded 7.1.4
+  programme as a channel-based IAMF Audio Element in IAMF's own ISO-BMFF encapsulation (on by
+  default).
+- [Measuring quality](quality.md) — `ac3::quality`, the decoded-domain distortion measure and the
+  tonality/masking model the encoder's decision search is judged on.
 - [Object signing](signing.md) — `ac3::signing`, the EMDF protection tag.
-- [Header map](header-map.md) — every public header and what lives in it.
+- [Header map](header-map.md) — the headers a caller normally reaches for, and what lives in each.
+- [API stability](api-stability.md) — the v1.0 freeze plan: header tiers, SemVer and deprecation
+  policy, and what's decided versus still deliberately deferred (roadmap `AP1`).
 - [C API](c-api.md) — `ac3::forge_c`, a stable, minimal C-callable surface over encode/decode for
   bindings and embedding (roadmap item F1).
+- [Rust bindings](rust-api.md) — `ac3forge-sys` (raw, `bindgen`-generated) plus the safe
+  `ac3forge` crate, both over the C API.
 - [Python bindings](python-api.md) — the `ac3forge` PyPI package, pybind11-direct over
-  `ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder`.
+  `ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder` and
+  `eac3::FrameEncoder`/`AccessUnitEncoder`.
+- [WebAssembly](../platforms/wasm.md) — the `ac3forge-wasm-decoder` npm package (roadmap UX5): a
+  push-frame decode API, an AudioWorklet playback pipeline, and an hls.js/MSE bridge over the
+  decoder compiled to WASM.
 
 ## Conventions
 
@@ -117,8 +171,22 @@ These hold across the whole API.
 
 **Errors are `std::expected`.** Nothing throws for a stream-level or configuration problem.
 `FrameError` covers encoding, `DecodeError` decoding, `ScanError` scanning, `WavError` file
-I/O, `MuxError` muxing. `DecodeError`, `ScanError`, `WavError` and `MuxError` each have a
-`describe()` returning a `std::string_view`; `FrameError` does not.
+I/O, `MuxError` muxing. All five have a `describe()` returning a `std::string_view`.
+
+**The `ac3::` namespace tree is codec-aware; `matroska::`/`mp4::`/`mpegts::`/`ac3adm::`/`ac3iab::`
+are codec-blind.** This is the namespace-level face of the header-prefix rule
+[CONTRIBUTING.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#repository-layout)
+states for directories: everything nested under `ac3::` depends on or extends `ac3::forge`'s own
+model, down to `ac3::oba`, `ac3::io`, `ac3::meta`, `ac3::verify`, `ac3::iec61937`,
+`ac3::admbridge`, `ac3::audio` and `ac3::signing` — none of those are AC-3/E-AC-3-*specific*, but
+all of them know the codec exists. The separate top-level namespaces know nothing about AC-3,
+E-AC-3 or Atmos at all, and take frames as opaque bytes.
+
+Within `ac3::`, AC-3 is the base case and lives in the bare namespace; E-AC-3 additions and
+overrides live in `ac3::eac3`, nested rather than parallel. `ac3::FrameEncoder` (AC-3) and
+`ac3::eac3::FrameEncoder` (E-AC-3) sharing a class name across that boundary is this rule applied
+consistently, not an accident — the same split the Python bindings mirror by putting the E-AC-3
+encoder in a real `ac3.eac3` submodule rather than a same-module name that would collide.
 
 **Audio is `float`, nominally in [-1, 1).** Internally the transform runs in `double`.
 
@@ -138,5 +206,33 @@ dither state). No encoder or decoder instance is safe for concurrent calls on th
 instance — the headers note that per-frame scratch and history members are reused across
 calls — but separate instances share nothing and are independent.
 
-**Each `encode_frame` call takes exactly `ac3::kSamplesPerFrame` (1536) samples per channel.**
-Short-changing it is a programming error, not a runtime one.
+**Each `encode_frame` call takes exactly one frame of PCM per channel.** For AC-3 that is always
+`ac3::kSamplesPerFrame` (1536); for E-AC-3 it is `FrameEncoder::samples_per_frame()`, which is
+1536 unless `FrameConfig::numblkscod` shortens the syncframe (256, 512 or 768 — see
+[Encoding E-AC-3](encoding-eac3.md)). Short-changing it is a programming error, not a runtime
+one.
+
+**Every class with non-trivial state hides it behind a pimpl.** `struct Impl;
+std::unique_ptr<Impl> impl_;` is the only private member on `FrameEncoder`
+(both codecs), `FrameDecoder`, `Eac3Decoder`, `oba::AtmosEncoder`,
+`eac3::AccessUnitEncoder`, `meta::RangeController`/`HeavyCompressor`,
+`meta::LoudnessMeter`, `analysis::LevelMeter`, `iec61937::Eac3BurstPacker` and
+the three `io::Wav*` classes that started the pattern — adding a buffer or
+growing a scratch array changes only `Impl`, defined in the `.cpp`, so it is
+never an ABI break for a caller linking `ac3::forge_shared`. The five plain
+config aggregates (`EncoderConfig`, `DecoderConfig`, `AtmosConfig`,
+`FrameConfig`, `AccessUnitConfig`) are the deliberate exception: callers build
+them with designated initializers, so they stay ordinary value types rather
+than opaque handles, and that ergonomics is worth more than hiding four or
+five `double`s. Their layout is what `SameMajorVersion` actually has to
+promise once 1.0 ships: a config struct's fields are frozen at the release
+that adopts full-version `SOVERSION`, and a field added afterward needs either
+a major version bump or an additive extension point (a reserved trailing
+field, or a new sibling struct referenced by pointer) rather than an in-place
+insert, which would silently shift every later field's offset for anyone who
+has not recompiled. The `verify::*Trace*`/`FrameSyntax*` pointers a few of
+them carry (`EncoderConfig::trace`, `DecoderConfig::trace`/`eac3_trace`/
+`syntax`, `FrameConfig::trace`) are non-owning observers into internal
+instrumentation headers, not part of the frozen public surface themselves —
+adding, removing or retyping one of those pointers is not a promise this
+convention covers.

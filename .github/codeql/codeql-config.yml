@@ -1,0 +1,14 @@
+# Shared CodeQL configuration for every language in .github/workflows/codeql.yml's
+# matrix. Only path filtering lives here; the query suite stays in the workflow,
+# next to the comment recording the measurement that chose it.
+name: ac3forge
+
+paths-ignore:
+  # docs/assets/wasm-decode-demo/ is a PUBLISHED COPY of the roadmap-F3 browser
+  # demo, not a second source tree - docs/platforms/wasm.md's "rebuilt fresh, not
+  # shipped from a committed copy" section explains the relationship, and
+  # demo.js there is byte-identical to apps/wasm/demo.js. Analysing both would
+  # report every JavaScript finding twice, against a path nobody edits.
+  # ac3forge_decode.js beside it is Emscripten's minified module loader -
+  # machine output, where an alert would name generated code no one can act on.
+  - docs/assets/wasm-decode-demo

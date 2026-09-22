@@ -36,12 +36,26 @@ Dialog {
     FileDialog {
         id: qcFileDialog
         title: qsTr("Choose an AC-3 / E-AC-3 stream")
-        nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"), qsTr("All files (*)")]
+        // roadmap IO2: a Matroska/MP4/MPEG-TS container works too -
+        // QcController sniffs the actual bytes rather than trusting the
+        // extension, so this list is a convenience for the picker only.
+        nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"),
+                     qsTr("Containers (*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts)"),
+                     qsTr("All files (*)")]
         onAccepted: QcController.measureFile(selectedFile)
     }
 
     contentItem: ColumnLayout {
         spacing: Theme.space4
+
+        // A Popup/Dialog is not itself an Item ("Accessible must be
+        // attached to an Item or an Action" at runtime otherwise) - its
+        // contentItem is. title is deliberately "" (a styled Text below
+        // draws the visible heading instead), so Dialog's own default
+        // accessible-name derivation - which reads title - has nothing to
+        // find without this.
+        Accessible.role: Accessible.Dialog
+        Accessible.name: qsTr("QC a stream")
 
         RowLayout {
             Layout.fillWidth: true
@@ -91,6 +105,8 @@ Dialog {
                 running: QcController.busy
                 implicitWidth: 24
                 implicitHeight: 24
+                Accessible.role: Accessible.Indicator
+                Accessible.name: qsTr("Measuring…")
             }
         }
 
@@ -110,14 +126,22 @@ Dialog {
             // band/ceiling lines - see QcController::programmes()'s own
             // comment on why presets has exactly one entry once this is
             // anything but "All".
+            // Built from QcController.presetNames rather than listed here.
+            // The hand-written list this replaces was written when there were
+            // three presets and was never updated when roadmap IO11 inserted
+            // two more INTO THE MIDDLE of kQcPresetIds - so the button
+            // labelled "Netflix" was resolving index 3 to
+            // kQcPresetIds[2], atsc-a85-streaming, and reporting that
+            // preset's verdict under Netflix's name while netflix and
+            // apple-music-atmos were unreachable entirely. presetNames()
+            // derives from the same array setPresetIndex() indexes into
+            // (its own "All presets" entry included, at the same index 0
+            // this control uses), so the two cannot disagree again.
             SegmentedControl {
                 objectName: "qcPresetControl"
-                model: [
-                    { value: "0", label: qsTr("All") },
-                    { value: "1", label: qsTr("EBU R 128 s2") },
-                    { value: "2", label: qsTr("ATSC A/85") },
-                    { value: "3", label: qsTr("Netflix") },
-                ]
+                accessibleName: qsTr("DELIVERY PRESET")
+                model: QcController.presetNames.map((label, index) =>
+                    ({ value: String(index), label: label }))
                 currentValue: String(QcController.presetIndex)
                 onSelected: (value) => QcController.presetIndex = parseInt(value)
             }
@@ -188,12 +212,21 @@ Dialog {
                             maxValue: 0
                             hasValue: programmeCard.modelData.hasLoudness
                             value: programmeCard.modelData.integratedLkfs
-                            bandLow: programmeCard.soloPreset
+                            // A band preset draws its tolerance band; a ceiling preset
+                            // (loudnessIsCeiling - see ac3::meta::QcLoudnessLimit) states
+                            // only a level not to exceed, so it draws the same ceiling
+                            // line the true peak meter below uses. Drawing its zero-width
+                            // tolerance as a band would read as "hit this exactly", which
+                            // is the opposite of what the source says.
+                            bandLow: programmeCard.soloPreset && !programmeCard.soloPreset.loudnessIsCeiling
                                      ? programmeCard.soloPreset.targetLkfs - programmeCard.soloPreset.toleranceLu
                                      : NaN
-                            bandHigh: programmeCard.soloPreset
+                            bandHigh: programmeCard.soloPreset && !programmeCard.soloPreset.loudnessIsCeiling
                                       ? programmeCard.soloPreset.targetLkfs + programmeCard.soloPreset.toleranceLu
                                       : NaN
+                            ceilingValue: programmeCard.soloPreset && programmeCard.soloPreset.loudnessIsCeiling
+                                          ? programmeCard.soloPreset.targetLkfs
+                                          : NaN
                             pass: programmeCard.soloPreset ? programmeCard.soloPreset.loudnessPass : true
                         }
                         QcGateMeter {
@@ -271,6 +304,21 @@ Dialog {
                                     Layout.fillWidth: true
                                     spacing: Theme.space3
 
+                                    // One compound summary rather than four
+                                    // separate Accessible objects (name,
+                                    // loudness PASS/FAIL, true peak PASS/FAIL,
+                                    // the verdict chip) for the same row -
+                                    // built from the exact modelData fields
+                                    // the four Texts below already read, so
+                                    // it can never report a different verdict
+                                    // than what is drawn.
+                                    Accessible.role: Accessible.ListItem
+                                    Accessible.name: presetRow.modelData.name
+                                    Accessible.description: qsTr("loudness %1, true peak %2, overall %3")
+                                        .arg(presetRow.modelData.loudnessPass ? qsTr("pass") : qsTr("fail"))
+                                        .arg(presetRow.modelData.truePeakPass ? qsTr("pass") : qsTr("fail"))
+                                        .arg(presetRow.modelData.pass ? qsTr("pass") : qsTr("fail"))
+
                                     Text {
                                         Layout.preferredWidth: 140
                                         text: presetRow.modelData.name
@@ -305,7 +353,17 @@ Dialog {
                                             font.weight: Font.Bold
                                         }
                                     }
-                                    Item { Layout.fillWidth: true }
+                                    // Which edition each verdict was judged against.
+                                    // Doubles as the row's trailing stretch, so the
+                                    // layout is unchanged when it elides away.
+                                    Text {
+                                        objectName: "qcPresetSource-" + presetRow.modelData.id
+                                        Layout.fillWidth: true
+                                        text: presetRow.modelData.source
+                                        elide: Text.ElideRight
+                                        color: Theme.textMuted
+                                        font.pixelSize: 10
+                                    }
                                 }
                             }
                         }

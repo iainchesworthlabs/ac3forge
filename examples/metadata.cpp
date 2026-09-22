@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -68,7 +69,7 @@ int main() {
     // dialnorm on the stream.
     const auto lkfs = meter.integrated_lkfs();
     const int dialnorm = lkfs ? ac3::meta::dialnorm_from_lkfs(*lkfs) : 31;
-    std::printf("measured %.2f LKFS -> dialnorm %d\n", lkfs.value_or(0.0), dialnorm);
+    fmt::printf("measured %.2f LKFS -> dialnorm %d\n", lkfs.value_or(0.0), dialnorm);
 
     // The rest of an R128 meter, read off the same pass: momentary (400 ms)
     // and short-term (3 s) are the un-gated windows integrated_lkfs() gates
@@ -77,7 +78,7 @@ int main() {
     // one of the four that is not a loudness figure at all - it is an
     // oversampled peak-sample estimate, and the only measure here that does
     // NOT exclude the LFE channel.
-    std::printf("momentary %.2f LKFS, short-term %.2f LKFS, LRA %.2f LU, true peak %.2f dBTP\n",
+    fmt::printf("momentary %.2f LKFS, short-term %.2f LKFS, LRA %.2f LU, true peak %.2f dBTP\n",
                 meter.momentary_lkfs().value_or(0.0), meter.short_term_lkfs().value_or(0.0),
                 meter.loudness_range().value_or(0.0), meter.true_peak_dbtp().value_or(0.0));
 
@@ -107,12 +108,12 @@ int main() {
         fill(pcm, frame);
         const auto encoded = encoder->encode_frame(views);
         if (!encoded) {
-            std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
+            fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         stream.insert(stream.end(), encoded->begin(), encoded->end());
     }
 
-    std::printf("%zu bytes of 5.1 AC-3 carrying DRC, compr and dialnorm\n", stream.size());
+    fmt::printf("%zu bytes of 5.1 AC-3 carrying DRC, compr and dialnorm\n", stream.size());
     return 0;
 }

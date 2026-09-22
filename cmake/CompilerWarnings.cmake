@@ -138,6 +138,53 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_L
     target_compile_options(ac3_warnings INTERFACE -Wno-null-dereference)
 endif()
 
+# -Warray-bounds false positive under GCC 16 at -O2/-O3 (Release), the same
+# family as the -Wnull-dereference case just above - not seen at Debug's
+# lower optimization level, and not seen under GCC 15. Repro: both
+# decoder.cpp and eac3_decoder.cpp's mantissa-reading `read_stream` lambda
+# compute `s < nfchans && dithflag[s]`, where `dithflag` is a
+# std::array<bool, 5> and `s` is sometimes called with the coupling stream's
+# sentinel index (eac3_decoder.cpp's kCplStream, decoder.cpp's cpl_stream,
+# both == kMaxSubstreamFullbw + 1 == 6) or the LFE's index (== nfchans) -
+# values that are always >= nfchans, so `&&`'s short circuit means
+# dithflag[s] is never actually evaluated for them. GCC 16 constant-folds
+# the sentinel through the inlined call chain and flags the subscript
+# expression itself ("array subscript 6 is above array bounds ... bool
+# [5]") without accounting for the guard that prevents it ever executing -
+# GCC's own documented false-positive category for this class of check (see
+# the -Wnull-dereference case above for the general shape: post-inlining
+# analysis misattributes an optimizer-introduced "impossible" path as a
+# real out-of-bounds access in the original source). Scoped to GCC >= 16
+# specifically, mirroring the < 15 scoping above, so this stays a no-op on
+# any compiler that does not exhibit it.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
+    target_compile_options(ac3_warnings INTERFACE -Wno-array-bounds)
+endif()
+
+# -Wmaybe-uninitialized false positive under GCC 16 at -O2/-O3 (Release), on
+# the arm64 leg specifically (config-linux-gcc-arm64, real arm64 hardware -
+# GitHub's ubuntu-24.04-arm runner, ci.yml's "Linux GCC (arm64)" leg; not
+# seen on the same GCC 16 building x86_64) - the same general failure
+# category as the two cases just above: post-inlining dataflow analysis
+# loses provenance across a chain of optimizer-introduced moves and flags a
+# path that never actually executes uninitialized. Eac3Decoder::
+# decode_substream's transient pre-noise hold-back path
+# (src/forge/src/decoder/eac3_decoder.cpp,
+# `DecodedSubstream ready = std::move(*pending_slot);`) move-constructs a
+# DecodedSubstream - which nests a std::optional<oba::DecodedProgram>
+# holding a std::vector<oba::DynamicObject> - from an already-engaged
+# optional inside another optional's payload; the guard immediately above it
+# (`pending_slot.has_value()`) is exactly the initialization invariant GCC's
+# analysis fails to carry through the inlined std::optional/std::vector move
+# constructors on this target. Scoped to GCC >= 16, matching the -Warray-
+# bounds precedent, rather than to arm64 specifically - CMAKE_CXX_COMPILER_
+# VERSION is known at configure time on every leg, but CMAKE_SYSTEM_PROCESSOR
+# is only reliable post-toolchain-file, which runs after this file - so a
+# no-op on x86_64 costs nothing and keeps this one condition to maintain.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
+    target_compile_options(ac3_warnings INTERFACE -Wno-maybe-uninitialized)
+endif()
+
 # ---------------------------------------------------------------------------
 # AC3_WARNINGS_OFF_FLAG - switches every warning off for one source file.
 #

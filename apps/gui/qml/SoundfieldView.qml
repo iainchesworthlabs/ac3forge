@@ -23,8 +23,19 @@ ColumnLayout {
 
     spacing: 10
 
+    // Which controller's channelMeta/channelLevels/soundfield/atmosEnabled
+    // drive this view - defaults to EncoderController (the encode
+    // workbench's own Objects/Format tabs, every caller before this one),
+    // so only a caller that means a different controller needs to say so.
+    // StreamPlayerController is the one that does.
+    property QtObject controller: EncoderController
+    // The explanatory line at the bottom when atmosEnabled is true - the
+    // encode-side default names the Objects tab's own room view; a caller
+    // with no such tab (StreamPlayerDialog.qml) supplies its own wording.
+    property string atmosCaption: qsTr("Solid dots are bed positions a source feeds. Objects are not here — they move, so they live in the room view on the Objects tab.")
+
     readonly property var earSpeakers: {
-        const meta = EncoderController.channelMeta;
+        const meta = root.controller.channelMeta;
         const ear = [];
         for (let i = 0; i < meta.length; i++) {
             const m = meta[i];
@@ -35,7 +46,7 @@ ColumnLayout {
         return ear;
     }
     readonly property var ceilingSpeakers: {
-        const meta = EncoderController.channelMeta;
+        const meta = root.controller.channelMeta;
         const ceiling = [];
         for (let i = 0; i < meta.length; i++) {
             const m = meta[i];
@@ -46,7 +57,7 @@ ColumnLayout {
         return ceiling;
     }
     readonly property int lfeCount: {
-        const meta = EncoderController.channelMeta;
+        const meta = root.controller.channelMeta;
         let n = 0;
         for (let i = 0; i < meta.length; i++) {
             if (meta[i].directional !== true) n++;
@@ -54,8 +65,38 @@ ColumnLayout {
         return n;
     }
 
+    // A plan view is a picture, not a set of discrete controls - individual
+    // speaker dots would be a lot of Accessible objects for very little
+    // information (their position is exactly what the two caption Texts
+    // below already summarise in words). One Graphic with a text
+    // alternative, rebuilt from the same earSpeakers/ceilingSpeakers/
+    // lfeCount/soundfield state the drawing itself reads, is the standard
+    // shape for a live diagram - equivalent to alt text on a chart image.
+    Accessible.role: Accessible.Graphic
+    Accessible.name: qsTr("Soundfield plan")
+    Accessible.description: {
+        const ear = root.controller.atmosEnabled
+            ? qsTr("ear level: %1 speakers, objects panned in").arg(root.earSpeakers.length)
+            : qsTr("ear level: %1 speakers, %2").arg(root.earSpeakers.length)
+                .arg(root.fedCaption(root.earSpeakers));
+        if (root.ceilingSpeakers.length === 0 && root.lfeCount === 0) {
+            return ear;
+        }
+        let parts = [ear];
+        if (root.ceilingSpeakers.length > 0) {
+            parts.push(qsTr("ceiling: %1 height, %2").arg(root.ceilingSpeakers.length)
+                .arg(root.fedCaption(root.ceilingSpeakers)));
+        }
+        if (root.lfeCount > 0) {
+            parts.push(root.lfeCount > 1
+                ? qsTr("two independent low-frequency channels")
+                : qsTr("one low-frequency channel"));
+        }
+        return parts.join("; ");
+    }
+
     function fedCaption(list) {
-        if (EncoderController.atmosEnabled) {
+        if (root.controller.atmosEnabled) {
             return qsTr("objects panned in");
         }
         let fed = 0;
@@ -160,7 +201,7 @@ ColumnLayout {
 
                 Rectangle {
                     id: earVector
-                    readonly property var field: EncoderController.soundfield
+                    readonly property var field: root.controller.soundfield
                     readonly property real azimuth: field && field.azimuthDeg !== undefined
                                                     ? field.azimuthDeg : 0
                     readonly property real magnitude: field && field.magnitude !== undefined
@@ -187,7 +228,7 @@ ColumnLayout {
                     delegate: Rectangle {
                         required property var modelData
                         // Live brightness, by index — the one per-tick read.
-                        readonly property var live: EncoderController.channelLevels[modelData.index]
+                        readonly property var live: root.controller.channelLevels[modelData.index]
 
                         width: 10
                         height: 10
@@ -206,7 +247,7 @@ ColumnLayout {
 
             Text {
                 readonly property int count: root.earSpeakers.length
-                readonly property var field: EncoderController.soundfield
+                readonly property var field: root.controller.soundfield
                 text: field && field.active === true
                       ? qsTr("%1 speakers · vector %2° front")
                         .arg(count).arg(Math.round(field.azimuthDeg || 0))
@@ -292,7 +333,7 @@ ColumnLayout {
 
                     delegate: Rectangle {
                         required property var modelData
-                        readonly property var live: EncoderController.channelLevels[modelData.index]
+                        readonly property var live: root.controller.channelLevels[modelData.index]
 
                         width: 10
                         height: 10
@@ -340,8 +381,8 @@ ColumnLayout {
     // What solid and hollow mean, in words, per the handoff.
     Text {
         Layout.fillWidth: true
-        text: EncoderController.atmosEnabled
-              ? qsTr("Solid dots are bed positions a source feeds. Objects are not here — they move, so they live in the room view on the Objects tab.")
+        text: root.controller.atmosEnabled
+              ? root.atmosCaption
               : qsTr("Solid dots are fed by a source. Hollow dots are positions the stream carries silent.")
         wrapMode: Text.WordWrap
         font.pixelSize: 11

@@ -4,7 +4,8 @@
 is the library's fully worked Atmos example: a complete 115-second scene —
 synthesis, motion, mix, and encode — in one compiled program with no binary
 assets. Everything the other pages introduce piecemeal appears here doing a
-job: `KeyframePath` flies the ships, `ObjectPlacement` gains perform the edit,
+job: one `ObjectScene` holds every ship's automation, `ObjectPlacement` gains
+perform the edit,
 `lfe_send` opens the wormhole, and the same scene is encoded twice, with the
 EMDF container and without it.
 
@@ -33,14 +34,17 @@ sequence starts at 0:01, the diegetic fan edit at about 0:14.)
 | 1:43 | The wormhole opens behind the station | A subsonic core almost entirely on `lfe_send` — the only route to the LFE — plus two shimmer objects that split and wrap up and over the room; the score's final cadence lands on the flash at 1:44, as in the original |
 | 1:51 | ...and swallows itself | Pitch and gains collapse back to front-centre |
 
-Ten objects, one authored `KeyframePath` each, evaluated at the *end* of each
-frame — the same convention as `ac3cli atmos-path`, because both metadata
-layers interpolate to that point.
+Ten named objects in one `ac3::oba::ObjectScene`, each with its own authored
+automation, evaluated at the *end* of each frame — the same convention as
+`ac3cli atmos-path`, because both metadata layers interpolate to that point.
+It is the same type that command reads from a file and the GUI's timeline
+edits, so this cue sheet could equally have been loaded from JSON rather than
+written in C++.
 
 ## What it adds beyond `atmos_objects.cpp`
 
-- **Authored motion, not orbits.** Every path is a hand-written keyframe
-  table; distance lives in the authored gains, so the "swamping" of the
+- **Authored motion, not orbits.** Every object is a hand-written cue table;
+  distance lives in the authored gains, so the "swamping" of the
   broadcast by a passing ship is just two gain arcs crossing.
 - **Doppler, outside the library.** The example derives radial velocity from
   its own paths and bends its oscillators before the samples ever reach the

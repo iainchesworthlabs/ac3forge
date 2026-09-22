@@ -23,12 +23,15 @@
 // skipping the parse/bridge/encode demo below - see main()'s own comment on why
 // tools/ci/run_codec_matrix.sh uses exactly this to drive a real `ac3cli atmos-adm` invocation.
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fmt/printf.h>
 #include <fstream>
 #include <numbers>
+#include <random>
 #include <span>
 #include <string>
 #include <string_view>
@@ -44,6 +47,21 @@
 namespace {
 
 using Bytes = std::string;
+
+// A per-run name rather than a fixed one: every checkout of this repo runs the
+// examples under its own `ctest` (examples/CMakeLists.txt registers each as a
+// test case), several checkouts commonly run at once, and they share a temp
+// directory - two runs on one fixed name read and delete each other's files.
+// Same ingredients as src/ac3adm/src/adm.cpp's make_temp_path, same reason.
+// Only for the paths this example picks itself; --write-fixture's path comes
+// from the caller (tools/ci/run_codec_matrix.sh) and stays exactly as given.
+std::string scratch_path(std::string_view name) {
+    static const std::string run = std::to_string(
+        (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^
+        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const std::string leaf = "ac3forge_" + run + "_" + std::string(name);
+    return (std::filesystem::temp_directory_path() / leaf).string();
+}
 
 void put_u16le(Bytes& out, std::uint16_t value) {
     out.push_back(static_cast<char>(value & 0xFFu));
@@ -227,23 +245,22 @@ int main(int argc, char** argv) {
     // reimplementing RIFF chunk framing in bash was not a fourth worth having.
     if (argc >= 3 && std::string_view{argv[1]} == "--write-fixture") {
         if (!write_fixture(argv[2])) {
-            std::printf("could not write fixture file\n");
+            fmt::printf("could not write fixture file\n");
             return 1;
         }
         return 0;
     }
 
-    const auto fixture_path =
-        (std::filesystem::temp_directory_path() / "ac3forge_encode_adm_fixture.wav").string();
+    const auto fixture_path = scratch_path("encode_adm_fixture.wav");
     if (!write_fixture(fixture_path)) {
-        std::printf("could not write fixture file\n");
+        fmt::printf("could not write fixture file\n");
         return 1;
     }
 
     // Step 1: ac3adm::ac3adm (phase 1) - container + ADM graph.
     const auto document = ac3adm::parse_bw64(fixture_path);
     if (!document) {
-        std::printf("parse_bw64 failed: %.*s\n",
+        fmt::printf("parse_bw64 failed: %.*s\n",
                     static_cast<int>(ac3adm::describe(document.error()).size()),
                     ac3adm::describe(document.error()).data());
         std::filesystem::remove(fixture_path);
@@ -255,16 +272,16 @@ int main(int argc, char** argv) {
     const auto bridged = ac3::admbridge::build(*document);
     std::filesystem::remove(fixture_path);
     if (!bridged) {
-        std::printf("admbridge::build failed: %.*s\n",
+        fmt::printf("admbridge::build failed: %.*s\n",
                     static_cast<int>(ac3::admbridge::describe(bridged.error()).size()),
                     ac3::admbridge::describe(bridged.error()).data());
         return 1;
     }
 
-    std::printf("bridged %zu channel(s) from %s\n", bridged->channel_count(),
+    fmt::printf("bridged %zu channel(s) from %s\n", bridged->channel_count(),
                 document->model.programmes.front().name.c_str());
     for (std::size_t i = 0; i < bridged->channel_count(); ++i) {
-        std::printf("  %s: %s\n", bridged->channel_ids[i].c_str(),
+        fmt::printf("  %s: %s\n", bridged->channel_ids[i].c_str(),
                     bridged->is_bed[i] ? "bed speaker feed" : "dynamic object");
     }
 
@@ -293,21 +310,20 @@ int main(int argc, char** argv) {
         // ac3cli's own mkv/mp4/fmp4/ts commands).
         const auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
-            std::printf("encode_frame failed: %d\n", std::to_underlying(unit.error()));
+            fmt::printf("encode_frame failed: %d\n", std::to_underlying(unit.error()));
             return 1;
         }
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
     }
 
-    const auto out_path =
-        (std::filesystem::temp_directory_path() / "ac3forge_encode_adm_out.ec3").string();
+    const auto out_path = scratch_path("encode_adm_out.ec3");
     std::ofstream out(out_path, std::ios::binary);
     out.write(reinterpret_cast<const char*>(stream.data()), static_cast<std::streamsize>(stream.size()));
     const bool wrote = static_cast<bool>(out);
     out.close();
     std::filesystem::remove(out_path);
     if (!wrote) {
-        std::printf("could not write output stream\n");
+        fmt::printf("could not write output stream\n");
         return 1;
     }
 
@@ -315,7 +331,7 @@ int main(int argc, char** argv) {
     for (const bool is_bed : bridged->is_bed) {
         bed_count += is_bed ? 1 : 0;
     }
-    std::printf("%zu bytes of DD+ JOC E-AC-3 from %zu ADM-authored frame(s): %zu bed speaker "
+    fmt::printf("%zu bytes of DD+ JOC E-AC-3 from %zu ADM-authored frame(s): %zu bed speaker "
                 "feed(s) + %zu dynamic object(s)\n",
                 stream.size(), total_frames, bed_count, bridged->channel_count() - bed_count);
     return 0;

@@ -3,6 +3,7 @@
 #include <span>
 
 #include "ac3/decoder/decoder.hpp"
+#include "crc_mutator.hpp"
 
 // Mirrors ac3cli's 'decode' path for E-AC-3 (apps/cli/main.cpp:
 // run_decode_eac3): split the raw stream into access units, then render each
@@ -21,4 +22,13 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         (void)decoder.decode_access_unit(unit);
     }
     return 0;
+}
+
+// Re-stamp crc2 after mutating (Annex E has no crc1), so a mutation landing
+// in a block's skip field - where the EMDF container carrying every OAMD and
+// JOC payload lives - reaches emdf::parse_container instead of dying at
+// decode_substream's checksum. See crc_mutator.hpp.
+extern "C" std::size_t LLVMFuzzerCustomMutator(std::uint8_t* data, std::size_t size,
+                                               std::size_t max_size, unsigned int seed) {
+    return ac3fuzz::crc_repairing_mutate(data, size, max_size, seed);
 }

@@ -47,6 +47,21 @@
       }
     },
     {
+      "name": "windows-msvc-arm64",
+      "hidden": true,
+      "description": "Windows/MSVC toolchain selection, arm64 target (roadmap DR8, GitHub's hosted windows-11-arm runner). Same chainloaded toolchain file as windows-msvc - cmake/toolchains/windows.msvc.toolchain.cmake resolves the target-appropriate MSVC tools subdirectory from AC3_MSVC_TARGET_ARCH the same way linux.gcc.toolchain.cmake/macos.llvm.toolchain.cmake already resolve their own arm64 legs from VCPKG_TARGET_ARCHITECTURE - only the vcpkg triplet differs. AC3FORGE_BUILD_GUI is OFF here, unlike windows-msvc: not because ac3gui cannot be built for arm64, but because at authoring time Qt's only Windows arm64 kit for the pinned 6.8.3 (win64_msvc2022_arm64_cross_compiled) is a cross-compile kit expecting a paired win64_msvc2022_64 install for its host tools, and aqtinstall has a documented CI bug against exactly that combination - real complexity this leg's native-arm64-host build doesn't need to take on for a first pass. The same 'Qt kit not assumed present' shape linux-gcc/linux-llvm/macos-llvm already use, not a new pattern - see those presets' own descriptions and docs/platforms/windows.md's ARM64 section.",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-windows-msvc",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/windows.msvc.toolchain.cmake",
+        "AC3FORGE_BUILD_GUI": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
       "name": "windows-llvm",
       "hidden": true,
       "description": "Windows/clang-cl toolchain selection. clang-cl is MSVC-ABI compatible, so it links the same vcpkg packages and the same prebuilt msvc2022_64 Qt kit as the MSVC presets.",
@@ -64,7 +79,7 @@
     {
       "name": "linux-gcc",
       "hidden": true,
-      "description": "Linux/GCC 15 toolchain selection. The GUI is off because a Qt kit is not assumed present, NOT because it cannot be built: cmake/FindQt6.cmake resolves Linux kits fine (distro packages land on CMake's own prefixes, and relocated / aqtinstall kits are searched under ~/Qt, /opt/Qt and friends), and ac3gui builds under both Linux presets and passes its headless --smoke run against Ubuntu 26.04's Qt 6.10. Add -DAC3FORGE_BUILD_GUI=ON on a machine that has Qt 6.5+; a preset that cannot find Qt should still say so by not asking for it rather than by failing to configure.",
+      "description": "Linux/GCC 16 toolchain selection. The GUI is off because a Qt kit is not assumed present, NOT because it cannot be built: cmake/FindQt6.cmake resolves Linux kits fine (distro packages land on CMake's own prefixes, and relocated / aqtinstall kits are searched under ~/Qt, /opt/Qt and friends), and ac3gui builds under both Linux presets and passes its headless --smoke run against Ubuntu 26.04's Qt 6.10. Add -DAC3FORGE_BUILD_GUI=ON on a machine that has Qt 6.5+; a preset that cannot find Qt should still say so by not asking for it rather than by failing to configure.",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-linux-gcc",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/linux.gcc.toolchain.cmake",
@@ -79,7 +94,7 @@
     {
       "name": "linux-llvm",
       "hidden": true,
-      "description": "Linux/LLVM 21 toolchain selection. GUI off for the same reason as linux-gcc.",
+      "description": "Linux/LLVM 22 toolchain selection. GUI off for the same reason as linux-gcc.",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "x64-linux-llvm",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/linux.llvm.toolchain.cmake",
@@ -94,7 +109,7 @@
     {
       "name": "linux-gcc-arm64",
       "hidden": true,
-      "description": "Linux/GCC 15 toolchain selection, arm64 (Raspberry Pi 4/5 and any other aarch64 Debian/Ubuntu target). Same toolchain file as linux-gcc - cmake/toolchains/linux.gcc.toolchain.cmake already resolves aarch64 vs x86_64 from VCPKG_TARGET_ARCHITECTURE - only the vcpkg triplet differs. GUI off for the same reason as linux-gcc.",
+      "description": "Linux/GCC 16 toolchain selection, arm64 (Raspberry Pi 4/5 and any other aarch64 Debian/Ubuntu target). Same toolchain file as linux-gcc - cmake/toolchains/linux.gcc.toolchain.cmake already resolves aarch64 vs x86_64 from VCPKG_TARGET_ARCHITECTURE - only the vcpkg triplet differs. GUI off for the same reason as linux-gcc.",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-linux-gcc",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/linux.gcc.toolchain.cmake",
@@ -109,7 +124,7 @@
     {
       "name": "linux-llvm-arm64",
       "hidden": true,
-      "description": "Linux/LLVM 21 toolchain selection, arm64 (Raspberry Pi 4/5 and any other aarch64 Debian/Ubuntu target). Same toolchain file as linux-llvm - cmake/toolchains/linux.llvm.toolchain.cmake already resolves aarch64 vs x86_64 from VCPKG_TARGET_ARCHITECTURE - only the vcpkg triplet differs. GUI off for the same reason as linux-gcc.",
+      "description": "Linux/LLVM 22 toolchain selection, arm64 (Raspberry Pi 4/5 and any other aarch64 Debian/Ubuntu target). Same toolchain file as linux-llvm - cmake/toolchains/linux.llvm.toolchain.cmake already resolves aarch64 vs x86_64 from VCPKG_TARGET_ARCHITECTURE - only the vcpkg triplet differs. GUI off for the same reason as linux-gcc.",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-linux-llvm",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/linux.llvm.toolchain.cmake",
@@ -127,6 +142,21 @@
       "description": "macOS (Apple Silicon)/Homebrew LLVM toolchain selection. Verified via CI only (this project has no local macOS host) - see docs/building.md's Verified configuration section. GUI off by default for the same reason as linux-gcc - not because it cannot be built, but because a Qt kit is not assumed present on every Mac. CI's macos-llvm leg installs Homebrew's qt formula and passes -DAC3FORGE_BUILD_GUI=ON, the same opt-in shape as the four Linux build legs.",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-macos-llvm",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/macos.llvm.toolchain.cmake",
+        "AC3FORGE_BUILD_GUI": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "macos-llvm-x64",
+      "hidden": true,
+      "description": "macOS (Intel)/Homebrew LLVM toolchain selection, x86_64. Same toolchain file and reasoning as macos-llvm - cmake/toolchains/macos.llvm.toolchain.cmake already resolves x64 vs arm64 from VCPKG_TARGET_ARCHITECTURE, falling back to uname -m outside a vcpkg port-build context - only the vcpkg triplet differs, same shape as linux-gcc-arm64 next to linux-gcc. Verified via CI only, on GitHub's macos-15-intel runner (real native Intel hardware, not Rosetta emulation - see .github/workflows/_build.yml's matrix entry). GUI off by default for the same reason as macos-llvm.",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-macos-llvm",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/macos.llvm.toolchain.cmake",
         "AC3FORGE_BUILD_GUI": "OFF"
       },
@@ -165,17 +195,45 @@
       }
     },
     {
+      "name": "sanitize-tsan",
+      "hidden": true,
+      "description": "ThreadSanitizer. A SEPARATE preset from sanitize-asan-ubsan rather than more entries in its list, because the two runtimes are mutually exclusive - clang refuses -fsanitize=address,thread outright - and because they answer different questions: ASan/UBSan ask whether a single thread's memory and arithmetic are sound, TSan asks whether two threads agree on who owns what. Nothing in the ASan+UBSan leg can see a data race, which is the whole reason this exists (roadmap VX16): src/audio is a lock-free SPSC ring, a silence watchdog and a clock-drift servo shared between a real-time callback thread and the encoder thread, and a missing acquire/release there is invisible to every other gate in this repository. cmake/Sanitizers.cmake already took an arbitrary comma-separated list, so this preset adds no build-system machinery of its own.",
+      "cacheVariables": {
+        "AC3FORGE_SANITIZERS": "thread"
+      }
+    },
+    {
       "name": "coverage",
       "hidden": true,
-      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - ac3::forge, ac3::audio, ac3::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3tests. CLI and examples are off purely to save build time: they would link fine (the gcov runtime propagates to consumers automatically, see cmake/Coverage.cmake), but tools/checks/coverage_report.sh filters the report to the library components, so building them instrumented buys nothing - see .github/workflows/ci.yml's coverage job.",
+      "description": "gcov source coverage instrumentation (cmake/Coverage.cmake) over every library component - ac3::forge, ac3::audio, ac3::signing, matroska/mp4/mpegts, the C API, and (via AC3FORGE_BUILD_ADM=ON plus vcpkg's 'adm' feature, the same pair ci.yml's adm-validate job passes) ac3adm/admbridge - plus ac3cli and ac3tests. AC3FORGE_BUILD_CLI is ON here (roadmap VX15): apps/cli is ~6,500 lines that front every other CI gate, tests/cli/test_cli.cpp runs the real built binary as a subprocess, and tools/checks/coverage_report.sh now gates it alongside the library components, so leaving it out meant the most-exercised executable in the tree had no floor at all. Examples stay off - they are documentation that happens to compile, tests/ already covers the same API surface, and each one is its own ctest process. AC3FORGE_BUILD_GUI stays off too: the GUI needs a Qt kit no Linux CI leg installs (see coverage_report.sh's own note).",
       "cacheVariables": {
         "AC3FORGE_ENABLE_COVERAGE": "ON",
-        "AC3FORGE_BUILD_CLI": "OFF",
+        "AC3FORGE_BUILD_CLI": "ON",
         "AC3FORGE_BUILD_EXAMPLES": "OFF",
         "AC3FORGE_BUILD_ADM": "ON",
         "VCPKG_MANIFEST_FEATURES": "adm"
       }
     },
+    {
+      "name": "minimal-decoder",
+      "hidden": true,
+      "description": "Roadmap PF7's minimum-footprint decoder profile: ONE decode-only static library (ac3::forge_minimal) plus apps/baremetal's probe, built without exceptions, without RTTI and without the direct-form transform tables. Every other component is off - not as a time saving but because the root CMakeLists.txt refuses the combination: nothing under apps/, tests/, examples/ or the container modules builds against a decode-only archive. See cmake/MinimalDecoder.cmake and docs/building.md.",
+      "cacheVariables": {
+        "AC3FORGE_MINIMAL_DECODER": "ON",
+        "AC3FORGE_BUILD_CLI": "OFF",
+        "AC3FORGE_BUILD_GUI": "OFF",
+        "AC3FORGE_BUILD_TESTS": "OFF",
+        "AC3FORGE_BUILD_EXAMPLES": "OFF",
+        "AC3FORGE_BUILD_MATROSKA": "OFF",
+        "AC3FORGE_BUILD_MP4": "OFF",
+        "AC3FORGE_BUILD_MPEGTS": "OFF",
+        "AC3FORGE_BUILD_IAB": "OFF",
+        "AC3FORGE_BUILD_IAMF": "OFF",
+        "AC3FORGE_BUILD_CAPI": "OFF",
+        "AC3FORGE_BUILD_AC4": "OFF"
+      }
+    },
+
     {
       "name": "shared-libs",
       "hidden": true,
@@ -194,6 +252,16 @@
       "name": "config-windows-msvc-debug",
       "inherits": [ "debug", "windows-msvc", "core" ],
       "displayName": "Windows MSVC Debug"
+    },
+    {
+      "name": "config-windows-msvc-arm64",
+      "inherits": [ "release", "windows-msvc-arm64", "core" ],
+      "displayName": "Windows MSVC Release (arm64)"
+    },
+    {
+      "name": "config-windows-msvc-arm64-debug",
+      "inherits": [ "debug", "windows-msvc-arm64", "core" ],
+      "displayName": "Windows MSVC Debug (arm64)"
     },
     {
       "name": "config-windows-llvm",
@@ -256,6 +324,16 @@
       "displayName": "macOS LLVM Debug"
     },
     {
+      "name": "config-macos-llvm-x64",
+      "inherits": [ "release", "macos-llvm-x64", "core" ],
+      "displayName": "macOS LLVM x64 Release"
+    },
+    {
+      "name": "config-macos-llvm-x64-debug",
+      "inherits": [ "debug", "macos-llvm-x64", "core" ],
+      "displayName": "macOS LLVM x64 Debug"
+    },
+    {
       "name": "config-wasm-emscripten",
       "inherits": [ "release", "wasm-emscripten" ],
       "displayName": "Emscripten/WASM Release (browser decode demo)"
@@ -266,9 +344,36 @@
       "displayName": "Linux LLVM ASan+UBSan"
     },
     {
+      "name": "config-linux-llvm-tsan",
+      "inherits": [ "debug", "linux-llvm", "sanitize-tsan", "core" ],
+      "displayName": "Linux LLVM ThreadSanitizer"
+    },
+    {
       "name": "config-linux-gcc-coverage",
       "inherits": [ "debug", "linux-gcc", "coverage", "core" ],
       "displayName": "Linux GCC Coverage"
+    },
+    {
+      "name": "config-linux-gcc-minimal",
+      "inherits": [ "minimal-decoder", "release", "linux-gcc", "core" ],
+      "displayName": "Linux GCC minimum-footprint decoder"
+    },
+    {
+      "name": "config-linux-llvm-minimal",
+      "inherits": [ "minimal-decoder", "release", "linux-llvm", "core" ],
+      "displayName": "Linux LLVM minimum-footprint decoder"
+    },
+    {
+      "name": "config-arm-none-eabi-minimal",
+      "inherits": [ "minimal-decoder" ],
+      "displayName": "arm-none-eabi (Cortex-M3, bare metal) minimum-footprint decoder",
+      "description": "arm-none-eabi (Cortex-M3, no OS) cross build of the minimum-footprint decoder profile - the concrete target roadmap PF7 names, run under QEMU's mps2-an385 machine by tools/checks/run_baremetal_probe.sh. Like the Emscripten preset and for the same reasons, this does NOT inherit \"core\": there is no vcpkg triplet for bare-metal arm and nothing this profile builds has a third-party dependency, so the generator, binaryDir and options are set here directly rather than inherited from a preset meant for a hosted build.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/arm-none-eabi.toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "MinSizeRel"
+      }
     },
     {
       "name": "config-linux-llvm-shared",
@@ -287,6 +392,16 @@
       "name": "build-windows-msvc-debug",
       "configurePreset": "config-windows-msvc-debug",
       "displayName": "Windows MSVC Debug"
+    },
+    {
+      "name": "build-windows-msvc-arm64",
+      "configurePreset": "config-windows-msvc-arm64",
+      "displayName": "Windows MSVC Release (arm64)"
+    },
+    {
+      "name": "build-windows-msvc-arm64-debug",
+      "configurePreset": "config-windows-msvc-arm64-debug",
+      "displayName": "Windows MSVC Debug (arm64)"
     },
     {
       "name": "build-windows-llvm",
@@ -349,6 +464,16 @@
       "displayName": "macOS LLVM Debug"
     },
     {
+      "name": "build-macos-llvm-x64",
+      "configurePreset": "config-macos-llvm-x64",
+      "displayName": "macOS LLVM x64 Release"
+    },
+    {
+      "name": "build-macos-llvm-x64-debug",
+      "configurePreset": "config-macos-llvm-x64-debug",
+      "displayName": "macOS LLVM x64 Debug"
+    },
+    {
       "name": "build-wasm-emscripten",
       "configurePreset": "config-wasm-emscripten",
       "displayName": "Emscripten/WASM Release (browser decode demo)"
@@ -359,9 +484,29 @@
       "displayName": "Linux LLVM ASan+UBSan"
     },
     {
+      "name": "build-linux-llvm-tsan",
+      "configurePreset": "config-linux-llvm-tsan",
+      "displayName": "Linux LLVM ThreadSanitizer"
+    },
+    {
       "name": "build-linux-gcc-coverage",
       "configurePreset": "config-linux-gcc-coverage",
       "displayName": "Linux GCC Coverage"
+    },
+    {
+      "name": "build-linux-gcc-minimal",
+      "configurePreset": "config-linux-gcc-minimal",
+      "displayName": "Linux GCC minimum-footprint decoder"
+    },
+    {
+      "name": "build-linux-llvm-minimal",
+      "configurePreset": "config-linux-llvm-minimal",
+      "displayName": "Linux LLVM minimum-footprint decoder"
+    },
+    {
+      "name": "build-arm-none-eabi-minimal",
+      "configurePreset": "config-arm-none-eabi-minimal",
+      "displayName": "arm-none-eabi bare-metal minimum-footprint decoder"
     },
     {
       "name": "build-linux-llvm-shared",
@@ -387,6 +532,18 @@
       "name": "test-windows-msvc-debug",
       "configurePreset": "config-windows-msvc-debug",
       "displayName": "Windows MSVC Debug Tests",
+      "inherits": "test-base"
+    },
+    {
+      "name": "test-windows-msvc-arm64",
+      "configurePreset": "config-windows-msvc-arm64",
+      "displayName": "Windows MSVC Release Tests (arm64)",
+      "inherits": "test-base"
+    },
+    {
+      "name": "test-windows-msvc-arm64-debug",
+      "configurePreset": "config-windows-msvc-arm64-debug",
+      "displayName": "Windows MSVC Debug Tests (arm64)",
       "inherits": "test-base"
     },
     {
@@ -462,6 +619,18 @@
       "inherits": "test-base"
     },
     {
+      "name": "test-macos-llvm-x64",
+      "configurePreset": "config-macos-llvm-x64",
+      "displayName": "macOS LLVM x64 Release Tests",
+      "inherits": "test-base"
+    },
+    {
+      "name": "test-macos-llvm-x64-debug",
+      "configurePreset": "config-macos-llvm-x64-debug",
+      "displayName": "macOS LLVM x64 Debug Tests",
+      "inherits": "test-base"
+    },
+    {
       "name": "test-linux-llvm-asan-ubsan",
       "configurePreset": "config-linux-llvm-asan-ubsan",
       "displayName": "Linux LLVM ASan+UBSan Tests",
@@ -473,6 +642,20 @@
       "filter": {
         "exclude": {
           "label": "Performance"
+        }
+      }
+    },
+    {
+      "name": "test-linux-llvm-tsan",
+      "configurePreset": "config-linux-llvm-tsan",
+      "displayName": "Linux LLVM ThreadSanitizer Tests (concurrency label only)",
+      "inherits": "test-base",
+      "environment": {
+        "TSAN_OPTIONS": "suppressions=${sourceDir}/tsan.supp halt_on_error=1 second_deadlock_stack=1"
+      },
+      "filter": {
+        "include": {
+          "label": "concurrency"
         }
       }
     },
@@ -500,6 +683,12 @@
       "name": "pack-windows-msvc",
       "displayName": "Windows MSVC Package",
       "configurePreset": "config-windows-msvc",
+      "inherits": "package-base"
+    },
+    {
+      "name": "pack-windows-msvc-arm64",
+      "displayName": "Windows MSVC Package (arm64)",
+      "configurePreset": "config-windows-msvc-arm64",
       "inherits": "package-base"
     },
     {
@@ -537,6 +726,12 @@
       "displayName": "macOS LLVM Package",
       "configurePreset": "config-macos-llvm",
       "inherits": "package-base"
+    },
+    {
+      "name": "pack-macos-llvm-x64",
+      "displayName": "macOS LLVM x64 Package",
+      "configurePreset": "config-macos-llvm-x64",
+      "inherits": "package-base"
     }
   ],
 
@@ -548,6 +743,15 @@
         { "type": "configure", "name": "config-windows-msvc" },
         { "type": "build", "name": "build-windows-msvc" },
         { "type": "test", "name": "test-windows-msvc" }
+      ]
+    },
+    {
+      "name": "ci-windows-msvc-arm64",
+      "displayName": "Windows MSVC arm64 CI (configure, build, test)",
+      "steps": [
+        { "type": "configure", "name": "config-windows-msvc-arm64" },
+        { "type": "build", "name": "build-windows-msvc-arm64" },
+        { "type": "test", "name": "test-windows-msvc-arm64" }
       ]
     },
     {
@@ -605,12 +809,30 @@
       ]
     },
     {
+      "name": "ci-macos-llvm-x64",
+      "displayName": "macOS LLVM x64 CI (configure, build, test)",
+      "steps": [
+        { "type": "configure", "name": "config-macos-llvm-x64" },
+        { "type": "build", "name": "build-macos-llvm-x64" },
+        { "type": "test", "name": "test-macos-llvm-x64" }
+      ]
+    },
+    {
       "name": "ci-linux-llvm-asan-ubsan",
       "displayName": "Linux LLVM ASan+UBSan CI (configure, build, test)",
       "steps": [
         { "type": "configure", "name": "config-linux-llvm-asan-ubsan" },
         { "type": "build", "name": "build-linux-llvm-asan-ubsan" },
         { "type": "test", "name": "test-linux-llvm-asan-ubsan" }
+      ]
+    },
+    {
+      "name": "ci-linux-llvm-tsan",
+      "displayName": "Linux LLVM ThreadSanitizer CI (configure, build, test)",
+      "steps": [
+        { "type": "configure", "name": "config-linux-llvm-tsan" },
+        { "type": "build", "name": "build-linux-llvm-tsan" },
+        { "type": "test", "name": "test-linux-llvm-tsan" }
       ]
     }
   ]

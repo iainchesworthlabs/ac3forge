@@ -28,12 +28,31 @@ qt_add_executable(ac3gui_qmltests
     qc_controller.hpp
     object_decode_controller.cpp
     object_decode_controller.hpp
-    recording_sink.cpp
-    recording_sink.hpp
+    stream_player_controller.cpp
+    stream_player_controller.hpp
+    channel_geometry.cpp
+    channel_geometry.hpp
+    ../common/fmp4_folder_writer.cpp
+    ../common/fmp4_folder_writer.hpp
+    ../common/recording_sink.cpp
+    ../common/recording_sink.hpp
+    ../common/container_input.cpp
+    ../common/container_input.hpp
     system_theme.cpp
     system_theme.hpp
     truehd_controller.cpp
-    truehd_controller.hpp)
+    truehd_controller.hpp
+    language_manager.cpp
+    language_manager.hpp)
+
+# apps/common, for the same reason ../CMakeLists.txt names it: RecordingSink
+# and Fmp4FolderWriter moved there when ac3cli's own takes started streaming
+# through them (roadmap IO9), and container_input.cpp joined them the same
+# way for roadmap IO2. This target compiles the same files in, exactly as it
+# always did - qc_controller.cpp/object_decode_controller.cpp call
+# ac3::apps::elementary_stream_from_bytes too, so it needs the same
+# definition ac3gui's own target links.
+target_include_directories(ac3gui_qmltests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 qt_add_qml_module(ac3gui_qmltests
     URI Ac3Forge
@@ -52,6 +71,41 @@ qt_add_qml_module(ac3gui_qmltests
 # a file when that file already exists." A local build of one target at a
 # time never triggers this, which is why it went unnoticed until now.
 add_dependencies(ac3gui_qmltests ac3gui)
+
+# ---------------------------------------------------------------------------
+# Roadmap UX3: a second, independent .qm embedding for this target - same
+# rationale as the AC3_QML_FILES embedding above, and for the same reason
+# that comment gives: a shared library between the two targets would be more
+# machinery than what it wraps. lrelease only, not lupdate - the QML files
+# are the identical list ac3gui already scans (AC3_QML_FILES), so a second
+# extraction pass would just regenerate byte-identical .ts content; running
+# it twice buys nothing and doubles the target-name bookkeeping. The pseudo-
+# locale QA fixture (AC3_PSEUDO_TS_FILE) is added here ONLY - see that
+# variable's own comment in ../CMakeLists.txt for why production ac3gui.exe
+# doesn't carry it.
+#
+# OUTPUT_LOCATION is set on the .ts sources between the two qt6_add_lrelease
+# calls (ac3gui's own, inside qt_add_translations() above, already ran with
+# it unset) rather than left at the shared default: this file is include()d
+# into ../CMakeLists.txt's own scope, not a real subdirectory (see this
+# file's header comment), so CMAKE_CURRENT_BINARY_DIR here is the SAME
+# directory ac3gui's own .qm files already land in - without a distinct
+# output location the two custom commands would both target
+# ".../ac3gui_fr.qm" and Ninja would refuse the second one as "multiple
+# rules generate the same output".
+# ---------------------------------------------------------------------------
+set_source_files_properties(${AC3_TS_FILES} ${AC3_PSEUDO_TS_FILE} PROPERTIES
+    OUTPUT_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/tests")
+
+qt6_add_lrelease(ac3gui_qmltests
+    TS_FILES ${AC3_TS_FILES} ${AC3_PSEUDO_TS_FILE}
+    LRELEASE_TARGET ac3gui_qmltests_lrelease
+    QM_FILES_OUTPUT_VARIABLE AC3_GUI_TEST_QM_FILES)
+
+qt6_add_resources(ac3gui_qmltests "ac3gui_qmltests_translations"
+    PREFIX "/i18n"
+    BASE "${CMAKE_CURRENT_BINARY_DIR}/tests"
+    FILES ${AC3_GUI_TEST_QM_FILES})
 
 # The standard Qt Quick Test hookup: QUICK_TEST_MAIN's generated main() reads
 # this macro to find the tst_*.qml files at run time. -input on the ctest
@@ -85,6 +139,7 @@ target_link_libraries(ac3gui_qmltests
         mp4::mp4
         mpegts::mpegts
         ac3::warnings
+        ac3::fmt
         Qt6::Core
         Qt6::Gui
         Qt6::Quick
@@ -129,23 +184,68 @@ if(APPLE)
     list(APPEND AC3_GUI_QMLTESTS_ENV "QSG_RENDER_LOOP=basic")
 endif()
 
-add_test(NAME ac3gui_qml_tests
-    COMMAND ac3gui_qmltests -input "${CMAKE_CURRENT_SOURCE_DIR}/tests/qml" -platform offscreen)
-set_tests_properties(ac3gui_qml_tests PROPERTIES
-    ENVIRONMENT "${AC3_GUI_QMLTESTS_ENV}"
-    # A safety net independent of whatever actually caused the macOS hangs
-    # above: 600s is generous headroom over the ~15s the full suite takes on
-    # Windows today (see docs/building.md's Verified configuration) - macOS
-    # CI has never completed this test yet, so that baseline isn't proven to
-    # transfer, hence more slack than a bare "15s plus margin" would give -
-    # but it still bounds a future hang to minutes of CI time instead of the
-    # 6-hour GitHub Actions job ceiling a hang otherwise silently consumes. A
-    # CTest TIMEOUT still counts as a captured failure, so outputOnFailure
-    # (CMakePresets.json's test presets) prints whatever the process wrote
-    # before it was killed - unlike an external job-level cancellation,
-    # which discards it entirely, exactly how this hang was first found.
-    TIMEOUT 600
-    LABELS "gui")
+# One ctest entry per tst_*.qml suite rather than a single ac3gui_qml_tests
+# entry driving all ~160 test cases in one process: that monolithic entry
+# measured ~580s on an idle Windows MSVC debug build (real encoder work, not
+# overhead - the "~15s" figure a previous version of this comment quoted was
+# stale, left over from when the suite was much smaller), a bare 3% under
+# its own 600s TIMEOUT. Under CPU contention from another build/test job on
+# the same machine - unremarkable on a shared dev box - that margin
+# disappears and ctest kills the process mid-suite: no FAIL: line, no
+# Totals: line, and no way to tell from the output alone which of the ~18
+# QML suites was running when it died. -input accepts a single .qml file as
+# well as a directory (Qt Quick Test's own suffix check on the argument
+# handles both), so each suite becomes its own ctest entry below instead.
+# This gets back the same failure-isolation a killed entry name already
+# gives every other ctest case, and - since each entry is a fresh process -
+# each suite now gets its OWN EncoderController singleton rather than the
+# eighteen suites sharing one for the whole run, tightening isolation rather
+# than loosening it. Measured per-suite split (JUnit XML `-o file,junitxml`
+# timings from a real run, not a guess): heaviest is GuidedWizard at ~65s in
+# that run, roughly a quarter of the whole suite's total - scaled to the
+# ~580s idle baseline that puts its own worst case around two minutes, so a
+# flat 300s TIMEOUT per entry leaves every suite, including the heaviest,
+# comfortable headroom even under contention, while no single entry needs
+# anywhere near the old 600s ceiling. Splitting also means these entries are
+# independent by construction, so `ctest -L gui -j N` runs them concurrently
+# without disturbing the rest of the suite's default serial execution
+# (`ctest --preset test-<leg>` is unaffected - confirmed on a real 18-entry
+# run: ~277s serial, 77s at -j4).
+file(GLOB AC3_GUI_QML_TEST_FILES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/qml/tst_*.qml")
+
+foreach(AC3_GUI_QML_TEST_FILE IN LISTS AC3_GUI_QML_TEST_FILES)
+    get_filename_component(AC3_GUI_QML_TEST_NAME "${AC3_GUI_QML_TEST_FILE}" NAME_WE)
+    string(REGEX REPLACE "^tst_" "" AC3_GUI_QML_TEST_SUITE "${AC3_GUI_QML_TEST_NAME}")
+    set(AC3_GUI_QML_TEST_CASE "ac3gui_qml_tests_${AC3_GUI_QML_TEST_SUITE}")
+
+    # tst_localisation_pipeline.qml is the one suite that needs a locale
+    # forced deterministically rather than whatever this machine's own
+    # system locale happens to be - LanguageManager::applyInitialLanguage()
+    # reads AC3GUI_LOCALE ahead of the persisted setting/system locale for
+    # exactly this (language_manager.cpp), and "xx" selects the pseudo-
+    # locale QA fixture (translations/ac3gui_xx.ts) every other suite has no
+    # reason to load.
+    set(AC3_GUI_QML_TEST_ENV "${AC3_GUI_QMLTESTS_ENV}")
+    if(AC3_GUI_QML_TEST_SUITE STREQUAL "localisation_pipeline")
+        list(APPEND AC3_GUI_QML_TEST_ENV "AC3GUI_LOCALE=xx")
+    endif()
+
+    add_test(NAME ${AC3_GUI_QML_TEST_CASE}
+        COMMAND ac3gui_qmltests -input "${AC3_GUI_QML_TEST_FILE}" -platform offscreen)
+    set_tests_properties(${AC3_GUI_QML_TEST_CASE} PROPERTIES
+        ENVIRONMENT "${AC3_GUI_QML_TEST_ENV}"
+        # A safety net independent of whatever actually caused the macOS
+        # hangs above, sized per-suite rather than for the whole harness -
+        # see the comment above this loop for the measurement behind 300s.
+        # A CTest TIMEOUT still counts as a captured failure, so
+        # outputOnFailure (CMakePresets.json's test presets) prints
+        # whatever the process wrote before it was killed - unlike an
+        # external job-level cancellation, which discards it entirely,
+        # exactly how the original macOS hang was first found.
+        TIMEOUT 300
+        LABELS "gui")
+endforeach()
 
 # ---------------------------------------------------------------------------
 # Windows-only Qt runtime deployment, identical in spirit to ../CMakeLists.txt's

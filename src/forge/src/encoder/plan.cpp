@@ -1,16 +1,31 @@
 #include "ac3/encoder/plan.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <charconv>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <iterator>
-#include <numbers>
+#include <numeric>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
+#include <vector>
 
+#include "ac3/core/eac3_tables.hpp"
+#include "ac3/core/tables.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/encoder/encoder.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac3/meta/bsi.hpp"
+#include "ac3/meta/drc.hpp"
+#include "ac3/meta/mixing.hpp"
 #include "ac3/spatial/spatial.hpp"
 
 namespace ac3::plan {
@@ -64,168 +79,19 @@ using Location = eac3::chanmap::Location;
 }
 
 // --- geometry ---------------------------------------------------------------
-
-struct Direction {
-    double azimuth_deg = 0.0;    // counterclockwise from front, ITU-R BS.775
-    double elevation_deg = 0.0;  // 0 on the listener's plane
-};
-
-// Nominal elevation of the upper layer. TS 103 420 renders heights well above
-// the ring; 45° is the conventional Atmos ceiling angle and the only number
-// the crossfade below needs.
-constexpr double kHeightElevationDeg = 45.0;
-
-// Where a location sits. Two entries are context-dependent, both to avoid two
-// DISTINCT locations landing on the identical (ring, azimuth) pair that
-// pan_direction/pan_ring pan by - two targets it cannot tell apart make one
-// of them lose whatever a source aimed at that spot was carrying, silently:
 //
-//   - The side surround pair: with rear surrounds also present they move
-//     forward to +/-90 and the rears take the +/-150 the 5.1 ring would have
-//     given them, which is the physical difference between 5.1 and 7.1
-//     rather than a naming one. But Lsd/Rsd (SMPTE 428-3's own discrete side
-//     position) already sits at +/-90 unconditionally - so a request naming
-//     Ls/Rs, Lrs/Rrs AND Lsd/Rsd together would put Ls/Rs and Lsd/Rsd on top
-//     of each other. has_side_discrete keeps Ls/Rs at their no-rears +/-110
-//     in exactly that combination, which is otherwise unused in the low ring.
-//   - Ts (Table E2.5's lone, unpaired "top surround") sits directly overhead,
-//     where azimuth is physically undefined - 0 was as good a choice as any
-//     UNTIL Vhc, the front height centre, turned out to already own azimuth 0
-//     in the same (high) ring. This file's own naming already treats
-//     "surround" as REAR throughout (Cs, Lrs/Rrs, Lts/Rts all sit behind the
-//     listener) - Ts follows that pattern and moves to 180, behind the
-//     listener like Cs, rather than colliding with Vhc in front.
-[[nodiscard]] Direction direction_of(Location location, bool has_rears,
-                                     bool has_side_discrete) {
-    switch (location) {
-        case Location::kLeft: return {30.0, 0.0};
-        case Location::kCentre: return {0.0, 0.0};
-        case Location::kRight: return {-30.0, 0.0};
-        case Location::kLeftSurround:
-            return {has_rears && !has_side_discrete ? 90.0 : 110.0, 0.0};
-        case Location::kRightSurround:
-            return {has_rears && !has_side_discrete ? -90.0 : -110.0, 0.0};
-        case Location::kLc: return {15.0, 0.0};
-        case Location::kRc: return {-15.0, 0.0};
-        case Location::kLrs: return {150.0, 0.0};
-        case Location::kRrs: return {-150.0, 0.0};
-        case Location::kCs: return {180.0, 0.0};
-        case Location::kTs: return {180.0, 90.0};
-        case Location::kLsd: return {90.0, 0.0};
-        case Location::kRsd: return {-90.0, 0.0};
-        case Location::kLw: return {60.0, 0.0};
-        case Location::kRw: return {-60.0, 0.0};
-        case Location::kVhl: return {45.0, kHeightElevationDeg};
-        case Location::kVhr: return {-45.0, kHeightElevationDeg};
-        case Location::kVhc: return {0.0, kHeightElevationDeg};
-        case Location::kLts: return {135.0, kHeightElevationDeg};
-        case Location::kRts: return {-135.0, kHeightElevationDeg};
-        case Location::kLfe:
-        case Location::kLfe2: return {0.0, 0.0};
-    }
-    return {};
-}
-
-// The speakers a pan may place a source on: everything in `locations` that has
-// a direction at all. The LFE is deliberately absent - it is not a point on
-// the ring, and leaving it in would give it the azimuth of the centre channel,
-// so a centre-panned source would land in the subwoofer and nowhere else.
-struct PanTargets {
-    std::vector<Location> locations;
-    std::vector<Direction> directions;
-
-    // Where a location sits in this set, or -1 if it takes no panned audio.
-    [[nodiscard]] int index_of(Location location) const {
-        const auto at = std::ranges::find(locations, location);
-        return at == locations.end()
-                   ? -1
-                   : static_cast<int>(std::distance(locations.begin(), at));
-    }
-};
-
-[[nodiscard]] PanTargets pan_targets(std::span<const Location> locations) {
-    const bool has_rears = std::ranges::find(locations, Location::kLrs) != locations.end();
-    const bool has_side_discrete =
-        std::ranges::find(locations, Location::kLsd) != locations.end();
-    PanTargets out;
-    for (const auto location : locations) {
-        if (is_lfe(location)) {
-            continue;
-        }
-        out.locations.push_back(location);
-        out.directions.push_back(direction_of(location, has_rears, has_side_discrete));
-    }
-    return out;
-}
-
-// Everything at or above this counts as the upper layer. Half way to the
-// nominal height angle, so no real location is ambiguous.
-constexpr double kHeightThresholdDeg = kHeightElevationDeg / 2.0;
-
-// A gain below this is not a quiet signal, it is arithmetic: cos(pi/2) lands
-// near 6e-17 rather than on zero, and -334 dB of leakage into a channel that
-// should be silent is worse than useless - it makes "is this channel carrying
-// anything?" unanswerable and costs a multiply per sample to stay wrong.
-constexpr double kNegligibleGain = 1e-9;
-
-// One source direction spread over a target speaker set. Two rings - the
-// listener's plane and the ceiling - each panned by azimuth, crossfaded by
-// elevation at constant power.
-//
-// A target with no upper layer takes the whole source at full level rather
-// than a cosine-attenuated share: a 5.1 ring has no height speakers, and a
-// legacy decoder has to hear everything or backward compatibility means
-// nothing. That is the same rule spatial::pan_room states for the 5.1 bed.
-void pan_direction(Direction source, std::span<const Direction> targets,
-                   std::span<double> gains) {
-    std::ranges::fill(gains, 0.0);
-
-    std::vector<double> low_az;
-    std::vector<std::size_t> low_index;
-    std::vector<double> high_az;
-    std::vector<std::size_t> high_index;
-    for (std::size_t i = 0; i < targets.size(); ++i) {
-        if (targets[i].elevation_deg >= kHeightThresholdDeg) {
-            high_az.push_back(targets[i].azimuth_deg);
-            high_index.push_back(i);
-        } else {
-            low_az.push_back(targets[i].azimuth_deg);
-            low_index.push_back(i);
-        }
-    }
-
-    double weight_low = 1.0;
-    double weight_high = 0.0;
-    if (!high_az.empty() && !low_az.empty()) {
-        const double t =
-            std::clamp(source.elevation_deg / kHeightElevationDeg, 0.0, 1.0);
-        weight_low = std::cos(t * std::numbers::pi / 2.0);
-        weight_high = std::sin(t * std::numbers::pi / 2.0);
-    } else if (low_az.empty()) {
-        weight_low = 0.0;
-        weight_high = 1.0;
-    }
-
-    if (weight_low > kNegligibleGain && !low_az.empty()) {
-        std::vector<double> ring(low_az.size());
-        spatial::pan_ring(source.azimuth_deg, low_az, ring);
-        for (std::size_t i = 0; i < ring.size(); ++i) {
-            gains[low_index[i]] += weight_low * ring[i];
-        }
-    }
-    if (weight_high > kNegligibleGain && !high_az.empty()) {
-        std::vector<double> ring(high_az.size());
-        spatial::pan_ring(source.azimuth_deg, high_az, ring);
-        for (std::size_t i = 0; i < ring.size(); ++i) {
-            gains[high_index[i]] += weight_high * ring[i];
-        }
-    }
-    for (auto& gain : gains) {
-        if (gain < kNegligibleGain) {
-            gain = 0.0;
-        }
-    }
-}
+// The height-aware azimuth/elevation panner (Direction, direction_of,
+// PanTargets, pan_targets, pan_direction) used to live here alone; it is now
+// ac3::spatial's, promoted so IO12's object-based loudness measurement can
+// pan an object by its own position with the identical geometry this
+// renderer uses to move a bed's channels between layouts. Aliased back in
+// rather than qualified at every call site below.
+using Direction = spatial::Direction;
+using spatial::direction_of;
+using PanTargets = spatial::PanTargets;
+using spatial::pan_targets;
+using spatial::pan_direction;
+using spatial::kNegligibleGain;
 
 // --- source layouts ---------------------------------------------------------
 
@@ -564,6 +430,16 @@ std::vector<std::size_t> wav_order(std::span<const eac3::chanmap::Location> loca
     return out;
 }
 
+std::vector<std::size_t> monitor_order(std::span<const eac3::chanmap::Location> locations,
+                                       std::size_t channel_count) {
+    if (locations.empty()) {
+        std::vector<std::size_t> identity(channel_count);
+        std::iota(identity.begin(), identity.end(), std::size_t{0});
+        return identity;
+    }
+    return wav_order(locations);
+}
+
 // --- tools ------------------------------------------------------------------
 
 namespace {
@@ -641,6 +517,13 @@ bool parse_tools(std::string_view text, Tools& out) {
             out.fast_mdct = true;
         } else if (token == "nofastmdct") {
             out.fast_mdct = false;  // the direct §8.2.3.2 reference form
+        } else if (token == "nodither") {
+            out.dither = false;  // dithflag pinned at 0, not content-decided
+        } else if (token.starts_with("numblkscod:")) {
+            out.numblkscod = parse_index(token.substr(11), 3);
+            if (out.numblkscod < 0) {
+                return false;
+            }
         } else if (token == "all") {
             out.coupling = true;
             out.spx = true;
@@ -675,8 +558,14 @@ std::string format_tools(const Tools& tools) {
         if (tools.gaqmod >= 0) {
             add("aht:" + std::to_string(tools.gaqmod));
         }
+        if (tools.numblkscod != 3) {
+            add("numblkscod:" + std::to_string(tools.numblkscod));
+        }
         if (!tools.fast_mdct) {
             add("nofastmdct");
+        }
+        if (!tools.dither) {
+            add("nodither");
         }
         return out;
     }
@@ -702,9 +591,17 @@ std::string format_tools(const Tools& tools) {
     }
     // Like noatten above, only the non-default state is worth a token: the
     // fast MDCT is what every stream does now, so formatting it would put
-    // "fastmdct" on every command line while saying nothing.
+    // "fastmdct" on every command line while saying nothing. Same reasoning
+    // for numblkscod's default of 3 (six blocks, this encoder's original and
+    // still ordinary profile).
+    if (tools.numblkscod != 3) {
+        add("numblkscod:" + std::to_string(tools.numblkscod));
+    }
     if (!tools.fast_mdct) {
         add("nofastmdct");
+    }
+    if (!tools.dither) {
+        add("nodither");
     }
     return out.empty() ? std::string{"none"} : out;
 }
@@ -759,12 +656,19 @@ bool parse_vbr(std::string_view text, std::optional<eac3::VbrConfig>& out) {
         out = std::nullopt;
         return true;
     }
-    if (!text.starts_with("q:")) {
-        return false;
-    }
-    text = text.substr(2);
+    // Two rate controls, two leading tokens. "q:" is plain VBR - a fixed
+    // quality, the rate follows. "avg:" is average-rate mode - the offset is
+    // steered to hold a rate, so a quality would be a number the encoder
+    // never reads (see eac3::AbrConfig). Asking for both names two different
+    // things at once, so the pair is refused rather than one half silently
+    // winning.
     eac3::VbrConfig vbr;
-    {
+    const bool abr = text.starts_with("avg:");
+    if (!abr) {
+        if (!text.starts_with("q:")) {
+            return false;
+        }
+        text = text.substr(2);
         const auto comma = text.find(',');
         if (!parse_unit_double(text.substr(0, comma), vbr.quality)) {
             return false;
@@ -791,12 +695,47 @@ bool parse_vbr(std::string_view text, std::optional<eac3::VbrConfig>& out) {
                 return false;
             }
             vbr.max_kbps = kbps;
+        } else if (token.starts_with("avg:")) {
+            // Only the LEADING token may turn ABR on: "q:0.5,avg:192" would
+            // otherwise reach here and quietly discard a quality the caller
+            // did type, and a second "avg:" would leave which of the two
+            // rates was meant unanswerable.
+            if (!abr || vbr.abr) {
+                return false;
+            }
+            if (!parse_kbps(token.substr(4), kbps)) {
+                return false;
+            }
+            // window_frames keeps AbrConfig's own default; "win:" below is
+            // the only thing that moves it.
+            vbr.abr = eac3::AbrConfig{.target_kbps = kbps};
+        } else if (token.starts_with("win:")) {
+            // Meaningless without an average to size. Since "avg:" can only
+            // lead, a "win:" reaching here with no AbrConfig built is a
+            // window around nothing rather than a reordering.
+            if (!vbr.abr) {
+                return false;
+            }
+            // Same rule parse_kbps enforces for a rate: a zero-frame window
+            // is not a window, it is a missing one.
+            if (!parse_kbps(token.substr(4), kbps)) {
+                return false;
+            }
+            vbr.abr->window_frames = kbps;
         } else {
             return false;
         }
         text = split == std::string_view::npos ? std::string_view{} : text.substr(split + 1);
     }
     if (vbr.min_kbps && vbr.max_kbps && *vbr.min_kbps > *vbr.max_kbps) {
+        return false;
+    }
+    // Bounds that exclude the average make it unreachable by construction;
+    // the encoder's own validate() refuses the same pair, so catching it here
+    // means the CLI reports the syntax rather than a frame-encode failure
+    // several hundred frames in.
+    if (vbr.abr && ((vbr.min_kbps && *vbr.min_kbps > vbr.abr->target_kbps) ||
+                    (vbr.max_kbps && *vbr.max_kbps < vbr.abr->target_kbps))) {
         return false;
     }
     out = vbr;
@@ -807,7 +746,20 @@ std::string format_vbr(const std::optional<eac3::VbrConfig>& vbr) {
     if (!vbr) {
         return "off";
     }
-    std::string out = "q:" + std::to_string(vbr->quality);
+    // ABR leads with avg: and never prints a quality - the encoder does not
+    // read one, so showing it would describe a knob that does nothing.
+    std::string out;
+    if (vbr->abr) {
+        out = "avg:" + std::to_string(vbr->abr->target_kbps);
+        // The window is written only when it is not the default, so a plain
+        // avg: round-trips as the plain avg: the caller typed - the same rule
+        // the optional min:/max: fields already follow by not appearing.
+        if (vbr->abr->window_frames != eac3::kAbrDefaultWindowFrames) {
+            out += ",win:" + std::to_string(vbr->abr->window_frames);
+        }
+    } else {
+        out = "q:" + std::to_string(vbr->quality);
+    }
     if (vbr->min_kbps) {
         out += ",min:" + std::to_string(*vbr->min_kbps);
     }
@@ -845,14 +797,35 @@ namespace {
 }  // namespace
 
 meta::MixMetadata mix_metadata(const Metadata& options) {
-    return {.dmixmod = options.dmixmod,
-            // Lt/Rt folds down into a matrix that will be re-decoded, so the
-            // centre traditionally sits 1.5 dB hotter there than in Lo/Ro.
-            .ltrtcmixlev = meta::MixLevel::kMinus3dB,
-            .lorocmixlev = widen(options.cmixlev),
-            .ltrtsurmixlev = meta::MixLevel::kMinus3dB,
-            .lorosurmixlev = widen(options.surmixlev),
-            .lfemixlevcod = options.lfemix};
+    // Everything past the five levels comes from mixdepth verbatim - the
+    // programme scale factors, the mixing-parameter block, the pan info and
+    // the per-block configuration have nothing to derive from.
+    meta::MixMetadata out = options.mixdepth;
+    out.dmixmod = options.dmixmod;
+    // Lt/Rt folds down into a matrix that will be re-decoded, so the centre
+    // traditionally sits 1.5 dB hotter there than in Lo/Ro. An explicit
+    // override wins over both that convention and the widening below.
+    out.ltrtcmixlev = options.ltrtcmixlev.value_or(meta::MixLevel::kMinus3dB);
+    out.lorocmixlev = options.lorocmixlev.value_or(widen(options.cmixlev));
+    out.ltrtsurmixlev = options.ltrtsurmixlev.value_or(meta::MixLevel::kMinus3dB);
+    out.lorosurmixlev = options.lorosurmixlev.value_or(widen(options.surmixlev));
+    out.lfemixlevcod = options.lfemix;
+    return out;
+}
+
+meta::AlternateBsi alternate_bsi(const Metadata& options) {
+    meta::AlternateBsi out;
+    // xbsi1 is the same five quantities mix_metadata() derives. The rest of
+    // the MixMetadata it returns has no Annex D field and is simply not read
+    // by the AC-3 writer - see MixMetadata's own comment.
+    out.mix = mix_metadata(options);
+    // dsurexmod and dheadphonmod are stated once, on `info`, because E-AC-3
+    // carries the same two fields in infomdat - one source, two homes.
+    out.extended = meta::ExtendedBsi{.dsurexmod = options.info.dsurexmod,
+                                     .dheadphonmod = options.info.dheadphonmod,
+                                     .adconvtyp = options.adconvtyp,
+                                     .encinfo = options.encinfo};
+    return out;
 }
 
 // --- configs ----------------------------------------------------------------
@@ -864,6 +837,11 @@ std::string_view describe(PlanError error) {
                    "(AC-3 codes nothing wider than 3/2 + LFE)";
         case PlanError::kBitrateNotLegal:
             return "AC-3 takes only the 19 nominal rates of Table 5.18";
+        case PlanError::kBitrateNotFramable:
+            return "E-AC-3 signals the frame size in frmsiz, which is 11 bits, so a syncframe "
+                   "holds 1 to 2048 words - at 48 kHz that is 1 to 1024 kbit/s, less at a lower "
+                   "sample rate, and a layout with dependent substreams gives each of them half "
+                   "the rate";
         case PlanError::kNoSourceLayout:
             return "no standard speaker layout has that many channels";
         case PlanError::kInvalidChannels:
@@ -873,6 +851,9 @@ std::string_view describe(PlanError error) {
         case PlanError::kVbrNeedsEac3:
             return "variable bit rate needs E-AC-3 - AC-3's frame size indexes Table 5.18 "
                    "and cannot vary freely";
+        case PlanError::kTimecodeNeedsBsid8:
+            return "Annex D's alternate syntax reuses the two time code fields (§D1), so a "
+                   "bsid-6 stream cannot carry a time code as well";
     }
     return "";
 }
@@ -889,8 +870,9 @@ std::optional<PlanError> validate(const Plan& plan) {
     } else if (!carries(plan.codec, plan.layout)) {
         return PlanError::kLayoutNeedsEac3;
     }
-    // E-AC-3 signals frmsiz directly, so any rate is expressible there; AC-3
-    // indexes Table 5.18 and cannot say anything else.
+    // AC-3 indexes Table 5.18 and cannot say anything else. E-AC-3 signals
+    // frmsiz directly, so any rate its 11 bits can hold is expressible there -
+    // which is a range of its own, checked at the end of this function.
     if (plan.codec == Codec::kAc3 && !is_valid_bitrate(plan.bitrate_kbps)) {
         return PlanError::kBitrateNotLegal;
     }
@@ -900,6 +882,48 @@ std::optional<PlanError> validate(const Plan& plan) {
     }
     if (plan.vbr && plan.codec == Codec::kAc3) {
         return PlanError::kVbrNeedsEac3;
+    }
+    // Only AC-3 has an alternate syntax to choose, and only AC-3 has a time
+    // code field for it to displace - E-AC-3 has neither, so `annexd` there is
+    // inert rather than in conflict with anything.
+    if (plan.codec == Codec::kAc3 && plan.meta.annexd &&
+        (plan.meta.info.timecod1 || plan.meta.info.timecod2)) {
+        return PlanError::kTimecodeNeedsBsid8;
+    }
+    // The E-AC-3 counterpart of the Table 5.18 check above. frmsiz carries a
+    // free word count rather than a table index, but it is only 11 bits
+    // (§E2.3.1.3), so a syncframe still has a range: 1 to kMaxFrameWords
+    // words, and a rate outside it cannot be signalled at all.
+    //
+    // The rate that has to fit is a SUBSTREAM's, not the plan's - eac3_config()
+    // gives the independent substream the whole rate and each dependent half
+    // of it, so both ends are reachable from one plan (1 kbit/s stereo is
+    // fine; 1 kbit/s 7.1.4 leaves its dependents with a frame of no words at
+    // all). Asking eac3_config() for the configs it will really build is what
+    // keeps this from drifting away from that split.
+    //
+    // Without this the verdict exists only inside the frame encoder, which
+    // reaches it too late to be reported: a rejected config leaves
+    // AccessUnitEncoder with no substreams and therefore no channels, and a
+    // front end that sized its buffers from the plan disagrees with it before
+    // the first frame is encoded.
+    if (plan.codec == Codec::kEac3) {
+        // Under VBR the content decides the word count and bitrate_kbps is
+        // only a tool heuristic, so there is nothing fixed to check - the same
+        // exemption eac3_frame.cpp's own validate() makes, per substream
+        // because halve_vbr_bounds() gives dependents their own VBR config.
+        const auto framable = [](const eac3::FrameConfig& sub) {
+            if (sub.vbr) {
+                return true;
+            }
+            const auto words = eac3::frame_words(sub.sample_rate, sub.bitrate_kbps);
+            return words >= 1 && words <= eac3::kMaxFrameWords;
+        };
+        const auto config = eac3_config(plan);
+        if (!framable(config.independent) ||
+            !std::ranges::all_of(config.dependents, framable)) {
+            return PlanError::kBitrateNotFramable;
+        }
     }
     return std::nullopt;
 }
@@ -919,6 +943,10 @@ EncoderConfig ac3_config(const Plan& plan) {
             .dialnorm2 = cp.bed_acmod == Acmod::kDualMono
                             ? std::optional<int>(plan.meta.dialnorm2)
                             : std::nullopt,
+            // -1 here is EncoderConfig's own "encoder chooses", which for
+            // AC-3 is the measured rate curve - so the default reaches the
+            // same behaviour it had before this field was plumbed.
+            .fgaincod = plan.tools.fgaincod,
             .acmod = cp.bed_acmod,
             .lfe = cp.bed_lfe,
             // Coupling shares coefficients between full-bandwidth channels
@@ -926,6 +954,7 @@ EncoderConfig ac3_config(const Plan& plan) {
             .coupling = plan.tools.coupling && fullbw_channel_count(cp.bed_acmod) >= 2,
             .cplbegf = plan.tools.cplbegf,
             .fast_mdct = plan.tools.fast_mdct,
+            .dither = plan.tools.dither,
             .drc = plan.meta.drc,
             .heavy = plan.meta.heavy,
             .drc2 = cp.bed_acmod == Acmod::kDualMono
@@ -935,7 +964,15 @@ EncoderConfig ac3_config(const Plan& plan) {
                           ? plan.meta.heavy2
                           : std::optional<meta::HeavyConfig>(std::nullopt),
             .cmixlev = plan.meta.cmixlev,
-            .surmixlev = plan.meta.surmixlev};
+            .surmixlev = plan.meta.surmixlev,
+            .info = plan.meta.info,
+            // Annex D and the time code occupy the same 28 bits, so asking for
+            // bsid 6 drops whatever timecode the plan carried rather than
+            // handing the encoder a config it would refuse.
+            .alternate_bsi = plan.meta.annexd
+                                 ? std::optional<meta::AlternateBsi>(alternate_bsi(plan.meta))
+                                 : std::nullopt,
+            .search = plan.tools.search};
 }
 
 namespace {
@@ -953,6 +990,17 @@ void apply_tools(const Tools& tools, eac3::FrameConfig& config) {
     config.gaqmod = tools.gaqmod;
     config.transient_prenoise = tools.transient_prenoise;
     config.fast_mdct = tools.fast_mdct;
+    config.dither = tools.dither;
+    config.numblkscod = tools.numblkscod;
+    // EQ13: CBR only - see FrameConfig::search's own comment for what
+    // search=distortion/perceptual actually do here, and for how the two
+    // axes it now moves are priced against each other.
+    config.search = tools.search;
+    // EQ7: -1 leaves Table E1.4's implied 0x4 and writes no element, which
+    // is byte-for-byte the frame this encoder emitted before the field
+    // existed; 0..7 pins the code and pays for the per-block fgaincode
+    // element in all six blocks.
+    config.fgaincod = tools.fgaincod;
 }
 
 // A dependent's share of the plan's VBR bounds, halved the same way its
@@ -969,14 +1017,32 @@ eac3::VbrConfig halve_vbr_bounds(eac3::VbrConfig vbr) {
     if (vbr.nominal_kbps) {
         *vbr.nominal_kbps /= 2;
     }
+    // The ABR target is a rate too, and the plan's target is what the WHOLE
+    // access unit is contracted to average - so each substream holds half of
+    // it, or the two together would deliver twice what was asked. The window
+    // is a count of frames, not a rate, so it carries over unchanged: both
+    // substreams cover the same 1536 samples and therefore the same span of
+    // time.
+    if (vbr.abr) {
+        vbr.abr->target_kbps /= 2;
+    }
     return vbr;
 }
 
 }  // namespace
 
 eac3::AccessUnitConfig eac3_config(const Plan& plan) {
+    auto programme = eac3_programme(plan);
+    // FrameConfig is trivially copyable; only the dependent vector is worth
+    // moving.
+    return {.independent = programme.independent,
+            .dependents = std::move(programme.dependents),
+            .additional = {}};
+}
+
+eac3::ProgrammeConfig eac3_programme(const Plan& plan) {
     const auto cp = resolve(plan);
-    eac3::AccessUnitConfig out;
+    eac3::ProgrammeConfig out;
     auto& independent = out.independent;
     independent.sample_rate = plan.sample_rate;
     independent.bitrate_kbps = plan.bitrate_kbps;
@@ -994,6 +1060,15 @@ eac3::AccessUnitConfig eac3_config(const Plan& plan) {
     }
     if (plan.meta.mixmeta) {
         independent.mixing = mix_metadata(plan.meta);
+    }
+    if (plan.meta.infomdat) {
+        independent.info = plan.meta.info;
+        // Annex E's audprodie carries adconvtyp as a third field where AC-3's
+        // stops at roomtyp; Metadata states it once, outside audprod, so this
+        // is where it reaches the wire on this side.
+        if (independent.info->audprod) {
+            independent.info->audprod->adconvtyp = plan.meta.adconvtyp;
+        }
     }
     apply_tools(plan.tools, independent);
     independent.vbr = plan.vbr;

@@ -16,6 +16,36 @@
 
 namespace ac3::internal {
 
+// OutputConfig::mode expressed as the two gain switches it actually is, so
+// both decoders resolve it identically and block_gain() below stays unaware
+// that operating modes exist at all.
+//
+// The modes OVERRIDE drc_scale/heavy_compression rather than composing with
+// them: §7.7.1's line mode and §7.7.2's RF mode each name one specific
+// behaviour, and a caller asking for "RF mode, but only 40% of it" is asking
+// for something §7.7.2's ceiling would no longer hold for. kCustom is how a
+// caller says it wants the switches themselves.
+[[nodiscard]] inline DecoderConfig resolve_operating_mode(const DecoderConfig& config) {
+    DecoderConfig out = config;
+    switch (config.output.mode) {
+        case OperatingMode::kCustom:
+            break;
+        case OperatingMode::kLine:
+            out.drc_scale = 1.0;
+            out.heavy_compression = false;
+            break;
+        case OperatingMode::kRf:
+            out.heavy_compression = true;
+            // §7.7.2.1's fallback for a syncframe carrying no compr word is
+            // dynrng, and it is meant to be the whole of it - a partial scale
+            // here would make the fallback quietly weaker than the word it
+            // stands in for.
+            out.drc_scale = 1.0;
+            break;
+    }
+    return out;
+}
+
 // The §7.7 gain for one block, resolving which of the two control signals
 // applies. §7.7.2.1: a decoder told to use compr falls back on dynrng for any
 // syncframe with no compr word, so heavy compression is a preference and not a

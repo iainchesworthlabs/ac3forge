@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <format>
+#include <fmt/format.h>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -142,7 +142,7 @@ struct ChannelStatus {
     if (!status) {
         return std::nullopt;
     }
-    return std::format("{},AES0=0x{:02x},AES1=0x{:02x},AES2=0x{:02x},AES3=0x{:02x}", base,
+    return fmt::format("{},AES0=0x{:02x},AES1=0x{:02x},AES2=0x{:02x},AES3=0x{:02x}", base,
                        status->aes0, status->aes1, status->aes2, status->aes3);
 }
 
@@ -215,14 +215,14 @@ namespace detail {
 [[nodiscard]] inline std::string config_device_name(DigitalOutput kind, std::string_view card_id,
                                                     unsigned index) {
     const std::string_view plugin = kind == DigitalOutput::kHdmi ? "hdmi" : "iec958";
-    return std::format("{}:CARD={},DEV={}", plugin, card_id, index);
+    return fmt::format("{}:CARD={},DEV={}", plugin, card_id, index);
 }
 
 // The raw hardware device behind a card/device pair, bypassing every plugin.
 // Used only as the control probe that separates "this output cannot
 // bitstream" from "this output cannot be opened at all".
 [[nodiscard]] inline std::string hw_device_name(std::string_view card_id, int device) {
-    return std::format("hw:CARD={},DEV={}", card_id, device);
+    return fmt::format("hw:CARD={},DEV={}", card_id, device);
 }
 
 }  // namespace ac3::alsa

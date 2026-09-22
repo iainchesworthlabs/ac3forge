@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -114,6 +115,17 @@ class AC3FORGE_EXPORT LevelMeter {
     // truncating a layout the caller has already committed to.
     LevelMeter(Acmod acmod, bool lfe, std::uint32_t sample_rate, int channels,
                const MeterBallistics& ballistics = {});
+    // Declared (and defined in levels.cpp, where Impl below is complete)
+    // rather than implicit: a dllexport class generates every implicit
+    // special member whether or not called, and the unique_ptr member makes
+    // the implicit copy deleted - which is fine - but move-assignment's
+    // implicit reset() needs Impl complete, so it cannot stay implicit once
+    // Impl is only forward-declared here.
+    ~LevelMeter();
+    LevelMeter(const LevelMeter&) = delete;
+    LevelMeter& operator=(const LevelMeter&) = delete;
+    LevelMeter(LevelMeter&&) noexcept;
+    LevelMeter& operator=(LevelMeter&&) noexcept;
 
     // Planar, one span per channel in A/52 order. The shortest span sets the
     // length; channels beyond the ones supplied are metered as silence, so a
@@ -125,12 +137,12 @@ class AC3FORGE_EXPORT LevelMeter {
     // each frame are metered and any extra ignored.
     void process_interleaved(std::span<const float> samples, std::size_t stride);
 
-    [[nodiscard]] std::span<const ChannelLevel> levels() const { return levels_; }
-    [[nodiscard]] std::span<const ChannelSummary> summary() const { return summary_; }
-    [[nodiscard]] Acmod acmod() const { return acmod_; }
-    [[nodiscard]] bool lfe() const { return lfe_; }
-    [[nodiscard]] int channel_count() const { return static_cast<int>(levels_.size()); }
-    [[nodiscard]] std::uint32_t sample_rate() const { return sample_rate_; }
+    [[nodiscard]] std::span<const ChannelLevel> levels() const;
+    [[nodiscard]] std::span<const ChannelSummary> summary() const;
+    [[nodiscard]] Acmod acmod() const;
+    [[nodiscard]] bool lfe() const;
+    [[nodiscard]] int channel_count() const;
+    [[nodiscard]] std::uint32_t sample_rate() const;
 
     // Drops both the ballistic state and the accumulated summary.
     void reset();
@@ -139,14 +151,12 @@ class AC3FORGE_EXPORT LevelMeter {
     // One channel's worth of block statistics, advanced over `seconds`.
     void advance(std::size_t channel, double block_peak, double mean_square, double seconds);
 
-    Acmod acmod_;
-    bool lfe_;
-    std::uint32_t sample_rate_;
-    MeterBallistics ballistics_;
-    std::vector<ChannelLevel> levels_;
-    std::vector<ChannelSummary> summary_;
-    std::vector<double> mean_square_;   // one-pole RMS state, linear power
-    std::vector<double> hold_elapsed_;  // seconds the hold marker has been parked
+    // Every private data member - acmod/lfe/sample rate, the ballistics
+    // config, the level/summary vectors, all of it - lives behind this one
+    // pimpl, following the same pattern as ac3::io::WavStreamReader/Writer
+    // and ac3::FrameEncoder. Impl is defined in levels.cpp.
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 // Where the energy sits on the loudspeaker ring: the energy-weighted vector

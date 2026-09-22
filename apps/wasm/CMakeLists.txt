@@ -71,3 +71,65 @@ add_custom_command(TARGET ac3forge_wasm_decode POST_BUILD
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/demo.ec3"
         "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/assets"
     COMMENT "Assembling the servable wasm_decode_demo/ directory")
+
+# ---------------------------------------------------------------------------
+# Roadmap UX6: the browser ENCODE page - a sibling module to the decode
+# target above, not a bigger version of it. Kept as a second .wasm/.js
+# rather than folded into ac3forge_wasm_decode so a page that only needs one
+# direction never pays for the other; see docs/platforms/wasm.md's "Encode
+# module" section for the measured size/real-time numbers that motivated
+# this split (a combined AC-3 + E-AC-3 + Atmos/JOC + QC module measured
+# smaller raw, and about the same gzip, as the decode-only module alone).
+#
+# Produces ${CMAKE_BINARY_DIR}/bin/wasm_encode_demo/, the same
+# "any static file server" story as wasm_decode_demo/.
+# ---------------------------------------------------------------------------
+
+add_executable(ac3forge_wasm_encode encoder_bindings.cpp)
+target_link_libraries(ac3forge_wasm_encode PRIVATE ac3::forge ac3::warnings)
+
+# Same reasoning as ac3forge_wasm_decode's own comment on every flag below -
+# -fexceptions, MODULARIZE+EXPORT_NAME (a distinct name so this module and
+# the decode one can load on the same page without colliding), a memory
+# ceiling turning exhaustion into an ordinary error path instead of a dead
+# tab. A dropped WAV's decoded PCM (via the browser's own
+# AudioContext.decodeAudioData - see encode/app.js) is bounded client-side
+# before it ever reaches this module, the same way an uploaded stream is
+# bounded before reaching the decode module.
+target_compile_options(ac3forge_wasm_encode PRIVATE "-fexceptions")
+target_link_options(ac3forge_wasm_encode PRIVATE
+    "-fexceptions"
+    "--bind"
+    "-sMODULARIZE=1"
+    "-sEXPORT_NAME=createAc3ForgeEncodeModule"
+    "-sALLOW_MEMORY_GROWTH=1"
+    "-sINITIAL_MEMORY=67108864"
+    "-sMAXIMUM_MEMORY=1073741824"
+    "-sENVIRONMENT=web"
+    "-sNO_EXIT_RUNTIME=1")
+
+set_target_properties(ac3forge_wasm_encode PROPERTIES
+    OUTPUT_NAME "ac3forge_encode"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo")
+
+# The round-trip preview (encode/app.js) loads the DECODE module too, and
+# wasm_encode_demo/ has to be independently servable ("cd .../wasm_encode_demo
+# && python3 -m http.server", the same story wasm_decode_demo/ has) rather
+# than assuming a sibling directory exists - so ac3forge_decode.js/.wasm are
+# copied in here as well, not referenced across directories. That means this
+# target's POST_BUILD step depends on ac3forge_wasm_decode's own output
+# already existing, hence the explicit add_dependencies: Ninja would
+# otherwise happily run both targets' link steps in parallel with no
+# ordering guarantee.
+add_dependencies(ac3forge_wasm_encode ac3forge_wasm_decode)
+
+add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/encode/index.html"
+        "${CMAKE_CURRENT_SOURCE_DIR}/encode/app.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/favicon.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/favicon-32.png"
+        "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/ac3forge_decode.js"
+        "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/ac3forge_decode.wasm"
+        "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo"
+    COMMENT "Assembling the servable wasm_encode_demo/ directory")

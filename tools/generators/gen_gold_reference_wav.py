@@ -70,9 +70,11 @@ def make_channels() -> list[list[float]]:
     # rematrix would be audible/measurable as an SNR drop.
     vibrato = [1.0 + 0.003 * math.sin(2 * math.pi * 4.5 * tt) for tt in t]
     chord = [sum(math.sin(2 * math.pi * f * v * tt) for f in (220.0, 277.18, 329.63))
-             for tt, v in zip(t, vibrato)]
-    left = [0.18 * c + 0.03 * math.sin(2 * math.pi * 1318.5 * tt) for c, tt in zip(chord, t)]
-    right = [0.18 * c + 0.03 * math.sin(2 * math.pi * 987.77 * tt) for c, tt in zip(chord, t)]
+             for tt, v in zip(t, vibrato, strict=True)]
+    left = [0.18 * c + 0.03 * math.sin(2 * math.pi * 1318.5 * tt)
+            for c, tt in zip(chord, t, strict=True)]
+    right = [0.18 * c + 0.03 * math.sin(2 * math.pi * 987.77 * tt)
+             for c, tt in zip(chord, t, strict=True)]
 
     # Center: a slow AM-modulated formant stack, standing in for dialogue -
     # distinct in character from L/R so the center channel is identifiably
@@ -81,7 +83,7 @@ def make_channels() -> list[list[float]]:
     formants = [sum(0.28 * math.sin(2 * math.pi * f * tt) for f in (700.0, 1220.0, 2450.0))
                 for tt in t]
     center = [0.22 * math.sin(2 * math.pi * 180.0 * tt) * e * (1.0 + 0.4 * fm)
-              for tt, e, fm in zip(t, env, formants)]
+              for tt, e, fm in zip(t, env, formants, strict=True)]
 
     # LFE: low tones only (a real LFE path is low-passed upstream of this;
     # a test fixture just needs energy that unambiguously belongs there).

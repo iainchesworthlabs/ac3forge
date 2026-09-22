@@ -22,11 +22,23 @@ namespace ac3::oba {
 
 // One authored point in a per-object motion path: a placement anchored to a
 // moment in time.
+//
+// `size` interpolates between keyframes the way position and gain do -
+// BS.2076-2 §10.3 lists width/height/depth among its interpolatable
+// parameters, and TS 103 420 sends them per metadata update, so a growing
+// object is expressible on both sides. `snap`, `zone` and `enable_elevation`
+// do not: they are discrete rendering decisions with no meaningful halfway
+// point, so evaluate() holds the EARLIER keyframe's value until the later one
+// is reached.
 struct Keyframe {
     double time_s = 0.0;
     Position position{};
     double gain = 1.0;
     double lfe_send = 0.0;
+    ObjectSize size{};
+    bool snap = false;
+    ZoneConstraint zone = ZoneConstraint::kNone;
+    bool enable_elevation = true;
 };
 
 enum class PathError : std::uint8_t { kNoKeyframes, kDuplicateTimestamp };

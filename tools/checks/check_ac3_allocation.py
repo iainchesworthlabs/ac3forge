@@ -42,6 +42,7 @@ Usage (repo root, after building):
 """
 
 import argparse
+import itertools
 import sys
 from pathlib import Path
 
@@ -52,7 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # bucket), not here (tools/checks/, correctness-gate bucket) - it just also
 # happens to be the one place CLI path/WAV IO/alignment helpers already live.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ci"))
-import quality_race as qr  # noqa: E402  (CLI path, WAV IO, alignment)
+import quality_race as qr  # CLI path, WAV IO, alignment
 
 REPO = Path(__file__).resolve().parent.parent.parent
 SOURCE = REPO / "tests" / "golden" / "audio" / "reference_51.wav"
@@ -104,7 +105,7 @@ def per_band_snr(original: np.ndarray, decoded: np.ndarray) -> np.ndarray:
     noise = d - o
     freqs = np.fft.rfftfreq(o.shape[0], 1.0 / qr.RATE)
     out = []
-    for low, high in zip(BAND_EDGES, BAND_EDGES[1:]):
+    for low, high in itertools.pairwise(BAND_EDGES):
         mask = (freqs >= low) & (freqs < high)
         sig = err = 0.0
         for c in range(o.shape[1]):
@@ -152,7 +153,7 @@ def main() -> None:
     ours_bd, theirs_bd = per_band_snr(original, ours_pcm), per_band_snr(original, theirs_pcm)
     print(f"\n{'band':<14}{'ours':>9}{'ffmpeg':>9}{'deficit':>9}")
     print("-" * 41)
-    for i, (low, high) in enumerate(zip(BAND_EDGES, BAND_EDGES[1:])):
+    for i, (low, high) in enumerate(itertools.pairwise(BAND_EDGES)):
         label = f"{low/1000:g}-{high/1000:g}k"
         print(f"{label:<14}{ours_bd[i]:>9.2f}{theirs_bd[i]:>9.2f}"
               f"{ours_bd[i] - theirs_bd[i]:>+9.2f}")

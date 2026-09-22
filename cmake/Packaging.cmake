@@ -57,6 +57,55 @@ if(WIN32)
         # for both variables, which generate_icons.py already produces.
         set(CPACK_NSIS_MUI_ICON "${PROJECT_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")
         set(CPACK_NSIS_MUI_UNIICON "${PROJECT_SOURCE_DIR}/apps/gui/icons/ac3forge.ico")
+
+        # Roadmap UX2: .ac3/.ec3 open in ac3gui - the same "double-click a
+        # stream you already have" gesture the app's own DropArea and
+        # `ac3gui <file>` launch handling (roadmap UX2's other two legs)
+        # already understand once the file reaches the app; this is what
+        # gets it there from Explorer. One ProgID for both extensions - they
+        # are the same stream format (bsid decides AC-3 vs E-AC-3, the same
+        # way every ac3gui/ac3cli command that takes either already does),
+        # so a single "open in ac3gui" entry is the honest description
+        # rather than two identical ones. $INSTDIR\bin matches
+        # CMAKE_INSTALL_BINDIR, where apps/gui/CMakeLists.txt's own
+        # install(TARGETS ac3gui RUNTIME DESTINATION ...) puts it.
+        # SHChangeNotify is what makes Explorer pick the new association up
+        # without a logoff/logon - without it the icon/"Open with" entry
+        # only appears after one. Bracket arguments (CMake's raw-string
+        # syntax) rather than a quoted string: NSIS's own command syntax
+        # already needs both single and double quotes (nested, so an
+        # "open" command's value can itself be double-quoted), and escaping
+        # all of that through CMake's quoted-argument rules would be far
+        # more error-prone than writing the NSIS script exactly as NSIS
+        # wants it.
+        set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS [[
+            WriteRegStr HKCR ".ac3" "" "AC3Forge.Stream"
+            WriteRegStr HKCR ".ec3" "" "AC3Forge.Stream"
+            WriteRegStr HKCR "AC3Forge.Stream" "" "AC-3 / E-AC-3 Stream"
+            WriteRegStr HKCR "AC3Forge.Stream\DefaultIcon" "" "$INSTDIR\bin\ac3gui.exe,0"
+            WriteRegStr HKCR "AC3Forge.Stream\shell\open\command" "" '"$INSTDIR\bin\ac3gui.exe" "%1"'
+            System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+        ]])
+        set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS [[
+            DeleteRegKey HKCR ".ac3"
+            DeleteRegKey HKCR ".ec3"
+            DeleteRegKey HKCR "AC3Forge.Stream"
+            System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+        ]])
+    else()
+        # DR7: this used to be silent - a missing makensis just meant the ZIP
+        # packaged alone with no diagnostic anywhere, which is how the
+        # Windows release shipped installer-less for several releases running
+        # before anyone noticed (see docs/releasing.md#winget-manifest and
+        # ROADMAP.md's DR7). CI now installs makensis explicitly
+        # (.github/workflows/_build.yml's "Install NSIS (Windows)" step) and
+        # asserts packages/*.exe exists after Package, so this warning firing
+        # THERE means that install broke and the leg fails outright; degrading
+        # to a ZIP-only package on purpose - with a visible reason why - is
+        # still the right call for a local dev build without NSIS installed.
+        message(WARNING "makensis not found on PATH - packaging a ZIP only, "
+            "no NSIS installer. Install NSIS (https://nsis.sourceforge.io/) "
+            "or `choco install nsis` to get one locally.")
     endif()
 elseif(APPLE)
     list(APPEND CPACK_GENERATOR "DragNDrop")
@@ -187,6 +236,14 @@ endif()
 # DEB/RPM get their own *_COMPONENT_INSTALL switch, set inside their own
 # find_program() blocks above, now that the split is real work rather than
 # a placeholder.
+# The `runtime` component is ac3cli/ac3gui plus, since roadmap IO8, the
+# generated ac3cli.1 man page and the bash/zsh/fish/PowerShell completion
+# scripts - all install()'d with COMPONENT runtime from
+# apps/cli/CMakeLists.txt, so every generator below picks them up with the
+# binary rather than needing a component of their own. They are absent from a
+# CROSS build's packages by construction: they are produced by running the
+# freshly built ac3cli, which a cross build cannot do (see that file's own
+# CMAKE_CROSSCOMPILING branch for why that is the chosen trade).
 set(CPACK_COMPONENTS_ALL runtime library libruntime)
 set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
 
@@ -225,7 +282,17 @@ set(CPACK_COMPONENT_LIBRUNTIME_GROUP "dev")
 # today's existing filename is unchanged, and include(CPack) leaves an
 # already-set variable alone rather than recomputing it.
 if(WIN32)
-    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "ARM64")
+        # Arch-qualified, the same reason the LINUX branch below already is:
+        # an arm64 build is also an 8-byte-pointer build, so
+        # CMAKE_SIZEOF_VOID_P alone can't tell it apart from x64, and without
+        # this an arm64 archive would silently collide with (overwrite/get
+        # confused with) the existing x64 "win64" archive name.
+        # CMAKE_SYSTEM_PROCESSOR is set to exactly "ARM64" by
+        # cmake/toolchains/windows.msvc.toolchain.cmake for that target -
+        # see its own comment.
+        set(CPACK_SYSTEM_NAME "win-arm64")
+    elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
         set(CPACK_SYSTEM_NAME "win64")
     else()
         set(CPACK_SYSTEM_NAME "win32")

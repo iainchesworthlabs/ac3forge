@@ -1,0 +1,22 @@
+# The non-C++ linters for ci.yml's script-lint job (roadmap VX14): ruff over
+# every Python file in the tree, shellcheck over the shell scripts, actionlint
+# over the workflows.
+#
+# shellcheck and actionlint are Haskell and Go programs, not Python ones -
+# these two PyPI packages are the upstream-blessed wrappers that ship the
+# real, unmodified binary inside a wheel (the same route pre-commit uses).
+# Going through pip for all three is what lets the whole gate hash-pin in one
+# lock here, exactly like requirements-coverage.txt and
+# requirements-ffmpeg-validate.txt, instead of curl-ing two release tarballs
+# and hand-maintaining their checksums in the workflow.
+#
+# All three are dependency-free binary wrappers, so this lock carries no
+# environment markers and installs the same way on any Python the runner
+# image ships.
+#
+# Regenerate the lock after any change here with:
+#   python -m piptools compile --generate-hashes --strip-extras \
+#     --output-file=requirements-lint.txt requirements-lint.in
+ruff
+shellcheck-py
+actionlint-py

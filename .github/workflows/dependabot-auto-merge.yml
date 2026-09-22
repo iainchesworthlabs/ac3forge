@@ -1,10 +1,10 @@
 # Enable GitHub auto-merge on routine Dependabot PRs so grouped GitHub Actions
-# bumps land on develop without manual intervention. Modelled on
+# bumps land on main without manual intervention. Modelled on
 # aqualink-automate's .github/workflows/dependabot-auto-merge.yml.
 #
 # How it works: this job only flips the PR's auto-merge bit - GitHub itself
 # then merges (squash) once every REQUIRED status check passes. The required
-# checks on develop are "Branch Name" and "CI Status" (ci.yml) plus
+# checks on main are "Branch Name" and "CI Status" (ci.yml) plus
 # "Scan dependency diff" (dependency-review.yml) - see .github/branch-protection.md.
 # Nothing merges without the full build/test matrix going green.
 #

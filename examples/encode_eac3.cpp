@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -61,12 +62,12 @@ int encode_stereo() {
         fill_tones(pcm, tones, frame, 48000.0);
         const auto encoded = encoder->encode_frame(views);
         if (!encoded) {
-            std::printf("stereo encode failed: %d\n", std::to_underlying(encoded.error()));
+            fmt::printf("stereo encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         stream.insert(stream.end(), encoded->begin(), encoded->end());
     }
-    std::printf("stereo: %zu bytes\n", stream.size());
+    fmt::printf("stereo: %zu bytes\n", stream.size());
     return 0;
 }
 
@@ -113,14 +114,14 @@ int encode_714() {
         fill_tones(pcm, tones, frame, 48000.0);
         const auto unit = encoder.encode_access_unit(views);
         if (!unit) {
-            std::printf("7.1.4 encode failed: %d\n", std::to_underlying(unit.error()));
+            fmt::printf("7.1.4 encode failed: %d\n", std::to_underlying(unit.error()));
             return 1;
         }
         // unit->bytes is the wire order already; substream_bytes records the
         // per-substream boundaries, which crc2 is computed over.
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
     }
-    std::printf("7.1.4: %zu channels, %zu bytes\n", channel_count, stream.size());
+    fmt::printf("7.1.4: %zu channels, %zu bytes\n", channel_count, stream.size());
     return 0;
 }
 

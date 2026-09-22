@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -66,14 +67,14 @@ int main() {
         fill(pcm, frame);
         const auto encoded = encoder->encode_frame(views);
         if (!encoded) {
-            std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
+            fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         // A real QC pass measures the DECODED audio, not the source PCM -
         // the whole point is to check what the stream actually carries.
         const auto decoded = decoder.decode_frame(*encoded);
         if (!decoded) {
-            std::printf("decode failed: %.*s\n",
+            fmt::printf("decode failed: %.*s\n",
                         static_cast<int>(ac3::describe(decoded.error()).size()),
                         ac3::describe(decoded.error()).data());
             return 1;
@@ -90,16 +91,16 @@ int main() {
     const auto lkfs = meter.integrated_lkfs();
     const auto peak = meter.true_peak_dbtp();
     if (!lkfs) {
-        std::printf("no audio above the -70 LKFS absolute gate: nothing to report\n");
+        fmt::printf("no audio above the -70 LKFS absolute gate: nothing to report\n");
         return 1;
     }
     // §5.4.2.8: dialnorm states how far dialogue sits below digital 100%, so
     // the stream's own claimed programme level is simply its negation.
     const double claimed_lkfs = -static_cast<double>(kEmbeddedDialnorm);
-    std::printf("measured %.2f LKFS, true peak %.2f dBTP\n", *lkfs, peak.value_or(0.0));
-    std::printf("embedded dialnorm %d claims %.2f LKFS -> delta %+.2f dB\n", kEmbeddedDialnorm,
+    fmt::printf("measured %.2f LKFS, true peak %.2f dBTP\n", *lkfs, peak.value_or(0.0));
+    fmt::printf("embedded dialnorm %d claims %.2f LKFS -> delta %+.2f dB\n", kEmbeddedDialnorm,
                 claimed_lkfs, *lkfs - claimed_lkfs);
-    std::printf("a measurement-derived dialnorm would be %d, not %d\n",
+    fmt::printf("a measurement-derived dialnorm would be %d, not %d\n",
                 ac3::meta::dialnorm_from_lkfs(*lkfs), kEmbeddedDialnorm);
 
     // --- gate the measurement against every named delivery spec ------------
@@ -107,7 +108,7 @@ int main() {
         const auto preset = ac3::meta::qc_preset(id);
         const auto name = ac3::meta::qc_preset_name(id);
         const auto verdict = ac3::meta::evaluate_qc_gate(preset, lkfs, peak);
-        std::printf("%.*s: target %+.1f +/-%.1f LKFS, peak <= %+.1f dBTP -> %s\n",
+        fmt::printf("%.*s: target %+.1f +/-%.1f LKFS, peak <= %+.1f dBTP -> %s\n",
                     static_cast<int>(name.size()), name.data(), preset.target_lkfs,
                     preset.tolerance_lu, preset.max_true_peak_dbtp, verdict.pass() ? "PASS" : "FAIL");
     }

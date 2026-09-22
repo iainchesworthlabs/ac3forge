@@ -17,6 +17,16 @@ Rectangle {
     Layout.fillWidth: true
     implicitHeight: layout.implicitHeight + Theme.pad * 2
 
+    // A titled group of controls - the same "what am I looking at" question
+    // the heading answers visually, given to a screen reader too. Reading
+    // root.title directly (rather than heading.visible/heading.text) is
+    // deliberate, not just simpler - an untitled Card already produces "",
+    // the same "no name worth announcing" outcome heading.visible's
+    // text.length > 0 condition means, without a second property to depend
+    // on for change notification.
+    Accessible.role: Accessible.Grouping
+    Accessible.name: root.title
+
     ColumnLayout {
         id: layout
         anchors.fill: parent

@@ -11,6 +11,19 @@ inputs:
       versions: vcpkg.json carries no builtin-baseline, so the registry
       baseline comes from the checkout's own git history.
     required: true
+  cache-key-suffix:
+    description: >-
+      Extra archives-cache key component for jobs whose install set differs
+      from the default manifest's - pass the manifest FEATURES the job
+      enables (e.g. "adm"). Without this, every Linux job shares one key,
+      and GitHub cache entries are IMMUTABLE: whichever job saves a key
+      first locks its (possibly much smaller) archive set in for everyone -
+      found the hard way when a boost-less job saved the post-fmt-migration
+      key and the adm job's 43 boost ports could then never be added,
+      forcing a full boost rebuild (and its codeload-400 exposure) on every
+      adm-validate run forever. A distinct key per feature set lets each
+      install shape save its own complete entry.
+    default: ""
 
 runs:
   using: composite
@@ -89,8 +102,9 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/vcpkg/archives
-        key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ inputs.vcpkg-commit }}-${{ hashFiles('vcpkg.json') }}
+        key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ inputs.vcpkg-commit }}-${{ hashFiles('vcpkg.json') }}${{ inputs.cache-key-suffix != '' && format('-{0}', inputs.cache-key-suffix) || '' }}
         restore-keys: |
+          vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ inputs.vcpkg-commit }}-${{ hashFiles('vcpkg.json') }}
           vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ inputs.vcpkg-commit }}-
           vcpkg-${{ runner.os }}-${{ runner.arch }}-
 
@@ -104,7 +118,8 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/vcpkg/downloads
-        key: vcpkg-downloads-${{ runner.os }}-${{ runner.arch }}-${{ inputs.vcpkg-commit }}-${{ hashFiles('vcpkg.json') }}
+        key: vcpkg-downloads-${{ runner.os }}-${{ runner.arch }}-${{ inputs.vcpkg-commit }}-${{ hashFiles('vcpkg.json') }}${{ inputs.cache-key-suffix != '' && format('-{0}', inputs.cache-key-suffix) || '' }}
         restore-keys: |
+          vcpkg-downloads-${{ runner.os }}-${{ runner.arch }}-${{ inputs.vcpkg-commit }}-${{ hashFiles('vcpkg.json') }}
           vcpkg-downloads-${{ runner.os }}-${{ runner.arch }}-${{ inputs.vcpkg-commit }}-
           vcpkg-downloads-${{ runner.os }}-${{ runner.arch }}-

@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <span>
 #include <vector>
@@ -50,12 +51,12 @@ int main() {
     // Spans in the result point into `stream`, so it has to outlive them.
     const auto scanned = ac3::io::scan(stream);
     if (!scanned) {
-        std::printf("scan failed: %.*s\n",
+        fmt::printf("scan failed: %.*s\n",
                     static_cast<int>(ac3::io::describe(scanned.error()).size()),
                     ac3::io::describe(scanned.error()).data());
         return 1;
     }
-    std::printf("%s, %u Hz, %d channels, %zu access units\n",
+    fmt::printf("%s, %u Hz, %d channels, %zu access units\n",
                 scanned->kind == ac3::io::StreamKind::kAc3 ? "AC-3" : "E-AC-3",
                 ac3::sample_rate_hz(scanned->sample_rate), scanned->channels,
                 scanned->access_units.size());
@@ -67,13 +68,13 @@ int main() {
     for (const auto unit : scanned->access_units) {
         const auto decoded = decoder.decode_frame(unit);
         if (!decoded) {
-            std::printf("decode failed: %.*s\n",
+            fmt::printf("decode failed: %.*s\n",
                         static_cast<int>(ac3::describe(decoded.error()).size()),
                         ac3::describe(decoded.error()).data());
             return 1;
         }
         samples += decoded->channels.front().size();
     }
-    std::printf("decoded %zu samples per channel\n", samples);
+    fmt::printf("decoded %zu samples per channel\n", samples);
     return 0;
 }

@@ -18,6 +18,7 @@ equality sum(2^-len) == 1, which holds only for a complete prefix code.
 Run from the repo root:  python tools/generators/gen_joc_tables.py
 """
 
+import itertools
 import re
 from pathlib import Path
 
@@ -118,7 +119,7 @@ def parse_band_mapping():
         row = mapping[idx]
         assert set(row) == set(range(bands)), \
             f"joc_num_bands {bands}: mapping reaches {sorted(set(row))}"
-        assert all(a <= b for a, b in zip(row, row[1:])), \
+        assert all(a <= b for a, b in itertools.pairwise(row)), \
             f"joc_num_bands {bands}: mapping is not monotonic in subband"
     return mapping
 
@@ -140,7 +141,7 @@ def main():
            '// value, holding the codeword in the low `bits` bits, MSB first - which is',
            '// the order §6.6.3 reads them in ("starting with the MSB").',
            '',
-           'namespace ac3::joc {', '',
+           'namespace ac3::oba::joc {', '',
            'struct HuffCode {',
            '    std::uint32_t code;',
            '    std::uint8_t bits;',
@@ -174,7 +175,7 @@ def main():
         out.append('    {{' + ', '.join(str(v) for v in row) + '}},')
     out.append('}};')
     out.append('')
-    out.append('}  // namespace ac3::joc')
+    out.append('}  // namespace ac3::oba::joc')
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text('\n'.join(out) + '\n', encoding='utf-8')
     print(f'wrote {OUT.relative_to(REPO)} ({len(TABLES)} tables)')

@@ -62,6 +62,16 @@ struct RenderDeviceInfo {
     // one that takes PCM but not IEC 61937 simply cannot bitstream - an
     // analog output, say, rather than S/PDIF or HDMI.
     bool supports_exclusive_pcm = false;
+    // How many channels the endpoint itself renders, when the backend can
+    // say. 0 means it cannot - not "no channels" - and a caller must treat
+    // the two differently: the only safe reading of "unknown" is to leave
+    // the audio alone. It exists so a decoded programme wider than the
+    // endpoint can be folded (§7.8, ac3::OutputStage) before it is played,
+    // rather than handed to a shared-mode mixer to average down however it
+    // sees fit. MonitorSink opens in SHARED mode, so a wider programme is
+    // not refused - which is exactly why the narrowing has to be noticed
+    // here instead of being discovered as an error later.
+    std::uint16_t channels = 0;
 };
 
 // Every active render endpoint, each probed for AC-3 passthrough support at

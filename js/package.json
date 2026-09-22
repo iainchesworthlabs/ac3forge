@@ -1,0 +1,51 @@
+{
+  "name": "ac3forge-wasm-decoder",
+  "version": "0.0.0-dev",
+  "description": "Streaming AC-3/E-AC-3 (Dolby Digital/Digital Plus) decoder for the browser, compiled from ac3::forge to WebAssembly - a push-frame API, an AudioWorklet pipeline, and an hls.js/MSE bridge for playing EC-3 where Chrome cannot decode it natively.",
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "keywords": [
+    "ac3",
+    "eac3",
+    "dolby-digital",
+    "atmos",
+    "audio",
+    "codec",
+    "wasm",
+    "webassembly",
+    "audioworklet",
+    "hls.js"
+  ],
+  "homepage": "https://iainchesworthlabs.github.io/ac3forge/platforms/wasm/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iainchesworthlabs/ac3forge.git",
+    "directory": "js"
+  },
+  "bugs": "https://github.com/iainchesworthlabs/ac3forge/issues",
+  "author": "ac3forge contributors",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./worklet-processor": {
+      "types": "./dist/worklet-processor.d.ts",
+      "default": "./dist/worklet-processor.js"
+    },
+    "./decoder-worker": {
+      "types": "./dist/decoder-worker.d.ts",
+      "default": "./dist/decoder-worker.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

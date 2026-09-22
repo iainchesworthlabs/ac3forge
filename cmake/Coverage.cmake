@@ -8,16 +8,25 @@
 #
 # Link it PRIVATE into every first-party target whose coverage should be
 # measured - today that is every library component (forge, audio, signing,
-# matroska, mp4, mpegts, the C API, ac3adm, admbridge) plus ac3tests.
-# Executables that merely LINK an instrumented library need nothing wired in:
-# a PRIVATE link of this target lands in the library's INTERFACE_LINK_LIBRARIES
-# as $<LINK_ONLY:ac3::coverage>, so --coverage and the gcov runtime propagate
-# to every downstream link line automatically (ac3perf/ac3bench link the
-# instrumented ac3::forge with no ac3::coverage of their own and link fine).
-# The coverage preset still turns AC3FORGE_BUILD_CLI/EXAMPLES off, but as a
-# pure build-time saving: those targets' coverage is filtered out of
-# tools/checks/coverage_report.sh's report anyway, so building them instrumented
-# buys nothing - see CMakePresets.json. Vendored third-party code
+# matroska, mp4, mpegts, the C API, ac3adm, admbridge) plus ac3cli and
+# ac3tests.
+#
+# The distinction that matters, and that cost a measurement run to notice:
+# LINKING an instrumented library gets a target the gcov RUNTIME, not
+# instrumentation of its own sources. A PRIVATE link of this target lands in
+# the library's INTERFACE_LINK_LIBRARIES as $<LINK_ONLY:ac3::coverage>, so
+# --coverage reaches every downstream LINK line automatically (ac3perf/ac3bench
+# link the instrumented ac3::forge with no ac3::coverage of their own and link
+# fine) - but --coverage is target-scoped at COMPILE time, so a consumer's own
+# .cpp files still compile without -fprofile-arcs and emit no .gcno. That is
+# why ac3cli has to link this explicitly (apps/cli/CMakeLists.txt) now that
+# tools/checks/coverage_report.sh gates it: without it a gcovr filter for
+# apps/cli returns zero files, not a low percentage.
+#
+# The coverage preset still turns AC3FORGE_BUILD_EXAMPLES off, as a pure
+# build-time saving: examples/ is documentation that happens to compile, over
+# an API surface tests/ already covers, and each one is its own ctest process -
+# see CMakePresets.json. Vendored third-party code
 # (src/ac3adm's FetchContent'd libbw64/libadm) is deliberately NOT
 # instrumented: these flags are target-scoped and nothing links ac3::coverage
 # into those targets, and tools/checks/coverage_report.sh's filters are

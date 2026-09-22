@@ -8,13 +8,18 @@
 // once on the way out.
 
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fmt/printf.h>
 #include <memory>
 #include <numbers>
+#include <random>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -32,15 +37,30 @@ constexpr int kFrames = 62;  // two seconds
 constexpr std::array<double, 6> kTones{1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
 
 bool fail(const char* what, std::string_view detail) {
-    std::printf("%s: %.*s\n", what, static_cast<int>(detail.size()), detail.data());
+    fmt::printf("%s: %.*s\n", what, static_cast<int>(detail.size()), detail.data());
     return false;
+}
+
+// Scratch files get a per-run suffix rather than a fixed name. Every checkout
+// of this repo runs the examples under its own `ctest` (examples/CMakeLists.txt
+// registers each one as a test case), several checkouts commonly run at once on
+// one machine, and they all share a temp directory - on a fixed name, two runs
+// read and then delete each other's file. src/ac3adm/src/adm.cpp's
+// make_temp_path builds its temp path from the same ingredients, for the same
+// reason: unique across concurrent processes without a platform-specific call.
+std::string scratch_path(std::string_view name) {
+    static const std::string run = std::to_string(
+        (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^
+        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const std::string leaf = "ac3forge_" + run + "_" + std::string(name);
+    return (std::filesystem::temp_directory_path() / leaf).string();
 }
 
 }  // namespace
 
 int main() {
-    const auto source_path = (std::filesystem::temp_directory_path() / "ac3forge_source.wav").string();
-    const auto result_path = (std::filesystem::temp_directory_path() / "ac3forge_result.wav").string();
+    const auto source_path = scratch_path("source.wav");
+    const auto result_path = scratch_path("result.wav");
 
     // Synthesize 5.1 in AC-3 order (L, C, R, SL, SR, LFE) and write it out in
     // WAV order - wav_channel_order says where each AC-3 channel belongs in
@@ -58,7 +78,7 @@ int main() {
     if (const auto wrote = ac3::io::write_wav_f32(source_path, ac3_order, 48000, write_order); !wrote) {
         return fail("write_wav_f32 failed", ac3::io::describe(wrote.error()));
     }
-    std::printf("wrote %s\n", source_path.c_str());
+    fmt::printf("wrote %s\n", source_path.c_str());
 
     // Read it back - read_wav hands the samples back in WAV order, so
     // ac3_layout_for's wav_index permutes them onto AC-3 channel k.
@@ -68,7 +88,7 @@ int main() {
     }
     const auto layout = ac3::io::ac3_layout_for(read->channels.size());
     if (!layout || layout->acmod != kAcmod || layout->lfe != kLfe) {
-        std::printf("unexpected WAV channel count: %zu\n", read->channels.size());
+        fmt::printf("unexpected WAV channel count: %zu\n", read->channels.size());
         return 1;
     }
     std::vector<std::vector<float>> from_wav(layout->wav_index.size());
@@ -91,7 +111,7 @@ int main() {
         }
         const auto encoded = encoder->encode_frame(views);
         if (!encoded) {
-            std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
+            fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         const auto decoded = decoder.decode_frame(*encoded);
@@ -110,7 +130,7 @@ int main() {
         !wrote) {
         return fail("write_wav_f32 failed", ac3::io::describe(wrote.error()));
     }
-    std::printf("wrote %s (%zu frames)\n", result_path.c_str(), decoded_ac3_order.front().size());
+    fmt::printf("wrote %s (%zu frames)\n", result_path.c_str(), decoded_ac3_order.front().size());
 
     std::filesystem::remove(source_path);
     std::filesystem::remove(result_path);

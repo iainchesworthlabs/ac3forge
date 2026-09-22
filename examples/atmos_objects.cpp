@@ -17,6 +17,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
+#include <memory>
 #include <numbers>
 #include <span>
 #include <utility>
@@ -25,13 +27,17 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/oba/joc.hpp"
 
 int main() {
     constexpr int kObjects = 3;
     // Object metadata competes with the mantissas for the same frame, so an
     // object stream wants more headroom than a plain 5.1 one.
     ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
-    ac3::Eac3Decoder decoder;
+    // Heap-allocated (PREfast's C6262, alert #77): Eac3Decoder's per-block
+    // scratch members pushed this one-shot stack declaration over the
+    // threshold - same pattern as atmos_fallback.cpp and PR #50.
+    auto decoder = std::make_unique<ac3::Eac3Decoder>();
 
     std::vector<std::vector<float>> sources(
         kObjects, std::vector<float>(ac3::kSamplesPerFrame));
@@ -45,12 +51,15 @@ int main() {
 
     // Position error and audio-tracking SNR accumulate across every frame
     // after this one, so the transform pair's own warm-up (see
-    // tests/oba/test_oba.cpp's "reconstruct is a 256-sample-delayed identity..."
-    // and tests/oba/test_atmos.cpp's "joc::reconstruct recovers well-separated
+    // tests/oba/test_oba.cpp's "reconstruct is a delayed identity..." and
+    // tests/oba/test_atmos.cpp's "oba::joc::reconstruct recovers well-separated
     // objects...") doesn't flatter the numbers below.
     constexpr int kWarmupFrames = 3;
     constexpr int kTotalFrames = 62;  // two seconds
-    constexpr std::size_t kDelay = 512;  // encode+decode (256) + reconstruct's own pass (256)
+    // encode+decode (256), plus reconstruct's own pass - which is 256 or 576
+    // depending on the domain it runs in, so the library is asked.
+    constexpr std::size_t kDelay = static_cast<std::size_t>(
+        256 + ac3::oba::joc::reconstruction_delay(ac3::oba::joc::Domain::kQmf));
 
     double position_error_sum = 0.0;
     int position_samples = 0;
@@ -85,20 +94,20 @@ int main() {
 
         const auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
-            std::printf("atmos encode failed: %d\n", std::to_underlying(unit.error()));
+            fmt::printf("atmos encode failed: %d\n", std::to_underlying(unit.error()));
             return 1;
         }
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
 
         // --- decode this same frame straight back --------------------------
         if (unit->substream_count() != 1) {
-            std::printf("unexpected substream count %d\n",
+            fmt::printf("unexpected substream count %d\n",
                        static_cast<int>(unit->substream_count()));
             return 1;
         }
-        const auto decoded = decoder.decode_substream(unit->substream(0));
+        const auto decoded = decoder->decode_substream(unit->substream(0));
         if (!decoded) {
-            std::printf("decode failed: %d\n", std::to_underlying(decoded.error()));
+            fmt::printf("decode failed: %d\n", std::to_underlying(decoded.error()));
             return 1;
         }
         if (!decoded->has_value()) {
@@ -108,7 +117,7 @@ int main() {
 
         if (frame >= kWarmupFrames) {
             if (!sub.object_metadata || sub.object_metadata->objects.size() != kObjects) {
-                std::printf("frame %d: no object metadata decoded\n", frame);
+                fmt::printf("frame %d: no object metadata decoded\n", frame);
                 return 1;
             }
             for (std::size_t obj = 0; obj < kObjects; ++obj) {
@@ -132,21 +141,21 @@ int main() {
         }
 
         if (frame % 20 == 0) {
-            std::printf("frame %2d: object 0 encoded at (%.3f, %.3f, %.3f)", frame,
+            fmt::printf("frame %2d: object 0 encoded at (%.3f, %.3f, %.3f)", frame,
                        placement[0].position.x, placement[0].position.y, placement[0].position.z);
             if (sub.object_metadata && !sub.object_metadata->objects.empty()) {
                 const auto& p = sub.object_metadata->objects[0].position;
-                std::printf(", decoded at (%.3f, %.3f, %.3f)", p.x, p.y, p.z);
+                fmt::printf(", decoded at (%.3f, %.3f, %.3f)", p.x, p.y, p.z);
             }
-            std::printf("\n");
+            fmt::printf("\n");
         }
     }
 
-    std::printf("%zu bytes of DD+ with %d objects over a 5.1 bed\n", stream.size(),
+    fmt::printf("%zu bytes of DD+ with %d objects over a 5.1 bed\n", stream.size(),
                encoder.dynamic_object_count());
 
     if (position_samples > 0) {
-        std::printf("mean position error across %d frames of real motion: %.4f (room units)\n",
+        fmt::printf("mean position error across %d frames of real motion: %.4f (room units)\n",
                    kTotalFrames - kWarmupFrames, position_error_sum / position_samples);
     }
 
@@ -165,7 +174,7 @@ int main() {
             error += (got - want) * (got - want);
         }
         const double snr_db = 10.0 * std::log10(signal / std::max(error, 1e-30));
-        std::printf("object %zu audio-tracking SNR: %.1f dB\n", obj, snr_db);
+        fmt::printf("object %zu audio-tracking SNR: %.1f dB\n", obj, snr_db);
     }
 
     return 0;

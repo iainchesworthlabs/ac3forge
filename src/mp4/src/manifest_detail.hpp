@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <span>
+#include <vector>
 
 #include "mp4/mp4.hpp"
 
@@ -15,9 +16,22 @@
 
 namespace mp4::manifest_detail {
 
-[[nodiscard]] inline double segment_seconds(const MediaSegment& segment,
+[[nodiscard]] inline double segment_seconds(const SegmentInfo& segment,
                                             std::uint32_t sample_rate) {
     return static_cast<double>(segment.duration_samples) / static_cast<double>(sample_rate);
+}
+
+// mp4::segment_info over a whole batch list, for both modules' MediaSegment
+// convenience overloads - a manifest only ever reads a segment's bookkeeping,
+// never its bytes (mp4.hpp's SegmentInfo).
+[[nodiscard]] inline std::vector<SegmentInfo> segment_infos(
+    std::span<const MediaSegment> segments) {
+    std::vector<SegmentInfo> out;
+    out.reserve(segments.size());
+    for (const auto& segment : segments) {
+        out.push_back(segment_info(segment));
+    }
+    return out;
 }
 
 // The average bits/second these segments require. Both HLS's BANDWIDTH
@@ -28,12 +42,12 @@ namespace mp4::manifest_detail {
 // no per-segment target has; a real ABR ladder builder would want a
 // measured peak instead, out of this module's single-representation scope
 // (mp4.hpp's own header comment on mp4:: staying single-track).
-[[nodiscard]] inline std::uint64_t estimate_bandwidth_bps(std::span<const MediaSegment> segments,
+[[nodiscard]] inline std::uint64_t estimate_bandwidth_bps(std::span<const SegmentInfo> segments,
                                                           std::uint32_t sample_rate) {
     std::uint64_t total_bytes = 0;
     double total_seconds = 0.0;
     for (const auto& segment : segments) {
-        total_bytes += segment.bytes.size();
+        total_bytes += segment.byte_size;
         total_seconds += segment_seconds(segment, sample_rate);
     }
     if (total_seconds <= 0.0) {

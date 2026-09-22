@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -71,12 +72,12 @@ int main() {
 
         const auto encoded = encoder->encode_frame(bed_views);
         if (!encoded) {
-            std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
+            fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         stream.insert(stream.end(), encoded->begin(), encoded->end());
     }
 
-    std::printf("%zu bytes of 5.1 AC-3 with a moving source\n", stream.size());
+    fmt::printf("%zu bytes of 5.1 AC-3 with a moving source\n", stream.size());
     return 0;
 }

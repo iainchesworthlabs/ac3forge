@@ -35,6 +35,9 @@ const AudioBackend& audio_backend() {
                    .reason = "this build has no monitor backend: shared-mode PCM playback "
                              "needs ALSA/PipeWire, which needs libasound2-dev (Debian/Ubuntu) "
                              "or alsa-lib-devel (Fedora)"},
+        .spatial = {.available = false,
+                   .reason = "this build has no spatial backend: "
+                             "ISpatialAudioObjectRenderStream is a Windows-only API"},
     };
     return kBackend;
 }

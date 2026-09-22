@@ -1,0 +1,11 @@
+prefix=@AC3FORGE_PC_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: @AC3FORGE_PC_NAME@
+Description: @AC3FORGE_PC_DESCRIPTION@
+Version: @PROJECT_VERSION@
+Requires: @AC3FORGE_PC_REQUIRES@
+Libs: -L${libdir} -l@AC3FORGE_PC_LIBNAME@
+Cflags: -I${includedir}

@@ -15,7 +15,9 @@
 
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/oba/oamd.hpp"
 #include "ac3/audio/monitor.hpp"
+#include "container_input.hpp"
 
 using objdec_detail::RawFrame;
 using objdec_detail::RawResult;
@@ -69,31 +71,45 @@ std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream,
             return;
         }
         const auto& program = sub.object_metadata->program;
-        const auto& objects = sub.object_metadata->objects;
+        // Every JOC output, not just the dynamic objects: a bed programme has
+        // none of the latter and eleven of the former, and used to show as an
+        // empty dialog.
+        const auto described = ac3::oba::describe_objects(*sub.object_metadata);
 
         RawFrame f;
         f.time_s = time_s;
-        f.x.reserve(objects.size());
-        f.y.reserve(objects.size());
-        f.z.reserve(objects.size());
-        f.gain_db.reserve(objects.size());
-        for (const auto& object : objects) {
+        f.x.reserve(described.size());
+        f.y.reserve(described.size());
+        f.z.reserve(described.size());
+        f.gain_db.reserve(described.size());
+        f.width.reserve(described.size());
+        f.depth.reserve(described.size());
+        f.height.reserve(described.size());
+        f.snap.reserve(described.size());
+        f.labels.reserve(described.size());
+        for (const auto& object : described) {
             f.x.push_back(object.position.x);
             f.y.push_back(object.position.y);
             f.z.push_back(object.position.z);
             f.gain_db.push_back(object.gain_db);
+            f.width.push_back(object.size.width);
+            f.depth.push_back(object.size.depth);
+            f.height.push_back(object.size.height);
+            f.snap.push_back(object.snap);
+            f.labels.push_back(QString::fromUtf8(object.label.data(),
+                                                 static_cast<qsizetype>(object.label.size())));
         }
         result.frames.push_back(std::move(f));
 
-        result.dynamic_object_count = static_cast<int>(objects.size());
+        result.dynamic_object_count = static_cast<int>(described.size());
         result.dynamic_only = program.dynamic_only;
         result.has_lfe = ac3::oba::has_lfe(program);
 
-        if (result.object_audio.size() != objects.size()) {
-            result.object_audio.assign(objects.size(), {});
+        if (result.object_audio.size() != described.size()) {
+            result.object_audio.assign(described.size(), {});
         }
-        if (sub.object_audio.size() == objects.size()) {
-            for (std::size_t i = 0; i < objects.size(); ++i) {
+        if (sub.object_audio.size() == described.size()) {
+            for (std::size_t i = 0; i < described.size(); ++i) {
                 auto& dst = result.object_audio[i];
                 dst.insert(dst.end(), sub.object_audio[i].begin(), sub.object_audio[i].end());
             }
@@ -125,6 +141,9 @@ std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream,
         return std::nullopt;
     }
 
+    // dynamic_object_count is really "objects the dialog shows", which for a
+    // bed programme is its channels - so the label has to say which it is
+    // rather than call eleven bed channels eleven dynamic objects.
     if (result.dynamic_only) {
         result.layout_label = result.has_lfe
                                    ? QStringLiteral("%1 dynamic object(s) + LFE")
@@ -133,7 +152,7 @@ std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream,
                                          .arg(result.dynamic_object_count);
     } else {
         result.layout_label =
-            QStringLiteral("bed + %1 dynamic object(s)").arg(result.dynamic_object_count);
+            QStringLiteral("bed of %1 channel(s)").arg(result.dynamic_object_count);
     }
     result.duration_seconds = time_s;
     return result;
@@ -155,10 +174,21 @@ InspectOutcome inspect_file(const QString& path) {
         outcome.error = QStringLiteral("%1 is empty.").arg(path);
         return outcome;
     }
-    std::vector<std::byte> stream(raw.size());
+    std::vector<std::byte> file_bytes(raw.size());
     for (std::size_t i = 0; i < raw.size(); ++i) {
-        stream[i] = static_cast<std::byte>(static_cast<unsigned char>(raw[i]));
+        file_bytes[i] = static_cast<std::byte>(static_cast<unsigned char>(raw[i]));
     }
+
+    // roadmap IO2: the file itself unchanged if it is not a container this
+    // build reads, or the first AC-3/E-AC-3 track demuxed out of one - the
+    // same sniff-and-demux ac3cli's own decode/qc/levels/play/monitor use.
+    auto demuxed = ac3::apps::elementary_stream_from_bytes(file_bytes);
+    if (!demuxed.error.empty()) {
+        outcome.error =
+            QStringLiteral("%1 is a %2").arg(path, QString::fromStdString(demuxed.error));
+        return outcome;
+    }
+    const auto stream = std::move(demuxed.bytes);
 
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
@@ -221,6 +251,11 @@ QVariantList ObjectDecodeController::frames() const {
             obj[QStringLiteral("y")] = f.y[i];
             obj[QStringLiteral("z")] = f.z[i];
             obj[QStringLiteral("gainDb")] = f.gain_db[i];
+            obj[QStringLiteral("width")] = f.width[i];
+            obj[QStringLiteral("depth")] = f.depth[i];
+            obj[QStringLiteral("height")] = f.height[i];
+            obj[QStringLiteral("snap")] = static_cast<bool>(f.snap[i]);
+            obj[QStringLiteral("label")] = f.labels[i];
             objects.append(obj);
         }
         QVariantMap row;

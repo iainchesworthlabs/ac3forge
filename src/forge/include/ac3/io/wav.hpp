@@ -14,16 +14,34 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/export.hpp"
 
-// Minimal WAV reading and writing, shared by the CLI and the GUI so neither
-// carries its own copy. Deliberately small: PCM16 and float32 only, which is
-// everything this project produces or consumes.
+// WAV reading and writing, shared by the CLI and the GUI so neither carries
+// its own copy.
+//
+// Reading accepts what a professional delivery actually arrives as:
+// WAVE_FORMAT_PCM at 8, 16, 24 or 32 bits, WAVE_FORMAT_IEEE_FLOAT at 32 or
+// 64, either of those wrapped in WAVE_FORMAT_EXTENSIBLE, and the RF64 (EBU
+// Tech 3306) / BW64 (ITU-R BS.2088-1) container whose ds64 chunk carries
+// 64-bit sizes for files past RIFF's 4 GB ceiling. Every depth converts to
+// the same [-1, 1) floats, so nothing downstream of a reader knows or cares
+// which it was. 24-bit in particular is the normal professional interchange
+// depth, and needing a pre-conversion pass before this encoder could touch
+// one was the gap this widening closed.
+//
+// Writing stays deliberately narrow - float32 (write_wav_f32,
+// WavStreamWriter) and raw PCM16 passthrough (write_wav_pcm16_raw,
+// WavPcm16StreamWriter) - because those are the only two shapes this project
+// produces: decoded audio, and an IEC 61937 burst carrier.
 
 namespace ac3::io {
 
 enum class WavError : std::uint8_t {
     kCannotOpen,
     kNotRiffWave,
-    kUnsupportedFormat,  // not PCM16 / float32
+    // A format tag / bit-depth pair no reader here carries: a compressed
+    // WAVE codec (ADPCM, A-law, MPEG), or an unpacked integer width that is
+    // not a whole number of bytes (20-in-24 and friends). Zero channels
+    // lands here too.
+    kUnsupportedFormat,
     kTruncated,
 };
 
@@ -89,6 +107,15 @@ struct Ac3Layout {
 
 // The inverse permutation, in the form write_wav_f32 takes: entry i names the
 // AC-3 channel that belongs at WAV position i.
+//
+// Every acmod is placed by WAVE_FORMAT_EXTENSIBLE speaker position, not by
+// A/52 coded order - including the two mono-surround modes, which sit on
+// SPEAKER_BACK_CENTER. Two things move relative to the bitstream: C swaps
+// with R (WAV is FL FR FC, A/52 is L C R), and the LFE moves from last to
+// fourth. So 3/1 goes out L R C S and 3/1+LFE goes out L R C LFE S, which is
+// what FFmpeg and every other WAV consumer expect. The one exception is 1+1,
+// which carries two independent programmes rather than a soundfield and so
+// has no speaker positions to sort; it goes out in coded order.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::size_t> wav_channel_order(Acmod acmod, bool lfe);
 
 // Float32 WAV (format tag 3), channels interleaved in the given order.
@@ -210,11 +237,16 @@ class AC3FORGE_EXPORT WavPcm16StreamWriter {
 // inputs too long to hold in memory. read_wav() above peaks at the whole
 // file PLUS its planar float copy resident at once - fine for a fixture,
 // gigabytes for a feature-length programme - where this holds one block.
-// Same format support and the same sample conversion as read_wav (PCM16 /
-// float32, EXTENSIBLE unwrapped, a data chunk shorter than declared is
-// tolerated at its real length), so a block-at-a-time consumer sees exactly
+// Same format support and the same sample conversion as read_wav - the same
+// code, not a parallel copy of it (src/io/wav_format.hpp): every integer and
+// float depth listed at the top of this header, EXTENSIBLE unwrapped, RF64/
+// BW64 sizes read from ds64, and a data chunk shorter than declared
+// tolerated at its real length. So a block-at-a-time consumer sees exactly
 // the samples the whole-file overloads produce. Needs a seekable file, which
-// is why the whole-file overloads keep the stdin/pipe case.
+// is why the whole-file overloads keep the stdin/pipe case. This is also the
+// only one of the two that can read an RF64 file bigger than memory: the
+// whole-file overloads hold the source AND its planar float copy resident at
+// once by construction.
 class AC3FORGE_EXPORT WavStreamReader {
    public:
     WavStreamReader();
@@ -224,9 +256,9 @@ class AC3FORGE_EXPORT WavStreamReader {
     WavStreamReader(WavStreamReader&&) noexcept;
     WavStreamReader& operator=(WavStreamReader&&) noexcept;
 
-    // Opens `path` and parses the RIFF header. The fmt and data chunks must
-    // sit within the first 64 KiB - true of every WAV this project produces
-    // or has ever consumed; a file with a deeper header is refused
+    // Opens `path` and parses the RIFF/RF64 header. The fmt and data chunks
+    // must sit within the first 64 KiB - true of every WAV this project
+    // produces or has ever consumed; a file with a deeper header is refused
     // (kNotRiffWave) rather than mis-read, and read_wav still handles it.
     [[nodiscard]] std::expected<void, WavError> open(const std::string& path);
 

@@ -39,7 +39,16 @@ the bundled fixture; a plain (non-Atmos) stream simply has zero objects.
 
 ## Source and how it's built
 
-Source: [`apps/wasm/`](https://github.com/iainchesworthlabs/ac3forge/tree/develop/apps/wasm) —
+Source: [`apps/wasm/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/apps/wasm) —
 see [WebAssembly](platforms/wasm.md) for the build/toolchain details and what's reused vs. new. CI
 rebuilds this embed fresh from source on every deploy to `main`; see
 [Release / CI](platforms/wasm.md#release-ci).
+
+This page is now a consumer of `ac3forge-wasm-decoder`
+(source: [`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js), roadmap UX5) rather
+than a parallel implementation of its own: the decode, the §7.8 fold and (in the demo's realtime
+section further down) the AudioWorklet playback pipeline all come from that published package. If
+you want a browser-side E-AC-3 decoder for your own project — the motivation for this item is that
+[Chrome still cannot decode EC-3](https://github.com/videojs/http-streaming/issues/1297) — that
+package, not this demo's own code, is what to build against; see its own
+[README](https://github.com/iainchesworthlabs/ac3forge/blob/main/js/README.md).

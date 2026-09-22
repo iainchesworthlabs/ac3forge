@@ -1,25 +1,58 @@
 #include "ac3/io/wav.hpp"
 
 #include <algorithm>
-#include <cstring>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
 #include <fstream>
+#include <ios>
 #include <istream>
 #include <iterator>
+#include <numeric>
+#include <optional>
 #include <ostream>
+#include "ac3/core/tables.hpp"
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "wav_format.hpp"
 
 namespace ac3::io {
 
 namespace {
 
-std::uint16_t read_u16(std::span<const char> data, std::size_t at) {
-    return static_cast<std::uint16_t>(static_cast<std::uint8_t>(data[at]) |
-                                      (static_cast<std::uint8_t>(data[at + 1]) << 8));
-}
+// WAVE_FORMAT_EXTENSIBLE dwChannelMask bits (mmreg.h's SPEAKER_*). A WAV
+// frame is interleaved in increasing bit order, which is what makes these
+// values - rather than A/52's coded order - decide where a channel sits in
+// the file. SPEAKER_BACK_CENTER is the standard mono-surround position, so
+// acmods 2/1 and 3/1 are as well served by this convention as any other.
+constexpr std::uint32_t kFrontLeft = 0x1;
+constexpr std::uint32_t kFrontRight = 0x2;
+constexpr std::uint32_t kFrontCenter = 0x4;
+constexpr std::uint32_t kLowFrequency = 0x8;
+constexpr std::uint32_t kBackLeft = 0x10;
+constexpr std::uint32_t kBackRight = 0x20;
+constexpr std::uint32_t kBackCenter = 0x100;
 
-std::uint32_t read_u32(std::span<const char> data, std::size_t at) {
-    return static_cast<std::uint32_t>(read_u16(data, at)) |
-           (static_cast<std::uint32_t>(read_u16(data, at + 2)) << 16);
-}
+// Each acmod's full-bandwidth channels, in A/52 Table 5.8 coded order, as the
+// speaker each one feeds. Indexed by acmod; 1+1 is deliberately empty because
+// it is two programmes rather than a soundfield (see wav_channel_order). The
+// LFE is not here: it is coded last whatever the acmod, and is appended by
+// the caller with kLowFrequency.
+constexpr std::array<std::array<std::uint32_t, 5>, 8> kAcmodSpeakers = {{
+    {},                                                              // 1+1
+    {kFrontCenter},                                                  // 1/0
+    {kFrontLeft, kFrontRight},                                       // 2/0
+    {kFrontLeft, kFrontCenter, kFrontRight},                         // 3/0
+    {kFrontLeft, kFrontRight, kBackCenter},                          // 2/1
+    {kFrontLeft, kFrontCenter, kFrontRight, kBackCenter},            // 3/1
+    {kFrontLeft, kFrontRight, kBackLeft, kBackRight},                // 2/2
+    {kFrontLeft, kFrontCenter, kFrontRight, kBackLeft, kBackRight},  // 3/2
+}};
 
 // std::ostream rather than std::ofstream specifically: the same header-
 // writing code below now runs against either a real file or an in-memory/
@@ -32,64 +65,48 @@ void put_u32(std::ostream& out, std::uint32_t value) {
     out.write(reinterpret_cast<const char*>(&value), 4);
 }
 
-std::size_t find_chunk(std::string_view view, std::string_view tag) {
-    return view.find(tag);
-}
-
 // The parse itself, shared by the path and istream overloads below - both
 // read their whole source into memory first (see either overload's own
 // comment for why), so this is the one place that actually walks the bytes.
+// The header walk and the per-sample conversion are detail::'s
+// (src/io/wav_format.hpp), shared with WavStreamReader so the two readers
+// cannot disagree about what a file says.
 std::expected<WavData, WavError> parse_wav(const std::vector<char>& raw) {
-    const std::string_view view{raw.data(), raw.size()};
-    if (raw.size() < 44 || view.substr(0, 4) != "RIFF" || view.substr(8, 4) != "WAVE") {
-        return std::unexpected(WavError::kNotRiffWave);
-    }
-    const auto fmt_at = find_chunk(view, "fmt ");
-    const auto data_at = find_chunk(view, "data");
-    if (fmt_at == std::string_view::npos || data_at == std::string_view::npos) {
-        return std::unexpected(WavError::kNotRiffWave);
-    }
-
     const std::span<const char> bytes{raw};
-    auto format = read_u16(bytes, fmt_at + 8);
-    const auto channel_count = read_u16(bytes, fmt_at + 10);
-    const auto sample_rate = read_u32(bytes, fmt_at + 12);
-    const auto bits = read_u16(bytes, fmt_at + 22);
-    if (format == 0xFFFE) {
-        // WAVE_FORMAT_EXTENSIBLE: the real tag is the first two bytes of the
-        // SubFormat GUID in the extension.
-        format = read_u16(bytes, fmt_at + 32);
+    // 44 is the smallest useful RIFF/WAVE: 12 header + a 24-byte fmt chunk +
+    // an 8-byte data chunk header.
+    if (raw.size() < 44 || !detail::is_riff_wave(bytes)) {
+        return std::unexpected(WavError::kNotRiffWave);
     }
-    const bool is_float = format == 3 && bits == 32;
-    const bool is_pcm16 = format == 1 && bits == 16;
-    if (channel_count == 0 || (!is_float && !is_pcm16)) {
-        return std::unexpected(WavError::kUnsupportedFormat);
+    const auto fmt_chunk = detail::find_chunk(bytes, "fmt ");
+    const auto data_chunk = detail::find_chunk(bytes, "data");
+    if (!fmt_chunk || !data_chunk) {
+        return std::unexpected(WavError::kNotRiffWave);
+    }
+    const auto format = detail::parse_format(bytes, *fmt_chunk);
+    if (!format) {
+        return std::unexpected(format.error());
     }
 
-    const auto declared = read_u32(bytes, data_at + 4);
-    const std::size_t payload_at = data_at + 8;
-    const std::size_t available = raw.size() > payload_at ? raw.size() - payload_at : 0;
-    const std::size_t payload = std::min<std::size_t>(declared, available);
-    const std::size_t stride = static_cast<std::size_t>(channel_count) * bits / 8;
-    if (stride == 0) {
-        return std::unexpected(WavError::kUnsupportedFormat);
-    }
+    // The declared length, clamped to what the file actually holds - a
+    // truncated capture yields its real frames rather than a refusal. For an
+    // RF64/BW64 file the declared length comes from ds64 rather than from the
+    // data chunk's own (placeholder) 32-bit field.
+    const std::uint64_t declared = detail::data_chunk_size(bytes, *data_chunk);
+    const std::size_t payload_at = data_chunk->payload_at;
+    const std::uint64_t available = raw.size() > payload_at ? raw.size() - payload_at : 0;
+    const auto payload = static_cast<std::size_t>(std::min<std::uint64_t>(declared, available));
 
     WavData result;
-    result.sample_rate = sample_rate;
-    const std::size_t frames = payload / stride;
-    result.channels.assign(channel_count, std::vector<float>(frames));
+    result.sample_rate = format->sample_rate;
+    const std::size_t frames = payload / format->stride;
+    const std::size_t width = detail::sample_bytes(format->format);
+    result.channels.assign(format->channels, std::vector<float>(frames));
     for (std::size_t frame = 0; frame < frames; ++frame) {
-        for (std::uint16_t ch = 0; ch < channel_count; ++ch) {
-            const std::size_t at = payload_at + frame * stride + static_cast<std::size_t>(ch) * bits / 8;
-            if (is_float) {
-                float value = 0.0f;
-                std::memcpy(&value, raw.data() + at, sizeof(value));
-                result.channels[ch][frame] = value;
-            } else {
-                const auto sample = static_cast<std::int16_t>(read_u16(bytes, at));
-                result.channels[ch][frame] = static_cast<float>(sample) / 32768.0f;
-            }
+        for (std::uint16_t ch = 0; ch < format->channels; ++ch) {
+            const std::size_t at =
+                payload_at + frame * format->stride + static_cast<std::size_t>(ch) * width;
+            result.channels[ch][frame] = detail::convert_sample(bytes, at, format->format);
         }
     }
     return result;
@@ -100,8 +117,8 @@ std::expected<WavData, WavError> parse_wav(const std::vector<char>& raw) {
 std::string_view describe(WavError error) {
     switch (error) {
         case WavError::kCannotOpen: return "cannot open file";
-        case WavError::kNotRiffWave: return "not a RIFF/WAVE file";
-        case WavError::kUnsupportedFormat: return "unsupported WAV format (need PCM16 or float32)";
+        case WavError::kNotRiffWave: return "not a RIFF/RF64/BW64 WAVE file";
+        case WavError::kUnsupportedFormat: return "unsupported WAV format (need 8/16/24/32-bit PCM or 32/64-bit float)";
         case WavError::kTruncated: return "truncated WAV data";
     }
     return "unknown error";
@@ -131,49 +148,49 @@ std::expected<WavPcmData, WavError> read_wav_pcm(const std::string& path) {
     }
     const std::vector<char> raw{std::istreambuf_iterator<char>(in),
                                 std::istreambuf_iterator<char>()};
-    const std::string_view view{raw.data(), raw.size()};
-    if (raw.size() < 44 || view.substr(0, 4) != "RIFF" || view.substr(8, 4) != "WAVE") {
-        return std::unexpected(WavError::kNotRiffWave);
-    }
-    const auto fmt_at = find_chunk(view, "fmt ");
-    const auto data_at = find_chunk(view, "data");
-    if (fmt_at == std::string_view::npos || data_at == std::string_view::npos) {
-        return std::unexpected(WavError::kNotRiffWave);
-    }
-
     const std::span<const char> bytes{raw};
-    auto format = read_u16(bytes, fmt_at + 8);
-    const auto channel_count = read_u16(bytes, fmt_at + 10);
-    const auto sample_rate = read_u32(bytes, fmt_at + 12);
-    const auto bits = read_u16(bytes, fmt_at + 22);
-    if (format == 0xFFFE) {
-        format = read_u16(bytes, fmt_at + 32);
+    if (raw.size() < 44 || !detail::is_riff_wave(bytes)) {
+        return std::unexpected(WavError::kNotRiffWave);
     }
-    if (channel_count == 0 || format != 1 || (bits != 16 && bits != 24)) {
+    const auto fmt_chunk = detail::find_chunk(bytes, "fmt ");
+    const auto data_chunk = detail::find_chunk(bytes, "data");
+    if (!fmt_chunk || !data_chunk) {
+        return std::unexpected(WavError::kNotRiffWave);
+    }
+    const auto format = detail::parse_format(bytes, *fmt_chunk);
+    if (!format) {
+        return std::unexpected(format.error());
+    }
+    // Integer-exact only: PCM16/PCM24. Every other width (8-bit unsigned,
+    // 32-bit int/float, 64-bit float) normalizes through detail::
+    // convert_sample() for the lossy codecs' WavData path instead - taking
+    // that path here would forfeit the bit-exactness this API exists for.
+    if (format->format != detail::SampleFormat::kPcm16 &&
+        format->format != detail::SampleFormat::kPcm24) {
         return std::unexpected(WavError::kUnsupportedFormat);
     }
 
-    const auto declared = read_u32(bytes, data_at + 4);
-    const std::size_t payload_at = data_at + 8;
-    const std::size_t available = raw.size() > payload_at ? raw.size() - payload_at : 0;
-    const std::size_t payload = std::min<std::size_t>(declared, available);
-    const std::size_t sample_bytes = bits / 8u;
-    const std::size_t stride = static_cast<std::size_t>(channel_count) * sample_bytes;
+    const std::uint64_t declared = detail::data_chunk_size(bytes, *data_chunk);
+    const std::size_t payload_at = data_chunk->payload_at;
+    const std::uint64_t available = raw.size() > payload_at ? raw.size() - payload_at : 0;
+    const auto payload = static_cast<std::size_t>(std::min<std::uint64_t>(declared, available));
 
     WavPcmData result;
-    result.sample_rate = sample_rate;
-    result.bits = bits;
-    const std::size_t frames = payload / stride;
-    result.channels.assign(channel_count, std::vector<std::int32_t>(frames));
+    result.sample_rate = format->sample_rate;
+    result.bits = format->format == detail::SampleFormat::kPcm16 ? 16 : 24;
+    const std::size_t frames = payload / format->stride;
+    const std::size_t width = detail::sample_bytes(format->format);
+    result.channels.assign(format->channels, std::vector<std::int32_t>(frames));
     for (std::size_t frame = 0; frame < frames; ++frame) {
-        for (std::uint16_t ch = 0; ch < channel_count; ++ch) {
+        for (std::uint16_t ch = 0; ch < format->channels; ++ch) {
             const std::size_t at =
-                payload_at + frame * stride + static_cast<std::size_t>(ch) * sample_bytes;
-            if (bits == 16) {
-                result.channels[ch][frame] = static_cast<std::int16_t>(read_u16(bytes, at));
+                payload_at + frame * format->stride + static_cast<std::size_t>(ch) * width;
+            if (result.bits == 16) {
+                result.channels[ch][frame] =
+                    static_cast<std::int16_t>(detail::read_u16(bytes, at));
             } else {
                 auto value = static_cast<std::int32_t>(
-                    static_cast<std::uint32_t>(read_u16(bytes, at)) |
+                    static_cast<std::uint32_t>(detail::read_u16(bytes, at)) |
                     (static_cast<std::uint32_t>(static_cast<std::uint8_t>(bytes[at + 2])) << 16));
                 if ((value & 0x800000) != 0) {
                     value -= 0x1000000;
@@ -207,20 +224,37 @@ std::optional<Ac3Layout> ac3_layout_for(std::size_t wav_channels) {
 }
 
 std::vector<std::size_t> wav_channel_order(Acmod acmod, bool lfe) {
-    const auto count = static_cast<std::size_t>(fullbw_channel_count(acmod)) + (lfe ? 1u : 0u);
-    const auto layout = ac3_layout_for(count);
+    const auto fullbw = static_cast<std::size_t>(fullbw_channel_count(acmod));
+    const auto count = fullbw + (lfe ? 1u : 0u);
     std::vector<std::size_t> order(count);
-    if (!layout || layout->acmod != acmod || layout->lfe != lfe) {
-        // No WAV convention claims this layout (2/1 and 3/1 have no standard
-        // mono-surround slot, and 1+1 is not a soundfield at all), so the
-        // channels go out in the order the codec holds them.
-        for (std::size_t i = 0; i < count; ++i) {
-            order[i] = i;
-        }
+
+    if (acmod == Acmod::kDualMono) {
+        // 1+1 is the one acmod with no speaker positions to sort: it carries
+        // two independent programmes (Ch1, Ch2) rather than a soundfield, so
+        // there is nothing for dwChannelMask to say about it. The channels go
+        // out in the order the codec holds them.
+        std::iota(order.begin(), order.end(), std::size_t{0});
         return order;
     }
-    for (std::size_t ac3 = 0; ac3 < count; ++ac3) {
-        order[layout->wav_index[ac3]] = ac3;
+
+    // Pair each coded channel with its speaker's mask bit and sort. Sorting is
+    // the whole rule: a WAV frame is interleaved in increasing dwChannelMask
+    // bit order, so the bit *is* the slot index once the set is known. That
+    // also puts the LFE where WAV wants it (bit 3, straight after FC) rather
+    // than where A/52 codes it (always last), which is the difference for
+    // every acmod below that has an LFE.
+    std::vector<std::pair<std::uint32_t, std::size_t>> slots;
+    slots.reserve(count);
+    const auto& speakers = kAcmodSpeakers[static_cast<std::uint8_t>(acmod)];
+    for (std::size_t ch = 0; ch < fullbw; ++ch) {
+        slots.emplace_back(speakers[ch], ch);
+    }
+    if (lfe) {
+        slots.emplace_back(kLowFrequency, fullbw);
+    }
+    std::ranges::sort(slots);
+    for (std::size_t slot = 0; slot < count; ++slot) {
+        order[slot] = slots[slot].second;
     }
     return order;
 }

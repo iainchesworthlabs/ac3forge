@@ -15,13 +15,32 @@ CMakeUserPresets.json
 .cache/
 *.user
 
+# apps/wasm/tests' Playwright harness (roadmap VX18a). package-lock.json IS
+# committed (npm ci's own integrity-hash pinning, this project's equivalent
+# of requirements/*.txt's --require-hashes); only the installed tree and
+# Playwright's own run output are not.
+apps/wasm/tests/node_modules/
+apps/wasm/tests/test-results/
+apps/wasm/tests/playwright-report/
+
+# The ac3forge-wasm-decoder package (roadmap UX5). Same package-lock.json
+# convention as apps/wasm/tests above; js/dist/ is also covered by the
+# blanket dist/ rule below but named here for the same reason python/dist/ is.
+js/node_modules/
+js/dist/
+
 # Python tooling for golden-vector generation, and the python/ bindings package (build/ above
 # already covers python/build/; __pycache__/ already covers every test/tool's bytecode cache)
 __pycache__/
 .pytest_cache/
+.coverage
 *.egg-info/
 python/dist/
 wheelhouse/
+# The throwaway venv ci.yml's script-lint job installs the pinned linters into, and
+# that docs/building.md's local recipe uses by the same name. Also excluded in
+# ruff.toml, so a local `ruff check .` never walks into its site-packages.
+.lintvenv/
 
 # Downloaded standards documents (free from ATSC/ETSI; not redistributed here)
 docs/spec/
@@ -52,3 +71,18 @@ fuzz/artifacts/
 # seed the harness prints beside it (`--replay <seed>`), so the WAV and
 # bitstream copies are a convenience for looking at, never the record.
 fuzz-encoder-artifacts/
+fuzz-eac3-encoder-artifacts/
+
+# The conformance vector bundle (tools/generators/gen_conformance_vectors.py,
+# docs/conformance-vectors.md). Several MB of encoder output, regenerated from
+# the script per release and published as a release asset - the script is the
+# record, never a checked-in copy of what it produced. The default --out path
+# in the docs and in _build.yml's own step.
+dist/
+
+# Rust bindings (rust/, roadmap AP9). Cargo.lock IS committed (a workspace of
+# library crates this project itself builds and tests in CI, not one published
+# for others to pick their own dependency versions against - reproducible CI
+# matters more here, the same reasoning requirements/*.txt's --require-hashes
+# pins Python tooling).
+rust/target/

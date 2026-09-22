@@ -9,11 +9,15 @@
 #include <span>
 #include <vector>
 
+#include "ac3/core/bitalloc.hpp"  // BitAllocCodes, for previous_codes_ below
 #include "ac3/core/mantissas.hpp"  // MantissaToken, for the token scratch below
 #include "ac3/core/tables.hpp"
+#include "ac3/quality/distortion.hpp"
 #include "ac3/encoder/silent_frame.hpp"  // FrameError, SkipPlan/plan_padding
 #include "ac3/encoder/transient.hpp"
 #include "ac3/export.hpp"
+#include "ac3/latency.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/verify/mirror.hpp"
@@ -40,6 +44,12 @@ struct EncoderConfig {
     // meaningless otherwise — the two programmes are levelled independently.
     std::optional<int> dialnorm2 = std::nullopt;
     int chbwcod = -1;  // fbw bandwidth code 0..60; -1 = auto from bitrate
+    // §7.2.2.4 fast gain, Table 7.11. -1 asks for the encoder's own choice,
+    // which is rate-dependent (see encoder.cpp step 0's measurement table);
+    // 0..7 pins it. Pinned here rather than searched per frame for the reason
+    // that comment gives: two code sets produce two different masking curves,
+    // so the encoder's own composite SNR offset cannot compare them.
+    int fgaincod = -1;
     Acmod acmod = Acmod::k2_0;
     bool lfe = false;
     // Channel coupling (§7.4): above the coupling frequency the fbw channels
@@ -58,10 +68,22 @@ struct EncoderConfig {
     // independent oracle at 192-448 kbps; see tests/core/test_mdct_fast.cpp and
     // `tools/ci/quality_race.py fast-mdct`). false forces the direct §8.2.3.2
     // reference form, which stays maintained as the oracle the fast path is
-    // validated against. Only the long transform accelerates today - a
-    // block-switched channel's short transforms always take the direct path
-    // regardless of this flag.
+    // validated against. All three forward transforms accelerate - the long
+    // one and both halves of a block-switched pair, each down its own fold
+    // (see mdct.hpp).
     bool fast_mdct = true;
+
+    // §7.3.4 dithflag, decided per channel per block from content (see
+    // src/forge/src/encoder/dither.hpp) - on by default, matching every other
+    // config field here. false pins dithflag at 0 unconditionally, the
+    // deterministic behaviour from before this existed: real dither values
+    // are decoder-defined (the spec's own "any reasonably random sequence"),
+    // so two independent, spec-correct decoders given the same dithered
+    // stream diverge in the dithered bins by design - which is exactly what
+    // breaks a bit-for-bit comparison between this project's own decoder and
+    // an external one (tools/checks/verify_gold_reference.sh). That gate sets
+    // this false; nothing else needs to.
+    bool dither = true;
 
     // --- dynamic range and downmix metadata (§7.7, §7.8) -------------------
     // Dynamic range control. std::nullopt leaves dynrnge clear in every block,
@@ -81,6 +103,54 @@ struct EncoderConfig {
     // heavy-compression peak detector consults them whatever acmod is.
     meta::CentreMixLevel cmixlev = meta::CentreMixLevel::kMinus4_5dB;
     meta::SurroundMixLevel surmixlev = meta::SurroundMixLevel::kMinus6dB;
+
+    // --- bit stream information (§5.4.2, Annex D) --------------------------
+    // The informational fields: what service this is, whether the 2/0 pair is
+    // a Dolby Surround matrix, the mixing room it was judged in, the copyright
+    // and original-bitstream bits, and the time code. Every default matches
+    // the constant this encoder wrote before any of it was configurable, so a
+    // config that leaves this alone produces the same bits it always did.
+    // BsiInfo's dheadphonmod/dsurexmod/sourcefscod have no home in AC-3 bsi
+    // and are not read here - Annex D's xbsi2 below carries the first two.
+    meta::BsiInfo info{};
+    // Annex D (§D2.2): std::nullopt writes bsid 8 with info.timecod1/2 in the
+    // two 14-bit fields; set writes bsid 6 and spends those same 28 bits on
+    // xbsi1/xbsi2 instead, at which point info.timecod1/2 are unwritable and
+    // encode_frame() refuses rather than dropping them silently.
+    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
+
+    // --- decision search (ac3/quality) -------------------------------------
+    // §7.2.2's bit allocation parameters are chosen once, from the bit rate,
+    // and written into every frame of the encode. The comment at their
+    // declaration in encoder.cpp records why they were never searched: the
+    // only in-loop criterion this encoder had was the composite SNR offset,
+    // and that number is not comparable between two code sets because each
+    // produces a different masking curve for the offset to sit on.
+    //
+    // ac3::quality supplies the criterion that was missing - the error the
+    // decoder will actually reconstruct - so with this set the encoder tries
+    // a small set of candidate BitAllocCodes per frame, and decides the
+    // delta-bit-allocation race on measured error rather than on the
+    // composite offset each pass happened to reach.
+    //
+    // kNone by default, and not just because the search costs real time.
+    // Validated on real CC0/CC-BY programme material against FFmpeg's decode
+    // (SNR, log-spectral distance, ViSQOL MOS-LQO -
+    // docs/library/encoding-ac3.md's own table has the numbers): kDistortion
+    // is a real, repeatable win from 448 kbit/s up, but at 192 kbit/s its own
+    // criterion still improves while LSD and MOS both worsen - redistributing
+    // bits away from dbpbcod's quiet-band floor buys back less SNR than it
+    // costs in per-band spectral shape at that budget. kPerceptual
+    // loses outright at every rate tested, despite its psychoacoustic model
+    // being independently validated (tests/quality/test_perceptual.cpp): its
+    // objective correctly discounts already-masked headroom, which leaves it
+    // much thinner decision margins than raw distortion, and on real stereo
+    // material with rematrixing active those margins are landing on the
+    // wrong side of external metrics. This project does not turn a decision
+    // knob on without the numbers to justify it, and right now only
+    // kDistortion at the higher rates has them. `ac3cli encode search=...`
+    // sets it.
+    quality::Criterion search = quality::Criterion::kNone;
 
     // --- self-check (ac3/verify/mirror.hpp) --------------------------------
     // When set, encode_frame() records its own model of the decoder - the bit
@@ -117,74 +187,35 @@ class AC3FORGE_EXPORT FrameEncoder {
     [[nodiscard]] std::expected<std::vector<std::byte>, FrameError> encode_frame(
         std::span<const std::span<const float>> channels);
 
-    [[nodiscard]] const EncoderConfig& config() const { return config_; }
-    [[nodiscard]] int channel_count() const {
-        return fullbw_channel_count(config_.acmod) + (config_.lfe ? 1 : 0);
+    [[nodiscard]] const EncoderConfig& config() const;
+    [[nodiscard]] int channel_count() const;
+
+    // Roadmap PF6. Constant for the life of the encoder - nothing in
+    // EncoderConfig moves any term (see ac3/latency.hpp for what each one
+    // is): AC-3 has one frame length, this encoder needs no lookahead, and
+    // §3.7's hold-back is an Annex E tool AC-3 does not have. Reported as a
+    // member function rather than a free constant so a caller holding an
+    // encoder can ask it directly, and so the E-AC-3 and Atmos encoders -
+    // where the answer DOES depend on the configuration - answer the same
+    // question the same way.
+    [[nodiscard]] LatencyBudget latency() const {
+        return LatencyBudget{.frame_samples = kSamplesPerFrame,
+                             .transform_samples = kTransformDelaySamples,
+                             .lookahead_samples = 0,
+                             .holdback_samples = 0};
     }
+    [[nodiscard]] int latency_samples() const { return latency().total_samples(); }
 
    private:
-    EncoderConfig config_;
-    std::array<std::array<double, 256>, 6> history_{};  // MDCT overlap per channel
-    // One per full-bandwidth channel (§8.2.2 excludes the LFE): stateful
-    // across frames, like history_ above.
-    std::vector<TransientDetector> transient_detectors_;
-    // Per-(channel, block) scratch for the MDCT pass, reused rather than
-    // stack-declared inside encode_frame (PREfast's C6262 flagged the
-    // function's stack frame). Each is always fully overwritten before being
-    // read within one iteration, and the two loops that use them run to
-    // completion one after another - never interleaved or reentered - so
-    // reuse across iterations, and across calls on this instance, changes
-    // nothing observable. Not thread-safe for concurrent calls on the same
-    // instance, same as history_ and the other per-frame state above.
-    std::array<double, 512> time_scratch_{};
-    std::array<double, 512> windowed_scratch_{};
-    std::array<double, 128> half1_scratch_{};
-    std::array<double, 128> half2_scratch_{};
-    // Frame-lifetime work buffers, reused across encode_frame calls under
-    // the same reasoning (and the same single-instance contract) as the
-    // scratch arrays above: each is re-sized via assign()/resize() and fully
-    // re-written every frame before anything reads it, so reuse changes
-    // nothing observable - it only stops encode_frame from re-allocating
-    // them 31 times a second. coeffs_ is the per-(stream, block) MDCT
-    // spectrum set (~86 KB at 5.1+coupling); block_exps_ the per-slot raw
-    // exponent sets; fixed_/fixed_base_ the flattened fixed-point bins and
-    // their per-slot offsets; block_tokens_ each block's mantissa tokens,
-    // filled through MantissaBlockWriter::take_tokens_into so the token
-    // storage cycles between the writer and these slots without copies.
-    std::vector<std::array<double, 256>> coeffs_;
-    std::vector<std::int32_t> fixed_;
-    std::vector<std::size_t> fixed_base_;
-    std::vector<std::vector<std::uint8_t>> block_exps_;
-    std::array<std::vector<MantissaToken>, kBlocksPerFrame> block_tokens_;
-    // The SNR search's per-(stream, run) candidate allocations and the
-    // per-stream bap views the block cost sum reads through. Same contract
-    // as the buffers above: every (stream, run) slot in this frame's range
-    // is re-assign()ed by bits_at before anything reads it, so reuse
-    // (including a slot whose run count shrank) changes nothing observable.
-    std::vector<std::vector<std::vector<std::uint8_t>>> run_bap_;
-    std::vector<std::span<const std::uint8_t>> bap_views_;
-    // The rest of encode_frame's frame-lifetime scratch - the §8.2.8
-    // exponent-strategy plan and the coupling work buffers - whose types are
-    // encoder.cpp's own, held behind a pimpl so they need not move into
-    // this header: the same arrangement eac3_frame.hpp's FrameState uses,
-    // for the same reason. Same reuse contract as every buffer above.
-    struct PlanScratch;
-    std::unique_ptr<PlanScratch> scratch_;
-    std::uint64_t rate_accumulator_ = 0;  // ideal-bits Bresenham state
-    std::uint64_t words_emitted_ = 0;
-    // The previous frame's converged SNR-offset composite, warm-starting the
-    // next frame's search (src/forge/src/encoder/snr_search.hpp). Performance
-    // state only: it changes how fast the search converges, never which
-    // offset it converges to. Negative until a frame has been encoded.
-    int snr_search_hint_ = -1;
-    // Both controllers smooth their gain over time, so they have to outlive a
-    // frame - a per-frame instance would restart the attack every 32 ms.
-    std::optional<meta::RangeController> range_;
-    std::optional<meta::HeavyCompressor> heavy_;
-    // Ch2's own controllers, present only when acmod is kDualMono. A shared
-    // instance would smooth one programme's gain history into the other's.
-    std::optional<meta::RangeController> range2_;
-    std::optional<meta::HeavyCompressor> heavy2_;
+    // Every private data member - the MDCT history/scratch, the §8.2.8
+    // exponent-strategy plan, the coupling work buffers, the DRC controllers,
+    // all of it - lives behind this one pimpl, following the same pattern as
+    // ac3::io::WavStreamReader/Writer. Impl is defined in encoder.cpp, so a
+    // dllexport class instantiating every implicit special member is why the
+    // destructor and moves above are declared (not defaulted inline) here:
+    // move-assignment's implicit reset() needs Impl complete.
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace ac3

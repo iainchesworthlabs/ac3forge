@@ -1,12 +1,17 @@
 #include <QtQuickTest/quicktest.h>
 
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QObject>
+#include <QQmlContext>
+#include <QQmlEngine>
 #include <QQuickStyle>
 #include <QSettings>
 #include <QTemporaryDir>
 
 #include <optional>
+
+#include "../language_manager.hpp"
 
 // Standard Qt Quick Test entry point: discovers and runs every tst_*.qml
 // file under QUICK_TEST_SOURCE_DIR (set in CMakeLists.txt), exercising the
@@ -68,8 +73,30 @@ public slots:
         settings.setValue(QStringLiteral("restoreSession"), false);
     }
 
+    // Quick Test's real per-suite hook (confirmed against CountdownSolver's
+    // own tests/qml/tst_qml.cpp, which uses the identical mechanism): fires
+    // once per tst_*.qml file, after applicationAvailable() above has already
+    // pointed QSettings at this process's own scratch directory, so
+    // LanguageManager::applyInitialLanguage() reads that isolated store
+    // rather than a developer's real settings. Registers the exact
+    // "languageManager" context property main.cpp installs for the real
+    // app, so every suite can drive Preferences' language picker and
+    // AC3GUI_LOCALE-forced suites (tst_localisation_pipeline.qml) see the
+    // same object the shipped app does.
+    void qmlEngineAvailable(QQmlEngine* engine) {
+        // Constructed lazily rather than as a plain member: LanguageManager
+        // holds reference members (to the application and the engine),
+        // neither of which exists yet when SettingsIsolation itself is
+        // constructed.
+        language_manager_.emplace(*qGuiApp, *engine);
+        language_manager_->applyInitialLanguage();
+        engine->rootContext()->setContextProperty(QStringLiteral("languageManager"),
+                                                   &*language_manager_);
+    }
+
 private:
     std::optional<QTemporaryDir> scratch_;
+    std::optional<LanguageManager> language_manager_;
 };
 
 QUICK_TEST_MAIN_WITH_SETUP(ac3gui, SettingsIsolation)

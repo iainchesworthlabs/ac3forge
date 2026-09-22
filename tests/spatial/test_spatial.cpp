@@ -6,6 +6,7 @@
 #include <span>
 #include <vector>
 
+#include "ac3/core/eac3_tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/spatial/spatial.hpp"
@@ -172,4 +173,102 @@ TEST_CASE("orbiting object lands in the right channels end to end", "[spatial]")
         argmax_per_frame.push_back(best_ch);
     }
     CHECK(argmax_per_frame == std::vector<int>{kC, kL, kSL, kSR, kR});
+}
+
+// --- height-aware panning (roadmap IO12) ------------------------------------
+
+TEST_CASE("position_direction reads a room position's azimuth and elevation", "[spatial]") {
+    using ac3::spatial::position_direction;
+
+    // The room's centre has no direction at any height - pan_room's own rule
+    // for the same (x, y), extended to z.
+    const auto centre = position_direction(0.5, 0.5, 0.0);
+    CHECK(std::abs(centre.azimuth_deg) < 1e-9);
+    CHECK(std::abs(centre.elevation_deg) < 1e-9);
+
+    // Directly overhead: no horizontal displacement at all, so elevation is a
+    // full 90 regardless of azimuth.
+    const auto overhead = position_direction(0.5, 0.5, 1.0);
+    CHECK(std::abs(overhead.elevation_deg - 90.0) < 1e-9);
+
+    // On the listener's plane (z = 0), azimuth must agree with pan_room's own
+    // atan2(left, forward) - the two are the same object placed the same way,
+    // and a caller re-deriving elevation must not shift where it points.
+    const std::array<std::array<double, 2>, 4> plane_points = {{
+        {0.0, 0.5},  // left wall -> +90
+        {1.0, 0.5},  // right wall -> -90
+        {0.5, 0.0},  // front wall -> 0
+        {0.5, 1.0},  // back wall -> 180 (or -180)
+    }};
+    const std::array<double, 4> expected_az = {90.0, -90.0, 0.0, 180.0};
+    for (std::size_t i = 0; i < plane_points.size(); ++i) {
+        CAPTURE(i);
+        const auto direction = position_direction(plane_points[i][0], plane_points[i][1], 0.0);
+        CHECK(std::abs(direction.elevation_deg) < 1e-9);
+        const double wrapped = std::abs(direction.azimuth_deg) > 179.999
+                                   ? 180.0
+                                   : direction.azimuth_deg;
+        CHECK(std::abs(wrapped - expected_az[i]) < 1e-6);
+    }
+}
+
+TEST_CASE("pan_direction over floor-only targets agrees with pan_room", "[spatial]") {
+    // With no height tier at all, pan_direction degenerates to exactly the
+    // same 5.1 ring pan pan_room already gives that (x, y) - the property
+    // IO12's dynamic-object-only render relies on: metering an object-based
+    // programme onto a plain 5.1 target must reproduce the same figures the
+    // flat VBAP-folded bed already measures.
+    using Location = ac3::eac3::chanmap::Location;
+    const std::array<Location, 5> floor = {Location::kLeft, Location::kCentre, Location::kRight,
+                                           Location::kLeftSurround,
+                                           Location::kRightSurround};
+    const auto targets = ac3::spatial::pan_targets(floor);
+    REQUIRE(targets.directions.size() == 5);
+
+    for (const double x : {0.2, 0.5, 0.8}) {
+        for (const double y : {0.1, 0.5, 0.9}) {
+            CAPTURE(x);
+            CAPTURE(y);
+            const auto room_gains = ac3::spatial::pan_room(x, y);
+            const auto direction = ac3::spatial::position_direction(x, y, 0.0);
+            std::vector<double> gains(targets.directions.size());
+            ac3::spatial::pan_direction(direction, targets.directions, gains);
+            // pan_room's own order is L, C, R, SL, SR - the same order `floor`
+            // was built in above.
+            for (int ch = 0; ch < ac3::spatial::kBedChannels; ++ch) {
+                CHECK(std::abs(gains[static_cast<std::size_t>(ch)] -
+                              room_gains[static_cast<std::size_t>(ch)]) < 1e-9);
+            }
+        }
+    }
+}
+
+TEST_CASE("pan_direction crossfades an elevated source into the height ring", "[spatial]") {
+    using Location = ac3::eac3::chanmap::Location;
+    const std::array<Location, 2> locations = {Location::kLeft, Location::kVhl};
+    const auto targets = ac3::spatial::pan_targets(locations);
+    const int floor_ch = targets.index_of(Location::kLeft);
+    const int height_ch = targets.index_of(Location::kVhl);
+    REQUIRE(floor_ch >= 0);
+    REQUIRE(height_ch >= 0);
+
+    std::vector<double> gains(2);
+
+    // A source at L's own azimuth (30 degrees) but no elevation lands
+    // entirely on the floor speaker.
+    ac3::spatial::pan_direction({.azimuth_deg = 30.0, .elevation_deg = 0.0}, targets.directions,
+                                gains);
+    CHECK(gains[static_cast<std::size_t>(floor_ch)] > 0.99);
+    CHECK(gains[static_cast<std::size_t>(height_ch)] < 1e-9);
+
+    // The same azimuth at the nominal ceiling angle lands entirely on the
+    // height speaker instead - this is the recovery IO12's object-based
+    // measurement depends on: a flat 5.1 bed cannot represent this at all
+    // (spatial::pan_room folds every elevation onto the ring), but re-panning
+    // the recovered object audio by its real position can.
+    ac3::spatial::pan_direction(
+        {.azimuth_deg = 30.0, .elevation_deg = ac3::spatial::kHeightElevationDeg},
+        targets.directions, gains);
+    CHECK(gains[static_cast<std::size_t>(height_ch)] > 0.99);
+    CHECK(gains[static_cast<std::size_t>(floor_ch)] < 1e-9);
 }

@@ -42,7 +42,9 @@ FAILURES: list[str] = []
 
 
 def run(*args: str) -> None:
-    result = subprocess.run(args, capture_output=True, text=True)
+    # check=False + the explicit test below: the raise has to carry the command
+    # line and the captured stderr, which CalledProcessError would not.
+    result = subprocess.run(args, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise SystemExit(f"command failed: {' '.join(args)}\n{result.stderr}")
 
@@ -296,7 +298,11 @@ def check_dialnorm(cli: str, tmp: Path) -> None:
         + b"data" + struct.pack("<I", len(body)) + body
     )
 
-    ours = subprocess.run([cli, "loudness", str(source)], capture_output=True, text=True)
+    # check=True here, unlike the tolerant calls below: nothing tests this exit
+    # code, and the next line indexes into stdout - so a failed measurement
+    # would surface as an opaque IndexError instead of naming the command.
+    ours = subprocess.run([cli, "loudness", str(source)], capture_output=True, text=True,
+                          check=True)
     measured = float(ours.stdout.split()[1])
     check("the -20 dBFS 1 kHz calibration reads -20 LKFS", abs(measured + 20.0) < 0.15,
           f"{measured:.2f} LKFS")
@@ -304,7 +310,7 @@ def check_dialnorm(cli: str, tmp: Path) -> None:
     theirs = subprocess.run(
         ["ffmpeg", "-nostats", "-i", str(source), "-af", "ebur128=framelog=quiet",
          "-f", "null", "-"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, check=False,
     )
     reference = None
     for line in theirs.stderr.splitlines():
@@ -319,7 +325,7 @@ def check_dialnorm(cli: str, tmp: Path) -> None:
     stream = tmp / "cal.ac3"
     run(cli, "encode", str(source), str(stream), "192", "dialnorm=auto")
     decoded = subprocess.run([cli, "decode", str(stream), str(tmp / "cal_out.wav")],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, check=False)
     carried = None
     for line in decoded.stdout.splitlines():
         if "dialnorm" in line:
@@ -352,11 +358,11 @@ def check_eac3(cli: str, tmp: Path) -> None:
         probe = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "stream=channels",
              "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True,
+            capture_output=True, text=True, check=False,
         )
         decode = subprocess.run(
             ["ffmpeg", "-v", "error", "-i", str(path), "-f", "null", "-"],
-            capture_output=True, text=True,
+            capture_output=True, text=True, check=False,
         )
         got = probe.stdout.strip().splitlines()[0] if probe.stdout.strip() else "?"
         check(f"{layout} with mixmdate decodes cleanly",

@@ -115,7 +115,7 @@ text names the one that actually went quiet.
 
 **CLI parity.** `ac3cli live` takes a trailing `capture2=<index>` token naming the second device,
 built on the same shared resampler and drift estimator — see
-[CLI → Options & grammars](../cli/metadata-options.md#live-options-live-capture2) for its grammar.
+[CLI → Options & grammars](../cli/metadata-options.md#capture2) for its grammar.
 The GUI's own command bar emits it whenever the rail has two devices selected, so the line stays
 honest.
 
@@ -183,17 +183,54 @@ land on, and a finished take has a **Show in folder**. Monitor-only checks delib
 of the history, watchdog failures included: only a take on disk or a receiver leg opens the entry
 in the first place.
 
+## Live position input over OSC
+
+Object mode's pre-flight card (the same idle Card [Starting a capture](#starting-a-capture)
+describes above, visible only while `atmosEnabled` — a channel session has no objects to drive)
+carries three more controls: a **Drive objects from OSC** checkbox, a **port** field (default
+9000), and an **any interface** checkbox, off by default — loopback only, the same security
+posture as the CLI's `local`/`any` split (see [CLI → Commands → Live &
+hardware](../cli/commands.md#live-hardware) for why that default matters and the full OSC address
+space). All three are pre-flight-only, exactly like **Also write the take to disk** and **Raw-WAV
+safety copy** on the same Card: **Start session** reads them once, and they are fixed for that
+session's lifetime — toggling the checkbox mid-session does nothing until the *next* session
+starts.
+
+Once a session with OSC on is running:
+
+- The transport row (Stop session, RUNNING/FRAMES/DROPPED) gains an **OSC** counter reading
+  `N updates, N dropped`.
+- In the Live room, an object a live OSC update currently owns is drawn greyed out and stops
+  responding to drag — a click or drag there is refused outright rather than fought over — and its
+  marker instead tracks whatever the network feed most recently sent. An object nothing has
+  addressed is still an ordinary, draggable, manually-placed object exactly as before this feature
+  existed, so one session can freely mix network-driven and manually-placed objects.
+- `/object/<n>/release` from the network side hands that object back to manual control — its
+  marker un-greys and starts responding to drag again.
+
+!!! note "No screenshot of OSC-driven markers here"
+    The same reasoning as [the running transport's own note](#starting-a-capture) applies: showing
+    a network-driven marker mid-session would mean recording actual network traffic into a
+    screenshot just to illustrate a UI state, so the grey-and-undraggable marker behaviour is
+    described from the implementation rather than photographed.
+
+This page's job is the GUI controls; the wire protocol behind them — the `positions=` grammar, the
+`/object/<n>/xyz|gain|lfe|release` address space, and the loopback-vs-any-interface security
+note — is identical on both front ends and documented once, on the CLI side: see
+[CLI → Commands → Live & hardware](../cli/commands.md#live-hardware).
+
 ## Take durability
 
 A live session writes each encoded unit to disk as it is produced — never accumulating the whole
 take in memory to write once at the end, which would make an hour-long session unbounded memory
 and a crash lose everything captured.
 
-The output file opens before the session is marked live, so a bad destination path is refused up
-front exactly like a bad device choice — not discovered as a mid-take failure minutes in.
+The output file opens — or, for fragmented MP4/CMAF, the output folder is created — before the
+session is marked live, so a bad destination path is refused up front exactly like a bad device
+choice, not discovered as a mid-take failure minutes in.
 
-What "writing incrementally" means depends on the container, but both write straight into the
-chosen file — there is no separate spool file for either:
+What "writing incrementally" means depends on the container, but each writes straight into the
+chosen destination — there is no separate spool file for any of them:
 
 - **Elementary stream** (`.ac3` / `.ec3`): every byte written *is* the take, from the first frame
   on — a crash leaves exactly what was captured, playable up to that point.
@@ -211,22 +248,43 @@ chosen file — there is no separate spool file for either:
   disk are complete, valid Matroska, so the `.mkv` itself plays up to that point: the same honest
   "playable up to where it stopped" guarantee the elementary-stream path gives, not a companion
   file to fold in by hand afterward.
+- **Fragmented MP4/CMAF**: a folder, not a file, and the only container here whose *manifests*
+  change as the take runs. Each unit goes into `mp4::FragmentWriter` (`src/mp4`), the incremental
+  fragmenter built for exactly this case, which hands back a complete CMAF media segment every
+  time a fragment closes (48 access units, about 1.5 s); that segment is written as
+  `segment<N>.m4s` and `audio.m3u8`/`master.m3u8`/`manifest.mpd` are rewritten beside it. While
+  the session is running they are live-shaped — no `#EXT-X-ENDLIST`, and a `type="dynamic"` MPD
+  with an `availabilityStartTime` — so the folder is a servable origin mid-take; Stop flushes the
+  trailing partial fragment and closes both to their VOD/static forms. `init.mp4` is written at
+  the *first* frame rather than at Start, because its `dac3`/`dec3` box is read off the bitstream
+  and there is no bitstream to read before then; the folder itself is still created (and refused
+  if it cannot be) before the session goes live. Only one fragment's frames are ever held, so
+  memory stays bounded for a session of any length. A crash mid-take leaves every already-written
+  segment complete and a playlist listing the ones that had closed — the same "playable up to
+  where it stopped" guarantee, one segment coarser.
 
-Both paths flush to disk roughly once a second (not per frame) rather than on every write.
+The two file-based paths flush to disk roughly once a second (not per frame) rather than on
+every write; the fragmented-MP4 folder has no long-lived stream to flush, since each segment and
+manifest is a complete file written and closed as it is produced.
 
-The Container combo's other four choices — S/PDIF, MP4, fragmented MP4/CMAF, MPEG-TS — fall into
-the elementary-stream path above during a live session, not their own: the Matroska writer is the
-only incremental muxer this project has, and the other containers' muxers are batch APIs that
-need the whole frame list up front — there is nothing to push a live unit into for any of them.
-So a live session with one of those four selected keeps writing the plain stream, exactly the
-file it would write with the combo left on Elementary stream; the container only changes what a
-*file* encode wraps it as afterward (see
+The Container combo's other three choices — S/PDIF, MP4, MPEG-TS — fall into the
+elementary-stream path above during a live session, not their own. For MP4 that is a format
+limit: `moov`/`stco` need every frame's final offset, so there is nothing to push a live unit
+into. S/PDIF and MPEG-TS both *do* have streaming writers, and a *recording* — the Record
+button's capture-to-file take — uses them through `RecordingSink`; `ac3cli live` reaches them too,
+with `container=spdif` and `container=ts`. The gap is on this side:
+`EncoderController::openLiveOutputWriters` special-cases exactly two incremental writers,
+`matroska::Writer` and `mp4::FragmentWriter`, and everything else falls through to the plain
+write. So a live session with one of those three selected keeps writing the plain stream, exactly
+the file it would write with the combo left on Elementary stream; the container only changes what
+a *file* encode wraps it as afterward (see
 [Container](format-and-channels.md#presets-codec-bit-rate-container)).
 
 There is also an optional **raw-WAV safety copy**: the pre-flight "Raw-WAV safety copy" checkbox
 is only consulted once the take is also being written to disk. When on, it streams the raw
 captured PCM — device channel order, unencoded, before any routing or mixing — to a sibling
-`.raw.wav` file through a streaming WAV writer (`ac3::io::WavStreamWriter`) that appends
+`.raw.wav` file (beside a fragmented-MP4 folder, not inside it: the safety copy is source audio,
+not part of the CMAF asset a packager would be pointed at) through a streaming WAV writer (`ac3::io::WavStreamWriter`) that appends
 interleaved samples as they arrive and, like the take itself, periodically re-patches its RIFF
 header rather than only at close. Without that, a process kill mid-session leaves a WAV
 whose header still claims zero data bytes even though the file holds real audio — most readers
@@ -331,26 +389,44 @@ This is the GUI equivalent of `ac3cli live`: capture → encode → optional liv
 passthrough, running continuously and still writing the file `record` always has. See
 [CLI → Commands](../cli/commands.md#live-hardware) for the command-line form, including the
 `live mode` distinction between `channels` and `atmos` — the GUI's Atmos-mode live room is that
-same `atmos` mode, with the timeline replaced by real-time motion. **Two-device capture is at
-parity** — `capture2=<index>` (see [Two-device capture](#two-device-capture-clock-master-model))
-uses the same shared `DriftResampler`/`ClockDriftEstimator` pair on both sides. **Container choice
-is at parity too** — `ac3cli record`/`ac3cli live` both take a `container=mkv` trailing token (see
-[CLI → Options &
-grammars](../cli/metadata-options.md#recordlive-options-record-live-containermkv)) that writes
-straight to Matroska in the one command, the same choice this page's own [Take
-durability](#take-durability) section describes the GUI's Container combo making. The CLI reaches
-it with `matroska::mux()` rather than `matroska::Writer` — `record`/`live` already hold every frame
-in memory until the run ends (see the very next sentence), so there is nothing incremental to gain
-there the way there is for the GUI's own bounded-memory, mid-session-crash-safe take. The rest of
-the parity gap remains, worth being honest about: `ac3cli live` (`run_live` in `apps/cli/main.cpp`)
-still reserves and fills a `frames` vector across the whole run and writes it once at the end, has
-no device-drop watchdog, still pans exactly one object per capture channel with no add/reassign,
-and has no parallel downmix leg of its own (an AC-3-only receiver during an `atmos`/E-AC-3 CLI
-session still just gets the plain refusal) — none of this page's
-[take durability](#take-durability), [device-drop detection](#device-drop-detection), live
-object-slot budget, [receiver hot-swap](#receiver-hot-swap), or
-[parallel downmix leg](#parallel-downmix-receiver-leg) has reached the CLI's `live` command beyond
-the two-device clock model and container choice itself.
+same `atmos` mode, with the timeline replaced by real-time motion.
+
+**What is now at parity** (roadmap IO9). `ac3cli record` and `ac3cli live` reach the same
+capabilities this page describes, through the same code where the code is shareable:
+
+- **Wide layouts and E-AC-3.** `record` and `live mode=channels` take `layout=` and `codec=`
+  (see [CLI → Options & grammars](../cli/metadata-options.md#layout-and-codec)) and place the
+  captured channels onto them by direction through the same `plan::route` this page's own
+  [layout switcher](#switching-layout-mid-session) drives. Neither is stereo-AC-3-only any more.
+- **Container choice**, and **take durability** with it. Both commands take
+  `container=raw|mkv|ts|spdif|fmp4` (`cmaf` is an accepted alias for the last; see
+  [CLI → Options & grammars](../cli/metadata-options.md#container)) and write through
+  `RecordingSink` — literally the same class, moved to `apps/common/` and compiled into both
+  front ends — so a CLI take and a GUI take of the same container are the same bytes produced
+  the same way, with the same bounded memory and the same
+  [mid-session crash safety](#take-durability).
+- **[Device-drop detection](#device-drop-detection).** Both take `watchdog=<seconds>` (default 3,
+  `0` disables) and stop the session as a failure the first time `ac3::audio::SilenceWatchdog`
+  fires — the same class, the same default, the same rule. `capture2=` gets its own watchdog, so
+  a dropped slave is reported as the slave.
+- **The live object-slot budget.** `live mode=atmos` takes `objects=<N>` and binds capture
+  channels to slots with `map=` (`obj`/`objm`/`none`, the same grammar the Format tab's
+  assignment table uses — see [Multi-source & assignment](source-assignment.md)), against a
+  budget fixed at session start exactly as **Add object** allocates against one here. A GUI
+  assignment is reproducible headlessly.
+- **The [parallel downmix leg](#parallel-downmix-receiver-leg).** An AC-3-only receiver during an
+  E-AC-3 or object CLI session now hears a capped 5.1 AC-3 encode of the bed the main plan already
+  computed, instead of a plain refusal; the file still carries the full stream. `downmix=off`
+  restores the refusal.
+- **Two-device capture**, as before — `capture2=<index>` (see
+  [Two-device capture](#two-device-capture-clock-master-model)) uses the same shared
+  `DriftResampler`/`ClockDriftEstimator` pair on both sides.
+
+**What is still GUI-only**, and honestly so: [receiver hot-swap](#receiver-hot-swap) (changing the
+passthrough endpoint mid-session), the live latency readout, and every interactive affordance this
+page describes — the soundfield view, the chips, the banners. A command line has no mid-session
+input, so a hot-swap has nothing to be triggered by; `ac3cli live` resolves its receiver once, at
+session start, including whether the downmix leg runs.
 
 ## Next
 

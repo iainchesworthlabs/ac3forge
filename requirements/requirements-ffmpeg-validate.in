@@ -1,10 +1,32 @@
 # numpy for ci.yml's ffmpeg-validate job (tools/ci/quality_race.py and friends).
 # matplotlib is for that job's spectrogram-rendering step only
 # (quality_race.py's render_spectrograms(), `trend --spectrogram-dir`) - see
-# that function's own docstring for why this is fine to add directly here
-# unlike visqol-python, which stays deliberately out of this lock.
+# that function's own docstring for why this is fine to add directly here.
+#
+# visqol-python is the MOS-LQO column (quality_race.py's perceptual_score() -
+# see its own docstring for why ViSQOL over PEAQ and why this package over
+# google/visqol, which has no PyPI wheel at all). It was deliberately held out
+# of this lock when the column was first written, on supply-chain grounds: it
+# is a third-party reimplementation, not Google's own, and the argument was
+# that it should earn a place in every CI run rather than get one by default.
+# What that deferral actually bought was a MOS column that read `n/a` in every
+# published row - ~3,758 trend rows with "mos_lqo": null and every landscape
+# MOS cell empty - so the perceptual half of the comparison did not exist. The
+# supply-chain answer is the same one this repo already applies to every other
+# Python dependency: pin it by hash, here, and review the lock diff.
+#
+# Pinned surface this adds beyond what numpy/matplotlib already brought in, as
+# the lock diff shows it - seven packages, nothing already pinned moved
+# version: visqol-python, scipy, libsvm-official, soundfile, and soundfile's
+# own binding layer (cffi, pycparser, typing-extensions). The package's optional
+# `accel` extra (numba) is deliberately NOT taken: it would roughly double the
+# added surface to buy CI time on a step that is already bounded by
+# quality_race.py's own MOS_WINDOW_S, and llvmlite/numba wheels lag new Python
+# releases in a way this lock should not have to track.
+#
 # Regenerate the lock after any change here with:
 #   python -m piptools compile --generate-hashes --strip-extras \
 #     --output-file=requirements-ffmpeg-validate.txt requirements-ffmpeg-validate.in
 numpy
 matplotlib
+visqol-python

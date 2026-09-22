@@ -11,6 +11,8 @@ import android.util.AttributeSet
 import android.view.Choreographer
 import android.view.View
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * The v1 room visualization: a plain [View], not a `SurfaceView` - the plan's
@@ -54,10 +56,9 @@ class RoomView @JvmOverloads constructor(
     private val choreographer = Choreographer.getInstance()
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
+            if (!tickerRunning) return
             invalidate()
-            if (isAttachedToWindow) {
-                choreographer.postFrameCallback(this)
-            }
+            choreographer.postFrameCallback(this)
         }
     }
 
@@ -119,6 +120,35 @@ class RoomView @JvmOverloads constructor(
         style = Paint.Style.FILL
         color = Theme.colorTextSecondary
     }
+    // The soundfield arrow - where the ENCODED bed's energy actually sits, as
+    // opposed to where the demo asked the object to be. Warm, like the mode
+    // readout, so it never reads as another object dot.
+    private val soundfieldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Theme.colorWarn
+    }
+    // The wire trace's two lines. Intended is the demo's own intent, drawn
+    // faint; decoded is what came back off the wire, drawn in the lead
+    // object's colour because that is whose height it is.
+    private val traceIntendedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+        color = Theme.colorTextMuted
+    }
+    private val traceDecodedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        color = Theme.objectColors[0]
+    }
+    private val traceGapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Theme.colorWarn
+    }
+    private val traceLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Theme.colorTextMuted
+        textSize = 17f
+    }
+    private val tracePath = Path()
     private val modePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Theme.colorWarn
         textSize = 19f
@@ -163,12 +193,39 @@ class RoomView @JvmOverloads constructor(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        choreographer.postFrameCallback(frameCallback)
+        if (windowVisibility == View.VISIBLE) startTicker()
     }
 
     override fun onDetachedFromWindow() {
-        choreographer.removeFrameCallback(frameCallback)
+        stopTicker()
         super.onDetachedFromWindow()
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility == View.VISIBLE && isAttachedToWindow) startTicker() else stopTicker()
+    }
+
+    // The ticker is stopped whenever this view's window stops being visible,
+    // not only when the view is detached. Launching About (or pressing HOME)
+    // leaves this view attached to a window that is no longer on screen, so
+    // an isAttachedToWindow-only gate kept an invalidate-per-vsync loop -
+    // and the per-frame JNI calls in onDraw - running behind whatever came
+    // forward. tickerRunning is what keeps the two entry points
+    // (onAttachedToWindow, onWindowVisibilityChanged) from each posting their
+    // own self-reposting callback and doubling the frame rate.
+    private var tickerRunning = false
+
+    private fun startTicker() {
+        if (tickerRunning) return
+        tickerRunning = true
+        choreographer.postFrameCallback(frameCallback)
+    }
+
+    private fun stopTicker() {
+        if (!tickerRunning) return
+        tickerRunning = false
+        choreographer.removeFrameCallback(frameCallback)
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -182,9 +239,22 @@ class RoomView @JvmOverloads constructor(
         val objectCount = state.size / 4
         if (objectCount == 0) return
 
+        // The lead's position, handed to the input side for haptics. Done
+        // here because this view already has the state for this frame; making
+        // InputController fetch it again would double the per-vsync JNI cost
+        // for a value both already want.
+        inputController?.onLeadSampled(state[0], state[1], state[2])
+
         leadHistory.addLast(floatArrayOf(state[0], state[1], state[2]))
         while (leadHistory.size > MAX_HISTORY) {
             leadHistory.removeFirst()
+        }
+        // Where the ENCODED bed's energy actually sits, for the top-down
+        // panel's arrow - see NativeBridge.nativeGetSoundfieldVector.
+        val soundfield = try {
+            NativeBridge.nativeGetSoundfieldVector()
+        } catch (e: UnsatisfiedLinkError) {
+            null
         }
         val leadFuture = try {
             NativeBridge.nativeGetFutureLeadTrajectory(FUTURE_SECONDS, FUTURE_SAMPLES)
@@ -235,6 +305,24 @@ class RoomView @JvmOverloads constructor(
         val modeText = inputController?.let { controller ->
             if (controller.axisMode == InputController.AxisMode.XY) "D-PAD → DEPTH" else "D-PAD → HEIGHT"
         }
+        val loudnessText = try {
+            NativeBridge.nativeGetLoudnessText().ifEmpty { null }
+        } catch (e: UnsatisfiedLinkError) {
+            null
+        }
+        // The wire trace - empty on any build whose encoder emits no object
+        // container, which is exactly when there is nothing to trace. The
+        // elevation panel then keeps its whole area, so nothing regresses.
+        val wireTrace = try {
+            NativeBridge.nativeGetWireTrace().takeIf { it.size >= 6 }
+        } catch (e: UnsatisfiedLinkError) {
+            null
+        }
+        val wireTraceText = try {
+            NativeBridge.nativeGetWireTraceText().ifEmpty { null }
+        } catch (e: UnsatisfiedLinkError) {
+            null
+        }
 
         draw3DView(canvas, 0f, leftTop, leftSize, leftTop + leftSize, state, objectCount, leadFuture, statsText)
 
@@ -263,6 +351,8 @@ class RoomView @JvmOverloads constructor(
 
             verticalIsHeight = false,
             showTrajectoryGuide = true,
+            soundfield = soundfield,
+            trace = null,
         )
         drawPanel(
             canvas,
@@ -273,14 +363,20 @@ class RoomView @JvmOverloads constructor(
             // "Side" dropped (was "Side elevation (X/Z)"): shorter title,
             // more headroom for whatever width this card ends up with.
             title = "Elevation (X/Z)",
-            status = null,
-            statusPaint = null,
+            // This header was empty, and the measured loudness has nowhere
+            // else to go: the 3D panel's own header is already full, and the
+            // top-down panel's carries the axis mode. Blank until the meter's
+            // first gated 400ms block has passed - see nativeGetLoudnessText.
+            status = wireTraceText ?: loudnessText,
+            statusPaint = statsPaint,
             state = state,
             objectCount = objectCount,
             horizontal = { i -> state[i * 4] },           // x
             vertical = { i -> (state[i * 4 + 2] + 1f) / 2f }, // z in [-1,1] -> [0,1]
             verticalIsHeight = true,
             showTrajectoryGuide = false,
+            soundfield = null,
+            trace = wireTrace,
         )
     }
 
@@ -396,6 +492,9 @@ class RoomView @JvmOverloads constructor(
             (panelW / 2f - 24f) / ISO_X_HALF_RANGE,
             (panelH / 2f - 24f) / ISO_Y_HALF_RANGE,
         )
+        // The same proportion of the panel the flat panels use for their own
+        // dots, so all three read as one size to the eye - see drawFlatPanel.
+        val isoDotRadius = minOf(panelW, panelH) * 0.05f
 
         fun project(x: Float, y: Float, z: Float): FloatArray {
             val cx = x - 0.5f
@@ -473,8 +572,88 @@ class RoomView @JvmOverloads constructor(
             val isSelected = state[i * 4 + 3] != 0f
             val (px, py) = project(state[i * 4], state[i * 4 + 1], state[i * 4 + 2])
                 .let { it[0] to it[1] }
-            drawObjectDot(canvas, px, py, 16f, objectColor(i), isSelected)
+            // Derived from the panel, like the other two panels already do
+            // (see drawFlatPanel's own `radius`) rather than a fixed 16px.
+            // A hardcoded pixel radius is one size on the authoring device
+            // and another on any panel of a different size - and this is the
+            // biggest of the three panels, so its dots were the ones reading
+            // smallest relative to their own card.
+            drawObjectDot(canvas, px, py, isoDotRadius, objectColor(i), isSelected)
         }
+    }
+
+    /**
+     * The wire trace: the lead object's height over the last few seconds,
+     * intended against what a decoder read back off the wire.
+     *
+     * The decoded line is deliberately drawn thicker and in the lead's own
+     * colour, and it will look like a staircase against the smooth intended
+     * line - height is sent as a sign bit plus four bits of magnitude, so it
+     * moves in sixteen steps. That is the point of the panel: the steps are a
+     * fact about the format, not an artefact of this encoder.
+     *
+     * Frames whose bytes carried no object layer at all are drawn as a gap
+     * with a marker along the baseline rather than as a zero, so OBJECTS OFF
+     * reads as "the decoder found nothing here" instead of "the object went
+     * to floor level".
+     */
+    private fun drawWireTrace(
+        canvas: Canvas,
+        left: Float,
+        top: Float,
+        right: Float,
+        bottom: Float,
+        trace: FloatArray,
+    ) {
+        val width = right - left
+        val height = bottom - top
+        if (width <= 1f || height <= 1f) return
+
+        val points = trace.size / 3
+        if (points < 2) return
+
+        // z is [-1, 1]; screen y grows downward, so +1 (ceiling) is at the top.
+        fun yFor(z: Float): Float = top + (1f - ((z.coerceIn(-1f, 1f) + 1f) / 2f)) * height
+        fun xFor(i: Int): Float = left + (i.toFloat() / (points - 1).toFloat()) * width
+
+        // Ear height, so the two halves of the room read as such.
+        canvas.drawLine(left, yFor(0f), right, yFor(0f), guidePaint)
+
+        // Intended first, underneath.
+        tracePath.reset()
+        for (i in 0 until points) {
+            val x = xFor(i)
+            val y = yFor(trace[i * 3])
+            if (i == 0) tracePath.moveTo(x, y) else tracePath.lineTo(x, y)
+        }
+        canvas.drawPath(tracePath, traceIntendedPaint)
+
+        // Decoded, broken wherever the object layer was absent from the wire.
+        tracePath.reset()
+        var drawing = false
+        for (i in 0 until points) {
+            val hasObjects = trace[i * 3 + 2] != 0f
+            if (!hasObjects) {
+                if (drawing) {
+                    canvas.drawPath(tracePath, traceDecodedPaint)
+                    tracePath.reset()
+                    drawing = false
+                }
+                canvas.drawCircle(xFor(i), bottom - 3f, 2f, traceGapPaint)
+                continue
+            }
+            val x = xFor(i)
+            val y = yFor(trace[i * 3 + 1])
+            if (!drawing) {
+                tracePath.moveTo(x, y)
+                drawing = true
+            } else {
+                tracePath.lineTo(x, y)
+            }
+        }
+        if (drawing) canvas.drawPath(tracePath, traceDecodedPaint)
+
+        canvas.drawText("decoded height off the wire", left + 4f, top + 18f, traceLabelPaint)
     }
 
     private inline fun drawPanel(
@@ -492,8 +671,40 @@ class RoomView @JvmOverloads constructor(
         vertical: (Int) -> Float,
         verticalIsHeight: Boolean,
         showTrajectoryGuide: Boolean,
+        // (azimuthDegrees, magnitude) or null for a panel this means nothing
+        // on - the elevation panel plots height, and an azimuth has no height.
+        soundfield: FloatArray?,
+        // The wire trace (intended z, decoded z, hasObjects) triples, or null.
+        // Only the elevation panel takes one: it is a height view over time,
+        // which belongs beside the height view over space rather than in a
+        // panel of its own competing for the same width.
+        trace: FloatArray?,
     ) {
-        val content = drawCard(canvas, left, top, right, bottom, title, status, statusPaint)
+        val fullContent = drawCard(canvas, left, top, right, bottom, title, status, statusPaint)
+        if (fullContent.right <= fullContent.left || fullContent.bottom <= fullContent.top) return
+
+        // Reserve the lower part of the card for the trace, but only when
+        // there IS one - otherwise this panel is exactly what it always was.
+        val content = if (trace != null) {
+            RectF(
+                fullContent.left,
+                fullContent.top,
+                fullContent.right,
+                fullContent.bottom - (fullContent.bottom - fullContent.top) * TRACE_SHARE,
+            )
+        } else {
+            fullContent
+        }
+        if (trace != null) {
+            drawWireTrace(
+                canvas,
+                fullContent.left,
+                content.bottom + 10f,
+                fullContent.right,
+                fullContent.bottom,
+                trace,
+            )
+        }
         if (content.right <= content.left || content.bottom <= content.top) return
 
         // The room itself is square in normalized coordinates (both x and y
@@ -551,6 +762,35 @@ class RoomView @JvmOverloads constructor(
                 close()
             }
             canvas.drawPath(path, listenerPaint)
+
+            // The energy vector, drawn from the listener outward: which way a
+            // 5.1 decoder's own speakers are actually pushing the soundfield,
+            // and how strongly. It should track the lead object's dot - seeing
+            // the two agree is what shows the panning is real rather than
+            // asserted, and it comes from the encoded bed, not the room maths.
+            if (soundfield != null && soundfield.size >= 2 && soundfield[1] > 0.02f) {
+                val azimuthRad = Math.toRadians(soundfield[0].toDouble())
+                // Azimuth runs counterclockwise from front, and front is up on
+                // this panel: +30 degrees is the L speaker, which belongs on
+                // the LEFT of the screen, hence the negated sine.
+                val dx = -sin(azimuthRad).toFloat()
+                val dy = -cos(azimuthRad).toFloat()
+                val reach = (roomSize * 0.34f) * soundfield[1].coerceIn(0f, 1f)
+                val tipX = lx + dx * reach
+                val tipY = ly + dy * reach
+                // A tapered triangle rather than a line-plus-head: fewer
+                // strokes, and it stays legible when the magnitude is small
+                // and the arrow is only a few pixels long.
+                val halfBase = radius * 0.45f
+                val arrow = Path().apply {
+                    moveTo(tipX, tipY)
+                    lineTo(lx - dy * halfBase, ly + dx * halfBase)
+                    lineTo(lx + dy * halfBase, ly - dx * halfBase)
+                    close()
+                }
+                soundfieldPaint.alpha = (90 + 165 * soundfield[1].coerceIn(0f, 1f)).toInt()
+                canvas.drawPath(arrow, soundfieldPaint)
+            }
         }
 
         for (i in 0 until objectCount) {
@@ -579,6 +819,11 @@ class RoomView @JvmOverloads constructor(
     }
 
     companion object {
+        // Share of the elevation card given to the wire trace when there is
+        // one. Enough to read a staircase in, not so much that the x/z plot
+        // above it stops being a room view.
+        private const val TRACE_SHARE = 0.38f
+
         // live_cursor.cpp's kTrajectory[0].radius - the lead (interactive)
         // object's orbit radius about the room centre. Kept as a duplicated
         // constant, not queried over JNI, because it is fixed at compile

@@ -63,21 +63,22 @@ difference 1.1e-5.
 
 ## Milestones 8–9 — space, and getting it to a receiver
 
-The spatial layer (`src/lib/src/spatial/`) places mono objects on the ITU 5.1 ring by
+The spatial layer (`src/forge/src/spatial/`) places mono objects on the ITU 5.1 ring by
 energy-normalized 2D VBAP with per-block gain ramps and explicit LFE sends. `ac3cli orbit`
 renders a tone circling the listener into 5.1 AC-3. An end-to-end test parks the object at
 each speaker in turn and asserts the decoded energy follows it: C → L → SL → SR → R.
 
-The IEC 61937 packer (`src/lib/src/sinks/`) wraps frames into S/PDIF bursts byte-exact against
+The IEC 61937 packer (`src/forge/src/sinks/`) wraps frames into S/PDIF bursts byte-exact against
 FFmpeg's `spdif` muxer. `ac3cli spdif` emits them as a PCM16 WAV; played bit-exactly through a
 passthrough output, a receiver locks on and lights its Dolby Digital indicator.
 
 ## Live capture
 
-`ac3::capture` enumerates every active input endpoint plus every render endpoint as a loopback
-source, and streams interleaved float samples through a lock-free SPSC ring into the encoder.
-Verified on hardware: a 1 kHz tone played through the speakers, captured via loopback, encoded
-and decoded back at exactly 1000.0 Hz with zero ring overruns. Loopback gaps — a render
+`ac3::audio::enumerate_devices` reports every active input endpoint plus every render endpoint as
+a loopback source, and `ac3::audio::Capture` streams interleaved float samples through a
+lock-free SPSC ring into the encoder. Verified on hardware: a 1 kHz tone played through the
+speakers, captured via loopback, encoded and decoded back at exactly 1000.0 Hz with zero ring
+overruns. Loopback gaps — a render
 endpoint delivers nothing while the machine is silent — are filled against a QPC timeline so
 the stream stays continuous.
 
@@ -85,7 +86,7 @@ the stream stays continuous.
 
 ## Exclusive-mode passthrough
 
-`ac3::sinks::PassthroughSink` opens a render endpoint in WASAPI exclusive mode with a
+`ac3::audio::PassthroughSink` opens a render endpoint in WASAPI exclusive mode with a
 `KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_DIGITAL` format, including the documented
 buffer-alignment retry, and streams bursts from a lock-free queue on an MMCSS "Pro Audio"
 thread. Exclusive mode is mandatory: the shared-mode engine would mix, resample or
@@ -136,8 +137,8 @@ Spectral extension (§E3.6), the adaptive hybrid transform with gain-adaptive qu
 (§E3.4), and Annex E coupling (§E3.3), each opt-in per `FrameConfig`. The JOC Huffman tables
 needed by the object layer were generated here too: TS 103 420 Annex A.1 gives only their
 names, modes and types and ships the trees in the companion archive as `ts_103420_tables.c`,
-so `tools/gen_joc_tables.py` inverts that file — decoder trees in, encoder codewords out — and
-refuses to write unless every tree is a complete prefix code.
+so `tools/generators/gen_joc_tables.py` inverts that file — decoder trees in, encoder codewords
+out — and refuses to write unless every tree is a complete prefix code.
 
 The in-repo decoder did not read any of these three at first; that gap closed later (see
 "Since" below) — it now reads all three, at every layout including 7.1.4 with all three
@@ -199,14 +200,14 @@ these bits to set level, compress dynamics and fold down, and until this point t
 zero. `dynrng`, `compr`, a measured `dialnorm`, and the downmix levels — see the
 [capability table](index.md#metadata) for what each one does here.
 
-Verified against the oracle rather than against the bits alone: `tools/check_drc.py` runs 22
+Verified against the oracle rather than against the bits alone: `tools/checks/check_drc.py` runs 22
 checks in which a decode that *applies* the metadata is compared against one that ignores it
 (`ffmpeg -drc_scale`, `-heavy_compr`, `-ac 2`), so a stream carrying dead metadata fails.
 Measured: 5.24 dB of cut on loud passages, 5.63 dB of boost on quiet ones, programme range
 39.0 → 28.1 dB; the `compr` ceiling holds across hard transitions; every downmix level code
 moves FFmpeg's own fold-down by the dB Tables 5.9/5.10 specify, to 0.01 dB.
-`tools/drc_ref.py` is an independent transcription of Tables 7.29/7.30 as arithmetic-shift
-lookups, so the bit-packing has a second opinion.
+`tools/references/drc_ref.py` is an independent transcription of Tables 7.29/7.30 as
+arithmetic-shift lookups, so the bit-packing has a second opinion.
 
 One gap found here and still open: FFmpeg's Annex E header parser skips the compression word,
 so E-AC-3 `compr` has no external oracle and is covered bit-by-bit instead.
@@ -216,7 +217,7 @@ so E-AC-3 `compr` has no external oracle and is covered bit-by-bit instead.
 Capture→encode already ran live (`EncoderController::startRecording`, `ac3cli record`), but
 only ever reached a file, and `PassthroughSink`/`ac3::iec61937::wrap_frame` understood AC-3
 bursts only — `playToReceiver` and `ac3cli play` refused anything with `bsid > 8` outright.
-Three pieces closed that: `ac3::sinks::MonitorSink` (shared-mode WASAPI playback, a
+Three pieces closed that: `ac3::audio::MonitorSink` (shared-mode WASAPI playback, a
 non-bitstreamed preview path), `ac3::iec61937::Eac3BurstPacker` plus a second WASAPI
 exclusive-mode format (`make_eac3_format`, `KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_DIGITAL_PLUS`)
 for E-AC-3/Atmos passthrough, and `ac3cli live` wiring capture → encode → both, continuously,
@@ -235,7 +236,7 @@ from the source (`ctx->length_code = ctx->hd_buf_filled`, no `<<3`) and sanity-c
 TrueHD/DTS-HD doing the same for the same reason (bits would overflow the 16-bit field at these
 rates); and — the detail that would silently drop channels if missed — the unit fed to the
 packer has to be a whole *access unit* (`ac3::split_access_units`), not a lone syncframe, or a
-dependent substream's channels never reach the receiver. `tests/test_iec61937.cpp` is new (the
+dependent substream's channels never reach the receiver. `tests/sinks/test_iec61937.cpp` is new (the
 AC-3 packer had no dedicated tests before this either) and covers both, including real
 multi-frame audio and hand-built multi-syncframe accumulation; the `Pd`-in-bits and
 burst-size-6144 bugs were both deliberately reintroduced and confirmed to fail the suite before
@@ -250,8 +251,8 @@ the submitted/rendered counters from what was actually queued. `ac3cli live --at
 wrote a bed-metering step into the same `views` vector the encoder read object essences from,
 sized to the object count (as few as one) rather than the bed's fixed six channels — an
 out-of-bounds heap write, surfacing as a crash partway through an otherwise-successful session.
-Both are fixed (see `MonitorSink::submit` in `src/audio/src/platform/windows/monitor.cpp` and
-`run_live`'s `bed_views` in `src/cli/main.cpp`).
+Both are fixed (see `MonitorSink::submit` in `src/audio/src/backend/windows/monitor.cpp` and
+`run_live`'s `bed_views` in `apps/cli/commands/live_audio.cpp`).
 
 What that hardware testing did and did not confirm, precisely: `MonitorSink` played real
 microphone capture and real decoded AC-3/E-AC-3 (including an Atmos stream's 5.1 bed) through
@@ -265,8 +266,8 @@ account.
 ## The ALSA backend
 
 Live capture, monitor playback and IEC 61937 passthrough had been WASAPI-only, gated behind
-`WIN32` with a no-backend stub everywhere else. `src/audio/src/platform/alsa/` gives Linux a real
-implementation of all three, selected by `src/lib/CMakeLists.txt` when libasound's headers are
+`WIN32` with a no-backend stub everywhere else. `src/audio/src/backend/alsa/` gives Linux a real
+implementation of all three, selected by `src/audio/CMakeLists.txt` when libasound's headers are
 present (`AC3FORGE_WITH_ALSA=AUTO` by default; `ON` makes their absence a configure error, `OFF`
 forces the no-backend fallback) — optional and detected, not a hard new dependency. Capture and
 monitor playback are ordinary PCM and any Linux audio API could do them; passthrough is why ALSA
@@ -372,7 +373,7 @@ than a separate system — `ac3::plan::channel_plan_for(id)` is a one-line looku
   restored around the session instead), a warning appears before Start if VBR is on (a live
   session always drops it), and the window title reflects an active session the same way it
   already did for a plain recording.
-- `ac3gui --smoke-shot` (`src/gui/main.cpp`): grabs a window screenshot without encoding
+- `ac3gui --smoke-shot` (`apps/gui/main.cpp`): grabs a window screenshot without encoding
   anything, for documentation screenshots where a specific UI state matters and a completed run
   in the strip would be noise. The existing `--smoke`/`--smoke-record`/`--smoke-live` property
   mechanism gained two special-cased tokens alongside it — `preset=` (invokes
@@ -418,14 +419,14 @@ Neither tool has any external decode oracle — FFmpeg's own Annex E parser has 
 one's syntax, which is weaker than 7.1.4's situation (a syntax it reads but rejects on one field):
 it has no model of the bits at all, so strict-decoding a stream that uses either tool isn't merely
 unavailable, it would reject a correctly-formed stream on syntax it doesn't recognise. Verification
-is self-consistency only: round-trip unit tests in `tests/test_eac3_decoder.cpp`, and
-`tools/quality_race.py`'s CI gate, extended with a `decode_scores_ours` path that decodes through
+is self-consistency only: round-trip unit tests in `tests/decoder/test_eac3_decoder.cpp`, and
+`tools/ci/quality_race.py`'s CI gate, extended with a `decode_scores_ours` path that decodes through
 this project's own `ac3cli decode` instead of FFmpeg for exactly these two tools, with SNR/LSD
 floors sized off a real measured run rather than guessed.
 
 ## Enhanced coupling's real angle/chaos fit
 
-The amplitude-only MVP above was closed by `fit_ecpl_band` (`src/lib/src/encoder/eac3_frame.cpp`):
+The amplitude-only MVP above was closed by `fit_ecpl_band` (`src/forge/src/encoder/eac3_frame.cpp`):
 §3.5.5.4's reconstruction turns out to be linear in the complex gain a band's (amplitude, angle)
 pair expresses — the same shared coupling channel folded through unity gain at angle 0 and at
 angle 0.5 (a quarter-turn) spans every gain a single coordinate pair could ever produce, so fitting
@@ -463,8 +464,8 @@ infrastructure, and both decoders' own independent copies of the same four range
 it too, closing a three-way literal duplication risk that predated this work rather than adding a
 new one.
 
-Two existing bit-placement tests (`tests/test_eac3.cpp`) had hardcoded `rematflg` at zero, true
-only because the encoder never set it before; both now assert genuine engagement (at least one
+Two existing bit-placement tests (`tests/encoder/test_eac3.cpp`) had hardcoded `rematflg` at zero,
+true only because the encoder never set it before; both now assert genuine engagement (at least one
 band fires) for their already-correlated test material instead, catching the field's PRESENCE
 without pinning a value that is legitimately content-dependent. The existing stereo round-trip
 test's identical-tone case already exercised the decoder's real undo path end to end once

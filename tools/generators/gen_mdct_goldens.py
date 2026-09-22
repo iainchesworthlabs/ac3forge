@@ -35,7 +35,8 @@ def parse_table_7_33() -> np.ndarray:
     """Parse the 256 window values of Table 7.33 from the spec extraction."""
     lines = SPEC_TXT.read_text(encoding="utf-8").splitlines()
     start = next(i for i, line in enumerate(lines)
-                 if "Table 7.33 Transform Window Sequence" in line and "A=0" in "".join(lines[i:i + 8]))
+                 if "Table 7.33 Transform Window Sequence" in line
+                 and "A=0" in "".join(lines[i:i + 8]))
     values: list[float] = []
     for line in lines[start:start + 40]:
         stripped = line.strip()

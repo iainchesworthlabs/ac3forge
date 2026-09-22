@@ -58,21 +58,24 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
-#include <format>
+#include <fmt/format.h>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include "ac3/audio/ring_buffer.hpp"
-#include "ac3/sinks/iec61937.hpp"
+#include "ac3/iec61937/iec61937.hpp"
 #include "alsa_support.hpp"
+#include "candidates.hpp"
 #include "device_names.hpp"
 
 namespace ac3::audio {
 
 namespace {
 
+using alsa::Candidate;
 using alsa::DigitalOutput;
+using alsa::find_candidates;
 using alsa::HwParams;
 using alsa::Pcm;
 using alsa::SwParams;
@@ -121,15 +124,6 @@ PassthroughError open_failure(int error) {
             return PassthroughError::kComFailure;
     }
 }
-
-// A digital output found by walking the cards, before it has been probed.
-struct Candidate {
-    int card = 0;
-    DigitalOutput kind = DigitalOutput::kNone;
-    std::string name;       // "iec958:CARD=PCH,DEV=0" - no channel status yet
-    std::string hw_name;    // "hw:CARD=PCH,DEV=1" - the control probe's target
-    std::string friendly;   // for a device list a person reads
-};
 
 // Configure an open PCM for the IEC 61937 carrier: 16-bit stereo at the link
 // rate, no conversion of any kind in the path.
@@ -202,6 +196,36 @@ bool probe(const std::string& name, std::uint32_t carrier) {
     return configure(handle, carrier, /*burst_frames=*/0, /*commit=*/false);
 }
 
+// How many channels the endpoint itself renders, for
+// RenderDeviceInfo::channels. ALSA answers this from the hardware parameter
+// space rather than from a mix format, so the figure is the device's own
+// maximum rather than whatever a shared mixer happens to be running at - the
+// right number for "is a decoded programme wider than this output?", which is
+// what the field is for. 0 on any failure, including a device that is simply
+// busy: the header's wording makes 0 mean "cannot say", never "no channels".
+std::uint16_t endpoint_channels(const std::string& name) {
+    const alsa::QuietErrors quiet;
+    snd_pcm_t* handle = nullptr;
+    if (snd_pcm_open(&handle, name.c_str(), SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK) < 0) {
+        return 0;
+    }
+    const Pcm owned{handle};
+    const HwParams params;
+    if (!params) {
+        return 0;
+    }
+    unsigned int channels = 0;
+    if (snd_pcm_hw_params_any(handle, params.get()) < 0 ||
+        snd_pcm_hw_params_get_channels_max(params.get(), &channels) < 0) {
+        return 0;
+    }
+    // ALSA reports a plug device's maximum as something absurd (1024 or more)
+    // because the plug layer will invent any width asked of it. That is not an
+    // endpoint width, so it is reported as unknown rather than as a number no
+    // downmix decision should be made from.
+    return channels > 0 && channels <= 64 ? static_cast<std::uint16_t>(channels) : 0;
+}
+
 // Whether `base` will carry `format` at `content_rate`: the device name with
 // the right channel status for the link rate that format needs, opened and
 // offered the carrier parameters.
@@ -209,41 +233,6 @@ bool probe_format(std::string_view base, BitstreamFormat format, std::uint32_t c
     const std::uint32_t carrier = alsa::carrier_rate(format, content_rate);
     const auto name = alsa::passthrough_device_name(base, carrier);
     return name.has_value() && probe(*name, carrier);
-}
-
-// Every digital output on the machine, in card then device order.
-//
-// The `hdmi:`/`iec958:` plugins take a logical index - the card's first HDMI
-// PCM is hdmi:DEV=0 whatever hardware device number it happens to have - so
-// the two are counted separately per card as the walk goes.
-std::vector<Candidate> find_candidates() {
-    std::vector<Candidate> candidates;
-    int counted_card = -1;
-    unsigned hdmi_index = 0;
-    unsigned spdif_index = 0;
-
-    alsa::for_each_pcm(SND_PCM_STREAM_PLAYBACK, [&](const alsa::PcmEntry& entry) {
-        if (entry.card != counted_card) {
-            counted_card = entry.card;
-            hdmi_index = 0;
-            spdif_index = 0;
-        }
-        const DigitalOutput kind =
-            alsa::classify_digital_output(entry.device_name, entry.card_id, entry.card_name);
-        if (kind == DigitalOutput::kNone) {
-            return;
-        }
-        unsigned& index = kind == DigitalOutput::kHdmi ? hdmi_index : spdif_index;
-        candidates.push_back(Candidate{
-            .card = entry.card,
-            .kind = kind,
-            .name = alsa::config_device_name(kind, entry.card_id, index),
-            .hw_name = alsa::hw_device_name(entry.card_id, entry.device),
-            .friendly = std::format("{}: {}", entry.card_name, entry.device_name),
-        });
-        ++index;
-    });
-    return candidates;
 }
 
 }  // namespace
@@ -290,6 +279,7 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
             // neither of the above cannot bitstream; one that takes none of
             // the three is in use by something else.
             .supports_exclusive_pcm = probe(candidate.hw_name, sample_rate),
+            .channels = endpoint_channels(candidate.hw_name),
         };
 
         if (!marked_default && candidate.card == preferred_card) {

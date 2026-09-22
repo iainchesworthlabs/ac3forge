@@ -1,7 +1,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
+#include <bit>
 #include <cstdint>
 #include <optional>
 #include <sstream>
@@ -94,9 +96,10 @@ Bytes build_fmt_chunk(std::uint16_t channels, std::uint32_t sample_rate, std::ui
     return fmt;
 }
 
-// A WAVE_FORMAT_IEEE_FLOAT (formatTag 3) <fmt > chunk - used only by the "rejects float32"
+// A WAVE_FORMAT_IEEE_FLOAT (formatTag 3) <fmt > chunk - used only by the "parses a float32"
 // test below. Not accepted by anything this project's own encoder/decoder writes or reads
-// elsewhere; exists purely to exercise libbw64's own format-tag rejection.
+// elsewhere; exists purely to exercise src/ac3adm/src/float_pcm_bw64.hpp's container walk,
+// the one path in this module that reads a float master at all (see that test's own comment).
 Bytes build_float_fmt_chunk(std::uint16_t channels, std::uint32_t sample_rate, std::uint16_t bits_per_sample) {
     Bytes fmt;
     put_u16le(fmt, 3);  // WAVE_FORMAT_IEEE_FLOAT
@@ -128,6 +131,16 @@ Bytes build_pcm16_data(int frames) {
     for (int frame = 0; frame < frames; ++frame) {
         const auto sample = static_cast<std::int16_t>((frame * 4000) - 12000);
         put_u16le(data, static_cast<std::uint16_t>(sample));
+    }
+    return data;
+}
+
+// Raw IEEE-754 samples for build_float_fmt_chunk's WAVE_FORMAT_IEEE_FLOAT fixtures - written
+// bit-for-bit, not scaled, matching float_pcm_bw64.cpp's own std::bit_cast read.
+Bytes build_float32_data(std::initializer_list<float> samples) {
+    Bytes data;
+    for (const float sample : samples) {
+        put_u32le(data, std::bit_cast<std::uint32_t>(sample));
     }
     return data;
 }
@@ -426,23 +439,39 @@ TEST_CASE("rejects a file that is not RIFF/RF64/BW64", "[adm]") {
     CHECK(doc.error() == ac3adm::AdmError::kCannotOpen);
 }
 
-TEST_CASE("rejects a float32 (IEEE-float) fmt chunk rather than misreading it", "[adm]") {
+TEST_CASE("parses a float32 (IEEE-float) fmt chunk via the float container walk", "[adm]") {
     // libbw64's own parseFormatInfoChunk (parser.hpp) rejects any formatTag other than 1
     // (PCM) or 0xFFFE (WAVE_FORMAT_EXTENSIBLE, itself further checked for a PCM subformat)
     // outright, during bw64::readFile() - confirmed by reading it directly, not assumed - so
-    // a float32 source is rejected at open time rather than silently misread as integer PCM
-    // (see ac3adm/model.hpp's own PcmAudio comment and docs/library/adm.md's "Known
-    // limitation" section for the same point). AdmError::kUnsupportedFormat is therefore
-    // never actually produced by this exact path - like kNotRiff/kMissingFmt/kMissingData,
-    // it is reserved rather than currently reachable (see ac3adm.hpp's own doc comment).
+    // this exercises src/ac3adm/src/float_pcm_bw64.hpp's own container walk instead:
+    // parse_bw64_path (src/ac3adm/src/adm.cpp) checks is_ieee_float_wave() BEFORE ever calling
+    // bw64::readFile(), and routes a float master to parse_float_pcm_bw64() rather than to
+    // libbw64 at all (roadmap DC8 - see docs/library/adm.md's "PCM formats" section). The
+    // <axml> bytes still go through the identical libadm parse the ordinary integer-PCM path
+    // uses, so the ADM metadata below is unaffected by which sample format the file carries.
     const auto fmt = build_float_fmt_chunk(1, 48000, 32);
     const auto chna = build_chna_chunk();
     const Bytes axml(kCarAdmXml);
-    const auto data = build_pcm16_data(2);
+    const auto data = build_float32_data({-0.5F, 0.0F});
     std::istringstream stream(build_riff(fmt, chna, axml, data));
     auto doc = ac3adm::parse_bw64(stream);
-    REQUIRE_FALSE(doc.has_value());
-    CHECK(doc.error() == ac3adm::AdmError::kCannotOpen);
+    REQUIRE(doc.has_value());
+
+    CHECK(doc->audio.sample_rate == 48000);
+    CHECK(doc->audio.bits_per_sample == 32);
+    REQUIRE(doc->audio.channels.size() == 1);
+    REQUIRE(doc->audio.frame_count() == 2);
+    // Read back bit-for-bit, not rescaled - float_pcm_bw64.cpp's own std::bit_cast, checked
+    // independently of that arithmetic to actually exercise it.
+    CHECK(doc->audio.channels[0][0] == Catch::Approx(-0.5F));
+    CHECK(doc->audio.channels[0][1] == Catch::Approx(0.0F));
+
+    // Same <chna>/<axml> fixtures the integer-PCM tests use, so the "identical libadm parse"
+    // claim above is checked, not just asserted.
+    REQUIRE(doc->chna.size() == 1);
+    CHECK(doc->chna[0].uid == "ATU_00000001");
+    REQUIRE(doc->model.programmes.size() == 1);
+    CHECK(doc->model.programmes[0].id == "APR_1001");
 }
 
 TEST_CASE("malformed XML in axml surfaces as kMalformedXml", "[adm]") {
@@ -594,6 +623,86 @@ TEST_CASE("a file with no axml chunk still parses, with an empty ADM model", "[a
     CHECK(doc->model.programmes.empty());
     CHECK(doc->model.objects.empty());
     REQUIRE(doc->audio.frame_count() == 2);
+}
+
+// Found by fuzz/fuzz_adm_parse (roadmap VX3) in its first minute: bw64's
+// numberOfFrames() is the <data> chunk's DECLARED size over the block
+// alignment, so a sixty-byte file claiming four gigabytes of PCM made
+// read_pcm allocate four gigabytes. The reproducer is committed as
+// fuzz/regressions/fuzz_adm_parse/oversized-data-chunk-oom; this is the same
+// shape as a unit test, and it fails (out of memory, or a bad_alloc) against
+// the pre-fix read_pcm.
+//
+// 0x7FFFFF00 rather than the fuzzer's own 0xF7FFFF07: the exact value does not
+// matter as long as it is far past the file, and a value with the top bit
+// clear keeps this a plain oversized 32-bit ckSize rather than something a
+// reader might read as an RF64 escape.
+TEST_CASE("an oversized declared data chunk is bounded by the real file size", "[adm]") {
+    const auto fmt = build_fmt_chunk(1, 48000, 16);
+    const auto real_data = build_pcm16_data(4);
+
+    Bytes body;
+    append_chunk(body, "fmt ", fmt);
+    append_chunk(body, "data", real_data, 0x7FFFFF00u);
+    Bytes file;
+    put_fourcc(file, "RIFF");
+    put_u32le(file, static_cast<std::uint32_t>(4 + body.size()));
+    put_fourcc(file, "WAVE");
+    file += body;
+
+    std::istringstream stream(file);
+    auto doc = ac3adm::parse_bw64(stream);
+    // Whether this parses or is refused is not the point - it must not try to
+    // allocate the two gigabytes the <data> header asks for. What it does do
+    // is read no more frames than the file could possibly hold.
+    if (doc.has_value()) {
+        CHECK(doc->audio.frame_count() <= file.size());
+    }
+}
+
+// The second and third findings from fuzz/fuzz_adm_parse, both the same
+// shape and both different from the <data> case above: libbw64 materialises
+// every chunk it reads EXCEPT <data> into a std::vector sized straight from
+// the chunk header, during readFile() itself, so a 99-byte file whose <axml>
+// claims four gigabytes asked for four gigabytes before any ac3forge code
+// ran. adm.cpp's chunk_sizes_fit() now refuses any chunk but <data> whose
+// declared size runs past the end of the file; see its own comment for what
+// that covers and what it deliberately does not.
+//
+// 0xFFFFFFFF is one of the two values the fuzzer actually reached, and is
+// also RF64's <ds64> escape - so it is checked here explicitly alongside an
+// ordinary oversized value, to pin down that the escape is only honoured on
+// <data> (the "parses the same content via RF64" case above is the other
+// half of that pair).
+TEST_CASE("a non-data chunk declaring more than the file holds is refused", "[adm]") {
+    const auto declared = GENERATE(std::uint32_t{0x7FFFFF00}, std::uint32_t{0xFFFFFFFF});
+    CAPTURE(declared);
+
+    Bytes body;
+    append_chunk(body, "fmt ", build_fmt_chunk(1, 48000, 16));
+    append_chunk(body, "axml", Bytes(kCarAdmXml), declared);
+    append_chunk(body, "data", build_pcm16_data(4));
+    Bytes file;
+    put_fourcc(file, "RIFF");
+    put_u32le(file, static_cast<std::uint32_t>(4 + body.size()));
+    put_fourcc(file, "WAVE");
+    file += body;
+
+    std::istringstream stream(file);
+    const auto doc = ac3adm::parse_bw64(stream);
+    REQUIRE_FALSE(doc.has_value());
+    CHECK(doc.error() == ac3adm::AdmError::kNotRiff);
+}
+
+// The other half of that check: a recording cut off part-way through <data>
+// is an ordinary file, not an attack, and must still read. <data> is exempt
+// from chunk_sizes_fit() precisely so this keeps working.
+TEST_CASE("a file truncated inside its data chunk still parses", "[adm]") {
+    Bytes file = minimal_fixture_bytes(false);
+    file.resize(file.size() - 3);  // lose the tail of <data>, keep every header
+    std::istringstream stream(file);
+    const auto doc = ac3adm::parse_bw64(stream);
+    CHECK(doc.has_value());
 }
 
 TEST_CASE("parses a DirectSpeakers channel's speakerLabel and polar position", "[adm][model]") {

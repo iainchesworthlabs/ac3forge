@@ -21,18 +21,55 @@
 // ---------------------------------------------------------------------------
 // Loopback
 // ---------------------------------------------------------------------------
-// Unlike WASAPI (any render endpoint reopened in loopback mode), there is no
-// HAL-level "capture what a render device is playing". The closest is
-// Apple's Core Audio Process Tap API (AudioHardwareCreateProcessTap /
-// CATapDescription, added in macOS 14.4), which needs an Objective-C class
-// (CATapDescription has no C entry point) and a runtime TCC consent prompt -
-// neither of which fits a plain, headless-CI-buildable C++ translation unit
-// the way every other file in this project is. This is the same category of
-// gap platform/alsa/capture.cpp documents for a machine with no snd-aloop
-// module loaded: "that is the honest answer rather than a failure."
-// enumerate_devices() below reports every real input endpoint and no
-// loopback ones, and start() refuses DeviceKind::kLoopback outright rather
-// than silently substituting a microphone.
+// Unlike WASAPI (any render endpoint reopened in loopback mode) or PipeWire
+// (a sink's monitor, targeted via stream.capture.sink), there is no HAL-level
+// "capture what a render device is playing" - the Audio HAL this file already
+// uses for real input has no loopback concept at all. The mechanism Apple
+// added for this is a Core Audio audio tap: AudioHardwareCreateProcessTap
+// paired with a CATapDescription, scoped either to specific processes or (a
+// CATapDescription built from an empty process list) the whole system mix -
+// what a caller of this API would spell as one kLoopback capture rather than
+// two, the same way WASAPI offers one loopback mode regardless of which
+// render endpoint it targets.
+//
+// This is not implemented here, deliberately (see CONTRIBUTING.md's "Where
+// behaviour is deliberately narrower than the standard, say so and say why"),
+// and not for lack of API knowledge - for lack of anything to run it against:
+//
+//   - It needs an Objective-C class: CATapDescription has no C entry point,
+//     unlike every other CoreAudio type this backend touches, so a tap is not
+//     a plain C++ translation unit the way every other file here is.
+//   - It needs a real-time TCC consent prompt: the system asks the *user*,
+//     the first time a session tries to create a tap, under a distinct
+//     permission category (`SystemAudioCaptureRequests`, separate from
+//     microphone access) driven by an `NSAudioCaptureUsageDescription`
+//     Info.plist key - there is no way to request or query that permission
+//     ahead of time the way this project's other backends never need to ask.
+//   - That prompt is keyed to the requesting binary's code-signing identity
+//     and, per every real-world report surveyed while writing this comment,
+//     simply never fires for an unsigned binary. `ac3gui`/`ac3cli` ship
+//     unsigned today (roadmap DR6, blocked on certificates) - so even a
+//     finished implementation could not obtain the permission it would ask
+//     for on this project's current release artifacts, a second, independent
+//     blocker on top of DR9's "no Mac has ever run this backend".
+//
+// None of that can be exercised, debugged or told apart from "written wrong"
+// without a real user, a real consent dialog and a real signed-or-not binary
+// in front of it - unlike this file's passthrough physical-format switch,
+// which had three independent real-world implementations to cross-check
+// against, a tap implementation nobody has run would be a guess wearing the
+// shape of code. What IS written and real is the one piece of this that
+// needs no hardware to be true: system_audio_tap_api_available()
+// (coreaudio_names.hpp) answers "would the OS even let a tap be created
+// here", a pure macOS-14.2-or-later version gate a future implementation
+// should refuse on before ever touching CATapDescription - tested for real on
+// every macOS CI run (test_macos_support.cpp), unlike anything past it.
+//
+// This is the same category of gap platform/alsa/capture.cpp documents for a
+// machine with no snd-aloop module loaded: "that is the honest answer rather
+// than a failure." enumerate_devices() below reports every real input
+// endpoint and no loopback ones, and start() refuses DeviceKind::kLoopback
+// outright rather than silently substituting a microphone.
 //
 // ---------------------------------------------------------------------------
 // No worker thread

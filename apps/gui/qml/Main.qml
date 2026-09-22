@@ -26,6 +26,15 @@ ApplicationWindow {
     visible: true
     color: Theme.bg
 
+    // Roadmap UX3: mirrors every anchor/Row/ColumnLayout in the window (and,
+    // via childrenInherit, every descendant item) for right-to-left
+    // languages (Arabic, Hebrew, Yiddish). Qt.application.layoutDirection
+    // follows the application's layout direction, which LanguageManager
+    // sets from the active language on every switch (main.cpp,
+    // language_manager.cpp) - same wiring as CountdownSolver's own Main.qml.
+    LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
+    LayoutMirroring.childrenInherit: true
+
     function baseName(path) {
         const normalized = path.replace(/\\/g, "/");
         const slash = normalized.lastIndexOf("/");
@@ -127,6 +136,8 @@ ApplicationWindow {
     readonly property alias qcDialogRef: qcDialog
     // Same reason again - the decode-side object inspector.
     readonly property alias objectInspectorDialogRef: objectInspectorDialog
+    // Same reason again - roadmap UX1's stream player.
+    readonly property alias streamPlayerDialogRef: streamPlayerDialog
 
     Component.onCompleted: {
         Theme.preference = appSettings.theme;
@@ -407,7 +418,15 @@ ApplicationWindow {
                           + (EncoderController.aht ? 1 : 0);
             const metaOn = (EncoderController.heavy ? 1 : 0)
                          + (EncoderController.mixmeta ? 1 : 0)
-                         + (EncoderController.drcIndex > 0 ? 1 : 0);
+                         + (EncoderController.drcIndex > 0 ? 1 : 0)
+                         // The service/production card counts as one, however
+                         // many of its fields are set - the badge says which
+                         // tabs have something to look at, not how much.
+                         + (EncoderController.bsmodIndex > 0
+                            || EncoderController.mixLevelDbSpl >= 80
+                            || EncoderController.copyrightBit
+                            || !EncoderController.originalBitstream
+                            || EncoderController.annexD ? 1 : 0);
             tabs.push({ key: "coding", label: qsTr("Coding tools"),
                         badge: toolsOn > 0 ? String(toolsOn) : "" });
             tabs.push({ key: "meta", label: qsTr("Metadata"),
@@ -589,24 +608,34 @@ ApplicationWindow {
     // subcommands). Everything the positionals cannot say rides as trailing
     // tokens: extra sources (src=), the assignment (map=), the metadata, and
     // AC-3's bare `couple`. A live source renders the `live` subcommand, and
-    // its own container=mkv token (mirroring EncoderController.containerIndex
+    // its own container= token (mirroring EncoderController.containerIndex
     // the same way capture2= below already mirrors the rail's second device)
-    // writes straight to Matroska in that ONE command — a live session has no
-    // already-encoded file for a second 'mkv' step to wrap. A file encode's
-    // Matroska container is still honestly TWO commands, because pasting one
-    // would write a raw elementary stream into a file named .mkv — S/PDIF,
-    // MP4, fMP4/CMAF and MPEG-TS are the same shape there, one more ac3cli
-    // subcommand (spdif/mp4/fmp4/ts) over the same stream. Only Matroska
-    // gets a live container= token, though: mp4::mux/mp4::fragment/
-    // mpegts::mux are batch APIs with no incremental writer (see
-    // EncoderController::openLiveOutputWriters's own comment), so a live
-    // session with MP4/fMP4/MPEG-TS selected falls through to a plain
-    // elementary stream below, exactly like S/PDIF already does today.
+    // writes straight to that container in the ONE command — a live session
+    // has no already-encoded file for a second 'mkv'/'fmp4' step to wrap. A
+    // file encode's Matroska container is still honestly TWO commands,
+    // because pasting one would write a raw elementary stream into a file
+    // named .mkv — S/PDIF, MP4, fMP4/CMAF and MPEG-TS are the same shape
+    // there, one more ac3cli subcommand (spdif/mp4/fmp4/ts) over the same
+    // stream. Only Matroska and fMP4/CMAF get a live container= token: they
+    // are the two with an INCREMENTAL writer behind them (matroska::Writer
+    // and mp4::FragmentWriter — see
+    // EncoderController::openLiveOutputWriters's own comment), and the two
+    // ac3cli's own `live` accepts. A live session with MP4 selected falls
+    // through to a plain elementary stream below, exactly like S/PDIF and
+    // MPEG-TS do — the GUI records those two in their own containers, but
+    // `ac3cli live` has no token for them, so the command bar cannot claim
+    // one it would refuse.
     readonly property string cliLine: {
         const eac3Stream = EncoderController.atmosEnabled || EncoderController.codecIndex === 1;
         if (window.inputMode === "live") {
             const liveMkv = EncoderController.containerIndex === 1;
-            const liveOut = liveMkv ? "out.mkv" : "out." + (eac3Stream ? "ec3" : "ac3");
+            // fMP4/CMAF names a FOLDER, not a file — the same
+            // EncoderController.outputIsFolder() distinction the save dialog
+            // makes, carried into the copyable command.
+            const liveFmp4 = EncoderController.containerIndex === 4;
+            const liveOut = liveMkv ? "out.mkv"
+                          : liveFmp4 ? "out_dir"
+                          : "out." + (eac3Stream ? "ec3" : "ac3");
             const liveCmd = ["ac3cli", "live", liveOut,
                              String(Math.max(window.liveMasterCaptureIndex, 0)), "10",
                              String(EncoderController.bitrateKbps),
@@ -622,6 +651,8 @@ ApplicationWindow {
             }
             if (liveMkv) {
                 liveCmd.push("container=mkv");
+            } else if (liveFmp4) {
+                liveCmd.push("container=fmp4");
             }
             return liveCmd.join(" ");
         }
@@ -794,20 +825,34 @@ ApplicationWindow {
     }
 
     // The Objects tab's "Export paths…" - writes every dynamic object's
-    // authored motion (or static position) to a keyframes file in
-    // ac3cli's atmos-path/atmos-encode grammar, so the exact line the
-    // command bar shows (see window.cliLine) is honestly reproducible.
+    // authored motion (or static position) to a file ac3cli's
+    // atmos-path/atmos-encode reads, so the exact line the command bar shows
+    // (see window.cliLine) is honestly reproducible.
+    //
+    // Two forms, chosen by the name the user saves under: ".json" writes the
+    // ac3::oba::ObjectScene form (named objects, per-segment interpolation, an
+    // orientation) and anything else the keyframe columns this dialog has
+    // always written. ac3cli tells them apart by their first character, not by
+    // suffix, so either file works wherever the other does.
     FileDialog {
         id: exportPathsDialog
         title: qsTr("Export object paths")
         fileMode: FileDialog.SaveFile
-        nameFilters: [qsTr("Text file (*.txt)"), qsTr("All files (*)")]
-        defaultSuffix: "txt"
+        nameFilters: [qsTr("Keyframe columns (*.txt)"), qsTr("Object scene (*.json)"),
+                      qsTr("All files (*)")]
+        // Follows the chosen filter rather than sitting at "txt": defaultSuffix
+        // is what a name typed WITHOUT an extension gets, so a fixed "txt"
+        // would hand someone who picked "Object scene" a .txt file and, by the
+        // suffix rule below, the column format they did not ask for.
+        defaultSuffix: selectedNameFilter.index === 1 ? "json" : "txt"
         currentFolder: window.outputFolderUrl()
         selectedFile: window.outputFolderUrl() + "/" + window.exportedPathsName()
         onAccepted: {
             window.exportedPathsPath = selectedFile;
-            EncoderController.exportObjectPaths(selectedFile);
+            if (selectedFile.toString().toLowerCase().endsWith(".json"))
+                EncoderController.exportObjectScene(selectedFile);
+            else
+                EncoderController.exportObjectPaths(selectedFile);
         }
     }
 
@@ -863,6 +908,59 @@ ApplicationWindow {
             }
         }
         return StandardPaths.writableLocation(StandardPaths.MusicLocation);
+    }
+
+    // A run's own recorded path is a plain filesystem string (modelData.path,
+    // used as-is for e.g. playFileToReceiver/"Show in folder" above), not a
+    // URL - QcController.measureFile/ObjectDecodeController.inspectFile both
+    // take one, so the run strip's own "More…" menu needs this conversion
+    // too. Same "file:///" + normalized-slashes convention outputFolderUrl()
+    // above uses, including its own leading-slash strip: on Unix `path` is
+    // already absolute ("/..."), so without stripping that slash first,
+    // "file:///" + "/..." carries a fourth slash past the standard three -
+    // QUrl(...).toLocalFile() then hands it straight back as a literal
+    // doubled leading slash rather than collapsing it, which is exactly the
+    // "//__w/..." tst_stream_player.qml's QcController.filePath comparison
+    // caught. Windows paths ("C:/...") have no leading slash to strip, so
+    // the replace is a no-op there.
+    function runPathUrl(path) {
+        return "file:///" + path.replace(/\\/g, "/").replace(/^\//, "");
+    }
+
+    // The run strip's own "More…" menu items call these rather than
+    // inlining their bodies in onTriggered directly, so a test can invoke
+    // the exact same logic without needing to reach into a live Menu popup
+    // (Menu/MenuItem are not Item-derived, so findChild - which only walks
+    // Item.children - can never locate one; see tst_stream_player.qml's own
+    // comment on this).
+    function openRunInQc(path) {
+        qcDialog.open();
+        QcController.measureFile(runPathUrl(path));
+    }
+    function openRunInInspector(path) {
+        objectInspectorDialog.open();
+        ObjectDecodeController.inspectFile(runPathUrl(path));
+    }
+
+    // Roadmap UX2's single entry point for "a file arrived from outside the
+    // app" - the rail's own DropArea (below) and `ac3gui <file...>`
+    // (main.cpp, via QMetaObject::invokeMethod on this window) both funnel
+    // through here, so there is exactly one place that decides what a
+    // dropped/opened file means rather than two copies of the same suffix
+    // check drifting apart. A WAV becomes a source the same way "+ Add
+    // files…" does - addSourceFile() already falls back to loadSourceFile()
+    // itself when nothing is loaded yet, so the first-file and
+    // add-another-source cases share the one call. An .ac3/.ec3 opens
+    // roadmap UX1's stream player on it instead, the same "play/export what
+    // already exists" path Open stream…'s own header button reaches.
+    function openDroppedFile(url) {
+        const path = url.toString().toLowerCase();
+        if (path.endsWith(".ac3") || path.endsWith(".ec3")) {
+            streamPlayerDialog.open();
+            StreamPlayerController.openFile(url);
+        } else {
+            EncoderController.addSourceFile(url);
+        }
     }
 
     // The folder actually created once folderDialog accepts - see
@@ -1051,6 +1149,14 @@ ApplicationWindow {
     // header comments for why it is not a third codecIndex.
     TruehdDialog {
         id: truehdDialog
+    }
+
+    // Roadmap UX1 - the GUI twin of `ac3cli monitor`/`ac3cli decode`, the
+    // third of this header's "distinct surface, reachable from the header"
+    // dialogs alongside the two above - see StreamPlayerDialog.qml's own
+    // header comment.
+    StreamPlayerDialog {
+        id: streamPlayerDialog
     }
 
     AboutDialog {
@@ -1309,11 +1415,23 @@ ApplicationWindow {
         // ---- header ----------------------------------------------------------
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 20
-            Layout.rightMargin: 20
+            // Margins/spacing trimmed from 20/Theme.space4: a sixth header
+            // action ("Open stream…", roadmap UX1) pushed this row's own
+            // implicit width just far enough over the 1280 px minimum width
+            // that the workbench RowLayout below it - an unrelated sibling,
+            // sharing the same outer ColumnLayout - stopped being clamped to
+            // the window's actual width and rendered wider than it, which at
+            // exactly this window size silently pushed the Guided wizard's
+            // Quality step's third rate card off the right edge (real
+            // pixels, not just visually - a synthetic click at its own
+            // reported centre landed outside the window and hit nothing).
+            // Reclaiming width here is what keeps every Layout.fillWidth
+            // sibling correctly clamped again.
+            Layout.leftMargin: 12
+            Layout.rightMargin: 12
             Layout.topMargin: 14
             Layout.bottomMargin: 14
-            spacing: Theme.space4
+            spacing: Theme.space2
 
             Text {
                 text: qsTr("ac3forge")
@@ -1365,6 +1483,11 @@ ApplicationWindow {
                 // out from under tst_guided_wizard's synthesized clicks.
                 text: qsTr("TrueHD…")
                 onClicked: truehdDialog.open()
+            }
+            Button {
+                objectName: "streamPlayerOpenButton"
+                text: qsTr("Open stream…")
+                onClicked: streamPlayerDialog.open()
             }
             Button {
                 text: qsTr("Preferences")
@@ -1560,6 +1683,7 @@ ApplicationWindow {
                                             valueFromText: (text) => Math.round(parseFloat(text) * 10) || 0
                                             onValueModified: EncoderController.setSourceOffset(
                                                                  sourceRow.modelData.index, value / 10)
+                                            Accessible.name: qsTr("Start offset")
                                         }
                                     }
                                     Rectangle {
@@ -1752,6 +1876,11 @@ ApplicationWindow {
                                             font.family: Theme.monoFamily
                                             opacity: EncoderController.busy ? 0.4 : 1.0
 
+                                            Accessible.role: Accessible.Button
+                                            Accessible.name: qsTr("Remove %1").arg(deviceRow.modelData.name)
+                                            Accessible.onPressAction: EncoderController.removeCaptureDevice(
+                                                deviceRow.modelData.slotIndex)
+
                                             MouseArea {
                                                 id: removeArea
                                                 anchors.fill: parent
@@ -1800,6 +1929,7 @@ ApplicationWindow {
 
                                 ComboBox {
                                     id: addDeviceBox
+                                    Accessible.name: qsTr("Add input")
                                     Layout.fillWidth: true
                                     enabled: !EncoderController.captureDeviceCapReached
                                              && !EncoderController.busy
@@ -2496,6 +2626,13 @@ ApplicationWindow {
                             implicitWidth: tabRow.implicitWidth
                             implicitHeight: 40
 
+                            Accessible.role: Accessible.PageTab
+                            Accessible.name: tabItem.modelData.label
+                            Accessible.selected: tabItem.active
+                            Accessible.description: tabItem.modelData.badge.length > 0
+                                ? qsTr("%1 non-default setting(s)").arg(tabItem.modelData.badge) : ""
+                            Accessible.onPressAction: window.currentTab = tabItem.modelData.key
+
                             RowLayout {
                                 id: tabRow
                                 anchors.verticalCenter: parent.verticalCenter
@@ -2615,7 +2752,7 @@ ApplicationWindow {
                                     spacing: Theme.space2
 
                                     Repeater {
-                                        model: ["5.1", "7.1", "5.1.4", "7.1.4", "5.2", "7.2.4"]
+                                        model: ["5.1", "7.1", "5.1.4", "7.1.4", "7.2.4"]
                                         delegate: Button {
                                             required property string modelData
                                             objectName: "preset-" + modelData
@@ -2693,6 +2830,7 @@ ApplicationWindow {
                                     // to the derived value. With nothing forcing
                                     // it, a plain bed is a real either/or.
                                     ComboBox {
+                                        Accessible.name: qsTr("Codec")
                                         Layout.fillWidth: true
                                         enabled: !formatGrid.codecForced && !EncoderController.busy
                                         model: EncoderController.codecNames
@@ -2701,6 +2839,7 @@ ApplicationWindow {
                                     }
                                     ComboBox {
                                         id: bitrateBox
+                                        Accessible.name: qsTr("Bit rate")
                                         Layout.fillWidth: true
                                         enabled: !EncoderController.busy
                                         model: EncoderController.bitrates
@@ -2717,6 +2856,7 @@ ApplicationWindow {
                                         }
                                     }
                                     ComboBox {
+                                        Accessible.name: qsTr("Container")
                                         Layout.fillWidth: true
                                         enabled: !EncoderController.busy
                                         model: EncoderController.containerNames
@@ -2825,6 +2965,14 @@ ApplicationWindow {
                                             border.width: 1
                                             opacity: locked && !active ? 0.25 : 1.0
 
+                                            Accessible.role: Accessible.Button
+                                            Accessible.name: bedButton.dual ? qsTr("1+1 · dual") : bedButton.modelData.id
+                                            Accessible.description: bedButton.dual
+                                                ? qsTr("2 progs") : String(bedButton.modelData.channels)
+                                            Accessible.checkable: true
+                                            Accessible.checked: bedButton.active
+                                            Accessible.onPressAction: EncoderController.bedIndex = bedButton.index
+
                                             Canvas {
                                                 anchors.fill: parent
                                                 visible: bedButton.dual && !bedButton.active
@@ -2905,13 +3053,24 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     spacing: Theme.space2
 
-                                    readonly property bool lfe2On: {
+                                    readonly property var lfe2Row: {
                                         const extras = EncoderController.extrasModel;
                                         for (let i = 0; i < extras.length; i++) {
-                                            if (extras[i].id === "lfe2") return extras[i].checked;
+                                            if (extras[i].id === "lfe2") return extras[i];
                                         }
-                                        return false;
+                                        return null;
                                     }
+                                    readonly property bool lfe2On: lfe2Row !== null && lfe2Row.checked
+                                    // "Two" shares its allocator check with the Extras row it
+                                    // is really a hidden checkbox for - lfe2Row.enabled is false
+                                    // when no other extra is ticked (LFE2 would be orphaned in
+                                    // its own dependent substream, chanmap::AllocationError::
+                                    // kOrphanLfe2), the exact case a bare "5.2" preset used to
+                                    // hit blind. Already-on always stays selectable so "Two" can
+                                    // still be clicked back down to "One".
+                                    readonly property bool lfe2Selectable: lfe2On
+                                                                           || (lfe2Row !== null && lfe2Row.enabled)
+                                    readonly property string lfe2Reason: lfe2Row !== null ? lfe2Row.reason : ""
                                     readonly property int lfeCount: !EncoderController.bedLfe
                                                                     ? 0 : (lfe2On ? 2 : 1)
                                     id: lfeRow
@@ -2939,6 +3098,7 @@ ApplicationWindow {
                                             readonly property bool locked: EncoderController.bedLfeLocked
                                                                            || EncoderController.busy
                                                                            || (modelData.n === 2 && EncoderController.extrasLocked)
+                                                                           || (modelData.n === 2 && !lfeRow.lfe2Selectable)
 
                                             objectName: "lfeCount-" + modelData.n
                                             Layout.preferredWidth: 130
@@ -2947,6 +3107,16 @@ ApplicationWindow {
                                             border.color: active ? Theme.text : Theme.divider
                                             border.width: 1
                                             opacity: locked && !active ? 0.3 : 1.0
+
+                                            Accessible.role: Accessible.Button
+                                            Accessible.name: lfeButton.modelData.label
+                                            Accessible.checkable: true
+                                            Accessible.checked: lfeButton.active
+                                            Accessible.onPressAction: {
+                                                const n = lfeButton.modelData.n;
+                                                window.withCodecWarning(n === 2 && !lfeRow.lfe2On,
+                                                    () => lfeRow.setCount(n));
+                                            }
 
                                             Text {
                                                 anchors.centerIn: parent
@@ -2969,6 +3139,18 @@ ApplicationWindow {
                                         }
                                     }
                                     Item { Layout.fillWidth: true }
+                                }
+                                Text {
+                                    // Same right-hand-column convention as the Extras rows
+                                    // below (extraRow.modelData.reason) - "Two" is really a
+                                    // checkbox for the same "lfe2" extra, so an unreachable
+                                    // click says why instead of doing nothing.
+                                    visible: !lfeRow.lfe2On && lfeRow.lfe2Reason.length > 0
+                                    Layout.fillWidth: true
+                                    text: lfeRow.lfe2Reason
+                                    wrapMode: Text.WordWrap
+                                    font.pixelSize: 11
+                                    color: Theme.textMuted
                                 }
                                 Text {
                                     visible: window.showExplanations
@@ -3332,6 +3514,9 @@ ApplicationWindow {
                                     text: qsTr("Coding tools and broadcast metadata →")
                                     font.pixelSize: 12
                                     color: Theme.accent700
+                                    Accessible.role: Accessible.Link
+                                    Accessible.name: text
+                                    Accessible.onPressAction: window.tier = "expert"
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
@@ -3367,6 +3552,7 @@ ApplicationWindow {
 
                                     ComboBox {
                                         id: outputBox
+                                        Accessible.name: qsTr("PASSTHROUGH TO A RECEIVER")
                                         Layout.fillWidth: true
                                         enabled: !EncoderController.busy
                                         model: EncoderController.outputDevices
@@ -3469,6 +3655,7 @@ ApplicationWindow {
                                         textFromValue: (value) => value < 0 ? qsTr("auto") : String(value)
                                         valueFromText: (text) => text === qsTr("auto") ? -1 : parseInt(text)
                                         onValueModified: EncoderController.cplBegf = value
+                                        Accessible.name: qsTr("Channel coupling begin band")
                                     }
 
                                     CheckBox {
@@ -3492,6 +3679,7 @@ ApplicationWindow {
                                         textFromValue: (value) => value < 0 ? qsTr("auto") : String(value)
                                         valueFromText: (text) => text === qsTr("auto") ? -1 : parseInt(text)
                                         onValueModified: EncoderController.spxBegf = value
+                                        Accessible.name: qsTr("Spectral extension begin band")
                                     }
 
                                     CheckBox {
@@ -3515,6 +3703,7 @@ ApplicationWindow {
                                         textFromValue: (value) => value < 0 ? qsTr("auto") : String(value)
                                         valueFromText: (text) => text === qsTr("auto") ? -1 : parseInt(text)
                                         onValueModified: EncoderController.gaqMode = value
+                                        Accessible.name: qsTr("GAQ mode")
                                     }
                                 }
 
@@ -3582,6 +3771,7 @@ ApplicationWindow {
                                             font.pixelSize: Theme.fontNormal
                                         }
                                         ComboBox {
+                                            Accessible.name: qsTr("Centre downmix")
                                             Layout.fillWidth: true
                                             enabled: !EncoderController.busy
                                             model: EncoderController.cmixNames
@@ -3595,6 +3785,7 @@ ApplicationWindow {
                                             font.pixelSize: Theme.fontNormal
                                         }
                                         ComboBox {
+                                            Accessible.name: qsTr("Surround downmix")
                                             Layout.fillWidth: true
                                             enabled: !EncoderController.busy
                                             model: EncoderController.surmixNames
@@ -3658,6 +3849,7 @@ ApplicationWindow {
                                                     textFromValue: (value) => (value / 10).toFixed(1) + " dBFS"
                                                     valueFromText: (text) => Math.round(parseFloat(text) * 10)
                                                     onValueModified: EncoderController.ceilingDb = value / 10
+                                                    Accessible.name: qsTr("Heavy compression ceiling")
                                                 }
 
                                                 Text {
@@ -3673,6 +3865,7 @@ ApplicationWindow {
                                                     textFromValue: (value) => value + " dBFS"
                                                     valueFromText: (text) => parseInt(text)
                                                     onValueModified: EncoderController.dialogueDb = value
+                                                    Accessible.name: qsTr("Heavy compression dialogue level")
                                                 }
 
                                                 Item { Layout.fillWidth: true }
@@ -3745,6 +3938,7 @@ ApplicationWindow {
                                                     textFromValue: (value) => (value / 10).toFixed(1) + " dBFS"
                                                     valueFromText: (text) => Math.round(parseFloat(text) * 10)
                                                     onValueModified: EncoderController.ceiling2Db = value / 10
+                                                    Accessible.name: qsTr("Heavy compression ceiling, programme 2")
                                                 }
 
                                                 Text {
@@ -3760,6 +3954,7 @@ ApplicationWindow {
                                                     textFromValue: (value) => value + " dBFS"
                                                     valueFromText: (text) => parseInt(text)
                                                     onValueModified: EncoderController.dialogue2Db = value
+                                                    Accessible.name: qsTr("Heavy compression dialogue level, programme 2")
                                                 }
 
                                                 Item { Layout.fillWidth: true }
@@ -3813,6 +4008,7 @@ ApplicationWindow {
                                                     font.pixelSize: Theme.fontSmall
                                                 }
                                                 ComboBox {
+                                                    Accessible.name: qsTr("preferred downmix")
                                                     enabled: !EncoderController.busy
                                                     model: EncoderController.dmixNames
                                                     currentIndex: EncoderController.dmixIndex
@@ -3833,6 +4029,7 @@ ApplicationWindow {
                                                                    ? qsTr("off") : (10 - value) + " dB"
                                                     valueFromText: (text) => text === qsTr("off") ? -1 : parseInt(text)
                                                     onValueModified: EncoderController.lfeMix = value
+                                                    Accessible.name: qsTr("LFE mix")
                                                 }
 
                                                 Item { Layout.fillWidth: true }
@@ -3846,6 +4043,166 @@ ApplicationWindow {
                                                 wrapMode: Text.WordWrap
                                             }
                                         }
+                                    }
+                                }
+
+                                Card {
+                                    title: qsTr("Service & production")
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: Theme.gap
+
+                                        Text {
+                                            text: qsTr("service")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontSmall
+                                        }
+                                        ComboBox {
+                                            objectName: "bsmodCombo"
+                                            Accessible.name: qsTr("service")
+                                            enabled: !EncoderController.busy
+                                            model: EncoderController.bsmodNames
+                                            currentIndex: EncoderController.bsmodIndex
+                                            onActivated: EncoderController.bsmodIndex = currentIndex
+                                        }
+
+                                        Text {
+                                            text: qsTr("mixed at")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontSmall
+                                        }
+                                        SpinBox {
+                                            objectName: "mixLevelSpin"
+                                            from: 79
+                                            to: 111
+                                            enabled: !EncoderController.busy
+                                            value: EncoderController.mixLevelDbSpl
+                                            textFromValue: (value) => value < 80
+                                                           ? qsTr("not stated") : value + " dB SPL"
+                                            valueFromText: (text) => text === qsTr("not stated")
+                                                           ? 79 : parseInt(text)
+                                            onValueModified: EncoderController.mixLevelDbSpl = value
+                                            Accessible.name: qsTr("mixed at")
+                                        }
+                                        ComboBox {
+                                            objectName: "roomTypeCombo"
+                                            Accessible.name: qsTr("room type")
+                                            enabled: !EncoderController.busy
+                                                     && EncoderController.mixLevelDbSpl >= 80
+                                            model: EncoderController.roomTypeNames
+                                            currentIndex: EncoderController.roomTypeIndex
+                                            onActivated: EncoderController.roomTypeIndex = currentIndex
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: Theme.gap
+
+                                        Text {
+                                            visible: EncoderController.surroundModeAvailable
+                                            text: qsTr("Dolby Surround")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontSmall
+                                        }
+                                        ComboBox {
+                                            objectName: "dsurmodCombo"
+                                            Accessible.name: qsTr("Dolby Surround")
+                                            visible: EncoderController.surroundModeAvailable
+                                            enabled: !EncoderController.busy
+                                            model: EncoderController.dsurmodNames
+                                            currentIndex: EncoderController.dsurmodIndex
+                                            onActivated: EncoderController.dsurmodIndex = currentIndex
+                                        }
+
+                                        Text {
+                                            visible: EncoderController.surroundModeAvailable
+                                            text: qsTr("Dolby Headphone")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontSmall
+                                        }
+                                        ComboBox {
+                                            objectName: "dheadphonCombo"
+                                            Accessible.name: qsTr("Dolby Headphone")
+                                            visible: EncoderController.surroundModeAvailable
+                                            enabled: !EncoderController.busy
+                                            model: EncoderController.dheadphonNames
+                                            currentIndex: EncoderController.dheadphonIndex
+                                            onActivated: EncoderController.dheadphonIndex = currentIndex
+                                        }
+
+                                        Text {
+                                            visible: EncoderController.surroundExAvailable
+                                            text: qsTr("Surround EX")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontSmall
+                                        }
+                                        ComboBox {
+                                            objectName: "dsurexCombo"
+                                            Accessible.name: qsTr("Surround EX")
+                                            visible: EncoderController.surroundExAvailable
+                                            enabled: !EncoderController.busy
+                                            model: EncoderController.dsurexNames
+                                            currentIndex: EncoderController.dsurexIndex
+                                            onActivated: EncoderController.dsurexIndex = currentIndex
+                                        }
+
+                                        Text {
+                                            text: qsTr("A/D")
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.fontSmall
+                                        }
+                                        ComboBox {
+                                            objectName: "adConvCombo"
+                                            Accessible.name: qsTr("A/D")
+                                            enabled: !EncoderController.busy
+                                            model: EncoderController.adConvNames
+                                            currentIndex: EncoderController.adConvIndex
+                                            onActivated: EncoderController.adConvIndex = currentIndex
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: Theme.gap
+
+                                        CheckBox {
+                                            objectName: "copyrightCheck"
+                                            text: qsTr("Copyright")
+                                            enabled: !EncoderController.busy
+                                            checked: EncoderController.copyrightBit
+                                            onToggled: EncoderController.copyrightBit = checked
+                                        }
+                                        CheckBox {
+                                            objectName: "originalCheck"
+                                            text: qsTr("Original bit stream")
+                                            enabled: !EncoderController.busy
+                                            checked: EncoderController.originalBitstream
+                                            onToggled: EncoderController.originalBitstream = checked
+                                        }
+                                        CheckBox {
+                                            objectName: "annexDCheck"
+                                            visible: EncoderController.annexDAvailable
+                                            text: qsTr("Annex D (bsid 6)")
+                                            enabled: !EncoderController.busy
+                                            checked: EncoderController.annexD
+                                            onToggled: EncoderController.annexD = checked
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: qsTr("What the stream says about itself, not about how to decode it: which service this is (ATSC A/53 and DVB key associated-service handling off it), how the mix was monitored, and the Dolby Surround / Headphone / Surround EX flags. AC-3 carries the last three only under Annex D, which reuses the two time code fields \u00a7D1 says were never applied for their original purpose; E-AC-3 gathers the whole group into infomdat, which naming any of these turns on.")
+                                        color: Theme.textMuted
+                                        font.pixelSize: Theme.fontSmall
+                                        wrapMode: Text.WordWrap
                                     }
                                 }
 
@@ -4259,6 +4616,16 @@ ApplicationWindow {
                                             border.color: Theme.divider
                                             border.width: 1
 
+                                            // A drag-to-place authoring surface, not a
+                                            // fixed picture - Accessible reports what is
+                                            // in it (each object's own marker below
+                                            // carries its live position), but placing an
+                                            // object by dragging has no discrete-press
+                                            // equivalent to offer here.
+                                            Accessible.role: Accessible.Graphic
+                                            Accessible.name: qsTr("Room plan, top-down")
+                                            Accessible.description: qsTr("%1 object(s); drag a selected marker to place it").arg(EncoderController.objectCount)
+
                                             Rectangle {
                                                 anchors.horizontalCenter: parent.horizontalCenter
                                                 anchors.top: parent.top
@@ -4343,6 +4710,13 @@ ApplicationWindow {
                                                     x: (livePos ? livePos.x : (obj ? obj.x : 0.5)) * room.width - width / 2
                                                     y: (livePos ? livePos.y : (obj ? obj.y : 0.5)) * room.height - height / 2
                                                     z: isSelected ? 1 : 0
+
+                                                    Accessible.role: Accessible.ListItem
+                                                    Accessible.name: qsTr("obj %1").arg(marker.index + 1)
+                                                    Accessible.description: marker.obj
+                                                        ? qsTr("x %1, y %2").arg(marker.obj.x.toFixed(2)).arg(marker.obj.y.toFixed(2))
+                                                        : ""
+                                                    Accessible.selected: marker.isSelected
 
                                                     Rectangle {
                                                         visible: marker.isSelected
@@ -4435,6 +4809,12 @@ ApplicationWindow {
                                             color: Theme.neutral100
                                             border.color: Theme.divider
                                             border.width: 1
+
+                                            Accessible.role: Accessible.Graphic
+                                            Accessible.name: qsTr("Room elevation, side-on")
+                                            Accessible.description: objectsTab.selectedObj !== null
+                                                ? qsTr("selected object height %1").arg(objectsTab.selZ.toFixed(2))
+                                                : qsTr("no object selected")
 
                                             // A SIDE view: the horizontal axis is the
                                             // room's depth (y - front wall at the left,
@@ -4694,6 +5074,18 @@ ApplicationWindow {
                                                     color: index === EncoderController.selectedObjectIndex
                                                            ? Theme.accent100 : "transparent"
 
+                                                    Accessible.role: Accessible.ListItem
+                                                    Accessible.name: qsTr("obj %1").arg(objRow.index + 1)
+                                                    Accessible.description: objRow.obj
+                                                        ? qsTr("%1, x %2, y %3, z %4")
+                                                            .arg(objRow.obj.sourceLabel)
+                                                            .arg(objRow.obj.x.toFixed(2))
+                                                            .arg(objRow.obj.y.toFixed(2))
+                                                            .arg(objRow.obj.z.toFixed(2))
+                                                        : ""
+                                                    Accessible.selected: objRow.index === EncoderController.selectedObjectIndex
+                                                    Accessible.onPressAction: EncoderController.selectedObjectIndex = objRow.index
+
                                                     RowLayout {
                                                         id: rowLayout
                                                         anchors.verticalCenter: parent.verticalCenter
@@ -4845,6 +5237,11 @@ ApplicationWindow {
                                                 value: objectsTab.selectedObj ? objectsTab.selectedObj.lfeSend : 0
                                                 onMoved: EncoderController.setObjectLfeSend(
                                                              objectsTab.selectedObj.index, value)
+                                                Accessible.name: qsTr("LFE send — object %1")
+                                                    .arg((objectsTab.selectedObj
+                                                          ? objectsTab.selectedObj.index : 0) + 1)
+                                                Accessible.description: (objectsTab.selectedObj
+                                                    ? objectsTab.selectedObj.lfeSend : 0).toFixed(2)
                                             }
                                             RowLayout {
                                                 Layout.fillWidth: true
@@ -5000,6 +5397,21 @@ ApplicationWindow {
                                                 objectsTab.panOffset
                                                 + (x - laneLeft) / laneSpan * objectsTab.visibleSeconds));
                                         }
+
+                                        // A scrub-and-drag editing surface, not a fixed
+                                        // picture - the "Add key"/"Delete key"/"Preview"
+                                        // buttons above stay independently operable, but
+                                        // placing or dragging a keyframe by hand has no
+                                        // discrete-press equivalent to offer here. This
+                                        // states where the playhead is and how many keys
+                                        // the selected object has, the same two facts the
+                                        // ruler and clip bands draw.
+                                        Accessible.role: Accessible.Graphic
+                                        Accessible.name: qsTr("Object motion timeline")
+                                        Accessible.description: qsTr("playhead at %1 s%2")
+                                            .arg(objectsTab.playheadTime.toFixed(2))
+                                            .arg(objectsTab.selectedObj && objectsTab.selectedObj.hasPath
+                                                ? qsTr(", %1 key(s)").arg(objectsTab.selectedObj.keyCount) : "")
 
                                         Rectangle {
                                             anchors.fill: parent
@@ -5348,6 +5760,10 @@ ApplicationWindow {
                                                                 y: 0
                                                                 z: 1
 
+                                                                Accessible.role: Accessible.ListItem
+                                                                Accessible.name: qsTr("key at %1 s").arg(keyMark.modelData.time.toFixed(2))
+                                                                Accessible.selected: keyMark.keySelected
+
                                                                 Rectangle {
                                                                     anchors.centerIn: parent
                                                                     width: keyMark.keySelected ? 10 : 8
@@ -5500,6 +5916,7 @@ ApplicationWindow {
                                     ComboBox {
                                         id: liveReceiverBox
                                         objectName: "liveReceiverBox"
+                                        Accessible.name: qsTr("Receiver")
                                         Layout.fillWidth: true
                                         model: [qsTr("No passthrough")].concat(EncoderController.outputDevices)
                                         onActivated: {
@@ -5591,6 +6008,60 @@ ApplicationWindow {
                                         font.pixelSize: 11
                                         color: Theme.accent700
                                     }
+
+                                    // ---- positions=: a real live object-position
+                                    // source over OSC (roadmap UX4), instead of
+                                    // dragging objects by hand. Object mode only -
+                                    // a channel session has no objects to drive.
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        visible: EncoderController.atmosEnabled
+                                        spacing: Theme.space2
+
+                                        CheckBox {
+                                            id: liveOscCheck
+                                            objectName: "liveOscCheck"
+                                            text: qsTr("Drive objects from OSC")
+                                            checked: EncoderController.liveOscEnabled
+                                            font.pixelSize: 12
+                                            onToggled: EncoderController.liveOscEnabled = checked
+                                        }
+                                        Text {
+                                            text: qsTr("port")
+                                            visible: liveOscCheck.checked
+                                            color: Theme.neutral600
+                                            font.pixelSize: 12
+                                        }
+                                        SpinBox {
+                                            id: liveOscPortField
+                                            objectName: "liveOscPortField"
+                                            visible: liveOscCheck.checked
+                                            from: 1
+                                            to: 65535
+                                            editable: true
+                                            value: EncoderController.liveOscPort
+                                            onValueModified: EncoderController.liveOscPort = value
+                                            Accessible.name: qsTr("OSC port")
+                                        }
+                                        CheckBox {
+                                            id: liveOscAnyCheck
+                                            objectName: "liveOscAnyCheck"
+                                            visible: liveOscCheck.checked
+                                            text: qsTr("any interface")
+                                            checked: EncoderController.liveOscAnyInterface
+                                            font.pixelSize: 12
+                                            onToggled: EncoderController.liveOscAnyInterface = checked
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                    }
+                                    Text {
+                                        visible: window.showExplanations && liveOscCheck.checked
+                                        Layout.fillWidth: true
+                                        text: qsTr("Objects an OSC message addresses (/object/<n>/xyz, 0-based) move live; anything it never addresses stays where you left it. \"any interface\" opens the port beyond this machine — leave it off unless you mean to.")
+                                        wrapMode: Text.WordWrap
+                                        font.pixelSize: 11
+                                        color: Theme.textMuted
+                                    }
                                 }
 
                                 // ---- running: the real transport ---------------
@@ -5639,6 +6110,21 @@ ApplicationWindow {
                                             text: EncoderController.groupDigits(EncoderController.liveFramesDropped)
                                             color: EncoderController.liveFramesDropped > 0 ? Theme.accent700 : Theme.text
                                             font.pixelSize: 15
+                                            font.family: Theme.monoFamily
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        objectName: "liveOscStatsColumn"
+                                        visible: EncoderController.liveOscListening
+                                        spacing: 2
+                                        Text { text: qsTr("OSC"); color: Theme.neutral600; font.pixelSize: 10 }
+                                        Text {
+                                            text: qsTr("%1 updates, %2 dropped")
+                                                  .arg(EncoderController.groupDigits(EncoderController.liveOscUpdatesApplied))
+                                                  .arg(EncoderController.groupDigits(EncoderController.liveOscDropped))
+                                            color: EncoderController.liveOscDropped > 0 ? Theme.accent700 : Theme.text
+                                            font.pixelSize: 12
                                             font.family: Theme.monoFamily
                                         }
                                     }
@@ -5896,6 +6382,15 @@ ApplicationWindow {
                                                 border.color: isSelected ? Theme.accent : Theme.divider
                                                 border.width: 1
 
+                                                Accessible.role: Accessible.Button
+                                                Accessible.name: qsTr("obj %1 · %2")
+                                                    .arg(sessionObjChip.modelData.index + 1)
+                                                    .arg(sessionObjChip.modelData.sourceLabel)
+                                                Accessible.checkable: true
+                                                Accessible.checked: sessionObjChip.isSelected
+                                                Accessible.onPressAction: EncoderController.selectedObjectIndex =
+                                                    sessionObjChip.modelData.index
+
                                                 Text {
                                                     id: sessionObjText
                                                     anchors.centerIn: parent
@@ -5933,6 +6428,7 @@ ApplicationWindow {
                                         ComboBox {
                                             id: liveObjectChannelPicker
                                             objectName: "liveObjectChannelPicker"
+                                            Accessible.name: qsTr("Live object channel")
                                             Layout.preferredWidth: 96
                                             // One label per flat capture-channel index -
                                             // "Ch 1".."Ch N" for the master, then "Dev2
@@ -5986,6 +6482,10 @@ ApplicationWindow {
                                         border.color: Theme.divider
                                         border.width: 1
 
+                                        Accessible.role: Accessible.Graphic
+                                        Accessible.name: qsTr("Live room plan, top-down")
+                                        Accessible.description: qsTr("%1 object(s); drag a selected marker to place it").arg(EncoderController.objectCount)
+
                                         // The crosshair and the walls' names - the same
                                         // furniture the Objects tab's room carries.
                                         Rectangle {
@@ -6035,7 +6535,12 @@ ApplicationWindow {
                                                 for (let i = 0; i < list.length; ++i) {
                                                     if (list[i].index === sel) { selected = list[i]; break; }
                                                 }
-                                                if (!selected) {
+                                                if (!selected || selected.networkDriven) {
+                                                    // OSC is driving this object right
+                                                    // now (positions=) - a click/drag
+                                                    // here would only be overwritten by
+                                                    // the next update anyway, so it is
+                                                    // refused rather than fought over.
                                                     return;
                                                 }
                                                 const x = Math.max(0, Math.min(1, mouse.x / liveRoom.width));
@@ -6055,13 +6560,28 @@ ApplicationWindow {
                                                 }
                                                 readonly property bool isSelected:
                                                     index === EncoderController.selectedObjectIndex
+                                                readonly property bool networkDriven:
+                                                    obj !== null && obj.networkDriven === true
                                                 visible: obj !== null
                                                 width: isSelected ? 18 : 14
                                                 height: isSelected ? 18 : 14
-                                                color: isSelected ? Theme.accent : Theme.neutral800
+                                                // Network-driven: greyed and, below,
+                                                // undraggable - positions= owns this
+                                                // object for as long as it keeps
+                                                // addressing it (roadmap UX4).
+                                                color: networkDriven ? Theme.neutral400
+                                                                     : (isSelected ? Theme.accent : Theme.neutral800)
+                                                opacity: networkDriven ? 0.7 : 1.0
                                                 x: (obj ? obj.x : 0.5) * liveRoom.width - width / 2
                                                 y: (obj ? obj.y : 0.5) * liveRoom.height - height / 2
                                                 z: isSelected ? 1 : 0
+
+                                                Accessible.role: Accessible.ListItem
+                                                Accessible.name: qsTr("obj %1").arg(liveMarker.index + 1)
+                                                Accessible.description: liveMarker.obj
+                                                    ? qsTr("x %1, y %2").arg(liveMarker.obj.x.toFixed(2)).arg(liveMarker.obj.y.toFixed(2))
+                                                    : ""
+                                                Accessible.selected: liveMarker.isSelected
 
                                                 Rectangle {
                                                     visible: liveMarker.isSelected
@@ -6091,7 +6611,8 @@ ApplicationWindow {
                                                     onPressed: EncoderController.selectedObjectIndex = liveMarker.index
                                                     onPositionChanged: (mouse) => {
                                                         if (!(mouse.buttons & Qt.LeftButton)
-                                                                || !EncoderController.liveActive) {
+                                                                || !EncoderController.liveActive
+                                                                || liveMarker.networkDriven) {
                                                             return;
                                                         }
                                                         const p = mapToItem(liveRoom, mouse.x, mouse.y);
@@ -6505,6 +7026,13 @@ ApplicationWindow {
                                                 .arg(modelData.sizeText.length > 0
                                                      ? " · " + modelData.sizeText : "")
 
+                                        Accessible.role: Accessible.Button
+                                        Accessible.name: text
+                                        Accessible.onPressAction: {
+                                            window.detailsRunId = modelData.id;
+                                            runDetailsDialog.open();
+                                        }
+
                                         // Item 33: clicking a run chip opens its own
                                         // details popover - id, status, rate/duration/
                                         // size/frames, the failure text if it failed, and
@@ -6527,6 +7055,8 @@ ApplicationWindow {
                                         from: 0
                                         to: 1
                                         value: EncoderController.progress
+                                        Accessible.name: qsTr("Progress")
+                                        Accessible.description: qsTr("%1%").arg(Math.round(EncoderController.progress * 100))
                                     }
                                     Button {
                                         visible: encoding
@@ -6589,6 +7119,42 @@ ApplicationWindow {
                                             }
                                         }
                                     }
+                                    // Roadmap UX1's own run-chip shortcut: docs/gui/qc.md and
+                                    // docs/gui/inspect-objects.md both used to end by saying
+                                    // there was no way to jump from a finished run straight
+                                    // into either dialog - this is that way. The first Menu
+                                    // in this window (every other run action above is a flat
+                                    // Button); a two-item dropdown reads better here than a
+                                    // third and fourth button competing with Play/Show in
+                                    // folder for the same 34 px lane.
+                                    Button {
+                                        objectName: "runMore-" + modelData.id
+                                        visible: modelData.status === "done"
+                                                 && (modelData.path || "").length > 0
+                                        text: qsTr("More…")
+                                        flat: true
+                                        onClicked: runMoreMenu.open()
+
+                                        Menu {
+                                            id: runMoreMenu
+                                            y: parent.height
+
+                                            MenuItem {
+                                                objectName: "runMoreQc-" + modelData.id
+                                                text: qsTr("QC this run")
+                                                onTriggered: window.openRunInQc(modelData.path)
+                                            }
+                                            MenuItem {
+                                                objectName: "runMoreInspect-" + modelData.id
+                                                text: qsTr("Inspect objects")
+                                                // Same gate `ac3cli decode`'s own objects_dir has:
+                                                // object audio is an E-AC-3/Annex E tool only, so a
+                                                // plain AC-3 run has nothing this dialog can show.
+                                                visible: modelData.eac3 === true
+                                                onTriggered: window.openRunInInspector(modelData.path)
+                                            }
+                                        }
+                                    }
                                     Rectangle {
                                         Layout.preferredWidth: 1
                                         Layout.fillHeight: true
@@ -6638,6 +7204,10 @@ ApplicationWindow {
                         implicitWidth: cliChipRow.implicitWidth + 26
                         color: cliChipArea.containsMouse || cliPopup.opened
                                ? Theme.neutral200 : Theme.neutral100
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("ac3cli command line")
+                        Accessible.onPressAction: cliPopup.opened ? cliPopup.close() : cliPopup.open()
 
                         Rectangle {
                             anchors.left: parent.left
@@ -6763,6 +7333,25 @@ ApplicationWindow {
                         onClicked: window.startEncodeFlow()
                     }
                 }
+            }
+        }
+    }
+
+    // Roadmap UX2 - spans the whole window rather than just the rail, so a
+    // drop lands the same way whether or not a source has ever been chosen
+    // yet (the first-run screen above, or the rail once everHadSource is
+    // true, both sit under this). openDroppedFile() owns the actual
+    // WAV-vs-.ac3/.ec3 routing, shared with `ac3gui <file...>`'s own
+    // launch-time handling (main.cpp) - this handler's only job is turning a
+    // drop event into that same call, once per file.
+    DropArea {
+        objectName: "windowDropArea"
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+
+        onDropped: (drop) => {
+            for (const url of drop.urls) {
+                window.openDroppedFile(url);
             }
         }
     }

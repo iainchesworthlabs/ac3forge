@@ -7,7 +7,7 @@ name = "ac3forge"
 dynamic = ["version"]
 description = "Clean-room AC-3/E-AC-3 (Dolby Digital/Digital Plus) encoder and decoder, with Atmos object encode/decode"
 readme = "README.md"
-license = "GPL-3.0-only"
+license = "GPL-3.0-or-later"
 requires-python = ">=3.10"
 authors = [{ name = "ac3forge contributors" }]
 keywords = ["ac3", "eac3", "dolby-digital", "atmos", "audio", "codec"]

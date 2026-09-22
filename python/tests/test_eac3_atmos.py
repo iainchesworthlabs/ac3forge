@@ -2,9 +2,8 @@
 checking that OAMD (object_metadata) and JOC (object_audio) both come back populated.
 """
 
-import numpy as np
-
 import ac3forge as ac3
+import numpy as np
 
 
 def _tone(freq_hz, n, sample_rate=48000, amplitude=0.3, phase=0.0):
@@ -27,7 +26,7 @@ def test_atmos_two_objects_roundtrip():
     ]
 
     saw_objects = False
-    for i in range(N_FRAMES):
+    for _i in range(N_FRAMES):
         objects = [
             _tone(300.0, ac3.SAMPLES_PER_FRAME, phase=0.0),
             _tone(900.0, ac3.SAMPLES_PER_FRAME, phase=1.1),

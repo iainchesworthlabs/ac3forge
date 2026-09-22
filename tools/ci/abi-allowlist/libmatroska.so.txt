@@ -1,0 +1,20 @@
+matroska::Reader::Reader(matroska::ReadOptions const&)
+matroska::Reader::Reader(matroska::Reader&&)
+matroska::Reader::finish()
+matroska::Reader::frames_read() const
+matroska::Reader::operator=(matroska::Reader&&)
+matroska::Reader::push(std::span<std::byte const, 18446744073709551615ul>, std::function<void (std::span<std::byte const, 18446744073709551615ul>)> const&)
+matroska::Reader::track() const
+matroska::Reader::track_found() const
+matroska::Reader::~Reader()
+matroska::Writer::Writer(matroska::AudioTrack, matroska::MuxOptions, std::vector<std::byte, std::allocator<std::byte> >)
+matroska::Writer::close_cluster()
+matroska::Writer::create(matroska::AudioTrack const&, matroska::MuxOptions const&)
+matroska::Writer::finalize()
+matroska::Writer::push(std::span<std::byte const, 18446744073709551615ul>)
+matroska::Writer::stamp_ms(unsigned long) const
+matroska::demux(std::span<std::byte const, 18446744073709551615ul>, matroska::ReadOptions const&)
+matroska::describe(matroska::DemuxError)
+matroska::describe(matroska::MuxError)
+matroska::mux(matroska::AudioTrack const&, std::span<std::span<std::byte const, 18446744073709551615ul> const, 18446744073709551615ul>, matroska::MuxOptions const&)
+matroska::mux(matroska::AudioTrack const&, std::span<std::vector<std::byte, std::allocator<std::byte> > const, 18446744073709551615ul>, matroska::MuxOptions const&)

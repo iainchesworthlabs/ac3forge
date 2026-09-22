@@ -1,10 +1,12 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <numbers>
+#include <numeric>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -338,10 +340,67 @@ TEST_CASE("WAV and A/52 channel orders are inverse permutations", "[analysis]") 
         }
     }
 
-    // Layouts with no WAV convention fall back to the codec's own order
-    // rather than inventing one.
+    // 1+1 is the one acmod with no speaker positions to sort - two
+    // independent programmes rather than a soundfield - so it alone falls
+    // back to the codec's own order rather than inventing one.
     CHECK(ac3::io::wav_channel_order(ac3::Acmod::kDualMono, false) ==
           std::vector<std::size_t>{0, 1});
-    CHECK(ac3::io::wav_channel_order(ac3::Acmod::k3_1, false) ==
-          std::vector<std::size_t>{0, 1, 2, 3});
+    CHECK(ac3::io::wav_channel_order(ac3::Acmod::kDualMono, true) ==
+          std::vector<std::size_t>{0, 1, 2});
+}
+
+TEST_CASE("wav_channel_order places every acmod by WAV speaker position", "[analysis]") {
+    // The full table, pinned. Entry i of the expected order names the AC-3
+    // channel that belongs at WAV slot i, and the comment spells out the
+    // resulting file order so a change here is readable as audio rather than
+    // as a permutation.
+    //
+    // Two things move relative to A/52 Table 5.8's coded order, and between
+    // them they account for every non-identity row below:
+    //
+    //   C swaps with R   WAV fronts are FL FR FC (mask bits 0x1, 0x2, 0x4);
+    //                    A/52 codes them L C R.
+    //   LFE moves up     WAV puts it at bit 0x8, fourth, straight after FC;
+    //                    A/52 codes it last whatever the acmod.
+    //
+    // The mono-surround modes are placed on SPEAKER_BACK_CENTER (0x100),
+    // which sorts after the LFE - so 2/1+LFE is L R LFE S, not L R S LFE.
+    // FFmpeg writes the same order for all of these, and its own decode of
+    // FATE's millers_crossing_4.0.ac3 declares dwChannelMask 0x107 for the
+    // 3/1 row (see tools/checks/verify_fate_interop.py).
+    struct Expect {
+        ac3::Acmod acmod;
+        bool lfe;
+        std::vector<std::size_t> order;
+        std::string_view wav;  // the channels as they land in the file
+    };
+    const std::vector<Expect> table = {
+        {ac3::Acmod::k1_0, false, {0}, "C"},
+        {ac3::Acmod::k1_0, true, {0, 1}, "C LFE"},
+        {ac3::Acmod::k2_0, false, {0, 1}, "L R"},
+        {ac3::Acmod::k2_0, true, {0, 1, 2}, "L R LFE"},
+        {ac3::Acmod::k3_0, false, {0, 2, 1}, "L R C"},
+        {ac3::Acmod::k3_0, true, {0, 2, 1, 3}, "L R C LFE"},
+        {ac3::Acmod::k2_1, false, {0, 1, 2}, "L R S"},
+        {ac3::Acmod::k2_1, true, {0, 1, 3, 2}, "L R LFE S"},
+        {ac3::Acmod::k3_1, false, {0, 2, 1, 3}, "L R C S"},
+        {ac3::Acmod::k3_1, true, {0, 2, 1, 4, 3}, "L R C LFE S"},
+        {ac3::Acmod::k2_2, false, {0, 1, 2, 3}, "L R Ls Rs"},
+        {ac3::Acmod::k2_2, true, {0, 1, 4, 2, 3}, "L R LFE Ls Rs"},
+        {ac3::Acmod::k3_2, false, {0, 2, 1, 3, 4}, "L R C Ls Rs"},
+        {ac3::Acmod::k3_2, true, {0, 2, 1, 5, 3, 4}, "L R C LFE Ls Rs"},
+    };
+
+    for (const auto& row : table) {
+        CAPTURE(static_cast<int>(row.acmod), row.lfe, row.wav);
+        const auto order = ac3::io::wav_channel_order(row.acmod, row.lfe);
+        CHECK(order == row.order);
+        // Whatever the layout, the result has to be a permutation: every
+        // coded channel present exactly once, nothing invented or dropped.
+        auto sorted = order;
+        std::ranges::sort(sorted);
+        std::vector<std::size_t> identity(order.size());
+        std::iota(identity.begin(), identity.end(), std::size_t{0});
+        CHECK(sorted == identity);
+    }
 }

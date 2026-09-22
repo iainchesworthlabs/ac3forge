@@ -36,6 +36,18 @@ void ac3forge_atmos_config_init(ac3forge_atmos_config_t* config) {
                                        .fast_mdct = defaults.fast_mdct ? 1 : 0};
 }
 
+void ac3forge_object_placement_init(ac3forge_object_placement_t* placement) {
+    if (placement == nullptr) {
+        return;
+    }
+    const ac3::oba::ObjectPlacement defaults{};
+    *placement = ac3forge_object_placement_t{.x = defaults.position.x,
+                                              .y = defaults.position.y,
+                                              .z = defaults.position.z,
+                                              .gain = defaults.gain,
+                                              .lfe_send = defaults.lfe_send};
+}
+
 ac3forge_status_t ac3forge_atmos_encoder_create(const ac3forge_atmos_config_t* config,
                                                  int object_count,
                                                  ac3forge_atmos_encoder_t** out_encoder) {
@@ -93,6 +105,26 @@ ac3forge_status_t ac3forge_atmos_encoder_encode_frame(
         *out_unit = owned.release();
         return AC3FORGE_OK;
     });
+}
+
+void ac3forge_atmos_encoder_latency(const ac3forge_atmos_encoder_t* encoder,
+                                   ac3forge_latency_t* out_latency) {
+    if (encoder == nullptr || out_latency == nullptr) {
+        return;
+    }
+    *out_latency = ac3forge_c::from_cpp(encoder->impl.latency());
+}
+
+int ac3forge_atmos_encoder_latency_samples(const ac3forge_atmos_encoder_t* encoder) {
+    return encoder == nullptr ? 0 : encoder->impl.latency_samples();
+}
+
+void ac3forge_atmos_encoder_bed_latency(const ac3forge_atmos_encoder_t* encoder,
+                                        ac3forge_latency_t* out_latency) {
+    if (encoder == nullptr || out_latency == nullptr) {
+        return;
+    }
+    *out_latency = ac3forge_c::from_cpp(encoder->impl.bed_latency());
 }
 
 }  // extern "C"

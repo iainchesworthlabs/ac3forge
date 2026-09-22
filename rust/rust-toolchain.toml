@@ -1,0 +1,6 @@
+# Pinned the same way the C/C++ toolchains are (see .github/workflows/_toolchain-versions.yml's
+# own header): one canonical file, read directly by both a local `rustup`-aware `cargo` and CI's
+# `dtolnay/rust-toolchain` step, rather than a version string duplicated in a workflow file.
+[toolchain]
+channel = "1.98.0"
+components = ["clippy", "rustfmt"]

@@ -1,0 +1,124 @@
+# ac3forge-wasm-decoder, the browser streaming decoder package (roadmap UX5, js/) - separate
+# from _build.yml/ci.yml's C++ matrix and from build-wasm's Emscripten build, neither of which
+# this needs: js/'s own build (tsc) and test suite (node:test - the fMP4 box walker against a
+# committed fixture, the ring buffer, the MediaSource shim) are pure TypeScript/JavaScript with
+# no WASM binary dependency. build-wasm (in _build.yml) is the leg that builds js/ ALONGSIDE the
+# actual Emscripten output and exercises the whole demo end-to-end in a browser; this workflow
+# only needs to know that the package itself builds and its own unit tests pass.
+#
+# The build job runs continuously (every push/PR touching js/**) and always packs the tarball as
+# an artifact - "buildable and testable" is checked the same way wheels.yml's own build job
+# checks the Python side continuously. Publishing to npm is a second job, gated on a v* tag push -
+# see docs/releasing.md's "Publishing to npm" for how it's provisioned (not yet - unlike PyPI,
+# this needs a one-time manual npmjs.com/GitHub setup that has not happened).
+name: npm Package
+
+on:
+  pull_request:
+    paths:
+      - "js/**"
+      - ".github/workflows/npm.yml"
+  push:
+    branches: [main]
+    paths:
+      - "js/**"
+      - ".github/workflows/npm.yml"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: npm-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+
+      - name: Install, build, test
+        working-directory: js
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          npm test
+
+      # Uploaded purely so a PR's actual packed output is inspectable from the Actions run -
+      # `npm pack` runs the same "files" allowlist `npm publish` would, catching an accidentally-
+      # missing dist/ entry before it ever reaches a real publish.
+      - name: Pack
+        working-directory: js
+        run: npm pack
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-package
+          path: js/*.tgz
+          if-no-files-found: error
+
+  # Publishes via npm trusted publishing (OIDC) against the `npm` GitHub environment - neither is
+  # provisioned yet; see docs/releasing.md's "Publishing to npm". Gated on a v* tag push, same as
+  # wheels.yml's own PyPI job; the build job above runs on every push regardless.
+  publish:
+    name: Publish to npm
+    needs: build
+    # Publishing is deliberately NOT armed on tag push yet. ac3forge-wasm-decoder
+    # has never been published to npm, and trusted publishing is not configured
+    # for it, so a v* tag would create a brand-new PUBLIC package as a side effect
+    # of cutting a release - effectively irreversible, since npm's unpublish window
+    # is narrow and the name stays reserved either way. Restricted to an explicit
+    # manual dispatch until that setup is done and verified; then drop the
+    # event_name clause to restore publish-on-tag.
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      # npm trusted publishing needs npm CLI >= 11.5.1 - not trusting whatever version
+      # actions/setup-node's chosen Node release happens to bundle.
+      - name: Install npm >= 11.5.1
+        run: npm install -g npm@latest
+
+      - name: Install
+        working-directory: js
+        run: npm ci
+
+      # After npm ci, not before: package-lock.json still says 0.0.0-dev at
+      # that point, matching package.json's own tree-committed placeholder -
+      # bumping the version first risks npm ci rejecting the now-mismatched
+      # lockfile.
+      - name: Stamp the release version
+        working-directory: js
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+
+      - name: Build
+        working-directory: js
+        run: npm run build
+
+      - name: Publish to npm
+        working-directory: js
+        run: npm publish

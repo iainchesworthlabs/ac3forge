@@ -7,11 +7,20 @@
 // payload is corrupt; only that frame's own decode_frame call fails. A
 // caller can then skip exactly the damaged frame and keep decoding, rather
 // than aborting the whole stream on its account.
+//
+// DecoderConfig::diagnostics (roadmap AP11) rides alongside: it fires for the
+// same CRC failure the returned error already reports here, but it is the
+// only signal at all once ConcealmentPolicy is turned on (see
+// tests/decoder/test_diagnostics.cpp) - a concealed frame comes back as a
+// SUCCESSFUL decode_frame result, and polling DecodedFrame::concealed on
+// every call is the only alternative to a sink that speaks up when it
+// actually happens.
 
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -49,7 +58,7 @@ int main() {
         }
         const auto encoded = encoder->encode_frame(views);
         if (!encoded) {
-            std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
+            fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         frame_offsets.push_back(stream.size());
@@ -68,28 +77,38 @@ int main() {
 
     const auto frames = ac3::split_frames(stream);
     if (!frames) {
-        std::printf("split_frames failed: %.*s\n",
+        fmt::printf("split_frames failed: %.*s\n",
                     static_cast<int>(ac3::describe(frames.error()).size()),
                     ac3::describe(frames.error()).data());
         return 1;
     }
-    std::printf("%zu frame(s) delimited, corruption at byte %zu\n", frames->size(), corrupt_at);
+    fmt::printf("%zu frame(s) delimited, corruption at byte %zu\n", frames->size(), corrupt_at);
 
-    ac3::FrameDecoder decoder;
+    int diagnosed = 0;
+    ac3::FrameDecoder decoder{{.diagnostics =
+                                   [](const ac3::Diagnostic& diagnostic, void* context) {
+                                       const auto message = ac3::describe(diagnostic.event);
+                                       fmt::printf("  diagnostic: %.*s\n",
+                                                   static_cast<int>(message.size()),
+                                                   message.data());
+                                       ++*static_cast<int*>(context);
+                                   },
+                               .diagnostics_context = &diagnosed}};
     int recovered = 0;
     int failed = 0;
     for (std::size_t i = 0; i < frames->size(); ++i) {
         const auto decoded = decoder.decode_frame((*frames)[i]);
         if (!decoded) {
             const auto message = ac3::describe(decoded.error());
-            std::printf("frame %zu: decode failed (%.*s) - skipping\n", i,
+            fmt::printf("frame %zu: decode failed (%.*s) - skipping\n", i,
                         static_cast<int>(message.size()), message.data());
             ++failed;
             continue;
         }
         ++recovered;
     }
+    fmt::printf("%d diagnostic event(s) reported\n", diagnosed);
 
-    std::printf("%d of %zu frames recovered, %d skipped\n", recovered, frames->size(), failed);
-    return (recovered == kFrameCount - 1 && failed == 1) ? 0 : 1;
+    fmt::printf("%d of %zu frames recovered, %d skipped\n", recovered, frames->size(), failed);
+    return (recovered == kFrameCount - 1 && failed == 1 && diagnosed == 1) ? 0 : 1;
 }

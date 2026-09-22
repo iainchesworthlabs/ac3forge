@@ -141,4 +141,24 @@ ac3forge_status_t ac3forge_encoder_encode_frame(ac3forge_encoder_t* encoder,
     });
 }
 
+int ac3forge_encoder_latency_samples(const ac3forge_encoder_t* encoder) {
+    return encoder == nullptr ? 0 : encoder->impl.latency_samples();
+}
+
+void ac3forge_encoder_latency(const ac3forge_encoder_t* encoder,
+                              ac3forge_latency_t* out_latency) {
+    if (encoder == nullptr || out_latency == nullptr) {
+        return;
+    }
+    *out_latency = ac3forge_c::from_cpp(encoder->impl.latency());
+}
+
+int ac3forge_decoder_latency_samples(const ac3forge_decoder_t* decoder) {
+    // Not a use of `decoder` beyond the null check, and deliberately so: an
+    // AC-3 decoder's own contribution is structurally zero (see the header).
+    // Taking the handle anyway keeps the call shape identical to the E-AC-3
+    // form, whose answer really does depend on the instance.
+    return decoder == nullptr ? 0 : ac3::FrameDecoder::latency_samples();
+}
+
 }  // extern "C"

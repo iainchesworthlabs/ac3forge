@@ -255,3 +255,36 @@ TEST_CASE("quantization clamps gracefully rather than wrapping", "[coupling]") {
     CHECK(decode_coordinate(quantize_coordinate(0.0, 0), 0) == 0.0);
     CHECK(decode_coordinate(quantize_coordinate(-1.0, 0), 0) == 0.0);
 }
+
+TEST_CASE("quantize_coordinate is exact at power-of-two boundaries", "[coupling]") {
+    // roadmap VX12: the shift that lands a value in [0.5, 1) used to come
+    // from floor(-std::log2(value)), a transcendental libm call whose
+    // last-bit behaviour is not required to agree across platforms right at
+    // a power of two - the one input where log2's true result is itself an
+    // exact integer, so any rounding at all can land floor() on either side
+    // of it. std::ilogb replaced it with an exact bit-representation read
+    // instead. This pins the two boundary cases directly: an exact power of
+    // two must decode back to itself (mant == 0, no quantization error at
+    // all - the old code only reached that through a since-unneeded
+    // renormalisation branch), and the ULP just below it must NOT round up
+    // into the same coordinate a value at or above the boundary would take.
+    for (int n = -1; n >= -20; --n) {
+        const double boundary = std::ldexp(1.0, n);  // an exact power of two
+        const std::array<double, 1> single = {boundary};
+        const int master = choose_master(single);
+        const auto at_boundary = quantize_coordinate(boundary, master);
+        CAPTURE(n, boundary, master, at_boundary.exp, at_boundary.mant);
+        CHECK(at_boundary.mant == 0);
+        CHECK(decode_coordinate(at_boundary, master) == boundary);
+
+        const double just_below = std::nextafter(boundary, 0.0);
+        const auto below = quantize_coordinate(just_below, master);
+        CAPTURE(just_below, below.exp, below.mant);
+        // Must not decode to something greater than the boundary - that
+        // would mean a value strictly less than it rounded up past it. Equal
+        // is fine and expected: the two inputs differ by one ULP, far finer
+        // than the ~5-bit mantissa's own quantization step, so tying to the
+        // same code is the quantizer working as designed, not overshoot.
+        CHECK(decode_coordinate(below, master) <= boundary);
+    }
+}

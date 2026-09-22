@@ -74,10 +74,15 @@ Full program: [`examples/multi_source_assignment.cpp`](https://github.com/iainch
 
 `Destination::kind` is a closed set: `kUnassigned`, `kLocation`, `kObject`, `kObjectMono` (a
 channel range folded to one mono dynamic object), `kProgramme1`/`kProgramme2` (dual mono).
-`trim_db` is a linear-gain trim in `[-24, +24]`, applied wherever that channel's content reaches
-the stream — a `route()`-built `Routing` gain entry for `kLocation` rows, or the object plane's
-own gain for `kObject`/`kObjectMono` (`route()` contributes nothing for those: object audio
-reaches the stream through the Atmos path, not `Routing`).
+`trim_db` is a linear-gain trim in decibels, applied wherever that channel's content reaches
+the stream — a `route()`-built `Routing` gain entry for `kLocation` rows and for dual mono's
+`kProgramme1`/`kProgramme2` rows (`dual_mono_routing()` carries them the same way), or the object
+plane's own gain for `kObject`/`kObjectMono` (`route()` contributes nothing for those: object
+audio reaches the stream through the Atmos path, not `Routing`). `set()` and
+`parse_destination()` clamp it to `[-24, +24]` and snap it to a tenth-of-a-dB grid — a fixed grid
+rather than an arbitrary `double` is what lets `format_destination`/`parse_destination`
+round-trip a trim exactly. A `kUnassigned` row always reads 0, since `set()` erases those rather
+than storing them.
 
 `route()` returns `nullopt` if `sources` is empty, if two rows target the same location, or if
 the target plan cannot express a requested location at all — it does **not** require every

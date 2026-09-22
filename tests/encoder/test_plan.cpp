@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -215,7 +217,8 @@ TEST_CASE("tool tokens survive a round trip") {
     const std::vector<std::string> tokens = {"none",    "cpl",     "spx",       "aht",
                                              "cpl:4",   "spx:5",   "aht:0",     "cpl+spx",
                                              "cpl+spx+aht", "cpl:4+spx:5+aht:2",
-                                             "nofastmdct", "cpl+nofastmdct"};
+                                             "nofastmdct", "cpl+nofastmdct",
+                                             "nodither", "cpl+nodither"};
     for (const auto& token : tokens) {
         ac3::plan::Tools tools{};
         INFO("token " << token);
@@ -254,6 +257,29 @@ TEST_CASE("the fast MDCT is on by default and negated like noatten") {
     ac3::plan::Tools none{};
     REQUIRE(ac3::plan::parse_tools("none", none));
     CHECK(none.fast_mdct);
+}
+
+TEST_CASE("dithflag is content-decided by default and negated like nofastmdct") {
+    // Default-on since EQ4 landed - see EncoderConfig::dither / eac3::
+    // FrameConfig::dither for why real dither values are decoder-defined and
+    // "nodither" exists at all (tools/checks/verify_gold_reference.sh's own
+    // bit-for-bit comparison against an external decoder is the one caller
+    // that needs it). No legacy opt-in spelling: unlike fast_mdct, dither's
+    // default was never off, so there is no prior era's token to keep
+    // parsing.
+    CHECK(ac3::plan::Tools{}.dither);
+
+    ac3::plan::Tools off{};
+    REQUIRE(ac3::plan::parse_tools("nodither", off));
+    CHECK_FALSE(off.dither);
+    // Not a coding tool: a decoder that never receives a set dithflag still
+    // decodes every stream correctly.
+    CHECK_FALSE(off.any());
+
+    // "none" means no CODING tools; it does not drag dither off with it.
+    ac3::plan::Tools none{};
+    REQUIRE(ac3::plan::parse_tools("none", none));
+    CHECK(none.dither);
 }
 
 TEST_CASE("a tool token out of range is rejected rather than clamped") {
@@ -300,6 +326,106 @@ TEST_CASE("AC-3 takes only the Table 5.18 rates") {
     // E-AC-3 signals frmsiz directly, so the same rate is expressible there.
     plan.codec = ac3::plan::Codec::kEac3;
     CHECK_FALSE(ac3::plan::validate(plan).has_value());
+}
+
+TEST_CASE("E-AC-3 refuses a rate no substream's frmsiz can express") {
+    // frmsiz is 11 bits holding (words - 1), so a syncframe is 1 to 2048
+    // words - at 48 kHz, 1 to 1024 kbit/s. This is E-AC-3's own answer to
+    // Table 5.18 above: a free word count is still a bounded one.
+    ac3::plan::Plan plan{.codec = ac3::plan::Codec::kEac3,
+                         .layout = ac3::plan::LayoutId::kStereo,
+                         .bitrate_kbps = 1026};
+    REQUIRE(ac3::plan::validate(plan).has_value());
+    CHECK(*ac3::plan::validate(plan) == ac3::plan::PlanError::kBitrateNotFramable);
+
+    // One word count either side of the ceiling, so this pins the boundary
+    // rather than merely "a big number is refused".
+    plan.bitrate_kbps = 1025;
+    CHECK(ac3::eac3::frame_words(plan.sample_rate, 1025) > ac3::eac3::kMaxFrameWords);
+    CHECK(ac3::plan::validate(plan).has_value());
+    plan.bitrate_kbps = 1024;
+    CHECK(ac3::eac3::frame_words(plan.sample_rate, 1024) == ac3::eac3::kMaxFrameWords);
+    CHECK_FALSE(ac3::plan::validate(plan).has_value());
+
+    // The floor is the same rule read the other way: 0 kbit/s is a frame of
+    // no words at all, which is not a syncframe.
+    plan.bitrate_kbps = 0;
+    REQUIRE(ac3::plan::validate(plan).has_value());
+    CHECK(*ac3::plan::validate(plan) == ac3::plan::PlanError::kBitrateNotFramable);
+    plan.bitrate_kbps = 1;
+    CHECK_FALSE(ac3::plan::validate(plan).has_value());
+}
+
+TEST_CASE("the frmsiz ceiling follows the sample rate, not a fixed kbit/s") {
+    // A frame is always 1536 samples, so a lower rate spends more of them per
+    // second and the same kbit/s buys more words - which means the largest
+    // expressible rate falls with the sample rate rather than staying at
+    // 48 kHz's 1024.
+    struct Case {
+        ac3::SampleRate rate;
+        std::uint32_t highest_legal;
+    };
+    for (const auto& c : {Case{ac3::SampleRate::k48000, 1024},
+                          Case{ac3::SampleRate::k44100, 941},
+                          Case{ac3::SampleRate::k32000, 682}}) {
+        CAPTURE(ac3::sample_rate_hz(c.rate), c.highest_legal);
+        ac3::plan::Plan plan{.codec = ac3::plan::Codec::kEac3,
+                             .layout = ac3::plan::LayoutId::kStereo,
+                             .sample_rate = c.rate,
+                             .bitrate_kbps = c.highest_legal};
+        CHECK_FALSE(ac3::plan::validate(plan).has_value());
+        plan.bitrate_kbps = c.highest_legal + 1;
+        REQUIRE(ac3::plan::validate(plan).has_value());
+        CHECK(*ac3::plan::validate(plan) == ac3::plan::PlanError::kBitrateNotFramable);
+    }
+}
+
+TEST_CASE("a dependent substream's own half of the rate has to be framable too") {
+    // eac3_config() hands the independent substream the whole rate and each
+    // dependent half of it, so the plan's own bitrate_kbps is not what frmsiz
+    // has to hold - which makes the floor reachable at a rate the same plan
+    // would accept without dependents.
+    ac3::plan::Plan stereo{.codec = ac3::plan::Codec::kEac3,
+                           .layout = ac3::plan::LayoutId::kStereo,
+                           .bitrate_kbps = 1};
+    CHECK_FALSE(ac3::plan::validate(stereo).has_value());
+
+    ac3::plan::Plan immersive{.codec = ac3::plan::Codec::kEac3,
+                              .layout = ac3::plan::LayoutId::k714,
+                              .bitrate_kbps = 1};
+    REQUIRE_FALSE(ac3::plan::eac3_config(immersive).dependents.empty());
+    REQUIRE(ac3::plan::validate(immersive).has_value());
+    CHECK(*ac3::plan::validate(immersive) == ac3::plan::PlanError::kBitrateNotFramable);
+    // Two is the smallest rate that still leaves the dependents a word each
+    // once it has been halved.
+    immersive.bitrate_kbps = 2;
+    CHECK_FALSE(ac3::plan::validate(immersive).has_value());
+}
+
+TEST_CASE("VBR is exempt from the frmsiz rate check, as it is in the frame encoder") {
+    // Under VBR the content decides the word count and bitrate_kbps only
+    // steers the coupling/spx frequency defaults, so a nominal rate no CBR
+    // frame could hold says nothing about whether a frame will fit.
+    const ac3::plan::Plan plan{.codec = ac3::plan::Codec::kEac3,
+                               .layout = ac3::plan::LayoutId::kStereo,
+                               .bitrate_kbps = 1026,
+                               .vbr = ac3::eac3::VbrConfig{.quality = 0.5,
+                                                           .max_kbps = 256}};
+    CHECK_FALSE(ac3::plan::validate(plan).has_value());
+}
+
+TEST_CASE("an unframable rate leaves AccessUnitEncoder with no substreams at all") {
+    // Why the check above has to exist at the plan layer rather than being
+    // left to the encoder: AccessUnitEncoder's constructor cannot report,
+    // and a config it refuses produces an encoder that silently codes
+    // nothing. A front end that sized its buffers from the plan then
+    // disagrees with channel_count() before the first frame is encoded.
+    const ac3::plan::Plan plan{.codec = ac3::plan::Codec::kEac3,
+                               .layout = ac3::plan::LayoutId::kStereo,
+                               .bitrate_kbps = 1026};
+    const ac3::eac3::AccessUnitEncoder encoder{ac3::plan::eac3_config(plan)};
+    CHECK(encoder.channel_count() == 0);
+    CHECK(ac3::plan::rendered_channel_count(ac3::plan::resolve(plan)) == 2);
 }
 
 TEST_CASE("fscod2 half rates are refused to AC-3 rather than silently narrowed") {
@@ -449,6 +575,96 @@ TEST_CASE("eac3_config halves a plan's VBR bounds for each dependent, not its qu
         CHECK(dependent.vbr->min_kbps == 100);
         CHECK(dependent.vbr->max_kbps == 320);
         CHECK(dependent.vbr->nominal_kbps == 150);
+    }
+}
+
+TEST_CASE("vbr tokens survive a round trip", "[vbr][abr]") {
+    // format_vbr is what a front end shows for what it is about to do, so a
+    // token has to come back as itself - including the ABR fields, whose
+    // default window is deliberately not spelled out (see format_vbr).
+    const std::vector<std::string> tokens = {
+        "off",           "q:0.500000",         "q:0.500000,min:96",
+        "q:0.500000,max:320",                  "q:0.500000,min:96,max:320",
+        "avg:192",       "avg:192,win:8",      "avg:192,min:96,max:448",
+        "avg:192,win:8,min:96,max:448"};
+    for (const auto& token : tokens) {
+        std::optional<ac3::eac3::VbrConfig> vbr;
+        INFO("token " << token);
+        REQUIRE(ac3::plan::parse_vbr(token, vbr));
+        CHECK(ac3::plan::format_vbr(vbr) == token);
+    }
+}
+
+TEST_CASE("the vbr avg: token turns average-rate mode on", "[vbr][abr]") {
+    std::optional<ac3::eac3::VbrConfig> vbr;
+    REQUIRE(ac3::plan::parse_vbr("avg:224", vbr));
+    REQUIRE(vbr.has_value());
+    REQUIRE(vbr->abr.has_value());
+    CHECK(vbr->abr->target_kbps == 224);
+    // Left alone, the window is AbrConfig's own default rather than anything
+    // this parser invents.
+    CHECK(vbr->abr->window_frames == ac3::eac3::kAbrDefaultWindowFrames);
+
+    std::optional<ac3::eac3::VbrConfig> bounded;
+    REQUIRE(ac3::plan::parse_vbr("avg:224,win:12,max:320", bounded));
+    REQUIRE(bounded->abr.has_value());
+    CHECK(bounded->abr->target_kbps == 224);
+    CHECK(bounded->abr->window_frames == 12);
+    CHECK(bounded->max_kbps == 320);
+}
+
+TEST_CASE("plain vbr tokens leave average-rate mode off", "[vbr][abr]") {
+    std::optional<ac3::eac3::VbrConfig> vbr;
+    REQUIRE(ac3::plan::parse_vbr("q:0.4,min:96,max:320", vbr));
+    REQUIRE(vbr.has_value());
+    CHECK_FALSE(vbr->abr.has_value());
+}
+
+TEST_CASE("a malformed vbr token is rejected rather than half-applied", "[vbr][abr]") {
+    const std::vector<std::string> bad = {
+        "win:8",             // a window around an average nothing named
+        "q:0.5,win:8",       // ...and not a plain-VBR field either
+        "q:0.5,avg:192",     // two rate controls at once
+        "avg:192,q:0.5",     // ...in either order
+        "avg:0",             // zero kbps is not a rate
+        "avg:192,win:0",     // a zero-frame window is not a window
+        "avg:",              // the field did not survive whatever produced it
+        "avg:192,",          // trailing separator, same rule as parse_tools
+        "avg:abc",
+        "avg:192,avg:256",   // said twice, meaning which?
+        "avg:192,min:256",   // a floor above the average it must average to
+        "avg:192,max:96",    // a ceiling below it
+    };
+    for (const auto& token : bad) {
+        std::optional<ac3::eac3::VbrConfig> vbr;
+        INFO("token " << token);
+        CHECK_FALSE(ac3::plan::parse_vbr(token, vbr));
+    }
+}
+
+TEST_CASE("eac3_config halves a plan's ABR target for each dependent, not its window",
+          "[vbr][abr]") {
+    // The plan's target is what the WHOLE access unit is contracted to
+    // average, so each substream holds half of it - the same rule min/max
+    // already follow. The window counts frames, not bits, and both substreams
+    // cover the same 1536 samples, so it carries over unchanged.
+    const ac3::plan::Plan plan{
+        .codec = ac3::plan::Codec::kEac3,
+        .layout = ac3::plan::LayoutId::k71,
+        .bitrate_kbps = 640,
+        .vbr = ac3::eac3::VbrConfig{
+            .abr = ac3::eac3::AbrConfig{.target_kbps = 384, .window_frames = 10}}};
+    const auto config = ac3::plan::eac3_config(plan);
+    REQUIRE(config.independent.vbr.has_value());
+    REQUIRE(config.independent.vbr->abr.has_value());
+    CHECK(config.independent.vbr->abr->target_kbps == 384);
+    CHECK(config.independent.vbr->abr->window_frames == 10);
+    REQUIRE_FALSE(config.dependents.empty());
+    for (const auto& dependent : config.dependents) {
+        REQUIRE(dependent.vbr.has_value());
+        REQUIRE(dependent.vbr->abr.has_value());
+        CHECK(dependent.vbr->abr->target_kbps == 192);
+        CHECK(dependent.vbr->abr->window_frames == 10);
     }
 }
 

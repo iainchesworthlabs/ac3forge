@@ -79,7 +79,7 @@ def to_db(gain: float) -> float:
 def nearest(gain_of, gain_db: float):
     """Exhaustively nearest code in LINEAR gain, or None if two codes tie."""
     target = 10.0 ** (gain_db / 20.0)
-    scored = sorted(((abs(gain_of(w) - target), w) for w in range(256)))
+    scored = sorted((abs(gain_of(w) - target), w) for w in range(256))
     if abs(scored[0][0] - scored[1][0]) < 1e-12 * max(target, 1e-12):
         return None
     return scored[0][1]

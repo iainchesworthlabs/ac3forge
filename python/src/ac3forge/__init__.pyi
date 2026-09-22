@@ -1,14 +1,20 @@
+from collections.abc import Sequence
 from enum import Enum
-from typing import Sequence
+from typing import overload
 
 import numpy as np
 import numpy.typing as npt
 
 SAMPLES_PER_FRAME: int
 BLOCKS_PER_FRAME: int
+MAX_AC3_CHANNELS: int
 __version__: str
 
 FloatArray = npt.NDArray[np.float32]
+# Every encode_frame/encode_access_unit `channels`/`objects` parameter (roadmap AP6): either a
+# single 2-D (n_channels, n_samples) array, or a sequence of 1-D per-channel arrays - both
+# zero-copy when already contiguous float32 (see python-api.md's "Zero-copy numpy" section).
+ChannelsIn = FloatArray | Sequence[FloatArray]
 
 class Ac3Error(RuntimeError): ...
 
@@ -17,6 +23,9 @@ class Ac3EncodeError(Ac3Error):
 
 class Ac3DecodeError(Ac3Error):
     error: DecodeError
+
+class Ac3ScanError(Ac3Error):
+    error: ScanError
 
 class Acmod(Enum):
     kDualMono = ...
@@ -51,12 +60,26 @@ class FrameError(Enum):
     kInvalidChannelMap = ...
     kTooManyChannels = ...
     kInvalidMixLevel = ...
+    kInvalidBsi = ...
     kInvalidObjectAudio = ...
 
 class StreamType(Enum):
     kIndependent = ...
     kDependent = ...
     kConvertible = ...
+
+class StreamKind(Enum):
+    kAc3 = ...
+    kEac3 = ...
+    kAc3CoreEac3Extension = ...
+
+class ScanError(Enum):
+    kEmpty = ...
+    kLostSync = ...
+    kUnsupportedBsid = ...
+    kReservedValue = ...
+    kTruncated = ...
+    kUnsupportedStructure = ...
 
 class ProfileId(Enum):
     kFilmStandard = ...
@@ -77,12 +100,113 @@ class SurroundMixLevel(Enum):
 
 def fullbw_channel_count(acmod: Acmod) -> int: ...
 def sample_rate_hz(sample_rate: SampleRate) -> int: ...
+@overload
 def describe(error: DecodeError) -> str: ...
+@overload
+def describe(error: ScanError) -> str: ...
+@overload
+def describe(error: FrameError) -> str: ...
 def profile_for(id: ProfileId) -> Profile: ...
 def profile_name(id: ProfileId) -> str: ...
 def split_frames(stream: bytes) -> list[bytes]: ...
 def split_access_units(stream: bytes) -> list[bytes]: ...
 def stream_bsid(frame: bytes) -> int: ...
+
+# scan() and friends - roadmap AP6, ac3::io/elementary.hpp.
+def read_frame_header(at: bytes) -> FrameHeader: ...
+def scan(stream: bytes) -> ScannedStream: ...
+def access_unit_timing(stream: ScannedStream, index: int) -> AccessUnitTiming | None: ...
+def stream_duration_samples(stream: ScannedStream) -> int: ...
+def stream_duration_seconds(stream: ScannedStream) -> float: ...
+def access_unit_at_sample(stream: ScannedStream, sample: int) -> int | None: ...
+def access_unit_at_seconds(stream: ScannedStream, seconds: float) -> int | None: ...
+def uniform_access_unit_samples(stream: ScannedStream) -> int | None: ...
+
+class SubstreamService:
+    present: bool
+    bsmod: int
+    bsmod_present: bool
+    acmod: Acmod
+    lfe: bool
+    mix_metadata: bool
+
+class FrameHeader:
+    kind: StreamKind
+    bytes: int
+    bsid: int
+    bsmod: int
+    bsmod_present: bool
+    dsurmod: int
+    sample_rate: SampleRate
+    acmod: Acmod
+    lfe: bool
+    dialnorm: int
+    compr: int | None
+    dialnorm2: int | None
+    compr2: int | None
+    strmtyp: StreamType
+    substreamid: int
+    numblkscod: int
+    reduced_rate: bool
+    chanmap: int | None
+    oba_complexity_index: int | None
+    mix_metadata: bool
+    bit_rate_code: int
+    bitrate_kbps: int
+    @property
+    def coded_channels(self) -> int: ...
+
+class AccessUnitTiming:
+    start_sample: int
+    duration_samples: int
+    sample_rate: int
+    @property
+    def start_seconds(self) -> float: ...
+    @property
+    def duration_seconds(self) -> float: ...
+    def start_in_timescale(self, timescale: int) -> int: ...
+    def duration_in_timescale(self, timescale: int) -> int: ...
+
+class ScannedProgramme:
+    substreamid: int
+    acmod: Acmod
+    lfe: bool
+    channels: int
+    bsid: int
+    bsmod: int
+    substreams_per_unit: int
+    oba_complexity_index: int | None
+    access_units: list[bytes]
+
+class ScannedStream:
+    kind: StreamKind
+    sample_rate: SampleRate
+    acmod: Acmod
+    lfe: bool
+    channels: int
+    access_units: list[bytes]
+    access_unit_samples: list[int]
+    substreams_per_unit: int
+    programmes: list[ScannedProgramme]
+    bsid: int
+    bsmod: int
+    bit_rate_code: int
+    oba_complexity_index: int | None
+    bsmod_present: bool
+    dsurmod: int
+    mix_metadata: bool
+    independent_substreams: int
+    associated_substreams: list[SubstreamService]
+    channel_map: int
+
+class LatencyBudget:
+    frame_samples: int
+    transform_samples: int
+    lookahead_samples: int
+    holdback_samples: int
+    @property
+    def total_samples(self) -> int: ...
+    def milliseconds(self, sample_rate: SampleRate) -> float: ...
 
 class Profile:
     null_low_db: float
@@ -150,11 +274,15 @@ class EncoderConfig:
 
 class FrameEncoder:
     def __init__(self, config: EncoderConfig) -> None: ...
-    def encode_frame(self, channels: Sequence[FloatArray]) -> bytes: ...
+    def encode_frame(self, channels: ChannelsIn) -> bytes: ...
     @property
     def config(self) -> EncoderConfig: ...
     @property
     def channel_count(self) -> int: ...
+    @property
+    def latency(self) -> LatencyBudget: ...
+    @property
+    def latency_samples(self) -> int: ...
 
 class DecoderConfig:
     drc_scale: float
@@ -213,12 +341,40 @@ class DecodedAccessUnit:
 class FrameDecoder:
     def __init__(self, config: DecoderConfig = ...) -> None: ...
     def decode_frame(self, frame: bytes) -> DecodedFrame: ...
+    def decode_frame_into(self, frame: bytes, out: ChannelsIn) -> DecodedFrame: ...
+    @property
+    def latency_samples(self) -> int: ...
 
 class Eac3Decoder:
     def __init__(self, config: DecoderConfig = ...) -> None: ...
     def decode_substream(self, frame: bytes) -> DecodedSubstream | None: ...
     def decode_access_unit(self, unit: bytes) -> DecodedAccessUnit | None: ...
+    def decode_access_unit_into(self, unit: bytes, out: ChannelsIn) -> DecodedAccessUnit | None: ...
     def flush(self) -> list[DecodedSubstream]: ...
+    @property
+    def latency_samples(self) -> int: ...
+
+# ac3::verify - the encoder/decoder mirror trace and its research export (roadmap AP12). A real
+# submodule (m.def_submodule) at runtime, stubbed as a nested-class namespace here for the same
+# reason `eac3` below is. Pass a FrameTrace/Eac3AccessUnitTrace to DecoderConfig(trace=...)/
+# (eac3_trace=...), decode, then read it back out with trace_to_csv/trace_to_json_lines.
+class verify:
+    class FrameTrace:
+        def __init__(self) -> None: ...
+
+    class Eac3AccessUnitTrace:
+        def __init__(self) -> None: ...
+
+    @staticmethod
+    def trace_csv_header() -> str: ...
+    @staticmethod
+    def trace_to_csv(
+        trace: verify.FrameTrace | verify.Eac3AccessUnitTrace, frame_index: int
+    ) -> str: ...
+    @staticmethod
+    def trace_to_json_lines(
+        trace: verify.FrameTrace | verify.Eac3AccessUnitTrace, frame_index: int
+    ) -> str: ...
 
 class AtmosConfig:
     sample_rate: SampleRate
@@ -232,10 +388,121 @@ class AtmosConfig:
 
 class AtmosEncoder:
     def __init__(self, config: AtmosConfig, objects: int) -> None: ...
-    def encode_frame(
-        self, objects: Sequence[FloatArray], placement: Sequence[ObjectPlacement]
-    ) -> bytes: ...
+    def encode_frame(self, objects: ChannelsIn, placement: Sequence[ObjectPlacement]) -> bytes: ...
     @property
     def dynamic_object_count(self) -> int: ...
     @property
     def program(self) -> Program: ...
+    @property
+    def latency(self) -> LatencyBudget: ...
+    @property
+    def latency_samples(self) -> int: ...
+    @property
+    def bed_latency(self) -> LatencyBudget: ...
+
+# ac3::eac3::FrameEncoder/AccessUnitEncoder - roadmap AP6. A real submodule (m.def_submodule) at
+# runtime, stubbed as a nested-class namespace here rather than a separate eac3.pyi, the way
+# pybind11-stubgen represents one too - `ac3forge.eac3.FrameConfig` resolves through this class the
+# same way it resolves through the runtime module.
+class eac3:
+    MAX_RENDER_CHANNELS: int
+
+    class LayoutId(Enum):
+        kMono = ...
+        kStereo = ...
+        kDualMono = ...
+        k51 = ...
+        k71 = ...
+        k512 = ...
+        k514 = ...
+        k714 = ...
+
+    class FrameConfig:
+        sample_rate: SampleRate
+        bitrate_kbps: int
+        numblkscod: int
+        dialnorm: int
+        dialnorm2: int | None
+        chbwcod: int
+        acmod: Acmod
+        lfe: bool
+        strmtyp: StreamType
+        substreamid: int
+        chanmap: int | None
+        last_dependent: bool
+        drc: Profile | None
+        heavy: HeavyConfig | None
+        drc2: Profile | None
+        heavy2: HeavyConfig | None
+        auto_tools: bool
+        coupling: bool
+        cplbegf: int
+        enhanced: bool
+        spx: bool
+        spxbegf: int
+        spx_atten: bool
+        spxattencod: int
+        aht: bool
+        gaqmod: int
+        transient_prenoise: bool
+        fast_mdct: bool
+        dither: bool
+        oba_complexity_index: int | None
+        def __init__(self, **kwargs: object) -> None: ...
+
+    class FrameMetadata:
+        dynrng: list[int]
+        compr: int | None
+        dynrng2: list[int]
+        compr2: int | None
+        def __init__(self, **kwargs: object) -> None: ...
+
+    class AccessUnitConfig:
+        independent: eac3.FrameConfig
+        dependents: list[eac3.FrameConfig]
+        def __init__(self, **kwargs: object) -> None: ...
+
+    class AccessUnit:
+        bytes: bytes
+        substream_bytes: list[int]
+        @property
+        def substream_count(self) -> int: ...
+
+    class FrameEncoder:
+        def __init__(self, config: eac3.FrameConfig) -> None: ...
+        def encode_frame(
+            self,
+            channels: ChannelsIn,
+            metadata: eac3.FrameMetadata | None = ...,
+            aux: bytes = ...,
+        ) -> bytes: ...
+        @property
+        def config(self) -> eac3.FrameConfig: ...
+        @property
+        def channel_count(self) -> int: ...
+        @property
+        def samples_per_frame(self) -> int: ...
+        @property
+        def latency(self) -> LatencyBudget: ...
+        @property
+        def latency_samples(self) -> int: ...
+
+    class AccessUnitEncoder:
+        def __init__(self, config: eac3.AccessUnitConfig) -> None: ...
+        def encode_access_unit(self, channels: ChannelsIn, aux: bytes = ...) -> eac3.AccessUnit: ...
+        @property
+        def config(self) -> eac3.AccessUnitConfig: ...
+        @property
+        def channel_count(self) -> int: ...
+        @property
+        def latency(self) -> LatencyBudget: ...
+        @property
+        def latency_samples(self) -> int: ...
+
+    @staticmethod
+    def access_unit_config_for_layout(
+        layout: eac3.LayoutId,
+        bitrate_kbps: int,
+        dependent_bitrate_kbps: int | None = ...,
+        sample_rate: SampleRate = ...,
+    ) -> eac3.AccessUnitConfig: ...

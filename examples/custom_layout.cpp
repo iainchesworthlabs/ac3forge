@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <numbers>
 #include <span>
 #include <utility>
@@ -23,7 +24,7 @@
 int main() {
     const auto locations = ac3::plan::parse_channels("L,C,R,Ls,Rs,LFE,Ts,Lw,Rw");
     if (!locations) {
-        std::printf("parse_channels failed\n");
+        fmt::printf("parse_channels failed\n");
         return 1;
     }
 
@@ -33,18 +34,18 @@ int main() {
         .bitrate_kbps = 640,
     };
     if (const auto error = ac3::plan::validate(plan)) {
-        std::printf("invalid plan: %.*s\n", static_cast<int>(ac3::plan::describe(*error).size()),
+        fmt::printf("invalid plan: %.*s\n", static_cast<int>(ac3::plan::describe(*error).size()),
                     ac3::plan::describe(*error).data());
         return 1;
     }
 
     const auto channel_plan = ac3::plan::resolve(plan);
     const auto names = ac3::plan::coded_channel_names(channel_plan);
-    std::printf("bed: %d full-bandwidth channel(s)%s, %zu dependent substream(s), %zu coded channels\n",
+    fmt::printf("bed: %d full-bandwidth channel(s)%s, %zu dependent substream(s), %zu coded channels\n",
                 ac3::fullbw_channel_count(channel_plan.bed_acmod), channel_plan.bed_lfe ? " + LFE" : "",
                 channel_plan.dependents.size(), names.size());
     for (const auto& name : names) {
-        std::printf("  %s\n", name.c_str());
+        fmt::printf("  %s\n", name.c_str());
     }
 
     const auto config = ac3::plan::eac3_config(plan);
@@ -70,11 +71,11 @@ int main() {
         }
         const auto unit = encoder.encode_access_unit(views);
         if (!unit) {
-            std::printf("encode failed: %d\n", std::to_underlying(unit.error()));
+            fmt::printf("encode failed: %d\n", std::to_underlying(unit.error()));
             return 1;
         }
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
     }
-    std::printf("%zu channels, %zu bytes\n", channel_count, stream.size());
+    fmt::printf("%zu channels, %zu bytes\n", channel_count, stream.size());
     return 0;
 }

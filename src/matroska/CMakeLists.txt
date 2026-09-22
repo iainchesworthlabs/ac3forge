@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# matroska::matroska - a minimal MKV container writer.
+# matroska::matroska - a minimal MKV container writer and reader.
 #
 # Deliberately standalone: it links nothing from ac3::forge and knows nothing
 # about AC-3. It nests EBML elements and lays out clusters, taking every frame
@@ -28,7 +28,8 @@ endif()
 
 target_sources(matroska_objects
     PRIVATE
-        src/matroska.cpp)
+        src/matroska.cpp
+        src/reader.cpp)
 
 target_include_directories(matroska_objects
     PUBLIC

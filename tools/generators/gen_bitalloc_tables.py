@@ -10,6 +10,7 @@ truth: the standard's own text.
 Run from the repo root:  python tools/generators/gen_bitalloc_tables.py
 """
 
+import itertools
 import re
 from pathlib import Path
 
@@ -39,8 +40,8 @@ def _parse_pairs(lines, start, count, hex_vals=True):
     values = {}
     pattern = re.compile(r"(\d+)\s+(0x[0-9a-fA-F]+|\d+)")
     for line in lines[start:start + count + 40]:
-        for index, value in pattern.findall(line):
-            index = int(index)
+        for index_text, value in pattern.findall(line):
+            index = int(index_text)
             if index in values or index >= count:
                 continue
             values[index] = int(value, 16) if value.startswith("0x") else int(value)
@@ -81,8 +82,8 @@ def parse_tables():
     bndtab, bndsz = {}, {}
     row = re.compile(r"(\d+)\s+(\d+)\s+(\d+)")
     for line in lines[bnd_start:bnd_start + 40]:
-        for band, tab, size in row.findall(line):
-            band = int(band)
+        for band_text, tab, size in row.findall(line):
+            band = int(band_text)
             if band < 50 and band not in bndtab:
                 bndtab[band] = int(tab)
                 bndsz[band] = int(size)
@@ -101,8 +102,8 @@ def parse_tables():
     hth = {}
     row = re.compile(r"(\d+)\s+(0x[0-9a-fA-F]+)\s+(0x[0-9a-fA-F]+)\s+(0x[0-9a-fA-F]+)")
     for line in lines[hth_start:hth_start + 45]:
-        for band, h0, h1, h2 in row.findall(line):
-            band = int(band)
+        for band_text, h0, h1, h2 in row.findall(line):
+            band = int(band_text)
             if band < 50 and band not in hth:
                 hth[band] = (int(h0, 16), int(h1, 16), int(h2, 16))
         if len(hth) == 50:
@@ -128,9 +129,9 @@ def parse_tables():
     assert masktab == derived, "Table 7.13 disagrees with Table 7.12"
     # latab decreases monotonically 0x40 -> 0; baptab is monotone 0 -> 15.
     assert latab[0] == 0x40 and latab[255] == 0
-    assert all(a >= b for a, b in zip(latab, latab[1:]))
+    assert all(a >= b for a, b in itertools.pairwise(latab))
     assert baptab[0] == 0 and baptab[63] == 15
-    assert all(a <= b for a, b in zip(baptab, baptab[1:]))
+    assert all(a <= b for a, b in itertools.pairwise(baptab))
     # Spot values transcribed independently while reading the spec.
     assert slowdec == [0x0F, 0x11, 0x13, 0x15]
     assert floortab[7] == 0xF800

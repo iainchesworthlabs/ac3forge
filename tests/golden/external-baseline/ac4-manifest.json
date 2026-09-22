@@ -1,0 +1,12 @@
+{
+  "baseline_version": 1,
+  "dee_version": "This tool belongs to the Dolby Encoding Engine version 6.5.4-dme+b56bc97e",
+  "legs": {
+    "ac4-stereo-64": {
+      "output_channel_layout": "stereo",
+      "bitrate_kbps": 64,
+      "source_wav": "tests\\golden\\audio\\reference_stereo.wav",
+      "size_bytes": 25939
+    }
+  }
+}

@@ -5,6 +5,10 @@
 # this one Config file rather than a single combined export.
 include("${CMAKE_CURRENT_LIST_DIR}/forgeTargets.cmake")
 
+# ac3::signing is mandatory, like ac3::forge itself (no AC3FORGE_BUILD_<NAME> switch, so no
+# if(EXISTS) guard needed the way the optional components below need one).
+include("${CMAKE_CURRENT_LIST_DIR}/signingTargets.cmake")
+
 # matroska::matroska, mp4::mp4 and mpegts::mpegts are all optional components
 # (AC3FORGE_BUILD_MATROSKA/AC3FORGE_BUILD_MP4/AC3FORGE_BUILD_MPEGTS) - each Targets file only
 # exists when that component was actually installed, e.g. a vcpkg install() built without a
@@ -19,6 +23,22 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/mp4Targets.cmake")
 endif()
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/mpegtsTargets.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/mpegtsTargets.cmake")
+endif()
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/iabTargets.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/iabTargets.cmake")
+endif()
+# admTargets/admbridgeTargets.cmake, when present, each define ONLY a *_shared target (never
+# *_static) - see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM block and
+# src/ac3adm/CMakeLists.txt's header comment for why ac3adm/admbridge are shared-only, unlike
+# every other component here.
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/admTargets.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/admTargets.cmake")
+endif()
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/admbridgeTargets.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/admbridgeTargets.cmake")
+endif()
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/iamfTargets.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/iamfTargets.cmake")
 endif()
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/capiTargets.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/capiTargets.cmake")
@@ -38,6 +58,11 @@ if(TARGET ac3::forge_shared AND NOT TARGET ac3::forge_static)
 elseif(TARGET ac3::forge_static AND NOT TARGET ac3::forge_shared)
     add_library(ac3::forge ALIAS ac3::forge_static)
 endif()
+if(TARGET ac3::signing_shared AND NOT TARGET ac3::signing_static)
+    add_library(ac3::signing ALIAS ac3::signing_shared)
+elseif(TARGET ac3::signing_static AND NOT TARGET ac3::signing_shared)
+    add_library(ac3::signing ALIAS ac3::signing_static)
+endif()
 if(TARGET matroska::matroska_shared AND NOT TARGET matroska::matroska_static)
     add_library(matroska::matroska ALIAS matroska::matroska_shared)
 elseif(TARGET matroska::matroska_static AND NOT TARGET matroska::matroska_shared)
@@ -53,10 +78,30 @@ if(TARGET mpegts::mpegts_shared AND NOT TARGET mpegts::mpegts_static)
 elseif(TARGET mpegts::mpegts_static AND NOT TARGET mpegts::mpegts_shared)
     add_library(mpegts::mpegts ALIAS mpegts::mpegts_static)
 endif()
+if(TARGET ac3iab::ac3iab_shared AND NOT TARGET ac3iab::ac3iab_static)
+    add_library(ac3iab::ac3iab ALIAS ac3iab::ac3iab_shared)
+elseif(TARGET ac3iab::ac3iab_static AND NOT TARGET ac3iab::ac3iab_shared)
+    add_library(ac3iab::ac3iab ALIAS ac3iab::ac3iab_static)
+endif()
+if(TARGET iamf::iamf_shared AND NOT TARGET iamf::iamf_static)
+    add_library(iamf::iamf ALIAS iamf::iamf_shared)
+elseif(TARGET iamf::iamf_static AND NOT TARGET iamf::iamf_shared)
+    add_library(iamf::iamf ALIAS iamf::iamf_static)
+endif()
 if(TARGET ac3::forge_c_shared AND NOT TARGET ac3::forge_c_static)
     add_library(ac3::forge_c ALIAS ac3::forge_c_shared)
 elseif(TARGET ac3::forge_c_static AND NOT TARGET ac3::forge_c_shared)
     add_library(ac3::forge_c ALIAS ac3::forge_c_static)
+endif()
+
+# Single-branch, unlike every alias above: ac3adm::ac3adm_static/ac3::admbridge_static are never
+# installed here (shared-only export, see admTargets.cmake's own comment just above), so there is
+# no elseif() case to handle - if the _shared target exists at all, the bare alias always means it.
+if(TARGET ac3adm::ac3adm_shared)
+    add_library(ac3adm::ac3adm ALIAS ac3adm::ac3adm_shared)
+endif()
+if(TARGET ac3::admbridge_shared)
+    add_library(ac3::admbridge ALIAS ac3::admbridge_shared)
 endif()
 
 check_required_components(ac3forge)

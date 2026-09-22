@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "ac3/sinks/iec61937.hpp"
+#include "ac3/iec61937/iec61937.hpp"
 #include "ac3/audio/passthrough.hpp"
 
 // The Android backend's pure half, split out for the same reason

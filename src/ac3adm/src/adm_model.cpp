@@ -1,6 +1,11 @@
 #include "adm_model.hpp"
 
 #include <chrono>
+#include <expected>
+#include <functional>
+#include <string>
+#include <unordered_map>
+#include <utility>
 
 #include <adm/adm.hpp>
 #include <boost/variant.hpp>
@@ -358,6 +363,265 @@ AudioProgramme convert(const std::shared_ptr<const adm::AudioProgramme>& src) {
 }
 
 }  // namespace
+
+namespace {
+
+// The write-side counterpart of to_seconds() above: an ac3adm::AudioBlockFormat's *_s fields are
+// plain seconds (model.hpp's own convention, chosen so nothing downstream of ac3adm has to know
+// libadm's Time/FractionalTime split exists), so every rtime/duration/interpolationLength this
+// writer emits goes through this one conversion rather than five ad-hoc ones.
+adm::Time seconds_to_time(double seconds) {
+    return adm::Time(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::duration<double>(seconds)));
+}
+
+adm::AudioBlockFormatObjects to_libadm_block(const AudioBlockFormat& block) {
+    // The Dolby Atmos Master ADM Profile - and this writer's only caller, ac3::admbridge's
+    // write-side (bridge.cpp) - always produces cartesian blocks; a caller handing this writer a
+    // polar one is a bug in that caller, not a file this function was designed to accept (see
+    // ac3adm.hpp's own AdmWriteError::kInvalidDocument doc comment).
+    const auto& cartesian = std::get<CartesianPosition>(block.position);
+    adm::AudioBlockFormatObjects out{
+        adm::CartesianPosition(adm::X(static_cast<float>(cartesian.x)), adm::Y(static_cast<float>(cartesian.y)),
+                               adm::Z(static_cast<float>(cartesian.z))),
+        adm::Rtime(seconds_to_time(block.rtime_s)),
+        adm::Gain::fromLinear(block.gain),
+        adm::Width(static_cast<float>(block.width)),
+        adm::Height(static_cast<float>(block.height)),
+        adm::Depth(static_cast<float>(block.depth)),
+    };
+    if (block.has_duration) {
+        out.set(adm::Duration(seconds_to_time(block.duration_s)));
+    }
+    if (block.has_channel_lock) {
+        out.set(adm::ChannelLock(adm::ChannelLockFlag(block.channel_lock)));
+    }
+    if (block.has_jump_position) {
+        adm::JumpPosition jump{adm::JumpPositionFlag(block.jump_position)};
+        if (block.has_interpolation_length) {
+            jump.set(adm::InterpolationLength(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::duration<double>(block.interpolation_length_s))));
+        }
+        out.set(jump);
+    }
+    return out;
+}
+
+adm::AudioBlockFormatDirectSpeakers to_libadm_direct_speakers_block(const AudioBlockFormat& block) {
+    adm::AudioBlockFormatDirectSpeakers out{adm::Rtime(seconds_to_time(block.rtime_s)), adm::Gain::fromLinear(block.gain)};
+    if (block.has_duration) {
+        out.set(adm::Duration(seconds_to_time(block.duration_s)));
+    }
+    // set(), not the constructor's own named-arg list: SpeakerPosition's two alternatives
+    // (Cartesian/Spherical) are read off the same `position`/`cartesian` fields
+    // AudioBlockFormatObjects above reads, but AudioBlockFormatDirectSpeakers has no matching
+    // constructor overload for either - see audio_block_format_direct_speakers.hpp's own
+    // set(CartesianSpeakerPosition)/set(SphericalSpeakerPosition).
+    const auto& cartesian = std::get<CartesianPosition>(block.position);
+    out.set(adm::CartesianSpeakerPosition(adm::X(static_cast<float>(cartesian.x)), adm::Y(static_cast<float>(cartesian.y)),
+                                          adm::Z(static_cast<float>(cartesian.z))));
+    for (const auto& label : block.speaker_labels) {
+        out.add(adm::SpeakerLabel(label));
+    }
+    return out;
+}
+
+// A small "resolve or fail" helper shared by every *_refs loop below: every reference in an
+// AdmModel this writer accepts must resolve within the SAME model (see this file's own
+// build_libadm_document doc comment - unlike the read side, there is no partial/best-effort
+// tolerance here, since the caller building the model controls every string in it).
+template <typename Value>
+std::expected<std::reference_wrapper<const std::shared_ptr<Value>>, AdmWriteError> resolve(
+    const std::unordered_map<std::string, std::shared_ptr<Value>>& by_id, const std::string& id) {
+    const auto it = by_id.find(id);
+    if (it == by_id.end()) {
+        return std::unexpected(AdmWriteError::kInvalidDocument);
+    }
+    return std::cref(it->second);
+}
+
+}  // namespace
+
+std::expected<BuiltDocument, AdmWriteError> build_libadm_document(const AdmModel& model) {
+    auto document = ::adm::Document::create();
+
+    std::unordered_map<std::string, std::shared_ptr<::adm::AudioChannelFormat>> channel_formats_by_id;
+    for (const auto& channel_format : model.channel_formats) {
+        ::adm::TypeDescriptor type;
+        if (channel_format.type == TypeDefinition::kObjects) {
+            type = ::adm::TypeDefinition::OBJECTS;
+        } else if (channel_format.type == TypeDefinition::kDirectSpeakers) {
+            type = ::adm::TypeDefinition::DIRECT_SPEAKERS;
+        } else {
+            // Matrix/HOA/Binaural/User Custom/Unknown - out of this writer's scope, same
+            // boundary ac3::admbridge's own read-side classify_object() draws (bridge.cpp).
+            return std::unexpected(AdmWriteError::kInvalidDocument);
+        }
+        auto libadm_channel = ::adm::AudioChannelFormat::create(::adm::AudioChannelFormatName(channel_format.name), type);
+        for (const auto& block : channel_format.block_formats) {
+            if (channel_format.type == TypeDefinition::kObjects) {
+                libadm_channel->add(to_libadm_block(block));
+            } else {
+                libadm_channel->add(to_libadm_direct_speakers_block(block));
+            }
+        }
+        document->add(libadm_channel);
+        channel_formats_by_id.emplace(channel_format.id, std::move(libadm_channel));
+    }
+
+    std::unordered_map<std::string, std::shared_ptr<::adm::AudioPackFormat>> pack_formats_by_id;
+    for (const auto& pack_format : model.pack_formats) {
+        if (!pack_format.pack_format_refs.empty()) {
+            // Nested audioPackFormat - out of scope, same as the channel-format loop above.
+            return std::unexpected(AdmWriteError::kInvalidDocument);
+        }
+        ::adm::TypeDescriptor type;
+        if (pack_format.type == TypeDefinition::kObjects) {
+            type = ::adm::TypeDefinition::OBJECTS;
+        } else if (pack_format.type == TypeDefinition::kDirectSpeakers) {
+            type = ::adm::TypeDefinition::DIRECT_SPEAKERS;
+        } else {
+            return std::unexpected(AdmWriteError::kInvalidDocument);
+        }
+        auto libadm_pack = ::adm::AudioPackFormat::create(::adm::AudioPackFormatName(pack_format.name), type);
+        for (const auto& ref : pack_format.channel_format_refs) {
+            const auto resolved = resolve(channel_formats_by_id, ref);
+            if (!resolved) {
+                return std::unexpected(resolved.error());
+            }
+            libadm_pack->addReference(resolved->get());
+        }
+        document->add(libadm_pack);
+        pack_formats_by_id.emplace(pack_format.id, std::move(libadm_pack));
+    }
+
+    // §5.1/§5.2 are skipped in favour of BS.2076-2's plain-PCM shortcut (model.hpp's own
+    // AudioTrackUid comment: "the audioTrackUID has to refer to the corresponding
+    // audioChannelFormat" when audioTrackFormat/audioStreamFormat are both omitted) - this writer
+    // never produces coded/explicit-stream audio, so there is nothing for either element to
+    // describe. model.stream_formats/model.track_formats are consequently always empty for a
+    // document this writer builds; the loop bodies below exist only so a document built some
+    // other way (a future second producer of ac3adm::AdmModel) still round-trips correctly.
+    std::unordered_map<std::string, std::shared_ptr<::adm::AudioStreamFormat>> stream_formats_by_id;
+    for (const auto& stream_format : model.stream_formats) {
+        auto libadm_stream =
+            ::adm::AudioStreamFormat::create(::adm::AudioStreamFormatName(stream_format.name), ::adm::FormatDefinition::PCM);
+        if (stream_format.channel_format_ref) {
+            const auto resolved = resolve(channel_formats_by_id, *stream_format.channel_format_ref);
+            if (!resolved) {
+                return std::unexpected(resolved.error());
+            }
+            libadm_stream->setReference(resolved->get());
+        }
+        document->add(libadm_stream);
+        stream_formats_by_id.emplace(stream_format.id, std::move(libadm_stream));
+    }
+
+    std::unordered_map<std::string, std::shared_ptr<::adm::AudioTrackFormat>> track_formats_by_id;
+    for (const auto& track_format : model.track_formats) {
+        auto libadm_track =
+            ::adm::AudioTrackFormat::create(::adm::AudioTrackFormatName(track_format.name), ::adm::FormatDefinition::PCM);
+        if (track_format.stream_format_ref) {
+            const auto resolved = resolve(stream_formats_by_id, *track_format.stream_format_ref);
+            if (!resolved) {
+                return std::unexpected(resolved.error());
+            }
+            libadm_track->setReference(resolved->get());
+        }
+        document->add(libadm_track);
+        track_formats_by_id.emplace(track_format.id, std::move(libadm_track));
+    }
+
+    std::unordered_map<std::string, std::shared_ptr<::adm::AudioTrackUid>> track_uids_by_id;
+    for (const auto& track_uid : model.track_uids) {
+        auto libadm_track_uid = ::adm::AudioTrackUid::create();
+        if (track_uid.has_sample_rate) {
+            libadm_track_uid->set(::adm::SampleRate(track_uid.sample_rate));
+        }
+        if (track_uid.has_bit_depth) {
+            libadm_track_uid->set(::adm::BitDepth(track_uid.bit_depth));
+        }
+        if (track_uid.track_format_ref) {
+            const auto resolved = resolve(track_formats_by_id, *track_uid.track_format_ref);
+            if (!resolved) {
+                return std::unexpected(resolved.error());
+            }
+            libadm_track_uid->setReference(resolved->get());
+        }
+        if (track_uid.pack_format_ref) {
+            const auto resolved = resolve(pack_formats_by_id, *track_uid.pack_format_ref);
+            if (!resolved) {
+                return std::unexpected(resolved.error());
+            }
+            libadm_track_uid->setReference(resolved->get());
+        }
+        if (track_uid.channel_format_ref) {
+            const auto resolved = resolve(channel_formats_by_id, *track_uid.channel_format_ref);
+            if (!resolved) {
+                return std::unexpected(resolved.error());
+            }
+            libadm_track_uid->setReference(resolved->get());
+        }
+        document->add(libadm_track_uid);
+        track_uids_by_id.emplace(track_uid.uid, libadm_track_uid);
+    }
+
+    std::unordered_map<std::string, std::shared_ptr<::adm::AudioObject>> objects_by_id;
+    for (const auto& object : model.objects) {
+        if (!object.object_refs.empty()) {
+            // Nested audioObject references - out of scope, same as ac3::admbridge's own
+            // read-side collect_leaf_objects() only ever WALKS these, never expects to write them.
+            return std::unexpected(AdmWriteError::kInvalidDocument);
+        }
+        auto libadm_object = ::adm::AudioObject::create(::adm::AudioObjectName(object.name));
+        if (object.start_s != 0.0) {
+            libadm_object->set(::adm::Start(seconds_to_time(object.start_s)));
+        }
+        for (const auto& ref : object.pack_format_refs) {
+            const auto resolved = resolve(pack_formats_by_id, ref);
+            if (!resolved) {
+                return std::unexpected(resolved.error());
+            }
+            libadm_object->addReference(resolved->get());
+        }
+        for (const auto& ref : object.track_uid_refs) {
+            const auto resolved = resolve(track_uids_by_id, ref);
+            if (!resolved) {
+                return std::unexpected(resolved.error());
+            }
+            libadm_object->addReference(resolved->get());
+        }
+        document->add(libadm_object);
+        objects_by_id.emplace(object.id, std::move(libadm_object));
+    }
+
+    std::unordered_map<std::string, std::shared_ptr<::adm::AudioContent>> contents_by_id;
+    for (const auto& content : model.contents) {
+        auto libadm_content = ::adm::AudioContent::create(::adm::AudioContentName(content.name));
+        for (const auto& ref : content.object_refs) {
+            const auto resolved = resolve(objects_by_id, ref);
+            if (!resolved) {
+                return std::unexpected(resolved.error());
+            }
+            libadm_content->addReference(resolved->get());
+        }
+        document->add(libadm_content);
+        contents_by_id.emplace(content.id, std::move(libadm_content));
+    }
+
+    for (const auto& programme : model.programmes) {
+        auto libadm_programme = ::adm::AudioProgramme::create(::adm::AudioProgrammeName(programme.name));
+        for (const auto& ref : programme.content_refs) {
+            const auto resolved = resolve(contents_by_id, ref);
+            if (!resolved) {
+                return std::unexpected(resolved.error());
+            }
+            libadm_programme->addReference(resolved->get());
+        }
+        document->add(libadm_programme);
+    }
+
+    return BuiltDocument{.document = std::move(document), .track_uids_by_key = std::move(track_uids_by_id)};
+}
 
 AdmModel build_adm_model(const std::shared_ptr<::adm::Document>& document) {
     AdmModel model;

@@ -104,7 +104,7 @@ std::vector<float> run_streaming(DriftResampler& resampler, std::size_t channels
 
 }  // namespace
 
-TEST_CASE("a resampler at ratio 1.0 reproduces the input", "[resampler]") {
+TEST_CASE("a resampler at ratio 1.0 reproduces the input", "[resampler][concurrency]") {
     constexpr double kRate = 48000.0;
     constexpr std::size_t kChannels = 2;
     constexpr std::size_t kFrames = 96000;  // 2 seconds
@@ -123,7 +123,8 @@ TEST_CASE("a resampler at ratio 1.0 reproduces the input", "[resampler]") {
     }
 }
 
-TEST_CASE("a resampler at a real 44.1kHz->48kHz ratio preserves the tone's frequency", "[resampler]") {
+TEST_CASE("a resampler at a real 44.1kHz->48kHz ratio preserves the tone's frequency",
+          "[resampler][concurrency]") {
     constexpr double kInRate = 44100.0;
     constexpr double kOutRate = 48000.0;
     constexpr double kRatio = kOutRate / kInRate;
@@ -151,7 +152,8 @@ TEST_CASE("a resampler at a real 44.1kHz->48kHz ratio preserves the tone's frequ
     CHECK(measured == Catch::Approx(kFreq).epsilon(0.02));
 }
 
-TEST_CASE("a resampler at a small drift ratio stays phase-locked over many frames", "[resampler]") {
+TEST_CASE("a resampler at a small drift ratio stays phase-locked over many frames",
+          "[resampler][concurrency]") {
     constexpr double kRate = 48000.0;
     constexpr double kRatio = 1.00002;  // ~20 ppm
     constexpr double kFreq = 1000.0;
@@ -204,7 +206,8 @@ TEST_CASE("a resampler at a small drift ratio stays phase-locked over many frame
     CHECK(last_window_error < first_window_error * 5.0 + 0.005);
 }
 
-TEST_CASE("a resampler's render pads the tail on underrun and never over-consumes", "[resampler]") {
+TEST_CASE("a resampler's render pads the tail on underrun and never over-consumes",
+          "[resampler][concurrency]") {
     DriftResampler resampler(1);
     resampler.reset();
     resampler.set_ratio(1.0);
@@ -228,7 +231,8 @@ TEST_CASE("a resampler's render pads the tail on underrun and never over-consume
     }
 }
 
-TEST_CASE("a resampler's render pads with silence when there is no input at all", "[resampler]") {
+TEST_CASE("a resampler's render pads with silence when there is no input at all",
+          "[resampler][concurrency]") {
     DriftResampler resampler(2);
     resampler.reset();
     resampler.set_ratio(1.0);
@@ -242,7 +246,8 @@ TEST_CASE("a resampler's render pads with silence when there is no input at all"
     }
 }
 
-TEST_CASE("a resampler's drift estimator reports zero drift before any update", "[resampler]") {
+TEST_CASE("a resampler's drift estimator reports zero drift before any update",
+          "[resampler][concurrency]") {
     ClockDriftEstimator estimator(1.0, 1536);
     CHECK(estimator.drift_ppm() == 0.0);
     CHECK(estimator.ratio() == Catch::Approx(1.0));
@@ -250,7 +255,7 @@ TEST_CASE("a resampler's drift estimator reports zero drift before any update", 
 
 TEST_CASE("a resampler's drift estimator converges to a positive, bounded ppm when the FIFO runs "
           "steadily overfull",
-          "[resampler]") {
+          "[resampler][concurrency]") {
     constexpr std::size_t kTarget = 2000;  // divides evenly by 20, so e lands on exactly 0.05
     ClockDriftEstimator estimator(1.0, kTarget);
     const std::size_t overfull = kTarget + kTarget / 20;  // +5% -> e = 0.05
@@ -285,7 +290,7 @@ TEST_CASE("a resampler's drift estimator converges to a positive, bounded ppm wh
 
 TEST_CASE("a resampler's drift estimator converges to a negative ppm when the FIFO runs steadily "
           "underfull",
-          "[resampler]") {
+          "[resampler][concurrency]") {
     constexpr std::size_t kTarget = 2000;  // divides evenly by 20, so e lands on exactly -0.05
     ClockDriftEstimator estimator(1.0, kTarget);
     const std::size_t underfull = kTarget - kTarget / 20;  // -5% -> e = -0.05
@@ -311,7 +316,7 @@ TEST_CASE("a resampler's drift estimator converges to a negative ppm when the FI
 }
 
 TEST_CASE("a resampler and its drift estimator correct a slave clock running fast, end to end",
-          "[resampler]") {
+          "[resampler][concurrency]") {
     // Two-device live session: master runs at the nominal rate; the slave's
     // hardware clock actually runs kDriftPpm fast, though nothing in this
     // loop is ever told that number directly - it only ever sees how many

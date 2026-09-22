@@ -15,8 +15,29 @@
 # identically from a plain shell and from a Developer PowerShell.
 #
 # Sets AC3_MSVC_TOOLS_DIR: VCToolsInstallDir with the trailing separator removed
-# and forward slashes, ready for a subdirectory to be appended.
+# and forward slashes, ready for a subdirectory to be appended. Also sets
+# AC3_MSVC_TARGET_ARCH ("x64" or "arm64"), read by windows.msvc.toolchain.cmake
+# to pick the matching Hostxxx/xxx compiler directory - computed here, once,
+# rather than separately in each toolchain file, so the vcvarsall import below
+# and the compiler/linker directories resolved afterwards can never disagree
+# about which architecture they mean.
 #------------------------------------------------------------------------------
+
+# Resolve the target architecture the same way linux.gcc.toolchain.cmake and
+# macos.llvm.toolchain.cmake already do: VCPKG_TARGET_ARCHITECTURE when the
+# selected overlay triplet has set it (arm64-windows-msvc.cmake / the existing
+# x64-windows-msvc.cmake / x64-windows-llvm.cmake all do), falling back to the
+# host so a bare configure still targets what it's actually running on rather
+# than quietly assuming x64.
+if(VCPKG_TARGET_ARCHITECTURE STREQUAL "arm64")
+    set(AC3_MSVC_TARGET_ARCH "arm64")
+elseif(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
+    set(AC3_MSVC_TARGET_ARCH "x64")
+elseif(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(ARM64|aarch64)$")
+    set(AC3_MSVC_TARGET_ARCH "arm64")
+else()
+    set(AC3_MSVC_TARGET_ARCH "x64")
+endif()
 
 # Both VCToolsInstallDir and INCLUDE are required to consider the environment
 # usable: vcvarsall sets both, so one without the other means a half-configured
@@ -42,7 +63,25 @@ if(NOT (DEFINED ENV{VCToolsInstallDir} AND DEFINED ENV{INCLUDE}))
 
     # -products * so Build Tools installs (which are not "Community" or
     # "Professional") are considered; -requires pins the x64 native toolset
-    # rather than any VS that happens to have only the .NET workload.
+    # rather than any VS that happens to have only the .NET workload. This
+    # requirement is unconditional for every target architecture, arm64
+    # included: it is the base C++ workload's component id, and whether the
+    # ARM64 toolset additionally needs its own component id in -requires to
+    # reliably pick a VS install that actually carries it (rather than one
+    # that satisfies x86.x64 alone but has no ARM64 folder under it) is, at
+    # authoring time, unconfirmed - not guessed here. The -listComponents dump
+    # just below exists to answer that from a real CI run instead; see
+    # docs/platforms/windows.md's ARM64 section for what it found.
+    if(AC3_MSVC_TARGET_ARCH STREQUAL "arm64")
+        execute_process(
+            COMMAND "${AC3_VSWHERE_EXECUTABLE}" -latest -products * -all -listComponents
+            OUTPUT_VARIABLE _ac3_vswhere_components
+            ERROR_QUIET)
+        message(STATUS "vswhere -listComponents (ARM64 target - for confirming the exact "
+            "ARM64 toolset component id, see this file's header):\n${_ac3_vswhere_components}")
+        unset(_ac3_vswhere_components)
+    endif()
+
     execute_process(
         COMMAND "${AC3_VSWHERE_EXECUTABLE}"
                 -latest
@@ -64,23 +103,64 @@ if(NOT (DEFINED ENV{VCToolsInstallDir} AND DEFINED ENV{INCLUDE}))
         message(FATAL_ERROR "Expected vcvarsall.bat at ${_ac3_vcvarsall}, but it is not there.")
     endif()
 
+    # vcvarsall's own argument selects which target architecture's CRT/Windows
+    # SDK library directories land in LIB - get this wrong and cl/link still
+    # run, but link against the wrong-arch import libraries (LNK1112 "module
+    # machine type conflicts with target machine type"). x64 is unchanged from
+    # before: the literal "x64" argument this file has always passed. arm64 is
+    # new and, at authoring time, genuinely unconfirmed against real hardware:
+    # try the native host_target form first (host tools running natively, no
+    # emulation - only possible when the runner itself is ARM64, which
+    # GitHub's windows-11-arm is), then the amd64_arm64 cross form vcvarsall
+    # has supported for longer, in case this runner's VS Build Tools install
+    # has no native ARM64 host toolset at all. Each candidate is actually
+    # tried in order (not just the first one assumed to work) and the loop
+    # below keeps whichever one actually set VCToolsInstallDir - see
+    # docs/platforms/windows.md's ARM64 section for what a real CI run found.
+    if(AC3_MSVC_TARGET_ARCH STREQUAL "arm64")
+        if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(ARM64|aarch64)$")
+            set(_ac3_vcvars_candidates "arm64" "amd64_arm64")
+        else()
+            set(_ac3_vcvars_candidates "amd64_arm64")
+        endif()
+    else()
+        set(_ac3_vcvars_candidates "x64")
+    endif()
+
     # Run vcvarsall through a generated .bat rather than passing the command
     # inline. cmd.exe does not understand the backslash-escaped quotes CMake
     # emits when it quotes an argument containing spaces, so an inline
     # `call "..." x64 && set` breaks the moment the VS install path contains a
     # space - which it always does.
     set(_ac3_vcvars_bat "${CMAKE_BINARY_DIR}/ac3-vcvars.bat")
-    file(WRITE "${_ac3_vcvars_bat}" "@echo off\r\ncall \"${_ac3_vcvarsall}\" x64 >NUL\r\nset\r\n")
+    set(_ac3_vcvars_result 1)
 
-    execute_process(
-        COMMAND "$ENV{COMSPEC}" /c "${_ac3_vcvars_bat}"
-        OUTPUT_VARIABLE _ac3_vcvars_env
-        RESULT_VARIABLE _ac3_vcvars_result
-        ERROR_VARIABLE _ac3_vcvars_error)
+    foreach(_ac3_vcvars_arg IN LISTS _ac3_vcvars_candidates)
+        file(WRITE "${_ac3_vcvars_bat}" "@echo off\r\ncall \"${_ac3_vcvarsall}\" ${_ac3_vcvars_arg} >NUL\r\nset\r\n")
+
+        execute_process(
+            COMMAND "$ENV{COMSPEC}" /c "${_ac3_vcvars_bat}"
+            OUTPUT_VARIABLE _ac3_vcvars_env
+            RESULT_VARIABLE _ac3_vcvars_result
+            ERROR_VARIABLE _ac3_vcvars_error)
+
+        if(_ac3_vcvars_result EQUAL 0)
+            message(STATUS "vcvarsall.bat ${_ac3_vcvars_arg} succeeded")
+            break()
+        else()
+            message(STATUS "vcvarsall.bat ${_ac3_vcvars_arg} failed (${_ac3_vcvars_result}); "
+                "trying the next candidate architecture argument, if any")
+        endif()
+    endforeach()
 
     if(NOT _ac3_vcvars_result EQUAL 0)
-        message(FATAL_ERROR "vcvarsall.bat x64 failed (${_ac3_vcvars_result}): ${_ac3_vcvars_error}")
+        message(FATAL_ERROR
+            "vcvarsall.bat failed for every candidate architecture argument tried "
+            "(${_ac3_vcvars_candidates}): ${_ac3_vcvars_error}")
     endif()
+
+    unset(_ac3_vcvars_candidates)
+    unset(_ac3_vcvars_arg)
 
     # Walk the `set` dump one line at a time, peeling the head off the remainder.
     #

@@ -7,7 +7,7 @@
 using namespace std::chrono_literals;
 using ac3::audio::SilenceWatchdog;
 
-TEST_CASE("a watchdog that keeps seeing data never times out", "[watchdog]") {
+TEST_CASE("a watchdog that keeps seeing data never times out", "[watchdog][concurrency]") {
     SilenceWatchdog watchdog(3000ms);
     auto now = std::chrono::steady_clock::now();
     watchdog.reset(now);
@@ -19,7 +19,7 @@ TEST_CASE("a watchdog that keeps seeing data never times out", "[watchdog]") {
     }
 }
 
-TEST_CASE("silence past the timeout trips the watchdog", "[watchdog]") {
+TEST_CASE("silence past the timeout trips the watchdog", "[watchdog][concurrency]") {
     SilenceWatchdog watchdog(3000ms);
     auto now = std::chrono::steady_clock::now();
     watchdog.reset(now);
@@ -36,7 +36,7 @@ TEST_CASE("silence past the timeout trips the watchdog", "[watchdog]") {
     CHECK(watchdog.timed_out(now));
 }
 
-TEST_CASE("a late arrival resets the silence clock", "[watchdog]") {
+TEST_CASE("a late arrival resets the silence clock", "[watchdog][concurrency]") {
     SilenceWatchdog watchdog(3000ms);
     auto now = std::chrono::steady_clock::now();
     watchdog.reset(now);
@@ -58,7 +58,7 @@ TEST_CASE("a late arrival resets the silence clock", "[watchdog]") {
     CHECK(watchdog.timed_out(now));
 }
 
-TEST_CASE("timed_out is a pure read - it does not consume the trip", "[watchdog]") {
+TEST_CASE("timed_out is a pure read - it does not consume the trip", "[watchdog][concurrency]") {
     SilenceWatchdog watchdog(1000ms);
     auto now = std::chrono::steady_clock::now();
     watchdog.reset(now);
@@ -72,7 +72,8 @@ TEST_CASE("timed_out is a pure read - it does not consume the trip", "[watchdog]
     CHECK(watchdog.timed_out(now));
 }
 
-TEST_CASE("an untouched watchdog exposes the timeout it was built with", "[watchdog]") {
+TEST_CASE("an untouched watchdog exposes the timeout it was built with",
+          "[watchdog][concurrency]") {
     CHECK(SilenceWatchdog(3000ms).timeout() == 3000ms);
     CHECK(SilenceWatchdog().timeout() == 3000ms);  // the default
 }

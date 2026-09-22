@@ -112,7 +112,12 @@ TEST_CASE("HMAC-SHA-256 matches RFC 4231 test vectors", "[signing][hmac]") {
 // --- Runtime key loading ----------------------------------------------------
 TEST_CASE("load_signing_key reads a key file", "[signing][key]") {
     namespace fs = std::filesystem;
-    const fs::path dir = fs::temp_directory_path();
+    // AC3FORGE_TEST_SCRATCH_DIR rather than fs::temp_directory_path(), for the
+    // reason tests/cli/test_cli.cpp's own scratch_dir explains - the key
+    // filenames below are fixed, so a machine-global directory is one two
+    // concurrently running ac3tests binaries would collide in.
+    const fs::path dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "signing";
+    fs::create_directories(dir);
 
     SECTION("base64 contents decode to the raw key, whitespace ignored") {
         const fs::path p = dir / "ac3forge_test_key_b64.txt";
@@ -253,6 +258,57 @@ TEST_CASE("sign_atmos_stream is a no-op without a key or a container", "[signing
         const std::vector<std::byte> before = stream;
         CHECK(ac3::signing::sign_atmos_stream(stream, make_key(0x11)) == 0);
         CHECK(stream == before);
+    }
+}
+
+// Found by fuzz/fuzz_signing_verify (roadmap VX3): verify_atmos_stream walks
+// a frame the caller did not produce, and on a malformed one the frame's own
+// endmant can exceed the exponent array the walk actually recovered. The
+// per-channel `tally` then took subspan(0, endmant) of a shorter - possibly
+// empty - span, which is a precondition violation, not a clamp: on an empty
+// span it yields a null data pointer with a non-zero size, which
+// compute_bit_allocation dereferenced. `tally` now marks the frame desynced
+// instead, so it verifies as kNoContainer rather than on a bit range that
+// was never right.
+//
+// This is a smoke test, not the reproducer - the exact byte pattern is
+// committed at fuzz/regressions/fuzz_signing_verify/, where fuzz-regress
+// replays it under ASan/UBSan, which is the only build that can see the
+// original defect at all. What this checks is the property that matters to
+// every caller: verification over arbitrary bytes returns, and returns an
+// answer, rather than reading out of bounds.
+TEST_CASE("verify_atmos_stream survives arbitrary bytes", "[signing][verify]") {
+    const ac3::signing::SigningKey key = make_key(0x33);
+
+    SECTION("a truncated real stream") {
+        const std::vector<std::byte> original = encode_atmos_stream(2, /*emit_objects=*/true);
+        REQUIRE(original.size() > 64);
+        for (std::size_t keep : {std::size_t{7}, original.size() / 3, original.size() - 1}) {
+            CAPTURE(keep);
+            const std::vector<std::byte> cut(original.begin(),
+                                             original.begin() + static_cast<std::ptrdiff_t>(keep));
+            const auto summary = ac3::signing::verify_atmos_stream(cut, key);
+            CHECK(summary.valid + summary.mismatch + summary.no_container >= 0);
+        }
+    }
+
+    SECTION("bytes that only look like a syncframe") {
+        // 0x0B77 then a frmsiz claiming far more than is here: the framing
+        // walk has to stop, and the frame walk behind it must not read past
+        // what it was given.
+        std::vector<std::byte> fake(96, std::byte{0xA5});
+        fake[0] = std::byte{0x0B};
+        fake[1] = std::byte{0x77};
+        const auto summary = ac3::signing::verify_atmos_stream(fake, key);
+        CHECK(summary.valid == 0);
+    }
+
+    SECTION("an empty stream and a stream shorter than a header") {
+        CHECK(ac3::signing::verify_atmos_stream({}, key).no_container == 0);
+        const std::vector<std::byte> tiny(3, std::byte{0x0B});
+        CHECK(ac3::signing::verify_atmos_stream(tiny, key).no_container == 0);
+        CHECK(ac3::signing::verify_atmos_frame(tiny, key) ==
+              ac3::signing::VerifyResult::kNoContainer);
     }
 }
 

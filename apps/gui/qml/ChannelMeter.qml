@@ -10,7 +10,15 @@ import Ac3Forge
 RowLayout {
     id: root
 
-    // One entry of EncoderController.channelLevels; empty while no layout is
+    // Which controller's meterFloorDb/clearClipLatch back this row - every
+    // existing caller (the encode workbench's own meter grid) leaves this at
+    // its default, so EncoderController stays the implicit owner unless a
+    // caller says otherwise; StreamPlayerDialog.qml is the one caller that
+    // does, since its levels/CLIP latches live on StreamPlayerController
+    // instead.
+    property QtObject controller: EncoderController
+
+    // One entry of controller.channelLevels; empty while no layout is
     // loaded, hence the defaults on every read below. The row's own identity
     // (its name, whether the routing feeds it) comes from channelMeta via
     // the two properties beneath, which only change when the layout does.
@@ -37,6 +45,20 @@ RowLayout {
                                       ? Theme.accent : Theme.neutral800
 
     spacing: 6
+
+    // A live level indicator, not static text: name and description are
+    // rebuilt from the same fed/peakDb/clipped state the visual fill and
+    // CLIP box already read, so a screen reader's announcement can never
+    // say something the meter itself disagrees with.
+    Accessible.role: Accessible.Indicator
+    Accessible.name: root.channelName
+    Accessible.description: !root.fed
+        ? qsTr("not fed")
+        : (root.peakDb <= root.controller.meterFloorDb
+            ? qsTr("silent")
+            : (root.clipped
+                ? qsTr("%1 dBFS, clipped").arg(root.peakDb.toFixed(1))
+                : qsTr("%1 dBFS").arg(root.peakDb.toFixed(1))))
 
     Text {
         Layout.preferredWidth: 56
@@ -79,7 +101,7 @@ RowLayout {
             width: 2
             height: parent.height
             color: root.barColor
-            visible: root.fed && root.peakDb > EncoderController.meterFloorDb
+            visible: root.fed && root.peakDb > root.controller.meterFloorDb
         }
 
         // The hold marker lags the peak down, so the loudest moment of the
@@ -92,13 +114,13 @@ RowLayout {
             color: Theme.text
             visible: root.fed
                      && (root.level.holdDb !== undefined ? root.level.holdDb : -120)
-                        > EncoderController.meterFloorDb
+                        > root.controller.meterFloorDb
         }
     }
 
     Text {
         Layout.preferredWidth: 50
-        text: !root.fed || root.peakDb <= EncoderController.meterFloorDb
+        text: !root.fed || root.peakDb <= root.controller.meterFloorDb
               ? "-∞" : root.peakDb.toFixed(1)
         color: root.clipped ? Theme.accent700 : Theme.text
         opacity: root.fed ? 1.0 : 0.45
@@ -119,6 +141,16 @@ RowLayout {
         // the row instead of implying a judgement is being made.
         opacity: root.fed ? 1.0 : 0.45
 
+        // A button only once there is a latch actually worth clearing -
+        // Accessible.checked mirrors the same `clipped` state the fill and
+        // border colours already key off, and disabled tracks the MouseArea's
+        // own `enabled` exactly rather than a second guess at it.
+        Accessible.role: Accessible.Button
+        Accessible.name: qsTr("Clear clip indicator for %1").arg(root.channelName)
+        Accessible.checkable: true
+        Accessible.checked: root.clipped
+        Accessible.onPressAction: root.controller.clearClipLatch(root.channelIndex)
+
         Text {
             anchors.centerIn: parent
             text: qsTr("CLIP")
@@ -137,7 +169,7 @@ RowLayout {
             anchors.fill: parent
             enabled: root.fed && root.clipped
             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onClicked: EncoderController.clearClipLatch(root.channelIndex)
+            onClicked: root.controller.clearClipLatch(root.channelIndex)
         }
     }
 }

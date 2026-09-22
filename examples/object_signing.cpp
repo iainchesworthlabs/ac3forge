@@ -10,6 +10,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdio>
+#include <fmt/printf.h>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -53,7 +54,7 @@ int main() {
     for (int frame = 0; frame < kFrames; ++frame) {
         const auto unit = encoder.encode_frame(views, placement);
         if (!unit) {
-            std::printf("atmos encode failed: %d\n", std::to_underlying(unit.error()));
+            fmt::printf("atmos encode failed: %d\n", std::to_underlying(unit.error()));
             return 1;
         }
         stream.insert(stream.end(), unit->bytes.begin(), unit->bytes.end());
@@ -62,6 +63,6 @@ int main() {
     const ac3::signing::SigningKey key{as_bytes("ac3forge-example-key-DO-NOT-USE")};
     const int signed_count = ac3::signing::sign_atmos_stream(stream, key);
 
-    std::printf("signed %d of %d frames (%zu bytes)\n", signed_count, kFrames, stream.size());
+    fmt::printf("signed %d of %d frames (%zu bytes)\n", signed_count, kFrames, stream.size());
     return signed_count == kFrames ? 0 : 1;
 }

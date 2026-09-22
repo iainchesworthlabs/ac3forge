@@ -1,8 +1,17 @@
 #include "ac3/meta/loudness.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
+#include <memory>
 #include <numbers>
+#include <numeric>
+#include "ac3/core/eac3_tables.hpp"
+#include "ac3/core/tables.hpp"
+#include <optional>
+#include <span>
+#include <vector>
 
 namespace ac3::meta {
 
@@ -50,8 +59,11 @@ constexpr double kLraRelativeGateLu = -20.0;
 constexpr double kLraLowPercentile = 10.0;
 constexpr double kLraHighPercentile = 95.0;
 
-// BS.1770 Table 3: unity for left, right and centre, +1.5 dB for each
-// surround, and the LFE simply does not participate.
+// The one non-unity weight either algorithm uses, and the same number in
+// both: Annex 1's Table 3 gives it to Ls and Rs by name, and Annex 3's
+// Table 4 gives it to whatever sits at 60..120 degrees azimuth below
+// 30 degrees elevation - which is where Ls and Rs are. The LFE participates
+// in neither.
 constexpr double kSurroundWeight = 1.41;
 
 // ITU-R BS.1770-4 Annex 2 ("Guidelines for accurate measurement of
@@ -101,9 +113,156 @@ constexpr std::array<std::array<double, kTruePeakTaps>, kTruePeakPhases> kTruePe
 
 }  // namespace
 
-LoudnessMeter::LoudnessMeter(SampleRate rate, Acmod acmod, bool lfe) {
+std::optional<double> position_weight(eac3::chanmap::Location location) {
+    using Location = eac3::chanmap::Location;
+    switch (location) {
+        // Annex 3 weights "each channel except the LFE channels", so an
+        // LFE-type location is not a term in the sum at all.
+        case Location::kLfe:
+        case Location::kLfe2:
+            return std::nullopt;
+
+        // Table 4's one non-unity cell: 60 <= |theta| <= 120 at |phi| < 30.
+        // Table 5 confirms all three pairs at 1.41 - M±110 (Ls/Rs, the 5.1
+        // surrounds Annex 1's own Table 3 already weighted 1.41, which is why
+        // a 5.1 layout measures the same through either algorithm), M±090
+        // (Lsd/Rsd, the direct-radiating side surrounds a 7.1 layout uses)
+        // and M±060 (Lw/Rw, the wides).
+        //
+        // Ls/Rs and Lsd/Rsd are robust to the exact angle assumed: anywhere
+        // from 90 to 110 degrees is inside the sector. Lw/Rw sit right on its
+        // 60-degree edge, which Table 4 includes ("60 <= |theta|") and Table
+        // 5's M±060 row then states outright at 1.41.
+        case Location::kLeftSurround:
+        case Location::kRightSurround:
+        case Location::kLsd:
+        case Location::kRsd:
+        case Location::kLw:
+        case Location::kRw:
+            return kSurroundWeight;
+
+        // Everything else is unity. That is three different cells of Table 4,
+        // listed together because the answer is the same and a switch with
+        // three identical branches is worse to read than one:
+        //
+        //   |theta| < 60 (first column)      - M+000 (C), M±030 (L/R) and
+        //                                      M±SC (Lc/Rc, the "screen" pair
+        //                                      inboard of L/R).
+        //   120 < |theta| <= 180 (third)     - M±135 (Lrs/Rrs, the 7.1 rear
+        //                                      pair) and M+180 (Cs). So
+        //                                      widening 5.1 to 7.1 adds two
+        //                                      channels that are NOT
+        //                                      surround-weighted, whatever
+        //                                      their names suggest.
+        //   |phi| >= 30 (the "else" row)     - every upper-layer and top
+        //                                      position, whatever its azimuth:
+        //                                      U+000/U±030/U±045/U±090/U±110/
+        //                                      U±135/U+180 and T+000 are all
+        //                                      1.00 in Table 5, so no height
+        //                                      channel is ever
+        //                                      surround-weighted. Robust to
+        //                                      the exact elevation assumed,
+        //                                      since any plausible height
+        //                                      angle is at or above 30
+        //                                      degrees and the row spans the
+        //                                      whole azimuth circle.
+        case Location::kLeft:
+        case Location::kCentre:
+        case Location::kRight:
+        case Location::kLc:
+        case Location::kRc:
+        case Location::kLrs:
+        case Location::kRrs:
+        case Location::kCs:
+        case Location::kVhl:
+        case Location::kVhr:
+        case Location::kVhc:
+        case Location::kLts:
+        case Location::kRts:
+        case Location::kTs:
+            return 1.0;
+    }
+    return std::nullopt;
+}
+
+// Every private data member, following the same pimpl pattern as
+// ac3::io::WavStreamReader/Writer and ac3::FrameEncoder.
+struct LoudnessMeter::Impl {
+    // BS.1770 K-weighting: a high-shelf pre-filter then the RLB high-pass,
+    // both biquads, both per channel with their own state.
+    struct Biquad {
+        std::array<double, 3> b{};
+        std::array<double, 2> a{};  // a0 normalised out
+    };
+    struct State {
+        std::array<double, 2> x{};
+        std::array<double, 2> y{};
+    };
+
+    Biquad shelf_{};
+    Biquad highpass_{};
+    std::vector<State> shelf_state_;
+    std::vector<State> highpass_state_;
+    // The pushed channel slots that are terms in the loudness sum, and their
+    // Table 3 / Table 4 weights - parallel, both sized fullbw_. An LFE-type
+    // slot is in neither, since BS.1770 drops it from the sum rather than
+    // weighting it zero; true peak still reads it, straight out of `channels`
+    // by slot. Table 5.8's coded order and Table E2.5's bit order both put
+    // the LFE-type channels last, so loudness_slots_ is in practice the
+    // leading run 0..fullbw_-1 - but every loop below indexes through it
+    // rather than assuming that.
+    std::vector<int> loudness_slots_;
+    std::vector<double> weights_;
+    // Mean-square accumulator per channel over the current 100 ms step, plus
+    // the four most recent steps, which is how the 400 ms window with 75%
+    // overlap is built without buffering audio.
+    std::vector<double> step_sum_;
+    std::vector<std::array<double, 4>> recent_;
+    // Same idea as recent_, widened to a 3 s/30-step window for short-term
+    // loudness and (via short_term_power_history_ below) Loudness Range.
+    // EBU Tech 3342 §3.1 asks for at least 10 Hz sampling of the short-term
+    // series; the existing 100 ms step already gives exactly that, so no
+    // separate timer is needed.
+    std::vector<std::array<double, 30>> short_term_recent_;
+    // Weighted power sum of each gated 400 ms block. One double per 100 ms of
+    // programme is all the gating needs: the weights are constant, so the mean
+    // of the weighted sums equals the weighted sum of the means.
+    std::vector<double> block_power_;
+    // The whole-programme series of un-gated short-term (3 s) block power,
+    // one entry per 100 ms once the first 3 s has elapsed — loudness_range()
+    // applies Tech 3342's own gate to this at read time, since it is a
+    // different gate to the one block_power_ was already filtered through.
+    std::vector<double> short_term_power_history_;
+    double momentary_power_ = 0.0;
+    double short_term_power_ = 0.0;
+
+    // Per-channel delay line for the true-peak oversampler (BS.1770-4
+    // Annex 2), sized to channels_ (LFE included) rather than fullbw_.
+    std::vector<std::array<double, 12>> true_peak_history_;
+    double true_peak_abs_max_ = 0.0;
+    bool true_peak_seen_ = false;
+
+    // Every pushed channel, LFE-type included - the width true peak reads.
+    int channels_ = 0;
+    // How many of them are terms in the loudness sum, i.e. loudness_slots_'
+    // and weights_' shared length, and the width of every per-channel filter
+    // and accumulator above.
+    int fullbw_ = 0;
+    int step_samples_ = 0;
+    int step_filled_ = 0;
+    int steps_seen_ = 0;
+};
+
+LoudnessMeter::~LoudnessMeter() = default;
+LoudnessMeter::LoudnessMeter(LoudnessMeter&&) noexcept = default;
+LoudnessMeter& LoudnessMeter::operator=(LoudnessMeter&&) noexcept = default;
+
+int LoudnessMeter::channel_count() const { return impl_->channels_; }
+
+void LoudnessMeter::init(SampleRate rate, int channels, std::span<const int> loudness_slots,
+                         std::span<const double> weights) {
     const auto fs = static_cast<double>(sample_rate_hz(rate));
-    step_samples_ = static_cast<int>(sample_rate_hz(rate) / 10);
+    impl_->step_samples_ = static_cast<int>(sample_rate_hz(rate) / 10);
 
     {
         const double k = std::tan(std::numbers::pi * kShelfHz / fs);
@@ -111,9 +270,9 @@ LoudnessMeter::LoudnessMeter(SampleRate rate, Acmod acmod, bool lfe) {
         const double vb = std::pow(vh, kShelfVbExponent);
         const double kq = k / kShelfQ;
         const double a0 = 1.0 + kq + k * k;
-        shelf_.b = {(vh + vb * kq + k * k) / a0, 2.0 * (k * k - vh) / a0,
+        impl_->shelf_.b = {(vh + vb * kq + k * k) / a0, 2.0 * (k * k - vh) / a0,
                     (vh - vb * kq + k * k) / a0};
-        shelf_.a = {2.0 * (k * k - 1.0) / a0, (1.0 - kq + k * k) / a0};
+        impl_->shelf_.a = {2.0 * (k * k - 1.0) / a0, (1.0 - kq + k * k) / a0};
     }
     {
         const double k = std::tan(std::numbers::pi * kHighpassHz / fs);
@@ -122,90 +281,142 @@ LoudnessMeter::LoudnessMeter(SampleRate rate, Acmod acmod, bool lfe) {
         // The standard's numerator is exactly 1, −2, 1 — undivided by a0, which
         // leaves the passband gain at 1.005 rather than 1. That is the filter
         // BS.1770 specifies, so it is the filter measured against.
-        highpass_.b = {1.0, -2.0, 1.0};
-        highpass_.a = {2.0 * (k * k - 1.0) / a0, (1.0 - kq + k * k) / a0};
+        impl_->highpass_.b = {1.0, -2.0, 1.0};
+        impl_->highpass_.a = {2.0 * (k * k - 1.0) / a0, (1.0 - kq + k * k) / a0};
     }
 
-    fullbw_ = fullbw_channel_count(acmod);
-    channels_ = fullbw_ + (lfe ? 1 : 0);
+    impl_->channels_ = channels;
+    impl_->fullbw_ = static_cast<int>(loudness_slots.size());
+    impl_->loudness_slots_.assign(loudness_slots.begin(), loudness_slots.end());
+    impl_->weights_.assign(weights.begin(), weights.end());
 
-    weights_.assign(static_cast<std::size_t>(fullbw_), 1.0);
-    // Which coded positions are surrounds depends on acmod (Table 5.8): the
-    // single S of 2/1 and 3/1 sits last, and 2/2 and 3/2 end with Ls, Rs.
-    switch (acmod) {
-        case Acmod::k2_1:
-        case Acmod::k3_1:
-            weights_.back() = kSurroundWeight;
-            break;
-        case Acmod::k2_2:
-        case Acmod::k3_2:
-            weights_[weights_.size() - 2] = kSurroundWeight;
-            weights_.back() = kSurroundWeight;
-            break;
-        default:
-            break;
+    const auto count = static_cast<std::size_t>(impl_->fullbw_);
+    impl_->shelf_state_.assign(count, Impl::State{});
+    impl_->highpass_state_.assign(count, Impl::State{});
+    impl_->step_sum_.assign(count, 0.0);
+    impl_->recent_.assign(count, std::array<double, 4>{});
+    impl_->short_term_recent_.assign(count, std::array<double, 30>{});
+    impl_->true_peak_history_.assign(static_cast<std::size_t>(impl_->channels_),
+                                     std::array<double, 12>{});
+}
+
+LoudnessMeter::LoudnessMeter(SampleRate rate, Acmod acmod, bool lfe)
+    : impl_(std::make_unique<Impl>()) {
+    const int fullbw = fullbw_channel_count(acmod);
+    // Table 5.8 codes the full-bandwidth channels first and the LFE last, so
+    // the loudness terms are simply slots 0..fullbw-1.
+    std::vector<int> slots(static_cast<std::size_t>(fullbw));
+    std::iota(slots.begin(), slots.end(), 0);
+
+    std::vector<double> weights(static_cast<std::size_t>(fullbw), 1.0);
+    // Which coded positions are surrounds depends on acmod (Table 5.8): 2/1
+    // and 3/1 end with a single S, 2/2 and 3/2 end with Ls and Rs, and no
+    // other mode has any. In every case they are the LAST coded channels, so
+    // the count is the only thing that varies.
+    const std::size_t surrounds = [acmod]() -> std::size_t {
+        switch (acmod) {
+            case Acmod::k2_1:
+            case Acmod::k3_1:
+                return 1;
+            case Acmod::k2_2:
+            case Acmod::k3_2:
+                return 2;
+            default:
+                return 0;
+        }
+    }();
+    // Clamped rather than subtracted outright. Table 5.8 guarantees a mode is
+    // at least as wide as its own surround count - 2/1 codes three channels,
+    // 3/2 five - but at -O3 GCC cannot see through fullbw_channel_count() to
+    // prove `weights` is even non-empty, and -Werror=null-dereference fires
+    // on the indexing if it cannot. std::min costs nothing and makes the
+    // bound something the compiler can check rather than something it has to
+    // take on trust.
+    for (std::size_t i = weights.size() - std::min(surrounds, weights.size());
+         i < weights.size(); ++i) {
+        weights[i] = kSurroundWeight;
     }
+    init(rate, fullbw + (lfe ? 1 : 0), slots, weights);
+}
 
-    shelf_state_.assign(static_cast<std::size_t>(fullbw_), State{});
-    highpass_state_.assign(static_cast<std::size_t>(fullbw_), State{});
-    step_sum_.assign(static_cast<std::size_t>(fullbw_), 0.0);
-    recent_.assign(static_cast<std::size_t>(fullbw_), std::array<double, 4>{});
-    short_term_recent_.assign(static_cast<std::size_t>(fullbw_), std::array<double, 30>{});
-    true_peak_history_.assign(static_cast<std::size_t>(channels_), std::array<double, 12>{});
+LoudnessMeter::LoudnessMeter(SampleRate rate, const eac3::chanmap::Layout& layout)
+    : impl_(std::make_unique<Impl>()) {
+    std::vector<int> slots;
+    std::vector<double> weights;
+    slots.reserve(static_cast<std::size_t>(layout.count));
+    weights.reserve(static_cast<std::size_t>(layout.count));
+    for (int slot = 0; slot < layout.count; ++slot) {
+        // std::nullopt is an LFE-type location, which is not a term in the
+        // sum at all - it simply never joins either array, while still
+        // counting towards channels_ so true peak keeps reading it.
+        if (const auto weight = position_weight(layout[slot])) {
+            slots.push_back(slot);
+            weights.push_back(*weight);
+        }
+    }
+    init(rate, layout.count, slots, weights);
 }
 
 void LoudnessMeter::push(std::span<const std::span<const float>> channels) {
-    // channels_ rather than fullbw_: true peak (below) runs over every
+    // impl_->channels_ rather than impl_->fullbw_: true peak (below) runs over every
     // pushed channel, LFE included, so the LFE channel's own length must
     // not be dropped from the loop bound the way the K-weighting path
     // below deliberately ignores it.
     std::size_t length = 0;
-    for (int ch = 0; ch < channels_ && static_cast<std::size_t>(ch) < channels.size(); ++ch) {
+    for (int ch = 0; ch < impl_->channels_ && static_cast<std::size_t>(ch) < channels.size(); ++ch) {
         length = std::max(length, channels[static_cast<std::size_t>(ch)].size());
     }
     for (std::size_t n = 0; n < length; ++n) {
-        for (int ch = 0; ch < fullbw_ && static_cast<std::size_t>(ch) < channels.size();
-             ++ch) {
+        for (int k = 0; k < impl_->fullbw_; ++k) {
+            // The pushed slot this loudness term reads. Slots ascend, so a
+            // caller that supplied fewer spans than the layout names simply
+            // stops contributing from there on - the same tail-skipping the
+            // old impl_->fullbw_-and-size() loop bound did, now expressed per term
+            // because an LFE-type slot may sit between two loudness ones.
+            const int ch = impl_->loudness_slots_[static_cast<std::size_t>(k)];
+            if (static_cast<std::size_t>(ch) >= channels.size()) {
+                continue;
+            }
             const auto& source = channels[static_cast<std::size_t>(ch)];
             const double x = n < source.size() ? static_cast<double>(source[n]) : 0.0;
-            const auto slot = static_cast<std::size_t>(ch);
+            const auto slot = static_cast<std::size_t>(k);
 
-            auto& s1 = shelf_state_[slot];
-            const double mid = shelf_.b[0] * x + shelf_.b[1] * s1.x[0] +
-                               shelf_.b[2] * s1.x[1] - shelf_.a[0] * s1.y[0] -
-                               shelf_.a[1] * s1.y[1];
+            auto& s1 = impl_->shelf_state_[slot];
+            const double mid = impl_->shelf_.b[0] * x + impl_->shelf_.b[1] * s1.x[0] +
+                               impl_->shelf_.b[2] * s1.x[1] - impl_->shelf_.a[0] * s1.y[0] -
+                               impl_->shelf_.a[1] * s1.y[1];
             s1.x = {x, s1.x[0]};
             s1.y = {mid, s1.y[0]};
 
-            auto& s2 = highpass_state_[slot];
-            const double out = highpass_.b[0] * mid + highpass_.b[1] * s2.x[0] +
-                               highpass_.b[2] * s2.x[1] - highpass_.a[0] * s2.y[0] -
-                               highpass_.a[1] * s2.y[1];
+            auto& s2 = impl_->highpass_state_[slot];
+            const double out = impl_->highpass_.b[0] * mid + impl_->highpass_.b[1] * s2.x[0] +
+                               impl_->highpass_.b[2] * s2.x[1] - impl_->highpass_.a[0] * s2.y[0] -
+                               impl_->highpass_.a[1] * s2.y[1];
             s2.x = {mid, s2.x[0]};
             s2.y = {out, s2.y[0]};
 
-            step_sum_[slot] += out * out;
+            impl_->step_sum_[slot] += out * out;
         }
         // Separate from the K-weighting loop above: true peak measures every
-        // coded channel including LFE (fullbw_ excludes it), and runs off
+        // coded channel including LFE (impl_->fullbw_ excludes it), and runs off
         // the raw sample rather than the K-weighted/filtered one - Annex 2
         // oversamples the signal itself, not a loudness-weighted version of
         // it.
-        for (int ch = 0; ch < channels_ && static_cast<std::size_t>(ch) < channels.size();
+        for (int ch = 0; ch < impl_->channels_ && static_cast<std::size_t>(ch) < channels.size();
              ++ch) {
             const auto& source = channels[static_cast<std::size_t>(ch)];
             push_true_peak(ch, n < source.size() ? source[n] : 0.0f);
         }
-        if (++step_filled_ == step_samples_) {
+        if (++impl_->step_filled_ == impl_->step_samples_) {
             push_block();
-            step_filled_ = 0;
+            impl_->step_filled_ = 0;
         }
     }
 }
 
 void LoudnessMeter::push_true_peak(int channel, float sample) {
-    auto& history = true_peak_history_[static_cast<std::size_t>(channel)];
-    // Same left-shift/append-at-the-back convention as recent_/st_history
+    auto& history = impl_->true_peak_history_[static_cast<std::size_t>(channel)];
+    // Same left-shift/append-at-the-back convention as impl_->recent_/st_history
     // above: oldest sample drops off the front, newest lands at the back.
     // Index k is used identically by every phase below, so the particular
     // delay alignment chosen here is arbitrary and does not affect the
@@ -220,7 +431,7 @@ void LoudnessMeter::push_true_peak(int channel, float sample) {
         for (int k = 0; k < kTruePeakTaps; ++k) {
             acc += taps[static_cast<std::size_t>(k)] * history[static_cast<std::size_t>(k)];
         }
-        true_peak_abs_max_ = std::max(true_peak_abs_max_, std::abs(acc));
+        impl_->true_peak_abs_max_ = std::max(impl_->true_peak_abs_max_, std::abs(acc));
     }
     // The interpolated phases approximate, but do not exactly reproduce,
     // the original sample instants (the filter's passband is not perfectly
@@ -228,57 +439,57 @@ void LoudnessMeter::push_true_peak(int channel, float sample) {
     // kTruePeakTaps-1 samples of the stream). Folding the raw sample into
     // the same running max costs nothing and guarantees the oversampled
     // reading is never fractionally lower than plain sample-peak would be.
-    true_peak_abs_max_ = std::max(true_peak_abs_max_, std::abs(static_cast<double>(sample)));
-    true_peak_seen_ = true;
+    impl_->true_peak_abs_max_ = std::max(impl_->true_peak_abs_max_, std::abs(static_cast<double>(sample)));
+    impl_->true_peak_seen_ = true;
 }
 
 void LoudnessMeter::push_block() {
-    for (std::size_t ch = 0; ch < recent_.size(); ++ch) {
-        auto& history = recent_[ch];
-        history = {history[1], history[2], history[3], step_sum_[ch]};
+    for (std::size_t ch = 0; ch < impl_->recent_.size(); ++ch) {
+        auto& history = impl_->recent_[ch];
+        history = {history[1], history[2], history[3], impl_->step_sum_[ch]};
 
-        auto& st_history = short_term_recent_[ch];
+        auto& st_history = impl_->short_term_recent_[ch];
         std::rotate(st_history.begin(), st_history.begin() + 1, st_history.end());
-        st_history.back() = step_sum_[ch];
+        st_history.back() = impl_->step_sum_[ch];
 
-        step_sum_[ch] = 0.0;
+        impl_->step_sum_[ch] = 0.0;
     }
-    ++steps_seen_;
+    ++impl_->steps_seen_;
 
-    if (steps_seen_ >= kStepsPerBlock) {
-        const auto samples = static_cast<double>(step_samples_) * kStepsPerBlock;
+    if (impl_->steps_seen_ >= kStepsPerBlock) {
+        const auto samples = static_cast<double>(impl_->step_samples_) * kStepsPerBlock;
         double power = 0.0;
-        for (std::size_t ch = 0; ch < recent_.size(); ++ch) {
+        for (std::size_t ch = 0; ch < impl_->recent_.size(); ++ch) {
             double sum = 0.0;
-            for (const double value : recent_[ch]) {
+            for (const double value : impl_->recent_[ch]) {
                 sum += value;
             }
-            power += weights_[ch] * sum / samples;
+            power += impl_->weights_[ch] * sum / samples;
         }
         // BS.1770-4 §2's momentary loudness is this exact block power,
         // un-gated - momentary_lkfs() reads it back directly, updated every
         // 100 ms step just like the gated series below.
-        momentary_power_ = power;
+        impl_->momentary_power_ = power;
         // The absolute gate is applied here rather than at the end: a block that
         // fails it can never pass the relative gate either, and dropping it now
         // keeps the stored series to one double per 100 ms of programme.
         if (power > 0.0 && kBlockOffsetDb + 10.0 * std::log10(power) > kAbsoluteGateLkfs) {
-            block_power_.push_back(power);
+            impl_->block_power_.push_back(power);
         }
     }
 
-    if (steps_seen_ >= kShortTermSteps) {
-        const auto samples = static_cast<double>(step_samples_) * kShortTermSteps;
+    if (impl_->steps_seen_ >= kShortTermSteps) {
+        const auto samples = static_cast<double>(impl_->step_samples_) * kShortTermSteps;
         double power = 0.0;
-        for (std::size_t ch = 0; ch < short_term_recent_.size(); ++ch) {
+        for (std::size_t ch = 0; ch < impl_->short_term_recent_.size(); ++ch) {
             double sum = 0.0;
-            for (const double value : short_term_recent_[ch]) {
+            for (const double value : impl_->short_term_recent_[ch]) {
                 sum += value;
             }
-            power += weights_[ch] * sum / samples;
+            power += impl_->weights_[ch] * sum / samples;
         }
-        short_term_power_ = power;
-        // Un-gated, unlike block_power_ above: Loudness Range applies its
+        impl_->short_term_power_ = power;
+        // Un-gated, unlike impl_->block_power_ above: Loudness Range applies its
         // own (different) gate to this series at read time in
         // loudness_range(), so nothing is filtered out here. A block whose
         // power is exactly zero is skipped rather than stored as an
@@ -286,23 +497,23 @@ void LoudnessMeter::push_block() {
         // absolute gate immediately regardless, so omitting it up front
         // changes nothing loudness_range() would have kept.
         if (power > 0.0) {
-            short_term_power_history_.push_back(power);
+            impl_->short_term_power_history_.push_back(power);
         }
     }
 }
 
 std::optional<double> LoudnessMeter::momentary_lkfs() const {
-    if (steps_seen_ < kStepsPerBlock || momentary_power_ <= 0.0) {
+    if (impl_->steps_seen_ < kStepsPerBlock || impl_->momentary_power_ <= 0.0) {
         return std::nullopt;
     }
-    return kBlockOffsetDb + 10.0 * std::log10(momentary_power_);
+    return kBlockOffsetDb + 10.0 * std::log10(impl_->momentary_power_);
 }
 
 std::optional<double> LoudnessMeter::short_term_lkfs() const {
-    if (steps_seen_ < kShortTermSteps || short_term_power_ <= 0.0) {
+    if (impl_->steps_seen_ < kShortTermSteps || impl_->short_term_power_ <= 0.0) {
         return std::nullopt;
     }
-    return kBlockOffsetDb + 10.0 * std::log10(short_term_power_);
+    return kBlockOffsetDb + 10.0 * std::log10(impl_->short_term_power_);
 }
 
 std::optional<double> LoudnessMeter::loudness_range() const {
@@ -310,8 +521,8 @@ std::optional<double> LoudnessMeter::loudness_range() const {
     // BS.1770's own (kAbsoluteGateLkfs), just applied to the short-term
     // series instead of 400 ms blocks.
     std::vector<double> abs_gated;
-    abs_gated.reserve(short_term_power_history_.size());
-    for (const double power : short_term_power_history_) {
+    abs_gated.reserve(impl_->short_term_power_history_.size());
+    for (const double power : impl_->short_term_power_history_) {
         if (kBlockOffsetDb + 10.0 * std::log10(power) >= kAbsoluteGateLkfs) {
             abs_gated.push_back(power);
         }
@@ -362,7 +573,7 @@ std::optional<double> LoudnessMeter::loudness_range() const {
 }
 
 std::optional<double> LoudnessMeter::true_peak_dbtp() const {
-    if (!true_peak_seen_ || true_peak_abs_max_ <= 0.0) {
+    if (!impl_->true_peak_seen_ || impl_->true_peak_abs_max_ <= 0.0) {
         return std::nullopt;
     }
     // No 12.04 dB attenuate/compensate round trip (Annex 2 §3's steps 1 and
@@ -370,27 +581,27 @@ std::optional<double> LoudnessMeter::true_peak_dbtp() const {
     // during oversampling, and this meter works in double throughout, which
     // is exactly the case Annex 2 itself says the step "is not necessary"
     // for.
-    return 20.0 * std::log10(true_peak_abs_max_);
+    return 20.0 * std::log10(impl_->true_peak_abs_max_);
 }
 
 std::optional<double> LoudnessMeter::integrated_lkfs() const {
-    if (block_power_.empty()) {
+    if (impl_->block_power_.empty()) {
         return std::nullopt;
     }
     // The weights are constant across blocks, so the mean of the weighted sums
     // IS the weighted sum of the means — which is why one accumulated number
     // per block is enough to run both gates.
     double sum = 0.0;
-    for (const double power : block_power_) {
+    for (const double power : impl_->block_power_) {
         sum += power;
     }
-    const double ungated = sum / static_cast<double>(block_power_.size());
+    const double ungated = sum / static_cast<double>(impl_->block_power_.size());
     const double relative_gate =
         kBlockOffsetDb + 10.0 * std::log10(ungated) + kRelativeGateLu;
 
     double gated_sum = 0.0;
     std::size_t gated_count = 0;
-    for (const double power : block_power_) {
+    for (const double power : impl_->block_power_) {
         if (kBlockOffsetDb + 10.0 * std::log10(power) > relative_gate) {
             gated_sum += power;
             ++gated_count;

@@ -5,7 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <format>
+#include <fmt/format.h>
 #include <optional>
 #include <string>
 #include <utility>
@@ -181,7 +181,7 @@ void for_each_pcm(snd_pcm_stream_t stream, Visitor&& visit) {
     // snd_card_next() writes -1 into `card` once it runs out, which is the
     // termination condition; a zero return only means the query itself worked.
     while (snd_card_next(&card) == 0 && card >= 0) {
-        const std::string control_name = std::format("hw:{}", card);
+        const std::string control_name = fmt::format("hw:{}", card);
         snd_ctl_t* control = nullptr;
         if (snd_ctl_open(&control, control_name.c_str(), 0) < 0) {
             continue;

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -16,15 +17,23 @@
 // block of samples resident instead of the whole file twice over (raw bytes
 // plus the planar float copy - see read_wav's own doc comment). Its contract
 // is sample-for-sample equality with read_wav on the same file: these tests
-// pin that equality on both supported formats, plus the block-boundary
+// pin that equality on every supported format, plus the block-boundary
 // arithmetic a whole-file reader never has to get right.
 
 namespace {
 
+// Rooted at AC3FORGE_TEST_SCRATCH_DIR rather than
+// std::filesystem::temp_directory_path() for the reason tests/cli/test_cli.cpp's
+// own scratch_dir explains; the leaf is this file's own. The directory is created
+// in the constructor rather than by a scratch_dir() helper of the shape the other
+// files use because this file reaches its scratch space only through this RAII
+// type, which every test here already goes through.
 struct TempWav {
     std::string path;
     explicit TempWav(const char* name) {
-        path = (std::filesystem::temp_directory_path() / name).string();
+        const auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} / "wav_stream_reader";
+        std::filesystem::create_directories(dir);
+        path = (dir / name).string();
     }
     ~TempWav() { std::remove(path.c_str()); }
 };
@@ -39,6 +48,18 @@ std::vector<std::vector<float>> tone_channels(std::size_t channels, std::size_t 
         }
     }
     return out;
+}
+
+void put_le16(std::string& out, std::uint16_t v) {
+    out.push_back(static_cast<char>(v & 0xFF));
+    out.push_back(static_cast<char>((v >> 8) & 0xFF));
+}
+
+void put_le32(std::string& out, std::uint32_t v) {
+    out.push_back(static_cast<char>(v & 0xFF));
+    out.push_back(static_cast<char>((v >> 8) & 0xFF));
+    out.push_back(static_cast<char>((v >> 16) & 0xFF));
+    out.push_back(static_cast<char>((v >> 24) & 0xFF));
 }
 
 }  // namespace
@@ -124,6 +145,92 @@ TEST_CASE("WavStreamReader converts PCM16 exactly as read_wav does", "[wav]") {
     REQUIRE(at == kFrames);
 }
 
+TEST_CASE("WavStreamReader matches read_wav on every widened sample format", "[wav]") {
+    // The depths this project never writes: no in-repo writer to round-trip
+    // against, so the file is assembled by hand and the two readers are
+    // checked against each other sample for sample. That is the contract
+    // that matters here - a caller must be able to swap one for the other -
+    // and test_wav.cpp separately pins each depth's absolute scaling.
+    constexpr std::size_t kFrames = 777;
+    constexpr std::uint16_t kChannels = 2;
+
+    struct Case {
+        const char* name;
+        std::uint16_t format_tag;
+        std::uint16_t bits;
+    };
+    const auto cases = std::array<Case, 4>{{{"ac3_wsr_pcm8.wav", 1, 8},
+                                            {"ac3_wsr_pcm24.wav", 1, 24},
+                                            {"ac3_wsr_pcm32.wav", 1, 32},
+                                            {"ac3_wsr_f64.wav", 3, 64}}};
+
+    for (const auto& one : cases) {
+        INFO(one.name);
+        const std::size_t width = one.bits / 8u;
+        std::string payload;
+        for (std::size_t i = 0; i < kFrames * kChannels; ++i) {
+            // A deterministic walk over the whole container range, so the
+            // sign bit and the low bytes are both exercised at every width.
+            const auto word = static_cast<std::uint64_t>(i * 2654435761u) ^ (i << 21);
+            for (std::size_t b = 0; b < width; ++b) {
+                payload.push_back(static_cast<char>((word >> (8 * b)) & 0xFF));
+            }
+        }
+
+        std::string fmt;
+        put_le16(fmt, one.format_tag);
+        put_le16(fmt, kChannels);
+        put_le32(fmt, 48000);
+        put_le32(fmt, static_cast<std::uint32_t>(48000 * kChannels * width));
+        put_le16(fmt, static_cast<std::uint16_t>(kChannels * width));
+        put_le16(fmt, one.bits);
+
+        std::string file;
+        file += "RIFF";
+        put_le32(file, static_cast<std::uint32_t>(4 + 8 + fmt.size() + 8 + payload.size()));
+        file += "WAVE";
+        file += "fmt ";
+        put_le32(file, static_cast<std::uint32_t>(fmt.size()));
+        file += fmt;
+        file += "data";
+        put_le32(file, static_cast<std::uint32_t>(payload.size()));
+        file += payload;
+
+        TempWav wav{one.name};
+        {
+            std::ofstream out{wav.path, std::ios::binary};
+            out.write(file.data(), static_cast<std::streamsize>(file.size()));
+        }
+
+        const auto whole = ac3::io::read_wav(wav.path);
+        REQUIRE(whole.has_value());
+        REQUIRE(whole->frame_count() == kFrames);
+
+        ac3::io::WavStreamReader reader;
+        REQUIRE(reader.open(wav.path).has_value());
+        CHECK(reader.channels() == kChannels);
+        CHECK(reader.frame_count() == kFrames);
+
+        std::vector<std::vector<float>> planar(kChannels, std::vector<float>(256));
+        std::vector<std::span<float>> views(planar.begin(), planar.end());
+        std::size_t at = 0;
+        while (true) {
+            const auto got = reader.read_planar(views, 256);
+            REQUIRE(got.has_value());
+            if (*got == 0) {
+                break;
+            }
+            for (std::size_t ch = 0; ch < kChannels; ++ch) {
+                for (std::size_t i = 0; i < *got; ++i) {
+                    REQUIRE(planar[ch][i] == whole->channels[ch][at + i]);
+                }
+            }
+            at += *got;
+        }
+        REQUIRE(at == kFrames);
+    }
+}
+
 TEST_CASE("WavStreamReader refuses what read_wav refuses", "[wav]") {
     ac3::io::WavStreamReader reader;
 
@@ -148,6 +255,11 @@ TEST_CASE("WavStreamReader refuses what read_wav refuses", "[wav]") {
         const auto result = reader.open(bogus.path);
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error() == ac3::io::WavError::kNotRiffWave);
+
+        // A rejected open() must not leave the OS file handle held: on
+        // Windows a lingering handle turns this delete into a sharing
+        // violation instead of a clean removal.
+        CHECK(std::remove(bogus.path.c_str()) == 0);
     }
 
     SECTION("reading while closed") {

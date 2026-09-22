@@ -1,11 +1,17 @@
 #include "ac3/admbridge/bridge.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <functional>
 #include <optional>
+#include <span>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "ac3/admbridge/coordinates.hpp"
+#include "ac3/oba/oamd.hpp"
 
 namespace ac3::admbridge {
 
@@ -23,6 +29,12 @@ std::string_view describe(BridgeError error) {
         case BridgeError::kNoAudioForTrack: return "a resolved chna track has no PCM audio";
         case BridgeError::kEmptyBlockSequence: return "an audioChannelFormat has no audioBlockFormat";
         case BridgeError::kTooManyChannels: return "more channels than AtmosEncoder supports";
+        case BridgeError::kEmptyInput: return "write() input had no channels, or a dynamic object had no updates";
+        case BridgeError::kEmptyIabStream: return "build_iab() input had no frames";
+        case BridgeError::kUnsupportedIabChannel:
+            return "a Bed ChannelID has no ac3::oba::BedLabel equivalent";
+        case BridgeError::kNoIabEssenceForChannel:
+            return "a channel's non-zero AudioDataID never resolved to AudioDataPCM essence";
     }
     return "unknown ac3::admbridge::BridgeError";
 }
@@ -64,6 +76,26 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
         }
         return {adm_position_to_room(block.position), block.gain};
     };
+    // BS.2076-2 Table 15/16/17 width/height/depth are the same normalized
+    // [0, 1] extents TS 103 420 §5.6.1.2 codes, on the same three axes, so
+    // this is a rename and not a conversion. An LFE bed channel gets none of
+    // it: it has no direction, so it has no extent around one either.
+    const auto extent_of = [&](const ac3adm::AudioBlockFormat& block) -> ac3::oba::ObjectSize {
+        if (force_lfe) {
+            return {};
+        }
+        return {.width = std::clamp(block.width, 0.0, 1.0),
+                .depth = std::clamp(block.depth, 0.0, 1.0),
+                .height = std::clamp(block.height, 0.0, 1.0)};
+    };
+    // BS.2076-2 §10.2 channelLock and TS 103 420 §5.6.1.5.1 b_object_snap are
+    // the same idea under two names: render to the nearest speaker instead of
+    // panning. maxDistance has no image - OAMD b_object_snap is one bit, with
+    // no distance to condition it on - so a conditioned channelLock maps to an
+    // unconditioned snap, which is the closest thing the syntax can say.
+    const auto snap_of = [&](const ac3adm::AudioBlockFormat& block) {
+        return !force_lfe && block.has_channel_lock && block.channel_lock;
+    };
     const double lfe_send = force_lfe ? 1.0 : 0.0;
 
     std::vector<ac3::oba::Keyframe> keyframes;
@@ -75,12 +107,17 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
     // same nominal time) into a valid, strictly-increasing keyframe sequence without needing a
     // separate branch for each. See kInstantJumpEpsilon's own comment for why this is inaudible
     // at the resolution that reaches the bitstream.
-    const auto push_keyframe = [&](double time_s, ac3::oba::Position position, double gain) {
+    const auto push_keyframe = [&](double time_s, ac3::oba::Position position, double gain,
+                                   ac3::oba::ObjectSize size, bool snap) {
         if (!keyframes.empty() && time_s <= keyframes.back().time_s) {
             time_s = keyframes.back().time_s + kInstantJumpEpsilon;
         }
-        keyframes.push_back(
-            {.time_s = time_s, .position = position, .gain = gain, .lfe_send = lfe_send});
+        keyframes.push_back({.time_s = time_s,
+                             .position = position,
+                             .gain = gain,
+                             .lfe_send = lfe_send,
+                             .size = size,
+                             .snap = snap});
     };
 
     if (channel.block_formats.size() == 1) {
@@ -89,7 +126,8 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
         // time" - one keyframe, which ac3::oba::KeyframePath already holds everywhere.
         const auto& block = channel.block_formats.front();
         const auto [position, gain] = placement_of(block);
-        push_keyframe(object_start_s + block.rtime_s, position, gain);
+        push_keyframe(object_start_s + block.rtime_s, position, gain, extent_of(block),
+                      snap_of(block));
     } else {
         for (std::size_t i = 0; i < channel.block_formats.size(); ++i) {
             const auto& block = channel.block_formats[i];
@@ -97,11 +135,13 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
             const bool has_end = block.has_duration;
             const double t_end = t_start + block.duration_s;
             const auto [position, gain] = placement_of(block);
+            const auto extent = extent_of(block);
+            const bool snap = snap_of(block);
 
             if (i == 0) {
                 // §10.3: "the position specified in the first block covers the entire length of
                 // the block (regardless of the jumpPosition and interpolationLength properties)".
-                push_keyframe(t_start, position, gain);
+                push_keyframe(t_start, position, gain, extent, snap);
                 // A non-final block omitting duration is legal (§5.4.1 only "should" - not
                 // "must" - pair rtime with duration once a channel has more than one block) but
                 // discouraged, and its true end is the NEXT block's own start, not "forever":
@@ -113,7 +153,7 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
                 const double effective_end =
                     has_end ? t_end : object_start_s + channel.block_formats[1].rtime_s;
                 if (effective_end > t_start) {
-                    push_keyframe(effective_end, position, gain);
+                    push_keyframe(effective_end, position, gain, extent, snap);
                 }
                 continue;
             }
@@ -121,7 +161,7 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
             if (!block.jump_position) {
                 // Ramp across the FULL block duration, continuous from whatever the previous
                 // block's own last keyframe already pinned at this same t_start.
-                push_keyframe(has_end ? t_end : t_start, position, gain);
+                push_keyframe(has_end ? t_end : t_start, position, gain, extent, snap);
                 continue;
             }
 
@@ -130,9 +170,9 @@ std::expected<ac3::oba::ObjectPath, BridgeError> build_channel_path(
             const double length =
                 block.has_interpolation_length ? std::max(block.interpolation_length_s, 0.0) : 0.0;
             const double ramp_end = has_end ? std::min(t_start + length, t_end) : t_start + length;
-            push_keyframe(ramp_end, position, gain);
+            push_keyframe(ramp_end, position, gain, extent, snap);
             if (has_end && t_end > ramp_end) {
-                push_keyframe(t_end, position, gain);
+                push_keyframe(t_end, position, gain, extent, snap);
             }
         }
     }
@@ -345,6 +385,203 @@ std::expected<BridgeResult, BridgeError> build(const ac3adm::AdmDocument& docume
         return std::unexpected(BridgeError::kTooManyChannels);
     }
     return out;
+}
+
+namespace {
+
+// One dynamic object's audioBlockFormat sequence from its flattened OAMD update timeline. TS 103
+// 420's own per-block model - a value takes effect at `sample_offset`, reached over
+// `ramp_duration` samples, then held - is already, block for block, exactly BS.2076-2 §10.3's
+// jumpPosition=1 + interpolationLength case (see WriteObjectUpdate's own doc comment in
+// bridge.hpp), so unlike build_channel_path()'s read-direction state machine above this needs no
+// case analysis: every update but the first becomes one audioBlockFormat with jumpPosition set;
+// the first becomes one plain hold, per §10.3's "the first block covers its entire length
+// regardless of jumpPosition" rule - the same rule build_channel_path()'s own i==0 branch reads
+// off the read direction.
+//
+// Non-increasing sample_offsets (two updates landing on the same absolute sample, or a caller
+// bug) are folded together - the later one overwrites the earlier rather than producing a
+// zero-or-negative-duration audioBlockFormat, mirroring build_channel_path()'s own
+// kInstantJumpEpsilon nudge for the equivalent read-direction case.
+std::vector<ac3adm::AudioBlockFormat> build_block_formats(std::span<const WriteObjectUpdate> updates,
+                                                          double total_duration_s, std::uint32_t sample_rate) {
+    std::vector<WriteObjectUpdate> distinct;
+    distinct.reserve(updates.size());
+    for (const auto& update : updates) {
+        if (!distinct.empty() && update.sample_offset <= distinct.back().sample_offset) {
+            distinct.back() = update;
+            continue;
+        }
+        distinct.push_back(update);
+    }
+
+    const auto time_of = [sample_rate](std::uint64_t sample) {
+        return static_cast<double>(sample) / static_cast<double>(sample_rate);
+    };
+    const auto place = [](ac3adm::AudioBlockFormat& block, const ac3::oba::DynamicObject& state) {
+        block.cartesian = true;
+        block.position = room_to_adm_cartesian(state.position);
+        block.gain = std::pow(10.0, state.gain_db / 20.0);
+        block.width = state.size.width;
+        block.height = state.size.height;
+        block.depth = state.size.depth;
+        if (state.snap) {
+            block.has_channel_lock = true;
+            block.channel_lock = true;
+        }
+    };
+
+    std::vector<ac3adm::AudioBlockFormat> blocks;
+    blocks.reserve(distinct.size());
+
+    ac3adm::AudioBlockFormat first;
+    first.rtime_s = time_of(distinct.front().sample_offset);
+    place(first, distinct.front().state);
+    if (distinct.size() > 1) {
+        first.has_duration = true;
+        first.duration_s = time_of(distinct[1].sample_offset) - first.rtime_s;
+    }
+    blocks.push_back(std::move(first));
+
+    for (std::size_t i = 1; i < distinct.size(); ++i) {
+        ac3adm::AudioBlockFormat block;
+        block.rtime_s = time_of(distinct[i].sample_offset);
+        place(block, distinct[i].state);
+        block.has_duration = true;
+        const bool has_next = i + 1 < distinct.size();
+        block.duration_s = (has_next ? time_of(distinct[i + 1].sample_offset) : total_duration_s) - block.rtime_s;
+        block.has_jump_position = true;
+        block.jump_position = true;
+        const auto ramp_samples = distinct[i].ramp_duration_samples;
+        if (ramp_samples > 0) {
+            block.has_interpolation_length = true;
+            block.interpolation_length_s =
+                std::min(static_cast<double>(ramp_samples) / static_cast<double>(sample_rate), block.duration_s);
+        }
+        blocks.push_back(std::move(block));
+    }
+    return blocks;
+}
+
+}  // namespace
+
+std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input) {
+    if (input.channels.empty()) {
+        return std::unexpected(BridgeError::kEmptyInput);
+    }
+
+    ac3adm::AdmDocument document;
+    document.audio.sample_rate = input.sample_rate;
+
+    auto& model = document.model;
+    model.channel_formats.reserve(input.channels.size());
+    model.pack_formats.reserve(input.channels.size());
+    model.stream_formats.reserve(input.channels.size());
+    model.track_formats.reserve(input.channels.size());
+    model.track_uids.reserve(input.channels.size());
+    model.objects.reserve(input.channels.size());
+    document.chna.reserve(input.channels.size());
+    document.audio.channels.reserve(input.channels.size());
+
+    for (std::size_t i = 0; i < input.channels.size(); ++i) {
+        const auto& channel = input.channels[i];
+        // A correlation key only, never written literally - see ac3adm.hpp's own write_bw64 doc
+        // comment on why ac3adm::write_bw64 lets libadm's reassignIds() assign the real IDs.
+        const std::string key = std::to_string(i);
+
+        ac3adm::AudioChannelFormat channel_format;
+        channel_format.id = "chan_" + key;
+        channel_format.name = channel.name;
+
+        ac3adm::AudioPackFormat pack_format;
+        pack_format.id = "pack_" + key;
+        pack_format.name = channel.name;
+        pack_format.channel_format_refs = {channel_format.id};
+
+        if (channel.bed_label) {
+            channel_format.type = ac3adm::TypeDefinition::kDirectSpeakers;
+            pack_format.type = ac3adm::TypeDefinition::kDirectSpeakers;
+
+            ac3adm::AudioBlockFormat block;
+            block.cartesian = true;
+            block.position = room_to_adm_cartesian(ac3::oba::bed_label_position(*channel.bed_label));
+            block.speaker_labels = {std::string(ac3::oba::describe(*channel.bed_label))};
+            channel_format.block_formats.push_back(std::move(block));
+        } else {
+            if (channel.updates.empty()) {
+                return std::unexpected(BridgeError::kEmptyInput);
+            }
+            channel_format.type = ac3adm::TypeDefinition::kObjects;
+            pack_format.type = ac3adm::TypeDefinition::kObjects;
+            const double total_duration_s = static_cast<double>(channel.pcm.size()) / input.sample_rate;
+            channel_format.block_formats = build_block_formats(channel.updates, total_duration_s, input.sample_rate);
+        }
+
+        // §5.1/§5.2's full PCM chain (audioStreamFormat -> audioTrackFormat), not BS.2076-2's
+        // "plain PCM" direct-to-channel shortcut: libadm's own reassignIds() zeroes out any
+        // audioChannelFormat that no audioStreamFormat references ("get an Id with the value
+        // zero and are thereby marked as ADM elements which should be ignored" - id_assignment.hpp's
+        // own doc comment), which the shortcut alone triggers - every audioChannelFormat this
+        // writer produces collapsed to the same "AC_00000000" id until this chain was added
+        // (caught by tests/admbridge/test_adm_bridge_write.cpp's own round trip, not by
+        // construction here). This is also the exact wiring libadm's own
+        // adm/utilities/object_creation.cpp uses for its Objects-type helper.
+        ac3adm::AudioStreamFormat stream_format;
+        stream_format.id = "stream_" + key;
+        stream_format.name = channel.name;
+        stream_format.channel_format_ref = channel_format.id;
+
+        ac3adm::AudioTrackFormat track_format;
+        track_format.id = "track_" + key;
+        track_format.name = channel.name;
+        track_format.stream_format_ref = stream_format.id;
+
+        ac3adm::AudioTrackUid track_uid;
+        track_uid.uid = "atu_" + key;
+        track_uid.has_sample_rate = true;
+        track_uid.sample_rate = input.sample_rate;
+        track_uid.track_format_ref = track_format.id;
+        track_uid.pack_format_ref = pack_format.id;
+
+        ac3adm::AudioObject object;
+        object.id = "obj_" + key;
+        object.name = channel.name;
+        object.pack_format_refs = {pack_format.id};
+        object.track_uid_refs = {track_uid.uid};
+
+        // track_ref/pack_ref explicitly empty: write_bw64 derives the real ones itself from the
+        // resolved AudioTrackUid's own references (see ac3adm.hpp's own write_bw64 doc comment) -
+        // GCC's -Wmissing-field-initializers still wants every ChnaEntry field named here, even
+        // ones this writer never populates.
+        document.chna.push_back({.track_index = static_cast<std::uint16_t>(i + 1),
+                                 .uid = track_uid.uid,
+                                 .track_ref = {},
+                                 .pack_ref = {}});
+        document.audio.channels.emplace_back(channel.pcm.begin(), channel.pcm.end());
+
+        model.channel_formats.push_back(std::move(channel_format));
+        model.pack_formats.push_back(std::move(pack_format));
+        model.stream_formats.push_back(std::move(stream_format));
+        model.track_formats.push_back(std::move(track_format));
+        model.track_uids.push_back(std::move(track_uid));
+        model.objects.push_back(std::move(object));
+    }
+
+    ac3adm::AudioContent content;
+    content.id = "content";
+    content.name = "Programme";
+    for (const auto& object : model.objects) {
+        content.object_refs.push_back(object.id);
+    }
+    model.contents.push_back(std::move(content));
+
+    ac3adm::AudioProgramme programme;
+    programme.id = "programme";
+    programme.name = "Programme";
+    programme.content_refs = {model.contents.back().id};
+    model.programmes.push_back(std::move(programme));
+
+    return document;
 }
 
 }  // namespace ac3::admbridge

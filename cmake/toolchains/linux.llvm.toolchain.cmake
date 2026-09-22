@@ -2,7 +2,7 @@
 # Linux LLVM/Clang Toolchain Configuration
 #
 # Chainloaded by the config-linux-llvm* presets via
-# VCPKG_CHAINLOAD_TOOLCHAIN_FILE. LLVM 21 is the pinned version; the older
+# VCPKG_CHAINLOAD_TOOLCHAIN_FILE. LLVM 22 is the pinned version; the older
 # names are a fallback so a developer box one release behind still configures.
 #
 # Clang uses the system libstdc++ here rather than libc++, which keeps this
@@ -41,17 +41,17 @@ set(_LLVM_BIN_HINTS
     "$ENV{LLVM_ROOT}/bin")
 
 find_program(CMAKE_C_COMPILER
-    NAMES clang-21 clang clang-20 clang-19
+    NAMES clang-22 clang clang-21 clang-20
     HINTS ${_LLVM_BIN_HINTS}
     REQUIRED)
 
 find_program(CMAKE_CXX_COMPILER
-    NAMES clang++-21 clang++ clang++-20 clang++-19
+    NAMES clang++-22 clang++ clang++-21 clang++-20
     HINTS ${_LLVM_BIN_HINTS}
     REQUIRED)
 
 find_program(CMAKE_LINKER
-    NAMES ld.lld-21 ld.lld ld.lld-20 ld.lld-19
+    NAMES ld.lld-22 ld.lld ld.lld-21 ld.lld-20
     HINTS ${_LLVM_BIN_HINTS})
 
 unset(_LLVM_BIN_HINTS)

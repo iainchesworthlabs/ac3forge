@@ -836,10 +836,17 @@ Eac3Probe probe_eac3(std::span<const std::byte> frame) {
     REQUIRE(r.read(1) == 0);  // infomdate
     REQUIRE(r.read(1) == 0);  // addbsie
 
-    // audfrm (Table E1.3), the fixed profile this encoder emits.
+    // audfrm (Table E1.3). numblkscod is fixed (this encoder always writes a
+    // six-block syncframe today), but expstre is a real per-frame choice now
+    // that exponent strategies are planned rather than always hoisted as
+    // Table E2.10 code 0 - the exponent-run planner (EQ1) picks whichever of
+    // Annex E's two forms costs the frame less, and either is legal. The probe
+    // reads the real bit and walks whichever shape it names, the same branch
+    // parse_audfrm takes.
     REQUIRE(numblkscod == 3);
-    r.skip(1 + 1);  // expstre, ahte
-    r.skip(2);      // snroffststr
+    const bool expstre = r.read(1) != 0;
+    r.skip(1);  // ahte
+    r.skip(2);  // snroffststr
     r.skip(1);                        // transproce
     const bool blkswe = r.read(1) != 0;  // blkswe
     // dithflage is the ONLY set flag in this run, which makes it the canary for
@@ -851,11 +858,27 @@ Eac3Probe probe_eac3(std::span<const std::byte> frame) {
     r.skip(1 + 1);  // dbaflde, skipflde
     r.skip(1);      // spxattene
     const int nfchans = ac3::fullbw_channel_count(static_cast<ac3::Acmod>(acmod));
+    bool cplinu0 = false;
     if (acmod > 0x1) {
-        r.skip(1);                      // cplinu[0]
+        cplinu0 = r.read(1) != 0;                        // cplinu[0]
         r.skip(ac3::kBlocksPerFrame - 1);  // cplstre[1..5]
     }
-    r.skip(static_cast<std::size_t>(nfchans) * 5);  // frmchexpstr
+    if (expstre) {
+        // Per-block strategies: cplexpstr[blk] (only where cplinu[0] holds -
+        // this encoder's coupling is frame-wide all-or-nothing, so block 0's
+        // state is every block's) then chexpstr[blk][ch], six blocks.
+        for (int blk = 0; blk < ac3::kBlocksPerFrame; ++blk) {
+            if (cplinu0) {
+                r.skip(2);  // cplexpstr[blk]
+            }
+            r.skip(static_cast<std::size_t>(nfchans) * 2);  // chexpstr[blk][ch]
+        }
+    } else {
+        if (cplinu0) {
+            r.skip(5);  // frmcplexpstr
+        }
+        r.skip(static_cast<std::size_t>(nfchans) * 5);  // frmchexpstr
+    }
     if (lfeon) {
         r.skip(ac3::kBlocksPerFrame);  // lfeexpstr
     }

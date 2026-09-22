@@ -65,6 +65,19 @@ RowLayout {
                 border.color: modelData.primary ? Theme.accent : Theme.divider
                 border.width: 1
 
+                // A Rectangle+TapHandler "button" - see ChannelMeter's CLIP
+                // box for why this app avoids a native Button here (a
+                // Repeater of them has hung the offscreen Qt Quick Test
+                // binary before). Accessible.role makes it read as a real
+                // button regardless.
+                Accessible.role: Accessible.Button
+                Accessible.name: modelData.label
+                Accessible.onPressAction: {
+                    if (modelData.key === "file") root.chooseFile();
+                    else if (modelData.key === "live") root.captureLive();
+                    else root.openTestSignal();
+                }
+
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
@@ -118,6 +131,10 @@ RowLayout {
                     required property var modelData
                     Layout.fillWidth: true
                     spacing: Theme.space2
+
+                    Accessible.role: Accessible.Grouping
+                    Accessible.name: modelData.title
+                    Accessible.description: modelData.body
 
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 2; color: Theme.divider }
                     RowLayout {

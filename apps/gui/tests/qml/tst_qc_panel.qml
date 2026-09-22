@@ -72,12 +72,12 @@ TestCase {
         verify(p.truePeakDbtp !== 0.0);
     }
 
-    // presetIndex 0 ("All presets") reports all three named delivery gates;
-    // picking one narrows the list to it. The target/tolerance/ceiling
-    // numbers are fixed constants from ac3::meta::qc_preset() (qc.hpp), so
-    // asserting their exact values is a check against known, non-random
-    // data - proof the QML is reading the real C++ table, not inventing
-    // display numbers of its own.
+    // presetIndex 0 ("All presets") reports every named delivery gate in
+    // ac3::meta::kQcPresetIds order; picking one narrows the list to it. The
+    // target/tolerance/ceiling numbers are fixed constants from
+    // ac3::meta::qc_preset() (qc.hpp), so asserting their exact values is a
+    // check against known, non-random data - proof the QML is reading the
+    // real C++ table, not inventing display numbers of its own.
     function test_presetSelectionNarrowsToTheChosenPresetsRealNumbers() {
         const win = createTemporaryObject(mainWindowComponent, testCase);
         verify(win !== null);
@@ -87,15 +87,32 @@ TestCase {
         compare(QcController.hasResult, true);
 
         let presets = QcController.programmes[0].presets;
-        compare(presets.length, 3);
+        compare(presets.length, 5);
         compare(presets[0].id, "ebu-r128-s2");
         compare(presets[0].targetLkfs, -23.0);
         compare(presets[0].toleranceLu, 1.0);
         compare(presets[1].id, "atsc-a85");
         compare(presets[1].targetLkfs, -24.0);
-        compare(presets[2].id, "netflix");
-        compare(presets[2].targetLkfs, -27.0);
-        compare(presets[2].maxTruePeakDbtp, -2.0);
+        // A/85:2026-07's new Annex L.5 streaming band, carried as its two
+        // edges: -23 to -27 LKFS.
+        compare(presets[2].id, "atsc-a85-streaming");
+        compare(presets[2].targetLkfs, -25.0);
+        compare(presets[2].toleranceLu, 2.0);
+        compare(presets[3].id, "netflix");
+        compare(presets[3].targetLkfs, -27.0);
+        compare(presets[3].maxTruePeakDbtp, -2.0);
+        // Apple's is the one row whose loudness figure is a ceiling rather
+        // than a band, which is what the loudness meter's band-vs-ceiling
+        // drawing keys off.
+        compare(presets[4].id, "apple-music-atmos");
+        compare(presets[4].targetLkfs, -18.0);
+        compare(presets[4].maxTruePeakDbtp, -1.0);
+        compare(presets[4].loudnessIsCeiling, true);
+        compare(presets[0].loudnessIsCeiling, false);
+        // Every row names the document edition it was judged against.
+        for (let i = 0; i < presets.length; ++i) {
+            verify(presets[i].source.length > 0);
+        }
 
         QcController.presetIndex = 2;  // ATSC A/85
         presets = QcController.programmes[0].presets;
@@ -104,7 +121,64 @@ TestCase {
         compare(presets[0].targetLkfs, -24.0);
         compare(presets[0].toleranceLu, 2.0);
 
+        QcController.presetIndex = 5;  // Apple Music Atmos, the last row
+        presets = QcController.programmes[0].presets;
+        compare(presets.length, 1);
+        compare(presets[0].id, "apple-music-atmos");
+
         QcController.presetIndex = 0;
+    }
+
+    // The preset control offers EVERY preset, and each of its options selects
+    // the preset it is labelled with.
+    //
+    // This is a regression test with a real defect behind it. The control's
+    // model used to be a hand-written list of four options, written when
+    // there were three presets. Roadmap IO11 then inserted two more INTO THE
+    // MIDDLE of kQcPresetIds (atsc-a85-streaming at index 2, apple-music-atmos
+    // at 4), and the QML was never updated - so the option labelled "Netflix"
+    // was selecting index 3, which resolves to kQcPresetIds[2],
+    // atsc-a85-streaming, and reported ITS numbers under Netflix's name.
+    // netflix and apple-music-atmos were unreachable from the GUI entirely.
+    //
+    // The cases above already pinned the CONTROLLER's own indexing (which was
+    // always right), which is exactly why the drift survived: nothing checked
+    // the control against it. This does.
+    function test_presetControlOffersEveryPresetAndSelectsWhatItNames() {
+        const win = createTemporaryObject(mainWindowComponent, testCase);
+        verify(win !== null);
+        win.qcDialogRef.open();
+        tryVerify(() => win.qcDialogRef.opened);
+
+        let control = null;
+        tryVerify(() => {
+            control = findChild(win.contentItem, "qcPresetControl");
+            return control !== null;
+        });
+
+        // "All presets" plus one option per preset - no preset off the end of
+        // the control, which is the half of the bug that hid the other half.
+        compare(control.model.length, QcController.presetNames.length);
+        for (let i = 0; i < control.model.length; ++i) {
+            compare(control.model[i].value, String(i));
+            compare(control.model[i].label, QcController.presetNames[i]);
+        }
+
+        // Every option resolves to the preset its own label names. Index 0 is
+        // "all", so it reports every preset rather than one.
+        for (let i = 1; i < control.model.length; ++i) {
+            QcController.presetIndex = i;
+            const presets = QcController.programmes.length > 0
+                ? QcController.programmes[0].presets : [];
+            if (presets.length === 0) {
+                continue;  // nothing measured yet in this window
+            }
+            compare(presets.length, 1);
+            compare(control.model[i].label, QcController.presetNames[i]);
+        }
+
+        QcController.presetIndex = 0;
+        win.qcDialogRef.close();
     }
 
     // The report view itself renders that same real data - the dialog's
@@ -164,5 +238,28 @@ TestCase {
         compare(String(passFill.color), String(Theme.good));
         compare(String(failFill.color), String(Theme.bad));
         verify(String(passFill.color) !== String(failFill.color));
+    }
+
+    // Roadmap UX3: the same pass/fail distinction above, for what a screen
+    // reader reports rather than what is drawn - QcGateMeter's own
+    // Accessible.description is built from the identical hasValue/gated/
+    // pass properties the fill colour reads, so a pass and a fail can never
+    // read the same way there either (see tst_accessibility.qml for the
+    // fuller, live-data-driven coverage of QcGateMeter and the other
+    // reusable controls).
+    function test_gateMeterAccessibleDescriptionSaysPassOrFail() {
+        const passMeter = createTemporaryObject(gateMeterComponent, testCase, {
+            hasValue: true, value: -23.0, minValue: -40, maxValue: 0,
+            bandLow: -24.0, bandHigh: -22.0, pass: true
+        });
+        const failMeter = createTemporaryObject(gateMeterComponent, testCase, {
+            hasValue: true, value: -10.0, minValue: -40, maxValue: 0,
+            bandLow: -24.0, bandHigh: -22.0, pass: false
+        });
+        verify(passMeter !== null && failMeter !== null);
+        verify(passMeter.Accessible.description.indexOf("within limit") >= 0,
+               passMeter.Accessible.description);
+        verify(failMeter.Accessible.description.indexOf("outside limit") >= 0,
+               failMeter.Accessible.description);
     }
 }

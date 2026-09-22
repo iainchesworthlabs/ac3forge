@@ -153,6 +153,10 @@ either way:
   much the content actually needs — a quiet passage produces a smaller frame than a busy one at
   the same quality. Optional `min_kbps`/`max_kbps` bounds cap how far that can drift, the way
   `-b`/`-B` bound LAME's own VBR mode.
+- **ABR** (average bit rate): a *rate* target again, but a long-run one — the encoder holds one
+  SNR offset across frames and steers it to deliver that average, so frame sizes still move with
+  the content. This is what a streaming ladder rung or a DVB mux contracts for: a rate you can
+  plan a pipe around, without pinning every frame to the same size.
 
 Quality is encoder-relative, not a perceptual scale that means the same thing across encoders —
 and it is **not linear in bit cost**: masking-model bit allocation spends roughly twice the bits
@@ -160,7 +164,65 @@ for a fixed step up in precision, so cost rises steeply in the top part of the q
 high quality with no `max_kbps` bound will often ask for more bits than any legal E-AC-3 frame
 can hold at all for ordinary multi-channel material, and the encoder reports that plainly rather
 than silently truncating — pairing a high quality with a `max_kbps` ceiling is the normal way to
-use it. AC-3 has no equivalent: its frame size cannot vary at all.
+use it. AC-3 has no equivalent: its frame size cannot vary at all — and for the same reason it
+has no ABR either.
+
+## E-AC-3 rate control: what VBR and ABR are worth
+
+The paragraph above used to be the whole story, and "cost rises steeply in the top part of the
+range" was a warning with no number behind it. `python tools/ci/quality_race.py vbr` is that
+number. It sweeps the quality target, measures what each point actually costs, and then encodes
+the *same programme at that same measured rate* three other ways — CBR, ABR, and FFmpeg's own
+E-AC-3 encoder — so every comparison is like for like. Measured 2026-08-23 against a real build,
+stereo, `tools=none`, FFmpeg 8.0.1, on the synthesized multi-segment programme
+`quality_race.py` uses everywhere else (chord, sweep, filtered noise, near-mono speech-like
+content, tone bursts):
+
+| quality | measured kbps | SNR dB | LSD dB | MOS-LQO | vs CBR | vs ABR | vs FFmpeg |
+|--------:|--------------:|-------:|-------:|--------:|-------:|-------:|----------:|
+| 0.10 |    69.6 |  7.05 | 17.33 | 3.53 |  −1.26 |  +0.67 |  +1.38 |
+| 0.20 |   106.6 | 22.97 |  8.28 | 4.20 |  −4.96 |  −6.56 | +16.23 |
+| 0.30 |   166.2 | 39.96 |  6.45 | 4.30 |  +2.05 |  +2.22 |  +1.83 |
+| 0.40 |   261.1 | 54.98 |  4.86 | 4.73 | +11.10 | +10.94 | +12.13 |
+| 0.50 |   404.4 | 58.96 |  4.18 | 4.73 | +11.96 | +11.99 | +13.03 |
+| 0.60 |   585.0 | 59.04 |  3.82 | 4.73 |  +2.39 |  +2.51 | +11.12 |
+| 0.70 |   762.7 | 59.04 |  3.60 | 4.73 |  +0.15 |  +0.15 | +11.07 |
+| 0.80 |   961.4 | 59.04 |  3.55 | 4.73 |  +0.01 |  +0.01 | +11.07 |
+| 0.90 |  1025.5 | 59.04 |  3.54 | 4.73 |  +0.00 |  +0.00 | +11.07 |
+
+The gap columns are SNR differences at the same measured rate; positive means VBR won. Four
+things fall out of it.
+
+**VBR beats CBR at the same rate, but only in the middle of the range.** Between roughly 0.3 and
+0.5 the advantage is real and large — up to +12 dB — because VBR is allowed to overspend on the
+frames that need it without ever paying that back. Below 0.3 it *loses*, by 1.3 dB at quality
+0.10 and 5.0 dB at 0.20: a quality target that low leaves the rate it does spend badly
+distributed, and CBR's flat budget does better with the same bits.
+
+**The top of the range is waste, not headroom.** Everything at 0.6 and above scores 59.04 dB.
+Quality 0.5 reaches 58.96 dB for 404 kbit/s; 0.8 pays 961 kbit/s — 2.4× the bits — for another
+0.08 dB. MOS-LQO saturates even earlier, at 0.40. The old warning was right about the shape and
+understated the conclusion: past about 0.5 there is nothing left to buy on this encoder.
+
+**ABR scores with CBR, not with VBR — and that is what it is for.** Holding an average is the
+same constraint CBR encodes under, so an ABR stream lands within a few tenths of a dB of CBR at
+the same rate (37.75 vs 37.91 at ~166 kbit/s, 44.03 vs 43.88 at ~261, 46.96 vs 46.99 at ~404).
+It is not a quality feature and this table is the evidence: if you can accept a rate that goes
+where the content takes it, plain VBR at 0.3–0.5 is where the quality is. What ABR delivers
+instead is the *rate*, within 1.1–1.8% of target across 96–384 kbit/s, with frame sizes still
+swinging over 3× around it — a mux can plan around that and cannot plan around VBR. Windows
+much longer than the default cost real quality: at a 64-frame window the same encode drops 5 dB
+against CBR, where 8–32 frames stay within 1.5 dB.
+
+**Against FFmpeg's E-AC-3 encoder at the same rate, ac3forge's VBR is ahead everywhere**, by
+about 11 dB from quality 0.4 upward. Read that alongside `README.md`'s CBR numbers rather than
+instead of them — the comparison here is one encoder's VBR against another's CBR, because FFmpeg
+has no E-AC-3 VBR mode to race.
+
+Every rate in the sweep is capped at E-AC-3's own ceiling — `frmsiz` is 11 bits, so 2048 words a
+frame, which is 1024 kbit/s at 48 kHz. That is why the last row measures 1025.5 rather than
+whatever quality 0.90 would otherwise have asked for, and why the three modes converge exactly
+there: at the ceiling nobody has a choice left to make.
 
 ## What E-AC-3 adds over AC-3
 
@@ -186,6 +248,35 @@ E-AC-3 keeps everything AC-3 can do and adds more on top:
 
 Together, these are why E-AC-3 fits more channels and better quality into a given bitrate than
 plain AC-3 can.
+
+### Choosing which tools to use
+
+Every one of these tools trades something away. Coupling gives up per-channel detail above the
+coupling frequency; spectral extension gives up the high band's fine structure entirely and paints
+a described one back in its place. Each is a gain below some bitrate and a loss above it, so an
+encoder has to choose — and this one will choose for you if you ask it to (`tools=auto`).
+
+It used to choose from the bitrate alone. It now also measures the frame: how well the channels'
+high band would survive being replaced by one shared copy, and how much of the signal is up in the
+band synthesis would take over. That matters because the same bitrate can afford a nearly empty
+top end and not a busy one, and because two channels that are already nearly the same thing above
+8 kHz can be coupled almost for free while two genuinely different ones cannot.
+
+Two of the tools are not in that automatic set, and the reasons are worth stating plainly:
+
+- **Enhanced coupling** sounds *better* than ordinary coupling wherever the bitrate can carry its
+  extra side information — measured on real film material, at every bitrate and layout tried. It
+  is left out because FFmpeg cannot read it, and the automatic set has to produce streams that
+  ordinary decoders can play. Ask for it by name (`cpl+ecpl`) if you control the decoder.
+- **Transient pre-noise processing** does not pay. It replaces the audio just before a sharp
+  attack with a copy of slightly earlier audio, to cover up noise the coder can smear backwards
+  into the quiet run-up. Measured over exactly the samples it touches, the copy is 6.5 to 24 dB
+  further from the original than the coder's own output was — at every bitrate, with the gap
+  widening as the bitrate rises — and listeners' predicted scores do not move at all. The reason
+  is that block switching already handles the problem: the encoder shortens its transform around
+  a transient, which confines the noise, and the correction then substitutes for audio that was
+  not damaged in the first place. It remains implemented and correct, as a demonstration of the
+  syntax rather than as a quality tool.
 
 !!! example "See it in code"
     - [Encoding AC-3](../library/encoding-ac3.md)

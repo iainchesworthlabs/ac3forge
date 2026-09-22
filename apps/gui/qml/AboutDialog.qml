@@ -43,6 +43,14 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: Theme.space4
 
+        // A Popup/Dialog is not itself an Item ("Accessible must be
+        // attached to an Item or an Action" at runtime otherwise) - its
+        // contentItem is. title is "" (a styled Text below draws the
+        // visible "ac3forge" heading instead), so Dialog's own
+        // title-derived accessible name has nothing to read without this.
+        Accessible.role: Accessible.Dialog
+        Accessible.name: qsTr("About ac3forge")
+
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.space4

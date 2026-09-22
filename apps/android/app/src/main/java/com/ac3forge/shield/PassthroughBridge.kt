@@ -3,6 +3,8 @@ package com.ac3forge.shield
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import android.os.Build
+import androidx.annotation.ChecksSdkIntAtLeast
 import android.util.Log
 import java.nio.ByteBuffer
 
@@ -50,6 +52,26 @@ class PassthroughBridge {
     private var audioTrack: AudioTrack? = null
 
     /**
+     * Guards [audioTrack] across the two threads that touch it: the encode
+     * loop's own worker calls [open]/[submit], while [close] runs on the main
+     * thread from `MainActivity.onDestroy`.
+     *
+     * Without it, [submit] reads the field into a local and then calls `write`
+     * on it, so a concurrent [close] can `release()` that same track in
+     * between - a write against a released native peer, which is a native
+     * crash rather than an exception Kotlin could catch. The window needs a
+     * teardown to land inside one burst write, which is why it had not been
+     * seen; it is still a use-after-free.
+     *
+     * Held across `write` deliberately: `WRITE_NON_BLOCKING` bounds how long
+     * that can take, so the worst case is a teardown waiting out one
+     * non-blocking write, and `AudioTrack.write` already takes its own
+     * internal locks - this adds no lock class the audio path did not have.
+     * Reentrant, which is what lets [open] call [close] first.
+     */
+    private val trackLock = Any()
+
+    /**
      * Probes whether the current system audio route accepts this ONE
      * format/rate combination for direct IEC 61937 playback. Called once
      * per format from native (not batched - see passthrough.cpp), so
@@ -57,7 +79,9 @@ class PassthroughBridge {
      * rate for the same content.
      */
     fun isDirectPlaybackSupported(carrierRateHz: Int, eac3: Boolean): Boolean {
+        if (!hasDirectPlaybackQuery()) return false
         val format = iec61937Format(carrierRateHz)
+        // codeql[java/deprecated-call]: no replacement below API 33 - see class doc.
         val supported = AudioTrack.isDirectPlaybackSupported(format, MOVIE_ATTRIBUTES)
         Log.d(TAG, "isDirectPlaybackSupported(carrier=$carrierRateHz eac3=$eac3) = $supported")
         return supported
@@ -65,28 +89,32 @@ class PassthroughBridge {
 
     /** Ordinary (non-compressed) direct PCM support, at the content rate. */
     fun isPcmSupported(sampleRateHz: Int): Boolean {
+        if (!hasDirectPlaybackQuery()) return false
         val format = AudioFormat.Builder()
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
             .setSampleRate(sampleRateHz)
             .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
             .build()
+        // codeql[java/deprecated-call]: no replacement below API 33 - see class doc.
         return AudioTrack.isDirectPlaybackSupported(format, MOVIE_ATTRIBUTES)
     }
 
     /** Opens the AudioTrack at the given (already-carrier) rate. */
-    fun open(carrierRateHz: Int, eac3: Boolean): Boolean {
+    fun open(carrierRateHz: Int, eac3: Boolean): Boolean = synchronized(trackLock) {
         close()
 
+        if (!hasDirectPlaybackQuery()) return@synchronized false
         val format = iec61937Format(carrierRateHz)
+        // codeql[java/deprecated-call]: no replacement below API 33 - see class doc.
         if (!AudioTrack.isDirectPlaybackSupported(format, MOVIE_ATTRIBUTES)) {
             Log.w(TAG, "open: isDirectPlaybackSupported=false for carrier=$carrierRateHz eac3=$eac3")
-            return false
+            return@synchronized false
         }
 
         val burstBytes = if (eac3) EAC3_BURST_BYTES else AC3_BURST_BYTES
         val bufferBytes = burstBytes * BUFFER_BURSTS
 
-        return try {
+        try {
             val track = AudioTrack.Builder()
                 .setAudioFormat(format)
                 .setAudioAttributes(MOVIE_ATTRIBUTES)
@@ -110,15 +138,15 @@ class PassthroughBridge {
      * anything other than exactly `sizeBytes` as a failed submit and counts
      * a negative result as an underrun (see passthrough.cpp's submit()).
      */
-    fun submit(buffer: ByteBuffer, sizeBytes: Int): Int {
-        val track = audioTrack ?: return AudioTrack.ERROR_INVALID_OPERATION
+    fun submit(buffer: ByteBuffer, sizeBytes: Int): Int = synchronized(trackLock) {
+        val track = audioTrack ?: return@synchronized AudioTrack.ERROR_INVALID_OPERATION
         buffer.position(0)
         buffer.limit(sizeBytes)
-        return track.write(buffer, sizeBytes, AudioTrack.WRITE_NON_BLOCKING)
+        track.write(buffer, sizeBytes, AudioTrack.WRITE_NON_BLOCKING)
     }
 
-    fun close() {
-        val track = audioTrack ?: return
+    fun close(): Unit = synchronized(trackLock) {
+        val track = audioTrack ?: return@synchronized
         audioTrack = null
         try {
             track.stop()
@@ -128,6 +156,38 @@ class PassthroughBridge {
         }
         track.release()
     }
+
+    /**
+     * Whether this device's Android version has
+     * `AudioTrack.isDirectPlaybackSupported` at all - API 29.
+     *
+     * The app declares `minSdk 26` and called it unconditionally, so on any
+     * API 26-28 device every one of the three call sites above threw
+     * `NoSuchMethodError` - not a caught failure, a crash, on the app's single
+     * most load-bearing platform query. It was never noticed because the
+     * Shield this was written against is on API 30; a 2015/2017 Shield on
+     * Android 9 (API 28), or any other older Android TV, is API 28.
+     *
+     * Returning false rather than raising minSdk: the honest result on such a
+     * device is "no passthrough route can be confirmed", which the waiting
+     * screen already presents properly, and that is a better outcome than
+     * either a crash or refusing to install.
+     */
+    // Tells lint this IS an SDK-version guard. Without it lint only recognises
+    // an inline `Build.VERSION.SDK_INT >= 29` at each call site and keeps
+    // reporting all three as unguarded API-29 calls.
+    @ChecksSdkIntAtLeast(api = 29)
+    private fun hasDirectPlaybackQuery(): Boolean {
+        if (Build.VERSION.SDK_INT >= 29) return true
+        if (!warnedNoDirectQuery) {
+            warnedNoDirectQuery = true
+            Log.w(TAG, "AudioTrack.isDirectPlaybackSupported needs API 29; this device is API " +
+                "${Build.VERSION.SDK_INT} - passthrough cannot be confirmed here")
+        }
+        return false
+    }
+
+    private var warnedNoDirectQuery = false
 
     private fun iec61937Format(carrierRateHz: Int): AudioFormat =
         AudioFormat.Builder()

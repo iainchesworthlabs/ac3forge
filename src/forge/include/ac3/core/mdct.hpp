@@ -18,9 +18,10 @@
 // accepted that evidence it is what every encoder config defaults to
 // (EncoderConfig::fast_mdct / eac3::FrameConfig::fast_mdct default true and
 // are what an encoder actually reads to decide - a caller of THIS function
-// still opts in explicitly). Only THIS transform (alpha = 0) has an
-// accelerated path today - mdct256_forward_first/second's `fast` currently
-// has no effect; see their own doc comment for why.
+// still opts in explicitly). All three forward transforms accelerate - this
+// one and both halves of a block-switched pair, each down its own
+// independently-derived fold; see mdct256_forward_first/second's own doc
+// comment below.
 //
 // Inverse (decoder side, NORMATIVE §7.9.4.1): the N/4-point complex
 // transform with xcos1/xsin1 pre/post twiddles and the windowing/
@@ -29,12 +30,12 @@
 // plus the §7.9.4.1 step-6 overlap-add (pcm = 2 * (x + delay), the factor
 // of 2 undoing encoder headroom scaling).
 //
-// The inverses' `fast` selects a radix-2 FFT for step 3's N/4-point complex
-// sum ONLY - the spec's own pseudocode evaluates that step as a direct
-// O(N^2) sum against a tabulated (k, n) matrix, and with the +j*sin sign
+// The inverses' `fast` selects an FFT for step 3's N/4-point complex sum
+// ONLY - the spec's own pseudocode evaluates that step as a direct O(N^2)
+// sum against a tabulated (k, n) matrix, and with the +j*sin sign
 // convention it is exactly an unscaled inverse DFT, so the fast path is
-// conj(FFT(conj(Z))) through the same radix-2 core the forward's fast fold
-// already uses (fft_radix2.hpp). Steps 2, 4 and 5 - the normative twiddles
+// conj(FFT(conj(Z))) through the same kernel the forward's fast fold
+// already uses (fft_kernel.hpp). Steps 2, 4 and 5 - the normative twiddles
 // and the windowing/de-interleave map - are the identical code either way.
 // Direct remains the default at THIS level for the forward's own reason:
 // the direct evaluation is the spec's statement of the transform and the
@@ -56,6 +57,47 @@ AC3FORGE_EXPORT void mdct512_forward(std::span<const double, 512> windowed,
 // Reconstruction: pcm[n] = 2 * (x[n] + previous_block_x[256 + n]).
 AC3FORGE_EXPORT void imdct512_windowed(std::span<const double, 256> coeffs,
                                        std::span<double, 512> x, bool fast = false);
+
+// ROADMAP PF5's batch-axis follow-on: four INDEPENDENT calls to
+// imdct512_windowed(..., /*fast=*/true) run in lockstep, one object per
+// SIMD lane, instead of four separate scalar/SSE2 calls - the axis PF5's
+// own per-transform 2/4-lane seam cannot reach (there is no clean
+// within-one-transform grouping in the FFT core; see fft_kernel.hpp). Safe
+// to call unconditionally, the same as every other transform in this file:
+// internally checks ac3::internal::cpu::has_avx2() and, when it is false,
+// falls back to four ordinary imdct512_windowed(coeffsN, xN,
+// /*fast=*/true) calls - so a caller (joc.cpp's object loop) only ever
+// needs to decide "are four objects ready to batch", never "is AVX2
+// available too". Always takes the fast N/4-FFT fold, the only form worth
+// batching; produces bit-identical results to four separate
+// `imdct512_windowed(coeffsN, xN, /*fast=*/true)` calls with the same
+// inputs either way (tests/core/test_simd_kernels.cpp's `[avx2]` case
+// checks exactly that against the AVX2 path specifically).
+AC3FORGE_EXPORT void imdct512_windowed_batch4(std::span<const double, 256> coeffs0,
+                                              std::span<const double, 256> coeffs1,
+                                              std::span<const double, 256> coeffs2,
+                                              std::span<const double, 256> coeffs3,
+                                              std::span<double, 512> x0, std::span<double, 512> x1,
+                                              std::span<double, 512> x2, std::span<double, 512> x3);
+
+// The forward twin of imdct512_windowed_batch4 above (ROADMAP PF5's
+// batch-axis follow-on, phase 4c): four INDEPENDENT
+// mdct512_forward(..., /*fast=*/true) calls run in lockstep, one
+// transform per SIMD lane. The four windowed blocks need not belong to
+// the same signal - the encoders batch four BLOCKS of one channel, the
+// JOC bed loop four CHANNELS of one block; the transform neither knows
+// nor cares. Same contract throughout: safe to call unconditionally
+// (internally checks ac3::internal::cpu::has_avx2() and falls back to
+// four ordinary fast calls), always the fast fold, bit-identical to four
+// separate `mdct512_forward(wN, cN, /*fast=*/true)` calls with the same
+// inputs (tests/core/test_simd_kernels.cpp's `[avx2]` case checks that
+// against the AVX2 path specifically).
+AC3FORGE_EXPORT void mdct512_forward_batch4(std::span<const double, 512> w0,
+                                            std::span<const double, 512> w1,
+                                            std::span<const double, 512> w2,
+                                            std::span<const double, 512> w3,
+                                            std::span<double, 256> c0, std::span<double, 256> c1,
+                                            std::span<double, 256> c2, std::span<double, 256> c3);
 
 // The block-switched (short) transform pair (§7.9, blksw = 1): the usual
 // 512-sample windowed block split into two 256-sample halves, each

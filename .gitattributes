@@ -9,3 +9,8 @@
 # fragments inside `run:` blocks are extracted verbatim and run by bash.
 *.yml text eol=lf
 *.yaml text eol=lf
+
+# rustfmt normalises to LF regardless of platform; pin the blob the same way so
+# a Windows checkout's autocrlf can't disagree with what `cargo fmt --check`
+# (rust/, roadmap AP9) expects in CI.
+*.rs text eol=lf
