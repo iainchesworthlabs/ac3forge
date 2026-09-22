@@ -24,6 +24,15 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_c6.csv"
 
+# Quad I/O to the flash. The part runs its code from flash through a small
+# cache, and a Sendspin player's decode, WiFi and server tasks take turns in
+# it. On 2026-09-17, playing AC-3 2.0 over WiFi, QIO left about 8% of the
+# part idle where DIO left about 1%, a burst's decode took 20.7 ms where it
+# took 22.4, and a decrypt the server task had not run for a while took
+# 790 us where it took 960. A bootloader that cannot set a flash chip's
+# quad-enable bit says so and stays in DIO.
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+
 # One core: the player's two tasks go wherever the scheduler puts them. This file comes
 # after sdkconfig.sendspin, whose DECODE_CORE=1 names a core the part does not have. The
 # Sendspin player on a board is, in this order:
