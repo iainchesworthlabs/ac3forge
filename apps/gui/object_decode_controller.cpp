@@ -330,8 +330,16 @@ void ObjectDecodeController::auditionObject(int index) {
 
     std::ignore = QtConcurrent::run([this, samples] {
         std::size_t at = 0;
+        QString error;
         while (at < samples.size()) {
             if (stop_audition_.load(std::memory_order_relaxed)) {
+                break;
+            }
+            // running() turns false, not just submit() false-forever, once
+            // the device goes away under the stream - without this check
+            // the loop below retries forever instead of stopping.
+            if (!audition_sink_->running()) {
+                error = QStringLiteral("The audition output device disappeared.");
                 break;
             }
             const auto chunk_len = std::min<std::size_t>(2048, samples.size() - at);
@@ -346,12 +354,16 @@ void ObjectDecodeController::auditionObject(int index) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(4));
             }
         }
-        QMetaObject::invokeMethod(this, [this] {
+        QMetaObject::invokeMethod(this, [this, error] {
             if (audition_sink_) {
                 audition_sink_->stop();
                 audition_sink_.reset();
             }
             auditioning_index_ = -1;
+            if (!error.isEmpty()) {
+                error_ = error;
+                emit resultChanged();
+            }
             emit auditionChanged();
         });
     });
