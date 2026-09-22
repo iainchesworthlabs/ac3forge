@@ -116,6 +116,18 @@ namespace player {
 // so the same two lines reach sixteen slots at 16 bits and eight at 32.
 [[nodiscard]] int sink_slots();
 
+// The most slots this sink could carry at any setting it takes - at either
+// slot width, with a second line where the part has a controller for one.
+// sink_slots() is the ceiling for the settings in force; this is what a player
+// sizes its buffers for once, so that a later setting never outgrows them.
+[[nodiscard]] int sink_max_slots();
+
+// Whether this sink can have a second line at all: only the I2S sink, and only
+// on a part with a second I2S controller. On an ESP32-C6, which has one, a
+// stored setting saying a second line is wired is not acted on, and the
+// control surface does not offer to store one.
+[[nodiscard]] bool sink_second_line_possible();
+
 // The slot width in force, in bits, and setting it.
 //
 // Which width a board wants is a property of the DACs it is wired to, not of

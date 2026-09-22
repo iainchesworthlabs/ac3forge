@@ -56,7 +56,17 @@
 # wait for it: mbedtls and nvs_flash are listed for every project, since a
 # REQUIRES that depended on the configuration would resolve in the pass that
 # cannot see it (examples/hearth_sink/main/CMakeLists.txt found the same).
-set(AC3FORGE_COMPONENT_SRCS "src/player.cpp" "src/control.cpp")
+#
+# src/tcp_arrivals.cpp is built whatever the configuration: it defines the
+# lwIP hook a project installs from lwip_hooks/ac3forge_lwip_hooks.h, which
+# lwIP then needs to link. How it finds a socket's IPv4 peer depends on
+# whether lwIP has IPv6 (src/peer/ipv4_peer.hpp).
+set(AC3FORGE_COMPONENT_SRCS "src/player.cpp" "src/control.cpp" "src/tcp_arrivals.cpp")
+if(CONFIG_LWIP_IPV6)
+    list(APPEND AC3FORGE_COMPONENT_SRCS "src/peer/dual_stack/ipv4_peer.cpp")
+else()
+    list(APPEND AC3FORGE_COMPONENT_SRCS "src/peer/ipv4_only/ipv4_peer.cpp")
+endif()
 if(CONFIG_AC3FORGE_SENDSPIN)
     list(APPEND AC3FORGE_COMPONENT_SRCS
         "src/burst_player.cpp"
@@ -66,9 +76,23 @@ endif()
 idf_component_register(
     SRCS ${AC3FORGE_COMPONENT_SRCS}
     INCLUDE_DIRS "include"
+    PRIV_INCLUDE_DIRS "src" "lwip_hooks"
     REQUIRES freertos esp_timer heap esp_http_server mbedtls nvs_flash
     PRIV_REQUIRES lwip
     EMBED_FILES "ui/ac3forge_ui.html" "ui/ac3forge_ui.js")
+
+# ac3forge_lwip_ip4_input (src/tcp_arrivals.cpp) is called only from lwIP's own
+# ip4.c, once a project installs the hook (lwip_hooks/ac3forge_lwip_hooks.h) -
+# nothing in this component's own sources calls it, so a linker that pulls
+# object files from this archive on an as-needed basis has no reason to keep
+# that translation unit unless something forces it, and drops it whenever
+# nothing else in the same build happens to reference tcp_arrivals.cpp's other
+# symbols (as when CONFIG_AC3FORGE_SENDSPIN is off: undefined reference to
+# ac3forge_lwip_ip4_input from ip4.c, 2026-09-22). PRIV_REQUIRES lwip above is
+# unconditional, so liblwip.a - and this component's own tcp_arrivals.cpp.obj -
+# are always part of the link; this just makes the linker keep the one symbol
+# a hook, once installed, needs to find.
+target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--undefined=ac3forge_lwip_ip4_input")
 
 # How the interleave converts a float sample to an integer slot is chosen by
 # part, as a header directory: conversion/float/ where the CPU has a

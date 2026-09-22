@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <optional>
 #include <random>
 #include <vector>
@@ -273,6 +274,32 @@ TEST_CASE("clock sync: a reply that never comes ends the burst after the timeout
                  ClockSync::kReplyTimeout + 10);
     CHECK_FALSE(sync.poll(ClockSync::kReplyTimeout + 20).has_value());
     CHECK(sync.updates() == 0);
+}
+
+TEST_CASE("clock sync: while a reply is due, nothing is due before its timeout", "[sendspin][clock_sync]") {
+    // A caller's timer can sleep until then: the reply moves the burst on through receive().
+    ClockSync sync;
+    const std::optional<m::ClientTime> first = sync.poll(1'000);
+    REQUIRE(first.has_value());
+    CHECK(sync.next_due() == 1'000 + ClockSync::kReplyTimeout);
+    CHECK_FALSE(sync.poll(2'000).has_value());
+    CHECK(sync.next_due() == 1'000 + ClockSync::kReplyTimeout);
+
+    // Answered mid-burst: the next exchange is due at once, and its own timeout after it.
+    sync.receive({.client_transmitted = first->client_transmitted, .server_received = 5'000, .server_transmitted = 5'050},
+                 3'000);
+    CHECK(sync.next_due() <= 3'000);
+    const std::optional<m::ClientTime> second = sync.poll(3'000);
+    REQUIRE(second.has_value());
+    CHECK(sync.next_due() == 3'000 + ClockSync::kReplyTimeout);
+
+    // Abandoned at the timeout: the exchange that replaces it goes out, and waits in turn.
+    const std::int64_t late = 3'000 + ClockSync::kReplyTimeout;
+    REQUIRE(sync.poll(late).has_value());
+    CHECK(sync.next_due() == late + ClockSync::kReplyTimeout);
+
+    sync.reset();
+    CHECK(sync.next_due() == std::numeric_limits<std::int64_t>::min());
 }
 
 TEST_CASE("clock sync: a local clock that reads negative", "[sendspin][clock_sync]") {

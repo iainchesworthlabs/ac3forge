@@ -89,6 +89,35 @@ The sections below contain the complete change list and fixes.
   change under Changed), E-AC-3 7.1 does not, and 7.1.4 fits only with ESP-IDF's WiFi IRAM
   options off. QEMU does not emulate the part, so CI builds it and runs nothing. See
   `docs/platforms/bare-metal/esp32-c6.md`.
+- **`hearth_sink`'s Sendspin player runs on the ESP32-C6**, the part's single core doing double
+  duty as the WebSocket server and the decode task. A clock reply is now dated by when its bytes
+  reached the board rather than by when the server task got to read them: lwIP's IPv4 input hook
+  (`ac3forge/tcp_arrivals.hpp`, `ESP_IDF_LWIP_HOOK_FILENAME`) logs each Sendspin connection's TCP
+  stream as its segments arrive, well above the decode task, and `PlayerSession::receive()` takes
+  that time instead of `esp_timer_get_time()` at the read. Without it every reply the server task
+  read while a burst decoded looked as late as the decode, and once thirty such bursts in a row
+  had been left out of the clock's filter the offset jumped 13 to 31 ms; with it a ten-minute play
+  kept every reading within 651 us of the server's own clock. Quad SPI flash reads
+  (`CONFIG_ESPTOOLPY_FLASHMODE_QIO`) left the part 6 to 9% idle while a stream played, where
+  DIO left about 1%, and cut a burst's decode and render from 22.4 to 20.7 ms. The Sendspin ring
+  is 48 KB (`sdkconfig.sendspin-c6`, up from 32 KB): a WiFi link that goes quiet for close to a
+  second, seen a few times an hour on this network, drains a smaller ring before it recovers, and
+  the chunks queued behind the gap arrive too late to play; 48 KB cut how often that happened by
+  about two thirds with no allocation ever failing, where 64 KB stopped it in a ten-minute run at
+  the cost of the same WiFi receive-buffer allocation failures the IRAM options above are there to
+  avoid. One ESP32-C6 and one ESP32-S3, both running `hearth_sink`, played one programme from
+  `ac3hearth-testserver` as a group for ten minutes with zero underruns on either board and a
+  479 us worst spread between their play times, inside B3's 1 ms group criterion. AC-3 and
+  E-AC-3 5.1 do not fit the player's memory budget once the ring, the WebSocket
+  server and WiFi's own buffers are all resident: the decoder's scratch allocation failed 10 to
+  12 seconds into a 5.1 stream in each of two runs, one AC-3 and one E-AC-3, and by then the heap
+  was short enough that even the C++ exception the failed allocation threw could not itself be
+  allocated, which aborted the board rather than closing the stream - `outputs.count` in the
+  role's capability advertisement bounds routing, the stage after decode, and did nothing to
+  stop a server sending one. `BurstPlayerConfig::max_coded_channels`
+  (`CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS`, 2 on this board) now refuses a wider
+  syncframe before a decoder opens for it, in every build that sets it. See
+  `docs/platforms/bare-metal/esp32-c6.md`.
 - **`delta_allocation`** on `EncoderConfig`/`eac3::FrameConfig` (`delta=off`): the first
   rung of an effort axis for parts with little time for the §7.2.2.6 search. Removes
   about 9 ms of an ESP32-S3 E-AC-3 5.1 frame for 0.01 dB on the worst channel of the

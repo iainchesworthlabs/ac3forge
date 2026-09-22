@@ -83,8 +83,10 @@ class ClockSync {
     // are ignored.
     void receive(const messages::ServerTime& time, std::int64_t now);
 
-    // When poll() next has something to send; the caller's timer can sleep until then.
-    [[nodiscard]] std::int64_t next_due() const { return next_due_; }
+    // When poll() next has something to do: the next exchange or, while one waits for its
+    // reply, the moment it is given up, since the reply moves the burst on through receive().
+    // The caller's timer can sleep until then.
+    [[nodiscard]] std::int64_t next_due() const { return in_flight_ ? sent_at_ + kReplyTimeout : next_due_; }
 
     [[nodiscard]] bool converged() const { return converged_; }
     [[nodiscard]] std::size_t updates() const { return updates_; }

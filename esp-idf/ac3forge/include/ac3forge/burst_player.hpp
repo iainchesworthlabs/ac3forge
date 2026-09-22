@@ -85,6 +85,15 @@ struct BurstPlayerConfig {
     // The longest delay a speaker can be given; delay lines for every output,
     // in PSRAM where the part has some. 0 offers no delay.
     double max_delay_ms = 20.0;
+    // A syncframe coding more full-bandwidth channels plus LFE than this
+    // (FrameHeader::coded_channels()) is refused before a decoder is ever
+    // opened for it, rather than decoded: the decoder's own scratch scales
+    // with the channel count, and on a part with no PSRAM and a Sendspin
+    // ring resident, running out partway through can fail an allocation the
+    // heap has no room left to recover from. 0 refuses nothing - the
+    // default, and every board with room to decode whatever `outputs.count`
+    // does not already turn away.
+    std::size_t max_coded_channels = 0;
 
     BaseType_t core = 1;
     UBaseType_t priority = 6;

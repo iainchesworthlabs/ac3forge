@@ -341,6 +341,11 @@ struct Rig {
     ServerSession server;
     PlayerSession player;
     std::int64_t delay_us = 1'500;
+    // The player's host reads each frame this long after it arrived, and with stamp_arrivals
+    // tells the player when it arrived, as a board's arrival log does.
+    std::int64_t player_clock_offset = 0;
+    std::int64_t player_read_delay_us = 0;
+    bool stamp_arrivals = false;
 
     struct InFlight {
         Frame frame;
@@ -357,6 +362,7 @@ struct Rig {
           server(ServerConfig{.identity = server_identity, .name = "Hearth", .languages = {"en"}, .max_message_bytes = 1 << 22},
                  server_keys, server_events, server_clock),
           player(std::move(config), client_keys, pairing_state, player_events, player_clock) {
+        player_clock_offset = player_offset;
         server_keys.choice = choice;
         client_keys.held = std::move(held);
         player_events.keys = &client_keys;
@@ -397,11 +403,12 @@ struct Rig {
                     from_server(server.receive(next.frame));
                 }
             }
-            while (!to_player.empty() && to_player.front().at <= now) {
+            while (!to_player.empty() && to_player.front().at + player_read_delay_us <= now) {
                 InFlight next = std::move(to_player.front());
                 to_player.pop_front();
                 if (!player_closed) {
-                    from_player(player.receive(next.frame));
+                    from_player(stamp_arrivals ? player.receive(next.frame, next.at + player_clock_offset)
+                                               : player.receive(next.frame));
                 }
             }
             // A side that closed ends the connection for the other once its frames are through.
@@ -475,6 +482,35 @@ TEST_CASE("sessions: an unpaired player on the Sentinel converges and plays PCM"
     REQUIRE(rig.run_until([&] { return rig.player_events.ends == 1; }, 100'000));
     CHECK_FALSE(rig.player.streaming());
     CHECK(refusal(rig.server.send_audio(rig.now, std::vector<std::uint8_t>(4))) == ac3::sendspin::Refusal::kNoStream);
+}
+
+TEST_CASE("sessions: a player whose host reads frames late keeps its clock by when they arrived",
+          "[sendspin][sessions]") {
+    // Every frame is read 20 ms after it came, as a board's server task can wait behind the
+    // decode. Dated by the reads, each clock reply looks 20 ms slower on the way back: the
+    // filter still converges (a constant bias, not noise, still lets samples agree with one
+    // another), but far slower, and settles about half the delay off. Dated by the arrivals,
+    // it converges promptly and is exact. Measured empirically: unstamped needs up to about
+    // 120 s of simulated time here and settles 10 ms off; stamped converges the same as the
+    // undelayed case and settles exact. Budgets below are set from that with margin.
+    const bool stamped = GENERATE(true, false);
+    const std::int64_t offset = 3'200'000'000;
+    Rig rig(player_config(true), offset, hs::sentinel_choice(), {});
+    rig.player_read_delay_us = 20'000;
+    rig.stamp_arrivals = stamped;
+
+    REQUIRE(rig.run_until([&] { return !rig.server_events.hellos.empty(); }, 1'000'000));
+    rig.send(rig.server.activate(
+        {.activities = {m::Activity::kPlayback}, .active_roles = std::vector<std::string>{"player@v1"}, .pairing = std::nullopt}));
+    REQUIRE(rig.run_until([&] { return rig.available(); }, stamped ? 10'000'000 : 150'000'000));
+
+    // The server's clock reads rig.now, the player's rig.now + offset.
+    const std::int64_t error = rig.player.clock().to_server(rig.now + offset) - rig.now;
+    if (stamped) {
+        CHECK(std::llabs(error) < 1'000);
+    } else {
+        CHECK(std::llabs(error) > 5'000);
+    }
 }
 
 TEST_CASE("sessions: commands only when listed, and the state that answers them", "[sendspin][sessions]") {

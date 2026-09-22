@@ -38,6 +38,14 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
 project(ac3forge_hearth_sink LANGUAGES C CXX)
 
+# lwIP's IPv4 input hook from the ac3forge component, so the Sendspin player
+# dates a clock reply by when it arrived rather than by when its task read it
+# (ac3forge/tcp_arrivals.hpp).
+idf_component_get_property(lwip_lib lwip COMPONENT_LIB)
+idf_component_get_property(ac3forge_dir ac3forge COMPONENT_DIR)
+target_compile_options(${lwip_lib} PRIVATE "-I${ac3forge_dir}/lwip_hooks")
+target_compile_definitions(${lwip_lib} PRIVATE "ESP_IDF_LWIP_HOOK_FILENAME=\"ac3forge_lwip_hooks.h\"")
+
 # The audio, into the partition named in partitions.csv. Done here rather than
 # through a separate esptool invocation so `idf.py flash` puts everything the
 # application needs on the part in one step - a demo whose second half has to be

@@ -1,0 +1,63 @@
+# The Sendspin player on an ESP32-C6, after sdkconfig.sendspin and sdkconfig.c6:
+#
+#   "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6"
+#
+# The part has no PSRAM, so every buffer the player keeps is internal RAM, and WiFi's
+# receive buffers come out of what is left. Each setting here is what a board needed:
+# a C6 playing an AC-3 2.0 stream from ac3hearth-testserver over WiFi, 2026-09-17.
+
+# The player's buffers. The S3's defaults (a 256 KB ring, 25 KB chunks, 20 ms delay
+# lines for 16 outputs) are about 426 KB here, more than the part has. Playing AC-3 2.0
+# over WiFi for 5 to 10 isolated minutes at a time on 2026-09-17/20, a 32 KB ring (about
+# 1.5 s of a 192 kbit/s stream, 1.1 s at the three quarters a server fills it to) saw 43
+# to 131 chunks come back marked late in one or two clusters a run, each following
+# roughly a second where this board's wifi and tcpip tasks' shares of the part fell by
+# half or more rather than rose - not a backlog to work through, an actual gap in the
+# link - after which the ring had run dry and the chunks behind the gap were already
+# too late to play. 48 KB (about 2.2 s / 1.65 s the same way) cut that to 41 chunks over
+# ten minutes with the internal heap never short an allocation, heap_least 35,668 bytes;
+# 64 KB (2.9 s / 2.2 s) played the same ten minutes with none late, but two 1,848-byte
+# WiFi receive allocations failed against an 1,824-byte largest block and heap_least fell
+# to 4,792 bytes - the fragmented-heap failure IRAM options being off was meant to avoid,
+# back once the ring leaves it this little room. 48 KB is the trade kept: a real
+# improvement with no allocation failure seen. See docs/platforms/bare-metal/esp32-c6.md.
+# 4 KB takes an AC-3 burst at 640 kbit/s. The decode task used 12.9 KB of its stack. No
+# delay lines: a server that sets a delay is refused.
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_RING_BYTES=49152
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES=4096
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES=24576
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS=0
+
+# 2.0 played every fixture measured on this board; AC-3 and E-AC-3 5.1 each aborted
+# within about 10 to 12 seconds, the decoder's own scratch failing an allocation the
+# heap no longer had room for. Past 2 coded channels a syncframe is refused before a
+# decoder opens for it - the console says why, once per stream - instead.
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS=2
+
+# 16-bit slots, the width an ES9080 on this part runs, and half the bytes a frame a
+# 32-bit stereo pair takes. A board can still take 32 (PUT /slot-width).
+CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS=16
+
+# 24 DMA buffers of 128 frames, 64 ms: a burst's decode and render took 22.7 ms on
+# average and up to 46 ms, and a 21 ms queue ran dry behind the slow ones. That is
+# 12 KB for a 16-bit stereo pair, and 49 KB for eight 16-bit TDM slots.
+CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12
+CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_FRAMES=256
+
+# WiFi's code in flash rather than internal RAM: 45 KB more heap, which is what stopped
+# 1,848-byte receive-buffer allocations failing in a fragmented heap and the late
+# chunks that followed. It costs time: the burst's decode and render went from 20.3 to
+# 22.7 ms, and the WiFi task took 15% of the part while a stream played.
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_EXTRA_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+CONFIG_ESP_WIFI_SLP_IRAM_OPT=n
+CONFIG_ESP_PHY_IRAM_OPT=n
+
+# Radios and roles a sink does not use: the 802.15.4 driver the C6's defaults enable,
+# the soft access point, and receive aggregation, which a stream of at most a few
+# hundred kbit/s does not need and which has an access point send frames in batches,
+# each wanting a receive buffer at once. Together 60 KB less image.
+CONFIG_IEEE802154_ENABLED=n
+CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n
+CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=n

@@ -137,7 +137,10 @@ SessionOutput PlayerSession::open() {
 }
 
 SessionOutput PlayerSession::receive(const transport::Frame& frame) {
-    const std::int64_t arrival = clock_source_->now_us();
+    return receive(frame, clock_source_->now_us());
+}
+
+SessionOutput PlayerSession::receive(const transport::Frame& frame, std::int64_t arrival) {
     switch (phase_) {
         case Phase::kClosed:
             return {};
