@@ -460,7 +460,11 @@ struct ReconstructionState {
 // each - kSamplesPerFrame ordinarily, or 256/512/768 for a §E2.3.1.4 short
 // syncframe; the frame length is taken from the spans themselves and must be
 // a whole number of 256-sample blocks. Channels are in Table 53's JOC
-// channel order (L, R, C, Ls, Rs, and for a 7-channel downmix Lb, Rb) - NOT
+// channel order (L, R, C, Ls, Rs, and for a 7-channel downmix a further pair
+// at positions 5/6 - Lb, Rb for kDmxConfig7X, or Tfl, Tfr for
+// kDmxConfig5XPlus2/kDmxConfig5XPlus2PhaseShift; Table 53 itself is generic
+// on POSITION, keyed only by joc_num_channels - it is Table 47 that says
+// which physical channels occupy 5/6 for a given joc_dmx_config_idx) - NOT
 // AC-3's Table 5.8 order (L, C, R, Ls, Rs); the caller permutes, the same
 // permutation atmos.cpp's AtmosEncoder applies on the way in (see its
 // kAc3FromJoc). Returns one waveform per object, `params.objects` of them,
@@ -476,7 +480,16 @@ struct ReconstructionState {
 // like their unshifted siblings: the shift belongs to how the downmix was
 // BUILT (it buys a better legacy stereo fold-down), and §6.6.6 says nothing
 // about undoing it before matrixing. There is no Hilbert filterbank here to
-// undo it with either.
+// undo it with either. Confirmed against the actual ETSI TS 103 420 V1.2.1
+// text, not just inferred from its silence: §6.6.1-6.6.6's full decode
+// pseudocode (Pseudocode 2 through 7) has no branch, flag or note keyed on
+// joc_dmx_config_idx anywhere - Pseudocode 7's reconstruction sum is the
+// identical linear combination for every configuration. Empirically
+// confirmed too, not just textually: tests/oba/test_dee_joc_fixture.cpp
+// decodes a real Dolby-Encoding-Engine-produced stream using
+// kDmxConfig5XPhaseShift through exactly this code path and every
+// tone-identified object comes back correct.
+
 //
 // The returned audio LAGS `bed` by reconstruction_delay(domain) samples -
 // 256 for kMdctBand, 576 for kQmf. Both are the algorithmic delay of the

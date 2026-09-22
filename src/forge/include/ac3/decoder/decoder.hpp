@@ -626,9 +626,11 @@ struct DecodedSubstream {
     std::optional<oba::DecodedProgram> object_metadata = std::nullopt;
     // JOC's (§6) reconstructed per-object audio, one waveform per JOC output
     // - empty when object_metadata is unset, when no JOC payload rode
-    // alongside the OAMD one, or when the downmix JOC asks for is not the
-    // five channels this substream carries (Table 47's 7-channel
-    // configurations need a dependent substream's Lb/Rb).
+    // alongside the OAMD one, or when the downmix JOC asks for is wider than
+    // the five channels this substream alone carries (Table 47's three
+    // 7-channel configurations: their extra pair needs a dependent
+    // substream's Lb/Rb or Tfl/Tfr, which decode_access_unit_core resolves
+    // afterward, using joc_pending_bytes below - see its own comment).
     std::vector<std::vector<float>> object_audio;
     // §7.10, same convention as DecodedFrame::concealed: set only when this
     // substream was concealed rather than decoded. A concealed substream
@@ -645,6 +647,20 @@ struct DecodedSubstream {
     // oba::bed_labels() turns into a speaker label. Same length as
     // object_audio, and empty exactly when it is.
     std::vector<int> object_indices;
+    // The raw JOC EMDF payload, held over for decode_access_unit_core to
+    // re-parse and reconstruct once the programme's channels are unioned -
+    // populated ONLY when this substream's own JOC downmix needs more than
+    // its own five channels (Table 47's 7-channel configurations), which is
+    // also the only case where object_audio above stays empty despite
+    // object_metadata being set. Empty in every other case, including the
+    // ordinary five-channel path, which still reconstructs inline exactly as
+    // before and never touches this field - see decode_substream_core's own
+    // JOC block. Raw bytes rather than a parsed FrameParameters on purpose:
+    // parse_payload is already a cheap, unconditional call, and this field
+    // rides on every DecodedSubstream regardless of platform, including the
+    // ESP32-S3 where struct growth has cost real main-task stack margin
+    // before (see decode_substream_core's own comment on that history).
+    std::vector<std::byte> joc_pending_bytes;
 
     // The Table E2.5 map this substream's channels occupy.
     [[nodiscard]] std::uint16_t location_map() const {
