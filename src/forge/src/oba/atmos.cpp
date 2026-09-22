@@ -270,6 +270,11 @@ struct AtmosEncoder::Impl {
     // One analysis filterbank per essence, for joc::Domain::kQmf's band
     // energies. Left empty - and so free - under kMdctBand.
     std::vector<dsp::QmfAnalysis> object_qmf_;
+    // Populated by render_and_reconstruct's own §5.5.9 b_object_not_active
+    // gate (step 3-4) so encode_frame's metadata step, which runs after that
+    // call returns, can read it back - encode_bed_frame writes it too but
+    // never reads it, which is harmless.
+    std::vector<bool> object_active_;
     std::uint64_t frames_ = 0;
 
     // --- CBI bed mode only (BedProgram constructor) --------------------
@@ -528,11 +533,11 @@ void AtmosEncoder::Impl::render_and_reconstruct(
     // whole object rather than tested per band - so it also has nothing for a
     // renderer to place, and §5.5.9's b_object_not_active says exactly that
     // instead of re-sending position/gain metadata nobody needs this frame.
-    std::vector<bool> object_active(count, false);
+    object_active_.assign(count, false);
     for (std::size_t object = 0; object < count; ++object) {
         const auto slot = std::span{power}.subspan(
             object * static_cast<std::size_t>(bands), static_cast<std::size_t>(bands));
-        object_active[object] = std::ranges::any_of(slot, [](double p) { return p > 0.0; });
+        object_active_[object] = std::ranges::any_of(slot, [](double p) { return p > 0.0; });
     }
 
     // --- 4. The reconstruction matrix ---------------------------------------
@@ -652,7 +657,7 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
         described[object].snap = placement[object].snap;
         described[object].zone = placement[object].zone;
         described[object].enable_elevation = placement[object].enable_elevation;
-        described[object].active = object_active[object];
+        described[object].active = impl_->object_active_[object];
     }
     // §6.3.3.3: 0 marks the first frame, after which the counter runs 1..1023
     // and wraps to 1 rather than to 0 - a decoder reads 0 as a splice and
