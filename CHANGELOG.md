@@ -1577,6 +1577,17 @@ The sections below contain the complete change list and fixes.
 
 **Audio backend and object signing**
 
+- **`MonitorSink::start()` could not say a device had refused this shared-mode format,
+  rather than something else failing.** Every failure past device resolution returned the
+  same `kComFailure` on Windows, ALSA and Core Audio, so a caller could not tell "this
+  device will not do the rate or channel count you asked for" from a COM/ALSA/HAL problem —
+  diagnosing an HDMI/AVR endpoint locked to a non-48kHz shared-mode rate needed a
+  standalone WASAPI probe written outside this codebase to find the `AUDCLNT_E_UNSUPPORTED_FORMAT`
+  underneath the generic message. `start()` now reports a new `MonitorError::kFormatRejected`
+  for that HRESULT specifically on Windows, for the channel/rate `hw_params` calls on ALSA,
+  and for the equivalent channel-count/nominal-rate checks on Core Audio. PipeWire and AAudio
+  hand format negotiation to a graph or mixer that converts rather than refuses, so neither
+  backend returns it.
 - **An output device that went away left the sink saying it was still playing.** A render
   thread that met a device failure - an unplugged endpoint answering
   `AUDCLNT_E_DEVICE_INVALIDATED`, ALSA giving up on `-ENODEV`, an AAudio write refused -

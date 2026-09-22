@@ -712,6 +712,15 @@ It stops itself when its device goes away, in the same way as `PassthroughSink`,
 `[monitor-unplug]` is its hidden case. A shared-mode stream that the platform moves to another
 output keeps playing; PipeWire's session manager does this when a sink is removed.
 
+`start()` also distinguishes a device that refused this shared-mode sample rate or channel count
+(`MonitorError::kFormatRejected`) from every other WASAPI/ALSA/Core Audio failure
+(`kComFailure`). Windows and ALSA check for it precisely — the one `AUDCLNT_E_UNSUPPORTED_FORMAT`
+HRESULT, or the channel/rate `hw_params` calls specifically — while Core Audio groups its
+channel-count and nominal-rate checks under the same code, since its property-set calls report
+only success or failure and never why. PipeWire and AAudio never return it: both hand format
+negotiation to a graph/mixer that converts rather than refuses, so there is no equivalent moment
+to report.
+
 Unlike passthrough, **this one is confirmed against real hardware.** It has actually played
 decoded AC-3 and E-AC-3 (including an Atmos stream's 5.1 bed) through real Windows (Realtek)
 hardware in real time, and a live microphone capture → encode → monitor session has run

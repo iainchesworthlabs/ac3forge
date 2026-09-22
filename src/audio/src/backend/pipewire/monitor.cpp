@@ -227,6 +227,8 @@ std::string_view describe(MonitorError error) {
         case MonitorError::kDeviceNotFound:
             return "the requested playback device was not found (no such PipeWire node, or the "
                    "session manager refused to link it)";
+        case MonitorError::kFormatRejected:
+            return "the graph rejected this sample rate or channel count";
         case MonitorError::kAlreadyRunning: return "monitor playback is already running";
         case MonitorError::kNotRunning: return "monitor playback is not running";
     }

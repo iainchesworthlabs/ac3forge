@@ -108,9 +108,14 @@ struct Opened {
 };
 
 // Open `name` and configure it for `channels` of PCM at `sample_rate`, or
-// return nothing if it will not take them.
+// return nothing if it will not take them. `format_rejected` is reset to
+// false on entry and set true only when the channel/rate negotiation itself
+// is what refused - see start()'s use of it, and the Windows backend's
+// AUDCLNT_E_UNSUPPORTED_FORMAT check for the same distinction made precisely
+// rather than approximately.
 std::optional<Opened> open_configured(const std::string& name, std::uint32_t sample_rate,
-                                      std::uint16_t channels, bool quiet) {
+                                      std::uint16_t channels, bool quiet, bool& format_rejected) {
+    format_rejected = false;
     // The first of the two attempts start() makes is allowed to fail as a
     // matter of course, so it is silenced; the second is the one whose failure
     // the caller actually hears about, and alsa-lib's own line about it is
@@ -141,6 +146,7 @@ std::optional<Opened> open_configured(const std::string& name, std::uint32_t sam
     // says no here is what the `plug` retry in start() is for.
     if (snd_pcm_hw_params_set_channels(handle, params.get(), channels) < 0 ||
         snd_pcm_hw_params_set_rate(handle, params.get(), sample_rate, 0) < 0) {
+        format_rejected = true;
         return std::nullopt;
     }
 
@@ -182,9 +188,9 @@ std::string_view describe(MonitorError error) {
     switch (error) {
         case MonitorError::kNoBackend: return "no monitor backend on this platform";
         case MonitorError::kComFailure: return "an ALSA call failed";
-        case MonitorError::kDeviceNotFound:
-            return "the requested playback device was not found, or will not play this many "
-                   "channels at this rate";
+        case MonitorError::kDeviceNotFound: return "the requested playback device was not found";
+        case MonitorError::kFormatRejected:
+            return "the device will not play this many channels at this rate";
         case MonitorError::kAlreadyRunning: return "monitor playback is already running";
         case MonitorError::kNotRunning: return "monitor playback is not running";
     }
@@ -362,16 +368,24 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     }
 
     const std::string name = device_id.empty() ? "default" : device_id;
-    auto opened = open_configured(name, sample_rate, channels, /*quiet=*/true);
+    bool format_rejected = false;
+    auto opened = open_configured(name, sample_rate, channels, /*quiet=*/true, format_rejected);
     if (!opened) {
         // Second chance through `plug`. Reached when the device is a raw one
         // that cannot itself do the caller's rate or channel count - and never
         // for `default`, which is already a plugin chain and either worked or
         // is not there at all.
-        opened = open_configured(through_plug(name), sample_rate, channels, /*quiet=*/false);
+        opened = open_configured(through_plug(name), sample_rate, channels, /*quiet=*/false,
+                                 format_rejected);
     }
     if (!opened) {
-        return std::unexpected(MonitorError::kDeviceNotFound);
+        // format_rejected reflects whichever of the two attempts above ran
+        // last: if `plug` was reached and still failed at the channel/rate
+        // step, that is the operative answer, same as the Windows backend's
+        // HRESULT from whichever Initialize call actually determined the
+        // failure.
+        return std::unexpected(format_rejected ? MonitorError::kFormatRejected
+                                                : MonitorError::kDeviceNotFound);
     }
     if (snd_pcm_prepare(opened->pcm.get()) < 0) {
         return std::unexpected(MonitorError::kComFailure);

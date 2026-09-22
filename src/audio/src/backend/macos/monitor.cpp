@@ -63,9 +63,10 @@ std::string_view describe(MonitorError error) {
     switch (error) {
         case MonitorError::kNoBackend: return "no monitor backend on this platform";
         case MonitorError::kComFailure: return "a Core Audio HAL call failed";
-        case MonitorError::kDeviceNotFound:
-            return "the requested output device was not found, or will not play this many "
-                   "channels at this rate";
+        case MonitorError::kDeviceNotFound: return "the requested output device was not found";
+        case MonitorError::kFormatRejected:
+            return "the device will not run this channel count, or would not retune to this "
+                   "sample rate";
         case MonitorError::kAlreadyRunning: return "monitor playback is already running";
         case MonitorError::kNotRunning: return "monitor playback is not running";
     }
@@ -299,9 +300,13 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     if (device == kAudioObjectUnknown) {
         return std::unexpected(MonitorError::kDeviceNotFound);
     }
+    // No downmix/upmix matrix of its own (see this file's header comment), so
+    // a width the device does not already run at is a format refusal, not a
+    // missing device - the same "exact match or nothing" limit
+    // platform/alsa/monitor.cpp's channel/rate hw_params calls enforce.
     if (coreaudio::channel_count(device, kAudioDevicePropertyScopeOutput) !=
         static_cast<std::uint32_t>(channels)) {
-        return std::unexpected(MonitorError::kDeviceNotFound);
+        return std::unexpected(MonitorError::kFormatRejected);
     }
 
     const auto current_rate = coreaudio::nominal_sample_rate(device);
@@ -311,7 +316,15 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                                      static_cast<Float64>(sample_rate)) ||
             !coreaudio::wait_for_nominal_rate(device, static_cast<Float64>(sample_rate),
                                               kRateChangeTimeout)) {
-            return std::unexpected(MonitorError::kDeviceNotFound);
+            // set_property reports only success or failure, never why (see
+            // coreaudio_support.hpp), so this cannot be narrowed to a single
+            // status code the way the Windows backend narrows
+            // AUDCLNT_E_UNSUPPORTED_FORMAT. A device already confirmed
+            // present and of the right width failing to retune to a rate it
+            // does not already run at is squarely the same class of refusal
+            // as the channel-count check above, not a device that vanished
+            // between the two calls.
+            return std::unexpected(MonitorError::kFormatRejected);
         }
     }
 

@@ -28,6 +28,7 @@ enum class MonitorError : std::uint8_t {
     kNoBackend,       // built without a platform monitor backend
     kComFailure,      // a Windows audio (WASAPI/COM) call failed
     kDeviceNotFound,
+    kFormatRejected,  // the device refused this sample rate or channel count in shared mode
     kAlreadyRunning,
     kNotRunning,
 };
