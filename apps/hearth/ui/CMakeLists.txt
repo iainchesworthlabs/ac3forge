@@ -56,6 +56,10 @@ else()
     set(AC3HEARTH_QML_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/Main.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlayPage.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/Speakers.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/DecoderPage.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/DecoderEac3.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/DecoderAc4.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlaceholderPage.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/TransportBar.qml"
         ${AC3HEARTH_SHARED_OUT})

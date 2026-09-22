@@ -116,6 +116,11 @@ struct EngineStatus {
     render::Routing routing{};
     std::string device_name{};
     std::uint32_t speaker_mask = 0;
+    // What every item is rendered onto (Player::layout()) - fixed for this
+    // engine's lifetime. A settings page reads each slot's own name
+    // (OutputLayout::slot_name()) to label the routing grid and the
+    // trim/delay table by speaker rather than by bare slot number.
+    render::OutputLayout layout{};
 };
 
 class Engine {

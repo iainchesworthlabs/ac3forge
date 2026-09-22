@@ -406,6 +406,7 @@ void Engine::publish(const std::string& note, std::uint64_t carried) {
     next.routing = player_.routing();
     next.device_name = player_.device_name();
     next.speaker_mask = player_.speaker_mask();
+    next.layout = player_.layout();
     const PlayPosition position = player_.position();
 
     std::function<void(const EngineStatus&)> callback;
