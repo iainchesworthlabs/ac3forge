@@ -17,7 +17,7 @@
 #include "ac3/latency.hpp"
 #include "ac3/oba/atmos.hpp"
 
-// Roadmap PF6: the latency budget, MEASURED rather than asserted from the
+// bare-metal probe harness: the latency budget, MEASURED rather than asserted from the
 // header's arithmetic.
 //
 // Every case here puts a marker into the encoder's input at a known absolute
@@ -396,7 +396,7 @@ TEST_CASE("latency_ms converts at the coded rate, not a fixed 48 kHz", "[latency
     REQUIRE(ac3::latency_ms(budget, ac3::SampleRate::k32000) > 55.9);
 }
 
-// Roadmap EQ11 gave the E-AC-3 encoder short syncframes (numblkscod 0-2,
+// E-AC-3 short syncframes gave the E-AC-3 encoder short syncframes (numblkscod 0-2,
 // §E2.3.1.4) and the whole point of them is lower latency - but eac3_latency()
 // went on reporting kSamplesPerFrame for every code, so latency_samples()
 // overstated a one-block frame by 1280 samples (~27 ms at 48 kHz) to exactly

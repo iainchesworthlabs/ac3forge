@@ -1,5 +1,7 @@
 #include "mp4/dash.hpp"
 
+#include "mp4/hls.hpp"  // hls_codec_string: DASH's @codecs is the same RFC 6381 string
+
 #include <cstddef>
 #include <cstdint>
 #include <fmt/format.h>
@@ -79,7 +81,7 @@ using manifest_detail::segment_infos;
             "value=\"{}\"/>\n",
             options.dolby_channel_configuration);
     }
-    if (options.joc_complexity_index) {
+    if (options.joc_complexity_index.has_value()) {
         out +=
             "    <SupplementalProperty "
             "schemeIdUri=\"tag:dolby.com,2018:dash:EC3_ExtensionType:2018\" value=\"JOC\"/>\n";
@@ -138,7 +140,7 @@ std::string build_dash_adaptation_set(const AudioTrack& track,
         "    </SegmentTemplate>\n"
         "  </Representation>\n"
         "</AdaptationSet>\n",
-        options.representation_id, track.codec_id, bandwidth, track.sample_rate,
+        options.representation_id, hls_codec_string(track), bandwidth, track.sample_rate,
         build_representation_descriptors(track, options), track.sample_rate,
         options.init_segment_uri, options.segment_uri_template, start_number,
         build_segment_timeline(segments));

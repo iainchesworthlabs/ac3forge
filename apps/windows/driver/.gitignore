@@ -1,0 +1,16 @@
+# MSBuild output and per-user state; the package is a build product.
+x64/
+ARM64/
+Package/x64/
+Package/ARM64/
+Source/*/x64/
+Source/*/ARM64/
+*.user
+*.vcxproj.filters
+.vs/
+*.log
+
+# Driver analysis artefacts (Analyze-Driver.ps1)
+*.sarif
+*.nativecodeanalysis.xml
+*.DVL.XML

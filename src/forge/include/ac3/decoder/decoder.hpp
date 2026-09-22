@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -8,6 +9,7 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #include "ac3/core/eac3_tables.hpp"
@@ -16,7 +18,6 @@
 #include "ac3/decoder/diagnostics.hpp"
 #include "ac3/decoder/output.hpp"
 #include "ac3/decoder/syntax_trace.hpp"
-#include "ac3/encoder/eac3_tools.hpp"  // eac3::BandLayout, for BlockTail below
 #include "ac3/export.hpp"
 #include "ac3/latency.hpp"
 #include "ac3/meta/bsi.hpp"
@@ -140,6 +141,13 @@ struct DecoderConfig {
     // because it exists to check what the encoder wrote, and a decoder that
     // silently rescales its output cannot be the reference for that.
     double drc_scale = 0.0;
+    // The same scaling for boost alone - a dynrng word above unity - where it
+    // should differ from the cut's: in a quiet room a listener keeps quiet
+    // passages quiet (boost 0) while loud ones are still brought down
+    // (drc_scale 1). Unset, boost is scaled by drc_scale as well, as it always
+    // was. Like drc_scale it applies to kCustom only: kLine and kRf apply the
+    // whole word either way.
+    std::optional<double> drc_boost_scale = std::nullopt;
     // §7.9.4 step 3's complex transform evaluated via the same FFT core the
     // encoder's fast MDCT fold uses, instead of the pseudocode's direct
     // O(N^2) sum against a 320 KiB tabulated matrix - see mdct.hpp's
@@ -160,10 +168,12 @@ struct DecoderConfig {
     // exactly the runs where bit-for-bit agreement with the spec's stated
     // arithmetic matters more than speed.
     bool fast_imdct = true;
-    // §7.7.2: prefer compr over dynrng wherever a compr word exists, which is
-    // what a set-top box's RF mode does. §7.7.2.1 requires falling back on
-    // dynrng for any syncframe that carries no compr, so this composes with
-    // drc_scale rather than replacing it.
+    // §7.7.2: prefer compr over dynrng wherever a compr word exists. §7.7.2.1
+    // requires falling back on dynrng for any syncframe that carries no compr,
+    // so this composes with drc_scale rather than replacing it. On its own it
+    // applies the word's §7.7.2 gain and nothing else; a set-top box's RF mode
+    // is OutputConfig::mode = OperatingMode::kRf, which also adds RF mode's
+    // 11 dB (meta::kRfModeGainDb) with every word it applies.
     bool heavy_compression = false;
     // --- output stage (ac3/decoder/output.hpp) -----------------------------
     // dialnorm normalisation, the §7.8 downmix and §7.7's two canonical
@@ -278,6 +288,27 @@ struct DecoderConfig {
     // subsequent field depends on them - a "parse" that skipped those would
     // not be parsing the same stream.
     bool skip_reconstruction = false;
+    // Decode the bed and leave the objects alone: §6 JOC reconstruction is not
+    // run, `object_audio` and `object_indices` come back empty, and everything
+    // else - the bed's PCM, `object_metadata`, the trace - is exactly what a
+    // full decode produces. Unlike `skip_reconstruction` above, this still
+    // renders audio; it renders the 5.1 downmix the objects were coded against
+    // rather than the objects.
+    //
+    // The reason is memory, and the number is specific. JOC reconstruction
+    // allocates an oba::joc::ReconstructionState - 147,504 bytes on a 32-bit
+    // target, in one block - plus a QmfState and its filterbanks under
+    // `joc_domain` kQmf, 233,064 bytes together. On an ESP32-S3 that is more
+    // than the 116,736-byte largest contiguous block a decode leaves free, so
+    // the allocation fails on contiguity before the budget is even reached, and
+    // an Atmos stream that would otherwise play as ordinary 5.1 takes the whole
+    // decode down partway through. See docs/platforms/bare-metal/esp32-s3.md.
+    //
+    // Default false, because on a host the objects are the point. A caller that
+    // wants the bed - an embedded integrator, or anything rendering to a
+    // speaker layout rather than to positions - sets this and pays nothing for
+    // the object layer it is not going to use.
+    bool skip_object_reconstruction = false;
     // --- diagnostics (ac3/decoder/diagnostics.hpp) --------------------------
     // A recoverable, informational event the decode does not otherwise
     // surface - see DiagnosticEvent. Null by default, at the same
@@ -287,6 +318,61 @@ struct DecoderConfig {
     // null too.
     DiagnosticSink diagnostics = nullptr;
     void* diagnostics_context = nullptr;
+};
+
+// One block of a decoded programme's PCM, as the *_by_block forms hand it
+// over: kSamplesPerBlock samples of every output slot, in the same slot order
+// the *_into forms write - the rendered layout's for an access unit, coded
+// order for an AC-3 frame and for dual mono - after the output stage has run,
+// so the samples are exactly what the *_into form would have written into a
+// caller's spans, delivered a block at a time. The spans view the decoder's
+// own storage and are valid for the duration of the call that receives them,
+// never past it.
+struct PcmBlock {
+    int index = 0;   // 0 .. blocks-1, in order
+    int blocks = 0;  // six for AC-3; numblkscod's count for an E-AC-3 unit
+    std::span<const std::span<const float>> channels;
+    // The programme's reconstructed objects for the same block, when the unit
+    // carried an object layer and the decoder reconstructed it: one span per
+    // JOC output, kSamplesPerBlock samples each, the block of
+    // DecodedAccessUnit::object_audio `channels` is the block of. Parallel to
+    // `object_indices`, whose entries mean what DecodedAccessUnit::object_indices'
+    // do, and described by `object_metadata` (DecodedAccessUnit::object_metadata,
+    // the same optional's contents, or null when it is unset). All three are
+    // empty for an AC-3 frame, for a bed-only decode
+    // (DecoderConfig::skip_object_reconstruction) and for a unit with no object
+    // layer, and view the decoder's own storage for the duration of the call
+    // exactly as `channels` does. What they are for: a sink placing objects on
+    // loudspeakers gets everything it needs a block at a time, with nothing
+    // copied - the value form's object_audio is a frame of copies per object.
+    std::span<const std::span<const float>> objects;
+    std::span<const int> object_indices;
+    const oba::DecodedProgram* object_metadata = nullptr;
+};
+
+// A caller's receiver for PcmBlocks. A non-owning reference to any callable,
+// so handing one to a decoder costs no allocation and a sink that fills a DMA
+// ring needs one block of storage per slot where the *_into forms need a
+// frame - twelve kilobytes rather than seventy-three for a 7.1.4 programme,
+// on a part with 280 KB free. The callable must outlive the decode call it
+// is handed to; for a lambda written in the call itself that is automatic.
+class BlockSink {
+   public:
+    template <typename F>
+        requires std::invocable<F&, const PcmBlock&> &&
+                 (!std::same_as<std::remove_cvref_t<F>, BlockSink>)
+    // NOLINTNEXTLINE(google-explicit-constructor): the call site is the point
+    BlockSink(F&& f) noexcept
+        : object_(const_cast<void*>(static_cast<const void*>(std::addressof(f)))),
+          call_([](void* object, const PcmBlock& block) {
+              (*static_cast<std::remove_reference_t<F>*>(object))(block);
+          }) {}
+
+    void operator()(const PcmBlock& block) const { call_(object_, block); }
+
+   private:
+    void* object_;
+    void (*call_)(void*, const PcmBlock&);
 };
 
 struct DecodedFrame {
@@ -310,7 +396,10 @@ struct DecodedFrame {
     meta::BsiInfo info{};
     // Annex D's xbsi1/xbsi2, present exactly when bsid is 6. A bsid-8 frame
     // carries the time code in the same 28 bits instead, and reports it as
-    // info.timecod1/timecod2 above.
+    // info.timecod1/timecod2 above. When xbsi1 is present its Lt/Rt and Lo/Ro
+    // levels are the ones the §7.8 output stage folds with (§D3.1.2, through
+    // ac3::mix_levels()), and a surround level Tables D2.4/D2.6 reserve is
+    // reported as the -1.5 dB a decoder uses in its place.
     std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     int dialnorm = 31;
     // §5.4.2.4/§5.4.2.5, the two downmix levels bsi carries: std::nullopt for
@@ -318,7 +407,9 @@ struct DecodedFrame {
     // three front channels, surmixlev needs surrounds), which is a different
     // statement from "carried, and says the default". ac3::mix_levels() turns
     // the pair into the coefficients the §7.8 output stage needs, applying
-    // §7.8's own defaults where a field is absent.
+    // §7.8's own defaults where a field is absent. An Annex D frame's xbsi1
+    // levels take their place when it sends them (§D4.2.1); the pair is still
+    // reported, since a bsid-6 encoder has to send it for legacy decoders.
     std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;
     std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;
     // §5.4.2.9: std::nullopt when compre was clear, so "no word" and "a word
@@ -396,7 +487,23 @@ class AC3FORGE_EXPORT FrameDecoder {
     [[nodiscard]] std::expected<DecodedFrame, DecodeError> decode_frame_into(
         std::span<const std::byte> frame, std::span<const std::span<float>> channels);
 
-    // Roadmap PF6: the delay THIS decoder adds on top of whatever the
+    // As decode_frame_into, but the PCM reaches the caller through `sink`, a
+    // block at a time: six PcmBlocks per frame, in order, each of
+    // kSamplesPerBlock samples per output slot, delivered once the whole
+    // frame has decoded and the output stage has run - so the samples are
+    // the *_into form's exactly, and a downmix arrives as one or two slots
+    // the way output_channel_count() says. The returned DecodedFrame carries
+    // everything except the PCM. What this form removes is the caller's
+    // frame: a sink can copy or interleave each block straight into a DMA
+    // ring and never hold more than a block. AC-3 has no per-substream
+    // storage to hand out views of, so this decoder keeps one frame of its
+    // own for the form (six channels, sized once, reused). Under
+    // skip_reconstruction the sink is never called; a concealed frame is
+    // delivered through it like any other.
+    [[nodiscard]] std::expected<DecodedFrame, DecodeError> decode_frame_by_block(
+        std::span<const std::byte> frame, BlockSink sink);
+
+    // bare-metal probe harness: the delay THIS decoder adds on top of whatever the
     // encoder's own budget (ac3/latency.hpp) already accounts for. Exactly
     // zero, and structurally so rather than by luck: decode_frame returns a
     // frame's full kSamplesPerFrame of PCM from the call that supplies that
@@ -453,10 +560,12 @@ struct DecodedSubstream {
     bool lfe = false;
     int dialnorm = 31;
     // §5.4.2.9/§E3.8.5: std::nullopt when compre was clear OR this substream
-    // is a dependent one - a dependent's compre bit is repurposed to mark the
-    // LAST dependent of the program rather than announce a compression word
-    // (see parse_bsi's own comment), so there is no meaningful compr value to
-    // report there even though the 8 bits are still present on the wire.
+    // is a dependent one. A dependent's compre bit marks the LAST dependent of
+    // the program, and the word it brings is the compr word of the whole
+    // program: Eac3Decoder::decode_access_unit applies it to every substream
+    // of that program and reports it as DecodedAccessUnit::compr. A dependent
+    // decoded on its own by decode_substream has no program to apply it to,
+    // so it reports none; an independent one reports its own.
     std::optional<std::uint8_t> compr = std::nullopt;
     // §7.7.1.2: the EFFECTIVE word for each block, with the persistence rule
     // already resolved, same convention as DecodedFrame::dynrng - a block
@@ -482,6 +591,16 @@ struct DecodedSubstream {
     // ac3::mix_levels() turns the downmix levels alone into the coefficients
     // the §7.8 output stage needs.
     std::optional<meta::MixMetadata> mixing = std::nullopt;
+    // §E2.3.1.2's legacy core (bsid <= 8) has no mixmdate syntax to carry
+    // above - AC-3 states its downmix in bsi's cmixlev/surmixlev instead,
+    // widened by Annex D's xbsi1 group for a bsid-6 core (§D3.1.2). These stay
+    // std::nullopt for a genuine E-AC-3 substream, which reports its levels
+    // through `mixing` above; decode_ac3_core is the only place that sets
+    // them, copied straight off the core FrameDecoder's own
+    // DecodedFrame::cmixlev/surmixlev/alternate_bsi.
+    std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;
+    std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;
+    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     // Table E1.2's infomdat group, std::nullopt when infomdate was clear.
     // BsiInfo's langcod/langcod2 and timecod1/timecod2 have no Annex E field
     // and are never set here.
@@ -529,7 +648,7 @@ struct DecodedSubstream {
 
     // The Table E2.5 map this substream's channels occupy.
     [[nodiscard]] std::uint16_t location_map() const {
-        return chanmap ? *chanmap : eac3::chanmap::acmod_map(acmod, lfe);
+        return chanmap.has_value() ? *chanmap : eac3::chanmap::acmod_map(acmod, lfe);
     }
 };
 
@@ -546,16 +665,26 @@ struct DecodedAccessUnit {
     SampleRate sample_rate = SampleRate::k48000;
     Acmod acmod = Acmod::k2_0;
     int dialnorm = 31;
-    // The independent substream's own compr, when it carries one - see
-    // DecodedSubstream::compr's own comment; a dependent substream's compre
-    // bit means something else entirely, so only the independent (bed)
-    // substream's word is ever meaningful at the access-unit level.
+    // Ch2's own dialnorm (§5.4.2.16), present only when acmod is kDualMono -
+    // the independent substream's own, same reasoning as dialnorm above. A
+    // 1+1 programme is always exactly one substream (this struct's own
+    // comment), so "the lead substream's dialnorm2" is unambiguous here in a
+    // way it would not be for a bed-plus-dependents programme.
+    std::optional<int> dialnorm2 = std::nullopt;
+    // The compr word the program was decoded with. §E3.8.5 gives a program
+    // with dependent substreams the word its last dependent carries, for
+    // every substream including the independent one, so that is the word
+    // here whenever there is one; otherwise it is the independent
+    // substream's own, when it carries one. A §E2.3.1.2 AC-3 core keeps its
+    // own word for its own channels, and that is what is reported for it.
     std::optional<std::uint8_t> compr = std::nullopt;
-    // The independent substream's own dynrng, same reasoning as compr above -
-    // every substream carries its own words and a decoder applies each to
-    // that substream's own channels (see Eac3Decoder's DecoderConfig-driven
-    // gain), but the bed's is the one figure worth surfacing at the
-    // access-unit level for a status report. Only entries below
+    // The independent substream's own dynrng. Each substream's dynrng is
+    // applied to that substream's own channels (see Eac3Decoder's
+    // DecoderConfig-driven gain) - §E3.8.5 gives a program with dependents
+    // its last dependent's dynrng, as it does its compr, but dynrng sits in
+    // the audio blocks and is not read ahead the way compr is - and the bed's
+    // is the one figure worth surfacing at the access-unit level for a status
+    // report. Only entries below
     // eac3::blocks_per_syncframe(numblkscod) were ever written - see
     // DecodedSubstream::dynrng's own comment on the fixed-size convention.
     std::array<std::uint8_t, kBlocksPerFrame> dynrng{};
@@ -565,11 +694,23 @@ struct DecodedAccessUnit {
     // eac3::blocks_per_syncframe.
     int numblkscod = 3;
     // The independent substream's own mixmdate and infomdat groups, same
-    // reasoning as compr and dynrng above: every substream carries its own,
-    // but only the bed's describes the programme. A dependent's mixmdate is
+    // reasoning as dynrng above: every substream carries its own, but only
+    // the bed's describes the programme. A dependent's mixmdate is
     // the levels alone anyway, and Table E1.2 gives a dependent no infomdat
     // gate of its own worth surfacing at this level.
     std::optional<meta::MixMetadata> mixing = std::nullopt;
+    // The independent substream's own bsid - eac3::kBsid (11-16) for a
+    // genuine E-AC-3 bed, 6 or 8 for a §E2.3.1.2 legacy core - copied
+    // straight from DecodedSubstream::bsid the same way dialnorm/compr/mixing
+    // above are. This is what tells the output stage whether to resolve the
+    // programme's fold from `mixing` above or from cmixlev/surmixlev/
+    // alternate_bsi below: a core has no mixmdate syntax to carry the former
+    // in at all, only bsi's own downmix fields, so the two are never both
+    // meaningful at once.
+    int bsid = eac3::kBsid;
+    std::optional<meta::CentreMixLevel> cmixlev = std::nullopt;
+    std::optional<meta::SurroundMixLevel> surmixlev = std::nullopt;
+    std::optional<meta::AlternateBsi> alternate_bsi = std::nullopt;
     std::optional<meta::BsiInfo> info = std::nullopt;
     // object_metadata/object_audio from whichever substream of the access
     // unit carries them, first one wins - see DecodedSubstream's own comments
@@ -690,6 +831,21 @@ class AC3FORGE_EXPORT Eac3Decoder {
     decode_access_unit_into(std::span<const std::byte> unit,
                             std::span<const std::span<float>> channels);
 
+    // As decode_access_unit_into, but the rendered programme reaches the
+    // caller through `sink`, a block at a time: one PcmBlock per block of the
+    // unit, in order, each of kSamplesPerBlock samples per slot of the
+    // returned layout (coded order for dual mono), delivered once the unit
+    // has assembled and the output stage has run, so the samples are the
+    // *_into form's exactly. Nothing is copied: each slot is a view onto the
+    // substream vector that supplies it - a dependent's channel over the bed's
+    // where §E3.8.2 says it replaces it - which also removes the assembly copy
+    // the *_into form pays. The returned DecodedAccessUnit carries everything
+    // except the PCM. The §3.7 hold-back's std::nullopt, a skipped programme
+    // and skip_reconstruction all leave the sink uncalled; a held-back unit
+    // is delivered through it on the call that releases it.
+    [[nodiscard]] std::expected<std::optional<DecodedAccessUnit>, DecodeError>
+    decode_access_unit_by_block(std::span<const std::byte> unit, BlockSink sink);
+
     // Releases whichever frames transient pre-noise processing is still
     // holding back, one per substream identity that has one pending - empty
     // if none does, which covers every stream that never used the tool.
@@ -703,7 +859,7 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // since by definition the assembly never completed.
     [[nodiscard]] std::vector<DecodedSubstream> flush();
 
-    // Roadmap PF6: the delay THIS decoder adds, same contract as
+    // bare-metal probe harness: the delay THIS decoder adds, same contract as
     // FrameDecoder::latency_samples(). Zero until some substream's frame sets
     // transproce, kSamplesPerFrame from then on - §3.7's hold-back is not a
     // property of the decoder but of the stream it is fed, and once a
@@ -727,20 +883,27 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // decode_substream without the §7.10 concealment wrapper around it.
     [[nodiscard]] std::expected<std::optional<DecodedSubstream>, DecodeError>
     decode_substream_core(std::span<const std::byte> frame);
-    // §7.10: a substream's worth of audio built out of retained_[slot] under
-    // the configured policy, or std::nullopt when that identity has nothing
-    // retained yet. `slot` is the identity key described below.
-    [[nodiscard]] std::optional<DecodedSubstream> conceal(DecodeError error, std::size_t slot);
+    // §7.10: replaces `decoded`'s error with a substream's worth of audio built
+    // out of retained_[slot] under the configured policy, or leaves the error
+    // standing when that identity has nothing retained yet. `slot` is the
+    // identity key described below. The substream is built inside `decoded`,
+    // which is decode_substream's return value, so the decode task's stack
+    // holds no second copy of it.
+    void conceal(std::size_t slot,
+                 std::expected<std::optional<DecodedSubstream>, DecodeError>& decoded);
     // The §7.8 fold over an assembled access unit, in whichever storage it
     // landed - the result's own vectors or the caller's spans. The fold
     // itself is OutputStage's; this only decides what to hand it.
     void apply_output(DecodedAccessUnit& out, std::span<const std::span<float>> external);
-    // Both public access-unit forms above: `external` empty means allocate
-    // the program PCM into the returned DecodedAccessUnit, non-empty means
-    // write through the spans - the same split decode_frame_core makes.
+    // All three public access-unit forms above: `external` empty means
+    // allocate the program PCM into the returned DecodedAccessUnit, non-empty
+    // means write through the spans - the same split decode_frame_core makes
+    // - and a `sink` means neither: views onto the substreams' own vectors,
+    // handed over a block at a time.
     [[nodiscard]] std::expected<std::optional<DecodedAccessUnit>, DecodeError>
     decode_access_unit_core(std::span<const std::byte> unit,
-                            std::span<const std::span<float>> external);
+                            std::span<const std::span<float>> external,
+                            const BlockSink* sink = nullptr);
 
     // §E2.3.1.2's legacy core, presented as substream (kIndependent, 0) - see
     // core_ below and decode_substream's own doc comment.

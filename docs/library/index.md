@@ -1,19 +1,43 @@
 # Using ac3::forge
 
-The public API is the headers under `src/forge/include/ac3/`. Link `ac3::forge`; link any of
-`matroska::matroska`, `mp4::mp4` and `mpegts::mpegts` as well if you want a container writer,
-`ac3::signing` if you want to apply the EMDF object-signing tag (see [Object signing](signing.md)),
-[`ac3iab::ac3iab`](iab.md) if you want to read a SMPTE ST 2098-2 Immersive Audio Bitstream, a bare
-elementary `.iab` file or a real MXF Track File alike (it links nothing from `ac3::forge` and knows
-nothing about AC-3 — roadmap IM1 phases 1-2), or
-`ac3adm::ac3adm` if you want to read or write a professional ADM BWF master — it does not need
-`ac3::forge` linked alongside it on its own (`ac3::admbridge` is the module that needs both, for
-mapping an ADM object graph onto/from `ac3::oba::AtmosEncoder`/`ac3::Eac3Decoder`). Unlike every
-other module here, `ac3adm::ac3adm` is opt-in: it is only built with
-`-DAC3FORGE_BUILD_ADM=ON` (default off), and needs several Boost header libraries pulled in via
-`-DVCPKG_MANIFEST_FEATURES=adm` — see [ADM / BW64 reading](adm.md) for why. Unlike every other
-module here, it and `ac3::admbridge` are **shared-only** even in an installed package — see the
-note below.
+`ac3::forge` is the C++23 codec library used by Forge, Crucible, and Hearth. It encodes and
+decodes AC-3 and E-AC-3, including E-AC-3 streams with Dolby Atmos objects represented through
+Joint Object Coding (JOC). It also provides loudness metering, level analysis, and quality
+measurement.
+
+Related targets provide container writing, IAB and ADM/BW64 reading, IAMF writing, object
+signing, platform audio, and an AC-4 bitstream inspector. Build and linkage requirements differ
+by target. [Capabilities](capabilities.md) lists supported formats and limits;
+[Development status](development-status.md) is the compact done / partial / not-started companion.
+[Validation](../verification.md) describes how output is checked.
+
+Use this page to link the C++ library. Other interfaces are documented under the
+[C API](c-api.md), [Python](python-api.md), [Rust](rust-api.md), and
+[WebAssembly](../platforms/wasm.md) pages. Packages are listed under
+[Releasing](../releasing.md#what-gets-published).
+
+The main public headers are under `src/forge/include/ac3/`.
+
+| CMake target | Purpose |
+|---|---|
+| `ac3::forge` | AC-3 and E-AC-3 encoding and decoding |
+| `matroska::matroska`, `mp4::mp4`, `mpegts::mpegts` | Container writers |
+| `ac3::signing` | EMDF object signing; see [Object signing](signing.md) |
+| `ac3iab::ac3iab` | SMPTE ST 2098-2 IAB reading; see [IAB](iab.md) |
+| `iamf::iamf` | IAMF OBU and ISOBMFF writing; see [IAMF](iamf.md) |
+| `ac3adm::ac3adm` | ADM/BW64 reading and writing; opt-in with `AC3FORGE_BUILD_ADM=ON` |
+| `ac3::admbridge` | Mapping between ADM objects and the Atmos encoder or decoder |
+| `ac4::ac4` | AC-4 inspection used by in-tree applications; in-tree only, not installed or exported |
+
+`ac3adm::ac3adm` and `ac3::admbridge` need the root dependency manifest's `adm` feature
+(`-DVCPKG_MANIFEST_FEATURES=adm`) when building this repository with vcpkg, and are installed as
+shared libraries. The packaged `ac3forge` port has no `adm` feature and does not package either
+target. Their [ADM](adm.md) and [ADM bridge](adm-bridge.md) pages explain the dependency and
+linkage details.
+
+`ac4::ac4` is available only while this repository is part of the build.
+`cmake/InstallLibrary.cmake` has no AC-4 export or install rule, so it is not available through
+`find_package(ac3forge)`.
 
 **In-tree** (this repo `add_subdirectory`'d into a larger build, or as a git submodule):
 
@@ -47,7 +71,7 @@ their **shared** variant (`ac3adm::ac3adm_shared`/`ac3::admbridge_shared`, plus 
 `ac3adm::ac3adm`/`ac3::admbridge` alias — there is no `_static` counterpart here, unlike every
 other module on this page) regardless of `AC3FORGE_INSTALL_BOTH_LINKAGES`. A self-contained
 `.so` absorbs libbw64/libadm at its own build step; a static archive would leave a downstream
-consumer with genuinely unresolved symbols into a library this package doesn't ship. `ac3adm`
+consumer with unresolved symbols into a library this package doesn't ship. `ac3adm`
 still needs Boost at build time (see the note above) — that requirement doesn't go away just
 because the *installed* artifact is self-contained.
 
@@ -105,7 +129,7 @@ pkg-config --cflags --libs ac3forge
 
 Picks whichever linkage was actually installed (the shared name when
 `AC3FORGE_INSTALL_BOTH_LINKAGES`/`BUILD_SHARED_LIBS` selected it, else the `_static`-suffixed
-one — matching what's genuinely on disk), and chains `Requires:` for a component that PUBLIC-
+one — matching what is actually on disk), and chains `Requires:` for a component that PUBLIC-
 links another (`ac3signing` requires `ac3forge`; `admbridge` requires both `ac3forge` and
 `ac3adm`). The `prefix=` line resolves relative to wherever the `.pc` file itself ends up
 (`pkg-config`'s own `${pcfiledir}`), so it works the same whether that's a real system install or
@@ -127,6 +151,9 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 
 ## In this section
 
+- [Capabilities](capabilities.md) — what ships, with spec sections and limitations.
+- [Development status](development-status.md) — at-a-glance status across every codec and bitstream feature.
+- [Application coverage](application-coverage.md) — which applications expose each broad capability.
 - [Example programs](examples.md) — every `examples/` program, what it shows, and which page discusses it.
 - [Encoding AC-3](encoding-ac3.md) — `ac3::FrameEncoder` and `EncoderConfig`.
 - [Encoding E-AC-3](encoding-eac3.md) — `ac3::eac3::FrameEncoder` and wide layouts via `ac3::eac3::AccessUnitEncoder`.
@@ -153,15 +180,16 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 - [Object signing](signing.md) — `ac3::signing`, the EMDF protection tag.
 - [Header map](header-map.md) — the headers a caller normally reaches for, and what lives in each.
 - [API stability](api-stability.md) — the v1.0 freeze plan: header tiers, SemVer and deprecation
-  policy, and what's decided versus still deliberately deferred (roadmap `AP1`).
+  policy, and what's decided versus still deliberately deferred.
 - [C API](c-api.md) — `ac3::forge_c`, a stable, minimal C-callable surface over encode/decode for
-  bindings and embedding (roadmap item F1).
+  bindings and embedding.
 - [Rust bindings](rust-api.md) — `ac3forge-sys` (raw, `bindgen`-generated) plus the safe
   `ac3forge` crate, both over the C API.
 - [Python bindings](python-api.md) — the `ac3forge` PyPI package, pybind11-direct over
   `ac3::FrameEncoder`/`FrameDecoder`/`Eac3Decoder`/`oba::AtmosEncoder` and
   `eac3::FrameEncoder`/`AccessUnitEncoder`.
-- [WebAssembly](../platforms/wasm.md) — the `ac3forge-wasm-decoder` npm package (roadmap UX5): a
+- [WebAssembly](../platforms/wasm.md) — the `ac3forge-wasm-decoder` package, built
+  from this tree and not yet on the npm registry: a
   push-frame decode API, an AudioWorklet playback pipeline, and an hls.js/MSE bridge over the
   decoder compiled to WASM.
 

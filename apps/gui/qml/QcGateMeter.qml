@@ -7,7 +7,7 @@ import Ac3Forge
 // tolerance band (the loudness gates) or a one-sided ceiling (true peak) —
 // modelled on ChannelMeter's own track/fill shape but built to show a
 // spec's own numbers alongside the measurement rather than a scale from
-// silence to full output. See docs/gui/qc.md.
+// silence to full output. See docs/forge/gui/qc.md.
 RowLayout {
     id: root
 
@@ -51,7 +51,7 @@ RowLayout {
         Layout.preferredWidth: 130
         text: root.label
         color: Theme.text
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         font.family: Theme.monoFamily
         horizontalAlignment: Text.AlignRight
     }
@@ -112,7 +112,7 @@ RowLayout {
         Layout.preferredWidth: 96
         text: root.hasValue ? (root.value.toFixed(2) + " " + root.unit) : qsTr("n/a")
         color: root.gated && root.hasValue ? (root.pass ? Theme.good : Theme.bad) : Theme.text
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         font.family: Theme.monoFamily
         horizontalAlignment: Text.AlignRight
     }

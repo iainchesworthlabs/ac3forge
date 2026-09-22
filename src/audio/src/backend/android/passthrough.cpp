@@ -63,6 +63,16 @@
 //       // AudioTrack.ERROR_* code.
 //       fun submit(buffer: ByteBuffer, sizeBytes: Int): Int
 //       fun close()
+//       // Optional: a bridge without them still bitstreams. position() then
+//       // reports nothing, pause() and resume() refuse, and flush() does
+//       // nothing. AudioTrack.getPlaybackHeadPosition() as an unsigned
+//       // count, or -1 with no track; pause() and play(); and a flush of a
+//       // paused track. A minified app keeps these only if its R8 rules
+//       // name them (apps/android/app/proguard-rules.pro).
+//       fun playbackHeadPosition(): Long
+//       fun pause(): Boolean
+//       fun resume(): Boolean
+//       fun flush(): Boolean
 //   }
 //
 // The app registers one bridge instance for the process's lifetime via
@@ -78,8 +88,10 @@
 #include <atomic>
 #include <cstring>
 #include <mutex>
+#include <optional>
 #include <vector>
 
+#include "ac3/audio/playback_counter.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 #include "android_support.hpp"
 
@@ -104,6 +116,27 @@ jmethodID g_mid_is_pcm_supported = nullptr;     // boolean isPcmSupported(int)
 jmethodID g_mid_open = nullptr;                 // boolean open(int, boolean)
 jmethodID g_mid_submit = nullptr;               // int submit(ByteBuffer, int)
 jmethodID g_mid_close = nullptr;                // void close()
+// Optional, and null for a bridge that predates them.
+jmethodID g_mid_head_position = nullptr;  // long playbackHeadPosition()
+jmethodID g_mid_pause = nullptr;          // boolean pause()
+jmethodID g_mid_resume = nullptr;         // boolean resume()
+jmethodID g_mid_flush = nullptr;          // boolean flush()
+
+// The IEC 61937 carrier's frame: two channels of 16 bits.
+constexpr std::size_t kLinkFrameBytes = 4;
+
+// Calls one of the optional boolean methods; false when the bridge lacks it.
+bool call_optional(JNIEnv* env, jmethodID method) {
+    if (method == nullptr) {
+        return false;
+    }
+    const jboolean result = env->CallBooleanMethod(g_bridge, method);
+    if (env->ExceptionCheck() != 0) {
+        env->ExceptionClear();
+        return false;
+    }
+    return result != JNI_FALSE;
+}
 
 // Detaches a thread WE attached, when that thread exits.
 //
@@ -260,11 +293,39 @@ struct PassthroughSink::Impl {
     std::size_t pending_offset = 0;
     std::uint64_t partial_writes = 0;
 
+    // Raised by start(). Lowered by stop(), or by submit() when the track has
+    // died under it, which closes the track there and then.
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
     std::size_t burst_bytes = iec61937::kBurstBytes;
+
+    // For position(), all under g_bridge_mutex. The bytes the track has
+    // accepted since it was opened or flushed, and its head position, which
+    // for a direct track is the HAL's render position and is read through
+    // PlayHead for what that does besides count.
+    std::uint64_t accepted_bytes = 0;
+    PlayHead head;
+    // Link frames to a content frame (carrier_ratio()).
+    std::uint32_t ratio = 1;
+    std::atomic_bool paused{false};
+
+    // Closes the Kotlin track and lets go of the buffer pool's references,
+    // with g_bridge_mutex held: what stop() does, what a start() whose open
+    // failed does, and what submit() does itself once the track has died.
+    void close_track(JNIEnv* env) {
+        env->CallVoidMethod(g_bridge, g_mid_close);
+        if (env->ExceptionCheck() != 0) {
+            env->ExceptionClear();
+        }
+        for (auto& buf : direct_buffers) {
+            if (buf != nullptr) {
+                env->DeleteGlobalRef(buf);
+                buf = nullptr;
+            }
+        }
+    }
 };
 
 PassthroughSink::PassthroughSink() : impl_(std::make_unique<Impl>()) {}
@@ -281,6 +342,103 @@ PassthroughStats PassthroughSink::stats() const {
     return {.bursts_submitted = impl_->submitted.load(std::memory_order_relaxed),
             .bursts_rendered = impl_->rendered.load(std::memory_order_relaxed),
             .underruns = impl_->underruns.load(std::memory_order_relaxed)};
+}
+
+std::optional<MonitorPosition> PassthroughSink::position() const {
+    if (!running() || !bridge_ready()) {
+        return std::nullopt;
+    }
+    JNIEnv* env = jni_env();
+    if (env == nullptr) {
+        return std::nullopt;
+    }
+    std::lock_guard lock(g_bridge_mutex);
+    if (g_mid_head_position == nullptr) {
+        return std::nullopt;
+    }
+    const jlong head = env->CallLongMethod(g_bridge, g_mid_head_position);
+    if (env->ExceptionCheck() != 0) {
+        env->ExceptionClear();
+        return std::nullopt;
+    }
+    if (head < 0) {
+        return std::nullopt;
+    }
+    const std::uint64_t played = impl_->head.read(
+        static_cast<std::uint32_t>(static_cast<std::uint64_t>(head) & 0xFFFFFFFFULL));
+    const std::uint64_t accepted = impl_->accepted_bytes / kLinkFrameBytes;
+    // AudioTrack gives no latency past its buffer through a public call, so
+    // none is reported: 0 is "cannot say".
+    return per_content_frame(
+        MonitorPosition{.frames_played = played,
+                        .frames_queued = accepted > played ? accepted - played : 0,
+                        .latency_frames = 0},
+        impl_->ratio);
+}
+
+void PassthroughSink::flush() {
+    if (!running() || !bridge_ready()) {
+        return;
+    }
+    JNIEnv* env = jni_env();
+    if (env == nullptr) {
+        return;
+    }
+    std::lock_guard lock(g_bridge_mutex);
+    if (!call_optional(env, g_mid_flush)) {
+        return;
+    }
+    impl_->accepted_bytes = 0;
+    // The track's head restarts too, once the flush reaches the hardware.
+    impl_->head.restart();
+    // What a partial write had queued of a burst went with the flush.
+    impl_->pending_offset = 0;
+    impl_->submitted.store(0, std::memory_order_relaxed);
+    impl_->rendered.store(0, std::memory_order_relaxed);
+}
+
+std::expected<void, PassthroughError> PassthroughSink::pause() {
+    if (!running()) {
+        return std::unexpected(PassthroughError::kNotRunning);
+    }
+    if (!bridge_ready()) {
+        return std::unexpected(PassthroughError::kNoBackend);
+    }
+    JNIEnv* env = jni_env();
+    if (env == nullptr) {
+        return std::unexpected(PassthroughError::kComFailure);
+    }
+    std::lock_guard lock(g_bridge_mutex);
+    if (!call_optional(env, g_mid_pause)) {
+        return std::unexpected(PassthroughError::kComFailure);
+    }
+    impl_->paused.store(true, std::memory_order_release);
+    return {};
+}
+
+std::expected<void, PassthroughError> PassthroughSink::resume() {
+    if (!running()) {
+        return std::unexpected(PassthroughError::kNotRunning);
+    }
+    if (!bridge_ready()) {
+        return std::unexpected(PassthroughError::kNoBackend);
+    }
+    JNIEnv* env = jni_env();
+    if (env == nullptr) {
+        return std::unexpected(PassthroughError::kComFailure);
+    }
+    std::lock_guard lock(g_bridge_mutex);
+    if (!call_optional(env, g_mid_resume)) {
+        return std::unexpected(PassthroughError::kComFailure);
+    }
+    impl_->paused.store(false, std::memory_order_release);
+    return {};
+}
+
+bool PassthroughSink::paused() const {
+    // A pause is a property of a running stream, so one whose track has died
+    // is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
 }
 
 bool PassthroughSink::can_submit() const {
@@ -342,17 +500,36 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
         } else if (written == static_cast<jint>(remaining)) {
             ok = true;
             impl_->pending_offset = 0;
+            impl_->accepted_bytes += remaining;
         } else if (written > 0) {
             // Partial: keep what was accepted and resume from there. Not an
             // underrun - the track took data, it just could not take all of
             // it this instant.
             impl_->pending_offset = offset + static_cast<std::size_t>(written);
+            impl_->accepted_bytes += static_cast<std::size_t>(written);
             if (impl_->partial_writes++ == 0) {
                 __android_log_print(ANDROID_LOG_INFO, kLogTag,
                                     "AudioTrack accepted a partial burst (%d of %zu bytes) - "
                                     "resuming from the offset rather than resubmitting",
                                     static_cast<int>(written), remaining);
             }
+        } else if (android_audio::track_is_dead(written)) {
+            // The track has died - its output closed under it when the HDMI
+            // sink went away, or the audio server restarted - and will take
+            // nothing more. The stream ends here, as a stop() would end it:
+            // the track is closed now rather than whenever stop() comes, and
+            // running() says so, so position() reports nothing and every
+            // later call answers at once. Counted as an underrun first: it
+            // is a gap on the wire, and a rising count is the signal the
+            // Shield app's receiver check stops its encode loop on.
+            impl_->underruns.fetch_add(1, std::memory_order_relaxed);
+            __android_log_print(ANDROID_LOG_WARN, kLogTag,
+                                "submit: the AudioTrack is dead (ERROR_DEAD_OBJECT) - "
+                                "passthrough has stopped");
+            impl_->running.store(false, std::memory_order_release);
+            impl_->pending_offset = 0;
+            impl_->paused.store(false, std::memory_order_relaxed);
+            impl_->close_track(env);
         } else if (written < 0) {
             // A hard AudioTrack error. pending_offset is deliberately NOT
             // reset: if the track recovers, resuming is still correct, and
@@ -372,12 +549,15 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
 }
 
 void PassthroughSink::stop() {
+    // Not running: never started, stopped already, or ended by submit() on a
+    // dead track, which closed it then.
     if (!impl_->running.exchange(false, std::memory_order_acq_rel)) {
         return;
     }
     // Whatever was half-queued dies with the track; a later start() must not
-    // resume into a burst nothing is waiting for.
+    // resume into a burst nothing is waiting for. A pause dies with it too.
     impl_->pending_offset = 0;
+    impl_->paused.store(false, std::memory_order_relaxed);
     if (!bridge_ready()) {
         return;
     }
@@ -385,19 +565,8 @@ void PassthroughSink::stop() {
     if (env == nullptr) {
         return;
     }
-    {
-        std::lock_guard lock(g_bridge_mutex);
-        env->CallVoidMethod(g_bridge, g_mid_close);
-        if (env->ExceptionCheck() != 0) {
-            env->ExceptionClear();
-        }
-        for (auto& buf : impl_->direct_buffers) {
-            if (buf != nullptr) {
-                env->DeleteGlobalRef(buf);
-                buf = nullptr;
-            }
-        }
-    }
+    std::lock_guard lock(g_bridge_mutex);
+    impl_->close_track(env);
 }
 
 std::expected<void, PassthroughError> PassthroughSink::start(const std::string& /*device_id*/,
@@ -457,6 +626,13 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
             env->ExceptionClear();
             opened = false;
         }
+        if (!opened) {
+            // Nothing takes a burst, and stop() will not run for a start()
+            // that failed, so the pool's references go now. Otherwise every
+            // refused start - one after a dead track among them - would leave
+            // three behind.
+            impl_->close_track(env);
+        }
     }
 
     if (!opened) {
@@ -472,6 +648,14 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     impl_->submitted.store(0, std::memory_order_relaxed);
     impl_->rendered.store(0, std::memory_order_relaxed);
     impl_->underruns.store(0, std::memory_order_relaxed);
+    {
+        std::lock_guard lock(g_bridge_mutex);
+        impl_->accepted_bytes = 0;
+        // A new track's head starts at zero, so nothing is stale.
+        impl_->head = PlayHead{};
+    }
+    impl_->ratio = carrier_ratio(format);
+    impl_->paused.store(false, std::memory_order_relaxed);
     impl_->running.store(true, std::memory_order_release);
     return {};
 }
@@ -537,6 +721,21 @@ Java_com_ac3forge_shield_NativeBridge_registerPassthroughBridge(JNIEnv* env, jcl
                             "signatures?");
         return;
     }
+
+    // The optional methods, one at a time: a bridge without one raises
+    // NoSuchMethodError, which has to be cleared before the next JNI call.
+    const auto optional_method = [env, local_class](const char* name, const char* signature) {
+        const jmethodID method = env->GetMethodID(local_class, name, signature);
+        if (env->ExceptionCheck() != 0) {
+            env->ExceptionClear();
+            return static_cast<jmethodID>(nullptr);
+        }
+        return method;
+    };
+    ac3::audio::g_mid_head_position = optional_method("playbackHeadPosition", "()J");
+    ac3::audio::g_mid_pause = optional_method("pause", "()Z");
+    ac3::audio::g_mid_resume = optional_method("resume", "()Z");
+    ac3::audio::g_mid_flush = optional_method("flush", "()Z");
 
     ac3::audio::g_bridge = env->NewGlobalRef(bridge);
     env->DeleteLocalRef(local_class);

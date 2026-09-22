@@ -179,7 +179,7 @@ InspectOutcome inspect_file(const QString& path) {
         file_bytes[i] = static_cast<std::byte>(static_cast<unsigned char>(raw[i]));
     }
 
-    // roadmap IO2: the file itself unchanged if it is not a container this
+    // container readers (mkv/mp4/ts): the file itself unchanged if it is not a container this
     // build reads, or the first AC-3/E-AC-3 track demuxed out of one - the
     // same sniff-and-demux ac3cli's own decode/qc/levels/play/monitor use.
     auto demuxed = ac3::apps::elementary_stream_from_bytes(file_bytes);
@@ -330,8 +330,16 @@ void ObjectDecodeController::auditionObject(int index) {
 
     std::ignore = QtConcurrent::run([this, samples] {
         std::size_t at = 0;
+        QString error;
         while (at < samples.size()) {
             if (stop_audition_.load(std::memory_order_relaxed)) {
+                break;
+            }
+            // running() turns false, not just submit() false-forever, once
+            // the device goes away under the stream - without this check
+            // the loop below retries forever instead of stopping.
+            if (!audition_sink_->running()) {
+                error = QStringLiteral("The audition output device disappeared.");
                 break;
             }
             const auto chunk_len = std::min<std::size_t>(2048, samples.size() - at);
@@ -346,12 +354,16 @@ void ObjectDecodeController::auditionObject(int index) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(4));
             }
         }
-        QMetaObject::invokeMethod(this, [this] {
+        QMetaObject::invokeMethod(this, [this, error] {
             if (audition_sink_) {
                 audition_sink_->stop();
                 audition_sink_.reset();
             }
             auditioning_index_ = -1;
+            if (!error.isEmpty()) {
+                error_ = error;
+                emit resultChanged();
+            }
             emit auditionChanged();
         });
     });

@@ -39,7 +39,7 @@ std::int32_t clamp_fixed25(double scaled) {
 
 }  // namespace
 
-// Two coefficients per iteration through the arch seam (ROADMAP PF5).
+// Two coefficients per iteration through the arch seam (SIMD kernels).
 //
 // arch::round_ties_away is contractually std::round - IEEE-754
 // roundToIntegralTiesAway - on every member of the seam, so each lane's
@@ -78,6 +78,16 @@ void to_fixed25_block(std::span<const double> coefficients, std::span<std::int32
     }
 }
 
+// The float form: to_fixed25 on each float coefficient, which is that
+// coefficient's own round-half-away-from-zero (exponents.hpp says why the
+// float instantiation is exact). Bin by bin - see the header.
+void to_fixed25_block(std::span<const float> coefficients, std::span<std::int32_t> fixed) {
+    assert(coefficients.size() == fixed.size());
+    for (std::size_t i = 0; i < coefficients.size(); ++i) {
+        fixed[i] = to_fixed25(coefficients[i]);
+    }
+}
+
 void extract_exponents(std::span<const std::int32_t> fixed, std::span<std::uint8_t> exponents) {
     assert(fixed.size() == exponents.size());
     for (std::size_t i = 0; i < fixed.size(); ++i) {
@@ -86,6 +96,13 @@ void extract_exponents(std::span<const std::int32_t> fixed, std::span<std::uint8
 }
 
 EncodedExponents encode_exponents(std::span<const std::uint8_t> raw, ExpStrategy strategy) {
+    EncodedExponents encoded;
+    encode_exponents_into(raw, strategy, encoded);
+    return encoded;
+}
+
+void encode_exponents_into(std::span<const std::uint8_t> raw, ExpStrategy strategy,
+                           EncodedExponents& out) {
     AC3_ZONE_SCOPED_N("encode_exponents");
     const int endmant = static_cast<int>(raw.size());
     const int group_size = exponent_group_size(strategy);
@@ -148,9 +165,11 @@ EncodedExponents encode_exponents(std::span<const std::uint8_t> raw, ExpStrategy
         pre[static_cast<std::size_t>(i) + 1] = pre[static_cast<std::size_t>(i)];
     }
 
-    EncodedExponents encoded;
-    encoded.absolute = static_cast<std::uint8_t>(pre[0]);
-    encoded.groups.reserve(static_cast<std::size_t>(group_count));
+    out.absolute = static_cast<std::uint8_t>(pre[0]);
+    // Resized rather than cleared-then-push_back'd: a caller reusing `out`
+    // across calls (an exponent run reused frame to frame) keeps its
+    // existing heap block as long as it is already at least this big.
+    out.groups.resize(static_cast<std::size_t>(group_count));
     for (int g = 0; g < group_count; ++g) {
         int mapped[3];
         for (int j = 0; j < 3; ++j) {
@@ -159,14 +178,20 @@ EncodedExponents encode_exponents(std::span<const std::uint8_t> raw, ExpStrategy
             assert(diff >= -2 && diff <= 2);
             mapped[j] = diff + 2;  // Table 7.1 mapping
         }
-        encoded.groups.push_back(
-            static_cast<std::uint8_t>(25 * mapped[0] + 5 * mapped[1] + mapped[2]));
+        out.groups[static_cast<std::size_t>(g)] =
+            static_cast<std::uint8_t>(25 * mapped[0] + 5 * mapped[1] + mapped[2]);
     }
-    return encoded;
 }
 
 EncodedCouplingExponents encode_coupling_exponents(std::span<const std::uint8_t> raw,
                                                    ExpStrategy strategy) {
+    EncodedCouplingExponents encoded;
+    encode_coupling_exponents_into(raw, strategy, encoded);
+    return encoded;
+}
+
+void encode_coupling_exponents_into(std::span<const std::uint8_t> raw, ExpStrategy strategy,
+                                    EncodedCouplingExponents& out) {
     const int group_size = exponent_group_size(strategy);
     const int count = static_cast<int>(raw.size());
     assert(group_size > 0 && count > 0);
@@ -180,7 +205,9 @@ EncodedCouplingExponents encode_coupling_exponents(std::span<const std::uint8_t>
     // out under NDEBUG, and a zero group count sizes pre at one element - which
     // the pre[1] read below is already past the end of.
     if (ngrps <= 0) {
-        return {};
+        out.cplabsexp = 0;
+        out.groups.clear();  // keeps capacity; only the by-value form starts empty
+        return;
     }
     const int diff_count = ngrps * 3;
 
@@ -217,9 +244,8 @@ EncodedCouplingExponents encode_coupling_exponents(std::span<const std::uint8_t>
         }
     }
 
-    EncodedCouplingExponents encoded;
-    encoded.cplabsexp = static_cast<std::uint8_t>(pre[0] >> 1);
-    encoded.groups.reserve(static_cast<std::size_t>(ngrps));
+    out.cplabsexp = static_cast<std::uint8_t>(pre[0] >> 1);
+    out.groups.resize(static_cast<std::size_t>(ngrps));
     for (int g = 0; g < ngrps; ++g) {
         int mapped[3];
         for (int j = 0; j < 3; ++j) {
@@ -228,10 +254,9 @@ EncodedCouplingExponents encode_coupling_exponents(std::span<const std::uint8_t>
             assert(diff >= -2 && diff <= 2);
             mapped[j] = diff + 2;
         }
-        encoded.groups.push_back(
-            static_cast<std::uint8_t>(25 * mapped[0] + 5 * mapped[1] + mapped[2]));
+        out.groups[static_cast<std::size_t>(g)] =
+            static_cast<std::uint8_t>(25 * mapped[0] + 5 * mapped[1] + mapped[2]);
     }
-    return encoded;
 }
 
 void decode_coupling_exponents(std::uint8_t cplabsexp, std::span<const std::uint8_t> groups,
@@ -267,28 +292,38 @@ void decode_exponents(std::uint8_t absolute, std::span<const std::uint8_t> group
     assert(out.empty() || (out.size() - 1) % 3 == 0);  // legal endmant contract
     assert(static_cast<int>(out.size()) <= 1 + ngrps * 3 * group_size);
 
-    // §7.1.3 pseudocode: ungroup, unbias, accumulate, expand by grpsize.
-    std::vector<int> aexp(static_cast<std::size_t>(ngrps) * 3);
-    int prevexp = absolute;
-    for (int grp = 0; grp < ngrps; ++grp) {
-        const int gexp = groups[static_cast<std::size_t>(grp)];
-        const int dexp[3] = {gexp / 25, (gexp % 25) / 5, (gexp % 25) % 5};
-        for (int j = 0; j < 3; ++j) {
-            const std::size_t i = static_cast<std::size_t>(grp * 3 + j);
-            aexp[i] = prevexp + (dexp[j] - 2);
-            prevexp = aexp[i];
-        }
-    }
-
+    // §7.1.3 pseudocode: ungroup, unbias, accumulate, expand by grpsize - in
+    // one pass, writing each absolute exponent straight into `out` as it is
+    // derived, exactly as decode_coupling_exponents above already does.
+    //
+    // It used to accumulate into a std::vector<int> of ngrps * 3 first and
+    // expand from that afterwards, which cost one heap allocation per stream
+    // per block that sent exponents - about 1 KB for a full-bandwidth D15
+    // channel, and the whole of the AC-3 decoder's remaining per-frame churn
+    // once its frame-scope buffers moved onto the decoder. The intermediate
+    // was never needed: the expansion visits aexp[i] in the same increasing
+    // order the accumulation produces it and reads no entry twice, so this is
+    // the same sequence of writes with nothing held between them.
+    //
+    // `bin` advances whether or not the guard lets the write through, which is
+    // what the index arithmetic it replaces did - bin was computed from i and
+    // j rather than counted - so a short `out` still skips its tail rather
+    // than packing the remaining exponents down into it.
     if (!out.empty()) {
         out[0] = absolute;
     }
-    for (std::size_t i = 0; i < aexp.size(); ++i) {
-        for (int j = 0; j < group_size; ++j) {
-            const std::size_t bin = i * static_cast<std::size_t>(group_size) +
-                                    static_cast<std::size_t>(j) + 1;
-            if (bin < out.size()) {
-                out[bin] = static_cast<std::uint8_t>(aexp[i]);
+    int prevexp = absolute;
+    std::size_t bin = 1;
+    for (int grp = 0; grp < ngrps; ++grp) {
+        const int gexp = groups[static_cast<std::size_t>(grp)];
+        const int dexp[3] = {gexp / 25, (gexp % 25) / 5, (gexp % 25) % 5};
+        for (const int d : dexp) {
+            prevexp += d - 2;
+            for (int j = 0; j < group_size; ++j) {
+                if (bin < out.size()) {
+                    out[bin] = static_cast<std::uint8_t>(prevexp);
+                }
+                ++bin;
             }
         }
     }

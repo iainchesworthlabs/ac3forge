@@ -1,16 +1,1742 @@
 # Changelog
 
-*For end users tracking what has shipped. How releases and version numbers are cut lives in
-[docs/releasing.md](docs/releasing.md); the project overview is in [README.md](README.md).*
-
 All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-See [docs/releasing.md](docs/releasing.md) for how releases and version numbers are cut.
+See [README.md](README.md) for the project overview and
+[Releasing](docs/releasing.md) for the release process.
 
 ## [Unreleased]
+
+This release adds:
+
+- Hearth's ESP32-S3 Sendspin sink, desktop engine, and development tools;
+- fixed-point decoding for ESP32-C3 and ESP32-C6, with real-time ESP32-S3 work;
+- Crucible on Windows and Linux, with macOS code built and tested in CI;
+- per-channel quality gates and continued performance, quality, and memory histories;
+- AC-4 container support, wider WebAssembly encoding, microphone capture, and expanded Rust
+  bindings.
+
+The sections below contain the complete change list and fixes.
+
+### Added
+
+**Associated-service identification, both directions**
+
+- **MPEG-TS's `mainid`/`asvc` now read back, not just write.** `mpegts::demux`/`Reader` decode
+  the PMT's own AC-3/E-AC-3 audio descriptor into `ReadStream::service` — `bsmod`, `full_service`,
+  `mainid`, `asvc`, `bsid`, `mix_metadata` and the `substream1`–`3` bytes, for both the DVB and
+  ATSC profiles — where before only the descriptor *tag* was read, to identify the codec.
+- **`ac3cli ts`'s `asvc=` accepts a comma-separated main-service list** (`asvc=0,2`) alongside the
+  existing raw mask (`asvc=0x05`), and `mainid=`/`asvc=` are now checked against the stream's own
+  `bsmod`: giving `asvc=` on a stream `bsmod` calls a main service, or `mainid=` on one it calls
+  an associated service, is a usage error instead of a descriptor that silently says the wrong
+  thing.
+
+**Minimum-footprint / ESP32 decode profile**
+
+- **A Hearth sink knows what it is, joins a network it was told about, and is
+  found by name.** What the board is — its name, the network it joins, how wide its
+  DAC's slots are and whether a second I2S line is wired — lives in NVS rather than in
+  the image, so none of it needs a reflash. A board with nothing stored still behaves
+  exactly as the build says, which is what keeps CI unchanged. Two ways in: **Improv
+  Wi-Fi** over the same USB serial port the console uses, which is how a board with no
+  network at all is told about one; and `PUT /name`, `/wiring`, `/network` and
+  `/slot-width` over the REST surface for a board already on one. Once it has a
+  network it advertises **`_sendspin._tcp` over mDNS**, port 8928 with `path=/sendspin`,
+  which is what a Sendspin server looks for. The network now comes up at boot rather
+  than at the first play, because a sink is found before it is played to. Costs about
+  8 KB of internal RAM for mDNS on every shape; the Improv listener's 4 KB is only
+  spent on a board that has no network to join, since that board is not decoding
+  anything.
+- **A Hearth sink plays as a Sendspin player** (`hearth_sink` with `sdkconfig.sendspin`).
+  The board pairs with a server by its token or by a six-digit code on the console and its page,
+  over Noise, and follows the server's clock with Sendspin's time filter. Compatibility with the
+  aiosendspin 9.1.1 server library used by Music Assistant is validated in CI; Music Assistant
+  itself has not been tested. The `player@v1` role carries stereo PCM. Hearth's
+  `_ac3forge_player@v1` sends AC-3 or E-AC-3 with any Atmos objects, which the board decodes and
+  renders to its own layout, routed, trimmed and delayed as the server's settings say. Each
+  sample leaves the I2S port when the server asked:
+  playout is scheduled against the channel's end-of-frame interrupts, and corrections are made
+  to decoded PCM. Per-output peak and RMS, underruns and play times are reported on the page, in
+  `/status` and to the server. Two ESP32-S3 boards played one E-AC-3 JOC programme as a group
+  for ten minutes over Wi-Fi, one at 2.0 and one at 5.1, with no underrun and their play times
+  within 549 µs. The player is `src/sendspin`'s player half: measured against `sendspin-cpp`,
+  it took 173,604 bytes less flash and left 50,504 bytes more internal RAM free while streaming.
+  [An ESP32-S3 sink](docs/hearth/sink-esp32-s3.md) is the guide: flashing, Improv, pairing,
+  groups, wiring and slot widths. A new CI job, `Hearth Sendspin sink (ESP32-S3, QEMU)`, plays
+  to the emulated board from `ac3hearth-testserver` and holds its levels to a test sink's. In
+  this shape the console listens on every board, for the pairing commands, so the Improv
+  listener's 4 KB is spent whether or not the board has a network.
+- **Sixteen channels out of an ESP32-S3, and the slot width as a setting.** An I2S
+  line carries 128 bits a frame, so the two the part has reach sixteen 16-bit slots or
+  eight 32-bit ones — a 7.1.4 layout leaves through the `i2s` sink for the first time,
+  where eight channels was the ceiling before. The width is no longer fixed when the
+  image is built: `GET` and `PUT /slot-width` beside `/layout` change it between plays,
+  `/status` reports it as `slot_bits`, and the sink's ceiling moves with it, since which
+  width a board wants is a property of the DACs it is wired to rather than of the
+  firmware. A change is refused while a play is running, and takes effect at the next
+  one. Kconfig still sets the width the sink starts at.
+- **A fixed-point decode tier** (`-DAC3FORGE_DECODE_SCALAR=fixed`), a Q7.24 integer
+  scalar path for parts with no FPU (an ESP32-C3, a Cortex-M3), joining `double` and
+  `float` on the decode-scalar axis. Measured at 121 dB+ on the gold streams and 111 dB+
+  on every third-party fixture, with byte-identical bitstreams; on the Cortex-M3 leg,
+  enhanced coupling drops from 28.9M instructions/frame to 10.1M and E-AC-3 5.1 from
+  12.9M to 4.8M. Covers Annex E's tools too (AHT, spectral extension, enhanced
+  coupling); JOC object reconstruction stays `float` in every build. See
+  `planning/arithmetic-tiers.md`.
+- **An ESP32-C3 target** for the minimum-footprint profile
+  (`apps/baremetal/platform/esp32c3/`), decoding in the fixed-point tier since the part
+  has no FPU. CI builds and runs it under `qemu-riscv32`: 12 of 14 fixtures decode with
+  PCM identical to the x86 host and Cortex-M3 legs; the two 7.1.4 rows need more heap than the
+  part's largest free block and are declared skipped rather than silently missing. Speed
+  is unmeasured — QEMU isn't cycle-accurate.
+- **An ESP32-C6 target** (`apps/baremetal/platform/esp32c6/`), with `esp32c6` in the ESP-IDF
+  component's manifest, timed on a board with no network and with WiFi connected and a
+  1,536 kbit/s TCP stream arriving (a network load the probe project can build in). All
+  fourteen fixtures decode with PCM identical to the other fixed-tier legs. With the network up,
+  AC-3 and E-AC-3 5.1, stereo and mono decode in real time (after the fixed-point arithmetic
+  change under Changed), E-AC-3 7.1 does not, and 7.1.4 fits only with ESP-IDF's WiFi IRAM
+  options off. QEMU does not emulate the part, so CI builds it and runs nothing. See
+  `docs/platforms/bare-metal/esp32-c6.md`.
+- **`hearth_sink`'s Sendspin player runs on the ESP32-C6**, the part's single core doing double
+  duty as the WebSocket server and the decode task. A clock reply is now dated by when its bytes
+  reached the board rather than by when the server task got to read them: lwIP's IPv4 input hook
+  (`ac3forge/tcp_arrivals.hpp`, `ESP_IDF_LWIP_HOOK_FILENAME`) logs each Sendspin connection's TCP
+  stream as its segments arrive, well above the decode task, and `PlayerSession::receive()` takes
+  that time instead of `esp_timer_get_time()` at the read. Without it every reply the server task
+  read while a burst decoded looked as late as the decode, and once thirty such bursts in a row
+  had been left out of the clock's filter the offset jumped 13 to 31 ms; with it a ten-minute play
+  kept every reading within 651 us of the server's own clock. Quad SPI flash reads
+  (`CONFIG_ESPTOOLPY_FLASHMODE_QIO`) left the part 6 to 9% idle while a stream played, where
+  DIO left about 1%, and cut a burst's decode and render from 22.4 to 20.7 ms. The Sendspin ring
+  is 48 KB (`sdkconfig.sendspin-c6`, up from 32 KB): a WiFi link that goes quiet for close to a
+  second, seen a few times an hour on this network, drains a smaller ring before it recovers, and
+  the chunks queued behind the gap arrive too late to play; 48 KB cut how often that happened by
+  about two thirds with no allocation ever failing, where 64 KB stopped it in a ten-minute run at
+  the cost of the same WiFi receive-buffer allocation failures the IRAM options above are there to
+  avoid. One ESP32-C6 and one ESP32-S3, both running `hearth_sink`, played one programme from
+  `ac3hearth-testserver` as a group for ten minutes with zero underruns on either board and a
+  479 us worst spread between their play times, inside B3's 1 ms group criterion. AC-3 and
+  E-AC-3 5.1 do not fit the player's memory budget once the ring, the WebSocket
+  server and WiFi's own buffers are all resident: the decoder's scratch allocation failed 10 to
+  12 seconds into a 5.1 stream in each of two runs, one AC-3 and one E-AC-3, and by then the heap
+  was short enough that even the C++ exception the failed allocation threw could not itself be
+  allocated, which aborted the board rather than closing the stream - `outputs.count` in the
+  role's capability advertisement bounds routing, the stage after decode, and did nothing to
+  stop a server sending one. `BurstPlayerConfig::max_coded_channels`
+  (`CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS`, 2 on this board) now refuses a wider
+  syncframe before a decoder opens for it, in every build that sets it. See
+  `docs/platforms/bare-metal/esp32-c6.md`.
+- **`delta_allocation`** on `EncoderConfig`/`eac3::FrameConfig` (`delta=off`): the first
+  rung of an effort axis for parts with little time for the §7.2.2.6 search. Removes
+  about 9 ms of an ESP32-S3 E-AC-3 5.1 frame for 0.01 dB on the worst channel of the
+  E-AC-3 gold streams.
+- **An `f32x4` SIMD lane** alongside `f64x2`/`i32x4` in the arch seam (roadmap PF7): the
+  float32 IMDCT twiddle stages now vectorise under SSE2/NEON, pinned bit-for-bit against
+  scalar `float` including denormal underflow.
+- **Block-granular decoder output**
+  (`decode_frame_by_block`/`decode_access_unit_by_block`): PCM delivered 256 samples at
+  a time through a non-owning `BlockSink` callback instead of a whole frame, cutting a
+  DMA-fed caller's storage need from a frame to a block (73,728 bytes for 7.1.4 on an
+  ESP32-S3) and taking 73,824 bytes out of the footprint probe's `.bss`. Pinned sample-
+  for-sample against the frame forms.
+- **A web page on the ESP32 player** (`esp-idf/ac3forge/ui/`), served at `/`: state,
+  codec, layout, volume, per-frame stage timing and ring depth, with
+  play/stop/volume/layout controls over the existing REST routes. 16,190 bytes against a
+  16,384-byte budget; tested in Chromium and on the emulated board.
+- **The ESP32 web page explains the output layout**, showing this play's fold, each
+  channel's speaker or object placement, and the speakers left silent; `GET /status`
+  gains `sink_slots`, `stream.layout`, `render`, `coded` and `silent`. A 38-stream set
+  for the `http` source exercises every layout and coding tool; CI plays it under QEMU
+  onto 7.1.4, holding every slot to the host's level. Found and fixed two player bugs: a
+  dual-programme stream played both, and a 44.1/32 kHz stream played at the wrong speed
+  (now refused).
+- **The ESP32 player can hold a play's first unit** (`PlayerConfig::hold_first_unit`),
+  queuing two frames before the sink starts rather than one, since a play's first frames
+  decode more slowly than the rest and were running the DAC dry over WiFi at 7.1.4.
+  Combined with a 32 KB instruction cache, this takes 3.1–3.8 ms off decode; CI's
+  default config plays through the hold.
+- **The ESP32 output layout takes speaker size and height realization**: a `:small`
+  speaker redirects its bass to the LFE through a matched Butterworth pair, and
+  `:height`/`:top`/`:upfiring` distinguish how a height position is physically realized
+  without changing the render.
+- **The ESP32 streaming example's I2S sink can hold every layout to the full TDM frame**
+  (`AC3FORGE_EXAMPLE_I2S_FIXED_FRAME`), mono and stereo included, for a TDM DAC set up
+  over I2C for one frame shape, such as an ESS ES9080; a second line then runs zeroed
+  slots for every layout. `ac3forge::plan_sink` takes the choice as a `SinkFrame`. On an
+  ESP32-C6 a 2.0 play opened eight 16-bit slots with levels and frame time unchanged, for
+  12 KB more DMA buffer.
+- **The ESP32 streaming example's I2S sink reconfigures itself** instead of needing a
+  rebuild: `PUT /layout` takes effect at the next play via `i2s_channel_reconfig_*` or a
+  channel recreate when it crosses standard/TDM modes, replacing the old build-time
+  stereo/TDM split. `AC3FORGE_EXAMPLE_I2S_SECOND_LINE` brings up a second I2S line
+  sharing the first's clocks, doubling the slot ceiling to eight; verified on an
+  ESP32-S3-DevKitC-1-N16R8, though a six-channel unfolded layout with both lines up left
+  too little RAM for the decode task's stack.
+- **A part with no floating-point unit converts a sample to an I2S slot in integer
+  arithmetic** instead of `float`: `to_pcm16_from_bits`/`to_slot_24in32_from_bits`
+  (`ac3forge/interleave.hpp`) compute the float conversion's own result from the
+  sample's IEEE-754 bits, equal to it for every input that is not a NaN. The component
+  chooses the conversion from `CONFIG_SOC_CPU_HAS_FPU`; an ESP32-S3's sink is unchanged,
+  confirmed identical object code and, on a board, identical timing. On an ESP32-C6
+  playing a 7.1 stream onto eight 16-bit TDM slots, `sink_us_per_frame` drops from
+  20,875 to 12,689 microseconds a frame, 11,551 with the sink's source at `-O2`
+  (`AC3FORGE_MINIMAL_HOT_O2`); levels unchanged to the digit.
+
+**Crucible desktop application**
+
+- **AC3Forge Crucible is built and tested on Windows and Linux, with its macOS code built and
+  tested in CI.** The Windows release asset is
+  `ac3forge-crucible-<version>-win64.zip`. It carries the driver's install and remove scripts
+  only. The test-signed driver must be built from source until attestation signing is in place.
+- **Per-process loopback capture and endpoint change notifications on Windows** (roadmap
+  UX11): `Capture::start_process_loopback` taps one process tree's render output at a
+  caller-stated format (Windows 10 build 20348+), and `DeviceWatcher` delivers endpoint
+  add/remove/state/default-changed events on a callback instead of requiring polling.
+  Every other backend refuses both honestly.
+- Crucible places each captured application in a room and streams E-AC-3 JOC over HDMI or
+  AC-3, PCM, Spatial Sound, or stereo as the endpoint requires. `ac3crucible-run` is the
+  console runner and `ac3crucible` is the Qt Quick window.
+- `MonitorSink::start` takes a `low_latency` flag: on Windows it asks `IAudioClient3`
+  for the engine's smallest shared-mode period, falling back to the default where
+  unsupported; other backends ignore it.
+- The demo's engine flushes its taps on output start/switch and bounds the PCM sink's
+  queue at two frames, so a pipeline's start-up offset no longer becomes the session's
+  latency.
+- Coverage on Windows: a clang-cl arm (`cmake/Coverage.cmake`), the `config-windows-
+  llvm-coverage` preset, and `tools/checks/coverage_windemo.ps1` report per-file
+  line/branch coverage over `apps/windows`.
+- **Crucible can be operated without a mouse, and describes itself to a screen reader**
+  ([Keyboard and screen readers](docs/crucible/accessibility.md)): every control is a
+  tab stop, the room is a keyboard-navigable focus scope, and every element carries a
+  role/name/description built from the same live state the window draws — announced on
+  every meaningful change. **Settings → Appearance → Text size** (100–175% or System)
+  scales the whole window. Requires Qt 6.8+ for `Accessible.announce`; no screen reader
+  has been run against the window by hand yet.
+- **Applications have their own icons on Linux**, resolved from PipeWire's icon name, a
+  matched `.desktop` entry, the binary's own theme entry, or a monogram, in that order.
+  Qt SVG is an optional dependency for SVG-only icons.
+- **Crucible explains itself on first run, and restores the default output on quit**: a
+  first-launch dialog names the silent device and offers to move the default output
+  automatically; quitting (tray or window) restores the previous default when Crucible
+  moved it. On Linux, this also creates the "Crucible (silent)" node.
+- **Crucible saves a diagnostics file** (Settings → Save diagnostics…): version,
+  platform, engine counters, endpoints, applications, the signal path and recent log
+  lines — never the signing key or its path.
+- **Every Crucible package carries its third-party notices, and About has a Licences
+  view** (`apps/crucible/notices/`): `NOTICES.txt` is generated per platform at
+  configure time from the actual component list and versions, so the window and the
+  package cannot disagree; `check_crucible_package.py` enforces it.
+
+**Hearth**
+
+- **The Sendspin time filter learns faster and ignores delayed replies.** Once it has
+  converged, `ac3::sendspin::ClockSync` runs thirty bursts a second apart before settling to one
+  every ten seconds. It leaves out a burst whose best reply is well above the recent floor, since
+  clock replies that wait behind a stream's chunks would otherwise read as a change of offset.
+- **cpp-httplib's WebSocket reads wait out a frame split across packets.** Its 0.56 port
+  failed a connection when a read's timeout fell inside a frame, which on Wi-Fi broke pairing
+  with a board. The overlay port carries a patch: a read that has begun a frame waits for the
+  rest until the connection closes.
+- **`src/sendspin`, the first part of Hearth's Sendspin implementation**
+  (`planning/hearth-sendspin-extension.md`): an in-tree JSON reader and writer, strict
+  base64url, transport-mode fragments and the `player@v1` audio chunk in both the
+  specification's forms and those of aiosendspin 9.1.1 (the version used by Music Assistant),
+  and the `_ac3forge_player@v1` burst chunk. Built with `-DAC3FORGE_BUILD_HEARTH=ON`. The
+  JSON reader parses into caller-owned storage without recursing, and refuses invalid
+  UTF-8 and duplicate keys. Two fuzz harnesses (`fuzz_sendspin_json`,
+  `fuzz_sendspin_frames`) and a CI job, `Hearth Sendspin (Linux, GCC)`, cover it.
+- **Sendspin's encryption in `src/sendspin`**: Noise `KKpsk2` for both of the
+  specification's suites (`25519_ChaChaPoly_SHA256` and `25519_AESGCM_SHA256`), matching the
+  cacophony test vectors byte for byte, with the PSK bound late as Sendspin needs and the
+  Sentinel retry; the handshake messages (`client/init`, `server/init`, `server/error`,
+  `noise/handshake`) with the specification's order of `server/error` reasons; and PSK
+  identities. The cryptography sits behind a seam over the PSA Crypto API, which both
+  vcpkg's mbedTLS 3.6 and ESP-IDF's mbedTLS 4 provide, and comes in through vcpkg's new
+  `hearth` feature. A third fuzz harness, `fuzz_sendspin_handshake`, reads the handshake
+  messages.
+- **Sendspin's pairing values in `src/sendspin`**: CPace (CPACE-X25519-SHA512 from
+  draft-irtf-cfrg-cpace-21, matching the draft's test vectors byte for byte: Elligator 2 is
+  written in-tree, and the scalar multiplications go through the crypto seam's X25519), and
+  around it the pairing tokens, the dynamic pairing code, the commitment to `nonce_B`, the
+  CPace session id and the wrapping of the long-term PSK and `nonce_B`, each in both the
+  specification's form and aiosendspin 9.1.1's where the two differ.
+- **Sendspin's reference time filter**, vendored unmodified into
+  `src/sendspin/third_party/time-filter` for the player half's clock synchronisation.
+- **Sendspin's WebSocket transport in `src/sendspin`**: the seam every session runs over,
+  with an in-memory pair for tests and loopback groups, and plain `ws://` over cpp-httplib in
+  both directions the specification allows, a listener and a dialler. A close from any thread
+  reaches a waiting reader within 100 ms whether or not the peer answers it, a message longer
+  than one Noise message ends the connection, and a second listener on a port that one
+  already holds fails to start, where cpp-httplib's default socket options would let it share
+  the port. cpp-httplib joins the `hearth` feature at 0.56.0 through an overlay port, ahead of
+  the vcpkg baseline's 0.52.0, for the read timeout that makes the close possible.
+- **Sendspin's core messages in `src/sendspin`**: `server/hello` through `group/update` with
+  `player@v1`'s objects, each a struct with a writer and a reader in both the specification's
+  form and aiosendspin 9.1.1's, and the `client/hello` field that tells a 9.1.1 client apart.
+  Readers ignore what they do not recognise where the specification says to. Standard Base64
+  for `codec_header`, and a fourth fuzz harness, `fuzz_sendspin_messages`, which reads every
+  message in both dialects and checks that what it writes back reads back the same.
+- **Sendspin's handshake as two state machines in `src/sendspin`**: the server's and the
+  client's side of `client/init` through Noise message 2, fed the frames they receive and
+  answering with the frames to send, so a thread on a computer and a board's WebSocket handler
+  drive the same code. They choose the PSK as the specification says, including the client's
+  Sentinel fallback and the credential-mismatch signal it gives the server, tell an
+  aiosendspin 9.1.1 server apart by its message 1, and run re-handshakes. A transport-mode
+  channel seals messages into Noise ciphertexts, one per frame in the connection's dialect,
+  and opens them again.
+- **Sendspin's clock synchronisation for the player half**: `client/time` exchanges in bursts
+  of eight over the vendored time filter, one after another until the clock converges and
+  every ten seconds after, with convergence taken as the filter's error staying under 1 ms
+  for eight updates in a row. Against a simulated server 35 ppm fast over a 0.5 to 3 ms
+  network it converges in under two seconds and stays within 1 ms.
+- **Sendspin's server and player sessions in `src/sendspin`**: one connection each, from the
+  handshake through `server/hello`, `client/hello` and `server/activate` to a `player@v1`
+  stream whose chunks the player receives on its own clock, with commands, group updates,
+  unpairing and re-handshakes. Like the handshake machines they are fed frames and the time
+  and answer with frames, so a board can run the player's. The player checks each activation
+  as the specification's admissibility rules say; the server refuses what the specification
+  does not allow at that moment, such as a stream to an unavailable player or a command it
+  did not list.
+- **Sendspin's pairing flows in `src/sendspin`**: the Pairing PSK Flow, the Dynamic Pairing
+  Code Flow in digits or as a QR token with its retry rounds and round limit, and the Static
+  Pairing Code Flow behind its gesture window, from both the client's side and the server's,
+  in the specification's form and aiosendspin 9.1.1's. The server checks the client's tag,
+  the commitment to `nonce_B` and the binding of the typed code to the handshake in the order
+  each dialect uses, and two ends of different handshakes cannot pair whatever code is typed.
+- **Pairing in Sendspin's sessions**: a pairing activation on either session runs one attempt
+  of the method it names. The server session checks the method against the client's offer and
+  the matched PSK, takes the operator's code, and once its listener has stored the record
+  acknowledges and re-handshakes to the new long-term PSK in the same output; the player
+  session emits the code, waits for a gesture or the round limit's reset where the method
+  says, and sends nothing but pairing messages until the re-handshake, which Music Assistant
+  expects. Cancels from either side, a new activation that supersedes the attempt, the
+  player's two-minute attempt timeout and the server's own timeouts are covered, and a
+  static code's window admits attempts only on the connection that carried its first. The
+  pairing messages join `fuzz_sendspin_messages`.
+- **A session driver for Sendspin on a computer**: `SessionDriver` runs a server or player
+  session over one connection with a reader thread and a writer thread, which sends the
+  session's frames in order outside its lock and ticks it when due, and disconnects a peer
+  that stops reading once a bounded queue fills. Over a loopback WebSocket a server pairs a
+  player with its pairing PSK, activates it under the new long-term PSK and streams PCM that
+  the player receives within 2 ms of each chunk's time.
+- **Admission between Sendspin servers**: `Arbiter` decides which server's connection a client
+  holds, as the specification ranks them (playback above pairing above nothing, equal or
+  higher displacing the holder), with its three exceptions: a pairing attempt in progress is
+  not displaced, the last-playback server wins when neither declares anything, and one pairing
+  connection is held beside a playback holder. The player session asks its owner about each
+  admissible activation, refuses a rejected one with `concurrent_attempt`, and leaves with
+  `another_server`, or `pair/abort concurrent_attempt` while pairing, when displaced.
+- **Sendspin discovery over mDNS**: a discovery seam in `src/sendspin` and its backend on a
+  computer over mjansson's `mdns`, which joins the `hearth` vcpkg feature. An advertiser
+  answers DNS-SD questions for `_sendspin._tcp` or `_sendspin-server._tcp` on every IPv4
+  interface with that interface's own address, announces itself twice and says goodbye when it
+  stops; a browser queries at a lengthening interval, asks for the SRV, TXT and address records
+  a response left out, and reports each service with the `ws://` URL to dial once complete and
+  when it goes. The packets are tested without a network, and an advertiser and a browser find
+  each other on the loopback interface.
+- **`ac3hearth-testsink`**, the first of Hearth's applications (`apps/hearth/testsink`): a
+  Sendspin player that listens on its port, advertises `_sendspin._tcp`, keeps its identity,
+  pairing PSK and pairing records in a state directory, pairs by its `SP:0` token or a dynamic
+  or static code, admits servers as the specification ranks them, and writes each `player@v1`
+  PCM stream to a WAV file with a play time logged for every chunk. Several can run side by
+  side with distinct names, ports and state. Not packaged; `ac3tests` runs one in process,
+  pairs a server with it by its token over a loopback WebSocket, finds the PCM it sent in the
+  WAV sample for sample, and reaches it again after a restart under the stored long-term PSK.
+- **`player@v1`'s codecs in `src/sendspin`**: encoders and decoders for PCM at 16, 24 and 32
+  bits, FLAC over libFLAC and Opus over Opus, both joining the `hearth` vcpkg feature. A FLAC
+  stream's `codec_header` is its `fLaC` marker and STREAMINFO block and each unit one frame; an
+  Opus unit is one 20 ms packet, and the encoder reports its look-ahead so a server can time
+  Opus players with the rest of a group. PCM and FLAC decode to exactly what was encoded at
+  every depth. The test sink now offers and decodes all three, and its loopback test finds in
+  its WAV exactly what a local decode of the same units gives, for each codec.
+- **A Sendspin server host in `src/sendspin`**: `ServerHost` holds every connection to a
+  server's clients, listening and advertising `_sendspin-server._tcp`, and browsing for and
+  dialling players that advertise `_sendspin._tcp`. It activates each client from its
+  `ServerStore`: playback for a paired client or an approved unpaired one, pairing by the
+  pairing PSK once the operator has entered a client's token, pairing by a code on request, and
+  nothing otherwise. A `Group` plays one programme to several clients on one timeline, each in
+  the first of its formats the group can produce, started far enough ahead for the member that
+  needs the most lead and paced by what the members' buffers hold. Two test sinks in one group,
+  one taking PCM and the other FLAC, each write exactly the programme, and every chunk they log
+  puts its first frame at the same local time within 1 ms; a host pairs one sink by its token
+  and another by the dynamic code it shows.
+- **`_ac3forge_player@v1`'s objects in `src/sendspin`**: the support object in `client/hello`,
+  the state object in `client/state`, the object in `stream/start` and the role's commands in
+  `server/command` (volume, mute, output delay, settings and identify), each with a writer and a
+  reader, as `planning/hearth-sendspin-extension.md` defines them. A settings object with a
+  known key out of range is refused whole, and the reader names the revision it refused so a
+  sink can report `settings_error` for it; what depends on the sink, such as one trim per output
+  inside its range, is checked against the sink's own support object. The objects join
+  `fuzz_sendspin_messages`.
+- **`_ac3forge_player@v1` in Sendspin's sessions**: a player that lists the role offers its
+  support object, reports its state, and hands its listener the role's stream, each burst chunk
+  at its time on the player's clock less the role's output delay, and the commands its state
+  lists; a chunk of another data type than the stream's is passed on to be counted as invalid.
+  The server session activates the role only for a client that offers it, and sends a stream
+  only in a data type and sample rate the client listed, a burst only when its Pc and Pd fit its
+  payload and the stream, and settings only when the client would read them back whole.
+- **E-AC-3 over `_ac3forge_player@v1`, from a group to test sinks**: `ServerHost` activates the
+  extension role instead of `player@v1` for a paired client that offers it, and a `Group`
+  programme can carry the coded stream beside its PCM. Members playing the role get its IEC 61937
+  bursts on the group's timeline, each timed by its first decoded sample, paced as `player@v1`'s
+  chunks are and never past a sink's `buffer_capacity`. The test sink offers the role, decodes
+  AC-3 and E-AC-3 with any object layer and renders them to a speaker layout (`--layout`, 7.1.4
+  by default) in its WAV file. Two test sinks paired to a host play the Dolby Encoding Engine's
+  E-AC-3 JOC fixture as one group: each WAV equals a local decode and render sample for sample,
+  every burst's play time agrees on both within 1 ms, and a hidden case, `[hearth-soak]`, does the
+  same over ten minutes.
+- **Sendspin's other six roles in `src/sendspin`**: the objects and binary messages of
+  `metadata@v1`, `controller@v1`, `color@v1`, `artwork@v1`, `visualizer@v1` and `source@v1`, and
+  the messages that carry them (`server/state`, `client/command`, `client-stream/start` and
+  `client-stream/end`), in the specification's form and, for the three state roles, aiosendspin
+  9.1.1's, where a cleared field goes out as `null`. Beside them, the arithmetic the roles ask of a
+  server: the controller's group volume, which applies a change to every player that supports
+  volume and shares what clamping loses among the rest, its group mute, and the colours' 4.5:1
+  contrast, reached by moving backgrounds and the colours on them towards black or white. The
+  new JSON messages join `fuzz_sendspin_messages`, and the binary ones `fuzz_sendspin_frames`,
+  which checks that each writes back to the bytes it was read from.
+- **The other roles in Sendspin's sessions**: the server session sends a role's state only while
+  the role is active, never a first state scheduled ahead, and a null state for a removed role that
+  had one; runs artwork as one transfer at a time, cancelling a transfer and clearing a channel the
+  client turns off before a new `stream/start`; keeps visualizer frames to their stream's types and
+  rates, in time order and within the client's buffer; passes on only the controller commands its
+  last state listed, and seeks within range; and opens a source's input stream only after its own
+  start, closing a connection that opens one unasked. It does not activate `source@v1`,
+  `artwork@v1` or `visualizer@v1` for an aiosendspin 9.1.1 client. The player session does the
+  client's half, closing on an artwork message the role calls malformed.
+- **The other roles from a server host's groups**: `ServerHost` activates `controller@v1`,
+  `metadata@v1` and `color@v1` for a playing client that lists them, `artwork@v1` and
+  `visualizer@v1` only for one that is not aiosendspin 9.1.1, and `source@v1` only for a client
+  the operator allows. A `Group` gives its members' roles the programme's metadata, its colours at
+  the contrast the role requires, the engine's transport with the group's volume and mute, its
+  artwork at each channel's source, format and size, and visualizer frames of the types each member
+  asked for. A controller's volume or mute reaches every player in the group over its playback
+  role, the engine's commands arrive as host events, and a member that leaves the group has its
+  states cleared and its streams ended. The test sink lists the roles when asked (`--roles`) and
+  sends controller commands typed on its standard input; in `ac3tests`, two test sinks in one
+  group, one paired and one approved unpaired, get the group's metadata, colours, artwork and
+  visualizer frames, and a volume and mute set from either reaches both.
+- **A scripted aiosendspin 9.1.1 player for A4's exit** (`tools/sendspin`), standing in for
+  Sendspin's reference player: `aiosendspin_exit.py` runs `ac3tests`' hidden `[aiosendspin]` case
+  against it once each for PCM, FLAC and Opus. The host pairs with the player by its token in
+  aiosendspin 9.1.1's dialect and plays it three seconds of two tones; PCM and FLAC arrive sample
+  for sample, Opus at 42.5 dB after its 312-frame look-ahead, and every chunk's timestamp is where
+  the programme's timeline puts it. The released client refuses to offer Opus, so the player adds
+  it to the SDK's decodable codecs for that run (`planning/hearth-sendspin-extension.md`, decision
+  5). `hearth-validate` runs the script.
+- **Hearth's player against an aiosendspin 9.1.1 server**, found with the scripts above: a player
+  reports `available: true` from its activation, as 9.1.1's own
+  client does, because the server starts from `available: true` and takes `available: false` for an
+  external source, which would move the player out of its group whenever it connected. From such a
+  server the player also holds `player@v1` chunks that arrive before its first clock update, within
+  its `buffer_capacity`, and drops a chunk whose timestamp is not later than the last one it took:
+  The scripted server starts a stream with the activation, holds back what it sends before the
+  player's first `client/state`, and then sends it and replays the stream from its start as well
+  (`planning/hearth-sendspin-extension.md`, C13 and C14).
+- **An aiosendspin 9.1.1 server script** (`tools/sendspin/aiosendspin_server.py`), a rehearsal of
+  Music Assistant's Sendspin path: it starts `ac3hearth-testsink`, dials it, pairs by
+  the sink's `SP:0` token or by the dynamic code the sink shows, and plays it three seconds of two
+  tones in each codec, driving aiosendspin's `SendspinServer` as Music Assistant's provider does.
+  The sink's WAV file is the programme sample for sample in PCM and FLAC and within 20 dB in Opus,
+  less the chunks the server sends only in its replay and the FLAC block it keeps when a stream
+  stops. The sink lists `controller@v1`, `metadata@v1` and `color@v1` as well, and the run shows the
+  server's metadata, colours and controller state reaching it, and a volume the sink asks for coming
+  back as a player command. `hearth-validate` runs it for both pairing methods.
+- **Hearth's third-party notices** (`apps/hearth/notices/`): `NOTICES.txt` for cpp-httplib,
+  Mbed TLS, mdns, libFLAC, libogg, Opus and Sendspin's time filter, generated at configure time
+  with the versions and licence texts vcpkg installs with each port, ready for Hearth's About page
+  and package. The threat model gains Sendspin: what a peer on the network can reach without a
+  key, what a key allows, what mDNS exposes, and the two parsers not yet fuzzed.
+- **`ac3hearth_engine`, the start of Hearth's player engine** (`apps/hearth/engine`, no Qt): an
+  output decision in the shape of Crucible's `output_policy` (a mode, an endpoint and a reason,
+  from capability facts that can each be unknown), the play queue, and a transport that answers
+  each command with the one action to carry out. A player puts them together with a session per
+  item and a PCM sink, one of which drives A2's `PcmOutput`. Each item's AC-3 or E-AC-3 access
+  units are decoded and rendered to the output layout 256 frames at a time, including the unit
+  the E-AC-3 decoder is still holding for transient pre-noise processing when a stream ends. An
+  item at the open output's rate joins it with nothing between the two; a rate change, or gapless
+  turned off, reopens the output once the device's own clock says everything submitted has been
+  heard, however much silence an underrun put in between. An item that cannot be read is marked
+  with the reason and skipped, a device that will not open stops playback without marking the
+  item, and a seek made while stopped applies when that item starts. In `ac3tests`, raw E-AC-3,
+  E-AC-3 in MP4, AC-3 in Matroska and raw AC-3 play through one output to a fake device: each
+  item delivers exactly the frames its access units code, starting where the one before ended,
+  and the output is sample for sample what the same queue gives with an output per item.
+- **Hearth's player applies an MP4 item's edit list**: the priming and padding it names are
+  decoded but not played. Two such items join with nothing from either encoder between them, a
+  seek counts from the first sample the item plays, and the queue shows the edited duration. An
+  edit list of any other shape plays untrimmed, with a note beside the item. In `ac3tests`, an
+  edited item, and a join of two, play sample for sample the matching stretches of an untrimmed
+  decode.
+- **Hearth's decoder settings** (`apps/hearth/engine/decoder_settings.hpp`): the plan's decoder
+  controls, turned into the library configuration.
+  - The controls are the operating mode, the custom mode's cut, boost, `compr` and
+    normalisation switches, the stereo fold, the Lt/Rt phase shift, LFE mixing, fold levels,
+    the dual-mono choice, the programme, the object policy and concealment.
+  - The engine applies the dual-mono choice itself: channel 1, channel 2, or one each side.
+    A multi-programme E-AC-3 stream plays the programme the setting names, when an item
+    starts.
+  - A change of settings reaches the playing item at its next unit, through a new decoder
+    primed with the unit before. Nothing is lost or repeated, and a unit the old decoder was
+    holding back for transient pre-noise processing is released first. Seeks are primed the
+    same way, so a seek no longer starts with a block missing its overlap.
+  - Two differences from an unbroken decode remain: the settings change itself, and the
+    §7.3.4 dither, whose generator a new decoder restarts, some 95 dB down.
+- **Hearth's engine thread** (`apps/hearth/engine/engine_thread.hpp`): the player on a thread of
+  its own.
+  - Commands from any thread are queued and carried out in order between pumps. The engine
+    pumps each period while an output is open and sleeps while none is.
+  - A snapshot of the queue, the transport, the settings and the history is published after
+    every change, with a callback on the engine's thread. The play position is kept apart, and
+    follows the device's clock through joins and seeks.
+  - Queue edits while playing are the player's own. Removing the playing item moves on to the
+    next; a reopen still waiting for the old item to be heard keeps its item through an edit;
+    the history's queue indices follow their items.
+  - In `ac3tests`, tagged `[concurrency]`, a queue plays to its end while the engine, a fake
+    device's clock and the test's own thread all run at once. Commands from five threads all
+    take effect, each thread's in its order, and a playing engine that goes away closes its
+    output.
+- **Hearth's meters, released at play time** (`apps/hearth/engine/play_meters.hpp`): a level
+  meter per output slot (peak, hold, RMS and a clip latch) and the programme's loudness
+  (momentary, short-term, integrated, loudness range and true peak), measured as the player
+  renders each block.
+  - Each reading is stamped with the output frame its audio ends on, and handed out only once
+    the device's clock, less the output's latency, has reached that frame. The meters move with
+    the sound, not ahead of it by what the device holds.
+  - Loudness is measured over the slots with a Table E2.5 location; a slot placed only by angle
+    has a level meter but no loudness weighting.
+  - Each item's integrated loudness, loudness range and true peak are its own. Momentary and
+    short-term loudness run on through a gapless join, read from the item before's meter until
+    the new item has filled the 3 s window. A seek, a stop or a reopen starts every meter again
+    and drops the readings still waiting, since their audio will not be heard.
+  - Integrated loudness and loudness range are read once a second. The library works both out
+    over the whole programme at each read; at 20 readings a second, that measured some 15% of a
+    core three hours into an item.
+  - The engine publishes the latest reading beside the play position, and none while nothing
+    plays. In `ac3tests`, tagged `[play-meters]`, a reading comes out when the clock reaches it
+    and not before, readings come out in order however many wait, each describes its audio's
+    level and loudness, and a join, a flush and the once-a-second reads each behave as above.
+- **Hearth's media information** (`apps/hearth/engine/media_info.hpp`): what a queue item's
+  file says about itself, for the media page and its JSON export.
+  - For AC-3 and E-AC-3: the programmes and associated services, the channel map, and the
+    whole-stream report `ac3cli probe` makes, authenticity tags included. Also the first
+    access unit's bitstream information: service, surround and headphone modes, copyright,
+    audio production, time codes, Annex D's alternate syntax and the mixing metadata, with the
+    fold levels they give.
+  - For AC-4, which Hearth cannot play: the sync frames and the table of contents.
+  - The container's facts arrive with the item from its loader. `apps/common`'s container
+    input now reports the track, its language, an MP4 track's codec configuration box and
+    edit list, and an MPEG-TS stream's programme, PIDs and signalling.
+  - `MediaInspector` reads items on a thread of its own, one at a time, and keeps the last
+    few descriptions. A newer request replaces one not yet started.
+  - The export is `ac3forge.hearth.media/1`. Its `probe` member is the `stream` object of
+    `ac3forge.probe/1`, written by the code `ac3cli probe json=1` uses, which moved to
+    `apps/common/probe_json.cpp` for the purpose.
+  - In `ac3tests`, tagged `[media-info]`: AC-3, E-AC-3 in MP4, Matroska and MPEG-TS, two
+    programmes, signed objects and a real AC-4 stream are each described and exported, and
+    the document parses. Tagged `[media-inspector]` and `[concurrency]`: a description is
+    made on the inspector's thread, served from the cache until a reread is asked for, and a
+    request replaced before it started is never read.
+- **What the unit being heard says, at play time** (`apps/hearth/engine/unit_reports.hpp`).
+  - Each access unit's report comes out when the device's clock passes the unit's first frame,
+    as the meters' readings do.
+  - A report gives the unit's channels and substreams; its service, dialnorm, `compr` and
+    `dynrng` words; AC-3's short blocks; the fold levels in force; any concealment; and its
+    object metadata, with every update block's positions.
+  - `StreamDecoder` reads the report from what the decoders return, which it used to drop. A
+    unit held back for transient pre-noise processing is reported by the call that releases
+    it, and the last unit by `finish()`.
+  - A unit the item plays nothing of, such as the one a seek decodes only to prime the
+    decoder, is not reported. A seek, a stop or a reopen drops the reports still waiting.
+  - `Engine::unit_report()` returns the latest report, and nothing while no output is open.
+  - In `ac3tests`, four streams are each reported unit by unit: AC-3, E-AC-3 with mixing
+    metadata, a stream a unit behind, and an object stream. The player's report changes with
+    the item heard at a gapless join.
+- **Hearth's diagnostics file** (`apps/hearth/engine/diagnostic_log.hpp` and
+  `diagnostics_report.hpp`): the text the Settings page's "Save diagnostics" writes, in the
+  pattern of Crucible's.
+  - A bounded ring of stamped one-line notes. The engine notes each command as its thread
+    carries it out, with anything the transport said about it. The player notes each output it
+    opens and closes, with the format, and each item it starts, joins or cannot play. Units that
+    will not decode are noted once with the reason, then as a count once the item is done with.
+  - The file gives the version, the platform, the output, the playback state and decoder
+    settings, the items that cannot be played, the last 50 items played, the settings the
+    window passes, and the ring.
+  - File paths are left out, as the page says. A note names an item by its place in the queue
+    and its title. A loader's error can quote a path, so the item's folders are withheld before
+    it is noted: `C:\Music\a.ec3` reads `<withheld>\a.ec3`. The file never reads the engine's
+    free-text note or error. It withholds settings under `pairing/` and `queue/`, and scrubs
+    the queue's folders and the window's secrets from the finished text.
+  - `EngineStatus::output` gives the format the output is open at.
+  - In `ac3tests`, tagged `[diagnostics]`: the ring's order and cut; paths withheld in
+    Windows, POSIX, UNC and relative forms; the file's sections and limits; and what the
+    player and the engine note, in order, for a queue with a missing item, a join, a reopen,
+    damaged units and a refused output.
+- **Hearth's settings model** (`apps/hearth/engine/settings_model.hpp` and
+  `pairing_store.hpp`): what the Settings page's Playback and Network cards hold, the queue
+  kept for the next start, and the pairing records.
+  - The window keeps them through a `SettingsStore` over QSettings, each as text under a fixed
+    key. A value that is missing, or does not read as one of its values, is the default.
+  - Playback: gapless, picking up the queue where it was left, and what an item that fails
+    does. Network: the name sinks and players show this computer by, cut to a DNS label's 63
+    bytes, and whether to look for Sendspin players.
+  - The saved queue keeps each item's path and title, the item being heard and how far into
+    it, in QSettings' array layout. A damaged one reads as far as it goes.
+    `Engine::restore()` brings it back without playing.
+  - "An item fails: Stop" stops playback at an item that will not open, rather than passing
+    over it. When the item was the next one, the item before it plays to its end first.
+    `Transport::item_failed()` makes the choice.
+  - The pairing records are a Sendspin `ServerStore`. A record, with the client's name and the
+    date, is written as its pairing completes, and one the store would not write is not kept.
+    A forgotten record stays forgotten. Keys typed in from a token, and approvals for unpaired
+    access, are kept in memory only. A core-only build of `src/sendspin` leaves them out.
+  - In `ac3tests`, tagged `[settings-model]` and `[pairing-store]`:
+    - defaults, damaged values and names;
+    - the saved queue's round trip, and a damaged saved queue;
+    - records surviving a restart, a failed write, forgetting, and records that do not read;
+    - lookups from other threads while records change.
+
+    The player stops at an item that fails, both when starting and after the item before
+    it, and a restored queue starts at its item and position.
+- **Hearth's engine bitstreams** (`apps/hearth/engine/bitstream_sink.hpp` and
+  `output_selector.hpp`): each item plays the way the output decision says, over IEC 61937 to
+  a receiver or decoded here.
+  - A bitstreamed item is sent its own access units: AC-3 a frame to a burst, E-AC-3 packed
+    six blocks to a burst, across a join when a stream's frames are shorter. The decode still
+    runs, for the meters and the unit reports, on the link's clock.
+  - Only whole units can be sent, so an edit list's priming or padding inside a unit is heard.
+    The decoder settings reach the meters only; the status says so.
+  - An item joins the open output only when it would be played the same way. These reopen
+    once the output has played out, and say why:
+    - a different stream on the link, or a decode after a bitstream;
+    - another endpoint;
+    - units that cannot make whole bursts with those the last item left.
+  - `OutputSelector` reads each endpoint twice, through the platform's probe and the sink's
+    own descriptor, and takes a format as carried only when both do.
+    - It reads again when told the outputs changed: `Engine::refresh_outputs()`, for
+      `RenderDeviceWatch`'s callback, and `Engine::set_output_preferences()` for the Output
+      screen.
+    - The item playing then moves to the new output from where it was heard, paused if it
+      was, once any join before it has been heard (the appliance plan's gaps 3 and 5).
+    - The endpoint the player holds is judged by its last free probe and a fresh
+      descriptor, since a probe reads a device this player holds as refusing everything.
+    - An enumeration that finds nothing keeps the last list.
+    - A player with no passthrough output decodes.
+  - A programme other than a stream's first is decoded, since a receiver plays only the
+    first. The meters stay in step after a unit that does not decode.
+  - E-AC-3 on a sink that takes only AC-3 is transcoded (the next entry).
+  - In `ac3tests`, tagged `[bitstream]` and `[output-decision]`: bursts checked byte for byte
+    against `wrap_frame()` and `Eac3BurstPacker`, joins, reopens, a seek, pause, the meters,
+    an edit list, a missing link, an output that changes mid-item, and the engine's commands.
+- **Hearth's engine transcodes E-AC-3 to AC-3** (`apps/hearth/engine/ac3_transcoder.hpp`) for
+  a receiver that takes AC-3 but not E-AC-3, over the same IEC 61937 link (the appliance
+  plan's gap 4).
+  - The item is decoded onto 5.1 with neutral settings and encoded as 3/2 with LFE at
+    448 kbit/s, as `ac3cli transcode` does. A 7.1 stream is decoded from its independent
+    substream, the 5.1 its own encoder made (`StreamDecoder`'s new `Substreams`).
+  - Each frame carries the dialnorm and service of the unit that fills most of it, so at a
+    join a frame is levelled as the item it mostly holds.
+  - Each frame also carries a compr word. It is the most attenuating word sent by the units
+    the frame's gain reaches. Where any of those units sent none, a word metered from the
+    frame against its own dialnorm (as the encoder meters) also counts, so RF mode stays
+    protected.
+  - Dual mono heard as its second channel carries that channel's dialnorm and compr word.
+  - dynrng is not carried, as on the command line.
+  - An encoder's fold levels are fixed, so the link takes the first item's. An item that
+    folds at other levels reopens rather than joining.
+  - The decode can be cut, so an edit list is honoured to the sample. Items with the same
+    fold levels join through one encoder whatever their frame lengths.
+  - The encoder's 256-sample delay is part of the link's timeline, so the position, the
+    meters and the unit reports run that much behind the decode. What the encoder still
+    holds is padded out and sent before the output plays out or reopens.
+  - The meters show what is sent, and the decoder settings do not apply; the status says so.
+  - The output selector offers the transcode over a passthrough output at 48, 44.1 or 32 kHz.
+  - `choose_output()` fixes: a pinned AC-3 bitstream sends AC-3 items untouched without a
+    transcode. When the transcode is what is missing, the reason says so rather than
+    claiming no output takes AC-3.
+  - In `ac3tests`, tagged `[transcode]`:
+    - each slot coming back through AC-3 in place, 256 samples late;
+    - the metadata in every frame, and the padding;
+    - the player's link checked byte for byte against a separate decoder and encoder,
+      across a join, an edit list, a seek, a reopen and a 7.1 item;
+    - the compr word matching what an encoder given the frame's dialnorm writes;
+    - a join that changes dialnorm, and one that changes fold levels;
+    - a concealment chosen mid-item reaching what is sent;
+    - an output change into a transcode;
+    - the engine choosing one.
+- **Hearth's player plays the end of the queue as part of the queue.** The last item used to
+  be taken as finished once its last unit was decoded, up to a second before it had been
+  heard, so a pause or a seek in that time was refused.
+  - Now, when what comes next cannot follow gapless, the player waits until the item's tail
+    has been heard before asking the transport what is next. That covers the end of the
+    queue, and an item needing another output.
+  - Until then the item is still playing: a pause holds it, and a seek plays it again from
+    the new place. A reopen decided just before a pause waits for the resume.
+  - An item added meanwhile joins it where it can, and is heard to its end. Once the device
+    has played everything, an added item reopens instead, since it would follow silence.
+  - A transcode sends what its encoder holds first.
+  - A tail on a link stays there through an output change. A seek back gives the item more
+    to play, and then it moves.
+  - Under the stop-at-failure policy, an item that will not open is remembered while the tail
+    plays, and marked only when playback stops at it. An item put before it meanwhile plays
+    first; a stop, or a change to passing over, forgets it.
+  - `Transport::would_join()` answers the join question without deciding anything.
+  - In `ac3tests`: pause, seek, an added item, and the stop, in the last moment of the queue,
+    for a PCM output, a link and a transcode.
+
+**Audio outputs**
+
+- **Render device records say which speakers a device has, and at what rates**
+  (`ac3::audio::RenderDeviceInfo`): a WAVEFORMATEXTENSIBLE speaker mask and a rate list
+  beside the channel count, filled from WASAPI's `dwChannelMask`, ALSA's channel maps,
+  PipeWire's `audio.position` and Core Audio's channel labels, with
+  `ac3/audio/speakers.hpp` mapping those positions to the renderer's own locations.
+  `ac3cli outputs` prints both. Either can be "not reported", which is not the same as
+  none.
+- **Monitor playback reports its position, and can flush and pause**
+  (`ac3::audio::MonitorSink`): frames played from the device's own clock, frames still
+  queued here and in the device, and the further latency the platform admits to; a flush
+  that drops both buffers and counts from zero again; and a pause that stops the device
+  with the stream, the format and the queue intact. Each backend reads the same two
+  figures from its own platform — `GetCurrentPadding`, `snd_pcm_delay`,
+  `pw_stream_get_time_n`, the Core Audio timestamps, AAudio's presentation position — and
+  the arithmetic over them is shared and tested against a fake device's clock. ALSA
+  hardware that cannot pause is dropped and prepared again instead, which loses what the
+  device held.
+  - On PipeWire the frames played are the stream's own, counted as they are handed over,
+    rather than the graph's clock, which runs on through a pause.
+  - A flush that a device does not reach in time is made when it next runs. It drops only
+    what was submitted before the flush.
+- **Passthrough reports its position, and can flush and pause**
+  (`ac3::audio::PassthroughSink`): the same figures, flush and pause as monitor playback,
+  counted in the content's frames. A burst is 1536 of them for AC-3 and for E-AC-3, whose
+  link runs four times as fast.
+  - A receiver loses its lock while the link is stopped, so the first moments after a
+    resume can be silent.
+  - On Android, the Shield app's AudioTrack bridge reports the head position and does the
+    pause and flush. A bridge without those methods still bitstreams.
+  - `ac3tests "[passthrough-live]"` runs all three against a receiver.
+- **macOS passthrough fills device buffers shorter than a burst**: the output callback
+  wrote only whole bursts into each buffer, so the usual 512-frame buffer went out as
+  silence. It now streams the bytes, and writes to the buffer of the stream it opened
+  rather than to the device's first. Not yet tried on a Mac.
+- **PipeWire reads which codecs a sink takes** (`ac3::audio::read_sink_capabilities`),
+  where it used to report no backend. It reads the `iec958.codecs` property the session
+  manager sets on a digital node from the sink's ELD. The property names the codecs only,
+  so it gives no PCM channel count or rates.
+- **A PCM output at the device's own width** (`ac3::audio::PcmOutput`): the stream opens
+  at the endpoint's channel count rather than the programme's, and each rendered channel
+  is placed at the output a routing patch names (`ac3::render::Routing`), silence in the
+  rest. The platform is never asked to widen anything, and Core Audio's requirement that
+  the stream be exactly as wide as the device is met by construction. The patch starts
+  from the endpoint's speaker mask, which matters because a rendered programme's slots
+  are in the coded channel order while a device's outputs are in
+  WAVEFORMATEXTENSIBLE's — counting outputs off from zero would put the centre on the
+  right speaker.
+- **`ac3cli identify`**: walks pink noise across an output's speakers, one rendered
+  channel at a time at an AVR test tone's level and band-limited to 30–80 Hz for an LFE
+  feed, printing which channel and which output each burst went to. Takes a layout and a
+  routing patch, so a room wired differently from the patch can be heard and corrected.
+- **A render-device list that keeps itself current**
+  (`ac3::audio::RenderDeviceWatch`): endpoint notifications where the platform has them
+  (Windows, PipeWire, Core Audio) and a re-probe timer where it does not (ALSA), behind
+  one list with a generation to compare. A failed enumeration keeps the last good list,
+  so a device held exclusively or a restarting audio service does not empty a picker.
+
+**Containers and encoding**
+
+- **`eac3-encode` authors all eight §E2.3.1.2 programmes, each with its own metadata.**
+  `programme2=` (previously the only extra programme the CLI could author) is now
+  `programme2=` through `programme8=`, one independent substream per token (I1–I7 beside
+  the primary's I0), each with its own `programmeN-layout=`/`-bitrate=` and the full
+  `programmeN-<field>=` metadata surface the primary programme's own bare tokens already
+  had — `bsmod=`, `dsurmod=`, `dmixmod=`, `pgmscl=`/`extpgmscl=`, the whole `mixdef=`/
+  `premixcmp=`/`extmix=`/`speechmix=`/`paninfo=`/`blkmixcfg=` group, `dialnorm=<1..31>|auto`
+  (including its own BS.1770 measurement pass) and more. The library side
+  (`AccessUnitConfig::additional`, `plan::eac3_programme`) already supported this; the gap
+  was CLI surface, now closed. A `programmeN=` past `programme2=` without the ones before it
+  is refused rather than silently renumbered, since §E2.3.1.2 assigns substream ids
+  sequentially. The five fields meaningful only under 1+1 dual mono and AC-3's own Annex D
+  fields are refused on an extra programme rather than accepted and left inert, since an
+  extra programme can be neither.
+- **AC-4 container carriage** (roadmap IM4): `ac3cli mp4`/`ts` read and write an AC-4
+  elementary stream (TS 103 190-2 Annex E's `ac-4` sample entry/`dac4` box, EN 300 468
+  Annex D.7's DVB descriptors); `demux` brings either back out byte-identical.
+- **`numblkscod=N` (0–3) on the `atmos*` encode commands**, carrying the object layer
+  over §E2.3.1.4 short syncframes across 1/2/3-block frames — completing roadmap EQ11.
+  Worst-object SNR at every short code matches the six-block control on stationary
+  material.
+- **`downmix=auto` on `decode` and `monitor`**: A/52 §D3.1.1's automatic choice of
+  stereo fold, from the stream's own `dmixmod`. Lt/Rt when it prefers Lt/Rt at an
+  acmod Table D2.2 defines the field for (`3/0`, `2/1`, `3/1`, `2/2`, `3/2`); Lo/Ro
+  otherwise, including no preference, the reserved code, and every narrower acmod,
+  where the table's own note leaves the field's meaning reserved outright. The
+  choice is made once, from the programme's first `dmixmod`, and printed.
+  `ac3::automatic_stereo_target()` holds the rule for library callers.
+- **`probe` reports `dmixmod`**, as a table line and as `metadata.dmixmod` plus a
+  per-syncframe `dmixmod` in the `ac3forge.probe/1` JSON document.
+- **MP4 edit lists, read and written**: `mp4::demux` and `mp4::Reader` report a track's `elst`
+  entries as stored (`ReadTrack::edits`), with the `mvhd` timescale their durations are counted
+  in (`ReadTrack::movie_timescale`). `MuxOptions::edit` makes `mp4::mux` write one edit (the
+  samples to skip and the samples to play) and sets the movie and track durations to it. An edit
+  list or movie header too short to read, or declaring more entries than it holds, is left out,
+  and the file still reads. `apps/common`'s container input turns the edit list an audio encoder
+  writes into the part of the stream to play. Hearth's player applies it; `ac3cli` and the GUI
+  do not yet.
+
+**AC-4 decoding**
+
+- **The first phase of an AC-4 decoder** (`src/ac4dec`, `ac4::Decoder`), written from
+  TS 103 190-1 and -2: it reads every syntax element of the presentation substream,
+  channel-coded audio substreams (ASF spectral data, stereo processing, companding,
+  A-SPX, A-CPL, and `metadata()` with DRC and dialogue enhancement) and EMDF payload
+  substreams, and produces no audio yet. The syntax is transcribed a second time in
+  Python (`tools/references/ac4_syntax.py`), and the two traces agree element for element
+  over the eleven committed DEE streams, ten of them new (SIMPLE, ASPX and A-CPL at 2.0
+  and 5.1, DRC curves, immersive stereo at three frame rates), checked in CI, and over
+  107 local census streams and the public DASH-IF, CTA WAVE and Chromium channel-based
+  streams. The readings taken where the text is ambiguous are in `src/ac4dec/ERRATA.md`.
+- **`ac4_substream_info_ajoc()`'s `oamd_common_data()` (§6.2.8.1) is read**, at the one TOC-level
+  site that reaches it, instead of refused: bed render info, trim and headphone metadata, and a
+  declared-length `add_data` tail a nested element that reads past its own byte budget fails
+  against. Transcribed independently in `tools/references/ac4_parse.py` and cross-checked by
+  `tools/checks/ac4_syntax_differential.py` over hand-built synthetic streams and a random
+  corpus exercising every branch. `oamd_substream()`'s own, separate `oamd_common_data()` embed
+  stays out of scope, like every other non-audio substream.
+- **A channel-coded substream's HSF extension, `ac4_hsf_ext_substream()` (§4.2.4.3), is read**
+  for a 96 kHz or 192 kHz substream whose extension substream resolves to a distinct, readable
+  one: the additional scale factor bands, spectral data and noise fill above 24 kHz. Reading it
+  needs genuine interleaving between the two substreams' own bits - the owning channel's
+  `asf_section_data()` needs a bound (`get_max_sfb_hsf(g)`, §4.3.16.2) that only the extension's
+  own header carries, before either can be fully read - resolved regardless of which of the two
+  substream indices is numerically lower. A substream reporting `sf_multiplier` whose extension
+  cannot be resolved (unlinked, self-referencing, or itself unreadable) is refused, as before, now
+  by that reason alone rather than for being 96 or 192 kHz as such. Transcribed independently in
+  `tools/references/ac4_syntax.py`; cross-checked by `tools/checks/ac4_syntax_differential.py`
+  over 3,800 mutated and synthetic streams, and by two hand-built synthetic frames
+  (`tests/ac4dec/test_ac4dec_decoder.cpp`) covering both index orderings. The readings taken for
+  Table 39's own `max_sfb` (an active extension needs it to mean `get_max_sfb_hsf(g)`, not
+  `get_max_sfb(g)` as written) and for `ac4_hsf_ext_substream()`'s `num_channels`/
+  `b_different_framing` are in `src/ac4dec/ERRATA.md`.
+
+**Browser (WASM)**
+
+- The encode demo now covers the whole of roadmap UX6 — wide E-AC-3 layouts
+  (7.1/5.1.4/7.1.4), content-measured `dialnorm`, live microphone capture
+  (`getUserMedia` → `AudioWorklet` → encoder, with a measure-then-encode pre-roll), and
+  a new Atmos object-authoring page (`apps/wasm/atmos/`) that pans real audio objects on
+  a room canvas. Playwright-tested end to end, including the microphone path via
+  Chromium's fake media device.
+
+**Library, Python and Rust**
+
+- **Python completeness** (roadmap AP6): new `ac3forge.containers` (Matroska/MP4/MPEG-TS
+  mux/demux), `ac3forge.meta` (BS.1770 loudness, QC presets/gate) and `ac3forge.signing`
+  (EMDF object signing/verification); `Eac3Decoder` is now a context manager. Wheels
+  build for manylinux aarch64 and Intel macOS; `stubtest` holds the type stubs to the
+  compiled module on every push.
+- **The Rust bindings now cover the whole codec surface** (roadmap AP9): the wide-layout
+  encoder/decoder, the Atmos/JOC object encoder with OAMD/JOC decode accessors, stream
+  framing/scan helpers and the BS.1770 meter, each with real-signal round-trip tests.
+  `build-rust` runs on all three desktop OSes; the first Windows build found a real
+  portability bug (bindgen types C enums `i32` on MSVC, `u32` elsewhere).
+- **Decoding: cut and boost scaled apart, and fold levels a caller can set.**
+  - `DecoderConfig::drc_boost_scale` gives a `dynrng` word above unity its own share of
+    §7.7.1's partial compression. Unset, boost follows `drc_scale` as before.
+  - `OutputConfig::mix_override` replaces the stream's Lo/Ro, Lt/Rt and LFE levels in any
+    fold, one field at a time. An LFE level applies only where the stream allows LFE
+    mixing.
+  - Both default to what every decode did before. In `ac3tests`, cut and boost each move
+    only the frames they govern, in both decoders, and an overridden fold is sample for
+    sample the fold of a stream that sent those levels, through the coded and the
+    rendered-layout forms.
+- **The AC-3 decoder folds an Annex D stream with that stream's own `xbsi1` levels**
+  (A/52 §D3.1.2, decoding that §D3 makes optional). Lt/Rt (`downmix=ltrt`) now uses
+  `ltrtcmixlev`/`ltrtsurmixlev`, and Lo/Ro and mono use `lorocmixlev`/`lorosurmixlev`,
+  where all three used to take bsi's `cmixlev`/`surmixlev`, with §7.8.2's −3 dB for
+  Lt/Rt. `MixLevels::preferred` carries `xbsi1`'s `dmixmod` from 3/0 up, and a surround
+  level Tables D2.4/D2.6 reserve now decodes and reports as −1.5 dB rather than as the
+  raw code. Callers folding for themselves use the new
+  `ac3::mix_levels(acmod, cmixlev, surmixlev, alternate_bsi)`. `bsid`-8 streams, and
+  `bsid`-6 streams without `xbsi1`, fold as before.
+- **Speaker management beside the renderer** (`src/forge/include/ac3/render/`, the first
+  step of `planning/hearth-reference-player.md`): `Routing` patches each rendered channel
+  to one device output or to none, `TrimDelay` applies a per-output trim in dB and delay in
+  samples over caller-owned storage, `IdentifyTone` plays pink noise at a stated level on
+  one output at a time (30-80 Hz for an LFE feed), and `LayoutRenderer::set_crossover_hz()`
+  makes the bass-management corner a setting between 40 and 250 Hz. All header-only and
+  allocation-free, so the boards can use them too.
+
+**Verification and CI**
+
+- **Hearth builds and is tested on every build-and-test leg.** `src/sendspin` and
+  `apps/hearth` used to be compiled by one Linux job, so the `[sendspin]` and `[hearth]`
+  cases ran there and nowhere else, and neither Windows nor macOS had ever compiled
+  them in CI. Each leg now configures with vcpkg's `hearth` feature, and `ctest` runs
+  those cases with the rest of the suite. A leg with the feature takes a vcpkg cache key
+  of its own, since its install set is five ports larger. The first macOS build found
+  one error: Sendspin's mDNS discovery passed `poll()` a `size_t` count, which narrows
+  to macOS's 32-bit `nfds_t`. It is now cast.
+- **A change under `apps/hearth/` now lights the three desktop lanes**, not every lane.
+  It was an unmapped path, which the classifier deliberately treats as "build
+  everything"; it is one desktop program built on Windows, Linux and macOS, like
+  `apps/cli/` and `apps/crucible/` beside it.
+- **Heap churn is now gated before a merge, not only after one** (`Memory gate` in
+  `ci.yml`): `ac3membench` used to run only on `push` to `main`, so a regression (E-AC-3
+  encode churn 67→199 allocs/frame at PR #352) was found blocking nothing. The new job
+  builds and compares `ac3membench` at the PR's head and merge base; the hard tier
+  (churn at least doubled) fails the gate, with `memory-regression-approved` as the
+  override. The `steady_live_growth` leak check now applies its absolute thresholds to
+  what the branch changed rather than the head alone.
+- **CI now asserts that Linux and macOS packages carry the `ac3cli` man page and shell
+  completions** (`check_cli_docs_package.py`), so the packaging bug fixed below cannot
+  come back unseen — nothing had checked these five files before, and the only test that
+  did (Homebrew's) passed for an unrelated reason.
+- **Fuzz harnesses for the two parsers of third-party files that had none**:
+  `fuzz_iab_parse` (IAB/MXF) and `fuzz_ac4_parse` (AC-4 scan/parse). Their first runs
+  fuzzed the parsers uninstrumented; see Fixed for what the instrumented runs found.
+- **The cross-platform bitstream-hash gate now pins `aarch64-neon`**, from real arm64
+  CI: byte-identical to `x86_64-sse2`, proving the encoder is bit-exact across
+  architectures and that the ~6.02 dB gold-reference gap is entirely decode-side.
+- **Roadmap VX11 resolved: the ~6.02 dB cross-platform split is a last-bit arithmetic
+  difference, not a systematic codec error.** It splits strictly by architecture, not OS
+  or compiler, and steps rather than grades — every (check, channel) pair sits at
+  0.00–0.11 dB or 5.85–6.05 dB, nothing between. Per-channel floor headroom drops from
+  6.02 dB to 1.0 dB, so the gates now catch a 1 dB regression where they previously
+  needed 6.
+- The Python oracles under `tools/` now have unit tests of their own
+  (`test_compare_wav.py`), pinning the single-floor blind spot fixed above.
+
+### Changed
+
+**Minimum-footprint / ESP32 decode and encode profile**
+
+- **A Hearth sink's built-in WiFi network is empty by default, not `my-network`.** With
+  the placeholder set, a freshly flashed board spent its `CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES`
+  attempts and up to 30 s failing to join it before Improv started listening. Empty means
+  nothing stored or built in, so `network_up()` returns at once and Improv listens from
+  the first second. A fleet meant to join one network from the image still sets the
+  option; a board meant for Improv or `PUT /network` now needs nothing set.
+- **The ESP-IDF streaming-player example is now `hearth_sink`.** It becomes Hearth's
+  ESP32 sink (`planning/hearth-reference-player.md`), so it takes the name before the
+  work starts: `esp-idf/ac3forge/examples/hearth_sink/`, the CMake project
+  `ac3forge_hearth_sink`, and the *ac3forge hearth sink* menu in `idf.py menuconfig`.
+  Its `CONFIG_AC3FORGE_EXAMPLE_*` options, sinks, sources, web page and stream set are
+  unchanged, and the image it builds behaves as it did. Anyone pointing a script at the
+  old path or flashing `ac3forge_stream_player.bin` needs the new name; the GUI's own
+  stream player is a different thing and keeps its.
+- **The fixed-point tier decodes 5.1 in real time on the ESP32-C6 with WiFi up**, with the
+  same PCM bit for bit: the fixed-tier hashes do not move. The IMDCT pair's products drop a
+  saturation they cannot reach, the overlap-add runs on 32 bits and builds its output floats
+  from the integers' bits, `Fixed32`'s product tests its saturation once, and its shifts,
+  small ratios and square root avoid 64-bit library calls on a 32-bit core, as do the AHT and
+  spectral extension products. On the board at 160 MHz with no network, AC-3 5.1 went from
+  34.7 ms a frame to 20.5 and E-AC-3 5.1 from 38.7 to 23.9; with WiFi and a 1,536 kbit/s
+  stream arriving, from 44.3 to 26.2 and from 46.4 to 30.6. See
+  `docs/platforms/bare-metal/esp32-c6.md`.
+- **E-AC-3 decodes in real time on the ESP32-S3** (roadmap PF7), the result of five
+  successive profiling passes. The double-arithmetic bottleneck between the bitstream
+  and the float32 coefficient store (mantissa dequantisation, dither, coordinates,
+  decoupling, spectral extension, AHT, JOC mixing — each a call into the ROM's software
+  float) now runs in `decode_scalar_t`; enhanced coupling gained the same `float`
+  overloads in a second pass. Two new switches, `AC3FORGE_STAGE_TIMERS` and
+  `AC3FORGE_MINIMAL_HOT_O2` (five hot files at `-O2` under the `-Os` profile) back the
+  work. Further passes replaced `BitReader`'s per-bit loop with a 64-bit cache, reused a
+  block's allocation when its exponents/parameters repeat, moved the PCM handoff from
+  `std::copy` to `memcpy` (the ROM's `memmove` cost ~12 cycles/byte), and folded the
+  output stage a block at a time instead of per-sample. On an ESP32-S3-DevKitC-1-N16R8
+  at 240 MHz: a 5.1 frame went from 78.8 ms to 6.2, an Atmos objects frame from 82.7 to
+  21.2, enhanced coupling from 217 to 19.8, and a 7.1.4-to-stereo fold from 4.1 ms to
+  1.1 — every level unchanged to the digit throughout. [The ESP32-S3
+  page](docs/platforms/bare-metal/esp32-s3.md#timing) has the full stage tables and a capability table
+  of what fits the part.
+- **The E-AC-3 decoder no longer copies what its per-block coefficient store already
+  holds.** An AHT stream sends all six blocks' mantissas in block 0, and the decoder held
+  them in a buffer per stream until each block copied its own out: 6,144 bytes a stream in
+  the float build, 36,864 for a 7.1.4 stream's six streams and 43,008 with the coupling
+  channel. Block 0 now decodes them straight into the store, which keeps every stream of
+  every block. Enhanced coupling's reconstruction likewise reads its neighbouring blocks'
+  coupling channel there instead of from a 6,144-byte copy, and an access unit's substreams
+  are gathered in an array the decoder keeps from unit to unit instead of one allocated
+  for every unit (2,508 bytes for three substreams on the ESP32-S3). The PCM is unchanged
+  bit for bit in the `double`, `float` and `fixed` tiers. Under QEMU, in the ESP32-S3's
+  7.1.4 network shape without PSRAM, `714-aht.ec3` and `714-all.ec3` no longer abort for
+  want of internal RAM: over four runs each, their least free internal heap during a play
+  was 31,224 to 32,040 and 30,072 to 32,196 bytes, where the 7.1.4 streams CI already plays
+  reach 30,252 to 35,040. `714-ecpl.ec3` now plays too, but with as little as 2,236 bytes
+  to spare, so it stays a PSRAM-only stream.
+- **The encoders now run their analysis front end and coefficient store in
+  `encode_scalar_t`** (roadmap PF7, a second scalar axis beside the decoder's):
+  transient detection, the block gather, the forward transform, and — in a second pass
+  the same day — the coupling/spectral-extension/enhanced-coupling analyses, dither and
+  delta-segment decisions, and the fixed-point conversion. Only the AHT and the masking
+  model's internals stay `double`. On the ESP32-S3: AC-3 2/0 encode went from 75.0 ms to
+  12.1 (real time), E-AC-3 5.1 from 348.9 to 81.2. Every `<double>` instantiation is the
+  function the ordinary build already called, so the golden bitstream hashes hold; CI's
+  `linux-gcc` leg builds the float encoder alongside the float decoder and gates it to
+  within 0.5 dB of the double encoder.
+- **The rate-control search and exponent-run planner cost less** — mostly exactly (the
+  same candidates, the same answer, pinned by the fixture and golden hashes): both Annex
+  E frame forms scored in one pass, the masking curve computed once per search rather
+  than once per probe, repeated stream runs counted once. One change isn't exact — the
+  delta race's two searches now warm-start from their own previous answer rather than
+  each other's — because the frame's mantissa cost isn't monotone in the offset; the
+  E-AC-3 golden hashes and profile fixtures are re-pinned to the new, still passing,
+  answer. On the ESP32-S3: E-AC-3 5.1 encode dropped a further 81.2 to 55.5 ms.
+- **The decoder's block form carries the objects**
+  (`PcmBlock::objects`/`object_indices`/`object_metadata`, views onto the unit's own
+  reconstruction) and **objects are placed on loudspeakers on the minimum-footprint
+  targets** (`spatial.cpp` joins the decoder profile): a height-object stream pans onto
+  7.1.4 at 25.1 ms/frame on the ESP32-S3 (0.78x), with `pan_ring`/`pan_direction` no
+  longer allocating.
+- **A minimum-footprint build resolves the SIMD arch seam** instead of naming `generic/`
+  literally, fixing a minimum-footprint decoder built for aarch64 that had been missing
+  NEON.
+
+**Library internals**
+
+- **`ac3/decoder/decoder.hpp` no longer includes `ac3/core/eac3_tools.hpp`.** The
+  include was left over from a struct that moved out with the AP3 pimpl sweep; source-
+  breaking only for a consumer relying on the transitive include (none in-repo). ABI
+  unchanged.
+- **Two coding-tool headers moved from `ac3/encoder/` into `ac3/core/`**
+  (`coupling.hpp`, `eac3_tools.hpp`), where the code they hold — used by both decoders
+  on every frame — already lived. Source-breaking, deliberately landing before the v1.0
+  API freeze with no compatibility shim; ABI unchanged.
+- **The ESP32 player's output layout and renderer moved into the library as
+  `ac3::render`** (`esp-idf/ac3forge/include/ac3forge/{layout,render}.hpp` to
+  `src/forge/include/ac3/render/`), with the player's fold-and-objects policy as
+  `ac3::render::serve()`, so the desktop player and its test sink render with the boards'
+  code. The arithmetic is unchanged: the QEMU render shape's twelve slot levels are the
+  same as main's. Source-breaking for the component's `ac3forge::OutputLayout` and
+  `ac3forge::LayoutRenderer`, which were never published to the component registry.
+
+**SonarCloud and code quality**
+
+- Four places now use the idiom SonarCloud's first scan asked for (`cpp:S6427`,
+  `cpp:S1048`), because it's better code and not only a quieter report.
+- The nightly SonarCloud scan now builds the examples, so the ~15 translation units
+  under `examples/` are analysed instead of silently skipped by the coverage-only preset
+  that had excluded them.
+
+**Crucible desktop application**
+
+- **The Desktop Atmos Demo is now AC3Forge Crucible** (roadmap UX12): a desktop
+  application rather than a Windows-only demo, with the same idea.
+  `ac3desk`/`ac3windemo` are `ac3crucible`/`ac3crucible-run`; settings migrate on first
+  launch; everything the app asks of the OS goes through four platform seams under
+  `apps/crucible/engine/` with no `#ifdef`s, tested against fakes on every platform.
+- **Crucible runs on Linux, on PipeWire** — verified on a Raspberry Pi 4B against an
+  Atmos receiver over HDMI on 2026-09-05: an application tapped through PipeWire,
+  encoded live as E-AC-3 with a signed JOC object layer, read on the receiver's front
+  panel as "Atmos/DD+". Applications are tapped through PipeWire's per-stream target,
+  the silent device is a `support.null-audio-sink` node the app creates and removes
+  itself (no driver needed), and the front window is read from X11
+  (`AC3FORGE_CRUCIBLE_X11`) or reported off under Wayland. A build against ALSA is
+  refused at configure time. Both the `.tar.gz` and the `.deb` ship as release assets,
+  for x86_64 and aarch64.
+- **The PipeWire backend's passthrough now offers AC-3/E-AC-3 only when the sink's
+  `iec958.codecs` (its EDID) lists them**, never on the strength of a successful connect
+  — which PipeWire grants a headphone jack as readily as a receiver, and which rejected
+  the very receiver this was written for on the Pi.
+- **`process_loopback` is now reported unavailable on macOS**, where the version gate
+  used to claim it was available from 14.2. The Core Audio process tap never returned
+  from `AudioDeviceCreateIOProcID` on the CI leg's first real run and froze the whole
+  process; the tap stays in the tree behind `AC3FORGE_MACOS_PROCESS_TAP` for anyone with
+  hardware to settle it on.
+- **The Windows null-sink driver is now an ACX driver on KMDF**, derived from
+  Microsoft's AudioCodec sample, in place of the PortCls/WaveRT miniport — about 1,900
+  lines in place of 9,700, with Driver Verifier's DDI compliance now part of its
+  verification. Nothing the demo or scripts see changes.
+
+**CI and static analysis**
+
+- **Code analysis now runs nightly against `main` instead of on every PR/push/merge-
+  queue entry**: CodeQL, MSVC Code Analysis and clang-tidy (moved to its own workflow)
+  each open or refresh a `nightly-analysis` issue on a finding. `CI Status` no longer
+  waits on them. Measured motivation: the three engines held about 55 self-hosted
+  runner-minutes per CI event, paid three times per merge on a fleet shared with another
+  repository. A fourth engine, SonarCloud, joins them (maintainability, duplication,
+  new-code coverage), pinned to GitHub-hosted since the CFamily analyser doesn't fit the
+  shared fleet.
+- The ABI gate no longer runs on merge-queue entries — the PR run already produced the
+  comparison it exists for, and while `ABI_ENFORCE` is off nobody reads the release-
+  relative second view before the merge lands.
+
+**Quality gates**
+
+- **The gold-reference quality gate now has one SNR floor per channel, not one per
+  fixture.** A/52 leaves the values a decoder substitutes for zero-bit bins unspecified,
+  so two spec-correct decoders legitimately differ there — a 5.1 fixture's surrounds
+  sitting 35 dB below its fronts meant a single floor had to clear the surrounds, gating
+  the centre channel at 22 dB while it measured 58.1. Each channel now carries its own
+  floor, `floor(min_observed - 1.0)` derived across every CI leg and commit
+  (`derive_channel_floors.py`), gaining 19–71 dB of real gate on front channels and LFE.
+  The trend check follows the same rule, comparing each channel against its own trailing
+  average. See [Validation](docs/verification.md).
+
+**Documentation**
+
+- The Crucible guide gained its two missing pages ([The room](docs/crucible/room.md),
+  [Settings](docs/crucible/settings.md)).
+- The library's docs page now presents it as a member in its own right, matching Forge,
+  Crucible, and Hearth.
+- The published-asset table now matches the pipeline: a Windows arm64 row, Crucible
+  rows, and four stale claims corrected.
+- The CLI reference lists all forty-two commands, including the previously-undocumented
+  `spatial`.
+
+**Release engineering**
+
+- `ac3::version_details()` (and `ac3cli --version`) now puts commits-past-tag in the
+  headline as semver build metadata (`0.10.0-beta.1+100`), so it no longer reads as a
+  tagged release when it isn't.
+
+### Fixed
+
+**Containers**
+
+- **The `dec3`/`EC3SpecificBox` `asvc` bit misclassified karaoke as an associated service.**
+  `ac3::io::build_codec_config_box` used a plain `bsmod >= 2` test, which reads bsmod 7 (karaoke
+  at an acmod other than 1/0 — a *main* service per A/52 Table 5.7) the same as bsmod 7's other
+  meaning, voice-over. The MPEG-TS descriptor writer already got this split right; the `dec3`
+  writer now shares its rule, `ac3::meta::is_associated_service`.
+
+**Command line and GUI**
+
+- **`ac3cli monitor` refused a §E2.3.1.2 legacy-core stream and dropped every stream's last
+  unit.** It picked its decode path from the first frame's bsid alone, so a stream whose 5.1
+  bed is a plain AC-3 syncframe with Annex E dependents extending it went to `FrameDecoder`,
+  which refuses the first dependent it reaches - the same test `decode` already makes now
+  reads `has_eac3_extension_substreams` too. Separately, the E-AC-3 loop never drained
+  `Eac3Decoder::flush()`, so the final access unit of any stream whose last frames used §3.7's
+  transient pre-noise tool never played - held back by the decoder and simply left there when
+  the loop ended. `spatial` had the same missing flush. Both commands now play that unit,
+  through a new `ac3::apps::held_back_unit` shared with future callers, laid out the same way
+  as every other unit.
+- **`ac3cli transcode`, `metadata`, `cut` and `cat` read a §E2.3.1.2 legacy-core stream as
+  plain AC-3, missing the Annex E dependent's channels.** `decode_and_render`'s decoder
+  choice and `codec_label`'s status-line label both tested `scan.kind == kEac3` alone, so a
+  stream whose 5.1 bed is a plain AC-3 syncframe with an Annex E dependent extending it fell
+  to `FrameDecoder` instead of `Eac3Decoder` - the same two-way test the `monitor` fix above
+  closed, in the one place it remained. Both now recognise the third `StreamKind`
+  (`kAc3CoreEac3Extension`) as E-AC-3-shaped, matching `decode`'s own dispatch.
+- **`ac3cli spatial` refused a §E2.3.1.2 legacy-core stream outright.** It refused any
+  stream whose first frame was AC-3 (`bsid <= 8`) before ever checking for an Annex E
+  extension substream behind it - but a legacy-core delivery's object layer lives in
+  exactly such a dependent, since a plain AC-3 core has nowhere to put an EMDF container.
+  `spatial` now shares `run_monitor`'s own `ac3::apps::reads_as_access_units` test, so a
+  legacy-core stream that does carry an object layer decodes and plays instead of being
+  turned away.
+- **`ac3cli decode` and `transcode` could misplace a stream's held-back last unit.** Both
+  already drained `flush()`, but placed each flushed substream's channels by appending it
+  straight into the WAV sink or the transcode sample queue - once per substream per Table
+  E2.5 location, rather than assembling the whole unit first. A last unit that released a
+  bed together with the dependent that had been holding it back could then land both
+  substreams' channels in the same location, growing some channels past others instead of
+  merely leaving stale audio behind. Both now build the held-back unit once through the same
+  `ac3::apps::held_back_unit` `monitor`/`spatial` use above, and append it exactly once per
+  slot, like every other unit.
+- **The GUI offered E-AC-3 bitrates a source's sample rate couldn't frame.**
+  `bitrates()` branched on codec but not on the loaded source's rate, so a 16 kHz file
+  offered rungs no `frmsiz` could carry; encoding was refused only at the encode button.
+  The list is now filtered per-rate by the same rule `plan::validate()` already applies,
+  and a lower-rate source clamps an out-of-range selection down.
+- **`ac3cli probe` swapped bsmod 7's two service names.** Table 5.7 makes acmod 1/0's
+  bsmod 7 "voice over" and every wider acmod's "karaoke"; the table form and the JSON
+  document's `bsmod_label` had the pair backwards. `ac3::meta::describe()`, used by
+  `mpegts` and the library's own reporting, already had it the right way round.
+- **`ac3cli spatial` and `qc objects=` played and measured a decoded Atmos programme's
+  dynamic objects against an LFE that arrived 576 samples too early, and `decode ...
+  adm_out=` exported the same mismatch into its ADM master.** A JOC-reconstructed object
+  lags the bed it was pulled from by `oba::joc::reconstruction_delay(domain)` samples —
+  576 under the QMF domain every decoder defaults to (`docs/library/decoding.md`, "Atmos
+  objects lag the bed") — but all three sites combined a decoded unit's bed LFE with its
+  already-lagged object audio unmodified, in the same update or the same exported track.
+  The LFE is now held back to match: a small FIFO delay line ahead of the Windows Spatial
+  Sound sink and the loudness meter, and a whole-channel shift on the batch-written ADM
+  master, the last pinned by a regression test measuring the exported master's two
+  channels before and after.
+- **`ac3cli probe json=1` wrote invalid JSON for an AC-4 stream of bitstream version 0 or
+  1.** Each `presentations_v0[].substreams[]` entry held an unnamed object beside its
+  `role`. The substream's members now sit beside `role` in the entry. No stream on hand has
+  such a table of contents, so no output seen so far changes.
+- **`ac3cli play`, `monitor`, `identify` and `live`'s output legs spun for ever once an
+  output device went away.** None of them looked at `running()`, so a lost render endpoint
+  left `submit()` refusing and a drain loop waiting on counts that had stopped moving -
+  the same hang the queue-full case already had before the sinks themselves learned to stop
+  (see "An output device that went away left the sink saying it was still playing" above).
+  Every submit and drain loop now ends as soon as the sink reports itself not running, and
+  says which endpoint went and how (unplugged, switched off, disabled, or taken by the
+  system), through a shared `ac3::apps::submit_while_running`/`wait_while_running`
+  (`apps/common/sink_wait.hpp`). `play`, `monitor` and `identify` exit `5`; `live`'s
+  monitor and passthrough legs are dropped and the take carries on, ending the session as a
+  failure only because it did not do everything asked. `tools/checks/passthrough_probe.cpp`
+  gets the same fix, exiting `5` rather than looping past a pulled cable. `ac3cli spatial`
+  is unchanged - `SpatialObjectSink` was not touched by #775 and needs its own fix.
+
+- **A twelve-channel play aborted on the ESP32-S3 for want of internal RAM.** The E-AC-3
+  decoder held all 32 substream-identity slots (`strmtyp * 8 + substreamid`) by value, so
+  every byte added to `DecodedSubstream` cost 32 bytes of heap in every decoder whatever
+  the stream — and a stream has one to three identities. The three downmix-level fields
+  added for a legacy-core fold grew that struct by 284 bytes and so the array by 9.1 KB,
+  which was most of what the widest shape had left: a 7.1.4 play of a three-substream
+  stream had been running on about 10 KB of free internal RAM, and an Ethernet buffer
+  arriving at the wrong moment took the rest. The slots are now allocated per engaged
+  identity, as the overlap-add and JOC states beside them already were, and an engaged
+  slot is written through for the rest of the stream, so a steady-state decode still
+  allocates nothing. Measured under QEMU on the 7.1.4 stream set: least free internal RAM
+  during a play 9,540 → 35,332 bytes, each of the twelve slot levels unchanged to the
+  digit, decode time no higher. The ESP32 QEMU legs now also fail on a failed allocation
+  anywhere in the console — one can be survived, so a run could print hundreds and still
+  report `result=pass` — and the stream set's free heap is held to a floor.
+- **The ESP32 player kept block storage for sixteen output slots whatever the layout.**
+  `ac3forge::Player` held 256 samples for each of sixteen slots inside its own
+  allocation, 16 KB, so a 7.1.4 play carried 4 KB it never read and a stereo play 14 KB,
+  in internal RAM on a part without PSRAM, where the twelve-channel shape runs short
+  first. The storage is now sized from the play's layout at `start()`, placed in PSRAM
+  when the part has it, and released at `stop()` with the ring and the hold. On the
+  7.1.4 stream set under QEMU, the least free internal RAM during a play is 41,456 bytes
+  against 36,904 on main's last CI run, and every stream's slot levels are still the
+  host's.
+- **The ESP32 streaming example's `tdm` sink claimed sixteen 32-bit slots on one data
+  line; an ESP32-S3 carries four.** An S3 TDM frame holds at most 128 bits (ESP-IDF v6.1
+  enforces it); the sink had never run on hardware before a 2026-09-11 board run found
+  it. It now refuses an over-budget frame and says why; the docs say what the part
+  actually carries.
+- **A panic or reset after `result=pass` passed every ESP32 CI leg under QEMU.** The
+  probe runners and the streaming player's steps ended QEMU on a timeout and looked for
+  panic output only when the pass line was missing — but the application prints that
+  line before it finishes, and a panic resets the part into a second run that prints it
+  again. One HTTP-step player freed its ring buffer twice after its verdict and reached
+  the step only as a stale `/status`. Every leg now also fails on panic output or a
+  second boot banner anywhere after the first.
+- **`PUT /layout` overflowed the ESP32 control surface's stack.** `esp_http_server`'s
+  handler task has 4,096 bytes by default; parsing the layout there peaked at 4,596
+  under QEMU, past the canary. `Control::start` now takes the stack size (6,144 bytes by
+  default).
+- The minimum-footprint decode profile's ESP32-S3 build left only 8,096 bytes of main-task
+  stack free at high-water, 96 bytes under the CI runner's 8,192 floor — `DecodedSubstream`
+  and `DecodedAccessUnit` grew by `bsid`/`cmixlev`/`surmixlev`/`alternate_bsi` (see below).
+  `CONFIG_ESP_MAIN_TASK_STACK_SIZE` moves from 32,768 to 40,960.
+- **An E-AC-3 decode kept two or three copies of its result on the stack.** `Eac3Decoder`
+  returned each substream and access unit through a `std::optional` temporary, and
+  `decode_substream` held a concealed substream beside the decoded one, so a field added to
+  `DecodedSubstream` or `DecodedAccessUnit` cost the decode path several times its size: the
+  four fields above cost the ESP32-S3 streaming player's decode task about 1.9 KB. The results
+  are now built in place, in the caller's storage. The three stack frames live while a
+  substream decodes shrink from 12,352 to 9,040 bytes on the ESP32-S3. Under QEMU, every
+  E-AC-3 stream of the 7.1.4 stream set leaves the decode task at least 3,312 bytes more of
+  its 24,576: 9,344 at the least, against 6,032 before, and 10,368 for `714-walk`, which
+  left about 9,000 before those four fields. The footprint probe's decode leaves 19,344 bytes
+  of its 40,960-byte main-task stack, against 16,064.
+- **The ESP-IDF component decoded in `float` on parts with no FPU.** Its manifest says the
+  decode arithmetic follows the part, but only the probe projects chose `fixed`:
+  `src/forge/minimal.cmake` builds `float` when `AC3FORGE_DECODE_SCALAR` is unset, so any
+  other project for an ESP32-C3 decoded in software floating point, which on an ESP32-C6
+  board is up to 3.1 times slower than the fixed-point tier. The component now sets the
+  option from ESP-IDF's `SOC_CPU_HAS_FPU` capability when the project has not: `fixed`
+  without an FPU, `float` with one. A value set above `project()` or passed with `-D` stays.
+- **A Hearth sink restarted when Improv gave it a network after a failed join.**
+  `hearth_sink`'s `network_up()` ran the whole network setup on every call that had not
+  yet joined, and ESP-IDF refuses a second default event loop. The call Improv makes
+  after storing new credentials therefore aborted whenever an earlier join had failed:
+  a mistyped passphrase followed by the right one, or a board whose stored or built-in
+  network could not be joined at boot. The build's placeholder network, `my-network`,
+  puts every freshly flashed board in the second case. The board came back on the new
+  network, but the Improv client saw the port vanish instead of an answer.
+  - The setup now runs once. Each later attempt stops the station, waits until the
+    stop is reported, and starts it on the new network with a fresh retry count.
+  - A board that joins after boot now starts mDNS and the Sendspin player without a
+    restart. Before, only boot started them. The same applies when the boot play's
+    source is what brings the network up.
+  - An attempt no longer waits forever. A network that associates but gives no
+    address is left after 30 s; once stored, it used to hang the board at boot before
+    Improv started. A connect the driver refuses now fails the attempt.
+  - A build with no network stored and none built in used to restart in a loop: its
+    control surface opened a socket before lwIP was initialised. lwIP now comes up
+    whether or not there is a network to join.
+  - The QEMU Ethernet network set itself up again on a second call too, and is now
+    set up once as well.
+- **Over an ESP32-S3's USB console, a Hearth sink's Improv answers waited for the next
+  line it printed.** ESP-IDF's driverless USB-Serial-JTAG console sends its buffer to
+  the host only at a newline, and an Improv packet has none. On an idle board, or after
+  `cannot_connect`, nothing followed, and the client never got its answer. Each packet
+  is now synced to the host as it is written; on a board, a `current_state` request is
+  answered in 0.5 s, where before its answer arrived 10 s later with the next request's
+  output.
+- **A Hearth sink stayed off its network once its access point restarted.** The WiFi
+  station retried a disconnect `CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES` times in quick
+  succession and then gave up for good, so an access point away for the 30 s to two
+  minutes a restart takes left the board off the network until someone power-cycled it.
+  A power cut was worse: the board booted long before the access point, spent its
+  retries in 15 s and never tried again. Meanwhile `network_ready()` never turned
+  false, so mDNS and the Sendspin player believed the board was online, and an Improv
+  client asking such a board was told *provisioned*, with the address of a page that no
+  longer answered.
+  - The station now keeps trying the network it has: the quick retries first, then
+    after 1, 2, 4 and 8 s, then every 15 s, until it joins or is given another network.
+    A network lost after joining is retried the same way. On two ESP32-S3 boards, one
+    running a SoftAP as the access point, a board idle when the access point went was
+    back 1.2 s after it returned, a board whose access point vanished without a word
+    for 125 s was back 14.7 s after, and a board that booted while the access point was
+    off joined 12.5 s after it came back and then advertised itself and started its
+    Sendspin player, with no restart.
+  - `network_ready()` now means the board holds an address now, not that it once did.
+    A disconnect or a lost address clears it and rejoining sets it again, so mDNS, the
+    Improv reply's URL and `app_main`'s watch for a network all follow the truth.
+  - Improv's current state is *ready* whenever the board is not on a network, where a
+    board with a network stored used to answer *provisioning*. The client
+    improv-wifi.com uses offers its Wi-Fi form for *ready* and a spinner with no way out
+    for *provisioning*, so a board whose network had gone could not be given another
+    one from the page it tells people to use.
+  - An Improv `wifi_settings` sent to a board that is off its network now joins the new
+    network at once, dropping the one being retried. A board that is on a network keeps
+    it and joins the new one at its next boot, as `PUT /network` does, and says so on
+    the console.
+  - A network that gives no address within 30 s no longer has its station stopped: the
+    board stays associated, and an address that arrives later still joins it.
+  - A Sendspin stream that is playing when the network goes now ends where it stopped,
+    freeing the player's memory, and the board rejoins from there: on a board with
+    about a kilobyte of internal heap free while streaming, the rejoin came 8.7 s after
+    the access point returned, and the next play was clean.
+- **A Hearth sink's first play right after a Wi-Fi reconnect could start with a few chunks
+  late and an underrun or two, converging again over about a second.** Learning bursts run
+  one after another until the clock filter's own error estimate reads as converged, which
+  says only how well a run of replies agrees with itself, not with the truth - and a run
+  taken in the turbulent seconds right after a reconnect, where reassociation, mDNS's
+  re-announce and an ARP round can all delay a reply the same way, could agree with itself
+  as well as an accurate run and read as converged on an offset that was still several
+  milliseconds off. `ac3::sendspin::ClockSync` now takes convergence in two steps: once a
+  run reads as converged, one more burst, a learning interval later and so genuinely apart
+  in time, must measure within a millisecond of that run's own last reading before the
+  clock is reported converged and a stream is let start. A confirming burst that disagrees
+  is not trusted; the run starts over.
+- **A Hearth sink refused a network whose name is 13 characters, and answered with a
+  broken one about a 10-character board name.** Improv's packets share the console with
+  the lines the board prints, and ESP-IDF's default line endings rewrite bytes inside
+  them: a CR from a client arrives as LF, and a CR goes out before every LF. Either one
+  lands in a packet - a length byte, a string, a checksum - and the packet then fails
+  its checksum at the other end. A `wifi_settings` whose SSID is 13 bytes long, so that
+  the length byte in front of it is a CR, was answered `invalid_packet`: a board could
+  not be told about a network named, for instance, `MyHomeNetwork`. In the other
+  direction, with a 10-character name stored, the `device_info` and `device_name`
+  answers carrying it reached the client broken. The example's console now converts
+  nothing in either direction. A command typed on it still ends at either CR or LF, and
+  each line the application prints now ends in LF alone, which `idf.py monitor` and the
+  checks under `tools/checks` read as they did; a terminal that needs the CR has a
+  setting for it. The ROM's lines, and anything logged from an interrupt, still end
+  CR LF: they are written by `esp_rom_printf`, which this setting never reached.
+- **A Hearth sink's page could reach its Sendspin player before the player had started,
+  and after a failed start had freed it.** `hearth_sink` set two global pointers to the
+  player and its server as it made them, on the task that starts them. The control
+  surface's task read the same pointers for `GET /status`, `PUT /layout`, `PUT /name`,
+  `/wiring`, `/slot-width` and `POST /pairing`, so a request could find a server that had
+  not started yet. A start that failed then freed both, whether or not a request was
+  still using them. A board that joins a network over Improv starts its player just
+  after Improv gives the client the page's address, so a browser that opens the page at
+  once can send requests during the start. The player and its server now reach the other
+  tasks together, once both have started, and nothing from a failed start reaches them.
+  `/status` has `"sendspin": null` until then. Two requests sent during the start used to
+  be lost, and now are not:
+  - A `PUT /layout` sent before the player had started reached the next control-surface
+    play only, and the player started with the layout from before. The player now starts
+    with the new layout, or receives it as its start completes.
+  - A `PUT /name`, `/wiring` or `/slot-width` sent while the player was starting could be
+    lost: the server started with the board's old description, which is what servers
+    read in its hello. The server now gets the new one.
+
+**Codec correctness**
+
+- **RF mode decoded 11 dB below a Dolby decoder.** `OperatingMode::kRf` normalised
+  dialnorm onto −31 dBFS and applied `compr` with nothing on top, while the Dolby
+  Reference Player's RF mode applies each `compr` word with 11 dB that put dialogue at
+  −20 dBFS. DEE's own streams measured −30.90 LUFS here against −19.70 LUFS there; they
+  now measure −19.90 LUFS. As on the Reference Player, a syncframe with no `compr` word
+  stays at line mode's level, and `kCustom` with `heavy_compression` still applies the
+  word alone. An E-AC-3 program with dependent substreams now takes its `compr` word
+  from the last dependent for every substream (§E3.8.5), as the Reference Player does.
+  Before, the bed took the independent substream's word and the dependents' channels
+  took none, which the 11 dB would have set 11 dB apart. See `docs/library/decoding.md`.
+- **Heavy compression did nothing for a program's dependent substreams.** The encoder
+  wrote the last dependent's `compr` as unity regardless of `FrameConfig::heavy`, so a
+  program with dependents (7.1, 5.1.2, ...) carried no ceiling for the channels riding
+  on them, on top of the decoder gap above: an RF-mode decode applied the fixed 11 dB
+  with no cut at all. `AccessUnitEncoder` now measures the last dependent's word from
+  the complete rendered program - every dependent's channels folded in the way
+  `ac3::OutputStage`'s rendered-layout overload seats a wide layout - while the
+  independent substream keeps its own bed-only word, for a receiver that only ever
+  decodes the 5.1 downmix.
+- **Heavy compression's `compr` words played 11 dB hot on a Dolby decoder.** The
+  encoder put RF mode's 11 dB and the dialnorm offset into the word itself, so a stream
+  at dialnorm 31 decoded 22 dB above line mode on the Reference Player, which pushed
+  pink noise peaking at −20 dBFS past full scale. Words are now written for an RF-mode
+  decode that normalises dialnorm and adds the 11 dB itself, the way DEE writes them:
+  unity for dialogue-level material at any dialnorm, and cuts sized so the mono downmix
+  meets the ceiling after the decoder's own gain. `dialogue=`/`ceiling=` keep their
+  meaning and defaults.
+- **The AC-4 parser misread everything after a presentation with dialogue enhancement.**
+  `presentation_config` 1 ("Main + DE") and 4 ("Main + DE + Associated Audio") read two
+  and three substream group references (TS 103 190-2 §6.2.1.3) while counting one and
+  two groups; `ac4::`, and so `ac3cli probe`, read by the count, one reference too few,
+  and the Python reference parser shared the misreading. No DEE encode writes either
+  configuration; synthetic frames in `tests/ac4` now cover both.
+- **The AC-4 parser misread everything after an EMDF-only presentation.** A presentation
+  with `presentation_config` 6 carries only additional EMDF substreams, whose count and
+  `emdf_info()` list TS 103 190-2 §6.2.1.3 reads after the config-6 branch. `ac4::`, and
+  so `ac3cli probe`, returned before that loop on both TOC paths, so later presentations,
+  the substream groups and `substream_index_table()` were read from the wrong bit. The
+  substream groups also took their frame-rate factor from the first presentation, which an
+  EMDF-only presentation does not transmit. No DEE encode writes this configuration, and
+  the Python reference parser shared the misreading on the `bitstream_version` 2 path.
+  Synthetic frames in `tests/ac4` now cover both paths; the committed DEE fixture parses
+  identically.
+- **The AC-4 parser dereferenced a null pointer on a legal bitstream, and could be made
+  to ask for gigabytes.** A stream that clears `b_size_present` left
+  `Toc::substream_sizes` empty while `n_substreams` was 1, and `parse_raw_frame()`
+  indexed element 0 of the empty vector; the untransmitted substream now runs to the end
+  of the frame instead. Separately, five count-driven loops fed by `variable_bits()`
+  (including the object-assignment loop, which reached 2^32 once the reader ran dry and
+  kept reading phantom zeros) grew a vector without checking for exhaustion — one fuzzed
+  frame allocated 1.8 GB and took 6.7 seconds; now 33 MB and 0.03 seconds. Found by the
+  new `fuzz_ac4_parse.cpp` within seconds of its first run.
+- **The AC-4 and IAB parsers read out of bounds, overflowed `int` and looped forever on
+  malformed input, unseen by their fuzz harnesses.** `fuzz_ac4_parse` and
+  `fuzz_iab_parse` linked their parser libraries without the ASan, UBSan and coverage
+  flags every other fuzzed library is built with, so their earlier clean runs could
+  catch a crash, a timeout or an oversized allocation and nothing inside the parsers.
+  Instrumented, the committed AC-4 corpus read past a six-entry count table (3-bit
+  `n_objects_code` and `isf_config` codes 6 and 7, now naming no objects);
+  `presentation_config_ext_info()` overflowed `int` within 9,000 executions; and the MXF
+  reader's KLV walk looped forever on a Length near 2^64 that wrapped back to offset 0. A
+  `parse_raw_frame()` bounds check that could wrap into a read past the frame, and six
+  more `int` additions on counts that escape through `variable_bits()`, are fixed
+  alongside. The table reads, the bounds-check wrap, the skip overflow and the KLV loop
+  each have a test that fails on the old code under ASan+UBSan, and the two found by
+  mutation have reproducers under `fuzz/regressions/`. Both harnesses now run clean for
+  300 seconds, and their corpora reach 1,270 (AC-4) and 711 (IAB) edges, against 1,064
+  and 564 for corpora grown uninstrumented in the same time.
+- **The BW64/ADM reader was the third parser fuzzed blind, and closing that needed a
+  patch to a dependency, then a change of dependency.** `ac3adm_objects` was the last
+  library a harness links that `fuzz/CMakeLists.txt` did not instrument, and adding it
+  stopped `fuzz_adm_parse` within a few hundred executions: libbw64 0.10.0 takes
+  `&buffer[0]` of a `std::vector<char>` that a zero-length chunk leaves empty — in
+  `UnknownChunk`'s constructor, in `Bw64Reader::read()` and in `Bw64Writer::write()` —
+  which UBSan reports and a standard library with its bounds checks on aborts over. A
+  `FetchContent` patch fixed all five sites at populate time; upstream made the same
+  change in 2021 and has tagged no release carrying it. Instrumented, the harness then
+  found, all in `ac3adm`'s own handling of the chunk table: a `<fmt >` whose channel
+  count and sample width overflow libbw64's `uint16_t` block alignment had its read
+  buffer sized from the wrapped value and decoded against the real one — a heap overread
+  that an uninstrumented build ran as a clean execution; the chunk-table pre-check
+  stopped at an RF64 `<data>` declaring more than the file holds, leaving the chunks
+  behind it to be allocated whole (1.7 GB, found by mutation); a 28-byte `<ds64>`
+  declaring 4.26 billion table entries drove a loop of that many reads; a file ending in
+  a fragment too short to be a chunk header had that header's size read out of
+  uninitialised stack (`malloc(4278190080)`, from 19 bytes); and a hang in this module's
+  own float-detection pass, which stepped over chunks in 32-bit arithmetic that wrapped
+  to zero on one declared size, was reachable through every file that pass ran ahead of
+  libbw64 on.
+
+  Closing one further gap — a `<ds64>` table entry giving some other chunk than `<data>`
+  a 64-bit size, which the pre-check does not read — meant moving off the EBU's own
+  `github.com/ebu/libbw64` (last tagged January 2019) to a maintained fork,
+  `github.com/pwnified/libbw64`, which carries the EBU's own 77 unreleased commits
+  forward and closes it. The fork also reads `WAVE_FORMAT_IEEE_FLOAT` natively, so the
+  hand-rolled container walk this module used to fall back to for float samples
+  (`float_pcm_bw64.cpp`/`.hpp`) is retired — both integer PCM and float go through one
+  path now. Two small patches remain against the fork, each with an upstream PR
+  proposing the same fix: `<data>` still has to be exempt from the fork's stricter
+  end-of-file check, the way every prior libbw64 allowed, for a recording truncated
+  mid-capture to keep reading; and a 64-bit `WAVE_FORMAT_IEEE_FLOAT` `<fmt >`, which the
+  fork's own decoder already handles correctly, needs one more accepted bit depth to
+  reach it — a capability gap this module's own docs had claimed was covered since
+  before this fuzz work, caught only once a test for it existed.
+
+  Each finding has a reproducer under `fuzz/regressions/fuzz_adm_parse/`, and the
+  memory-safety ones have tests in `tests/adm/` that fail on the old code. The harness
+  now runs a full 300-second budget clean at 1,911 executions a second — against the
+  first instrumented run's 489, itself already up from the uninstrumented harness's 253
+  — and its corpus reaches 1,752 edges, against 114 for the uninstrumented harness's own
+  translation unit.
+- Short E-AC-3 syncframes (`numblkscod` 0–2) were sized at the full six-block byte
+  budget, so a short stream measured up to 6x its nominal bit rate. CBR frames now take
+  `frame_words`' documented per-block scaling; six-block streams are unchanged.
+- **A §E2.3.1.2 legacy-core stream failed to decode, or silently selected the wrong
+  programme.** Programme selection parsed an AC-3 core's lead frame as an Annex E
+  syncframe — but an AC-3 core carries neither `strmtyp` nor `substreamid`, so the
+  selection read a programme id out of the `crc1` checksum: about a quarter of frames
+  failed outright, the rest were silently mis-selected. The identity is now asserted
+  from `bsid`. FFmpeg's FATE fixture `the_great_wall_7.1.eac3` (an AC-3 core plus an
+  Annex E extension to 7.1) now decodes all 157 access units; it had failed on its
+  first.
+- **Dual mono's output-stage dialnorm normalisation levelled Ch2 by Ch1's dialnorm,
+  not its own.** `OutputStage::apply` took one `dialnorm` and scaled every channel by
+  it; acmod 0 (1+1) codes two unrelated programmes with independent dialnorm words
+  (§5.4.2.16's `dialnorm2` for Ch2), and an encoder sizes Ch2's `compr2` on the
+  assumption Ch2 is normalised by `dialnorm2`. A 1+1 stream with dialnorm 27 and
+  dialnorm2 20 played Ch2 7 dB too quiet under `kLine`/`kRf`/`apply_dialnorm`.
+  `apply()` now takes an optional second dialnorm and levels Ch2 by it alone;
+  `FrameDecoder`, `Eac3Decoder` (`decode_access_unit` and `flush()`) and the WASM
+  decode demo's own side fold all thread it through.
+- **A §E2.3.1.2 legacy core's own output stage ran a second time, ahead of the
+  programme it belongs to.** `decode_ac3_core` built the core's `FrameDecoder` from
+  the whole `DecoderConfig`, `output` included, so `OperatingMode::kLine` normalised
+  the bed's channels once inside that decoder and again over the eight-channel
+  programme `apply_output` assembles from it — measured at dialnorm 24, the bed came
+  out 14 dB down and the dependent's own channels, which never pass through the
+  core, 7. A downmix target folded the bed to two channels before the dependent's
+  could be laid over it, failing every access unit with `kInvalidStream`. The core
+  now decodes with `output` reset; `drc_scale`, `heavy_compression` and every other
+  field are unchanged.
+- **A §E2.3.1.2 legacy core folded with the AC-3 defaults instead of its own downmix
+  levels.** `decode_ac3_core` copied the core's acmod, `dialnorm`, `compr` and so on onto
+  `DecodedSubstream`, but not its `cmixlev`/`surmixlev` or, for a `bsid`-6 core, Annex
+  D's `xbsi1` group — a legacy core has no `mixmdate` to carry them in at all, and the
+  fields those needed did not exist on `DecodedSubstream`/`DecodedAccessUnit`. So
+  `apply_output()` and `flush()` always folded a legacy core's programme with §7.8's
+  −4.5 dB centre / −6 dB surround, whatever the core's own bsi or `xbsi1` actually said.
+  Both structs now carry `bsid` alongside `cmixlev`/`surmixlev`/`alternate_bsi`, and the
+  fold resolves them through the same `ac3::mix_levels(acmod, cmixlev, surmixlev,
+  alternate_bsi)` overload `FrameDecoder` already uses for a bare AC-3 stream.
+- `ac3cli` reports a decode failure in words (`decode failed: a header field holds a
+  value A/52 reserves`) rather than as a bare enumerator — nine call sites across
+  `decode`, `analysis` and `live` weren't using the existing `describe()`.
+- **The AC-3 encoder's heavy compression measured only bsi's downmix levels, leaving
+  no ceiling for a compliant Annex D decoder's own Lo/Ro fold.** §D4.1.1 requires
+  overload protection to hold for either kind of decoder, in any downmix mode; a
+  compliant decoder folding mono from xbsi1's `lorocmixlev`/`lorosurmixlev` (§D3.1.2)
+  instead of bsi's `cmixlev`/`surmixlev` can peak several dB louder, since
+  `lorocmixlev` runs up to +3 dB against `cmixlev`'s -6 dB floor. `compr` is now
+  driven by whichever of the two folds peaks louder whenever `alternate_bsi->mix` is
+  set.
+- **A reserved `dmixmod` read back as "not indicated".** A/52:2018 Table D2.2 and ETSI
+  TS 102 366 V1.4.1 Table D.1.1 both list `'11'` as reserved, and Annex E gives
+  E-AC-3's `mixmdate` field the same table, so neither codec defines a fourth preferred
+  downmix. Both decoders, `io::read_frame_header` and `io::read_frame_metadata` used to
+  store `'11'` as `'00'`. `meta::DownmixMode::kReserved` now keeps it, and
+  `meta::describe()` names it. Both encoders refuse to write it, as they already refuse
+  reserved surround levels, and `transcode` carries a reserved source value across as
+  not indicated.
+- **The renderer played a JOC programme's LFE ahead of its objects.** A reconstructed
+  object comes out `oba::joc::reconstruction_delay()` samples after the bed it was pulled
+  from: 576 (12 ms) in the QMF domain the decoder uses by default, 256 in the MDCT-band
+  one. `ac3::render::LayoutRenderer::render()` played the bed's LFE beside the objects as
+  it arrived, so on the ESP32 player and Hearth's test sink the LFE led the objects by
+  that much. While objects are placed, the LFE now goes through a delay line of that
+  length. `set_joc_domain()` sets the length, and the ESP32 player passes its decoder's
+  domain. The line takes 2,304 bytes for a 5.1 bed, allocated when a unit's objects are
+  first placed, so a player that only plays the bed pays nothing. Measured end to end on
+  a stream this project's encoder writes, with one pulse sent to both an object and the
+  LFE (`tests/render/test_object_lfe_timing.cpp`): the LFE feed had it 576 samples before
+  the object's speaker, and now both have it at 832. In the MDCT-band domain the LFE was
+  256 samples early, and both are now at 512. The QEMU 7.1.4 render run's twelve slot
+  levels are unchanged. `set_bed()` stays idempotent for an unchanged bed, as it was
+  before: only a genuine change of which coded channels are LFE empties the delay line,
+  so a caller that re-announces the same bed every unit (as Hearth's own local decode
+  reference does) still agrees with one that calls `set_bed()` only when the bed changes
+  (as the players do).
+
+**Robustness and diagnostics**
+
+- The four copies of the IAB `BitWriter::push_plex` test helper could shift by 64 —
+  `width` doubles through 4/8/16/32/64, and a value at or above `0xFFFFFFFE` hit
+  undefined behaviour. The reader has always had the bound (`width >= 32` returns
+  `kBadEscape`); the writers now match it. Unreachable for these fixtures' actual
+  values.
+- **`bap-census=` was accepted by eight commands that cannot produce one** (`qc`,
+  `levels`, `transcode`, `probe`, `normalize`, `cut`, `spdif`, `mkv`) — each parsed the
+  key and silently did nothing, exiting 0. The option is now scoped to `decode`, the
+  only command that builds a census; every other command refuses it with the parser's
+  existing `error: unknown option`.
+- **`ac3cli decode … bap-census=` silently wrote nothing for E-AC-3 input**, though the
+  trace was wired in and its cost paid — the AC-3 path had always written it. Both paths
+  now write at the same point; covered by a CLI test over single- and multi-substream
+  E-AC-3.
+- **`quiet` crashed `decode` on a multi-programme or richly-annotated stream, and
+  crashed `transcode`, `metadata`, `normalize`, `cut` and `cat` on every stream.**
+  `quiet` makes the status stream a null `FILE*`; several report lines called
+  `fmt::println` on it directly instead of going through `status_println`, which the
+  Windows CRT's parameter check turns into a hard crash. All such lines now route
+  through `status_println`.
+- **`quiet` left three of `monitor`'s status lines on stdout, and `decode` wrote its
+  object-signature summary ahead of a `-` output's WAV data.** All four now go to the
+  command's status stream, tested with and without `quiet`.
+- **`monitor` misdescribed the object layer of every bed programme, and claimed an LFE
+  object for streams that carry none** — its own copy of `decode`'s object-count line
+  had kept only the shape this project's own encoder writes. Both commands now report
+  through one shared function, `print_object_summary`, tested against a 5.1.4 bed
+  programme and objects with no LFE.
+- **`transcode dialnorm=auto` and `dialnorm2=auto` did not measure anything.**
+  `parse_options` marks the option as given, which skipped the carry from the source, but
+  nothing in `run_transcode` read the measurement flag it also sets — the encoder was
+  built from `plan::Metadata`'s unmeasured default of 31, printed as `(from dialnorm=)` as
+  if the operator had typed it. Both now run the same BS.1770 pass `normalize` makes over
+  the source and print `(measured)` instead.
+- **`transcode` crashed, printing nothing, when the encoder refused the configuration it
+  carried from the source.** A `dialnorm` or `dialnorm2` of 0, which §5.4.2.8 reserves and
+  a decoder reads as 31, is one such value. The E-AC-3 encoder refuses it when it is built,
+  by coding no channels, and `transcode` went on to render the decoded audio into a channel
+  list sized for none (`0xC0000005` on Windows). It now stops before decoding and prints the
+  encoder's reason. Transcoding the same stream to AC-3 reported
+  `bitrate must be a legal AC-3 rate` whatever the refusal was; both codecs now name the
+  cause, as in `dialnorm out of range 1..31`.
+
+**Crucible desktop application**
+
+- **A Crucible re-probe requested while one was already running was silently dropped**,
+  served by nobody — not queued, not retried — affecting every caller (Re-probe, pinning
+  a mode, choosing an endpoint, the device watcher itself). A request that arrives mid-
+  enumeration is now kept and starts a fresh probe once the running one finishes.
+- **Crucible tapped applications before it had anywhere to play them.** On macOS the
+  Core Audio process tap mutes the source app while tapped, so a machine with no usable
+  output would have muted every application and delivered its audio nowhere. Taps now
+  open only while the output stage has an endpoint, checked every frame.
+- **Crucible reported a running engine on a machine with nothing to play into.**
+  `Engine::start()` reported success before the worker thread had built the output stage
+  or opened a sink; it now waits for the worker under two deadlines and the status strip
+  reports why start failed instead of claiming success. A second bug found while testing
+  this: a stopped-and-restarted engine never re-enumerated.
+- **Crucible listed every PulseAudio application on Linux as one entry, and could tap
+  none of them** — PipeWire reports the pid of `pipewire-pulse`, the relay every
+  PulseAudio-API app talks through, not the app's own pid. A stream whose `client.api`
+  names a relay is now bound for `application.process.id` instead.
+- **Crucible could not start on a Linux desktop with a system tray**, crashing on nine
+  or ten launches out of ten: a `Qt.labs.platform` submenu nested in the tray icon's
+  menu triggers a type-confusion `static_cast` inside Qt's D-Bus tray implementation.
+  The tray's menu is now flat on every platform, with a regression test pinning the
+  constraint.
+- The room page described Windows' application-list behaviour on Linux, where PipeWire
+  (unlike Windows' session model) only shows an application while it's actually playing
+  sound.
+- **Crucible's headphones output played a decoded Atmos programme's dynamic objects
+  against an LFE that arrived 576 samples too early** - the same JOC reconstruction
+  delay `ac3cli spatial` had (see "Command line and GUI" above). `OutputStage::submit`'s
+  spatial-sink branch now holds the LFE back by the same FIFO delay line.
+
+**Tooling, packaging and release engineering**
+
+- **Every Linux and macOS package shipped without the `ac3cli` man page or any of the
+  four shell completions.** They were guarded by `if(CMAKE_CROSSCOMPILING)` on the
+  mistaken assumption this meant only the arm64 cross legs — it's set whenever a
+  toolchain file supplies `CMAKE_SYSTEM_NAME`, which every Linux/macOS preset does. Only
+  the Homebrew formula (no toolchain file) got them, which is why the one test asserting
+  they exist kept passing. The guard now compares host and target system name/processor.
+- **A dispatched release would have published the Linux Crucible package stamped with
+  the previous release's version** — its configure step was the one of three that passed
+  no `DERIVED_VERSION_OVERRIDE`, so `git describe` saw the previous tag before the new
+  one was pushed. Fixed, plus three smaller release-path gaps: missing `.sha512` side-
+  cars for the Linux Crucible assets, a `SHA512SUMS` glob missing `*.AppImage`, and a
+  release job that only checked some package existed rather than every promised one.
+- **The README's decode-accuracy badge disagreed with the page it links to.** Per-
+  channel SNR floors taught the docs page to report the tightest per-channel margin, but
+  the badge generator kept the old scalar rule (worst absolute dB) — on one commit the
+  badge read 18.3 dB (a surround 1.3 dB clear of its floor) while the page read 58.1 dB
+  (the front channel genuinely closest to failing), and the badge's colour could stay
+  green while the gold-reference gate itself failed. The badge now runs the same
+  computation as the page.
+
+**Browser (WASM)**
+
+- The WASM demos' three unlabelled `<input>` elements (the stream picker, the seek
+  slider, the WAV picker) now carry an `aria-label`, found by the first SonarCloud scan.
+- **The AudioWorklet pipeline's browser test never ran.** `worklet.spec.js` matched no
+  Playwright project, so it silently skipped in CI while the docs described that
+  pipeline as covered. It now runs in the decode project; wiring it in also found the
+  spec navigating to a 404 page that read as a COOP/COEP failure.
+
+**Build system**
+
+- **macOS cross-builds compiled the wrong architecture's SIMD kernels.**
+  `AC3FORGE_SIMD`'s `auto` keyed on `CMAKE_SYSTEM_PROCESSOR`, which on Apple platforms
+  describes the host, not `CMAKE_OSX_ARCHITECTURES`'s target — building arm64 from an
+  Intel Mac handed it SSE2/AVX2 intrinsics and failed outright. Both now follow the
+  effective target architecture; a universal configure resolves `generic`.
+- **An installed {fmt} older than 11.1.0 was accepted, and the build then failed.**
+  `cmake/Fmt.cmake` looked {fmt} up with no version, so Ubuntu 26.04's `libfmt-dev`
+  10.1.1 satisfied it and compilation stopped at the first `#include <fmt/base.h>`, a
+  header fmt 11 introduced. The lookup now asks for 11.1.0 or newer, the first release
+  the tree builds against (11.0.x's `fmt/chrono.h` fails under Clang 22): an older copy
+  is skipped and named in the configure output, and the `FetchContent` fallback (or the
+  `AC3FORGE_FETCH_FMT=OFF` error) applies. A build directory that had already cached
+  the old copy recovers on its next configure.
+
+**Audio backend and object signing**
+
+- **`MonitorSink::start()` could not say a device had refused this shared-mode format,
+  rather than something else failing.** Every failure past device resolution returned the
+  same `kComFailure` on Windows, ALSA and Core Audio, so a caller could not tell "this
+  device will not do the rate or channel count you asked for" from a COM/ALSA/HAL problem —
+  diagnosing an HDMI/AVR endpoint locked to a non-48kHz shared-mode rate needed a
+  standalone WASAPI probe written outside this codebase to find the `AUDCLNT_E_UNSUPPORTED_FORMAT`
+  underneath the generic message. `start()` now reports a new `MonitorError::kFormatRejected`
+  for that HRESULT specifically on Windows, for the channel/rate `hw_params` calls on ALSA,
+  and for the equivalent channel-count/nominal-rate checks on Core Audio. PipeWire and AAudio
+  hand format negotiation to a graph or mixer that converts rather than refuses, so neither
+  backend returns it.
+- **An output device that went away left the sink saying it was still playing.** A render
+  thread that met a device failure - an unplugged endpoint answering
+  `AUDCLNT_E_DEVICE_INVALIDATED`, ALSA giving up on `-ENODEV`, an AAudio write refused -
+  ended and left `running()` true behind it, so `position()` reported a clock that had
+  stopped, `submit()` went on filling a queue nobody read, and `flush()` waited out its
+  timeout. Every backend now stops its sink when this happens: `running()` says so,
+  `position()` reports nothing, `submit()` refuses, and `flush()`, `pause()` and
+  `resume()` answer at once. `start()` opens again with no `stop()` needed first. Hearth's
+  player stops playback and says which output went away, rather than waiting for a clock
+  that will not move again; before, a lost device left it playing for ever with nothing
+  said. Two hidden cases, `ac3tests "[passthrough-unplug]"` and `"[monitor-unplug]"`, take
+  a person through unplugging a real output.
+- **`SpatialObjectSink` was left out of that same fix, and still reported itself running
+  after its render stream had gone.** `BeginUpdatingAudioObjects` failing outright, or the
+  endpoint simply going quiet with no other word - a removed one need never signal the
+  render-ready event again either - left `running()` true, so `submit()`/`can_submit()` went
+  on taking objects into rings nobody drained. The Windows backend now stops itself the same
+  way, reading back `GetMaxDynamicObjectCount` on the `ISpatialAudioClient` on a wait that
+  times out to catch the quiet case (not the stream's own `GetAvailableDynamicObjectCount`,
+  which Microsoft's own reference says not to call once streaming has started), and `start()`
+  opens again with no `stop()` needed first, as the other two sinks already do. `ac3tests
+  "[spatial-unplug]"` is its own hidden case.
+- **The GUI, Crucible and the Shield Android demo still spun forever on a lost output
+  device.** `running()` turning false (see above) was not enough on its own:
+  `EncoderController`'s file-to-receiver, motion-preview and live-session workers,
+  `ObjectDecodeController`'s audition and `StreamPlayerController`'s playback all retried
+  `submit()` on nothing but a stop or pause flag, so a lost device left each one waiting
+  on audio that would never resume - the file-to-receiver play flag never cleared,
+  refusing every later play. `OutputStage`'s own seam (`BurstSink`/`PcmSink`/`ObjectSink`)
+  exposed no `running()` at all, so a re-probe that still found the same dead endpoint
+  listed read as "nothing changed" and kept the dead sink for good. Shield's
+  `live_cursor` encode loop had the same shape, and `MainActivity`'s underrun-based
+  recovery stopped working at exactly the point it mattered, because a sink that has
+  stopped `running()` refuses every `submit()` without ever reaching the render code
+  that counts a real underrun. All now stop (or, once their next reprobe/reconcile
+  runs, restart) instead of hanging.
+- **Two more callers kept retrying a spatial sink that had already stopped itself.**
+  `ac3cli spatial`'s submit loop had no `running()` check at all, so an unplugged or
+  disabled endpoint hung the command for ever rather than ending with the reason
+  printed, the way a lost device already ends other commands; its final drain-wait
+  gets the same check. Crucible's `submit_with_patience()` - shared by the passthrough,
+  monitor and spatial legs - still waited out its full ~200 ms patience window on every
+  single frame once a sink had stopped itself, rather than counting the one underrun
+  and moving on immediately; `OutputStage::apply()`'s own reprobe already restarts a
+  sink in this state (see above), so only the per-frame wait needed shortening.
+- **`PassthroughSink` crashed the instant a real exclusive-mode bitstream endpoint drove
+  it** — surfaced once an Onkyo TX-RZ740 over HDMI locked AC-3, E-AC-3 and signed Atmos
+  through it for the first time. `Activate`/`Initialize` ran on the calling thread while
+  `Start`/`GetBuffer`/`Stop` ran on a worker thread, fatal inside `AUDIOSES.DLL` for a
+  real exclusive-mode client; the whole WASAPI lifecycle now runs on one worker thread.
+  The same session found the "bursts rendered" counter truncating to zero almost every
+  callback, hanging the CLI's drain-wait loop after playback had already finished.
+- **`ac3::signing::decode_signing_key` silently signed with the wrong bytes** when a key
+  file held a comma-separated `0xHH` hex-array export — a common disassembler shape, and
+  how this project's own reverse-engineered test key was saved — rather than base64 or
+  raw binary. Self-consistent against this project's own round-trip but rejected by a
+  real licensed decoder, which is how a real AV receiver refusing to unlock a signed
+  Atmos object layer surfaced it. Now recognises the format and refuses ambiguous
+  hex/array-shaped content instead of silently taking it as raw key bytes.
 
 ## [0.10.0-beta.1] - 2026-09-01
 
@@ -91,7 +1817,7 @@ trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
   extension. See [Muxing and sinks](docs/library/muxing-and-sinks.md).
 - **`ac3cli probe`**: what a stream declares — layout, substream map, tools in use, metadata
   ranges, CRC validity — without decoding audio. `json=1` emits a versioned schema.
-  [Command reference](docs/cli/commands.md).
+  [Command reference](docs/forge/cli/commands.md).
 - **`ac3cli probe` reads AC-4 too**, auto-detected. A new standalone `ac4::` library parses the
   sync frame, table of contents, presentation and substream-group framing (ETSI TS 103 190-1/-2)
   — channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike, including
@@ -154,7 +1880,7 @@ trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
   over optical" case now takes one command instead of two. `follow=off` restores the old refusal.
 - **A GUI stream player** — the twin of `ac3cli monitor` — with transport, live meters, the
   soundfield view, and WAV/object export from the same decode pass. A finished run offers **QC
-  this run** and **Inspect objects** directly. See [Open stream](docs/gui/open-stream.md).
+  this run** and **Inspect objects** directly. See [Open stream](docs/forge/gui/open-stream.md).
 - **Desktop integration**: drag-and-drop, `ac3gui <file>`, and `.ac3`/`.ec3` file associations on
   Windows, macOS and Linux, so the app appears in application menus instead of being launch-only.
 - **A self-contained Linux AppImage for `ac3gui`**, bundling its own Qt 6 instead of depending on
@@ -169,7 +1895,7 @@ trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
   sibling CountdownSolver project ships), with right-to-left mirroring and bundled Noto Sans
   Arabic/Hebrew faces for the three languages that need them. Coverage is partial today (window
   chrome, tab names, the Guided wizard, all of Preferences) and tracked, not hidden — see
-  [Localisation](docs/gui/localisation.md). A pseudo-locale QA fixture proves the extraction/
+  [Localisation](docs/forge/gui/localisation.md). A pseudo-locale QA fixture proves the extraction/
   compile/load pipeline end to end independent of real-language completeness, and CI now fails if
   a `qsTr()` change isn't reflected in the committed translation catalogue.
 - **GUI accessibility.** Every custom control and every control in the main window now reports a
@@ -211,8 +1937,8 @@ trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
   doesn't work: hls.js drops an audio track outright the moment the real `addSourceBuffer` throws
   for an unsupported codec) and extracts access units from the fMP4 segments hls.js's own remuxer
   produces.
-- The docs site's WASM demo is now a consumer of the published package rather than its own
-  parallel implementation of the same decode/playback logic.
+- The docs site's WASM demo now consumes the bundled JavaScript bindings and their
+  decode/playback logic.
 
 **Shield Atmos Demo (Android)**
 
@@ -408,7 +2134,7 @@ trunk-based development, and a concrete API-freeze plan for v1.0 now exists.
   in-tree comment previously cited 14.4) and now carries a pure, CI-verified OS-version capability
   check (`ac3::coreaudio::system_audio_tap_api_available()`) a future implementation should refuse
   on. Capture there is still input-only; the tap itself needs real Mac hardware to build and
-  verify. See [macOS](docs/platforms/macos.md#loopback-capture-not-yet-implemented).
+  verify. See [macOS](docs/platforms/macos.md#per-application-capture-the-core-audio-process-tap).
 
 ### Fixed
 
@@ -1255,7 +2981,7 @@ CLI together with the entire library SDK.
   this project's own encoder; affected rows are marked `unverified` rather than scored.
 
 See [Validation](docs/verification.md) for the full account of what is and isn't independently
-verified, and [docs/project/history.md](docs/project/history.md) for how this was built.
+verified, and [docs/history.md](docs/history.md) for how this was built.
 
 ## [0.4.0-beta.1] - 2026-08-14
 
@@ -1537,7 +3263,7 @@ dashboards, and Android release builds sign with a real keystore.
   this project's own encoder; affected rows are marked `unverified` rather than scored.
 
 See [Validation](docs/verification.md) for the full account of what is and isn't independently
-verified, and [docs/project/history.md](docs/project/history.md) for how this was built.
+verified, and [docs/history.md](docs/history.md) for how this was built.
 
 ## [0.3.0-beta.1] - 2026-08-11
 
@@ -1637,7 +3363,7 @@ assignment, and a GUI tier split for first-time users through experts.
   Player — verified only by this project's own encoder/decoder round trip.
 
 See [Validation](docs/verification.md) for the full account of what is and isn't independently
-verified, and [docs/project/history.md](docs/project/history.md) for how this was built.
+verified, and [docs/history.md](docs/history.md) for how this was built.
 
 ## [0.2.0-beta.1] - 2026-08-10
 
@@ -1732,4 +3458,4 @@ used during development as an independent oracle to check output against.
   Player — verified only by this project's own encoder/decoder round trip.
 
 See [Validation](docs/verification.md) for the full account of what is and isn't independently
-verified, and [docs/project/history.md](docs/project/history.md) for how this was built.
+verified, and [docs/history.md](docs/history.md) for how this was built.

@@ -1,0 +1,8 @@
+# A fixture for tst_icons.qml and nothing else: a sandboxed application's
+# entry, whose file name is its application id and whose Exec matches no
+# binary (a real Flatpak's would be `flatpak run ...`).
+[Desktop Entry]
+Type=Application
+Name=Crucible Fixture By App Id
+Exec=nothing-matches
+Icon=crucible-fixture-icon

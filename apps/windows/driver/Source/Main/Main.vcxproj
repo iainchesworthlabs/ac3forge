@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    Ac3ForgeNullSink on ACX: a KMDF driver against ACX 1.1, built by the
+    WindowsKernelModeDriver10.0 toolset (the EWDK). The project keeps the
+    GUID, target name and package reference the PortCls version had, so
+    Ac3ForgeNullSink.sln, Package\package.VcxProj and the analysis and
+    VM scripts see no change. No WPP: the driver has no tracing.
+  -->
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|ARM64">
+      <Configuration>Debug</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ARM64">
+      <Configuration>Release</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{E4DF0EEE-D35B-47F2-A9B1-41EA97C465FF}</ProjectGuid>
+    <RootNamespace>Ac3ForgeNullSink</RootNamespace>
+    <ACX_VERSION_MAJOR>1</ACX_VERSION_MAJOR>
+    <ACX_VERSION_MINOR>1</ACX_VERSION_MINOR>
+    <KMDF_VERSION_MAJOR>1</KMDF_VERSION_MAJOR>
+    <KMDF_VERSION_MINOR>31</KMDF_VERSION_MINOR>
+    <SupportsPackaging>false</SupportsPackaging>
+    <RequiresPackageProject>true</RequiresPackageProject>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <WindowsTargetPlatformVersion>$(LatestTargetPlatformVersion)</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>False</UseDebugLibraries>
+    <DriverTargetPlatform>Windows Driver</DriverTargetPlatform>
+    <DriverType>KMDF</DriverType>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>False</UseDebugLibraries>
+    <DriverTargetPlatform>Windows Driver</DriverTargetPlatform>
+    <DriverType>KMDF</DriverType>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>True</UseDebugLibraries>
+    <DriverTargetPlatform>Windows Driver</DriverTargetPlatform>
+    <DriverType>KMDF</DriverType>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>True</UseDebugLibraries>
+    <DriverTargetPlatform>Windows Driver</DriverTargetPlatform>
+    <DriverType>KMDF</DriverType>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>$(IntDir)</OutDir>
+    <TargetName>Ac3ForgeNullSink</TargetName>
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" />
+  </ImportGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SDK_INC_PATH);$(DDK_INC_PATH)\acx\km\$(ACX_VERSION_MAJOR).$(ACX_VERSION_MINOR);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>ACX_VERSION_MAJOR=$(ACX_VERSION_MAJOR);ACX_VERSION_MINOR=$(ACX_VERSION_MINOR);KMDF_VERSION_MAJOR=$(KMDF_VERSION_MAJOR);KMDF_VERSION_MINOR=$(KMDF_VERSION_MINOR);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <WarningLevel>Level4</WarningLevel>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>$(DDK_LIB_PATH)\libcntpr.lib;acx\km\$(ACX_VERSION_MAJOR).$(ACX_VERSION_MINOR)\acxstub.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <DriverSign>
+      <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
+    </DriverSign>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="circuit.cpp" />
+    <ClCompile Include="device.cpp" />
+    <ClCompile Include="driver.cpp" />
+    <ClCompile Include="NewDelete.cpp" />
+    <ClCompile Include="stream.cpp" />
+    <ResourceCompile Include="Ac3ForgeNullSink.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="nullsink.h" />
+    <ClInclude Include="position.h" />
+    <ClInclude Include="stream.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <!--
+      The date stamped into DriverVer is the build's UTC date, not the local
+      one: inf2cat's signability test rejects a DriverVer later than the
+      current UTC date, and a build in Australian morning hours is still
+      "yesterday" in UTC, so the default (the local date, "*") fails between
+      midnight and 10:00 local. The version part is left alone (the .inx owns it).
+    -->
+    <Inf Include="Ac3ForgeNullSink.inx">
+      <DateStamp>$([System.DateTime]::UtcNow.ToString("MM/dd/yyyy"))</DateStamp>
+      <SpecifyDriverVerDirectiveVersion>false</SpecifyDriverVerDirectiveVersion>
+    </Inf>
+    <FilesToPackage Include="$(TargetPath)" Condition="'$(ConfigurationType)'=='Driver' or '$(ConfigurationType)'=='DynamicLibrary'" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

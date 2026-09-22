@@ -18,9 +18,11 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/io/elementary.hpp"
+#include "ac3/io/metadata_edit.hpp"
 #include "ac3/io/probe.hpp"
+#include "ac3/meta/mixing.hpp"
 
-// ac3::io::probe (roadmap IO1) and the two additions it is built on:
+// ac3::io::probe (probe command) and the two additions it is built on:
 // io::read_frame_header and DecoderConfig::skip_reconstruction.
 //
 // The strongest claim any of this makes is skip_reconstruction's: that a parse
@@ -81,6 +83,46 @@ std::vector<std::byte> encode_ac3(int frames, bool coupling) {
         stream.insert(stream.end(), encoded->begin(), encoded->end());
     }
     return stream;
+}
+
+// `frames` syncframes of tone_channels() through either generation's encoder.
+template <typename Encoder>
+std::vector<std::byte> encode_with(Encoder& encoder, int channels, int frames) {
+    const auto pcm = tone_channels(channels, frames);
+    std::vector<std::byte> stream;
+    for (int frame = 0; frame < frames; ++frame) {
+        std::vector<std::span<const float>> block;
+        block.reserve(pcm.size());
+        for (const auto& channel : pcm) {
+            block.emplace_back(std::span{channel}.subspan(
+                static_cast<std::size_t>(frame) * ac3::kSamplesPerFrame, ac3::kSamplesPerFrame));
+        }
+        const auto encoded = encoder.encode_frame(block);
+        REQUIRE(encoded.has_value());
+        stream.insert(stream.end(), encoded->begin(), encoded->end());
+    }
+    return stream;
+}
+
+// A stream whose every syncframe sends Table D2.2's reserved dmixmod '11':
+// the same audio encoded with '01' and with '10', ORed byte by byte, then each
+// syncframe's CRCs re-stamped. The encoder will not write '11' itself - see
+// tests/meta/test_bsi.cpp's reserved_dmixmod_frame, which also checks that
+// the OR changes nothing but dmixmod.
+std::vector<std::byte> reserved_dmixmod_stream(std::span<const std::byte> ltrt,
+                                               std::span<const std::byte> loro) {
+    REQUIRE(ltrt.size() == loro.size());
+    std::vector<std::byte> out(ltrt.size());
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        out[i] = ltrt[i] | loro[i];
+    }
+    const auto frames = ac3::split_frames(ltrt);
+    REQUIRE(frames.has_value());
+    for (const auto frame : *frames) {
+        const auto at = static_cast<std::size_t>(frame.data() - ltrt.data());
+        REQUIRE(ac3::io::restamp_crc(std::span{out}.subspan(at, frame.size())).has_value());
+    }
+    return out;
 }
 
 }  // namespace
@@ -338,6 +380,62 @@ TEST_CASE("probe walks an E-AC-3 stream's Annex E tools", "[io][probe][eac3]") {
         CHECK(report->tools.spectral_extension > 0);
         CHECK(report->tools.coupling == 0);
         CHECK(report->tools.enhanced_coupling == 0);
+    }
+}
+
+TEST_CASE("probe reports the lead programme's dmixmod, the reserved code included",
+          "[io][probe]") {
+    // Table D2.2's '11' is reserved in both codecs (TS 102 366 Table D.1.1;
+    // Annex E defines no dmixmod of its own), and a probe that read it back as
+    // '00' would describe a different stream from the one it was given.
+    SECTION("AC-3, in Annex D's xbsi1") {
+        const auto encode = [](ac3::meta::DownmixMode dmixmod) {
+            ac3::EncoderConfig config{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true};
+            ac3::meta::AlternateBsi alternate;
+            alternate.mix = ac3::meta::MixMetadata{.dmixmod = dmixmod};
+            config.alternate_bsi = alternate;
+            ac3::FrameEncoder encoder{config};
+            return encode_with(encoder, 6, 3);
+        };
+        const auto ltrt = encode(ac3::meta::DownmixMode::kLtRt);
+        const auto stated = ac3::io::probe(ltrt);
+        REQUIRE(stated.has_value());
+        CHECK(stated->dmixmod == ac3::meta::DownmixMode::kLtRt);
+
+        const auto reserved =
+            reserved_dmixmod_stream(ltrt, encode(ac3::meta::DownmixMode::kLoRo));
+        const auto report = ac3::io::probe(reserved);
+        REQUIRE(report.has_value());
+        CHECK(report->bsid == 6);
+        CHECK(report->crc_failures == 0);
+        CHECK(report->parse_failures == 0);
+        CHECK(report->dmixmod == ac3::meta::DownmixMode::kReserved);
+    }
+
+    SECTION("E-AC-3, in mixmdate") {
+        const auto encode = [](ac3::meta::DownmixMode dmixmod) {
+            ac3::eac3::FrameConfig config{
+                .bitrate_kbps = 384, .acmod = ac3::Acmod::k3_2, .lfe = true};
+            config.mixing = ac3::meta::MixMetadata{.dmixmod = dmixmod};
+            ac3::eac3::FrameEncoder encoder{config};
+            return encode_with(encoder, 6, 3);
+        };
+        const auto reserved = reserved_dmixmod_stream(encode(ac3::meta::DownmixMode::kLtRt),
+                                                      encode(ac3::meta::DownmixMode::kLoRo));
+        const auto report = ac3::io::probe(reserved);
+        REQUIRE(report.has_value());
+        CHECK(report->kind == ac3::io::StreamKind::kEac3);
+        CHECK(report->crc_failures == 0);
+        CHECK(report->parse_failures == 0);
+        CHECK(report->dmixmod == ac3::meta::DownmixMode::kReserved);
+    }
+
+    SECTION("a stream that never sends one reports it absent") {
+        // bsid 8: the two 14-bit fields are time code, and there is no xbsi1.
+        const auto report = ac3::io::probe(encode_ac3(3, true));
+        REQUIRE(report.has_value());
+        CHECK(report->bsid == 8);
+        CHECK_FALSE(report->dmixmod.has_value());
     }
 }
 

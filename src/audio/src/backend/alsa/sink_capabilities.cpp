@@ -1,6 +1,6 @@
 #include "ac3/audio/sink_capabilities.hpp"
 
-// The ALSA EDID/ELD backend (roadmap UX9). CMake compiles this directory's
+// The ALSA EDID/ELD backend (play/monitor follow mode). CMake compiles this directory's
 // sink_capabilities.cpp on the same host that gets passthrough.cpp's real
 // implementation, so there is no #ifdef - the file's path is what says
 // "ALSA".

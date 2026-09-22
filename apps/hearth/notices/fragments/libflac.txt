@@ -1,0 +1,8 @@
+libFLAC {{LIBFLAC_VERSION}}
+------------------
+
+libFLAC, version {{LIBFLAC_VERSION}}, is compiled into Hearth's programs, which
+encode and decode Sendspin's FLAC streams with it. It is used under the
+BSD 3-Clause License.
+
+{{FILE:LIBFLAC_COPYRIGHT}}

@@ -1,0 +1,18 @@
+Qt Quick 3D {{QT_VERSION}}
+---------------------------
+
+This build uses Qt Quick 3D {{QT_VERSION}} (Qt6Quick3D, Quick3DRuntimeRender,
+Quick3DUtils and the QtQuick3D QML module) for the room's 3D view. Where
+this package includes Qt, these ship with it; otherwise the copy your
+distribution provides is loaded.
+
+Qt Quick 3D is available from The Qt Company under the GNU General Public
+License, version 3, rather than the LGPL the other Qt modules are used
+under. This application's own licence, the GPL version 3 or later,
+satisfies that, and the combined work is distributed under the GPL; the
+text is LICENSE.txt beside this file.
+
+Qt Quick 3D contains, each under its own terms: Intel Embree 3.13.3
+(Apache-2.0), tinyexr 1.0.9 (BSD-3-Clause), meshoptimizer 0.18 (MIT),
+xatlas (MIT) and a fog shader (MIT). Qt's attribution for each is at
+https://doc.qt.io/qt-6/licenses-used-in-qt.html

@@ -33,7 +33,7 @@ bool parse_qc_preset(std::string_view name, QcPresetId& out) {
 QcVerdict evaluate_qc_gate(const QcPreset& preset, std::optional<double> integrated_lkfs,
                            std::optional<double> true_peak_dbtp) {
     QcVerdict verdict;
-    if (integrated_lkfs) {
+    if (integrated_lkfs.has_value()) {
         // Reported for both limit kinds, and it means the same thing in both:
         // how far the measurement sits from the preset's stated level, signed
         // so positive is louder. Only the test applied to it differs.
@@ -43,7 +43,7 @@ QcVerdict evaluate_qc_gate(const QcPreset& preset, std::optional<double> integra
                 ? *integrated_lkfs <= preset.target_lkfs
                 : std::abs(*verdict.loudness_delta_lu) <= preset.tolerance_lu;
     }
-    if (true_peak_dbtp) {
+    if (true_peak_dbtp.has_value()) {
         verdict.true_peak_margin_dbtp = preset.max_true_peak_dbtp - *true_peak_dbtp;
         verdict.true_peak_pass = *true_peak_dbtp <= preset.max_true_peak_dbtp;
     }

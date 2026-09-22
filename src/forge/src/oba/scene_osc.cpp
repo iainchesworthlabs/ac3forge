@@ -57,7 +57,7 @@ std::optional<std::uint32_t> read_u32_bits(std::span<const std::byte> buf, std::
 // static_cast<std::size_t>, never the other way around.
 std::optional<std::int32_t> read_i32(std::span<const std::byte> buf, std::size_t& pos) {
     const auto bits = read_u32_bits(buf, pos);
-    if (!bits) {
+    if (!bits.has_value()) {
         return std::nullopt;
     }
     return static_cast<std::int32_t>(*bits);
@@ -65,7 +65,7 @@ std::optional<std::int32_t> read_i32(std::span<const std::byte> buf, std::size_t
 
 std::optional<float> read_f32(std::span<const std::byte> buf, std::size_t& pos) {
     const auto bits = read_u32_bits(buf, pos);
-    if (!bits) {
+    if (!bits.has_value()) {
         return std::nullopt;
     }
     return std::bit_cast<float>(*bits);
@@ -197,14 +197,14 @@ bool process_message(std::span<const std::byte> msg, OscParseStats& stats, Sink&
         const char tag = (*type_tag)[i];
         if (tag == 'f') {
             const auto v = read_f32(msg, pos);
-            if (!v || !std::isfinite(*v)) {
+            if (!v.has_value() || !std::isfinite(*v)) {
                 bad = true;
                 break;
             }
             args[argc++] = static_cast<double>(*v);
         } else if (tag == 'i') {
             const auto v = read_i32(msg, pos);
-            if (!v) {
+            if (!v.has_value()) {
                 bad = true;
                 break;
             }
@@ -220,7 +220,7 @@ bool process_message(std::span<const std::byte> msg, OscParseStats& stats, Sink&
     }
 
     const auto matched = match_address(*address);
-    if (!matched) {
+    if (!matched.has_value()) {
         ++stats.messages_dropped;
         return true;
     }
@@ -361,15 +361,15 @@ std::size_t parse_osc_packet_into(std::span<const std::byte> packet,
 }
 
 std::optional<ObjectPlacement> apply(const SceneOscUpdate& update, const ObjectPlacement& base) {
-    if (!update.position) {
+    if (!update.position.has_value()) {
         return std::nullopt;
     }
     ObjectPlacement result = base;
     result.position = *update.position;
-    if (update.gain) {
+    if (update.gain.has_value()) {
         result.gain = *update.gain;
     }
-    if (update.lfe_send) {
+    if (update.lfe_send.has_value()) {
         result.lfe_send = *update.lfe_send;
     }
     return result;

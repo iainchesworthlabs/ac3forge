@@ -1,29 +1,44 @@
 #include "ac3/audio/sink_capabilities.hpp"
 
-// The PipeWire EDID/ELD backend: there isn't one, honestly, not as a
-// placeholder.
+// The PipeWire sink-capability backend (the appliance plan's UX9 gap 2).
 //
-// A PipeWire node backed by ALSA hardware likely carries card/device
-// identification in its properties (api.alsa.card, api.alsa.pcm.device are
-// commonly seen in `pw-dump` output), which in principle could be used to
-// find the same /proc/asound/<card>/eld#<dev>.<port> file the alsa/ backend
-// reads (see src/backend/alsa/sink_capabilities.cpp). This backend does not
-// attempt that: unlike this directory's own passthrough.cpp - which confirms
-// its approach against a real shipped implementation (Kodi's PipeWire
-// passthrough, xbmc PR #22560) - no such confirmation exists here for which
-// property names are stable across PipeWire versions and session-manager
-// configurations, and there is no PipeWire daemon available to verify
-// against in this codebase's own development environment. Reading the wrong
-// property, or reading it and mapping it to the wrong card, would be worse
-// than reporting kNoBackend: it would hand a caller a confidently wrong
-// answer about what a receiver accepts. 'ac3cli play' falls back to
-// enumerate_render_devices()'s live probe here, the same as on every other
-// backend without a real implementation - see docs/platforms/linux.md.
+// PipeWire has no call that hands over a sink's raw Short Audio Descriptors,
+// and mapping a node back to the /proc/asound ELD file the alsa/ backend
+// reads would mean trusting property names nobody has confirmed stable. What
+// it does have is the session manager's own reading of that descriptor:
+// WirePlumber sets `iec958.codecs` on an HDMI or S/PDIF node from the ELD -
+// `["PCM","AC3","EAC3",...]` - and the passthrough backend beside this file
+// already gates enumeration and start() on exactly that property. So this
+// reports what it says, and nothing it does not: the codecs, but neither an
+// LPCM channel count nor its rates, which the property does not carry.
+//
+// A node with no `iec958.codecs` at all is an ordinary PCM output, or a
+// digital one whose descriptor the session manager has not read - kNoEdid,
+// the same answer the alsa/ backend gives for a port with no ELD file.
+
+#include <expected>
+#include <string>
+
+#include "pipewire_support.hpp"
 
 namespace ac3::audio {
 
-std::expected<SinkAudioCapabilities, EdidError> read_sink_capabilities(const std::string&) {
-    return std::unexpected(EdidError::kNoBackend);
+std::expected<SinkAudioCapabilities, EdidError> read_sink_capabilities(
+    const std::string& device_id) {
+    for (const auto& sink : ac3::pipewire::audio_sinks_with_info()) {
+        if (sink.name != device_id) {
+            continue;
+        }
+        if (sink.codecs.empty()) {
+            return std::unexpected(EdidError::kNoEdid);
+        }
+        SinkAudioCapabilities capabilities;
+        capabilities.pcm = ac3::pipewire::codec_listed(sink.codecs, "PCM");
+        capabilities.ac3 = ac3::pipewire::codec_listed(sink.codecs, "AC3");
+        capabilities.eac3 = ac3::pipewire::codec_listed(sink.codecs, "EAC3");
+        return capabilities;
+    }
+    return std::unexpected(EdidError::kDeviceNotFound);
 }
 
 }  // namespace ac3::audio

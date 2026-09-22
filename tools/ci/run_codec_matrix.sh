@@ -32,7 +32,7 @@
 #     Those streams skip the FFmpeg check too; the in-repo decoder round trip
 #     still covers them.
 #   - Two whole COMMANDS, not just one FFmpeg check each, are conditional:
-#     `atmos-adm` (roadmap B1) and `atmos-iab` (roadmap IM1 phase 3) only run
+#     `atmos-adm` (ADM BWF reader) and `atmos-iab` (IAB reader phase 3) only run
 #     for real when this build was configured with -DAC3FORGE_BUILD_ADM=ON,
 #     which neither of this script's two CI callers' presets turn on - see
 #     each command's own block below for the detection and the reasoning.
@@ -66,7 +66,7 @@ case "$CLI" in
     *) CLI="$PWD/$CLI" ;;
 esac
 
-if [ "${AC3FORGE_CROSS_TIER_CHECK:-0}" = "1" ]; then
+if [[ "${AC3FORGE_CROSS_TIER_CHECK:-0}" = "1" ]]; then
     # This script's own path, resolved the same way FIXTURES below resolves
     # its own - so re-invoking it works regardless of where THIS invocation
     # was launched from.
@@ -87,11 +87,11 @@ if [ "${AC3FORGE_CROSS_TIER_CHECK:-0}" = "1" ]; then
     # by-hand run on a platform without /proc/cpuinfo - this degrades to a
     # skip, exactly like genuinely lacking AVX2 hardware would.
     avx2_capable=0
-    if [ -r /proc/cpuinfo ] && grep -qw avx2 /proc/cpuinfo; then
+    if [[ -r /proc/cpuinfo ]] && grep -qw avx2 /proc/cpuinfo; then
         avx2_capable=1
     fi
 
-    if [ "$avx2_capable" != "1" ]; then
+    if [[ "$avx2_capable" != "1" ]]; then
         echo "cross-tier: this host does not report AVX2 in /proc/cpuinfo (or it cannot be read) - skipping the avx2 pass; the sse2 pass above still ran and passed"
         rm -rf "$sse2_dir" "$avx2_dir"
         exit 0
@@ -183,7 +183,7 @@ for layout in mono stereo 51; do
     run_ffmpeg_check "enc_${layout}.ac3"
 done
 
-# --- The §7.8 output stage and §7.10 concealment (ROADMAP DC1/DC2) ---------
+# --- The §7.8 output stage and §7.10 concealment (decoder output stage and concealment) ---------
 # Every new decode token, over a real 5.1 stream rather than silence, because
 # a fold of silence is silence whatever the matrix says. The unit suite
 # (tests/decoder/test_output_stage.cpp) is what checks the coefficients
@@ -310,7 +310,7 @@ run_ffmpeg_check orbit.ac3
 for layout in mono stereo 51 71 512 514 714 1+1; do
     run eac3-sine "eac3_${layout}.ec3" 2 192 1000 80 "$layout"
     run decode "eac3_${layout}.ec3" "eac3_${layout}.wav"
-    if [ "$layout" != "714" ]; then
+    if [[ "$layout" != "714" ]]; then
         run_ffmpeg_check "eac3_${layout}.ec3"
     fi
 done
@@ -413,19 +413,19 @@ done
 for layout in 71 512 714; do
     run eac3-encode bootstrap_51.wav "eac3_${layout}.ec3" 256 none "$layout"
     run decode "eac3_${layout}.ec3" "eac3_${layout}_decoded.wav"
-    if [ "$layout" != "714" ]; then
+    if [[ "$layout" != "714" ]]; then
         run_ffmpeg_check "eac3_${layout}.ec3"
     fi
     run eac3-encode bootstrap_51.wav "eac3_${layout}_all.ec3" 256 all "$layout"
     run decode "eac3_${layout}_all.ec3" "eac3_${layout}_all.wav"
-    if [ "$layout" != "714" ]; then
+    if [[ "$layout" != "714" ]]; then
         run_ffmpeg_check "eac3_${layout}_all.ec3"
     else
         echo "    [skip] eac3_${layout}_all.ec3: no FFmpeg oracle for 7.1.4 (README.md Verification gaps) - the in-repo decoder is still checked above"
     fi
 done
 
-# --- E-AC-3 encoder/decoder mirror self-check (roadmap VX2) -----------------
+# --- E-AC-3 encoder/decoder mirror self-check (E-AC-3 mirror self-check) -----------------
 # `verify` decodes every access unit as it is encoded and diffs the decoder's
 # model against the encoder's own - per-substream, per-block bit offsets,
 # exponents, bit allocation, delta, AHT gains and the coupling/spectral-
@@ -504,7 +504,7 @@ run eac3-encode bootstrap_51.wav eac3_mixdef_reserved.ec3 192 none mono \
 run decode eac3_mixdef_reserved.ec3 eac3_mixdef_reserved.wav
 run_ffmpeg_check eac3_mixdef_reserved.ec3
 
-# --- E-AC-3 short syncframes (roadmap EQ11): numblkscod 0/1/2, each a real
+# --- E-AC-3 short syncframes (E-AC-3 short syncframes): numblkscod 0/1/2, each a real
 # stream through both decoders for the first time - the decoder's own
 # numblkscod != 3 path existed only because it is spec-derived, never because
 # a real stream had driven it. "cpl+numblkscod:1" covers an explicit tool
@@ -515,13 +515,22 @@ run_ffmpeg_check eac3_mixdef_reserved.ec3
 # for "auto". numblkscod:0 also runs at 71 so a dependent substream (§E3.8.2's
 # overwrite, and the multi-substream access-unit assembly) is exercised at the
 # shortest frame too, not just the bed alone. ------------------------------
-for tools in "numblkscod:0" "numblkscod:1" "numblkscod:2" "cpl+numblkscod:1"; do
+# Rates scale with 6/blocks so every leg carries the same real bytes per
+# frame the six-block 192 kbit/s leg does. These used to say 192 across the
+# board and only encoded because of the EQ11-era sizing defect this branch
+# fixes (every short frame silently carried the full six-block byte budget):
+# at an HONEST budget, 192 kbit/s in a one-block frame is 128 bytes, which
+# 5.1's side information alone exceeds - the encoder now correctly refuses
+# it, so the legs ask for what they were actually getting all along.
+for spec in "numblkscod:0 1152" "numblkscod:1 576" "numblkscod:2 384" "cpl+numblkscod:1 576"; do
+    tools=${spec% *}
+    rate=${spec#* }
     safe=$(echo "$tools" | tr ':+' '__')
-    run eac3-encode bootstrap_51.wav "eac3enc_${safe}.ec3" 192 "$tools" 51
+    run eac3-encode bootstrap_51.wav "eac3enc_${safe}.ec3" "$rate" "$tools" 51
     run decode "eac3enc_${safe}.ec3" "eac3enc_${safe}.wav"
     run_ffmpeg_check "eac3enc_${safe}.ec3"
 done
-run eac3-encode bootstrap_51.wav eac3_numblkscod0_71.ec3 256 "numblkscod:0" 71
+run eac3-encode bootstrap_51.wav eac3_numblkscod0_71.ec3 1536 "numblkscod:0" 71
 run decode eac3_numblkscod0_71.ec3 eac3_numblkscod0_71_decoded.wav
 run_ffmpeg_check eac3_numblkscod0_71.ec3
 
@@ -579,7 +588,7 @@ run_ffmpeg_check eac3enc_11_twofile.ec3
 
 # --- Multiple independent substreams: two PROGRAMMES, not two layers -------
 # §E2.3.1.2's I0/I1 - the multi-language / associated-service shape of
-# broadcast DD+ (roadmap DC5). Not the same thing as 1+1 above: 1+1 puts two
+# broadcast DD+ (broadcast DD+ decode). Not the same thing as 1+1 above: 1+1 puts two
 # programmes in ONE substream's two coded channels, this puts them in two
 # substreams with independent layouts, rates and dialnorms.
 #
@@ -621,6 +630,31 @@ run_ffmpeg_check eac3enc_2pgm.mkv
 run mp4 eac3enc_2pgm.ec3 eac3enc_2pgm.mp4
 run_ffmpeg_check eac3enc_2pgm.mp4
 
+# --- Four independent substreams: the range past two, each its own service -
+# §E2.3.1.2 allows eight (I0-I7); the pair above proves the mechanism, this
+# proves programmeN= generalizes past a hardcoded second one, with each
+# extra programme carrying its own bsmod service label as well as its own
+# layout/bitrate/dialnorm - not just authored, but round-tripped back out
+# through decode/levels/qc independently per programme.
+run sine mono_c.ac3 3 448 880 70 mono
+run decode mono_c.ac3 mono_c.wav
+run sine mono_d.ac3 3 448 1200 70 mono
+run decode mono_d.ac3 mono_d.wav
+run eac3-encode bootstrap_51.wav eac3enc_4pgm.ec3 256 none 51 off \
+    programme2=mono_b.wav programme2-layout=mono programme2-bitrate=96 \
+    programme2-bsmod=commentary programme2-dialnorm=20 \
+    programme3=mono_c.wav programme3-layout=mono programme3-bitrate=96 \
+    programme3-bsmod=vi programme3-dialnorm=15 \
+    programme4=mono_d.wav programme4-layout=mono programme4-bitrate=96 \
+    programme4-bsmod=hi programme4-dialnorm=10
+for programme in 0 1 2 3; do
+    run decode eac3enc_4pgm.ec3 "eac3enc_4pgm_p${programme}.wav" "programme=${programme}"
+    run levels eac3enc_4pgm.ec3 "programme=${programme}"
+    run qc eac3enc_4pgm.ec3 "programme=${programme}"
+done
+# No FFmpeg check on the raw stream - same refusal as the 2-programme case
+# above, for the same reason (ff_ac3_parse_header rejects substreamid != 0).
+
 # --- Atmos: object counts, orbit rates, both container modes ----------------
 # Always a 5.1 bed (JOC/OAMD ride in the same independent substream's EMDF
 # container, never a dependent one), so FFmpeg reads all of these - it is how
@@ -645,7 +679,7 @@ run_atmos_profile_check() {
         -of default=nw=1:nk=1 "$1")"
     case "$2" in
         atmos)
-            [ "$profile" = "Dolby Digital Plus + Dolby Atmos" ] || {
+            [[ "$profile" = "Dolby Digital Plus + Dolby Atmos" ]] || {
                 echo "$1: expected the Dolby Atmos profile, got '$profile'" >&2
                 exit 1
             }
@@ -656,7 +690,14 @@ run_atmos_profile_check() {
                     echo "$1: advertises an object layer it does not carry ('$profile')" >&2
                     exit 1
                     ;;
+                *)
+                    # No object layer advertised, as expected - nothing to do.
+                    ;;
             esac
+            ;;
+        *)
+            echo "run_atmos_profile_check: unknown expectation '$2' (want atmos or none)" >&2
+            exit 1
             ;;
     esac
 }
@@ -689,7 +730,7 @@ run atmos-path atmos_path.ec3 atmos_paths.txt 3 256 2
 run decode atmos_path.ec3 atmos_path.wav
 run_ffmpeg_check atmos_path.ec3
 
-# atmos-adm (roadmap B1): only exercised for real when THIS build actually has it.
+# atmos-adm (ADM BWF reader): only exercised for real when THIS build actually has it.
 # ac3adm::ac3adm/ac3::admbridge are this project's one opt-in, non-default library
 # (AC3FORGE_BUILD_ADM, default off - see the root CMakeLists.txt's own option()), and it needs
 # Boost plus a dedicated vcpkg feature neither of this script's two CI callers (the ASan+UBSan
@@ -697,7 +738,7 @@ run_ffmpeg_check atmos_path.ec3
 # default preset. Detected the same way ac3cli's own usage listing already answers this
 # (main.cpp's Needs::kAdm/unmet(): a build without the flag lists the row as "UNAVAILABLE HERE"
 # rather than omitting it), not guessed from a preset name, so this stays correct automatically
-# if that ever changes (e.g. roadmap B1's own adm-validate CI job, which DOES build with the flag
+# if that ever changes (e.g. ADM BWF reader's own adm-validate CI job, which DOES build with the flag
 # on, were ever pointed at this same script). When available, examples/encode_adm's own
 # --write-fixture mode reuses its existing BW64/ADM fixture-writing code (see that file's own
 # header comment on why this exists rather than a fourth copy of the same chunk-writing helpers)
@@ -713,7 +754,7 @@ run_ffmpeg_check atmos_path.ec3
 ADM_FIXTURE_TOOL="$(dirname "$CLI")/encode_adm"
 if "$CLI" 2>&1 | grep -E '^  ac3cli atmos-adm[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
     echo "    [skip] atmos-adm: this ac3cli build has no -DAC3FORGE_BUILD_ADM=ON (apps/cli/adm/atmos_adm.hpp) - covered instead by the adm-validate CI job and tests/cli/test_cli_atmos_adm.cpp, which do build with it"
-elif [ ! -x "$ADM_FIXTURE_TOOL" ]; then
+elif [[ ! -x "$ADM_FIXTURE_TOOL" ]]; then
     echo "    [skip] atmos-adm: examples/encode_adm was not built alongside this ac3cli (AC3FORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real ADM file"
 else
     "$ADM_FIXTURE_TOOL" --write-fixture atmos_adm_fixture.wav
@@ -722,7 +763,7 @@ else
     run_ffmpeg_check atmos_adm.ec3
 fi
 
-# atmos-iab (roadmap IM1 phase 3): the identical conditional-command shape atmos-adm above uses,
+# atmos-iab (IAB reader phase 3): the identical conditional-command shape atmos-adm above uses,
 # and for the same reason - it needs ac3::admbridge's own IAB mapping, gated by the same
 # AC3FORGE_BUILD_ADM flag (see apps/cli/adm/atmos_iab.hpp's own header comment: ac3iab::ac3iab
 # itself is on by default, but build_iab() only exists once admbridge is). Detected the same
@@ -733,7 +774,7 @@ fi
 IAB_FIXTURE_TOOL="$(dirname "$CLI")/encode_iab"
 if "$CLI" 2>&1 | grep -E '^  ac3cli atmos-iab[[:space:]]' | grep -q 'UNAVAILABLE HERE'; then
     echo "    [skip] atmos-iab: this ac3cli build has no -DAC3FORGE_BUILD_ADM=ON (apps/cli/adm/atmos_iab.hpp) - covered instead by tests/cli/test_cli_atmos_iab.cpp, which does build with it"
-elif [ ! -x "$IAB_FIXTURE_TOOL" ]; then
+elif [[ ! -x "$IAB_FIXTURE_TOOL" ]]; then
     echo "    [skip] atmos-iab: examples/encode_iab was not built alongside this ac3cli (AC3FORGE_BUILD_EXAMPLES=OFF?), so its --write-fixture mode is unavailable to generate a real IAB file"
 else
     "$IAB_FIXTURE_TOOL" --write-fixture atmos_iab_fixture.iab
@@ -742,7 +783,7 @@ else
     run_ffmpeg_check atmos_iab.ec3
 fi
 
-# --- Stream tools (roadmap DC9): no re-encode except where one is the point -
+# --- Stream tools (stream tools): no re-encode except where one is the point -
 # transcode is the DD+-to-DD path and is the only one of the five that
 # re-encodes; metadata/normalize rewrite bsi in place and re-stamp the CRCs;
 # cut/cat move whole access units. Every stream any of them produces goes
@@ -803,7 +844,7 @@ run cat cat_eac3.ec3 cut_eac3.ec3 cut_eac3.ec3
 run_ffmpeg_check cat_eac3.ec3
 
 # --- Reporting / container passes over a representative subset -------------
-# probe (roadmap IO1): the table form, the JSON contract, and both detail
+# probe (probe command): the table form, the JSON contract, and both detail
 # levels - over an AC-3 stream, a plain E-AC-3 one and an Atmos one so its
 # object-layer/EMDF fields see a real OAMD+JOC container at least once. Its
 # own exit code is non-zero on a CRC or parse failure (see the command's own
@@ -820,7 +861,7 @@ run levels bootstrap_51.wav
 run levels enc_stereo.ac3
 run levels eac3enc_none.ec3
 run loudness bootstrap_51.wav
-# qc (roadmap C2): bitstream-aware loudness QC over an already-encoded
+# qc (bitstream-aware loudness QC): bitstream-aware loudness QC over an already-encoded
 # stream. Measure-only (no preset=) always exits 0 on a clean decode, same
 # as every other `run` call in this script. preset=/preset=all additionally
 # gate the measurement against a named delivery spec - a real PASS/FAIL
@@ -900,7 +941,7 @@ cat fmp4_atmos/init.mp4 "${fmp4_segments[@]}" > fmp4_atmos_combined.mp4
 run_ffmpeg_check fmp4_atmos_combined.mp4
 run_ffmpeg_check fmp4_atmos/audio.m3u8
 # --- Self-description: help, the generated man page, the generated shell
-# completions (roadmap IO8). Cheap, but they are generated from main.cpp's
+# completions (CLI shell completions). Cheap, but they are generated from main.cpp's
 # command table at runtime, so a command or option row that cannot render at
 # all fails right here rather than in whatever packaging step consumes the
 # man page later. `help <command>` is run against a command with every topic
@@ -912,7 +953,7 @@ run man
 for shell in bash zsh fish powershell; do
     run completions "$shell"
 done
-# The documented exit-code scheme itself (roadmap IO8): a usage error, an
+# The documented exit-code scheme itself (CLI shell completions): a usage error, an
 # unreadable input and a failed QC gate each come back with their own code
 # now, not the undifferentiated 1 every failure used to return. Captured with
 # `|| rc=$?` rather than run through `run`, which asserts a clean 0 - and
@@ -922,23 +963,23 @@ count=$((count + 1))
 echo "[$count] exit-code scheme: usage (1), input (2), qc gate (0 or 6)"
 rc=0
 "$CLI" encode >/dev/null 2>&1 || rc=$?
-[ "$rc" -eq 1 ] || { echo "a usage error should exit 1, got $rc" >&2; exit 1; }
+[[ "$rc" -eq 1 ]] || { echo "a usage error should exit 1, got $rc" >&2; exit 1; }
 : > not_a_stream.ac3
 rc=0
 "$CLI" decode not_a_stream.ac3 not_a_stream.wav >/dev/null 2>&1 || rc=$?
-[ "$rc" -eq 2 ] || { echo "an unreadable input should exit 2, got $rc" >&2; exit 1; }
+[[ "$rc" -eq 2 ]] || { echo "an unreadable input should exit 2, got $rc" >&2; exit 1; }
 rc=0
 "$CLI" qc bootstrap_51.ac3 preset=all >/dev/null 2>&1 || rc=$?
-[ "$rc" -eq 0 ] || [ "$rc" -eq 6 ] || { echo "qc should exit 0 or 6, got $rc" >&2; exit 1; }
+[[ "$rc" -eq 0 ]] || [[ "$rc" -eq 6 ]] || { echo "qc should exit 0 or 6, got $rc" >&2; exit 1; }
 # quiet prints nothing at all on a clean run; the payload still lands.
 "$CLI" sine quiet_probe.ac3 1 192 1000 50 stereo quiet > quiet_probe.log 2>&1
-[ ! -s quiet_probe.log ] || { echo "quiet should print nothing, got:" >&2; cat quiet_probe.log >&2; exit 1; }
-[ -s quiet_probe.ac3 ] || { echo "quiet should still write the stream" >&2; exit 1; }
+[[ ! -s quiet_probe.log ]] || { echo "quiet should print nothing, got:" >&2; cat quiet_probe.log >&2; exit 1; }
+[[ -s quiet_probe.ac3 ]] || { echo "quiet should still write the stream" >&2; exit 1; }
 
 run ts enc_51.ac3 enc_51.ts
 run ts eac3enc_none.ec3 eac3enc_none.ts
 run ts atmos_4.ec3 atmos_4.ts
-# Both broadcast profiles (roadmap IO6). ATSC and DVB identify the same
+# Both broadcast profiles (MPEG-TS broadcast profiles). ATSC and DVB identify the same
 # elementary stream with different stream_type values AND different
 # descriptors, so each combination of profile and codec is its own PMT layout
 # - four in total, all of which a demuxer has to accept. mainid=/asvc= carry
@@ -947,12 +988,14 @@ run ts atmos_4.ec3 atmos_4.ts
 run ts enc_51.ac3 enc_51_atsc.ts atsc
 run ts eac3enc_none.ec3 eac3enc_none_atsc.ts atsc
 run ts atmos_4.ec3 atmos_4_atsc.ts atsc mainid=0
-run ts enc_51.ac3 enc_51_dvb_assoc.ts dvb asvc=0x05
+run ts meta_rewritten.ac3 enc_51_dvb_assoc.ts dvb asvc=0,2  # bsmod=2 (VI) from line 794 above -
+# asvc= is only valid on an associated service now (validate_service_association in
+# containers.cpp), and this exercises the comma-list form alongside the raw mask
 run_ffmpeg_check enc_51_atsc.ts
 run_ffmpeg_check eac3enc_none_atsc.ts
 run_ffmpeg_check atmos_4_atsc.ts
 
-# --- Object-layer strip (roadmap IO7) --------------------------------------
+# --- Object-layer strip (object-layer strip) --------------------------------------
 # The claim is that the bed audio does not change at all, so this checks it
 # the only way that settles it: decode both streams and compare the PCM byte
 # for byte. FFmpeg then decodes the stripped stream independently, and reports
@@ -1053,7 +1096,7 @@ cmp -s atmos_4.ec3 demux_ts_atmos.ec3 || {
 }
 run_ffmpeg_check demux_ts_atmos.ec3
 
-# remux (roadmap IO2) is mkv/mp4/ts themselves accepting a container as their
+# remux (container readers (mkv/mp4/ts)) is mkv/mp4/ts themselves accepting a container as their
 # own input, so it is checked the same way demux above is: byte-identical
 # through a demux on the far side, not just a clean exit. Two container hops
 # rather than one, since remux's whole point is skipping the raw elementary

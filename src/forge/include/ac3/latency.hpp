@@ -3,7 +3,7 @@
 #include "ac3/core/tables.hpp"
 
 // The latency budget of an encode -> decode chain, in samples at the coded
-// sample rate (roadmap PF6).
+// sample rate (bare-metal probe harness).
 //
 // Every term below is ALGORITHMIC delay - the delay the coding scheme itself
 // imposes on an infinitely fast machine. Compute time is a separate question
@@ -19,7 +19,7 @@
 //                      kSamplesPerFrame; a short E-AC-3 syncframe
 //                      (numblkscod 0-2, §E2.3.1.4) carries 256, 512 or 768 -
 //                      eac3::blocks_per_syncframe() * kSamplesPerBlock, which
-//                      is what eac3_latency() reports since roadmap EQ11 made
+//                      is what eac3_latency() reports since E-AC-3 short syncframes made
 //                      the encoder able to emit them (it emitted six-block
 //                      frames only before that). The decoder reads all four
 //                      codes. See the "Latency" section of

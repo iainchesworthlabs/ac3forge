@@ -6,6 +6,22 @@ general Linux picture (toolchains, the ALSA backend, the GUI, packaging), see
 [Linux](linux.md) and [Building from source](../building.md) - everything there applies here
 unchanged, just with `-arm64` presets.
 
+## Status
+
+| | |
+|---|---|
+| What runs here | Everything Linux arm64 runs. There is no Pi-specific code |
+| Pi 4 Model B | Validated on the board: 440/440 tests on both compilers, including the hard real-time encode gate |
+| Bitstream to a real receiver | Confirmed over HDMI to a powered Atmos-capable AVR, over ALSA and over PipeWire |
+| Pi 5 | Expected to behave identically; **not validated** on real hardware |
+| Pi 3 | Not a supported target — the weaker CPU puts the real-time encode gate at risk |
+| OS | 64-bit required (`aarch64`); there is no 32-bit ARM triplet |
+
+The Pi 4B is the measured target. Pi 5 cells describe the shared Linux aarch64 path and are
+labelled unrun wherever no Pi 5 has supplied evidence.
+
+--8<-- "docs-snippets/generated/platform-raspberry-pi.md"
+
 ## Why there's no Raspberry Pi-specific code
 
 The project's backend tree (`src/audio/src/backend/{windows,alsa,pipewire,posix,macos,android}/`,
@@ -215,3 +231,23 @@ on the first real attempt.
 This closes the [Linux](linux.md#audio-backend-alsa-or-pipewire) page's still-open gap for HDMI
 passthrough on Raspberry Pi specifically: verified end to end now, from plain AC-3 through
 Atmos/JOC with height rendering, against a real Dolby-licensed decoder.
+
+### Still to check: decoded multichannel output
+
+Everything above is passthrough — the receiver does the decoding. The other direction, where the
+Pi decodes and drives the speakers itself, needs two things confirming on this hardware:
+
+```bash
+build/config-linux-gcc-arm64-debug/bin/ac3cli outputs
+build/config-linux-gcc-arm64-debug/bin/ac3cli identify 0 7.1.4 3
+build/config-linux-gcc-arm64-debug/bin/ac3cli identify 0 7.1.4 3 1,0,2,3,4,5,6,7,8,9,10,11
+```
+
+`outputs` should print a channel count and a speaker list per endpoint, from ALSA's own channel
+maps — the Pi's HDMI card reports them, where a plain analogue output often does not, and "not
+reported" is a valid answer rather than a fault. `identify` then plays pink noise on one rendered
+channel at a time and prints the speaker and output each burst went to, so what is heard can be
+compared with what was printed; the third command swaps the front pair and nothing else, which is
+the check that the routing patch is what places a channel rather than the order it happens to be
+in. Run the same three under PipeWire as well as ALSA — the two report their channel positions
+through entirely different calls.

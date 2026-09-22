@@ -59,7 +59,7 @@ export function* iterateBoxes(buffer: Uint8Array, rangeStart = 0, rangeEnd = buf
 }
 
 function readFourCc(buffer: Uint8Array, offset: number): string {
-  return String.fromCharCode(buffer[offset]!, buffer[offset + 1]!, buffer[offset + 2]!, buffer[offset + 3]!);
+  return String.fromCodePoint(buffer[offset]!, buffer[offset + 1]!, buffer[offset + 2]!, buffer[offset + 3]!);
 }
 
 function findChild(buffer: Uint8Array, box: Box, type: string): Box | null {
@@ -202,8 +202,11 @@ function readTfhd(buffer: Uint8Array, tfhd: Box): Tfhd {
     defaultSampleSize = view.getUint32(p);
     p += 4;
   }
-  // default-sample-flags is read for completeness but unused - we only need
-  // sizes/durations to slice out access units, not the sync/redundancy bits.
+  // default-sample-flags is skipped for completeness but unused - we only
+  // need sizes/durations to slice out access units, not the sync/redundancy
+  // bits, and it is the last optional tfhd field, so leaving `p` here costs
+  // nothing.
+  if (flags & TFHD_DEFAULT_SAMPLE_FLAGS_PRESENT) p += 4;
   return {
     trackId,
     baseDataOffset,

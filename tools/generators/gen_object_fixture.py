@@ -18,7 +18,7 @@ only check that the object layer reads syntax nobody here writes:
     beside a JOC payload with it set, plus two further payloads whose
     configurations use duratione and discard_unknown_payload.
 
-Every one of those was refused outright before roadmap DC6.
+Every one of those was refused outright before legacy item DC6.
 
 Why channel-based immersive and not an ADM master: DEE's `atmos_mezz` input
 accepts BWF ADM, but its reader gates on content provenance ("Content was not
@@ -55,8 +55,8 @@ DATA_RATE_KBPS = 448
 # L/C/R/Ls/Rs/LFE "SMPTE order" its 5.1 dee_ddp_encoder path documents. That is
 # not stated in `--morehelp input-format`; it was measured, by encoding a file
 # with one distinct tone per channel and identifying each reconstructed JOC
-# object by which tone dominates it (tools/checks/check_object_fixture.py runs
-# the same identification as a regression check).
+# object by which tone dominates it (tests/oba/test_dee_joc_fixture.cpp runs
+# the same identification over the committed fixture as a regression check).
 CHANNELS = [
     ("L", 220.0),
     ("R", 277.2),

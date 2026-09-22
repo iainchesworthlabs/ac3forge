@@ -10,9 +10,12 @@ dead metadata passes a bit-level check and fails these.
            loud passage comes down, the quiet passage comes up, and the range
            between them shrinks by close to what the profile curve predicts.
   compr    ffmpeg -heavy_compr 0 vs 1. Asserts the applied gain matches the
-           transmitted word AND that the decoded peak stays under the ceiling
-           the encoder promised - including across a hard loud-to-quiet
-           transition, which is where a naive implementation leaks.
+           transmitted word AND that the peak stays under the ceiling the
+           encoder promised - including across a hard loud-to-quiet
+           transition, which is where a naive implementation leaks. The
+           ceiling is a promise about an RF-mode decode, which normalises
+           dialnorm and adds 11 dB; ffmpeg applies the word alone, so the
+           check adds those two gains to what ffmpeg decodes.
   downmix  ffmpeg -ac 2 on a 5.1 stream, with the surround and centre tones
            measured by Goertzel so adjacent tones cannot contaminate the
            reading. Asserts each level code moves the fold-down by the dB the
@@ -37,6 +40,15 @@ from pathlib import Path
 import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent.parent
+
+# CLI option strings this check's encode commands share.
+DIALNORM_24 = "dialnorm=24"
+DRC_FILM_STANDARD = "drc=film-standard"
+
+# What an RF-mode decode adds to a stream at dialnorm 24 besides the compr word
+# itself: dialnorm normalisation onto -31 dBFS (-7 dB) and RF mode's 11 dB
+# (ac3::meta::kRfModeGainDb). ffmpeg's -heavy_compr applies neither.
+RF_DECODE_GAIN_DB_AT_DIALNORM_24 = (24 - 31) + 11.0
 
 FAILURES: list[str] = []
 
@@ -146,7 +158,7 @@ def check_dynrng(cli: str, tmp: Path) -> None:
     # dialnorm 24 puts the loud passage in the cut region and the quiet one in
     # the boost region of film-standard; without a sane dialnorm the whole
     # programme can land inside the null band and the curve does nothing.
-    run(cli, "encode", str(source), str(stream), "448", "drc=film-standard", "dialnorm=24")
+    run(cli, "encode", str(source), str(stream), "448", DRC_FILM_STANDARD, DIALNORM_24)
 
     levels = {}
     for scale in (0, 1):
@@ -174,7 +186,7 @@ def check_dynrng(cli: str, tmp: Path) -> None:
 
     # The discriminator: the same audio with no DRC must not respond at all.
     plain = tmp / "prog_none.ac3"
-    run(cli, "encode", str(source), str(plain), "448", "dialnorm=24")
+    run(cli, "encode", str(source), str(plain), "448", DIALNORM_24)
     plain_levels = []
     for scale in (0, 1):
         out = tmp / f"plain_s{scale}.wav"
@@ -196,7 +208,7 @@ def check_compr(cli: str, tmp: Path) -> None:
     write_programme(source, loud=0.95, quiet=0.0056)
     ceiling = -0.5
     stream = tmp / "hot_heavy.ac3"
-    run(cli, "encode", str(source), str(stream), "448", "heavy", "dialnorm=24",
+    run(cli, "encode", str(source), str(stream), "448", "heavy", DIALNORM_24,
         f"ceiling={ceiling}")
 
     peaks = {}
@@ -211,17 +223,19 @@ def check_compr(cli: str, tmp: Path) -> None:
         abs(peaks[0] - peaks[1]) > 0.1,
         f"peak {peaks[0]:.2f} -> {peaks[1]:.2f} dBFS",
     )
-    # The whole promise. It covers the hard loud-to-quiet transition too, where
-    # the previous frame's tail is windowed into a frame that has already gone
-    # quiet and would otherwise carry a generous gain over loud samples.
+    # The whole promise, at the output of the RF-mode decode it is made for.
+    # It covers the hard loud-to-quiet transition too, where the previous
+    # frame's tail is windowed into a frame that has already gone quiet and
+    # would otherwise carry a generous gain over loud samples.
+    rf_peak = peaks[1] + RF_DECODE_GAIN_DB_AT_DIALNORM_24
     check(
         "the ceiling holds everywhere, transitions included",
-        peaks[1] <= ceiling + 0.01,
-        f"peak {peaks[1]:.2f} dBFS against a {ceiling} dBFS ceiling",
+        rf_peak <= ceiling + 0.01,
+        f"RF-mode peak {rf_peak:.2f} dBFS against a {ceiling} dBFS ceiling",
     )
     # Rounding must never go the wrong way: the word may sit below the ceiling,
     # never above it.
-    headroom = ceiling - peaks[1]
+    headroom = ceiling - rf_peak
     check(
         "the ceiling is not overshot by more than one quantiser step",
         0.0 <= headroom < 1.0,
@@ -339,7 +353,7 @@ def check_eac3(cli: str, tmp: Path) -> None:
     # reads it, so -drc_scale is a real oracle here too.
     stream = tmp / "e51.ec3"
     run(cli, "eac3-sine", str(stream), "3", "448", "1000", "30", "51",
-        "drc=film-standard", "mixmeta", "dialnorm=24")
+        DRC_FILM_STANDARD, "mixmeta", DIALNORM_24)
     levels = []
     for scale in (0, 1):
         out = tmp / f"e51_s{scale}.wav"
@@ -354,7 +368,7 @@ def check_eac3(cli: str, tmp: Path) -> None:
     for layout, channels in (("stereo", 2), ("51", 6), ("71", 8), ("512", 8), ("514", 10)):
         path = tmp / f"mix_{layout}.ec3"
         run(cli, "eac3-sine", str(path), "1", "448", "1000", "30", layout, "mixmeta",
-            "drc=film-standard", "heavy", "dialnorm=24")
+            DRC_FILM_STANDARD, "heavy", DIALNORM_24)
         probe = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "stream=channels",
              "-of", "csv=p=0", str(path)],

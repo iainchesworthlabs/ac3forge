@@ -5,8 +5,8 @@
 #include <random>
 #include <vector>
 
+#include "ac3/core/coupling.hpp"
 #include "ac3/core/exponents.hpp"
-#include "ac3/encoder/coupling.hpp"
 
 using ac3::coupling::choose_master;
 using ac3::coupling::decode_coordinate;
@@ -257,7 +257,7 @@ TEST_CASE("quantization clamps gracefully rather than wrapping", "[coupling]") {
 }
 
 TEST_CASE("quantize_coordinate is exact at power-of-two boundaries", "[coupling]") {
-    // roadmap VX12: the shift that lands a value in [0.5, 1) used to come
+    // cross-toolchain bitstream audit: the shift that lands a value in [0.5, 1) used to come
     // from floor(-std::log2(value)), a transcendental libm call whose
     // last-bit behaviour is not required to agree across platforms right at
     // a power of two - the one input where log2's true result is itself an

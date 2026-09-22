@@ -32,6 +32,11 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 | MP4/ISOBMFF containers | `mp4::demux`, `mp4::Reader` | yes |
 | MPEG-TS containers | `mpegts::demux`, `mpegts::Reader` | yes |
 | OSC control packets (UDP), a live object-position source | `ac3::oba::parse_osc_packet` | yes — `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list alongside the other object/metadata-layer harnesses |
+| Sendspin's handshake messages from a network peer (Hearth build) | `ac3::sendspin::handshake` | yes — `fuzz_sendspin_handshake` |
+| Sendspin's messages after the handshake, JSON included (Hearth build) | `ac3::sendspin::json::Document::parse`, the readers in `ac3::sendspin::messages`, `pairing_messages`, `ac3forge` and the other roles' namespaces | yes — `fuzz_sendspin_json`, `fuzz_sendspin_messages` |
+| Sendspin's fragments and binary messages: `player@v1`'s audio chunks, `_ac3forge_player@v1`'s bursts, and the artwork, visualizer and source messages (Hearth build) | `ac3::sendspin::Reassembler`, `parse_player_chunk`, `parse_burst_chunk`, `artwork::parse_message`, `visualizer::parse_frame`, `source::parse_chunk` | yes — `fuzz_sendspin_frames` |
+| mDNS packets on the local network (Hearth build) | `ac3::sendspin::discovery::mdns_packets::parse`, over mjansson's `mdns` | **no** — see [Sendspin](#sendspin-hearths-server-and-its-sinks) |
+| WebSocket frames (Hearth build) | cpp-httplib, behind `ac3::sendspin::transport::websocket` | **no** — third-party; see [Sendspin](#sendspin-hearths-server-and-its-sinks) |
 
 **Trusted.** These are the caller's own inputs, and a caller that gets them wrong is a bug in the
 caller, not an attack:
@@ -47,7 +52,7 @@ caller, not an attack:
   through — see [Raw-pointer boundaries](#raw-pointer-boundaries).
 
 **No remaining undefended container.** Matroska/WebM, MP4/ISOBMFF and MPEG-TS all had a reader
-land (roadmap `IO2`) and are in the untrusted table above; each container this project also
+land and are in the untrusted table above; each container this project also
 writes now has a matching demuxer this project defends. An embedder demuxing a container format
 this project does not read — or write, such as a bare Ogg or ADTS wrapper — is still trusting
 *its own* demuxer, not this one.
@@ -97,7 +102,7 @@ What runs against it, continuously:
 - **An ASan + UBSan CI leg** that runs the full test suite and `tools/ci/run_codec_matrix.sh` —
   every layout, every Annex E tool token, both Atmos container modes, the metadata options —
   so the sanitizers see the real command paths rather than only unit tests.
-- **A ThreadSanitizer leg** (roadmap VX16). The codec core is single-threaded and holds no shared
+- **A ThreadSanitizer leg**. The codec core is single-threaded and holds no shared
   state, but the audio layer's lock-free SPSC ring, silence watchdog and drift servo are shared
   between a real-time callback thread and an encoder thread, and neither ASan nor UBSan can see a
   race there — the two runtimes are also mutually exclusive, so it is a separate required leg
@@ -106,8 +111,17 @@ What runs against it, continuously:
   `tests/cli/test_cli_live.cpp`, 36 cases — because TSan's shadow memory makes everything several
   times slower and the rest of the suite is single-threaded codec maths. `tsan.supp` at the
   repository root holds the suppressions and is near-empty.
-- **CodeQL** on the `security-and-quality` suite, **MSVC PREfast** with a warnings gate, **OSV
-  scanning** and **OpenSSF Scorecard**.
+- **CodeQL** on the `security-and-quality` suite, **MSVC PREfast** and **clang-tidy**, all run
+  nightly against `main` rather than per pull request; a run that finds something new opens a
+  `nightly-analysis` issue, and the alerts themselves are triaged in Security > Code scanning.
+  **SonarCloud** runs in the same window for maintainability, duplication and coverage on new
+  code, plus bug and vulnerability detection; its BUG and VULNERABILITY findings are also
+  triaged in Security > Code scanning (`tools/ci/sonar_to_sarif.py` converts them, since
+  SonarCloud has no server-side option to publish there itself), but maintainability findings,
+  duplication, coverage and the quality gate status stay in its own dashboard only.
+  **OSV scanning**
+  (on pull requests, pushes to `main` and a weekly schedule) and **OpenSSF Scorecard** (pushes
+  to `main` and a weekly schedule) upload to the same tab.
 
 What is *not* covered by that leg: anything threaded that is not tagged `concurrency`. The label
 comes from the Catch2 tags themselves (`catch_discover_tests(... ADD_TAGS_AS_LABELS)`), so a race
@@ -273,6 +287,27 @@ libadm and libbw64, plus Boost headers. That means:
   harnesses that run on every push. The resource limits above do not apply here either way: there
   is no document-size cap, no entity-expansion limit and no element-count limit; an enormous or
   deeply nested ADM document is bounded by nothing this project controls.
+- **libbw64 is fetched from a maintained fork, not the EBU's own repository.** The EBU's
+  `github.com/ebu/libbw64` last tagged a release in January 2019 (`0.10.0`); its own `master`
+  branch is 77 commits ahead of that tag, and its changelog describes those commits as fixing "a
+  number of buffer overruns, integer overflows, and uses of uninitialised data which may be
+  triggered by reading malformed files", but has tagged no release containing them. This module
+  pinned `0.10.0` at first and patched around the gap
+  (`src/ac3adm/patch_libbw64.cmake`, `adm.cpp`'s own pre-check) as `fuzz_adm_parse` and an audit
+  of libbw64 for the same pattern found an unbounded allocation, an unbounded loop, a read of
+  uninitialised stack and a `<ds64>` table that could resize a chunk other than `<data>` to
+  whatever it liked. `github.com/pwnified/libbw64`, an active single-maintainer fork, carries the
+  EBU's own unreleased hardening forward and closes all of that — confirmed by replaying every
+  crafted input from that investigation clean, not just by reading its source — plus real
+  hardening of its own; `docs/library/adm.md`'s "Built on the EBU's own reference implementations"
+  section has the reasoning for depending on a fork rather than the EBU directly, and
+  `fuzz/README.md`'s ADM section has the measurements. The fork's own commit is pinned (not a
+  branch), the same way the tag used to be. Two small patches remain against it, for behaviours
+  this module's tests need that the fork does not have by default: a truncated recording still
+  parsing, and 64-bit float actually reaching the decode the fork's own utilities already
+  support (its `<fmt >` parsing refuses any 64-bit width outright, PCM or float, before that
+  decode is ever called) — see `patch_libbw64.cmake`'s own comment, which also links the PRs
+  proposing the same fixes upstream.
 - The whole `axml` chunk is materialised as a string and re-parsed from an `istringstream`, so
   memory is O(document).
 - Parse and graph-resolution failures do surface as real diagnostics (`ac3adm::AdmError`,
@@ -316,6 +351,90 @@ existing placement, or releases it back to its authored automation (`/object/<n>
 there is no path from this input to encoder configuration, to the filesystem, or to anything
 outside the object placements themselves. The blast radius of a successful attack is "objects
 move to wherever the packet says," never a compromised process.
+
+### Sendspin: Hearth's server and its sinks
+
+`src/sendspin`, built only with `AC3FORGE_BUILD_HEARTH`, listens on the local network. A sink
+(`ac3hearth-testsink` on a computer, or `hearth_sink` on an ESP32-S3 board) accepts WebSocket
+connections on port 8928 and advertises `_sendspin._tcp`; Hearth's server listens on 8927,
+advertises `_sendspin-server._tcp`, and dials the players it finds. Anyone on the network can open a connection to either, and anyone can send
+them mDNS packets. The protocol, and where Hearth departs from it, is in
+[`planning/hearth-sendspin-extension.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-sendspin-extension.md).
+
+**A peer without a key reaches the handshake and little more.** After the handshake's text
+frames, every message is sealed with Noise `KKpsk2` under a PSK both ends hold: a pairing
+record's long-term PSK, a device's pairing PSK, or the Sentinel, whose value is public. Under the
+Sentinel a connection can pair; it can play only on a player that offers unpaired access (off by
+default on the test sink), and Hearth's server starts playback there only for a client its
+operator has approved. What such a peer can still do:
+
+- **Guess a pairing code, a bounded number of times.** Code pairing runs CPace over the
+  handshake's hash, so a wrong guess gives nothing to test further codes against offline. A
+  dynamic code allows at most 20 rounds before the device's operator resets the limit. A static
+  code is accepted only in a five-minute window a gesture on the device opens, for at most five
+  failures, and only on the connection that carried the window's first attempt.
+- **Show the server's operator a sentence.** A player's `client/pair-pending` message reaches the
+  operator as text from an unauthenticated device, cut to 800 bytes.
+- **Use connections, memory and time.** The server's listener takes 32 connections and the test
+  sink's 4; a handshake, or a wait for the first activation, that stalls is closed after 30
+  seconds; a message is refused at 4 MiB before anything is allocated for it; and a peer that
+  stops reading is disconnected once 8 MiB wait to be sent to it. There is no limit on
+  connection attempts from one address beyond these.
+
+**A key is the credential.** A device's pairing PSK token (`SP:0...`) pairs whoever enters it
+into a server; the test sink prints its own at start. A paired server can play audio and send
+the commands a player lists: volume, mute and output delay, and over `_ac3forge_player@v1` the
+settings a sink admits. What a sink decodes is an elementary stream from that server, and meets
+the decoder's posture above. The test sink keeps its identity key, pairing PSK and pairing
+records as files in its state directory, readable and writable by their owner only where the
+file system supports it.
+
+**mDNS is unauthenticated.** A host on the network can advertise a service pointing at any
+address and port, and Hearth's server dials it every ten seconds while it is advertised. The
+handshake fails unless that address holds a key the server accepts, but the connection attempt
+goes out. A browser remembers at most 64 instances and hosts, and reads packets of at most 9,000
+bytes.
+
+**Not fuzzed.** The mDNS packet reader and cpp-httplib's WebSocket framing sit outside
+`fuzz/run.sh`'s build, which keeps the Sendspin library's core free of vcpkg dependencies. The
+packet reader has unit tests over packets that end early and names that point at themselves; the
+WebSocket framing is cpp-httplib's own code.
+
+**A board's page and REST API have no authentication.** `hearth_sink` serves its page and routes
+on port 80 beside the player, and whoever can reach that port can do what they allow without a
+key:
+
+- play any HTTP URL, stop a play, and set the volume;
+- change the board's name, layout, slot width and wiring, and the network it joins at its next
+  restart (`PUT /network`, whose body carries the passphrase in clear over HTTP);
+- forget every pairing, which gives the board a new identity, and lift the limit on wrong
+  pairing codes;
+- read `GET /status`, including the pairing code while a pairing runs. So on a board, pairing by
+  code shows only that the server's operator can reach the page, and anyone who can reach it can
+  pair a server of their own. The network is the boundary for pairing, as it is for the rest. The
+  pairing token pairs with no code at all, and only the console prints it.
+
+A page on another site, opened by someone on the same network, can send the board requests that
+need no CORS preflight, such as `POST /play` with a text body.
+[`planning/esp32-device-ui.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-device-ui.md)
+records that exposure and the decision to leave it. The page puts every string from `/status` into
+the document as text, never as markup.
+
+**A board keeps its keys in NVS, unencrypted.** Its X25519 identity, its pairing PSK, up to eight
+pairing records and the Wi-Fi passphrase are in the NVS partition, and these builds turn on neither
+NVS encryption nor flash encryption. Whoever holds the board can read them with `esptool`, and
+with them pass as the board to every server it paired with, or join its network. Turning on both
+is the integrator's choice, and no build here has tried it.
+
+**The console is trusted.** Anyone with the board's USB port can read its pairing token, give it a
+network over Improv Wi-Fi, and type `pair forget` or `pair reset`.
+
+**A board's limits are its own.** The player holds three connections at once. It closes a
+connection that sends a message larger than its largest chunk
+(`CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES`, 25,600 bytes by default) before storing it.
+A chunk that does not fit the ring between the network and the decoder is dropped and counted.
+A chunk of the wrong type, or a unit that fails to decode, is counted as invalid, and the decoder
+starts again at the next burst. The decoder meets the posture above.
 
 ## What a decode failure looks like
 

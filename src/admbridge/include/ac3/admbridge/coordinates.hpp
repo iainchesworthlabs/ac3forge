@@ -89,7 +89,7 @@ namespace ac3::admbridge {
     const ac3::oba::Position& room);
 
 // SMPTE ST 2098-2:2022 §11.1's unit cube to ac3::oba::Position's own room-anchored convention -
-// for roadmap item IM1 phase 3 ("atmos-iab", mapping the IAB bed/object graph onto this same
+// for IAB reader bridge, phase 3 ("atmos-iab", mapping the IAB bed/object graph onto this same
 // ObjectPath layer). Unlike BS.2076-2's Cartesian convention above, this needs no formula at all:
 // §11.1 defines IAB's x ("0 corresponds to left wall... 1 corresponds to right wall") and y ("0
 // corresponds to front wall... 1 corresponds to back wall") identically to oba::Position's own

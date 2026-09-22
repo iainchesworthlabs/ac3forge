@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <fmt/base.h>
 #include <fmt/format.h>
+#include <fstream>
+#include <ios>
 #include <optional>
 #include <span>
 #include <string>
@@ -30,13 +32,54 @@
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3/verify/bap_census.hpp"
+#include "ac3/verify/eac3_mirror.hpp"
+#include "ac3/verify/mirror.hpp"
+#include "stream_playback.hpp"
 
 namespace ac3cli::commands {
 
 namespace {
 
 namespace plan = ac3::plan;
+
+// bap-census= output. Failure to write is an error rather than a warning: the
+// census is evidence a CI check is about to gate on, and a decode that was
+// asked for it and silently produced none would leave that check passing on a
+// stale file from a previous run.
+bool write_bap_census(const ac3::verify::BapCensus& census, const std::string& path) {
+    const std::string json = census.to_json();
+    std::ofstream out{path, std::ios::binary};
+    if (!out) {
+        fmt::println(stderr, "error: cannot open bap-census output {}", path);
+        return false;
+    }
+    out.write(json.data(), static_cast<std::streamsize>(json.size()));
+    out.close();
+    if (!out) {
+        fmt::println(stderr, "error: cannot write bap-census output {}", path);
+        return false;
+    }
+    return true;
+}
+
+// Shifts `pcm` later by `delay_samples`: result[n] is pcm[n - delay_samples]
+// for n >= delay_samples, silence before it - the same length as `pcm`, not
+// longer, so the true last delay_samples samples fall off the end rather than
+// growing the file. accumulate_adm's own comment says why this has to happen
+// to the bed's LFE before write_adm_atmos_master runs: those trailing samples
+// describe a moment the dynamic object channels beside it were never decoded
+// far enough to reach either, so there is nothing for them to align with.
+std::vector<float> delay_pcm(std::span<const float> pcm, std::size_t delay_samples) {
+    std::vector<float> out(pcm.size(), 0.0F);
+    if (delay_samples < pcm.size()) {
+        const std::size_t keep = pcm.size() - delay_samples;
+        std::copy_n(pcm.begin(), keep, out.begin() + static_cast<std::ptrdiff_t>(delay_samples));
+    }
+    return out;
+}
 
 // Whether the §7.8 output stage is going to fold this programme, which
 // decides what the sink is opened for: a fold's own channels are already L/R
@@ -79,7 +122,10 @@ std::string dynrng_note(const ac3cli::Options& meta) {
 std::string compr_note(const ac3cli::Options& meta) {
     switch (meta.output.mode) {
         case ac3::OperatingMode::kRf:
-            return ", applied (drcmode=rf)";
+            // RF mode's 11 dB go with each word (ac3::meta::kRfModeGainDb), which is
+            // what lifts dialogue from the -31 dBFS the dialnorm line reports to
+            // RF mode's -20 dBFS.
+            return ", applied with RF mode's +11 dB (drcmode=rf)";
         case ac3::OperatingMode::kLine:
             return ", not applied (drcmode=line uses dynrng)";
         case ac3::OperatingMode::kCustom:
@@ -104,65 +150,24 @@ void print_concealment_summary(FILE* status, std::size_t concealed, std::size_t 
     if (concealed == 0) {
         return;
     }
-    fmt::println(status, "  concealed {} of {} {} (§7.10)", concealed, total, unit);
+    status_println(status, "  concealed {} of {} {} (§7.10)", concealed, total, unit);
 }
 
-// Reports the object layer (if any) an E-AC-3 decode found - the decode-side
-// mirror of run_atmos_encode's own "{N} dynamic objects + the bed's LFE = {M}
-// objects" line. Shared between run_decode_eac3's dual-mono and ordinary
-// return paths, even though this project's own AtmosEncoder never emits dual
-// mono alongside an object container. The object WAVs themselves are
-// streamed out by per-object sinks as the decode runs (run_decode_eac3's
-// append_objects) - by the time this prints, the files are already closed;
-// this only says what happened.
+// Reports the object layer (if any) an E-AC-3 decode found, then what
+// objects_dir exported. The object layer's lines are print_object_summary's,
+// which 'monitor' prints too - the decode-side mirror of run_atmos_encode's
+// own "{N} dynamic objects + the bed's LFE = {M} objects" line. Shared
+// between run_decode_eac3's dual-mono and ordinary return paths, even though
+// this project's own AtmosEncoder never emits dual mono alongside an object
+// container. The object WAVs themselves are streamed out by per-object sinks
+// as the decode runs (run_decode_eac3's append_objects) - by the time this
+// prints, the files are already closed; this only says what happened.
 int report_decoded_objects(FILE* status, const std::optional<ac3::oba::DecodedProgram>& metadata,
                            bool have_object_audio, std::size_t objects_written,
                            std::string_view objects_dir) {
-    if (metadata) {
-        const auto& program = metadata->program;
-        const char* joc = have_object_audio ? ", JOC audio reconstructed"
-                                            : " (JOC audio not reconstructed)";
-        if (program.dynamic_only) {
-            status_println(status, "  {} dynamic objects{} = {} objects, OAMD present{}",
-                           metadata->objects.size(), program.lfe ? " + the bed's LFE" : "",
-                           ac3::oba::object_count(program), joc);
-        } else {
-            // A bed program - what channel-based-immersive third-party
-            // content is. Naming the bed's channels is the useful half here:
-            // "12 objects" says nothing, "L R C LFE Ls Rs Lb Rb Tfl Tfr Tbl
-            // Tbr" says what the stream actually carries.
-            std::string labels;
-            for (const auto label : ac3::oba::bed_labels(program.bed)) {
-                if (!labels.empty()) {
-                    labels += ' ';
-                }
-                labels += ac3::oba::describe(label);
-            }
-            if (labels.empty()) {
-                labels = fmt::format("{} channels", ac3::oba::bed_channel_count(program));
-            }
-            status_println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
-                           labels, program.dynamic_objects, ac3::oba::object_count(program), joc);
-        }
-        if (metadata->trim) {
-            status_println(status, "  OAMD trim element: warp mode {}, global trim mode {}",
-                           metadata->trim->warp_mode, metadata->trim->global_trim_mode);
-        }
-        if (!metadata->skipped_elements.empty()) {
-            std::string ids;
-            for (const int id : metadata->skipped_elements) {
-                if (!ids.empty()) {
-                    ids += ", ";
-                }
-                ids += std::to_string(id);
-            }
-            status_println(status, "  OAMD elements skipped by size (unrecognised id): {}", ids);
-        }
-        if (metadata->blocks.size() > 1) {
-            status_println(status, "  {} metadata update blocks per frame",
-                           metadata->blocks.size());
-        }
-    }
+    print_object_summary(status, metadata,
+                         have_object_audio ? ", JOC audio reconstructed"
+                                           : " (JOC audio not reconstructed)");
     if (objects_dir.empty()) {
         return 0;
     }
@@ -205,16 +210,16 @@ void print_drc_summary(FILE* status, double dynrng_min_db, double dynrng_max_db,
 // does appear below is a claim the encoder deliberately made.
 void print_bsi_summary(FILE* status, const ac3::meta::BsiInfo& info, ac3::Acmod acmod) {
     if (info.bsmod != ac3::meta::BitstreamMode::kCompleteMain) {
-        fmt::println(status, "  service: {}", ac3::meta::describe(info.bsmod, acmod));
+        status_println(status, "  service: {}", ac3::meta::describe(info.bsmod, acmod));
     }
     if (info.dsurmod != ac3::meta::SurroundMode::kNotIndicated) {
-        fmt::println(status, "  dsurmod: {}", ac3::meta::describe(info.dsurmod));
+        status_println(status, "  dsurmod: {}", ac3::meta::describe(info.dsurmod));
     }
     if (info.dsurexmod != ac3::meta::SurroundExMode::kNotIndicated) {
-        fmt::println(status, "  dsurexmod: {}", ac3::meta::describe(info.dsurexmod));
+        status_println(status, "  dsurexmod: {}", ac3::meta::describe(info.dsurexmod));
     }
     if (info.dheadphonmod != ac3::meta::HeadphoneMode::kNotIndicated) {
-        fmt::println(status, "  dheadphonmod: {}", ac3::meta::describe(info.dheadphonmod));
+        status_println(status, "  dheadphonmod: {}", ac3::meta::describe(info.dheadphonmod));
     }
     // The A/D converter clause is only ever appended for HDCD: "standard" is
     // what §D2.3.1.10 tells an encoder to send when it does not know, so it
@@ -223,30 +228,31 @@ void print_bsi_summary(FILE* status, const ac3::meta::BsiInfo& info, ac3::Acmod 
     // printing it would suggest a bit that was never read.
     const auto production = [&](std::string_view prefix,
                                 const ac3::meta::AudioProduction& value) {
-        fmt::println(status, "  {}mixed at {} dB SPL, {}{}", prefix,
-                     ac3::meta::mix_level_db_spl(value.mixlevel),
-                     ac3::meta::describe(value.roomtyp),
-                     value.adconvtyp == ac3::meta::AdConverterType::kHdcd ? ", A/D HDCD" : "");
+        status_println(status, "  {}mixed at {} dB SPL, {}{}", prefix,
+                       ac3::meta::mix_level_db_spl(value.mixlevel),
+                       ac3::meta::describe(value.roomtyp),
+                       value.adconvtyp == ac3::meta::AdConverterType::kHdcd ? ", A/D HDCD" : "");
     };
-    if (info.audprod) {
+    if (info.audprod.has_value()) {
         production("", *info.audprod);
     }
-    if (info.audprod2) {
+    if (info.audprod2.has_value()) {
         production("Ch2 ", *info.audprod2);
     }
     // origbs defaults set, so only a stream declaring itself a COPY is news.
     if (info.copyrightb || !info.origbs) {
-        fmt::println(status, "  {}{}{}", info.copyrightb ? "copyright asserted" : "",
-                     info.copyrightb && !info.origbs ? ", " : "",
-                     info.origbs ? "" : "a copy, not the original bit stream");
+        status_println(status, "  {}{}{}", info.copyrightb ? "copyright asserted" : "",
+                       info.copyrightb && !info.origbs ? ", " : "",
+                       info.origbs ? "" : "a copy, not the original bit stream");
     }
     if (info.sourcefscod) {
-        fmt::println(status, "  source sampled at twice the coded rate (§E2.3.1.63)");
+        status_println(status, "  source sampled at twice the coded rate (§E2.3.1.63)");
     }
-    if (info.timecod1 || info.timecod2) {
-        fmt::println(status, "  timecode: {}",
-                     ac3::meta::format_timecode(info.timecod1.value_or(ac3::meta::TimeCodeCoarse{}),
-                                                info.timecod2.value_or(ac3::meta::TimeCodeFine{})));
+    if (info.timecod1.has_value() || info.timecod2.has_value()) {
+        status_println(status, "  timecode: {}",
+                       ac3::meta::format_timecode(
+                           info.timecod1.value_or(ac3::meta::TimeCodeCoarse{}),
+                           info.timecod2.value_or(ac3::meta::TimeCodeFine{})));
     }
 }
 
@@ -255,32 +261,105 @@ void print_bsi_summary(FILE* status, const ac3::meta::BsiInfo& info, ac3::Acmod 
 // out - they are present on every mixmdate group and say nothing about
 // whether this stream is an associated service.
 void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
-    if (mix.pgmscl) {
-        fmt::println(status, "  programme scale: {}",
-                     *mix.pgmscl == ac3::meta::kPgmScaleMute
-                         ? std::string{"mute"}
-                         : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*mix.pgmscl)));
+    const auto print_scale = [status](std::string_view label, const std::optional<int>& code) {
+        if (!code.has_value()) {
+            return;
+        }
+        status_println(status, "  {}: {}", label,
+                       *code == ac3::meta::kPgmScaleMute
+                           ? std::string{"mute"}
+                           : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*code)));
+    };
+    print_scale("programme scale", mix.pgmscl);
+    print_scale("Ch2 programme scale", mix.pgmscl2);
+    print_scale("external programme scale", mix.extpgmscl);
+
+    const auto print_premix = [status](std::string_view indent,
+                                       const ac3::meta::PremixCompression& premix) {
+        status_println(status, "{}premix compression: {} word, {} source, {}/6", indent,
+                       premix.premixcmpsel == ac3::meta::PremixCompressionSource::kDynrng
+                           ? "dynrng"
+                           : "compr",
+                       premix.drcsrc == ac3::meta::DrcSource::kExternal ? "external"
+                                                                        : "this substream",
+                       premix.premixcmpscl);
+    };
+    switch (mix.mixing.mixdef) {
+        case ac3::meta::MixDefinition::kNone:
+            break;
+        case ac3::meta::MixDefinition::kPremix:
+            status_println(status, "  mixdef 1 (premix compression)");
+            print_premix("    ", mix.mixing.premix);
+            break;
+        case ac3::meta::MixDefinition::kReserved:
+            status_println(status, "  mixdef 2 (reserved): 0x{:03X}", mix.mixing.reserved);
+            break;
+        case ac3::meta::MixDefinition::kExtended: {
+            status_println(status, "  mixdef 3 (extended)");
+            if (mix.mixing.external.has_value()) {
+                const auto& external = *mix.mixing.external;
+                print_premix("    ", external.premix);
+                const auto print_ext_scale = [status](std::string_view label,
+                                                      const std::optional<int>& code) {
+                    if (!code.has_value()) {
+                        status_println(status, "    {}: off", label);
+                        return;
+                    }
+                    status_println(
+                        status, "    {}: {}", label,
+                        *code == 15 ? std::string{"mute"}
+                                   : fmt::format("{:+.0f} dB",
+                                                 ac3::meta::kExternalScaleDb[
+                                                     static_cast<std::size_t>(*code)]));
+                };
+                print_ext_scale("left", external.left);
+                print_ext_scale("centre", external.centre);
+                print_ext_scale("right", external.right);
+                print_ext_scale("left surround", external.left_surround);
+                print_ext_scale("right surround", external.right_surround);
+                print_ext_scale("lfe", external.lfe);
+                print_ext_scale("downmix", external.dmixscl);
+                if (external.auxiliary.has_value()) {
+                    print_ext_scale("aux 1", (*external.auxiliary)[0]);
+                    print_ext_scale("aux 2", (*external.auxiliary)[1]);
+                }
+            }
+            if (mix.mixing.speech.has_value()) {
+                const auto& speech = *mix.mixing.speech;
+                status_println(status, "    speech enhancement: spchdat={}", speech.spchdat);
+                if (speech.additional.has_value()) {
+                    status_println(status, "      spchdat1={} spchan1att={}",
+                                   speech.additional->spchdat1, speech.additional->spchan1att);
+                    if (speech.additional->more.has_value()) {
+                        status_println(status, "        spchdat2={} spchan2att={}",
+                                       speech.additional->more->spchdat2,
+                                       speech.additional->more->spchan2att);
+                    }
+                }
+            }
+            break;
+        }
     }
-    if (mix.extpgmscl) {
-        fmt::println(status, "  external programme scale: {}",
-                     *mix.extpgmscl == ac3::meta::kPgmScaleMute
-                         ? std::string{"mute"}
-                         : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*mix.extpgmscl)));
-    }
-    if (mix.mixing.mixdef != ac3::meta::MixDefinition::kNone) {
-        fmt::println(status, "  mixdef {} ({}{}{})",
-                     static_cast<int>(mix.mixing.mixdef),
-                     mix.mixing.external ? "external channel scales" : "",
-                     mix.mixing.external && mix.mixing.speech ? ", " : "",
-                     mix.mixing.speech ? "speech enhancement data"
-                                       : (mix.mixing.external ? "" : "no sub-fields"));
-    }
-    if (mix.pan) {
-        fmt::println(status, "  pan: {:.1f} degrees clockwise from centre",
-                     static_cast<double>(mix.pan->panmean) * ac3::meta::kPanMeanDegreesPerStep);
-    }
-    if (mix.blkmixcfginfo) {
-        fmt::println(status, "  per-block mixing configuration present");
+
+    const auto print_pan = [status](std::string_view label,
+                                    const std::optional<ac3::meta::PanInfo>& pan) {
+        if (!pan.has_value()) {
+            return;
+        }
+        status_println(status, "  {}: {:.1f} degrees clockwise from centre (paninfo {})", label,
+                       static_cast<double>(pan->panmean) * ac3::meta::kPanMeanDegreesPerStep,
+                       pan->paninfo);
+    };
+    print_pan("pan", mix.pan);
+    print_pan("Ch2 pan", mix.pan2);
+
+    if (mix.blkmixcfginfo.has_value()) {
+        status_println(status, "  per-block mixing configuration:");
+        for (std::size_t blk = 0; blk < mix.blkmixcfginfo->size(); ++blk) {
+            const auto& word = (*mix.blkmixcfginfo)[blk];
+            status_println(status, "    block {}: {}", blk,
+                           word.has_value() ? std::to_string(*word) : std::string{"-"});
+        }
     }
 }
 
@@ -295,9 +374,9 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // second language, an audio description - so writing both into one WAV
     // would splice two unrelated pieces of audio together.
     const auto ids = ac3::programme_ids(stream);
-    if (!ids) {
-        fmt::println(stderr, "error: stream framing failed (code {})",
-                     static_cast<int>(ids.error()));
+    if (!ids.has_value()) {
+        fmt::println(stderr, "error: stream framing failed: {}",
+                     ac3::describe(ids.error()));
         return 1;
     }
     if (ids->empty()) {
@@ -305,22 +384,27 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         return 1;
     }
     const auto programme = choose_programme(*ids, meta.programme);
-    if (!programme) {
+    if (!programme.has_value()) {
         return 1;
     }
     // Access units, not syncframes: a dependent substream is only meaningful
     // alongside the independent one it extends, and the two are rendered
     // together into one set of speaker feeds.
     const auto units = ac3::split_access_units(stream, *programme);
-    if (!units) {
-        fmt::println(stderr, "error: stream framing failed (code {})",
-                     static_cast<int>(units.error()));
+    if (!units.has_value()) {
+        fmt::println(stderr, "error: stream framing failed: {}",
+                     ac3::describe(units.error()));
         return kExitInput;
     }
     if (ids->size() > 1) {
-        fmt::println(status_stream(out_path), "  programme {} of {} ({})", *programme,
-                     ids->size(), format_programme_ids(*ids));
+        status_println(status_stream(out_path), "  programme {} of {} ({})", *programme,
+                       ids->size(), format_programme_ids(*ids));
     }
+    // Same convention as the AC-3 path below: null unless bap-census= asked
+    // for it, so an ordinary decode pays nothing.
+    const bool census_wanted = !meta.bap_census_path.empty();
+    ac3::verify::Eac3AccessUnitTrace census_trace;
+    ac3::verify::BapCensus census;
     ac3::Eac3Decoder decoder{{.drc_scale = meta.drc_scale,
                              .fast_imdct = meta.fast_imdct,
                              .heavy_compression = meta.p.heavy.has_value(),
@@ -328,7 +412,9 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                              .concealment = meta.concealment,
                              .fast_mdct = meta.fast_mdct,
                              .joc_domain = meta.joc_domain,
-                             .programme = programme}};
+                             .eac3_trace = census_wanted ? &census_trace : nullptr,
+                             .programme = programme,
+                             .skip_object_reconstruction = meta.bed_only}};
     // The decoded programme goes out through the sink as units decode - the
     // sink's per-slot carry absorbs the one place slots advance unevenly
     // (the transient-pre-noise flush below).
@@ -411,13 +497,20 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         }
         return true;
     };
-    // Roadmap IM2: the ADM master accumulates in memory across the whole decode (the bed's own
+    // legacy item IM2: the ADM master accumulates in memory across the whole decode (the bed's own
     // LFE channel plus each JOC-reconstructed dynamic object's full-duration PCM, and every OAMD
     // update block's absolute-sample-timestamped position/gain) and is written once, after the
     // decode loop below finishes - unlike the streaming per-object WAVs objects_dir writes above,
     // the ADM master's own <axml> chunk needs every dynamic object's own final duration known
     // before it can be built at all (ac3::admbridge::write() computes each audioBlockFormat's
     // duration from it - see bridge.cpp's own build_block_formats).
+    //
+    // The LFE channel this lambda appends below is NOT yet delayed to match the objects beside
+    // it - decode_access_unit hands the two to it already ac3::oba::joc::reconstruction_delay()
+    // samples apart (docs/library/decoding.md, "Atmos objects lag the bed"), and appending both
+    // verbatim, unit by unit, carries that same gap straight into adm_input.channels. delay_pcm()
+    // fixes it in one pass, once, on the finished LFE channel below rather than here per unit -
+    // this lambda has no reason to know the decoder's own joc_domain.
     const bool have_adm_output = !adm_out.empty();
     ac3cli::AdmMasterInput adm_input;
     bool adm_input_ready = false;
@@ -489,6 +582,11 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         adm_samples_emitted += object_audio.front().size();
     };
     ac3::DecodedAccessUnit first{};
+    // The programme's layout, from the first unit decoded - the held-back
+    // unit at end-of-stream is laid out against it (held_back_unit's own doc
+    // comment). std::nullopt exactly when `first` is still default, i.e. the
+    // sink never opened.
+    std::optional<ac3::eac3::chanmap::Layout> programme_layout;
     // What the independent (bed) substream actually carried, reported whether
     // or not it was applied - same convention as run_decode's own dynrng_min_db/
     // dynrng_max_db/compr_min_db/compr_max_db above, except both are seeded
@@ -519,7 +617,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             dynrng_max_db = dynrng_words == 0 ? db : std::max(dynrng_max_db, db);
             ++dynrng_words;
         }
-        if (compr) {
+        if (compr.has_value()) {
             const double db = ac3::meta::to_db(ac3::meta::compr_gain(*compr));
             compr_min_db = compr_frames == 0 ? db : std::min(compr_min_db, db);
             compr_max_db = compr_frames == 0 ? db : std::max(compr_max_db, db);
@@ -532,11 +630,18 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     for (const auto& unit : *units) {
         progress.tick(++units_done);
         const auto decoded = decoder.decode_access_unit(unit);
-        if (!decoded) {
-            fmt::println(stderr, "error: decode failed (code {})",
-                         static_cast<int>(decoded.error()));
+        if (!decoded.has_value()) {
+            // describe(), not the raw enumerator: this is the line a CI
+            // log shows when a third-party stream will not decode, and
+            // "decode failed (code 3)" sent the reader to the enum
+            // definition to learn it meant a reserved header field.
+            fmt::println(stderr, "error: decode failed: {}",
+                         ac3::describe(decoded.error()));
             abort_all();
             return kExitInput;
+        }
+        if (census_wanted) {
+            census.observe(census_trace);
         }
         if (!decoded->has_value()) {
             // §3.7: this access unit's frame(s) are being held back pending
@@ -547,11 +652,12 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
         const auto& out = **decoded;
         if (!sink.is_open()) {
             first = out;
+            programme_layout = out.layout;
             if (!open_sink(first, out.channels.size())) {
                 return kExitOutput;
             }
         }
-        if (out.concealed) {
+        if (out.concealed.has_value()) {
             ++concealed_units;
         }
         track_metadata(out.dynrng, out.numblkscod, out.compr);
@@ -570,138 +676,54 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                        sample_rate_hz(first.sample_rate));
     }
     // Whatever transient pre-noise processing was still holding back at
-    // end-of-stream. flush() returns raw per-substream results rather than
-    // assembled access units (see its own doc comment) - placed at the SAME
-    // pcm slot decode_access_unit's own §E3.8.2 assembly would have used
-    // (via location_map()), not assumed to already sit at that slot: a lone
-    // independent substream's coded order happens to agree with pcm's, but
-    // a dependent carrying only its own smaller channel set does not, and
-    // naively appending it by coded index corrupts already-established
-    // channels (e.g. a bed's L/R) with a dependent's height audio instead.
+    // end-of-stream (§3.7). held_back_unit assembles the flushed substreams
+    // the way decode_access_unit's own §E3.8.2 assembly would have, onto
+    // `programme_layout` (or, when nothing ever decoded, a layout it synthesizes
+    // itself by unioning the flushed substreams' own locations) - see its
+    // own doc comment for the placement rules this used to duplicate here.
     const auto flushed = decoder.flush();
     if (!flushed.empty()) {
-        // §7.7 words are meaningful at this report's level only from the
-        // independent (bed) substream - same convention as
-        // DecodedAccessUnit::dynrng/compr above; a dependent flushed here
-        // (only possible when transient pre-noise processing has left
-        // substreams of one access unit desynchronised at end-of-stream) is
-        // never the figure this report promises.
-        for (const auto& substream : flushed) {
-            if (substream.strmtyp == ac3::eac3::StreamType::kIndependent) {
-                track_metadata(substream.dynrng, substream.numblkscod, substream.compr);
-            }
-        }
-        const bool dual_mono = sink.is_open() ? first.acmod == ac3::Acmod::kDualMono
-                                              : flushed.front().acmod == ac3::Acmod::kDualMono;
-        if (dual_mono) {
-            // No Table E2.5 location to place by - dual mono is always a
-            // lone substream with no dependents and no spatial layout
-            // (decode_access_unit's own comment) - so its channels go
-            // straight out in coded order, same as decode_access_unit.
-            for (const auto& substream : flushed) {
-                if (!sink.is_open()) {
-                    first.acmod = ac3::Acmod::kDualMono;
-                    first.sample_rate = substream.sample_rate;
-                    first.dialnorm = substream.dialnorm;
-                    first.substream_count = 1;
-                    first.object_metadata = substream.object_metadata;
-                    if (!open_sink(first, substream.channels.size())) {
-                        return kExitOutput;
-                    }
-                }
-                for (std::size_t ch = 0; ch < substream.channels.size(); ++ch) {
-                    if (!sink.append(ch, substream.channels[ch])) {
-                        fmt::println(stderr, "error: cannot write to {}", out_path);
-                        abort_all();
-                        return kExitOutput;
-                    }
-                }
-            }
-        } else {
+        const auto held = ac3::apps::held_back_unit(
+            flushed, programme_layout, meta.output.target != ac3::DownmixTarget::kAsCoded);
+        if (held.has_value()) {
+            // §7.7 words are meaningful at this report's level only from the
+            // independent (bed) substream - held_back_unit's dynrng/compr/
+            // numblkscod already come from the lead substream alone, the
+            // same convention DecodedAccessUnit's own fields follow for a
+            // live unit.
+            track_metadata(held->dynrng, held->numblkscod, held->compr);
             if (!sink.is_open()) {
-                // No access unit ever completed - synthesize the program's
-                // layout by unioning every flushed substream's own
-                // locations, exactly like decode_access_unit's own §E3.8.2
-                // assembly.
-                std::uint16_t occupied = 0;
-                for (const auto& substream : flushed) {
-                    occupied = static_cast<std::uint16_t>(occupied | substream.location_map());
-                }
-                ac3::DecodedAccessUnit synthesized;
-                synthesized.sample_rate = flushed.front().sample_rate;
-                synthesized.acmod = flushed.front().acmod;
-                synthesized.dialnorm = flushed.front().dialnorm;
-                synthesized.substream_count = static_cast<int>(flushed.size());
-                synthesized.layout = ac3::eac3::chanmap::expand(occupied);
-                // Object audio only ever rides in the bed (the independent
-                // substream) - see DecodedAccessUnit::object_metadata's own
-                // comment - so at most one flushed substream carries it.
-                for (const auto& substream : flushed) {
-                    if (substream.object_metadata) {
-                        synthesized.object_metadata = substream.object_metadata;
-                        break;
-                    }
-                }
-                first = synthesized;
-                if (!open_sink(first, static_cast<std::size_t>(first.layout.count))) {
+                first = *held;
+                if (!open_sink(first, held->channels.size())) {
                     return kExitOutput;
                 }
             }
-            // §E3.8.2 placement: each flushed substream's own channels land
-            // at whichever slot their Table E2.5 location occupies in
-            // `first.layout`, mirroring decode_access_unit's own assembly
-            // loop. Different substreams may append different lengths to
-            // different slots here; the sink's per-slot carry absorbs it.
-            for (const auto& substream : flushed) {
-                // A fold leaves the substream with its own channels in their
-                // own order and no Table E2.5 location left to place them by
-                // - Eac3Decoder::flush() folds these for exactly the reason
-                // this loop exists, so that every frame of the stream leaves
-                // at the same width the sink was opened for.
-                if (folding(meta, substream.acmod)) {
-                    for (std::size_t ch = 0; ch < substream.channels.size() && ch < sink_slots;
-                         ++ch) {
-                        if (!sink.append(ch, substream.channels[ch])) {
-                            fmt::println(stderr, "error: cannot write to {}", out_path);
-                            abort_all();
-                            return 1;
-                        }
-                    }
-                    continue;
-                }
-                const auto locations = ac3::eac3::chanmap::expand(substream.location_map());
-                for (int i = 0; i < locations.count; ++i) {
-                    const int slot = first.layout.index_of(locations[i]);
-                    if (slot < 0) {
-                        continue;
-                    }
-                    if (!sink.append(static_cast<std::size_t>(slot),
-                                     substream.channels[static_cast<std::size_t>(i)])) {
-                        fmt::println(stderr, "error: cannot write to {}", out_path);
-                        abort_all();
-                        return kExitOutput;
-                    }
+            for (std::size_t ch = 0; ch < held->channels.size() && ch < sink_slots; ++ch) {
+                if (!sink.append(ch, held->channels[ch])) {
+                    fmt::println(stderr, "error: cannot write to {}", out_path);
+                    abort_all();
+                    return kExitOutput;
                 }
             }
-        }
-        // JOC's reconstructed per-object audio, streamed the same way the
-        // main access-unit loop's is - see append_objects for why a size
-        // mismatch is skipped rather than resized into.
-        for (const auto& substream : flushed) {
-            if (!append_objects(substream.object_audio,
-                                sample_rate_hz(substream.sample_rate))) {
+            if (!append_objects(held->object_audio, sample_rate_hz(held->sample_rate))) {
                 abort_all();
                 return kExitOutput;
             }
-            accumulate_adm(substream.object_audio, substream.object_metadata, substream.channels,
-                           ac3::eac3::chanmap::expand(substream.location_map()),
-                           sample_rate_hz(substream.sample_rate));
+            accumulate_adm(held->object_audio, held->object_metadata, held->channels,
+                           held->layout, sample_rate_hz(held->sample_rate));
         }
     }
     progress.finish();
     if (!sink.is_open()) {
         fmt::println(stderr, "error: no access units");
         return kExitInput;
+    }
+    // Same point in the sequence as run_decode's: after the loop proved it
+    // decoded something, before the sink closes. The accumulation above is
+    // per access unit rather than per syncframe because BapCensus::observe
+    // folds an access unit's substreams together by stream index itself.
+    if (census_wanted && !write_bap_census(census, meta.bap_census_path)) {
+        return kExitOutput;
     }
     // Dual mono has no Table E2.5 location to order by - decode_access_unit
     // leaves `layout` empty for exactly this case - so Ch1 and Ch2 go out in
@@ -711,7 +733,7 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     // case, and this report must not land in the middle of them.
     const auto status = status_stream(out_path);
     const auto written = sink.close();
-    if (!written) {
+    if (!written.has_value()) {
         fmt::println(stderr, "error: {}", ac3::io::describe(written.error()));
         return kExitOutput;
     }
@@ -727,8 +749,17 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
             fmt::println(stderr, "warning: {} given but no dynamic-object-only Atmos programme was decoded",
                          adm_out);
         } else {
+            // accumulate_adm's own comment: the LFE channel it built is still
+            // reconstruction_delay(meta.joc_domain) samples ahead of the object
+            // channels beside it - the one channel here with bed_label set, so
+            // there is no need to have tracked which index it landed at above.
+            if (!adm_input.channels.empty() && adm_input.channels.back().bed_label.has_value()) {
+                auto& lfe = adm_input.channels.back().pcm;
+                lfe = delay_pcm(lfe, static_cast<std::size_t>(ac3::oba::joc::reconstruction_delay(
+                                         meta.joc_domain)));
+            }
             const auto written_adm = ac3cli::write_adm_atmos_master(adm_out, adm_input);
-            if (!written_adm) {
+            if (!written_adm.has_value()) {
                 fmt::println(stderr, "error: {}", written_adm.error());
                 return kExitOutput;
             }
@@ -744,10 +775,10 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
                        sink_slots, sample_rate_hz(first.sample_rate));
         print_drc_summary(status, dynrng_min_db, dynrng_max_db, compr_min_db, compr_max_db,
                           compr_frames, meta);
-        if (first.info) {
+        if (first.info.has_value()) {
             print_bsi_summary(status, *first.info, first.acmod);
         }
-        if (first.mixing) {
+        if (first.mixing.has_value()) {
             print_mix_summary(status, *first.mixing);
         }
         print_concealment_summary(status, concealed_units, units->size(), "access units");
@@ -779,10 +810,10 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
     }
     print_drc_summary(status, dynrng_min_db, dynrng_max_db, compr_min_db, compr_max_db,
                       compr_frames, meta);
-    if (first.info) {
+    if (first.info.has_value()) {
         print_bsi_summary(status, *first.info, first.acmod);
     }
-    if (first.mixing) {
+    if (first.mixing.has_value()) {
         print_mix_summary(status, *first.mixing);
     }
     print_concealment_summary(status, concealed_units, units->size(), "access units");
@@ -792,20 +823,25 @@ int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path
 
 }  // namespace
 
-int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli::Options& meta,
-               std::string_view objects_dir, std::string_view adm_out) {
+int run_decode(std::string_view in_path, std::string_view out_path,
+               const ac3cli::Options& requested, std::string_view objects_dir,
+               std::string_view adm_out) {
     const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
         return kExitInput;
     }
-    if (!apply_object_verification(stream, meta)) {
+    // downmix=auto becomes a concrete fold here, once, from what the stream
+    // itself prefers; everything below sees only the fold it settled on.
+    auto meta = requested;
+    meta.output = resolve_output(requested, stream, status_stream(out_path));
+    if (!apply_object_verification(stream, meta, status_stream(out_path))) {
         return kExitInput;
     }
     // bsid at bit 40 says which syntax this is, before either is assumed.
     // spdif and play branch on it the same way now that both packers handle
     // E-AC-3 (Eac3BurstPacker alongside AC-3's wrap_frame).
     const auto bsid = ac3::stream_bsid(stream);
-    if (!bsid) {
+    if (!bsid.has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
@@ -824,15 +860,22 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         fmt::println(stderr, "warning: {} given but {} is plain AC-3 - it has no object layer", adm_out, in_path);
     }
     const auto frames = ac3::split_frames(stream);
-    if (!frames) {
+    if (!frames.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(frames.error()));
         return kExitInput;
     }
+    // bap-census= only. The trace pointer stays null otherwise, which is what
+    // keeps an ordinary decode at one null test per block and no allocation -
+    // the convention DecoderConfig::trace already sets.
+    const bool census_wanted = !meta.bap_census_path.empty();
+    ac3::verify::FrameTrace census_trace;
+    ac3::verify::BapCensus census;
     ac3::FrameDecoder decoder{{.drc_scale = meta.drc_scale,
                               .fast_imdct = meta.fast_imdct,
                               .heavy_compression = meta.p.heavy.has_value(),
                               .output = meta.output,
-                              .concealment = meta.concealment}};
+                              .concealment = meta.concealment,
+                              .trace = census_wanted ? &census_trace : nullptr}};
     PlanarWavSink sink;
     std::optional<ac3::analysis::LevelMeter> meter;
     ac3::DecodedFrame first{};
@@ -854,12 +897,19 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     for (const auto& frame : *frames) {
         progress.tick(++frames_done);
         const auto decoded = decoder.decode_frame(frame);
-        if (!decoded) {
+        if (!decoded.has_value()) {
             fmt::println(stderr, "error: {}: {}", in_path, ac3::describe(decoded.error()));
             sink.abort();
             return kExitInput;
         }
-        if (decoded->concealed) {
+        if (census_wanted) {
+            // After the success check, so a refused frame contributes nothing.
+            // BapCensus::observe also skips un-allocated blocks itself; both
+            // guards exist because a partially-filled trace read as real
+            // evidence is exactly the misreading a census must not make.
+            census.observe(census_trace);
+        }
+        if (decoded->concealed.has_value()) {
             ++concealed_frames;
         }
         for (const auto word : decoded->dynrng) {
@@ -868,7 +918,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
             dynrng_max_db = dynrng_words == 0 ? db : std::max(dynrng_max_db, db);
             ++dynrng_words;
         }
-        if (decoded->compr) {
+        if (decoded->compr.has_value()) {
             const double db = ac3::meta::to_db(ac3::meta::compr_gain(*decoded->compr));
             compr_min_db = compr_frames == 0 ? db : std::min(compr_min_db, db);
             compr_max_db = compr_frames == 0 ? db : std::max(compr_max_db, db);
@@ -921,8 +971,11 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
         fmt::println(stderr, "error: no frames");
         return kExitInput;
     }
+    if (census_wanted && !write_bap_census(census, meta.bap_census_path)) {
+        return kExitOutput;
+    }
     const auto written = sink.close();
-    if (!written) {
+    if (!written.has_value()) {
         fmt::println(stderr, "error: {}", ac3::io::describe(written.error()));
         return kExitOutput;
     }
@@ -939,7 +992,7 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
                    sample_rate_hz(first.sample_rate));
     status_println(status, "metadata: dialnorm {} (dialogue at -{} dBFS){}", first.dialnorm,
                    first.dialnorm, dialnorm_note(meta, first.dialnorm));
-    if (first.dialnorm2) {
+    if (first.dialnorm2.has_value()) {
         status_println(status, "          dialnorm2 {} (Ch2, dialogue at -{} dBFS){}",
                        *first.dialnorm2, *first.dialnorm2, first.compr2 ? ", compr2 present" : "");
     }
@@ -954,36 +1007,34 @@ int run_decode(std::string_view in_path, std::string_view out_path, const ac3cli
     // bsid 6 is worth a line of its own: it changes how a decoder reads the
     // last 28 bits of bsi, so "this stream is Annex D" is not an aside.
     if (first.bsid != 8) {
-        fmt::println(status, "          bsid {} (Annex D alternate syntax)", first.bsid);
+        status_println(status, "          bsid {} (Annex D alternate syntax)", first.bsid);
     }
     print_bsi_summary(status, first.info, first.acmod);
     // xbsi2's three flags are AC-3's only home for what E-AC-3 puts in
     // infomdat, so they are reported here rather than folded into `info` -
     // which bits a field came off is part of what a decode report is for.
-    if (first.alternate_bsi && first.alternate_bsi->extended) {
+    if (first.alternate_bsi.has_value() && first.alternate_bsi->extended.has_value()) {
         const auto& extended = *first.alternate_bsi->extended;
         if (extended.dsurexmod != ac3::meta::SurroundExMode::kNotIndicated) {
-            fmt::println(status, "  dsurexmod: {}", ac3::meta::describe(extended.dsurexmod));
+            status_println(status, "  dsurexmod: {}", ac3::meta::describe(extended.dsurexmod));
         }
         if (extended.dheadphonmod != ac3::meta::HeadphoneMode::kNotIndicated) {
-            fmt::println(status, "  dheadphonmod: {}",
-                         ac3::meta::describe(extended.dheadphonmod));
+            status_println(status, "  dheadphonmod: {}",
+                           ac3::meta::describe(extended.dheadphonmod));
         }
         if (extended.adconvtyp != ac3::meta::AdConverterType::kStandard) {
-            fmt::println(status, "  A/D converter: {}", ac3::meta::describe(extended.adconvtyp));
+            status_println(status, "  A/D converter: {}", ac3::meta::describe(extended.adconvtyp));
         }
     }
-    if (first.alternate_bsi && first.alternate_bsi->mix) {
+    if (first.alternate_bsi.has_value() && first.alternate_bsi->mix.has_value()) {
         const auto& mix = *first.alternate_bsi->mix;
-        fmt::println(status, "  xbsi1: preferred downmix {}, Lt/Rt {:+.1f}/{:+.1f} dB, "
-                             "Lo/Ro {:+.1f}/{:+.1f} dB (centre/surround)",
-                     mix.dmixmod == ac3::meta::DownmixMode::kLtRt   ? "Lt/Rt"
-                     : mix.dmixmod == ac3::meta::DownmixMode::kLoRo ? "Lo/Ro"
-                                                                   : "not indicated",
-                     ac3::meta::to_db(ac3::meta::coefficient(mix.ltrtcmixlev)),
-                     ac3::meta::to_db(ac3::meta::coefficient(mix.ltrtsurmixlev)),
-                     ac3::meta::to_db(ac3::meta::coefficient(mix.lorocmixlev)),
-                     ac3::meta::to_db(ac3::meta::coefficient(mix.lorosurmixlev)));
+        status_println(status, "  xbsi1: preferred downmix {}, Lt/Rt {:+.1f}/{:+.1f} dB, "
+                               "Lo/Ro {:+.1f}/{:+.1f} dB (centre/surround)",
+                       ac3::meta::describe(mix.dmixmod),
+                       ac3::meta::to_db(ac3::meta::coefficient(mix.ltrtcmixlev)),
+                       ac3::meta::to_db(ac3::meta::coefficient(mix.ltrtsurmixlev)),
+                       ac3::meta::to_db(ac3::meta::coefficient(mix.lorocmixlev)),
+                       ac3::meta::to_db(ac3::meta::coefficient(mix.lorosurmixlev)));
     }
     print_concealment_summary(status, concealed_frames, frames->size(), "frames");
     // The have_first check above already returned if the frame loop never

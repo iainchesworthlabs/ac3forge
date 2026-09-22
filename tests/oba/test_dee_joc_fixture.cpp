@@ -22,7 +22,7 @@
 // tools/generators/gen_object_fixture.py (see its header for what DEE was fed
 // and why it is channel-based immersive rather than an ADM master).
 //
-// Roadmap DC6's whole point is that the object layer used to refuse this
+// legacy item DC6's whole point is that the object layer used to refuse this
 // stream outright, at four independent places - the EMDF payload
 // configuration, the OAMD program assignment, the OAMD element count, and the
 // JOC downmix configuration - so what these cases really assert is that none

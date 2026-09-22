@@ -1,6 +1,6 @@
 # API stability and the road to v1.0
 
-The concrete freeze plan roadmap item `AP1` asked for: what "stable" will mean once this project
+What "stable" will mean once this project
 tags `v1.0.0`, and what has to be true first. Every release to date has been a `0.x.y` prerelease
 — nothing has promised compatibility across two tags yet, deliberately (see
 [Versioning](../releasing.md#versioning)). This page is where that promise gets defined before it
@@ -35,15 +35,17 @@ it directly. Four tiers, assigned per header below:
 | `ac3/core/bitreader.hpp`, `bitwriter.hpp` | Internal — bitstream I/O primitives, never called directly by a caller using the encoder/decoder API. |
 | `ac3/core/mdct.hpp`, `window.hpp` | Internal — transform internals. |
 | `ac3/core/bitalloc.hpp`, `exponents.hpp`, `mantissas.hpp` | Internal — §7.1–7.3 coding internals shared by encoder and decoder. |
+| `ac3/core/coupling.hpp`, `eac3_tools.hpp` | Internal — coding-tool internals shared by encoder and decoder, selected via `plan::Tools`/content-adaptive search on the encode side and driven by the bitstream on the decode side; not instantiated directly by a caller. |
 | `ac3/core/crc16.hpp`, `fft.hpp`, `aht_tables.hpp`, `bitalloc_tables.hpp`, `oba/joc_tables.hpp` | Internal — already undiscussed in `header-map.md`'s own intro; this just makes the tier explicit. |
 | `ac3/encoder/encoder.hpp`, `eac3_frame.hpp`, `silent_frame.hpp`, `plan.hpp`, `assignment.hpp` | Public. |
-| `ac3/encoder/coupling.hpp`, `eac3_tools.hpp`, `transient.hpp` | Internal — coding-tool implementations selected via `plan::Tools`/content-adaptive search, not instantiated directly by a caller. |
+| `ac3/encoder/transient.hpp` | Internal — a coding-tool implementation selected via `plan::Tools`/content-adaptive search, not instantiated directly by a caller. |
 | `ac3/decoder/decoder.hpp`, `output.hpp` | Public. |
 | `ac3/decoder/syntax_trace.hpp` | Diagnostic. |
 | `ac3/decoder/transient_prenoise.hpp` | Internal — applied automatically by `Eac3Decoder`; a caller observes its buffering effect, never calls it. |
 | `ac3/io/elementary.hpp`, `metadata_edit.hpp`, `probe.hpp`, `object_strip.hpp`, `dec3.hpp`, `wav.hpp` | Public. |
 | `ac3/meta/bsi.hpp`, `drc.hpp`, `loudness.hpp`, `mixing.hpp`, `qc.hpp` | Public. |
 | `ac3/spatial/spatial.hpp` | Public. |
+| `ac3/render/layout.hpp`, `render.hpp`, `serving.hpp`, `routing.hpp`, `trim_delay.hpp`, `identify.hpp`, `float_biquad.hpp` | **Experimental** — the output layout, renderer and speaker management the ESP32 player and Hearth share ([Hearth reference-player plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md)), outside the `v1.0.0` freeze while Hearth's phases settle their shape; see [Experimental modules](#experimental-modules). |
 | `ac3/oba/atmos.hpp`, `joc.hpp`, `oamd.hpp`, `motion.hpp`, `scene.hpp` | Public — `ac3::oba::joc` included, now that AP2 folded it into `ac3::oba` proper. |
 | `ac3/emdf/emdf.hpp` | Public. |
 | `ac3/iec61937/iec61937.hpp` | Public. |
@@ -75,7 +77,7 @@ surface; a minor release adds to it; a major release is the only place a Public 
 permitted, and per-header ABI compatibility only holds within a major version (see
 [SOVERSION](#soversion) below). Before `v1.0.0`, none of that holds — every `0.x` tag may break
 anything, and has (this is what "all releases are prereleases" means to the vcpkg registry
-reviewer's maturity rule cited in the roadmap entry this page replaces).
+reviewer's maturity rule).
 
 `AC3FORGE_DEPRECATED` (and each module's own equivalent — `MATROSKA_DEPRECATED`,
 `AC3ADM_DEPRECATED`, and so on, all `generate_export_header()` output) exists in every generated
@@ -146,7 +148,7 @@ being retrofitted by this page — every existing struct is passed by value/stac
 fixed, compiled-in `sizeof()` no runtime check can work around. The policy mirrors the C++ config
 aggregates' own (`docs/library/index.md`'s pimpl note): a field added to an existing struct after
 `v1.0.0` needs either a major version bump, or an additive sibling (`ac3forge_encoder_config_v2_t`
-plus a `_v2` creation function, the same shape a new field needing a genuinely different type
+plus a `_v2` creation function, the same shape a new field needing a different type
 would already require). A `struct_size`-sentinel scheme (`vkStructureType`/`pNext`-style
 extensibility) was considered and declined: it adds a branch to every function taking a config
 struct for a growth path the C++ side doesn't need either, and after `v1.0.0` a plain major bump
@@ -155,19 +157,20 @@ already covers the same case without it.
 ## Experimental modules
 
 Not every installed, default-on module is part of the `v1.0.0` freeze. `ac3iab::ac3iab` (the
-SMPTE ST 2098-2 IAB reader, roadmap `IM1` phase 1 of 3) is real, tested, and default-built
-(`AC3FORGE_BUILD_IAB`), but nothing in the CLI or GUI consumes it yet and its own model is still
-being built out (`AudioDataDLC`'s Annex B coder is read by identity only, not decoded — see
-`header-map.md`). It is **Experimental**: installed, versioned, and functional, but explicitly
-outside the compatibility promise `v1.0.0` makes for the Public tier above, until `IM1` finishes
-and this page is updated to promote it. The same designation applies to any future codec-blind
-reader added the same way (an `iamf::` IAMF reader or an `ac4::` AC-4 reader, should either be
-started) and to `ac3::mlp` when the TrueHD/MLP branch lands (roadmap `IM5`, itself already
+SMPTE ST 2098-2 IAB reader) is real, tested, and default-built (`AC3FORGE_BUILD_IAB`).
+`ac3cli atmos-iab` consumes it through the opt-in `ac3::admbridge` module, while the GUI does
+not. Its own model is still being built out (`AudioDataDLC`'s Annex B coder is read by identity
+only, not decoded — see [Header map](header-map.md)). It is **Experimental**: installed,
+versioned, and functional, but explicitly outside the compatibility promise `v1.0.0` makes for
+the Public tier above until this page deliberately promotes it. The same designation applies to
+`ac3::mlp` when the TrueHD/MLP branch lands (itself already
 scoped as "an explicitly experimental module" gated behind its own `AC3FORGE_BUILD_MLP` — this
 page's policy just confirms that plan rather than overriding it; real interoperability, `IM6`,
 stays separately blocked on MLP/FBA source material that isn't public). A new module defaults to
 Experimental from its first merge, and only leaves that tier through a deliberate, documented
-decision on this page, the same way `ac3iab` will.
+decision on this page, the same way `ac3iab` will. `ac3::render` is one: it moved into
+`ac3::forge` from the ESP32 player to serve the desktop player as well, and its speaker
+management is new with it.
 
 `ac3adm::ac3adm` and `ac3::admbridge` are a different case: also opt-in
 (`-DAC3FORGE_BUILD_ADM=ON`), but consumed for real by the ADM→Atmos bridging path and stable in

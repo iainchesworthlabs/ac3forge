@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# ac3::admbridge - roadmap item B1 phase 2: maps the ADM object graph
+# ac3::admbridge - ADM BWF → JOC bridge, phase 2: maps the ADM object graph
 # ac3adm::ac3adm (src/ac3adm) parses onto ac3::oba::AtmosEncoder's input shape.
 #
 # A NEW standalone module, not folded into either side it bridges, for two
@@ -20,7 +20,7 @@
 # without ac3adm (there is nothing to bridge), and ac3::forge is
 # unconditionally available regardless, so a separate option would only ever
 # take the same value AC3FORGE_BUILD_ADM already does - one flag, not two
-# that must be kept in sync by hand. ROADMAP.md's B2 entry (a future DAMF
+# that must be kept in sync by hand. a future DAMF reader (out of scope; was B2
 # reader) names this module as the "mapping layer" it plans to share, which
 # is the other half of why this lives on its own rather than inside either
 # neighbour: a future second ADM-graph producer should be able to depend on
@@ -67,7 +67,7 @@ target_include_directories(admbridge_objects
 target_compile_features(admbridge_objects PUBLIC cxx_std_23)
 
 # PUBLIC: this module's own public headers (bridge.hpp, coordinates.hpp, iab_bridge.hpp) name
-# types from ac3::oba (ac3::forge), ac3adm::ac3adm AND (roadmap IM1 phase 3) ac3iab::ac3iab in
+# types from ac3::oba (ac3::forge), ac3adm::ac3adm AND (IAB reader phase 3) ac3iab::ac3iab in
 # their signatures (ac3::oba::ObjectPath, ac3adm::AdmDocument, ac3iab::IABitstreamFrame, ...), so
 # anything linking ac3::admbridge needs all three transitively - the same PUBLIC-link-its-
 # dependency shape src/signing/CMakeLists.txt uses for ac3::forge.

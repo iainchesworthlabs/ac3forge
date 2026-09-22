@@ -18,18 +18,30 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <chrono>
 #include <cstring>
+#include <future>
 #include <thread>
 
+#include "ac3/audio/playback_counter.hpp"
 #include "ac3/audio/ring_buffer.hpp"
+#include "ac3/audio/speakers.hpp"
 #include "ac3/iec61937/iec61937.hpp"
+#include "windows_support.hpp"
 
 namespace ac3::audio {
 
 namespace {
 
 using Microsoft::WRL::ComPtr;
+using windows_audio::ComScope;
+using windows_audio::kClsidMmDeviceEnumerator;
+using windows_audio::kIidAudioClient;
+using windows_audio::kIidAudioRenderClient;
+using windows_audio::kIidMmDeviceEnumerator;
+using windows_audio::stream_gone;
 
 // PKEY_Device_FriendlyName, spelled out for the same reason as in the capture
 // backend: functiondiscoverykeys_devpkey.h needs a fragile include ordering.
@@ -57,20 +69,11 @@ constexpr GUID kSubtypeIec61937DolbyDigital = {
 constexpr GUID kSubtypeIec61937DolbyDigitalPlus = {
     0x0000000a, 0x0cea, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 
-// The class and interface identifiers, spelled out for a related reason: the
-// SDK declares CLSID_MMDeviceEnumerator and the IAudio* IIDs but ships no
-// import library that defines them, so the only header-only way to name them
-// is __uuidof - an MSVC extension that clang rejects under -Wpedantic. The
-// values are the DECLSPEC_UUID / MIDL_INTERFACE strings in mmdeviceapi.h and
-// audioclient.h.
-constexpr CLSID kClsidMmDeviceEnumerator = {  // {bcde0395-e52f-467c-8e3d-c4579291692e}
-    0xbcde0395, 0xe52f, 0x467c, {0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e}};
-constexpr IID kIidMmDeviceEnumerator = {  // {a95664d2-9614-4f35-a746-de8db63617e6}
-    0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6}};
-constexpr IID kIidAudioClient = {  // {1cb9ad4c-dbfa-4c32-b178-c2f568a703b2}
-    0x1cb9ad4c, 0xdbfa, 0x4c32, {0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2}};
-constexpr IID kIidAudioRenderClient = {  // {f294acfc-3146-4483-a7bf-addca7c260e2}
-    0xf294acfc, 0x3146, 0x4483, {0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2}};
+// KSDATAFORMAT_SUBTYPE_PCM: {00000001-0000-0010-8000-00aa00389b71}, the
+// WAVE_FORMAT_PCM tag in the same GUID family. Needed for the rate probes,
+// which ask about ordinary PCM rather than a bitstream.
+constexpr GUID kSubtypePcm = {
+    0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 
 // The IEC 61937 carrier is a 2-channel 16-bit stream; one AC-3 frame occupies
 // one 6144-byte burst = 1536 stereo frames, matching the AC-3 frame duration.
@@ -185,29 +188,64 @@ std::string endpoint_display_name(IMMDevice* device, const std::string& id) {
     return id.empty() ? std::string{"Unnamed audio endpoint"} : "Unnamed endpoint " + id;
 }
 
-class ComScope {
-public:
-    ComScope() : hr_(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
-    ~ComScope() {
-        if (SUCCEEDED(hr_)) {
-            CoUninitialize();
+// The endpoint's configured speaker arrangement, which the mix format does not
+// always carry: a stereo mix on a 5.1 endpoint has dwChannelMask 0x3, while
+// PKEY_AudioEndpoint_PhysicalSpeakers holds what the user set under Sound >
+// Configure. Same SPEAKER_* bits either way (ac3::audio::speakers.hpp).
+constexpr PROPERTYKEY kPkeyAudioEndpointPhysicalSpeakers = {
+    {0x1da5d803, 0xd492, 0x4edd, {0x8c, 0x23, 0xe0, 0xc0, 0xff, 0xee, 0x7f, 0x0e}}, 3};
+
+std::uint32_t physical_speakers(IMMDevice* device) {
+    ComPtr<IPropertyStore> properties;
+    if (FAILED(device->OpenPropertyStore(STGM_READ, &properties))) {
+        return 0;
+    }
+    PROPVARIANT value;
+    PropVariantInit(&value);
+    std::uint32_t mask = 0;
+    if (SUCCEEDED(properties->GetValue(kPkeyAudioEndpointPhysicalSpeakers, &value)) &&
+        value.vt == VT_UI4) {
+        mask = value.ulVal;
+    }
+    PropVariantClear(&value);
+    // SPEAKER_ALL says "every speaker" without saying which, which is no more
+    // usable than nothing at all.
+    return mask & kSpeakerAllPositions;
+}
+
+// A 16-bit PCM format of `channels` channels at `sample_rate`, as
+// WAVEFORMATEXTENSIBLE, which is the only form exclusive mode takes above two
+// channels.
+WAVEFORMATEXTENSIBLE make_pcm_format(std::uint32_t sample_rate, WORD channels, DWORD mask) {
+    WAVEFORMATEXTENSIBLE format{};
+    auto& wf = format.Format;
+    wf.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+    wf.nChannels = channels;
+    wf.nSamplesPerSec = sample_rate;
+    wf.wBitsPerSample = kCarrierBits;
+    wf.nBlockAlign = static_cast<WORD>(channels * kCarrierBits / 8);
+    wf.nAvgBytesPerSec = sample_rate * wf.nBlockAlign;
+    wf.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
+    format.Samples.wValidBitsPerSample = kCarrierBits;
+    format.dwChannelMask = mask != 0 ? mask : default_speakers(channels);
+    format.SubFormat = kSubtypePcm;
+    return format;
+}
+
+// Which of the rates a consumer endpoint might run at it accepts in exclusive
+// mode, at its own width: the rate list RenderDeviceInfo reports. Shared mode
+// resamples anything, so asking about it would answer "all of them" and say
+// nothing about the device.
+std::vector<std::uint32_t> probe_sample_rates(IAudioClient* client, WORD channels, DWORD mask) {
+    constexpr std::array<std::uint32_t, 6> kRates{44100, 48000, 88200, 96000, 176400, 192000};
+    std::vector<std::uint32_t> rates;
+    for (const std::uint32_t rate : kRates) {
+        WAVEFORMATEXTENSIBLE format = make_pcm_format(rate, channels, mask);
+        if (client->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, &format.Format, nullptr) == S_OK) {
+            rates.push_back(rate);
         }
     }
-    ComScope(const ComScope&) = delete;
-    ComScope& operator=(const ComScope&) = delete;
-    [[nodiscard]] bool ok() const { return SUCCEEDED(hr_) || hr_ == RPC_E_CHANGED_MODE; }
-
-private:
-    HRESULT hr_;
-};
-
-std::expected<ComPtr<IMMDeviceEnumerator>, PassthroughError> make_enumerator() {
-    ComPtr<IMMDeviceEnumerator> enumerator;
-    if (FAILED(CoCreateInstance(kClsidMmDeviceEnumerator, nullptr, CLSCTX_ALL,
-                                kIidMmDeviceEnumerator, &enumerator))) {
-        return std::unexpected(PassthroughError::kComFailure);
-    }
-    return enumerator;
+    return rates;
 }
 
 }  // namespace
@@ -236,7 +274,7 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
     if (!com.ok()) {
         return std::unexpected(PassthroughError::kComFailure);
     }
-    auto enumerator = make_enumerator();
+    auto enumerator = windows_audio::make_enumerator(PassthroughError::kComFailure);
     if (!enumerator) {
         return std::unexpected(enumerator.error());
     }
@@ -289,10 +327,35 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
             // see RenderDeviceInfo::channels. A failure here is not an error
             // for this function: the field stays 0 ("cannot say") and the
             // passthrough probes below carry on regardless.
+            std::uint32_t mix_rate = 0;
             WAVEFORMATEX* mix = nullptr;
             if (SUCCEEDED(client->GetMixFormat(&mix)) && mix != nullptr) {
                 info.channels = mix->nChannels;
+                mix_rate = mix->nSamplesPerSec;
+                // The mix format carries a mask only in its EXTENSIBLE form,
+                // and then only the one the engine is mixing to: a stereo mix
+                // on a 5.1 endpoint says 0x3. The endpoint's own arrangement
+                // wins where it has one.
+                if (mix->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
+                    mix->cbSize >= sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)) {
+                    const auto* extensible = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(mix);
+                    info.speakers = extensible->dwChannelMask & kSpeakerAllPositions;
+                }
                 CoTaskMemFree(mix);
+            }
+            if (const std::uint32_t configured = physical_speakers(device.Get());
+                configured != 0 && speaker_count(configured) == info.channels) {
+                info.speakers = configured;
+            }
+
+            info.sample_rates = probe_sample_rates(
+                client.Get(), info.channels != 0 ? info.channels : kCarrierChannels, info.speakers);
+            if (info.sample_rates.empty() && mix_rate != 0) {
+                // Exclusive mode is unavailable, so the device cannot be asked
+                // what it takes. The rate the engine is mixing at is one the
+                // endpoint is rendering right now, which is the strongest
+                // thing left to say (see RenderDeviceInfo::sample_rates).
+                info.sample_rates.push_back(mix_rate);
             }
 
             // IsFormatSupported is the only honest way to ask "can this
@@ -328,13 +391,40 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
 struct PassthroughSink::Impl {
     std::unique_ptr<ByteRingBuffer> queue;
     std::jthread worker;
+    // Raised by the render thread once the device is open. Lowered by stop(),
+    // or by the render thread itself when the device goes away under it: the
+    // loop's end says how, and why that is the only flag it touches.
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
-    std::atomic<std::uint64_t> rendered{0};
+    // Accumulated in bytes, not bursts: the exclusive-mode buffer WASAPI
+    // grants (driven by the device's own period) has no reason to align to
+    // a whole burst, so a per-callback "bytes this cycle / burst_bytes"
+    // would truncate to 0 almost every cycle. stats() converts to bursts.
+    std::atomic<std::uint64_t> rendered_bytes{0};
     std::atomic<std::uint64_t> underruns{0};
     // Set by start(); submit()/can_submit() validate against whichever burst
     // size the chosen BitstreamFormat uses.
     std::size_t burst_bytes = iec61937::kBurstBytes;
+    // The link's frames: four bytes each, and carrier_ratio() of them to a
+    // content frame. Set by start() before the render thread runs.
+    std::size_t frame_bytes = kCarrierChannels * (kCarrierBits / 8);
+    std::uint32_t ratio = 1;
+    // What the render thread last saw of the device, in link frames, for
+    // position(): the frames handed over against what GetCurrentPadding said
+    // it still held. Only the render thread calls WASAPI - the client lives on
+    // it, and the AUDIOSES crash start() describes is what calling it from
+    // another thread cost - so position() reads the counter.
+    PlaybackCounter counter;
+    // IAudioClient::GetStreamLatency, in link frames.
+    std::atomic<std::uint32_t> latency{0};
+    // Set by pause()/resume() and flush(); acted on by the render thread.
+    // `flushes` counts the flushes it has completed, which flush() waits for,
+    // and `flush_mark` is how far the queue had been written when the flush
+    // was asked for: what it drops.
+    std::atomic_bool paused{false};
+    std::atomic_bool flushing{false};
+    std::atomic<std::uint64_t> flushes{0};
+    std::atomic<std::size_t> flush_mark{0};
 };
 
 PassthroughSink::PassthroughSink() : impl_(std::make_unique<Impl>()) {}
@@ -349,12 +439,70 @@ bool PassthroughSink::running() const {
 
 PassthroughStats PassthroughSink::stats() const {
     return {.bursts_submitted = impl_->submitted.load(std::memory_order_relaxed),
-            .bursts_rendered = impl_->rendered.load(std::memory_order_relaxed),
+            .bursts_rendered =
+                impl_->rendered_bytes.load(std::memory_order_relaxed) / impl_->burst_bytes,
             .underruns = impl_->underruns.load(std::memory_order_relaxed)};
 }
 
+std::optional<MonitorPosition> PassthroughSink::position() const {
+    if (!running() || !impl_->queue) {
+        return std::nullopt;
+    }
+    const std::uint64_t queued_here = impl_->queue->available() / impl_->frame_bytes;
+    return per_content_frame(
+        impl_->counter.position(queued_here, impl_->latency.load(std::memory_order_relaxed)),
+        impl_->ratio);
+}
+
+void PassthroughSink::flush() {
+    if (!running()) {
+        return;
+    }
+    const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
+    impl_->flushing.store(true, std::memory_order_release);
+    // As MonitorSink::flush(): the render thread stops, resets and restarts
+    // the device and drops the queue up to the mark. A render period is 10 ms
+    // at most, so this waits far longer than it should need to. Past that the
+    // device has stopped answering, and the flush is left for the thread to
+    // make when it next runs; the mark keeps it from dropping bursts
+    // submitted after this call returned. A thread that has ended because
+    // its device went away will not run again, and lowers `running` as it
+    // goes, which ends the wait at once.
+    for (int waited = 0; waited < 200; ++waited) {
+        if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+std::expected<void, PassthroughError> PassthroughSink::pause() {
+    if (!running()) {
+        return std::unexpected(PassthroughError::kNotRunning);
+    }
+    impl_->paused.store(true, std::memory_order_release);
+    return {};
+}
+
+std::expected<void, PassthroughError> PassthroughSink::resume() {
+    if (!running()) {
+        return std::unexpected(PassthroughError::kNotRunning);
+    }
+    impl_->paused.store(false, std::memory_order_release);
+    return {};
+}
+
+bool PassthroughSink::paused() const {
+    // A pause is a property of a running stream, so one whose device has
+    // gone is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
+}
+
 bool PassthroughSink::can_submit() const {
-    if (!impl_->queue) {
+    // Nothing takes a burst once the stream has ended, whatever room the
+    // queue it leaves behind still has.
+    if (!running() || !impl_->queue) {
         return false;
     }
     return impl_->queue->capacity() - impl_->queue->available() > impl_->burst_bytes;
@@ -380,6 +528,9 @@ void PassthroughSink::stop() {
         impl_->worker.request_stop();
         impl_->worker.join();
     }
+    // A pause is a property of a running stream, so it does not outlive one.
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
     impl_->running.store(false, std::memory_order_release);
 }
 
@@ -389,12 +540,17 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (running()) {
         return std::unexpected(PassthroughError::kAlreadyRunning);
     }
+    // A render thread that ended because its device went away still holds
+    // its client until it is joined, and an exclusive hold can refuse the
+    // next Initialize until then. stop() joins it; with nothing started it
+    // does nothing.
+    stop();
 
     ComScope com;
     if (!com.ok()) {
         return std::unexpected(PassthroughError::kComFailure);
     }
-    auto enumerator = make_enumerator();
+    auto enumerator = windows_audio::make_enumerator(PassthroughError::kComFailure);
     if (!enumerator) {
         return std::unexpected(enumerator.error());
     }
@@ -413,101 +569,235 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         }
     }
 
-    ComPtr<IAudioClient> client;
-    if (FAILED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
-        return std::unexpected(PassthroughError::kComFailure);
-    }
-
     auto format = make_format(format_kind, sample_rate, 6);
-    if (client->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, &format.FormatExt.Format,
-                                  nullptr) != S_OK) {
-        return std::unexpected(PassthroughError::kFormatRejected);
-    }
-    // The carrier (link) rate, not the content rate: identical to
-    // `sample_rate` for AC-3, 4x it for E-AC-3 (make_eac3_format already
-    // applied that). GetDevicePeriod/GetBufferSize below deal in frames of
-    // this carrier, so the realignment math has to use it too.
-    const std::uint32_t carrier_rate = format.FormatExt.Format.nSamplesPerSec;
-
-    REFERENCE_TIME default_period = 0;
-    REFERENCE_TIME minimum_period = 0;
-    if (FAILED(client->GetDevicePeriod(&default_period, &minimum_period))) {
-        return std::unexpected(PassthroughError::kComFailure);
-    }
-    REFERENCE_TIME period = default_period;
-
-    HRESULT hr = client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE,
-                                    AUDCLNT_STREAMFLAGS_EVENTCALLBACK, period, period,
-                                    &format.FormatExt.Format, nullptr);
-    if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
-        // The documented realignment dance: ask what buffer size the driver
-        // actually wants, convert it back to a period, and re-Initialize on a
-        // fresh client (an initialised one cannot be reconfigured).
-        UINT32 aligned_frames = 0;
-        if (FAILED(client->GetBufferSize(&aligned_frames)) || aligned_frames == 0) {
-            return std::unexpected(PassthroughError::kComFailure);
-        }
-        period = static_cast<REFERENCE_TIME>(
-            10000.0 * 1000 * aligned_frames / carrier_rate + 0.5);
-        client.Reset();
-        if (FAILED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
-            return std::unexpected(PassthroughError::kComFailure);
-        }
-        hr = client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-                                period, period, &format.FormatExt.Format, nullptr);
-    }
-    if (hr == AUDCLNT_E_DEVICE_IN_USE || hr == AUDCLNT_E_EXCLUSIVE_MODE_NOT_ALLOWED) {
-        return std::unexpected(PassthroughError::kExclusiveUnavailable);
-    }
-    if (FAILED(hr)) {
-        return std::unexpected(PassthroughError::kComFailure);
-    }
-
-    UINT32 buffer_frames = 0;
-    if (FAILED(client->GetBufferSize(&buffer_frames))) {
-        return std::unexpected(PassthroughError::kComFailure);
-    }
-
-    HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (ready == nullptr || FAILED(client->SetEventHandle(ready))) {
-        if (ready != nullptr) {
-            CloseHandle(ready);
-        }
-        return std::unexpected(PassthroughError::kComFailure);
-    }
-
-    ComPtr<IAudioRenderClient> render;
-    if (FAILED(client->GetService(kIidAudioRenderClient, &render))) {
-        CloseHandle(ready);
-        return std::unexpected(PassthroughError::kComFailure);
-    }
+    const std::size_t frame_bytes = format.FormatExt.Format.nBlockAlign;
 
     // Room for roughly a second of bursts, so a caller encoding slightly
     // ahead of real time never has to spin.
     impl_->burst_bytes = burst_bytes_for(format_kind);
     impl_->queue = std::make_unique<ByteRingBuffer>(impl_->burst_bytes * 40);
+    impl_->frame_bytes = frame_bytes;
+    impl_->ratio = carrier_ratio(format_kind);
     impl_->submitted.store(0, std::memory_order_relaxed);
-    impl_->rendered.store(0, std::memory_order_relaxed);
+    impl_->rendered_bytes.store(0, std::memory_order_relaxed);
     impl_->underruns.store(0, std::memory_order_relaxed);
-    impl_->running.store(true, std::memory_order_release);
+    impl_->counter.restart();
+    impl_->latency.store(0, std::memory_order_relaxed);
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
+    impl_->flushes.store(0, std::memory_order_relaxed);
 
-    const std::size_t frame_bytes = format.FormatExt.Format.nBlockAlign;
+    // Activate, IsFormatSupported, Initialize, GetService and Start all run
+    // on this one worker thread from here on, never on the thread that calls
+    // start(). Every real device this backend had been checked against
+    // before an actual AV receiver was cabled to a Windows machine was
+    // shared-mode/PCM, where handing the IAudioClient/IAudioRenderClient
+    // pointers to a second thread (as MonitorSink still does) works fine.
+    // The first real exclusive-mode bitstream endpoint to accept AC-3/E-AC-3
+    // crashed inside AUDIOSES.DLL the instant a different thread called
+    // Start() on a client Initialize()'d elsewhere - see
+    // docs/platforms/windows.md. start() blocks on a promise so it still
+    // reports the real open/format-support result synchronously.
+    std::promise<std::expected<void, PassthroughError>> ready_promise;
+    auto ready_future = ready_promise.get_future();
 
-    impl_->worker = std::jthread([this, client, render, ready, buffer_frames,
-                                  frame_bytes](const std::stop_token& stop) mutable {
+    impl_->worker = std::jthread([this, device, format, frame_bytes,
+                                  promise = std::move(ready_promise)](
+                                     const std::stop_token& stop) mutable {
         ComScope thread_com;
+        if (!thread_com.ok()) {
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+
+        ComPtr<IAudioClient> client;
+        if (FAILED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+
+        if (client->IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, &format.FormatExt.Format,
+                                      nullptr) != S_OK) {
+            promise.set_value(std::unexpected(PassthroughError::kFormatRejected));
+            return;
+        }
+        // The carrier (link) rate, not the content rate: identical to
+        // `sample_rate` for AC-3, 4x it for E-AC-3 (make_eac3_format already
+        // applied that). GetDevicePeriod/GetBufferSize below deal in frames
+        // of this carrier, so the realignment math has to use it too.
+        const std::uint32_t carrier_rate = format.FormatExt.Format.nSamplesPerSec;
+
+        REFERENCE_TIME default_period = 0;
+        REFERENCE_TIME minimum_period = 0;
+        if (FAILED(client->GetDevicePeriod(&default_period, &minimum_period))) {
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+        REFERENCE_TIME period = default_period;
+
+        HRESULT hr = client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE,
+                                        AUDCLNT_STREAMFLAGS_EVENTCALLBACK, period, period,
+                                        &format.FormatExt.Format, nullptr);
+        if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
+            // The documented realignment dance: ask what buffer size the
+            // driver actually wants, convert it back to a period, and
+            // re-Initialize on a fresh client (an initialised one cannot be
+            // reconfigured).
+            UINT32 aligned_frames = 0;
+            if (FAILED(client->GetBufferSize(&aligned_frames)) || aligned_frames == 0) {
+                promise.set_value(std::unexpected(PassthroughError::kComFailure));
+                return;
+            }
+            period = static_cast<REFERENCE_TIME>(
+                10000.0 * 1000 * aligned_frames / carrier_rate + 0.5);
+            client.Reset();
+            if (FAILED(device->Activate(kIidAudioClient, CLSCTX_ALL, nullptr, &client))) {
+                promise.set_value(std::unexpected(PassthroughError::kComFailure));
+                return;
+            }
+            hr = client->Initialize(AUDCLNT_SHAREMODE_EXCLUSIVE, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                                    period, period, &format.FormatExt.Format, nullptr);
+        }
+        if (hr == AUDCLNT_E_DEVICE_IN_USE || hr == AUDCLNT_E_EXCLUSIVE_MODE_NOT_ALLOWED) {
+            promise.set_value(std::unexpected(PassthroughError::kExclusiveUnavailable));
+            return;
+        }
+        if (FAILED(hr)) {
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+
+        UINT32 buffer_frames = 0;
+        if (FAILED(client->GetBufferSize(&buffer_frames))) {
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+
+        HANDLE ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (ready == nullptr || FAILED(client->SetEventHandle(ready))) {
+            if (ready != nullptr) {
+                CloseHandle(ready);
+            }
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+
+        ComPtr<IAudioRenderClient> render;
+        if (FAILED(client->GetService(kIidAudioRenderClient, &render))) {
+            CloseHandle(ready);
+            promise.set_value(std::unexpected(PassthroughError::kComFailure));
+            return;
+        }
+
+        // GetStreamLatency is in 100 ns units: the delay past the buffer this
+        // sink fills, which is what MonitorPosition::latency_frames reports.
+        REFERENCE_TIME stream_latency = 0;
+        if (SUCCEEDED(client->GetStreamLatency(&stream_latency)) && stream_latency > 0) {
+            impl_->latency.store(
+                static_cast<std::uint32_t>(static_cast<std::uint64_t>(stream_latency) *
+                                           carrier_rate / 10'000'000ULL),
+                std::memory_order_relaxed);
+        }
+
+        impl_->running.store(true, std::memory_order_release);
+        promise.set_value({});
+
         DWORD mmcss_index = 0;
         HANDLE mmcss = AvSetMmThreadCharacteristicsW(L"Pro Audio", &mmcss_index);
 
         std::vector<std::byte> chunk;
-        client->Start();
+        std::uint64_t handed_over = 0;
+        // Set when the loop ends because the device did rather than because
+        // stop() asked it to. A device that will not start has gone, or will
+        // not play this stream; no render event would ever come for it.
+        bool lost = FAILED(client->Start());
+        bool device_running = !lost;
 
-        while (!stop.stop_requested()) {
-            if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
+        while (!lost && !stop.stop_requested()) {
+            // A pause stops the device and leaves everything else standing:
+            // the queue keeps its bursts and goes on taking more. No render
+            // event arrives while stopped, so the loop sleeps rather than
+            // wait for one - and asks the device whether it is still there,
+            // since nothing else would say.
+            if (impl_->paused.load(std::memory_order_acquire)) {
+                if (device_running) {
+                    client->Stop();
+                    device_running = false;
+                }
+                if (!impl_->flushing.load(std::memory_order_acquire)) {
+                    UINT32 held = 0;
+                    if (stream_gone(client->GetCurrentPadding(&held))) {
+                        lost = true;
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    continue;
+                }
+            }
+            // A flush drops both buffers: Reset() discards what the device
+            // holds, and is only legal while stopped. The counts restart with
+            // them, as position() promises.
+            if (impl_->flushing.exchange(false, std::memory_order_acq_rel)) {
+                if (device_running) {
+                    client->Stop();
+                    device_running = false;
+                }
+                client->Reset();
+                impl_->queue->discard_to(impl_->flush_mark.load(std::memory_order_acquire));
+                handed_over = 0;
+                impl_->counter.restart();
+                impl_->rendered_bytes.store(0, std::memory_order_relaxed);
+                impl_->submitted.store(0, std::memory_order_relaxed);
+                impl_->flushes.fetch_add(1, std::memory_order_release);
                 continue;
             }
+            if (!device_running) {
+                // An event signalled before the stop is stale: after a pause
+                // the device still holds the buffer it had, and would refuse
+                // another until it has played that one. A flush's Stop and
+                // Reset on a device that has gone fail quietly, so it is this
+                // Start that finds out.
+                ResetEvent(ready);
+                if (FAILED(client->Start())) {
+                    lost = true;
+                    break;
+                }
+                device_running = true;
+            }
+            if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
+                // Many periods without an event. A device can stall and come
+                // back - an HDMI display asleep - but one that has been
+                // removed need never signal again, so the wait alone would
+                // not notice. The padding is the cheapest thing to ask; only
+                // an answer that the stream has gone ends it, since some
+                // drivers decline the question (see below).
+                UINT32 held = 0;
+                if (stream_gone(client->GetCurrentPadding(&held))) {
+                    lost = true;
+                    break;
+                }
+                continue;
+            }
+            // Exclusive event-driven streams take a whole buffer each period,
+            // so the padding sizes nothing here; it only tells the counter what
+            // the device still holds. A driver that will not say is taken to
+            // have played its buffer, which is what the event means.
+            UINT32 padding = 0;
+            if (FAILED(client->GetCurrentPadding(&padding))) {
+                padding = 0;
+            }
+            impl_->counter.report(handed_over, padding);
             BYTE* target = nullptr;
-            if (FAILED(render->GetBuffer(buffer_frames, &target))) {
+            const HRESULT buffer_result = render->GetBuffer(buffer_frames, &target);
+            if (buffer_result == AUDCLNT_E_BUFFER_TOO_LARGE) {
+                // The buffer is not free yet, which only a wake from before a
+                // restart can say; the next event is a real one. Anything
+                // else is the device failing - AUDCLNT_E_DEVICE_INVALIDATED
+                // for one unplugged - and ends the thread.
+                continue;
+            }
+            if (FAILED(buffer_result)) {
+                lost = true;
                 break;
             }
             const std::size_t wanted = static_cast<std::size_t>(buffer_frames) * frame_bytes;
@@ -523,9 +813,22 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
             }
             std::memcpy(target, chunk.data(), wanted);
             render->ReleaseBuffer(buffer_frames, 0);
-            impl_->rendered.fetch_add(got / impl_->burst_bytes, std::memory_order_relaxed);
+            handed_over += buffer_frames;
+            impl_->counter.report(handed_over, static_cast<std::uint64_t>(padding) + buffer_frames);
+            impl_->rendered_bytes.fetch_add(got, std::memory_order_relaxed);
         }
 
+        if (lost) {
+            // The stream has ended with its device, and says so the way a
+            // stop() would: running() false, so position() reports nothing,
+            // submit() refuses, and flush(), pause() and resume() return at
+            // once - a flush() already waiting sees it on its next look.
+            // Only the flag is touched. The queue's read side and the counts
+            // are this thread's to the end, and it has finished with them;
+            // `paused` and `flushing` are the caller's, and stop() lowers
+            // them when it joins this thread, which it still has to do.
+            impl_->running.store(false, std::memory_order_release);
+        }
         client->Stop();
         if (mmcss != nullptr) {
             AvRevertMmThreadCharacteristics(mmcss);
@@ -533,6 +836,12 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         CloseHandle(ready);
     });
 
+    auto result = ready_future.get();
+    if (!result) {
+        impl_->worker.join();
+        impl_->queue.reset();
+        return std::unexpected(result.error());
+    }
     return {};
 }
 

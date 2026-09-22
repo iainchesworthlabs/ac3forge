@@ -64,7 +64,7 @@ struct f64x2 {
 // not what std::round does), so this is built out of arithmetic. The
 // alternative it replaces is a call to libm's round(), which MSVC and the
 // System V libraries both leave out of line - about 9,100 of them per
-// encoded frame (ROADMAP PF2).
+// encoded frame (inline to_fixed25 fusion).
 //
 // The construction, on the MAGNITUDE a = |x| so the tie case has only one
 // direction to worry about:
@@ -107,6 +107,57 @@ struct f64x2 {
     const __m128d small = _mm_andnot_pd(already_integral, _mm_or_pd(rounded, sign));
     const __m128d large = _mm_and_pd(already_integral, x.v);
     return f64x2{_mm_or_pd(small, large)};
+}
+
+// Four IEEE-754 single-precision floats. See the generic header for what this
+// type is for and why it carries no round_ties_away.
+//
+// The single-precision operations are SSE1 rather than SSE2, which is the
+// same kind of guarantee: both are part of the x86-64 architecture, so this
+// needs no -march= flag and no runtime dispatch either.
+//
+// Bit-exactness rests on the same argument f64x2 makes one width down.
+// Scalar `float` arithmetic on x86-64 already compiles to addss/subss/mulss
+// on these same units, and FLT_EVAL_METHOD is 0 here, so no intermediate
+// carries the excess precision an x87 build would have given it -
+// _mm_add_ps/_mm_sub_ps/_mm_mul_ps are those instructions four lanes at a
+// time. As in f64x2, nothing below uses an approximate reciprocal, rsqrt, or
+// a min/max instruction.
+struct f32x4 {
+    __m128 v;
+
+    [[nodiscard]] static f32x4 load(const float* p) { return f32x4{_mm_loadu_ps(p)}; }
+    // _mm_setr_ps, not _mm_set_ps: the r form takes its arguments lane 0
+    // first, which is the order this seam states. f64x2::set above has to
+    // reverse its two by hand for want of an _mm_setr_pd.
+    [[nodiscard]] static f32x4 set(float a, float b, float c, float d) {
+        return f32x4{_mm_setr_ps(a, b, c, d)};
+    }
+    [[nodiscard]] static f32x4 broadcast(float a) { return f32x4{_mm_set1_ps(a)}; }
+
+    void store(float* p) const { _mm_storeu_ps(p, v); }
+
+    // Pure lane selection - a shuffle moves bits and performs no arithmetic,
+    // so an extracted lane is the float that lane holds.
+    [[nodiscard]] float lane0() const { return _mm_cvtss_f32(v); }
+    [[nodiscard]] float lane1() const {
+        return _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(1, 1, 1, 1)));
+    }
+    [[nodiscard]] float lane2() const {
+        return _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 2, 2, 2)));
+    }
+    [[nodiscard]] float lane3() const {
+        return _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(3, 3, 3, 3)));
+    }
+};
+
+[[nodiscard]] inline f32x4 operator+(f32x4 a, f32x4 b) { return f32x4{_mm_add_ps(a.v, b.v)}; }
+[[nodiscard]] inline f32x4 operator-(f32x4 a, f32x4 b) { return f32x4{_mm_sub_ps(a.v, b.v)}; }
+[[nodiscard]] inline f32x4 operator*(f32x4 a, f32x4 b) { return f32x4{_mm_mul_ps(a.v, b.v)}; }
+// Sign-bit flip rather than 0.0f - a, for the reason f64x2's negation gives:
+// -0.0f has to negate to +0.0f the way unary minus on a float does.
+[[nodiscard]] inline f32x4 operator-(f32x4 a) {
+    return f32x4{_mm_xor_ps(a.v, _mm_set1_ps(-0.0F))};
 }
 
 struct i32x4 {

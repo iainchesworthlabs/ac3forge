@@ -354,7 +354,7 @@ bool parse_assignment(std::string_view text, std::span<const SourceShape> source
         }
         const auto address = entry.substr(0, colon);
         const auto dest = parse_destination(entry.substr(colon + 1));
-        if (!dest) {
+        if (!dest.has_value()) {
             return false;
         }
 

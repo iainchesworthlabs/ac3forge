@@ -24,7 +24,6 @@
 #include <bw64/bw64.hpp>
 
 #include "adm_model.hpp"
-#include "float_pcm_bw64.hpp"
 
 // Every `bw64::`/`adm::` symbol below is a vendored third-party library
 // (libbw64/libadm respectively, see src/ac3adm/CMakeLists.txt); every
@@ -42,9 +41,6 @@ std::string_view describe(AdmError error) {
     switch (error) {
         case AdmError::kCannotOpen: return "cannot open file";
         case AdmError::kNotRiff: return "not a well-formed RIFF/RF64/BW64 WAVE file";
-        case AdmError::kMissingFmt: return "missing fmt chunk";
-        case AdmError::kMissingData: return "missing data chunk";
-        case AdmError::kUnsupportedFormat: return "unsupported audio format";
         case AdmError::kMalformedXml: return "axml chunk is not well-formed XML";
         case AdmError::kMalformedAdm: return "axml chunk XML is not a valid ADM document";
         case AdmError::kOther: return "unexpected failure reading the BW64/ADM file";
@@ -71,7 +67,7 @@ std::filesystem::path make_temp_path() {
     std::random_device rd;
     const auto unique = (static_cast<std::uint64_t>(rd()) << 32) ^
                         static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) ^
-                        counter.fetch_add(1, std::memory_order_relaxed);
+                        counter.fetch_add(1);
     return std::filesystem::temp_directory_path() / ("ac3adm_" + std::to_string(unique) + ".wav");
 }
 
@@ -133,6 +129,30 @@ PcmAudio read_pcm(bw64::Bw64Reader& reader, std::uint64_t file_bytes) {
     // crashes.
     const auto block_align = static_cast<std::uint64_t>(channel_count) * reader.bitDepth() / 8;
     if (block_align == 0) {
+        return audio;
+    }
+    // libbw64's own copy of that same figure is a uint16_t, so a <fmt > whose channel count and
+    // sample width multiply past 65,535 wraps it - and WAVE's nBlockAlign field is 16 bits wide
+    // as well, so the file's declared value matches the wrapped one and libbw64's own
+    // "blockAlignment is X but should be Y" check passes it. Found against the 0.10.0 pin, where
+    // that meant 32,768 channels at 16 bits wrapped to 0 (numberOfFrames(), the call immediately
+    // below, dividing by it - a SIGFPE, on an uninstrumented build too) and 32,769 wrapped to 2
+    // (sizing read()'s buffer at two bytes a frame while its decodePcmSamples call read 65,538 of
+    // them - a heap overread the length of a whole frame, which an uninstrumented ac3adm ran as a
+    // clean execution and returned as audio). Neither file can be read on its own terms, since
+    // the container has no way to state a block alignment this large, so the PCM is left empty
+    // the way the two degenerate cases above leave it - a value this comparison can still reach.
+    //
+    // The pinned fork now guards the same thing one layer further in, and more strictly:
+    // FormatInfoChunk::blockAlignment() is utils::safeCast<uint16_t>, which THROWS rather than
+    // wraps, and that call happens inside parseFormatInfoChunk's own sanity check - before a
+    // Bw64Reader is ever constructed. Both fixtures above now fail the whole open (kCannotOpen)
+    // rather than reaching this function at all, confirmed by re-running them after the re-pin
+    // (tests/adm/test_adm.cpp's own case for this). This check stays regardless, the same
+    // defense-in-depth reasoning as chunk_sizes_fit()'s own comment above parse_bw64_path: it is
+    // this project's own code, and does not depend on the pinned dependency continuing to throw
+    // here rather than wrap.
+    if (reader.blockAlignment() != block_align) {
         return audio;
     }
     // numberOfFrames() is the <data> chunk's DECLARED size over that
@@ -249,22 +269,45 @@ std::expected<AdmModel, AdmError> read_adm_model(const bw64::Bw64Reader& reader)
 // allocator as its bounds check.
 //
 // One rule: a chunk whose declared size runs past the end of the file is
-// refused, unless it is <data>. Nothing about RF64's 0xFFFFFFFF "resolve
-// through <ds64>" escape (BS.2088-1 §4) needs special handling under that
-// rule, which is why none is here - an escape IS a size past the end of the
-// file, so it is allowed on <data> (where RF64 actually uses it, and where
-// read_pcm's own clamp bounds the result) and refused anywhere else.
+// refused, unless it is <data>.
 //
-// <data> is exempt for a real reason, not to dodge the escape: a recording
-// truncated mid-<data> is an ordinary file, libbw64 reads it as far as it
-// goes, and refusing it here would break a working case.
+// <data> is exempt for a real reason: a recording truncated mid-<data> is an
+// ordinary file, libbw64 reads it as far as it goes, and refusing it here
+// would break a working case. RF64's 0xFFFFFFFF "resolve through <ds64>"
+// escape (BS.2088-1 §4) lands in the same branch, since an escape IS a size
+// past the end of the file.
 //
-// The residual gap, stated rather than papered over: in an RF64 file <ds64>
-// can carry a 64-bit size for a chunk whose own 32-bit header is perfectly
-// plausible, and libbw64 prefers the <ds64> value (reader.hpp's
-// getChunkSize64). Following that means parsing <ds64>'s table here, which
-// is the parsing this function is deliberately not doing. Closing it belongs
-// upstream in libbw64, where the allocation is.
+// Stopping the walk there was not enough, though, and two of <ds64>'s own
+// fields are read on the way past because of it:
+//
+//   - <data>'s 64-bit size, so the walk can step over an escaped <data> and
+//     go on checking the chunks after it. Returning at <data> left those
+//     unchecked, while libbw64 - which resolves the same 64-bit size through
+//     reader.hpp's getChunkSize64 - stepped over <data> and allocated them.
+//     fuzz_adm_parse reached a 1.7 GB <UnknownChunk> that way, behind an
+//     RF64 <data> declaring 1.8 GB in its 32-bit header.
+//   - <ds64>'s own tableLength, which is refused when the chunk is too short
+//     to hold the table it declares. libbw64 reads that many 12-byte entries
+//     with no bound of its own (parser.hpp's parseDataSize64Chunk), so a
+//     28-byte <ds64> claiming 4.26 billion entries is a loop of 4.26 billion
+//     reads against a stream that ended - a hang rather than an allocation,
+//     and the first thing mutation found once ac3adm was instrumented.
+//
+// The table must also END on a chunk boundary, for a reason of the same kind:
+// a trailing fragment too short to be a header is one libbw64 reads regardless,
+// with the size field left holding whatever was on the stack. See the return
+// at the bottom.
+//
+// Not covered here, deliberately: <ds64>'s table can also carry a 64-bit size for any OTHER
+// chunk id, whose own 32-bit header is then perfectly plausible, and libbw64 prefers that value.
+// Following it would mean reading the table's entries and not just its length, which this
+// function still does not do - but the pinned libbw64 now closes this itself, one layer down: its
+// own chunk-header scan resolves every chunk's size through the same table before any chunk is
+// materialised, and refuses one that then runs past the real end of the file (patched to still
+// allow <data> to, for the same reason this function does - see patch_libbw64.cmake). This
+// function stays as an independent check ahead of that rather than being trimmed down to only
+// what libbw64 itself does not also catch: it is this project's own code, fuzzed directly, and
+// does not depend on a third-party dependency's pin continuing to get this right.
 bool chunk_sizes_fit(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
@@ -282,7 +325,21 @@ bool chunk_sizes_fit(const std::string& path) {
     if (file_size < kRiffHeaderBytes) {
         return true;
     }
+    // §4's own layout for the chunk <ds64> is: riffSize, dataSize, sampleCount,
+    // then tableLength - four fields ahead of the table itself.
+    constexpr std::size_t kDs64PrefixBytes = 28;
+    constexpr std::uint64_t kDs64TableEntryBytes = 12;
+    const auto little_endian = [](const unsigned char* bytes, std::size_t width) {
+        std::uint64_t value = 0;
+        for (std::size_t byte = 0; byte < width; ++byte) {
+            value |= static_cast<std::uint64_t>(bytes[byte]) << (8 * byte);
+        }
+        return value;
+    };
+
     std::uint64_t offset = kRiffHeaderBytes;
+    bool data_size_known = false;
+    std::uint64_t ds64_data_size = 0;
     in.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
     while (offset + 8 <= file_size) {
         std::array<char, 4> id{};
@@ -293,55 +350,79 @@ bool chunk_sizes_fit(const std::string& path) {
             return true;
         }
         offset += 8;
-        const std::uint64_t declared = static_cast<std::uint64_t>(length[0]) |
-                                       (static_cast<std::uint64_t>(length[1]) << 8) |
-                                       (static_cast<std::uint64_t>(length[2]) << 16) |
-                                       (static_cast<std::uint64_t>(length[3]) << 24);
+        std::uint64_t declared = little_endian(length.data(), length.size());
+        const std::string_view chunk_id(id.data(), id.size());
+
+        // <ds64> is mandatory and first in an RF64/BW64 file, so its own two
+        // useful fields are read here, while the stream is sitting on them -
+        // see this function's own comment for what each is for.
+        if (chunk_id == "ds64" && !data_size_known && declared >= kDs64PrefixBytes &&
+            declared <= file_size - offset) {
+            std::array<unsigned char, kDs64PrefixBytes> prefix{};
+            in.read(reinterpret_cast<char*>(prefix.data()), kDs64PrefixBytes);
+            if (!in) {
+                return true;
+            }
+            ds64_data_size = little_endian(prefix.data() + 8, 8);
+            data_size_known = true;
+            const auto table_length = little_endian(prefix.data() + 24, 4);
+            if (declared - kDs64PrefixBytes < table_length * kDs64TableEntryBytes) {
+                return false;
+            }
+        }
+
         if (declared > file_size - offset) {
             // Past the end of the file: only a trailing <data> can honestly
             // be that, and only <data> is not buffered whole.
-            return std::string_view(id.data(), id.size()) == "data";
+            if (chunk_id != "data") {
+                return false;
+            }
+            // Truncated mid-<data>, with no <ds64> saying otherwise: nothing
+            // after it is reachable anyway, since libbw64's own walk runs off
+            // the end of the file at the same point.
+            if (!data_size_known || ds64_data_size > file_size - offset) {
+                return true;
+            }
+            declared = ds64_data_size;  // §4's escape, resolved: keep checking
         }
         offset += declared + (declared % 2);  // §4's pad byte
         in.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
     }
-    return true;
+    // Landing short of the end leaves between one and seven bytes where
+    // libbw64 expects a chunk header, and its own walk reads one anyway: it
+    // continues while peek() is not EOF, and parseHeader() takes the id and
+    // the 32-bit size through a readValue() that does not check whether the
+    // read succeeded (parser/reader.hpp). A partial header leaves that size
+    // holding whatever was on the stack, and the chunk is then allocated at
+    // that size - fuzz_adm_parse reached malloc(4278190080) from a 19-byte
+    // file this way, the first byte of the size being the only part of it
+    // that came from the stack rather than the file. A table that ends on a
+    // chunk boundary cannot do this; one that ends past the boundary (a final
+    // odd-length chunk written without §4's pad byte, which real writers do)
+    // is fine too, since libbw64 seeks past the end and stops.
+    return offset >= file_size;
 }
 
 std::expected<AdmDocument, AdmError> parse_bw64_path(const std::string& path) {
     // Ahead of everything else: an untrusted file's chunk sizes are checked
-    // before either reader below ever touches them, so a malformed size
-    // cannot exploit whichever path (libbw64's own allocator, or this
-    // module's own float_pcm_bw64 walk just below) happens to run next.
+    // before libbw64's own allocator ever touches them.
     if (!chunk_sizes_fit(path)) {
         return std::unexpected(AdmError::kNotRiff);
     }
-    // The one shape libbw64 will not open at all: WAVE_FORMAT_IEEE_FLOAT.
-    // Asked BEFORE readFile() rather than after catching its refusal - the
-    // exception it throws for a format it dislikes is the same untyped
-    // std::runtime_error it throws for a missing file (see the catch below),
-    // so "did it fail because the samples are floats?" is not answerable
-    // from the exception at all. src/ac3adm/src/float_pcm_bw64.hpp walks the
-    // container itself for exactly this case, and routes the <axml> bytes
-    // back through the same libadm parse everything else uses.
-    if (detail::is_ieee_float_wave(path)) {
-        return detail::parse_float_pcm_bw64(path);
-    }
+    // Integer PCM and IEEE float both go through the same libbw64 read here -
+    // see model.hpp's PcmAudio comment for why this module used to need a
+    // second, hand-rolled container walk for float and no longer does.
     std::unique_ptr<bw64::Bw64Reader> reader;
     try {
         reader = bw64::readFile(path);
     } catch (const std::exception&) {
-        // libbw64 reports "could not open", "malformed container" AND "unsupported <fmt >
-        // formatTag" (parser.hpp's parseFormatInfoChunk rejects anything but PCM/formatTag 1 or
-        // WAVE_FORMAT_EXTENSIBLE-wrapped PCM outright, during this same readFile() call - an
-        // IEEE-float source never reaches this call at all now, having been routed to
-        // detail::parse_float_pcm_bw64 above, but any OTHER unsupported formatTag still
-        // lands here) all through the same std::runtime_error
+        // libbw64 reports "could not open", "malformed container", "unsupported <fmt >
+        // formatTag" and "missing fmt/data chunk" all through the same std::runtime_error
         // hierarchy (reader.hpp), with no distinguishing exception type - kCannotOpen covers the
         // whole family here since a caller's next move (check the path/format) is the same
         // either way, and libbw64 does not label a chunk it dislikes clearly enough to justify
-        // inventing a false-precision mapping to kMissingFmt/kMissingData/kNotRiff/
-        // kUnsupportedFormat from the exception text alone.
+        // inventing a false-precision mapping to a more specific AdmError from the exception
+        // text alone.
         return std::unexpected(AdmError::kCannotOpen);
     }
 
@@ -383,7 +464,10 @@ std::expected<AdmDocument, AdmError> parse_bw64(std::istream& in) {
     // to a real temporary file first.
     const auto temp_path = make_temp_path();
     {
-        std::ofstream out(temp_path, std::ios::binary);
+        // noreplace: the system temp directory is shared/world-writable, and make_temp_path()'s
+        // name is ours alone to use - fail instead of writing through a symlink another local
+        // user pre-planted at this exact (astronomically unlikely to guess) name.
+        std::ofstream out(temp_path, std::ios::binary | std::ios::noreplace);
         if (!out) {
             return std::unexpected(AdmError::kCannotOpen);
         }
@@ -412,9 +496,10 @@ namespace {
 
 // 24-bit: the only integer width libbw64's FormatInfoChunk validates that real ADM BWF masters
 // actually use (EBU Tech 3306 §2's own PCM-only framing settles for 16- or 24-bit; 24 keeps
-// headroom this project's own float32 pipeline already exceeds). libbw64's writer has no
-// IEEE-float path at all - see this file's own is_ieee_float_wave() comment on the matching
-// read-side refusal - so 32 here would mean 32-bit INTEGER, a worse choice than 24 for no benefit.
+// headroom this project's own float32 pipeline already exceeds). The pinned libbw64 (unlike the
+// EBU's own upstream) does have an IEEE-float write path (Bw64Writer's useFloat), but this
+// function does not use it - write_bw64() has no parameter for a caller to ask for float output,
+// and 32 here would otherwise mean 32-bit INTEGER, a worse choice than 24 for no benefit.
 constexpr std::uint16_t kWriteBitDepth = 24;
 
 std::vector<float> interleave(const PcmAudio& audio) {

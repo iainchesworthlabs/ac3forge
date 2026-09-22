@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -455,6 +456,56 @@ TEST_CASE("decoder rejects corrupted streams", "[decoder]") {
     }
 }
 
+TEST_CASE("a corrupted delta-segment offset that would push the band cursor out of [0,50] is "
+          "rejected",
+          "[decoder]") {
+    // deltbaie's segment parser (decoder.cpp, §5.4.3.48-57) accumulates a band cursor across
+    // (deltoffst, deltlen) pairs and has to reject anything that pushes it outside the 50-band
+    // mask[] compute_bit_allocation() indexes into - deltoffst/deltlen are attacker-controlled,
+    // and nothing in this suite has ever supplied a deltbaie segment at all.
+    ac3::FrameEncoder encoder{{.bitrate_kbps = 192}};  // default acmod k2_0, no LFE, no coupling
+    const std::vector<float> silence(ac3::kSamplesPerFrame, 0.0f);
+    const std::vector<std::span<const float>> views(2, silence);
+    auto frame = encoder.encode_frame(views);
+    REQUIRE(frame.has_value());
+
+    // Bit offsets within block 0, cross-checked against test_encoder.cpp's own
+    // parse_block_zero() the same way the dithflag test above does: syncinfo(40) + bsi for 2/0
+    // without LFE(27) puts block 0 at bit 67. From there: blksw(2) + dithflag(2) + dynrnge(1,
+    // never sent by this encoder) + cplstre(1) + cplinu(1, = 0) + rematstr(1) + rematflg(4) +
+    // expstr x2(4) + chbwcod x2(12) - a silent frame's chbwcod is 0 (endmant 73), so each
+    // channel's D15 exponent run is exps[0](4) + 24 groups x 7 bits + gainrng(2) = 174 bits,
+    // x2 channels = 348 - + baie(1) and its 11-bit codes(11) + snroffste(1) + csnroffst(6) +
+    // fsnroffst/fgaincod x2(14) lands deltbaie at bit 476.
+    constexpr std::size_t kDeltbaieBit = 476;
+    constexpr std::size_t kChCode0Bit = kDeltbaieBit + 1;    // 477
+    constexpr std::size_t kChCode1Bit = kChCode0Bit + 2;     // 479
+    constexpr std::size_t kDeltnseg0Bit = kChCode1Bit + 2;   // 481
+    constexpr std::size_t kSeg0Bit = kDeltnseg0Bit + 3;      // 484: deltoffst(5)+deltlen(4)+deltba(3)
+    constexpr std::size_t kSeg1Bit = kSeg0Bit + 12;          // 496
+
+    auto patched = *frame;
+    patch_bits(patched, kDeltbaieBit, 1, 1);          // deltbaie = 1
+    patch_bits(patched, kChCode0Bit, 2, 0b01);        // channel 0: new delta info follows
+    patch_bits(patched, kChCode1Bit, 2, 0b10);        // channel 1: no delta - nothing further
+    patch_bits(patched, kDeltnseg0Bit, 3, 0b001);     // deltnseg raw = 1 -> 2 segments
+    // Segment 0: offset 31, length 15 - band goes from 0 to 31, then to 46 (legal, right at the
+    // edge: 31 + 15 == 46 <= 50).
+    patch_bits(patched, kSeg0Bit, 5, 0b11111);        // deltoffst = 31
+    patch_bits(patched, kSeg0Bit + 5, 4, 0b1111);     // deltlen = 15
+    patch_bits(patched, kSeg0Bit + 9, 3, 0);          // deltba
+    // Segment 1: offset 31 again - band jumps from 46 to 77 before length is even added, well
+    // past 50 whatever deltlen/deltba say.
+    patch_bits(patched, kSeg1Bit, 5, 0b11111);        // deltoffst = 31
+    patch_bits(patched, kSeg1Bit + 5, 4, 0);          // deltlen
+    patch_bits(patched, kSeg1Bit + 9, 3, 0);          // deltba
+
+    ac3::FrameDecoder decoder;
+    const auto result = decoder.decode_frame(patched);
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == ac3::DecodeError::kInvalidStream);
+}
+
 TEST_CASE("every decode error describes itself", "[decoder]") {
     // A switch that has fallen behind its enum still compiles — no warning
     // level here flags a missing case — and quietly answers "unknown decode
@@ -662,6 +713,68 @@ TEST_CASE("dithflag=1 on a coupled channel dithers independently of its sibling"
     CHECK(any_differs);
 }
 
+TEST_CASE("decode_frame_by_block hands over the identical samples a block at a time", "[decoder]") {
+    // The block form exists so a caller never has to hold a frame; it must
+    // not change a sample. Same shape as the span-form case below: two
+    // decoders fed the same frames, the value form's vectors against the six
+    // blocks the sink receives, in order, reassembled.
+    ac3::FrameEncoder encoder{
+        {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .coupling = true}};
+    ac3::FrameDecoder by_value;
+    ac3::FrameDecoder by_block;
+    const auto nchans = static_cast<std::size_t>(encoder.channel_count());
+    std::vector<std::vector<float>> block(nchans, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::span<const float>> views(nchans);
+    std::uint64_t n0 = 0;
+    for (int f = 0; f < 4; ++f) {
+        for (std::size_t ch = 0; ch < nchans; ++ch) {
+            for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+                const auto n = static_cast<double>(n0 + static_cast<std::uint64_t>(i));
+                const double freq = 180.0 + 130.0 * static_cast<double>(ch) + (f % 2) * 40.0;
+                block[ch][static_cast<std::size_t>(i)] = static_cast<float>(
+                    0.3 * std::sin(2.0 * std::numbers::pi * freq * n / 48000.0));
+            }
+            views[ch] = block[ch];
+        }
+        n0 += ac3::kSamplesPerFrame;
+        const auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+
+        const auto value_result = by_value.decode_frame(*frame);
+        REQUIRE(value_result.has_value());
+
+        std::vector<std::vector<float>> delivered;
+        int expected_index = 0;
+        const auto sink = [&](const ac3::PcmBlock& pcm) {
+            CHECK(pcm.index == expected_index);
+            CHECK(pcm.blocks == ac3::kBlocksPerFrame);
+            ++expected_index;
+            delivered.resize(pcm.channels.size());
+            for (std::size_t ch = 0; ch < pcm.channels.size(); ++ch) {
+                CHECK(pcm.channels[ch].size() == static_cast<std::size_t>(ac3::kSamplesPerBlock));
+                delivered[ch].insert(delivered[ch].end(), pcm.channels[ch].begin(),
+                                     pcm.channels[ch].end());
+            }
+        };
+        const auto block_result = by_block.decode_frame_by_block(*frame, sink);
+        REQUIRE(block_result.has_value());
+        CHECK(expected_index == ac3::kBlocksPerFrame);
+
+        CHECK(block_result->channels.empty());
+        CHECK(block_result->acmod == value_result->acmod);
+        CHECK(block_result->lfe == value_result->lfe);
+        CHECK(block_result->dialnorm == value_result->dialnorm);
+        REQUIRE(value_result->channels.size() == nchans);
+        REQUIRE(delivered.size() == nchans);
+        for (std::size_t ch = 0; ch < nchans; ++ch) {
+            CAPTURE(f, ch);
+            REQUIRE(delivered[ch].size() == value_result->channels[ch].size());
+            CHECK(std::equal(delivered[ch].begin(), delivered[ch].end(),
+                             value_result->channels[ch].begin()));
+        }
+    }
+}
+
 TEST_CASE("decode_frame_into writes the identical samples the value form allocates",
           "[decoder]") {
     // The span form exists to remove the per-call PCM allocation, never to
@@ -780,4 +893,67 @@ TEST_CASE("fast_imdct reconstructs the same PCM as the direct transform, long an
     // far tighter than audibility and far looser than the ~1e-12 expectation,
     // so it fails on a real defect and never on rounding.
     CHECK(max_diff < 1e-7f);
+}
+
+TEST_CASE("dual mono's output-stage dialnorm normalisation levels Ch2 by its own dialnorm2",
+          "[decoder][output][dual-mono]") {
+    // §5.4.2.16: dialnorm2 is Ch2's OWN reference, and 1+1's two channels are
+    // unrelated programmes (ac3/decoder/output.hpp's own class comment) - a
+    // stage that normalised both by Ch1's dialnorm (the bug this guards
+    // against) would leave Ch2 audibly off level whenever the two differ, as
+    // they do here (27 vs 18, an 11 dB gap). Both channels carry the SAME
+    // tone at the SAME amplitude, so any difference between their normalised
+    // peaks is attributable only to dialnorm/dialnorm2 - never to the two
+    // programmes carrying different signal levels of their own.
+    const ac3::EncoderConfig config{
+        .bitrate_kbps = 192, .dialnorm = 27, .dialnorm2 = 18, .acmod = ac3::Acmod::kDualMono};
+    ac3::FrameEncoder encoder{config};
+    std::vector<float> tone(ac3::kSamplesPerFrame);
+    std::uint64_t n0 = 0;
+    std::vector<std::byte> last_frame;
+    for (int f = 0; f < 3; ++f) {
+        for (int i = 0; i < ac3::kSamplesPerFrame; ++i) {
+            const auto n = static_cast<double>(n0 + static_cast<std::uint64_t>(i));
+            tone[static_cast<std::size_t>(i)] =
+                static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 900.0 * n / 48000.0));
+        }
+        n0 += static_cast<std::uint64_t>(ac3::kSamplesPerFrame);
+        // Ch1 and Ch2 both get the SAME tone/amplitude - see the comment above.
+        const std::vector<std::span<const float>> views{tone, tone};
+        const auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        last_frame = *frame;
+    }
+
+    // Two fresh decoders over the SAME frame bytes: with no prior state to
+    // differ on, their pre-dialnorm PCM is identical, so `leveled`/`raw` at
+    // any one sample IS the gain the output stage actually applied there.
+    ac3::FrameDecoder raw;
+    const auto uncoded = raw.decode_frame(last_frame);
+    REQUIRE(uncoded.has_value());
+    REQUIRE(uncoded->channels.size() == 2);
+
+    ac3::FrameDecoder normalised{{.output = {.apply_dialnorm = true}}};
+    const auto leveled = normalised.decode_frame(last_frame);
+    REQUIRE(leveled.has_value());
+    REQUIRE(leveled->channels.size() == 2);
+    CHECK(leveled->dialnorm == 27);
+    REQUIRE(leveled->dialnorm2.has_value());
+    CHECK(*leveled->dialnorm2 == 18);
+
+    // The gain at the sample with the largest RAW magnitude, so the read-off
+    // isn't sensitive to where a near-zero crossing happens to fall.
+    const auto gain_at_peak = [](const std::vector<float>& coded, const std::vector<float>& out) {
+        std::size_t peak = 0;
+        for (std::size_t i = 1; i < coded.size(); ++i) {
+            if (std::abs(coded[i]) > std::abs(coded[peak])) {
+                peak = i;
+            }
+        }
+        return static_cast<double>(out[peak]) / static_cast<double>(coded[peak]);
+    };
+    CHECK(gain_at_peak(uncoded->channels[0], leveled->channels[0]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(27)).margin(1e-4));
+    CHECK(gain_at_peak(uncoded->channels[1], leveled->channels[1]) ==
+          Catch::Approx(ac3::meta::dialnorm_gain(18)).margin(1e-4));
 }

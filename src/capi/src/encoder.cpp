@@ -82,7 +82,7 @@ ac3forge_status_t ac3forge_encoder_create(const ac3forge_encoder_config_t* confi
     if (config == nullptr || out_encoder == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&] {
+    return guard([&config, &out_encoder] {
         *out_encoder = new ac3forge_encoder(encoder_config_to_cpp(*config));
         return AC3FORGE_OK;
     });
@@ -121,7 +121,8 @@ ac3forge_status_t ac3forge_encoder_encode_frame(ac3forge_encoder_t* encoder,
         samples_per_channel != ac3::kSamplesPerFrame) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&encoder, &channels, &channel_count, &samples_per_channel,
+                  &out_frame]() -> ac3forge_status_t {
         std::vector<std::span<const float>> spans;
         spans.reserve(channel_count);
         for (size_t i = 0; i < channel_count; ++i) {

@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fmt/printf.h>
+#include <fstream>
 #include <memory>
 #include <numbers>
 #include <random>
@@ -56,11 +57,25 @@ std::string scratch_path(std::string_view name) {
     return (std::filesystem::temp_directory_path() / leaf).string();
 }
 
+// Exclusively creates an empty file at a scratch_path() result before ac3::io::write_wav_f32
+// (below) ever opens it. That's a general library function callers also point at a
+// caller-chosen path (e.g. ac3cli's own output paths), so it can't itself refuse to replace an
+// existing file; this closes the shared-temp-dir symlink/TOCTOU race up front instead, the same
+// pattern examples/encode_iab.cpp's claim_temp_path uses for the same reason.
+bool claim_temp_path(const std::string& path) {
+    std::ofstream claim(path, std::ios::binary | std::ios::noreplace);
+    return static_cast<bool>(claim);
+}
+
 }  // namespace
 
 int main() {
     const auto source_path = scratch_path("source.wav");
     const auto result_path = scratch_path("result.wav");
+    if (!claim_temp_path(source_path) || !claim_temp_path(result_path)) {
+        fmt::printf("could not claim scratch path\n");
+        return 1;
+    }
 
     // Synthesize 5.1 in AC-3 order (L, C, R, SL, SR, LFE) and write it out in
     // WAV order - wav_channel_order says where each AC-3 channel belongs in
@@ -75,7 +90,7 @@ int main() {
         }
     }
     const auto write_order = ac3::io::wav_channel_order(kAcmod, kLfe);
-    if (const auto wrote = ac3::io::write_wav_f32(source_path, ac3_order, 48000, write_order); !wrote) {
+    if (const auto wrote = ac3::io::write_wav_f32(source_path, ac3_order, 48000, write_order); !wrote.has_value()) {
         return fail("write_wav_f32 failed", ac3::io::describe(wrote.error()));
     }
     fmt::printf("wrote %s\n", source_path.c_str());
@@ -83,11 +98,11 @@ int main() {
     // Read it back - read_wav hands the samples back in WAV order, so
     // ac3_layout_for's wav_index permutes them onto AC-3 channel k.
     const auto read = ac3::io::read_wav(source_path);
-    if (!read) {
+    if (!read.has_value()) {
         return fail("read_wav failed", ac3::io::describe(read.error()));
     }
     const auto layout = ac3::io::ac3_layout_for(read->channels.size());
-    if (!layout || layout->acmod != kAcmod || layout->lfe != kLfe) {
+    if (!layout.has_value() || layout->acmod != kAcmod || layout->lfe != kLfe) {
         fmt::printf("unexpected WAV channel count: %zu\n", read->channels.size());
         return 1;
     }
@@ -110,12 +125,12 @@ int main() {
                 static_cast<std::size_t>(frame) * ac3::kSamplesPerFrame, ac3::kSamplesPerFrame));
         }
         const auto encoded = encoder->encode_frame(views);
-        if (!encoded) {
+        if (!encoded.has_value()) {
             fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         const auto decoded = decoder.decode_frame(*encoded);
-        if (!decoded) {
+        if (!decoded.has_value()) {
             return fail("decode failed", ac3::describe(decoded.error()));
         }
         for (std::size_t ch = 0; ch < decoded->channels.size(); ++ch) {
@@ -127,7 +142,7 @@ int main() {
     // Write the round trip back out, permuted into WAV order the same way the
     // source was.
     if (const auto wrote = ac3::io::write_wav_f32(result_path, decoded_ac3_order, 48000, write_order);
-        !wrote) {
+        !wrote.has_value()) {
         return fail("write_wav_f32 failed", ac3::io::describe(wrote.error()));
     }
     fmt::printf("wrote %s (%zu frames)\n", result_path.c_str(), decoded_ac3_order.front().size());

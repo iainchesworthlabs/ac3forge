@@ -1,0 +1,1267 @@
+# ESP32-S3
+
+The minimum-footprint codec profile on an Espressif ESP32-S3: a 240 MHz dual-core Xtensa LX7 with
+a single-precision FPU, 512 KB of internal SRAM and hardware I2S. The standalone decode and
+encode probes run in internal SRAM with no PSRAM. The networked Hearth Sendspin sink requires
+8 MB of PSRAM.
+
+It is the second bare-metal target. The first is [`arm-none-eabi` on QEMU](cortex-m3.md), a
+Cortex-M3 with no FPU. The S3 has hardware single-precision floating point, which is what makes
+the float32 path worth having and real-time decode worth measuring.
+
+## Status
+
+| | |
+|---|---|
+| AC-3 decode | Correct. Mono, stereo and 5.1, and 5.1 folded to Lo/Ro stereo in line mode by the §7.8 output stage, every channel level exact against `apps/baremetal/fixture.hpp` |
+| E-AC-3 decode | Correct. 5.1, 2/0 and 7.1.4 (a bed and two dependent substreams), including AHT, spectral extension and §7.5.4 rematrixing; 5.1 and 7.1.4 folded to Lo/Ro stereo in line mode; and 5.1 in line mode from a stream carrying dynrng words and dialnorm 24 |
+| E-AC-3 §E3.5 enhanced coupling | Correct, on its own fixture. Costs 12 allocations per frame, level with plain E-AC-3 |
+| Atmos bed | Correct, decoded bed-only via `DecoderConfig::skip_object_reconstruction`. 20 allocations per frame |
+| Atmos objects | **Correct, reconstructed on target.** 31 allocations per frame — see [Objects](#objects). **And placed**: the `eac3_atmos_render` row pans a height-object stream onto 7.1.4 through the block form, every level the host's — see [Placed on loudspeakers](#placed-on-loudspeakers) |
+| Encode | AC-3 and E-AC-3, six rows: 5.1 and 2/0 through each encoder, 2/0 with coupling, spectral extension and AHT, and 2/0 §E3.5 enhanced coupling - six frames of synthesised programme each, byte count and FNV-1a hash checked against `apps/baremetal/encode_fixture.hpp`, peak heap per row. One substream at a time; see [Encoding](#encoding) for what does not fit |
+| Standalone probe fits internal SRAM | Yes, without PSRAM. 237,206-byte peak heap (the 7.1.4 fixture folded to stereo; 230,798 as coded, 211,371 with Atmos objects, 211,741 placing them) against 316,196 free on the board on 2026-09-11 — see [Memory](#memory) |
+| Retained after teardown | 12 bytes, one `__cxa_thread_atexit` record, the spectrum scratch's pointer; 23,552 bytes while §E3.5 is in use |
+| Audio output | Two examples drive real peripherals — see [Examples](#examples) |
+| Sendspin sink | `hearth_sink` requires an ESP32-S3 board with 8 MB of PSRAM and plays as a Sendspin player on Wi-Fi. Two boards played one E-AC-3 JOC programme as a group for ten minutes with no underrun and their play times within 549 µs — see [As a Sendspin sink](#as-a-sendspin-sink) and [the sink guide](../../hearth/sink-esp32-s3.md) |
+| Real time | **Decode, yes, on a board**, at 240 MHz, every one of the fourteen fixtures: from 0.07x for AC-3 mono to 0.92x for E-AC-3 7.1.4 folded to stereo, with objects placed onto 7.1.4 at 0.78x — see [Timing](#timing). **Encode: AC-3 2/0 and E-AC-3 2/0, yes**, 0.35x and 0.73x with the encoders in `float` end to end and the search made cheaper; AC-3 5.1 at 1.01x sits at the line, 2/0 with tools 1.3x to 1.6x and E-AC-3 5.1 1.7x over, what remains being the exponent-run planner and the allocation candidates — see [Encoding](#encoding) |
+| ESPHome | An external component, `esphome/components/ac3forge/` — the decoder and framer, not a `speaker` source. See [ESPHome](esphome.md) |
+| CI | `build-esp32s3` in `.github/workflows/_build.yml` under QEMU, and `hearth-esp32s3` after it, which plays to the Sendspin sink from the host; `esphome config` and the component pack in their own workflows |
+
+Decode and encode are separate builds. They are mutually exclusive, and configure fails if both
+are asked for, because neither fits beside the other in this memory.
+
+## What the part can and cannot do
+
+Everything the library does, against what this part has been shown to do with it. "Board" is
+the ESP32-S3-DevKitC-1 at 240 MHz, 2026-09-09 and 2026-09-10, plain builds; the two emulated legs
+agree with it and with the host to the digit on levels and hashes but say nothing about time on
+this part. The x figures are fractions of a 32 ms frame.
+
+| | On this part | How that is known |
+|---|---|---|
+| AC-3 decode, 1/0, 2/0, 3/2 + LFE, coupled and not, §7.5.4 rematrixing | Yes, real time: 0.07x, 0.11x, 0.31x | Board; `ac3_mono`, `ac3_stereo`, `ac3` |
+| E-AC-3 decode, 2/0 and 5.1, with AHT, spectral extension, standard coupling | Yes, real time: 0.17x, 0.34x | Board; `eac3_stereo`, `eac3` |
+| E-AC-3 §E3.5 enhanced coupling | Yes, real time: 0.62x | Board; `eac3_ecpl` |
+| E-AC-3 7.1.4, a bed and two dependent substreams | Yes, real time: 0.90x | Board; `eac3_714` |
+| The §7.8 output stage: dialnorm, Lo/Ro, Lt/Rt and mono folds, line and RF modes | Yes, real time: 0.28x folding AC-3 5.1, 0.37x folding E-AC-3 5.1, 0.92x folding E-AC-3 7.1.4; line mode with dynrng words and dialnorm 24, 0.36x at 5.1 | Board; `ac3_fold`, `eac3_fold`, `eac3_714_fold`, `eac3_line` |
+| Atmos bed, objects skipped | Yes, real time: 0.28x | Board; `eac3_atmos_bed` |
+| Atmos objects reconstructed, JOC in the MDCT-band domain | Yes, real time: 0.66x | Board; `eac3_atmos_objects` |
+| Objects placed onto loudspeakers by their OAMD positions, 7.1.4 with heights, through the block form | Yes, real time: 0.78x, the render 3.3 ms of the 25.1; 210,573 bytes of peak | Board; `eac3_atmos_render` |
+| JOC in the QMF domain (`Domain::kQmf`, the licensed decoders' domain) | No: 449,826 bytes of peak | Host measurement, see [Objects](#objects) |
+| The full TS 103 420 §4.3 renderer (extents, zones, snap) | No: the pan is a point source per object | Not attempted; the extent metadata arrives and is not read |
+| §3.7 transient pre-noise processing, concealment | Compiled in; no fixture exercises either | Not measured |
+| The direct-form reference transform | No, by design: `DecodeError::kUnsupported` | Every leg checks the refusal |
+| AC-3 encode, 2/0 and 5.1 | Byte-exact with the host; **2/0 in real time at 0.35x**, 5.1 at the line (1.01x), the encoder `float` end to end and the search integer | Board; `ac3_stereo`, `ac3` |
+| E-AC-3 encode, 2/0 plain, 2/0 with coupling + spectral extension + AHT, 2/0 §E3.5, 5.1 with no tool | Byte-exact; **2/0 plain in real time at 0.73x**, the others 1.6x, 1.3x and 1.7x over, the arithmetic `float` and the remaining cost the exponent-run planner, the allocation candidates and the `double` AHT | Board; `eac3_stereo`, `eac3_tools`, `eac3_ecpl`, `eac3` |
+| E-AC-3 5.1 encode with AHT or coupling, or §E3.5 at 5.1 | No: 289,202 to 369,790 bytes of peak | Host profile, see [Encoding](#encoding) |
+| Any dependent-substream encode (7.1, 5.1.2, 5.1.4, 7.1.4) | No: three encoders resident, 601,954 bytes for 7.1.4 | Host profile |
+| The Atmos object encoder | No: about 300 KB, `double`, and not in the profile | Bench estimate, see [Encoding](#encoding) |
+| Decode and encode in one image | No: mutually exclusive builds | Measured, above |
+| The second core, PSRAM | Not used by anything measured here | See [What is left](#what-is-left-and-what-would-move-it) |
+
+## Building
+
+ESP-IDF owns the top-level build, as Gradle does for [Android](../android.md), so there is no
+ac3forge preset for this target and no entry in `cmake/toolchains/`.
+
+### The ESP-IDF component
+
+`esp-idf/ac3forge/` is the profile packaged as a component. A project outside this repository
+builds against it in two lines, without vendoring the source list:
+
+```cmake
+set(EXTRA_COMPONENT_DIRS "/path/to/ac3forge/esp-idf")
+set(AC3FORGE_ESP_PROFILE "decoder")   # or "encoder"
+```
+
+The component pre-seeds the root's `option()`s and `add_subdirectory()`s the repo root, the same
+shape `apps/android/app/src/main/cpp/CMakeLists.txt` uses. Re-listing
+`src/forge/minimal.cmake`'s sources in an `idf_component_register(SRCS ...)` was rejected: two
+copies of a source list drift, and the drift surfaces as a link error rather than a diff.
+
+The decode arithmetic follows the part unless the project chooses: `float` where ESP-IDF's
+`SOC_CPU_HAS_FPU` capability says the part has a floating-point unit, as this one does, and the
+fixed-point tier where it has none, as on an [ESP32-C3](esp32-c3.md). To build the other one,
+set `AC3FORGE_DECODE_SCALAR` to `float` or `fixed` above `project()`, or pass
+`-DAC3FORGE_DECODE_SCALAR=...` to `idf.py`.
+
+`idf_component.yml` carries registry metadata and the list of targets, each of which
+`tools/packaging/pack_esp_component.py --verify` builds against the packed archive. **It is not
+published to the ESP Component Registry.** `.github/workflows/esp-component.yml` lints the
+manifest and packs the archive on every change, but its `compote component upload` job is gated to
+a manual `workflow_dispatch` on a `v` tag — a published version cannot be replaced, so the upload
+is a decision rather than a consequence of merging.
+
+### The probes
+
+`apps/baremetal/platform/esp32s3/` is the footprint harness, and points `EXTRA_COMPONENT_DIRS` at
+`esp-idf/`:
+
+```bash
+. $IDF_PATH/export.sh
+cd apps/baremetal/platform/esp32s3
+idf.py set-target esp32s3
+idf.py build
+idf.py qemu                    # no board needed
+idf.py -p <PORT> flash monitor # a real board
+```
+
+`tools/checks/run_esp32s3_probe.sh` drives that under QEMU and gates on the results;
+`--encoder` runs the encode direction instead.
+
+`apps/baremetal/platform/esp32c3/` is the same harness for the ESP32-C3, which has no
+floating-point unit and therefore decodes in the fixed-point tier instead — see
+[ESP32-C3 → Building](esp32-c3.md#building) for that leg's setup and gate.
+
+Verified against ESP-IDF v6.1.0, which ships Xtensa GCC 15.2.0 and defaults to `-std=gnu++26`.
+The library's C++23 use — `std::expected`, `std::unreachable`, `std::byteswap`, `constexpr
+std::vector` — compiles under `-fno-exceptions -fno-rtti`. The libstdc++ problem in
+[esp-idf#18172](https://github.com/espressif/esp-idf/issues/18172) is specific to GCC 14.2 and
+does not apply.
+
+## Examples
+
+Both live under `esp-idf/ac3forge/examples/` and are built by CI.
+
+### I2S player
+
+`i2s_player` decodes the AC-3 5.1 fixture linked into its own image, folds it to stereo through
+the decoder's §7.8 output stage, and writes it to an I2S DAC at 48 kHz, 16-bit, on a loop. It
+proves the codec works; it is not how anything real gets its audio.
+
+Three GPIOs under `ac3forge I2S player` in `idf.py menuconfig`, defaulting to BCLK 5, WS 6,
+DOUT 7 — chosen to avoid the strapping pins, the USB pair and the console UART. No MCLK is
+configured, so a DAC needing one has to have it added. Written against a MAX98357A and a PCM5102.
+
+### Hearth sink
+
+`hearth_sink` decodes AC-3 and E-AC-3 from a flash partition, an SD card, a FAT volume in flash
+or an HTTP body. It reads the stream a piece at a time, through a ring between the player's fetch
+and decode tasks (32 KB by default) and a 16 KB framing buffer. Where bytes come from and where
+audio goes are directories CMake picks, not flags the player branches on — the player itself names
+neither a partition nor I2S:
+
+| Source | Sink |
+|---|---|
+| `partition` — flash (default) | `i2s` — stereo DAC (default), 32-bit slots, master or slave |
+| `sd` — SD card over SDMMC | `tdm` — TDM, four 32-bit or eight 16-bit slots a line, and both lines gives eight or sixteen |
+| `fatfs` — a FAT volume in flash | `capture` — converts and checks; what CI runs |
+| `http` — an HTTP body over WiFi | `null` — counts blocks |
+
+Chosen under *ac3forge hearth sink* in `idf.py menuconfig`, along with the output layout — a
+name such as `5.1.4` or a speaker list — that the player renders every stream onto
+(`src/forge/include/ac3/render/layout.hpp`, `render.hpp`).
+
+It exists to exercise the incremental input path. `ac3::split_frames` takes a span over a whole
+stream, which nothing streaming can produce; `ac3::io::AccessUnitAccumulator` applies the same
+boundary rule over a caller-owned buffer, allocating nothing. It hands the decoder access units
+rather than syncframes, because `decode_access_unit_by_block` wants an independent substream together
+with the dependents that extend it (§E3.8.2).
+
+CI runs the example under QEMU in four shapes, each a step of `build-esp32s3` in
+`.github/workflows/_build.yml` with its own overlay on `sdkconfig.defaults`. All four write to the
+`capture` sink, since QEMU has no I2S peripheral. The capture sink calls the same conversion
+functions as the `i2s` and `tdm` sinks (`esp-idf/ac3forge/include/ac3forge/interleave.hpp`) and
+checks what they produce:
+
+- `sdkconfig.ci`: the `partition` source and the AC-3 5.1 sample, folded to Lo/Ro. Two passes, so
+  the rewind at the end of the stream runs as well.
+- `sdkconfig.ci-tdm`: the `fatfs` source, into the TDM conversion on an 8-slot bus. QEMU has no SD
+  host, so a FAT volume in flash stands in for the card. The `sd` and `fatfs` sources share their
+  file code (`main/source/file_common.hpp`) and differ only in the mount, so the part of `sd` that
+  CI does not run is its mount over the SDMMC host. The capture sink checks the integers: every
+  sample left-justified 24-in-32, and zeros in the six slots a two-channel programme does not fill.
+- `sdkconfig.ci-render`: the `fatfs` source playing the probe's height-object fixture onto
+  `7.1.4`, its objects reconstructed and placed, into twelve TDM slots. Each slot's level has to be
+  within one unit of the probe's `eac3_atmos_render` row
+  ([Placed on loudspeakers](#placed-on-loudspeakers)).
+- `sdkconfig.ci-http`: the `http` source over QEMU's OpenCores Ethernet MAC in place of WiFi
+  (`main/source/http/net/openeth/`), fetching the E-AC-3 demo stream (`apps/wasm/assets/demo.ec3`)
+  from a server on the runner; the guest is 10.0.2.15 and the host 10.0.2.2. The same step drives
+  the control surface through a port forward: `GET /status`, `POST /volume` with 0.5, a replay
+  through `POST /play` whose levels must come out at half, and `POST /stop`.
+
+Another step, *Build every sink and source combination*, builds `tdm`, `i2s`, `sd`, `http` and
+`null`, one build each, and runs none of them. The `i2s` and `tdm` sinks drive the I2S peripheral
+and `sd` the SDMMC host, and `http` is built with WiFi (`main/source/http/net/wifi/`); QEMU
+emulates none of the three. `tdm` has not run on hardware either. Its conversion is also
+unit-tested on the host (`tests/io/test_interleave.cpp`), because planar-to-interleaved indexing
+with slot padding is where the bugs are. A 5.1 programme on an 8-slot bus leaves two slots that
+must be written as zeros rather than skipped: the DMA buffer is reused, so whatever the previous
+block left is what the DAC clocks out. The queue model both sinks keep for their `sink.*` line
+(`esp-idf/ac3forge/include/ac3forge/dac_queue_model.hpp`) is unit-tested on the host as well
+(`tests/io/test_dac_queue_model.cpp`), against a simulated DMA.
+
+CI compares the sink's per-channel RMS against the host's answer for the same file through the
+same configuration (`ac3cli decode … downmix=loro drcmode=line`). A `result=pass` alone would be
+satisfied by a stream decoding to silence.
+
+Nor does `result=pass` say the run was clean. QEMU runs on until a timeout, the HTTP step plays the
+stream a second time, and a panic at any point resets the chip into a new run that can print
+`result=pass` again. So every QEMU leg, the probes included, also fails if the console shows panic
+output, a second boot after the first boot banner, or a failed allocation
+(`tools/checks/check_esp_console.py`). An allocation can fail without being fatal — the Ethernet
+driver drops a frame and the play goes on — so a run may print hundreds and still report
+`result=pass`, which is how one that did abort went unnoticed for a day.
+
+The stream set, the widest shape the part runs, is held to a floor on free internal RAM as well:
+twelve channels out of three substreams share internal RAM with the Ethernet driver and the HTTP
+server, so it is where a decoder or player that starts holding more is seen first. The step passes
+`--min-heap-free` to the same check, and the step's own comment records what the shape measures
+and why the floor sits where it does.
+
+#### As a Sendspin sink
+
+`sdkconfig.sendspin`, over the hardware and PSRAM overlays, makes the example a Sendspin player on
+Wi-Fi ([the Hearth plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-reference-player.md), B3). It has:
+
+- the Noise responder;
+- pairing by token, or by a code shown on the console and the page;
+- Sendspin's time filter;
+- `player@v1`, for Music Assistant's stereo PCM;
+- Hearth's `_ac3forge_player@v1`, whose AC-3 and E-AC-3 bursts the component decodes and renders
+  onto the board's layout.
+
+[An ESP32-S3 sink](../../hearth/sink-esp32-s3.md) sets a board up.
+
+The player schedules each block against the I2S channel's end-of-frame interrupts. It works from a
+model of ESP-IDF v6.1's DMA ring (`esp-idf/ac3forge/include/ac3forge/playout.hpp`), which
+`tests/io/test_playout.cpp` tests on the host against a simulated ring. It corrects its error in
+the decoded PCM, by dropping or repeating one frame in 256.
+
+On 2026-09-16 two ESP32-S3-DevKitC-1-N16R8 boards on the same Wi-Fi, with no DAC wired, played the
+E-AC-3 JOC fixture for ten minutes as one group from `ac3hearth-testserver`. Each burst holds
+32 ms of audio.
+
+| | 2.0, 32-bit standard I2S | 5.1, eight 16-bit TDM slots |
+|---|---|---|
+| Bursts played | 18,774 of 18,774 | 18,774 of 18,774 |
+| Underruns, late, dropped | 0, 0, 0 | 0, 0, 0 |
+| Decode and render per burst, average (worst) | 20.9 ms (40.3 ms) | 24.3 ms (48.8 ms) |
+
+At each of the 602 seconds the server compared, the boards' reported play times were within
+549 µs of each other. The 2.0 board's levels were the test sink's to the digit. Four things on
+the boards broke playback, and no host test or QEMU run showed any of them: Wi-Fi modem sleep,
+Nagle's algorithm on the player's sockets, lwIP's task on the decoder's core, and clock replies
+delayed behind a stream's chunks. [The example's README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-two-boards) describes each.
+
+CI runs the same player on QEMU's Ethernet (`sdkconfig.ci-sendspin`) in `hearth-esp32s3`, a job
+that runs after `build-esp32s3`. `tools/checks/run_sendspin_qemu.sh` has `ac3hearth-testserver`
+pair with the emulated board, set it to 2.0, and play it the fixture in one group with a test
+sink. It then holds the board's levels to the test sink's WAV
+(`tools/checks/check_sendspin_levels.py`), and its console to one clean boot and the stream set's
+heap floor. The test server is a GCC 16 and vcpkg build, and Espressif's image carries neither.
+So the job runs in a container of its own and takes the emulated board's image from
+`build-esp32s3` as an artifact. `build-esp32s3` also builds the board shape, which QEMU cannot run.
+
+## Memory
+
+The datasheet says 512 KB, `idf.py size` says 341,760, and the allocator says 280,792. All three
+are true and answer different questions.
+
+| | Bytes | |
+|---|---|---|
+| Physical SRAM | 524,288 | the datasheet's 512 KB |
+| − data cache | 32,768 | `CONFIG_ESP32S3_DATA_CACHE_SIZE`, carved out of SRAM2 |
+| − instruction cache | 16,384 | already the minimum |
+| = DRAM-addressable window | 491,520 | `SOC_DRAM_LOW`…`SOC_DRAM_HIGH` |
+| DIRAM pool `idf.py size` reports | 341,760 | after ROM reservations |
+| **free at runtime** | **257,572** | what `heap_caps_get_free_size` returns before the probe decodes; 280,792 until the probe's own PCM block grew from eight channels to twelve for the 7.1.4 fixture |
+
+`idf.py size`'s "remain" is a linker estimate — 206,956 where the allocator reports 280,792. A
+footprint budget quoted from it is a budget nobody checked.
+
+Measured, decode direction: the image uses 158,196 bytes of DIRAM and the decode peaks at
+237,206 bytes of heap, on the 7.1.4 fixture folded to stereo (230,798 as coded, 211,371 with
+Atmos objects). The encode image is smaller, 110,900. `app_main` prints the runtime
+figures before and after.
+
+### Contiguity
+
+| | Free | Largest block |
+|---|---|---|
+| Before the decode | 280,792 | 217,088 |
+| After it | 245,248 | 116,736 |
+
+The total is not an allocation budget on this part: the heap is regioned, and the largest
+contiguous run is what decides whether a large allocation succeeds. That distinction is what made
+object reconstruction fail here while the same build passed on `arm-none-eabi`, whose newlib heap
+is flat.
+
+### IRAM and the caches
+
+ESP-IDF donates unfilled IRAM to the heap as 32-bit-access-only memory, which `malloc` never
+returns. Measured, that pool is 0 bytes — `idf.py size` reports IRAM as 16,384 of 16,384 used, so
+there is nothing to donate. The instruction cache is already at its 16 KB minimum; the data cache
+could go 32 KB → 16 KB and return 16,384 bytes, at the cost of slower reads from flash-resident
+fixtures.
+
+### Stack
+
+The decode runs on the main task. `uxTaskGetStackHighWaterMark` left 11,280 bytes free of the
+original 32,768 `sdkconfig.defaults` set, until PR #698 (legacy-core downmix levels) grew
+`DecodedSubstream`/`DecodedAccessUnit` by `bsid`/`cmixlev`/`surmixlev`/`alternate_bsi` and the
+runner measured that down to 8,096 — 96 bytes under its 8,192 floor.
+`sdkconfig.defaults` now sets 40,960, which left 16,064. The decoder has since stopped keeping
+extra copies of those two structs on the stack (it builds its results in place), and the decode
+leaves 19,344 of the 40,960: 11,152 in terms of the original 32,768, close to the figure before
+PR #698. The encode direction, less affected, left 23,040 free of the original 32,768. The decode
+margin is the one to watch — it was 14,000 before object reconstruction ran here, then 11,280
+before PR #698.
+
+### In the Sendspin sink
+
+The Sendspin sink is the tightest shape on a board. Wi-Fi, lwIP, two HTTP servers, mDNS, the
+Sendspin session and the E-AC-3 decoder share internal RAM, and `sdkconfig.psram` keeps every
+allocation under 16 KB there. These are the heap monitor API's figures while a stream played: the
+ten-minute group run on the boards, and 315 bursts under QEMU.
+
+| | QEMU (no PSRAM, 16 KB ring) | 2.0 board | 5.1 board |
+|---|---|---|---|
+| Least internal heap free | 43,700 bytes | 139 bytes | 23 bytes |
+| Decode task's stack unused | 5,744 of 24,576 | 13,916 of 32,768 | 13,840 of 32,768 |
+| Sendspin server's stack unused, of 8,192 | 2,972 | 2,960 | 2,960 |
+
+Nothing failed in those ten minutes. In a one-minute run before them, one 108-byte internal
+allocation did, with no effect on the stream. Two changes were tried and not kept:
+
+- Sending allocations over 4 KB to PSRAM left 80 KB free, but a burst then took 28 ms where it
+  had taken 20, and the board underran.
+- A larger `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL` changed nothing, because ESP-IDF v6.1 lets
+  ordinary small allocations take that reserve.
+
+Under QEMU, CI holds the shape to at least 20,480 bytes free, the stream set's floor.
+
+## Timing
+
+The probe reports `decode_us`, `us_per_frame` and `realtime_permille` per codec, and both example
+players report per-frame timing of their own. A frame is 1,536 samples at 48 kHz, so the budget
+is 32,000 microseconds and `realtime_permille` is 1000 at exactly real time.
+
+Under `idf.py qemu` these figures do not describe hardware: QEMU is not cycle-accurate and
+reports `cpu_mhz=40` against its own boot log's 160 MHz, so treat the QEMU leg as a correctness
+and footprint check only; under the Hearth sink's `null` output the figure means less again,
+since nothing paces the loop. The figures that follow are from a board.
+
+### Measured, on an ESP32-S3-DevKitC-1-N16R8
+
+2026-09-09, chip revision v0.2, 240 MHz, PSRAM off, `-Os`. Every fixture
+decoded to its expected levels - `result=pass`, every channel's RMS matching its
+reference to the digit - so what follows is about speed alone.
+
+As found, before any of the work below:
+
+| Fixture | us/frame | x real time | |
+|---|---:|---:|---|
+| `ac3_mono` | 5,180 | 0.16 | fits |
+| `ac3_stereo` | 14,290 | 0.45 | fits |
+| `eac3_atmos_bed` | 27,197 | 0.85 | fits |
+| `ac3` 5.1 | 32,149 | 1.00 | at the line |
+| `eac3_stereo` | 34,739 | 1.08 | misses by 8% |
+| `eac3` 5.1 | 78,824 | 2.46 | no |
+| `eac3_atmos_objects` | 82,711 | 2.58 | no |
+| `eac3_ecpl` | 217,493 | 6.80 | no |
+
+The same build at 160 MHz - the clock this project inherited by never setting
+`CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ`, until 2026-09-09 - ran 1.44x to 1.49x slower
+across all eight fixtures, against an ideal ratio of 1.50. That near-linear
+scaling says the decode is compute-bound, not stalled on the flash cache, so
+configuration had nothing further to give; anything more had to come out of the
+code. (The `ac3` row is from the stage-timed run described next, whose markers
+cost it about 0.2 ms; the other seven are from a plain build.)
+
+The instruction cache stayed at its default 16 KB for all of this, and in the
+probe that held. In the Hearth sink's network shape, where WiFi and the
+rest of the player run beside the decoder, it did not: at 32 KB a 7.1.4 frame
+decoded 3.1 ms faster folded to 2.0 and 3.8 ms faster onto twelve slots
+([7.1.4 in real time](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-714-realtime.md)).
+The probe has not been measured at 32 KB.
+
+### Where the time went
+
+Nothing in the table says which stage is slow, and the estimates that had been
+made about it were wrong. So before changing anything the decoder was
+profiled on the board, through the `AC3_ZONE_SCOPED_N()` markers it already
+carries for Tracy: `-DAC3FORGE_STAGE_TIMERS=ON` routes them to an accumulator
+in the probe (`apps/baremetal/stage_timers.cpp`, the application half of
+`src/forge/src/internal/profiling/stage_timers/`) and each fixture then prints a
+`<fixture>.stage[<zone>]` line per stage with its inclusive and self time per
+frame. A pair of markers costs 2.4 us on this part, and a frame passes through
+at most 99 of them, so the breakdown carries under 0.25 ms of its own weight -
+the stage-timed totals sit within 0.3% of the plain ones above.
+
+Self time per frame, microseconds, as found:
+
+| Stage | `eac3` 5.1 | `eac3_stereo` | `eac3_atmos_bed` | `ac3` 5.1 |
+|---|---:|---:|---:|---:|
+| spectral extension synthesis (`eac3_spx`) | 45,060 | 19,093 | - | - |
+| AHT dequantisation and inverse (`eac3_aht`) | 20,723 | 8,489 | - | - |
+| mantissa read and dequantisation | 1,194 | 1,596 | 14,006 | 14,980 |
+| decoupling | - | - | - | 4,904 |
+| bit allocation (`compute_bit_allocation`) | 3,704 | 1,416 | 4,559 | 4,350 |
+| IMDCT and overlap-add | 3,403 | 1,228 | 3,401 | 4,847 |
+| everything else | 4,983 | 3,082 | 5,591 | 3,043 |
+| total | 79,067 | 34,904 | 27,557 | 32,124 |
+
+The transform - the stage the earlier estimates had put first, and the one the
+hand-written kernel tier would have targeted - is 4% of a 5.1 decode. Spectral
+extension is 57%, and it is not arithmetic: an extension region is roughly
+150 bins in each of five channels in each of six blocks, 4,500 bins a frame,
+and they were costing 10 us each, 2,400 cycles a bin for a copy, a notch and a
+two-term blend.
+
+The cycles were going into the ROM. This part's FPU is single-precision, and
+every `double` operation compiles to a call into the mask ROM's software
+routines - `__muldf3`, `__divdf3` and the rest, some hundreds of cycles each,
+with `__divdf3` the worst. The coefficient store had moved to `float` under
+this profile (`decode_scalar_t`), but the arithmetic between the bitstream and
+that store had not: the mantissa dequantiser divided in `double` and then
+divided again by 2^exp, the dither and spectral-extension noise generators
+mapped their state in `double`, the coupling coordinates came out of
+`std::ldexp`, decoupling multiplied through `double`, the AHT's six-by-six
+inverse ran thirty-six `double` multiply-adds per bin, spectral extension's blend
+and band energies were `double` throughout, and JOC's object mixing summed
+`double`s over a `float` state. A static census of the linked image found 1,197
+call sites into those routines. None of it is visible on a desktop, where
+`double` costs what `float` costs, or on the Cortex-M3 leg, where everything is
+software floating point alike. It was visible only here.
+
+### What changed
+
+The arithmetic between bitstream and coefficient store now runs in the store's
+own type, `ac3::internal::decode_scalar_t`: `float` under this profile, `double`
+in every other build, which is why no gold reference, bitstream hash or test
+moved (the full Windows suite passes as before, 1,345 tests). The exported
+`double` functions - `dequantize_mantissa`, `decode_coordinate`,
+`spx_noise_ratio`, `aht_dequantize_mantissa`, `DitherGenerator::next`,
+`SpxNoise::next` - are now the `<double>` instantiations of templates the
+decoders call at their own scalar; `spx_attenuation` became a 96-entry table
+filled once from the same `std::exp2`; `aht_inverse` gained a `float` overload
+over the double kernel narrowed once; and the division by 2^exp everywhere
+became a multiply by a table of exact powers of two, which is the same value in
+either type. JOC's mixing follows `decode_scalar_t` too, narrowing the
+frame's matrix once rather than at every read, and the float analysis window
+it runs thirty times a frame stopped narrowing its 512 constants per sample.
+
+Where the float result is the double one narrowed, and where it is not, is
+stated at each site. Mantissas, coordinates and decoupling are bit-identical
+to before on this profile - a small integer over a power of two rounds the
+same way in either type. Spectral extension, the AHT inverse, the noise
+generators and the JOC sum round in `float` now, which is the same class of
+difference the float store already accepted at the transform; the probe's
+RMS figures, printed to six digits, did not move on any of the eight fixtures.
+
+The second lever is the optimiser. This profile compiles at `-Os`, and a board
+run with the decode-critical sources at `-O2` (`AC3FORGE_MINIMAL_HOT_O2`, on
+for this project, off in the profile's default) showed which files it pays for
+and which it does not: bit allocation 4.55 to 2.09 ms and the JOC mixing 11.0
+to 8.2 ms per frame, against nothing at all for the float32 IMDCT, which ran
+in 3.40 ms either way. The five files it pays for cost 39,192 bytes of
+flash code and no internal SRAM; `.bss`, `.data` and the DIRAM figure the
+runner gates are unchanged.
+
+After both, plain build, same board, same clock:
+
+| Fixture | us/frame | x real time | was |
+|---|---:|---:|---:|
+| `ac3_mono` | 2,446 | 0.08 | 0.16 |
+| `ac3_stereo` | 4,157 | 0.13 | 0.45 |
+| `eac3_stereo` | 6,803 | 0.21 | 1.08 |
+| `ac3` 5.1 | 11,772 | 0.37 | 1.00 |
+| `eac3_atmos_bed` | 13,409 | 0.42 | 0.85 |
+| `eac3` 5.1 | 14,169 | 0.44 | 2.46 |
+| `eac3_atmos_objects` | 29,359 | 0.92 | 2.58 |
+| `eac3_ecpl` | 23,784 | 0.74 | 6.80 |
+
+Every E-AC-3 configuration this profile decodes now runs in real time on this
+part, with the Atmos objects fixture the closest to the line. Where a 5.1
+frame's time goes now, stage-timed: bit allocation 1.66 ms, the IMDCT 3.38,
+the AHT 2.98, spectral extension 1.49, mantissas 0.45, and 2.3 ms at the
+access-unit level outside every marker.
+
+Enhanced coupling came last, on its own, because its routines are shared with
+the encoder and the first pass stopped at that boundary. It was the same
+disease at a larger scale - of 202 ms, 107 were the per-channel reconstruction
+and 83 `ecpl_channel_spectrum`, all `double`: three double inverse transforms
+and a double 512-point DFT per block, then `std::cos` and `std::sin` per bin of
+every coupled channel, each a software routine of a thousand cycles or so on
+this FPU. The §3.5.5 routines now exist in both scalars, the double forms
+being the encoder's and the exported ones as before; the float forms run the
+float inverses and a float `dft512`, take their sine and cosine from a short
+series held to libm at float precision (`tests/encoder/test_enhanced_coupling.cpp`
+pins every float form against its double one), and write into the decoder's
+store directly instead of round-tripping 512 conversions per channel per
+block. Stage-timed, the spectrum is 6.9 ms a frame and the reconstruction
+4.7; the fixture decodes in 23.8 ms. The float scratch is 23,552 bytes against
+the double one's 32,768, and the bin-angle vector that used to be `thread_local`
+is a stack array, so what stays retained after the probe hands the scratch
+back is one registration record, 12 bytes, rather than two.
+
+A third pass took the stages the profile left largest, every change of it
+producing the values its predecessor produced: the host suite passes
+unchanged and the probe's levels are to the digit. `BitReader::read()` had
+been one loop iteration per bit - some eight cycles for each bit of every
+mantissa, exponent group and GAQ codeword - and now serves a field from a
+64-bit cache. A block whose exponents, allocation parameters and region are
+its predecessor's keeps the allocation it already has rather than deriving it
+again, which E-AC-3's once-a-frame exponents make the common case:
+`compute_bit_allocation` ran 36 times a frame on the 5.1 stream and runs
+6 now. The symmetric mantissa quantisers' values come from a table
+filled at compile time by the division they used to perform, the asymmetric
+ones scale by an exact power of two, and an AHT bin resolves its dequantiser's
+constants once for its six codewords. JOC's mixing reads each (channel,
+band)'s data points once per object per block and forms the ramp's fractions
+once per block, and `fft.cpp` joined the `-O2` list once the float DFT was on
+the hot path.
+
+Same board, same clock, plain build:
+
+| Fixture | us/frame | x real time | was |
+|---|---:|---:|---:|
+| `ac3_mono` | 2,188 | 0.07 | 2,588 |
+| `ac3_stereo` | 3,420 | 0.11 | 4,236 |
+| `eac3_stereo` | 6,171 | 0.19 | 6,814 |
+| `ac3` 5.1 | 9,939 | 0.31 | 11,803 |
+| `eac3_atmos_bed` | 10,914 | 0.34 | 13,416 |
+| `eac3` 5.1 | 12,775 | 0.40 | 14,185 |
+| `eac3_atmos_objects` | 23,191 | 0.72 | 29,337 |
+| `eac3_ecpl` | 21,547 | 0.67 | 23,784 |
+
+A 5.1 frame, stage-timed, now: bit allocation 0.4 ms (it was 1.6), the IMDCT
+3.5, the AHT 2.7, spectral extension 1.5, mantissas 0.3. The access-unit
+level, which the earlier profile could only report as 2.3 ms outside every
+marker, is now four zones: 2.0 ms assembling the unit from its queued
+substreams (`eac3_au_assemble`), 0.1 keying them (`eac3_au_key`), and
+splitting and queueing under 0.05 between them. The assembly is the largest
+cost the profile then named outside the decoders - at 36 KB of output PCM a
+frame it was some 50 cycles a sample - and was the next thing read.
+
+Reading it found a copy. `std::copy` of each channel's samples into the
+caller's spans lowers to `memmove`, and on this part that is a mask-ROM
+routine which measured some twelve cycles a byte, where the ROM's `memcpy` -
+the call every fixed-size copy in the decoders already reaches - moves the
+same 36 KB in 0.12 ms. The two ranges never overlap, so it is `memcpy` now,
+and `eac3_au_assemble` is 0.25 ms, of which the copy (`eac3_au_pcm`) is
+0.12. The same pass stopped copying a substream's object description into
+the access unit - the substream is consumed there, so it is moved - which is
+where the objects fixture's peak heap fell from 234,803 bytes to 210,203 and
+its allocations a frame from 41 to 31, the bed's from 23 to 20. Every level
+is unchanged to the digit, on the board and on the host suite.
+
+Same board, same clock, plain build:
+
+| Fixture | us/frame | x real time | was |
+|---|---:|---:|---:|
+| `ac3_mono` | 2,229 | 0.07 | 2,188 |
+| `ac3_stereo` | 3,476 | 0.11 | 3,420 |
+| `eac3_stereo` | 5,550 | 0.17 | 6,171 |
+| `ac3` 5.1 | 9,963 | 0.31 | 9,939 |
+| `eac3_atmos_bed` | 9,066 | 0.28 | 10,914 |
+| `eac3` 5.1 | 10,988 | 0.34 | 12,775 |
+| `eac3_atmos_objects` | 21,199 | 0.66 | 23,191 |
+| `eac3_ecpl` | 19,768 | 0.62 | 21,547 |
+
+A 5.1 frame, stage-timed, is 11.3 ms: the IMDCT 3.5, the AHT
+2.7, spectral extension 1.5, bit allocation 0.4, mantissas 0.4,
+and the access-unit level 0.4 in all.
+
+### 7.1.4, the widest programme
+
+A ninth fixture, added for the question of driving a 7.1.4 DAC from this
+part: E-AC-3 7.1.4 at 640 kbit/s, a 5.1 bed and two dependent substreams
+(`k71Rear`, `kTopQuad`), the widest programme the encoder makes and the first
+fixture with more channels than one substream carries, so the access unit's
+assembly - locations unioned, a dependent's surrounds replacing the bed's -
+runs on the target for the first time. Every one of its twelve levels is
+exact. Plain build, same board, same clock:
+
+| Fixture | us/frame | x real time | peak heap | allocations/frame |
+|---|---:|---:|---:|---:|
+| `eac3_714` | 28,815 | 0.90 | 229,630 | 35 |
+
+A 7.1.4 frame is 2.6 times a 5.1 frame, not 2 - the same ratio the
+[instruction count](../../performance-trend.md#instructions-per-frame) gives on
+the Cortex-M3 leg (33.8 M against 12.9 M), so the extra is the dependents'
+own per-substream work rather than anything this part does badly. It is
+also the new peak: 229,630 bytes against the 257,572 the probe left free
+on the board that day, 27,942 to spare, with the probe's own PCM block at
+twelve channels (73,728 bytes, static; the `_by_block` forms have since
+removed it, and the board's free figure is the next hardware run's to
+re-measure). The peak by fixture, the same on both legs, measured on
+2026-09-11:
+
+| Fixture | peak heap | allocations/frame |
+|---|---:|---:|
+| `ac3_mono` | 47,596 | 1 |
+| `ac3_stereo` | 49,304 | 1 |
+| `ac3` 5.1 | 56,421 | 3 |
+| `ac3_fold` | 58,469 | 3 |
+| `eac3_atmos_bed` | 124,903 | 20 |
+| `eac3_stereo` | 141,702 | 10 |
+| `eac3_ecpl` | 158,661 | 12 |
+| `eac3` 5.1 | 168,210 | 12 |
+| `eac3_line` | 168,286 | 12 |
+| `eac3_fold` | 174,566 | 12 |
+| `eac3_atmos_objects` | 211,371 | 31 |
+| `eac3_atmos_render` | 211,741 | 36 |
+| `eac3_714` | 230,798 | 35 |
+| `eac3_714_fold` | 237,206 | 35 |
+
+The AC-3 rows carry the block form's own frame since the `_by_block`
+forms (10,652, 12,356 and 19,457 before them), the three fold rows and
+`eac3_line` are [Folded to stereo](#folded-to-stereo)'s and the render row
+is [Placed on loudspeakers](#placed-on-loudspeakers)'.
+
+### Folded to stereo
+
+The §7.8 output stage - dialnorm, the Lo/Ro, Lt/Rt and mono folds, the
+Hilbert phase shift behind Lt/Rt and RF mode's overload protection - ran
+its per-sample arithmetic in `double` until 2026-09-10, on the same
+software floating point every other stage had been moved off; it now
+follows `decode_scalar_t`, with the gains and mix coefficients still
+`double`. Three fixtures fold on the target: `ac3_fold`, `eac3_fold` and
+`eac3_714_fold` decode the two 5.1 streams and the 7.1.4 one to Lo/Ro
+stereo in line mode, every level exact on every leg. A fourth,
+`eac3_line`, decodes a 5.1 stream carrying dynrng words and dialnorm 24 in
+line mode without a fold, the one fixture where line mode has work to do.
+
+#### What the fold cost
+
+On 2026-09-10 the E-AC-3 5.1 fold cost 3.2 ms here where the Cortex-M3
+leg counted 10% of the frame, and the sink folding 7.1.4 to stereo
+over WiFi fell behind
+([`planning/esp32-stream-set.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-stream-set.md),
+"On a board"). The
+output stage had no stage-timer zones of its own. With zones inside
+`OutputStage::apply` and around both decoders' §7.7 gain, stage-timed on
+2026-09-11 in internal SRAM, a frame of `eac3_714_fold`:
+
+| Stage | us/frame |
+|---|---:|
+| seating the twelve locations into §7.8's six (`output_seat`) | 1,684 |
+| the fold of the seats (`output_fold`) | 869 |
+| copying the fold into the seats' first two views (`output_copy`) | 625 |
+| copying those into the caller's first two channels (`output_seat_copy`) | 619 |
+| the rest of the stage | 121 |
+| total (`eac3_output`) | 3,920 |
+
+Three things cost it. Both copies were `std::copy` of 6,144-byte channels,
+which on this part lowers to the mask ROM's `memmove` at some twelve
+cycles a byte, the routine `eac3_au_assemble` had been reaching (see
+[What changed](#what-changed)). The seating and the fold ran at about 22
+cycles a multiply-add: `output.cpp` was compiled at `-Os`, off the `-O2`
+list, and its loops reloaded both base pointers from memory on every
+sample. And the stage kept six frame-long seats and two frame-long outputs,
+49 KB of heap.
+
+Line mode was not part of it. The fixtures' streams carry no dynrng words
+and dialnorm 31, and for those §7.7.1's gain and §5.4.2.8's normalisation
+do no per-sample work: the 7.1.4 stream decoded as coded and in line mode
+took the same time and gave the same PCM. On a stream that carries both -
+film-standard dynrng words, dialnorm 24 - line mode added 1.6 ms to a
+7.1.4 frame without a fold, 0.7 ms of it the gain on every channel's
+coefficients and 0.6 ms the normalisation, and 1.2 ms to one folded, where
+the normalisation runs on six seats rather than twelve channels.
+
+In the PSRAM shape (`sdkconfig.psram`'s policy, allocations of 16 KB and
+more from PSRAM, nothing else running) the fold cost what it did in
+internal SRAM, its buffers each being under 16 KB, while the rest of a
+7.1.4 frame was 2.8 ms slower.
+
+#### What changed in the stage
+
+The stage works through a frame 256 samples at a time: a block of each
+seat, and for the acmod form a block of the two outputs, rather than
+frame-long buffers. The layout form folds straight into the caller's first
+two channels; the acmod form, whose outputs are also two of its inputs,
+copies each finished block over them with `memcpy`. The loops run over
+local pointers, four samples to a pass, and `output.cpp` is on the `-O2`
+list, for 2,688 bytes of flash. Both decoders resolve the §7.7 gain once
+per programme per block rather than once per channel. None of it changes a
+result: each sample is its own sum, taken in the same order, and the Lt/Rt
+shifter's history and RF mode's per-frame gain carry across blocks as they
+did across frames. The double build's decode of 24 streams under 17 output
+configurations, 408 decodes, is identical byte for byte, the float build's PCM hashes
+are unchanged on the Cortex-M3 leg and on this board, and so are the fixed
+tier's pinned ones.
+
+Plain build, same board, same clock, microseconds per frame:
+
+| Fixture | Before | After | The fold's own, before | After |
+|---|---:|---:|---:|---:|
+| `eac3_fold` | 14,039 | 11,691 | 3,175 | 841 |
+| `eac3_714_fold` | 32,453 | 29,554 | 4,063 | 1,121 |
+| `ac3_fold` | 10,058 | 8,833 | | |
+| `eac3_line` | | 11,520 | | |
+
+The fold's own is the row less its stream's unfolded row: `eac3` 10,864
+and 10,850, `eac3_714` 28,390 and 28,433. 7.1.4 folded to stereo is 0.92x
+real time now, 1.01x before; `eac3_line` is 670 us over `eac3`, line
+mode's work on that stream. In the PSRAM shape `eac3_714_fold` went from
+35,329 to 32,290 (1.10x to 1.01x), the fold's own from 4,122 to 1,150,
+and what is left over the line there is the rest of the decode.
+Stage-timed, a 7.1.4 fold is now 0.55 ms of seating and 0.28 of fold.
+The rest of the stage, about 0.3 ms of a probe frame, is per-frame setup:
+working out the fold's coefficients in `double` (0.08 ms), `dialnorm`'s
+gain through `std::pow` (0.015 ms at dialnorm 31, 0.18 ms at 24), and the
+stage's first-frame allocations, which the probe's six-frame rows average
+in and a stream of any length does not. Keeping the coefficients and the
+gain between frames that do not change them would take the first two off;
+it is not done here.
+
+`ac3_fold` is faster than `ac3` in both columns. The as-coded AC-3 row's
+transform-and-overlap zone takes 1.4 ms more than the folded row's; that
+is the as-coded block form's, not the fold's, and it is not explained
+here.
+
+Peak heap: `eac3_fold` 217,574 to 174,566, `ac3_fold` 68,709 to 58,469,
+and `eac3_714_fold` 237,206 against 280,214 for the same fold before. It
+is the probe's peak now, under the 245,000 the ESP32-S3 runner gates.
+
+#### In the Hearth sink
+
+The same comparison through `hearth_sink`, built from `main` and from
+this change and run one after the other on one board on 2026-09-11: the
+network shape (`sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram` with
+WiFi), the stream set's `714-walk.ec3` served over the LAN, 2.0 on the I2S
+sink in line mode - the play that fell behind in
+[`planning/esp32-stream-set.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-stream-set.md)'s
+"On a board":
+
+| | Before | After |
+|---|---:|---:|
+| Decode per frame (the lap line less render and sink) | 35,305 us | 30,004 us |
+| The whole frame, x real time | 1.15 | 1.00 |
+| Blocks to an empty DMA queue | 149 of 900 | 18 of 900 |
+| Wall time for 4.8 s of audio | 5,527 ms | 4,787 ms |
+| Task watchdog | IDLE1 starved | quiet |
+| Levels | 36,190 / 36,190 | 36,190 / 36,190 |
+
+The player gains 5.3 ms a frame where the probe gains 2.9, so the stage
+cost the player more than it cost the probe; why was not measured. Its
+frame-long buffers landing in PSRAM behind the cache, on a heap WiFi
+shares, would account for it, and a block's worth is small enough to stay
+in internal RAM. What is left at 1.00x is the 7.1.4 decode itself.
+
+### Encoding
+
+The encode direction has printed its time per frame since 2026-09-10, on the
+same terms as the decode rows, and the board has not yet run that build - so
+what this section has is what the other two legs can say. The peaks are the
+part's (identical under QEMU and on the Cortex-M3 leg), the instruction counts
+are the Cortex-M3 leg's under `--encoder --icount`, and the decode column is
+the same leg's count for the same layout:
+
+| Row | peak heap | allocations/frame | instructions/frame | the decode row's |
+|---|---:|---:|---:|---:|
+| `ac3_stereo` 2/0 | 52,707 | 34 | 9,136,000 | 3,548,000 |
+| `eac3_stereo` 2/0 | 79,894 | 76 | 12,683,000 | 4,851,000 |
+| `eac3_tools` 2/0, cpl + spx + AHT | 143,037 | 47 | 16,920,000 | - |
+| `eac3_ecpl` 2/0, §E3.5 | 130,887 | 87 | 48,217,000 | 28,861,000 |
+| `ac3` 5.1 | 110,918 | 67 | 24,866,000 | 10,224,000 |
+| `eac3` 5.1 | 158,602 | 173 | 33,207,000 | 12,928,000 |
+
+Between 1.7 and 2.6 times the decode's count (the counts above are with the
+encoders in `float` end to end and the search work below, see the two
+sections after this one), and both directions are soft float on that leg. On this part they are not: the decode path is `float`
+on the FPU, and the encoders were `double` throughout when the board first
+ran them - every operation a call into the mask ROM's software floating
+point, the arithmetic that had a 5.1 E-AC-3 decode at 78.8 ms before its
+conversion. Measured on the board on 2026-09-10, plain build, 240 MHz, every
+row's bytes and hash the host's, the front end still `double`:
+
+| Row | ms/frame | x real time |
+|---|---:|---:|
+| `ac3_stereo` 2/0 | 75.0 | 2.34 |
+| `eac3_stereo` 2/0 | 137.2 | 4.29 |
+| `eac3_tools` 2/0, cpl + spx + AHT | 144.6 | 4.52 |
+| `ac3` 5.1 | 199.9 | 6.25 |
+| `eac3` 5.1 | 348.9 | 10.90 |
+| `eac3_ecpl` 2/0, §E3.5 | 472.1 | 14.75 |
+
+Nothing encodes in real time on this part, not even AC-3 2/0, and the
+worst row is fifteen times over. That is the decoder's pre-conversion
+picture - a 5.1 E-AC-3 decode was 2.46x over before its arithmetic moved
+to `float`, and 0.34x after - with a wider gap. The
+[capability table](#what-the-part-can-and-cannot-do) carries these figures.
+
+#### Where the encode time goes
+
+The same board, the same day, the front end still `double`, built with
+`AC3FORGE_STAGE_TIMERS=ON` (the encode probe reporting its stages as the
+decode probe does; 2.4 us a timed pair). Self time per frame, the stages that
+matter, with the whole row for scale:
+
+| Stage | `ac3` 5.1 (201.4 ms) | `eac3` 5.1 (352.2 ms) | `eac3_ecpl` 2/0 (475.1 ms) |
+|---|---:|---:|---:|
+| Forward MDCT, `double` | 71.9 ms | 70.9 ms | 23.9 ms |
+| Transient detection, `double` | 57.4 ms | 57.5 ms | 23.1 ms |
+| `choose_delta_segments` | 14.2 ms | 50.9 ms | 21.0 ms |
+| `encode_frame`'s own arithmetic, unzoned | 12.9 ms | 86.2 ms | 35.3 ms |
+| Exponent run planning | - | 28.2 ms | 13.1 ms |
+| §7.2 bit allocation (integer), 141 to 237 calls | 5.6 ms | 13.2 ms | 5.1 ms |
+| §E3.5 channel spectrum, `double` DFT, 12 calls | - | - | 160.0 ms |
+| §E3.5 band fitting, 15 calls | - | - | 104.7 ms |
+| §E3.5 angle-interpolation decision | - | - | 48.6 ms |
+
+Two stages that are nothing but `double` arithmetic on the FPU-less path -
+the forward transform and the transient detector - are 64% of an AC-3 5.1
+frame and 36% of an E-AC-3 one, and both have `float` counterparts that
+already exist or are trivial: the decoder's `float` inverse transform of
+the same size runs six channels in 3.4 ms on this board. The enhanced
+coupling encoder's spectrum is the same §3.5.5 routine the decoder runs in
+`float` at a fraction of a millisecond a call, here 13.3 ms a call in
+`double`. Behind those, what remains is the allocation search - the delta
+segments, the run planning, `encode_frame`'s own quantisation and
+comparisons, several hundred integer bit-allocation calls a frame - which
+is arithmetic and decisions on `double` masking curves and coefficients,
+not one hot loop.
+
+#### The front end in float
+
+The two stages that dominated - and the block gather and analysis window in
+front of them - now run in the profile's scalar
+(`ac3/internal/encode_scalar.hpp`, `float` here; [Building](../../building.md#minimum-footprint-decoder-profile)
+has the axis), the coefficients widened to `double` for the rest of the
+encoder, which is unchanged. The same board, the same day, plain build:
+
+| Row | ms/frame, front end `double` | ms/frame, front end `float` | x real time now |
+|---|---:|---:|---:|
+| `ac3_stereo` 2/0 | 75.0 | 28.3 | **0.88** |
+| `eac3_stereo` 2/0 | 137.2 | 90.4 | 2.83 |
+| `eac3_tools` 2/0 | 144.6 | 97.7 | 3.05 |
+| `ac3` 5.1 | 199.9 | 71.0 | 2.22 |
+| `eac3` 5.1 | 348.9 | 219.7 | 6.87 |
+| `eac3_ecpl` 2/0 | 472.1 | 425.5 | 13.30 |
+
+AC-3 2/0 is in real time. Every row lost what the stage table said it would -
+the E-AC-3 5.1 frame lost 129 ms, the transform's 71 and the detector's 57 -
+and every row's bytes and hash are the host's, since the float front end is
+the same on x86, on the Cortex-M3 leg and here. The peaks fell too: the
+overlap history and the transform scratch halved, 220,608 bytes to 202,760
+for E-AC-3 5.1.
+
+What remains is the search. The same stage-timed build with the front end
+in `float`, self time per frame:
+
+| Stage | `ac3` 5.1 (72.5 ms) | `eac3` 5.1 (222.7 ms) | `eac3_ecpl` 2/0 (428.9 ms) |
+|---|---:|---:|---:|
+| Forward MDCT, now `float` | 5.7 ms | 4.8 ms | 1.6 ms |
+| Transient detection, now `float` | 4.3 ms | 4.3 ms | 1.7 ms |
+| `choose_delta_segments` | 14.2 ms | 50.7 ms | 20.5 ms |
+| `encode_frame`'s own arithmetic, unzoned | 12.8 ms | 86.1 ms | 35.2 ms |
+| Exponent run planning | - | 28.2 ms | 13.1 ms |
+| §7.2 bit allocation (integer), 141 to 237 calls | 5.6 ms | 13.1 ms | 5.0 ms |
+| Dither flags, fixed exponents, mantissa bit counts | 17.1 ms | 20.3 ms | - |
+| §E3.5 channel spectrum, `double` DFT, 12 calls | - | - | 161.4 ms |
+| §E3.5 band fitting, 15 calls | - | - | 104.7 ms |
+| §E3.5 angle-interpolation decision | - | - | 48.5 ms |
+
+The two converted stages went from 129 ms of an E-AC-3 5.1 frame to 9. What
+an E-AC-3 5.1 frame is now is `encode_frame`'s own quantisation and
+comparisons, the delta segments, the exponent run planning and several
+hundred integer bit-allocation calls - arithmetic and decisions on `double`
+masking curves and coefficients, and an iteration count as much as an
+arithmetic cost. The enhanced coupling encoder's 429 ms is its `double`
+§3.5.5 analysis, the same routine the decoder runs in `float` at a fraction
+of a millisecond a call. The next section is what converting the rest of
+the encoder bought.
+
+#### The rest of the encoder in float
+
+The same day, the remainder followed the front end into the profile's
+scalar: the coefficient store itself, the coupling, spectral-extension and
+enhanced-coupling analyses and their fits, the dither and delta-segment
+decisions, the fixed-point conversion and the rematrix, with the §3.5.5
+spectrum now the decoder's `float` form. Two things had to exist for it. The
+exported functions the store feeds gained `float` forms (`to_fixed25` is a
+template, `to_fixed25_block`, `accumulate_peak_exponents`,
+`choose_delta_segments` and `PerceptualModel::analyse` take either scalar,
+`DitherBallot` is the `double` instantiation of `BasicDitherBallot<Scalar>`),
+and the float path has its own `log2` and `exp`
+(`src/forge/src/core/scalar_math.hpp`) rather than libm's: this profile's
+fixture hashes are checked on the x86 host, the Cortex-M3 leg and this part,
+and three C libraries' `logf` do not agree in their last bit. The `double`
+overloads are libm's, called as before, so the ordinary build is unchanged.
+What is still `double`: the adaptive hybrid transform - its six-block DCT and
+vector quantiser - and the masking model's own arithmetic. The allocation
+search is integer either way.
+
+Measured on the board on 2026-09-10, plain build, 240 MHz, every row's bytes
+and hash the host's - and the same hash the float front end alone had
+produced: converting everything behind it moved no fixture's stream.
+
+| Row | ms/frame, front end `float` | ms/frame, encoder `float` | x real time now |
+|---|---:|---:|---:|
+| `ac3_stereo` 2/0 | 28.3 | 12.1 | **0.38** |
+| `eac3_stereo` 2/0 | 90.4 | 33.8 | 1.06 |
+| `ac3` 5.1 | 71.0 | 35.1 | 1.10 |
+| `eac3_ecpl` 2/0 | 425.5 | 54.7 | 1.71 |
+| `eac3_tools` 2/0 | 97.7 | 56.4 | 1.76 |
+| `eac3` 5.1 | 219.7 | 81.2 | 2.54 |
+
+E-AC-3 2/0 and AC-3 5.1 are at the line, a frame and a half of margin short
+of it; the enhanced-coupling row lost 371 ms, its §3.5.5 analysis being the
+same routine the decoder had already had in `float`. The peaks fell with the
+halved store: E-AC-3 5.1 from 202,760 bytes to 154,932, AC-3 5.1 from
+144,754 to 107,166. The stage-timed build, self time per frame, the stages
+that matter:
+
+| Stage | `ac3` 5.1 (36.6 ms) | `eac3` 5.1 (84.2 ms) | `eac3_stereo` 2/0 (35.2 ms) | `eac3_tools` 2/0 (61.6 ms) | `eac3_ecpl` 2/0 (56.3 ms) |
+|---|---:|---:|---:|---:|---:|
+| Transient detection and forward MDCT, `float` | 8.4 ms | 7.5 ms | 3.0 ms | 3.0 ms | 3.0 ms |
+| Exponent run planning (integer) | - | 28.2 ms | 11.3 ms | 4.3 ms | 13.1 ms |
+| §7.2 bit allocation (integer), 19 to 237 calls | 5.6 ms | 13.1 ms | 6.3 ms | 2.1 ms | 5.0 ms |
+| Mantissa bit counts (integer) | 4.0 ms | 8.9 ms | 2.9 ms | 1.2 ms | 3.3 ms |
+| `choose_delta_segments`, now `float` | 1.4 ms | 5.0 ms | 2.1 ms | 0.7 ms | 2.1 ms |
+| Dither flags, fixed exponents, now `float` | 4.0 ms | 2.6 ms | 0.7 ms | 0.2 ms | 0.8 ms |
+| Spectral-extension coordinates | - | - | - | 13.5 ms | - |
+| AHT: transform, gains, vector quantiser, bit counts, all `double` | - | - | - | 23.8 ms | - |
+| §E3.5 channel spectrum, `float` DFT, 12 calls | - | - | - | - | 10.0 ms |
+| §E3.5 band fitting and angle decision, `float` | - | - | - | - | 6.1 ms |
+
+What an E-AC-3 5.1 frame is now is its search: the exponent-run planner, the
+bit-allocation calls and the mantissa bit counts are 50 of its 84 ms, and all
+three are integer arithmetic on the decoded exponents - the same routines the
+decoder runs once a block, here a few hundred times a frame for the
+candidates the search weighs. The `float` arithmetic that was the whole story
+in the morning is 20 ms of it. The tools row's remaining `double` is the AHT,
+a quarter of its frame; §E3.5's is nothing, that row being 13 ms of planning
+and 10 of the twelve spectra. Real time for E-AC-3 5.1 on this part is now a
+question about the planner - 28 ms for six streams - and the number of
+allocation candidates, not about arithmetic; or the second core. The next
+section is what that question was worth.
+
+The same float encoder is a full build with `-DAC3FORGE_ENCODE_SCALAR=float`,
+which CI's `linux-gcc` leg builds beside the float decoder to run its streams
+through the gold-reference gate and hold its worst channel to within 0.5 dB
+of the double encoder's (`tools/checks/check_encode_scalar_quality.py`); on
+the five gold streams the two encoders' worst channels are identical to the
+hundredth of a decibel.
+
+#### The search and the planner
+
+The same day again, the search. Three things were found and four changed.
+
+The rate-control search runs twice a frame - once with the §7.2.2.6 delta
+segments and once without, keeping whichever reaches the higher offset - and
+each pass was warm-started from the *other* pass's answer, some thirty
+composite units away on ordinary material, so each marched ten probes to
+cross that gap every frame. Each pass now starts from its own previous
+answer, which moves by a handful of units. That change turned out not to be
+the pure speed-up it was documented as: the frame's mantissa cost is not
+monotone in the offset (`mantissa_bits_per_block` packs bap-1, bap-2 and
+bap-4 mantissas three or two to a codeword, and a bin moving to a larger bap
+can empty a partly filled group), so the fitting predicate has several
+boundaries in rare frames and the probe sequence decides which one is found.
+Every such answer is a fitting offset; the gold-reference margins did not
+move; the E-AC-3 fixture hashes did, by a unit of offset here and there, and
+were re-pinned. `snr_search.hpp` records the finding.
+
+The other three are exact - the same candidates, the same answer, less work,
+and gated by the hashes not moving. The exponent-run planner scores both of
+Annex E's frame forms in one pass, skips a run whose exponent set alone
+already costs more than the best plan found for its end block, walks only the
+bins allocated any precision, and extends a run's waste by one block's row
+when its minimum did not move (`tests/encoder/test_exp_strategy.cpp` holds
+the pass to a transcription of the old one over 400 random inputs). The
+masking curve is computed once per run per search and only §7.2.2.7's offset
+is applied per probe (`compute_masking_curve` / `allocate_from_curve`, held
+to `compute_bit_allocation` over 1,800 offsets in `tests/core/test_bitalloc.cpp`).
+And blocks read by the same run of every stream are counted once.
+
+Measured on the board on 2026-09-10, plain build, 240 MHz, every hash the
+host's and the Cortex-M3 leg's:
+
+| Row | ms/frame, encoder `float` | ms/frame, this section | x real time now |
+|---|---:|---:|---:|
+| `ac3_stereo` 2/0 | 12.1 | 11.1 | **0.35** |
+| `eac3_stereo` 2/0 | 33.8 | 23.5 | **0.73** |
+| `ac3` 5.1 | 35.1 | 32.2 | 1.01 |
+| `eac3_ecpl` 2/0 | 54.7 | 42.3 | 1.32 |
+| `eac3_tools` 2/0 | 56.4 | 52.6 | 1.64 |
+| `eac3` 5.1 | 81.2 | 55.5 | 1.74 |
+
+E-AC-3 2/0 is in real time with a quarter of the frame to spare, and AC-3 5.1
+sits on the line. The stage-timed build, self time per frame, the stages
+that moved:
+
+| Stage | `eac3` 5.1 before | `eac3` 5.1 after | `eac3_stereo` 2/0 after |
+|---|---:|---:|---:|
+| Exponent run planning | 28.2 ms | 14.7 ms | 6.1 ms |
+| Bit allocation (the curve once, the offset per probe) | 13.1 ms, 237 calls | 5.1 ms | 2.5 ms |
+| Mantissa bit counts | 9.0 ms | 4.5 ms | 1.6 ms |
+| `choose_delta_segments` | 5.0 ms | 4.8 ms | 1.9 ms |
+| Probes per frame | 23 | 18.5 | 17 |
+
+What remains of an E-AC-3 5.1 frame is the planner (15 ms), the allocation
+probes (10 ms across the two passes), the delta segments (5 ms) and the
+front end (7.5 ms), against 55 in all; the 6-frame fixture's probe count is
+also higher than real material's, whose offsets move less from frame to
+frame. The AC-3 5.1 fixture is a different case: its rate search saturates
+at the maximum offset after the second frame (a 448 kbit/s frame of sines
+has room to spare), so what its 11 probes a frame measure is the fixture's
+own cold start, and its 32 ms is the allocation and the mantissa counts.
+
+**The first effort level.** The search is where a platform can be given a
+choice, and the choice this branch adds is `delta_allocation`
+(`ac3::EncoderConfig` and `ac3::eac3::FrameConfig`, on by default; the CLI
+spells it `delta=off`, or `nodelta` in `eac3-encode`'s tools string). Off, the
+encoder chooses no §7.2.2.6 segments and runs no second search to weigh
+them; the stream is a legal one with `dbaflde` clear. What that removes on
+this part is the segments' own stage and the second pass - 4.8 ms and about
+4.6 ms of an E-AC-3 5.1 frame, and the side-information re-measurement
+between them - and what it costs on the five gold streams, decoded and
+compared with the source, is 0.01 dB on the worst channel of the two E-AC-3
+streams and nothing on the AC-3 ones: the race was already dropping the
+segments on most of their frames. [The arithmetic-tiers plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)
+is where the axis this is the first point of is written down.
+
+What the part cannot encode, measured on the host profile ([Building](../../building.md#what-the-encode-direction-costs)
+has the table): 5.1 with AHT (312,744 bytes) or standard coupling (289,202)
+or both with spectral extension (369,790), any layout that needs a dependent
+substream (7.1.4 peaks at 601,954 with three encoders resident), and the
+Atmos object encoder (about 300,000, and not in the profile). 5.1 with
+spectral extension alone (205,718) does fit and has no row yet. The encode
+build leaves 303,656 bytes free in internal SRAM, 241,664 in its largest
+run, under QEMU.
+
+### What is left, and what would move it
+
+- **Objects.** JOC reconstruction is 12.3 ms of the objects fixture's 21.7:
+  4.2 ms mixing, 3.5 ms re-analysing the bed with thirty forward transforms a
+  frame, 2.8 ms synthesising six objects. The bed analysis exists because
+  `oba::joc::reconstruct` takes the bed as PCM; the decoder holds that bed's
+  MDCT coefficients already, one block at a time, and a reconstruction that
+  took them would skip the analysis outright. Beyond that, this is the one
+  place the second core is worth its complexity: JOC for frame N is
+  independent of the bed decode of frame N+1, so a second task can run it a
+  frame behind, at the cost of one frame of latency, and throughput becomes
+  the larger of the two halves rather than their sum. Neither is done.
+- **Enhanced coupling** is at 0.62x and has one cheap step left. Each block's
+  spectrum runs three inverse transforms, and two of them are the neighbouring
+  blocks' - the same transforms the previous and next block run for
+  themselves, so eighteen a frame where eight are distinct; a cache keyed by
+  block would take about a millisecond off the 6.7 the spectrum costs now.
+  `fft.cpp` joined the `-O2` list in the third pass and was worth 0.1 ms:
+  `ecpl_channel_spectrum` went from 6.9 ms to 6.7 and the reconstruction
+  stayed at 4.7. The pass's gain on this fixture came from the bitstream
+  side instead - its mantissas 2.4 ms to 1.6.
+- **7.1.4 to a DAC.** The decode is in real time on one core at 0.90x, and
+  the frame of output a player used to have to hold - 73 KB for twelve
+  channels, whether the probe held it or a player did - is gone: the
+  `_by_block` forms (`decode_access_unit_by_block`, see
+  [Decoding](../../library/decoding.md#block-granular-output)) hand the
+  programme over a 256-sample block at a time from the decoder's own
+  storage, copying nothing, and the probe now holds no PCM at all. What is
+  still structural: a dependent's channels go through the access unit's
+  own vectors, 73 KB at the peak, where writing them straight into their
+  output slots would remove them; PSRAM for the staging remains the blunt
+  alternative. One S3 I2S line carries 128 bits a frame — four 32-bit TDM
+  slots or eight 16-bit ones — so twelve need both controllers at 16 bits,
+  which is the shape the sink opens now (sixteen slots in all); a
+  twelve-slot DMA queue competes with WiFi for
+  internal RAM; and at 0.90x the second core stops being optional for anything
+  that decodes 7.1.4 and does something else
+  ([`planning/esp32-714-realtime.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-714-realtime.md)).
+- **The second core** was the lever the earlier estimates ranked first. It was
+  not needed for stereo or 5.1, and the breakdown says why it would have
+  disappointed: the stages that dominated were serial software floating point,
+  not parallel work, and splitting them across two cores would have halved a
+  cost that could be removed instead.
+- **Per-frame allocations** are 1 to 31 per frame (this profile's open PF7
+  gap). At a few microseconds each they are not on the path to real time for
+  any fixture here. The first three passes left the count the runner gates
+  untouched on every fixture (the coupling-coordinate vector that allocated
+  once per coupled channel per block went as a side effect, but no fixture
+  couples); the fourth took the Atmos fixtures from 23 and 41 to 20 and 31 by
+  moving the object description rather than copying it.
+- **A hand-written kernel tier** (`madd.s`, which `-ffp-contract=off` forbids
+  project-wide) would apply to the IMDCT, which is 3.5 ms of a 11.3 ms 5.1
+  frame. That bounds what the tier could return at under a quarter of the
+  remaining time, and it is not needed for anything that now fits.
+
+### Running it yourself
+
+    idf.py -p <PORT> flash monitor
+
+with `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw"` if the board is
+reached through its native USB connector rather than the UART bridge - see
+`sdkconfig.hw` for what that changes and why. Add `-DAC3FORGE_STAGE_TIMERS=ON`
+to the build for the per-stage lines, from either probe.
+
+On a DevKitC-1 the host cannot reset the part into the application over
+USB-Serial-JTAG: both `esptool` and `idf.py monitor` assert IO0 during their
+reset sequence, so every host-initiated reset lands in `boot:0x0 (DOWNLOAD)` and
+the application never starts. Attach with `idf.py monitor --no-reset` and press
+the board's RESET button instead. Flashing over the same connector is
+unaffected. The probe pauses three seconds before its first line so the
+re-enumeration that follows a reset does not swallow the first fixture's
+output, which it otherwise does.
+
+One trap for a machine that builds both shapes: ESP-IDF keeps `sdkconfig` in
+the PROJECT directory, shared by every `-B` build directory, and regenerates it
+from `SDKCONFIG_DEFAULTS` only when it is absent. A QEMU build made after a
+hardware build therefore inherits `sdkconfig.hw`'s USB console and prints
+nothing under QEMU, which has no such device. Give each shape its own
+`-DSDKCONFIG=<build dir>/sdkconfig`, or delete `sdkconfig` between them.
+
+## Objects
+
+`joc.cpp` and `oamd.cpp` are in `src/forge/minimal.cmake`'s source list and link into every build
+of this profile, so object decode always compiled here. For a long time it did not fit: an
+`atmos-encode` fixture (six objects, JOC over a 5.1 downmix, 448 kbit/s) peaked at 449,826 bytes
+against 280,792 free, and `ReconstructionState` was a single 147,504-byte allocation — larger
+than the 116,736-byte contiguous run a decode leaves free, so it failed on contiguity before any
+budget was consulted.
+
+Four changes, each measured on its own:
+
+| | Peak heap | Largest single allocation |
+|---|---|---|
+| As found (`Domain::kQmf`, `double`, arrays at `kMaxObjects`) | 449,826 | 147,504 |
+| `Domain::kMdctBand` | 386,770 | 147,504 |
+| + `ReconstructionState` in float32 | 301,522 | 73,776 |
+| + per-object scratches sized to the stream | 267,754 | 43,008 |
+| + handing back the enhanced-coupling scratch | **233,546** | 43,008 |
+
+The largest allocation was then the E-AC-3 decoder's own AHT buffer rather than anything JOC owns.
+That buffer was split into one 6,144-byte buffer per stream on 2026-09-12, and since 2026-09-16
+an AHT stream decodes straight into the per-block coefficient store instead, with no buffer of
+its own.
+
+That last row is the one that is easy to miss. 267,754 against 280,792 free looks like 13,038
+spare, but the order of fixtures decided the result: objects run after an enhanced-coupling decode
+failed with `out_of_memory bytes=6144`, while objects on a clean heap passed. The difference is
+`eac3_tools.cpp`'s 32,768-byte spectrum scratch and 1,440-byte bin-angle vector, both
+`thread_local` so §E3.5 neither allocates per call nor puts 32 KB on the stack. On a hosted
+platform they are released at thread exit; here the only thread never exits.
+`ac3::eac3::release_ecpl_scratch()` hands them back, and the probe calls it between fixtures.
+Retained at exit went from 34,232 bytes to 24, and to 12 once the bin-angle vector became a
+stack array and the scratch took its float form, 23,552 bytes.
+
+**The bed does not need any of this.** An Atmos bed is ordinary E-AC-3 5.1 and the objects are
+side data, so `DecoderConfig::skip_object_reconstruction` decodes the bed without allocating
+`ReconstructionState` at all — 20 allocations per frame against 31. `tests/oba/test_atmos.cpp`
+asserts the rendered channels are bit-for-bit what a full decode produces. `object_metadata`
+still arrives, parsed out of a block's skip field.
+
+### Placed on loudspeakers
+
+Reconstructed objects are mono signals with a position each; a part driving a 7.1.4 DAC has to
+pan them onto its loudspeakers, and since 2026-09-10 it can, on the target: `spatial.cpp` is in
+the profile's source list, and the block form's `PcmBlock` carries the objects beside the bed -
+a view per object onto the unit's own reconstruction, cut to the block, with the metadata that
+places them ([Decoding](../../library/decoding.md#block-granular-output)). The probe's
+`eac3_atmos_render` row is the sink a player would write: `ac3::spatial::pan_direction` for
+each object's gains onto the eleven panned targets, once per unit, the bed's LFE passed through
+as the twelfth slot, and a block of float sums per target - twelve channels of one 256-sample
+block, static. Its stream is the Atmos rows' source with three objects raised to the ceiling and
+one half way (`tools/generators/atmos_height_scene.txt`), because the Atmos rows' objects all
+sit on the listener plane and a render of them would leave the four height targets silent.
+
+Every one of its twelve levels is the host's to the digit on both emulated legs, which is what
+the row can say: no `ac3cli` path writes a rendered layout to a WAV for the generator to
+measure, so `render_fixture.hpp` is the host shape's own numbers and the row is a regression
+reference, the standing the encode fixtures already have; `tests/spatial/` is what says the
+panner is right. What it costs, on the Cortex-M3 leg's count: 28,938,000
+instructions a frame for decode and render together, the render itself 5%
+of that; 210,573 bytes of peak - the objects row's plus the panner's target
+tables - and 36 allocations a frame, one of them `describe_objects`'
+description of the unit, the rest the objects row's own. The panner used to allocate eight
+vectors per object per call; it has stack storage now.
+
+On the board, 2026-09-10, plain build, 240 MHz: 25,105 us a frame for decode and render
+together, 0.78x, the render 3,261 us of it - 13% of the row where the Cortex-M3 leg counts 5%.
+The mix is float on the FPU; what is not is the pan, `pan_direction`'s trigonometry in
+`double`, once per object per unit and every one of those operations a call into the ROM's
+software floating point on this part. What would move it: a `float` panner, or recomputing an
+object's gains only when its position or gain has changed, which for a stream whose objects
+hold still - this fixture's do - takes the pan out of every unit but the first.
+
+## Configuration
+
+`apps/baremetal/platform/esp32s3/sdkconfig.defaults` carries the settings and their reasoning. Two
+are repeated here because neither failure mode points at its cause:
+
+- **`CONFIG_ESP_MAIN_TASK_STACK_SIZE=40960`** (32,768 until PR #698 grew `DecodedSubstream`/
+  `DecodedAccessUnit` past the runner's floor — see the Stack section above). IDF's default is
+  3,584 bytes, which suits an application that configures peripherals and waits on queues and is
+  far too small for a codec. The overflow does not report as a stack overflow: it surfaces as a
+  `LoadProhibited` panic on the other core's idle task, because it corrupts a neighbouring
+  structure. An integrator sizing a real decoding task should measure with
+  `uxTaskGetStackHighWaterMark()` rather than copy this.
+- **`CONFIG_ESP_TASK_WDT_INIT=n`.** The probe is a batch computation that runs the CPU flat out
+  without yielding, which is what the watchdog exists to catch. A decoder in a product should keep
+  the watchdog and give the decode its own task with a bounded per-frame budget.
+
+PSRAM is off in the standalone probe, although the development board has 8 MB. QEMU cannot emulate S3 PSRAM
+([espressif/qemu#129](https://github.com/espressif/qemu/issues/129)), so a build requiring it
+cannot run in CI, and keeping it off means the internal-SRAM budget is enforced rather than
+avoided. The Hearth Sendspin sink is a separate networked shape and requires the board's 8 MB
+of PSRAM.
+
+## What the port required from the library
+
+**A `thread_local` that made the library unlinkable on any RTOS.** `eac3_tools.cpp`'s
+enhanced-coupling scratch was a 32 KB `thread_local`. FreeRTOS carves each task's thread-local
+area out of that task's own stack and sizes it from the linked image's `.tdata + .tbss` — the same
+size for every task, including tasks that never call the decoder. ESP-IDF's IPC task has a 1 KB
+stack, so it could not be created and the application failed an assert inside `esp_ipc_init()`
+before `app_main`. Keeping only a `unique_ptr` in TLS took every task's area from 32 KB to one
+pointer, and `.tbss` from 32,784 bytes to 24.
+
+**float32 for the decode path.** The LX7's FPU is single-precision, so `double` coefficients are
+wider than anything downstream can use, and memory was the binding constraint: the per-block
+`coeffs` store is 100,352 bytes and `aht_coeffs_` 86,016.
+`src/forge/src/internal/scalar/{float32,float64}/` carries `decode_scalar_t` — `float` under the
+minimum-footprint profile, `double` by default elsewhere, and selectable in any build with
+`-DAC3FORGE_DECODE_SCALAR=float`. Which profile a build is and which scalar its decoder carries
+are independent CMake axes. The option's third value, `fixed`, is the tier for a part with no FPU
+at all - an ESP32-C3 or C6 - and the one value the profile honours over its own `float`
+default; [docs/building.md](../../building.md#minimum-footprint-decoder-profile) and
+[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)
+say what it is and what it measured. It is not this part's tier:
+the S3's FPU makes `float` the right arithmetic here. Since 2026-09-09 the arithmetic between the bitstream and those
+buffers — mantissa dequantisation, dither, coordinates, decoupling, spectral extension, the AHT
+and JOC's mixing — follows the same scalar; it had stayed `double`, which on this FPU is
+software, and [Timing](#timing) has what that cost. The output stage's per-sample arithmetic
+followed on 2026-09-10 — see [Folded to stereo](#folded-to-stereo).
+
+## Open work
+
+- **Internal RAM in the Sendspin sink.** A board playing over Wi-Fi keeps under 150 bytes of
+  internal RAM free at its lowest ([In the Sendspin sink](#in-the-sendspin-sink)). Moving the
+  decoder's allocations between 4 and 16 KB to PSRAM made the board too slow, and Wi-Fi and lwIP
+  already try PSRAM first. What is left to try is a decoder that makes fewer such allocations.
+- **Heap traffic in the decode loop.** PF7 asks for zero; the steady state is 1–31 allocations per
+  frame depending on fixture, from per-block geometry vectors and the `std::vector` members of the
+  returned `DecodedFrame`. Reaching zero means those becoming fixed-capacity, which changes public
+  types. The runner gates at 100 so the distance from zero cannot grow quietly.
+- **A vectorised float32 path.** `src/forge/src/internal/arch/` carries an `f32x4`, but it
+  resolves to `generic/` here and compiles to four scalar operations: PIE's vector ALU is
+  integer-only. What `esp-dsp` uses instead is `EE.LDF.128.IP`, a 128-bit load filling four FPU
+  registers feeding four scalar `madd.s` — load bandwidth and instruction-level parallelism rather
+  than a four-wide multiply. That is not reachable from the arch seam, measured rather than
+  assumed: `EE.LDF.128.IP` writes a consecutive quad of `f` registers, which GCC's Xtensa port
+  cannot model as one value, so it spills every asm block's outputs (68 instructions scalar
+  against 73 with 22 spills). Capturing it needs a hand-written assembly kernel tier, like
+  `src/forge/src/internal/avx2/`, which would also need `madd.s` — a fused multiply-add of exactly
+  the kind `-ffp-contract=off` forbids project-wide — and so its own bit-exactness argument.
+- **AC-3's `decoder.cpp` is still `double`.** E-AC-3 was converted; AC-3 works but keeps both
+  transform instantiations compiled.
+- **The encoders' search is integer, and it is what is left.** The encoders run in the
+  profile's scalar end to end since 2026-09-10 (AC-3 2/0 at 0.38x, E-AC-3 2/0 and AC-3 5.1 at
+  the line, E-AC-3 5.1 at 2.5x); what an E-AC-3 5.1 frame spends now is exponent-run planning
+  and the rate-control search's allocation calls, integer work whose cost is a count of
+  candidates rather than an arithmetic type - see [Encoding](#encoding). The adaptive hybrid
+  transform's DCT and vector quantiser are the one `double` island, a quarter of the tools row.
+
+## Where to go next
+
+- [ESP32-C3](esp32-c3.md) — the same component, decoding in the fixed-point tier on a part with
+  no FPU at all.
+- [ESPHome](esphome.md) — the external component wrapping this decoder for ESPHome projects.
+- [Cortex-M3 (QEMU reference)](cortex-m3.md) — the first bare-metal target, with no hardware
+  floating point.
+- [Bare metal overview](index.md) — how the pages in this section relate.

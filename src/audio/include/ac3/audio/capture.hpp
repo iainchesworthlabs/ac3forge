@@ -10,8 +10,10 @@
 #include "ac3/audio/ring_buffer.hpp"
 
 // Live audio capture. On Windows this is WASAPI in shared mode: either a
-// real input endpoint (microphone, line in) or a render endpoint opened in
-// loopback mode, which captures whatever the machine is playing.
+// real input endpoint (microphone, line in), a render endpoint opened in
+// loopback mode, which captures whatever the machine is playing, or - roadmap
+// UX11 - a process-loopback tap, which captures what one process (and its
+// children) renders and nothing else, whichever endpoint it renders to.
 //
 // The capture thread only ever writes interleaved float samples into a
 // RingBuffer; callers pull from that buffer at their own pace. Nothing on the
@@ -25,6 +27,17 @@ enum class CaptureError : std::uint8_t {
     kDeviceNotFound,
     kFormatUnsupported,  // endpoint delivers a format we cannot convert
     kAlreadyRunning,
+    // start_process_loopback() only, where this machine or this call cannot
+    // use a tap: Windows before 10 build 20348, macOS before 14.2, PipeWire
+    // asked for kExcludeProcessTree (which it has no way to express), and
+    // ALSA always - it has no per-application concept at all. The posix and
+    // Android backends refuse with kNoBackend instead, having no capture
+    // backend to refuse from.
+    kProcessLoopbackUnavailable,
+    // start_process_loopback() only: no process has that id. Checked here
+    // because the OS does not: a tap on an id nobody owns activates, starts,
+    // and delivers zeros forever.
+    kProcessNotFound,
 };
 
 [[nodiscard]] std::string_view describe(CaptureError error);
@@ -47,11 +60,48 @@ struct DeviceInfo {
 // a loopback source.
 [[nodiscard]] std::expected<std::vector<DeviceInfo>, CaptureError> enumerate_devices();
 
+// Whether start_process_loopback() can work on the machine this is running
+// on - not the one it was built on. Three backends have a tap and each asks
+// the machine a different question: Windows a build-number test (10.0.20348
+// introduced the activation), macOS an OS version test (Core Audio's process
+// tap arrived in 14.2), PipeWire whether a session is reachable right now.
+// The ALSA, posix and Android backends have no per-application concept at all
+// and answer a constant false.
+// audio_backend().process_loopback says the same thing as a Capability.
+[[nodiscard]] bool process_loopback_available();
+
+enum class ProcessLoopbackMode : std::uint8_t {
+    kIncludeProcessTree,  // only what this process and its children render
+    kExcludeProcessTree,  // everything except this process and its children
+};
+
+// The shape a process-loopback tap delivers. There is no endpoint whose
+// mixer format could be asked for - the tap is not a device - so the caller
+// states what it wants and the audio engine converts to it. 48 kHz float
+// stereo is the shape a live encoder wants; eight channels is granted too,
+// and is how a surround-rendering application's tap reaches a bed intact.
+//
+// That is WASAPI's account of it, and it is the widest of the three. Core
+// Audio has no converter behind a tap at all: its mixdown descriptions are
+// mono and stereo, and a mixdown runs at the rate of the device it mixes down
+// to rather than one the caller picks. So the macOS backend accepts channels
+// of 1 or 2 and refuses anything else with kFormatUnsupported, and refuses a
+// sample_rate its tap does not already deliver rather than resampling to it -
+// which is how start_process_loopback()'s "at exactly `format`" below stays
+// true there. See docs/platforms/macos.md, and
+// src/audio/src/backend/macos/capture.cpp's own header comment, for the rest
+// of that platform's narrower contract.
+struct ProcessLoopbackFormat {
+    std::uint32_t sample_rate = 48000;
+    std::uint16_t channels = 2;
+};
+
 struct CaptureStats {
     std::uint64_t frames_captured = 0;
     // Frames of silence synthesised to cover a loopback gap. A render
     // endpoint in loopback mode delivers nothing at all while the machine is
-    // silent, so a continuous timeline has to be filled in.
+    // silent, so a continuous timeline has to be filled in. A process tap
+    // behaves the same way while its process is quiet.
     std::uint64_t frames_silence_filled = 0;
     std::uint64_t frames_dropped = 0;  // ring buffer overruns (consumer too slow)
 };
@@ -70,6 +120,27 @@ public:
                                                           DeviceKind kind,
                                                           std::size_t ring_capacity_samples = 1u
                                                                                               << 18);
+
+    // WASAPI loopback tap. Taps what `process_id` (and, in kIncludeProcessTree
+    // mode, its child processes) renders, whichever endpoint that is, and
+    // starts the capture thread; samples land in buffer() at exactly
+    // `format`. Refuses with kProcessLoopbackUnavailable where the platform
+    // has no such tap (see process_loopback_available()), and with
+    // kProcessNotFound when no process has that id.
+    //
+    // Two things the tap does NOT do, both found the hard way
+    // (apps/crucible/spikes/README.md, S1): it does not survive the
+    // process's audio session being muted - the tap sits after session
+    // volume, so a muted session taps as silence - and it does not end when
+    // the process does. A tap outlives its process delivering zeros, so a
+    // caller that wants to know the process stopped playing has to watch
+    // the audio session list, not this capture.
+    [[nodiscard]] std::expected<void, CaptureError> start_process_loopback(
+        std::uint32_t process_id,
+        ProcessLoopbackMode mode = ProcessLoopbackMode::kIncludeProcessTree,
+        ProcessLoopbackFormat format = {},
+        std::size_t ring_capacity_samples = 1u << 18);
+
     void stop();
 
     [[nodiscard]] bool running() const;

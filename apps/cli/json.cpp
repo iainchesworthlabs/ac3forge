@@ -161,41 +161,6 @@ void JsonWriter::value_null() {
     fmt::print(out_, "null");
 }
 
-void JsonWriter::member(std::string_view name, std::string_view text) {
-    key(name);
-    value(text);
-}
-
-void JsonWriter::member(std::string_view name, const char* text) {
-    key(name);
-    value(text);
-}
-
-void JsonWriter::member(std::string_view name, bool flag) {
-    key(name);
-    value(flag);
-}
-
-void JsonWriter::member(std::string_view name, std::int64_t number) {
-    key(name);
-    value(number);
-}
-
-void JsonWriter::member(std::string_view name, std::uint64_t number) {
-    key(name);
-    value(number);
-}
-
-void JsonWriter::member(std::string_view name, double number, int decimals) {
-    key(name);
-    value(number, decimals);
-}
-
-void JsonWriter::member_null(std::string_view name) {
-    key(name);
-    value_null();
-}
-
 void JsonWriter::finish() { fmt::print(out_, "\n"); }
 
 }  // namespace ac3cli

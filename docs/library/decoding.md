@@ -120,7 +120,7 @@ E-AC-3 — `independent_substreams` plus a `SubstreamService` for substreams 1�
 `ac3::io::build_codec_config_box`'s `dac3`/`dec3` payload and the MPEG-TS PMT descriptors of
 both broadcast profiles (see [Muxing & sinks](muxing-and-sinks.md#muxing-mpegtsmux)).
 `independent_substreams` is an *observation* of which substream ids appear; it deliberately does
-not change how `scan` groups access units, which stays one-programme (ROADMAP.md's DC5).
+not change how `scan` groups access units, which stays one-programme.
 
 ## Object-layer strip
 
@@ -211,6 +211,7 @@ decoder as a check on the encoder: a test can assert on the `dynrng` words the e
 | `DecoderConfig` | Default | Notes |
 |---|---|---|
 | `drc_scale` | 0.0 | §7.7.1 partial compression. 0 ignores `dynrng`; 1 applies it as encoded. A/52 says a consumer decoder should default to applying it — this one defaults to 0 because a reference that silently rescales its output is not a reference. |
+| `drc_boost_scale` | none | `std::optional<double>`: the same scaling for boost alone (a `dynrng` word above unity), where it should differ from the cut's. For example, boost 0 keeps quiet passages quiet while `drc_scale` 1 still brings loud ones down. Unset, boost is scaled by `drc_scale` too. Like `drc_scale`, it applies under `OperatingMode::kCustom` only. |
 | `fast_imdct` | `true` | The fast inverse MDCT — the same fold the encoder's forward fast path uses — instead of the pseudocode's direct O(N²) sum against a 320 KiB tabulated matrix. Covers every inverse a decode runs: both decoders' PCM reconstruction, the three per-block inverses inside `eac3::ecpl_channel_spectrum`, and `oba::joc::reconstruct`'s per-object synthesis. Decodes 4.5–4.7× faster, agreeing with the direct form to 214.9 dB SNR (AC-3) / 284.7 dB (E-AC-3) over 180 s of stream. It never reaches an encoder — the encoder-internal inverses read `eac3::FrameConfig`'s own `fast_mdct` — so nothing about *encoded* output depends on it. `false` selects the direct reference form, the oracle the fast path's tests validate against; `ac3cli` exposes the pair as `mode=performance` / `mode=reference`. |
 | `heavy_compression` | `false` | §7.7.2: prefer `compr` where it exists, falling back on `dynrng` for syncframes that carry none. |
 | `output` | all off | The §7.8 output stage — dialnorm, downmix, operating mode. See below. |
@@ -222,6 +223,50 @@ decoder as a check on the encoder: a test can assert on the `dynrng` words the e
 | `programme` | none | `std::optional<int>` (§E2.3.1.2). Which independent substream's programme `decode_access_unit` renders when a stream carries several — they are alternatives, not layers. `std::nullopt` renders whichever programme each call's access unit belongs to; set to an id and an access unit belonging to any other is skipped without being decoded at all. Ignored by `decode_substream`, which sits below the programme layer. See below. |
 | `syntax` | `nullptr` | `FrameSyntax*` (`ac3/decoder/syntax_trace.hpp`): which coding tools each block used and what exponent strategy each stream carried, recorded on the way past. Written by **both** decoders, unlike `trace`/`eac3_trace` — the Annex E tools are most of what makes it worth having. Filled incrementally, so a refused frame still leaves behind everything read before the refusal. |
 | `skip_reconstruction` | `false` | Parse every field exactly as a full decode does, but stop short of turning the coefficients into audio: no inverse transform, no overlap-add, no JOC object reconstruction, and no per-access-unit channel combination. The metadata (and any trace above) is identical to a full decode's; `channels` and `object_audio` come back empty. What `ac3cli probe` runs a whole file through. Note what it does *not* skip: the mantissas are still read, because the bit position of every field after them depends on it. |
+
+### Block-granular output
+
+Both decoders have three output forms. `decode_frame` / `decode_access_unit` return the PCM in
+vectors of their own; `decode_frame_into` / `decode_access_unit_into` write it through spans the
+caller owns, a frame per channel; and `decode_frame_by_block` / `decode_access_unit_by_block` hand
+it to a `BlockSink` — a non-owning reference to any callable, so passing one allocates nothing —
+one `PcmBlock` at a time: `kSamplesPerBlock` (256) samples of every output slot, in the order the
+`_into` form writes, delivered once the whole frame or unit has decoded and the output stage has
+run. The samples are the `_into` form's exactly, and a downmix arrives as one or two slots. The
+spans view the decoder's own storage and are valid only inside the call that hands them over.
+
+```cpp
+ac3::Eac3Decoder decoder;
+const auto sink = [&](const ac3::PcmBlock& block) {
+    // block.index of block.blocks; block.channels[slot] is 256 samples of
+    // the rendered layout's slot. Interleave it into a DMA ring one block deep.
+    ring.push(block.channels);
+};
+for (const auto unit : scanned->access_units) {
+    const auto decoded = decoder.decode_access_unit_by_block(unit, sink);
+    if (!decoded) { /* as above */ }
+}
+```
+
+What the form is for is a caller that cannot afford a frame: on an ESP32-S3 a 7.1.4 programme's
+frame is 73,728 bytes of the part's free SRAM, and a DMA ring needs a block. For E-AC-3 nothing
+is copied on the way out — each slot is a view onto the substream vector that supplies it, a
+dependent's over the bed's where §E3.8.2 says it replaces it — so the assembly copy the `_into`
+form pays goes as well. AC-3 has no per-substream storage to hand out views of, so its form keeps
+one frame of its own (six channels, sized once); the saving there is the caller's. The §3.7
+hold-back's `std::nullopt`, a skipped programme and `skip_reconstruction` leave the sink uncalled;
+a concealed frame is delivered through it like any other. The
+[bare-metal probe](../platforms/bare-metal/cortex-m3.md) decodes every fixture through these forms and holds
+no PCM at all.
+
+An access unit's objects come through the same block. `PcmBlock::objects` is a view per JOC
+output onto the unit's own reconstruction, cut to the block, and `object_indices` and
+`object_metadata` mean what `DecodedAccessUnit`'s do; all three are empty for an AC-3 frame, for
+a bed-only decode (`skip_object_reconstruction`) and for a unit with no object layer. A sink
+placing objects on loudspeakers therefore needs no frame of anything - the value form's
+`object_audio` is a frame of copies per object, and this is none. The probe's
+`eac3_atmos_render` row is that sink: `ac3::spatial::pan_direction` for the gains, once per
+object per unit, and a block of float sums per target.
 
 ## The output stage
 
@@ -240,22 +285,40 @@ ac3::FrameDecoder decoder{{
 // reference. acmod/lfe still describe what was CODED.
 ```
 
+The stage's per-sample arithmetic runs in the decoder's scalar type - `double` in every ordinary
+build, `float` under the [minimum-footprint profile](../building.md#minimum-footprint-decoder-profile),
+whose targets have a single-precision FPU at best - and its gains and mix coefficients are
+`double` everywhere. That profile's probe holds two folded fixtures to their levels on the target.
+
 | `OutputConfig` | Default | Notes |
 |---|---|---|
 | `target` | `kAsCoded` | `kLoRo` (§7.8.1's plain stereo fold), `kLtRt` (§7.8.2's Dolby Surround compatible fold), `kMono` (§7.8's `output_mode == 1/0` branch), or no fold at all. |
-| `mode` | `kCustom` | `kLine` (§7.7.1: dialnorm plus the full transmitted `dynrng`) or `kRf` (§7.7.2: `compr`, falling back on `dynrng` per §7.7.2.1, plus downmix overload protection). Both **override** `drc_scale`/`heavy_compression` rather than composing with them — that is what makes them modes rather than two more switches. |
+| `mode` | `kCustom` | `kLine` (§7.7.1: dialnorm plus the full transmitted `dynrng`) or `kRf` (§7.7.2: `compr` with RF mode's 11 dB, falling back on `dynrng` per §7.7.2.1, plus downmix overload protection — see [RF mode's level](#rf-modes-level)). Both **override** `drc_scale`/`heavy_compression` rather than composing with them — that is what makes them modes rather than two more switches. |
 | `apply_dialnorm` | `false` | §5.4.2.8 normalisation onto the −31 dBFS reference. Both named modes imply it, so this only has to be set for `kCustom`. |
 | `mix_lfe` | `false` | §7.8 makes the LFE's contribution optional and this decoder drops it by default. |
 | `ltrt_phase_shift` | `true` | Whether Lt/Rt's surround sum is really phase shifted 90°, or only polarity-inverted. |
 | `rf_ceiling` | `1.0` | What `kRf` holds the fold under, as a linear sample magnitude. |
+| `mix_override` | all unset | `MixLevelOverride`: levels to fold with in place of the stream's, one field at a time, in `MixLevels`' fields and units. A set field replaces what the stream carried, or the default that stood in for it. An LFE level is honoured only where the stream allows LFE mixing at all. |
 
-The matrix comes from the **stream's own** mix levels, never from constants chosen here. AC-3
+The matrix comes from the **stream's own** mix levels unless `mix_override` replaces them, and
+never from constants chosen here. AC-3
 carries two coarse levels in bsi (`cmixlev`, `surmixlev`; §5.4.2.4/§5.4.2.5) and E-AC-3 carries a
 richer group inside `mixmdate` — separate Lt/Rt and Lo/Ro centre and surround levels plus an LFE
 mix level. Both decoders now keep those and report them (`DecodedFrame::cmixlev`/`surmixlev`,
-`DecodedSubstream::mix`), distinguishing "absent" from "present, and says the default";
+`DecodedSubstream::mixing`), distinguishing "absent" from "present, and says the default";
 `ac3::mix_levels()` turns either into the coefficients the stage needs, applying §7.8's own
 fallbacks where a field is simply not there.
+
+`MixLevels::preferred` passes on `dmixmod`, the fold the content was mixed for (Table D2.2) —
+E-AC-3's `mixmdate`, or an Annex D stream's `xbsi1` (see below) — without acting on it: `target` is
+always what the caller asked for. A caller that
+wants to follow the stream uses `ac3::automatic_stereo_target(acmod, preferred)`, A/52 §D3.1.1's
+automatic selection: `kLtRt` when the stream prefers Lt/Rt, `kLoRo` for every other code —
+`kNotIndicated`, and `kReserved` (Table D2.2's `11`, which A/52:2018 and ETSI TS 102 366 V1.4.1
+both leave reserved for AC-3 and E-AC-3 alike, and which §D2.3.1.2 allows a decoder to read as
+"not indicated"). `acmod` gates the whole field the same way: Table D2.2's own note leaves
+dmixmod's meaning reserved below `3/0` — at `1+1`, `1/0` and `2/0` — whatever code it carries, so
+those acmods get `kLoRo` regardless of `preferred`. `ac3cli`'s `downmix=auto` is built on it.
 
 §7.8.1's normalisation — "attenuating all downmix coefficients equally, such that the sum of
 coefficients used to create any single output channel never exceeds 1" — means a fold of plain
@@ -268,7 +331,7 @@ That follows from what §7.8.2 asks for rather than from anything decided here �
 `ltrt_phase_shift = false` and `kRf` are the two ways to get a bounded output, and the second is
 the one that guarantees it.
 
-Lt/Rt's surround sum is genuinely phase shifted, through a 127-tap Hilbert transformer, with the
+Lt/Rt's surround sum is phase shifted, through a 127-tap Hilbert transformer, with the
 direct path delayed to match; `OutputStage::latency_samples()` reports the resulting 63 samples of
 output delay, and is zero for every other configuration. `ltrt_phase_shift = false` selects the
 sign-only matrix a lot of hardware implements instead — no latency, at the cost of the surround
@@ -281,6 +344,55 @@ gain, ramped across the frame rather than stepped at its boundary so it cannot c
 clamp so the ceiling is true and not merely likely. `OutputStage::rf_protection_db()` reports the
 attenuation currently being held, so a test can assert the limiter engaged rather than only that
 the output stayed under the ceiling — which silence also satisfies.
+
+### RF mode's level
+
+A/52 describes what RF mode is for (§7.7.2.1) and how to read `compr` (§5.4.2.10, §7.7.2.2), but
+gives no output level for the mode and no offset anywhere; `dialnorm` itself is described only as
+the level a reproduction system uses to set its volume (§5.4.2.8, §7.6). The level decoders use
+comes from Dolby's own practice: line mode puts dialogue at −31 dBFS and RF mode at −20 dBFS,
+11 dB higher.
+
+The 11 dB are the decoder's. `kRf` normalises `dialnorm` onto −31 dBFS as `kLine` does, then
+applies each `compr` word with 11 dB on top of the word's own gain (`meta::kRfModeGainDb`). A
+syncframe with no `compr` word falls back on `dynrng` and gets no 11 dB, so a stream that carries
+no `compr` at all takes the same gains in `kRf` as in `kLine`. `kCustom` with `heavy_compression`
+applies the word's §7.7.2 gain alone, which is what FFmpeg's `heavy_compr` does too. For an
+E-AC-3 program with dependent substreams the `compr` word is the last dependent's, applied to
+every substream of the program (§E3.8.5); an §E2.3.1.2 AC-3 core keeps its own.
+
+All of this was measured against the Dolby Reference Player's decoder (`dlbac3dec`, `drc-mode=rf`
+against `drc-mode=line`):
+
+| Stream | Reference Player line / RF | this decoder line / RF |
+|---|---|---|
+| DEE AC-3 2.0 music, 192 kbit/s, dialnorm 19, `compr` 0xFF | −30.70 / −19.70 LUFS | −30.70 / −19.90 LUFS |
+| DEE E-AC-3 2.0 music, 96 kbit/s, dialnorm 19, `compr` 0xFF | −30.70 / −19.70 LUFS | −30.70 / −19.90 LUFS |
+| DEE AC-3 5.1, 448 kbit/s, dialnorm 11, `compr` 0xFF | −30.80 / −19.80 LUFS | −30.70 / −20.00 LUFS |
+| DEE E-AC-3 5.1, 256 kbit/s, dialnorm 11, `compr` 0xFF | −30.80 / −19.80 LUFS | −30.70 / −20.00 LUFS |
+
+Before RF mode carried the 11 dB this decoder's RF column read −30.90 and −31.00 LUFS. What the
+Reference Player showed besides:
+
+- Its RF output is line output plus 11 dB plus the word, in every syncframe that carries one, and
+  line output in every syncframe that does not; a stream spliced from the two switched between
+  +11.29 dB and 0.00 dB at the splice.
+- Dolby's encoder writes its words on that basis. With its RF profile set to `none`, DEE writes
+  0xFF (−0.28 dB) for dialogue-level material at dialnorm 31 and at dialnorm 20, and cuts only
+  where dialnorm normalisation plus 11 dB would put the mono downmix over full scale — by
+  6.6–7.2 dB for clicks peaking at −1.4 dBFS at dialnorm 28. A named RF profile adds its own
+  boost and cut around that. `meta::HeavyCompressor` writes its words the same way.
+- For a 7.1 stream it applied the last dependent substream's word to all eight channels, as
+  §E3.8.5 says, and the independent substream's word when asked for 5.1 or 2.0 output.
+- Its arithmetic lands within 0.3 dB of an exact 11 dB, depending on the word: the gains it applies
+  fit 2<sup>N</sup>·(1 + f), with N + f the word read as a signed 4.4 number of octaves plus 11/6.
+  That is 11.29 dB over line mode for a word of 0x00 and 10.98 dB for 0xFF, where this decoder
+  applies 11.00 and 10.72 dB.
+- Its `dialnorm` normalisation divides by 2<sup>n/6</sup> for a dialnorm n dB above the
+  reference, where this decoder divides by 10<sup>n/20</sup>, the dB A/52 states: −11.04 dB
+  against −11.00 dB for dialnorm 20.
+- Its Lo/Ro fold in line and RF mode leaves out §7.8.1's normalisation, so for a 3/2 stream with
+  −3 dB centre and surround levels it sits 7.66 dB above this decoder's fold in both modes.
 
 **Wide E-AC-3 layouts.** §7.8 defines folds *from* the eight AC-3 acmods and says nothing about
 the layouts Annex E's `chanmap` can express: a 7.1.4 programme has no §7.8 fold, because §7.8
@@ -296,9 +408,35 @@ Verified against FFmpeg's `-ac 2` decode of the same stream: at 3/2 with `cmixle
 of 1/2.20711 — exactly §7.8.1's normalisation divisor for those levels (1 + 0.7071 + 0.5), which
 this decoder applies and FFmpeg does not.
 
+**Annex D streams (`bsid` 6).** An AC-3 stream written with Annex D's alternate syntax can carry
+an `xbsi1` group: separate Lt/Rt and Lo/Ro centre and surround levels (Tables D2.3–D2.6) and a
+preferred stereo downmix, `dmixmod` (Table D2.2). A/52 §D3 makes decoding them optional, and
+`FrameDecoder` does. Following §D3.1.2 (ETSI TS 102 366 clause D.2.1.2), the Lt/Rt fold uses
+`ltrtcmixlev`/`ltrtsurmixlev`, and the Lo/Ro and mono folds use `lorocmixlev`/`lorosurmixlev`, in
+place of bsi's `cmixlev`/`surmixlev`; mono takes the Lo/Ro pair because §7.8.2 defines it as Lo/Ro
+summed. A `bsid`-6 stream still carries the two bsi levels, for decoders that do not read `xbsi1`
+(§D4.2.1). A stream with no `xbsi1` group, whether `bsid` 8 or `bsid` 6 with `xbsi1e` clear, still
+folds with `cmixlev`/`surmixlev`. `MixLevels::preferred` takes `dmixmod` for 3/0 and wider only,
+the acmods Table D2.2 defines it for. A surround level Tables D2.4/D2.6 reserve reads as −1.5 dB,
+as §D2.3.1.4/§D2.3.1.6 direct, and `DecodedFrame::alternate_bsi` reports it that way. Annex D adds
+no LFE mix level, so `mix_lfe` folds the LFE in at §7.8's +10 dB for either `bsid`. A caller
+folding a `DecodedFrame` itself gets the same levels from
+`ac3::mix_levels(acmod, cmixlev, surmixlev, alternate_bsi)`.
+
 Not covered: Annex C's karaoke downmix rules for `bsmod` 7. The mode's `cmixlev`/`surmixlev` are
 re-purposed as vocal-channel levels there, so it is a different matrix rather than a variation on
 this one, and nothing in this project emits a karaoke stream to check it against.
+
+**A §E2.3.1.2 legacy core inside `Eac3Decoder`.** An AC-3 syncframe (`bsid` <= 8) present in an
+E-AC-3 stream is processed as independent substream 0, and its channels become the bed §E3.8.2
+assembles a wider programme from. That core has no `mixmdate` to carry — mixing metadata is
+Annex E syntax an AC-3 syncframe cannot express — so `apply_output()` folds the ASSEMBLED
+programme with exactly the levels described above: the core's own bsi `cmixlev`/`surmixlev`, and
+Annex D's `xbsi1` group in place of them where a `bsid`-6 core sent one. `DecodedSubstream` and
+`DecodedAccessUnit` carry `bsid` alongside `cmixlev`/`surmixlev`/`alternate_bsi` for exactly this —
+`bsid` says which of that trio or `mixing` the fold should read, since a bed only ever populates
+one or the other. A dependent's own `mixmdate`, if it sent one, is not consulted either way; only
+the bed's ever describes the programme, the same rule a non-legacy-core stream already followed.
 
 The E-AC-3 decoder reads every Annex E coding tool — standard coupling (§E3.3), enhanced coupling
 (§E3.5), spectral extension (§E3.6), the adaptive hybrid transform with GAQ (§E3.4), and transient
@@ -342,6 +480,12 @@ from its own words — Ch2 is never affected by Ch1's compression or vice versa.
 `Eac3Decoder::decode_access_unit`'s `layout` comes back empty for it (`DecodedAccessUnit::acmod ==
 kDualMono`), since there's no Table E2.5 location for "the second programme" to render onto — the
 two channels come back in coded order (Ch1, Ch2) instead.
+
+The output stage's own §5.4.2.8 normalisation follows the same rule: `OutputStage::apply`'s
+optional `dialnorm2` parameter, threaded through from `DecodedFrame`/`DecodedSubstream`/
+`DecodedAccessUnit`, levels Ch2 by its own reference under `kLine`/`kRf`/`apply_dialnorm` rather
+than by Ch1's `dialnorm` — the two programmes are unrelated, and an encoder sizes Ch2's `compr2`
+on the assumption Ch2 is normalised by `dialnorm2`.
 
 Delta bit allocation (§7.2.2.6) is decoded like any other transmitted parameter: both decoders
 carry per-channel state across a syncframe's blocks and apply it to the masking curve before
@@ -585,6 +729,13 @@ other** — anything mixing the two has to delay the bed by 576 samples. `oba::A
 reports the object path's budget and `bed_latency()` the bed's; the 832 is measured end to end in
 [`tests/decoder/test_latency.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/decoder/test_latency.cpp).
 
+With `DecoderConfig::joc_domain` set to `kMdctBand`, the reconstruction costs 256 samples rather
+than 576, so objects lag their input by 512 and the bed has to be delayed by 256.
+`ac3::render::LayoutRenderer` does this delaying for the one bed channel it plays beside placed
+objects, the LFE, once `set_joc_domain()` has told it the decoder's domain;
+[`tests/render/test_object_lfe_timing.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/render/test_object_lfe_timing.cpp)
+measures the rendered feeds.
+
 ## Streams with more than one programme
 
 §E2.3.1.2 allows eight independent substreams (I0–I7) in one elementary stream, and broadcast
@@ -653,5 +804,5 @@ manifest of what each exercises, for checking an independent implementation.
 See also: [Encoding AC-3](encoding-ac3.md) and [Encoding E-AC-3](encoding-eac3.md) — what
 `decode_frame`/`decode_access_unit` are undoing, and the full latency budget;
 [Muxing & sinks](muxing-and-sinks.md) — pairing `ac3::io::scan` with `matroska::mux` is what
-keeps a container's track header honest; [Building](../building.md) — the minimum-footprint
+keeps a container's track header accurate; [Building](../building.md) — the minimum-footprint
 decoder profile for set-top and DSP targets.

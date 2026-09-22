@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# ac3forge_c - roadmap item F1: a stable, minimal C-callable surface over
+# ac3forge_c - C API: a stable, minimal C-callable surface over
 # ac3::forge's encode/decode core (AC-3, E-AC-3, Atmos/OAMD/JOC), for bindings
 # and embedding by callers that cannot or do not want to link C++23. The
 # public header (include/ac3forge_c/ac3forge.h) is plain C11 - no C++ type

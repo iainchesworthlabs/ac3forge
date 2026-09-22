@@ -217,6 +217,12 @@ TEST_CASE("a configuration device name indexes the plugin, not the hardware") {
     CHECK(config_device_name(DigitalOutput::kHdmi, "HDMI", 3) == "hdmi:CARD=HDMI,DEV=3");
     CHECK(config_device_name(DigitalOutput::kSpdif, "PCH", 0) == "iec958:CARD=PCH,DEV=0");
     CHECK(ac3::alsa::hw_device_name("PCH", 1) == "hw:CARD=PCH,DEV=1");
+    // An output that is neither HDMI nor S/PDIF has no plugin with a logical
+    // index, so it is named by its own hardware device - through plug, which
+    // is what converts a decoded stream's rate and width for hardware that
+    // will not take them. A bitstream never goes here: plug would resample it.
+    CHECK(ac3::alsa::plug_device_name("PCH", 0) == "plughw:CARD=PCH,DEV=0");
+    CHECK(ac3::alsa::plug_device_name("Headphones", 2) == "plughw:CARD=Headphones,DEV=2");
 }
 
 TEST_CASE("a candidate device name survives the round trip to an openable one") {

@@ -55,7 +55,7 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
     // wrapping frames they just encoded - done here on the first frame
     // instead, because a live session has no finished stream to scan.
     const auto scanned = ac3::io::scan(first_frame);
-    if (!scanned) {
+    if (!scanned.has_value()) {
         return "Could not describe the encoded stream for the fragmented MP4 folder.";
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
@@ -82,7 +82,7 @@ std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
         track_,
         mp4::FragmentOptions{.object_audio_brand = scanned->oba_complexity_index.has_value(),
                              .playlist_window_segments = window_segments_});
-    if (!writer) {
+    if (!writer.has_value()) {
         return std::string{mp4::describe(writer.error())};
     }
     writer_.emplace(std::move(*writer));
@@ -128,7 +128,7 @@ std::string Fmp4FolderWriter::write_manifests(const mp4::FragmentWriter& writer,
 }
 
 std::string Fmp4FolderWriter::push(std::span<const std::byte> frame) {
-    if (!writer_) {
+    if (!writer_.has_value()) {
         if (auto problem = start(frame); !problem.empty()) {
             return problem;
         }
@@ -141,10 +141,10 @@ std::string Fmp4FolderWriter::push(std::span<const std::byte> frame) {
     // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
     auto& writer = *writer_;
     auto segment = writer.push(frame);
-    if (!segment) {
+    if (!segment.has_value()) {
         return std::string{mp4::describe(segment.error())};
     }
-    if (!*segment) {
+    if (!segment->has_value()) {
         return {};
     }
     const auto name = fmt::format("segment{}.m4s", (*segment)->sequence_number);
@@ -156,15 +156,15 @@ std::string Fmp4FolderWriter::push(std::span<const std::byte> frame) {
 }
 
 std::string Fmp4FolderWriter::close() {
-    if (!writer_) {
+    if (!writer_.has_value()) {
         return {};
     }
     auto& writer = *writer_;
     auto segment = writer.finalize();
-    if (!segment) {
+    if (!segment.has_value()) {
         return std::string{mp4::describe(segment.error())};
     }
-    if (*segment) {
+    if (segment->has_value()) {
         const auto name = fmt::format("segment{}.m4s", (*segment)->sequence_number);
         if (!write_bytes(dir_ / name, (*segment)->bytes)) {
             return kWriteFailed;

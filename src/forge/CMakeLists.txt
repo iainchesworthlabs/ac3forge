@@ -28,12 +28,179 @@
 # this problem: matroska_static under the matroska:: namespace already lands
 # on the intended matroska::matroska_static with no stutter.)
 # ---------------------------------------------------------------------------
-# Roadmap PF7's minimum-footprint decoder profile builds something different
+# ---------------------------------------------------------------------------
+# Resolved BEFORE the minimum-footprint branch below, because both shapes of
+# the library need the answer and that branch returns without reaching the
+# rest of this file. minimal.cmake used to name generic/ literally for want
+# of somewhere to read this from, which was right for as long as the
+# profile's targets were an FPU-less Cortex-M3 and an Xtensa LX7 whose
+# vector unit is fixed-point (docs/platforms/bare-metal/esp32-s3.md), and stopped being
+# right when f32x4 arrived: a minimum-footprint decoder built for aarch64
+# carries a float32 decode path NEON holds four lanes of.
+# ---------------------------------------------------------------------------
+# CMAKE_SYSTEM_PROCESSOR names the machine CMake was configured for, which on
+# Apple platforms is NOT the same thing as the machine the compiler is asked to
+# emit code for: CMAKE_OSX_ARCHITECTURES overrides it per compile line. An
+# Intel Mac cross-building an arm64 wheel (cibuildwheel does exactly this - see
+# python/pyproject.toml and .github/workflows/wheels.yml) still reports
+# CMAKE_SYSTEM_PROCESSOR=x86_64 while every compile line carries `-arch arm64`,
+# so anything keyed on the raw variable - the SIMD directory and the AVX2 tier
+# below both are - silently picks the HOST's answer and hands the compiler an
+# x86 flag for an ARM target. That is a hard error, not a slow path -
+# `clang++: error: unsupported option '-mavx2' for target
+# 'x86_64-apple-darwin24.6.0'`, a diagnostic that unhelpfully names the host
+# triple rather than the -arch the flag is actually invalid for.
+#
+# `-arch` therefore wins wherever one is set. More than one of them is a
+# universal binary, where the same source is compiled once per slice from a
+# single configure: no compile-time SIMD choice can be right for both slices,
+# so that case gets its own name and lands on generic below rather than
+# guessing at whichever slice happens to be listed first.
+if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+    list(LENGTH CMAKE_OSX_ARCHITECTURES AC3FORGE_OSX_ARCH_COUNT)
+    if(AC3FORGE_OSX_ARCH_COUNT GREATER 1)
+        set(AC3FORGE_TARGET_PROCESSOR "universal")
+    else()
+        set(AC3FORGE_TARGET_PROCESSOR "${CMAKE_OSX_ARCHITECTURES}")
+    endif()
+    unset(AC3FORGE_OSX_ARCH_COUNT)
+else()
+    set(AC3FORGE_TARGET_PROCESSOR "${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+if(AC3FORGE_TARGET_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    set(AC3FORGE_BUILD_ARCH "x86_64")
+elseif(AC3FORGE_TARGET_PROCESSOR MATCHES "^(arm64|aarch64|ARM64)$")
+    set(AC3FORGE_BUILD_ARCH "arm64")
+elseif(AC3FORGE_TARGET_PROCESSOR MATCHES "^(x86|i686|X86)$")
+    set(AC3FORGE_BUILD_ARCH "x86")
+else()
+    set(AC3FORGE_BUILD_ARCH "${AC3FORGE_TARGET_PROCESSOR}")
+endif()
+
+# ---------------------------------------------------------------------------
+# The SIMD arch tree (SIMD kernels).
+#
+# Exactly the mechanism directly above, on the architecture axis instead of
+# the profiling one: src/internal/arch/{generic,x86_64,aarch64}/ each hold an
+# identically-pathed ac3/internal/arch/simd.hpp, one of them goes on the
+# include path, and every `#include "ac3/internal/arch/simd.hpp"` in the
+# codec core resolves to it. No translation unit ever asks what it is being
+# compiled for - the rule tools/checks/check_platform_macros.ps1 enforces -
+# and adding an architecture means adding a directory, not editing
+# conditionals in the kernels.
+#
+# The kernels themselves are NOT duplicated per directory. They live once,
+# in shared code (src/core/fft_radix2.hpp, src/core/mdct.cpp,
+# src/core/bitalloc.cpp, src/core/exponents.cpp), written against the two
+# 128-bit vector types the header defines; the directories carry the types
+# and their operations. See the generic header for why that is what makes
+# the bit-exactness claim testable.
+#
+# AC3FORGE_SIMD forces a directory. `generic` in particular is what a
+# reproducibility comparison wants (is a difference between two machines the
+# vector kernels or something else?), and is the reference
+# tests/core/test_simd_kernels.cpp's scalar side is written to match.
+# ---------------------------------------------------------------------------
+set(AC3FORGE_SIMD "auto" CACHE STRING
+    "SIMD kernel directory: auto (from the effective target architecture), generic, x86_64, or aarch64")
+set_property(CACHE AC3FORGE_SIMD PROPERTY STRINGS auto generic x86_64 aarch64)
+
+if(AC3FORGE_SIMD STREQUAL "auto")
+    # AC3FORGE_BUILD_ARCH is resolved further up this file for version
+    # strings, from the effective target architecture (CMAKE_SYSTEM_PROCESSOR,
+    # or CMAKE_OSX_ARCHITECTURES where a cross-build sets one); reuse it
+    # rather than spelling the platform regexes a second time and letting the
+    # two drift - and rather than reading CMAKE_SYSTEM_PROCESSOR directly,
+    # which is the host's answer on an Apple cross-build and was how an
+    # arm64 wheel built on an Intel runner ended up being handed -mavx2.
+    # Anything that is not one of the two architectures with a directory -
+    # 32-bit x86, WebAssembly (Emscripten reports "x86"), a macOS universal
+    # binary, a soft-float embedded target - lands on generic, which is a
+    # complete implementation and not a stub.
+    if(AC3FORGE_BUILD_ARCH STREQUAL "x86_64")
+        set(AC3FORGE_SIMD_RESOLVED "x86_64")
+    elseif(AC3FORGE_BUILD_ARCH STREQUAL "arm64")
+        set(AC3FORGE_SIMD_RESOLVED "aarch64")
+    else()
+        set(AC3FORGE_SIMD_RESOLVED "generic")
+    endif()
+else()
+    set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD}")
+endif()
+
+set(AC3FORGE_ARCH_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/arch/${AC3FORGE_SIMD_RESOLVED}")
+if(NOT IS_DIRECTORY "${AC3FORGE_ARCH_INCLUDE_DIR}")
+    message(FATAL_ERROR
+        "AC3FORGE_SIMD=${AC3FORGE_SIMD} resolved to '${AC3FORGE_SIMD_RESOLVED}', which has no "
+        "directory under src/forge/src/internal/arch/. Add "
+        "src/forge/src/internal/arch/<name>/ac3/internal/arch/simd.hpp - the generic/ copy is "
+        "the portable implementation and is a working starting point.")
+endif()
+
+# tests/CMakeLists.txt reads this so test_simd_kernels.cpp sees the same
+# simd.hpp the library was built with - the same white-box arrangement
+# src/signing/src and AC3FORGE_AUDIO_BACKEND_DIR already have there.
+set(AC3FORGE_ARCH_INCLUDE_DIR "${AC3FORGE_ARCH_INCLUDE_DIR}" PARENT_SCOPE)
+# For the configure summary at the end of the top-level CMakeLists.txt - which
+# a minimum-footprint configure reaches too, so that summary now names the
+# directory that build actually compiled rather than assuming generic.
+set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
+
+# minimum-footprint decoder profile's minimum-footprint decoder profile builds something different
 # enough - static only, decode only, no exceptions, no direct-form transform
 # tables - that it gets its own file rather than a dozen conditionals through
 # this one. Off by default; the root CMakeLists.txt refuses the combination of
 # this option with anything that would need the full library.
-if(AC3FORGE_MINIMAL_DECODER)
+# Appended to the generated ac3/export.hpp (both the shared library's and the
+# minimum-footprint archive's, below and in minimal.cmake): a class template
+# whose instantiations the library exports needs its own macros, because the
+# two compiler families put the attribute in different places. MSVC accepts
+# dllimport on an explicit-instantiation DECLARATION but refuses dllexport
+# there (C4910), so the `extern template class` line in a public header
+# carries the import decoration for a consumer and nothing for the library's
+# own build, and the definition in the .cpp carries the export. GCC and Clang
+# refuse a visibility attribute on that definition once an extern declaration
+# precedes it ("type attributes ignored after type is already defined") and
+# want it on the class template itself, where MSVC would read a dllexport on
+# every implicit instantiation. Generated rather than written into the header
+# because a conditional directive in a source file is what
+# tools/checks/check_platform_macros.ps1 forbids; this one is the export
+# header's own kind, not a platform branch.
+set(_ac3_export_custom_content [[
+/* Class templates the library exports through explicit instantiations
+   (ac3/encoder/transient.hpp). Each compiler wants the attribute in a
+   different place, so three macros, one per place - see
+   src/forge/CMakeLists.txt for why this is generated rather than written.
+     AC3FORGE_TEMPLATE_CLASS       on the class template's definition
+     AC3FORGE_TEMPLATE_IMPORT      on `extern template class` declarations
+     AC3FORGE_TEMPLATE_INSTANTIATE on `template class` definitions
+   MSVC exports the instantiation definition and imports through the
+   declaration (C4910 forbids dllexport on `extern template`). GCC and Clang
+   take the visibility attribute on the class template itself, and reject it
+   on an instantiation that follows an extern declaration ("type attributes
+   ignored after type is already defined"). */
+#ifdef AC3FORGE_STATIC_DEFINE
+#  define AC3FORGE_TEMPLATE_CLASS
+#  define AC3FORGE_TEMPLATE_IMPORT
+#  define AC3FORGE_TEMPLATE_INSTANTIATE
+#elif defined(_MSC_VER)
+#  define AC3FORGE_TEMPLATE_CLASS
+#  ifdef AC3FORGE_BUILDING_SHARED
+#    define AC3FORGE_TEMPLATE_IMPORT
+#  else
+#    define AC3FORGE_TEMPLATE_IMPORT AC3FORGE_EXPORT
+#  endif
+#  define AC3FORGE_TEMPLATE_INSTANTIATE AC3FORGE_EXPORT
+#else
+#  define AC3FORGE_TEMPLATE_CLASS AC3FORGE_EXPORT
+#  define AC3FORGE_TEMPLATE_IMPORT
+#  define AC3FORGE_TEMPLATE_INSTANTIATE
+#endif
+]])
+
+if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
     include("${CMAKE_CURRENT_SOURCE_DIR}/minimal.cmake")
     return()
 endif()
@@ -69,15 +236,6 @@ else()
     set(AC3FORGE_BUILD_OS "${CMAKE_SYSTEM_NAME}")
 endif()
 
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
-    set(AC3FORGE_BUILD_ARCH "x86_64")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64)$")
-    set(AC3FORGE_BUILD_ARCH "arm64")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86|i686|X86)$")
-    set(AC3FORGE_BUILD_ARCH "x86")
-else()
-    set(AC3FORGE_BUILD_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
-endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(AC3FORGE_BUILD_COMPILER "GCC ${CMAKE_CXX_COMPILER_VERSION}")
@@ -120,7 +278,9 @@ target_sources(forge_objects
     PRIVATE
         src/analysis/levels.cpp
         src/core/bitalloc.cpp
+        src/core/coupling.cpp
         src/core/eac3_tables.cpp
+        src/core/eac3_tools.cpp
         src/core/exponents.cpp
         src/core/fft.cpp
         src/core/mantissas.cpp
@@ -138,9 +298,7 @@ target_sources(forge_objects
         src/emdf/frame_layout.cpp
         src/encoder/assignment.cpp
         src/encoder/bandwidth.cpp
-        src/encoder/coupling.cpp
         src/encoder/eac3_frame.cpp
-        src/encoder/eac3_tools.cpp
         src/encoder/encoder.cpp
         src/encoder/plan.cpp
         src/encoder/silent_frame.cpp
@@ -149,6 +307,7 @@ target_sources(forge_objects
         src/internal/cpu/cpu_features.cpp
         src/io/dec3.cpp
         src/io/elementary.cpp
+        src/io/stream_accumulator.cpp
         src/io/metadata_edit.cpp
         src/io/object_strip.cpp
         src/io/probe.cpp
@@ -168,6 +327,7 @@ target_sources(forge_objects
         src/io/wav_stream_reader.cpp
         src/io/wav_stream_writer.cpp
         src/meta/bsi.cpp
+        src/meta/bsi_format.cpp
         src/meta/drc.cpp
         src/meta/loudness.cpp
         src/meta/mixing.cpp
@@ -183,6 +343,7 @@ target_sources(forge_objects
         src/quality/distortion.cpp
         src/quality/perceptual.cpp
         src/spatial/spatial.cpp
+        src/verify/bap_census.cpp
         src/verify/eac3_mirror.cpp
         src/verify/eac3_selfcheck.cpp
         src/verify/mirror.cpp
@@ -216,7 +377,7 @@ else()
 endif()
 
 # The same mechanism again, for the build-profile facts every source asks
-# through ac3/internal/profile.hpp (roadmap PF7): full/ says the direct-form
+# through ac3/internal/profile.hpp (minimum-footprint decoder profile): full/ says the direct-form
 # transform tables are present, minimal/ says they are not, and CMake picks
 # the directory rather than any source picking with an #ifdef.
 #
@@ -227,6 +388,61 @@ endif()
 target_include_directories(forge_objects PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/profile/full")
 
+# The scalar the DECODER carries its coefficients in - the same
+# CMake-picks-a-directory mechanism again, on its own axis.
+#
+# Separate from the profile above on purpose. The two used to be one header, so
+# float32 decoding could only exist in a build that was also decode-only and had
+# no CLI - which is why docs/building.md's "~139 dB worst-channel SNR against
+# the double decode" is prose rather than a gate: it came from a hand-made build
+# no preset could reproduce. With the axes split, an ordinary build can be
+# configured float32 and diffed against the double one by
+# tools/checks/compare_wav.py, which is what turns that number into something CI
+# can hold.
+#
+# double is the default and stays it for every ordinary build: the gold
+# references, the quality trend and the cross-platform bitstream hashes are all
+# stated in terms of that arithmetic. forge_minimal below picks float32
+# unconditionally - see src/forge/minimal.cmake.
+set(AC3FORGE_DECODE_SCALAR "double" CACHE STRING
+    "Scalar the decoder carries coefficients in: double (default), float, or fixed (Q7.24 in an int32, for parts with no FPU)")
+set_property(CACHE AC3FORGE_DECODE_SCALAR PROPERTY STRINGS double float fixed)
+if(AC3FORGE_DECODE_SCALAR STREQUAL "float")
+    set(_ac3_scalar_dir "float32")
+elseif(AC3FORGE_DECODE_SCALAR STREQUAL "double")
+    set(_ac3_scalar_dir "float64")
+elseif(AC3FORGE_DECODE_SCALAR STREQUAL "fixed")
+    # src/core/fixed32.hpp's Fixed32 - the third tier (planning/arithmetic-tiers.md).
+    set(_ac3_scalar_dir "fixed32")
+else()
+    message(FATAL_ERROR
+        "AC3FORGE_DECODE_SCALAR is 'double', 'float' or 'fixed' (got '${AC3FORGE_DECODE_SCALAR}')")
+endif()
+target_include_directories(forge_objects PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/${_ac3_scalar_dir}")
+
+# The encoders' analysis front end - transient detection, the block gather,
+# the analysis window and the forward transform - in double or float
+# (src/internal/scalar/encode/{float64,float32}/ac3/internal/encode_scalar.hpp).
+# Its own axis beside the decoder's, for the reason that one was split from the
+# profile: a full build with either scalar float and the other double is what
+# makes the float front end's bitstreams comparable against the double ones
+# through the CLI and the oracles. double is the default and stays it for every
+# ordinary build; forge_minimal picks float32 for both - see minimal.cmake.
+set(AC3FORGE_ENCODE_SCALAR "double" CACHE STRING
+    "Scalar the encoders' analysis front end runs in: double (default) or float")
+set_property(CACHE AC3FORGE_ENCODE_SCALAR PROPERTY STRINGS double float)
+if(AC3FORGE_ENCODE_SCALAR STREQUAL "float")
+    set(_ac3_encode_scalar_dir "float32")
+elseif(AC3FORGE_ENCODE_SCALAR STREQUAL "double")
+    set(_ac3_encode_scalar_dir "float64")
+else()
+    message(FATAL_ERROR
+        "AC3FORGE_ENCODE_SCALAR is 'double' or 'float' (got '${AC3FORGE_ENCODE_SCALAR}')")
+endif()
+target_include_directories(forge_objects PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/scalar/encode/${_ac3_encode_scalar_dir}")
+
 # src/core/ on the include path so the CMake-selected
 # src/core/transform/<variant>/reference_transform.cpp can include the
 # declaration it implements the same way mdct.cpp includes it - quote-relative
@@ -234,73 +450,11 @@ target_include_directories(forge_objects PRIVATE
 # level down from the header they share.
 target_include_directories(forge_objects PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/core")
 
-# ---------------------------------------------------------------------------
-# The SIMD arch tree (ROADMAP PF5).
-#
-# Exactly the mechanism directly above, on the architecture axis instead of
-# the profiling one: src/internal/arch/{generic,x86_64,aarch64}/ each hold an
-# identically-pathed ac3/internal/arch/simd.hpp, one of them goes on the
-# include path, and every `#include "ac3/internal/arch/simd.hpp"` in the
-# codec core resolves to it. No translation unit ever asks what it is being
-# compiled for - the rule tools/checks/check_platform_macros.ps1 enforces -
-# and adding an architecture means adding a directory, not editing
-# conditionals in the kernels.
-#
-# The kernels themselves are NOT duplicated per directory. They live once,
-# in shared code (src/core/fft_radix2.hpp, src/core/mdct.cpp,
-# src/core/bitalloc.cpp, src/core/exponents.cpp), written against the two
-# 128-bit vector types the header defines; the directories carry the types
-# and their operations. See the generic header for why that is what makes
-# the bit-exactness claim testable.
-#
-# AC3FORGE_SIMD forces a directory. `generic` in particular is what a
-# reproducibility comparison wants (is a difference between two machines the
-# vector kernels or something else?), and is the reference
-# tests/core/test_simd_kernels.cpp's scalar side is written to match.
-# ---------------------------------------------------------------------------
-set(AC3FORGE_SIMD "auto" CACHE STRING
-    "SIMD kernel directory: auto (from CMAKE_SYSTEM_PROCESSOR), generic, x86_64, or aarch64")
-set_property(CACHE AC3FORGE_SIMD PROPERTY STRINGS auto generic x86_64 aarch64)
-
-if(AC3FORGE_SIMD STREQUAL "auto")
-    # AC3FORGE_BUILD_ARCH is resolved further up this file for version
-    # strings, from the same CMAKE_SYSTEM_PROCESSOR; reuse it rather than
-    # spelling the platform regexes a second time and letting the two drift.
-    # Anything that is not one of the two architectures with a directory -
-    # 32-bit x86, WebAssembly (Emscripten reports "x86"), a soft-float
-    # embedded target - lands on generic, which is a complete implementation
-    # and not a stub.
-    if(AC3FORGE_BUILD_ARCH STREQUAL "x86_64")
-        set(AC3FORGE_SIMD_RESOLVED "x86_64")
-    elseif(AC3FORGE_BUILD_ARCH STREQUAL "arm64")
-        set(AC3FORGE_SIMD_RESOLVED "aarch64")
-    else()
-        set(AC3FORGE_SIMD_RESOLVED "generic")
-    endif()
-else()
-    set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD}")
-endif()
-
-set(AC3FORGE_ARCH_INCLUDE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/internal/arch/${AC3FORGE_SIMD_RESOLVED}")
-if(NOT IS_DIRECTORY "${AC3FORGE_ARCH_INCLUDE_DIR}")
-    message(FATAL_ERROR
-        "AC3FORGE_SIMD=${AC3FORGE_SIMD} resolved to '${AC3FORGE_SIMD_RESOLVED}', which has no "
-        "directory under src/forge/src/internal/arch/. Add "
-        "src/forge/src/internal/arch/<name>/ac3/internal/arch/simd.hpp - the generic/ copy is "
-        "the portable implementation and is a working starting point.")
-endif()
 target_include_directories(forge_objects PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 
-# tests/CMakeLists.txt reads this so test_simd_kernels.cpp sees the same
-# simd.hpp the library was built with - the same white-box arrangement
-# src/signing/src and AC3FORGE_AUDIO_BACKEND_DIR already have there.
-set(AC3FORGE_ARCH_INCLUDE_DIR "${AC3FORGE_ARCH_INCLUDE_DIR}" PARENT_SCOPE)
-# For the configure summary at the end of the top-level CMakeLists.txt.
-set(AC3FORGE_SIMD_RESOLVED "${AC3FORGE_SIMD_RESOLVED}" PARENT_SCOPE)
 
 # ---------------------------------------------------------------------------
-# Runtime CPU-feature detection (ROADMAP PF5's dynamic-dispatch follow-on).
+# Runtime CPU-feature detection (runtime SIMD dispatch).
 #
 # AC3FORGE_SIMD above is a compile-time choice: it bakes in exactly one of
 # SSE2/NEON/scalar, because those are architectural (guaranteed present, no
@@ -410,7 +564,7 @@ endif()
 # which is exactly the "compiled with -march= for a feature the deployment
 # machine might not have" mistake ac3::internal::cpu::has_avx2() exists to
 # let this project avoid - see cpu_features.hpp. avx2_probe.cpp proved the
-# whole build/link/dispatch/test pipeline (ROADMAP PF5's dynamic-dispatch
+# whole build/link/dispatch/test pipeline (SIMD kernels's dynamic-dispatch
 # follow-on, phase one) before any real kernel joined it; mdct_avx2.cpp is
 # the first real one - apply_analysis_window and the DCT-IV/IMDCT twiddle
 # stages, the two PF5 kernels phase one's own measurement (docs/building.md)
@@ -574,6 +728,7 @@ include(GenerateExportHeader)
 set_target_properties(forge_shared PROPERTIES DEFINE_SYMBOL "AC3FORGE_BUILDING_SHARED")
 generate_export_header(forge_shared
     BASE_NAME AC3FORGE
+    CUSTOM_CONTENT_FROM_VARIABLE _ac3_export_custom_content
     EXPORT_MACRO_NAME AC3FORGE_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac3/export.hpp"
     DEFINE_NO_DEPRECATED

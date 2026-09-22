@@ -8,8 +8,9 @@
 # treatment mpegts::/mp4::/matroska:: do rather than the ac3:: prefix. It
 # reads TOC/presentation/substream-group framing and reports audio_data and
 # metadata() payloads as byte ranges, never decoding them - see
-# include/ac4/ac4.hpp for the full scope statement. Built and installed as
-# both a static and a shared library - see src/forge/CMakeLists.txt's
+# include/ac4/ac4.hpp for the full scope statement. Built in-tree as both a
+# static and a shared library; it is not installed or exported. See
+# src/forge/CMakeLists.txt's
 # ac3::forge for the full explanation of why an OBJECT library plus two thin
 # wrapper targets, rather than one add_library().
 # ---------------------------------------------------------------------------

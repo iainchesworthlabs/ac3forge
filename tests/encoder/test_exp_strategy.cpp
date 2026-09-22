@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <random>
 #include <span>
 #include <vector>
 
@@ -312,4 +313,207 @@ TEST_CASE("the planner's exponent model is the real encode, exactly",
         ac3::decode_coupling_exponents(coded.cplabsexp, coded.groups, strategy, decoded);
         CHECK(modelled == decoded);
     }
+}
+
+// --- The one-pass planner against the two-pass one it replaced -------------
+//
+// plan_exponent_runs_both scores the hoisted and per-block forms from one
+// pass over the candidate runs, with a lower bound that skips candidates
+// whose exponent set alone costs more than the best plan found. The claim is
+// that this changes nothing but the work: the plans and scores are the ones
+// the two separate exhaustive passes produced. That claim is held here
+// against a transcription of the previous implementation, over random
+// spectra with the features that exercise every branch - forced boundaries,
+// the LFE's single strategy, a coupling region a strategy may not divide,
+// precision caps of zero, and fewer than six blocks.
+
+namespace {
+
+// The previous implementation, verbatim but for its name: one form per
+// call, selected by free_strategy.
+ac3::internal::ExponentRunPlan reference_plan(const ac3::internal::ExponentRunInput& in) {
+    using namespace ac3;
+    using namespace ac3::internal;
+    const auto bins = static_cast<std::size_t>(in.bins);
+    const int blocks = in.blocks;
+    std::array<ExpStrategy, 3> candidates{ExpStrategy::kD15, ExpStrategy::kD25,
+                                          ExpStrategy::kD45};
+    constexpr long long kUnreachable = (1LL << 60);
+    std::array<long long, kMaxPlanBlocks + 1> best{};
+    std::array<int, kMaxPlanBlocks + 1> from{};
+    std::array<ExpStrategy, kMaxPlanBlocks + 1> via{};
+    best.fill(kUnreachable);
+    best[0] = 0;
+    std::array<std::uint8_t, 256> run_min{};
+    std::array<std::uint8_t, 256> banded{};
+    for (int a = 0; a < blocks; ++a) {
+        if (best[static_cast<std::size_t>(a)] >= kUnreachable) {
+            continue;
+        }
+        for (std::size_t bin = 0; bin < bins; ++bin) {
+            run_min[bin] = kMaxExponent;
+        }
+        for (int b = a + 1; b <= blocks; ++b) {
+            const auto row = in.exps.subspan(static_cast<std::size_t>(b - 1) * bins, bins);
+            for (std::size_t bin = 0; bin < bins; ++bin) {
+                run_min[bin] = std::min(run_min[bin], row[bin]);
+            }
+            if (b - 1 > a && in.boundary[static_cast<std::size_t>(b - 1)]) {
+                break;
+            }
+            const int span = b - a;
+            for (const auto strategy : candidates) {
+                if (in.lfe) {
+                    if (strategy != ExpStrategy::kD15) {
+                        continue;
+                    }
+                } else if (!in.free_strategy && strategy != strategy_for_span(span)) {
+                    continue;
+                }
+                const int group = exponent_group_size(strategy);
+                int ngrps = 0;
+                if (in.coupling) {
+                    if (in.bins % (3 * group) != 0) {
+                        continue;
+                    }
+                    ngrps = in.bins / (3 * group);
+                } else {
+                    ngrps = exponent_group_count(strategy, in.bins);
+                }
+                banded_run_exponents(std::span{run_min}.first(bins), strategy, in.coupling,
+                                     std::span{banded}.first(bins));
+                long long waste = 0;
+                for (std::size_t bin = 0; bin < bins; ++bin) {
+                    const int cap = in.precision.empty() ? kMaxExponent : in.precision[bin];
+                    if (cap == 0) {
+                        continue;
+                    }
+                    for (int blk = a; blk < b; ++blk) {
+                        const int lost =
+                            in.exps[static_cast<std::size_t>(blk) * bins + bin] - banded[bin];
+                        waste += std::min(lost, cap);
+                    }
+                }
+                const long long score =
+                    best[static_cast<std::size_t>(a)] + waste + 4 + 7LL * ngrps;
+                if (score < best[static_cast<std::size_t>(b)]) {
+                    best[static_cast<std::size_t>(b)] = score;
+                    from[static_cast<std::size_t>(b)] = a;
+                    via[static_cast<std::size_t>(b)] = strategy;
+                }
+            }
+        }
+    }
+    ExponentRunPlan plan;
+    std::array<int, kMaxPlanBlocks + 1> reversed{};
+    std::array<ExpStrategy, kMaxPlanBlocks> reversed_strategy{};
+    int count = 0;
+    for (int b = blocks; b > 0; b = from[static_cast<std::size_t>(b)]) {
+        reversed_strategy[static_cast<std::size_t>(count)] = via[static_cast<std::size_t>(b)];
+        reversed[static_cast<std::size_t>(count)] = from[static_cast<std::size_t>(b)];
+        ++count;
+    }
+    plan.count = count;
+    for (int i = 0; i < count; ++i) {
+        plan.starts[static_cast<std::size_t>(i)] =
+            reversed[static_cast<std::size_t>(count - 1 - i)];
+        plan.strategy[static_cast<std::size_t>(i)] =
+            reversed_strategy[static_cast<std::size_t>(count - 1 - i)];
+    }
+    plan.starts[static_cast<std::size_t>(count)] = blocks;
+    plan.score = best[static_cast<std::size_t>(blocks)];
+    return plan;
+}
+
+bool same_plan(const ac3::internal::ExponentRunPlan& a, const ac3::internal::ExponentRunPlan& b) {
+    if (a.count != b.count || a.score != b.score) {
+        return false;
+    }
+    for (int i = 0; i <= a.count; ++i) {
+        if (a.starts[static_cast<std::size_t>(i)] != b.starts[static_cast<std::size_t>(i)]) {
+            return false;
+        }
+    }
+    for (int i = 0; i < a.count; ++i) {
+        if (a.strategy[static_cast<std::size_t>(i)] != b.strategy[static_cast<std::size_t>(i)]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
+TEST_CASE("the one-pass planner reproduces the two-pass one exactly", "[eac3][exponents]") {
+    std::mt19937 rng(0x9e3779b9U);
+    std::uniform_int_distribution<int> exp_dist(0, ac3::kMaxExponent);
+    std::uniform_int_distribution<int> step_dist(-3, 3);
+    std::uniform_int_distribution<int> cap_dist(0, 6);
+    std::uniform_int_distribution<int> coin(0, 9);
+    int compared = 0;
+    for (int trial = 0; trial < 400; ++trial) {
+        // Stream shape: full-bandwidth (37..253 bins on the §7.1.3 grid), the
+        // LFE (7 bins), or a coupling region (a multiple of 12 bins, so some
+        // strategies divide it and some do not).
+        const int kind = trial % 3;
+        const bool lfe = kind == 1;
+        const bool coupling = kind == 2;
+        int bins = 0;
+        if (lfe) {
+            bins = 7;
+        } else if (coupling) {
+            bins = 12 * (1 + static_cast<int>(rng() % 18));  // 12..216
+        } else {
+            bins = 37 + 3 * static_cast<int>(rng() % 73);  // 37..253
+        }
+        const int blocks = 1 + static_cast<int>(rng() % 6);
+        // Exponents: a random spectrum, then each block drifts from the last
+        // by a few steps so runs of different lengths compete, with a few
+        // blocks jumping outright.
+        std::vector<std::uint8_t> exps(static_cast<std::size_t>(blocks) *
+                                       static_cast<std::size_t>(bins));
+        for (int bin = 0; bin < bins; ++bin) {
+            exps[static_cast<std::size_t>(bin)] = static_cast<std::uint8_t>(exp_dist(rng));
+        }
+        for (int blk = 1; blk < blocks; ++blk) {
+            const bool jump = coin(rng) == 0;
+            for (int bin = 0; bin < bins; ++bin) {
+                const auto prev =
+                    exps[static_cast<std::size_t>(blk - 1) * static_cast<std::size_t>(bins) +
+                         static_cast<std::size_t>(bin)];
+                const int next = jump ? exp_dist(rng) : std::clamp(prev + step_dist(rng), 0,
+                                                                   ac3::kMaxExponent);
+                exps[static_cast<std::size_t>(blk) * static_cast<std::size_t>(bins) +
+                     static_cast<std::size_t>(bin)] = static_cast<std::uint8_t>(next);
+            }
+        }
+        std::vector<std::uint8_t> precision;
+        if (coin(rng) != 0) {
+            precision.resize(static_cast<std::size_t>(bins));
+            for (auto& cap : precision) {
+                cap = static_cast<std::uint8_t>(cap_dist(rng));
+            }
+        }
+        ac3::internal::ExponentRunInput in{
+            .exps = exps,
+            .bins = bins,
+            .blocks = blocks,
+            .precision = precision,
+            .boundary = {},
+            .coupling = coupling,
+            .lfe = lfe,
+            .free_strategy = false};
+        for (int blk = 1; blk < blocks; ++blk) {
+            in.boundary[static_cast<std::size_t>(blk)] = coin(rng) == 0;
+        }
+        const auto both = ac3::internal::plan_exponent_runs_both(in);
+        in.free_strategy = false;
+        const auto ref_hoisted = reference_plan(in);
+        in.free_strategy = true;
+        const auto ref_per_block = reference_plan(in);
+        CHECK(same_plan(both.hoisted, ref_hoisted));
+        CHECK(same_plan(both.per_block, ref_per_block));
+        ++compared;
+    }
+    CHECK(compared == 400);
 }

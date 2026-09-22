@@ -467,7 +467,7 @@ stimulus generator rather than left to be discovered mid-session:
 Both are recorded per session in `session.json` alongside the seed, render
 mode and baseline version, so a session's own limits travel with its numbers.
 
-Both were what roadmap VX7 was for, and **VX7 has landed**: two 30 s CC0
+Both have since landed: two 30 s CC0
 fixtures, full-band speech and music, are committed as
 `tests/golden/audio/programme_{speech,music}_stereo.flac` and carry three legs
 of their own in the external-baseline manifest — `ac3-music-stereo-192`,
@@ -477,7 +477,7 @@ built with no change to the generator; the two limits above are properties of
 the synthetic legs specifically, and a MUSHRA session on the programme stereo
 legs (with ABX still the right method for the synthetic 5.1 ones) is the
 session worth running. What has not happened is the running of it: that is
-human listening time, and roadmap VX9 stays open until it is spent.
+human listening time, and that gap stays open until it is spent.
 
 **Monitoring.** `--render native` presents the 5.1 legs as 5.1 and needs a 5.1
 setup; `--render stereo` renders them through FFmpeg's own downmix (which

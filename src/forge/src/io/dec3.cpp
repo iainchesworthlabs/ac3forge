@@ -10,6 +10,7 @@
 #include "ac3/core/bitwriter.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/io/elementary.hpp"
+#include "ac3/meta/bsi.hpp"
 
 namespace ac3::io {
 
@@ -96,7 +97,7 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
     // (see its own comment: two programmes are alternatives, not layers, and
     // splicing their units into one track is not something a player can
     // undo). Carrying every programme in one track, with num_ind_sub > 1 and
-    // a per-substream block each, is roadmap IO6's job together with the
+    // a per-substream block each, is MPEG-TS broadcast profiles's job together with the
     // service granularity DC3 supplies - the two have to arrive together,
     // since a box declaring programmes the track does not contain is worse
     // than one describing what it does.
@@ -111,13 +112,17 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
     w.put(static_cast<std::uint32_t>(stream.bsid), 5);  // bsid
     w.put(0, 1);                                        // reserved
     // asvc: the associated-service flag. A/52 §5.4.2.2 puts the service type
-    // in bsmod, and 2-7 are the associated services (audio description,
-    // commentary, emergency and the rest) a receiver mixes against a main
-    // one, while 0-1 are complete main services. So this is exactly "is this
-    // programme's own bsmod an associated one", read off the bitstream rather
-    // than assumed - which for the ordinary main-service stream still comes
-    // out 0, as it always did.
-    w.put(programme.bsmod >= 2 ? 1U : 0U, 1);            // asvc
+    // in bsmod - CM/ME are main services, VI/HI/D/C/E are associated, and
+    // code 7 is voice-over (associated) at acmod 1/0 but karaoke (a MAIN
+    // service) everywhere else, Table 5.7's one acmod-dependent split. So
+    // this is exactly "is this programme's own bsmod an associated one, per
+    // Table 5.7", read off the bitstream rather than assumed - which for the
+    // ordinary main-service stream still comes out 0, as it always did.
+    w.put(meta::is_associated_service(static_cast<meta::BitstreamMode>(programme.bsmod),
+                                      programme.acmod)
+              ? 1U
+              : 0U,
+          1);  // asvc
     w.put(static_cast<std::uint32_t>(stream.bsmod), 3);  // bsmod
     w.put(static_cast<std::uint32_t>(stream.acmod), 3);  // acmod
     w.put(stream.lfe ? 1U : 0U, 1);                      // lfeon
@@ -145,7 +150,7 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
         w.put(0, 1);  // reserved
     }
 
-    if (stream.oba_complexity_index) {
+    if (stream.oba_complexity_index.has_value()) {
         // TS 103 420 §8.3.1/§8.3.2.2, echoed into the box exactly as
         // ac3::io::scan() read it out of the bitstream's own addbsi (see
         // ScannedStream::oba_complexity_index) - this is the exact signal

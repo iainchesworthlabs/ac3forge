@@ -1,0 +1,10 @@
+# A fixture for tst_icons.qml and nothing else: the NoDisplay tiebreak. The
+# same Exec as crucible-fixture-byexec.desktop, an id that sorts before it,
+# and an icon the fixture theme does not have - so a lookup that let order
+# alone decide would end in a monogram.
+[Desktop Entry]
+Type=Application
+Name=Crucible Fixture Hidden
+Exec=crucible-fixture-byexec
+NoDisplay=true
+Icon=crucible-fixture-wrong

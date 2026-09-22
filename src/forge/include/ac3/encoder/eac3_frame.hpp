@@ -133,6 +133,12 @@ struct VbrConfig {
 
 inline constexpr std::uint32_t kVbrDefaultNominalKbps = 192;
 
+// Fields are grouped and ordered by bitstream section (Table E1.2, E1.3,
+// E1.4...) with per-field spec commentary that reads as a narrative in that
+// order: the analyzer's byte-packed reordering would scatter substream-
+// identity fields among rate-control ones and break that. Not a hot
+// allocation - one FrameConfig per encode call, not per frame.
+// NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding)
 struct FrameConfig {
     SampleRate sample_rate = SampleRate::k48000;
     std::uint32_t bitrate_kbps = 192;
@@ -184,7 +190,7 @@ struct FrameConfig {
     // chbwcod is not transmitted at all (§E3.3.3).
     int chbwcod = -1;
 
-    // §7.2.2.4 fast gain, Table 7.11 — roadmap EQ7's E-AC-3 half.
+    // §7.2.2.4 fast gain, Table 7.11 — E-AC-3 fast-gain control's E-AC-3 half.
     //
     // -1 (the default) leaves Table E1.4's implied 0x4 in place: frmfgaincode
     // stays 0, no fgaincode element is written, and the frame costs exactly
@@ -233,11 +239,20 @@ struct FrameConfig {
     // As in AC-3: std::nullopt keeps dynrnge clear in every block and compre
     // clear in bsi, so a metadata-free stream is bit-identical to before.
     std::optional<meta::Profile> drc = std::nullopt;
-    // §7.7.2 heavy compression. Only an INDEPENDENT substream can carry it:
-    // §E3.8.5 repurposes a dependent's compre as the end-of-programme marker,
-    // so the eight bits it drags in there are not a gain any decoder will use.
+    // §7.7.2 heavy compression. Only an INDEPENDENT substream can carry it
+    // here. §E3.8.5 sets a dependent's compre to mark the end of the program,
+    // and the word that comes with it is the whole program's compr word: a
+    // decoder applies it to every substream, the independent one included
+    // (the Dolby Reference Player does, in RF mode). With dependents present,
+    // AccessUnitEncoder writes that word itself, measured from the COMPLETE
+    // rendered program - every dependent's channels folded in the same way
+    // ac3::OutputStage's rendered-layout overload seats a wide layout - so a
+    // decoder reproducing all of it meets the same ceiling this field
+    // promises. This substream's own word, from its own channels alone,
+    // still goes out too: it is what a receiver decoding only the 5.1 bed
+    // (no dependents at all) uses.
     //
-    // This is the one part of the metadata layer with no external oracle.
+    // FFmpeg is no oracle for this part of the metadata layer.
     // FFmpeg's E-AC-3 header parser reads compre and then SKIPS the word, so
     // -heavy_compr changes nothing on an E-AC-3 stream however good the
     // metadata is - unlike -drc_scale, which honours dynrng here as it does in
@@ -381,7 +396,7 @@ struct FrameConfig {
     // §7.2.2's transmitted bit allocation parameters (BitAllocCodes,
     // ac3/core/bitalloc.hpp), searched per frame from the reconstruction
     // error a decoder will produce, instead of the fixed dbpbcod == 3 EQ3
-    // measured its way to on average (roadmap EQ13; AC-3's own
+    // measured its way to on average (per-frame bit-allocation search; AC-3's own
     // EncoderConfig::search, encoder.cpp's step 9a, is the model this
     // mirrors). search=distortion minimises ac3::quality::accumulate_block's
     // decoded-domain noise, per stream, over the frame's six blocks.
@@ -396,12 +411,12 @@ struct FrameConfig {
     // materially bigger unit to wrap in an outer candidate loop than AC-3's
     // settle() is - the delta-segment with/without comparison and ABR's
     // stateful reservoir both assume one committed codes value per frame -
-    // and untangling that was scoped out too; see ROADMAP.md EQ13. Silently
+    // and untangling that was scoped out too;  EQ13. Silently
     // inert under VBR, the same way delta bit allocation is silently inert
     // on an AHT stream (EQ5) - a documented scope boundary, not a rejected
     // configuration.
     //
-    // Two axes, since roadmap EQ7's E-AC-3 half landed. dbpbcod varies
+    // Two axes, since E-AC-3 fast-gain control's E-AC-3 half landed. dbpbcod varies
     // between kAllocCodes' 3 and Table E1.4's 2 - the only two values baie
     // can carry that this encoder chooses between - and fgaincod varies
     // between §8.2.12's implied 0x4 and ac3::rate_adaptive_fgaincod()'s
@@ -436,6 +451,18 @@ struct FrameConfig {
     // external one (tools/checks/verify_gold_reference.sh). That gate sets
     // this false; nothing else needs to.
     bool dither = true;
+
+    // §7.2.2.6 delta bit allocation - on by default, like every other field
+    // here. The segments are chosen per run from the real coefficients
+    // (choose_delta_segments) and then weighed: the frame is fitted with and
+    // without them and whichever reaches the higher SNR offset wins. false
+    // skips both the choosing and the second fit, which is the first level of
+    // the encoders' effort axis (planning/arithmetic-tiers.md): what a part
+    // with a frame to spare on the search gives up is a correction that
+    // ordinary material drops on most frames anyway, and what it saves on an
+    // ESP32-S3 is measured on the ESP32-S3 page. A stream encoded without it
+    // is a legal stream with dbaflde clear, as §7.2.2.6 permits.
+    bool delta_allocation = true;
 
     // TS 103 420 §8.3. An object-audio stream sets flag_ec3_extension_type_a in
     // the addbsi field of whichever substream carries the EMDF container, and
@@ -489,7 +516,7 @@ inline constexpr std::uint32_t kMaxFrameWords = 2048;
 using AuxPayload = std::span<const std::byte>;
 
 // The latency budget a stream from this configuration imposes end to end
-// (roadmap PF6; ac3/latency.hpp documents the four terms).
+// (bare-metal probe harness; ac3/latency.hpp documents the four terms).
 //
 // Only transient_prenoise moves anything. Every other Annex E tool - AHT,
 // coupling, enhanced coupling, spectral extension - is a different way of
@@ -530,7 +557,11 @@ using AuxPayload = std::span<const std::byte>;
 
 // The §7.7 words for one frame, separated from FrameConfig because they change
 // every frame and from the encoder because every substream of an access unit
-// has to carry the SAME ones - see AccessUnitEncoder.
+// has to carry the SAME dynrng - see AccessUnitEncoder. compr is the one
+// exception: with dependents present, AccessUnitEncoder gives the independent
+// substream its own bed-only word and the last dependent a second, different
+// FrameMetadata carrying the whole programme's (§E3.8.5 - see
+// FrameConfig::heavy); every other substream's stays unset.
 struct FrameMetadata {
     std::array<std::uint8_t, kBlocksPerFrame> dynrng{};
     std::optional<std::uint8_t> compr = std::nullopt;
@@ -574,7 +605,7 @@ class AC3FORGE_EXPORT FrameEncoder {
     // How many samples per channel one call to encode_frame consumes.
     [[nodiscard]] int samples_per_frame() const;
 
-    // Roadmap PF6 - see ac3/latency.hpp for what each term means and
+    // bare-metal probe harness - see ac3/latency.hpp for what each term means and
     // eac3_latency() below for why transient_prenoise is the only field of
     // FrameConfig that moves any of them.
     [[nodiscard]] LatencyBudget latency() const;
@@ -619,6 +650,14 @@ struct ProgrammeConfig {
 // `independent`/`dependents` are the first programme, kept spelled out at this
 // level rather than moved into `programmes[0]` so that every caller that ever
 // built a single-programme config still does.
+
+// §E2.3.1.2: eight independent substreams, I0-I7, no more. Exported (rather
+// than staying local to eac3_frame.cpp, where access_unit_configs() enforces
+// it) so a caller sizing anything against "how many programmes can this
+// format hold" - ac3cli's programmeN= surface among them - has one source of
+// truth instead of a second, hand-copied 8.
+inline constexpr std::size_t kMaxProgrammes = 8;
+
 struct AccessUnitConfig {
     FrameConfig independent{};
     std::vector<FrameConfig> dependents{};
@@ -701,7 +740,7 @@ class AC3FORGE_EXPORT AccessUnitEncoder {
     // encode_access_unit expects.
     [[nodiscard]] int channel_count() const;
 
-    // Roadmap PF6. Every substream of an access unit codes the same 1536
+    // bare-metal probe harness. Every substream of an access unit codes the same 1536
     // samples of the same program, so the frame and transform terms are
     // shared rather than summed - what a dependent substream CAN add is its
     // own §3.7 hold-back, since transproce is a per-substream flag and a

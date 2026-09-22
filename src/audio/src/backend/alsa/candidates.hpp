@@ -2,8 +2,10 @@
 
 #include <alsa/asoundlib.h>
 
+#include <cstdint>
 #include <fmt/format.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "alsa_support.hpp"
@@ -41,18 +43,34 @@ struct Candidate {
     std::string friendly;  // for a device list a person reads
 };
 
-// Every digital output on the machine, in card then device order.
+// What a walk should return.
+enum class Include : std::uint8_t {
+    // Only the outputs that can carry an IEC 61937 bitstream at all: HDMI and
+    // S/PDIF. What a sink-capability read wants, EDID being an HDMI affair.
+    kDigitalOnly,
+    // Every playback PCM the machine has, digital or not - an analogue jack,
+    // a USB DAC, a Bluetooth sink. None of those can bitstream, and a player
+    // that DECODES plays to them all the same, so a render-device list has to
+    // offer them rather than filter them out by name.
+    kEveryPlaybackPcm,
+};
+
+// Every output on the machine, in card then device order.
 //
 // The `hdmi:`/`iec958:` plugins take a logical index - the card's first HDMI
 // PCM is hdmi:DEV=0 whatever hardware device number it happens to have - so
-// the two are counted separately per card as the walk goes.
-[[nodiscard]] inline std::vector<Candidate> find_candidates() {
+// the two are counted separately per card as the walk goes. An output that is
+// neither has no such plugin and is named by its own card and device through
+// plug instead (see device_names.hpp's plug_device_name).
+[[nodiscard]] inline std::vector<Candidate> find_candidates(
+    Include include = Include::kDigitalOnly) {
     std::vector<Candidate> candidates;
     int counted_card = -1;
     unsigned hdmi_index = 0;
     unsigned spdif_index = 0;
 
-    for_each_pcm(SND_PCM_STREAM_PLAYBACK, [&](const PcmEntry& entry) {
+    for_each_pcm(SND_PCM_STREAM_PLAYBACK, [&candidates, &counted_card, &hdmi_index, &spdif_index,
+                                           include](const PcmEntry& entry) {
         if (entry.card != counted_card) {
             counted_card = entry.card;
             hdmi_index = 0;
@@ -60,20 +78,26 @@ struct Candidate {
         }
         const DigitalOutput kind =
             classify_digital_output(entry.device_name, entry.card_id, entry.card_name);
-        if (kind == DigitalOutput::kNone) {
+        if (kind == DigitalOutput::kNone && include == Include::kDigitalOnly) {
             return;
         }
-        unsigned& index = kind == DigitalOutput::kHdmi ? hdmi_index : spdif_index;
+        std::string name;
+        if (kind == DigitalOutput::kNone) {
+            name = plug_device_name(entry.card_id, entry.device);
+        } else {
+            unsigned& index = kind == DigitalOutput::kHdmi ? hdmi_index : spdif_index;
+            name = config_device_name(kind, entry.card_id, index);
+            ++index;
+        }
         candidates.push_back(Candidate{
             .card = entry.card,
             .device = entry.device,
             .card_id = entry.card_id,
             .kind = kind,
-            .name = config_device_name(kind, entry.card_id, index),
+            .name = std::move(name),
             .hw_name = hw_device_name(entry.card_id, entry.device),
             .friendly = fmt::format("{}: {}", entry.card_name, entry.device_name),
         });
-        ++index;
     });
     return candidates;
 }

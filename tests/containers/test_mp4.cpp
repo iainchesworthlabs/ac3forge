@@ -15,7 +15,9 @@
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "mp4/hls.hpp"
 #include "mp4/mp4.hpp"
 
 // These tests read the muxer's output back with an independent ISOBMFF box
@@ -72,8 +74,8 @@ struct Element {
 // same way would misparse their leading fields as a box header, so they are
 // read with their own dedicated helpers below instead.
 bool is_container(const std::string& type) {
-    return type == "moov" || type == "trak" || type == "mdia" || type == "minf" ||
-           type == "stbl" || type == "dinf";
+    return type == "moov" || type == "trak" || type == "edts" || type == "mdia" ||
+           type == "minf" || type == "stbl" || type == "dinf";
 }
 
 void walk(std::span<const std::byte> file, std::size_t pos, std::size_t end,
@@ -325,6 +327,74 @@ TEST_CASE("MP4 muxer rejects what it cannot describe", "[mp4]") {
     CHECK(mp4::mux(no_config, one).error() == mp4::MuxError::kInvalidTrack);
 }
 
+TEST_CASE("MP4 muxer writes one edit, and presents the edit's duration", "[mp4]") {
+    const std::vector<Bytes> frames(4, frame_of(512, 0x5A));
+    mp4::MuxOptions options;
+    options.edit = mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = 5000};
+    const auto file = mp4::mux(sample_track(), frames, options);
+    REQUIRE(file.has_value());
+    const auto elements = parse(*file);
+
+    // §8.6.6's elst, version 0: entry_count, then segment_duration,
+    // media_time and the rate's two halves.
+    const auto* elst = find(elements, "elst");
+    REQUIRE(elst != nullptr);
+    CHECK(byte_at(*file, elst->payload) == 0);
+    CHECK(u32_at(*file, elst->payload + 4) == 1);
+    CHECK(u32_at(*file, elst->payload + 8) == 5000);
+    CHECK(u32_at(*file, elst->payload + 12) == 256);
+    CHECK(u16_at(*file, elst->payload + 16) == 1);
+    CHECK(u16_at(*file, elst->payload + 18) == 0);
+
+    // In the trak between tkhd and mdia, the order §8.3.1 gives.
+    std::vector<std::string> order;
+    for (const auto& element : elements) {
+        if (element.type == "tkhd" || element.type == "edts" || element.type == "mdia") {
+            order.push_back(element.type);
+        }
+    }
+    CHECK(order == std::vector<std::string>{"tkhd", "edts", "mdia"});
+
+    // The movie and the track last as long as the edit; the media as long as
+    // its samples. mvhd: version+flags, creation, modification, timescale,
+    // then duration; tkhd: version+flags, creation, modification, track_ID,
+    // reserved, then duration.
+    const auto* mvhd = find(elements, "mvhd");
+    const auto* tkhd = find(elements, "tkhd");
+    const auto* mdhd = find(elements, "mdhd");
+    REQUIRE(mvhd != nullptr);
+    REQUIRE(tkhd != nullptr);
+    REQUIRE(mdhd != nullptr);
+    CHECK(u32_at(*file, mvhd->payload + 16) == 5000);
+    CHECK(u32_at(*file, tkhd->payload + 20) == 5000);
+    CHECK(read_mdhd(*file, *mdhd).duration == 4U * 1536U);
+
+    // Without the option there is no edit list, and every duration is the
+    // media's.
+    const auto plain = mp4::mux(sample_track(), frames);
+    REQUIRE(plain.has_value());
+    const auto plain_elements = parse(*plain);
+    CHECK(find(plain_elements, "edts") == nullptr);
+    const auto* plain_mvhd = find(plain_elements, "mvhd");
+    REQUIRE(plain_mvhd != nullptr);
+    CHECK(u32_at(*plain, plain_mvhd->payload + 16) == 4U * 1536U);
+}
+
+TEST_CASE("MP4 muxer refuses an edit outside the frames", "[mp4]") {
+    const std::vector<Bytes> two(2, frame_of(64, 0));  // 3,072 samples
+    const auto with = [&two](std::uint64_t start, std::uint64_t duration) {
+        mp4::MuxOptions options;
+        options.edit = mp4::MuxOptions::Edit{.start_samples = start, .duration_samples = duration};
+        return mp4::mux(sample_track(), two, options);
+    };
+    CHECK(with(0, 3072).has_value());
+    CHECK(with(3071, 1).has_value());
+    CHECK(with(0, 3073).error() == mp4::MuxError::kInvalidOptions);
+    CHECK(with(1, 3072).error() == mp4::MuxError::kInvalidOptions);
+    CHECK(with(3072, 1).error() == mp4::MuxError::kInvalidOptions);
+    CHECK(with(100, 0).error() == mp4::MuxError::kInvalidOptions);
+}
+
 // --- ac3::io::build_codec_config_box: the dec3/dac3 payload itself ---------
 //
 // These read the box's raw bytes directly rather than through mp4::mux(), so
@@ -443,6 +513,77 @@ TEST_CASE("dec3 box matches a real E-AC-3 stream with no Atmos extension", "[dec
     CHECK(byte_at(payload, 5) == 0x00);
 }
 
+// Table 5.7's one acmod-dependent bsmod: code 7 is karaoke (a MAIN service)
+// at any acmod other than 1/0, and voice-over (an ASSOCIATED service) only at
+// 1/0. dec3's asvc bit must follow that split, not just "bsmod >= 2".
+TEST_CASE("dec3 box's asvc bit follows the karaoke/voice-over acmod split", "[dec3]") {
+    using ac3::eac3::AccessUnitConfig;
+
+    SECTION("karaoke (bsmod 7, acmod wider than 1/0) is a main service: asvc clear") {
+        const AccessUnitConfig config{
+            .independent = {.bitrate_kbps = 448,
+                            .acmod = ac3::Acmod::k3_2,
+                            .lfe = true,
+                            .info = ac3::meta::BsiInfo{
+                                .bsmod = ac3::meta::BitstreamMode::kVoiceOverOrKaraoke}}};
+        ac3::eac3::AccessUnitEncoder encoder{config};
+
+        std::vector<std::vector<float>> pcm(6, std::vector<float>(ac3::kSamplesPerFrame));
+        for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
+            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+                pcm[ch][static_cast<std::size_t>(n)] = static_cast<float>(
+                    0.3 * std::sin(2.0 * std::numbers::pi * (440.0 + 110.0 * static_cast<double>(ch)) *
+                                  static_cast<double>(n) / 48000.0));
+            }
+        }
+        std::vector<std::span<const float>> views;
+        for (const auto& channel : pcm) {
+            views.emplace_back(channel);
+        }
+        const auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+
+        const auto scanned = ac3::io::scan(unit->bytes);
+        REQUIRE(scanned.has_value());
+        REQUIRE(scanned->bsmod == static_cast<int>(ac3::meta::BitstreamMode::kVoiceOverOrKaraoke));
+        REQUIRE(scanned->acmod == ac3::Acmod::k3_2);
+
+        const auto payload = ac3::io::build_codec_config_box(*scanned);
+        REQUIRE(payload.size() >= 4);
+        const auto asvc = static_cast<std::uint32_t>(byte_at(payload, 3) >> 7);
+        CHECK(asvc == 0);
+    }
+
+    SECTION("voice-over (bsmod 7, acmod 1/0) is an associated service: asvc set") {
+        const AccessUnitConfig config{
+            .independent = {.bitrate_kbps = 192,
+                            .acmod = ac3::Acmod::k1_0,
+                            .info = ac3::meta::BsiInfo{
+                                .bsmod = ac3::meta::BitstreamMode::kVoiceOverOrKaraoke}}};
+        ac3::eac3::AccessUnitEncoder encoder{config};
+
+        std::vector<float> mono(ac3::kSamplesPerFrame);
+        for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            mono[static_cast<std::size_t>(n)] =
+                static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * 440.0 *
+                                                  static_cast<double>(n) / 48000.0));
+        }
+        const std::vector<std::span<const float>> views{mono};
+        const auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+
+        const auto scanned = ac3::io::scan(unit->bytes);
+        REQUIRE(scanned.has_value());
+        REQUIRE(scanned->bsmod == static_cast<int>(ac3::meta::BitstreamMode::kVoiceOverOrKaraoke));
+        REQUIRE(scanned->acmod == ac3::Acmod::k1_0);
+
+        const auto payload = ac3::io::build_codec_config_box(*scanned);
+        REQUIRE(payload.size() >= 4);
+        const auto asvc = static_cast<std::uint32_t>(byte_at(payload, 3) >> 7);
+        CHECK(asvc == 1);
+    }
+}
+
 TEST_CASE("dec3 box signals Dolby Atmos objects", "[dec3]") {
     constexpr int kObjects = 3;
     ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, kObjects};
@@ -488,4 +629,42 @@ TEST_CASE("dec3 box signals Dolby Atmos objects", "[dec3]") {
     // reserved(7)=0, flag_ec3_extension_type_a=1 packs to 0x01.
     CHECK(byte_at(payload, 5) == 0x01);
     CHECK(byte_at(payload, 6) == static_cast<std::uint8_t>(kObjects + 1));
+}
+
+// --------------------------------------------------------------------------
+// AC-4 carriage (AC-4 bitstream inspector): TS 103 190-2 Annex E.4's 'ac-4' sample entry
+// and 'dac4' configuration box, through the same box walk the A/52 entries
+// are proven with.
+
+TEST_CASE("MP4 carries an 'ac-4' sample entry with a 'dac4' box", "[mp4][ac4]") {
+    mp4::AudioTrack track;
+    track.codec_id = std::string{mp4::kCodecAc4};
+    track.sample_rate = 48000;
+    track.channels = 2;  // E.4.5: "should be set to 2"
+    track.samples_per_frame = 2048;
+    track.codec_config = {std::byte{0x2A}, std::byte{0x04}, std::byte{0x10}, std::byte{0x00}};
+    track.rfc6381 = "ac-4.02.01.00";
+
+    const std::vector<Bytes> frames{frame_of(320, 0x5A), frame_of(320, 0x5B)};
+    const auto file = mp4::mux(track, frames);
+    REQUIRE(file.has_value());
+
+    // The sample entry is stsd's child, which parse()'s flat walk does not
+    // descend into - read_sample_entry is this file's own way in, the same
+    // one the A/52 entry test uses.
+    const auto elements = parse(*file);
+    const auto* stsd = find(elements, "stsd");
+    REQUIRE(stsd != nullptr);
+    const auto entry = read_sample_entry(*file, *stsd);
+    CHECK(entry.codec_id == "ac-4");
+    CHECK(entry.config_type == "dac4");
+    CHECK(entry.channels == 2);
+    CHECK(entry.samplerate_fixed == (48000U << 16));
+    // The config box carries exactly the payload handed in.
+    CHECK(entry.config_payload == track.codec_config);
+
+    // The manifest string is the override, not the fourcc, for this codec.
+    CHECK(mp4::hls_codec_string(track) == "ac-4.02.01.00");
+    track.rfc6381.clear();
+    CHECK(mp4::hls_codec_string(track) == "ac-4");
 }

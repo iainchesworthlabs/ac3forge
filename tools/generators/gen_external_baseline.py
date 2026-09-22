@@ -39,7 +39,7 @@ channel (spectral extension only) and 64 is 32 (both).
 The three programme legs are the other half of the same problem: the first
 five are all 2.5-3 s of sin()/noise/FIR, which carries a flat noise plateau
 across its whole top octave and has already produced one measured, fake
-2.1 dB "win" (src/lib/src/encoder/encoder.cpp's chbwcod comment). See
+2.1 dB "win" (src/forge/src/encoder/encoder.cpp's chbwcod comment). See
 tools/generators/gen_programme_fixtures.py for the sources, licences and
 measured spectra. Those fixtures ship as FLAC and are materialised to WAV
 under build/ by quality_race.py's materialise_fixture(), which is what the
@@ -183,6 +183,7 @@ from quality_race import (
 
 REPO = Path(__file__).resolve().parent.parent.parent
 AUDIO = REPO / "tests" / "golden" / "audio"
+REFERENCE_STEREO_WAV = AUDIO / "reference_stereo.wav"
 OUT = REPO / "tests" / "golden" / "external-baseline"
 SCRATCH = REPO / "build" / "external_baseline_scratch"
 
@@ -257,16 +258,16 @@ LEGS = [
      "wav": AUDIO / "reference_51.wav"},
     {"name": "eac3-stereo-192", "codec": "eac3", "ext": "ec3", "dee_codec": "ddp",
      "ffmpeg_codec": "eac3", "dee_layout": "stereo", "kbps": 192,
-     "wav": AUDIO / "reference_stereo.wav"},
+     "wav": REFERENCE_STEREO_WAV},
     {"name": "eac3-51-256", "codec": "eac3", "ext": "ec3", "dee_codec": "ddp",
      "ffmpeg_codec": "eac3", "dee_layout": "5.1", "kbps": 256,
      "wav": AUDIO / "reference_51.wav"},
     {"name": "eac3-stereo-96", "codec": "eac3", "ext": "ec3", "dee_codec": "ddp",
      "ffmpeg_codec": "eac3", "dee_layout": "stereo", "kbps": 96,
-     "wav": AUDIO / "reference_stereo.wav"},
+     "wav": REFERENCE_STEREO_WAV},
     {"name": "eac3-stereo-64", "codec": "eac3", "ext": "ec3", "dee_codec": "ddp",
      "ffmpeg_codec": "eac3", "dee_layout": "stereo", "kbps": 64,
-     "wav": AUDIO / "reference_stereo.wav"},
+     "wav": REFERENCE_STEREO_WAV},
     {"name": "ac3-music-stereo-192", "codec": "ac3", "ext": "ac3", "dee_codec": "dd",
      "ffmpeg_codec": "ac3", "dee_layout": "stereo", "kbps": 192, "wav": _MUSIC},
     {"name": "eac3-music-stereo-96", "codec": "eac3", "ext": "ec3", "dee_codec": "ddp",

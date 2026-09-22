@@ -101,8 +101,10 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <thread>
 #include <vector>
 
+#include "ac3/audio/playback_counter.hpp"
 #include "ac3/audio/ring_buffer.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 #include "coreaudio_names.hpp"
@@ -113,6 +115,9 @@ namespace ac3::audio {
 namespace {
 
 constexpr auto kFormatChangeTimeout = std::chrono::milliseconds{2000};
+// The IEC 60958 carrier's frame: two channels of 16 bits, whatever rides in
+// them - the stride mpv's exclusive output reads an IOProc buffer in too.
+constexpr std::size_t kLinkFrameBytes = 4;
 
 std::size_t burst_bytes_for(BitstreamFormat format) {
     return format == BitstreamFormat::kEac3 ? iec61937::kEac3BurstBytes : iec61937::kBurstBytes;
@@ -197,6 +202,12 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
             .supports_exclusive_pcm =
                 find_stream(device, kAudioFormatLinearPCM, static_cast<Float64>(sample_rate))
                     .has_value(),
+            // The same figure the filter above already read: the width of the
+            // device's output scope, which is what it renders.
+            .channels = static_cast<std::uint16_t>(
+                coreaudio::channel_count(device, kAudioDevicePropertyScopeOutput)),
+            .speakers = coreaudio::output_speakers(device),
+            .sample_rates = coreaudio::available_sample_rates(device),
         });
     }
     return devices;
@@ -212,10 +223,38 @@ struct PassthroughSink::Impl {
     coreaudio::MixingGuard mixing;
     std::unique_ptr<ByteRingBuffer> queue;
     std::size_t burst_bytes = iec61937::kBurstBytes;
+    // Which of the IOProc's buffers is the chosen stream's: a device's output
+    // streams arrive as its buffers, in the order the device lists them.
+    std::size_t buffer_index = 0;
+    // Link frames to a content frame (carrier_ratio()), and link frames a
+    // second, for position() and the IOProc's timestamps.
+    std::uint32_t ratio = 1;
+    std::uint32_t carrier_rate = 0;
+    // Raised by start(). Lowered by stop(), or by `alive` when the device
+    // dies under the stream, as MonitorSink's Core Audio backend has it.
     std::atomic_bool running{false};
+    coreaudio::AliveWatch alive{running};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
+    // What the IOProc last saw of the device's clock, in link frames, as
+    // MonitorSink's Core Audio backend keeps it, and the delay past the
+    // buffer it fills.
+    PlaybackCounter counter;
+    std::atomic<std::uint32_t> latency{0};
+    // Set by pause()/resume(): the device is stopped and started while the
+    // IOProc stays registered. A flush the IOProc performs, since the queue's
+    // read side is its own; `flushes` counts the ones it has done, and
+    // `flush_mark` is how far the queue had been written when the flush was
+    // asked for: what it drops.
+    std::atomic_bool paused{false};
+    std::atomic_bool flushing{false};
+    std::atomic<std::uint64_t> flushes{0};
+    std::atomic<std::size_t> flush_mark{0};
+    // The IOProc's own: link frames handed over since the last start or
+    // flush, and the bytes of a burst not yet whole, for the burst count.
+    std::uint64_t handed_over = 0;
+    std::size_t rendered_bytes = 0;
 };
 
 PassthroughSink::PassthroughSink() : impl_(std::make_unique<Impl>()) {}
@@ -234,8 +273,88 @@ PassthroughStats PassthroughSink::stats() const {
             .underruns = impl_->underruns.load(std::memory_order_relaxed)};
 }
 
+std::optional<MonitorPosition> PassthroughSink::position() const {
+    if (!running() || !impl_->queue) {
+        return std::nullopt;
+    }
+    const std::uint64_t queued_here = impl_->queue->available() / kLinkFrameBytes;
+    return per_content_frame(
+        impl_->counter.position(queued_here, impl_->latency.load(std::memory_order_relaxed)),
+        impl_->ratio);
+}
+
+void PassthroughSink::flush() {
+    if (!running() || !impl_->queue) {
+        return;
+    }
+    // As MonitorSink's Core Audio backend: the HAL cannot recall what the
+    // device already holds, and a stopped device has no IOProc running, so
+    // while paused this thread does the work itself, including any flush
+    // still waiting for the IOProc.
+    if (impl_->paused.load(std::memory_order_acquire)) {
+        impl_->flushing.store(false, std::memory_order_release);
+        impl_->queue->discard_to(impl_->queue->write_mark());
+        impl_->handed_over = 0;
+        impl_->rendered_bytes = 0;
+        impl_->counter.restart();
+        impl_->rendered.store(0, std::memory_order_relaxed);
+        impl_->submitted.store(0, std::memory_order_relaxed);
+        return;
+    }
+    // Running: the IOProc drops the queue up to the mark. One that has not
+    // got to it within the wait - a device that stopped calling back - makes
+    // the flush when it next runs, without dropping later bursts. A device
+    // that has died never runs it, and its lowered `running` ends the wait.
+    const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
+    impl_->flushing.store(true, std::memory_order_release);
+    for (int waited = 0; waited < 200; ++waited) {
+        if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+std::expected<void, PassthroughError> PassthroughSink::pause() {
+    if (!running() || impl_->io_proc_id == nullptr) {
+        return std::unexpected(PassthroughError::kNotRunning);
+    }
+    if (impl_->paused.load(std::memory_order_acquire)) {
+        return {};
+    }
+    // Raised only once the stop has returned, so flush()'s paused branch
+    // never runs beside an IOProc call (see MonitorSink's Core Audio backend).
+    if (AudioDeviceStop(impl_->device, impl_->io_proc_id) != noErr) {
+        return std::unexpected(PassthroughError::kComFailure);
+    }
+    impl_->paused.store(true, std::memory_order_release);
+    return {};
+}
+
+std::expected<void, PassthroughError> PassthroughSink::resume() {
+    if (!running() || impl_->io_proc_id == nullptr) {
+        return std::unexpected(PassthroughError::kNotRunning);
+    }
+    if (!impl_->paused.load(std::memory_order_acquire)) {
+        return {};
+    }
+    impl_->paused.store(false, std::memory_order_release);
+    if (AudioDeviceStart(impl_->device, impl_->io_proc_id) != noErr) {
+        impl_->paused.store(true, std::memory_order_release);
+        return std::unexpected(PassthroughError::kComFailure);
+    }
+    return {};
+}
+
+bool PassthroughSink::paused() const {
+    // A pause is a property of a running stream, so one whose device has
+    // died is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
+}
+
 bool PassthroughSink::can_submit() const {
-    if (!impl_->queue) {
+    if (!running() || !impl_->queue) {
         return false;
     }
     return impl_->queue->capacity() - impl_->queue->available() > impl_->burst_bytes;
@@ -257,21 +376,32 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
 }
 
 void PassthroughSink::stop() {
+    // Unwatched first, so nothing lowers the flag of a stream being taken
+    // down anyway.
+    impl_->alive.reset();
     if (impl_->io_proc_id != nullptr) {
         AudioDeviceStop(impl_->device, impl_->io_proc_id);
         AudioDeviceDestroyIOProcID(impl_->device, impl_->io_proc_id);
         impl_->io_proc_id = nullptr;
     }
     if (impl_->have_original_format) {
-        coreaudio::set_property(impl_->stream, coreaudio::address(kAudioStreamPropertyPhysicalFormat),
-                                impl_->original_format);
-        coreaudio::wait_for_physical_format(impl_->stream, impl_->original_format.mFormatID,
-                                            impl_->original_format.mSampleRate,
-                                            kFormatChangeTimeout);
+        // Waited for only once the device has taken the set: a device that
+        // has died takes nothing, and waiting for it to settle would hold
+        // stop() for the whole timeout.
+        if (coreaudio::set_property(impl_->stream,
+                                    coreaudio::address(kAudioStreamPropertyPhysicalFormat),
+                                    impl_->original_format)) {
+            coreaudio::wait_for_physical_format(impl_->stream, impl_->original_format.mFormatID,
+                                                impl_->original_format.mSampleRate,
+                                                kFormatChangeTimeout);
+        }
         impl_->have_original_format = false;
     }
     impl_->mixing.reset();
     impl_->hog.reset();
+    // A pause is a property of a running stream, so it does not outlive one.
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
     impl_->running.store(false, std::memory_order_release);
 }
 
@@ -281,6 +411,10 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (running()) {
         return std::unexpected(PassthroughError::kAlreadyRunning);
     }
+    // A stream whose device died still holds its IOProc, its watch, and the
+    // hog and format it took; stop() gives all of them back. With nothing
+    // started it does nothing.
+    stop();
 
     const auto format_id = coreaudio::physical_format_id(format_kind);
     const auto carrier = static_cast<Float64>(coreaudio::carrier_rate(format_kind, sample_rate));
@@ -353,42 +487,101 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     impl_->submitted.store(0, std::memory_order_relaxed);
     impl_->rendered.store(0, std::memory_order_relaxed);
     impl_->underruns.store(0, std::memory_order_relaxed);
+    impl_->ratio = carrier_ratio(format_kind);
+    impl_->carrier_rate = static_cast<std::uint32_t>(carrier);
+    impl_->counter.restart();
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
+    impl_->flushes.store(0, std::memory_order_relaxed);
+    impl_->handed_over = 0;
+    impl_->rendered_bytes = 0;
+    const auto streams = coreaudio::device_streams(impl_->device, kAudioDevicePropertyScopeOutput);
+    const auto found = std::find(streams.begin(), streams.end(), impl_->stream);
+    impl_->buffer_index =
+        found == streams.end() ? 0 : static_cast<std::size_t>(found - streams.begin());
+    // The delay past the buffer the IOProc fills, as MonitorSink's Core Audio
+    // backend reads it: the device's latency and the stream's, and not the
+    // safety offset, which the IOProc's timestamps already carry.
+    const auto device_latency = coreaudio::get_property<UInt32>(
+        impl_->device,
+        coreaudio::address(kAudioDevicePropertyLatency, kAudioDevicePropertyScopeOutput));
+    const auto stream_latency =
+        coreaudio::get_property<UInt32>(impl_->stream,
+                                        coreaudio::address(kAudioStreamPropertyLatency));
+    impl_->latency.store(device_latency.value_or(0) + stream_latency.value_or(0),
+                         std::memory_order_relaxed);
 
     // A captureless lambda, not a free function - see
     // platform/macos/capture.cpp's own start() for why: AudioDeviceIOProc
     // needs a plain C function pointer, but `Impl` is private to
     // PassthroughSink, so only a member function (or something lexically
     // nested inside one, which is exactly what this is) has access to it.
-    const auto io_proc = [](AudioObjectID /*device*/, const AudioTimeStamp* /*now*/,
+    const auto io_proc = [](AudioObjectID /*device*/, const AudioTimeStamp* now,
                             const AudioBufferList* /*input_data*/,
                             const AudioTimeStamp* /*input_time*/, AudioBufferList* output,
-                            const AudioTimeStamp* /*output_time*/, void* client_data) -> OSStatus {
+                            const AudioTimeStamp* output_time, void* client_data) -> OSStatus {
         auto* impl = static_cast<Impl*>(client_data);
-        if (output == nullptr || output->mNumberBuffers == 0) {
+        // A flush the caller asked for: drop what this sink holds and restart
+        // the counts with it, before this buffer is filled from the queue -
+        // and before anything below can return, so a call with no buffer of
+        // ours in it still makes it.
+        if (impl->flushing.exchange(false, std::memory_order_acq_rel)) {
+            impl->queue->discard_to(impl->flush_mark.load(std::memory_order_acquire));
+            impl->handed_over = 0;
+            impl->rendered_bytes = 0;
+            impl->counter.restart();
+            impl->rendered.store(0, std::memory_order_relaxed);
+            impl->submitted.store(0, std::memory_order_relaxed);
+            impl->flushes.fetch_add(1, std::memory_order_release);
+        }
+        if (output == nullptr || impl->buffer_index >= output->mNumberBuffers) {
             return noErr;
         }
-        auto& buffer = output->mBuffers[0];
-        const auto wanted = static_cast<std::size_t>(buffer.mDataByteSize);
-        auto* dest = static_cast<std::byte*>(buffer.mData);
 
-        std::size_t filled = 0;
-        while (filled + impl->burst_bytes <= wanted) {
-            const auto got = impl->queue->read(std::span(dest + filled, impl->burst_bytes));
-            if (got < impl->burst_bytes) {
-                // Nothing queued: emit silence for the remainder. A
-                // receiver that sees a gap in the burst stream usually
-                // drops lock, so this is counted, not hidden - matching the
-                // Windows/ALSA backends' own underrun discipline.
-                std::fill(dest + filled + got, dest + filled + impl->burst_bytes, std::byte{0});
-                impl->underruns.fetch_add(1, std::memory_order_relaxed);
-            } else {
-                impl->rendered.fetch_add(1, std::memory_order_relaxed);
-            }
-            filled += impl->burst_bytes;
+        auto& buffer = output->mBuffers[impl->buffer_index];
+        auto* dest = static_cast<std::byte*>(buffer.mData);
+        const auto size = static_cast<std::size_t>(buffer.mDataByteSize);
+        if (dest == nullptr || size == 0) {
+            return noErr;
         }
-        if (filled < wanted) {
-            std::fill(dest + filled, dest + wanted, std::byte{0});
+        // The link is a stream of bytes, as every other backend writes it: a
+        // device's buffer need not be a whole burst, or a whole number of
+        // them, and a burst goes out across as many buffers as it takes. The
+        // queue only ever holds whole bursts, so a shortfall falls between two
+        // of them. Filling only whole bursts per buffer would send nothing at
+        // all through the usual 512-frame buffer, which is shorter than one.
+        const std::size_t wanted = size / kLinkFrameBytes * kLinkFrameBytes;
+        const auto got = impl->queue->read(std::span(dest, wanted));
+        if (got < size) {
+            std::fill(dest + got, dest + size, std::byte{0});
         }
+        if (got < wanted) {
+            // A gap on the wire, which a receiver usually loses its lock
+            // over: counted, not hidden, as the other backends count it.
+            impl->underruns.fetch_add(1, std::memory_order_relaxed);
+        }
+        impl->rendered_bytes += got;
+        while (impl->rendered_bytes >= impl->burst_bytes) {
+            impl->rendered_bytes -= impl->burst_bytes;
+            impl->rendered.fetch_add(1, std::memory_order_relaxed);
+        }
+
+        // The device's own clock, as MonitorSink's Core Audio backend reads
+        // it: what it still holds is this buffer plus the lead between now
+        // and when the buffer's first frame is heard, where both timestamps
+        // carry a sample time and the lead is under a second.
+        const std::uint64_t frames = wanted / kLinkFrameBytes;
+        std::uint64_t lead = 0;
+        if (now != nullptr && output_time != nullptr &&
+            (now->mFlags & kAudioTimeStampSampleTimeValid) != 0 &&
+            (output_time->mFlags & kAudioTimeStampSampleTimeValid) != 0 &&
+            output_time->mSampleTime > now->mSampleTime) {
+            const auto reported =
+                static_cast<std::uint64_t>(output_time->mSampleTime - now->mSampleTime);
+            lead = reported <= impl->carrier_rate ? reported : 0;
+        }
+        impl->handed_over += frames;
+        impl->counter.report(impl->handed_over, frames + lead);
         return noErr;
     };
 
@@ -406,6 +599,12 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
 
     impl_->io_proc_id = proc_id;
     impl_->running.store(true, std::memory_order_release);
+    // Watched from here on, and asked once, as MonitorSink's Core Audio
+    // backend does it.
+    impl_->alive.watch(impl_->device);
+    if (!coreaudio::device_alive(impl_->device)) {
+        impl_->running.store(false, std::memory_order_release);
+    }
     return {};
 }
 

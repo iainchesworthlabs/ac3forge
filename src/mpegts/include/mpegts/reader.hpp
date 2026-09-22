@@ -5,11 +5,13 @@
 #include <expected>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
 
 #include "mpegts/export.hpp"
+#include "mpegts/mpegts.hpp"
 
 // The read side of mpegts::mux()/mpegts::Writer: pulling one programme's
 // audio back out of a transport stream.
@@ -77,9 +79,10 @@ enum class DemuxError : std::uint8_t {
 // PID, and a registration descriptor is a format identifier. A caller
 // remuxing back out wants to know which it was.
 enum class CodecSignalling : std::uint8_t {
-    kAtscStreamType,          // stream_type 0x81 / 0x87
-    kDvbDescriptor,           // stream_type 0x06 + AC3_descriptor / Enhanced_AC3_descriptor
-    kRegistrationDescriptor,  // format_identifier 'AC-3' / 'EAC3'
+    kAtscStreamType,           // stream_type 0x81 / 0x87
+    kDvbDescriptor,            // stream_type 0x06 + AC3_descriptor / Enhanced_AC3_descriptor
+    kRegistrationDescriptor,   // format_identifier 'AC-3' / 'EAC3'
+    kDvbExtensionDescriptor,   // stream_type 0x06 + extension descriptor 0x7F/0x15 (AC-4)
 };
 
 struct ReadStream {
@@ -88,9 +91,28 @@ struct ReadStream {
     std::uint16_t elementary_pid = 0;
     std::uint8_t stream_type = 0;
     bool eac3 = false;  // E-AC-3 rather than AC-3, per whichever signalling was found
+    // AC-4 (EN 300 468 Annex D.7's extension descriptor). When set, `eac3`
+    // is meaningless - the payload is TS 103 190 sync frames, not A/52 ones,
+    // and this module hands its PES bytes back without framing them.
+    bool ac4 = false;
     CodecSignalling signalling = CodecSignalling::kAtscStreamType;
     // The detected grid: 188 (TS), 192 (M2TS) or 204 (TS with RS parity).
     std::size_t packet_size = 188;
+    // The PMT's own AC-3/E-AC-3 audio descriptor, decoded back into the same
+    // ServiceInfo shape mpegts::mux()'s caller supplies - see mpegts.hpp's
+    // own header comment on why this module's job stops at descriptor
+    // syntax. std::nullopt when signalling carries no such
+    // descriptor to read (kAtscStreamType's own stream_type IDs the codec
+    // without one being required, kRegistrationDescriptor has no A/52-shaped
+    // descriptor at all, and ac4 never does either) or when this codec's
+    // descriptor is malformed - never a guessed value. Some ServiceInfo
+    // fields cannot be recovered exactly from these bytes (see
+    // mpegts::parse_service_descriptor's own comment) and are left at their
+    // ServiceInfo default rather than approximated; acmod/channels/lfe/
+    // dsurmod in particular are better read from ac3::io::scan() on the
+    // elementary stream itself, the same source mux()'s caller used to fill
+    // this in the first place.
+    std::optional<ServiceInfo> service = std::nullopt;
 };
 
 struct ReadOptions {

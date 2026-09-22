@@ -4,12 +4,13 @@
 # with an independent decoder (FFmpeg) on the same encoded bitstream, using a
 # fixed, checked-in 5.1 WAV (tests/golden/audio/reference_51.wav - see
 # tools/generators/gen_gold_reference_wav.py) as the input material. This is
-# docs/RESEARCH.md's validation pyramid L3 ("FFmpeg oracle, every commit")
+# the original validation pyramid's L3 ("FFmpeg oracle, every commit"; the
+# design now lives in docs/verification.md as "FFmpeg as an external oracle")
 # plus a lightweight L4 (SNR vs. FFmpeg's own decode) - designed from the
-# start, but never wired into any CI leg until now. tools/ci/run_codec_
-# matrix.sh already exercises "does every layout/tool/metadata combination
-# run without crashing"; this is the complementary "is the audio actually
-# right" check that script deliberately does not attempt.
+# start, but never wired into any CI leg until now. tools/ci/run_codec_matrix.sh
+# already exercises "does every layout/tool/metadata combination run without
+# crashing"; this is the complementary "is the audio actually right" check that
+# script deliberately does not attempt.
 #
 # Usage: verify_gold_reference.sh <path-to-ac3cli> [workdir]
 # Requires ffmpeg and python3 (or python) on PATH. Exits non-zero on the
@@ -26,10 +27,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GOLD_WAV="$REPO_ROOT/tests/golden/audio/reference_51.wav"
 COMPARE="$REPO_ROOT/tools/checks/compare_wav.py"
 
-# Same reasoning as docs/RESEARCH.md's L3 recipe: pin drc_scale to 0 on both
-# sides so a dynamic-range-compression default mismatch between FFmpeg and
-# ac3cli's own decoder (which also defaults drc_scale to 0 - see
-# apps/cli/main.cpp's MetaOptions) can never masquerade as a fidelity loss.
+# Pin drc_scale to 0 on both sides so a dynamic-range-compression default
+# mismatch between FFmpeg and ac3cli's own decoder (which also defaults
+# drc_scale to 0 - see apps/cli/support.hpp's Options, and the drc_scale row
+# of docs/library/decoding.md for why) can never masquerade as a fidelity
+# loss.
 #
 # 55, not some more conservative-looking round number: this gate compares two
 # decodes of the *same* bitstream (FFmpeg vs. ac3cli's own decoder), so absent
@@ -37,19 +39,85 @@ COMPARE="$REPO_ROOT/tools/checks/compare_wav.py"
 # vary the way a lossy-vs-original comparison (see tools/ci/quality_race.py's
 # very different, much lower floors) legitimately does. Every real run
 # recorded in quality-history (docs/quality-trend.md) to date has landed
-# 61.8-67.9 dB, with the ~6 dB floor-to-floor spread being every arm64 and
-# macOS leg landing ~6.02 dB (one AC-3 exponent step) below every x86 leg -
-# NOT a libm-package difference (an earlier version of this comment blamed
-# "macOS-vs-Linux/Windows libm", which the glibc/GCC arm64 Linux legs added
-# later contradict outright), still unexplained after ruling out FMA
-# contraction and architecture-specific libm sin/cos by direct measurement -
-# see docs/building.md's "Floating-point contraction" and roadmap VX11. Not
+# 61.8-67.9 dB, with the ~6 dB floor-to-floor spread splitting the legs
+# strictly by ARCHITECTURE: every arm64 leg lands ~6.02 dB below every x86-64
+# leg. Not by OS and not by compiler - macos-llvm (arm64) sits with the arm64
+# group while macos-llvm-x64 sits with the x86 group, which is what rules out
+# the "macOS libm" and "arm64 and macOS" readings earlier versions of this
+# comment carried.
+#
+# cross-platform bitstream reproducibility resolved what it is: one bit of arithmetic difference, visible
+# only where the comparison is ALREADY rounding-dominated. Sorting all 52
+# (check, channel) pairs by their x86 SNR shows a step, not a gradient -
+# every pair below 67 dB has an arm64 delta of 0.00-0.11 dB, every pair above
+# it has 5.85-6.05 dB. A systematic exponent error would be level-independent
+# and split every channel equally; this only appears once the two decoders
+# agree closely enough that arithmetic is all that is left to disagree about.
+# See docs/verification.md's "Why arm64 and x86-64 disagree". Not
 # commit-to-commit noise either way, which has stayed inside 0.02-0.08 dB.
 # 55 leaves the lowest-scoring legs' own ~61.8 dB floor about 7 dB of
 # headroom (comfortably above that noise) while catching a regression more
 # than an order of magnitude smaller than the previous 30 dB floor ever
 # could.
 MIN_SNR_DB="${MIN_SNR_DB:-55}"
+
+# --- Per-channel floors -----------------------------------------------------
+#
+# Every floor below is a VECTOR, one entry per channel in WAV order
+# (L R C LFE Ls Rs for the 5.1 fixtures, L R for the stereo ones), because one
+# floor across six channels is not one gate: it is one gate on the worst
+# channel and dead slack on the other five.
+#
+# The surrounds of a 5.1 fixture sit far below the front channels by
+# construction - the encoder spends fewer bits there, and §7.3.4 leaves dither
+# VALUES decoder-defined, so two independently correct decoders diverge in the
+# zero-bit bins by design (this is the same freedom the dither=off note further
+# down exists for, except a third-party fixture's dithflag is not ours to turn
+# off). A single floor therefore has to clear the surrounds, and on
+# ext_ac3_51_448_dee that meant 22 dB - against a centre channel measuring
+# 58.11 dB. The centre could have collapsed by 36 dB and this gate would still
+# have gone green, which is precisely the per-channel syntax misread the
+# external-baseline block below was added to catch (see its own list: the
+# firstcplcos[ch] bug is per channel).
+#
+# Derivation, uniformly: floor = floor(min_observed - 1.0), where min_observed
+# is that channel's lowest value across EVERY leg and EVERY commit recorded in
+# the quality-history branch (9 legs, 57-74 commits, depending on the check).
+#
+# The 1.0 dB covers commit-to-commit noise and nothing else, because
+# min_observed has already absorbed everything else. That is the correction
+# cross-platform bitstream reproducibility produced, and it is worth stating because the first version of
+# these vectors got it wrong: they used 6.02 dB, reasoning that a floor tighter
+# than the arm64/x86 split would risk a new platform tripping it. But
+# min_observed is a MINIMUM ACROSS LEGS, so wherever that split appears it is
+# already the arm64 value - the low side of it. Subtracting the size of the
+# split from a number that is already the bottom of the split counted the same
+# margin twice and cost ~5 dB of sensitivity on every channel.
+#
+# What one leg's own number actually does between commits, measured over 520
+# (check, leg, channel) series: median spread 0.000 dB, 495 of them under
+# 0.5 dB. The 25 that are not are a single real step change on one check
+# (eac3_cplbndstrce0, 2026-08-17, 25.42 -> 22.41, flat for the 63 commits
+# since) rather than noise. 1.0 dB is more than ten times the largest genuine
+# commit-to-commit movement on record (0.02-0.08 dB).
+#
+# A new leg landing below one of these floors is not a false alarm under this
+# policy. It is platform behaviour nobody has reviewed, and stopping to look at
+# it is the right outcome rather than something to pre-authorise with margin.
+#
+# One pair of floors is LOWER than the single floor it replaced:
+# ext_ac3_51_448_dee's Ls/Rs, 22 -> 21. 22 was never derived for those channels
+# - it was the one floor the whole fixture had to share and it happened to land
+# 0.7 dB under them. Their four sibling channels gained 34-59 dB of gate in the
+# same change, and the check went from catching only a total surround collapse
+# to catching a 1 dB move in any channel.
+#
+# Regenerate after a deliberate, reviewed quality change - never to make a red
+# gate green:
+#   python3 tools/checks/derive_channel_floors.py --history <main.jsonl>
+AC3_GOLD_FLOORS="80,80,73,81,60,65"
+EAC3_GOLD_FLOORS="80,80,73,81,60,65"
+EAC3_CPL_GOLD_FLOORS="80,80,73,81,60,65"
 
 # Optional: when set, check_one also asks compare_wav.py to write a
 # structured result to "$RESULTS_JSON_DIR/<label>.json" - consumed by CI's
@@ -58,7 +126,7 @@ MIN_SNR_DB="${MIN_SNR_DB:-55}"
 # which behaves exactly as before this existed.
 RESULTS_JSON_DIR="${RESULTS_JSON_DIR:-}"
 
-# Optional (roadmap VX10): "reference" makes every ac3cli encode and decode
+# Optional (reference-mode end-to-end gate): "reference" makes every ac3cli encode and decode
 # below take mode=reference, so the whole gate runs on the spec's own direct
 # transform evaluations - the §8.2.3.2 forward MDCT and §7.9.4's step-3
 # inverse - instead of the fast paths that have been the default since 0.9.0.
@@ -76,17 +144,36 @@ RESULTS_JSON_DIR="${RESULTS_JSON_DIR:-}"
 TRANSFORM_MODE="${TRANSFORM_MODE:-}"
 CLI_MODE_ARGS=()
 LABEL_SUFFIX=""
-if [ -n "$TRANSFORM_MODE" ]; then
+if [[ -n "$TRANSFORM_MODE" ]]; then
     CLI_MODE_ARGS=("mode=$TRANSFORM_MODE")
     LABEL_SUFFIX="_$TRANSFORM_MODE"
 fi
 
+# The same idea for a difference the CLI cannot be asked for at RUN time.
+# AC3FORGE_DECODE_SCALAR=float is a build option - it decides whether the
+# decoder carries its coefficients as float or double
+# (src/forge/src/internal/scalar/) - so a float32 run means a second BINARY
+# rather than a second token, and the caller passes that binary as $1 and
+# names it here.
+#
+# Worth having as its own run rather than folded into the one above: this gate
+# is what says a decode is RIGHT, against FFmpeg and against the source, and
+# until now it had only ever been pointed at a double build. Every bare-metal
+# fixture is decoded float32, and tools/checks/check_decode_scalar_snr.py only
+# says the two builds AGREE - agreement is not correctness, and this is the
+# half that checks the other thing.
+EXTRA_LABEL_SUFFIX="${EXTRA_LABEL_SUFFIX:-}"
+if [[ -n "$EXTRA_LABEL_SUFFIX" ]]; then
+    LABEL_SUFFIX="${LABEL_SUFFIX}${EXTRA_LABEL_SUFFIX}"
+fi
+
 # Every ac3cli invocation goes through here so the mode token is applied in
 # exactly one place. The length test rather than a bare "${CLI_MODE_ARGS[@]}"
-# is the same macOS bash 3.2 `set -u` workaround check_one's json_args uses -
-# see its own comment.
+# guards the macOS bash 3.2 `set -u` behaviour where expanding a zero-element
+# array is an unbound-variable error - see compare_and_gate's own note, which
+# explains why the same guard is NOT needed on its argument array.
 run_cli() {
-    if [ ${#CLI_MODE_ARGS[@]} -eq 0 ]; then
+    if [[ ${#CLI_MODE_ARGS[@]} -eq 0 ]]; then
         "$CLI" "$@"
     else
         "$CLI" "$@" "${CLI_MODE_ARGS[@]}"
@@ -100,7 +187,7 @@ for candidate in python3 python; do
         break
     fi
 done
-if [ -z "$PYTHON" ]; then
+if [[ -z "$PYTHON" ]]; then
     echo "::error::no python3/python on PATH" >&2
     exit 1
 fi
@@ -108,7 +195,7 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
     echo "::error::ffmpeg not on PATH" >&2
     exit 1
 fi
-if [ ! -f "$GOLD_WAV" ]; then
+if [[ ! -f "$GOLD_WAV" ]]; then
     echo "::error::gold reference WAV missing: $GOLD_WAV" >&2
     exit 1
 fi
@@ -116,19 +203,48 @@ fi
 count=0
 
 # L3: FFmpeg strict-decode. -err_detect crccheck+bitstream+buffer+explode
-# turns on checks FFmpeg does NOT run by default (crucially the AC-3 CRC,
-# per docs/RESEARCH.md's own critical finding) - pass is exit 0 with empty
-# stderr, not just "a WAV came out."
+# turns on checks FFmpeg does NOT run by default (crucially the AC-3 CRC:
+# without it FFmpeg conceals errors and a broken stream looks fine - see
+# CONTRIBUTING.md's Oracles section) - pass is exit 0 with empty stderr, not
+# just "a WAV came out."
 ffmpeg_strict_decode() {
     local in="$1" out="$2"
     local stderr_out
     stderr_out="$(ffmpeg -y -v error -err_detect crccheck+bitstream+buffer+explode \
         -drc_scale 0 -i "$in" -f wav "$out" 2>&1 >/dev/null)"
-    if [ -n "$stderr_out" ]; then
+    if [[ -n "$stderr_out" ]]; then
         echo "::error::ffmpeg strict decode of $in reported errors:" >&2
         echo "$stderr_out" >&2
         exit 1
     fi
+}
+
+# The single place compare_wav.py is invoked, so the scalar-vs-vector choice
+# and the --json-out wiring are decided once rather than in each caller.
+# $1: reference WAV. $2: WAV under test. $3: label. $4: codec label.
+# $5: bitrate. $6: scalar floor. $7: per-channel vector, or empty for scalar.
+#
+# compare_args always carries at least a floor argument, so expanding it is
+# safe on macOS's bash 3.2 - whose `set -u` treats expanding a ZERO-element
+# array as an unbound variable (the reason the previous form guarded on
+# ${#json_args[@]}; there is nothing left to guard now that the array can
+# never be empty).
+compare_and_gate() {
+    local reference="$1" actual="$2" label="$3" codec="$4" bitrate_kbps="$5"
+    local min_snr_db="$6" per_channel="$7"
+    local compare_args=()
+
+    if [[ -n "$per_channel" ]]; then
+        compare_args+=(--min-snr-db-per-channel "$per_channel")
+    else
+        compare_args+=(--min-snr-db "$min_snr_db")
+    fi
+    if [[ -n "$RESULTS_JSON_DIR" ]]; then
+        mkdir -p "$RESULTS_JSON_DIR"
+        compare_args+=(--json-out "$RESULTS_JSON_DIR/${label}.json"
+                       --codec-label "$codec" --bitrate-kbps "$bitrate_kbps")
+    fi
+    "$PYTHON" "$COMPARE" "$reference" "$actual" "${compare_args[@]}"
 }
 
 # One (encode, decode-with-ac3cli, decode-with-ffmpeg, compare) round for a
@@ -138,9 +254,15 @@ ffmpeg_strict_decode() {
 # because that default is calibrated for streams THIS PROJECT's own encoder
 # produced (see MIN_SNR_DB's own comment); a real third-party encoder's
 # output has no such guarantee and needs its own, separately-justified floor.
+# $6: per-channel floor vector, which supersedes $5 when given.
 check_one() {
     local label="$1$LABEL_SUFFIX" encoded="$2" codec="$3" bitrate_kbps="$4"
     local min_snr_db="${5:-$MIN_SNR_DB}"
+    # $6: optional per-channel floor vector (see "Per-channel floors" above).
+    # Empty means "gate on the scalar", which is what every call site did
+    # before vectors existed and what a check with no derived vector still
+    # does - never a silently different gate.
+    local per_channel="${6:-}"
     local ffmpeg_wav="$WORKDIR/${label}_ffmpeg.wav"
     local our_wav="$WORKDIR/${label}_ours.wav"
 
@@ -153,20 +275,13 @@ check_one() {
     run_cli decode "$encoded" "$our_wav" >/dev/null
 
     count=$((count + 1))
-    echo "[$count] $label: SNR vs. FFmpeg's decode (L4-lite, >= ${min_snr_db} dB)"
-    local json_args=()
-    if [ -n "$RESULTS_JSON_DIR" ]; then
-        mkdir -p "$RESULTS_JSON_DIR"
-        json_args=(--json-out "$RESULTS_JSON_DIR/${label}.json" --codec-label "$codec" --bitrate-kbps "$bitrate_kbps")
-    fi
-    # Not "${json_args[@]}" unguarded: macOS's /bin/bash is stuck on 3.2, whose
-    # `set -u` treats expanding a zero-element array as an unbound variable -
-    # same reasoning as _build.yml's Configure step.
-    if [ ${#json_args[@]} -eq 0 ]; then
-        "$PYTHON" "$COMPARE" "$ffmpeg_wav" "$our_wav" --min-snr-db "$min_snr_db"
+    if [[ -n "$per_channel" ]]; then
+        echo "[$count] $label: SNR vs. FFmpeg's decode (L4-lite, per channel >= ${per_channel})"
     else
-        "$PYTHON" "$COMPARE" "$ffmpeg_wav" "$our_wav" --min-snr-db "$min_snr_db" "${json_args[@]}"
+        echo "[$count] $label: SNR vs. FFmpeg's decode (L4-lite, >= ${min_snr_db} dB)"
     fi
+    compare_and_gate "$ffmpeg_wav" "$our_wav" "$label" "$codec" "$bitrate_kbps" \
+        "$min_snr_db" "$per_channel"
 }
 
 # The other half of check_one, for a third-party bitstream FFmpeg cannot
@@ -180,9 +295,11 @@ check_one() {
 # rather than on check_one's near-noise-floor basis.
 # $1: label. $2: the bitstream. $3: the source WAV it was encoded from.
 # $4: codec label for --json-out. $5: nominal bitrate. $6: min SNR.
+# $7: per-channel floor vector, which supersedes $6 when given.
 check_against_source() {
     local label="$1$LABEL_SUFFIX" encoded="$2" source_wav="$3" codec="$4" bitrate_kbps="$5"
     local min_snr_db="$6"
+    local per_channel="${7:-}"
     local our_wav="$WORKDIR/${label}_ours.wav"
 
     count=$((count + 1))
@@ -190,18 +307,15 @@ check_against_source() {
     run_cli decode "$encoded" "$our_wav" >/dev/null
 
     count=$((count + 1))
-    echo "[$count] $label: SNR vs. the source WAV (>= ${min_snr_db} dB)"
-    local json_args=()
-    if [ -n "$RESULTS_JSON_DIR" ]; then
-        mkdir -p "$RESULTS_JSON_DIR"
-        json_args=(--json-out "$RESULTS_JSON_DIR/${label}.json" --codec-label "$codec" --bitrate-kbps "$bitrate_kbps")
-    fi
-    if [ ${#json_args[@]} -eq 0 ]; then
-        "$PYTHON" "$COMPARE" "$source_wav" "$our_wav" --min-snr-db "$min_snr_db"
+    if [[ -n "$per_channel" ]]; then
+        echo "[$count] $label: SNR vs. the source WAV (per channel >= ${per_channel})"
     else
-        "$PYTHON" "$COMPARE" "$source_wav" "$our_wav" --min-snr-db "$min_snr_db" "${json_args[@]}"
+        echo "[$count] $label: SNR vs. the source WAV (>= ${min_snr_db} dB)"
     fi
+    compare_and_gate "$source_wav" "$our_wav" "$label" "$codec" "$bitrate_kbps" \
+        "$min_snr_db" "$per_channel"
 }
+
 
 # dither=off / nodither below: §7.3.4 leaves the actual dither VALUES
 # decoder-defined ("any reasonably random sequence"), so two independent,
@@ -218,7 +332,7 @@ check_against_source() {
 count=$((count + 1))
 echo "[$count] encode: AC-3 5.1 @ 448 kbps"
 run_cli encode "$GOLD_WAV" "$WORKDIR/gold.ac3" 448 51 dither=off >/dev/null
-check_one "ac3" "$WORKDIR/gold.ac3" "ac3" 448
+check_one "ac3" "$WORKDIR/gold.ac3" "ac3" 448 "$MIN_SNR_DB" "$AC3_GOLD_FLOORS"
 
 count=$((count + 1))
 echo "[$count] encode: E-AC-3 5.1 @ 256 kbps (tools=none)"
@@ -229,7 +343,7 @@ echo "[$count] encode: E-AC-3 5.1 @ 256 kbps (tools=none)"
 # "no tools" - the literal "none" is a distinct special case parse_tools()
 # does not let another token join.
 run_cli eac3-encode "$GOLD_WAV" "$WORKDIR/gold.ec3" 256 nodither 51 >/dev/null
-check_one "eac3" "$WORKDIR/gold.ec3" "eac3" 256
+check_one "eac3" "$WORKDIR/gold.ec3" "eac3" 256 "$MIN_SNR_DB" "$EAC3_GOLD_FLOORS"
 
 count=$((count + 1))
 echo "[$count] encode: E-AC-3 5.1 @ 256 kbps (tools=cpl)"
@@ -260,7 +374,7 @@ echo "[$count] encode: E-AC-3 5.1 @ 256 kbps (tools=cpl)"
 # gate's tight dB-based regression detection just isn't the right tool for
 # them yet.
 run_cli eac3-encode "$GOLD_WAV" "$WORKDIR/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
-check_one "eac3_cpl" "$WORKDIR/gold_cpl.ec3" "eac3" 256
+check_one "eac3_cpl" "$WORKDIR/gold_cpl.ec3" "eac3" 256 "$MIN_SNR_DB" "$EAC3_CPL_GOLD_FLOORS"
 
 # Third-party interop: cplbndstrce == 0 (Annex E's default coupling band
 # structure, Table E2.12). This project's own encoder always transmits an
@@ -293,18 +407,28 @@ check_one "eac3_cpl" "$WORKDIR/gold_cpl.ec3" "eac3" 256
 # and the corrupted geometry fails outright with kInvalidStream downstream,
 # rather than merely losing fidelity).
 CPLBNDSTRCE0_MIN_SNR_DB=15
+CPLBNDSTRCE0_FLOORS="50,65,56,81,21,21"
 CPLBNDSTRCE0_EC3="$REPO_ROOT/tests/golden/audio/reference_51_eac3_448k_cplbndstrce0.ec3"
-if [ ! -f "$CPLBNDSTRCE0_EC3" ]; then
+if [[ ! -f "$CPLBNDSTRCE0_EC3" ]]; then
     echo "::error::fixture missing: $CPLBNDSTRCE0_EC3" >&2
     exit 1
 fi
-check_one "eac3_cplbndstrce0" "$CPLBNDSTRCE0_EC3" "eac3" 448 "$CPLBNDSTRCE0_MIN_SNR_DB"
+check_one "eac3_cplbndstrce0" "$CPLBNDSTRCE0_EC3" "eac3" 448 \
+    "$CPLBNDSTRCE0_MIN_SNR_DB" "$CPLBNDSTRCE0_FLOORS"
 
-# --- Third-party decode interop (roadmap VX4) -------------------------------
-# tests/golden/external-baseline/ holds six bitstreams from two real
-# third-party encoders - Dolby Encoding Engine 6.5.4 and FFmpeg 8.0.1 - across
-# three legs (see tools/generators/gen_external_baseline.py, which produced
-# them, and tests/golden/external-baseline/manifest.json for the versions).
+# --- Third-party decode interop (third-party decode interop) -------------------------------
+# This check gates six bitstreams from two real third-party encoders - Dolby
+# Encoding Engine 6.5.4 and FFmpeg 8.0.1 - across three legs: ac3-51-448,
+# eac3-51-256 and eac3-stereo-192, each in a dee/ and an ffmpeg/ copy (see
+# tools/generators/gen_external_baseline.py, which produced them, and
+# tests/golden/external-baseline/manifest.json for the versions). Six is what
+# this check GATES, which is no longer what that directory HOLDS - legs have
+# been added since for other consumers, and it is now nine leg directories and
+# fifteen bitstreams. Adding one there does not gate it here: a leg is gated
+# only once it appears in the loop below (or, for the sixth, in the
+# check_against_source call after it) with per-channel floors derived for it,
+# so count the entries rather than the directory.
+#
 # They are the closest thing to conformance vectors this project can legally
 # hold, and until now nothing in tests/ or src/ read them at all: their only
 # consumer was tools/ci/quality_race.py, which decodes them with FFMPEG for
@@ -340,39 +464,57 @@ check_one "eac3_cplbndstrce0" "$CPLBNDSTRCE0_EC3" "eac3" 448 "$CPLBNDSTRCE0_MIN_
 # choices - dither in bap == 0 bins above all, whose pseudo-random sequence is
 # per-implementation - put two independently correct decoders far apart on the
 # channels those choices land in, while the untouched channels stay in the
-# 50-90 dB range. The measured worst channel per fixture, on this project's
-# own Linux and Windows x86-64 builds, is quoted beside each floor.
+# 50-90 dB range.
+#
+# "the channels those choices land in" is the whole reason these floors are now
+# per channel rather than one number per fixture. The dither divergence is
+# concentrated in the surrounds; the front channels and the LFE stay in that
+# 50-90 dB band. A single floor low enough for the former left the latter
+# ungated by 30-70 dB - see "Per-channel floors" at the top of this file.
 EXTERNAL_BASELINE_DIR="$REPO_ROOT/tests/golden/external-baseline"
-if [ ! -d "$EXTERNAL_BASELINE_DIR" ]; then
+if [[ ! -d "$EXTERNAL_BASELINE_DIR" ]]; then
     echo "::error::external-baseline fixtures missing: $EXTERNAL_BASELINE_DIR" >&2
     exit 1
 fi
 
-# label:relative-path:codec:bitrate:floor. Five of the six: FFmpeg strict-
-# decodes each of these cleanly, so they get check_one's full
-# both-decoders-then-diff treatment.
-#   ac3-51-448/dee.ac3         measured 32.81 dB   floor 22
-#   ac3-51-448/ffmpeg.ac3      measured 22.96 dB   floor 14
-#   eac3-51-256/dee.ec3        measured 18.33 dB   floor 10
-#   eac3-51-256/ffmpeg.ec3     measured 35.89 dB   floor 25
-#   eac3-stereo-192/ffmpeg.ec3 measured 36.45 dB   floor 25
-# The two lowest are both DEE's surround channels and FFmpeg's own 5.1
-# surround pair - dither-dominated, per the note above.
+# label:relative-path:codec:bitrate:scalar-floor:per-channel-floors. Five of
+# the six: FFmpeg strict-decodes each of these cleanly, so they get check_one's
+# full both-decoders-then-diff treatment. The scalar floor is retained as the
+# documented fallback and as the historical record of what this check used to
+# gate on; the vector beside it is what actually gates now.
+#
+# Per channel, L R C LFE Ls Rs (L R for the stereo fixture), each derived as
+# floor(min_observed - 6.02) - see "Per-channel floors" at the top of this
+# file for the derivation and for why one pair of floors went down:
+#
+#                              was            now (per channel)
+#   ac3-51-448/dee.ac3          22    56,62,57,81,21,21
+#   ac3-51-448/ffmpeg.ac3       14    50,65,56,81,21,22
+#   eac3-51-256/dee.ec3         10    42,47,49,81,17,17
+#   eac3-51-256/ffmpeg.ec3      25    44,50,53,81,34,35
+#   eac3-stereo-192/ffmpeg.ec3  25    35,36
+#
+# The LFE floor is 81 on every 5.1 fixture because that channel is a single
+# low-frequency band both decoders reproduce almost exactly - 82-88 dB
+# measured, and the ~6 dB of that range is the arm64/x86 arithmetic difference
+# VX11 explains, already inside min_observed. It was previously gated at 10-25
+# dB, i.e. not gated at all.
 for entry in \
-    "ext_ac3_51_448_dee:ac3-51-448/dee.ac3:ac3:448:22" \
-    "ext_ac3_51_448_ffmpeg:ac3-51-448/ffmpeg.ac3:ac3:448:14" \
-    "ext_eac3_51_256_dee:eac3-51-256/dee.ec3:eac3:256:10" \
-    "ext_eac3_51_256_ffmpeg:eac3-51-256/ffmpeg.ec3:eac3:256:25" \
-    "ext_eac3_stereo_192_ffmpeg:eac3-stereo-192/ffmpeg.ec3:eac3:192:25" \
+    "ext_ac3_51_448_dee:ac3-51-448/dee.ac3:ac3:448:22:56,62,57,81,21,21" \
+    "ext_ac3_51_448_ffmpeg:ac3-51-448/ffmpeg.ac3:ac3:448:14:50,65,56,81,21,22" \
+    "ext_eac3_51_256_dee:eac3-51-256/dee.ec3:eac3:256:10:42,47,49,81,17,17" \
+    "ext_eac3_51_256_ffmpeg:eac3-51-256/ffmpeg.ec3:eac3:256:25:44,50,53,81,34,35" \
+    "ext_eac3_stereo_192_ffmpeg:eac3-stereo-192/ffmpeg.ec3:eac3:192:25:35,36" \
     ; do
-    IFS=: read -r ext_label ext_path ext_codec ext_kbps ext_floor <<EOF
+    IFS=: read -r ext_label ext_path ext_codec ext_kbps ext_floor ext_channel_floors <<EOF
 $entry
 EOF
-    if [ ! -f "$EXTERNAL_BASELINE_DIR/$ext_path" ]; then
+    if [[ ! -f "$EXTERNAL_BASELINE_DIR/$ext_path" ]]; then
         echo "::error::fixture missing: $EXTERNAL_BASELINE_DIR/$ext_path" >&2
         exit 1
     fi
-    check_one "$ext_label" "$EXTERNAL_BASELINE_DIR/$ext_path" "$ext_codec" "$ext_kbps" "$ext_floor"
+    check_one "$ext_label" "$EXTERNAL_BASELINE_DIR/$ext_path" "$ext_codec" "$ext_kbps" \
+        "$ext_floor" "$ext_channel_floors"
 done
 
 # The sixth. FFmpeg fails frame 0 of DEE's stereo E-AC-3 stream from cold -
@@ -389,7 +531,9 @@ done
 # 33.1 dB ac3cli's decoder gets on FFmpeg's own encode of the same source at
 # the same rate - two encoders' output landing within 0.6 dB of each other
 # through one decoder is what says this decode is right and FFmpeg's is not.
-# Floor 25, the same measured-minus-8 basis as above.
+# Floor 25 on the same measured-minus-8 basis as above, superseded in practice
+# by the per-channel vector 32,33 (L R) passed below - derived, like every
+# other vector here, as floor(min_observed - 1.0) from recorded history.
 #
 # manifest.json's 33.32 dB for this leg says "decoded_with": "ffmpeg" and is
 # not in conflict with the 14.30 dB above: quality_race.py's score_fixed
@@ -399,14 +543,15 @@ done
 DEE_STEREO_EC3="$EXTERNAL_BASELINE_DIR/eac3-stereo-192/dee.ec3"
 STEREO_WAV="$REPO_ROOT/tests/golden/audio/reference_stereo.wav"
 for required in "$DEE_STEREO_EC3" "$STEREO_WAV"; do
-    if [ ! -f "$required" ]; then
+    if [[ ! -f "$required" ]]; then
         echo "::error::fixture missing: $required" >&2
         exit 1
     fi
 done
-check_against_source "ext_eac3_stereo_192_dee" "$DEE_STEREO_EC3" "$STEREO_WAV" "eac3" 192 25
+check_against_source "ext_eac3_stereo_192_dee" "$DEE_STEREO_EC3" "$STEREO_WAV" "eac3" 192 \
+    25 "32,33"
 
-# --- Cross-platform bitstream-hash gate (roadmap VX11) ----------------------
+# --- Cross-platform bitstream-hash gate (cross-platform bitstream reproducibility) ----------------------
 # Every check above compares two DECODES of the same bitstream, which cannot
 # see a divergence in the bitstream itself - the ~6.02 dB gap the arm64/macOS
 # legs measure against x86 on this same gate is exactly that kind of

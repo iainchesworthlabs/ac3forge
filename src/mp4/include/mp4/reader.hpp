@@ -18,7 +18,7 @@
 //
 // A container reader and nothing more, in the sense mp4/mp4.hpp's writer is a
 // container writer and nothing more: it walks ISOBMFF boxes, finds the
-// 'ac-3'/'ec-3' track, and hands each sample back as opaque bytes. It links
+// 'ac-3'/'ec-3'/'ac-4' track, and hands each sample back as opaque bytes. It links
 // nothing from ac3::forge. The one place MP4 forces a codec-shaped decision on
 // this module is the same place the writer already had one - the sample
 // entry's dac3/dec3 configuration box - and CodecConfig below is where that
@@ -59,7 +59,7 @@ enum class DemuxError : std::uint8_t {
     kNotIsobmff,       // no box structure worth calling ISOBMFF
     kTruncated,        // the input ends before the track or its samples
     kMalformed,        // a box, sample table or fragment layout that cannot be parsed
-    kNoAudioTrack,     // no 'ac-3'/'ec-3' track (see ReadOptions::track_id)
+    kNoAudioTrack,     // no 'ac-3'/'ec-3'/'ac-4' track (see ReadOptions::track_id)
     kLimitExceeded,    // a box size, sample count or nesting depth beyond ReadOptions
     kMoovAfterMdat,    // Reader only: the sample table follows the data it indexes
 };
@@ -78,6 +78,10 @@ enum class DemuxError : std::uint8_t {
 // to round-trip losslessly.
 struct CodecConfig {
     bool eac3 = false;  // dec3 (true) or dac3 (false)
+    // dac4 (TS 103 190-2 Annex E.5): the box shares no field with dac3/dec3,
+    // so when this is set only `payload` below is meaningful - the AC-3-shaped
+    // fields stay at their defaults and ac4::'s own parser is the authority.
+    bool ac4 = false;
     int fscod = 0;
     int bsid = 0;
     int bsmod = 0;
@@ -100,19 +104,47 @@ struct CodecConfig {
     std::vector<std::byte> payload;
 };
 
+// One entry of a track's edit list (ISO/IEC 14496-12 §8.6.6, 'elst'): a
+// stretch of the presentation and the part of the media that fills it.
+// Reported as stored, for a caller that knows what the codec's samples mean;
+// an audio encoder's usual edit list is one entry whose media_time skips the
+// encoder's priming and whose duration stops before its padding.
+struct EditListEntry {
+    // In the movie's timescale (ReadTrack::movie_timescale), not the
+    // track's. 0 in a fragmented file can mean "to the end of the media".
+    std::uint64_t segment_duration = 0;
+    // Where the stretch starts in the media, in the track's own timescale
+    // (ReadTrack::timescale), or -1 for an empty edit: presentation time with
+    // no media in it.
+    std::int64_t media_time = 0;
+    // 16.16 fixed point, media_rate_integer and media_rate_fraction together:
+    // 0x00010000 plays the media at its own speed, 0 holds one instant.
+    std::int32_t media_rate = 0x00010000;
+};
+
 // What the container declares about the track - the read-side twin of
 // AudioTrack.
 struct ReadTrack {
     std::uint32_t track_id = 0;
-    std::string codec_id;  // kCodecAc3 or kCodecEac3
+    std::string codec_id;  // kCodecAc3, kCodecEac3 or kCodecAc4
     // The sample entry's own 16.16 samplerate field, integer part.
     std::uint32_t sample_rate = 0;
     int channels = 0;
     // mdhd's timescale, which for an audio track is normally the sample rate
     // but is not required to be - reported separately rather than conflated.
     std::uint32_t timescale = 0;
+    // mvhd's timescale, the unit an edit's segment_duration is counted in -
+    // 1000 in many files, whatever the track's rate. 0 when the file has no
+    // movie header, or one too short to read.
+    std::uint32_t movie_timescale = 0;
     std::string language{"und"};
     CodecConfig codec_config;
+    // The track's edit list in file order; empty when it has none - what
+    // mux() writes unless MuxOptions::edit asks for one - and when it has one
+    // that declares more entries than it holds or than
+    // ReadOptions::max_edits allows. Neither box is needed to find a sample,
+    // so a broken one is left out rather than failing the file.
+    std::vector<EditListEntry> edits;
 };
 
 // Bounds on what the reader will do for one file - defences against a
@@ -132,6 +164,10 @@ struct ReadOptions {
     // Entries stsc and stco/co64 may declare, bounded separately because a
     // hostile file can inflate them independently of the sample count.
     std::uint32_t max_chunks = 4'000'000;
+    // Entries one track's edit list may declare. A real audio track has one
+    // or two; an edited programme might have hundreds. A longer list is left
+    // out rather than failing the file, since the samples do not need it.
+    std::uint32_t max_edits = 65'536;
     // How deep boxes may nest. The walk is iterative, so this bounds a
     // vector rather than the call stack. ISOBMFF's own deepest path here is
     // moov > trak > mdia > minf > stbl > stsd > sample entry.

@@ -11,6 +11,7 @@
 using ac3::android_audio::burst_bytes_for;
 using ac3::android_audio::carrier_rate;
 using ac3::android_audio::make_render_device_info;
+using ac3::android_audio::track_is_dead;
 using ac3::audio::BitstreamFormat;
 
 TEST_CASE("burst size follows the format, not a fixed guess") {
@@ -52,4 +53,16 @@ TEST_CASE("the synthetic device is always marked default") {
     // for is_default to be false against, unlike WASAPI's real device list.
     CHECK(make_render_device_info(true, true, true).is_default);
     CHECK(make_render_device_info(false, false, false).is_default);
+}
+
+TEST_CASE("only a dead track ends the passthrough stream") {
+    // AudioTrack.ERROR_DEAD_OBJECT is -6 in the SDK. A write that took some
+    // of a burst, or none of it because the track was full, or that failed
+    // some other way, leaves the stream running.
+    CHECK(track_is_dead(-6));
+    CHECK_FALSE(track_is_dead(6144));
+    CHECK_FALSE(track_is_dead(0));
+    CHECK_FALSE(track_is_dead(-1));  // ERROR
+    CHECK_FALSE(track_is_dead(-2));  // ERROR_BAD_VALUE
+    CHECK_FALSE(track_is_dead(-3));  // ERROR_INVALID_OPERATION
 }

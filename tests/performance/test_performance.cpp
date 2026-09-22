@@ -27,7 +27,7 @@
 // loudly if the codec ever stops being faster than real time again.
 //
 // It covers both directions of both generations plus the object path: the
-// AC-3 and Atmos/JOC encoders it was written for, and - since roadmap PF1 -
+// AC-3 and Atmos/JOC encoders it was written for, and - since encoder/decode benchmarks -
 // the E-AC-3 encoder and all three decoders, which had no real-time gate of
 // any kind. A decoder is the half of the codec that runs on the least
 // capable hardware there is (a set-top box, a phone, the WASM demo in a
@@ -155,7 +155,7 @@ TEST_CASE("the plain 5.1 encoder stays faster than real time") {
 }
 
 // The E-AC-3 encoder is the largest source file in the codec and, until
-// roadmap PF1, the only encoder with no throughput gate at all. `auto_tools`
+// encoder/decode benchmarks, the only encoder with no throughput gate at all. `auto_tools`
 // rather than a pinned tool set: that is what a stream from this encoder
 // normally uses, and it is the setting whose cost moves when a tool's
 // rate-crossover heuristic changes.

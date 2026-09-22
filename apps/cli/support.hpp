@@ -1,9 +1,11 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <deque>
 #include <expected>
 #include <filesystem>
 #include <fmt/base.h>
@@ -25,6 +27,7 @@
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/oba/joc.hpp"
+#include "ac3/oba/oamd.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "matroska/matroska.hpp"
@@ -107,6 +110,13 @@ struct PositionSourceSpec {
 struct Options {
     // Decoder side, for 'decode'.
     double drc_scale = 0.0;
+    // 'decode' only: when non-empty, write a bap census (ac3/verify/
+    // bap_census.hpp) to this path - how many bins each coded stream was given
+    // zero bits for, over the whole decode. Empty by default, and the trace
+    // that feeds it is only attached when it is set, so an ordinary decode
+    // pays one null pointer and no per-block work. See the header for why this
+    // has to exist before any masked comparison does.
+    std::string bap_census_path;
     // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
     // Every field defaults off, so a plain invocation still writes the coded
     // channels untouched - see channels=/downmix=/drcmode= in
@@ -194,7 +204,7 @@ struct Options {
     // (EncoderController::recording_sink_container). Defaults to the bare
     // elementary stream, so a plain invocation writes exactly the .ac3/.ec3
     // it always has. Every one of the five is written incrementally through
-    // RecordingSink itself (roadmap IO9 - there is no accumulate-then-mux
+    // RecordingSink itself (wide-layout record/live paths - there is no accumulate-then-mux
     // path left on either command), kFmp4 included: RecordingSink's own
     // kFmp4 backend (Fmp4FolderWriter) now takes the rolling-window option
     // fmp4_window_segments below needs, so there is no separate writer left
@@ -211,7 +221,7 @@ struct Options {
     // derived from it or forced. Empty layout means stereo, which is what
     // both commands did before they could be told otherwise; codec unset
     // means "AC-3 unless the layout needs E-AC-3", plan::carries()'s own
-    // answer. Wide layouts on record/live are roadmap IO9 - the GUI has
+    // answer. Wide layouts on record/live are wide-layout record/live paths - the GUI has
     // always done them.
     std::string take_layout;
     std::optional<ac3::plan::Codec> take_codec;
@@ -233,13 +243,13 @@ struct Options {
     // 'live' only: whether an AC-3-only passthrough endpoint gets the
     // parallel 5.1 AC-3 downmix leg (the default, matching the GUI's
     // wants_downmix_leg) or a plain refusal (downmix=off, what the CLI did
-    // before roadmap IO9).
+    // before wide-layout record/live paths).
     bool downmix_leg = true;
     // 'play' only: whether a source format the chosen sink does not accept
     // gets an automatic fallback - an in-memory transcode to AC-3 when the
     // sink takes AC-3 but not E-AC-3, or a decoded PCM leg over MonitorSink
     // when it takes neither - or the plain refusal 'play' always gave before
-    // roadmap UX9 (follow=off). Same on-by-default, off-to-restore-the-old-
+    // play/monitor follow mode (follow=off). Same on-by-default, off-to-restore-the-old-
     // behaviour shape as downmix_leg above.
     bool follow_sink = true;
     // Off by default, matching every bare token here - keep whatever frames
@@ -301,6 +311,22 @@ struct Options {
     // either - the default is already §6.6.6's own domain - so mode= stays
     // exactly the two transform switches it has always been.
     ac3::oba::joc::Domain joc_domain = ac3::oba::joc::Domain::kQmf;
+    // 'bed-only' on decode: DecoderConfig::skip_object_reconstruction. Render
+    // the 5.1 bed an Atmos stream carries and do not reconstruct its objects.
+    // Not a quality option - the bed is bit-identical either way - but a memory
+    // one, and it matters where the object state does not fit at all (see
+    // docs/platforms/bare-metal/esp32-s3.md). Harmless on a stream with no object layer,
+    // which is why it needs no interaction with 'objects='.
+    bool bed_only = false;
+    // §E2.3.1.4 short syncframes for the atmos* encode commands
+    // (AtmosConfig::numblkscod): 3 (the default six-block frame) or 0/1/2
+    // for 1/2/3 blocks. A key=value here rather than eac3-encode's tools
+    // token because the atmos commands take no [tools] positional - their
+    // bed's coding tools are the encoder's own business - and this is the
+    // one frame-structure choice that changes the object layer's timing
+    // with it (the OAMD ramp and the JOC interpolation window both cover
+    // exactly one frame, whatever its length).
+    int atmos_numblkscod = 3;
     // The per-frame search over §7.2.2's transmitted bit allocation
     // parameters, judged on the reconstruction error the decoder will
     // produce (EncoderConfig::search, ac3/quality/distortion.hpp).
@@ -341,11 +367,22 @@ struct Options {
     // design (see EncoderConfig::dither's own comment), which is exactly
     // what tools/checks/verify_gold_reference.sh needs this for.
     bool dither = true;
+    // §7.2.2.6 delta bit allocation (plan::Tools::delta), on by default;
+    // delta=off is the encoders' first effort level - see the field's own
+    // comment in ac3/encoder/encoder.hpp - reached the same way dither=off
+    // is. eac3-encode's [tools] positional has the equivalent bare nodelta
+    // token; it is not a tools= key/value option.
+    bool delta = true;
     // Whether channels= or downmix= actually named a target this run, so the
     // two can cooperate without either silently winning: downmix=ltrt on its
     // own means stereo, channels=2 on its own means Lo/Ro, and the pair in
     // either order means what both said.
     bool downmix_named = false;
+    // downmix=auto (decode/monitor): the fold is the stream's own preference,
+    // which only the stream can say - `output.target` holds Lo/Ro until
+    // resolve_output() reads it. A later downmix=loro|ltrt|mono, channels=1 or
+    // channels=as-coded clears it, the same last-token-wins rule as the rest.
+    bool downmix_auto = false;
     // 'decode'/'monitor' only: §7.10 error concealment. Off by default, so a
     // damaged frame is still reported rather than papered over.
     ac3::ConcealmentPolicy concealment = ac3::ConcealmentPolicy::kNone;
@@ -383,19 +420,40 @@ struct Options {
     // programmes: they are alternatives (a second language, an audio
     // description), not layers, so mixing them is never what a caller wants.
     std::optional<int> programme;
-    // 'eac3-encode': a SECOND programme to author into the same stream as a
-    // second independent substream (§E2.3.1.2). Unset - the default - writes
-    // the single-programme stream this command always has.
-    std::optional<std::string> programme2;
-    // That programme's own layout token, bit rate and dialnorm. Empty/unset
-    // follow the second source's own channel count, half the primary's rate
-    // (an associated service is normally much narrower than the main mix) and
-    // dialnorm 31. Its own, not the primary's: a commentary track is levelled
-    // independently of the mix it is played against, which is the whole point
-    // of carrying it as a separate programme.
-    std::string programme2_layout;
-    std::optional<std::uint32_t> programme2_bitrate;
-    int programme2_dialnorm = 31;
+    // 'eac3-encode': further programmes to author into the same stream, each
+    // its own independent substream (§E2.3.1.2's I1-I7) - up to
+    // ac3::eac3::kMaxProgrammes - 1 of them, so index 0 is I1 (the CLI's
+    // programme2=) and the last is I7 (programme8=). An entry with no `path`
+    // is unused. §E2.3.1.2 assigns substreamid sequentially with no gaps, so
+    // neither can the CLI: run_eac3_encode refuses a later slot with a path
+    // when an earlier one has none (programme4= without programme2=/
+    // programme3=), rather than silently renumbering programme4's own file
+    // onto I1 - the number in the token is a promise about which substream it
+    // becomes. Unset - the default - writes the single-programme stream this
+    // command always has.
+    struct ExtraProgramme {
+        std::optional<std::string> path;
+        // Its own layout token and bit rate - plan::Plan fields, not
+        // plan::Metadata ones, so they live here rather than in `meta`
+        // below. Empty/unset follow the source's own channel count and half
+        // the primary's rate (an associated service is normally much
+        // narrower than the main mix), the same defaults programme2= always
+        // had.
+        std::string layout;
+        std::optional<std::uint32_t> bitrate;
+        // Everything else about this programme - dialnorm (defaults to 31,
+        // plan::Metadata's own default), DRC, bsmod, the whole mixmdate
+        // group - set via programmeN-<field>=, the same key vocabulary the
+        // primary programme's bare tokens above use. Its own, not the
+        // primary's: a commentary track is levelled independently of the
+        // mix it is played against, which is the whole point of carrying it
+        // as a separate programme. See parse_programme_metadata_option in
+        // support.cpp for exactly which of the primary's keys generalize
+        // here and which do not (the five 1+1-only fields and AC-3's own
+        // Annex D fields - an extra programme is always E-AC-3).
+        ac3::plan::Metadata meta{};
+    };
+    std::array<ExtraProgramme, ac3::eac3::kMaxProgrammes - 1> extra_programmes{};
     // 'qc' only: which soundfield to meter. false (layout=bed, the default)
     // measures the independent substream's own Table 5.8 bed through
     // BS.1770 Annex 1's basic algorithm - what this command has always
@@ -403,7 +461,7 @@ struct Options {
     // every dependent substream's height/wide/rear channels included,
     // through BS.1770-5 Annex 3's extended algorithm. See run_qc.
     bool qc_rendered_layout = false;
-    // 'qc' only: objects=<layout> (roadmap IO12). Set when the stream's
+    // 'qc' only: objects=<layout> (legacy item IO12). Set when the stream's
     // dynamic objects should be re-rendered by their own OAMD position onto
     // the named advanced sound system layout and metered through BS.1770-5
     // Annex 4, instead of (or as well as - the two are independent switches)
@@ -421,6 +479,16 @@ struct Options {
 // each context - so this is the one place that has to know which command is
 // asking, everywhere else in this function stays command-agnostic.
 bool parse_options(std::span<char*> tokens, Options& out, std::string_view command);
+
+// True for "programmeN" or "programmeN-<suffix>" (N = 2..8): the whole
+// family of extra-programme tokens, bare ones (programmeN-heavy, the
+// refused programmeN-annexd) included. main()'s own positional/option split
+// has to recognize a BARE token (no '=') as an option by name before
+// parse_options ever sees it - the same reason it already lists "heavy",
+// "annexd" and the rest of the primary's bare words - and this is that
+// check for the programmeN- family, so the two can never disagree about
+// what counts as one.
+[[nodiscard]] bool is_extra_programme_token(std::string_view token);
 
 // Reads a loudness measurement someone else already pushed every sample
 // into, reports it the same way every dialnorm=auto path does, and returns
@@ -510,10 +578,23 @@ std::string format_programme_ids(std::span<const int> ids);
 // and levels so all three answer a bad programme= the same way.
 std::optional<int> choose_programme(std::span<const int> ids, std::optional<int> wanted);
 
+// The output stage a decode/monitor run actually uses: `meta.output`, with
+// downmix=auto settled into a concrete fold. §D3.1.1's automatic Lt/Rt-or-
+// Lo/Ro choice is made once, from the first dmixmod (and its acmod) the
+// programme's independent substream sends (`meta.programme`'s, or the
+// stream's first programme's) - ac3::automatic_stereo_target() holds the
+// rule, including what a reserved or absent dmixmod gets and which acmods
+// Table D2.2 leaves the field meaning nothing at - and the choice is reported
+// on `status`. Without downmix=auto this returns `meta.output` untouched.
+[[nodiscard]] ac3::OutputConfig resolve_output(const Options& meta,
+                                               std::span<const std::byte> stream, FILE* status);
+
 // fmt::println with a "nowhere" destination: a no-op when `out` is nullptr
 // (see status_stream above), an ordinary println otherwise. Every status line
 // in this CLI goes through this, so `quiet` is honoured in one place rather
-// than at each site.
+// than at each site. A status stream must never reach plain fmt::println:
+// under quiet it is nullptr, which fmt passes on to the C runtime, and MSVC's
+// runtime ends the process on it (0xC0000409).
 template <typename... Args>
 void status_println(FILE* out, fmt::format_string<Args...> format, Args&&... args) {
     if (out != nullptr) {
@@ -526,6 +607,14 @@ inline void status_println(FILE* out) {
         fmt::println(out, "");
     }
 }
+
+// What can take an output away mid-run, for the error that says it went.
+// A PassthroughSink or MonitorSink whose device goes away stops itself
+// (PassthroughSink::running()), and every command that plays to one ends up
+// saying so the same way: 'play', 'monitor', 'identify' and the output legs
+// of 'live'.
+inline constexpr std::string_view kOutputGoneReasons =
+    "unplugged, switched off, disabled, or taken by the system";
 
 // A one-line "done / total" report on stderr for a run long enough to be
 // worth watching, rewritten in place the way print_live_meter's own line is.
@@ -648,7 +737,7 @@ std::vector<float> interleave_reordered(std::span<const std::vector<float>> chan
 std::vector<std::byte> read_all(std::string_view path);
 
 // The elementary stream at `in_path`: `in_path`'s own bytes verbatim if it is
-// already one, or (roadmap IO2) the first AC-3/E-AC-3 track demuxed out of a
+// already one, or (container readers (mkv/mp4/ts)) the first AC-3/E-AC-3 track demuxed out of a
 // recognised Matroska/MP4/MPEG-TS container, via apps/common/
 // container_input.hpp's ac3::apps::elementary_stream_from_bytes - the same
 // three readers `ac3cli demux` already streams through, run here in their
@@ -782,11 +871,43 @@ void print_live_meter(const ac3::analysis::LevelMeter& meter, double seconds);
 bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Plan& plan,
                     std::string& label);
 
+// The bed's LFE is not an object, so it never goes through JOC reconstruction
+// - but a decoded programme's dynamic objects did, and that costs
+// ac3::oba::joc::reconstruction_delay(domain) samples the LFE does not pay
+// (docs/library/decoding.md, "Atmos objects lag the bed"). Any command that
+// submits or meters a decoded unit's object_audio beside that same unit's
+// undelayed bed LFE - 'spatial', 'qc objects=' - has to hold the LFE back by
+// that many samples first, or it reaches the room/meter that far ahead of the
+// objects beside it. A plain FIFO rather than a fixed-size ring: a decoded
+// access unit's sample count is not always ac3::kSamplesPerFrame (a short
+// E-AC-3 frame, or the last, partial one).
+class LfeDelayLine {
+public:
+    explicit LfeDelayLine(std::size_t delay_samples) : pending_(delay_samples, 0.0F) {}
+
+    // Pushes `in` and returns in.size() samples delayed by the line's own
+    // fixed lag: the first calls return silence, drawn from the zeros this
+    // was constructed with, until enough history has passed through - exactly
+    // as if `in` had started delay_samples late.
+    std::vector<float> process(std::span<const float> in) {
+        pending_.insert(pending_.end(), in.begin(), in.end());
+        std::vector<float> out(in.size());
+        for (float& sample : out) {
+            sample = pending_.front();
+            pending_.pop_front();
+        }
+        return out;
+    }
+
+private:
+    std::deque<float> pending_;
+};
+
 // What `record`/`live` resolved their layout=/codec=/bitrate into: one
 // plan::Plan, the label to print for it, and the two facts every caller
 // immediately needs from it (which codec, how many coded channels). Shared
 // because the two commands must agree exactly - a take is a take whether or
-// not it also monitors and passes through, and roadmap IO9's whole point is
+// not it also monitors and passes through, and wide-layout record/live paths's whole point is
 // that neither is stereo-AC-3-only any more.
 //
 // codec= forces the codec; without it, the codec is derived - AC-3 unless the
@@ -840,7 +961,7 @@ struct ObjectSlot {
 // error, so the caller decides what to do about it.
 //
 // Shared by `atmos-encode` and `live mode=atmos` so that the objects a given
-// map= produces are the same objects either way - roadmap IO9's actual point:
+// map= produces are the same objects either way - wide-layout record/live paths's actual point:
 // a GUI assignment reproduced headlessly has to reproduce.
 [[nodiscard]] std::vector<ObjectSlot> object_slots_from_assignment(
     const ac3::plan::Assignment& assignment, std::span<const ac3::plan::SourceShape> shapes);
@@ -872,8 +993,22 @@ std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std
 // nothing checked, stream untouched either way: this only reads bytes, it
 // never signs. A signed stream is either fully verified or the command
 // refuses - matching this project's own "graceful 5.1 fallback is
-// either/or" stance - never a silent partial pass.
+// either/or" stance - never a silent partial pass. The summary line goes to
+// `status`, the caller's status stream: nowhere under quiet, and stderr when
+// a "-" output owns stdout (see status_stream above).
 std::optional<ac3::signing::VerifySummary> apply_object_verification(
-    std::span<const std::byte> stream, const Options& meta);
+    std::span<const std::byte> stream, const Options& meta, FILE* status);
+
+// The object layer (TS 103 420's OAMD) an E-AC-3 decode found, reported the
+// same way by 'decode' and 'monitor'; nothing when `metadata` is empty. The
+// first line is the program's shape - "N dynamic objects[ + the bed's LFE] =
+// M objects" for a dynamic-object-only program, the only kind AtmosEncoder
+// writes, and "bed [L R C LFE ...] + N dynamic objects = M objects" for a bed
+// program, which is what channel-based immersive third-party content is -
+// ended by `joc_note`, the caller's word on what became of the JOC audio. A
+// trim element, skipped elements and more than one update block per frame
+// each add a line. Every line goes to `status` (see status_stream above).
+void print_object_summary(FILE* status, const std::optional<ac3::oba::DecodedProgram>& metadata,
+                          std::string_view joc_note);
 
 }  // namespace ac3cli

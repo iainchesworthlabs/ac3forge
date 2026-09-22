@@ -88,6 +88,29 @@ endif()
 
 set(CMAKE_C_FLAGS_INIT "-arch ${_MACOS_ARCH}")
 set(CMAKE_CXX_FLAGS_INIT "-arch ${_MACOS_ARCH}")
+# Objective-C++ is a C++ dialect and has to be given the same C++ standard
+# library, or one target ends up with two. Added 2026-09-06, when the tree
+# gained Objective-C++ at all.
+#
+# Two directories enable the language and three .mm files exist:
+# src/audio/CMakeLists.txt's APPLE block, for the Core Audio process tap's
+# seam (src/audio/src/backend/macos/process_tap.mm - CATapDescription has no C
+# entry point), and apps/crucible/CMakeLists.txt's APPLE arm, for Crucible's
+# two AppKit seams (engine/platform/macos/foreground.mm and
+# ui/platform/macos/app_icon_provider.mm - NSWorkspace and NSImage have none
+# either).
+#
+# CMake applies CMAKE_CXX_FLAGS to CXX sources only, so without this line
+# those three .mm files would be compiled by the same clang++ as their
+# neighbours but with a different standard library configuration - see the
+# libc++ block below, which is the part that actually matters. Set
+# unconditionally: these variables mean nothing unless OBJCXX is enabled, and
+# are read when it is, wherever the enable_language() call happens to sit.
+# All three .mm files have since compiled and linked on both macOS CI legs, so
+# this line has been exercised; what nobody has checked is the thing it exists
+# to prevent, since a target built against two standard libraries would show
+# up at link or at run time and neither leg has been made to do it deliberately.
+set(CMAKE_OBJCXX_FLAGS_INIT "-arch ${_MACOS_ARCH}")
 
 # Prefer LLVM's own libc++ over the SDK's when the chosen clang ships one.
 # _LIBCPP_DISABLE_AVAILABILITY drops the vendor availability annotations, which
@@ -103,6 +126,16 @@ if(EXISTS "${_LLVM_LIBCXX_INCLUDE}")
     message(STATUS "Using LLVM libc++ headers: ${_LLVM_LIBCXX_INCLUDE}")
 
     string(APPEND CMAKE_CXX_FLAGS_INIT
+        " -nostdinc++ -isystem ${_LLVM_LIBCXX_INCLUDE} -D_LIBCPP_DISABLE_AVAILABILITY")
+    # The same three flags for Objective-C++, so that a .mm resolves <string>
+    # and <vector> to the same libc++ headers, with the same availability
+    # macro, as the .cpp files it shares headers with. This is the half that
+    # would fail quietly: the headers are still found either way, and only
+    # some inline definition differs, so two translation units disagreeing
+    # about which libc++ they compile against is a link error or an ODR
+    # surprise rather than a compile error - the kind that survives a green
+    # build. See docs/platforms/macos.md.
+    string(APPEND CMAKE_OBJCXX_FLAGS_INIT
         " -nostdinc++ -isystem ${_LLVM_LIBCXX_INCLUDE} -D_LIBCPP_DISABLE_AVAILABILITY")
 
     set(CMAKE_EXE_LINKER_FLAGS_INIT

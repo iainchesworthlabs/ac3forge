@@ -17,7 +17,7 @@ Modes:
   eac3       - our E-AC-3 encoder, one row per Annex E tool set, vs FFmpeg's
                E-AC-3 encoder, at the low rates the tools exist to serve
   eac3-51    - the same for 5.1, with genuinely decorrelated channels
-  fgaincod   - roadmap EQ7's E-AC-3 half: whether §7.2.2.4's measured
+  fgaincod   - E-AC-3 fast-gain control's E-AC-3 half: whether §7.2.2.4's measured
                fast-gain curve still wins once E-AC-3 charges for the
                per-block fgaincode element §8.2.12's implied 0x4 avoids.
                Five legs a rate: the default, the default pinned
@@ -92,12 +92,17 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent.parent
 BUILD = REPO / "build"
+# The synthetic 5.1 material race_eac3() writes for the "eac3-51" mode.
+RACE_SRC51_WAV = BUILD / "race_src51.wav"
 # AC3CLI overrides the binary: the "dev" preset this default assumes does not
 # exist (see CMakePresets.json - there is no such preset, only per-platform
 # config-<leg> ones), and there is no ac3cli.exe on Linux at all. CI sets
 # AC3CLI to the leg's real build/config-<preset>/bin/ac3cli; the hardcoded
 # default is left as-is for whatever local workflow it used to match.
 CLI = Path(os.environ.get("AC3CLI", str(BUILD / "dev" / "bin" / "ac3cli.exe")))
+# FFmpeg's own -err_detect flags for a strict decode: -xerror (elsewhere)
+# turns any of these into a failing process rather than a concealed frame.
+FFMPEG_ERR_DETECT = "crccheck+bitstream+buffer+explode"
 RATE = 48000
 SEG = 2 * RATE  # 2 s per segment
 # Bin 85, sub-band 4: the lowest the encoder will ever start coupling, so
@@ -157,7 +162,7 @@ def make_material_transient():
     decays short enough that a frame's loudest block sits 20-30 dB above its
     quietest. That gap is the whole cost of one exponent set per frame - every
     quiet block quantized against a scale chosen by the loud one - so it is
-    what an exponent-run plan has to be measured on (roadmap EQ1).
+    what an exponent-run plan has to be measured on (legacy item EQ1).
 
     Stereo, same 2 s-per-segment shape and same seed discipline as the two
     generators above.
@@ -326,13 +331,30 @@ def align(original, decoded, skip=RATE, probe_len=32768, window_extra=65536):
     2*skip + probe_len - the trimmed overlap below would come out empty or
     inverted - so callers scoring those pass smaller values explicitly
     rather than this function guessing a length-appropriate scale itself.
+
+    `skip` is trimmed from the front of the overlap once, not twice. The
+    previous form computed the overlap length `n` correctly and then sliced
+    `original[skip:skip + n - skip]`, discarding a further `skip` samples off
+    the end - a full second at the default, ~12.5% of a 10 s fixture, on every
+    comparison this file makes. Every score here averages over the overlap, so
+    that was lost precision rather than a wrong answer: measured on a 10 s
+    fixture the overlap goes from 335863 to 383863 samples with the recovered
+    lag and the alignment itself unchanged.
     """
     probe = original[skip:skip + probe_len, 0]
     window = decoded[: skip + window_extra, 0]
     corr = np.correlate(window, probe, mode="valid")
+    # Deliberately an unnormalised matched filter. Normalising by the decoded
+    # window's local energy was tried and reverted: the concern was that a loud
+    # region could out-score the true alignment, but an uncorrelated signal
+    # scores near zero however loud it is, and no case could be built where the
+    # two forms disagreed - including a quiet probe against a 60x louder decoy
+    # burst inside the search window. Normalisation is not free (an O(n) energy
+    # pass plus edge behaviour of its own), so it is not worth carrying for a
+    # benefit that could not be demonstrated.
     lag = int(np.argmax(np.abs(corr))) - skip
     n = min(len(original), len(decoded) - lag) - 2 * skip
-    o = original[skip:skip + n - skip]
+    o = original[skip:skip + n]
     d = decoded[skip + lag:skip + lag + len(o)]
     return o, d, lag
 
@@ -546,7 +568,7 @@ def decode_scores(original, coded, wav_path, strict=True, perceptual=False):
         # change ffmpeg's exit code, which run() below is the only thing
         # checking. -xerror is what turns a detected error into a failing
         # process and a raised SystemExit here.
-        cmd += ["-xerror", "-err_detect", "crccheck+bitstream+buffer+explode"]
+        cmd += ["-xerror", "-err_detect", FFMPEG_ERR_DETECT]
     run([*cmd, "-i", coded, "-c:a", "pcm_f32le", wav_path])
     o, d, _ = align(original, read_wav_f32(wav_path))
     snr = 10 * np.log10(np.sum(o**2) / max(np.sum((d - o) ** 2), 1e-30))
@@ -632,17 +654,24 @@ def race_ac3(original, source, seconds):
     print("see perceptual_score()'s own docstring.")
 
 
+# The combined-tools column label/token, shared between EAC3_VARIANTS and
+# the per-material SNR-floor/LSD-ceiling tables below.
+TOOLSET_CPL_SPX = "cpl+spx"
+# Likewise for EAC3_SELF_VARIANTS and its own tables further down.
+TOOLSET_ECPL_TPN = "ecpl+tpn"
+
 # One column per E-AC-3 variant: the label, and the tool token handed to
 # `ac3cli eac3-encode`. "none" is the tool-free coding path the Annex E tools
 # have to beat to earn their place.
 EAC3_VARIANTS = [("none", None), ("auto", "auto"), ("cpl", "cpl"), ("spx", "spx"),
-                 ("aht", "aht"), ("cpl+spx", "cpl+spx"), ("all", "all")]
+                 ("aht", "aht"), (TOOLSET_CPL_SPX, TOOLSET_CPL_SPX), ("all", "all")]
 
 # Enhanced coupling and transient pre-noise processing: FFmpeg has no reading
 # of either's syntax at all (see decode_scores_ours' docstring), so these are
 # scored separately from EAC3_VARIANTS above, through this project's own
 # decoder rather than race_eac3's FFmpeg path.
-EAC3_SELF_VARIANTS = [("ecpl", "cpl+ecpl"), ("tpn", "tpn"), ("ecpl+tpn", "cpl+ecpl+tpn")]
+EAC3_SELF_VARIANTS = [("ecpl", "cpl+ecpl"), ("tpn", "tpn"),
+                      (TOOLSET_ECPL_TPN, "cpl+ecpl+tpn")]
 
 
 def race_eac3(original, source, seconds, rates=(96, 128, 192)):
@@ -700,7 +729,7 @@ def race_eac3(original, source, seconds, rates=(96, 128, 192)):
 #               element it had to open to get there, which is the question.
 #   search-1ax- search=distortion with fgaincod pinned at the default, which
 #               takes it out of the candidate set: exactly the one-axis
-#               dbpbcod-only search EQ13 shipped, and the thing roadmap EQ8
+#               dbpbcod-only search EQ13 shipped, and the thing legacy item EQ8
 #               recorded as not moving the stereo/192 cell.
 #   search-2ax- search=distortion left to move both axes, refitting each
 #               candidate against its own side-info cost. The per-frame
@@ -852,7 +881,7 @@ def race_fgaincod(original, source, seconds, rates=FGAINCOD_RATES, tools="none",
             # agreement with this project's own decoder, which is the §7.3.4
             # dither floor rather than an allocation divergence.
             run(["ffmpeg", "-v", "error", "-y", "-xerror", "-err_detect",
-                 "crccheck+bitstream+buffer+explode", "-i", str(coded),
+                 FFMPEG_ERR_DETECT, "-i", str(coded),
                  "-c:a", "pcm_f32le", str(wav)])
             o, d, _ = align(original, read_wav_f32(wav))
             snrs, lsds, moses = window_profile(o, d)
@@ -1139,7 +1168,7 @@ CI_EAC3_THRESHOLDS = {
         "cpl": (28.0, 7.0),
         "spx": (26.0, 7.0),
         "aht": (28.0, 8.0),
-        "cpl+spx": (25.0, 7.0),
+        TOOLSET_CPL_SPX: (25.0, 7.0),
         "all": (25.0, 7.5),
     },
     "51": {
@@ -1148,37 +1177,65 @@ CI_EAC3_THRESHOLDS = {
         "cpl": (10.0, 10.0),
         "spx": (9.0, 9.5),
         "aht": (10.0, 11.0),
-        "cpl+spx": (9.0, 9.5),
+        TOOLSET_CPL_SPX: (9.0, 9.5),
         "all": (9.0, 10.5),
     },
-    # Transient material, measured 2026-08-23 against a real build (FFmpeg
-    # 8.0.1): none/auto/cpl/aht 5.37 dB SNR and 0.94-0.95 dB LSD, the three
-    # spectral-extension rows -0.42 to -0.43 dB SNR and 1.81-1.85 dB LSD.
+    # Transient material. The LSD ceilings were re-measured when align() above
+    # stopped discarding a second skip off the end of every overlap, because
+    # on THIS leg that was not a precision detail - it changed which material
+    # was being scored at all.
+    #
+    # make_material_transient() is four 2 s segments: (a) percussive hits,
+    # (b) block-rate gated noise, (c) sparse clicks over near-silence, and
+    # (d) a chord amplitude-modulated at 30 Hz, whose level "swings smoothly
+    # but fully inside every frame". decode_scores calls align() with the
+    # default skip of 1 s, so on 8 s of material the old asymmetric trim
+    # (1 s off the front, 2 s off the end) scored seconds 1-6 - all of (b) and
+    # (c), half of (a), and NONE of (d). Segment (d) begins exactly at second
+    # 6. The leg was calibrated, and passing, on material that omitted one of
+    # the four cases it was built out of - and the one whose whole point is a
+    # level swing inside a single frame, which is precisely what an exponent
+    # run plan has to cope with (legacy item EQ1).
+    #
+    # The corrected window scores seconds 1-7, so half of (d) now counts.
+    # SNR rises by a uniform +0.35 dB across every variant (more material,
+    # slightly better waveform match) and every existing SNR floor still holds
+    # with more headroom than before, so the floors are unchanged. LSD rises by
+    # 0.86-1.20 dB, because (d) is genuinely harder to code than the segments
+    # that were being scored in its place, and the ceilings do have to move.
+    #
+    # Measured on the corrected window (FFmpeg 8.0.1): none 2.060, auto 2.122,
+    # cpl 2.323, aht 2.031; spx and cpl+spx 2.656, all 2.620. Linux CI and a
+    # Windows local build agree to within 0.03 dB, so these are not a
+    # platform's numbers.
+    #
+    # The bars stay deliberately close to the measurement - +0.4 dB on the
+    # worst member of each group, matching the margin this table already
+    # carried before (0.34 dB on the old non-spx group). What this leg exists
+    # for is the exponent-run plan, and every regression it actually caught
+    # while it was being built cost 1 to 3 dB of SNR and 0.5 to 1.7 dB of LSD,
+    # not the many dB a collapse elsewhere would. A ceiling loose enough to
+    # ignore those would make the leg pointless. 0.4 dB is still thirteen
+    # times the observed cross-platform spread.
     #
     # The absolute numbers are not comparable to the stationary stereo row's
-    # and are not meant to be: a click train over near-silence at 192 kbit/s is
-    # a hard thing to code, and a waveform SNR near zero on parametric rows is
-    # what a synthesized high band scores by construction. What this row exists
-    # for is the exponent-run plan, so its bars sit closer to the measurement
-    # than the other rows' do - about 1.4 dB of SNR margin and 0.5 dB of LSD.
-    # That is deliberate: every regression this leg actually caught while it
-    # was being built cost 1 to 3 dB of SNR and 0.5 to 1.7 dB of LSD, not the
-    # many dB a collapse elsewhere would, and a floor loose enough to ignore
-    # them would have made the leg pointless.
+    # and are not meant to be: this material at 192 kbit/s is a hard thing to
+    # code, and a waveform SNR near zero on parametric rows is what a
+    # synthesized high band scores by construction.
     "transient": {
-        "none": (4.0, 1.5),
-        "auto": (4.0, 1.5),
-        "cpl": (4.0, 1.5),
-        "spx": (-2.0, 2.6),
-        "aht": (4.0, 1.5),
-        "cpl+spx": (-2.0, 2.6),
-        "all": (-2.0, 2.6),
+        "none": (4.0, 2.7),
+        "auto": (4.0, 2.7),
+        "cpl": (4.0, 2.7),
+        "spx": (-2.0, 3.1),
+        "aht": (4.0, 2.7),
+        TOOLSET_CPL_SPX: (-2.0, 3.1),
+        "all": (-2.0, 3.1),
     },
 }
 
 # Transient material (make_material_transient): onsets closer together than a
 # frame, hard gates, decays that leave a frame's loudest block 20-30 dB above
-# its quietest. It exists to hold the exponent-run plan (roadmap EQ1) against a
+# its quietest. It exists to hold the exponent-run plan (legacy item EQ1) against a
 # regression: one exponent set per frame quantizes every quiet block against a
 # scale chosen by the loud one, and this is the material where that costs the
 # most. Absolute scores here are far below the stationary stereo row's and are
@@ -1215,12 +1272,12 @@ CI_EAC3_SELF_THRESHOLDS = {
     "stereo": {
         "ecpl": (28.0, 7.0),
         "tpn": (18.0, 7.5),
-        "ecpl+tpn": (18.0, 7.0),
+        TOOLSET_ECPL_TPN: (18.0, 7.0),
     },
     "51": {
         "ecpl": (6.0, 9.0),
         "tpn": (10.0, 11.0),
-        "ecpl+tpn": (6.0, 9.0),
+        TOOLSET_ECPL_TPN: (6.0, 9.0),
     },
 }
 
@@ -1228,6 +1285,119 @@ CI_EAC3_SELF_THRESHOLDS = {
 def gate(name, ok, detail):
     print(f"  {'PASS' if ok else 'FAIL'}  {name}: {detail}")
     return ok
+
+
+# legacy item EQ13's search=, exercised THROUGH THE CLI.
+#
+# The gap this closes is not that the search is untested - tests/quality's
+# test_search.cpp and test_eac3_search.cpp cover it well, including that it
+# lowers decoded error, that it is deterministic, that it changes the emitted
+# parameters, and that it stays inert under VBR. It is that every one of those
+# builds a FrameConfig in C++ and hands it straight to the encoder. None of
+# them goes through argv. So `search=distortion` could stop being parsed,
+# stop reaching plan::Tools, or be silently dropped for one of the two
+# commands, and the whole quality suite would still pass - the flag would just
+# quietly do nothing for every user who typed it.
+#
+# Hence the "differs" half below: it is the only check in the repository that
+# the CLI argument reaches the encoder at all.
+#
+# WHY THE FLOOR IS NOT THE ENCODER'S OWN 0.05 dB. eac3_frame.cpp and
+# encoder.cpp both switch candidates on kCodeSwitchMarginDb = 0.05, and the
+# unit tests assert `searched >= off - 0.05` against that. That margin is
+# right for the frame-level comparison those tests make, and WRONG here: the
+# search minimises its own per-frame reconstruction-error estimate, while this
+# gate measures delay-compensated SNR over a whole file after a real decode.
+# Related, not identical. Measured across every CI leg and every trend leg,
+# both scoring paths, the worst end-to-end delta is -0.150 dB (E-AC-3 stereo
+# `auto` at 192, FFmpeg-decoded) - three times the frame-level margin, on an
+# encoder that is behaving correctly. A gate at 0.05 would have failed on the
+# day it landed.
+#
+# -0.5 dB is that worst observed case with 3.3x of headroom. It is a tripwire
+# for "the search started making things worse", not a tightness contest: a
+# real regression here is multiple dB, which the same measurement run showed
+# directly - AC-3 5.1 at 448 with search=perceptual (a criterion that
+# deliberately trades SNR for masking) lands at -3.3 dB, twenty times the
+# noise this floor allows for and something this gate would catch instantly.
+CI_SEARCH_MIN_DELTA_DB = -0.5
+
+# Deliberately NOT a positive floor, though the measurement invites one: the
+# same run showed search=distortion earning +1.24 dB on AC-3 5.1 at 448 and
+# +0.48 dB on AC-3 stereo at 192, so "the search must still be worth
+# something" looks gateable. It is not a good gate. The delta shrinks when the
+# BASELINE improves, so a floor on it fails on exactly the changes worth
+# making. The benefit is printed on every run instead - visible to a reader,
+# never blocking - and the no-op case it would have caught is already covered
+# by the differs check, which does not care how large the win is.
+CI_SEARCH_LEGS = [
+    # (label, codec, rate, tools) - tools is E-AC-3's positional argument.
+    ("ac3-stereo", "ac3", CI_STEREO_KBPS, None),
+    ("ac3-51", "ac3", CI_AC3_51_KBPS, None),
+    ("eac3-stereo", "eac3", CI_STEREO_KBPS, "auto"),
+    ("eac3-51", "eac3", CI_51_KBPS, "auto"),
+]
+
+
+def _ci_search_legs(original, source, original_51, source_51):
+    """search=distortion against search off, one row per CI_SEARCH_LEGS entry.
+
+    Two questions per leg, both relative - there is no absolute floor here,
+    because the interesting property is how the searched encode compares with
+    the same encode without it, not where either one sits:
+
+      - Does the flag reach the encoder? (the encoded bytes must differ)
+      - Does it make things worse? (SNR must not drop by more than
+        CI_SEARCH_MIN_DELTA_DB - see its comment for why that is not 0.05)
+
+    Scored with decode_scores, the same FFmpeg-oracle path race_ci's own
+    EAC3_VARIANTS rows use, so a failure here cannot be blamed on this
+    project's decoder agreeing with its own encoder.
+    """
+    print()
+    print("=== search=distortion vs search off (CLI plumbing + non-regression) ===")
+    failures = []
+    for label, codec, kbps, tools in CI_SEARCH_LEGS:
+        is_51 = label.endswith("-51")
+        src = source_51 if is_51 else source
+        ref = original_51 if is_51 else original
+        ext = "ac3" if codec == "ac3" else "ec3"
+        command = "encode" if codec == "ac3" else "eac3-encode"
+
+        encoded = {}
+        scores = {}
+        for tag in ("off", "distortion"):
+            coded = BUILD / f"ci_search_{label}_{tag}_{kbps}.{ext}"
+            cmd = [CLI, command, src, coded, str(kbps)]
+            if tools:
+                cmd.append(tools)
+            if tag != "off":
+                cmd.append(f"search={tag}")
+            run(cmd)
+            encoded[tag] = coded.read_bytes()
+            snr, _, _, _ = decode_scores(ref, coded,
+                                         BUILD / f"ci_search_{label}_{tag}.wav")
+            scores[tag] = snr
+
+        delta = scores["distortion"] - scores["off"]
+
+        # Byte inequality, not an SNR difference: on material where the search
+        # happens to pick the default candidate every frame the two encodes
+        # would score identically while still proving nothing about argv. This
+        # compares what was actually written.
+        if not gate(f"search {label} @ {kbps}kbps reaches the encoder",
+                    encoded["distortion"] != encoded["off"],
+                    f"search=distortion produced {len(encoded['distortion'])} bytes, "
+                    f"search off {len(encoded['off'])} - identical" if
+                    encoded["distortion"] == encoded["off"] else "encodes differ"):
+            failures.append(f"search-{label}-inert")
+
+        if not gate(f"search {label} @ {kbps}kbps does not regress",
+                    delta >= CI_SEARCH_MIN_DELTA_DB,
+                    f"SNR {scores['distortion']:.2f} dB vs {scores['off']:.2f} off, "
+                    f"{delta:+.3f} dB (floor {CI_SEARCH_MIN_DELTA_DB:+.2f})"):
+            failures.append(f"search-{label}-regressed")
+    return failures
 
 
 def race_ci(original, source, original_51, source_51, original_tr, source_tr):
@@ -1289,6 +1459,8 @@ def race_ci(original, source, original_51, source_51, original_tr, source_tr):
                         f"LSD {lsd:.2f} dB (ceiling {max_lsd})"):
                 failures.append(f"eac3-{label}-{variant}-self")
 
+    failures += _ci_search_legs(original, source, original_51, source_51)
+
     print()
     if failures:
         print(f"{len(failures)} CI gate check(s) failed: {', '.join(failures)}")
@@ -1338,6 +1510,7 @@ def materialise_fixture(path):
 
 SPEECH_FIXTURE = AUDIO_DIR / "programme_speech_stereo.flac"
 MUSIC_FIXTURE = AUDIO_DIR / "programme_music_stereo.flac"
+REFERENCE_STEREO_WAV = AUDIO_DIR / "reference_stereo.wav"
 
 # Kept in sync by hand with tools/generators/gen_external_baseline.py's LEGS -
 # see this section's own header for why this file must never import that one.
@@ -1363,12 +1536,12 @@ MUSIC_FIXTURE = AUDIO_DIR / "programme_music_stereo.flac"
 TREND_LEGS = [
     {"name": "ac3-51-448", "codec": "ac3", "kbps": 448, "wav": AUDIO_DIR / "reference_51.wav"},
     {"name": "eac3-stereo-192", "codec": "eac3", "kbps": 192,
-     "wav": AUDIO_DIR / "reference_stereo.wav"},
+     "wav": REFERENCE_STEREO_WAV},
     {"name": "eac3-51-256", "codec": "eac3", "kbps": 256, "wav": AUDIO_DIR / "reference_51.wav"},
     {"name": "eac3-stereo-96", "codec": "eac3", "kbps": 96,
-     "wav": AUDIO_DIR / "reference_stereo.wav"},
+     "wav": REFERENCE_STEREO_WAV},
     {"name": "eac3-stereo-64", "codec": "eac3", "kbps": 64,
-     "wav": AUDIO_DIR / "reference_stereo.wav"},
+     "wav": REFERENCE_STEREO_WAV},
     {"name": "ac3-music-stereo-192", "codec": "ac3", "kbps": 192, "wav": MUSIC_FIXTURE},
     {"name": "eac3-music-stereo-96", "codec": "eac3", "kbps": 96, "wav": MUSIC_FIXTURE},
     {"name": "eac3-speech-stereo-64", "codec": "eac3", "kbps": 64, "wav": SPEECH_FIXTURE},
@@ -1959,7 +2132,7 @@ def crosscheck(original, source):
         run(cmd)
         ff_wav = BUILD / f"x_{tools}_ff.wav"
         run(["ffmpeg", "-v", "error", "-y", "-xerror", "-err_detect",
-             "crccheck+bitstream+buffer+explode", "-i", coded,
+             FFMPEG_ERR_DETECT, "-i", coded,
              "-c:a", "pcm_f32le", ff_wav])
         ff = read_wav_f32(ff_wav)
         o, d, _ = align(original, ff)
@@ -2074,7 +2247,7 @@ def encode_and_decode(source, tag, kbps, couple=False, extra_flag=None):
         cmd.append(extra_flag)
     run(cmd)
     run(["ffmpeg", "-v", "error", "-y", "-xerror",
-         "-err_detect", "crccheck+bitstream+buffer+explode",
+         "-err_detect", FFMPEG_ERR_DETECT,
          "-i", ac3, "-c:a", "pcm_f32le", wav])
     return read_wav_f32(wav)
 
@@ -2145,7 +2318,7 @@ def race_fast_mdct(source, original):
 # been caught by once: a bit-allocation or bandwidth policy that looks like a
 # win on the synthetic fixtures needs re-measuring on material that is not
 # band-limited like they are, and before this there was nowhere to do that
-# except by hand (see src/lib/src/encoder/encoder.cpp's chbwcod comment, and
+# except by hand (see src/forge/src/encoder/encoder.cpp's chbwcod comment, and
 # tools/generators/gen_programme_fixtures.py for the measured spectra).
 MATERIALS = {"speech": SPEECH_FIXTURE, "music": MUSIC_FIXTURE}
 
@@ -2192,7 +2365,7 @@ def main():
         # Coupling's saving scales with the channel count - five high bands
         # collapse into one, where stereo only collapses two - so 5.1 is where
         # it has the most to prove.
-        source = BUILD / "race_src51.wav"
+        source = RACE_SRC51_WAV
         write_wav_f32(source, make_material_51())
         race_eac3(read_wav_f32(source), source, seconds, rates=(192, 256, 384))
     elif which == "fgaincod":
@@ -2221,7 +2394,7 @@ def main():
         # synthetic rows into a real-material table without saying so is
         # exactly how a measurement gets misread later.
         if "--with-51" in sys.argv:
-            source_51 = BUILD / "race_src51.wav"
+            source_51 = RACE_SRC51_WAV
             write_wav_f32(source_51, make_material_51())
             original_51 = read_wav_f32(source_51)
             print("\n=== coupled 5.1, SYNTHETIC material (make_material_51) ===")
@@ -2250,7 +2423,7 @@ def main():
         write_wav_f32(source, *make_material_transient())
         race_eac3(read_wav_f32(source), source, seconds, rates=(128, 192, 256))
     elif which == "ci":
-        source_51 = BUILD / "race_src51.wav"
+        source_51 = RACE_SRC51_WAV
         write_wav_f32(source_51, make_material_51())
         source_tr = BUILD / "race_src_transient.wav"
         write_wav_f32(source_tr, *make_material_transient())

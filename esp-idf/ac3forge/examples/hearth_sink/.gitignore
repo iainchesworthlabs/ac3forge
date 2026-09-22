@@ -1,0 +1,8 @@
+# ESP-IDF generates these; sdkconfig.defaults beside them is the committed one.
+# The same list as apps/baremetal/platform/esp32s3/.gitignore, for the same
+# reasons - see that file. build/ is covered by the repo root's .gitignore.
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+sdkconfig.probe

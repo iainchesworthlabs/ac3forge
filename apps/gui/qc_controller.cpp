@@ -286,7 +286,7 @@ MeasureOutcome measure_file(const QString& path) {
         file_bytes[i] = static_cast<std::byte>(static_cast<unsigned char>(raw[i]));
     }
 
-    // roadmap IO2: the file itself unchanged if it is not a container this
+    // container readers (mkv/mp4/ts): the file itself unchanged if it is not a container this
     // build reads, or the first AC-3/E-AC-3 track demuxed out of one - the
     // same sniff-and-demux ac3cli's own decode/qc/levels/play/monitor use.
     auto demuxed = ac3::apps::elementary_stream_from_bytes(file_bytes);

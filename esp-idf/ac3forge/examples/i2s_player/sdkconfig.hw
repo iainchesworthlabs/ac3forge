@@ -1,0 +1,11 @@
+# Overlay for a board reached through the S3's NATIVE USB connector rather than
+# the UART bridge - the same file, for the same reason, as
+# apps/baremetal/platform/esp32s3/sdkconfig.hw.
+#
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw" idf.py build
+#
+# The default console is UART0 on GPIO 43/44, which reaches a PC through the
+# board's USB-UART bridge - a second connector and a second cable. With the
+# console on USB-Serial-JTAG instead, one cable carries the flash and the
+# player's timing lines. Nothing about the audio changes.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y

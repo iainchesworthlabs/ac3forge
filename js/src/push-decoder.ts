@@ -23,11 +23,13 @@ export function scanStream(module: Ac3ForgeEmbindModule, bytes: Uint8Array): Sca
   return { ok: true, kind: raw.kind!, sampleRate: raw.sampleRate!, accessUnits: raw.accessUnits! };
 }
 
+const DEFAULT_FOLD_OPTIONS: FoldOptions = { target: DownmixTarget.AsCoded };
+
 export class PushDecoder {
   readonly #native: NativePushDecoder;
   #closed = false;
 
-  constructor(module: Ac3ForgeEmbindModule, fold: FoldOptions = { target: DownmixTarget.AsCoded }) {
+  constructor(module: Ac3ForgeEmbindModule, fold: FoldOptions = DEFAULT_FOLD_OPTIONS) {
     this.#native = new module.PushDecoder(fold.target, fold.applyDialnorm ?? false, fold.mixLfe ?? false);
   }
 

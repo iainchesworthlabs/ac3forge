@@ -85,7 +85,7 @@ TEST_CASE("the very first segment a detector sees never trips it", "[transient]"
 // A loud onset trips the detector at every one of A/52's six sample rates,
 // not just k48000 - the earlier tests above never varied it, so a rate that
 // somehow broke the RBJ coefficient formula (a divide-by-zero, a NaN, a
-// sign flip) had no test that could see it. See roadmap VX12: the biquad's
+// sign flip) had no test that could see it. See cross-toolchain bitstream audit: the biquad's
 // coefficients are runtime std::cos/std::sin calls, and this pins the
 // DISCRETE blksw outcome they feed (not the raw coefficients themselves,
 // which is what a cross-toolchain bit-exactness check operates on instead -
@@ -105,7 +105,7 @@ TEST_CASE("a loud onset trips the detector at every A/52 sample rate", "[transie
     // is always false at this one rate by construction. This is a
     // pre-existing property of the fixed cutoff constant versus a variable
     // rate, not something this test's own scope changes or fixes - see
-    // roadmap VX12's note on it.
+    // cross-toolchain bitstream audit's note on it.
     const std::array<Case, 6> cases{{
         {ac3::SampleRate::k48000, true},
         {ac3::SampleRate::k44100, true},
@@ -123,5 +123,21 @@ TEST_CASE("a loud onset trips the detector at every A/52 sample rate", "[transie
         }
         CHECK(detector.detect(segments[7]) == c.onset_trips);
         CHECK_FALSE(detector.detect(segments[8]));
+    }
+}
+
+TEST_CASE("the float detector decides as the double one does on a loud onset", "[transient]") {
+    // ac3::BasicTransientDetector<float> is the minimum-footprint profile's
+    // form (ac3/internal/encode_scalar.hpp). The recipe is identical; only
+    // the rounding differs, so on a clear onset the two must agree segment
+    // by segment - and the tone's steady segments must not trip either.
+    const auto segments = segments_of(tone(256 * 7, 256 * 2, 0.9));
+    ac3::TransientDetector wide(ac3::SampleRate::k48000);
+    ac3::BasicTransientDetector<float> narrow(ac3::SampleRate::k48000);
+    for (std::size_t i = 0; i < segments.size(); ++i) {
+        CAPTURE(i);
+        const bool wide_hit = wide.detect(segments[i]);
+        const bool narrow_hit = narrow.detect(segments[i]);
+        CHECK(narrow_hit == wide_hit);
     }
 }

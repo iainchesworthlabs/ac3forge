@@ -17,7 +17,7 @@
 #include "ac3/io/elementary.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 
-// The de-framing side of ac3::iec61937 (roadmap IO3). Its whole reason to
+// The de-framing side of ac3::iec61937 (IEC 61937 de-framing). Its whole reason to
 // exist is that nothing read a burst back before, so the wrap side - byte-
 // exact against FFmpeg's spdif muxer though it is - had no round trip of its
 // own. Every test below that says "round trip" is checking exactly that: the

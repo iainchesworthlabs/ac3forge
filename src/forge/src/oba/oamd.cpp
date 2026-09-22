@@ -172,7 +172,7 @@ void put_object_info_block(BitWriter& w, const DynamicObject* dynamic) {
 // real - the element's bits do not start on a byte boundary, so they cannot be
 // copied through a byte buffer without picking up padding that is not theirs.
 void put_object_element(BitWriter& w, const Program& program,
-                        std::span<const DynamicObject> objects) {
+                        std::span<const DynamicObject> objects, int ramp_samples) {
     // Objects that are anchored rather than placed: the LFE in the
     // dynamic-only branch, or the whole bed instance otherwise. They come
     // first (§5.6.4.8) and carry no render info.
@@ -186,10 +186,30 @@ void put_object_element(BitWriter& w, const Program& program,
     w.put(0, 3);     // num_obj_info_blocks_bits => 1 block
     // block_update_info (§5.5.7).
     w.put(0, 6);     // block_offset_factor_bits: the update starts the frame
-    // Table 24 code 2 is a 1 536-sample ramp - exactly one frame - so object
-    // properties interpolate across the frame instead of stepping at its edge.
-    // Code 0 would be a jump, and a moving object would zipper.
-    w.put(0b10, 2);  // ramp_duration_code
+    // The ramp covers exactly one frame - `ramp_samples` - so object
+    // properties interpolate across the frame instead of stepping at its
+    // edge. Code 0 would be a jump, and a moving object would zipper. Table
+    // 24 spells 1536 and 512 directly; 256 is in Table 25's ramp table; a
+    // three-block frame's 768 is in neither and takes the 11-bit literal.
+    switch (ramp_samples) {
+        case 1536:
+            w.put(0b10, 2);  // ramp_duration_code
+            break;
+        case 512:
+            w.put(0b01, 2);
+            break;
+        case 256:
+            w.put(0b11, 2);
+            w.put(1, 1);  // b_use_ramp_table
+            w.put(3, 4);  // Table 25 index 3 = 256
+            break;
+        default:
+            assert(ramp_samples > 0 && ramp_samples < 2048);
+            w.put(0b11, 2);
+            w.put(0, 1);  // literal, not the ramp table
+            w.put(static_cast<std::uint32_t>(ramp_samples), 11);
+            break;
+    }
 
     w.put(1, 1);  // b_reserved_data_not_present
 
@@ -333,7 +353,8 @@ std::vector<int> joc_object_indices(const Program& program) {
 }
 
 std::vector<std::byte> build_payload(const Program& program,
-                                     std::span<const DynamicObject> objects) {
+                                     std::span<const DynamicObject> objects,
+                                     int ramp_samples) {
     assert(static_cast<int>(objects.size()) == program.dynamic_objects);
     // The writer covers one standard bed instance and no ISF, which is every
     // program this project produces. parse_payload reads the wider shapes;
@@ -347,7 +368,7 @@ std::vector<std::byte> build_payload(const Program& program,
     // padding is whatever rounds the three of them up to whole bytes.
     const std::size_t element_bits = [&] {
         BitWriter probe;
-        put_object_element(probe, program, objects);
+        put_object_element(probe, program, objects, ramp_samples);
         return probe.bit_count() + 1;
     }();
     const auto element_bytes = static_cast<std::uint32_t>((element_bits + 7) / 8);
@@ -399,7 +420,7 @@ std::vector<std::byte> build_payload(const Program& program,
     // A decoder that does not know this element can skip it by its size, so
     // there is no reason to make it throw the payload away.
     w.put(0, 1);  // b_discard_unknown_element
-    put_object_element(w, program, objects);
+    put_object_element(w, program, objects, ramp_samples);
     for (std::size_t bit = 0; bit < element_padding; ++bit) {
         w.put(0, 1);  // §5.6.4.14 padding: zero bits, counted by the size
     }

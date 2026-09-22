@@ -5,8 +5,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string_view>
 #include <vector>
 
+#include "ac3/audio/audio_backend.hpp"
+#include "ac3/audio/capture.hpp"
 #include "coreaudio_names.hpp"
 
 // The macOS backend's pure half, tested directly - see coreaudio_names.hpp's
@@ -25,7 +28,12 @@ using ac3::coreaudio::float_to_samples;
 using ac3::coreaudio::physical_format_id;
 using ac3::coreaudio::samples_to_float;
 using ac3::coreaudio::SampleFormat;
+using ac3::coreaudio::kSystemAudioTapMinimumOs;
+using ac3::coreaudio::kSystemAudioTapUnverifiedRefusal;
+using ac3::coreaudio::kSystemAudioTapVersionRefusal;
 using ac3::coreaudio::system_audio_tap_api_available;
+using ac3::coreaudio::system_audio_tap_enabled;
+using ac3::coreaudio::system_audio_tap_refusal;
 using ac3::audio::BitstreamFormat;
 
 TEST_CASE("E-AC-3 runs the carrier four times as fast as its content") {
@@ -157,6 +165,39 @@ TEST_CASE("this CI runner's OS build exposes the Core Audio tap API") {
     // version gate can catch without a tap, a permission prompt or a Mac on
     // someone's desk.
     CHECK(system_audio_tap_api_available());
+}
+
+TEST_CASE("the process-tap refusal names the floor it is gating on") {
+    // Crucible cross-platform promotion's Phase 5. The version floor is named in four places
+    // (coreaudio_names.hpp's own comment lists them), and three of those are
+    // compiler tokens no test can read. What CAN be held here is the pair
+    // that are ordinary values: the refusal sentence has to name the same
+    // version the floor constant does, or a refused caller is told to upgrade
+    // to a version the gate is not actually testing for.
+    CHECK(kSystemAudioTapVersionRefusal.find(kSystemAudioTapMinimumOs) !=
+          std::string_view::npos);
+
+    // And the two reports of a refusal have to be one sentence, not two that
+    // drifted: Capture's own describe() and audio_backend()'s
+    // process_loopback reason, both taken from system_audio_tap_refusal().
+    CHECK(ac3::audio::describe(ac3::audio::CaptureError::kProcessLoopbackUnavailable) ==
+          system_audio_tap_refusal());
+    const auto& capability = ac3::audio::audio_backend().process_loopback;
+    if (!capability.available) {
+        CHECK(capability.reason == system_audio_tap_refusal());
+    }
+
+    // Which of the two sentences that is, on this machine. The version gate
+    // is the one the CI legs pass - both run an OS well past the floor - so
+    // what turns them away is the second gate, and the refusal they see names
+    // the hang rather than the version. A machine with the opt-in set takes
+    // neither branch and reports available.
+    if (system_audio_tap_api_available() && !system_audio_tap_enabled()) {
+        CHECK_FALSE(capability.available);
+        CHECK(capability.reason == kSystemAudioTapUnverifiedRefusal);
+    }
+    // Device-free on every branch - no tap is created and no consent is asked
+    // for.
 }
 
 TEST_CASE("a device with no CFStringRef UID names nothing openable") {

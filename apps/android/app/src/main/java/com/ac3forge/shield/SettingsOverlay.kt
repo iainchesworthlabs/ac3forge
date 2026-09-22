@@ -87,7 +87,9 @@ class SettingsOverlay(private val context: Context) {
         items = newItems
         list.removeAllViews()
         rows.clear()
-        for (item in newItems) {
+        // One row per item, by count only - content is populated from `items` by
+        // index in refresh(), not from this loop.
+        repeat(newItems.size) {
             val row = TextView(context).apply {
                 textSize = 19f
                 setPadding(28, 18, 28, 18)

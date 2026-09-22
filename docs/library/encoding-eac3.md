@@ -56,10 +56,11 @@ rejects them outright.
 | `spx_atten`, `spxattencod` | `true`, -1 | The §E3.6.4.2.3 notch across the seam. Six bits per channel per frame. |
 | `aht`, `gaqmod` | `false`, -1 | Adaptive hybrid transform (§E3.4): a second 6-point DCT down each bin across the frame's six blocks. Decided per channel per frame — setting the flag permits it, not forces it. |
 | `coupling`, `cplbegf` | `false`, -1 | §E3.3. With `spx` also on, §E3.3.1 derives the coupling end frequency from `spxbegf`. |
-| `enhanced` | `false` | §E3.5: enhanced coupling instead of standard — 22 sub-bands, amplitude/angle/chaos-quantized coordinates and a phase-restoring reconstruction built on a full DFT, rather than a single per-band scale factor. Only meaningful with `coupling` also set (`cpl+ecpl`); combines with `spx` the same way standard coupling does. This encoder fits real amplitude/angle coordinates per band (an exact 2-variable linear least squares, since §3.5.5.4's reconstruction is linear in the complex gain the pair expresses) and chooses chaos by searching its 8 legal codes against the decoder's own deterministic de-correlation sequence. Two genuinely different channels forced into one narrow coupling band still cost quality — a single coordinate per band has a real, structural limit on what it can separate — but it is no longer the amplitude-only fit's all-or-nothing loss. |
+| `enhanced` | `false` | §E3.5: enhanced coupling instead of standard — 22 sub-bands, amplitude/angle/chaos-quantized coordinates and a phase-restoring reconstruction built on a full DFT, rather than a single per-band scale factor. Only meaningful with `coupling` also set (`cpl+ecpl`); combines with `spx` the same way standard coupling does. This encoder fits real amplitude/angle coordinates per band (an exact 2-variable linear least squares, since §3.5.5.4's reconstruction is linear in the complex gain the pair expresses) and chooses chaos by searching its 8 legal codes against the decoder's own deterministic de-correlation sequence. Two different channels forced into one narrow coupling band still cost quality — a single coordinate per band has a real, structural limit on what it can separate — but it is no longer the amplitude-only fit's all-or-nothing loss. |
 | `transient_prenoise` | `false` | §3.7 (`tpn`): a post-IMDCT correction that overwrites the pre-echo ahead of a detected transient with a synthesized copy of the clean audio just before it. Reuses the same transient detector block switching relies on, so it only has an effect on channels/frames that also block-switch. See [Decoding](decoding.md) for the one-frame decoder-side latency this introduces and the `flush()` call it requires. |
+| `delta_allocation` | `true` | §7.2.2.6 delta bit allocation, as for AC-3: the corrections chosen per run and the second fit that weighs them. `false` skips both - the first level of the encoders' effort axis, measured on the ESP32-S3 page - and the stream has `dbaflde` clear. The CLI accepts the command-wide `delta=off` option; inside `eac3-encode`'s fourth positional `[tools]` argument, the spelling is `nodelta`, not `tools=nodelta`. |
 | `fast_mdct` | `true` | The §7.9.4 fast N/4-FFT forward MDCT instead of the direct §8.2.3.2 evaluation — a performance choice, not a coding tool: nothing in the bitstream's syntax changes, only how the coefficients were computed (verified ~3e-12 max relative error against the direct form; 0.000 dB SNR delta against an independent oracle at 192–448 kbps). `false` forces the direct reference form, which stays maintained as the oracle the fast path is validated against — the CLI spells that `tools=nofastmdct`. All three forward transforms accelerate — the long one and both halves of a block-switched pair, each down its own independently-derived fold (`ac3/core/mdct.hpp`), and `FrameConfig::fast_mdct` reaches all of them. |
-| `search` | `kNone` | Roadmap EQ13/EQ7: per-frame search over §7.2.2's transmitted bit-allocation parameters against `ac3::quality`'s decoded-domain distortion, instead of the fixed `dbpbcod` 3 EQ3 measured its way to on average. CBR only (`FrameConfig::vbr` unset) - silently inert under VBR/ABR, the same documented boundary EQ5 draws around AHT streams, not a rejected configuration. `kDistortion` only: `kPerceptual` is accepted but inert too, on the same grounds [Decision search](encoding-ac3.md#decision-search) already found it for AC-3. Two axes, the same pair AC-3's search moves: `dbpbcod` over `{kAllocCodes' 3, Table E1.4's 2}`, and `fgaincod` over `ac3::rate_adaptive_fgaincod`'s measured code plus §8.2.12's own default (roadmap EQ7). Unlike AC-3's, the `fgaincod` candidates are not free - `baie` carries no fast gain, so a non-default code opens the per-block `fgaincode` element (`frmfgaincode` 1) and buys its masking curve out of the mantissa budget - so each candidate is scored after a refit against its own side-info cost rather than against the incumbent's. Measured on real CC0 stereo material at 96-640 kbit/s, `dbpbcod` alone was negligible everywhere tried (see ROADMAP.md's EQ13 and EQ8 entries), which is what EQ7's axis was added to move. CLI: `search=distortion`/`search=perceptual`/`search=off`. |
+| `search` | `kNone` | Per-frame search over §7.2.2's transmitted bit-allocation parameters against `ac3::quality`'s decoded-domain distortion, instead of the fixed `dbpbcod` 3 EQ3 measured its way to on average. CBR only (`FrameConfig::vbr` unset) - silently inert under VBR/ABR, the same documented boundary EQ5 draws around AHT streams, not a rejected configuration. `kDistortion` only: `kPerceptual` is accepted but inert too, on the same grounds [Decision search](encoding-ac3.md#decision-search) already found it for AC-3. Two axes, the same pair AC-3's search moves: `dbpbcod` over `{kAllocCodes' 3, Table E1.4's 2}`, and `fgaincod` over `ac3::rate_adaptive_fgaincod`'s measured code plus §8.2.12's own default. Unlike AC-3's, the `fgaincod` candidates are not free - `baie` carries no fast gain, so a non-default code opens the per-block `fgaincode` element (`frmfgaincode` 1) and buys its masking curve out of the mantissa budget - so each candidate is scored after a refit against its own side-info cost rather than against the incumbent's. Measured on real CC0 stereo material at 96-640 kbit/s, `dbpbcod` alone was negligible everywhere tried, which is what this axis was added to move. CLI: `search=distortion`/`search=perceptual`/`search=off`. |
 | `mixing` | none | The `mixmdate` group (Table E1.2). E-AC-3 dropped `cmixlev`/`surmixlev` from `bsi` entirely, so without this the stream carries no downmix levels at all. |
 | `strmtyp`, `substreamid`, `chanmap`, `last_dependent` | independent, 0, none, false | Substream identity. Set by `AccessUnitEncoder`; you rarely touch these directly. |
 | `oba_complexity_index` | none | TS 103 420 §8.3 object count in `addbsi`. This is the marker FFmpeg keys its "Dolby Digital Plus + Dolby Atmos" report off. |
@@ -207,8 +208,8 @@ ac3::eac3::FrameEncoder encoder{{
 |---|---|---|
 | `quality` | `0.5` | `[0, 1]`, linearly maps onto the encoder's own SNR-offset search space. Encoder-relative, not a perceptual scale — and **not linear in bit cost**: cost rises steeply in roughly the top third of the range, so a high quality with no `max_kbps` bound will often refuse ordinary multi-channel material outright (`FrameError::kInvalidBitrate`) rather than produce an oversized frame. **Not read at all when `abr` is set** — see below. |
 | `min_kbps`, `max_kbps` | none, none | Optional hard bounds, same unit as `bitrate_kbps`. When the quality target would need more words than `max_kbps` allows, the encoder falls back to the same search CBR uses, budgeted against the ceiling — so a bounded VBR frame is never worse than the best CBR could do at that rate. `min_kbps` is a pure floor: `finish_frame`'s own padding covers the gap. They bound each individual frame, so they compose with `abr` rather than competing with it. |
-| `nominal_kbps` | none | Drives the `cplbegf`/`spxbegf` frequency defaults in place of a fixed target rate. Unset it resolves to `abr->target_kbps` if there is one, then `max_kbps` if set, else `kVbrDefaultNominalKbps` (192) — under ABR the contracted average is the honest stand-in, where `max_kbps` is only the ceiling one frame may peak to. A caller who wants today's CBR tool behaviour at some quality supplies the same number they would have passed as `bitrate_kbps`. |
-| `abr` | none | `std::optional<AbrConfig>` (roadmap EQ12). Holds a long-run **average** rate while each frame's size still moves with the content — what a streaming ladder rung or a DVB mux contracts for, and what neither CBR nor free-running VBR delivers. See below. |
+| `nominal_kbps` | none | Drives the `cplbegf`/`spxbegf` frequency defaults in place of a fixed target rate. Unset it resolves to `abr->target_kbps` if there is one, then `max_kbps` if set, else `kVbrDefaultNominalKbps` (192) — under ABR the contracted average is the stand-in, where `max_kbps` is only the ceiling one frame may peak to. A caller who wants today's CBR tool behaviour at some quality supplies the same number they would have passed as `bitrate_kbps`. |
+| `abr` | none | `std::optional<AbrConfig>`. Holds a long-run **average** rate while each frame's size still moves with the content — what a streaming ladder rung or a DVB mux contracts for, and what neither CBR nor free-running VBR delivers. See below. |
 
 `bitrate_kbps` itself is not read on the encode path at all once `vbr` is set.
 
@@ -341,7 +342,7 @@ substream has released. `AccessUnitEncoder::latency()` reports that.
 ### Short syncframes (`numblkscod` 0–2)
 
 Annex E §E2.3.1.4 allows a syncframe to carry 1, 2 or 3 blocks instead of 6, and
-`FrameConfig::numblkscod` (roadmap EQ11) selects it on the encode side as well as the decode
+`FrameConfig::numblkscod` selects it on the encode side as well as the decode
 side. Framing is by far the biggest latency term, so this is the largest single reduction
 available: a shorter syncframe is a shorter *frame*, and `encode_frame` then wants
 `samples_per_frame()` samples per channel — 256, 512 or 768 — rather than the 1536 a six-block
@@ -391,14 +392,23 @@ measured on its own independent substream — because dialnorm and DRC are prope
 programme. Sharing one measurement across two would level a commentary by the main mix. Per
 programme, too: the §E3.8.2 16-channel cap, and the metadata a `FrameConfig` carries.
 
+A programme with dependents (`ProgrammeConfig::dependents`, or the top-level `dependents` above)
+gets a second, independent `HeavyCompressor` when `heavy` is set: §E3.8.5 gives the LAST
+dependent's `compr` to the whole programme, so that word has to answer for every rendered
+channel, not the independent substream's own five — `AccessUnitEncoder` measures it from the
+complete rendered programme, folded the way `ac3::OutputStage`'s rendered-layout overload seats a
+wide layout (see [Decoding](decoding.md#the-output-stage)). The independent's own word, from its
+own channels alone, still goes out too, for a receiver that decodes only the 5.1 bed.
+
 Constraints: at most 8 programmes; every substream of every programme must agree on the sample
 rate, since they all code the same frame period. An Atmos EMDF container still rides in the last
 substream of the **first** programme (TS 103 420 §8.2) — the objects belong to a programme, so a
 later programme's substreams are never it.
 
-The CLI authors a second programme with `programme2=<file>` plus `programme2-layout=`,
-`programme2-bitrate=` and `programme2-dialnorm=`; see
-[docs/cli/commands.md](../cli/commands.md).
+The CLI authors up to seven further programmes with `programme2=<file>` through `programme8=<file>`,
+each with its own `programmeN-layout=`, `programmeN-bitrate=` and the rest of the primary
+programme's own metadata keys via `programmeN-<field>=` (dialnorm, bsmod, the whole mixmdate
+group); see [docs/forge/cli/metadata-options.md](../forge/cli/metadata-options.md).
 
 One caveat worth knowing before you ship such a stream: **FFmpeg cannot read it at all**, and not
 just the second programme — see

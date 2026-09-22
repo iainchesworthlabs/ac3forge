@@ -20,10 +20,14 @@
 // daemon or hardware needed to build one by hand.
 
 using ac3::pipewire::carrier_rate;
+using ac3::pipewire::client_api_is_relay;
+using ac3::pipewire::codec_listed;
+using ac3::pipewire::unplayed_frames;
 using ac3::pipewire::iec958_codec_for;
 using ac3::pipewire::is_audio_sink;
 using ac3::pipewire::is_audio_source;
 using ac3::pipewire::node_friendly_name;
+using ac3::pipewire::stream_owner_pid;
 using ac3::pipewire::node_id;
 using ac3::audio::BitstreamFormat;
 
@@ -50,6 +54,56 @@ TEST_CASE("E-AC-3 runs the link four times as fast as its content, same as ALSA"
     CHECK(carrier_rate(BitstreamFormat::kEac3, 48000) == 192000);
     CHECK(carrier_rate(BitstreamFormat::kEac3, 44100) == 176400);
     CHECK(carrier_rate(BitstreamFormat::kEac3, 32000) == 128000);
+}
+
+TEST_CASE("an iec958.codecs list is read name by name") {
+    // WirePlumber writes the property from the sink's ELD, in SPA's codec
+    // names, and serialises it either with quotes or without.
+    const std::string quoted = R"(["PCM","AC3","EAC3","DTS-HD"])";
+    CHECK(codec_listed(quoted, "PCM"));
+    CHECK(codec_listed(quoted, "AC3"));
+    CHECK(codec_listed(quoted, "EAC3"));
+    const std::string bare = "[ PCM EAC3 TrueHD MPEG2-AAC ]";
+    CHECK(codec_listed(bare, "EAC3"));
+    // AC3 is not found inside EAC3, nor DTS inside DTS-HD, nor MPEG inside
+    // MPEG2-AAC.
+    CHECK_FALSE(codec_listed(bare, "AC3"));
+    CHECK_FALSE(codec_listed(quoted, "DTS"));
+    CHECK_FALSE(codec_listed(bare, "MPEG"));
+    CHECK_FALSE(codec_listed(bare, "AAC"));
+    // A name inside another, earlier in the list, does not hide the name itself.
+    CHECK(codec_listed("[ EAC3 AC3 ]", "AC3"));
+    CHECK(codec_listed("[ DTS-HD DTS ]", "DTS"));
+    CHECK(codec_listed("AC3", "AC3"));
+    CHECK_FALSE(codec_listed("", "PCM"));
+    CHECK_FALSE(codec_listed("[ PCMX ]", "PCM"));
+}
+
+TEST_CASE("a stream's unplayed frames add its queue, its converter and the graph's delay") {
+    // The graph's clock at 48 kHz: 1024 frames of delay, 480 queued, 64 in
+    // the converter.
+    pw_time time{};
+    time.rate.num = 1;
+    time.rate.denom = 48000;
+    time.delay = 1024;
+    time.queued = 480;
+    time.buffered = 64;
+    CHECK(unplayed_frames(time, 48000) == 1024 + 480 + 64);
+    // A stream at four times the graph's rate, as an E-AC-3 link can be, has
+    // four of its frames in each frame of delay.
+    CHECK(unplayed_frames(time, 192000) == 4 * 1024 + 480 + 64);
+    // A 44.1 kHz stream on a 48 kHz graph: 1024 / 48000 s is 940.8 frames.
+    CHECK(unplayed_frames(time, 44100) == 940 + 480 + 64);
+
+    // A user's offset can take the delay below zero, which counts as none.
+    time.delay = -300;
+    CHECK(unplayed_frames(time, 48000) == 480 + 64);
+
+    // A clock with no rate leaves the delay as it is.
+    time.delay = 100;
+    time.rate.num = 0;
+    time.rate.denom = 0;
+    CHECK(unplayed_frames(time, 48000) == 100 + 480 + 64);
 }
 
 TEST_CASE("the codec sent over IEC958 matches the bitstream format asked for") {
@@ -106,4 +160,33 @@ TEST_CASE("a node's friendly name prefers node.description over node.name") {
     const spa_dict_item blank_description[] = {{PW_KEY_NODE_NAME, "alsa_output.raw"},
                                                 {PW_KEY_NODE_DESCRIPTION, ""}};
     CHECK(node_friendly_name(make_dict(blank_description, 2)) == "alsa_output.raw");
+}
+
+// The pid a stream belongs to. Getting this wrong is not a cosmetic loss:
+// pipewire-pulse carries every PulseAudio application on one socket, so
+// believing the socket credentials there lists all of them as a single
+// application called pipewire-pulse and points a per-process tap at a
+// process that plays nothing. Read off a Raspberry Pi 4B on 2026-09-05:
+// VLC's Client said pipewire.sec.pid 32005, which was pipewire-pulse's own
+// pid, while VLC was 49692 and said so in application.process.id.
+TEST_CASE("a client that reaches the daemon through a relay is named by what it claims") {
+    CHECK(client_api_is_relay("pipewire-pulse"));
+    CHECK(client_api_is_relay("jack"));
+    CHECK_FALSE(client_api_is_relay("pipewire"));
+    CHECK_FALSE(client_api_is_relay(nullptr));
+
+    // The relayed case: the credentials are pipewire-pulse's, the claim is
+    // the application's, and the application is the answer.
+    CHECK(stream_owner_pid(32005, 49692, true) == 49692);
+    // A direct client: the credentials cannot be forged, so they win even
+    // when the client claims something else.
+    CHECK(stream_owner_pid(47365, 1, false) == 47365);
+    CHECK(stream_owner_pid(47365, 47365, false) == 47365);
+    // No credentials at all: the claim is all there is.
+    CHECK(stream_owner_pid(0, 49692, false) == 49692);
+    // A relay whose client claimed nothing leaves the relay's pid, which is
+    // wrong but is not worse than the 0 that hides the stream entirely.
+    CHECK(stream_owner_pid(32005, 0, true) == 32005);
+    // Nothing to go on: nothing to tap.
+    CHECK(stream_owner_pid(0, 0, true) == 0);
 }

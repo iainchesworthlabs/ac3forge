@@ -1,4 +1,4 @@
-// pybind11 bindings for ac3forge (roadmap F2) - wraps ac3::FrameEncoder, ac3::FrameDecoder,
+// pybind11 bindings for ac3forge (Python on PyPI) - wraps ac3::FrameEncoder, ac3::FrameDecoder,
 // ac3::Eac3Decoder and ac3::oba::AtmosEncoder directly (pybind11-direct, per the roadmap's own
 // dependency note - no intermediate C API). Every C++ class kept here is exactly the one
 // declared in src/forge/include/ac3/{encoder/encoder,decoder/decoder,oba/atmos}.hpp; this file adds
@@ -12,7 +12,7 @@
 // through the block still runs it). This is deliberately explicit per call site rather than
 // py::call_guard, which only wraps the C++ invocation and not this file's own ordering.
 //
-// Channel PCM (roadmap AP6) is the one exception to "operating only on C++ locals": encode input
+// Channel PCM (Python bindings completeness) is the one exception to "operating only on C++ locals": encode input
 // and the *_into decode forms hold live py::array/py::array_t handles (ChannelViews/
 // MutableChannelViews below) across the release block, with std::span pointing directly into
 // their buffers - genuinely zero-copy when the caller already passed a contiguous float32 array,
@@ -39,6 +39,21 @@
 #include <vector>
 
 #include "ac3/core/eac3_tables.hpp"
+#include "ac3/io/dec3.hpp"
+#include "ac3/meta/loudness.hpp"
+#include "ac3/meta/qc.hpp"
+#ifdef AC3FORGE_PY_HAVE_CONTAINERS
+#include "matroska/matroska.hpp"
+#include "matroska/reader.hpp"
+#include "mp4/mp4.hpp"
+#include "mp4/reader.hpp"
+#include "mpegts/mpegts.hpp"
+#include "mpegts/reader.hpp"
+#endif
+#ifdef AC3FORGE_PY_HAVE_SIGNING
+#include "ac3/signing/emdf_atmos_signer.hpp"
+#include "ac3/signing/signing_key.hpp"
+#endif
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
@@ -56,7 +71,7 @@ namespace py = pybind11;
 
 namespace {
 
-// decode_frame_into/decode_access_unit_into's own `out` sizing contract (roadmap AP6) - see
+// decode_frame_into/decode_access_unit_into's own `out` sizing contract (Python bindings completeness) - see
 // ac3::FrameDecoder::decode_frame_into and ac3::Eac3Decoder::decode_access_unit_into's doc
 // comments ("six covers every AC-3 layout" / "16 covers §E3.8.2's cap"). Exposed to Python as
 // ac3.MAX_AC3_CHANNELS/ac3.eac3.MAX_RENDER_CHANNELS below so a caller doesn't have to hardcode
@@ -468,7 +483,7 @@ std::vector<std::string> chanmap_labels(std::uint16_t map) {
     return labels;
 }
 
-// The named-layout convenience roadmap AP6 asks for: a caller names a
+// The named-layout convenience Python bindings completeness asks for: a caller names a
 // LayoutId (e.g. k71) instead of hand-building the dependents' chanmaps -
 // ac3::plan::channel_plan_for() already carries that table
 // (ac3/encoder/plan.hpp), this just turns its ChannelPlan into a real
@@ -597,7 +612,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         .value("kDependent", ac3::eac3::StreamType::kDependent)
         .value("kConvertible", ac3::eac3::StreamType::kConvertible);
 
-    // ac3::io::StreamKind - roadmap AP6's scan(). A different question from StreamType above
+    // ac3::io::StreamKind - Python bindings completeness's scan(). A different question from StreamType above
     // (which frames belong to which E-AC-3 substream role); this is "is the stream AC-3, E-AC-3,
     // or an AC-3 core carrying E-AC-3 dependent extensions" - see ac3::io::StreamKind's own
     // header comment for kAc3CoreEac3Extension.
@@ -637,7 +652,7 @@ PYBIND11_MODULE(_ac3forge, m) {
     m.def("sample_rate_hz", &ac3::sample_rate_hz, py::arg("sample_rate"));
     // Three overloads of the same C++ name now (ac3::describe(DecodeError),
     // ac3::describe(FrameError) since AP2's FrameError::describe(), and
-    // ac3::describe(DiagnosticEvent), roadmap AP11's ac3/decoder/diagnostics.hpp) -
+    // ac3::describe(DiagnosticEvent), decoder diagnostics describe()'s ac3/decoder/diagnostics.hpp) -
     // &ac3::describe alone is ambiguous, so each bound overload is cast to its own
     // function-pointer type. DiagnosticEvent's overload is not surfaced to Python at
     // all (see docs/library/python-api.md's "What isn't exposed").
@@ -702,7 +717,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         },
         py::arg("frame"));
 
-    // --- scan() and friends (roadmap AP6) - ac3::io/elementary.hpp -------------------------
+    // --- scan() and friends (Python bindings completeness) - ac3::io/elementary.hpp -------------------------
     py::class_<ac3::io::SubstreamService>(
         m, "SubstreamService",
         "One associated independent substream's own bed, as ScannedStream.associated_substreams "
@@ -865,7 +880,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         "The one access-unit length every unit in the stream shares, or None when they differ.");
 
     // --- plain data types (kwargs-constructible where a caller builds one) -------------------
-    // --- latency (roadmap PF6) ---------------------------------------------
+    // --- latency (bare-metal probe harness) ---------------------------------------------
     py::class_<ac3::LatencyBudget>(
         m, "LatencyBudget",
         "Algorithmic delay of an encode->decode chain, in samples at the coded rate. "
@@ -1047,7 +1062,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_property_readonly("latency", &ac3::FrameEncoder::latency)
         .def_property_readonly("latency_samples", &ac3::FrameEncoder::latency_samples);
 
-    // --- research trace export (ac3::verify, roadmap AP12) ---------------------
+    // --- research trace export (ac3::verify, research trace export) ---------------------
     // The encoder/decoder mirror trace (ac3/verify/mirror.hpp, .../eac3_mirror.hpp),
     // added for the in-repo self-check, exported here in a form a caller doing
     // codec research can put in a DataFrame: per-frame bap, exponent, SNR-offset
@@ -1062,7 +1077,7 @@ PYBIND11_MODULE(_ac3forge, m) {
     py::module_ verify_module =
         m.def_submodule("verify",
                         "ac3::verify - the encoder/decoder mirror trace and its research export "
-                        "(roadmap AP12).");
+                        "(research trace export).");
 
     py::class_<ac3::verify::FrameTrace>(
         verify_module, "FrameTrace",
@@ -1123,7 +1138,7 @@ PYBIND11_MODULE(_ac3forge, m) {
     // --- decoder ---------------------------------------------------------------
     py::class_<ac3::DecoderConfig>(m, "DecoderConfig")
         .def(py::init([](py::kwargs kwargs) {
-            // trace/eac3_trace (roadmap AP12) hold pointers into caller-owned
+            // trace/eac3_trace (research trace export) hold pointers into caller-owned
             // ac3.verify.FrameTrace/Eac3AccessUnitTrace objects, not a shape
             // KwargBinder's generic value-member field() handles - popped by
             // hand before the rest goes through it exactly as before, so
@@ -1202,6 +1217,7 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_readonly("sample_rate", &ac3::DecodedAccessUnit::sample_rate)
         .def_readonly("acmod", &ac3::DecodedAccessUnit::acmod)
         .def_readonly("dialnorm", &ac3::DecodedAccessUnit::dialnorm)
+        .def_readonly("dialnorm2", &ac3::DecodedAccessUnit::dialnorm2)
         .def_readonly("compr", &ac3::DecodedAccessUnit::compr)
         .def_readonly("numblkscod", &ac3::DecodedAccessUnit::numblkscod)
         .def_readonly("object_metadata", &ac3::DecodedAccessUnit::object_metadata)
@@ -1354,7 +1370,26 @@ PYBIND11_MODULE(_ac3forge, m) {
         .def_property_readonly(
             "latency_samples", &ac3::Eac3Decoder::latency_samples,
             "The delay this decoder adds on top of the encoder's budget: 0 until some "
-            "substream's frame sets transproce, SAMPLES_PER_FRAME from then on.");
+            "substream's frame sets transproce, SAMPLES_PER_FRAME from then on.")
+        // Context-manager support (Python bindings completeness): `with ac3.eac3.Eac3Decoder() as d:` drains
+        // the decoder's transproce hold-back on scope exit, so a stream that engaged
+        // transient pre-noise processing never leaves its final frame silently buffered in a
+        // decoder that is about to be garbage-collected. Exit DISCARDS what it drains - a
+        // caller that wants the held-back PCM calls flush() itself, which is why exit's
+        // drain is deliberately not returned anywhere.
+        .def("__enter__", [](ac3::Eac3Decoder& self) -> ac3::Eac3Decoder& { return self; },
+             py::return_value_policy::reference_internal)
+        .def(
+            "__exit__",
+            [](ac3::Eac3Decoder& self, const py::object&, const py::object&,
+               const py::object&) {
+                {
+                    py::gil_scoped_release release;
+                    (void)self.flush();
+                }
+                return false;  // never swallow an exception
+            },
+            py::arg("exc_type"), py::arg("exc_value"), py::arg("traceback"));
 
     // --- Atmos objects -----------------------------------------------------
     py::class_<ac3::oba::AtmosConfig>(m, "AtmosConfig")
@@ -1417,9 +1452,9 @@ PYBIND11_MODULE(_ac3forge, m) {
             "bed_latency", &ac3::oba::AtmosEncoder::bed_latency,
             "The 5.1 bed's budget: what a legacy decoder that ignores the container hears.");
 
-    // --- E-AC-3 encoder (ac3::eac3::FrameEncoder / AccessUnitEncoder), roadmap AP6 ------------
+    // --- E-AC-3 encoder (ac3::eac3::FrameEncoder / AccessUnitEncoder), Python bindings completeness ------------
     // A real submodule rather than flat top-level names like Eac3Decoder: ac3::FrameEncoder and
-    // ac3::eac3::FrameEncoder share a name across C++ namespaces (roadmap AP2), so ac3.FrameEncoder
+    // ac3::eac3::FrameEncoder share a name across C++ namespaces (legacy item AP2), so ac3.FrameEncoder
     // (AC-3) vs ac3.eac3.FrameEncoder (E-AC-3) is what keeps that collision out of the binding
     // surface. pybind11-direct on ac3::eac3::FrameEncoder/AccessUnitEncoder, same policy as every
     // other class here (see this file's own header comment) - not layered on the C API.
@@ -1647,4 +1682,396 @@ PYBIND11_MODULE(_ac3forge, m) {
              "hand-building a dependent's chanmap - see ac3::plan::channel_plan_for(). "
              "dependent_bitrate_kbps defaults to half of bitrate_kbps, applied to every "
              "dependent.");
+
+    // --- Loudness metering and QC (Python bindings completeness) ----------------------------
+    //
+    // ac3::meta::LoudnessMeter and the QC gate, bound pybind11-direct like
+    // everything above. The meter takes the same planar float32 input shape
+    // the encoders do (a 2-D numpy array or a sequence of 1-D arrays), any
+    // length per push - a meter runs over a programme, not a frame.
+    auto meta = m.def_submodule("meta", "Loudness metering (BS.1770) and delivery-spec QC.");
+
+    py::class_<ac3::meta::LoudnessMeter>(
+        meta, "LoudnessMeter",
+        "BS.1770-4 loudness over a programme, fed incrementally. Every gated measurement is "
+        "None until enough audio has been pushed for it to mean anything - silence has no "
+        "meaningful loudness, and inventing one would put a wrong dialnorm on the stream.")
+        .def(py::init<ac3::SampleRate, ac3::Acmod, bool>(), py::arg("sample_rate"),
+             py::arg("acmod"), py::arg("lfe"),
+             "Annex 1's basic algorithm keyed on acmod/lfe; push() expects the coded order "
+             "(Table 5.8), LFE last - the encoder's own input convention.")
+        .def(
+            "push",
+            [](ac3::meta::LoudnessMeter& self, const py::object& channels) {
+                auto views = extract_channel_views(channels, 0);
+                py::gil_scoped_release release;
+                self.push(views.spans);
+            },
+            py::arg("channels"),
+            "Planar float32 audio, channel_count spans of any (equal) length - a 2-D "
+            "(n_channels, n_samples) array or a sequence of 1-D arrays, same shapes the "
+            "encoders take.")
+        .def_property_readonly("integrated_lkfs", &ac3::meta::LoudnessMeter::integrated_lkfs)
+        .def_property_readonly("momentary_lkfs", &ac3::meta::LoudnessMeter::momentary_lkfs)
+        .def_property_readonly("short_term_lkfs", &ac3::meta::LoudnessMeter::short_term_lkfs)
+        .def_property_readonly("loudness_range", &ac3::meta::LoudnessMeter::loudness_range)
+        .def_property_readonly("true_peak_dbtp", &ac3::meta::LoudnessMeter::true_peak_dbtp)
+        .def_property_readonly("channel_count", &ac3::meta::LoudnessMeter::channel_count);
+
+    py::enum_<ac3::meta::QcPresetId>(meta, "QcPresetId")
+        .value("kEbuR128S2", ac3::meta::QcPresetId::kEbuR128S2)
+        .value("kAtscA85", ac3::meta::QcPresetId::kAtscA85)
+        .value("kAtscA85Streaming", ac3::meta::QcPresetId::kAtscA85Streaming)
+        .value("kNetflix", ac3::meta::QcPresetId::kNetflix)
+        .value("kAppleMusicAtmos", ac3::meta::QcPresetId::kAppleMusicAtmos);
+
+    py::enum_<ac3::meta::QcLoudnessLimit>(meta, "QcLoudnessLimit")
+        .value("kBand", ac3::meta::QcLoudnessLimit::kBand)
+        .value("kCeiling", ac3::meta::QcLoudnessLimit::kCeiling);
+
+    py::class_<ac3::meta::QcPreset>(meta, "QcPreset",
+                                    "One delivery spec's numbers, each cited to its primary "
+                                    "source - see ac3/meta/qc.hpp.")
+        .def_readonly("target_lkfs", &ac3::meta::QcPreset::target_lkfs)
+        .def_readonly("tolerance_lu", &ac3::meta::QcPreset::tolerance_lu)
+        .def_readonly("max_true_peak_dbtp", &ac3::meta::QcPreset::max_true_peak_dbtp)
+        .def_readonly("loudness_limit", &ac3::meta::QcPreset::loudness_limit)
+        .def_property_readonly(
+            "source", [](const ac3::meta::QcPreset& p) { return std::string{p.source}; });
+
+    py::class_<ac3::meta::QcVerdict>(meta, "QcVerdict")
+        .def_readonly("loudness_delta_lu", &ac3::meta::QcVerdict::loudness_delta_lu)
+        .def_readonly("loudness_pass", &ac3::meta::QcVerdict::loudness_pass)
+        .def_readonly("true_peak_margin_dbtp", &ac3::meta::QcVerdict::true_peak_margin_dbtp)
+        .def_readonly("true_peak_pass", &ac3::meta::QcVerdict::true_peak_pass)
+        .def_property_readonly("passed", &ac3::meta::QcVerdict::pass);
+
+    meta.def("qc_preset", &ac3::meta::qc_preset, py::arg("id"),
+             "The cited numbers for a named delivery spec.");
+    meta.def("evaluate_qc_gate", &ac3::meta::evaluate_qc_gate, py::arg("preset"),
+             py::arg("integrated_lkfs"), py::arg("true_peak_dbtp"),
+             "Judge a LoudnessMeter's measurements against a preset. A None measurement "
+             "leaves that half of the verdict not-passing - the gate cannot judge material "
+             "the meter could not measure.");
+
+    // The codec-config box a container's sample entry wants (dac3/dec3),
+    // built straight off the stream the same way `ac3cli mp4` does - never
+    // off whatever a source container declared. One call from bytes, since
+    // the Python-side ScannedStream is a value snapshot rather than a handle
+    // the C++ builder could read.
+    m.def(
+        "build_codec_config_box",
+        [](const py::buffer& stream) {
+            const auto bytes = to_bytes(stream);
+            const auto scanned = ac3::io::scan(bytes);
+            if (!scanned) {
+                throw ScanFailure(scanned.error());
+            }
+            const auto payload = ac3::io::build_codec_config_box(*scanned);
+            return py::bytes(reinterpret_cast<const char*>(payload.data()), payload.size());
+        },
+        py::arg("stream"),
+        "The dac3/dec3 sample-entry box payload for this elementary stream (ETSI TS 102 366 "
+        "Annex F, plus TS 103 420's Atmos extension when the stream carries objects) - what "
+        "containers.Mp4Track.codec_config wants. Empty for the legacy-core arrangement no "
+        "box can describe.");
+
+#ifdef AC3FORGE_PY_HAVE_SIGNING
+    // --- Object signing (Python bindings completeness) --------------------------------------
+    auto signing = m.def_submodule(
+        "signing",
+        "EMDF object-layer signing - see docs/concepts/object-signing.md. Sign an encoded "
+        "Atmos stream's frames, detect tags, verify with the matching key.");
+
+    py::class_<ac3::signing::SigningKey>(signing, "SigningKey",
+                                         "Owns the key bytes; zeroizes them on destruction.")
+        .def(py::init([](const py::buffer& content) {
+                 auto decoded = ac3::signing::decode_signing_key(to_bytes(content));
+                 if (!decoded) {
+                     throw py::value_error("empty signing key");
+                 }
+                 return *decoded;
+             }),
+             py::arg("content"),
+             "Decode a key from bytes: base64 when the content is valid base64 (the "
+             "CI/secret transport form), raw key bytes otherwise - the same single decode "
+             "every other front end uses.")
+        .def_property_readonly("empty", &ac3::signing::SigningKey::empty);
+
+    signing.def(
+        "load_signing_key",
+        [](const std::string& explicit_path) {
+            auto key = ac3::signing::load_signing_key(explicit_path);
+            if (!key) {
+                throw py::value_error(key.error().message);
+            }
+            return *key;
+        },
+        py::arg("path") = std::string{},
+        "Resolve a key from `path` if given, else $AC3FORGE_SIGNING_KEY_FILE, else "
+        "$AC3FORGE_SIGNING_KEY - the CLI's own resolution order. Raises ValueError with the "
+        "loader's message when nothing usable was found.");
+
+    signing.def(
+        "sign_atmos_stream",
+        [](const py::buffer& stream, const ac3::signing::SigningKey& key) {
+            auto bytes = to_bytes(stream);
+            int signed_count = 0;
+            {
+                py::gil_scoped_release release;
+                signed_count = ac3::signing::sign_atmos_stream(bytes, key);
+            }
+            return py::make_tuple(
+                py::bytes(reinterpret_cast<const char*>(bytes.data()), bytes.size()),
+                signed_count);
+        },
+        py::arg("stream"), py::arg("key"),
+        "Sign every Atmos frame in an elementary stream. Returns (signed_stream, "
+        "frames_signed) - the input is not modified (Python bytes are immutable; the C++ "
+        "in-place form signs a copy here).");
+
+    signing.def(
+        "has_authenticity_tag",
+        [](const py::buffer& frame) {
+            return ac3::signing::has_authenticity_tag(to_bytes(frame));
+        },
+        py::arg("frame"),
+        "Whether this frame carries an authenticity tag - answerable without any key.");
+
+    py::class_<ac3::signing::VerifySummary>(signing, "VerifySummary")
+        .def_readonly("valid", &ac3::signing::VerifySummary::valid)
+        .def_readonly("mismatch", &ac3::signing::VerifySummary::mismatch)
+        .def_readonly("no_container", &ac3::signing::VerifySummary::no_container)
+        .def_property_readonly("all_valid", [](const ac3::signing::VerifySummary& s) {
+            return s.valid > 0 && s.mismatch == 0;
+        });
+
+    signing.def(
+        "verify_atmos_stream",
+        [](const py::buffer& stream, const ac3::signing::SigningKey& key) {
+            const auto bytes = to_bytes(stream);
+            py::gil_scoped_release release;
+            return ac3::signing::verify_atmos_stream(bytes, key);
+        },
+        py::arg("stream"), py::arg("key"),
+        "Verify every frame's tag against `key`. See VerifySummary.");
+#endif
+
+#ifdef AC3FORGE_PY_HAVE_CONTAINERS
+    // --- Containers (Python bindings completeness) ------------------------------------------
+    //
+    // The three writers and the batch read side, bytes in / bytes out. The
+    // incremental Reader/Writer classes and the fragmented-MP4/HLS/DASH
+    // surface stay C++-only for now - recorded in docs/library/python-api.md
+    // as the boundary, not silently missing.
+    auto containers = m.def_submodule(
+        "containers",
+        "Matroska/MP4/MPEG-TS carriage for encoded frames - the library twins of `ac3cli "
+        "mkv`/`mp4`/`ts`/`demux`.");
+
+    const auto frames_to_views = [](const std::vector<py::bytes>& frames,
+                                    std::vector<std::vector<std::byte>>& storage) {
+        storage.reserve(frames.size());
+        for (const auto& frame : frames) {
+            std::string_view view = frame;
+            const auto* data = reinterpret_cast<const std::byte*>(view.data());
+            storage.emplace_back(data, data + view.size());
+        }
+        std::vector<std::span<const std::byte>> views;
+        views.reserve(storage.size());
+        for (const auto& owned : storage) {
+            views.emplace_back(owned);
+        }
+        return views;
+    };
+
+    py::class_<matroska::AudioTrack>(containers, "MatroskaTrack")
+        .def(py::init([](py::kwargs kwargs) {
+            return KwargBinder<matroska::AudioTrack>(std::move(kwargs))
+                .field("codec_id", &matroska::AudioTrack::codec_id)
+                .field("sample_rate", &matroska::AudioTrack::sample_rate)
+                .field("channels", &matroska::AudioTrack::channels)
+                .field("samples_per_frame", &matroska::AudioTrack::samples_per_frame)
+                .field("language", &matroska::AudioTrack::language)
+                .finish();
+        }))
+        .def_readwrite("codec_id", &matroska::AudioTrack::codec_id)
+        .def_readwrite("sample_rate", &matroska::AudioTrack::sample_rate)
+        .def_readwrite("channels", &matroska::AudioTrack::channels)
+        .def_readwrite("samples_per_frame", &matroska::AudioTrack::samples_per_frame)
+        .def_readwrite("language", &matroska::AudioTrack::language);
+
+    py::class_<mp4::AudioTrack>(containers, "Mp4Track")
+        .def(py::init([](py::kwargs kwargs) {
+            // codec_config is bytes, which KwargBinder's field() cannot
+            // convert - lifted out of the kwargs first, applied after.
+            std::vector<std::byte> config;
+            if (kwargs.contains("codec_config")) {
+                config = to_bytes(py::cast<py::buffer>(kwargs["codec_config"]));
+                kwargs.attr("pop")("codec_config");
+            }
+            auto track = KwargBinder<mp4::AudioTrack>(std::move(kwargs))
+                .field("codec_id", &mp4::AudioTrack::codec_id)
+                .field("sample_rate", &mp4::AudioTrack::sample_rate)
+                .field("channels", &mp4::AudioTrack::channels)
+                .field("samples_per_frame", &mp4::AudioTrack::samples_per_frame)
+                .field("language", &mp4::AudioTrack::language)
+                .field("rfc6381", &mp4::AudioTrack::rfc6381)
+                .finish();
+            track.codec_config = std::move(config);
+            return track;
+        }))
+        .def_readwrite("codec_id", &mp4::AudioTrack::codec_id)
+        .def_readwrite("sample_rate", &mp4::AudioTrack::sample_rate)
+        .def_readwrite("channels", &mp4::AudioTrack::channels)
+        .def_readwrite("samples_per_frame", &mp4::AudioTrack::samples_per_frame)
+        .def_property(
+            "codec_config",
+            [](const mp4::AudioTrack& t) {
+                return py::bytes(reinterpret_cast<const char*>(t.codec_config.data()),
+                                 t.codec_config.size());
+            },
+            [](mp4::AudioTrack& t, const py::buffer& value) {
+                t.codec_config = to_bytes(value);
+            },
+            "The dac3/dec3 sample-entry box payload - build_codec_config_box() produces it.")
+        .def_readwrite("language", &mp4::AudioTrack::language)
+        .def_readwrite("rfc6381", &mp4::AudioTrack::rfc6381);
+
+    py::class_<mpegts::AudioTrack>(containers, "TsTrack")
+        .def(py::init([](py::kwargs kwargs) {
+            return KwargBinder<mpegts::AudioTrack>(std::move(kwargs))
+                .field("codec", &mpegts::AudioTrack::codec)
+                .field("sample_rate", &mpegts::AudioTrack::sample_rate)
+                .field("channels", &mpegts::AudioTrack::channels)
+                .field("samples_per_frame", &mpegts::AudioTrack::samples_per_frame)
+                .finish();
+        }))
+        .def_readwrite("codec", &mpegts::AudioTrack::codec)
+        .def_readwrite("sample_rate", &mpegts::AudioTrack::sample_rate)
+        .def_readwrite("channels", &mpegts::AudioTrack::channels)
+        .def_readwrite("samples_per_frame", &mpegts::AudioTrack::samples_per_frame);
+
+    py::enum_<mpegts::AudioCodec>(containers, "TsCodec")
+        .value("kAc3", mpegts::AudioCodec::kAc3)
+        .value("kEac3", mpegts::AudioCodec::kEac3)
+        .value("kAc4", mpegts::AudioCodec::kAc4);
+
+    py::enum_<mpegts::BroadcastProfile>(containers, "TsProfile")
+        .value("kDvb", mpegts::BroadcastProfile::kDvb)
+        .value("kAtsc", mpegts::BroadcastProfile::kAtsc);
+
+    containers.def(
+        "mux_matroska",
+        [frames_to_views](const matroska::AudioTrack& track,
+                          const std::vector<py::bytes>& frames) {
+            std::vector<std::vector<std::byte>> storage;
+            const auto views = frames_to_views(frames, storage);
+            std::vector<std::byte> file;
+            {
+                py::gil_scoped_release release;
+                auto muxed = matroska::mux(track, views);
+                if (!muxed) {
+                    throw py::value_error(std::string{matroska::describe(muxed.error())});
+                }
+                file = std::move(*muxed);
+            }
+            return py::bytes(reinterpret_cast<const char*>(file.data()), file.size());
+        },
+        py::arg("track"), py::arg("frames"),
+        "One Matroska file from encoded frames (one block per access unit).");
+
+    containers.def(
+        "mux_mp4",
+        [frames_to_views](const mp4::AudioTrack& track, const std::vector<py::bytes>& frames) {
+            std::vector<std::vector<std::byte>> storage;
+            const auto views = frames_to_views(frames, storage);
+            std::vector<std::byte> file;
+            {
+                py::gil_scoped_release release;
+                auto muxed = mp4::mux(track, views);
+                if (!muxed) {
+                    throw py::value_error(std::string{mp4::describe(muxed.error())});
+                }
+                file = std::move(*muxed);
+            }
+            return py::bytes(reinterpret_cast<const char*>(file.data()), file.size());
+        },
+        py::arg("track"), py::arg("frames"),
+        "One MP4/ISOBMFF file from encoded frames (one sample per access unit). "
+        "track.codec_config must hold the dac3/dec3 payload - see build_codec_config_box().");
+
+    containers.def(
+        "mux_mpegts",
+        [frames_to_views](const mpegts::AudioTrack& track, const std::vector<py::bytes>& frames,
+                          mpegts::BroadcastProfile profile) {
+            std::vector<std::vector<std::byte>> storage;
+            const auto views = frames_to_views(frames, storage);
+            std::vector<std::byte> file;
+            {
+                py::gil_scoped_release release;
+                auto muxed = mpegts::mux(track, views, mpegts::MuxOptions{.profile = profile});
+                if (!muxed) {
+                    throw py::value_error(std::string{mpegts::describe(muxed.error())});
+                }
+                file = std::move(*muxed);
+            }
+            return py::bytes(reinterpret_cast<const char*>(file.data()), file.size());
+        },
+        py::arg("track"), py::arg("frames"),
+        py::arg("profile") = mpegts::BroadcastProfile::kDvb,
+        "One MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per "
+        "the chosen broadcast profile.");
+
+    containers.def(
+        "demux_matroska",
+        [](const py::buffer& file) {
+            const auto bytes = to_bytes(file);
+            const auto demuxed = matroska::demux(bytes);
+            if (!demuxed) {
+                throw py::value_error(std::string{matroska::describe(demuxed.error())});
+            }
+            return py::make_tuple(demuxed->track.codec_id,
+                                  to_bytes_list(demuxed->frames));
+        },
+        py::arg("file"),
+        "(codec_id, frames) back out of a Matroska file - the read twin of mux_matroska.");
+
+    containers.def(
+        "demux_mp4",
+        [](const py::buffer& file) {
+            const auto bytes = to_bytes(file);
+            const auto demuxed = mp4::demux(bytes);
+            if (!demuxed) {
+                throw py::value_error(std::string{mp4::describe(demuxed.error())});
+            }
+            const auto& config = demuxed->track.codec_config;
+            return py::make_tuple(
+                demuxed->track.codec_id,
+                py::bytes(reinterpret_cast<const char*>(config.payload.data()),
+                          config.payload.size()),
+                to_bytes_list(demuxed->samples));
+        },
+        py::arg("file"),
+        "(codec_id, codec_config_payload, samples) back out of an MP4 - the read twin of "
+        "mux_mp4. codec_config_payload is the raw dac3/dec3/dac4 box body, verbatim.");
+
+    containers.def(
+        "demux_mpegts",
+        [](const py::buffer& file) {
+            const auto bytes = to_bytes(file);
+            const auto demuxed = mpegts::demux(bytes);
+            if (!demuxed) {
+                throw py::value_error(std::string{mpegts::describe(demuxed.error())});
+            }
+            const auto codec = demuxed->stream.ac4    ? mpegts::AudioCodec::kAc4
+                               : demuxed->stream.eac3 ? mpegts::AudioCodec::kEac3
+                                                      : mpegts::AudioCodec::kAc3;
+            return py::make_tuple(codec, to_bytes_list(demuxed->payloads));
+        },
+        py::arg("file"),
+        "(codec, pes_payloads) back out of a transport stream. Payloads are PES payloads, "
+        "not necessarily one access unit each - concatenate and re-split with "
+        "ac3.split_access_units for the A/52 codecs.");
+#endif
 }

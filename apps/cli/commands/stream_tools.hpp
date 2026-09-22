@@ -12,7 +12,7 @@
 #include "ac3/io/elementary.hpp"
 #include "../support.hpp"
 
-// The stream tools (roadmap DC9): commands that operate on an ALREADY-encoded
+// The stream tools (stream tools): commands that operate on an ALREADY-encoded
 // AC-3/E-AC-3 elementary stream rather than on PCM.
 //
 // Two of the three never touch the audio at all. 'metadata' and 'normalize'
@@ -32,7 +32,7 @@ namespace ac3cli::commands {
 // The whole input, scanned. Every command in this file needs the same two
 // things first - the bytes, and what the bitstream says it is - and reports
 // the same two failures, so this is read once and shared rather than each
-// command re-reading and re-scanning its own file. 'play' (roadmap UX9)
+// command re-reading and re-scanning its own file. 'play' (play/monitor follow mode)
 // shares it too, for its sink-following fallback - see decode_and_render.
 struct LoadedStream {
     std::vector<std::byte> bytes;
@@ -65,7 +65,7 @@ struct DecodeRenderStats {
 //
 // `on_frame` does whatever the caller wants with the rendered PCM - encode
 // it (run_transcode), re-encode and passthrough it, or decode straight to
-// MonitorSink ('play', roadmap UX9) - and returns false to abort, already
+// MonitorSink ('play', play/monitor follow mode) - and returns false to abort, already
 // reported by then; this just unwinds without reporting anything further.
 // `on_abort` is called instead for the DECODE side's own failure (a
 // mid-stream channel count change no one routing can describe), before
@@ -79,7 +79,7 @@ struct DecodeRenderStats {
     std::string_view in_path, const LoadedStream& loaded, const ac3::plan::Routing& routing,
     std::size_t coded_channels,
     const std::function<bool(std::span<const std::span<const float>>)>& on_frame,
-    const std::function<void()>& on_abort = [] {});
+    const std::function<void()>& on_abort = [] { /* default: nothing to clean up */ });
 
 // Decode and re-encode, preserving dialnorm, DRC and the mix metadata the
 // target codec has room for. The output codec comes from out_path's suffix

@@ -1,0 +1,43 @@
+Qt {{QT_VERSION}}
+------------------
+
+This package includes the Qt {{QT_VERSION}} libraries, plugins and QML
+modules that ac3gui.exe loads: bin/Qt6*.dll beside the executable, and
+the plugins/ and qml/ directories bin/qt.conf points at. Which files
+those are is decided by Qt's own deployment tool rather than by a list
+kept here - it reads the built binary and scans the QML it imports - so
+the contents follow the application. What ac3gui links directly is Qt
+Core, Gui, Qml, Quick, Quick Controls 2 and Concurrent; what its window
+imports is QtQuick, QtQuick.Controls (with every built-in style, since
+the style is chosen at runtime from C++ and no scan can see which),
+QtQuick.Dialogs, QtQuick.Layouts, QtQuick.Window and QtCore, together
+with the platform, image-format, icon-engine, TLS and style plugins
+those need.
+
+Copyright (C) The Qt Company Ltd. and other contributors.
+
+These are used under the GNU Lesser General Public License, version 3,
+reproduced at the end of this section; the GNU General Public License it
+refers to is LICENSE.txt beside this file. Any Qt translation catalogues
+the deployment places are under the BSD 3-clause licence.
+
+The Qt libraries are linked dynamically. You may replace them with a
+modified Qt 6 that is binary-compatible with this version and the
+application will load it: they are looked up by name from the
+directories bin/qt.conf points at.
+
+The complete corresponding source of this exact Qt version is published
+by The Qt Company at
+https://download.qt.io/archive/qt/{{QT_SERIES}}/{{QT_VERSION}}/single/
+and the project will also supply it on request, through the repository's
+issue tracker, for as long as this package is offered.
+
+The Qt libraries in turn contain third-party code, each part under its
+own terms - PCRE2, zlib, FreeType, HarfBuzz, libpng, libjpeg-turbo, the
+Unicode character database and some dozens more. The SPDX documents in
+the Qt {{QT_VERSION}} kit this package was built against (sbom/*.spdx)
+are the record of which of those it carries and under what terms, and
+Qt's attribution for each, with the full text of every licence named, is
+at https://doc.qt.io/qt-6/licenses-used-in-qt.html
+
+{{FILE:LGPL3}}

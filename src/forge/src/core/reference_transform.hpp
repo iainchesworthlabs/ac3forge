@@ -4,7 +4,7 @@
 
 // The REFERENCE (direct-form) halves of §8.2.3.2's forward MDCT and §7.9.4.2
 // step 3's inverse inner sums, behind a declaration so their tables can be
-// left out of a build entirely (roadmap PF7).
+// left out of a build entirely (minimum-footprint decoder profile).
 //
 // Why this exists as a seam at all: each of the five entry points below is
 // backed by a full (k, n) cosine/sine matrix, lazily constructed but

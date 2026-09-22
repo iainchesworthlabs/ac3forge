@@ -3,6 +3,8 @@
 #include <CoreAudio/CoreAudio.h>
 #include <CoreFoundation/CoreFoundation.h>
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -12,6 +14,8 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+
+#include "ac3/audio/speakers.hpp"
 
 // The handful of things capture.cpp, monitor.cpp and passthrough.cpp all
 // need from the CoreAudio HAL, kept in one place so the three cannot drift -
@@ -208,6 +212,103 @@ template <typename T>
         .value_or(0.0);
 }
 
+// Which of the rates a consumer endpoint might run at the device will take, for
+// RenderDeviceInfo::sample_rates. kAudioDevicePropertyAvailableNominalSampleRates
+// answers with ranges rather than a list - a device with a continuously
+// variable clock (an aggregate device, or one driven by a virtual driver) gives
+// one wide range rather than every rate in it - so the standard rates are
+// tested against the ranges instead of the ranges being expanded.
+[[nodiscard]] inline std::vector<std::uint32_t> available_sample_rates(AudioObjectID device) {
+    const auto ranges = get_property_array<AudioValueRange>(
+        device, address(kAudioDevicePropertyAvailableNominalSampleRates,
+                        kAudioDevicePropertyScopeOutput));
+    std::vector<std::uint32_t> rates;
+    for (const std::uint32_t rate : {44100U, 48000U, 88200U, 96000U, 176400U, 192000U}) {
+        const auto wanted = static_cast<Float64>(rate);
+        const bool takes = std::any_of(ranges.begin(), ranges.end(), [&](const AudioValueRange& range) {
+            // Half a hertz of slack: the HAL reports 44100 as 44100.0 on every
+            // device seen, but a range whose ends are computed from a clock
+            // divisor can land a fraction below the rate it means.
+            return wanted >= range.mMinimum - 0.5 && wanted <= range.mMaximum + 0.5;
+        });
+        if (takes) {
+            rates.push_back(rate);
+        }
+    }
+    return rates;
+}
+
+// The SPEAKER_* bit an AudioChannelLabel names (ac3::audio::speakers.hpp).
+// Apple's own header documents each label's WAVE equivalent, and these are
+// those: the surrounds of a 5.1 ring are kAudioChannelLabel_LeftSurround (WAVE
+// back left), and a 7.1 room's side speakers are the "surround direct" pair.
+[[nodiscard]] inline std::uint32_t speaker_of_label(AudioChannelLabel label) {
+    switch (label) {
+        case kAudioChannelLabel_Left: return audio::kSpeakerFrontLeft;
+        case kAudioChannelLabel_Right: return audio::kSpeakerFrontRight;
+        case kAudioChannelLabel_Center: return audio::kSpeakerFrontCentre;
+        case kAudioChannelLabel_LFEScreen: return audio::kSpeakerLowFrequency;
+        case kAudioChannelLabel_LeftSurround: return audio::kSpeakerBackLeft;
+        case kAudioChannelLabel_RightSurround: return audio::kSpeakerBackRight;
+        case kAudioChannelLabel_LeftCenter: return audio::kSpeakerFrontLeftOfCentre;
+        case kAudioChannelLabel_RightCenter: return audio::kSpeakerFrontRightOfCentre;
+        case kAudioChannelLabel_CenterSurround: return audio::kSpeakerBackCentre;
+        case kAudioChannelLabel_LeftSurroundDirect: return audio::kSpeakerSideLeft;
+        case kAudioChannelLabel_RightSurroundDirect: return audio::kSpeakerSideRight;
+        case kAudioChannelLabel_TopCenterSurround: return audio::kSpeakerTopCentre;
+        case kAudioChannelLabel_VerticalHeightLeft: return audio::kSpeakerTopFrontLeft;
+        case kAudioChannelLabel_VerticalHeightCenter: return audio::kSpeakerTopFrontCentre;
+        case kAudioChannelLabel_VerticalHeightRight: return audio::kSpeakerTopFrontRight;
+        case kAudioChannelLabel_TopBackLeft: return audio::kSpeakerTopBackLeft;
+        case kAudioChannelLabel_TopBackCenter: return audio::kSpeakerTopBackCentre;
+        case kAudioChannelLabel_TopBackRight: return audio::kSpeakerTopBackRight;
+        default: return 0;
+    }
+}
+
+// Which speakers a device's channels are, for RenderDeviceInfo::speakers, from
+// the layout it prefers for its output scope. Three forms reach this: a
+// bitmap, which is WAVE's own mask already (kAudioChannelBit_Left == 1 ==
+// SPEAKER_FRONT_LEFT, and so on up); a list of channel descriptions, whose
+// labels map one at a time; and a layout tag, which names an arrangement
+// without listing it and needs AudioToolbox to expand - not linked here, so a
+// tagged layout reports nothing rather than a guess. 0 means "cannot say".
+[[nodiscard]] inline std::uint32_t output_speakers(AudioObjectID device) {
+    const auto addr =
+        address(kAudioDevicePropertyPreferredChannelLayout, kAudioDevicePropertyScopeOutput);
+    UInt32 size = 0;
+    if (AudioObjectGetPropertyDataSize(device, &addr, 0, nullptr, &size) != noErr ||
+        size < sizeof(AudioChannelLayout)) {
+        return 0;
+    }
+    // AudioChannelLayout's trailing mChannelDescriptions array needs the
+    // struct's own alignment, so the buffer is backed by std::max_align_t for
+    // the reason channel_count() gives above.
+    std::vector<std::max_align_t> storage((size + sizeof(std::max_align_t) - 1) /
+                                          sizeof(std::max_align_t));
+    auto* layout = reinterpret_cast<AudioChannelLayout*>(storage.data());
+    if (AudioObjectGetPropertyData(device, &addr, 0, nullptr, &size, layout) != noErr) {
+        return 0;
+    }
+    if (layout->mChannelLayoutTag == kAudioChannelLayoutTag_UseChannelBitmap) {
+        return layout->mChannelBitmap & audio::kSpeakerAllPositions;
+    }
+    if (layout->mChannelLayoutTag != kAudioChannelLayoutTag_UseChannelDescriptions) {
+        return 0;
+    }
+    std::uint32_t speakers = 0;
+    for (UInt32 i = 0; i < layout->mNumberChannelDescriptions; ++i) {
+        const std::uint32_t speaker = speaker_of_label(layout->mChannelDescriptions[i].mChannelLabel);
+        if (speaker == 0) {
+            // A channel this vocabulary cannot place - a discrete or
+            // ambisonic label - makes the whole map unusable for routing.
+            return 0;
+        }
+        speakers |= speaker;
+    }
+    return audio::speaker_count(speakers) == layout->mNumberChannelDescriptions ? speakers : 0;
+}
+
 [[nodiscard]] inline std::vector<AudioObjectID> device_list() {
     return get_property_array<AudioObjectID>(kAudioObjectSystemObject,
                                              address(kAudioHardwarePropertyDevices));
@@ -359,6 +460,76 @@ public:
 private:
     AudioObjectID device_ = kAudioObjectUnknown;
     bool owned_ = false;
+};
+
+// Whether `device` is still there. kAudioDevicePropertyDeviceIsAlive reads 0
+// once the device has been removed, and the read itself fails once its object
+// has gone too.
+[[nodiscard]] inline bool device_alive(AudioObjectID device) {
+    return get_property<UInt32>(device, address(kAudioDevicePropertyDeviceIsAlive)).value_or(0) !=
+           0;
+}
+
+// Lowers a sink's running flag when its device dies: unplugged, or gone with
+// its driver. The HAL simply stops calling the IOProc of a device that has
+// gone, and there is no error for it to return anywhere, so a listener on
+// kAudioDevicePropertyDeviceIsAlive is how a sink finds out - the property
+// PortAudio's and VLC's Core Audio outputs watch for the same reason. The
+// listener runs on the HAL's notification thread, not the IOProc's realtime
+// one, so it may read the property; the flag is all it writes.
+//
+// Removing the listener stops future calls, and - as device_watcher.cpp sets
+// out - says nothing about one already under way. The flag such a call writes
+// belongs to the sink, which outlives the reset() its stop() makes, and the
+// device the call is about has to be the one being watched now, so a late
+// call from a device given up earlier writes nothing. What this shape does
+// not cover is the one device_watcher.cpp names for itself: a call still
+// under way when the sink is destroyed the moment its stop() returns.
+//
+// Written against Apple's documentation and those two implementations, with
+// no Mac to try it on (DR9): CI builds it, and nothing has seen it fire.
+class AliveWatch {
+public:
+    explicit AliveWatch(std::atomic_bool& running) : running_(running) {}
+    ~AliveWatch() { reset(); }
+    AliveWatch(const AliveWatch&) = delete;
+    AliveWatch& operator=(const AliveWatch&) = delete;
+
+    // False when the HAL refuses the listener; the sink then plays on
+    // unwatched, as every sink did before this existed.
+    bool watch(AudioObjectID device) {
+        reset();
+        device_.store(device, std::memory_order_release);
+        const auto addr = address(kAudioDevicePropertyDeviceIsAlive);
+        if (AudioObjectAddPropertyListener(device, &addr, &AliveWatch::listener, this) != noErr) {
+            device_.store(kAudioObjectUnknown, std::memory_order_release);
+            return false;
+        }
+        return true;
+    }
+
+    void reset() {
+        const AudioObjectID device =
+            device_.exchange(kAudioObjectUnknown, std::memory_order_acq_rel);
+        if (device != kAudioObjectUnknown) {
+            const auto addr = address(kAudioDevicePropertyDeviceIsAlive);
+            AudioObjectRemovePropertyListener(device, &addr, &AliveWatch::listener, this);
+        }
+    }
+
+private:
+    static OSStatus listener(AudioObjectID object, UInt32 /*address_count*/,
+                             const AudioObjectPropertyAddress* /*addresses*/, void* client_data) {
+        const auto* watch = static_cast<AliveWatch*>(client_data);
+        if (watch != nullptr && object == watch->device_.load(std::memory_order_acquire) &&
+            !device_alive(object)) {
+            watch->running_.store(false, std::memory_order_release);
+        }
+        return noErr;
+    }
+
+    std::atomic_bool& running_;
+    std::atomic<AudioObjectID> device_{kAudioObjectUnknown};
 };
 
 // kAudioDevicePropertySupportsMixing: best-effort, matching mpv's own

@@ -1,0 +1,585 @@
+# macOS leg of the CI lane partitions plan's reusable-workflow split
+# (docs/ci-lanes.md) - the two macOS matrix.include entries _build.yml's
+# `build` job used to carry (macos-llvm, macos-llvm-x64) plus macOS-only
+# follow-on steps (the universal-binary merge's install-tree uploads),
+# moved out so `_build.yml` can gate this whole platform on `run_macos`
+# with a plain job-level `if:` - see _ci-windows.yml's own header for why
+# that was not possible while these were matrix entries of one job
+# spanning three OSes.
+#
+# Called only from _build.yml, which still owns check-runners and
+# toolchain-versions and forwards their outputs here as plain inputs (no
+# runner-label inputs: macOS legs pin literal runner labels - macos-latest,
+# macos-15-intel - and never go through check-runners' self-hosted fan-out,
+# which has no macOS capacity to fan out to). Every step below is
+# otherwise byte-for-byte the same as it was inline in _build.yml's
+# `build` job.
+name: Reusable Build (macOS)
+
+on:
+  workflow_call:
+    inputs:
+      do_package:
+        type: boolean
+        default: false
+      version_tag:
+        type: string
+        default: ""
+      fetch_depth:
+        type: number
+        default: 1
+      persist_quality_trend:
+        type: boolean
+        default: false
+      llvm_version:
+        type: string
+        required: true
+      cmake_min:
+        type: string
+        required: true
+      qt_version:
+        type: string
+        required: true
+      vcpkg_commit:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    # Fork PRs never reach self-hosted (this file's two legs pin literal
+    # GitHub-hosted labels and never could, but the guard is kept uniform
+    # across all three platform files so no future runner addition can
+    # silently create the exposure - same reasoning as _ci-windows.yml's).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    timeout-minutes: 90
+    # A failing experimental leg would annotate the run but not fail it - the
+    # mechanism _ci-windows.yml's continue-on-error still uses for
+    # windows-msvc-arm64. No macOS leg sets `experimental: true` today, so
+    # this is hardcoded false rather than a reference to a matrix field none
+    # of this file's entries define.
+    continue-on-error: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "macOS LLVM (Homebrew)"
+            runner: '["macos-latest"]'
+            preset: macos-llvm
+            hearth: true
+            # Crucible compiles here and cannot be run here; see the Configure
+            # step's note.
+            crucible: true
+            mac_arch: arm64
+            llvm: true
+            gui: true
+            packageable: true
+            gold_reference: true
+            # Declared once, here, so `matrix.release_package` in the shared
+            # Package/asserts steps below resolves against a property this
+            # file's matrix actually defines - the same reason windows-msvc
+            # declares `experimental: false` in _ci-windows.yml. No macOS
+            # leg carries a release_package build any more (DR8) - see
+            # this matrix entry's own header comment further down.
+            release_package: false
+
+          # x86_64 half of DR8's macOS universal binaries. macos-15-intel is
+          # real native Intel hardware (confirmed against
+          # docs.github.com/en/actions/reference/runners/github-hosted-runners
+          # directly, not assumed), free for public repos - so this is a real
+          # build, not a cross-compile or Rosetta emulation. Same toolchain
+          # file, same install steps, same reasoning as the arm64 leg above
+          # throughout this job; only the preset/triplet (x64-macos-llvm) and
+          # runner label differ.
+          #
+          # No longer experimental: three consecutive real, hosted-runner runs
+          # went green on this brand-new macos-15-intel label before this line
+          # came off - the v0.0.0-alpha.1 and v0.0.0-alpha.2 release dry runs
+          # and this feature branch's own required PR CI - each with a real
+          # gold-reference pass (67.80/67.82/67.76 dB, matching the x86
+          # baseline every other non-arm64 leg reports), not just "it
+          # compiled." Same promotion process macos-llvm and build-android
+          # went through before it - see this file's own header.
+          - name: "macOS LLVM x64 (Homebrew, Intel)"
+            runner: '["macos-15-intel"]'
+            preset: macos-llvm-x64
+            hearth: true
+            crucible: true
+            mac_arch: x64
+            llvm: true
+            gui: true
+            packageable: true
+            gold_reference: true
+
+    steps:
+      # NOT Homebrew's "qt" formula (that was this step until the packaging
+      # noise investigation below). Homebrew's Qt6 stages its QML plugins
+      # (Contents/PlugIns/*.dylib under ac3gui.app/ac3crucible.app, every
+      # QtQuick.Controls style among them - Fusion, which
+      # apps/gui/main.cpp's QQuickStyle::setStyle("Fusion") actually uses,
+      # included) as symlinks back into its own Cellar, computed as if the
+      # app were being installed under /usr/local. It isn't - cpack stages it
+      # under the runner's workspace - so every one of those symlinks is
+      # dangling from the moment qt_generate_deploy_qml_app_script()'s
+      # install(SCRIPT) creates it. The macdeployqt -executable= pass that
+      # follows is supposed to resolve and finish deploying each one; that is
+      # what was actually failing, tens of thousands of times over
+      # (install_name_tool/otool-classic: can't open file), one non-fatal
+      # error per broken symlink per dependency-graph pass. cpack "succeeds"
+      # regardless and ships the dangling symlink as-is: verified by
+      # downloading a green run's packages-macos-llvm-x64 artifact and
+      # finding every QtQuick/QML plugin in it a few dozen bytes (a symlink)
+      # instead of a real Mach-O binary. This is a known Homebrew/Qt6
+      # interaction, not anything specific to this project - Homebrew's Qt6
+      # is built with paths that resolve from its own Cellar layout, which
+      # several long-standing Homebrew/homebrew-core issues document as
+      # breaking macdeployqt-based redistribution (e.g. homebrew-core#73019,
+      # homebrew-core#74946, homebrew-core#3219). The official Qt kit below
+      # is built for exactly this redistribution case and does not have the
+      # problem - the same reason the Windows leg (_ci-windows.yml) and the
+      # Linux AppImage job (_build.yml) already use it instead of a
+      # system/Homebrew Qt for anything that leaves the build machine.
+      #
+      # modules: matches the Windows leg's list exactly, for the same
+      # reason - apps/crucible's room needs Qt Quick 3D, which is not part
+      # of the base kit, and Quick3D pulls in its own shader tooling
+      # (qtshadertools). arch/host/target are unset because, unlike Windows,
+      # aqtinstall needs neither for a macOS desktop kit: "macos" is a
+      # single universal build covering both arm64 and x86_64, and host/
+      # target both auto-detect correctly from the runner.
+      - name: Install Qt (prebuilt)
+        if: matrix.gui && runner.os == 'macOS'
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
+        with:
+          version: ${{ inputs.qt_version }}
+          modules: qtquick3d qtshadertools
+          cache: true
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      # Homebrew's core "llvm" formula has no versioned sibling the way
+      # apt.llvm.org or the official win64 installer do (there is no "llvm@21"
+      # to pin against), so unlike the Linux/Windows LLVM steps above this
+      # cannot pin an exact build - it installs whatever is current and reports
+      # it via the assert step below. macos.llvm.toolchain.cmake's HINTS
+      # already cover Homebrew's install prefix (/opt/homebrew/opt/llvm on
+      # Apple Silicon, which is what macos-latest runners are), so this alone
+      # is enough for find_program to pick it over Apple's system clang -
+      # PATH is exported too so plain `c++`/`clang++` invocations (the assert
+      # step, ad-hoc debugging) see the same compiler CMake configures with.
+      - name: Install LLVM (macOS)
+        if: matrix.llvm && runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          brew install llvm
+          llvm_prefix="$(brew --prefix llvm)"
+          echo "${llvm_prefix}/bin" >> "$GITHUB_PATH"
+
+      - name: Install ffmpeg (macOS)
+        if: matrix.gold_reference && runner.os == 'macOS'
+        run: brew install ffmpeg
+
+      # Unconditional here (the original step's `if: !matrix.container` is
+      # always true on this platform - no macOS leg ever sets `container`,
+      # unlike _ci-linux.yml's own copy of this step, where it still matters).
+      - name: Install Ninja
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            macOS)   brew install ninja ;;
+            Windows) choco install ninja -y --no-progress --requirechecksums ;;
+          esac
+
+      # CMakePresets.json declares the project's real minimum (cmakeMinimumRequired);
+      # this asserts the RUNNER actually meets it rather than letting a stale image
+      # fail later with a confusing "unknown preset field" error. gcc/llvm/msvc are
+      # asserted the same way, all against the pins toolchain-versions resolved
+      # above - see docs/ci-self-hosted-runners.md.
+      # ---------------------------------------------------------------------
+      # Configure / build / test
+      # ---------------------------------------------------------------------
+      # Toolchain assert, vcpkg setup, Configure (presets carry generator,
+      # compiler, Release, AC3FORGE_BUILD_GUI=OFF - `cmake --preset
+      # config-<leg>` locally reproduces this exactly except for the
+      # QT_ROOT_DIR/-DAC3FORGE_BUILD_GUI overrides the action bolts on),
+      # Build (-k 0, warnings-as-errors) and Test - extracted into
+      # ./.github/actions/build-leg (docs/ci-lanes.md, CI lane partitions
+      # plan) so splitting this file into one reusable workflow per platform
+      # does not duplicate the sequence into each of them. See that action's
+      # own header and step comments for what each piece does and why;
+      # nothing about what runs or in what order changed by moving it there -
+      # composite action steps execute in this same job/workspace.
+      - uses: ./.github/actions/build-leg
+        with:
+          preset: ${{ matrix.preset }}
+          gui: ${{ matrix.gui }}
+          crucible: ${{ matrix.crucible }}
+          hearth: ${{ matrix.hearth }}
+          version-tag: ${{ inputs.version_tag }}
+          # No macOS leg needs a GCC version to assert - see build-leg's
+          # own toolchain-assert step, which only reads this inside its
+          # linux-gcc*/case branch.
+          gcc-version: ""
+          llvm-version: ${{ inputs.llvm_version }}
+          msvc-toolset: ""  # no macOS leg needs an MSVC toolset assert
+          cmake-min: ${{ inputs.cmake_min }}
+          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+
+      - name: Assert the AC3Forge Crucible was built
+        # Windows and macOS, which are the two platforms whose matrix build
+        # tree carries Crucible; on Linux that tree deliberately has none
+        # (see the Configure step above), and the dedicated Linux pass makes
+        # its own assertions in its own tree.
+        #
+        # This matters more on macOS than anywhere else. That half has never
+        # been compiled by anyone - it was written without a Mac - so a leg
+        # that quietly built no window would be the difference between "it
+        # compiles" and "nobody checked", and the whole macOS claim rests on
+        # the first of those.
+        if: matrix.crucible && (runner.os == 'Windows' || runner.os == 'macOS')
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="build/config-${{ matrix.preset }}"
+          suffix=''
+          [ "$RUNNER_OS" = "Windows" ] && suffix='.exe'
+          # ac3crucible is a MACOSX_BUNDLE target (apps/crucible/CMakeLists.txt),
+          # so on macOS the product is bin/ac3crucible.app/Contents/MacOS/
+          # ac3crucible and there is no plain file at bin/ac3crucible. Its two
+          # companions are not bundles - ac3crucible-run is a plain
+          # add_executable, and qt_add_executable does not set MACOSX_BUNDLE -
+          # so only this one needs the longer path. The ac3gui smoke test
+          # further down branches the same way for the same reason.
+          window="$build/bin/ac3crucible$suffix"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            window="$build/bin/ac3crucible.app/Contents/MacOS/ac3crucible"
+          fi
+          missing=0
+          if [ ! -f "$window" ]; then
+            echo "::error::$window was not built - was Qt6 found? Check the configure log's warnings."
+            missing=1
+          fi
+          for exe in ac3crucible-run ac3crucible_qmltests; do
+            if [ ! -f "$build/bin/$exe$suffix" ]; then
+              echo "::error::$exe$suffix was not built - was Qt6 found? Check the configure log's warnings."
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+          # Quick3D resolves through find_package, so the cache is where its
+          # presence is recorded; a build without it still links, which is
+          # exactly why this is asserted rather than assumed.
+          if ! grep -q '^Qt6Quick3D_DIR' "$build/CMakeCache.txt"; then
+            echo "::error::Qt Quick 3D was not found, so the room's 3D view is missing from this build - the 'Install Qt (prebuilt)' step's modules list is what provides it"
+            exit 1
+          fi
+          ls -1 "$window" "$build/bin/ac3crucible-run$suffix"
+
+      # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
+      # lightweight L4 SNR check from the project's original validation-
+      # pyramid design, now docs/verification.md). Proven on macOS alone
+      # first; now every leg has it except linux-llvm-asan-ubsan, which
+      # stays diagnostic-only (same reasoning as its `packageable` exclusion
+      # below - a sanitizer build's job is catching memory/UB errors, not
+      # re-proving codec correctness a plain build already did).
+      #
+      # Extracted into ./.github/actions/gold-reference-gate alongside
+      # build-leg above, for the same reason (docs/ci-lanes.md). Unlike
+      # build-leg this call still carries its own `if:` here - the action
+      # has no notion of matrix.gold_reference, so the caller still decides
+      # whether to run it at all, the same way the setup-msvc-env call above
+      # stays gated on `matrix.msvc`.
+      - name: Gold reference gate
+        if: matrix.gold_reference
+        uses: ./.github/actions/gold-reference-gate
+        with:
+          preset: ${{ matrix.preset }}
+          persist-quality-trend: ${{ inputs.persist_quality_trend }}
+
+      # Handed off to the quality-trend job below, which runs once (not once
+      # per leg) after every gold_reference leg has passed - see that job's
+      # own header comment for why it is a separate job rather than each leg
+      # pushing its own commit.
+      - name: Upload gold-reference results
+        if: matrix.gold_reference && inputs.persist_quality_trend
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gold-reference-${{ matrix.preset }}
+          path: ${{ runner.temp }}/gold-reference-results/*.json
+          if-no-files-found: error
+
+      # ctest above already covers the codec; this covers the one thing it
+      # can't - that ac3gui actually starts, loads its QML, and drives a real
+      # encode through the Qt event loop. offscreen needs no display, so it
+      # runs the same in this container as it does on a workstation. See
+      # docs/building.md's Linux section for why the qmlshapesplugin /
+      # labsmodelsplugin / qmlfolderlistmodelplugin CMake warnings during
+      # Configure, above, don't affect this.
+      - name: Smoke test ac3gui (headless)
+        if: matrix.gui
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
+        # apps/gui/CMakeLists.txt sets MACOSX_BUNDLE ON unconditionally, but it
+        # is a no-op everywhere except APPLE, where it moves the built
+        # executable to bin/ac3gui.app/Contents/MacOS/ac3gui instead of plain
+        # bin/ac3gui - the property Linux never sets and Windows doesn't need
+        # (WIN32_EXECUTABLE controls the console-vs-GUI subsystem there, not
+        # where the .exe lands).
+        #
+        # QSG_RENDER_LOOP=basic and the perl-alarm wrapper are both macOS-only
+        # and both about the same hang the "Test" step hit on this leg's
+        # first-ever GUI run (see apps/gui/tests/CMakeLists.txt's identical
+        # QSG_RENDER_LOOP comment for the render-loop-deadlock hypothesis).
+        # ac3gui --smoke drives the same QQmlApplicationEngine/QQuickWindow
+        # path ac3gui_qmltests does, so it is at equal risk and had no bound
+        # of its own - a hang here would silently eat the rest of this leg's
+        # 6-hour job ceiling exactly like the Test step did. `perl` (not
+        # `timeout`, which macOS's BSD userland doesn't ship) is on every
+        # macOS runner image by default.
+        run: |
+          set -euo pipefail
+          bin="build/config-${{ matrix.preset }}/bin/ac3gui"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            bin="build/config-${{ matrix.preset }}/bin/ac3gui.app/Contents/MacOS/ac3gui"
+            export QSG_RENDER_LOOP=basic
+          fi
+          smoke_args=(--smoke
+            fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav
+            "${RUNNER_TEMP}/ac3gui-smoke.ac3"
+            "${RUNNER_TEMP}/ac3gui-smoke.png")
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            perl -e 'alarm shift; exec @ARGV' 120 "$bin" "${smoke_args[@]}"
+          else
+            "$bin" "${smoke_args[@]}"
+          fi
+
+      # Packaging. windows-msvc always packages, on every push, as a
+      # continuous smoke test of the packaging path itself. For a real
+      # release (do_package set, from release.yml), only one leg per
+      # OS/arch actually packages as the release's own canonical artifact -
+      # `release_package: true` on windows-msvc, linux-gcc and
+      # linux-gcc-arm64 - rather than every packageable leg. A release ships
+      # one canonical build per platform for people to download, not a build
+      # per compiler-toolchain leg: windows-llvm and linux-llvm exist to
+      # catch compiler-specific bugs in CI, which they still do in full
+      # (build+test, unchanged) - packaging them too would just be two
+      # redundant, unlabelled-as-to-which-is-canonical zips per OS with
+      # nothing to tell a downloader apart. A packaging failure on a
+      # release_package leg blocks like any other leg's would, rather than
+      # being absorbed by continue-on-error. linux-llvm-asan-ubsan is never
+      # packaged at all (not `packageable` - see the matrix entry): there is
+      # no pack-linux-llvm-asan-ubsan preset, a sanitizer-instrumented debug
+      # build is a diagnostic tool, not something to ship.
+      #
+      # macOS (DR8) is neither of the two shapes above any more: macos-llvm
+      # and macos-llvm-x64 are each `packageable` but never `release_package`
+      # - a release doesn't want either leg's own single-arch .dmg as "the"
+      # macOS package now that a universal one exists. They still package on
+      # every ORDINARY push (the windows-msvc-style continuous smoke test,
+      # extended to both of them - useful as an independent per-arch check
+      # that packaging itself still works), just never on a do_package
+      # release run, where they instead run the install-tree steps below for
+      # package-macos-universal to lipo-merge, and that job uploads the
+      # actual release artifact.
+      #
+      # cpack reuses the same build/config-<leg> tree the Configure and Build
+      # steps above already produced - pack-<leg> points at the same
+      # config-<leg> configurePreset - so this proves the packaging path
+      # against the exact build that was just tested, not a separate one.
+      - name: Package
+        if: >-
+          matrix.packageable &&
+          (matrix.preset == 'windows-msvc' ||
+           (inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+        shell: bash
+        run: cpack --preset pack-${{ matrix.preset }}
+
+      # The macOS counterpart to _ci-windows.yml's own "Assert the AC3Forge
+      # Crucible was packaged" step. Same cpack pass as the Package step just
+      # above, not a second invocation: cmake/Packaging.cmake's Crucible
+      # component now reaches APPLE, so the one `cpack --preset
+      # pack-<leg>` call above already writes ac3forge-crucible-*.zip
+      # alongside the runtime/dev zips and the monolithic .dmg, exactly the
+      # way it already writes ac3forge-crucible-*.zip on windows-msvc - this
+      # just asserts that it did. Same `if:` as Package, since that is what
+      # decides whether packages/ exists at all to look in.
+      - name: Assert the AC3Forge Crucible was packaged (macOS)
+        if: >-
+          matrix.packageable &&
+          (matrix.preset == 'windows-msvc' ||
+           (inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(packages/ac3forge-crucible-*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "::error::cpack produced no ac3forge-crucible-*.zip - the crucible component did not reach CPACK_COMPONENTS_ALL on macOS (cmake/Packaging.cmake) or its install rules produced nothing (apps/crucible/CMakeLists.txt)."
+            ls -1 packages/ || true
+            exit 1
+          fi
+          printf 'packaged: %s\n' "${zips[@]}"
+          python3 tools/ci/check_crucible_package.py "${zips[0]}"
+
+      # The counterpart to the two Windows asserts above, for the files that
+      # had no assertion at all: ac3cli's generated man page and its four
+      # shell completions (apps/cli/CMakeLists.txt, CLI shell completions). Those are
+      # produced by running the freshly built ac3cli, so a cross build skips
+      # them - and until #527 that test was CMAKE_CROSSCOMPILING, which is
+      # TRUE on every native Linux and macOS build here (each
+      # cmake/toolchains/{linux.gcc,linux.llvm,macos.llvm}.toolchain.cmake
+      # sets CMAKE_SYSTEM_NAME unconditionally, and every Linux/macOS preset
+      # chainloads one). Both .tar.gz, both .deb, both .rpm and the universal
+      # .dmg shipped none of the five files, and no gate noticed: the only
+      # test asserting they exist is packaging/homebrew/Formula/ac3forge.rb's
+      # `test do` block, and a Homebrew build passes no toolchain file, so it
+      # went on passing throughout.
+      #
+      # The two OSes reach this at different times, which is worth knowing
+      # when reading a red run. The Package step above runs on the macOS legs
+      # on every ordinary push, so macOS is the per-PR guard; the Linux legs
+      # package only on a release run (inputs.do_package), so Linux is
+      # checked before a release ships rather than on every commit. Between
+      # them the regression cannot reach a published artifact.
+      #
+      # This asserts on the arm64 release leg too, which is correct because
+      # linux-gcc-arm64 runs on ubuntu-24.04-arm - real aarch64 hardware, so
+      # host and target match and the files are produced like anywhere else.
+      # Were that leg ever moved to an x86_64 host, the files would go missing
+      # from the arm64 release package for a reason this step should still
+      # report rather than excuse.
+      - name: Assert the CLI man page and completions were packaged (Linux/macOS)
+        if: >-
+          matrix.packageable && runner.os != 'Windows' &&
+          ((inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # The runtime component's own archive. The [0-9] is what keeps this
+          # off the sibling ac3forge-dev-* and ac3forge-crucible-* archives,
+          # which are different components with different contents and are
+          # not expected to carry these files (cmake/Packaging.cmake names
+          # all three). Linux gets a TGZ, macOS only ever a ZIP - see that
+          # file's own APPLE/UNIX generator branches.
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            archives=(packages/ac3forge-[0-9]*.tar.gz)
+          else
+            archives=(packages/ac3forge-[0-9]*.zip)
+          fi
+          if [ ${#archives[@]} -eq 0 ]; then
+            echo "::error::no runtime archive in packages/ - the runtime component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake), or CPACK_ARCHIVE_RUNTIME_FILE_NAME no longer produces the ac3forge-<version>-<system> name this looks for."
+            ls -1 packages/ || true
+            exit 1
+          fi
+          printf 'packaged: %s\n' "${archives[@]}"
+          python3 tools/ci/check_cli_docs_package.py "${archives[0]}"
+
+      - name: Upload package artifacts
+        if: >-
+          matrix.packageable &&
+          (matrix.preset == 'windows-msvc' ||
+           (inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packages-${{ matrix.preset }}
+          # An explicit extension allowlist, not packages/* - CPack leaves its
+          # per-generator staging tree behind under packages/_CPack_Packages/
+          # (never cleaned up; this is normal CPack behaviour, not a bug
+          # here), and a bare packages/* glob matches that directory too.
+          # DragNDrop's staging tree in particular contains a symlink to
+          # /Applications for the drag-to-install UX - upload-artifact
+          # dereferences symlinks by default, so on a macOS runner that walks
+          # straight into the real /Applications (Xcode's framework tree is
+          # notorious for symlink cycles) and OOMs the upload step's Node
+          # process trying to archive it. See actions/upload-artifact#619 and
+          # #590. Restricting the glob to real package files and their
+          # checksums - the same extensions github-release's own glob looks
+          # for - sidesteps the staging tree entirely rather than trying to
+          # outrun it with excludes.
+          path: |
+            packages/*.zip
+            packages/*.zip.sha512
+            packages/*.tar.gz
+            packages/*.tar.gz.sha512
+            packages/*.deb
+            packages/*.deb.sha512
+            packages/*.rpm
+            packages/*.rpm.sha512
+            packages/*.exe
+            packages/*.exe.sha512
+            packages/*.dmg
+            packages/*.dmg.sha512
+          if-no-files-found: error
+
+      # Feeds package-macos-universal below: a plain `cmake --install` of just
+      # the runtime component (ac3cli/ac3gui, plus the man page/completions -
+      # see cmake/InstallLibrary.cmake's COMPONENT split), not a cpack
+      # invocation - that job lipo-merges this leg's tree against
+      # macos-llvm(-x64)'s counterpart into one universal bundle rather than
+      # either leg shipping its own single-arch .dmg as the release's macOS
+      # package (see the matrix entries' own comments). Gated on
+      # inputs.do_package so an ordinary push never pays for a second install
+      # pass on top of the one ctest already exercised against this same
+      # build tree.
+      #
+      # apps/gui/CMakeLists.txt's qt_generate_deploy_qml_app_script()
+      # install(SCRIPT) needed an explicit COMPONENT runtime added for this
+      # to actually pick up Qt's own copied Frameworks/PlugIns/QML - an
+      # install(SCRIPT) with no COMPONENT only runs during a FULL install,
+      # never a component-filtered one like this (confirmed against CMake's
+      # own install(SCRIPT) documentation), and every packaging path
+      # exercised before this one always did a full install (cpack's
+      # CPACK_MONOLITHIC_INSTALL for DragNDrop, and the archive/DEB/RPM
+      # generators, which install every requested component in the same
+      # pass) - so the gap never showed up until something asked for
+      # --component runtime on its own.
+      - name: Install runtime component (macOS universal merge)
+        if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
+        shell: bash
+        run: cmake --install "build/config-${{ matrix.preset }}" --prefix stage --component runtime
+
+      - name: Upload install tree (macOS universal merge)
+        if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-install-runtime-${{ matrix.mac_arch }}
+          path: stage/
+          if-no-files-found: error
+
+      # Nice-to-have companion to the runtime tree above: the library SDK
+      # (headers, static archives, CMake package config, the versioned
+      # .dylib - see cmake/InstallLibrary.cmake) for package-macos-universal
+      # to attempt merging into a universal `ac3forge-dev-*` archive too.
+      # cmake --install takes one --component per invocation, so this is two
+      # calls into the same prefix rather than one. Best-effort: if this
+      # step or the merge job's own dev-archive half fails, the runtime .dmg
+      # above is unaffected - see that job's own comment.
+      - name: Install library components (macOS universal merge, dev archive)
+        if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --install "build/config-${{ matrix.preset }}" --prefix stage-dev --component library
+          cmake --install "build/config-${{ matrix.preset }}" --prefix stage-dev --component libruntime
+
+      - name: Upload dev install tree (macOS universal merge)
+        if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-install-dev-${{ matrix.mac_arch }}
+          path: stage-dev/
+          if-no-files-found: error

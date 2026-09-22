@@ -170,7 +170,7 @@ ColumnLayout {
                        : qsTr("%1 are loaded but go nowhere — they will not be in the encode until you give them a destination.").arg(joined);
             }
             wrapMode: Text.WordWrap
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
             color: Theme.accent700
         }
     }
@@ -183,15 +183,15 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: Theme.space2
 
-        Text { Layout.preferredWidth: 170; text: qsTr("FILE"); font.pixelSize: 10; font.letterSpacing: 1; color: Theme.textMuted }
-        Text { Layout.preferredWidth: 50; text: qsTr("CH"); font.pixelSize: 10; font.letterSpacing: 1; color: Theme.textMuted }
-        Text { Layout.preferredWidth: 200; text: qsTr("GOES TO"); font.pixelSize: 10; font.letterSpacing: 1; color: Theme.textMuted }
-        Text { Layout.fillWidth: true; text: qsTr("THEN"); font.pixelSize: 10; font.letterSpacing: 1; color: Theme.textMuted }
+        Text { Layout.preferredWidth: 170; text: qsTr("FILE"); font.pixelSize: Theme.fontMicro; font.letterSpacing: 1; color: Theme.textMuted }
+        Text { Layout.preferredWidth: 50; text: qsTr("CH"); font.pixelSize: Theme.fontMicro; font.letterSpacing: 1; color: Theme.textMuted }
+        Text { Layout.preferredWidth: 200; text: qsTr("GOES TO"); font.pixelSize: Theme.fontMicro; font.letterSpacing: 1; color: Theme.textMuted }
+        Text { Layout.fillWidth: true; text: qsTr("THEN"); font.pixelSize: Theme.fontMicro; font.letterSpacing: 1; color: Theme.textMuted }
         Button {
             objectName: "autoAssignButton"
             text: qsTr("Auto-assign by name")
             flat: true
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontMono
             visible: EncoderController.sourceModel.length > 0
             enabled: !EncoderController.busy
             onClicked: EncoderController.autoAssignByName()
@@ -225,14 +225,14 @@ ColumnLayout {
                     Layout.preferredWidth: 170
                     text: row.modelData.sourceLabel
                     elide: Text.ElideMiddle
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     font.family: Theme.monoFamily
                     color: Theme.text
                 }
                 Text {
                     Layout.preferredWidth: 50
                     text: qsTr("ch %1").arg(row.modelData.channel + 1)
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     font.family: Theme.monoFamily
                     color: Theme.textMuted
                 }
@@ -243,7 +243,7 @@ ColumnLayout {
                     model: root.rowDestinationOptions(row.modelData.source, row.modelData.channel)
                     textRole: "label"
                     valueRole: "value"
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     // "none" untouched shows the placeholder; touched shows
                     // the deliberate "Nothing". A row's own "objm" reads as
                     // this ComboBox's "objm-pair" entry when one is offered
@@ -278,7 +278,7 @@ ColumnLayout {
                     text: root.thenText(row.modelData.destToken,
                                         row.modelData.touched === true)
                     wrapMode: Text.WordWrap
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     color: row.modelData.destToken === "none" && row.modelData.touched !== true
                            && !root.automaticRouting
                            ? Theme.accent700 : Theme.textMuted
@@ -295,7 +295,7 @@ ColumnLayout {
                     objectName: "assignTrim-" + row.modelData.source + "-" + row.modelData.channel
                     Layout.preferredWidth: 52
                     horizontalAlignment: Text.AlignRight
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     font.family: Theme.monoFamily
                     color: (row.modelData.trimDb || 0) !== 0 ? Theme.text : Theme.textMuted
                     enabled: row.modelData.destToken !== "none"
@@ -314,7 +314,7 @@ ColumnLayout {
                 }
                 Text {
                     text: qsTr("dB")
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.fontMicro
                     color: Theme.textMuted
                 }
             }
@@ -330,7 +330,7 @@ ColumnLayout {
     Text {
         visible: rows.count === 0
         text: qsTr("Load a source and its channels appear here, each with a destination.")
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontSmall
         color: Theme.textMuted
     }
 
@@ -341,7 +341,7 @@ ColumnLayout {
               ? qsTr("Object mode is on: sources sent to an object are placed in the room and ride as metadata. A bed position pins the channel there instead.")
               : qsTr("Sending a source to an object turns object mode on, which fixes the stream at Dolby Digital Plus over a 5.1 bed.")
         wrapMode: Text.WordWrap
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         color: Theme.textMuted
     }
 }

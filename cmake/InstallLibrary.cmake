@@ -101,7 +101,7 @@ else()
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_static)
 endif()
 
-# forge_simd_avx2 (ROADMAP PF5's dynamic-dispatch follow-on, x86_64 only,
+# forge_simd_avx2 (runtime SIMD dispatch, x86_64 only,
 # AC3FORGE_AVX2) is PUBLIC-linked into both forge_static and forge_shared
 # unconditionally (src/forge/CMakeLists.txt), so it needs the same
 # export-set membership forge_objects gets just above and for the same

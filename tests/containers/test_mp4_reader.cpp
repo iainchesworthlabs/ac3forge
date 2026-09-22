@@ -151,6 +151,12 @@ struct MoovSpec {
     std::optional<Bytes> dec3_payload = std::nullopt;
     std::optional<Bytes> tkhd_override = std::nullopt;
     std::optional<Bytes> mdhd_override = std::nullopt;
+    // A movie header, placed ahead of the trak or, with mvhd_last, after it;
+    // and an edts placed in the trak after tkhd. Neither is written unless
+    // set.
+    std::optional<Bytes> mvhd = std::nullopt;
+    bool mvhd_last = false;
+    std::optional<Bytes> edts = std::nullopt;
 };
 
 Bytes build_stsd(const MoovSpec& spec) {
@@ -260,11 +266,65 @@ Bytes build_moov(const MoovSpec& spec) {
     }
     Bytes trak;
     put_bytes(trak, spec.tkhd_override ? *spec.tkhd_override : fullbox("tkhd", 0, 0x000007, tkhd));
+    if (spec.edts) {
+        put_bytes(trak, *spec.edts);
+    }
     put_bytes(trak, box("mdia", mdia));
 
     Bytes moov;
+    if (spec.mvhd && !spec.mvhd_last) {
+        put_bytes(moov, *spec.mvhd);
+    }
     put_bytes(moov, box("trak", trak));
+    if (spec.mvhd && spec.mvhd_last) {
+        put_bytes(moov, *spec.mvhd);
+    }
     return box("moov", moov);
+}
+
+// §8.2.2's mvhd, as far as its timescale - which is all the reader takes.
+Bytes mvhd_box(std::uint8_t version, std::uint32_t timescale) {
+    Bytes body;
+    if (version == 1) {
+        put_u64(body, 0);  // creation_time
+        put_u64(body, 0);  // modification_time
+        put_u32(body, timescale);
+        put_u64(body, 0);  // duration
+    } else {
+        put_u32(body, 0);
+        put_u32(body, 0);
+        put_u32(body, timescale);
+        put_u32(body, 0);
+    }
+    put_u32(body, 0x00010000);  // rate
+    return fullbox("mvhd", version, 0, body);
+}
+
+struct HandEdit {
+    std::uint64_t segment_duration = 0;
+    std::int64_t media_time = 0;
+    std::int16_t rate_integer = 1;
+    std::int16_t rate_fraction = 0;
+};
+
+// §8.6.5/§8.6.6: an edts around an elst of `edits`, declaring `count` of them
+// (the real number unless a test wants it to lie).
+Bytes edts_box(std::uint8_t version, const std::vector<HandEdit>& edits,
+               std::optional<std::uint32_t> count = std::nullopt) {
+    Bytes body;
+    put_u32(body, count.value_or(static_cast<std::uint32_t>(edits.size())));
+    for (const HandEdit& edit : edits) {
+        if (version == 1) {
+            put_u64(body, edit.segment_duration);
+            put_u64(body, static_cast<std::uint64_t>(edit.media_time));
+        } else {
+            put_u32(body, static_cast<std::uint32_t>(edit.segment_duration));
+            put_u32(body, static_cast<std::uint32_t>(edit.media_time));
+        }
+        put_u16(body, static_cast<std::uint16_t>(edit.rate_integer));
+        put_u16(body, static_cast<std::uint16_t>(edit.rate_fraction));
+    }
+    return box("edts", fullbox("elst", version, 0, body));
 }
 
 Bytes ftyp() {
@@ -524,6 +584,161 @@ TEST_CASE("MP4 round-trips mux()'s frames back byte-for-byte", "[mp4][reader]") 
     REQUIRE(out->track.codec_config.oba_complexity_index.has_value());
     CHECK(*out->track.codec_config.oba_complexity_index == 16);
     CHECK(out->track.codec_config.payload == atmos_dec3());
+    // No edit list unless one is asked for.
+    CHECK(out->track.movie_timescale == 48000);
+    CHECK(out->track.edits.empty());
+}
+
+TEST_CASE("MP4 round-trips mux()'s edit list, batch and streamed", "[mp4][reader]") {
+    const std::vector<Bytes> frames{frame_of(700, 0x11), frame_of(512, 0x22), frame_of(1024, 0x33)};
+    const mp4::AudioTrack track{.codec_id = std::string{mp4::kCodecEac3},
+                                .sample_rate = 48000,
+                                .channels = 6,
+                                .samples_per_frame = 1536,
+                                .codec_config = atmos_dec3(),
+                                .language = "eng"};
+    mp4::MuxOptions options;
+    options.edit = mp4::MuxOptions::Edit{.start_samples = 256, .duration_samples = (3 * 1536) - 356};
+    const auto file = mp4::mux(track, views_of(frames), options);
+    REQUIRE(file.has_value());
+
+    const auto out = mp4::demux(*file);
+    REQUIRE(out.has_value());
+    CHECK(owned(out->samples) == frames);
+    CHECK(out->track.movie_timescale == 48000);
+    REQUIRE(out->track.edits.size() == 1);
+    CHECK(out->track.edits[0].segment_duration == (3 * 1536) - 356);
+    CHECK(out->track.edits[0].media_time == 256);
+    CHECK(out->track.edits[0].media_rate == 0x00010000);
+
+    mp4::Reader reader{};
+    std::size_t samples = 0;
+    const auto count = [&samples](std::span<const std::byte>) { ++samples; };
+    REQUIRE(reader.push(*file, count).has_value());
+    REQUIRE(reader.finish().has_value());
+    CHECK(samples == frames.size());
+    CHECK(reader.track().movie_timescale == 48000);
+    REQUIRE(reader.track().edits.size() == 1);
+    CHECK(reader.track().edits[0].media_time == 256);
+}
+
+TEST_CASE("MP4 reads edit lists this project never writes", "[mp4][reader]") {
+    const auto assemble = [](MoovSpec spec) {
+        spec.mdat_data_offset = 0;
+        const auto measured = build_moov(spec);
+        spec.mdat_data_offset = ftyp().size() + measured.size() + 8;
+        const auto moov = build_moov(spec);
+        Bytes file = ftyp();
+        file.insert(file.end(), moov.begin(), moov.end());
+        const auto mdat = box("mdat", frame_of(32, 0xAA));
+        file.insert(file.end(), mdat.begin(), mdat.end());
+        return file;
+    };
+
+    SECTION("version 1: an empty edit, then one with media, at a 1000 Hz movie timescale") {
+        MoovSpec spec{.sizes = {32}};
+        spec.mvhd = mvhd_box(1, 1000);
+        spec.edts = edts_box(1, {HandEdit{.segment_duration = 20, .media_time = -1},
+                                 HandEdit{.segment_duration = 5000, .media_time = 1024}});
+        const auto out = mp4::demux(assemble(spec));
+        REQUIRE(out.has_value());
+        CHECK(out->track.movie_timescale == 1000);
+        REQUIRE(out->track.edits.size() == 2);
+        CHECK(out->track.edits[0].segment_duration == 20);
+        CHECK(out->track.edits[0].media_time == -1);
+        CHECK(out->track.edits[1].segment_duration == 5000);
+        CHECK(out->track.edits[1].media_time == 1024);
+    }
+
+    SECTION("version 0's -1 is an empty edit, and the rate keeps both halves") {
+        MoovSpec spec{.sizes = {32}};
+        spec.mvhd = mvhd_box(0, 48000);
+        spec.edts = edts_box(0, {HandEdit{.segment_duration = 48000, .media_time = -1},
+                                 HandEdit{.segment_duration = 9600,
+                                          .media_time = 0,
+                                          .rate_integer = 0,
+                                          .rate_fraction = 0x7FFF}});
+        const auto out = mp4::demux(assemble(spec));
+        REQUIRE(out.has_value());
+        REQUIRE(out->track.edits.size() == 2);
+        CHECK(out->track.edits[0].media_time == -1);
+        CHECK(out->track.edits[1].media_rate == 0x00007FFF);
+    }
+
+    SECTION("a movie header after the trak still gives the track its timescale") {
+        MoovSpec spec{.sizes = {32}};
+        spec.mvhd = mvhd_box(0, 600);
+        spec.mvhd_last = true;
+        spec.edts = edts_box(0, {HandEdit{.segment_duration = 300, .media_time = 256}});
+        const auto file = assemble(spec);
+        const auto out = mp4::demux(file);
+        REQUIRE(out.has_value());
+        CHECK(out->track.movie_timescale == 600);
+
+        mp4::Reader reader{};
+        const auto ignore = [](std::span<const std::byte>) {};
+        REQUIRE(reader.push(file, ignore).has_value());
+        REQUIRE(reader.finish().has_value());
+        CHECK(reader.track().movie_timescale == 600);
+    }
+
+    SECTION("no movie header leaves the movie timescale unknown") {
+        MoovSpec spec{.sizes = {32}};
+        spec.edts = edts_box(0, {HandEdit{.segment_duration = 300, .media_time = 256}});
+        const auto out = mp4::demux(assemble(spec));
+        REQUIRE(out.has_value());
+        CHECK(out->track.movie_timescale == 0);
+        CHECK(out->track.edits.size() == 1);
+    }
+
+    // Neither box is needed to find a sample, so a broken one is left out and
+    // the samples still read.
+    SECTION("an edit list whose count runs past its box is left out") {
+        MoovSpec spec{.sizes = {32}};
+        spec.edts = edts_box(0, {HandEdit{.segment_duration = 300, .media_time = 256}}, 2);
+        const auto out = mp4::demux(assemble(spec));
+        REQUIRE(out.has_value());
+        CHECK(out->track.edits.empty());
+        CHECK(out->samples.size() == 1);
+    }
+
+    SECTION("an edit list over ReadOptions::max_edits is left out") {
+        MoovSpec spec{.sizes = {32}};
+        spec.edts = edts_box(0, {HandEdit{}, HandEdit{}, HandEdit{}});
+        const auto out = mp4::demux(assemble(spec), mp4::ReadOptions{.max_edits = 2});
+        REQUIRE(out.has_value());
+        CHECK(out->track.edits.empty());
+        const auto within = mp4::demux(assemble(spec), mp4::ReadOptions{.max_edits = 3});
+        REQUIRE(within.has_value());
+        CHECK(within->track.edits.size() == 3);
+    }
+
+    SECTION("an elst or mvhd too short to read is left out") {
+        MoovSpec short_elst{.sizes = {32}};
+        short_elst.edts = box("edts", fullbox("elst", 0, 0, Bytes(2, std::byte{0})));
+        const auto elst = mp4::demux(assemble(short_elst));
+        REQUIRE(elst.has_value());
+        CHECK(elst->track.edits.empty());
+        CHECK(elst->samples.size() == 1);
+
+        MoovSpec short_mvhd{.sizes = {32}};
+        short_mvhd.mvhd = fullbox("mvhd", 0, 0, Bytes(6, std::byte{0}));
+        const auto mvhd = mp4::demux(assemble(short_mvhd));
+        REQUIRE(mvhd.has_value());
+        CHECK(mvhd->track.movie_timescale == 0);
+        CHECK(mvhd->samples.size() == 1);
+    }
+
+    SECTION("a broken second edit list leaves the track with none, not the first") {
+        MoovSpec spec{.sizes = {32}};
+        Bytes two = edts_box(0, {HandEdit{.segment_duration = 300, .media_time = 256}});
+        const Bytes broken = edts_box(0, {HandEdit{.segment_duration = 300, .media_time = 256}}, 9);
+        two.insert(two.end(), broken.begin(), broken.end());
+        spec.edts = two;
+        const auto out = mp4::demux(assemble(spec));
+        REQUIRE(out.has_value());
+        CHECK(out->track.edits.empty());
+    }
 }
 
 TEST_CASE("MP4 round-trips fragment()'s media segments", "[mp4][reader][fragment]") {
@@ -1576,4 +1791,32 @@ TEST_CASE("MP4 Reader surfaces a walk error directly from push()", "[mp4][reader
     const auto pushed = reader.push(bad, sink);
     REQUIRE_FALSE(pushed.has_value());
     CHECK(pushed.error() == mp4::DemuxError::kNotIsobmff);
+}
+
+TEST_CASE("MP4 demux round-trips an 'ac-4' track", "[mp4][reader][ac4]") {
+    mp4::AudioTrack track;
+    track.codec_id = std::string{mp4::kCodecAc4};
+    track.sample_rate = 48000;
+    track.channels = 2;
+    track.samples_per_frame = 2048;
+    track.codec_config = {std::byte{0x2A}, std::byte{0x04}, std::byte{0x10}, std::byte{0x00}};
+
+    const std::vector<Bytes> samples{frame_of(700, 0x6A), frame_of(512, 0x6B),
+                                     frame_of(280, 0x6C)};
+    const auto file = mp4::mux(track, samples);
+    REQUIRE(file.has_value());
+
+    const auto out = mp4::demux(*file);
+    REQUIRE(out.has_value());
+    CHECK(out->track.codec_id == mp4::kCodecAc4);
+    CHECK(out->track.codec_config.ac4);
+    CHECK_FALSE(out->track.codec_config.eac3);
+    // The dac4 payload is kept verbatim - remux-ready, never interpreted.
+    CHECK(out->track.codec_config.payload == track.codec_config);
+    REQUIRE(out->samples.size() == samples.size());
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        CAPTURE(i);
+        CHECK(std::equal(samples[i].begin(), samples[i].end(), out->samples[i].begin(),
+                         out->samples[i].end()));
+    }
 }

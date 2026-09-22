@@ -5,11 +5,13 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.nio.ByteBuffer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Device-free coverage for PassthroughBridge (roadmap VX18b) - a plain
+ * Device-free coverage for PassthroughBridge (Android JNI instrumented coverage) - a plain
  * Kotlin class, not a JNI singleton (see its own header comment), so this
  * drives real android.media.AudioTrack/AudioFormat calls directly rather
  * than through NativeBridge. NativeBridgeInstrumentedTest covers the JNI
@@ -71,5 +73,30 @@ class PassthroughBridgeInstrumentedTest {
     fun submitOnAnUnopenedBridgeReportsInvalidOperation() {
         val buffer = ByteBuffer.allocateDirect(256)
         assertEquals(AudioTrack.ERROR_INVALID_OPERATION, bridge.submit(buffer, 256))
+    }
+
+    @Test
+    fun anUnopenedBridgeHasNoPositionAndRefusesPauseAndFlush() {
+        // The native side reads -1 as "no position" and false as "not done".
+        assertEquals(-1L, bridge.playbackHeadPosition())
+        assertFalse(bridge.pause())
+        assertFalse(bridge.resume())
+        assertFalse(bridge.flush())
+    }
+
+    @Test
+    fun anOpenedBridgePausesFlushesAndResumes() {
+        // As openFailsSafelyWithNoDirectRoute: an emulator is expected to
+        // refuse the open, and then there is nothing to check.
+        if (!bridge.open(48000, eac3 = false)) {
+            return
+        }
+        assertTrue(bridge.playbackHeadPosition() >= 0)
+        assertTrue(bridge.pause())
+        assertTrue(bridge.flush())
+        // A flush starts the head position again from zero.
+        assertEquals(0L, bridge.playbackHeadPosition())
+        assertTrue(bridge.resume())
+        assertTrue(bridge.flush())
     }
 }

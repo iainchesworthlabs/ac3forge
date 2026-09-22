@@ -6,6 +6,7 @@
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -13,6 +14,7 @@
 #include <iterator>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -21,7 +23,13 @@
 #include <sys/wait.h>
 #endif
 
+#include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/decoder.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/encoder/encoder.hpp"
+#include "ac3/encoder/plan.hpp"
+#include "ac3/io/metadata_edit.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/qc.hpp"
 #include "ac3/oba/scene.hpp"
@@ -706,6 +714,7 @@ TEST_CASE("the bit stream information tokens reach the wire and round trip",
         CHECK(text.find("not the original bit stream") != std::string::npos);
         CHECK(text.find("Dolby Surround EX") != std::string::npos);
         CHECK(text.find("A/D converter: HDCD") != std::string::npos);
+        CHECK(text.find("xbsi1: preferred downmix Lt/Rt") != std::string::npos);
     }
 
     SECTION("AC-3: a time code and Annex D are refused together") {
@@ -778,6 +787,159 @@ TEST_CASE("the bit stream information tokens reach the wire and round trip",
                           log) != 0);
             CHECK_FALSE(fs::exists(out_path));
         }
+    }
+}
+
+TEST_CASE("decode downmix=auto folds the way the stream's own dmixmod asks", "[cli][output]") {
+    // §D3.1.1's automatic choice between Lt/Rt and Lo/Ro. The case this test
+    // exists for is Table D2.2's reserved '11' (TS 102 366 Table D.1.1), which
+    // neither standard assigns a downmix: downmix=auto reads it as "not
+    // indicated" (§D2.3.1.2) and takes Lo/Ro. Each automatic decode is compared
+    // byte for byte with a decode that names the fold it reported, so the
+    // status line and the audio cannot disagree.
+    const auto dir = scratch_dir();
+    const auto wav_path = dir / "auto_downmix_in.wav";
+    const auto channels = make_tone_channels(6, 4800, 48000);
+    REQUIRE(ac3::io::write_wav_f32(wav_path.string(), channels, 48000).has_value());
+
+    const auto read_bytes = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        REQUIRE(in.is_open());
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+    const auto encode = [&](const std::string& command, const fs::path& out,
+                            const std::string& args) {
+        fs::remove(out);
+        REQUIRE(run_cli(command + " \"" + wav_path.string() + "\" \"" + out.string() + "\" " +
+                            args,
+                        dir / "auto_downmix_encode.log") == 0);
+    };
+    // Decodes `in` to <stem>.wav and returns what the command printed.
+    const auto decode = [&](const fs::path& in, const std::string& stem,
+                            const std::string& tokens) {
+        const auto log = dir / (stem + ".log");
+        REQUIRE(run_cli("decode \"" + in.string() + "\" \"" + (dir / (stem + ".wav")).string() +
+                            "\" " + tokens,
+                        log) == 0);
+        return read_log(log);
+    };
+    // The encoder will not write '11', so a stream carrying it is made from
+    // the '01' and '10' encodes of the same audio: ORed byte by byte, '01' |
+    // '10' is '11' and every other bit meets an identical copy of itself, and
+    // each syncframe's CRCs are re-stamped afterwards. tests/meta/test_bsi.cpp
+    // checks that this changes nothing but dmixmod.
+    const auto make_reserved = [&](const fs::path& ltrt, const fs::path& loro,
+                                   const fs::path& out) {
+        const auto first = read_bytes(ltrt);
+        const auto second = read_bytes(loro);
+        REQUIRE(first.size() == second.size());
+        std::vector<std::byte> merged(first.size());
+        for (std::size_t i = 0; i < merged.size(); ++i) {
+            merged[i] = static_cast<std::byte>(static_cast<unsigned char>(first[i]) |
+                                               static_cast<unsigned char>(second[i]));
+        }
+        const auto frames = ac3::split_frames(merged);
+        REQUIRE(frames.has_value());
+        for (const auto frame : *frames) {
+            const auto at = static_cast<std::size_t>(frame.data() - merged.data());
+            REQUIRE(ac3::io::restamp_crc(std::span{merged}.subspan(at, frame.size())).has_value());
+        }
+        std::ofstream file{out, std::ios::binary};
+        file.write(reinterpret_cast<const char*>(merged.data()),
+                   static_cast<std::streamsize>(merged.size()));
+        REQUIRE(file.good());
+    };
+
+    SECTION("AC-3: an Lt/Rt preference gets the Lt/Rt fold") {
+        const auto stream = dir / "auto_ltrt.ac3";
+        encode("encode", stream, "384 51 dmixmod=ltrt");
+        const auto text = decode(stream, "auto_ltrt_auto", "downmix=auto");
+        INFO(text);
+        CHECK(text.find("downmix=auto: dmixmod 1 (Lt/Rt) -> Lt/Rt stereo") != std::string::npos);
+        CHECK(text.find("3/2 + LFE -> Lt/Rt stereo") != std::string::npos);
+        decode(stream, "auto_ltrt_named", "downmix=ltrt");
+        const bool same = read_bytes(dir / "auto_ltrt_auto.wav") ==
+                          read_bytes(dir / "auto_ltrt_named.wav");
+        CHECK(same);
+    }
+
+    SECTION("AC-3: dmixmod means nothing below acmod 3/0, so a 2/0 preference is not followed") {
+        // Table D2.2's own note: dmixmod's meaning "is only defined ... if the
+        // audio coding mode is 3/0, 2/1, 3/1, 2/2 or 3/2 ... [otherwise] the
+        // meaning of this field is reserved". xbsi1 still carries whatever
+        // code was asked for - Table D2.1's fixed layout has no acmod gate of
+        // its own, unlike mixmdate's own acmod > 0x2 condition - but a 2/0
+        // stream preferring Lt/Rt has no preference downmix=auto can act on.
+        const auto stereo_wav = dir / "auto_stereo_in.wav";
+        const auto stereo_channels = make_tone_channels(2, 4800, 48000);
+        REQUIRE(ac3::io::write_wav_f32(stereo_wav.string(), stereo_channels, 48000).has_value());
+        const auto stream = dir / "auto_narrow.ac3";
+        fs::remove(stream);
+        REQUIRE(run_cli("encode \"" + stereo_wav.string() + "\" \"" + stream.string() +
+                            "\" 192 stereo dmixmod=ltrt",
+                        dir / "auto_narrow_encode.log") == 0);
+        const auto text = decode(stream, "auto_narrow_auto", "downmix=auto");
+        INFO(text);
+        // The transmitted code is still named honestly - it is only the
+        // RESOLUTION that treats it as unusable at this acmod.
+        CHECK(text.find("downmix=auto: dmixmod 1 (Lt/Rt) -> Lo/Ro stereo") != std::string::npos);
+        decode(stream, "auto_narrow_named", "downmix=loro");
+        const bool same = read_bytes(dir / "auto_narrow_auto.wav") ==
+                          read_bytes(dir / "auto_narrow_named.wav");
+        CHECK(same);
+    }
+
+    SECTION("AC-3: Annex D's reserved code is named and folds Lo/Ro") {
+        const auto ltrt = dir / "auto_reserved_ltrt.ac3";
+        const auto loro = dir / "auto_reserved_loro.ac3";
+        const auto stream = dir / "auto_reserved.ac3";
+        encode("encode", ltrt, "384 51 dmixmod=ltrt");
+        encode("encode", loro, "384 51 dmixmod=loro");
+        make_reserved(ltrt, loro, stream);
+        const auto text = decode(stream, "auto_reserved_auto", "downmix=auto");
+        INFO(text);
+        CHECK(text.find("downmix=auto: dmixmod 3 (reserved) -> Lo/Ro stereo") !=
+              std::string::npos);
+        CHECK(text.find("xbsi1: preferred downmix reserved") != std::string::npos);
+        decode(stream, "auto_reserved_named", "downmix=loro");
+        const bool same = read_bytes(dir / "auto_reserved_auto.wav") ==
+                          read_bytes(dir / "auto_reserved_named.wav");
+        CHECK(same);
+    }
+
+    SECTION("E-AC-3: mixmdate's reserved code folds Lo/Ro") {
+        const auto ltrt = dir / "auto_reserved_ltrt.ec3";
+        const auto loro = dir / "auto_reserved_loro.ec3";
+        const auto stream = dir / "auto_reserved.ec3";
+        encode("eac3-encode", ltrt, "448 none 51 mixmeta dmixmod=ltrt");
+        encode("eac3-encode", loro, "448 none 51 mixmeta dmixmod=loro");
+        make_reserved(ltrt, loro, stream);
+        const auto text = decode(stream, "auto_reserved_ec3_auto", "downmix=auto");
+        INFO(text);
+        CHECK(text.find("downmix=auto: dmixmod 3 (reserved) -> Lo/Ro stereo") !=
+              std::string::npos);
+        decode(stream, "auto_reserved_ec3_named", "downmix=loro");
+        const bool same = read_bytes(dir / "auto_reserved_ec3_auto.wav") ==
+                          read_bytes(dir / "auto_reserved_ec3_named.wav");
+        CHECK(same);
+    }
+
+    SECTION("a stream that sends no dmixmod folds Lo/Ro") {
+        const auto stream = dir / "auto_absent.ac3";
+        encode("encode", stream, "384 51");  // bsid 8: no xbsi1 to carry one
+        const auto text = decode(stream, "auto_absent_auto", "downmix=auto");
+        INFO(text);
+        CHECK(text.find("downmix=auto: dmixmod absent -> Lo/Ro stereo") != std::string::npos);
+    }
+
+    SECTION("a later channels=1 overrides auto, as any later token does") {
+        const auto stream = dir / "auto_override.ac3";
+        encode("encode", stream, "384 51 dmixmod=ltrt");
+        const auto text = decode(stream, "auto_override", "downmix=auto channels=1");
+        INFO(text);
+        CHECK(text.find("downmix=auto:") == std::string::npos);
+        CHECK(text.find("3/2 + LFE -> mono") != std::string::npos);
     }
 }
 
@@ -1247,6 +1409,31 @@ TEST_CASE("verify-objects checks a decode against the signer's own tag",
         CHECK(text.find("needs a key") != std::string::npos);
     }
 
+    SECTION("the summary is a status line: quiet silences it and a '-' output keeps it off stdout") {
+        // It went to stdout through plain fmt::println, so quiet left it in
+        // place, and with the WAV going to stdout it landed ahead of the
+        // RIFF header.
+        const auto file_wav = dir / "verify_objects_quiet.wav";
+        const auto log = dir / "verify_objects_quiet.log";
+        CHECK(run_cli("decode \"" + signed_ec3.string() + "\" \"" + file_wav.string() +
+                          "\" verify-objects signing-key=\"" + key_path.string() + "\" quiet",
+                      log) == 0);
+        CHECK(read_log(log).empty());
+
+        const auto piped_wav = dir / "verify_objects_piped.wav";
+        const auto piped_log = dir / "verify_objects_piped.log";
+        CHECK(run_cli_stdout("decode \"" + signed_ec3.string() +
+                                 "\" - verify-objects signing-key=\"" + key_path.string() + "\"",
+                             piped_wav, piped_log) == 0);
+        CHECK(read_log(piped_log).find("object signature") != std::string::npos);
+        // Compared as a bool: on a mismatch Catch2 would otherwise print both
+        // WAVs, a megabyte each, and take minutes over it.
+        const auto piped = read_log(piped_wav);
+        CHECK(piped.substr(0, 4) == "RIFF");
+        const bool same_wav = piped == read_log(file_wav);
+        CHECK(same_wav);
+    }
+
     SECTION("decoding the same signed stream WITHOUT verify-objects still succeeds - the "
            "bypass") {
         const auto out_wav = dir / "verify_objects_bypass.wav";
@@ -1333,7 +1520,7 @@ TEST_CASE("keep-partial", "[cli][keep-partial]") {
     }
 }
 
-// Found by tools/ci/fuzz_eac3_encoder_space.py (roadmap VX1) on its first
+// Found by tools/ci/fuzz_eac3_encoder_space.py (E-AC-3 encoder fuzzing) on its first
 // sweep of the Annex E half sample rates.
 //
 // A nominal Table 5.18 bitrate and an Annex E `fscod2` half rate are each
@@ -1492,7 +1679,7 @@ TEST_CASE("bare heavy2 token turns on Ch2 heavy compression on a 1+1 encode",
     CHECK(heavy2_log.find("compr2 present") != std::string::npos);
 }
 
-// The "-" stdin/stdout convention (roadmap item A4): 'ac3cli encode - -'
+// The "-" stdin/stdout convention (CLI stdin/stdout streaming): 'ac3cli encode - -'
 // reads the WAV from stdin and writes AC-3 to stdout instead of opening
 // files by those literal names, and 'decode - -' the same in reverse - see
 // is_stdio_path() in main.cpp. This is also the binary-safety proof
@@ -1713,7 +1900,7 @@ TEST_CASE("dialnorm=auto and src=/map= keep '-' output free of interleaved statu
     }
 }
 
-// Roadmap C4: dialnorm=auto/dialnorm2=auto used to be unconditionally
+// legacy item C4: dialnorm=auto/dialnorm2=auto used to be unconditionally
 // rejected the moment src=/map= was in play (main.cpp's old "not yet
 // supported with src=/map=" error), regardless of whether the routing would
 // have made measurement ambiguous. The fix routes/renders the whole
@@ -1918,7 +2105,7 @@ TEST_CASE("map= to an object destination warns instead of silently discarding it
     }
 }
 
-// Roadmap C4's other half: dual mono (1+1) dialnorm=auto looked implemented
+// legacy item C4's other half: dual mono (1+1) dialnorm=auto looked implemented
 // already (measured_dialnorm_channel existed for Ch2), but Ch1's own
 // measurement went through measured_dialnorm() with the target's acmod
 // (kDualMono) instead - which runs a normal multi-channel BS.1770 pass
@@ -1998,7 +2185,7 @@ TEST_CASE("dialnorm=auto for 1+1 dual mono measures each programme's own channel
     }
 }
 
-// Roadmap C2: `ac3cli qc` - decode a stream, measure it with the real
+// bitstream-aware loudness QC: `ac3cli qc` - decode a stream, measure it with the real
 // BS.1770-4 meter, and compare against the embedded dialnorm/compr and,
 // optionally, a named delivery-spec gate. See main.cpp's run_qc/
 // report_qc_programme and ac3/meta/qc.hpp for the implementation these tests
@@ -2123,7 +2310,7 @@ TEST_CASE("qc reports the embedded dialnorm and a sane, self-consistent measured
     CHECK(*delta == Catch::Approx(*measured - *claimed).margin(0.01));
 }
 
-// Roadmap C2's own explicit ask: a case where the embedded dialnorm and the
+// bitstream-aware loudness QC's own explicit ask: a case where the embedded dialnorm and the
 // measured loudness deliberately disagree, so the delta-reporting path is
 // genuinely exercised rather than merely the agreement case above. dialnorm=1
 // claims the loudest legal dialogue level (-1 LKFS) against a deliberately
@@ -2269,7 +2456,7 @@ TEST_CASE(
     CHECK((rc == 0) == expect_success);
 }
 
-// Roadmap IO10: `ac3cli qc layout=rendered`. The bed pass measures only the
+// legacy item IO10: `ac3cli qc layout=rendered`. The bed pass measures only the
 // independent substream's Table 5.8 channels, so on a 7.1.4 stream it never
 // sees the two dependents' rear and height channels at all; the rendered pass
 // measures the assembled program through BS.1770-5 Annex 3's extended
@@ -2348,7 +2535,7 @@ TEST_CASE("qc layout=rendered measures a 7.1.4 program's dependents, layout=bed 
     CHECK(*rendered_tp == Catch::Approx(*bed_tp).margin(3.0));
 }
 
-// Roadmap IO12: `ac3cli qc objects=<layout>`. layout=bed's Annex 1 pass sees
+// legacy item IO12: `ac3cli qc objects=<layout>`. layout=bed's Annex 1 pass sees
 // only the flat 5.1 VBAP fold every dynamic object was panned into at encode
 // time - spatial.hpp's own "a raised object folds onto the ring... at full
 // level" - so an object authored at the ceiling measures no differently from
@@ -2871,6 +3058,160 @@ TEST_CASE(
     }
 }
 
+// A second regression, for the bug the flush() tail loop above still had
+// after the fix that test guards: it appended each flushed substream by
+// calling PlanarWavSink::append once per substream per Table E2.5 location,
+// so two substreams released in the same flush (a legacy core's bed plus the
+// Annex E dependent that held the last unit back) grew some slots twice and
+// left others once, corrupting the sink's per-slot carry rather than just
+// leaving a length mismatch. run_decode_eac3 (and decode_and_render in
+// stream_tools.cpp, tested separately below) now build the whole held-back
+// unit first via ac3::apps::held_back_unit - apps/common/stream_playback.hpp
+// - the same assembly decode_access_unit itself uses, and append it exactly
+// once per slot like any other unit. tests/decoder/test_stream_playback.cpp
+// proves held_back_unit's own placement is correct; this proves decode.cpp
+// actually calls it and routes its output to the right WAV channels.
+TEST_CASE("decode plays a legacy core's held-back last unit without swapping the "
+          "dependent's audio for the bed's",
+          "[cli][decode][eac3][transient_prenoise]") {
+    namespace cm = ac3::eac3::chanmap;
+    constexpr auto kFrame = static_cast<std::size_t>(ac3::kSamplesPerFrame);
+    constexpr std::size_t kOnsetSample = 960;  // late in the frame - block switching's own onset
+    constexpr int kUnits = 5;
+    constexpr int kOnsetUnit = 2;  // well before the last unit, and steady after
+    // k71Rear's dependent carries FOUR channels - Ls, Rs, Lrs, Rrs, in that
+    // order (eac3_tables.hpp's own static_asserts on expand(k71Rear)) - and
+    // REPLACES the bed's own Ls/Rs at those same Table E2.5 slots rather than
+    // sitting beside them (k71Rear's own comment: "the dependent replaces the
+    // bed's surrounds and adds the two rear surrounds"). So Ls/Rs are exactly
+    // where bed and dependent collide for real, not merely sit adjacent -
+    // kBedTones' own Ls/Rs entries (index 3/4) must NOT survive into the
+    // final unit once the dependent has released.
+    constexpr std::array<double, 6> kBedTones = {1000.0, 800.0, 1200.0, 600.0, 1400.0, 60.0};
+    constexpr std::array<double, 4> kRearTones = {500.0, 1600.0, 400.0, 1800.0};
+
+    // Silence until kOnsetSample of unit kOnsetUnit, then each channel's own
+    // steady tone - a cosine, so the onset is a step clear of §8.2.2's
+    // silence gate, same construction as tests/decoder/test_stream_playback.cpp's
+    // own unit_pcm.
+    const auto unit_pcm = [&](std::span<const double> tones, int unit) {
+        const auto onset = static_cast<std::size_t>(kOnsetUnit) * kFrame + kOnsetSample;
+        std::vector<std::vector<float>> pcm(tones.size(), std::vector<float>(kFrame, 0.0F));
+        for (std::size_t ch = 0; ch < tones.size(); ++ch) {
+            for (std::size_t i = 0; i < kFrame; ++i) {
+                const auto n = static_cast<std::size_t>(unit) * kFrame + i;
+                if (n < onset) {
+                    continue;
+                }
+                const double t = static_cast<double>(n - onset) / 48000.0;
+                pcm[ch][i] =
+                    static_cast<float>(0.4 * std::cos(2.0 * std::numbers::pi * tones[ch] * t));
+            }
+        }
+        return pcm;
+    };
+    const auto views = [](const std::vector<std::vector<float>>& pcm) {
+        return std::vector<std::span<const float>>{pcm.begin(), pcm.end()};
+    };
+
+    // §E2.3.1.2 legacy core: an AC-3 5.1 bed, its own tones steady from
+    // kOnsetUnit and never holding, extended by a §3.7 transient-pre-noise
+    // Annex E 7.1-rear dependent - only it turns the tool on, so only it can
+    // hold the stream's very last unit back. When it does, the bed's already-
+    // decoded channels for that same access unit are cached alongside it
+    // (Eac3Decoder::decode_access_unit's own doc comment on the per-identity
+    // cache), so flush() releases both together - the exact shape the bug
+    // needed.
+    ac3::FrameEncoder core{{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true}};
+    ac3::eac3::FrameEncoder rear{{.bitrate_kbps = 320,
+                                  .acmod = ac3::Acmod::k2_2,
+                                  .strmtyp = ac3::eac3::StreamType::kDependent,
+                                  .substreamid = 0,
+                                  .chanmap = cm::k71Rear,
+                                  .last_dependent = true,
+                                  .transient_prenoise = true}};
+    std::vector<std::byte> stream;
+    for (int unit = 0; unit < kUnits; ++unit) {
+        const auto bed_frame = core.encode_frame(views(unit_pcm(kBedTones, unit)));
+        REQUIRE(bed_frame.has_value());
+        stream.insert(stream.end(), bed_frame->begin(), bed_frame->end());
+        const auto dep_frame = rear.encode_frame(views(unit_pcm(kRearTones, unit)));
+        REQUIRE(dep_frame.has_value());
+        stream.insert(stream.end(), dep_frame->begin(), dep_frame->end());
+    }
+
+    const auto dir = scratch_dir();
+    const auto in_path = dir / "legacy_core_held.ec3";
+    {
+        std::ofstream out{in_path, std::ios::binary};
+        out.write(reinterpret_cast<const char*>(stream.data()),
+                  static_cast<std::streamsize>(stream.size()));
+        REQUIRE(out.good());
+    }
+    const auto wav_out = dir / "legacy_core_held.wav";
+    const auto log = dir / "legacy_core_held.log";
+    REQUIRE(run_cli("decode \"" + in_path.string() + "\" \"" + wav_out.string() + "\"", log) == 0);
+    INFO(read_log(log));
+
+    const auto decoded = ac3::io::read_wav(wav_out.string());
+    REQUIRE(decoded.has_value());
+    REQUIRE(decoded->channels.size() == 8);
+    // Every real unit made it out, including the one only flush() returns -
+    // a pre-fix build either dropped it (short by one unit) or grew some
+    // channels past others (ac3::io::read_wav itself enforces equal channel
+    // lengths, so a length mismatch here would already have failed the read).
+    CHECK(decoded->frame_count() == static_cast<std::size_t>(kUnits) * kFrame);
+
+    // Where C (bed-only, untouched by the dependent) and Ls/Lrs (both the
+    // dependent's, per k71Rear's own comment above) land in the WAV: the
+    // same ground-truth layout and wav_order permutation open_sink/
+    // held_back_unit compute from, not re-derived from the decode under test.
+    const auto layout =
+        cm::expand(static_cast<std::uint16_t>(cm::acmod_map(ac3::Acmod::k3_2, true) | cm::k71Rear));
+    const auto order =
+        ac3::plan::wav_order(std::span{layout.items}.first(static_cast<std::size_t>(layout.count)));
+    const auto wav_index_of = [&](cm::Location location) {
+        const auto slot = layout.index_of(location);
+        REQUIRE(slot >= 0);
+        const auto at = std::find(order.begin(), order.end(), static_cast<std::size_t>(slot));
+        REQUIRE(at != order.end());
+        return static_cast<std::size_t>(std::distance(order.begin(), at));
+    };
+    const auto c_wav = wav_index_of(cm::Location::kCentre);
+    const auto ls_wav = wav_index_of(cm::Location::kLeftSurround);
+    const auto lrs_wav = wav_index_of(cm::Location::kLrs);
+
+    // The power of one frequency in the LAST unit's window, whatever its
+    // phase - same DFT-single-bin technique as
+    // tests/decoder/test_stream_playback.cpp's own tone_power.
+    const auto tone_power = [&](std::span<const float> x, double hz) {
+        double re = 0.0;
+        double im = 0.0;
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            const double phase = 2.0 * std::numbers::pi * hz * static_cast<double>(i) / 48000.0;
+            re += static_cast<double>(x[i]) * std::cos(phase);
+            im += static_cast<double>(x[i]) * std::sin(phase);
+        }
+        return re * re + im * im;
+    };
+    const auto window = [&](std::size_t wav_channel) {
+        return std::span{decoded->channels[wav_channel]}.last(kFrame);
+    };
+    // C is the bed's alone - k71Rear never touches it - so it must still be
+    // kBedTones' own tone (index 1), proving the dependent's overwrite
+    // stayed inside its own locations rather than spreading further.
+    CHECK(tone_power(window(c_wav), kBedTones[1]) > 100.0 * tone_power(window(c_wav), kRearTones[0]));
+    // Ls and Lrs are both the dependent's (k71Rear's own comment: it
+    // REPLACES the bed's Ls/Rs, not merely adds Lrs/Rrs beside them), so both
+    // must carry the dependent's own tones - Ls index 0, Lrs index 2, per
+    // expand(k71Rear)'s documented order - not kBedTones' now-superseded Ls
+    // (index 3). The collision this regresses against left one of these two
+    // with the wrong tone, or the bed's stale one, once the flush placed two
+    // substreams' channels into overlapping WAV slots within the same call.
+    CHECK(tone_power(window(ls_wav), kRearTones[0]) > 100.0 * tone_power(window(ls_wav), kBedTones[3]));
+    CHECK(tone_power(window(lrs_wav), kRearTones[2]) > 100.0 * tone_power(window(lrs_wav), kBedTones[3]));
+}
+
 TEST_CASE("mode=reference is exactly the two transform off-switches together", "[cli][mode]") {
     const auto dir = scratch_dir();
     const auto log = dir / "mode.log";
@@ -2928,7 +3269,7 @@ TEST_CASE("mode=reference is exactly the two transform off-switches together", "
 }
 
 // --------------------------------------------------------------------------
-// Roadmap IO8: the documented exit-code scheme, per-command help, quiet/
+// CLI shell completions: the documented exit-code scheme, per-command help, quiet/
 // verbose, and the generated man page and completions.
 // --------------------------------------------------------------------------
 
@@ -2939,7 +3280,7 @@ TEST_CASE("every failure path returns its own documented exit code", "[cli][exit
     // The numbers here are the contract, not an implementation detail: a
     // script distinguishes a bad command line from a bad file from a failed
     // gate by exactly these. apps/cli/exit_codes.hpp is where they are chosen
-    // and docs/cli/metadata-options.md#exit-codes is where they are published;
+    // and docs/forge/cli/metadata-options.md#exit-codes is where they are published;
     // this is what keeps all three agreeing.
     SECTION("0 - success") {
         CHECK(run_cli("silence \"" + (dir / "exit_ok.ac3").string() + "\" 1 192", log) == 0);
@@ -3090,6 +3431,117 @@ TEST_CASE("quiet silences status output without touching the payload", "[cli][qu
     }
 }
 
+// The report lines a stream has to earn - a second programme, Annex D and the
+// informational fields, a mixing metadata group, a concealed frame - were
+// printed with plain fmt::println on the status stream instead of through
+// status_println, and `quiet` makes that stream nullptr. The test above never
+// reaches one: a sine carries none of them. On Windows the runtime's
+// parameter check then ended the process with 0xC0000409 - for every line but
+// the programme one, which comes first, after the WAV had been written in full.
+TEST_CASE("quiet also silences the report lines only some streams earn", "[cli][quiet]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "quiet_earned.log";
+
+    // Decodes `stream` without quiet, then with it. The first run has to
+    // report `marker`, which shows the stream still reaches the lines under
+    // test - a decoder change that stopped printing them would otherwise
+    // leave this checking nothing. The second has to print nothing and write
+    // the same WAV (read_log reads in binary mode).
+    const auto decode_both = [&](const fs::path& stream, const std::string& options,
+                                 const std::string& marker, const std::string& tag) {
+        const auto loud = dir / (tag + "_loud.wav");
+        const auto quiet = dir / (tag + ".wav");
+        const std::string decode = "decode \"" + stream.string() + "\" \"";
+        REQUIRE(run_cli(decode + loud.string() + "\" " + options, log) == 0);
+        const auto report = read_log(log);
+        INFO(report);
+        REQUIRE(report.find(marker) != std::string::npos);
+        fs::remove(quiet);
+        CHECK(run_cli(decode + quiet.string() + "\" " + options + " quiet", log) == 0);
+        CHECK(read_log(log).empty());
+        CHECK(read_log(quiet) == read_log(loud));
+    };
+
+    SECTION("E-AC-3: the infomdat of the DEE-encoded seed it was found on") {
+        // Copyright asserted, and a dsurexmod saying the programme is not
+        // Surround EX or Pro Logic IIx/IIz encoded. FFmpeg's encode of the
+        // same programme, external-eac3-51-256-ffmpeg.ec3 in the same
+        // directory, carries neither and decoded quietly throughout.
+        const auto seed = fs::path{AC3FORGE_FUZZ_SEED_DIR} / "fuzz_eac3_decode" /
+                          "external-eac3-51-256-dee.ec3";
+        REQUIRE(fs::exists(seed));
+        decode_both(seed, "", "copyright asserted", "quiet_dee");
+    }
+
+    SECTION("AC-3: Annex D, both xbsi words and the informational fields") {
+        // The token set the bit stream information test above encodes with.
+        const auto wav_path = dir / "quiet_annexd_in.wav";
+        REQUIRE(ac3::io::write_wav_f32(wav_path.string(), make_tone_channels(6, 48000, 48000),
+                                       48000)
+                    .has_value());
+        const auto stream = dir / "quiet_annexd.ac3";
+        REQUIRE(run_cli("encode \"" + wav_path.string() + "\" \"" + stream.string() +
+                            "\" 384 51 dmixmod=ltrt ltrtcmixlev=-1.5 lorosurmixlev=off "
+                            "dsurexmod=ex adconvtyp=hdcd bsmod=vi mixlevel=105 roomtyp=large "
+                            "copyright origbs=off langcod",
+                        log) == 0);
+        decode_both(stream, "", "bsid 6", "quiet_annexd");
+    }
+
+    SECTION("E-AC-3: a mixing metadata group and nothing else") {
+        // pgmscl alone, so the mixing summary is the only line in the report
+        // that a plain stream would not also print.
+        const auto wav_path = dir / "quiet_mixmeta_in.wav";
+        REQUIRE(ac3::io::write_wav_f32(wav_path.string(), make_tone_channels(6, 48000, 48000),
+                                       48000)
+                    .has_value());
+        const auto stream = dir / "quiet_mixmeta.ec3";
+        REQUIRE(run_cli("eac3-encode \"" + wav_path.string() + "\" \"" + stream.string() +
+                            "\" 448 none 51 mixmeta pgmscl=-6",
+                        log) == 0);
+        decode_both(stream, "", "programme scale", "quiet_mixmeta");
+    }
+
+    SECTION("AC-3: a frame concealed under conceal=") {
+        const auto clean = dir / "quiet_conceal.ac3";
+        REQUIRE(run_cli("sine \"" + clean.string() + "\" 2 192 440 70 stereo", log) == 0);
+        // One payload byte flipped in the middle of the fourth frame, sync
+        // word and frame size left alone - the damage
+        // tests/decoder/test_concealment.cpp uses. 192 kbps at 48 kHz is a
+        // 768-byte syncframe.
+        constexpr std::size_t kFrameBytes = 768;
+        auto bytes = read_log(clean);
+        REQUIRE(bytes.size() > 4 * kFrameBytes);
+        auto& hit = bytes[(3 * kFrameBytes) + (kFrameBytes / 2)];
+        hit = static_cast<char>(static_cast<unsigned char>(hit) ^ 0xFFU);
+        const auto damaged = dir / "quiet_conceal_damaged.ac3";
+        {
+            std::ofstream out{damaged, std::ios::binary};
+            out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        }
+        decode_both(damaged, "conceal=repeat", "concealed 1 of", "quiet_conceal");
+    }
+
+    SECTION("E-AC-3: a second programme, named before the decode starts") {
+        // The programme2= tokens test_cli_containers.cpp's multi-programme
+        // mkv test builds with.
+        const auto primary = dir / "quiet_programme0.wav";
+        const auto second = dir / "quiet_programme1.wav";
+        REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 48000, 48000),
+                                       48000)
+                    .has_value());
+        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 48000, 48000),
+                                       48000)
+                    .has_value());
+        const auto stream = dir / "quiet_programmes.ec3";
+        REQUIRE(run_cli("eac3-encode \"" + primary.string() + "\" \"" + stream.string() +
+                            "\" 448 none 51 off programme2=\"" + second.string() +
+                            "\" programme2-layout=mono programme2-bitrate=96",
+                        log) == 0);
+        decode_both(stream, "", "programme 0 of 2", "quiet_programmes");
+    }
+}
+
 TEST_CASE("verbose puts a progress line on stderr, never on stdout", "[cli][verbose]") {
     const auto dir = scratch_dir();
     const auto wav_path = dir / "verbose_in.wav";
@@ -3184,7 +3636,7 @@ TEST_CASE("man and completions are generated from the command table", "[cli][man
 }
 
 // --------------------------------------------------------------------------
-// Roadmap IO9: record/live parity with the GUI session. The capture side
+// wide-layout record/live paths: record/live parity with the GUI session. The capture side
 // cannot run headlessly - there is no capture endpoint on a CI machine, and
 // on a platform with no capture backend at all `record`/`live` are refused
 // before their arguments are read - so what is checked here is the option
@@ -3310,7 +3762,7 @@ TEST_CASE("atmos-encode assembles real objects behind src=/map=",
     }
 }
 
-// --- roadmap IO7: the object-layer strip ----------------------------------
+// --- IO7: the object-layer strip ----------------------------------
 
 TEST_CASE("strip-objects leaves a decodable 5.1 stream with no object metadata",
           "[cli][strip-objects]") {
@@ -3354,7 +3806,7 @@ TEST_CASE("strip-objects refuses an AC-3 stream", "[cli][strip-objects]") {
     CHECK(read_log(log).find("E-AC-3") != std::string::npos);
 }
 
-// --- roadmap IO6: the MPEG-TS broadcast profiles ---------------------------
+// --- IO6: the MPEG-TS broadcast profiles ---------------------------
 
 TEST_CASE("ts writes the profile it is asked for", "[cli][ts]") {
     const auto dir = scratch_dir();
@@ -3394,16 +3846,51 @@ TEST_CASE("mainid= and asvc= are range-checked", "[cli][ts]") {
     const auto source = dir / "ts_service.ac3";
     const auto out = dir / "ts_service.ts";
     REQUIRE(run_cli("sine \"" + source.string() + "\" 1 192 440 60 stereo", log) == 0);
+    // asvc= only makes sense on an associated service (validate_service_
+    // association in containers.cpp) - a second source whose bsmod actually
+    // is one, so the range checks below exercise asvc='s own parsing rather
+    // than tripping that consistency check first.
+    const auto assoc_source = dir / "ts_service_assoc.ac3";
+    REQUIRE(run_cli("sine \"" + assoc_source.string() + "\" 1 192 440 60 stereo bsmod=vi", log) ==
+          0);
 
     CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" atsc mainid=7", log) ==
           0);
-    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=0xFF", log) ==
-          0);
+    CHECK(run_cli("ts \"" + assoc_source.string() + "\" \"" + out.string() + "\" dvb asvc=0xFF",
+                  log) == 0);
     CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" atsc mainid=8", log) !=
           0);
-    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=256", log) !=
-          0);
+    CHECK(run_cli("ts \"" + assoc_source.string() + "\" \"" + out.string() + "\" dvb asvc=256",
+                  log) != 0);
     CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb mainid=x", log) !=
+          0);
+}
+
+TEST_CASE("asvc= accepts a comma-separated main-service list", "[cli][ts]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ts_service_list.log";
+    const auto source = dir / "ts_service_list.ac3";
+    const auto out = dir / "ts_service_list.ts";
+    REQUIRE(run_cli("sine \"" + source.string() + "\" 1 192 440 60 stereo bsmod=vi", log) == 0);
+
+    const auto bytes_of = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=0,2", log) ==
+          0);
+    // 0,2 and the equivalent raw mask (bit 0 | bit 2 = 0x05) must produce the
+    // same descriptor bytes - the comma form is sugar, not a second meaning.
+    const auto comma_list = bytes_of(out);
+    REQUIRE(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=0x05", log) ==
+          0);
+    CHECK(comma_list == bytes_of(out));
+
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=0,8", log) !=
+          0);
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=0,,2", log) !=
           0);
 }
 
@@ -3439,7 +3926,7 @@ TEST_CASE("fmp4 fallback-51 writes the paired rendition into one EXT-X-MEDIA gro
     CHECK_FALSE(fs::exists(plain_dir / "bed51"));
 }
 
-// ROADMAP.md's IO2: 'demux' is the inverse of 'mkv', and the pair is only
+// container readers (mkv/mp4/ts): 'demux' is the inverse of 'mkv', and the pair is only
 // worth anything if it is a true inverse - the elementary stream that goes
 // into a container has to be the one that comes back out, byte for byte. A
 // container reader that dropped a frame, mis-split a block or trimmed a
@@ -3553,7 +4040,7 @@ TEST_CASE("demux refuses what is not a container it reads", "[cli][demux]") {
     }
 }
 
-// Roadmap IO2's remaining half: decode/qc/levels (play/monitor share the same
+// container readers (mkv/mp4/ts)'s remaining half: decode/qc/levels (play/monitor share the same
 // read_elementary_stream call and need real audio hardware to exercise, so
 // are not re-tested here) all take a container in place of a raw .ac3/.ec3,
 // sniffed by content rather than by extension - exactly what demux already
@@ -3609,7 +4096,7 @@ TEST_CASE("decode/qc/levels accept a container in place of a raw elementary stre
     }
 }
 
-// --- remux (roadmap IO2) -----------------------------------------------------
+// --- remux (container readers (mkv/mp4/ts)) -----------------------------------------------------
 
 TEST_CASE("remux converts one container straight to another", "[cli][remux]") {
     const auto dir = scratch_dir();
@@ -3677,7 +4164,7 @@ TEST_CASE("remux refuses an output extension it does not write", "[cli][remux]")
     CHECK(read_log(log).find("does not name a container this build writes") != std::string::npos);
 }
 
-// --- unspdif (roadmap IO3) ---------------------------------------------------
+// --- unspdif (IEC 61937 de-framing) ---------------------------------------------------
 
 TEST_CASE("cli: unspdif recovers the exact stream 'spdif' wrapped", "[cli][unspdif]") {
     const auto dir = scratch_dir();
@@ -3821,4 +4308,529 @@ TEST_CASE("cli: unspdif reads the carrier from stdin", "[cli][unspdif]") {
     const std::vector<char> got{std::istreambuf_iterator<char>{b},
                                 std::istreambuf_iterator<char>{}};
     CHECK(got == expected);
+}
+
+// bap-census= is an E-AC-3 request as much as an AC-3 one. BapCensus carries
+// an observe() overload taking an Eac3AccessUnitTrace - one that deliberately
+// folds an access unit's substreams together by stream index - and
+// run_decode_eac3 wires the trace in and accumulates it per access unit. What
+// it did not do was WRITE the result: the flag was accepted, the per-block
+// trace cost was paid, and no file appeared, with exit status 0.
+//
+// That is precisely the failure write_bap_census's own comment refuses for the
+// AC-3 path ("a decode that was asked for it and silently produced none would
+// leave that check passing on a stale file from a previous run") - and it is
+// worse from a census, whose entire job is to be the evidence a gate trusts.
+// So the assertion here is not just that a file appeared but that it carries
+// counts: an empty document would satisfy fs::exists while telling a gate
+// nothing.
+TEST_CASE("bap-census= writes a populated census for E-AC-3 input, not only AC-3",
+          "[cli][decode][bap-census]") {
+    const auto dir = scratch_dir();
+
+    // The census schema is fixed and flat (BapCensus::to_json), so the first
+    // integer after a field's name is that field's value - enough to assert on
+    // without pulling a JSON parser into a CLI test. A missing field comes
+    // back absent rather than as zero, which keeps "counted nothing" and
+    // "never written" distinguishable; that difference is the whole point.
+    const auto field = [](const std::string& text,
+                          const std::string& name) -> std::optional<std::uint64_t> {
+        const auto key = "\"" + name + "\": ";
+        const auto at = text.find(key);
+        if (at == std::string::npos) {
+            return std::nullopt;
+        }
+        std::uint64_t value = 0;
+        const auto* const first = text.data() + at + key.size();
+        if (std::from_chars(first, text.data() + text.size(), value).ec != std::errc{}) {
+            return std::nullopt;
+        }
+        return value;
+    };
+
+    // "bins" is stream 0's, the first full-bandwidth channel - to_json emits
+    // the streams in order, so the first occurrence is the first stream's, and
+    // a stream that was observed at all has a non-zero bin total.
+    const auto check_populated = [&](const fs::path& census) {
+        REQUIRE(fs::exists(census));
+        const auto text = read_log(census);
+        INFO(text);
+        CHECK(field(text, "schema") == std::optional<std::uint64_t>{1});
+        const auto frames = field(text, "frames");
+        REQUIRE(frames.has_value());
+        CHECK(*frames > 0);
+        const auto bins = field(text, "bins");
+        REQUIRE(bins.has_value());
+        CHECK(*bins > 0);
+        const auto zero_bit_bins = field(text, "zero_bit_bins");
+        REQUIRE(zero_bit_bins.has_value());
+        CHECK(*zero_bit_bins <= *bins);
+    };
+
+    SECTION("a single-substream E-AC-3 decode") {
+        const auto ec3 = dir / "census_eac3.ec3";
+        const auto wav = dir / "census_eac3.wav";
+        const auto census = dir / "census_eac3.json";
+        const auto log = dir / "census_eac3.log";
+        fs::remove(census);
+        REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 448 1000 50", log) == 0);
+        const auto rc = run_cli("decode \"" + ec3.string() + "\" \"" + wav.string() +
+                                    "\" bap-census=\"" + census.string() + "\"",
+                                log);
+        INFO(read_log(log));
+        CHECK(rc == 0);
+        check_populated(census);
+    }
+
+    SECTION("an immersive programme, whose dependent substreams fold into one census") {
+        // 7.1.4 is an independent substream plus dependents, so this covers
+        // the branch that is E-AC-3's alone: observe(Eac3AccessUnitTrace)
+        // walking substreams() rather than a single frame's blocks. The
+        // folding is by stream index, so the document still reports one slot
+        // per coded stream and not one per substream.
+        const auto ec3 = dir / "census_eac3_714.ec3";
+        const auto wav = dir / "census_eac3_714.wav";
+        const auto census = dir / "census_eac3_714.json";
+        const auto log = dir / "census_eac3_714.log";
+        fs::remove(census);
+        REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 768 440 50 714", log) == 0);
+        const auto rc = run_cli("decode \"" + ec3.string() + "\" \"" + wav.string() +
+                                    "\" bap-census=\"" + census.string() + "\"",
+                                log);
+        INFO(read_log(log));
+        CHECK(rc == 0);
+        check_populated(census);
+    }
+
+    SECTION("the AC-3 path, which already worked - the two are meant to behave alike") {
+        // The control. Without it a regression that silenced BOTH paths would
+        // leave this test case failing with no indication that the flag, not
+        // the E-AC-3 wiring, was what broke.
+        const auto ac3 = dir / "census_ac3.ac3";
+        const auto wav = dir / "census_ac3.wav";
+        const auto census = dir / "census_ac3.json";
+        const auto log = dir / "census_ac3.log";
+        fs::remove(census);
+        REQUIRE(run_cli("sine \"" + ac3.string() + "\" 1 448 1000 50 stereo", log) == 0);
+        const auto rc = run_cli("decode \"" + ac3.string() + "\" \"" + wav.string() +
+                                    "\" bap-census=\"" + census.string() + "\"",
+                                log);
+        INFO(read_log(log));
+        CHECK(rc == 0);
+        check_populated(census);
+    }
+}
+
+// The other half of the same defect. `decode` is the only command that builds
+// a census, but the option parser is effectively global - 88 keys, three of
+// them command-scoped - so `bap-census=` parsed for every command and then did
+// nothing on all but one. `qc … bap-census=out.json` exited 0 having written
+// no file, which is the same silent-no-output trap the E-AC-3 decode path had,
+// and it contradicts this parser's own contract: a key it cannot honour is an
+// error ("unknown option"), not a no-op.
+//
+// The commands below all decode or rewrite a stream, so a caller could
+// plausibly expect a census from any of them; three of them (qc, levels,
+// transcode) really do decode internally. That is the argument for refusing
+// the token rather than quietly accepting it - an option that means something
+// on one command and nothing on its neighbour is how this class of bug starts.
+TEST_CASE("bap-census= is refused by commands that cannot produce one",
+          "[cli][decode][bap-census]") {
+    const auto dir = scratch_dir();
+    const auto ec3 = dir / "census_scope.ec3";
+    const auto log = dir / "census_scope.log";
+    REQUIRE(run_cli("eac3-sine \"" + ec3.string() + "\" 1 192 1000 50 stereo", log) == 0);
+
+    // Refused by name, and refused the same way any unrecognised key is - the
+    // point is that the caller is told, not that a particular wording appears.
+    const auto refuses = [&](const std::string& name, const std::string& args) {
+        const auto census = dir / ("census_scope_" + name + ".json");
+        const auto cmd_log = dir / ("census_scope_" + name + ".log");
+        fs::remove(census);
+        const auto rc =
+            run_cli(args + " bap-census=\"" + census.string() + "\"", cmd_log);
+        const auto text = read_log(cmd_log);
+        INFO(name << ":\n" << text);
+        CHECK(rc != 0);
+        CHECK(text.find("bap-census") != std::string::npos);
+        // The real assertion: no silent success, and nothing written.
+        CHECK_FALSE(fs::exists(census));
+    };
+
+    const auto in = "\"" + ec3.string() + "\"";
+    SECTION("commands that decode internally but keep no census") {
+        refuses("qc", "qc " + in);
+        refuses("levels", "levels " + in);
+        refuses("transcode", "transcode " + in + " \"" +
+                                 (dir / "census_scope_tc.ec3").string() + "\"");
+    }
+
+    SECTION("commands that never decode audio at all") {
+        refuses("probe", "probe " + in);
+        refuses("cut", "cut " + in + " \"" + (dir / "census_scope_cut.ec3").string() +
+                           "\" 0 1");
+        refuses("spdif", "spdif " + in + " \"" +
+                             (dir / "census_scope_spdif.wav").string() + "\"");
+    }
+
+    SECTION("decode itself still accepts it - the scoping refuses the others, "
+            "not the one command that implements it") {
+        const auto wav = dir / "census_scope_ok.wav";
+        const auto census = dir / "census_scope_ok.json";
+        fs::remove(census);
+        const auto rc = run_cli("decode " + in + " \"" + wav.string() +
+                                    "\" bap-census=\"" + census.string() + "\"",
+                                log);
+        INFO(read_log(log));
+        CHECK(rc == 0);
+        CHECK(fs::exists(census));
+    }
+}
+
+// apps/cli/commands/encode.cpp's own layout_for_source() call sites - the
+// single-file eac3-encode path, its src= multi-source counterpart, the AC-3
+// multi-source path, and programme2='s own second source - each report the
+// same "no standard speaker layout" refusal independently rather than through
+// one shared call, so each is exercised on its own rather than assuming one
+// covers the others.
+TEST_CASE("a channel count no standard layout covers is refused, not silently forced onto one",
+          "[cli][encode][layout]") {
+    const auto dir = scratch_dir();
+    // 7 channels: legal audio, but plan::layout_for_source's own gap between
+    // 6 (5.1) and 8 (7.1) - no A/52 or Annex E acmod maps that many.
+    const auto odd = dir / "layout_gap_7ch.wav";
+    REQUIRE(ac3::io::write_wav_f32(odd.string(), make_tone_channels(7, 2000, 48000), 48000)
+                .has_value());
+
+    SECTION("eac3-encode, single file, no layout token") {
+        const auto out_path = dir / "layout_gap_eac3.ec3";
+        const auto log = dir / "layout_gap_eac3.log";
+        fs::remove(out_path);
+        const auto rc = run_cli(
+            "eac3-encode \"" + odd.string() + "\" \"" + out_path.string() + "\" 192 none", log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(text.find("7 channels") != std::string::npos);
+        CHECK(text.find("no standard speaker layout has that many channels") != std::string::npos);
+    }
+
+    SECTION("eac3-encode, src= combines two files into the same gap") {
+        const auto second = dir / "layout_gap_second.wav";
+        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
+                    .has_value());
+        const auto six = dir / "layout_gap_6ch.wav";
+        REQUIRE(ac3::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000), 48000)
+                    .has_value());
+        const auto out_path = dir / "layout_gap_eac3_multi.ec3";
+        const auto log = dir / "layout_gap_eac3_multi.log";
+        fs::remove(out_path);
+        // The layout check runs before routing_for_sources ever asks for
+        // map=, so a combined channel count with no layout still refuses here
+        // even though nothing routes these two files anywhere yet.
+        const auto rc = run_cli("eac3-encode \"" + six.string() + "\" \"" + out_path.string() +
+                                    "\" 192 none src=\"" + second.string() + "\"",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(text.find("7 channels") != std::string::npos);
+        CHECK(text.find("no standard speaker layout has that many channels") != std::string::npos);
+    }
+
+    SECTION("encode (AC-3), src= combines two files into the same gap") {
+        const auto second = dir / "layout_gap_second_ac3.wav";
+        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(1, 2000, 48000), 48000)
+                    .has_value());
+        const auto six = dir / "layout_gap_6ch_ac3.wav";
+        REQUIRE(ac3::io::write_wav_f32(six.string(), make_tone_channels(6, 2000, 48000), 48000)
+                    .has_value());
+        const auto out_path = dir / "layout_gap_ac3_multi.ac3";
+        const auto log = dir / "layout_gap_ac3_multi.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("encode \"" + six.string() + "\" \"" + out_path.string() +
+                                    "\" 192 src=\"" + second.string() + "\"",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        // AC-3's own layout_for_source() call site additionally gates on
+        // plan::carries(), so it names the codec's own ceiling rather than
+        // the generic "no standard layout" text the two E-AC-3 cases above
+        // give - both a bare gap (7) and a layout that exists but is too wide
+        // for AC-3 (8, 7.1) take the same branch and print the same text.
+        CHECK(text.find("no AC-3 coding mode is wider than 3/2 + LFE") != std::string::npos);
+    }
+}
+
+TEST_CASE("multi-source AC-3 encode infers a layout from the combined channel count and measures "
+          "dialnorm across every routed source",
+          "[cli][encode][multi][dialnorm]") {
+    const auto dir = scratch_dir();
+    // 4 + 2 = 6 channels, a legal 5.1 total nothing here names explicitly -
+    // the same inference layout_for_source gives a single 6-channel file,
+    // applied to two files' combined channel count instead.
+    const auto first = dir / "multi_dialnorm_first.wav";
+    const auto second = dir / "multi_dialnorm_second.wav";
+    // 2 s: BS.1770's own gating needs whole 400 ms blocks to integrate over -
+    // the layout-gap vectors above never reach a measurement at all, but this
+    // one has to actually pass the -70 LKFS absolute gate, so it needs the
+    // same real duration tests/cli/test_cli.cpp's other dialnorm=auto cases
+    // use rather than the handful of samples a layout check alone needs.
+    constexpr std::size_t kDialnormFrames = 96000;
+    REQUIRE(ac3::io::write_wav_f32(first.string(), make_tone_channels(4, kDialnormFrames, 48000),
+                                   48000)
+                .has_value());
+    REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(2, kDialnormFrames, 48000),
+                                   48000)
+                .has_value());
+
+    const auto out_path = dir / "multi_dialnorm.ac3";
+    const auto log = dir / "multi_dialnorm.log";
+    fs::remove(out_path);
+    // map= fills every 5.1 position across the two sources - more than one
+    // source needs one (routing_for_sources refuses otherwise), and every
+    // position has to land somewhere or the dialnorm=auto pass below would
+    // be measuring a programme with silent channels the operator never
+    // asked to leave out.
+    const auto rc = run_cli(
+        "encode \"" + first.string() + "\" \"" + out_path.string() +
+            "\" 384 src=\"" + second.string() +
+            "\" map=0.0:L,0.1:R,0.2:C,0.3:LFE,1.0:Ls,1.1:Rs dialnorm=auto",
+        log);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(rc == 0);
+    REQUIRE(fs::exists(out_path));
+    // No layout= token was given, so this is layout_for_source(6)'s
+    // inference, reached from the multi-source path rather than the
+    // single-file one - and the measured dialnorm is a real BS.1770 pass
+    // over the routed programme, not left at its default.
+    const auto measured = reported_value(text, "dialnorm");
+    REQUIRE(measured.has_value());
+    CHECK(*measured >= 1);
+    CHECK(*measured <= 31);
+}
+
+TEST_CASE("programme2= reports why its own source could not be used", "[cli][encode][programme2]") {
+    const auto dir = scratch_dir();
+    const auto primary = dir / "programme2_primary.wav";
+    REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(2, 4000, 48000), 48000)
+                .has_value());
+
+    SECTION("a programme2= path that does not exist") {
+        const auto out_path = dir / "programme2_missing.ec3";
+        const auto log = dir / "programme2_missing.log";
+        fs::remove(out_path);
+        const auto missing = dir / "programme2_does_not_exist.wav";
+        const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
+                                    out_path.string() + "\" 192 none stereo programme2=\"" +
+                                    missing.string() + "\"",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        // ProgrammeSource::open falls through its own streaming attempt to
+        // read_wav_arg, and it is read_wav_arg's error this prints - naming
+        // the path rather than the word "programme2", so that is what is
+        // checked for.
+        CHECK(text.find(missing.string()) != std::string::npos);
+    }
+
+    SECTION("a programme2= channel count no standard layout covers") {
+        const auto out_path = dir / "programme2_gap.ec3";
+        const auto log = dir / "programme2_gap.log";
+        fs::remove(out_path);
+        const auto second = dir / "programme2_gap_7ch.wav";
+        REQUIRE(ac3::io::write_wav_f32(second.string(), make_tone_channels(7, 2000, 48000), 48000)
+                    .has_value());
+        const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
+                                    out_path.string() + "\" 192 none stereo programme2=\"" +
+                                    second.string() + "\"",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(text.find("7 channels") != std::string::npos);
+        CHECK(text.find("no standard speaker layout has that many channels") != std::string::npos);
+    }
+}
+
+TEST_CASE("programmeN= generalizes past two, each with its own metadata",
+          "[cli][encode][programme2]") {
+    const auto dir = scratch_dir();
+    const auto primary = dir / "programmeN_primary.wav";
+    const auto p2 = dir / "programmeN_p2.wav";
+    const auto p3 = dir / "programmeN_p3.wav";
+    const auto p4 = dir / "programmeN_p4.wav";
+    REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4800, 48000), 48000)
+                .has_value());
+    REQUIRE(
+        ac3::io::write_wav_f32(p2.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
+    REQUIRE(
+        ac3::io::write_wav_f32(p3.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
+    REQUIRE(
+        ac3::io::write_wav_f32(p4.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
+
+    const auto out_path = dir / "programmeN_4pgm.ec3";
+    const auto log = dir / "programmeN_4pgm.log";
+    fs::remove(out_path);
+    const auto rc = run_cli(
+        "eac3-encode \"" + primary.string() + "\" \"" + out_path.string() +
+            "\" 256 none 51 off"
+            " programme2=\"" + p2.string() + "\" programme2-layout=mono programme2-bitrate=96"
+            " programme2-bsmod=commentary programme2-dialnorm=20"
+            " programme3=\"" + p3.string() + "\" programme3-layout=mono programme3-bitrate=96"
+            " programme3-bsmod=vi programme3-dialnorm=15"
+            " programme4=\"" + p4.string() + "\" programme4-layout=mono programme4-bitrate=96"
+            " programme4-bsmod=hi programme4-dialnorm=10",
+        log);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(rc == 0);
+    REQUIRE(fs::exists(out_path));
+    // Adjacent-literal split after \xA7: a bare \x escape is greedy and would
+    // otherwise swallow "E2" as more hex digits, overflowing a char.
+    CHECK(text.find("programme 1 (\xC2\xA7" "E2.3.1.2 I1)") != std::string::npos);
+    CHECK(text.find("programme 2 (\xC2\xA7" "E2.3.1.2 I2)") != std::string::npos);
+    CHECK(text.find("programme 3 (\xC2\xA7" "E2.3.1.2 I3)") != std::string::npos);
+
+    const auto probe_log = dir / "programmeN_4pgm_probe.log";
+    REQUIRE(run_cli("probe \"" + out_path.string() + "\"", probe_log) == 0);
+    const auto probe_text = read_log(probe_log);
+    INFO(probe_text);
+    CHECK(probe_text.find("independent id 0") != std::string::npos);
+    CHECK(probe_text.find("independent id 3") != std::string::npos);
+
+    // Every extra programme's own bsmod and its own fixed dialnorm round-trip
+    // back out of the stream independently - not just the primary's, and not
+    // all three sharing one value.
+    struct Expected {
+        int programme;
+        std::string_view bsmod_text;
+        double dialnorm;
+    };
+    for (const auto& want : {Expected{1, "commentary", 20},
+                             Expected{2, "visually impaired", 15},
+                             Expected{3, "hearing impaired", 10}}) {
+        CAPTURE(want.programme);
+        const auto decode_log =
+            dir / ("programmeN_4pgm_decode" + std::to_string(want.programme) + ".log");
+        const auto wav_out =
+            dir / ("programmeN_4pgm_p" + std::to_string(want.programme) + ".wav");
+        const auto rc2 = run_cli("decode \"" + out_path.string() + "\" \"" + wav_out.string() +
+                                     "\" programme=" + std::to_string(want.programme),
+                                 decode_log);
+        const auto decode_text = read_log(decode_log);
+        INFO(decode_text);
+        CHECK(rc2 == 0);
+        CHECK(decode_text.find(want.bsmod_text) != std::string::npos);
+
+        // decode's own report has no per-programme dialnorm line (that is
+        // encode's own status line above, already checked structurally via
+        // the "programme N (...)" text) - qc's "embedded metadata:" block
+        // does, straight off THIS programme's own independent substream, so
+        // this is the genuine decode-side round-trip for the value.
+        const auto qc_log =
+            dir / ("programmeN_4pgm_qc" + std::to_string(want.programme) + ".log");
+        run_cli("qc \"" + out_path.string() + "\" programme=" + std::to_string(want.programme),
+               qc_log);
+        const auto qc_text = read_log(qc_log);
+        INFO(qc_text);
+        const auto dialnorm = value_after(qc_text, "dialnorm");
+        REQUIRE(dialnorm.has_value());
+        CHECK(*dialnorm == want.dialnorm);
+    }
+}
+
+TEST_CASE("a later programmeN= without an earlier one is refused, not silently renumbered",
+          "[cli][encode][programme2]") {
+    // §E2.3.1.2 assigns substream ids sequentially - programme4= alone would
+    // have no honest answer for what I1/I2 are, so this refuses rather than
+    // quietly making programme4's file I1.
+    const auto dir = scratch_dir();
+    const auto primary = dir / "programme_gap_primary.wav";
+    const auto p4 = dir / "programme_gap_p4.wav";
+    REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000), 48000)
+                .has_value());
+    REQUIRE(
+        ac3::io::write_wav_f32(p4.string(), make_tone_channels(1, 4000, 48000), 48000).has_value());
+
+    const auto out_path = dir / "programme_gap.ec3";
+    const auto log = dir / "programme_gap.log";
+    fs::remove(out_path);
+    const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" + out_path.string() +
+                                "\" 256 none 51 off programme4=\"" + p4.string() +
+                                "\" programme4-layout=mono",
+                            log);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(rc != 0);
+    CHECK_FALSE(fs::exists(out_path));
+    CHECK(text.find("without programme2=") != std::string::npos);
+}
+
+TEST_CASE("a 1+1-only field on an extra programme is refused, not silently inert",
+          "[cli][encode][programme2]") {
+    // dialnorm2/drc2/heavy2/pgmscl2/paninfo2 and their *2 siblings describe
+    // Ch2 of a 1+1 bed, which an extra programme can never be - see
+    // programmeN-layout=1+1's own refusal just below for why.
+    const auto dir = scratch_dir();
+    const auto primary = dir / "programme_dead_primary.wav";
+    const auto p2 = dir / "programme_dead_p2.wav";
+    REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000), 48000)
+                .has_value());
+    REQUIRE(
+        ac3::io::write_wav_f32(p2.string(), make_tone_channels(1, 4000, 48000), 48000).has_value());
+
+    SECTION("a 1+1-only field") {
+        const auto out_path = dir / "programme_dead_11.ec3";
+        const auto log = dir / "programme_dead_11.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
+                                    out_path.string() + "\" 256 none 51 off programme2=\"" +
+                                    p2.string() + "\" programme2-layout=mono "
+                                    "programme2-dialnorm2=15",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(text.find("1+1 dual-mono only") != std::string::npos);
+    }
+
+    SECTION("an AC-3 Annex D field, as a bare token") {
+        const auto out_path = dir / "programme_dead_annexd.ec3";
+        const auto log = dir / "programme_dead_annexd.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
+                                    out_path.string() + "\" 256 none 51 off programme2=\"" +
+                                    p2.string() + "\" programme2-layout=mono programme2-annexd",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(text.find("Annex D") != std::string::npos);
+    }
+
+    SECTION("layout 1+1 on an extra programme") {
+        const auto out_path = dir / "programme_dead_layout11.ec3";
+        const auto log = dir / "programme_dead_layout11.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
+                                    out_path.string() + "\" 256 none 51 off programme2=\"" +
+                                    p2.string() + "\" programme2-layout=1+1",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(text.find("programme2-layout=1+1 is not supported") != std::string::npos);
+    }
 }

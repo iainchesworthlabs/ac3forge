@@ -68,36 +68,43 @@ inline constexpr double kDitherVariance = 0.16663;
 // introduced this.
 inline constexpr double kSignalToDitherFloor = 1.0;
 
-class DitherBallot {
+// Templated on the coefficient store's scalar (ac3/internal/encode_scalar.hpp)
+// so the float encode path weighs and sums in float; the double instantiation
+// is the ballot as it was.
+template <typename Scalar>
+class BasicDitherBallot {
    public:
     // Weighs one contiguous region of one stream. `coefficients`, `exponents`
     // and `bap` are all indexed from bin 0 (the same indexing
     // compute_bit_allocation uses), and [begin, end) is the part of them this
     // stream actually codes. Call it once per region a channel receives: its
     // own spectrum, plus the shared coupling channel's when it is coupled.
-    void weigh(std::span<const double> coefficients, std::span<const std::uint8_t> exponents,
+    void weigh(std::span<const Scalar> coefficients, std::span<const std::uint8_t> exponents,
                std::span<const std::uint8_t> bap, int begin, int end) {
         for (int bin = begin; bin < end; ++bin) {
             const auto at = static_cast<std::size_t>(bin);
             if (bap[at] != 0) {
                 continue;
             }
-            const double c = coefficients[at];
+            const Scalar c = coefficients[at];
             signal_ += c * c;
-            noise_ += kDitherVariance *
-                      std::ldexp(1.0, -2 * static_cast<int>(exponents[at]));
+            noise_ += static_cast<Scalar>(kDitherVariance) *
+                      std::ldexp(static_cast<Scalar>(1), -2 * static_cast<int>(exponents[at]));
         }
     }
 
     // False when nothing was weighed (no zero-bap bin exists, so there is
     // nothing for dither to fill) as well as when the comparison fails.
     [[nodiscard]] bool on() const {
-        return noise_ > 0.0 && signal_ >= kSignalToDitherFloor * noise_;
+        return noise_ > static_cast<Scalar>(0) &&
+               signal_ >= static_cast<Scalar>(kSignalToDitherFloor) * noise_;
     }
 
    private:
-    double signal_ = 0.0;
-    double noise_ = 0.0;
+    Scalar signal_ = 0;
+    Scalar noise_ = 0;
 };
+
+using DitherBallot = BasicDitherBallot<double>;
 
 }  // namespace ac3::internal

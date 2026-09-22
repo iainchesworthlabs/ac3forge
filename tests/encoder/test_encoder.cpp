@@ -9,11 +9,11 @@
 #include <vector>
 
 #include "ac3/core/bitreader.hpp"
+#include "ac3/core/coupling.hpp"
 #include "ac3/core/crc16.hpp"
 #include "ac3/core/exponents.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
-#include "ac3/encoder/coupling.hpp"
 #include "ac3/encoder/encoder.hpp"
 
 namespace {

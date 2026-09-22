@@ -63,12 +63,39 @@ enum class MixLevel : std::uint8_t {
     kSilent = 7,
 };
 
-// Table D2.2. '11' is reserved and reads as "not indicated".
+// Table D2.2, the preferred stereo downmix. E-AC-3's mixmdate carries the same
+// field: Annex E gives dmixmod no clause of its own, and §E2.2 says every
+// element keeps "the same meaning and purpose as described in the body and
+// Annex D". ETSI TS 102 366 V1.4.1 reads the same way (Table D.1.1, clause
+// E.1.2.0), so '11' is reserved in both codecs and neither text assigns it a
+// downmix. §D2.3.1.2: a decoder given the reserved code "should still
+// reproduce audio", and the code "may be interpreted as 'not indicated'".
+//
+// kReserved exists so that a stream which sends '11' is reported as sending
+// it, instead of reading back the same as '00'. automatic_stereo_target()
+// (ac3/decoder/output.hpp) takes §D2.3.1.2's reading and treats it as not
+// indicated; valid_mix_metadata() and valid_alternate_bsi() refuse to write it.
 enum class DownmixMode : std::uint8_t {
     kNotIndicated = 0,
     kLtRt = 1,
     kLoRo = 2,
+    kReserved = 3,
 };
+
+// The three codes Table D2.2 defines. An encoder writes only these: a reserved
+// '11' tells a receiver nothing it can act on, so a config asking for one is
+// refused rather than sent - the same stance valid_surround_mix_level() takes.
+[[nodiscard]] constexpr bool valid_downmix_mode(DownmixMode value) {
+    switch (value) {
+        case DownmixMode::kNotIndicated:
+        case DownmixMode::kLtRt:
+        case DownmixMode::kLoRo:
+            return true;
+        case DownmixMode::kReserved:
+            break;
+    }
+    return false;
+}
 
 [[nodiscard]] constexpr double coefficient(CentreMixLevel value) {
     switch (value) {
@@ -300,10 +327,10 @@ inline constexpr int kPgmScaleMax = 63;
     return static_cast<double>(code) - 51.0;
 }
 
-// Every value fits the bits Table E1.2 gives its field, and no surround level
-// is one of the reserved codes. Same reasoning as valid_bsi_info(): a value
-// one bit too wide does not record the wrong level, it moves every field after
-// it and the frame stops decoding as itself.
+// Every value fits the bits Table E1.2 gives its field, and neither dmixmod nor
+// a surround level is one of the reserved codes. Same reasoning as
+// valid_bsi_info(): a value one bit too wide does not record the wrong level,
+// it moves every field after it and the frame stops decoding as itself.
 [[nodiscard]] AC3FORGE_EXPORT bool valid_mix_metadata(const MixMetadata& value);
 
 // --- §7.8 downmixing -------------------------------------------------------
@@ -362,6 +389,13 @@ struct LtRtCoefficients {
 // account for (the first frame, or a caller that only wants this frame).
 [[nodiscard]] AC3FORGE_EXPORT double mono_downmix_peak_dbfs(
     std::span<const std::array<double, 256>> history,
+    std::span<const std::span<const float>> channels, Acmod acmod, double clev, double slev);
+
+// The same, for a history the caller keeps in float - the encoders' analysis
+// front end under ac3/internal/encode_scalar.hpp's float variant. The sum is
+// double either way.
+[[nodiscard]] AC3FORGE_EXPORT double mono_downmix_peak_dbfs(
+    std::span<const std::array<float, 256>> history,
     std::span<const std::span<const float>> channels, Acmod acmod, double clev, double slev);
 
 [[nodiscard]] AC3FORGE_EXPORT double mono_downmix_peak_dbfs(

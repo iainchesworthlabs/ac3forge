@@ -71,6 +71,79 @@ def load_leg_results(results_dir: Path):
             yield record
 
 
+# How many of the most recent COMMITS the sidecar window keeps.
+#
+# The trend pages render at most 40 entries per series and may compute a
+# 10-entry trailing baseline behind the oldest one. Eighty commits keeps that
+# working with margin while remaining much smaller than unbounded histories.
+RECENT_WINDOW_COMMITS = 80
+
+
+def write_recent_window(history_path: Path) -> None:
+    """Write a whole-commit ``*.recent.jsonl`` beside a full JSONL history.
+
+    All measurement histories are append-only and unbounded. Their pages need
+    only a recent display and baseline window, so each append producer calls
+    this shared helper after updating its authoritative full file.
+
+    The obvious fix is an HTTP suffix Range request from the page, which does
+    not work and cannot be made to: raw.githubusercontent.com serves ranges
+    happily to curl, but `Range` is not a CORS-safelisted request header, so a
+    cross-origin fetch preflights - and that host answers OPTIONS with a 403.
+    Verified from the live docs origin: the plain fetch returns 1789155 bytes,
+    the ranged one fails outright. So the window has to be produced here, where
+    there is no CORS, rather than requested there.
+
+    The full file is still written and still authoritative - this is a derived
+    view, regenerated in full each run from the file that was just appended to,
+    so it cannot drift from it. A reader wanting the whole series (or a page
+    published before this file existed) reads the original.
+
+    Whole commits, not the last N lines: a commit writes one record per
+    series), so a line-count window could cut the newest commit in half and a
+    page would render a partial result.
+    """
+    if not history_path.exists():
+        return
+    records = []
+    for raw in history_path.read_text().splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            records.append((json.loads(line)["commit"], line))
+        except (json.JSONDecodeError, KeyError):
+            # A malformed or schema-less line is kept out of the window rather
+            # than failing the trend job over it; the full file still has it.
+            continue
+
+    # Commit order as recorded, not sorted by date: this file is appended to in
+    # merge order, which is the order the page walks it in.
+    seen = []
+    for commit, _ in records:
+        if commit not in seen:
+            seen.append(commit)
+    recent_path = history_path.with_suffix(".recent.jsonl")
+
+    # Nothing to gain while the whole history still fits in the window, and
+    # a real cost to writing it anyway: the sidecar would be a byte-for-byte
+    # second copy, doubling this branch's size to save the reader nothing.
+    # The page falls back to the full file when this is absent, which is
+    # exactly the right behaviour in that case. A stale window left by an
+    # earlier run is removed rather than left to go out of date.
+    if len(seen) <= RECENT_WINDOW_COMMITS:
+        recent_path.unlink(missing_ok=True)
+        print(f"History is {len(seen)} commit(s), within the {RECENT_WINDOW_COMMITS}-commit "
+              f"window - no sidecar written; the page reads {history_path.name}.")
+        return
+
+    keep = set(seen[-RECENT_WINDOW_COMMITS:])
+    kept = [line for commit, line in records if commit in keep]
+    recent_path.write_text("\n".join(kept) + ("\n" if kept else ""))
+    print(f"Wrote {len(kept)} record(s) from the last {len(keep)} commit(s) "
+          f"to {recent_path}")
+
+
 def trailing_mean(history_path: Path, leg: str, codec: str, check: str, window: int):
     """Matches on (leg, codec, check), not just (leg, codec): see
     load_leg_results's docstring for why codec alone can conflate two
@@ -96,6 +169,46 @@ def trailing_mean(history_path: Path, leg: str, codec: str, check: str, window: 
         return None
     tail = matches[-window:]
     return sum(tail) / len(tail)
+
+
+def trailing_channel_means(history_path: Path, leg: str, codec: str, check: str, window: int):
+    """The same trailing baseline as trailing_mean, but one per CHANNEL.
+
+    trailing_mean watches worst_db, and worst_db is the same channel every run
+    - on the 5.1 fixtures it is always one of the dither-dominated surrounds.
+    That made the whole trend detector blind to the other five channels: the
+    centre channel of ext_ac3_51_448_dee could fall 35 dB and, because it would
+    still be nowhere near the surrounds' number, neither the soft nor the hard
+    tier would ever see it. So the drop is now computed per channel and the
+    worst one reported, which is the same question asked of every channel
+    instead of only the loudest-losing one.
+
+    Reads channels_db, which every record has carried since this file was
+    first written - so this works retroactively against the existing history
+    rather than needing a fresh baseline to start from.
+
+    Returns None when there is no usable history, or when the channel count
+    changed within the window (a layout change means the older rows measure a
+    different thing, and a per-index mean across the two would be meaningless).
+    """
+    if not history_path.exists():
+        return None
+    matches = []
+    for line in history_path.read_text().splitlines():
+        if not line.strip():
+            continue
+        rec = json.loads(line)
+        if (rec.get("leg") == leg and rec.get("codec") == codec
+                and rec.get("check") == check and "channels_db" in rec):
+            matches.append(rec["channels_db"])
+    if not matches:
+        return None
+    tail = matches[-window:]
+    channels = len(tail[-1])
+    tail = [row for row in tail if len(row) == channels]
+    if not tail:
+        return None
+    return [sum(row[i] for row in tail) / len(tail) for i in range(channels)]
 
 
 def emit_github_output(name: str, value: str) -> None:
@@ -142,24 +255,63 @@ def main() -> int:
             "channels_db": rec["channels_db"],
             "threshold_db": rec["threshold_db"],
         }
+        # The per-channel half of compare_wav.py's schema, carried through
+        # only when it is present. A leg still running an older compare_wav.py
+        # (or verify_fate_interop.py, which has no vector) writes records
+        # without these keys, and a record that simply lacks them reads as
+        # "scalar-gated" rather than as a broken row - the same way `check`
+        # itself was introduced.
+        for optional in ("channel_labels", "thresholds_db", "headroom_db",
+                          "tightest_channel", "tightest_headroom_db"):
+            if optional in rec:
+                entry[optional] = rec[optional]
         lines.append(json.dumps(entry, sort_keys=True))
+
+        # Per channel first: this is the check that can actually see a front
+        # channel or the LFE move (see trailing_channel_means). The worst-db
+        # comparison below is kept because it is what the hard tier and the
+        # published trend line have always been computed from, and changing
+        # both the sensitivity and the definition in one step would make a
+        # future regression impossible to attribute.
+        # Each candidate is (drop_in_db, human description). The larger drop
+        # decides the tier and leads the message, so a report always names the
+        # measurement that actually tripped it rather than opening with a
+        # number that did not move.
+        candidates = []
+
         drop = None if baseline is None else baseline - rec["worst_db"]
-        if drop is not None and drop >= HARD_REGRESSION_DROP_DB:
-            hard_regression = True
-            print(f"::error title=Quality trend hard regression::{rec['leg']}/{rec['check']}: "
-                  f"worst-channel SNR {rec['worst_db']:.2f} dB is "
-                  f"{drop:.2f} dB below the trailing {REGRESSION_TRAILING_WINDOW}-run mean "
-                  f"({baseline:.2f} dB) on {args.branch} - more than the "
-                  f"{HARD_REGRESSION_DROP_DB:.0f} dB hard-regression threshold. Still recorded "
-                  "below; the run this came from is failed separately so this doesn't go "
-                  "unnoticed.")
-        elif drop is not None and drop >= REGRESSION_DROP_DB:
-            print(f"::warning title=Quality trend regression::{rec['leg']}/{rec['check']}: "
-                  f"worst-channel SNR {rec['worst_db']:.2f} dB is "
-                  f"{drop:.2f} dB below the trailing "
-                  f"{REGRESSION_TRAILING_WINDOW}-run mean ({baseline:.2f} dB) on {args.branch}. "
-                  f"Still above the hard {rec['threshold_db']:.0f} dB gate - this is a trend "
-                  "warning, not a failure.")
+        if drop is not None:
+            candidates.append((drop, f"worst-channel SNR fell {drop:.2f} dB below its trailing "
+                                     f"{REGRESSION_TRAILING_WINDOW}-run mean "
+                                     f"({baseline:.2f} -> {rec['worst_db']:.2f} dB)"))
+
+        channel_means = trailing_channel_means(history_path, rec["leg"], rec["codec"],
+                                                rec["check"], REGRESSION_TRAILING_WINDOW)
+        if channel_means is not None and len(channel_means) == len(rec["channels_db"]):
+            labels = rec.get("channel_labels") or [f"ch{i}" for i in range(len(channel_means))]
+            channel_drop, worst_i = max(
+                (mean - now, i) for i, (mean, now)
+                in enumerate(zip(channel_means, rec["channels_db"], strict=True)))
+            candidates.append((channel_drop,
+                               f"channel {labels[worst_i]} fell {channel_drop:.2f} dB below its "
+                               f"own trailing {REGRESSION_TRAILING_WINDOW}-run mean "
+                               f"({channel_means[worst_i]:.2f} -> "
+                               f"{rec['channels_db'][worst_i]:.2f} dB)"))
+
+        if candidates:
+            worst_drop, reason = max(candidates, key=lambda c: c[0])
+            if worst_drop >= HARD_REGRESSION_DROP_DB:
+                hard_regression = True
+                print(f"::error title=Quality trend hard regression::"
+                      f"{rec['leg']}/{rec['check']}: {reason} on {args.branch} - more than the "
+                      f"{HARD_REGRESSION_DROP_DB:.0f} dB hard-regression threshold. Still "
+                      "recorded below; the run this came from is failed separately so this "
+                      "doesn't go unnoticed.")
+            elif worst_drop >= REGRESSION_DROP_DB:
+                print(f"::warning title=Quality trend regression::"
+                      f"{rec['leg']}/{rec['check']}: {reason} on {args.branch}. This is a trend "
+                      "warning, not a failure - the run's own per-channel gate in "
+                      "verify_gold_reference.sh already passed.")
 
     args.history_dir.mkdir(parents=True, exist_ok=True)
     with history_path.open("a") as f:
@@ -167,6 +319,7 @@ def main() -> int:
             f.write(line + "\n")
 
     print(f"Appended {len(lines)} record(s) to {history_path}")
+    write_recent_window(history_path)
     emit_github_output("hard_regression", "true" if hard_regression else "false")
     return 0
 

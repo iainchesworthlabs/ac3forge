@@ -6,7 +6,7 @@
 # it's a normal add_subdirectory() from root CMakeLists.txt, gated on
 # EMSCRIPTEN there rather than needing a whole separate entry point.
 #
-# Roadmap F3: a browser demo that decodes a real E-AC-3/Atmos-in-DD+
+# WASM browser demo: a browser demo that decodes a real E-AC-3/Atmos-in-DD+
 # elementary stream via ac3::forge compiled to WASM, plays the decoded bed
 # audio through the Web Audio API, and visualizes real per-channel energy in
 # time with playback. See docs/platforms/wasm.md.
@@ -73,7 +73,7 @@ add_custom_command(TARGET ac3forge_wasm_decode POST_BUILD
     COMMENT "Assembling the servable wasm_decode_demo/ directory")
 
 # ---------------------------------------------------------------------------
-# Roadmap UX6: the browser ENCODE page - a sibling module to the decode
+# in-browser encoding: the browser ENCODE page - a sibling module to the decode
 # target above, not a bigger version of it. Kept as a second .wasm/.js
 # rather than folded into ac3forge_wasm_decode so a page that only needs one
 # direction never pays for the other; see docs/platforms/wasm.md's "Encode
@@ -133,3 +133,19 @@ add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
         "${CMAKE_BINARY_DIR}/bin/wasm_decode_demo/ac3forge_decode.wasm"
         "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo"
     COMMENT "Assembling the servable wasm_encode_demo/ directory")
+
+# The Atmos object-authoring page (apps/wasm/atmos/) ships as a SUBDIRECTORY
+# of the encode demo rather than a third top-level demo: it loads the very
+# same ac3forge_encode.js/.wasm via "../", so wasm_encode_demo/ stays the one
+# directory that is copied around (docs site, local serving) with the
+# authoring page inside it for free.
+add_custom_command(TARGET ac3forge_wasm_encode POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+        "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo/atmos"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/atmos/index.html"
+        "${CMAKE_CURRENT_SOURCE_DIR}/atmos/app.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/favicon.svg"
+        "${CMAKE_CURRENT_SOURCE_DIR}/favicon-32.png"
+        "${CMAKE_BINARY_DIR}/bin/wasm_encode_demo/atmos"
+    COMMENT "Assembling the wasm_encode_demo/atmos/ authoring page")

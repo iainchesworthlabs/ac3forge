@@ -25,6 +25,7 @@
 #include "commands/synth.hpp"
 #include "commands/truehd.hpp"
 #include "exit_codes.hpp"
+#include "platform/console_encoding.hpp"
 #include "support.hpp"
 #include "usage.hpp"
 
@@ -113,7 +114,7 @@ struct Args {
 // needs kMonitor as a hard gate, the same way 'play'/'outputs' need
 // kPassthrough.
 //
-// kAdm ('atmos-adm', roadmap B1 phase 3): unlike the three audio ones, this is not a hardware
+// kAdm ('atmos-adm', ADM BWF reader phase 3): unlike the three audio ones, this is not a hardware
 // question - it is whether ac3adm::ac3adm/ac3::admbridge were linked into this build at all
 // (AC3FORGE_BUILD_ADM, default OFF - see the root CMakeLists.txt's own option()). Answered the
 // same way regardless: adm/atmos_adm.hpp's ac3cli::adm_capability(), backed by exactly one of
@@ -172,13 +173,13 @@ int run_help(const Args& x);
 int run_man();
 int run_completions(std::string_view shell);
 
-// 44 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
+// 45 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
 // linked ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above
 // and run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating
 // it, never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 44> kCommands{{
+constexpr std::array<Command, 45> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
@@ -219,7 +220,7 @@ constexpr std::array<Command, 44> kCommands{{
                                  x.str(5));
      }},
     {"atmos-adm", 3, "<in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id]",
-     "a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, roadmap B1) straight to DD+ JOC "
+     "a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, ADM BWF reader) straight to DD+ JOC "
      "E-AC-3; every bed/object channel the resolved audioProgramme names becomes an AtmosEncoder "
      "object, driven by the file's own authored automation - no scene file needed. Only in "
      "builds with -DAC3FORGE_BUILD_ADM=ON",
@@ -230,7 +231,7 @@ constexpr std::array<Command, 44> kCommands{{
      }},
     {"atmos-iab", 3, "<in.iab|in.mxf> <out.ec3> [bitrate_kbps]",
      "a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2 Immersive Audio Bitstream, a bare "
-     "elementary .iab file or a real MXF Track File alike - roadmap IM1) straight to DD+ JOC "
+     "elementary .iab file or a real MXF Track File alike - IAB reader) straight to DD+ JOC "
      "E-AC-3; every Bed channel/Object the file names becomes an AtmosEncoder object, driven by "
      "the file's own authored panning - no scene file needed. Only in builds with "
      "-DAC3FORGE_BUILD_ADM=ON",
@@ -283,9 +284,10 @@ constexpr std::array<Command, 44> kCommands{{
     {"eac3-encode", 3,
      "<in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav]",
      "in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= "
-     "for more than one source. programme2= is a different thing entirely - a second, "
-     "independent E-AC-3 substream (its own layout/bitrate/dialnorm via "
-     "programme2-layout=/-bitrate=/-dialnorm=), not another channel of this one",
+     "for more than one source. programme2= (up to programme8=) is a different thing "
+     "entirely - another independent E-AC-3 substream (its own layout/bitrate/dialnorm "
+     "and metadata via programmeN-layout=/-bitrate=/-<field>=), not another channel of "
+     "this one",
      topic::kStdio | topic::kLayout | topic::kTools | topic::kVbr | topic::kMulti | topic::kMeta,
      Needs::kNothing,
      [](const Args& x) {
@@ -296,7 +298,7 @@ constexpr std::array<Command, 44> kCommands{{
      "AC-3 or E-AC-3, bare or inside a container; bsid decides. objects_dir (E-AC-3 Atmos only): "
      "export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 "
      "dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM "
-     "Profile BW64 there (roadmap IM2) - bed LFE plus every dynamic object, positioned by its own "
+     "Profile BW64 there (legacy item IM2) - bed LFE plus every dynamic object, positioned by its own "
      "decoded OAMD",
      topic::kStdio | topic::kDecode | topic::kObjects,
      Needs::kNothing,
@@ -313,9 +315,9 @@ constexpr std::array<Command, 44> kCommands{{
      topic::kAtmos | topic::kPaths | topic::kObjects,
      Needs::kNothing,
      [](const Args& x) { return run_truehd_atmos(x.str(1), x.str(2), x.u32(3, 0), x.str(4)); }},
-    {"probe", 2, "<in.ac3|in.ec3> [json=1] [detail=frames|blocks]",
-     "what the stream declares: layout, substreams, rates, metadata ranges, object layer, "
-     "tool usage and per-frame CRC - as a table, or as a documented JSON contract",
+    {"probe", 2, "<in.ac3|in.ec3|in.ac4> [json=1] [detail=frames|blocks]",
+     "inspect AC-3/E-AC-3 layout, substreams, metadata, objects, tools and CRC, or AC-4 "
+     "TOC/presentations/substream groups; table or documented JSON",
      topic::kStdio | topic::kProbe,
      Needs::kNothing, [](const Args& x) { return run_probe(x.str(1), x.meta); }},
     {"transcode", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout]",
@@ -381,8 +383,8 @@ constexpr std::array<Command, 44> kCommands{{
     {"mkv", 3, "<in.ac3|in.ec3> <out.mkv>", "wrap as a playable Matroska file", topic::kMkv,
      Needs::kNothing,
      [](const Args& x) { return run_mkv(x.str(1), x.str(2)); }},
-    {"mp4", 3, "<in.ac3|in.ec3> <out.mp4>",
-     "wrap as a playable MP4 with a spec-correct dac3/dec3 box", topic::kNone,
+    {"mp4", 3, "<in.ac3|in.ec3|in.ac4> <out.mp4>",
+     "wrap as playable MP4 with dac3/dec3 for AC-3/E-AC-3 or dac4 for AC-4", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_mp4(x.str(1), x.str(2)); }},
     {"fmp4", 3, "<in.ac3|in.ec3> <out_dir> [frames_per_fragment]",
@@ -391,8 +393,8 @@ constexpr std::array<Command, 44> kCommands{{
      topic::kFmp4 | topic::kMeta,
      Needs::kNothing,
      [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48), x.meta); }},
-    {"ts", 3, "<in.ac3|in.ec3> <out.ts> [dvb|atsc]",
-     "wrap as an MPEG-2 Transport Stream, DVB profile by default",
+    {"ts", 3, "<in.ac3|in.ec3|in.ac4> <out.ts> [dvb|atsc]",
+     "wrap as MPEG-2 TS; AC-4 supports DVB only",
      topic::kTs | topic::kMeta,
      Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2), x.str(3, "dvb"), x.meta); }},
     {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3>",
@@ -413,6 +415,16 @@ constexpr std::array<Command, 44> kCommands{{
     {"outputs", 1, "", "render endpoints + AC-3/E-AC-3 passthrough support", topic::kNone,
      Needs::kPassthrough,
      [](const Args&) { return run_outputs(); }},
+    {"identify", 1, "[device_index] [layout] [seconds] [routing] [level_db]",
+     "walk the identify tone across an output's speakers - pink noise on one rendered channel at "
+     "a time, placed by the routing patch, so a room's wiring can be heard (layout \"-\" is the "
+     "device's own speakers; routing 1,0,2,3,4,5 swaps the front pair)",
+     topic::kNone,
+     Needs::kMonitor,
+     [](const Args& x) {
+         return run_identify(x.i32(1, -1), x.str(2, "-"), x.u32(3, 2), x.str(4, "-"),
+                             static_cast<double>(x.i32(5, -20)));
+     }},
     {"play", 2, "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index]",
      "exclusive-mode IEC 61937 passthrough, following the sink (bsid decides the source "
      "format; a named device that rejects it gets an automatic AC-3/PCM fallback - follow=off "
@@ -428,7 +440,7 @@ constexpr std::array<Command, 44> kCommands{{
      [](const Args& x) { return run_monitor(x.str(1), x.i32(2, -1), x.meta); }},
     {"spatial", 2, "<in.ec3> [device_index]",
      "decode the object layer onto Windows Spatial Sound - dynamic objects at their OAMD "
-     "positions, the bed's LFE static (roadmap UX8)",
+     "positions, the bed's LFE static (Windows spatial object renderer)",
      topic::kDecode | topic::kObjects,
      Needs::kSpatial,
      [](const Args& x) { return run_spatial(x.str(1), x.i32(2, -1), x.meta); }},
@@ -443,7 +455,7 @@ constexpr std::array<Command, 44> kCommands{{
 }};
 
 // kCommands as usage.hpp sees it: no handler, no Needs, and this build's own
-// answer to "can it run here" already resolved. Rebuilt on every call - 39
+// answer to "can it run here" already resolved. Rebuilt on every call - 42
 // rows of string_view, so there is nothing worth caching and nothing that can
 // go stale between the table and what gets printed.
 std::vector<CommandInfo> command_infos() {
@@ -503,6 +515,53 @@ int run_completions(std::string_view shell) {
     return print_completions(shell, command_infos());
 }
 
+// Holds a Windows console on UTF-8 for the length of the run and puts its own
+// code page back afterwards, so the section signs in this CLI's spec
+// citations ("A/52 §7.8" and the seventy-nine others) render as themselves
+// rather than as two bytes of the console's own code page. Inert everywhere
+// else - platform/console_encoding.hpp is the whole story, including why
+// redirected output is unaffected either way.
+//
+// A guard rather than two bare calls in main() because the code page has to
+// go back on every path out, including the two catch blocks below, and a
+// destructor is the only thing that covers them without repeating itself.
+// The member's initialiser is where the console is switched: there is no
+// second state to keep.
+class ConsoleEncoding {
+public:
+    ConsoleEncoding() = default;
+
+    ~ConsoleEncoding() {
+        // Flush first, and this ordering is the whole point of the two lines
+        // rather than an afterthought. A console interprets bytes with the
+        // code page in force when they are WRITTEN, and the MSVC runtime does
+        // not line-buffer a console: its setvbuf documentation says outright
+        // that line buffering there is full buffering, so a run printing less
+        // than one buffer's worth still has all of it pending when main
+        // returns. Restoring first would hand that pending text to the CRT's
+        // own exit-time flush, after the code page had already gone back -
+        // which is the very rendering this class exists to prevent, arrived
+        // at from the other direction. std::fflush(nullptr) is every open
+        // output stream, which covers stderr as well and, since nothing here
+        // calls sync_with_stdio(false), std::cout with them.
+        //
+        // (void) for the reason support.cpp casts its own two fflush calls:
+        // cert-err33-c is on (.clang-tidy) and there is nothing to do about a
+        // failure here anyway - the run is over and the report has been
+        // written or it has not.
+        (void)std::fflush(nullptr);
+        ac3::cli::platform::restore_console_encoding(previous_);
+    }
+
+    ConsoleEncoding(const ConsoleEncoding&) = delete;
+    ConsoleEncoding& operator=(const ConsoleEncoding&) = delete;
+    ConsoleEncoding(ConsoleEncoding&&) = delete;
+    ConsoleEncoding& operator=(ConsoleEncoding&&) = delete;
+
+private:
+    unsigned int previous_ = ac3::cli::platform::set_console_utf8();
+};
+
 }  // namespace
 
 int run_main(int argc, char** argv) {
@@ -536,13 +595,15 @@ int run_main(int argc, char** argv) {
                                token == "couple" || token == "heavy" || token == "heavy2" ||
                                token == "mixmeta" || token == "sign-objects" ||
                                token == "verify-objects" || token == "verify" ||
+                               token == "bed-only" ||
                                token == "keep-partial" || token == "fast-mdct" ||
                                token == "fast-imdct" || token == "mix-lfe" ||
                                token == "fallback-51" || token == "annexd" ||
                                token == "infomdat" || token == "encinfo" ||
                                token == "langcod" || token == "langcod2" ||
                                token == "copyright" || token == "sourcefscod" ||
-                               token == "quiet" || token == "verbose";
+                               token == "quiet" || token == "verbose" ||
+                               is_extra_programme_token(token);
         if (token == "couple") {
             couple_flag = true;
         }
@@ -617,6 +678,9 @@ int run_main(int argc, char** argv) {
 // the catch block's own fmt::println, whose fixed one-argument format string
 // has no realistic way to throw. NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv) {
+    // Before anything prints, and outside the try so it also covers what the
+    // catch blocks print.
+    const ConsoleEncoding console{};
     try {
         return run_main(argc, argv);
     } catch (const std::exception& e) {

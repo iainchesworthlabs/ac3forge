@@ -12,3 +12,4 @@
 #define AC3_ZONE_SCOPED_N(name)
 #define AC3_ZONE_BEGIN(var, name)
 #define AC3_ZONE_END(var)
+#define AC3_FRAME_MARK()

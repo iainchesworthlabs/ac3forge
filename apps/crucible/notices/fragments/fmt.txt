@@ -1,0 +1,7 @@
+{fmt} {{FMT_VERSION}}
+----------------------
+
+The {fmt} formatting library, version {{FMT_VERSION}}, is compiled into
+{{FMT_USERS}}.
+
+{{FILE:FMT_MIT}}

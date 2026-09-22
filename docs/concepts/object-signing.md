@@ -4,7 +4,7 @@ A clean-room Atmos stream from this encoder is a valid Atmos-in-E-AC-3 stream: t
 everywhere, and the JOC/OAMD object metadata is spec-correct. But a **Dolby-licensed decoder**
 does one extra thing before it will reconstruct the objects — it checks a keyed authenticity tag
 carried in the stream's EMDF *protection* field. Without a valid tag it plays the plain 5.1 bed
-instead of the height-rendered objects (see [Atmos & JOC](atmos-joc.md#two-honest-limitations)).
+instead of the height-rendered objects (see [Atmos & JOC](atmos-joc.md#two-limitations)).
 
 `ac3::signing` computes that tag.
 
@@ -93,13 +93,23 @@ in the library reference for the rest of the API surface.
 - `load_signing_key()` is a convenience resolver (a path argument, then `AC3FORGE_SIGNING_KEY_FILE`,
   then an inline `AC3FORGE_SIGNING_KEY`) for tools that take a key from the environment; a library
   consumer can ignore it and construct `SigningKey` directly from bytes it obtained however it likes.
-- **Key format: base64 or raw bytes.** `decode_signing_key()` (which `load_signing_key()` uses, and
-  which you can call yourself on bytes you already hold) base64-decodes its input when it is valid
-  base64 — the form a GitHub secret must use, since a secret is text and can't carry a raw binary
-  key — and otherwise takes it as raw key bytes. The two are unambiguous in practice; **hex is not a
-  supported format** (a hex string is itself valid base64, so the two can't be auto-distinguished).
-  So one base64 value works everywhere: as the CI secret, as `AC3FORGE_SIGNING_KEY`, or as a
-  `signing-key=` file — and a raw binary key file decodes to the same bytes.
+- **Key format: base64, a `0xHH` byte array, or raw bytes.** `decode_signing_key()` (which
+  `load_signing_key()` uses, and which you can call yourself on bytes you already hold)
+  base64-decodes its input when it is valid base64 — the form a GitHub secret must use, since a
+  secret is text and can't carry a raw binary key — then tries a comma/whitespace-separated
+  `0x56, 0x6c, 0xef, ...` byte array, the shape a disassembler or decompiler typically exports a
+  found secret in, and otherwise takes the content as raw key bytes. All three are unambiguous in
+  practice (the array form's `0x` prefixes and commas aren't valid base64 characters); **plain hex
+  with no `0x` prefix is not its own supported format** (a hex string is itself valid base64, so
+  the two can't be auto-distinguished). Content that is entirely hex/array-shaped characters (hex
+  digits, `x`, comma, brace/bracket punctuation) but still fails to parse as either recognized
+  format is refused outright, rather than silently taken as literal ASCII bytes: a mis-copied or
+  truncated array export looks nothing like a genuine random binary key, and signing with the
+  wrong secret this way produces a stream that verifies fine against itself while a real decoder
+  rejects it — the exact failure mode this check exists to turn into a clear error instead. So one
+  base64 value works everywhere: as the CI secret, as `AC3FORGE_SIGNING_KEY`, or as a
+  `signing-key=` file — and a raw binary key file, or a copy-pasted `0xHH` array, decodes to the
+  same bytes.
 
 Everything below is just *how the two front ends in this repository supply their own key* — worked
 examples of the rule above, not additional machinery.
@@ -123,7 +133,7 @@ ac3cli atmos out.ec3 8 448 4 6 objects sign-objects signing-key=/path/to/atmos.k
 `sign-objects` leaves the container unsigned, and — because an unsigned-but-present container is a
 hard refusal on a validating decoder rather than a graceful fallback — you'll usually want
 `mode bed51` there so the stream omits the container and plays as 5.1 everywhere. See
-[CLI metadata options](../cli/metadata-options.md).
+[CLI metadata options](../forge/cli/metadata-options.md).
 
 `decode`/`monitor` have the mirror-image option, `verify-objects`, to check a stream's tag instead
 of writing one:
@@ -168,6 +178,29 @@ the app streams the unsigned `bed51`-equivalent, always safe on any receiver.
     the secret gates every build, that includes the debug APK CI produces on each push, not just
     releases. Anyone with such an APK can extract the key, so it is as sensitive as the key itself:
     sideload it to your own device and never distribute it. See [Android](../platforms/android.md).
+
+## Sibling: TrueHD Evolution
+
+This page is **E-AC-3 / EMDF** object signing only. TrueHD uses a different keyed check —
+**Evolution frame protection** (truncated HMAC-SHA-256 over the access unit and the Evolution
+frame). That seam belongs on the TrueHD/MLP branch (`feature/truehd-atmos-support`, roadmap IM5),
+not in `ac3::signing`. Open tools such as truehdd expose it as an optional `--evo-key`; decode
+without a key stays unchecked. Any future multi-key verify / licensed soft-gate for MLP should
+target Evolution HMAC, parallel to but separate from the EMDF policy on this page.
+
+## Planned decode modes
+
+Roadmap: [Object authenticity modes](https://github.com/iainchesworthlabs/ac3forge/blob/main/ROADMAP.md) (Partial tail + Proposed). Three policies
+for decode into multi-channel / objects — only the first two ship today:
+
+| Mode | Intent | Today |
+|---|---|---|
+| **Unchecked** (default) | FOSS-style: reconstruct objects without checking the tag | Shipped — omit `verify-objects` |
+| **Verify** | Multi-key HMAC QC; mismatch **fails** the command | Partial — single `signing-key=` only; keyring not yet |
+| **Licensed** | AVR-like: match → reconstruct; mismatch / unsigned → **bed only**, decode continues | Not started — e.g. future `gate-objects` |
+
+Sign remains single-key (`sign-objects`). Keys are always operator-provisioned; nothing here forges
+a licensed decoder's secret.
 
 ## What this is not
 

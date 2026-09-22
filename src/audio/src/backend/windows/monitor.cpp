@@ -17,77 +17,40 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstring>
+#include <optional>
 #include <thread>
 
+#include "ac3/audio/playback_counter.hpp"
 #include "ac3/audio/ring_buffer.hpp"
+#include "ac3/audio/speakers.hpp"
+#include "windows_support.hpp"
 
 namespace ac3::audio {
 
 namespace {
 
 using Microsoft::WRL::ComPtr;
+using windows_audio::ComScope;
+using windows_audio::kClsidMmDeviceEnumerator;
+using windows_audio::kIidAudioClient;
+using windows_audio::kIidAudioRenderClient;
+using windows_audio::kIidMmDeviceEnumerator;
 
-// The class and interface identifiers, spelled out for the same reason as the
-// capture and passthrough backends: the SDK declares these but ships no
-// import library defining them, and __uuidof is an MSVC extension clang
-// rejects under -Wpedantic.
-constexpr CLSID kClsidMmDeviceEnumerator = {  // {bcde0395-e52f-467c-8e3d-c4579291692e}
-    0xbcde0395, 0xe52f, 0x467c, {0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e}};
-constexpr IID kIidMmDeviceEnumerator = {  // {a95664d2-9614-4f35-a746-de8db63617e6}
-    0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6}};
-constexpr IID kIidAudioClient = {  // {1cb9ad4c-dbfa-4c32-b178-c2f568a703b2}
-    0x1cb9ad4c, 0xdbfa, 0x4c32, {0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2}};
-constexpr IID kIidAudioRenderClient = {  // {f294acfc-3146-4483-a7bf-addca7c260e2}
-    0xf294acfc, 0x3146, 0x4483, {0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2}};
+// IAudioClient3, this file's own low-latency path - windows_support.hpp has
+// no other caller for it.
+constexpr IID kIidAudioClient3 = {  // {7ed4ee07-8e67-4cd4-8c1a-2b7a5987ad42}
+    0x7ed4ee07, 0x8e67, 0x4cd4, {0x8c, 0x1a, 0x2b, 0x7a, 0x59, 0x87, 0xad, 0x42}};
 
 // KSDATAFORMAT_SUBTYPE_IEEE_FLOAT from mmreg.h.
 constexpr GUID kSubtypeIeeeFloat = {  // {00000003-0000-0010-8000-00aa00389b71}
     0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
 
-class ComScope {
-public:
-    ComScope() : hr_(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
-    ~ComScope() {
-        if (SUCCEEDED(hr_)) {
-            CoUninitialize();
-        }
-    }
-    ComScope(const ComScope&) = delete;
-    ComScope& operator=(const ComScope&) = delete;
-    [[nodiscard]] bool ok() const { return SUCCEEDED(hr_) || hr_ == RPC_E_CHANGED_MODE; }
-
-private:
-    HRESULT hr_;
-};
-
-std::expected<ComPtr<IMMDeviceEnumerator>, MonitorError> make_enumerator() {
-    ComPtr<IMMDeviceEnumerator> enumerator;
-    if (FAILED(CoCreateInstance(kClsidMmDeviceEnumerator, nullptr, CLSCTX_ALL,
-                                kIidMmDeviceEnumerator, &enumerator))) {
-        return std::unexpected(MonitorError::kComFailure);
-    }
-    return enumerator;
-}
-
-// A default channel mask for a bare channel count, so a caller that does not
-// know or care about speaker positions (an offline file preview, say) still
-// gets a WAVEFORMATEXTENSIBLE the audio engine can place sensibly. Mirrors
-// the masks KSAUDIO_SPEAKER_* would spell out for the layouts this project
-// actually produces.
-constexpr DWORD kSpeakerStereo = 0x3;        // FL FR
-constexpr DWORD kSpeaker51 = 0x3F;           // FL FR FC LFE BL BR
-constexpr DWORD kSpeaker71 = 0x63F;          // 5.1 + side left/right
-
-DWORD default_channel_mask(std::uint16_t channels) {
-    switch (channels) {
-        case 1: return 0x4;  // FC
-        case 2: return kSpeakerStereo;
-        case 6: return kSpeaker51;
-        case 8: return kSpeaker71;
-        default: return 0;  // let the engine infer one
-    }
-}
+// The mask the audio engine is given for a bare channel count, when a caller
+// does not name one: speakers.hpp's own table, so the arrangement a width
+// implies is decided in one place for every backend (0 there means "no
+// standard arrangement", which is what the engine is left to infer).
 
 }  // namespace
 
@@ -96,6 +59,8 @@ std::string_view describe(MonitorError error) {
         case MonitorError::kNoBackend: return "no monitor backend on this platform";
         case MonitorError::kComFailure: return "a Windows audio (WASAPI/COM) call failed";
         case MonitorError::kDeviceNotFound: return "the requested render device was not found";
+        case MonitorError::kFormatRejected:
+            return "the endpoint refused this sample rate or channel count in shared mode";
         case MonitorError::kAlreadyRunning: return "monitor playback is already running";
         case MonitorError::kNotRunning: return "monitor playback is not running";
     }
@@ -105,11 +70,31 @@ std::string_view describe(MonitorError error) {
 struct MonitorSink::Impl {
     std::unique_ptr<RingBuffer> queue;
     std::jthread worker;
+    // Raised by start(). Lowered by stop(), or by the render thread itself
+    // when the device goes away under it (see the end of its loop).
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
     std::uint16_t channels = 0;
+    // What the render thread last saw of the device, for position(): the
+    // frames handed over against what GetCurrentPadding said it still held.
+    // Only the render thread reports, and only it calls WASAPI - IAudioClient
+    // is not documented thread-safe, so a position() on the caller's thread
+    // reads the counter instead of asking the device itself.
+    PlaybackCounter counter;
+    // IAudioClient::GetStreamLatency at start, in frames: the delay past the
+    // buffer this sink writes into.
+    std::atomic<std::uint32_t> latency{0};
+    // Set by pause()/resume() and flush(); acted on by the render thread,
+    // which owns the device and the queue's read side. `flushes` counts the
+    // flushes it has completed, which is what flush() waits for, and
+    // `flush_mark` is how far the queue had been written when the flush was
+    // asked for: what it drops.
+    std::atomic_bool paused{false};
+    std::atomic_bool flushing{false};
+    std::atomic<std::uint64_t> flushes{0};
+    std::atomic<std::size_t> flush_mark{0};
 };
 
 MonitorSink::MonitorSink() : impl_(std::make_unique<Impl>()) {}
@@ -128,8 +113,64 @@ MonitorStats MonitorSink::stats() const {
             .underruns = impl_->underruns.load(std::memory_order_relaxed)};
 }
 
+std::optional<MonitorPosition> MonitorSink::position() const {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
+        return std::nullopt;
+    }
+    const std::uint64_t queued_here = impl_->queue->available() / impl_->channels;
+    return impl_->counter.position(queued_here, impl_->latency.load(std::memory_order_relaxed));
+}
+
+void MonitorSink::flush() {
+    if (!running()) {
+        return;
+    }
+    const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
+    impl_->flushing.store(true, std::memory_order_release);
+    // The render thread stops the device, resets it and drops the queue up to
+    // the mark; a whole period of grace is longer than it needs, and giving
+    // up after that is better than blocking a caller on a device that has
+    // stopped answering.
+    for (int waited = 0; waited < 200; ++waited) {
+        if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    // The render thread did not get to it: the device is not answering. The
+    // flag stays raised, and the flush is made whenever the thread next runs.
+    // It drops only what was queued before the mark, so audio submitted after
+    // this call returned is kept, and the queue's write side is never touched
+    // from that thread while this one writes. A thread that has ended on a
+    // device failure does not run again; it lowers `running` as it goes,
+    // which ends the wait above at once, and stop() lowers `flushing`.
+}
+
+std::expected<void, MonitorError> MonitorSink::pause() {
+    if (!running()) {
+        return std::unexpected(MonitorError::kNotRunning);
+    }
+    impl_->paused.store(true, std::memory_order_release);
+    return {};
+}
+
+std::expected<void, MonitorError> MonitorSink::resume() {
+    if (!running()) {
+        return std::unexpected(MonitorError::kNotRunning);
+    }
+    impl_->paused.store(false, std::memory_order_release);
+    return {};
+}
+
+bool MonitorSink::paused() const {
+    // A pause is a property of a running stream, so one whose device has
+    // gone is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
+}
+
 bool MonitorSink::can_submit() const {
-    if (!impl_->queue || impl_->channels == 0) {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
         return false;
     }
     // Room for at least ~20 ms at a typical rate, in samples (interleaved).
@@ -171,16 +212,22 @@ void MonitorSink::stop() {
         impl_->worker.request_stop();
         impl_->worker.join();
     }
+    // A pause is a property of a running stream, so it does not outlive one.
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
     impl_->running.store(false, std::memory_order_release);
 }
 
 std::expected<void, MonitorError> MonitorSink::start(const std::string& device_id,
                                                       std::uint32_t sample_rate,
                                                       std::uint16_t channels,
-                                                      std::uint32_t channel_mask) {
+                                                      std::uint32_t channel_mask, bool low_latency) {
     if (running()) {
         return std::unexpected(MonitorError::kAlreadyRunning);
     }
+    // A render thread that ended because its device went away is joined
+    // before another is started; with nothing started this does nothing.
+    stop();
     if (channels == 0) {
         return std::unexpected(MonitorError::kComFailure);
     }
@@ -189,7 +236,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     if (!com.ok()) {
         return std::unexpected(MonitorError::kComFailure);
     }
-    auto enumerator = make_enumerator();
+    auto enumerator = windows_audio::make_enumerator(MonitorError::kComFailure);
     if (!enumerator) {
         return std::unexpected(enumerator.error());
     }
@@ -222,7 +269,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     format.Format.nAvgBytesPerSec = sample_rate * format.Format.nBlockAlign;
     format.Format.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
     format.Samples.wValidBitsPerSample = 32;
-    format.dwChannelMask = channel_mask != 0 ? channel_mask : default_channel_mask(channels);
+    format.dwChannelMask = channel_mask != 0 ? channel_mask : default_speakers(channels);
     format.SubFormat = kSubtypeIeeeFloat;
 
     // Shared mode's audio engine carries its own sample-rate/channel-matrix
@@ -237,10 +284,39 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
         return std::unexpected(MonitorError::kComFailure);
     }
 
-    HRESULT hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-                                    default_period, 0, &format.Format, nullptr);
+    // Low latency: IAudioClient3's shared-mode engine period, the smallest
+    // the engine offers for this format (a Windows 10 feature; the
+    // interface is missing on older engines and the call refuses formats
+    // the engine cannot run at that size), else the ordinary initialise at
+    // the default period. Whichever succeeds, the rest is the same stream.
+    HRESULT hr = E_FAIL;
+    if (low_latency) {
+        ComPtr<IAudioClient3> client3;
+        if (SUCCEEDED(client->QueryInterface(kIidAudioClient3, &client3))) {
+            UINT32 default_frames = 0;
+            UINT32 fundamental_frames = 0;
+            UINT32 minimum_frames = 0;
+            UINT32 maximum_frames = 0;
+            if (SUCCEEDED(client3->GetSharedModeEnginePeriod(&format.Format, &default_frames, &fundamental_frames,
+                                                             &minimum_frames, &maximum_frames)) &&
+                minimum_frames > 0) {
+                hr = client3->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, minimum_frames,
+                                                          &format.Format, nullptr);
+            }
+        }
+    }
     if (FAILED(hr)) {
-        return std::unexpected(MonitorError::kComFailure);
+        hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                                default_period, 0, &format.Format, nullptr);
+    }
+    if (FAILED(hr)) {
+        // AUDCLNT_E_UNSUPPORTED_FORMAT specifically means the engine refused
+        // this shared-mode sample rate/channel count (confirmed against a
+        // real HDMI/AVR endpoint locked to a non-48kHz rate); every other
+        // failure from either Initialize attempt above is a COM/WASAPI
+        // problem and stays kComFailure.
+        return std::unexpected(hr == AUDCLNT_E_UNSUPPORTED_FORMAT ? MonitorError::kFormatRejected
+                                                                   : MonitorError::kComFailure);
     }
 
     UINT32 buffer_frames = 0;
@@ -270,6 +346,21 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     impl_->submitted.store(0, std::memory_order_relaxed);
     impl_->rendered.store(0, std::memory_order_relaxed);
     impl_->underruns.store(0, std::memory_order_relaxed);
+    impl_->counter.restart();
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
+    impl_->flushes.store(0, std::memory_order_relaxed);
+    // GetStreamLatency is in 100 ns units, and is the delay past the buffer
+    // this sink fills - what MonitorPosition::latency_frames reports.
+    REFERENCE_TIME stream_latency = 0;
+    if (SUCCEEDED(client->GetStreamLatency(&stream_latency)) && stream_latency > 0) {
+        impl_->latency.store(
+            static_cast<std::uint32_t>(static_cast<std::uint64_t>(stream_latency) * sample_rate /
+                                       10'000'000ULL),
+            std::memory_order_relaxed);
+    } else {
+        impl_->latency.store(0, std::memory_order_relaxed);
+    }
     impl_->running.store(true, std::memory_order_release);
 
     impl_->worker = std::jthread([this, client, render, ready, buffer_frames,
@@ -279,22 +370,90 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
         HANDLE mmcss = AvSetMmThreadCharacteristicsW(L"Audio", &mmcss_index);
 
         std::vector<float> chunk;
-        client->Start();
+        std::uint64_t handed_over = 0;
+        // Set when the loop ends because the device did rather than because
+        // stop() asked it to. A device that will not start has gone; no
+        // render event would ever come for it.
+        bool lost = FAILED(client->Start());
+        bool device_running = !lost;
 
-        while (!stop.stop_requested()) {
-            if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
+        while (!lost && !stop.stop_requested()) {
+            // A pause stops the device and leaves everything else standing:
+            // the queue keeps what it holds and goes on taking frames, and no
+            // render event arrives to wait for while stopped, so the loop
+            // sleeps instead of blocking on one that will not come - and
+            // asks whether the stream is still there, since nothing else
+            // would say. A stopped stream still answers for its padding, so
+            // a refusal is the stream's end, as it is after a wait below.
+            if (impl_->paused.load(std::memory_order_acquire)) {
+                if (device_running) {
+                    client->Stop();
+                    device_running = false;
+                }
+                if (!impl_->flushing.load(std::memory_order_acquire)) {
+                    UINT32 held = 0;
+                    if (FAILED(client->GetCurrentPadding(&held))) {
+                        lost = true;
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    continue;
+                }
+            }
+            // A flush drops both buffers: Reset() is what discards the frames
+            // the device holds, and it is only legal while stopped. The
+            // counters restart with them, which is what position() promises.
+            if (impl_->flushing.exchange(false, std::memory_order_acq_rel)) {
+                if (device_running) {
+                    client->Stop();
+                    device_running = false;
+                }
+                client->Reset();
+                impl_->queue->discard_to(impl_->flush_mark.load(std::memory_order_acquire));
+                handed_over = 0;
+                impl_->counter.restart();
+                impl_->rendered.store(0, std::memory_order_relaxed);
+                impl_->submitted.store(0, std::memory_order_relaxed);
+                impl_->flushes.fetch_add(1, std::memory_order_release);
                 continue;
             }
+            if (!device_running) {
+                // A flush's Stop and Reset on a device that has gone fail
+                // quietly, so it is this Start that finds out.
+                if (FAILED(client->Start())) {
+                    lost = true;
+                    break;
+                }
+                device_running = true;
+            }
+            // The padding is asked after every wait, woken or not. A device
+            // can stall and come back, but one that has been removed need
+            // never signal again, so a wait that times out says nothing on
+            // its own. A shared-mode stream always answers for its padding,
+            // so a refusal is the stream's end, as a refused buffer is below
+            // - ANY failure here, deliberately not narrowed to
+            // windows_audio::stream_gone()'s exclusive-mode allowlist; see
+            // that function's own comment for why shared and exclusive mode
+            // need different answers to what looks like the same question.
+            const bool woken = WaitForSingleObject(ready, 200) == WAIT_OBJECT_0;
             UINT32 padding = 0;
             if (FAILED(client->GetCurrentPadding(&padding))) {
+                lost = true;
                 break;
             }
+            if (!woken) {
+                continue;
+            }
+            // The device's own clock, as close as a shared-mode stream can
+            // ask: everything handed over, less what it has not played yet.
+            impl_->counter.report(handed_over, padding);
             const UINT32 wanted_frames = buffer_frames - padding;
             if (wanted_frames == 0) {
                 continue;
             }
             BYTE* target = nullptr;
             if (FAILED(render->GetBuffer(wanted_frames, &target))) {
+                lost = true;
                 break;
             }
             const std::size_t wanted_samples = static_cast<std::size_t>(wanted_frames) * channels;
@@ -308,9 +467,19 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             }
             std::memcpy(target, chunk.data(), wanted_samples * sizeof(float));
             render->ReleaseBuffer(wanted_frames, 0);
+            handed_over += wanted_frames;
+            impl_->counter.report(handed_over, padding + wanted_frames);
             impl_->rendered.fetch_add(got / channels, std::memory_order_relaxed);
         }
 
+        if (lost) {
+            // As in the passthrough backend: the stream has ended with its
+            // device, and running() says so as a stop() would have it, so
+            // position(), submit(), flush(), pause() and resume() answer at
+            // once. Only the flag is touched; stop() still joins this thread
+            // and lowers the caller's `paused` and `flushing`.
+            impl_->running.store(false, std::memory_order_release);
+        }
         client->Stop();
         if (mmcss != nullptr) {
             AvRevertMmThreadCharacteristics(mmcss);

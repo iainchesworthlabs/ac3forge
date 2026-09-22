@@ -1,0 +1,37 @@
+# ESP-IDF configuration for the minimum-footprint decoder probe on ESP32-C3.
+#
+# Only settings that differ from IDF's own defaults, or that a comparison
+# depends on. The esp32s3 sibling's copy of this file carries the arguments
+# these share - why -Os, why the main task's stack is 32 KB, why the task
+# watchdog is off for a batch computation that never yields.
+
+CONFIG_IDF_TARGET="esp32c3"
+
+# -Os, matching both other legs. The footprint numbers are only comparable if
+# every leg optimised for the same thing.
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+
+# 160 MHz, which is this part's maximum and therefore its whole budget: a
+# 32 ms frame is 5.12 M cycles. The S3's file explains why the clock is asked
+# for rather than inherited - there it was 160 by default when the part does
+# 240, and every timing figure was silently two thirds of what it should have
+# been. Here 160 IS the maximum, so this line is a statement of the budget
+# rather than a correction.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
+
+# 4 MB, matching the ESP32-C3-DevKitM-1. The image is a fraction of it, so
+# this only affects the partition table.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# The task app_main runs on, and therefore the task the whole decode runs on.
+# 32,768 bytes as on the S3, where IDF's 3,584-byte default overflowed and
+# surfaced as a panic somewhere unrelated. An integrator sizing a real
+# decoding task should measure with uxTaskGetStackHighWaterMark() rather than
+# copy this number; the probe reports it.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+
+# No task watchdog: the probe deliberately runs flat out and never yields,
+# which is what the watchdog exists to catch in an application that should be
+# yielding. Under QEMU the decode is slow enough to trip the default timeout
+# on its own.
+CONFIG_ESP_TASK_WDT_INIT=n

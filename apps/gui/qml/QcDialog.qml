@@ -5,12 +5,12 @@ import QtQuick.Layouts
 
 import Ac3Forge
 
-// "QC a stream" — roadmap C3. Opening an already-encoded .ac3/.ec3 and
+// "QC a stream" — GUI QC verification. Opening an already-encoded .ac3/.ec3 and
 // checking it against its own embedded metadata is a fundamentally
 // different shape to every other surface in this window: open → decode →
 // measure → report, with no source, no plan and no encoder anywhere in the
 // path. It lives here, as its own modal reachable from the header, rather
-// than as a tab beside Format/Coding tools/Metadata — see docs/gui/qc.md
+// than as a tab beside Format/Coding tools/Metadata — see docs/forge/gui/qc.md
 // for the full reasoning. Modelled directly on PreferencesDialog's own
 // shape (a Dialog on the standard backdrop, driving a singleton controller
 // exactly the way every other panel drives EncoderController), so this
@@ -36,7 +36,7 @@ Dialog {
     FileDialog {
         id: qcFileDialog
         title: qsTr("Choose an AC-3 / E-AC-3 stream")
-        // roadmap IO2: a Matroska/MP4/MPEG-TS container works too -
+        // container readers (mkv/mp4/ts): a Matroska/MP4/MPEG-TS container works too -
         // QcController sniffs the actual bytes rather than trusting the
         // extension, so this list is a convenience for the picker only.
         nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"),
@@ -62,7 +62,7 @@ Dialog {
             Text {
                 Layout.fillWidth: true
                 text: qsTr("QC a stream")
-                font.pixelSize: 18
+                font.pixelSize: Theme.fontArrow
                 font.weight: Font.ExtraBold
                 font.family: Theme.headingFamily
                 color: Theme.text
@@ -77,7 +77,7 @@ Dialog {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             text: qsTr("Decodes an already-encoded file and measures it the same way “ac3cli qc” does — the stream's own claims, checked against what is actually in it, not the source that made it.")
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
             color: Theme.neutral700
         }
 
@@ -96,7 +96,7 @@ Dialog {
                 elide: Text.ElideMiddle
                 text: QcController.filePath.length > 0 ? QcController.filePath : qsTr("No file chosen yet")
                 color: Theme.neutral700
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 font.family: Theme.monoFamily
             }
             BusyIndicator {
@@ -115,7 +115,7 @@ Dialog {
             spacing: Theme.space3
             Text {
                 text: qsTr("DELIVERY PRESET")
-                font.pixelSize: 10
+                font.pixelSize: Theme.fontMicro
                 font.letterSpacing: 1.2
                 color: Theme.textMuted
             }
@@ -128,7 +128,7 @@ Dialog {
             // anything but "All".
             // Built from QcController.presetNames rather than listed here.
             // The hand-written list this replaces was written when there were
-            // three presets and was never updated when roadmap IO11 inserted
+            // three presets and was never updated when QC preset refresh inserted
             // two more INTO THE MIDDLE of kQcPresetIds - so the button
             // labelled "Netflix" was resolving index 3 to
             // kQcPresetIds[2], atsc-a85-streaming, and reporting that
@@ -154,7 +154,7 @@ Dialog {
             wrapMode: Text.WordWrap
             text: QcController.error
             color: Theme.bad
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
         }
 
         Text {
@@ -163,7 +163,7 @@ Dialog {
             Layout.fillHeight: true
             text: qsTr("Choose a file above to measure it against these gates.")
             color: Theme.textMuted
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
             verticalAlignment: Text.AlignTop
         }
 
@@ -182,7 +182,7 @@ Dialog {
                     objectName: "qcSummaryText"
                     Layout.fillWidth: true
                     text: QcController.summaryLine
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     font.family: Theme.monoFamily
                     font.weight: Font.DemiBold
                     color: Theme.text
@@ -263,7 +263,7 @@ Dialog {
                                 text: qsTr("dialnorm %1  (claims dialogue at %2 LKFS)")
                                           .arg(programmeCard.modelData.dialnorm)
                                           .arg(programmeCard.modelData.claimedLkfs.toFixed(2))
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 font.family: Theme.monoFamily
                                 color: Theme.text
                             }
@@ -274,7 +274,7 @@ Dialog {
                                           .arg(programmeCard.modelData.deltaDb.toFixed(2))
                                           .arg(programmeCard.modelData.impliedDialnorm)
                                           .arg(programmeCard.modelData.dialnormMatches ? qsTr(" — matches") : qsTr(""))
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 font.family: Theme.monoFamily
                                 color: Theme.text
                             }
@@ -282,7 +282,7 @@ Dialog {
                                 text: programmeCard.modelData.hasCompr
                                       ? qsTr("compr present, %1 dB").arg(programmeCard.modelData.comprDb.toFixed(2))
                                       : qsTr("compr absent")
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 font.family: Theme.monoFamily
                                 color: Theme.neutral700
                             }
@@ -322,7 +322,7 @@ Dialog {
                                     Text {
                                         Layout.preferredWidth: 140
                                         text: presetRow.modelData.name
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         font.weight: Font.DemiBold
                                         color: Theme.text
                                     }
@@ -330,14 +330,14 @@ Dialog {
                                         Layout.preferredWidth: 110
                                         text: presetRow.modelData.loudnessPass ? qsTr("loudness PASS") : qsTr("loudness FAIL")
                                         color: presetRow.modelData.loudnessPass ? Theme.good : Theme.bad
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         font.family: Theme.monoFamily
                                     }
                                     Text {
                                         Layout.preferredWidth: 120
                                         text: presetRow.modelData.truePeakPass ? qsTr("true peak PASS") : qsTr("true peak FAIL")
                                         color: presetRow.modelData.truePeakPass ? Theme.good : Theme.bad
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         font.family: Theme.monoFamily
                                     }
                                     Rectangle {
@@ -349,7 +349,7 @@ Dialog {
                                             anchors.centerIn: parent
                                             text: presetRow.modelData.pass ? qsTr("PASS") : qsTr("FAIL")
                                             color: Theme.bg
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             font.weight: Font.Bold
                                         }
                                     }
@@ -362,7 +362,7 @@ Dialog {
                                         text: presetRow.modelData.source
                                         elide: Text.ElideRight
                                         color: Theme.textMuted
-                                        font.pixelSize: 10
+                                        font.pixelSize: Theme.fontMicro
                                     }
                                 }
                             }

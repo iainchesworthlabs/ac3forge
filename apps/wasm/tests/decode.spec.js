@@ -3,10 +3,10 @@
 
 const { test, expect } = require('@playwright/test');
 
-// Closes roadmap VX18(a): docs/platforms/wasm.md records channel count,
+// Closes WASM/mobile headless coverage(a): docs/platforms/wasm.md records channel count,
 // sample rate, object count and "an object's position differs between two
 // timestamps" as manual-only verification, because build-wasm only proves
-// the module compiles. Roadmap UX5 replaced the demo's own bespoke Embind
+// the module compiles. WASM streaming decoder package replaced the demo's own bespoke Embind
 // Decoder class with the published ac3forge-wasm-decoder package
 // (js/src/decode-file.ts's decodeFile(), built on PushDecoder) - this test
 // now drives THAT, the same call apps/wasm/demo.js itself makes, against the
@@ -79,7 +79,7 @@ test('decodes the bundled Atmos-in-DD+ fixture with real, moving object position
 
     // x, y, z are the first three values of each stride-wide frame. A real
     // decode of moving object metadata puts the first and last frame at
-    // genuinely different positions - a decoder that silently returned a
+    // different positions - a decoder that silently returned a
     // static placement (or garbage) would not clear this bar reliably.
     const [x0, y0, z0] = result.firstFrame;
     const [x1, y1, z1] = result.lastFrame;

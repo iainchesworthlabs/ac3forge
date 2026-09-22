@@ -64,7 +64,7 @@ In rough order of strength:
    `signing::verify_atmos_stream`/`verify_atmos_frame` and (opt-in) `ac3adm::parse_bw64`, each
    seeded from the real payloads inside this project's own Atmos streams. A sixth,
    `oba::parse_osc_packet` — the OSC 1.0 wire form a live session's object positions arrive over
-   (roadmap UX4), driving `live mode=atmos positions=osc:<port>` and the GUI live room — is
+  , driving `live mode=atmos positions=osc:<port>` and the GUI live room — is
    covered the same direct way by `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list
    and so covered by CI exactly as the five above are; its own seeds are hand-built OSC packets
    (`fuzz/seeds/fuzz_osc_parse/`) rather than extracted from an Atmos stream, since there is no
@@ -77,7 +77,7 @@ In rough order of strength:
    four unrepaired so the rejection path itself stays reachable.
 
    Out of the encoder: `tools/ci/fuzz_encoder_space.py` (AC-3) and
-   `tools/ci/fuzz_eac3_encoder_space.py` (E-AC-3, roadmap VX1) draw random legal encoder
+   `tools/ci/fuzz_eac3_encoder_space.py` (E-AC-3) draw random legal encoder
    configurations crossed with adversarial PCM — transients, silence↔loud transitions inside one
    frame, spectral jumps between blocks, dense harmonics, clipping — and hold every stream they
    produce against both decoders. This is the one check here that varies the *input material*
@@ -128,6 +128,9 @@ cross-correlation, and reports SNR against the original:
 | 448 kbps | 51.05 dB | 47.60 dB | +3.46 |
 
 Measured with FFmpeg 8.0.1 on 2026-08-09; reproduce with `python tools/ci/quality_race.py ac3`.
+Unlike the trend pages beside it, this table is a point measurement rather than a gated series:
+nothing on the `quality-history` branch carries an ac3forge-against-FFmpeg comparison, so no CI
+run reproduces these four numbers or would notice them drifting.
 SNR on synthetic material is a narrow metric — it says the waveform is closer, not that it
 sounds better, and no *subjective* listening test has been run. `quality_race.py`'s tables (and
 [Tool comparison trend](tool-comparison-trend.md)/[Landscape](landscape.md)) also carry an
@@ -160,6 +163,147 @@ The object layer has its own series, [Object quality trend](object-quality-trend
 five-object Atmos scene encoded and decoded by each build, one delay-compensated SNR/LSD/leakage
 row per object per rate. It is a self-consistency series throughout — see "Where the oracles
 don't reach" below for why no other kind is available.
+
+### One floor per channel, not one per file
+
+Every SNR gate here is stated **per channel**. That is worth spelling out, because
+the alternative looks equivalent and is not.
+
+A 5.1 fixture's six channels do not sit anywhere near each other. On
+`ac3-51-448/dee.ac3` — Dolby's own encoder, decoded by this project and by FFmpeg and the
+two decodes compared — the measured agreement is:
+
+| L | R | C | LFE | Ls | Rs |
+|---|---|---|---|---|---|
+| 57.5 dB | 63.8 dB | 58.1 dB | 82.2 dB | 22.8 dB | 22.7 dB |
+
+The surrounds are 35 dB below the front channels, and legitimately so — though the
+mechanism is not the obvious one. §7.3.4 leaves the *values* a decoder substitutes for
+zero-bit bins unspecified ("any reasonably random sequence"), so two spec-correct
+decoders are required to disagree in those bins; the question is where they fall.
+Measured with `ac3cli decode … bap-census=`, the surrounds' own basebands are almost
+fully coded on this fixture — **1.8–2.2%** zero-bit bins, against **80–90%** for the
+front channels. What is heavily zero-bit is the **coupling channel**, at **59.7%**, and
+§7.3.4 dither for coupled bins is applied per *receiving* channel after decoupling. So
+the same absolute dither lands in every coupled channel, and it dominates whichever ones
+are quietest: Ls and Rs sit at −33 and −29 dBFS where L and R sit at −13. The low
+surround agreement here is a signal-level effect on a shared error, not a sparser
+allocation — the reading this page carried before the census existed to check it.
+
+A single floor for this fixture therefore had to clear 22.7 dB, and it was set at 22.
+Which meant the centre channel was gated at 22 dB while measuring 58.1 — it could have
+lost 36 dB, more than the entire dynamic range of the surround channels, without
+failing anything. The LFE had 60 dB of slack. That gated one channel and left a rounding error
+on the other five, and it was blind to precisely the
+per-channel syntax defects the third-party fixtures were added to catch (one of the
+five found there, `firstcplcos[ch]`, is per channel by nature).
+
+Each channel now carries its own floor, derived as `floor(min_observed − 1.0)` from
+that channel's lowest value across every CI leg and every recorded commit —
+`tools/checks/derive_channel_floors.py` is the derivation, kept as a script so a floor
+move is reviewable against evidence rather than asserted.
+
+The 1.0 dB covers commit-to-commit noise and nothing else, because `min_observed` has
+already absorbed everything else. Measured over 520 (check, leg, channel) series, one
+leg's own number moves by a median of **0.000 dB** across the whole recorded history,
+and 495 of them stay under 0.5 dB; the 25 that do not are a single real step change on
+one check, not noise. A new leg landing below a floor is not a false alarm under this
+policy — it is platform behaviour nobody has reviewed, and stopping to look at it is the
+right outcome rather than something to pre-authorise with margin.
+
+One pair of floors went *down* in the change: this fixture's Ls/Rs, from 22 to 21,
+because 22 was never derived for those channels — it was the one floor the whole
+fixture had to share. Its other four channels gained 34–59 dB of gate. The check went
+from catching only a total surround collapse to catching a 1 dB move in any channel,
+and `tools/checks/test_compare_wav.py` holds that property down with a test that fails
+if the single-floor form is ever restored.
+
+### Why arm64 and x86-64 disagree
+
+The legs split into two groups on the high-SNR channels, ~6.02 dB apart, and this was
+carried for a long time as an unexplained effect attributed to "arm64 and macOS" legs
+. Two things are now settled.
+
+**It is architecture, not OS or compiler.** `macos-llvm` (arm64) sits with the arm64
+group; `macos-llvm-x64` sits with the x86-64 group. Same OS, same Homebrew LLVM, opposite
+sides. That rules out the "macOS libm" reading directly.
+
+**It is one bit of arithmetic, not a codec error.** 20·log₁₀2 is 6.02 dB whether the bit
+is an AC-3 exponent step or a floating-point rounding bit, so the number alone cannot
+tell them apart — but the prediction can. A systematic exponent error would be
+level-independent and shift every channel equally. Rounding is only visible where the
+measurement is already rounding-dominated. Sorting all 52 (check, channel) pairs by
+their x86-64 SNR gives a step, not a gradient:
+
+| x86-64 SNR of the channel | arm64 difference |
+|---|---|
+| 18.3 – 66.7 dB (32 pairs) | **0.00 – 0.11 dB** |
+| 67.8 – 88.3 dB (20 pairs) | **5.85 – 6.05 dB** |
+
+Nothing lands in between. Below ~67 dB the disagreement between the two decoders is
+dominated by real coding differences and by §7.3.4 dither, and one extra rounding bit is
+buried in it. Above ~67 dB the two decoders agree so closely that arithmetic is all
+that is left to disagree about, and the bit becomes the whole signal. That is also why
+the LFE is the only channel to split on the fixed third-party fixtures: at 88 dB it is
+the one channel there whose comparison is rounding-limited.
+
+The practical consequence is the floors above. `min_observed` is a minimum **across
+legs**, so wherever this split appears the minimum is already the arm64 value — the low
+side. The first version of these floors subtracted a further 6.02 dB on top of that,
+counting the same margin twice and costing about 5 dB of sensitivity on every channel.
+Removing the double-count is what took the headroom to 1.0 dB.
+
+**The encoder is bit-exact across architectures; the gap is entirely decode-side.** The
+cross-platform hash gate had never pinned `aarch64-neon` — it printed `[unpinned]` and passed,
+so every arm64 run had compared its encoder's output to nothing. Pinned now from the real arm64
+CI legs (PR #503, run 33635430769), and all three streams come back **byte-identical** to
+`x86_64-sse2`. So the same bitstream goes in on both architectures and different PCM comes out:
+whatever the last-bit difference is, it is in the decode path, not the encode path.
+
+That also settles a discrepancy that looked like it needed two mechanisms. On the fixed
+third-party fixtures only the LFE splits, but on this project's own gold-reference streams
+*every* channel does — which invited the inference that the arm64 encoder must produce a
+different bitstream. It does not. The gold-reference streams are encoded `dither=off`
+(`nodither` for E-AC-3), so no channel's comparison is dither-limited and **all** of them sit in
+the rounding-limited regime above 67 dB, where the last-bit difference is the whole remaining
+signal. The third-party fixtures carry dither, which dominates every channel except the LFE.
+One mechanism, two fixture populations.
+
+What is **not** yet answered is why arm64 is the *worse* of the two — it agrees with FFmpeg's
+decode less closely than x86-64 does, consistently, by one bit. The search space is now much
+smaller: the encoder is excluded by the hashes above, the reference side is excluded by the
+FFmpeg kernel test, and contraction and libm were excluded before that. What remains is the
+decode path on real arm64 silicon, which is also the one thing no emulated run has reproduced.
+
+The same reasoning now applies to the *trend* check as well as the gate:
+`tools/ci/append_quality_history.py` compares each channel against its own trailing
+average, where it previously watched only the worst channel — which, on these fixtures,
+was the same dither-dominated surround every single run.
+
+### What would make these numbers excellent
+
+1. ~~**The 6.02 dB headroom is set by something unexplained.**~~ **Closed.** It was not
+   an exponent step and it was not unexplained once the split was sorted by level — see
+   "Why arm64 and x86-64 disagree" above. The headroom it was forcing turned out to be a
+   double-count on top of an already-cross-platform minimum, and the floors are now
+   derived at 1.0 dB, catching a 1 dB per-channel regression where they previously
+   needed 6. The follow-on question — why arm64 is the *less* accurate of the two —
+   remains open and is tracked separately.
+
+2. **Spec-permitted dither divergence is still inside the measurement.** The surrounds
+   score ~22 dB not because either decoder is wrong but because §7.3.4 lets them differ
+   in the zero-bit bins. A comparison that excluded those bins — masking on the `bap`
+   values the decoder already records in `ac3::verify::FrameTrace` (`DecoderConfig::trace`,
+   exported by `ac3/verify/trace_export.hpp`) — would measure only the bins that were
+   actually coded, and the surrounds would be expected to join the front channels in the
+   50–90 dB band. That needs the comparison moved into the MDCT domain, with block
+   alignment and the coupling-region indirection (a coupled channel's bap-0 decision
+   lives on the coupling stream, not its own) handled correctly; it is a real piece of
+   work, not a flag. It would also produce a new metric on a new scale, so it belongs
+   beside the current series rather than replacing it.
+
+Neither gap is a defect in the codec. Both are limits on how sharply the current
+instruments can see it, which is the more useful thing to report.
 
 ## Performance and reference modes
 
@@ -198,7 +342,7 @@ the command on the direct evaluations — for regenerating fixtures, comparing s
 against an external decoder, or isolating a suspected transform defect — and `mode=performance`
 (the default state) names the fast paths. The per-transform escape hatches `fast-mdct=off` and
 `fast-imdct=off` adjust one half at a time; see
-[Options & grammars](cli/metadata-options.md#command-specific-notes) for the full token
+[Options & grammars](forge/cli/metadata-options.md#command-specific-notes) for the full token
 semantics. At the library level the same pair is `EncoderConfig::fast_mdct` /
 `eac3::FrameConfig::fast_mdct` for the forward transform and `DecoderConfig::fast_imdct` for the
 inverse.
@@ -362,7 +506,7 @@ Two divergences are recorded rather than resolved:
 
 FFmpeg and the in-repo decoder are complementary, not redundant, and neither covers everything
 alone. FFmpeg reads Annex E coupling, spectral extension and AHT (98+ dB SNR for coupling and
-spectral extension; 62–89 dB for AHT, which genuinely recodes mantissas rather than scaling or
+spectral extension; 62–89 dB for AHT, which recodes mantissas rather than scaling or
 synthesizing around already-decoded content, so a wider margin from bit-exact is expected there)
 — but it refuses any substream whose `substreamid != 0` (`ff_ac3_parse_header`), which rules out
 both the second *dependent* substream 7.1.4 needs and the second *independent* one a
@@ -384,7 +528,7 @@ only the in-repo decoder can read is checked against itself, not against anythin
 
 Every "no" in that column is a cell where a generated stream has to be checked some other way,
 which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
-(roadmap VX1) is built around: it classifies every case it draws by which of these rows it lands
+ is built around: it classifies every case it draws by which of these rows it lands
 on, and checks the *framing* of the ones FFmpeg cannot decode — which needs no decode at all. Two
 things do it: a walk over the four fields that fix E-AC-3's framing (syncword, `strmtyp`,
 `substreamid`, `frmsiz`, all at fixed bit offsets), which shares nothing with the encoder and
@@ -493,7 +637,7 @@ the spec separately from the codec.
 FFmpeg implements no JOC reconstruction: it reads these streams correctly and renders the 5.1
 bed, which is the designed fallback, but it never produces objects to compare against. Dolby's
 own decoder does implement reconstruction — and gates it on a keyed authenticity tag this
-project ships no key for ([Atmos & JOC](concepts/atmos-joc.md#two-honest-limitations)), so it
+project ships no key for ([Atmos & JOC](concepts/atmos-joc.md#two-limitations)), so it
 plays them as the bed too. Nothing outside this repository can currently produce an independent
 object decode of an ac3forge stream, which makes this the one layer where even the partial
 oracle 7.1.4 gets is unavailable. What covers it instead is a self-consistency series with real
@@ -549,11 +693,11 @@ FFmpeg decodes the audio, `header_only` for the `fscod2` rates, `none` for 7.1.4
 coupling / transient pre-noise processing.
 
 Two limits are worth stating on this page rather than only in the bundle: the source material is
-synthetic, and the hashes are per-toolchain. On the first — roadmap VX7 has landed and the CC0
+synthetic, and the hashes are per-toolchain. On the first, the CC0
 speech and music fixtures are committed (`tests/golden/audio/programme_{speech,music}_stereo.flac`),
 but the vector generator was never pointed at them: `tools/generators/gen_conformance_vectors.py`
 still synthesizes its own sources and marks the spot where those files would join the set. Wiring
-this bundle to that material is outstanding work, not a pending roadmap item. On the second —
+this bundle to that material is outstanding work. On the second —
 encoded output is not bit-identical across compilers or architectures, so a bundle regenerated
 elsewhere differs from the published one for the same correct streams. VX11 closed without
 explaining the 6.02 dB arm64 offset (both hypotheses it proposed were falsified by direct
@@ -565,7 +709,7 @@ See [Conformance vectors](conformance-vectors.md).
 
 ## AC-4
 
-`ac4::` (roadmap IM4) is a bitstream inspector, not a decoder: it parses the sync frame, table of
+`ac4::` is a bitstream inspector, not a decoder: it parses the sync frame, table of
 contents, presentation and substream-group framing (ETSI TS 103 190-1/-2) — channel-coded,
 A-JOC-coded, direct-coded-object and OAMD alike — and reports `audio_data`/`metadata()` payloads
 as byte ranges without decoding them. That narrower scope changes which of this page's usual
@@ -618,8 +762,9 @@ gap closes later, it would upgrade tier 2 above (framing-only) to an audio-conte
 clause 6.3.2.8-6.3.2.12 — `ac4_substream_info_ajoc()`, `ac4_substream_info_obj()`,
 `bed_dyn_obj_assignment()`, `oamd_substream_info()`) are parsed the same way the channel-coded
 path is, as of the IM4 follow-up that added them. Their verification story is narrower than tier
-1/2/3 above, though, because no real stream reaches this path: `dee_ac4ajoc_encoder.exe` accepts
-only an Atmos ADM BWF mezzanine as input, and this project has no tooling that produces one DEE
+1/2/3 above, though, because no stream this project can encode reaches this path:
+`dee_ac4ajoc_encoder.exe` accepts only an Atmos ADM BWF mezzanine as input, and this project has no
+tooling that produces one DEE
 accepts (the same "gates on content provenance, not syntax" limit this page already states for
 the AC-3/E-AC-3 JOC side); `dee_ac4ims_encoder.exe` — the other locally available object-adjacent
 encoder, despite its "immersive stereo" name — was confirmed to stay channel-coded regardless of
@@ -633,13 +778,17 @@ ruled out the way MediaInfo or DEE's own output rules it out for the channel-cod
 is stronger than self-consistency alone: the vectors caught two real bugs during construction (an
 array-index formula that was reversed for one of the two flag-array widths, and this parser's own
 handling of LFE at the same array position - included for `ac4_substream_info_obj()`'s std-flags
-branch but excluded for `bed_dyn_obj_assignment()`'s, a genuine spec difference this project's
+branch but excluded for `bed_dyn_obj_assignment()`'s, a spec difference this project's
 first draft assumed away). If `dee_ac4ajoc_encoder.exe`'s provenance gate or `dee_ac4ims_encoder.exe`'s
-behavior changes, that would upgrade this to a tier 2/3 check. `oamd_common_data()` (§6.2.8.1,
-reachable only via `ac4_substream_info_ajoc()`'s own `b_oamd_common_data_present` flag) remains
-out of scope either way — a large separate metadata structure (bed assignment, DRC, target-device
-categories, dialogue enhancement) a stream setting that flag is refused cleanly
-(`Error::kOamdCommonDataPresent`) rather than misparsed.
+behavior changes, that would upgrade this to a tier 2/3 check. `oamd_common_data()` (§6.2.8.1) is
+transcribed at the one TOC-level site that reaches it, `ac4_substream_info_ajoc()`'s own
+`b_oamd_common_data_present` flag — bed render info, trim and headphone metadata, plus the
+declared-length `add_data` tail a nested element that reads past its own byte budget fails against,
+the same synthetic-vector evidence as the rest of this section. The OAMD substream DATA payload
+itself (`oamd_substream()`, §6.2.2.4, which embeds a second, independent `oamd_common_data()` of its
+own) stays out of scope, reported as a byte range like every other non-audio substream. Chromium's
+public A-JOC test file sets `b_oamd_common_data_present` in every frame; re-checking this reading
+against it is still open.
 
 **The `bitstream_version <= 1` legacy path**
 (`ac4_toc()`/`ac4_presentation_info()` as TS 103 190-1 alone defines them) is transcribed and
@@ -648,6 +797,89 @@ not just the PDF's extracted text) but never against a real stream — every DEE
 observed writes `bitstream_version == 2`, so no sample exercises this branch. It is exactly the
 kind of gap tier 3 above exists to narrow and tier 1/2 cannot: two transcriptions can share a
 misreading neither catches.
+
+**EMDF-only presentations** (`presentation_config` 6) have no real stream either: no DEE encode
+writes one. `ac4::` used to stop reading such a presentation before the `n_add_emdf_substreams`
+loop that TS 103 190-1 §4.2.3.2 and TS 103 190-2 §6.2.1.3 place after the config-6 branch, on both
+TOC paths. `tools/references/ac4_parse.py` did the same on the `bitstream_version` 2 path. Every
+later presentation, the substream groups and `substream_index_table()` were then read from the
+wrong bit, and on that path the two transcriptions agreed: the shared-misreading case described
+above. `tests/ac4/test_ac4.cpp` now builds an EMDF-only presentation ahead of an ordinary one on
+both paths, and the same frames, built again with a separate Python bit writer, parse the same way
+in `tools/references/ac4_parse.py`.
+
+### The decoder's syntax
+
+`src/ac4dec` is the start of an AC-4 decoder written from the same two standards. It reads every
+syntax element of a frame's substreams and produces no audio yet: the presentation substream,
+channel-coded audio substreams in the Part 1 channel elements (ASF spectral data, stereo processing,
+companding, A-SPX and A-CPL data, and `metadata()` with its DRC and dialogue enhancement), a
+channel-coded substream's HSF extension substream where one resolves to a distinct, readable
+substream (the additional scale factor bands, spectral data and noise fill above 24 kHz a 96 kHz or
+192 kHz substream carries), and EMDF payload substreams. It refuses, with a named reason, the speech
+spectral frontend, the immersive and 22.2 channel elements, object substreams, and a 96/192 kHz
+substream whose HSF extension substream could not be resolved.
+
+With no reference output to compare against, the syntax is transcribed twice, separately, from the
+text: in C++ in the decoder, and in Python in `tools/references/ac4_syntax.py`, which takes its table
+of contents from `ac4_parse.py`. Each writes a trace of every element it reads, and the traces are
+compared. A reading both transcriptions share passes this check, so the places where the text is
+ambiguous or defective, the reading taken for each and the evidence for it are recorded in
+`src/ac4dec/ERRATA.md`.
+
+**The trace.** One record per syntax element (an entry with a bit count in a syntax table of either
+part), holding the bit offset from the start of its substream, the width and the value:
+
+| Element | Width | Value |
+|---|---|---|
+| A fixed-width or computed-width field | its width | the bits, MSB first |
+| An element listed with a variable width, such as `aspx_int_class` | the bits read | the code read |
+| `variable_bits(n)` | every bit, continuation flags included | the decoded value, modulo 2^64 |
+| A Huffman codeword | its length | its index in the codebook, before `cb_off` |
+| `quad_sign_bits`, `pair_sign_bits` | one bit per nonzero line | the bits |
+| `ext_code` | the whole escape | the magnitude, 2^(N_ext+4) + ext_val |
+| `add_data`, `extensions_bits`, `drc2_bits` | the width, in 65535-bit records when longer | its last 64 bits |
+| A byte of a run, such as `emdf_payload_byte` or `presentation_name` | 8 | the byte |
+
+`byte_align`, `fill_bits`, bits skipped by a size, zero-width elements and any element that runs past
+the end of its substream are not recorded. A loop records each read, and a field read and then
+extended (`audio_size_value` and its `variable_bits(7)`) is two records.
+
+**Digests, in CI.** For each frame and substream with records, one line: frame, substream, kind
+(`presentation`, `audio` or `emdf_payloads`), record count, the bit where the last record ends, and
+zlib's CRC-32 over the records packed as `struct.pack('<IHQ', offset, width, value)`.
+`tests/golden/ac4dec/` holds the Python parser's digests of every committed DEE stream: SIMPLE, ASPX,
+ASPX_ACPL_2 and ASPX_ACPL_3 at 2.0 and 5.1, DRC curves with an Lt/Rt downmix, and immersive stereo at
+three frame rates. `tests/ac4dec/test_ac4dec_syntax.cpp` requires the decoder to produce the same lines,
+to read every substream to its exact end and to refuse nothing, and
+`tools/checks/test_ac4_syntax_digests.py` requires the Python parser to reproduce the same files, so
+neither transcription can change alone.
+
+**Locally, over the census.** With `AC4DEC_GOLDEN_DIR` and `AC4DEC_STREAM_DIR` set, the same test
+compares the decoder with the Python parser's digests of any other set of streams. Over the 107 DEE
+streams of the local census (50,728 frames of 2.0, 5.1, 5.1.4 and immersive stereo) every digest
+agrees, and every substream is read to its exact end or, for 5.1.4's audio, refused at the immersive
+element. The same holds for the public channel-based streams other encoders wrote: DASH-IF's Dolby
+test vectors (2.0 and 5.1 at 25 and 29.97 fps), CTA WAVE's `ca4s` sets (2.0 at 30 fps) and Chromium's
+channel-based and immersive-stereo test files, 6,670 frames in all, taken out of their MP4 and CMAF
+segments with `ac3cli demux` and kept out of the tree. Chromium's A-JOC file is refused at the same
+table of contents by both. `AC4DEC_TRACE_DIR` writes the decoder's full trace, one record per line as
+`frame substream bit_offset width value name`, the shape `ac4_syntax.py trace` prints.
+
+**Where no stream reaches.** Most of the syntax: noise fill, VARVAR framing, time-interleaved A-SPX,
+the mono, 3.0 and 7.X elements, ASPX_ACPL_1, transmitted DRC gains, dialogue enhancement methods 1 to
+3 and alternative presentations among it. `tools/checks/ac4_syntax_differential.py` reads streams made
+for this through both transcriptions: DEE frames with one substream altered (a random tail from a
+random bit, a few flipped bits, or a random codec mode), tables of contents for the channel modes no
+encoder here writes over random payloads, and, with `--inputs`, a corpus `fuzz_ac4_decode` grew, which
+reaches syntax random bits rarely do. Where both read a substream to its end their traces must agree
+record for record, and where either stops they must agree up to that point; a table of contents the two
+read differently is reported apart. It found a limit on `variable_bits()` groups in the decoder that
+the text does not set, and `fuzz_ac4_decode` found an escape code the decoder did not bound.
+Comparing the two transcriptions' notes found that they had framed ASPX_ACPL_1's residuals and
+`b_use_sap_add_ch`'s parameters differently, each against the channel mapping of Part 1 clause 5.3.4;
+both now follow that mapping. The check shows that the two transcriptions read these paths alike,
+which a shared misreading still passes.
 
 ## What untrusted input is checked against
 
@@ -662,8 +894,9 @@ The codec itself is platform-independent; only capture, monitor playback and IEC
 passthrough touch sound hardware, and how far each is verified differs by platform and by sink —
 covered where it's most relevant rather than repeated here:
 
-- [Windows](platforms/windows.md#audio-backend-wasapi) — `MonitorSink` is confirmed against real
-  hardware; exclusive-mode passthrough bitstreaming has not been.
+- [Windows](platforms/windows.md#audio-backend-wasapi) — `MonitorSink` and exclusive-mode
+  passthrough bitstreaming (AC-3, E-AC-3 and signed Atmos) are both confirmed against real
+  hardware, an Onkyo TX-RZ740 over HDMI.
 - [Linux](platforms/linux.md#what-has-and-has-not-been-verified) — the ALSA backend is verified
   headless only; no real S/PDIF or HDMI output has been tried.
 - [macOS](platforms/macos.md#audio-backend-coreaudio) — the CoreAudio backend is CI-verified
@@ -680,7 +913,7 @@ covered where it's most relevant rather than repeated here:
   HDMI to a real AV receiver, with object audio confirmed reconstructable (not just the panned
   bed). Verification specific to this one Android app on this one Shield + receiver pair, not a
   general claim about Android as a platform.
-- [Atmos & JOC](concepts/atmos-joc.md#two-honest-limitations) — Dolby's own decoder gates object
+- [Atmos & JOC](concepts/atmos-joc.md#two-limitations) — Dolby's own decoder gates object
   decoding on a keyed authenticity tag; the signer ships in-tree (`ac3::signing`) but this
   project ships no key for it, so its streams are unsigned unless an operator supplies one.
   Objects sharing a direction also can't be perfectly separated. Neither is a conformance gap.

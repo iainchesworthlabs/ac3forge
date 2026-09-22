@@ -70,7 +70,7 @@ bandwidth default was swept against the synthetic fixtures and narrowing
 looked like a **2.1 dB SNR win** at 448 kbit/s — because discarding the top
 9 kHz of a flat noise plateau costs almost nothing, while doing the same to
 real material throws away real energy. The comment recording that trap is in
-[`src/lib/src/encoder/encoder.cpp`](../../src/lib/src/encoder/encoder.cpp)
+[`src/forge/src/encoder/encoder.cpp`](../../src/forge/src/encoder/encoder.cpp)
 above `chbwcod`.
 
 The synthetic fixtures are **not** retired, for a different reason: the

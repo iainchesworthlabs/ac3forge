@@ -1,5 +1,5 @@
 // Embind wrapper around ac3::forge's decode path, for the reusable push-frame
-// package (roadmap UX5, js/) and the docs demo built on top of it
+// package (WASM streaming decoder package, js/) and the docs demo built on top of it
 // (apps/wasm/index.html - see js/src/decode-file.ts for the whole-file
 // convenience helper the demo actually calls).
 //
@@ -371,9 +371,10 @@ class PushDecoder {
         const bool has_lfe = unit.layout.count > 0 &&
                              unit.layout.index_of(ac3::eac3::chanmap::Location::kLfe) >= 0;
         if (unit.layout.count > 0) {
-            fold_.apply(fold_views_, unit.layout, unit.acmod, has_lfe, levels, unit.dialnorm);
+            fold_.apply(fold_views_, unit.layout, unit.acmod, has_lfe, levels, unit.dialnorm,
+                       unit.dialnorm2);
         } else {
-            fold_.apply(fold_views_, unit.acmod, has_lfe, levels, unit.dialnorm);
+            fold_.apply(fold_views_, unit.acmod, has_lfe, levels, unit.dialnorm, unit.dialnorm2);
         }
         fold_channel_count_ =
             static_cast<int>(ac3::output_channel_count(fold_.config(), unit.acmod, has_lfe));

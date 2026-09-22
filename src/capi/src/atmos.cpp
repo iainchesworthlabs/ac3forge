@@ -54,7 +54,7 @@ ac3forge_status_t ac3forge_atmos_encoder_create(const ac3forge_atmos_config_t* c
     if (config == nullptr || out_encoder == nullptr || object_count < 0) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&] {
+    return guard([&config, &object_count, &out_encoder] {
         *out_encoder = new ac3forge_atmos_encoder(atmos_config_to_cpp(*config), object_count);
         return AC3FORGE_OK;
     });
@@ -78,7 +78,8 @@ ac3forge_status_t ac3forge_atmos_encoder_encode_frame(
         placement_count != object_count || samples_per_object != ac3::kSamplesPerFrame) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
-    return guard([&]() -> ac3forge_status_t {
+    return guard([&encoder, &objects, &object_count, &samples_per_object, &placements,
+                  &placement_count, &out_unit]() -> ac3forge_status_t {
         std::vector<std::span<const float>> object_spans;
         object_spans.reserve(object_count);
         for (size_t i = 0; i < object_count; ++i) {

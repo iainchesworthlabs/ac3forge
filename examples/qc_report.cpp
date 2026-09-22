@@ -1,4 +1,4 @@
-// Bitstream-aware loudness QC (roadmap C2): decode a stream, measure it with
+// Bitstream-aware loudness QC (bitstream-aware loudness QC): decode a stream, measure it with
 // the real BS.1770-4/EBU Tech 3342 meter, and check the result against a
 // named delivery-spec gate from ac3::meta::qc.hpp.
 //
@@ -66,14 +66,14 @@ int main() {
     for (int frame = 0; frame < kFrames; ++frame) {
         fill(pcm, frame);
         const auto encoded = encoder->encode_frame(views);
-        if (!encoded) {
+        if (!encoded.has_value()) {
             fmt::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
         // A real QC pass measures the DECODED audio, not the source PCM -
         // the whole point is to check what the stream actually carries.
         const auto decoded = decoder.decode_frame(*encoded);
-        if (!decoded) {
+        if (!decoded.has_value()) {
             fmt::printf("decode failed: %.*s\n",
                         static_cast<int>(ac3::describe(decoded.error()).size()),
                         ac3::describe(decoded.error()).data());
@@ -90,7 +90,7 @@ int main() {
     // --- measure, and compare against the embedded dialnorm ----------------
     const auto lkfs = meter.integrated_lkfs();
     const auto peak = meter.true_peak_dbtp();
-    if (!lkfs) {
+    if (!lkfs.has_value()) {
         fmt::printf("no audio above the -70 LKFS absolute gate: nothing to report\n");
         return 1;
     }

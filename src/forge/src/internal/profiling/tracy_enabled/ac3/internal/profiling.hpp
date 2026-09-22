@@ -25,3 +25,5 @@
 // `var` names the TracyCZoneCtx local these two calls share.
 #define AC3_ZONE_BEGIN(var, name) TracyCZoneN(var, name, true)
 #define AC3_ZONE_END(var) TracyCZoneEnd(var)
+// One per real-time frame, for the frame view.
+#define AC3_FRAME_MARK() FrameMark

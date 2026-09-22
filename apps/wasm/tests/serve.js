@@ -31,8 +31,12 @@ const server = http.createServer((req, res) => {
     const resolved = path.join(root, requestPath === '/' ? '/index.html' : requestPath);
     // Refuse anything that escaped `root` via ../ - this only ever serves a
     // build output directory to a local test browser, but there is no reason
-    // to trust the request path further than that.
-    if (!resolved.startsWith(root)) {
+    // to trust the request path further than that. A bare startsWith(root)
+    // would also accept a sibling directory whose name happens to start with
+    // `root`'s own characters (e.g. root="/x/public" matching
+    // "/x/public-evil/secret"), so the check requires a path separator (or
+    // an exact match) right after the prefix.
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
         res.writeHead(403);
         res.end();
         return;

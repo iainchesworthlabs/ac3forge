@@ -128,7 +128,7 @@ void WavStreamWriter::flush_header() {
     impl_->file.seekp(0, std::ios::end);
 }
 
-void WavStreamWriter::close() {
+void WavStreamWriter::close() noexcept {
     if (!impl_ || !impl_->open) {
         return;
     }
@@ -230,7 +230,7 @@ void WavPcm16StreamWriter::flush_header() {
     impl_->file.seekp(0, std::ios::end);
 }
 
-void WavPcm16StreamWriter::close() {
+void WavPcm16StreamWriter::close() noexcept {
     if (!impl_ || !impl_->open) {
         return;
     }

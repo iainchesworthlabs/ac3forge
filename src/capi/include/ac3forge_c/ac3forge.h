@@ -6,7 +6,7 @@
 #include "ac3forge_c/export.h"
 #include "ac3forge_c/version.h"
 
-/* ac3forge's C API — roadmap item F1: a stable, minimal C-callable surface
+/* ac3forge's C API — C API: a stable, minimal C-callable surface
  * over the encode/decode core, for bindings and embedding by callers that
  * cannot or do not want to link C++23.
  *
@@ -153,7 +153,7 @@ typedef enum ac3forge_acmod {
 #define AC3FORGE_DECODER_MAX_CHANNELS 6
 
 /* --------------------------------------------------------------------- *
- * Latency (roadmap PF6)
+ * Latency (bare-metal probe harness)
  * --------------------------------------------------------------------- */
 
 /* Mirrors ac3::LatencyBudget: the ALGORITHMIC delay of an encode -> decode
@@ -819,6 +819,12 @@ AC3FORGEC_EXPORT uint8_t ac3forge_decoded_access_unit_compr(
     const ac3forge_decoded_access_unit_t* unit);
 AC3FORGEC_EXPORT uint8_t ac3forge_decoded_access_unit_dynrng(
     const ac3forge_decoded_access_unit_t* unit, int block_index);
+/* Ch2's own word — meaningful only when acmod() == AC3FORGE_ACMOD_DUAL_MONO;
+ * see ac3forge_decoded_frame_has_dialnorm2()'s own comment. */
+AC3FORGEC_EXPORT int ac3forge_decoded_access_unit_has_dialnorm2(
+    const ac3forge_decoded_access_unit_t* unit);
+AC3FORGEC_EXPORT int ac3forge_decoded_access_unit_dialnorm2(
+    const ac3forge_decoded_access_unit_t* unit);
 AC3FORGEC_EXPORT int ac3forge_decoded_access_unit_numblkscod(
     const ac3forge_decoded_access_unit_t* unit);
 AC3FORGEC_EXPORT int ac3forge_decoded_access_unit_substream_count(

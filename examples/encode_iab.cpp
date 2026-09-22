@@ -28,6 +28,7 @@
 
 #include <fmt/printf.h>
 #include <array>
+#include <cassert>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -57,6 +58,17 @@ std::string scratch_path(std::string_view name) {
     return (std::filesystem::temp_directory_path() / leaf).string();
 }
 
+// Exclusively creates an empty file at a scratch_path() result before anything else touches it.
+// The system temp directory is shared/world-writable, so scratch_path()'s randomness makes
+// guessing this exact name impractical, but write_fixture() below still opens in plain trunc mode
+// (it also has to serve --write-fixture's caller-chosen, intentionally-overwritable path) - it
+// would happily write through a symlink another local user pre-planted at this name. noreplace
+// fails instead of following one, closing that race before write_fixture ever opens the path.
+bool claim_temp_path(const std::string& path) {
+    std::ofstream claim(path, std::ios::binary | std::ios::noreplace);
+    return static_cast<bool>(claim);
+}
+
 // A from-scratch MSB-first bit writer (SMPTE ST 2098-2:2022 §5.1), used only to build this
 // fixture - independent of src/ac3iab's own reader, the same "independent fixture" convention
 // tests/ac3iab/test_ac3iab.cpp and examples/read_iab.cpp already establish (a third copy is within
@@ -72,7 +84,13 @@ class BitWriter {
     // §5.2 Plex(n) encode.
     void push_plex(std::uint64_t value, unsigned initial_width) {
         unsigned width = initial_width;
-        while (true) {
+        // §5.2 guarantees a Plex symbol is at most 0xFFFFFFFE, so the escape
+        // chain always ends at or before a 32-bit field - exactly the bound
+        // BitReader::read_plex enforces on the way back in, where a longer
+        // chain is kBadEscape. Stopping the loop there is what keeps
+        // `1 << width` defined: one more doubling reaches 64, and a shift that
+        // wide is undefined for std::uint64_t.
+        while (width <= 32) {
             const std::uint64_t escape = (std::uint64_t{1} << width) - 1;
             if (value < escape) {
                 push_bits(value, width);
@@ -81,6 +99,7 @@ class BitWriter {
             push_bits(escape, width);
             width *= 2;
         }
+        assert(false && "Plex value exceeds the 0xFFFFFFFE maximum section 5.2 allows");
     }
 
     void align_to_byte() {
@@ -279,6 +298,10 @@ int main(int argc, char** argv) {
     }
 
     const auto fixture_path = scratch_path("encode_iab_fixture.iab");
+    if (!claim_temp_path(fixture_path)) {
+        fmt::printf("could not claim scratch path\n");
+        return 1;
+    }
     if (!write_fixture(fixture_path)) {
         fmt::printf("could not write fixture file\n");
         return 1;
@@ -342,7 +365,7 @@ int main(int argc, char** argv) {
     }
 
     const auto out_path = scratch_path("encode_iab_out.ec3");
-    std::ofstream out(out_path, std::ios::binary);
+    std::ofstream out(out_path, std::ios::binary | std::ios::noreplace);
     out.write(reinterpret_cast<const char*>(stream.data()),
               static_cast<std::streamsize>(stream.size()));
     const bool wrote = static_cast<bool>(out);

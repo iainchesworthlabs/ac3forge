@@ -32,8 +32,11 @@ using detail::read_box_header;
 constexpr std::uint32_t kFtyp = fourcc("ftyp");
 constexpr std::uint32_t kStyp = fourcc("styp");
 constexpr std::uint32_t kMoov = fourcc("moov");
+constexpr std::uint32_t kMvhd = fourcc("mvhd");
 constexpr std::uint32_t kTrak = fourcc("trak");
 constexpr std::uint32_t kTkhd = fourcc("tkhd");
+constexpr std::uint32_t kEdts = fourcc("edts");
+constexpr std::uint32_t kElst = fourcc("elst");
 constexpr std::uint32_t kMdia = fourcc("mdia");
 constexpr std::uint32_t kMdhd = fourcc("mdhd");
 constexpr std::uint32_t kMinf = fourcc("minf");
@@ -53,24 +56,26 @@ constexpr std::uint32_t kTrun = fourcc("trun");
 constexpr std::uint32_t kMdat = fourcc("mdat");
 constexpr std::uint32_t kAc3Entry = fourcc("ac-3");
 constexpr std::uint32_t kEc3Entry = fourcc("ec-3");
+constexpr std::uint32_t kAc4Entry = fourcc("ac-4");  // TS 103 190-2 Annex E.4
 constexpr std::uint32_t kDac3 = fourcc("dac3");
 constexpr std::uint32_t kDec3 = fourcc("dec3");
+constexpr std::uint32_t kDac4 = fourcc("dac4");
 
 // Boxes that are pure containers: the walk descends into them rather than
 // buffering them whole, which is what keeps a moov of any size from being
 // held in one piece.
 [[nodiscard]] bool is_container(std::uint32_t type) {
-    return type == kMoov || type == kTrak || type == kMdia || type == kMinf || type == kStbl ||
-           type == kMvex || type == kMoof || type == kTraf;
+    return type == kMoov || type == kTrak || type == kEdts || type == kMdia || type == kMinf ||
+           type == kStbl || type == kMvex || type == kMoof || type == kTraf;
 }
 
 // Leaves the walk needs the bytes of. stsd is a FullBox with children rather
 // than a plain container, so it is read whole and its one sample entry
 // parsed in place - it is a few dozen bytes, not a table.
 [[nodiscard]] bool is_wanted_leaf(std::uint32_t type) {
-    return type == kTkhd || type == kMdhd || type == kStsd || type == kStsc || type == kStsz ||
-           type == kStz2 || type == kStco || type == kCo64 || type == kTrex || type == kTfhd ||
-           type == kTrun;
+    return type == kMvhd || type == kTkhd || type == kElst || type == kMdhd || type == kStsd ||
+           type == kStsc || type == kStsz || type == kStz2 || type == kStco || type == kCo64 ||
+           type == kTrex || type == kTfhd || type == kTrun;
 }
 
 // --- the dac3/dec3 configuration box ---------------------------------------
@@ -117,6 +122,16 @@ CodecConfig parse_codec_config(std::uint32_t box_type, std::span<const std::byte
     CodecConfig out;
     out.eac3 = box_type == kDec3;
     out.payload.assign(payload.begin(), payload.end());
+    if (box_type == kDac4) {
+        // ac4_dsi_v1 (TS 103 190-2 Annex E.5) shares no field with the
+        // dac3/dec3 layout below, and this module has no business
+        // interpreting it - the bytes are kept verbatim (remux-ready, same
+        // contract as `payload` always had) and ac4::'s own parser is the
+        // one that understands the stream. The dac3/dec3-shaped fields stay
+        // at their defaults.
+        out.ac4 = true;
+        return out;
+    }
     BitCursor bits{payload};
 
     if (!out.eac3) {
@@ -199,6 +214,7 @@ struct PendingTrack {
     std::uint32_t sample_rate = 0;
     int channels = 0;
     CodecConfig codec_config;
+    std::vector<EditListEntry> edits;
     std::vector<std::uint32_t> sizes;
     std::vector<ChunkRun> chunk_runs;
     std::vector<std::uint64_t> chunk_offsets;
@@ -291,7 +307,7 @@ std::string_view describe(DemuxError error) {
         case DemuxError::kMalformed:
             return "malformed box, sample table or fragment layout";
         case DemuxError::kNoAudioTrack:
-            return "no 'ac-3'/'ec-3' track (or the requested track id is absent)";
+            return "no 'ac-3'/'ec-3'/'ac-4' track (or the requested track id is absent)";
         case DemuxError::kLimitExceeded:
             return "box size, sample count or nesting depth beyond the reader's limits";
         case DemuxError::kMoovAfterMdat:
@@ -326,6 +342,9 @@ struct ReaderState {
     PendingTrack pending;
     bool in_trak = false;
     std::uint32_t traks_seen = 0;
+    // mvhd's timescale. Normally read before any trak, but nothing requires
+    // that, so a late one is copied into the track as well.
+    std::uint32_t movie_timescale = 0;
 
     ReadTrack track;
     bool track_found = false;
@@ -379,17 +398,22 @@ std::expected<void, DemuxError> close_finished(ReaderState& s, const ReadOptions
                 const bool wanted = options.track_id != 0
                                         ? s.pending.track_id == options.track_id
                                         : (s.pending.entry_type == kAc3Entry ||
-                                           s.pending.entry_type == kEc3Entry);
+                                           s.pending.entry_type == kEc3Entry ||
+                                           s.pending.entry_type == kAc4Entry);
                 if (wanted) {
                     s.track = ReadTrack{
                         .track_id = s.pending.track_id,
-                        .codec_id = std::string{s.pending.entry_type == kAc3Entry ? kCodecAc3
-                                                                                  : kCodecEac3},
+                        .codec_id =
+                            std::string{s.pending.entry_type == kAc3Entry    ? kCodecAc3
+                                        : s.pending.entry_type == kAc4Entry ? kCodecAc4
+                                                                            : kCodecEac3},
                         .sample_rate = s.pending.sample_rate,
                         .channels = s.pending.channels,
                         .timescale = s.pending.timescale,
+                        .movie_timescale = s.movie_timescale,
                         .language = s.pending.language,
                         .codec_config = s.pending.codec_config,
+                        .edits = s.pending.edits,
                     };
                     s.track_found = true;
                     // The plain path's samples exist the moment the table is
@@ -443,6 +467,62 @@ std::expected<void, DemuxError> close_finished(ReaderState& s, const ReadOptions
     return true;
 }
 
+// The two boxes below say how to present the samples, not where they are, so
+// neither can make a file unreadable: one too short to read, or one that
+// declares more than it holds, is left out - a file with a broken edit list
+// still plays, as it did before this reader looked at edit lists - and the
+// walk carries on.
+
+// §8.2.2: only the timescale matters here, at the same offsets as mdhd's.
+void parse_mvhd(std::span<const std::byte> body, ReaderState& s) {
+    if (body.size() < 4) {
+        return;
+    }
+    const std::uint8_t version = get_u8(body, 0);
+    const std::size_t timescale_at = version == 1 ? 20 : 12;
+    if (body.size() < timescale_at + 4) {
+        return;
+    }
+    s.movie_timescale = get_u32(body, timescale_at);
+    if (s.track_found) {
+        s.track.movie_timescale = s.movie_timescale;
+    }
+}
+
+// §8.6.6: an entry count, then per entry a segment_duration and a signed
+// media_time (32 bits each in version 0, 64 in version 1) and the rate as
+// two 16-bit halves. A second elst in one trak replaces the first, as a
+// second stsc does; one that cannot be read leaves the track with none.
+void parse_elst(std::span<const std::byte> body, const ReadOptions& options,
+                PendingTrack& track) {
+    track.edits.clear();
+    if (body.size() < 8) {
+        return;
+    }
+    const std::uint8_t version = get_u8(body, 0);
+    const std::uint32_t count = get_u32(body, 4);
+    const std::size_t entry_bytes = version == 1 ? 20 : 12;
+    if (count > options.max_edits ||
+        static_cast<std::uint64_t>(count) * entry_bytes + 8 > body.size()) {
+        return;
+    }
+    track.edits.reserve(count);
+    for (std::uint32_t i = 0; i < count; ++i) {
+        const std::size_t at = 8 + (static_cast<std::size_t>(i) * entry_bytes);
+        EditListEntry edit;
+        if (version == 1) {
+            edit.segment_duration = get_u64(body, at);
+            edit.media_time = static_cast<std::int64_t>(get_u64(body, at + 8));
+        } else {
+            edit.segment_duration = get_u32(body, at);
+            edit.media_time = static_cast<std::int32_t>(get_u32(body, at + 4));
+        }
+        const std::size_t rate_at = at + entry_bytes - 4;
+        edit.media_rate = static_cast<std::int32_t>(get_u32(body, rate_at));
+        track.edits.push_back(edit);
+    }
+}
+
 // stsd is a FullBox whose body is an entry count followed by sample entries.
 // Only the first 'ac-3'/'ec-3' one matters here; anything else means this
 // trak is not ours, which is not an error.
@@ -460,7 +540,7 @@ std::expected<void, DemuxError> close_finished(ReaderState& s, const ReadOptions
         if (entry.size > body.size() - at) {
             return false;
         }
-        if (entry.type == kAc3Entry || entry.type == kEc3Entry) {
+        if (entry.type == kAc3Entry || entry.type == kEc3Entry || entry.type == kAc4Entry) {
             // §12.2.3's AudioSampleEntry, on top of §8.5.2's SampleEntry:
             // reserved(6) data_reference_index(2) reserved(8)
             // channelcount(2) samplesize(2) pre_defined(2) reserved(2)
@@ -486,7 +566,7 @@ std::expected<void, DemuxError> close_finished(ReaderState& s, const ReadOptions
                 if (config.size > entry_end - child) {
                     return false;
                 }
-                if (config.type == kDac3 || config.type == kDec3) {
+                if (config.type == kDac3 || config.type == kDec3 || config.type == kDac4) {
                     track.codec_config = parse_codec_config(
                         config.type, body.subspan(child + config.header_bytes,
                                                   static_cast<std::size_t>(config.size) -
@@ -856,8 +936,14 @@ std::expected<void, DemuxError> walk(ReaderState& s, std::span<const std::byte> 
 
         bool ok = true;
         switch (box.type) {
+            case kMvhd:
+                parse_mvhd(body, s);
+                break;
             case kTkhd:
                 ok = parse_tkhd(body, s.pending);
+                break;
+            case kElst:
+                parse_elst(body, s.options, s.pending);
                 break;
             case kMdhd:
                 ok = parse_mdhd(body, s.pending);
@@ -933,11 +1019,11 @@ std::expected<Demuxed, DemuxError> demux(std::span<const std::byte> file,
     s.options = options;
 
     const auto walked = walk(s, file, 0);
-    if (!walked) {
+    if (!walked.has_value()) {
         return std::unexpected(walked.error());
     }
     const auto verdict = finish_verdict(s);
-    if (!verdict) {
+    if (!verdict.has_value()) {
         return std::unexpected(verdict.error());
     }
 
@@ -952,7 +1038,7 @@ std::expected<Demuxed, DemuxError> demux(std::span<const std::byte> file,
         out.samples.push_back(sample);
     };
     const auto drained = drain_samples(s, file, 0, collect);
-    if (!drained) {
+    if (!drained.has_value()) {
         return std::unexpected(drained.error());
     }
     out.track = s.track;
@@ -977,11 +1063,11 @@ std::expected<void, DemuxError> Reader::push(std::span<const std::byte> chunk,
     s.buffer.insert(s.buffer.end(), chunk.begin(), chunk.end());
 
     const auto walked = walk(s, s.buffer, s.window_pos);
-    if (!walked) {
+    if (!walked.has_value()) {
         return std::unexpected(walked.error());
     }
     const auto drained = drain_samples(s, s.buffer, s.window_pos, on_sample);
-    if (!drained) {
+    if (!drained.has_value()) {
         return std::unexpected(drained.error());
     }
 

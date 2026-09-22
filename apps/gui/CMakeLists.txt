@@ -9,6 +9,15 @@
 # ---------------------------------------------------------------------------
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Concurrent LinguistTools)
 
+# The kit's version, out to the top level, for apps/notices/notices.cmake's Qt
+# section: that file is include()d from the top-level CMakeLists.txt and cannot
+# read Qt6_VERSION, which find_package set in THIS directory's scope only.
+# PARENT_SCOPE for exactly the reason apps/crucible/CMakeLists.txt exports
+# AC3FORGE_CRUCIBLE_X11_BACKEND the same way. REQUIRED above is what lets the
+# notices treat AC3FORGE_BUILD_GUI=ON as "a Qt kit was found": the two cannot
+# disagree, because a missing kit fails the configure on this line.
+set(AC3FORGE_GUI_QT_VERSION "${Qt6_VERSION}" PARENT_SCOPE)
+
 qt_standard_project_setup(REQUIRES 6.5)
 
 qt_add_executable(ac3gui
@@ -23,6 +32,8 @@ qt_add_executable(ac3gui
     stream_player_controller.hpp
     channel_geometry.cpp
     channel_geometry.hpp
+    gui_diagnostics.cpp
+    gui_diagnostics.hpp
     ../common/fmp4_folder_writer.cpp
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp
@@ -38,7 +49,7 @@ qt_add_executable(ac3gui
 
 # RecordingSink and its Fmp4FolderWriter moved to apps/common when
 # `ac3cli record`/`live` started writing their takes through the same classes
-# (roadmap IO9) - see recording_sink.hpp's own header comment, and
+# (wide-layout record/live paths) - see recording_sink.hpp's own header comment, and
 # Fmp4FolderWriter's own comment on the third near-identical copy this move
 # closes. `RecordingSink::Config::fmp4_window_segments` carries container=
 # fmp4's fmp4-window= knob through to Fmp4FolderWriter::open(), so there is no
@@ -46,7 +57,7 @@ qt_add_executable(ac3gui
 # always was (the source lines above); apps/common has no CMakeLists.txt and
 # no library target of its own, because a two-class static library shared by
 # exactly two executables in the same build would be more machinery than the
-# thing it wraps. container_input.cpp (roadmap IO2) joined it the same way,
+# thing it wraps. container_input.cpp (container readers (mkv/mp4/ts)) joined it the same way,
 # for the QC/Inspect pickers below to accept a container in place of a bare
 # elementary stream the same way ac3cli's decode/qc/levels/play/monitor do.
 target_include_directories(ac3gui PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
@@ -70,6 +81,7 @@ set(AC3_QML_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/ChannelMeter.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/SoundfieldView.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/SegmentedControl.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/FocusRing.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/LoudnessGroup.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/VbrPanel.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/GuidedWizard.qml"
@@ -84,14 +96,14 @@ set(AC3_QML_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/TruehdDialog.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/StreamPlayerDialog.qml")
 
-# Roadmap UX3: one .ts per shipped language, French/German/Spanish/Arabic/
+# GUI localisation: one .ts per shipped language, French/German/Spanish/Arabic/
 # Hebrew/Yiddish - the same set and order LanguageManager's kLanguages uses
 # (language_manager.cpp), matching the canonical set already shipped by the
 # sibling CountdownSolver project (R:\CountdownSolver). Shared with
 # tests/CMakeLists.txt below for the same reason AC3_QML_FILES is: that file
 # is include()d into this one's own scope, not a separate directory, so a
 # plain variable set here is already visible there. See
-# docs/gui/localisation.md for how to update or add to this list, and
+# docs/forge/gui/localisation.md for how to update or add to this list, and
 # translations/ac3gui_xx.ts (tools/generators/gen_pseudo_locale.py) for the
 # separate pseudo-locale QA fixture, which is intentionally NOT part of this
 # list - it is loaded only through the AC3GUI_LOCALE test override, never
@@ -146,7 +158,7 @@ qt_add_qml_module(ac3gui
 # font axis selection is only dependable from Qt 6.7 up. main.cpp registers
 # these with QFontDatabase before the engine loads.
 #
-# NotoSansArabic/NotoSansHebrew (roadmap UX3, RTL languages) are the same
+# NotoSansArabic/NotoSansHebrew (GUI localisation, RTL languages) are the same
 # OFL-licensed faces the sibling CountdownSolver project already vets and
 # ships for exactly this purpose (Latin has no Arabic/Hebrew glyph coverage,
 # and Yiddish is written in Hebrew script) - copied verbatim rather than
@@ -177,7 +189,7 @@ qt_add_resources(ac3gui "ac3gui_icons"
         "${CMAKE_CURRENT_SOURCE_DIR}/icons/ac3forge-256.png")
 
 # ---------------------------------------------------------------------------
-# Roadmap UX3: lupdate (scan every source SOURCE_TARGETS' own target already
+# GUI localisation: lupdate (scan every source SOURCE_TARGETS' own target already
 # lists - AC3_QML_FILES is the only source of qsTr() calls in this app; no
 # .cpp file has one) plus lrelease (.ts -> .qm) and a /i18n resource
 # embedding, all in one call. LanguageManager (language_manager.cpp) loads
@@ -193,10 +205,19 @@ qt_add_resources(ac3gui "ac3gui_icons"
 # relying on the deferred/auto-collected path here either, so this avoids
 # the failure mode outright rather than trusting the scopes stay aligned).
 # ---------------------------------------------------------------------------
+# -no-obsolete, the same as apps/crucible's call, and for the same reason:
+# an entry whose source string is gone is kept as translation memory
+# otherwise, and git history is that memory. It also matters to the gate -
+# tests/crucible/test_translations.cpp holds these seven catalogues to
+# carrying nothing unfinished and nothing dead, and without this flag a
+# reworded string leaves its old self behind as a vanished entry and fails
+# that case. Which is how this was found, on 2026-09-06: one note was
+# reworded, six catalogues kept the old wording, and the case named all six.
 qt_add_translations(ac3gui
     IMMEDIATE_CALL
     SOURCE_TARGETS ac3gui
     TS_FILES ${AC3_TS_FILES}
+    LUPDATE_OPTIONS -no-obsolete
     LUPDATE_TARGET ac3gui_lupdate
     LRELEASE_TARGET ac3gui_lrelease)
 
@@ -322,7 +343,7 @@ elseif(APPLE)
     target_sources(ac3gui PRIVATE "${AC3_GUI_ICON_ICNS}")
     set_target_properties(ac3gui PROPERTIES MACOSX_BUNDLE_ICON_FILE ac3forge.icns)
 
-    # Roadmap UX2: a custom Info.plist (Info.plist.in, beside this file) so
+    # GUI AppStream packaging: a custom Info.plist (Info.plist.in, beside this file) so
     # .ac3/.ec3 get CFBundleDocumentTypes/UTExportedTypeDeclarations - the
     # default Info.plist CMake generates when MACOSX_BUNDLE_INFO_PLIST is
     # left unset carries neither, and supplying a template of our own means
@@ -445,12 +466,17 @@ endif()
 # path lookup and breaks QtQuick.Controls at startup - confirmed empirically
 # in CountdownSolver (R:\CountdownSolver\src\app\CMakeLists.txt), which hit
 # this exact bug and documents it in the same place. Linux packaging instead
-# relies on a declared Qt6 runtime dependency in cmake/Packaging.cmake's DEB
-# generator plus the system's own Qt6 install - not implemented yet here
-# because AC3FORGE_BUILD_GUI defaults OFF on every Linux preset (see
-# CMakePresets.json), so this bug cannot bite in CI until someone turns it on
-# for a packaging build. Do not "fix" this by adding the WIN32 OR APPLE
-# guard below back in for Linux too.
+# relies on the system's own Qt6 install plus a declared runtime dependency on
+# it in cmake/Packaging.cmake's DEB generator, which is now written: see that
+# file's CPACK_DEBIAN_RUNTIME_PACKAGE_DEPENDS block for the qml6-module-* list
+# and, more to the point, for why dpkg-shlibdeps cannot work that list out on
+# its own whatever the Qt kit came from. This comment used to say the
+# dependency was not implemented "yet" and could not bite in CI because
+# AC3FORGE_BUILD_GUI defaults OFF on every Linux preset. Both halves had gone
+# stale: .github/workflows/_build.yml's four Linux legs carry `gui: true`
+# alongside `packageable: true`, so ac3gui has been going into a released .deb
+# with nothing declaring the QML runtime it needs. Do not "fix" the qt.conf
+# problem above by adding the WIN32 OR APPLE guard below back in for Linux too.
 # ---------------------------------------------------------------------------
 include(GNUInstallDirs)
 
@@ -480,8 +506,32 @@ if(WIN32 OR APPLE)
     install(SCRIPT "${AC3_GUI_DEPLOY_SCRIPT}" COMPONENT runtime)
 endif()
 
+# The same defect the Crucible has, in the same place and for the same reason:
+# the deploy script above scans THIS directory for QML imports, tests/qml/
+# tst_*.qml all `import QtTest`, and the runtime zip, the NSIS installer and
+# the macOS .app have been carrying qml/QtTest/ (plus Qt6Test.dll and
+# Qt6QuickTest.dll on Windows, Contents/PlugIns/libquicktestplugin.dylib on
+# macOS) ever since. Only ac3gui_qmltests loads any of it, and that binary is
+# not installed. cmake/StripQtTestDeployment.cmake has the measurement.
+#
+# WIN32 OR APPLE, matching the deploy-script block above: a macOS .app keeps
+# its deployed Qt inside the bundle rather than beside the executable, and
+# cmake/StripQtTestDeployment.cmake now knows that shape too - confirmed
+# against a real packages-macos-llvm CI artifact, which shipped both paths
+# named above before this guard widened. COMPONENT runtime on the
+# install(CODE) below matters as much as it does on install(SCRIPT): a
+# component-scoped install runs only the rules tagged for that component, and
+# the strip script needs this bundle name set in the same pass it runs in.
+if(WIN32 OR APPLE)
+    if(APPLE)
+        install(CODE "set(_ac3_macos_bundle_name \"ac3gui\")" COMPONENT runtime)
+    endif()
+    install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/StripQtTestDeployment.cmake"
+        COMPONENT runtime)
+endif()
+
 # ---------------------------------------------------------------------------
-# Roadmap UX2's Linux leg: what actually puts ac3gui in a desktop's own
+# GUI AppStream packaging's Linux leg: what actually puts ac3gui in a desktop's own
 # application menu, the gap the roadmap named directly ("ac3gui is absent
 # from Linux application menus"). Every file lives under packaging/linux/
 # beside this CMakeLists.txt rather than under icons/ (the macOS/Windows

@@ -1,7 +1,7 @@
 #pragma once
 
 // Build-profile facts, in the MINIMUM-FOOTPRINT DECODER variant
-// (AC3FORGE_MINIMAL_DECODER, roadmap PF7). Every ordinary build compiles the
+// (AC3FORGE_MINIMAL_DECODER, minimum-footprint decoder profile). Every ordinary build compiles the
 // identically-pathed header under src/internal/profile/full/ instead;
 // src/forge/CMakeLists.txt picks the directory, so no source file here asks
 // which profile it is in with a preprocessor conditional
@@ -24,4 +24,11 @@ inline constexpr bool kMinimalDecoderProfile = true;
 // backed by their tables. See that header for what they cost.
 inline constexpr bool kReferenceTransformAvailable = false;
 
-}  // namespace ac3::internal
+// decode_scalar_t used to live here. It is ac3/internal/decode_scalar.hpp
+// now, on its own CMake-selected seam: which profile this is and which
+// scalar the decoder carries are independent questions, and welding them
+// together meant the float32 path could only exist in a build with no CLI
+// to measure it against. See that header.
+
+
+} // namespace ac3::internal

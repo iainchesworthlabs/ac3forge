@@ -36,8 +36,13 @@ using manifest_detail::segment_seconds;
 std::string_view hls_codec_string(const AudioTrack& track) {
     // kCodecAc3/kCodecEac3 ("ac-3"/"ec-3") ARE RFC 6381's own codec string
     // for either format unmodified - see mp4.hpp's citation on those
-    // constants and this header's own comment on hls_codec_string.
-    return track.codec_id;
+    // constants and this header's own comment on hls_codec_string. The one
+    // codec whose string is NOT its fourcc (AC-4, Annex E.13's dotted
+    // version fields) supplies it through AudioTrack::rfc6381 instead, so
+    // this module never has to parse a configuration box to render a
+    // manifest.
+    return track.rfc6381.empty() ? std::string_view{track.codec_id}
+                                 : std::string_view{track.rfc6381};
 }
 
 std::string build_hls_media_playlist(const AudioTrack& track,

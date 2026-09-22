@@ -1,11 +1,15 @@
 #include "audio_io.hpp"
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fmt/base.h>
+#include <fstream>
+#include <ios>
 #include <memory>
 #include <optional>
 #include <random>
@@ -23,8 +27,10 @@
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/capture.hpp"
 #include "ac3/audio/passthrough.hpp"
+#include "ac3/audio/pcm_output.hpp"
 #include "ac3/audio/sink_capabilities.hpp"
 #include "ac3/audio/spatial.hpp"
+#include "ac3/audio/speakers.hpp"
 #include "ac3/audio/watchdog.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
@@ -32,8 +38,12 @@
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/iec61937/iec61937.hpp"
+#include "ac3/render/identify.hpp"
+#include "ac3/render/layout.hpp"
+#include "ac3/render/routing.hpp"
 #include "live_audio.hpp"
 #include "recording_sink.hpp"
+#include "sink_wait.hpp"
 #include "stream_tools.hpp"
 
 namespace ac3cli::commands {
@@ -42,7 +52,7 @@ namespace plan = ac3::plan;
 
 int run_devices() {
     const auto devices = ac3::audio::enumerate_devices();
-    if (!devices) {
+    if (!devices.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return kExitUnavailable;
     }
@@ -63,7 +73,7 @@ int run_devices() {
 namespace {
 
 // Record what a bitstreaming source is actually sending, rather than
-// encoding it (roadmap IO3).
+// encoding it (IEC 61937 de-framing).
 //
 // An endpoint fed IEC 61937 hands its bursts over as ordinary PCM - the
 // capture API has no way to say "this is Dolby Digital" - so a recorder that
@@ -114,7 +124,7 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
     const auto drain = [&](std::span<const std::byte> carrier) {
         payload.clear();
         const auto pushed = reader.push(carrier, payload);
-        if (!pushed) {
+        if (!pushed.has_value()) {
             fmt::println(stderr, "error: {}", ac3::iec61937::describe(pushed.error()));
             return false;
         }
@@ -215,7 +225,7 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
 int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t bitrate,
                int device_index, const Options& meta) {
     const auto devices = ac3::audio::enumerate_devices();
-    if (!devices) {
+    if (!devices.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return kExitUnavailable;
     }
@@ -243,19 +253,19 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         default: encodable_rate = false; break;
     }
 
-    // layout=/codec= (roadmap IO9). Before this, 'record' was stereo AC-3 and
+    // layout=/codec= (wide-layout record/live paths). Before this, 'record' was stereo AC-3 and
     // nothing else, while the GUI recorded any layout the format allows - and
     // the two shared a capture path, an encoder and a container writer, so the
     // gap was entirely in what the CLI would let you ask for.
     const auto take = resolve_take_plan(meta, bitrate, sr);
-    if (!take) {
+    if (!take.has_value()) {
         return kExitUsage;
     }
     const auto channel_plan = plan::resolve(take->plan);
 
     ac3::audio::Capture capture;
     const auto started = capture.start(device.id, device.kind);
-    if (!started) {
+    if (!started.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
         return kExitUnavailable;
     }
@@ -290,7 +300,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         }
     };
 
-    // Bitstream passthrough auto-detection (roadmap IO3): an endpoint fed
+    // Bitstream passthrough auto-detection (IEC 61937 de-framing): an endpoint fed
     // IEC 61937 hands its bursts over as ordinary PCM - the capture API has
     // no way to say "this is Dolby Digital" - so encoding them at face value
     // produces noise. A device whose advertised rate AC-3 cannot encode at
@@ -336,7 +346,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     // encoded onto 5.1 does (plan::route's own model). A source wider than the
     // target folds down per 7.8.
     const auto routing = plan::route(channel_plan, channels, meta.p.cmixlev, meta.p.surmixlev);
-    if (!routing) {
+    if (!routing.has_value()) {
         fmt::println(stderr, "error: {} capture channels - {}", channels,
                      plan::describe(plan::PlanError::kNoSourceLayout));
         return kExitUsage;
@@ -369,7 +379,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         (static_cast<std::uint64_t>(seconds) * rate_hz + ac3::kSamplesPerFrame - 1) /
         ac3::kSamplesPerFrame;
 
-    // Streamed to its container as it is produced (roadmap IO9), through the
+    // Streamed to its container as it is produced (wide-layout record/live paths), through the
     // same RecordingSink the GUI's own takes go through - so a take of any
     // length costs one frame of memory rather than the whole session, and a
     // crash an hour in no longer loses the hour. Opening is DEFERRED, though
@@ -450,7 +460,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         std::vector<std::byte> unit_bytes;
         if (take->eac3) {
             const auto unit = eac3_encoder->encode_access_unit(views);
-            if (!unit) {
+            if (!unit.has_value()) {
                 fmt::println(stderr, "error: the encoder cannot express this configuration");
                 if (sink_open) {
                     std::ignore = sink.close();
@@ -460,7 +470,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
             unit_bytes = unit->bytes;
         } else {
             auto frame = ac3_encoder->encode_frame(views);
-            if (!frame) {
+            if (!frame.has_value()) {
                 fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
                 if (sink_open) {
                     std::ignore = sink.close();
@@ -532,7 +542,7 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
 
 int run_outputs() {
     const auto devices = ac3::audio::enumerate_render_devices();
-    if (!devices) {
+    if (!devices.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return kExitUnavailable;
     }
@@ -540,13 +550,35 @@ int run_outputs() {
         fmt::println("no active render endpoints found");
         return 0;
     }
-    fmt::println("{:>3}  {:<9}  {:<9}  {:<9}  {}", "idx", "AC-3", "E-AC-3", "excl PCM", "name");
+    fmt::println("{:>3}  {:<9}  {:<9}  {:<9}  {:>3}  {}", "idx", "AC-3", "E-AC-3", "excl PCM", "ch",
+                 "name");
     for (std::size_t i = 0; i < devices->size(); ++i) {
         const auto& d = (*devices)[i];
-        fmt::println("{:>3}  {:<9}  {:<9}  {:<9}  {}{}", i, d.supports_ac3_passthrough ? "yes" : "no",
+        fmt::println("{:>3}  {:<9}  {:<9}  {:<9}  {:>3}  {}{}", i,
+                     d.supports_ac3_passthrough ? "yes" : "no",
                      d.supports_eac3_passthrough ? "yes" : "no",
-                     d.supports_exclusive_pcm ? "yes" : "no", d.name,
+                     d.supports_exclusive_pcm ? "yes" : "no",
+                     d.channels != 0 ? std::to_string(d.channels) : "?", d.name,
                      d.is_default ? "  [default]" : "");
+        // Which speaker each of those channels is, and what rates the device
+        // itself takes: what a caller needs to route a rendered layout onto
+        // this endpoint (ac3::audio::locations_of) rather than hand it a
+        // channel count and hope. Either can be "not reported" - a backend
+        // that cannot say must not be read as saying "none".
+        const std::string speakers = ac3::audio::describe_speakers(d.speakers);
+        fmt::println("       speakers: {}", speakers.empty() ? "not reported" : speakers);
+        if (d.sample_rates.empty()) {
+            fmt::println("       rates: not reported");
+        } else {
+            std::string rates;
+            for (const std::uint32_t rate : d.sample_rates) {
+                if (!rates.empty()) {
+                    rates.push_back(' ');
+                }
+                rates += std::to_string(rate);
+            }
+            fmt::println("       rates: {} Hz", rates);
+        }
         // Probed per device rather than folded into RenderDeviceInfo above:
         // GetMaxDynamicObjectCount() is a live, per-endpoint fact that
         // changes the moment Settings > System > Sound is touched, not a
@@ -554,7 +586,7 @@ int run_outputs() {
         // own header comment.
         if (const auto spatial = ac3::audio::probe_spatial_capability(d.id); spatial) {
             if (spatial->max_dynamic_objects > 0) {
-                fmt::println("       spatial: {} dynamic objects (ac3cli spatial, roadmap UX8)",
+                fmt::println("       spatial: {} dynamic objects (ac3cli spatial, Windows spatial object renderer)",
                              spatial->max_dynamic_objects);
             } else {
                 fmt::println("       spatial: {}", spatial->reason);
@@ -566,6 +598,12 @@ int run_outputs() {
     fmt::println("E-AC-3   the same, for Dolby Digital Plus (and Atmos riding inside it - there");
     fmt::println("         is no separate passthrough format for Atmos).");
     fmt::println("excl PCM the same endpoint accepted ordinary 16-bit stereo PCM exclusively.");
+    fmt::println("ch       how many channels the endpoint renders; \"?\" where the backend");
+    fmt::println("         cannot say, which is not the same as none.");
+    fmt::println("speakers which speaker each of those channels is, by its bitstream name, in");
+    fmt::println("         the order an interleaved stream carries them.");
+    fmt::println("rates    the rates the device itself takes. A rate not listed can still play:");
+    fmt::println("         the shared-mode engine resamples for it.");
     fmt::println("");
     fmt::println("PCM yes + AC-3/E-AC-3 no means the device simply cannot bitstream - analog");
     fmt::println("outputs cannot; only S/PDIF (TOSLINK/coax) and HDMI can. Enable Dolby Digital");
@@ -573,6 +611,182 @@ int run_outputs() {
     fmt::println("All no means exclusive mode itself is unavailable (disabled for the device,");
     fmt::println("or another application currently holds it).");
     return 0;
+}
+
+int run_identify(int device_index, std::string_view layout_text, std::uint32_t seconds,
+                 std::string_view routing_text, double level_db) {
+    constexpr std::uint32_t kRate = 48000;
+    constexpr std::size_t kBlockFrames = 480;
+
+    // The enumeration is what names an endpoint by index and says which
+    // speakers it has. An index cannot be resolved without it, so that is an
+    // error; the default endpoint can still be played to without it, since
+    // PcmOutput falls back to the layout's own width - so a machine whose
+    // backend cannot enumerate gets a tone rather than a refusal.
+    const auto devices = ac3::audio::enumerate_render_devices();
+    if (!devices.has_value() && device_index >= 0) {
+        fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
+        return kExitUnavailable;
+    }
+    if (devices.has_value() && device_index >= 0 &&
+        static_cast<std::size_t>(device_index) >= devices->size()) {
+        fmt::println(stderr, "error: no render endpoint with index {} ('ac3cli outputs' lists them)",
+                     device_index);
+        return kExitInput;
+    }
+    // A negative index means the default endpoint, which is what an empty
+    // device id opens - the same convention 'play' and 'monitor' use.
+    std::string device_id;
+    std::uint32_t speakers = 0;
+    std::uint16_t channels = 0;
+    if (device_index >= 0) {
+        const auto& chosen = (*devices)[static_cast<std::size_t>(device_index)];
+        device_id = chosen.id;
+        speakers = chosen.speakers;
+        channels = chosen.channels;
+    } else if (devices.has_value()) {
+        for (const auto& candidate : *devices) {
+            if (candidate.is_default) {
+                speakers = candidate.speakers;
+                channels = candidate.channels;
+                break;
+            }
+        }
+    }
+
+    // The layout to walk. Named explicitly, else the device's own speakers so
+    // that every output it reports gets a turn, else stereo - which is what a
+    // backend that cannot say leaves to work with.
+    std::optional<ac3::render::OutputLayout> layout;
+    if (!layout_text.empty() && layout_text != "-") {
+        layout = ac3::render::OutputLayout::parse(layout_text);
+        if (!layout) {
+            fmt::println(stderr, "error: \"{}\" is not a layout (try 5.1, 7.1.4, or L,R,C)",
+                         layout_text);
+            return kExitInput;
+        }
+    } else {
+        const auto locations =
+            ac3::audio::locations_of(speakers != 0 ? speakers
+                                                    : ac3::audio::default_speakers(channels));
+        layout = locations.empty() ? ac3::render::OutputLayout::stereo()
+                                   : ac3::render::OutputLayout::from_locations(locations)
+                                         .value_or(ac3::render::OutputLayout::stereo());
+    }
+
+    ac3::audio::PcmOutput output;
+    const auto opened = output.start(device_id, kRate, *layout);
+    if (!opened) {
+        fmt::println(stderr, "error: {}", ac3::audio::describe(opened.error()));
+        return kExitUnavailable;
+    }
+    if (!routing_text.empty() && routing_text != "-") {
+        const auto patch = ac3::render::Routing::parse(routing_text, opened->outputs);
+        if (!patch) {
+            fmt::println(stderr,
+                         "error: \"{}\" is not a patch for {} outputs (one token per rendered "
+                         "channel, each an output index or \"-\", e.g. 1,0,2,3,4,5)",
+                         routing_text, opened->outputs);
+            return kExitInput;
+        }
+        if (!output.set_routing(*patch)) {
+            fmt::println(stderr, "error: that patch is not for this stream");
+            return kExitInput;
+        }
+    }
+
+    std::array<char, ac3::render::Routing::kTextBytes> patch_text{};
+    output.routing().format(patch_text);
+    const std::string output_name =
+        opened->device_name.empty() ? std::string{"default output"} : opened->device_name;
+    fmt::println("{} - {} outputs{}, {} Hz", output_name, opened->outputs,
+                 opened->from_device ? "" : " (the backend does not say; assumed)",
+                 opened->sample_rate);
+    const std::string speaker_names = ac3::audio::describe_speakers(opened->speakers);
+    fmt::println("speakers: {}", speaker_names.empty() ? "not reported" : speaker_names);
+    fmt::println("layout:   {} ({} slots)", layout->text(), layout->slots());
+    fmt::println("patch:    {}", patch_text.data());
+    fmt::println("");
+
+    // Pink noise on one rendered channel at a time, placed by the patch: what
+    // comes out of a speaker is what the patch says goes to the output that
+    // speaker is plugged into, which is the whole point of walking it.
+    ac3::render::IdentifyTone tone{kRate};
+    if (!tone.set_level_db(level_db)) {
+        fmt::println(stderr, "error: level {} dB is outside [{}, {}]", level_db,
+                     ac3::render::IdentifyTone::kMinLevelDb,
+                     ac3::render::IdentifyTone::kMaxLevelDb);
+        return kExitInput;
+    }
+    std::vector<std::vector<float>> channels_storage(layout->slots(),
+                                                     std::vector<float>(kBlockFrames, 0.0F));
+    std::vector<std::span<float>> writable;
+    std::vector<std::span<const float>> readable;
+    for (auto& channel : channels_storage) {
+        writable.emplace_back(channel);
+        readable.emplace_back(channel);
+    }
+
+    const std::size_t blocks = std::max<std::size_t>(
+        1, static_cast<std::size_t>(seconds) * kRate / kBlockFrames);
+    for (std::size_t slot = 0; slot < layout->slots(); ++slot) {
+        const auto& speaker = layout->slot(slot);
+        const int patched = output.routing().output_of(slot);
+        const std::string_view name =
+            speaker.location ? ac3::eac3::chanmap::name(*speaker.location) : "by angle";
+        if (patched == ac3::render::Routing::kUnassigned) {
+            fmt::println("slot {:>2} {:<4} not patched - skipped", slot, name);
+            continue;
+        }
+        fmt::println("slot {:>2} {:<4} -> output {}", slot, name, patched);
+        tone.reset();
+        const auto band = speaker.kind == ac3::render::Speaker::Kind::kLfe
+                              ? ac3::render::IdentifyTone::Band::kLow
+                              : ac3::render::IdentifyTone::Band::kFull;
+        for (std::size_t block = 0; block < blocks; ++block) {
+            tone.fill(writable, slot, band);
+            if (!ac3::apps::submit_while_running(output, std::chrono::milliseconds(4), readable,
+                                                 kBlockFrames)) {
+                break;  // the device went away; reported below
+            }
+        }
+        // Drain before the next slot, so two speakers are never sounding at
+        // once and what is heard matches the line just printed. First the
+        // sink's own queue, which stats() report the depth of; then the
+        // frames the device has taken but not yet played, which is what is
+        // left of position()'s queue once ours is empty - a running device's
+        // own buffer never reaches zero, so this waits for its time rather
+        // than for a count.
+        for (int waited = 0; waited < 1000 && output.running(); ++waited) {
+            const auto counts = output.stats();
+            if (counts.frames_rendered >= counts.frames_submitted) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+        }
+        if (const auto position = output.position()) {
+            const auto left = position->frames_queued + position->latency_frames;
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(20 + static_cast<int>((left * 1000) / kRate)));
+        }
+        // The device can go away while a block waits for room, while the
+        // queue drains or while its own buffer plays out. Each of those stops
+        // waiting once the sink has stopped itself, and this is where the
+        // walk finds out: no later slot could be heard.
+        if (!output.running()) {
+            fmt::println(stderr, "error: \"{}\" went away ({}); stopped at slot {} ({})",
+                         output_name, kOutputGoneReasons, slot, name);
+            return kExitRuntime;
+        }
+    }
+
+    output.stop();
+    fmt::println("");
+    fmt::println("Each line played pink noise on one rendered channel (the LFE feed band-limited");
+    fmt::println("to 30-80 Hz). Heard from another speaker than the line names, the patch is");
+    fmt::println("wrong for this room: pass one, a token per rendered channel - e.g. 1,0,2,3,4,5");
+    fmt::println("swaps the front pair.");
+    return kExitOk;
 }
 
 namespace {
@@ -598,14 +812,14 @@ struct SplitStream {
     }
     if (eac3) {
         const auto split = ac3::split_access_units(result.bytes);
-        if (!split || split->empty()) {
+        if (!split.has_value() || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", path);
             return std::nullopt;
         }
         result.units = *split;
     } else {
         const auto split = ac3::split_frames(result.bytes);
-        if (!split || split->empty()) {
+        if (!split.has_value() || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid AC-3 stream", path);
             return std::nullopt;
         }
@@ -618,15 +832,18 @@ struct SplitStream {
 
 // Wraps `units` into IEC 61937 bursts and feeds them to `sink`, already
 // started - the tail every 'play' path shares: native passthrough, and
-// roadmap UX9's AC-3 transcode fallback.
+// play/monitor follow mode's AC-3 transcode fallback. `device_name` is how
+// the caller's own status lines name the endpoint, for the error if it goes
+// away mid-stream.
 int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
-                         std::span<const std::span<const std::byte>> units, bool eac3) {
+                         std::span<const std::span<const std::byte>> units, bool eac3,
+                         std::string_view device_name) {
     ac3::iec61937::Eac3BurstPacker eac3_packer;
     for (const auto& unit : units) {
         std::vector<std::byte> burst;
         if (eac3) {
             auto result = eac3_packer.push(unit);
-            if (!result) {
+            if (!result.has_value()) {
                 fmt::println(stderr, "error: burst wrap failed");
                 return kExitRuntime;
             }
@@ -636,21 +853,31 @@ int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
             burst = std::move(**result);
         } else {
             const auto wrapped = ac3::iec61937::wrap_frame(unit);
-            if (!wrapped) {
+            if (!wrapped.has_value()) {
                 fmt::println(stderr, "error: burst wrap failed");
                 return kExitRuntime;
             }
             burst = *wrapped;
         }
         // Wait for room rather than racing ahead: the render thread consumes
-        // in real time, one burst per burst period.
-        while (!sink.submit(burst)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+        // in real time, one burst per burst period. A sink whose device went
+        // away never makes room again, so that ends the wait.
+        if (!ac3::apps::submit_while_running(sink, std::chrono::milliseconds(4), burst)) {
+            fmt::println(stderr, "error: \"{}\" went away ({}); playback stopped", device_name,
+                         kOutputGoneReasons);
+            return kExitRuntime;
         }
     }
     // Let the queue drain before tearing the endpoint down.
-    while (sink.stats().bursts_rendered < sink.stats().bursts_submitted) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    const bool played_out =
+        ac3::apps::wait_while_running(sink, std::chrono::milliseconds(10), [&sink] {
+            const auto stats = sink.stats();
+            return stats.bursts_rendered >= stats.bursts_submitted;
+        });
+    if (!played_out) {
+        fmt::println(stderr, "error: \"{}\" went away ({}) before the last bursts played",
+                     device_name, kOutputGoneReasons);
+        return kExitRuntime;
     }
     return kExitOk;
 }
@@ -666,22 +893,36 @@ int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
     const auto unique =
         (static_cast<std::uint64_t>(rd()) << 32) ^
         static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) ^
-        counter.fetch_add(1, std::memory_order_relaxed);
+        counter.fetch_add(1);
     return std::filesystem::temp_directory_path() / ("ac3play_" + std::to_string(unique) + ".ac3");
 }
 
-// Roadmap UX9's transcode-to-passthrough leg: DC9's transcode produces an
+// Exclusively creates an empty file at a make_temp_ac3_path() result before run_transcode below
+// ever opens it. run_transcode writes through the same output-sink code ac3cli's own
+// caller-chosen 'transcode' output path uses, so that path can't itself refuse to replace an
+// existing file; this closes the shared-temp-dir symlink/TOCTOU race up front instead, the same
+// pattern examples/encode_iab.cpp's claim_temp_path uses for the same reason.
+[[nodiscard]] bool claim_temp_path(const std::filesystem::path& path) {
+    std::ofstream claim(path, std::ios::binary | std::ios::noreplace);
+    return static_cast<bool>(claim);
+}
+
+// play/monitor follow mode's transcode-to-passthrough leg: DC9's transcode produces an
 // AC-3 file the sink already confirmed it accepts, then that file plays
 // exactly the way a plain AC-3 source file already does - the two commands
 // this was "two commands and knowing why" before, run back to back with the
 // middle file held in a temp path instead of one the operator has to name
 // and clean up themselves. 448 kbps matches the project's own transcode
-// examples throughout docs/cli/commands.md; the metadata options 'play's own
+// examples throughout docs/forge/cli/commands.md; the metadata options 'play's own
 // caller gave (dialnorm=, drc=, ...) still apply, carried through `meta`
 // exactly as they would to a direct 'transcode' invocation.
 int play_via_ac3_transcode(std::string_view in_path, const std::string& device_id,
                            std::string_view device_name, const Options& meta) {
     const auto temp_path = make_temp_ac3_path();
+    if (!claim_temp_path(temp_path)) {
+        fmt::println(stderr, "error: could not claim temp path {}", temp_path.string());
+        return kExitRuntime;
+    }
     const auto temp_path_str = temp_path.string();
     const auto transcoded = run_transcode(in_path, temp_path_str, 448, "", meta);
     if (transcoded != 0) {
@@ -691,7 +932,7 @@ int play_via_ac3_transcode(std::string_view in_path, const std::string& device_i
     }
 
     const auto split = split_playable_stream(temp_path_str, /*eac3=*/false);
-    if (!split) {
+    if (!split.has_value()) {
         std::error_code ec;
         std::filesystem::remove(temp_path, ec);
         return kExitRuntime;
@@ -702,13 +943,13 @@ int play_via_ac3_transcode(std::string_view in_path, const std::string& device_i
         sink.start(device_id, split->content_rate, ac3::audio::BitstreamFormat::kAc3);
     std::error_code ec;
     std::filesystem::remove(temp_path, ec);
-    if (!started) {
+    if (!started.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
         return kExitUnavailable;
     }
     status_println(status_stream(), "streaming {} frames to \"{}\" ({} Hz carrier)…",
                    split->units.size(), device_name, split->content_rate);
-    const auto result = submit_units_to_sink(sink, split->units, /*eac3=*/false);
+    const auto result = submit_units_to_sink(sink, split->units, /*eac3=*/false, device_name);
     const auto stats = sink.stats();
     sink.stop();
     status_println(status_stream(), "submitted {} bursts, rendered {}, {} underruns",
@@ -724,7 +965,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
         return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
-    if (!bsid) {
+    if (!bsid.has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
@@ -734,7 +975,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
     std::uint32_t content_rate = 0;
     if (eac3) {
         const auto split = ac3::split_access_units(stream);
-        if (!split || split->empty()) {
+        if (!split.has_value() || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
             return kExitInput;        }
         units = *split;
@@ -743,7 +984,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
                 std::to_integer<std::uint32_t>(units[0][4]) >> 6));
     } else {
         const auto split = ac3::split_frames(stream);
-        if (!split || split->empty()) {
+        if (!split.has_value() || split->empty()) {
             fmt::println(stderr, "error: {} is not a valid AC-3 stream", in_path);
             return kExitInput;        }
         units = *split;
@@ -758,7 +999,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
     // is it looking and seeing no endpoints. Reporting both as "none
     // available" sent people hunting for a missing sound device when the real
     // answer was a COM failure.
-    if (!devices) {
+    if (!devices.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
         return kExitUnavailable;
     }
@@ -780,7 +1021,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
         device_name = chosen->name;
     }
 
-    // Roadmap UX9: what the chosen sink actually accepts. The default
+    // play/monitor follow mode: what the chosen sink actually accepts. The default
     // endpoint (chosen == nullptr) is taken at its word, exactly as before -
     // its capabilities were never probed either, and there is no id to read
     // EDID from. EDID first (real only on ALSA today -
@@ -791,7 +1032,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
     bool takes_pcm = false;
     if (chosen != nullptr) {
         const auto edid = ac3::audio::read_sink_capabilities(chosen->id);
-        if (edid) {
+        if (edid.has_value()) {
             takes_native = eac3 ? edid->eac3 : edid->ac3;
             takes_ac3 = edid->ac3;
             takes_pcm = edid->pcm;
@@ -812,7 +1053,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
         if (ac3_leg) {
             status_println(status_stream(),
                            "\"{}\" does not accept E-AC-3 over IEC 61937; transcoding to AC-3 "
-                           "instead (roadmap DC9/UX9)",
+                           "instead (stream tools/UX9)",
                            chosen->name);
             return play_via_ac3_transcode(in_path, device_id, device_name, meta);
         }
@@ -836,7 +1077,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
     const auto started = sink.start(
         device_id, content_rate,
         eac3 ? ac3::audio::BitstreamFormat::kEac3 : ac3::audio::BitstreamFormat::kAc3);
-    if (!started) {
+    if (!started.has_value()) {
         fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
         return kExitUnavailable;
     }
@@ -844,7 +1085,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
                  eac3 ? "access units" : "frames", device_name, content_rate,
                  eac3 ? ", carrier 4x that" : " carrier");
 
-    const auto result = submit_units_to_sink(sink, units, eac3);
+    const auto result = submit_units_to_sink(sink, units, eac3, device_name);
     const auto stats = sink.stats();
     sink.stop();
     status_println(status_stream(), "submitted {} bursts, rendered {}, {} underruns",

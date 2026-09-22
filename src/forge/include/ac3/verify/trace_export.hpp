@@ -8,7 +8,7 @@
 #include "ac3/verify/eac3_mirror.hpp"
 #include "ac3/verify/mirror.hpp"
 
-// Roadmap AP12: getting the encoder/decoder mirror trace (ac3/verify/mirror.hpp,
+// research trace export: getting the encoder/decoder mirror trace (ac3/verify/mirror.hpp,
 // ac3/verify/eac3_mirror.hpp) out in a form someone doing codec research can
 // load into a notebook, not a new way to generate the data - see those headers
 // for how a FrameTrace/Eac3AccessUnitTrace gets filled (DecoderConfig::trace/

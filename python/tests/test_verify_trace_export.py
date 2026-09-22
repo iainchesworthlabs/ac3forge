@@ -1,4 +1,4 @@
-"""ac3.verify - the research trace export (roadmap AP12).
+"""ac3.verify - the research trace export (research trace export).
 
 Proves the data is genuinely reachable from Python in the form the roadmap asks for: CSV parsed
 by the stdlib csv module, JSON Lines parsed line by line with the stdlib json module - neither

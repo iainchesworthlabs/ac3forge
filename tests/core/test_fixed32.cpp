@@ -1,0 +1,535 @@
+// The fixed-point tier's scalar (src/forge/src/core/fixed32.hpp): the
+// arithmetic rules it states, held exactly; the square root against the
+// double one; and the two shared tables the decoders read through it.
+
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <numbers>
+#include <random>
+
+#include "ac3/core/coupling.hpp"
+#include "ac3/core/eac3_tools.hpp"
+#include "ac3/core/exponents.hpp"
+#include "ac3/core/mantissas.hpp"
+#include "eac3_tools_fixed.hpp"
+#include "fixed32.hpp"
+
+using ac3::internal::Fixed32;
+
+namespace {
+
+constexpr double kUlp = 1.0 / 16777216.0;  // one raw unit
+
+}  // namespace
+
+TEST_CASE("Fixed32 constructs from integers and floating values exactly where it can",
+          "[fixed32]") {
+    STATIC_CHECK(Fixed32{0}.raw == 0);
+    STATIC_CHECK(Fixed32{1}.raw == Fixed32::kOne);
+    STATIC_CHECK(Fixed32{2}.raw == 2 * Fixed32::kOne);
+    STATIC_CHECK(Fixed32{-1}.raw == -Fixed32::kOne);
+    STATIC_CHECK(Fixed32{0.5}.raw == Fixed32::kOne / 2);
+    STATIC_CHECK(Fixed32{-0.5}.raw == -Fixed32::kOne / 2);
+    STATIC_CHECK(Fixed32{0.5F}.raw == Fixed32::kOne / 2);
+    // Half a raw unit rounds away from zero.
+    STATIC_CHECK(Fixed32{kUlp * 0.5}.raw == 1);
+    STATIC_CHECK(Fixed32{-kUlp * 0.5}.raw == -1);
+    STATIC_CHECK(Fixed32{kUlp * 0.49}.raw == 0);
+    // Saturation: 128 is one past the format.
+    STATIC_CHECK(Fixed32{128}.raw == std::numeric_limits<std::int32_t>::max());
+    STATIC_CHECK(Fixed32{-129}.raw == std::numeric_limits<std::int32_t>::min());
+    STATIC_CHECK(Fixed32{1e9}.raw == std::numeric_limits<std::int32_t>::max());
+    STATIC_CHECK(static_cast<std::size_t>(1536) > 127);
+    STATIC_CHECK(Fixed32{static_cast<std::size_t>(1536)}.raw ==
+                 std::numeric_limits<std::int32_t>::max());
+    CHECK(static_cast<double>(Fixed32{0.75}) == 0.75);
+    CHECK(static_cast<float>(Fixed32{-0.25}) == -0.25F);
+    CHECK(static_cast<int>(Fixed32{2.75}) == 2);
+    CHECK(static_cast<int>(Fixed32{-2.75}) == -2);
+}
+
+TEST_CASE("Fixed32 from a double is the arithmetic definition, on the bits", "[fixed32]") {
+    // The constructor works on the double's bits; this is the arithmetic it
+    // stands for - value x 2^24, rounded half away from zero, saturated -
+    // evaluated here in long double so the check itself carries no rounding.
+    std::mt19937_64 rng(0xd0b1);
+    std::uniform_real_distribution<double> wide(-127.9, 127.9);
+    std::uniform_real_distribution<double> small(-1e-3, 1e-3);
+    std::uniform_real_distribution<double> tiny(-1e-7, 1e-7);
+    const auto reference = [](double v) -> std::int32_t {
+        const long double scaled = static_cast<long double>(v) * 16777216.0L;
+        const long double rounded = scaled >= 0 ? std::floor(scaled + 0.5L) : std::ceil(scaled - 0.5L);
+        if (rounded > 2147483647.0L) {
+            return std::numeric_limits<std::int32_t>::max();
+        }
+        if (rounded < -2147483648.0L) {
+            return std::numeric_limits<std::int32_t>::min();
+        }
+        return static_cast<std::int32_t>(rounded);
+    };
+    for (int i = 0; i < 30000; ++i) {
+        const double v = i % 3 == 0 ? small(rng) : i % 3 == 1 ? tiny(rng) : wide(rng);
+        CHECK(Fixed32{v}.raw == reference(v));
+    }
+    // Exact ties, both signs, and the format's edges.
+    for (const double v : {0.5 * kUlp, -0.5 * kUlp, 1.5 * kUlp, -1.5 * kUlp, 0.25 * kUlp,
+                           127.0, -128.0, 127.99999994, 1e-300, -1e-300, 1e300, -1e300}) {
+        CHECK(Fixed32{v}.raw == reference(v));
+    }
+    STATIC_CHECK(Fixed32{std::numeric_limits<double>::infinity()}.raw ==
+                 std::numeric_limits<std::int32_t>::max());
+    STATIC_CHECK(Fixed32{-std::numeric_limits<double>::infinity()}.raw ==
+                 std::numeric_limits<std::int32_t>::min());
+    STATIC_CHECK(Fixed32{-0.0}.raw == 0);
+    STATIC_CHECK(Fixed32{5e-324}.raw == 0);  // the smallest denormal
+}
+
+TEST_CASE("Fixed32 from a float is the double route's value, bit for bit", "[fixed32]") {
+    // The float constructor works on the float's own bits; the double one is
+    // the arithmetic definition. Same rounding (half away from zero), same
+    // saturation, and zero below the floor.
+    std::mt19937 rng(0xf10a);
+    std::uniform_real_distribution<float> wide(-127.9F, 127.9F);
+    std::uniform_real_distribution<float> small(-1e-3F, 1e-3F);
+    std::uniform_real_distribution<float> tiny(-1e-7F, 1e-7F);
+    for (int i = 0; i < 30000; ++i) {
+        const float v = i % 3 == 0 ? small(rng) : i % 3 == 1 ? tiny(rng) : wide(rng);
+        CHECK(Fixed32{v}.raw == Fixed32{static_cast<double>(v)}.raw);
+    }
+    STATIC_CHECK(Fixed32{0.0F}.raw == 0);
+    STATIC_CHECK(Fixed32{-0.0F}.raw == 0);
+    STATIC_CHECK(Fixed32{1e-30F}.raw == 0);
+    STATIC_CHECK(Fixed32{200.0F}.raw == std::numeric_limits<std::int32_t>::max());
+    STATIC_CHECK(Fixed32{-200.0F}.raw == std::numeric_limits<std::int32_t>::min());
+    STATIC_CHECK(Fixed32{std::numeric_limits<float>::infinity()}.raw ==
+                 std::numeric_limits<std::int32_t>::max());
+    STATIC_CHECK(Fixed32{-std::numeric_limits<float>::infinity()}.raw ==
+                 std::numeric_limits<std::int32_t>::min());
+    const auto nan = Fixed32{std::numeric_limits<float>::quiet_NaN()}.raw;
+    CHECK((nan == std::numeric_limits<std::int32_t>::max() ||
+           nan == std::numeric_limits<std::int32_t>::min()));
+    // Half a raw unit rounds away from zero, as the double route does.
+    STATIC_CHECK(Fixed32{0.5F / 16777216.0F}.raw == 1);
+    STATIC_CHECK(Fixed32{-0.5F / 16777216.0F}.raw == -1);
+    STATIC_CHECK(Fixed32{0.25F / 16777216.0F}.raw == 0);
+    STATIC_CHECK(Fixed32{127.0F}.raw == 127 * Fixed32::kOne);
+}
+
+TEST_CASE("Fixed32 sums wrap and products round half up and saturate", "[fixed32]") {
+    STATIC_CHECK((Fixed32{0.25} + Fixed32{0.5}).raw == Fixed32{0.75}.raw);
+    STATIC_CHECK((Fixed32{0.25} - Fixed32{0.5}).raw == Fixed32{-0.25}.raw);
+    STATIC_CHECK((-Fixed32{0.25}).raw == Fixed32{-0.25}.raw);
+    // Wrap, not UB: the largest value plus one raw unit is the smallest.
+    STATIC_CHECK((Fixed32::from_raw(std::numeric_limits<std::int32_t>::max()) +
+                  Fixed32::from_raw(1)).raw == std::numeric_limits<std::int32_t>::min());
+    // Products: exact where the result is representable.
+    STATIC_CHECK((Fixed32{0.5} * Fixed32{0.5}).raw == Fixed32{0.25}.raw);
+    STATIC_CHECK((Fixed32{-0.5} * Fixed32{0.5}).raw == Fixed32{-0.25}.raw);
+    STATIC_CHECK((Fixed32{3} * Fixed32{4}).raw == Fixed32{12}.raw);
+    // One rounding rule: the product's discarded half rounds up.
+    // 2^-24 * 0.5 = 2^-25, half a raw unit -> rounds to one raw unit.
+    STATIC_CHECK((Fixed32::from_raw(1) * Fixed32{0.5}).raw == 1);
+    // -2^-25 rounds half UP, i.e. toward +inf: to zero.
+    STATIC_CHECK((Fixed32::from_raw(-1) * Fixed32{0.5}).raw == 0);
+    // Saturation on a product that leaves the format.
+    STATIC_CHECK((Fixed32{100} * Fixed32{100}).raw == std::numeric_limits<std::int32_t>::max());
+    STATIC_CHECK((Fixed32{-100} * Fixed32{100}).raw == std::numeric_limits<std::int32_t>::min());
+    // Division: exact for powers of two, truncating otherwise, saturating on zero.
+    STATIC_CHECK((Fixed32{1} / Fixed32{2}).raw == Fixed32{0.5}.raw);
+    STATIC_CHECK((Fixed32{1} / Fixed32{3}).raw == Fixed32::kOne / 3);
+    STATIC_CHECK((Fixed32{1} / Fixed32{0}).raw == std::numeric_limits<std::int32_t>::max());
+    STATIC_CHECK((Fixed32{-1} / Fixed32{0}).raw == std::numeric_limits<std::int32_t>::min());
+    // Comparisons are the raw ones.
+    STATIC_CHECK(Fixed32{-0.5} < Fixed32{0.25});
+    STATIC_CHECK(Fixed32{0.25} == Fixed32{0.25});
+    STATIC_CHECK(ac3::internal::abs(Fixed32{-0.75}).raw == Fixed32{0.75}.raw);
+    // Powers of two: shifts, with the saturation at the top and the floor at
+    // the bottom.
+    STATIC_CHECK(Fixed32{0.75}.scaled_by_pow2(1).raw == Fixed32{1.5}.raw);
+    STATIC_CHECK(Fixed32{0.75}.scaled_by_pow2(-1).raw == Fixed32{0.375}.raw);
+    STATIC_CHECK(Fixed32{1}.scaled_by_pow2(-24).raw == 1);
+    // Half a raw unit rounds up, the product's rule; below half rounds to 0.
+    STATIC_CHECK(Fixed32{1}.scaled_by_pow2(-25).raw == 1);
+    STATIC_CHECK(Fixed32{1}.scaled_by_pow2(-26).raw == 0);
+    STATIC_CHECK(Fixed32{-1}.scaled_by_pow2(-25).raw == 0);
+    STATIC_CHECK(Fixed32{0.75}.scaled_by_pow2(-40).raw == 0);
+    STATIC_CHECK(Fixed32{100}.scaled_by_pow2(3).raw == std::numeric_limits<std::int32_t>::max());
+    STATIC_CHECK(ac3::internal::scalar_ldexp(Fixed32{0.5}, 2).raw == Fixed32{2}.raw);
+}
+
+TEST_CASE("Fixed32's product and shifts are their 64-bit definitions, on 32 bits", "[fixed32]") {
+    // The product saturates behind one test and the power-of-two scalings
+    // shift on 32 bits (fixed32.hpp); these are the 64-bit forms each one is
+    // defined by, on the saturation boundaries and at random.
+    const auto saturate = [](std::int64_t v) {
+        return static_cast<std::int32_t>(std::clamp<std::int64_t>(
+            v, std::numeric_limits<std::int32_t>::min(), std::numeric_limits<std::int32_t>::max()));
+    };
+    const auto product = [&](std::int32_t a, std::int32_t b) {
+        return saturate(((static_cast<std::int64_t>(a) * b) + (std::int64_t{1} << 23)) >> 24);
+    };
+    const auto scaled = [&](std::int32_t raw, int n) -> std::int32_t {
+        if (n >= 31) {
+            return raw == 0 ? 0
+                            : saturate(raw < 0 ? std::numeric_limits<std::int64_t>::min()
+                                               : std::numeric_limits<std::int64_t>::max());
+        }
+        if (n >= 0) {
+            return saturate(static_cast<std::int64_t>(raw) * (std::int64_t{1} << n));
+        }
+        if (n <= -32) {
+            return 0;
+        }
+        const std::int64_t half = std::int64_t{1} << (-n - 1);
+        return static_cast<std::int32_t>((static_cast<std::int64_t>(raw) + half) >> -n);
+    };
+    const auto integer_scaled = [&](std::int32_t value, int power) -> std::int32_t {
+        const int shift = 24 + power;
+        if (shift >= 32) {
+            return value == 0 ? 0
+                              : saturate(value < 0 ? std::numeric_limits<std::int64_t>::min()
+                                                   : std::numeric_limits<std::int64_t>::max());
+        }
+        if (shift >= 0) {
+            return saturate(static_cast<std::int64_t>(value) * (std::int64_t{1} << shift));
+        }
+        if (shift <= -32) {
+            return value < 0 ? -1 : 0;
+        }
+        return value >> -shift;
+    };
+    const std::array<std::int32_t, 16> edges{0, 1, -1, 3, -3, Fixed32::kOne, -Fixed32::kOne,
+                                             Fixed32::kOne / 2, 0x40000000, -0x40000000,
+                                             0x3FFFFFFF, -0x40000001,
+                                             std::numeric_limits<std::int32_t>::max(),
+                                             std::numeric_limits<std::int32_t>::min(),
+                                             std::numeric_limits<std::int32_t>::max() - 1,
+                                             std::numeric_limits<std::int32_t>::min() + 1};
+    std::mt19937_64 rng(0x5a7);
+    int mismatches = 0;
+    const auto check_value = [&](std::int32_t a, std::int32_t b, int n) {
+        mismatches += (Fixed32::from_raw(a) * Fixed32::from_raw(b)).raw != product(a, b) ? 1 : 0;
+        mismatches += Fixed32::from_raw(a).scaled_by_pow2(n).raw != scaled(a, n) ? 1 : 0;
+        const auto got = Fixed32::from_integer_scaled(a, n - 24).raw;
+        mismatches += got != integer_scaled(a, n - 24) ? 1 : 0;
+    };
+    for (int n = -34; n <= 34; ++n) {
+        for (const auto a : edges) {
+            for (const auto b : edges) {
+                check_value(a, b, n);
+            }
+        }
+        for (int i = 0; i < 3000; ++i) {
+            const auto a = static_cast<std::int32_t>(rng());
+            // Half the second operands put the product within a few units of
+            // the format's edge, where the saturation test decides.
+            const auto near = static_cast<std::int64_t>(std::int64_t{1} << 55) /
+                              (a == 0 ? 1 : static_cast<std::int64_t>(a));
+            const bool fits = near <= std::numeric_limits<std::int32_t>::max() &&
+                              near >= std::numeric_limits<std::int32_t>::min();
+            const auto jitter = static_cast<std::int64_t>(rng() % 5) - 2;
+            const auto b = (i % 2 == 0 || !fits) ? static_cast<std::int32_t>(rng())
+                                                 : static_cast<std::int32_t>(near + jitter);
+            check_value(a, b, n);
+        }
+    }
+    CHECK(mismatches == 0);
+}
+
+TEST_CASE("Fixed32's integer ratio, unsaturated product and integer root are exact", "[fixed32]") {
+    // from_integer_ratio divides small operands in two 32-bit steps,
+    // product_unsaturated drops the saturation test, and isqrt64 starts its
+    // Newton iteration from the root of the top bits (fixed32.hpp): each
+    // against the definition it has to equal.
+    const auto ratio = [](std::int64_t num, std::int64_t den) {
+        if (den == 0) {
+            return num < 0 ? std::numeric_limits<std::int32_t>::min()
+                           : std::numeric_limits<std::int32_t>::max();
+        }
+        return static_cast<std::int32_t>(std::clamp<std::int64_t>(
+            (num * Fixed32::kOne) / den, std::numeric_limits<std::int32_t>::min(),
+            std::numeric_limits<std::int32_t>::max()));
+    };
+    const auto root = [](std::uint64_t n) {
+        auto r = static_cast<std::uint64_t>(std::sqrt(static_cast<double>(n)));
+        while (r * r > n) {
+            --r;
+        }
+        while ((r + 1) * (r + 1) <= n) {
+            ++r;
+        }
+        return r;
+    };
+    std::mt19937_64 rng(0x7a71);
+    int mismatches = 0;
+    constexpr std::int64_t kSmall = std::int64_t{1} << 19;
+    const std::array<std::int64_t, 11> numerators{0,          1,      -1,         127,  128, -128,
+                                                  4096,       kSmall - 1, kSmall, -kSmall + 1,
+                                                  std::int64_t{1} << 31};
+    const std::array<std::int64_t, 8> denominators{1, -1, 3, 32, 4095, kSmall - 1, kSmall, 0};
+    for (const auto num : numerators) {
+        for (const auto den : denominators) {
+            mismatches += Fixed32::from_integer_ratio(num, den).raw != ratio(num, den) ? 1 : 0;
+        }
+    }
+    for (int i = 0; i < 100000; ++i) {
+        // 1..20, not 0..20: a shift by 64 (num_bits == 0) is undefined, and
+        // num == 0 is already in the edge cases above.
+        const auto num_bits = 1U + static_cast<unsigned>(rng() % 20U);
+        const auto den_bits = 1U + static_cast<unsigned>(rng() % 20U);
+        const auto sign = (rng() & 1U) != 0 ? 1 : -1;
+        const auto num = static_cast<std::int64_t>(rng() >> (64U - num_bits)) * sign;
+        const auto den = static_cast<std::int64_t>(rng() >> (64U - den_bits)) + 1;
+        mismatches += Fixed32::from_integer_ratio(num, den).raw != ratio(num, den) ? 1 : 0;
+
+        // |b| below one past -1, so every product fits and the two agree.
+        const auto a = Fixed32::from_raw(static_cast<std::int32_t>(rng()));
+        const auto b = Fixed32::from_raw(static_cast<std::int32_t>(rng() % (2U * Fixed32::kOne)) -
+                                         (Fixed32::kOne - 1));
+        mismatches += Fixed32::product_unsaturated(a, b).raw != (a * b).raw ? 1 : 0;
+
+        const auto width = 1U + static_cast<unsigned>(rng() % 62U);
+        const std::uint64_t n = rng() >> (64U - width);
+        mismatches += ac3::internal::isqrt64(n) != root(n) ? 1 : 0;
+        const std::uint64_t k = rng() >> (64U - ((width + 1U) / 2U));
+        if (k > 0 && k * k < (std::uint64_t{1} << 62U)) {
+            mismatches += ac3::internal::isqrt64(k * k) != k ? 1 : 0;
+            mismatches += ac3::internal::isqrt64(k * k - 1) != k - 1 ? 1 : 0;
+        }
+    }
+    CHECK(mismatches == 0);
+}
+
+TEST_CASE("Fixed32 square root is the rounded-down root of the double value", "[fixed32]") {
+    std::mt19937 rng(0x51ed);
+    std::uniform_real_distribution<double> dist(0.0, 127.0);
+    for (int i = 0; i < 5000; ++i) {
+        const double v = i < 100 ? i * 1e-6 : dist(rng);
+        const Fixed32 x{v};
+        const double truth = std::sqrt(static_cast<double>(x));
+        const double got = static_cast<double>(ac3::internal::scalar_sqrt(x));
+        CHECK(got <= truth + 1e-12);
+        CHECK(got > truth - kUlp - 1e-12);
+    }
+    STATIC_CHECK(ac3::internal::scalar_sqrt(Fixed32{4}).raw == Fixed32{2}.raw);
+    STATIC_CHECK(ac3::internal::scalar_sqrt(Fixed32{0.25}).raw == Fixed32{0.5}.raw);
+    STATIC_CHECK(ac3::internal::scalar_sqrt(Fixed32{0}).raw == 0);
+    STATIC_CHECK(ac3::internal::scalar_sqrt(Fixed32{-1}).raw == 0);
+    STATIC_CHECK(ac3::internal::scalar_sqrt(Fixed32{127}).raw ==
+                 Fixed32{11.269427669584644}.raw);
+}
+
+TEST_CASE("the exponent scale and the mantissa tables read exactly through Fixed32",
+          "[fixed32]") {
+    for (int exp = 0; exp <= 24; ++exp) {
+        CHECK(ac3::exponent_scale<Fixed32>(exp).raw == (Fixed32::kOne >> exp));
+    }
+    for (int exp = 25; exp < 32; ++exp) {
+        CHECK(ac3::exponent_scale<Fixed32>(exp).raw == 0);  // below the format's floor
+    }
+    // Every symmetric and asymmetric reconstruction value within a raw unit of
+    // the double one: the table is the double division rounded once.
+    for (int bap = 1; bap <= 15; ++bap) {
+        const int codes = bap <= 5 ? ac3::kSymmetricLevels[static_cast<std::size_t>(bap)]
+                                   : 1 << ac3::kBapBits[static_cast<std::size_t>(bap)];
+        for (int code = 0; code < codes; ++code) {
+            const double wide = ac3::dequantize_mantissa_as<double>(static_cast<std::uint32_t>(code), bap);
+            const double fixed = static_cast<double>(
+                ac3::dequantize_mantissa_as<Fixed32>(static_cast<std::uint32_t>(code), bap));
+            CHECK(std::abs(fixed - wide) <= kUlp);
+        }
+    }
+    // A coupling coordinate, likewise.
+    const ac3::coupling::Coordinate coordinate{.exp = 3, .mant = 9};
+    const double wide = ac3::coupling::decode_coordinate_as<double>(coordinate, 1);
+    const double fixed = static_cast<double>(ac3::coupling::decode_coordinate_as<Fixed32>(coordinate, 1));
+    CHECK(std::abs(fixed - wide) <= 2 * kUlp);
+}
+
+TEST_CASE("the tier's sine and cosine track the library's over a whole turn", "[fixed32]") {
+    // §3.5.5.4 asks for sin and cos of pi times an angle that §3.5.5.3
+    // transmits as a fraction of pi on (-1, 1]. Against std::sin/std::cos of
+    // the same product, over the transmitted grid and over a dense sweep.
+    double worst = 0.0;
+    const auto check = [&](double a) {
+        Fixed32 s{};
+        Fixed32 c{};
+        ac3::eac3::sincos_pi(Fixed32{a}, s, c);
+        const double angle = std::numbers::pi * static_cast<double>(Fixed32{a});
+        worst = std::max({worst, std::abs(static_cast<double>(s) - std::sin(angle)),
+                          std::abs(static_cast<double>(c) - std::cos(angle))});
+    };
+    // The 64 values ecplangle can carry, which is every angle a stream sends.
+    for (int code = 0; code < 64; ++code) {
+        check(ac3::eac3::decode_ecplangle(code));
+    }
+    for (int i = -2048; i <= 2048; ++i) {
+        check(static_cast<double>(i) / 2048.0);
+    }
+    INFO("worst error " << worst << " (" << worst * 16777216.0 << " raw units)");
+    // The series' own truncation is far below the format; what is left is its
+    // five roundings, which land in the tens of raw units.
+    CHECK(worst < 64.0 * kUlp);
+    // The quadrants, exactly where they should be.
+    Fixed32 s{};
+    Fixed32 c{};
+    ac3::eac3::sincos_pi(Fixed32{0.0}, s, c);
+    CHECK(s.raw == 0);
+    CHECK(c.raw == Fixed32::kOne);
+    ac3::eac3::sincos_pi(Fixed32{0.5}, s, c);
+    CHECK(std::abs(s.raw - Fixed32::kOne) < 64);
+    CHECK(std::abs(c.raw) < 64);
+    ac3::eac3::sincos_pi(Fixed32{1.0}, s, c);
+    CHECK(std::abs(s.raw) < 64);
+    CHECK(std::abs(c.raw + Fixed32::kOne) < 64);
+    ac3::eac3::sincos_pi(Fixed32{-1.0}, s, c);
+    CHECK(std::abs(s.raw) < 64);
+    CHECK(std::abs(c.raw + Fixed32::kOne) < 64);
+}
+
+TEST_CASE("the tier's six-point inverse and its notch are the double ones", "[fixed32]") {
+    // §E3.4.5's inverse, over the mantissa range the AHT dequantisers
+    // produce, against the double form of the same transform.
+    std::mt19937 rng(0xa47);
+    std::uniform_real_distribution<double> dist(-1.5, 1.5);
+    double worst = 0.0;
+    for (int trial = 0; trial < 2000; ++trial) {
+        std::array<double, 6> wide{};
+        std::array<Fixed32, 6> narrow{};
+        for (std::size_t j = 0; j < 6; ++j) {
+            narrow[j] = Fixed32{dist(rng)};
+            wide[j] = static_cast<double>(narrow[j]);
+        }
+        std::array<double, 6> wide_out{};
+        std::array<Fixed32, 6> narrow_out{};
+        ac3::eac3::aht_inverse(wide, wide_out);
+        ac3::eac3::aht_inverse(narrow, narrow_out);
+        for (std::size_t m = 0; m < 6; ++m) {
+            worst = std::max(worst, std::abs(static_cast<double>(narrow_out[m]) - wide_out[m]));
+        }
+    }
+    INFO("worst inverse error " << worst * 16777216.0 << " raw units");
+    // Six products, six roundings, over a basis of at most sqrt(2).
+    CHECK(worst < 16.0 * kUlp);
+
+    // §E3.6.4.2.3's notch: the same taps, at the same seams, on the same
+    // region - one product each, so it is exact to the attenuation's own
+    // rounding.
+    ac3::eac3::BandLayout bands{};
+    bands.count = 2;
+    bands.start[0] = 20;
+    bands.start[1] = 40;
+    bands.size[0] = 20;
+    bands.size[1] = 20;
+    const std::array<bool, 2> wrapflag{false, true};
+    for (const int code : {0, 7, 31}) {
+        std::array<double, 64> wide{};
+        std::array<Fixed32, 64> narrow{};
+        for (std::size_t i = 0; i < wide.size(); ++i) {
+            wide[i] = 0.5 - static_cast<double>(i) / 128.0;
+            narrow[i] = Fixed32{wide[i]};
+        }
+        ac3::eac3::spx_apply_notch(std::span<double>{wide}, 20, bands, wrapflag, code);
+        ac3::eac3::spx_apply_notch(std::span<Fixed32>{narrow}, 20, bands, wrapflag, code);
+        for (std::size_t i = 0; i < wide.size(); ++i) {
+            CHECK(std::abs(static_cast<double>(narrow[i]) - wide[i]) <= 2.0 * kUlp);
+        }
+    }
+}
+
+TEST_CASE("the noise generators draw in Fixed32 from the same state sequence", "[fixed32]") {
+    ac3::DitherGenerator dither;
+    ac3::DitherGenerator dither_wide;
+    for (int i = 0; i < 100; ++i) {
+        const Fixed32 f = dither.next_as<Fixed32>();
+        const double d = dither_wide.next_as<double>();
+        CHECK(dither.state == dither_wide.state);  // the same sequence
+        CHECK(std::abs(static_cast<double>(f)) <= 0.707 + kUlp);
+        // The fixed mapping reads the top 24 bits of the same state, so it
+        // sits within a 2^-24 unit-interval step of the double one, scaled.
+        CHECK(std::abs(static_cast<double>(f) - d) < 2.0 * 0.707 * 2.0 / 16777216.0 + 2 * kUlp);
+    }
+    ac3::eac3::SpxNoise spx;
+    for (int i = 0; i < 100; ++i) {
+        const Fixed32 f = spx.next_as<Fixed32>();
+        CHECK(std::abs(static_cast<double>(f)) <= 1.7320508075688772 + kUlp);
+    }
+    STATIC_CHECK(Fixed32::unit_from_state(0xFFFFFFFFU).raw == Fixed32::kOne - 1);
+    STATIC_CHECK(Fixed32::unit_from_state(0).raw == 0);
+    STATIC_CHECK(ac3::eac3::ecpl_rand_notrans_as<Fixed32>(0, 0) >= Fixed32{-1});
+    STATIC_CHECK(ac3::eac3::ecpl_rand_notrans_as<Fixed32>(0, 0) < Fixed32{1});
+}
+
+TEST_CASE("ecpl_channel_spectrum_fixed of all-zero neighbors is all zero", "[fixed32]") {
+    // The tier's own block-floating-point form of ecpl_channel_spectrum
+    // (eac3_tools_fixed.hpp/.cpp), exercised for the first time here: every
+    // existing ecpl_channel_spectrum test (test_enhanced_coupling.cpp) calls
+    // the double or float overload, never this one, and it is the only one
+    // of the three with its own DFT (dft512_fixed) and its own
+    // block-exponent bookkeeping (prev_norm/curr_norm/next_norm in,
+    // out_norm out) rather than a plain uniform scale.
+    std::array<Fixed32, 256> zero{};
+    std::array<Fixed32, 256> real_out{};
+    std::array<Fixed32, 256> imag_out{};
+    real_out.fill(Fixed32{1});  // poison, so the function must actually write zero
+    imag_out.fill(Fixed32{1});
+    int out_norm = -1;
+    ac3::eac3::ecpl_channel_spectrum_fixed(zero, 0, zero, 0, zero, 0, real_out, imag_out,
+                                           out_norm);
+    for (int k = 0; k < 256; ++k) {
+        CAPTURE(k);
+        CHECK(real_out[static_cast<std::size_t>(k)].raw == 0);
+        CHECK(imag_out[static_cast<std::size_t>(k)].raw == 0);
+    }
+}
+
+TEST_CASE("ecpl_channel_coefficients_fixed: zero amplitude silences a channel; "
+          "unity amplitude and zero angle is a plain fold",
+          "[fixed32]") {
+    // The tier's form of ecpl_channel_coefficients (eac3_tools_fixed.hpp/
+    // .cpp) - untested before this. Mirrors the two cases
+    // test_enhanced_coupling.cpp pins for the double form of the same
+    // function, at values Fixed32 holds exactly (5 and -3 are well inside
+    // the format's +-127 range, and out_shift = 0 keeps the raw value as the
+    // exact same fixed-point number the double form computes).
+    using ac3::eac3::ecpl_channel_coefficients_fixed;
+    std::array<Fixed32, 256> real_in{};
+    std::array<Fixed32, 256> imag_in{};
+    real_in[20] = Fixed32{5.0};
+    imag_in[20] = Fixed32{-3.0};
+
+    {
+        const std::array<Fixed32, 1> amp = {Fixed32{0.0}};
+        const std::array<Fixed32, 1> angle = {Fixed32{0.0}};
+        std::array<Fixed32, 256> mant_out{};
+        mant_out.fill(Fixed32{1});  // poison
+        ecpl_channel_coefficients_fixed(real_in, imag_in, amp, angle, 20, 21, /*out_shift=*/0,
+                                        mant_out);
+        CHECK(mant_out[20].raw == 0);
+    }
+    {
+        // angle == 0 -> cos(0) == 1, sin(0) == 0, so Zr[ch] == Zr, Zi[ch] ==
+        // Zi exactly - amp == 1 leaves the complex value untouched.
+        const std::array<Fixed32, 1> amp = {Fixed32{1.0}};
+        const std::array<Fixed32, 1> angle = {Fixed32{0.0}};
+        std::array<Fixed32, 256> mant_out{};
+        ecpl_channel_coefficients_fixed(real_in, imag_in, amp, angle, 20, 21, /*out_shift=*/0,
+                                        mant_out);
+        CHECK(mant_out[20].raw != 0);
+        // Every other bin must stay untouched (the function only writes
+        // [begin_mant, end_mant)).
+        for (int bin = 0; bin < 256; ++bin) {
+            if (bin == 20) {
+                continue;
+            }
+            CAPTURE(bin);
+            CHECK(mant_out[static_cast<std::size_t>(bin)].raw == 0);
+        }
+    }
+}

@@ -72,22 +72,29 @@ Every config type follows the C header's own `_config_init` growth convention: c
 override only the fields you need — never a hand-written Rust-side guess at what the C++ defaults
 are. See `ac3::EncoderConfig::default()`'s doc comment for the mechanics.
 
-### Explicitly not covered yet
+### Coverage
 
-Recorded here rather than silently missing:
+The first pass covered AC-3 and single-substream E-AC-3 encode/decode; AP9's completeness pass
+closed everything that list deferred:
 
-- `ac3forge_eac3_access_unit_encoder_t` — wide layouts (7.1/5.1.2/5.1.4/7.1.4) built from several
-  substreams.
-- `ac3forge_atmos_encoder_t` — Atmos/JOC object encode.
-- The OAMD/JOC object-audio decode accessors on `DecodedSubstream` (`has_object_metadata`,
-  `dynamic_object`, `object_audio`, …).
-- `ac3forge_split_frames`/`split_access_units`/`stream_bsid` — stream-framing helpers.
-- AP5's own remaining gap (`scan`, caller-buffer `_into` decode forms, metering) — not in the C
-  API yet at all; `ac3forge-sys` picks up new declarations automatically the moment it lands,
-  no design change needed here.
-- Windows/macOS CI legs — `build-rust` is Linux-only for this first pass (see `_build.yml`),
-  matching `build-android`/`build-wasm` each being single-OS jobs too. The dynamic-linking
-  approach above needs a real CI run to validate before widening the matrix.
+- `eac3::AccessUnitEncoder`/`AccessUnit` and `Eac3Decoder::decode_access_unit`/
+  `DecodedAccessUnit` — wide layouts (7.1/5.1.2/5.1.4/7.1.4) built from several substreams,
+  round-tripped in `tests/completeness.rs` through a real 5.1.2 encode and rendered decode.
+- `atmos::AtmosEncoder`/`AtmosConfig`/`ObjectPlacement` — Atmos/JOC object encode, with the
+  OAMD/JOC accessors (`has_object_metadata`, `dynamic_object`, `object_audio`, …) on both
+  `DecodedSubstream` and `DecodedAccessUnit` completing the round trip.
+- `stream::split_frames`/`split_access_units`/`stream_bsid` and `stream::scan`/`ScannedStream`
+  — the framing/scan helpers AP5 added to the C API after this crate's first pass. The spans
+  those report are (offset, length) pairs into the caller's buffer, which Rust states directly:
+  the returned slices borrow the input, so the borrow checker enforces the C header's "must
+  stay valid and unmodified" clause instead of documentation asking for it.
+- `meter::LoudnessMeter` (both constructors — acmod/lfe and the BS.1770-5 chanmap form) and
+  `meter::dialnorm_from_lkfs`.
+
+Still deliberately out: the caller-buffer `_into` decode forms (a realtime-embedder
+convenience whose Rust ergonomics want `&mut [f32]` scratch the value forms already avoid
+allocating twice for) and the level meter (`ac3forge_level_meter_t`) — recorded, not silently
+missing.
 
 ## Header defects found while building this
 
@@ -110,7 +117,15 @@ compiling the same C++23 source this binding instead links as a black box). Thre
    didn't say so. **Fixed in this PR** (doc-only). This crate's own wrappers ties every such
    slice's lifetime to `&self` regardless, so a wrong assumption here would have shown up as a
    Rust borrow-checker error in this crate, never as a use-after-free in a caller's.
-3. **Reported, not changed: no enum in the header says whether it may gain new values in a
+3. **bindgen types C enums `i32` on MSVC and `u32` on the Unix targets** — so any Rust code
+   that bakes one platform's answer into its own types breaks the moment the other platform
+   builds. This crate's first Windows build (the AP9 completeness pass, which also widened the
+   CI matrix to all three desktop OSes) found exactly that in its own `Error::Other(u32)`:
+   constructed from and converted back to the raw status with `as` casts now, so the stored
+   value is the same bit pattern under either representation. Not a header defect — a
+   portability fact every bindgen consumer of this header inherits, recorded here for the next
+   binding's author.
+4. **Reported, not changed: no enum in the header says whether it may gain new values in a
    future minor release.** This matters specifically for a strongly-typed binding — a Rust `enum`
    can't safely represent an FFI discriminant it doesn't recognize. `ac3forge::Error` is
    deliberately open (`Error::Other(u32)`) for exactly this reason rather than a closed set that

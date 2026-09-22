@@ -2,6 +2,7 @@
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <cassert>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -19,7 +20,7 @@
 #include "ac3iab/ac3iab.hpp"
 #include "ac3iab/model.hpp"
 
-// ac3::admbridge::build_iab - roadmap item IM1 phase 3 ("IAB (SMPTE ST 2098-2) reader", see
+// ac3::admbridge::build_iab - IAB reader bridge, phase 3 ("IAB (SMPTE ST 2098-2) reader", see
 // ROADMAP.md). Most cases here construct ac3iab::IABitstreamFrame/IaFrame/BedDefinition/
 // ObjectDefinition values directly (plain aggregates, per ac3iab/model.hpp's own design - no
 // parser needed to build one), the same "construct the model directly, no byte-level round trip"
@@ -359,7 +360,13 @@ class BitWriter {
 
     void push_plex(std::uint64_t value, unsigned initial_width) {
         unsigned width = initial_width;
-        while (true) {
+        // §5.2 guarantees a Plex symbol is at most 0xFFFFFFFE, so the escape
+        // chain always ends at or before a 32-bit field - exactly the bound
+        // BitReader::read_plex enforces on the way back in, where a longer
+        // chain is kBadEscape. Stopping the loop there is what keeps
+        // `1 << width` defined: one more doubling reaches 64, and a shift that
+        // wide is undefined for std::uint64_t.
+        while (width <= 32) {
             const std::uint64_t escape = (std::uint64_t{1} << width) - 1;
             if (value < escape) {
                 push_bits(value, width);
@@ -368,6 +375,7 @@ class BitWriter {
             push_bits(escape, width);
             width *= 2;
         }
+        assert(false && "Plex value exceeds the 0xFFFFFFFE maximum section 5.2 allows");
     }
 
     void align_to_byte() {

@@ -8,7 +8,7 @@
 
 #include "ac3/oba/scene.hpp"
 
-// A live object-position source over OSC (roadmap UX4): a UDP listener on
+// A live object-position source over OSC (live OSC object positions): a UDP listener on
 // its own thread, feeding an ac3::oba::SceneCursor once per encoder frame.
 // This is the socket-and-thread half; the OSC 1.0 wire form itself
 // (ac3::oba::parse_osc_packet/apply, src/forge) is pure and portable, and

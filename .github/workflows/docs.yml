@@ -23,7 +23,7 @@ on:
       # needs the demo republished goes through apps/wasm/ (or one of
       # the paths below) too.
       - "apps/wasm/**"
-      # ac3forge-wasm-decoder (roadmap UX5) - the demo embeds js/dist/
+      # ac3forge-wasm-decoder (WASM streaming decoder package) - the demo embeds js/dist/
       # alongside the compiled decoder, so a package-only change also has
       # to trigger a redeploy, same reasoning as apps/wasm/** above.
       - "js/**"
@@ -42,7 +42,7 @@ on:
       - "CONTRIBUTING.md"
       - "ROADMAP.md"
       - "apps/wasm/**"
-      # ac3forge-wasm-decoder (roadmap UX5) - the demo embeds js/dist/
+      # ac3forge-wasm-decoder (WASM streaming decoder package) - the demo embeds js/dist/
       # alongside the compiled decoder, so a package-only change also has
       # to trigger a redeploy, same reasoning as apps/wasm/** above.
       - "js/**"
@@ -100,9 +100,25 @@ jobs:
               status=1
             fi
           done
+          for f in index.html app.js; do
+            if ! cmp -s "apps/wasm/atmos/$f" "docs/assets/wasm-encode-demo/atmos/$f"; then
+              echo "::error file=docs/assets/wasm-encode-demo/atmos/$f::Out of sync with apps/wasm/atmos/$f - re-copy it (see docs/platforms/wasm.md)."
+              status=1
+            fi
+          done
           exit "$status"
 
       - run: mkdocs build --strict
+
+      # Advisory only: Material for MkDocs is in maintenance mode and its own maintainers'
+      # answer to what replaces it is Zensical (github.com/zensical/zensical), not MkDocs 2.0 -
+      # see requirements/requirements-docs.in's comment above the zensical pin. This step builds
+      # this same site tree with it on every docs-touching PR so a real migration decision has
+      # real, current evidence behind it, without depending on an immature (pre-1.0) tool for a
+      # required check or changing what the deploy job below actually publishes.
+      - name: Build with Zensical (canary, non-blocking)
+        continue-on-error: true
+        run: zensical build --strict
 
   deploy:
     name: Publish to GitHub Pages
@@ -128,7 +144,7 @@ jobs:
 
       - run: pip install --require-hashes -r requirements/requirements-docs.txt
 
-      # Rebuilds both WASM demos (apps/wasm, roadmap F3 and UX6) fresh and
+      # Rebuilds both WASM demos (apps/wasm, WASM browser demo and UX6) fresh and
       # overwrites the committed docs/assets/wasm-{decode,encode}-demo/ copies
       # before `mkdocs gh-deploy` runs its own `mkdocs build` internally - so
       # what actually gets published always reflects current source, not
@@ -145,7 +161,7 @@ jobs:
 
       - uses: ./.github/actions/setup-emscripten
 
-      # ac3forge-wasm-decoder (roadmap UX5, js/) has to be built before the
+      # ac3forge-wasm-decoder (WASM streaming decoder package, js/) has to be built before the
       # Emscripten rebuild below, which copies js/dist/ alongside the
       # compiled decoder into the directory that overwrites docs/assets/
       # wasm-decode-demo/ - the demo is a consumer of the package (see

@@ -3,7 +3,7 @@
 
 const { test, expect } = require('@playwright/test');
 
-// Roadmap UX5's AudioWorklet pipeline (js/src/decoder-node.ts,
+// WASM streaming decoder package's AudioWorklet pipeline (js/src/decoder-node.ts,
 // decoder-worker.ts, worklet-processor.ts, ring-buffer.ts): a real
 // AudioWorkletNode, backed by a real Worker doing the WASM decode and a
 // real SharedArrayBuffer ring buffer between them - not just "the worker
@@ -18,7 +18,14 @@ test('streams the bundled fixture through a real AudioWorkletNode and produces n
     const pageErrors = [];
     page.on('pageerror', (error) => pageErrors.push(String(error)));
 
-    await page.goto('/index.html');
+    // Relative, and asserted: baseURL already includes the demo's own
+    // subdirectory (see playwright.config.js), so a leading "/" would land on
+    // the server root instead - where there is no index.html, and where
+    // serve.js's 404 path sends no COOP/COEP headers, so the failure surfaced
+    // as "not cross-origin isolated" rather than "wrong URL". Checking the
+    // navigation response keeps that misdirection from happening again.
+    const response = await page.goto('index.html');
+    expect(response?.status(), 'the demo page itself must load').toBe(200);
 
     const result = await page.evaluate(async () => {
         if (!window.crossOriginIsolated) {

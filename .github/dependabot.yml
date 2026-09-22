@@ -30,3 +30,54 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  # CI/docs/lint Python locks under requirements/ (pip-compile --generate-hashes).
+  - package-ecosystem: "pip"
+    directory: "/requirements"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "build"
+
+  # WASM demo TypeScript toolchain (js/) and browser test deps (apps/wasm/tests/).
+  - package-ecosystem: "npm"
+    directory: "/js"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "build"
+
+  - package-ecosystem: "npm"
+    directory: "/apps/wasm/tests"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "build"
+
+  # Rust bindings build tooling (bindgen, etc.) - not a shipped artifact.
+  - package-ecosystem: "cargo"
+    directory: "/rust"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "build"

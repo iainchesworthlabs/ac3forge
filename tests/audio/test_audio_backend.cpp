@@ -1,9 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <string_view>
+#include <vector>
 
 #include "ac3/audio/capture.hpp"
 #include "ac3/audio/audio_backend.hpp"
+#include "ac3/audio/device_watcher.hpp"
 #include "ac3/audio/monitor.hpp"
 #include "ac3/audio/passthrough.hpp"
 #include "ac3/audio/spatial.hpp"
@@ -34,7 +37,8 @@ TEST_CASE("audio_backend reports a reason exactly when a capability is missing",
     const auto& backend = ac3::audio::audio_backend();
 
     for (const auto& capability :
-         {backend.capture, backend.passthrough, backend.monitor, backend.spatial}) {
+         {backend.capture, backend.passthrough, backend.monitor, backend.spatial,
+          backend.process_loopback, backend.device_watch}) {
         if (capability.available) {
             // Nothing to excuse, so nothing to say.
             CHECK(capability.reason.empty());
@@ -144,7 +148,9 @@ TEST_CASE("every spatial error describes itself", "[audio-backend][concurrency]"
 TEST_CASE("a spatial sink that was never started refuses work", "[audio-backend][concurrency]") {
     // Same contract as PassthroughSink's own never-started test: true of
     // every backend including the stub, and the reason submit() checks
-    // running() first.
+    // running() first. A sink whose device has gone answers the same way,
+    // which needs a device to lose, and is test_spatial_live.cpp's
+    // [.][spatial-unplug] case.
     ac3::audio::SpatialObjectSink sink;
     CHECK_FALSE(sink.running());
     CHECK_FALSE(sink.can_submit());
@@ -161,10 +167,101 @@ TEST_CASE("every capture error describes itself", "[audio-backend][concurrency]"
     using ac3::audio::CaptureError;
     for (const auto error : {CaptureError::kNoBackend, CaptureError::kComFailure,
                              CaptureError::kDeviceNotFound, CaptureError::kFormatUnsupported,
-                             CaptureError::kAlreadyRunning}) {
+                             CaptureError::kAlreadyRunning,
+                             CaptureError::kProcessLoopbackUnavailable,
+                             CaptureError::kProcessNotFound}) {
         const std::string_view text = ac3::audio::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown capture error");
+    }
+}
+
+TEST_CASE("process loopback refusals agree with the reported capability",
+          "[audio-backend][concurrency]") {
+    // WASAPI loopback tap. Two reports of the same fact have to agree, and the one
+    // refusal that reaches no device - process id 0, which no process ever
+    // has - has to come back with the right code on every platform: "there
+    // is no such tap here" where there is none, "no such process" where
+    // there is. A real process id is never tried: that would open a tap on
+    // a developer's machine and start a capture thread.
+    using ac3::audio::CaptureError;
+    const auto& capability = ac3::audio::audio_backend().process_loopback;
+    CHECK(capability.available == ac3::audio::process_loopback_available());
+
+    ac3::audio::Capture capture;
+    const auto result = capture.start_process_loopback(0);
+    REQUIRE_FALSE(result.has_value());
+    if (capability.available) {
+        CHECK(result.error() == CaptureError::kProcessNotFound);
+    } else {
+        // posix/android have no capture backend at all; alsa and pipewire
+        // have one without a per-process tap. macOS lands here too, and for a
+        // third reason: Core Audio's process tap exists on every CI runner's
+        // OS, but the path is not entered by default since the first machine
+        // to run it hung inside AudioDeviceCreateIOProcID
+        // (src/audio/src/backend/macos/coreaudio_names.hpp). Any of the three
+        // errors says which of them is missing.
+        CHECK((result.error() == CaptureError::kNoBackend ||
+               result.error() == CaptureError::kProcessLoopbackUnavailable));
+    }
+    CHECK_FALSE(capture.running());
+    CHECK(capture.stats().frames_captured == 0);
+}
+
+TEST_CASE("every device watch error describes itself", "[audio-backend][concurrency]") {
+    using ac3::audio::DeviceWatchError;
+    for (const auto error : {DeviceWatchError::kNoBackend, DeviceWatchError::kComFailure,
+                             DeviceWatchError::kAlreadyRunning}) {
+        const std::string_view text = ac3::audio::describe(error);
+        CHECK_FALSE(text.empty());
+        CHECK(text != "unknown device watch error");
+    }
+}
+
+TEST_CASE("a device watcher that was never started reports so", "[audio-backend][concurrency]") {
+    ac3::audio::DeviceWatcher watcher;
+    CHECK_FALSE(watcher.running());
+    CHECK(watcher.stats().events_delivered == 0);
+    watcher.stop();  // harmless when not running
+    CHECK_FALSE(watcher.running());
+}
+
+TEST_CASE("device watching agrees with the reported capability",
+          "[audio-backend][concurrency]") {
+    // Registering for endpoint notifications needs no endpoint - a machine
+    // with no sound card at all (a CI runner, a container) can still
+    // register and simply never hear anything - so unlike the spatial probe
+    // above this one CAN be exercised for real wherever the backend exists:
+    // start, confirm it is running, refuse a second start, stop, and be
+    // stopped. Nothing here opens a device or makes a sound.
+    using ac3::audio::DeviceWatchError;
+    const auto& capability = ac3::audio::audio_backend().device_watch;
+
+    ac3::audio::DeviceWatcher watcher;
+    const auto started = watcher.start([](const ac3::audio::DeviceChangeEvent&) {});
+    if (capability.available) {
+        REQUIRE(started.has_value());
+        CHECK(watcher.running());
+        const auto again = watcher.start([](const ac3::audio::DeviceChangeEvent&) {});
+        REQUIRE_FALSE(again.has_value());
+        CHECK(again.error() == DeviceWatchError::kAlreadyRunning);
+        watcher.stop();
+        CHECK_FALSE(watcher.running());
+        // And it can go round again: stop() left nothing behind.
+        REQUIRE(watcher.start([](const ac3::audio::DeviceChangeEvent&) {}).has_value());
+        watcher.stop();
+        CHECK_FALSE(watcher.running());
+    } else {
+        // Two ways to be unavailable, and the error says which. A backend
+        // that was never built refuses with kNoBackend. PipeWire's is built
+        // but needs a session daemon to register with, so on a container or
+        // a CI runner with none it reports the platform refusal instead -
+        // which is the truthful answer, and why this accepts either
+        // (Crucible cross-platform promotion).
+        REQUIRE_FALSE(started.has_value());
+        CHECK((started.error() == DeviceWatchError::kNoBackend ||
+               started.error() == DeviceWatchError::kComFailure));
+        CHECK_FALSE(watcher.running());
     }
 }
 
@@ -184,8 +281,8 @@ TEST_CASE("every passthrough error describes itself", "[audio-backend][concurren
 TEST_CASE("every monitor error describes itself", "[audio-backend][concurrency]") {
     using ac3::audio::MonitorError;
     for (const auto error : {MonitorError::kNoBackend, MonitorError::kComFailure,
-                             MonitorError::kDeviceNotFound, MonitorError::kAlreadyRunning,
-                             MonitorError::kNotRunning}) {
+                             MonitorError::kDeviceNotFound, MonitorError::kFormatRejected,
+                             MonitorError::kAlreadyRunning, MonitorError::kNotRunning}) {
         const std::string_view text = ac3::audio::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown monitor error");
@@ -208,7 +305,10 @@ TEST_CASE("a monitor sink refuses a channel count it cannot interpret",
 TEST_CASE("a sink that was never started refuses work", "[audio-backend][concurrency]") {
     // True of every backend including the stub, and the reason submit() checks
     // running() first: a caller that ignores start()'s result must not be able
-    // to write into a queue that does not exist.
+    // to write into a queue that does not exist. A sink whose device has gone
+    // answers the same way, which is what a caller finding the loss relies on;
+    // that half needs a device to lose, and is test_passthrough_live.cpp's
+    // [.][passthrough-unplug] case.
     ac3::audio::PassthroughSink sink;
     CHECK_FALSE(sink.running());
     CHECK_FALSE(sink.can_submit());
@@ -217,6 +317,50 @@ TEST_CASE("a sink that was never started refuses work", "[audio-backend][concurr
     const auto stats = sink.stats();
     CHECK(stats.bursts_submitted == 0);
     CHECK(stats.bursts_rendered == 0);
+    CHECK(stats.underruns == 0);
+
+    // Nothing to report, pause or flush: kNotRunning where there is a
+    // backend, kNoBackend where there is none.
+    CHECK_FALSE(sink.position().has_value());
+    CHECK_FALSE(sink.paused());
+    CHECK_FALSE(sink.pause().has_value());
+    CHECK_FALSE(sink.resume().has_value());
+    CHECK_FALSE(sink.paused());
+    // Nothing to wait for either: a flush with no render thread to do it
+    // returns at once rather than after the wait a stalled device gets.
+    const auto before = std::chrono::steady_clock::now();
+    sink.flush();
+    CHECK(std::chrono::steady_clock::now() - before < std::chrono::milliseconds(100));
+    sink.stop();
+    sink.stop();
+    CHECK_FALSE(sink.running());
+    CHECK_FALSE(sink.can_submit());
+}
+
+TEST_CASE("a monitor sink that was never started refuses work", "[audio-backend][concurrency]") {
+    // The same contract as PassthroughSink's case above, and the same reason:
+    // a stopped sink, and one whose device has gone, answer every call at
+    // once. The device half is test_monitor_live.cpp's [.][monitor-unplug].
+    ac3::audio::MonitorSink sink;
+    CHECK_FALSE(sink.running());
+    CHECK_FALSE(sink.can_submit());
+    const std::vector<float> frames(96, 0.0F);
+    CHECK_FALSE(sink.submit(frames));
+    CHECK_FALSE(sink.position().has_value());
+    CHECK_FALSE(sink.paused());
+    CHECK_FALSE(sink.pause().has_value());
+    CHECK_FALSE(sink.resume().has_value());
+    CHECK_FALSE(sink.paused());
+    const auto before = std::chrono::steady_clock::now();
+    sink.flush();
+    CHECK(std::chrono::steady_clock::now() - before < std::chrono::milliseconds(100));
+    sink.stop();
+    sink.stop();
+    CHECK_FALSE(sink.running());
+
+    const auto stats = sink.stats();
+    CHECK(stats.frames_submitted == 0);
+    CHECK(stats.frames_rendered == 0);
     CHECK(stats.underruns == 0);
 }
 

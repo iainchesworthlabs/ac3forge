@@ -2,6 +2,7 @@
 
 #include <array>
 #include <bit>
+#include <limits>
 #include <unordered_map>
 
 namespace ac4 {
@@ -14,9 +15,6 @@ std::string_view describe(Error error) {
             return "lost sync: sync_word was neither 0xAC40 nor 0xAC41";
         case Error::kUnsupportedBitstreamVersion:
             return "bitstream_version > 2 is not decodable per TS 103 190-2 §6.3.2.1.1";
-        case Error::kOamdCommonDataPresent:
-            return "ac4_substream_info_ajoc sets b_oamd_common_data_present; "
-                   "oamd_common_data() (TS 103 190-2 §6.2.8.1) not implemented";
     }
     return "unknown ac4::Error";
 }
@@ -25,11 +23,10 @@ namespace {
 
 // MSB-first bit reader with a sticky failure state - the same shape
 // ac3::core::BitReader uses for overflow, extended here to also carry the
-// two explicit refusal conditions (kUnsupportedBitstreamVersion,
-// kOamdCommonDataPresent) so every parse_* helper below can bail out with a
-// plain early return instead of threading std::expected through the whole
-// call tree. Only parse_raw_frame(), at the boundary, converts the final
-// state to std::expected.
+// explicit refusal condition (kUnsupportedBitstreamVersion) so every parse_*
+// helper below can bail out with a plain early return instead of threading
+// std::expected through the whole call tree. Only parse_raw_frame(), at the
+// boundary, converts the final state to std::expected.
 class Reader {
    public:
     explicit Reader(std::span<const std::byte> data) : data_(data) {}
@@ -47,6 +44,42 @@ class Reader {
     // Reads and discards n bits - every call site below that consumes a
     // reserved/unused field rather than a value it goes on to use.
     void skip(int n) { (void)bits(n); }
+
+    // Discards n bytes by moving the read position, for a byte count the
+    // stream chose: presentation_config_ext_info's n_skip_bytes, which
+    // variable_bits() lets reach 2^32. skip(8 * n) overflowed int on such a
+    // count, and would then have walked the phantom bits past the end of the
+    // data one at a time. A count past the end marks the reader overflowed,
+    // as reading those bits would have.
+    void skip_bytes(std::uint32_t n) {
+        const std::uint64_t end = std::uint64_t{data_.size()} * 8;
+        const std::uint64_t target = std::uint64_t{position_} + std::uint64_t{n} * 8;
+        if (target <= end) {
+            position_ = static_cast<std::size_t>(target);
+            return;
+        }
+        overflowed_ = true;
+        if (position_ < end) {
+            position_ = static_cast<std::size_t>(end);
+        }
+    }
+
+    // Bit-granular twin of skip_bytes(), for a bit count the stream chose
+    // (oamd_common_data()'s add_data, after trim()/bed_render_info()/
+    // headphone() spend some of add_data_bytes*8) rather than a whole byte
+    // count - same 64-bit-safe arithmetic, same reasoning.
+    void skip_bits(std::uint64_t n) {
+        const std::uint64_t end = std::uint64_t{data_.size()} * 8;
+        const std::uint64_t target = std::uint64_t{position_} + n;
+        if (target <= end) {
+            position_ = static_cast<std::size_t>(target);
+            return;
+        }
+        overflowed_ = true;
+        if (position_ < end) {
+            position_ = static_cast<std::size_t>(end);
+        }
+    }
 
     void fail(Error error) {
         if (!error_) {
@@ -220,14 +253,18 @@ struct EmdfInfo {
 
 EmdfInfo parse_emdf_info(Reader& r) {
     EmdfInfo info;
-    info.emdf_version = static_cast<int>(r.bits(2));
-    if (info.emdf_version == 3) {
-        info.emdf_version += static_cast<int>(variable_bits(r, 2));
+    // Summed unsigned and converted once, as parse_substream_index_ref() does:
+    // variable_bits() reaches 2^32, and adding it to an int can overflow.
+    std::uint32_t emdf_version = r.bits(2);
+    if (emdf_version == 3) {
+        emdf_version += variable_bits(r, 2);
     }
-    info.key_id = static_cast<int>(r.bits(3));
-    if (info.key_id == 7) {
-        info.key_id += static_cast<int>(variable_bits(r, 3));
+    info.emdf_version = static_cast<int>(emdf_version);
+    std::uint32_t key_id = r.bits(3);
+    if (key_id == 7) {
+        key_id += variable_bits(r, 3);
     }
+    info.key_id = static_cast<int>(key_id);
     if (r.bits(1)) {  // b_emdf_payloads_substream_info
         info.payloads_substream_index = parse_substream_index_ref(r);
     }
@@ -279,49 +316,64 @@ int parse_frame_rate_multiply_info(Reader& r, int frame_rate_index) {
     }
 }
 
-void parse_frame_rate_fractions_info(Reader& r, int frame_rate_index, int frame_rate_factor) {
+// Returns frame_rate_fraction: 1, or the 2 or 4 transmission frames one coded
+// frame is spread over in the efficient high frame rate mode (Part 2 clause
+// 5.1.3, Table 18). A reader that takes each transmission frame for a whole
+// one misreads a stream in that mode, so the value is reported rather than
+// dropped.
+int parse_frame_rate_fractions_info(Reader& r, int frame_rate_index, int frame_rate_factor) {
     switch (frame_rate_index) {
         case 5:
         case 6:
         case 7:
         case 8:
         case 9:
-            if (frame_rate_factor == 1 && r.bits(1)) {
-                // frame_rate_fraction = 2; unused downstream in this scope.
+            if (frame_rate_factor == 1 && r.bits(1)) {  // b_frame_rate_fraction
+                return 2;
             }
             break;
         case 10:
         case 11:
         case 12:
             if (r.bits(1)) {  // b_frame_rate_fraction
-                r.skip(1);    // b_frame_rate_fraction_is_4
+                return r.bits(1) ? 4 : 2;  // b_frame_rate_fraction_is_4
             }
             break;
         default:
             break;
     }
+    return 1;
 }
 
 // --- §4.2.3.9 ac4_hsf_ext_substream_info ------------------------------------
 // Part 1 has no parameter; Part 2 gates it on b_substreams_present
-// (§6.2.1.14). Both shapes just name a substream_index_table() row, which
-// this parser does not need (the HSF extension substream's own bytes are
-// still accounted for via substream_index_table()'s sizes; it is simply
-// reported as "other", the same as any non-channel-audio substream).
-void parse_hsf_ext_substream_info(Reader& r, bool b_substreams_present) {
+// (§6.2.1.14). Both shapes just name a substream_index_table() row: the
+// index of the ac4_substream() that holds this element's owner's
+// ac4_hsf_ext_substream() content.
+std::optional<int> parse_hsf_ext_substream_info(Reader& r, bool b_substreams_present) {
     if (b_substreams_present) {
-        parse_substream_index_ref(r);
+        return parse_substream_index_ref(r);
     }
+    return std::nullopt;
 }
 
 // --- §4.2.3.8 / §6.2.1.5 presentation_config_ext_info -----------------------
 
+// Skipped as n_skip_bytes whole bytes. For bitstream_version 1 with
+// presentation_config 7, §6.2.1.5 puts a nested ac4_presentation_v1_info() at
+// the start of those bytes and counts it inside n_skip_bytes, so skipping
+// keeps the TOC in step; such a presentation reports presentation_config 7
+// and no substreams. Table 4 of Part 2 allows that shape, and it is the only
+// route to ac4_sgi_specifier()'s inline ac4_substream_group_info() and its
+// sus_ver bit - neither parsed here. No stream observed writes it.
 void parse_presentation_config_ext_info(Reader& r) {
     std::uint32_t n_skip_bytes = r.bits(5);
     if (r.bits(1)) {  // b_more_skip_bytes
         n_skip_bytes += variable_bits(r, 2) << 5;
     }
-    r.skip(8 * static_cast<int>(n_skip_bytes));
+    // Not skip(8 * n): see Reader::skip_bytes(). Found by fuzz_ac4_parse once
+    // ac4_objects was built with UndefinedBehaviorSanitizer.
+    r.skip_bytes(n_skip_bytes);
 }
 
 // --- Table 90 (§4.3.3.7.5): bitrate_indicator -------------------------------
@@ -432,13 +484,13 @@ ChannelSubstreamInfo parse_substream_info_v0(Reader& r, int fs_index, int frame_
         info.bitrate_kbps = bitrate_kbps(read_bitrate_indicator(r));
     }
     if (cm == 0b1111010 || cm == 0b1111011 || cm == 0b1111100 || cm == 0b1111101) {
-        r.skip(1);  // add_ch_base
+        info.add_ch_base = r.bits(1) != 0;
     }
     if (r.bits(1)) {  // b_content_type
         info.content_type = parse_content_type(r);
     }
     for (int i = 0; i < frame_rate_factor; ++i) {
-        r.skip(1);  // b_iframe
+        info.b_iframe.push_back(r.bits(1) != 0);
     }
     info.substream_index = parse_substream_index_ref(r);
     return info;
@@ -497,10 +549,10 @@ ChannelSubstreamInfo parse_substream_info_chan(Reader& r, int fs_index, int fram
         info.bitrate_kbps = bitrate_kbps(read_bitrate_indicator(r));
     }
     if (cm == 0b1111010 || cm == 0b1111011 || cm == 0b1111100 || cm == 0b1111101) {
-        r.skip(1);  // add_ch_base
+        info.add_ch_base = r.bits(1) != 0;
     }
     for (int i = 0; i < frame_rate_factor; ++i) {
-        r.skip(1);  // b_audio_ndot
+        info.b_iframe.push_back(r.bits(1) != 0);  // b_audio_ndot
     }
     if (b_substreams_present) {
         info.substream_index = parse_substream_index_ref(r);
@@ -516,6 +568,32 @@ int parse_presentation_version(Reader& r) {
         ++version;
     }
     return version;
+}
+
+// --- §4.2.3.2 / §6.2.1.2 / §6.2.1.3 n_add_emdf_substreams -------------------
+
+// The loop that ends both presentation info elements. It follows their
+// `presentation_config == 6` if/else, so both branches reach it: an EMDF-only
+// presentation sets b_add_emdf_substreams without transmitting it, then
+// transmits the count and every emdf_info() the same as any other.
+void parse_add_emdf_substreams(Reader& r, std::vector<int>& payloads_substream_indices) {
+    std::uint32_t n = r.bits(2);  // n_add_emdf_substreams
+    if (n == 0) {
+        n = variable_bits(r, 2) + 4;
+    }
+    for (std::uint32_t i = 0; i < n; ++i) {
+        if (const EmdfInfo emdf = parse_emdf_info(r); emdf.payloads_substream_index) {
+            payloads_substream_indices.push_back(*emdf.payloads_substream_index);
+        }
+        // n reaches here through variable_bits() and so runs to 2^32.
+        // parse_emdf_info() does real work per iteration, so without
+        // this a 200-byte frame spends six seconds walking a count no
+        // data backs - the reader is the only thing that ends it.
+        // parse_toc() checks r.error() after every presentation it parses.
+        if (r.error()) {
+            break;
+        }
+    }
 }
 
 // --- §4.2.3.2 ac4_presentation_info (presentation_version 0 path) ----------
@@ -543,48 +621,46 @@ PresentationInfoV0 parse_presentation_info_v0(Reader& r, int fs_index, int frame
     }
     pres.presentation_config = presentation_config;
     pres.presentation_version = parse_presentation_version(r);
+    bool b_add_emdf_substreams = false;
     if (!b_single_substream && presentation_config == 6) {
-        return pres;  // b_add_emdf_substreams = 1; the additional-EMDF loop
-                      // below runs on the caller's own n bits, same as any
-                      // other exit from this function - see parse_toc().
-    }
-    pres.md_compat = static_cast<int>(r.bits(3));
-    if (r.bits(1)) {  // b_belongs_to_presentation_id
-        pres.presentation_id = static_cast<int>(variable_bits(r, 2));
-    }
-    const int frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index);
-    parse_emdf_info(r);
-    if (b_single_substream) {
-        pres.substreams.emplace_back("main",
-                                     parse_substream_info_v0(r, fs_index, frame_rate_factor));
+        // An EMDF-only presentation: nothing but the loop below.
+        b_add_emdf_substreams = true;
     } else {
-        const bool b_hsf_ext = r.bits(1) != 0;
-        if (*presentation_config >= 0 && *presentation_config <= 5) {
-            const auto& roles =
-                kPresentationConfigRoles[static_cast<std::size_t>(*presentation_config)];
-            const int n_roles =
-                kPresentationConfigRoleCounts[static_cast<std::size_t>(*presentation_config)];
-            for (int i = 0; i < n_roles; ++i) {
-                pres.substreams.emplace_back(
-                    std::string(roles[static_cast<std::size_t>(i)]),
-                    parse_substream_info_v0(r, fs_index, frame_rate_factor));
-                if (i == 0 && b_hsf_ext) {
-                    parse_hsf_ext_substream_info(r, true);
-                }
-            }
+        pres.md_compat = static_cast<int>(r.bits(3));
+        if (r.bits(1)) {  // b_belongs_to_presentation_id
+            pres.presentation_id = static_cast<int>(variable_bits(r, 2));
+        }
+        const int frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index);
+        if (const EmdfInfo emdf = parse_emdf_info(r); emdf.payloads_substream_index) {
+            pres.emdf_payloads_substream_indices.push_back(*emdf.payloads_substream_index);
+        }
+        if (b_single_substream) {
+            pres.substreams.emplace_back("main",
+                                         parse_substream_info_v0(r, fs_index, frame_rate_factor));
         } else {
-            parse_presentation_config_ext_info(r);
+            const bool b_hsf_ext = r.bits(1) != 0;
+            if (*presentation_config >= 0 && *presentation_config <= 5) {
+                const auto& roles =
+                    kPresentationConfigRoles[static_cast<std::size_t>(*presentation_config)];
+                const int n_roles =
+                    kPresentationConfigRoleCounts[static_cast<std::size_t>(*presentation_config)];
+                for (int i = 0; i < n_roles; ++i) {
+                    auto& sub = pres.substreams.emplace_back(
+                        std::string(roles[static_cast<std::size_t>(i)]),
+                        parse_substream_info_v0(r, fs_index, frame_rate_factor));
+                    if (i == 0 && b_hsf_ext) {
+                        sub.second.hsf_ext_substream_index = parse_hsf_ext_substream_info(r, true);
+                    }
+                }
+            } else {
+                parse_presentation_config_ext_info(r);
+            }
         }
+        pres.b_pre_virtualized = r.bits(1) != 0;
+        b_add_emdf_substreams = r.bits(1) != 0;
     }
-    r.skip(1);        // b_pre_virtualized
-    if (r.bits(1)) {  // b_add_emdf_substreams
-        std::uint32_t n = r.bits(2);
-        if (n == 0) {
-            n = variable_bits(r, 2) + 4;
-        }
-        for (std::uint32_t i = 0; i < n; ++i) {
-            parse_emdf_info(r);
-        }
+    if (b_add_emdf_substreams) {
+        parse_add_emdf_substreams(r, pres.emdf_payloads_substream_indices);
     }
     return pres;
 }
@@ -623,6 +699,22 @@ OamdSubstreamInfo parse_oamd_substream_info(Reader& r, bool b_substreams_present
 constexpr std::array<int, 8> kBedChanAssignCountAjoc = {2, 3, 5, 7, 9, 7, 9, 11};
 constexpr std::array<int, 8> kBedChanAssignCountDirect = {2, 3, 6, 8, 10, 8, 10, 12};
 constexpr std::array<int, 10> kStdBedGroupSize = {2, 1, 1, 2, 2, 2, 2, 2, 2, 1};
+// isf_config's object count, read by both bed_dyn_obj_assignment() and
+// ac4_substream_info_obj().
+constexpr std::array<int, 6> kIsfCounts = {4, 8, 10, 14, 15, 30};
+
+// The object count a 3-bit code names in a table shorter than eight entries
+// (kIsfCounts here, kNumObjects in parse_substream_info_obj()). Codes past the
+// end of the table are reserved and name no count, so they expand to no
+// objects rather than reading past the array; parsing continues, as it does
+// for a reserved channel_mode or bitrate code. No caller reads bits per
+// object, so the count cannot desync the frame. Found by fuzz_ac4_parse once
+// ac4_objects was built with AddressSanitizer: the committed
+// ac4-substream-size-not-transmitted regression input reads kNumObjects[6].
+template <std::size_t N>
+int count_for_code(const std::array<int, N>& table, std::uint32_t code) {
+    return code < N ? table[code] : 0;
+}
 
 // §6.2.1.10 / §6.3.2.10.8. Always ajoc_coded=true - this element only
 // appears inside ac4_substream_info_ajoc().
@@ -634,8 +726,7 @@ std::vector<ObjectEntry> parse_bed_dyn_obj_assignment(Reader& r, int n_signals) 
         return objects;  // every object in this substream is dynamic and unlisted here
     }
     if (r.bits(1)) {  // b_isf
-        constexpr std::array<int, 6> kIsfCounts = {4, 8, 10, 14, 15, 30};
-        const int n_isf = kIsfCounts[r.bits(3)];
+        const int n_isf = count_for_code(kIsfCounts, r.bits(3));
         for (int i = 0; i < n_isf; ++i) {
             add(ObjectKind::kIsf, false);
         }
@@ -652,14 +743,26 @@ std::vector<ObjectEntry> parse_bed_dyn_obj_assignment(Reader& r, int n_signals) 
         // Neither an assignment code nor explicit flags: one nonstd_bed_
         // channel_assignment code (§6.3.2.10.8) per bed signal, n_bed_signals
         // of them (1, unless n_signals > 1 lets more than one be named).
-        int n_bed_signals = 1;
+        // Unsigned: bed_ch_bits reaches 31, and 2^31 - 1 plus one overflows
+        // an int.
+        std::uint32_t n_bed_signals = 1;
         if (n_signals > 1) {
             const int bed_ch_bits = std::bit_width(static_cast<unsigned>(n_signals - 1));
-            n_bed_signals = static_cast<int>(r.bits(bed_ch_bits)) + 1;
+            n_bed_signals = r.bits(bed_ch_bits) + 1;
         }
-        for (int b = 0; b < n_bed_signals; ++b) {
+        for (std::uint32_t b = 0; b < n_bed_signals; ++b) {
             if (r.bits(4) != 3) {  // nonstd_bed_channel_assignment
                 add(ObjectKind::kBed, false);
+            }
+            // n_bed_signals is sized from n_signals, which the caller lets
+            // reach 2^32 through variable_bits() (n_fullband_upmix_signals
+            // == 16 opens that escape). Once the data is gone r.bits(4)
+            // returns a phantom 0 - never the 3 that would skip the append -
+            // so without this the loop keeps growing `objects` for as long
+            // as the count says: 1.8 GB and six seconds, on a 200-byte
+            // frame, before this check existed.
+            if (r.error()) {
+                break;
             }
         }
         return objects;
@@ -694,6 +797,212 @@ std::vector<ObjectEntry> parse_bed_dyn_obj_assignment(Reader& r, int n_signals) 
     return objects;
 }
 
+// --- §6.2.8.13-16 tool_tb_to_f_s[_b] / tool_tf_to_f_s[_b], §6.2.9.9-10 -----
+// tool_t2_to_f_s[_b]: eight tables, three call shapes total, differing only
+// in field names - one shared reader (see GainTool in ac4.hpp).
+
+GainTool parse_gain_tool(Reader& r, bool has_side_branch) {
+    GainTool tool;
+    if (r.bits(1)) {  // b_..._to_front
+        tool.code_a = static_cast<int>(r.bits(3));
+        tool.code_b = 7;
+        return tool;
+    }
+    if (!has_side_branch) {
+        tool.code_b = static_cast<int>(r.bits(3));
+        return tool;
+    }
+    if (r.bits(1)) {  // b_..._to_side
+        tool.code_b = static_cast<int>(r.bits(3));
+        return tool;
+    }
+    tool.code_b = 7;
+    tool.code_c = static_cast<int>(r.bits(3));
+    return tool;
+}
+
+// --- §6.2.8.8a stereo_dmx_coeff ----------------------------------------------
+
+StereoDmxCoeff parse_stereo_dmx_coeff(Reader& r) {
+    StereoDmxCoeff c;
+    c.loro_centre_mixgain = static_cast<int>(r.bits(3));
+    c.loro_surround_mixgain = static_cast<int>(r.bits(3));
+    if (r.bits(1)) {  // b_ltrt_mixinfo
+        c.ltrt_centre_mixgain = static_cast<int>(r.bits(3));
+        c.ltrt_surround_mixgain = static_cast<int>(r.bits(3));
+    }
+    if (r.bits(1)) {  // b_lfe_mixinfo
+        c.lfe_mixgain = static_cast<int>(r.bits(5));
+    }
+    c.preferred_dmx_method = static_cast<int>(r.bits(2));
+    return c;
+}
+
+// --- §6.2.8.8 bed_render_info ------------------------------------------------
+
+std::optional<BedRenderInfo> parse_bed_render_info(Reader& r) {
+    if (!r.bits(1)) {  // b_bed_render_info
+        return std::nullopt;
+    }
+    BedRenderInfo info;
+    if (r.bits(1)) {  // b_stereo_dmx_coeff
+        info.stereo_dmx_coeff = parse_stereo_dmx_coeff(r);
+    }
+    if (!r.bits(1)) {  // b_cdmx_data_present
+        return info;
+    }
+    if (r.bits(1)) {  // b_cdmx_w_to_f
+        info.gain_w_to_f_code = static_cast<int>(r.bits(3));
+    }
+    if (r.bits(1)) {  // b_cdmx_b4_to_b2
+        info.gain_b4_to_b2_code = static_cast<int>(r.bits(3));
+    }
+    if (r.bits(1)) {  // b_tm_ch_present
+        if (r.bits(1)) {  // b_cdmx_t2_to_f_s_b
+            info.t2_to_f_s_b = parse_gain_tool(r, true);
+        }
+        if (r.bits(1)) {  // b_cdmx_t2_to_f_s
+            info.t2_to_f_s = parse_gain_tool(r, false);
+        }
+    }
+    const bool b_tb_ch_present = r.bits(1) != 0;
+    if (b_tb_ch_present) {
+        if (r.bits(1)) {  // b_cdmx_tb_to_f_s_b
+            info.tb_to_f_s_b = parse_gain_tool(r, true);
+        }
+        if (r.bits(1)) {  // b_cdmx_tb_to_f_s
+            info.tb_to_f_s = parse_gain_tool(r, false);
+        }
+    }
+    const bool b_tf_ch_present = r.bits(1) != 0;
+    if (b_tf_ch_present) {
+        if (r.bits(1)) {  // b_cdmx_tf_to_f_s_b
+            info.tf_to_f_s_b = parse_gain_tool(r, true);
+        }
+        if (r.bits(1)) {  // b_cdmx_tf_to_f_s
+            info.tf_to_f_s = parse_gain_tool(r, false);
+        }
+    }
+    if ((b_tb_ch_present || b_tf_ch_present) && r.bits(1)) {  // b_cdmx_tfb_to_tm
+        info.gain_tfb_to_tm_code = static_cast<int>(r.bits(3));
+    }
+    return info;
+}
+
+// --- §6.2.8.9 trim / §6.2.8.9a headphone -------------------------------------
+
+// §6.3.9.10.4: "the number of trim configurations is nine".
+constexpr int kNumTrimConfigs = 9;
+
+std::optional<Trim> parse_trim(Reader& r) {
+    if (!r.bits(1)) {  // b_trim_present
+        return std::nullopt;
+    }
+    Trim trim;
+    trim.warp_mode = static_cast<int>(r.bits(2));
+    r.skip(2);  // reserved
+    trim.global_trim_mode = static_cast<int>(r.bits(2));
+    if (trim.global_trim_mode == 0b10) {
+        trim.configs.reserve(kNumTrimConfigs);
+        for (int i = 0; i < kNumTrimConfigs; ++i) {
+            if (r.bits(1)) {  // b_default_trim
+                trim.configs.push_back(std::nullopt);
+                continue;
+            }
+            TrimConfig cfg;
+            cfg.disabled = r.bits(1) != 0;  // b_disable_trim
+            if (!cfg.disabled) {
+                cfg.presence = static_cast<int>(r.bits(5));  // trim_balance_presence[]
+                if (cfg.presence & 0b10000) {                // [4]
+                    cfg.trim_centre = static_cast<int>(r.bits(4));
+                }
+                if (cfg.presence & 0b01000) {  // [3]
+                    cfg.trim_surround = static_cast<int>(r.bits(4));
+                }
+                if (cfg.presence & 0b00100) {  // [2]
+                    cfg.trim_height = static_cast<int>(r.bits(4));
+                }
+                if (cfg.presence & 0b00010) {  // [1]: sign, amount
+                    const int sign = static_cast<int>(r.bits(1));
+                    cfg.bal3d_y_tb = {sign, static_cast<int>(r.bits(4))};
+                }
+                if (cfg.presence & 0b00001) {  // [0]: sign, amount
+                    const int sign = static_cast<int>(r.bits(1));
+                    cfg.bal3d_y_lis = {sign, static_cast<int>(r.bits(4))};
+                }
+            }
+            trim.configs.push_back(cfg);
+        }
+    }
+    return trim;
+}
+
+std::optional<Headphone> parse_headphone(Reader& r) {
+    if (!r.bits(1)) {  // b_headphone
+        return std::nullopt;
+    }
+    Headphone hp;
+    hp.hp_operation_mode = static_cast<int>(r.bits(3));
+    if (hp.hp_operation_mode == 0b001 || hp.hp_operation_mode == 0b010) {
+        hp.b_head_track_disable_all = r.bits(1) != 0;
+    }
+    return hp;
+}
+
+// --- §6.2.8.1 oamd_common_data ------------------------------------------------
+
+// Embedded, at the TOC level, in ac4_substream_info_ajoc() when it sets
+// b_oamd_common_data_present - see ac4.hpp's module docs for where its
+// second call site (oamd_substream(), never walked here) sits.
+OamdCommonData parse_oamd_common_data(Reader& r) {
+    OamdCommonData data;
+    data.b_default_screen_size_ratio = r.bits(1) != 0;
+    if (!data.b_default_screen_size_ratio) {
+        data.master_screen_size_ratio_code = static_cast<int>(r.bits(5));
+    }
+    data.b_bed_object_chan_distribute = r.bits(1) != 0;
+    if (!r.bits(1)) {  // b_additional_data
+        return data;
+    }
+    std::uint64_t add_data_bytes = r.bits(1) + 1;  // add_data_bytes_minus1
+    if (add_data_bytes == 2) {
+        add_data_bytes += variable_bits(r, 2);
+    }
+    std::uint64_t add_data_bits = add_data_bytes * 8;
+
+    // bits_used = X(); add_data_bits -= bits_used, tracked by reader
+    // position rather than each parser returning its own bit count. A
+    // nested element reading past its remaining budget - only possible on a
+    // malformed stream, since a real encoder sizes add_data_bytes to fit
+    // exactly what it wrote - fails the substream the same way running past
+    // the actual end of the data would, rather than let the elements after
+    // it be read from the wrong position.
+    const auto spend = [&](auto&& parse) {
+        const std::size_t start = r.bit_position();
+        auto value = parse(r);
+        const std::size_t consumed = r.bit_position() - start;
+        if (consumed > add_data_bits) {
+            r.fail(Error::kTruncated);
+            add_data_bits = 0;
+        } else {
+            add_data_bits -= consumed;
+        }
+        return value;
+    };
+
+    data.trim = spend(parse_trim);
+    if (add_data_bits && !r.error()) {
+        data.bed_render_info = spend(parse_bed_render_info);
+    }
+    if (add_data_bits && !r.error()) {
+        data.headphone = spend(parse_headphone);
+    }
+    if (add_data_bits && !r.error()) {
+        r.skip_bits(add_data_bits);  // add_data: raw bits this parser does not interpret
+    }
+    return data;
+}
+
 // --- §6.2.1.9 ac4_substream_info_ajoc ---------------------------------------
 
 AjocSubstreamInfo parse_substream_info_ajoc(Reader& r, int fs_index, int frame_rate_factor,
@@ -708,13 +1017,17 @@ AjocSubstreamInfo parse_substream_info_ajoc(Reader& r, int fs_index, int frame_r
         info.static_objects = parse_bed_dyn_obj_assignment(r, info.n_fullband_dmx_signals);
     }
     if (r.bits(1)) {  // b_oamd_common_data_present
-        r.fail(Error::kOamdCommonDataPresent);
-        return info;
+        info.oamd_common_data = parse_oamd_common_data(r);
+        if (r.error()) {
+            return info;
+        }
     }
-    info.n_fullband_upmix_signals = static_cast<int>(r.bits(4)) + 1;
-    if (info.n_fullband_upmix_signals == 16) {
-        info.n_fullband_upmix_signals += static_cast<int>(variable_bits(r, 3));
+    // Summed unsigned for the same reason as parse_emdf_info()'s escapes.
+    std::uint32_t n_fullband_upmix_signals = r.bits(4) + 1;
+    if (n_fullband_upmix_signals == 16) {
+        n_fullband_upmix_signals += variable_bits(r, 3);
     }
+    info.n_fullband_upmix_signals = static_cast<int>(n_fullband_upmix_signals);
     info.upmix_objects = parse_bed_dyn_obj_assignment(r, info.n_fullband_upmix_signals);
     if (fs_index == 1 && r.bits(1)) {  // b_sf_multiplier
         info.sf_multiplier = static_cast<int>(r.bits(1));
@@ -744,8 +1057,9 @@ ObjSubstreamInfo parse_substream_info_obj(Reader& r, int fs_index, int frame_rat
     // flat 6-entry array regardless, and b_lfe is folded in separately
     // below rather than by this array, so a "reserved" code still parses
     // (just with a count this parser cannot cross-check against the
-    // semantics table's own account of it).
-    const int num_objects = kNumObjects[r.bits(3)];
+    // semantics table's own account of it). Codes 6 and 7 fall past the end
+    // of the array and name no objects - see count_for_code().
+    const int num_objects = count_for_code(kNumObjects, r.bits(3));
     info.b_dynamic_objects = r.bits(1) != 0;
     if (info.b_dynamic_objects) {
         // No early return: fs_index/bitrate/b_audio_ndot/substream_index
@@ -786,8 +1100,7 @@ ObjSubstreamInfo parse_substream_info_obj(Reader& r, int fs_index, int frame_rat
         }
     } else if (r.bits(1)) {  // b_isf
         if (r.bits(1)) {     // b_isf_start
-            constexpr std::array<int, 6> kIsfCounts = {4, 8, 10, 14, 15, 30};
-            const int n_isf = kIsfCounts[r.bits(3)];
+            const int n_isf = count_for_code(kIsfCounts, r.bits(3));
             for (int i = 0; i < n_isf; ++i) {
                 add(ObjectKind::kIsf, false);
             }
@@ -834,13 +1147,18 @@ SubstreamGroupInfo parse_substream_group_info(Reader& r, int fs_index, int frame
             // syntax) per §6.2.1.6.
             auto chan =
                 parse_substream_info_chan(r, fs_index, frame_rate_factor, group.b_substreams_present);
+            std::optional<int> hsf_ext_substream_index;
             if (b_hsf_ext) {
-                parse_hsf_ext_substream_info(r, group.b_substreams_present);
+                hsf_ext_substream_index = parse_hsf_ext_substream_info(r, group.b_substreams_present);
             }
             GroupSubstream sub;
             sub.kind = GroupSubstream::Kind::kChan;
             sub.chan = std::move(chan);
+            sub.hsf_ext_substream_index = hsf_ext_substream_index;
             group.substreams.push_back(std::move(sub));
+            if (r.error()) {
+                return group;  // the object-coded loop below already did this
+            }
         }
     } else {
         if (r.bits(1)) {  // b_oamd_substream
@@ -858,11 +1176,12 @@ SubstreamGroupInfo parse_substream_group_info(Reader& r, int fs_index, int frame
                                                     group.b_substreams_present);
             }
             if (b_hsf_ext) {
-                parse_hsf_ext_substream_info(r, group.b_substreams_present);
+                sub.hsf_ext_substream_index =
+                    parse_hsf_ext_substream_info(r, group.b_substreams_present);
             }
             group.substreams.push_back(std::move(sub));
             if (r.error()) {
-                return group;  // kOamdCommonDataPresent - stop, caller checks r.error()
+                return group;  // an ajoc's oamd_common_data() failed - caller checks r.error()
             }
         }
     }
@@ -874,15 +1193,21 @@ SubstreamGroupInfo parse_substream_group_info(Reader& r, int fs_index, int frame
 
 // --- §6.2.1.3 ac4_presentation_v1_info / §6.2.1.7 ac4_sgi_specifier --------
 
-constexpr std::array<int, 5> kV1ConfigGroupCounts = {2, 1, 2, 3, 2};  // presentation_config 0-4
+// How many ac4_sgi_specifier() elements §6.2.1.3 reads for presentation_config
+// 0 to 4. Not the n_substream_groups it assigns: "Main + DE" (1) reads two
+// specifiers and sets n_substream_groups to 1, and "Main + DE + Associated
+// Audio" (4) reads three and sets 2 (verified on the rendered page 115).
+constexpr std::array<int, 5> kV1ConfigGroupCounts = {2, 2, 2, 3, 3};  // presentation_config 0-4
 
 // §6.2.1.7. `ac4_sgi_specifier()`'s own bitstream_version == 1 branch
 // (inlining a whole ac4_substream_group_info() rather than a group_index
 // reference) is unreachable here: parse_toc() only calls
 // parse_presentation_v1_info() - and so this - for bitstream_version >= 2,
 // per §6.2.1.1's own `if (bitstream_version <= 1) {legacy} else {v1}`
-// dispatch. Every group is referenced by index, resolved later against
-// Toc::substream_groups.
+// dispatch. The one bitstream_version 1 route, §6.2.1.5's nested
+// ac4_presentation_v1_info(), lies inside the bytes
+// parse_presentation_config_ext_info() skips. Every group is referenced by
+// index, resolved later against Toc::substream_groups.
 int parse_sgi_specifier(Reader& r) {
     std::uint32_t group_index = r.bits(3);
     if (group_index == 7) {
@@ -911,56 +1236,64 @@ PresentationInfoV1 parse_presentation_v1_info(Reader& r, int bitstream_version,
     if (bitstream_version != 1) {
         pres.presentation_version = parse_presentation_version(r);
     }
+    bool b_add_emdf_substreams = false;
     if (!b_single_substream_group && presentation_config == 6) {
-        return pres;  // b_add_emdf_substreams = 1; nothing further this parser tracks.
-    }
-    if (bitstream_version != 1) {
-        pres.md_compat = static_cast<int>(r.bits(3));
-    }
-    if (r.bits(1)) {          // b_presentation_id
-        variable_bits(r, 2);  // presentation_id, unused downstream
-    }
-    pres.frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index);
-    parse_frame_rate_fractions_info(r, frame_rate_index, pres.frame_rate_factor);
-    parse_emdf_info(r);
-    if (r.bits(1)) {  // b_presentation_filter
-        pres.enable_presentation = r.bits(1) != 0;
-    }
-    if (b_single_substream_group) {
-        pres.group_refs.push_back(parse_sgi_specifier(r));
+        // An EMDF-only presentation: nothing but the loop below. It
+        // references no substream group and transmits no
+        // frame_rate_multiply_info(), so frame_rate_factor keeps its default.
+        b_add_emdf_substreams = true;
     } else {
-        r.skip(1);  // b_multi_pid
-        if (presentation_config && *presentation_config >= 0 && *presentation_config <= 4) {
-            const int n = kV1ConfigGroupCounts[static_cast<std::size_t>(*presentation_config)];
-            for (int i = 0; i < n; ++i) {
-                pres.group_refs.push_back(parse_sgi_specifier(r));
-            }
-        } else if (presentation_config == 5) {
-            std::uint32_t n = r.bits(2) + 2;
-            if (n == 5) {
-                n += variable_bits(r, 2);
-            }
-            for (std::uint32_t i = 0; i < n; ++i) {
-                pres.group_refs.push_back(parse_sgi_specifier(r));
-            }
+        if (bitstream_version != 1) {
+            pres.md_compat = static_cast<int>(r.bits(3));
+        }
+        if (r.bits(1)) {  // b_presentation_id
+            pres.presentation_id = static_cast<int>(variable_bits(r, 2));
+        }
+        pres.frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index);
+        pres.frame_rate_fraction =
+            parse_frame_rate_fractions_info(r, frame_rate_index, pres.frame_rate_factor);
+        if (const EmdfInfo emdf = parse_emdf_info(r); emdf.payloads_substream_index) {
+            pres.emdf_payloads_substream_indices.push_back(*emdf.payloads_substream_index);
+        }
+        if (r.bits(1)) {  // b_presentation_filter
+            pres.enable_presentation = r.bits(1) != 0;
+        }
+        if (b_single_substream_group) {
+            pres.group_refs.push_back(parse_sgi_specifier(r));
         } else {
-            parse_presentation_config_ext_info(r);
+            r.skip(1);  // b_multi_pid
+            if (presentation_config && *presentation_config >= 0 && *presentation_config <= 4) {
+                const int n = kV1ConfigGroupCounts[static_cast<std::size_t>(*presentation_config)];
+                for (int i = 0; i < n; ++i) {
+                    pres.group_refs.push_back(parse_sgi_specifier(r));
+                }
+            } else if (presentation_config == 5) {
+                std::uint32_t n = r.bits(2) + 2;
+                if (n == 5) {
+                    n += variable_bits(r, 2);
+                }
+                for (std::uint32_t i = 0; i < n; ++i) {
+                    pres.group_refs.push_back(parse_sgi_specifier(r));
+                    // Same unbounded-count shape as substream_index_table(): n
+                    // passes through variable_bits(), so the reader running out
+                    // is the only thing that ends this loop.
+                    if (r.error()) {
+                        return pres;
+                    }
+                }
+            } else {
+                parse_presentation_config_ext_info(r);
+            }
         }
+        pres.b_pre_virtualized = r.bits(1) != 0;
+        b_add_emdf_substreams = r.bits(1) != 0;
+        // ac4_presentation_substream_info() (§6.2.1.12)
+        pres.b_alternative = r.bits(1) != 0;
+        pres.b_pres_ndot = r.bits(1) != 0;
+        pres.presentation_substream_index = parse_substream_index_ref(r);
     }
-    r.skip(1);  // b_pre_virtualized
-    const bool b_add_emdf_substreams = r.bits(1) != 0;
-    // ac4_presentation_substream_info() (§6.2.1.12)
-    r.skip(1);  // b_alternative
-    r.skip(1);  // b_pres_ndot
-    parse_substream_index_ref(r);
     if (b_add_emdf_substreams) {
-        std::uint32_t n = r.bits(2);
-        if (n == 0) {
-            n = variable_bits(r, 2) + 4;
-        }
-        for (std::uint32_t i = 0; i < n; ++i) {
-            parse_emdf_info(r);
-        }
+        parse_add_emdf_substreams(r, pres.emdf_payloads_substream_indices);
     }
     return pres;
 }
@@ -987,6 +1320,13 @@ void parse_substream_index_table(Reader& r, Toc& toc) {
                 size += variable_bits(r, 2) << 10;
             }
             toc.substream_sizes.push_back(static_cast<int>(size));
+            // n_substreams comes through variable_bits() and so has no
+            // useful upper bound; without this the loop grows
+            // substream_sizes off the end of the data, which a fuzzed frame
+            // rode to a 2 GB allocation.
+            if (r.error()) {
+                return;
+            }
         }
     }
 }
@@ -1004,7 +1344,28 @@ int total_substream_groups(const std::vector<PresentationInfoV1>& presentations)
             max_group_index = std::max(max_group_index, ref);
         }
     }
-    return max_group_index + 1;
+    // A group_index escapes through variable_bits() (parse_sgi_specifier()),
+    // so a reference can be INT_MAX itself, where + 1 would overflow. No
+    // frame holds that many groups either way: parse_toc()'s group loop stops
+    // when the reader runs out.
+    return max_group_index == std::numeric_limits<int>::max() ? max_group_index
+                                                              : max_group_index + 1;
+}
+
+// frame_rate_factor is frame-global in practice - see
+// parse_substream_group_info()'s own comment - so every substream group takes
+// it from the first presentation that transmits frame_rate_multiply_info().
+// An EMDF-only presentation transmits none, so it is passed over. Its
+// presentation_config is 6, a value no other presentation holds:
+// parse_presentation_v1_info() leaves the field unset when
+// b_single_substream_group is set.
+int substream_group_frame_rate_factor(const std::vector<PresentationInfoV1>& presentations) {
+    for (const auto& p : presentations) {
+        if (p.presentation_config != 6) {
+            return p.frame_rate_factor;
+        }
+    }
+    return 1;
 }
 
 std::expected<Toc, Error> parse_toc(Reader& r) {
@@ -1040,16 +1401,27 @@ std::expected<Toc, Error> parse_toc(Reader& r) {
     // substream 0's payload starts, relative to the end of the byte-aligned
     // ac4_toc(), in bytes. Defaults to 0 when b_payload_base is unset.
     if (r.bits(1)) {  // b_payload_base
-        toc.payload_base = static_cast<int>(r.bits(5)) + 1;
-        if (toc.payload_base == 0x20) {
-            toc.payload_base += static_cast<int>(variable_bits(r, 3));
+        // Summed unsigned for the same reason as parse_emdf_info()'s escapes;
+        // parse_raw_frame() reads the int back as the unsigned value sent.
+        std::uint32_t payload_base = r.bits(5) + 1;
+        if (payload_base == 0x20) {
+            payload_base += variable_bits(r, 3);
         }
+        toc.payload_base = static_cast<int>(payload_base);
     }
     if (toc.bitstream_version <= 1) {
-        toc.presentations_v0.reserve(static_cast<std::size_t>(toc.n_presentations));
+        // No reserve() on n_presentations, and the same r.error() check the
+        // substream-group loop below already had: both counts come from the
+        // bitstream, so reserving on one is an attacker-chosen allocation
+        // (a fuzzed frame asked for 0x2000000100 bytes of
+        // SubstreamGroupInfo), and a loop that does not stop when the reader
+        // is exhausted keeps building elements out of nothing.
         for (int i = 0; i < toc.n_presentations; ++i) {
             toc.presentations_v0.push_back(
                 parse_presentation_info_v0(r, fs_index, toc.frame_rate_index));
+            if (const auto err = r.error()) {
+                return std::unexpected(*err);
+            }
         }
     } else {
         if (r.bits(1)) {      // b_program_id
@@ -1064,18 +1436,15 @@ std::expected<Toc, Error> parse_toc(Reader& r) {
                 r.skip(32);  // program_uuid, 16 bytes - split to stay within bits()'s 32-bit width
             }
         }
-        toc.presentations_v1.reserve(static_cast<std::size_t>(toc.n_presentations));
         for (int i = 0; i < toc.n_presentations; ++i) {
             toc.presentations_v1.push_back(
                 parse_presentation_v1_info(r, toc.bitstream_version, toc.frame_rate_index));
+            if (const auto err = r.error()) {
+                return std::unexpected(*err);
+            }
         }
         const int total_groups = total_substream_groups(toc.presentations_v1);
-        // frame_rate_factor is frame-global in practice - see
-        // parse_substream_group_info()'s own comment - so the first
-        // presentation's resolved value is what every group uses.
-        const int group_frame_rate_factor =
-            toc.presentations_v1.empty() ? 1 : toc.presentations_v1.front().frame_rate_factor;
-        toc.substream_groups.reserve(static_cast<std::size_t>(total_groups));
+        const int group_frame_rate_factor = substream_group_frame_rate_factor(toc.presentations_v1);
         for (int i = 0; i < total_groups; ++i) {
             toc.substream_groups.push_back(
                 parse_substream_group_info(r, fs_index, group_frame_rate_factor));
@@ -1155,10 +1524,36 @@ std::expected<RawFrame, Error> parse_raw_frame(std::span<const std::byte> raw_ac
     result.toc = std::move(*toc_result);
     const std::size_t toc_bytes = (r.bit_position() + 7) / 8;
     const auto audio_indices = audio_substream_indices(result.toc);
-    std::size_t offset = toc_bytes + static_cast<std::size_t>(result.toc.payload_base);
+    // payload_base and substream_size[] are unsigned counts the stream chose,
+    // stored as int. Both are read back here as the unsigned values that were
+    // sent and checked against what is left of the frame in 64 bits. The
+    // check used to be offset + size > frame size on size_t, with a size
+    // above INT_MAX sign-extended from its int: a payload_base past the frame
+    // plus such a size wrapped the sum back under the frame size, passed, and
+    // handed parse_substream_header() a subspan starting past the end.
+    const std::uint64_t frame_size = raw_ac4_frame.size();
+    std::uint64_t offset =
+        toc_bytes + std::uint64_t{static_cast<std::uint32_t>(result.toc.payload_base)};
     for (int index = 0; index < result.toc.n_substreams; ++index) {
-        const auto size =
-            static_cast<std::size_t>(result.toc.substream_sizes[static_cast<std::size_t>(index)]);
+        // §4.2.3.11 transmits substream_size[] only when b_size_present, and
+        // that flag is read at all only when n_substreams == 1 (Table 14) -
+        // so substream_sizes is either exactly n_substreams long or empty,
+        // and empty means "one substream, size not transmitted". Its extent
+        // is still unambiguous: raw_ac4_frame is one frame_size-bounded
+        // frame, the shape scan() hands over, so the only substream runs
+        // from payload_base to the end of it.
+        //
+        // n_substreams was indexed straight into substream_sizes before
+        // this, which read element 0 of an empty vector - a null dereference
+        // on any stream that set b_size_present to 0. Found by
+        // fuzz/fuzz_ac4_parse.cpp on its first run; tests/ac4 had only ever
+        // built the b_size_present = 1 shape.
+        const bool size_transmitted = !result.toc.substream_sizes.empty();
+        const std::uint64_t size =
+            size_transmitted
+                ? std::uint64_t{static_cast<std::uint32_t>(
+                      result.toc.substream_sizes[static_cast<std::size_t>(index)])}
+                : (offset <= frame_size ? frame_size - offset : 0);
         // substream_index_table()'s own sizes are trusted, self-declared
         // lengths (§4.3.3.12.4) - nothing earlier in parse_toc() cross-checks
         // them against how much data `raw_ac4_frame` actually holds, since
@@ -1167,22 +1562,166 @@ std::expected<RawFrame, Error> parse_raw_frame(std::span<const std::byte> raw_ac
         // substream is exactly the truncated-file case this parser exists
         // to report cleanly rather than emit a Substream with a byte range
         // that reaches past the data it was handed.
-        if (offset + size > raw_ac4_frame.size()) {
+        if (offset > frame_size || size > frame_size - offset) {
             return std::unexpected(Error::kTruncated);
         }
         Substream sub;
-        sub.offset = offset;
-        sub.size = size;
+        sub.offset = static_cast<std::size_t>(offset);
+        sub.size = static_cast<std::size_t>(size);
         sub.is_audio = static_cast<std::size_t>(index) < audio_indices.size() &&
                        audio_indices[static_cast<std::size_t>(index)];
         if (sub.is_audio && size >= 3) {
-            Reader sub_r(raw_ac4_frame.subspan(offset, size));
+            Reader sub_r(raw_ac4_frame.subspan(sub.offset, sub.size));
             sub.audio_size = parse_substream_header(sub_r);
         }
         result.substreams.push_back(sub);
         offset += size;
     }
     return result;
+}
+
+
+// --- Carriage (AC-4 bitstream inspector's separable slice) -------------------------------
+
+namespace {
+
+// Annex E's DSI fields are written MSB-first into whole bytes, the same
+// bit-packing discipline the parser reads with - small enough here that a
+// local accumulator beats pulling a writer dependency into a module whose
+// whole identity is depending on nothing.
+class DsiWriter {
+   public:
+    void put(std::uint32_t value, int bits) {
+        for (int bit = bits - 1; bit >= 0; --bit) {
+            accumulator_ = static_cast<std::uint8_t>(
+                (static_cast<std::uint32_t>(accumulator_) << 1) | ((value >> bit) & 1u));
+            if (++filled_ == 8) {
+                bytes_.push_back(static_cast<std::byte>(accumulator_));
+                accumulator_ = 0;
+                filled_ = 0;
+            }
+        }
+    }
+    void byte_align() {
+        while (filled_ != 0) {
+            put(0, 1);
+        }
+    }
+    [[nodiscard]] std::vector<std::byte> take() {
+        byte_align();
+        return std::move(bytes_);
+    }
+
+   private:
+    std::vector<std::byte> bytes_;
+    std::uint8_t accumulator_ = 0;
+    int filled_ = 0;
+};
+
+// The two Toc presentation lists only ever have one populated (the struct's
+// own comment); this reads whichever it is.
+[[nodiscard]] int first_presentation_version(const Toc& toc) {
+    if (!toc.presentations_v1.empty()) {
+        return toc.presentations_v1.front().presentation_version;
+    }
+    if (!toc.presentations_v0.empty()) {
+        return toc.presentations_v0.front().presentation_version;
+    }
+    return 0;
+}
+
+[[nodiscard]] int first_md_compat(const Toc& toc) {
+    if (!toc.presentations_v1.empty()) {
+        return toc.presentations_v1.front().md_compat.value_or(0);
+    }
+    if (!toc.presentations_v0.empty()) {
+        return toc.presentations_v0.front().md_compat.value_or(0);
+    }
+    return 0;
+}
+
+}  // namespace
+
+std::vector<std::byte> build_dac4(const Toc& toc) {
+    DsiWriter w;
+    // ac4_dsi_v1 (Annex E.5).
+    w.put(1, 3);  // ac4_dsi_version
+    w.put(static_cast<std::uint32_t>(toc.bitstream_version), 7);
+    w.put(toc.sample_rate_hz == 48000 ? 1u : 0u, 1);  // fs_index (Table 82)
+    w.put(static_cast<std::uint32_t>(toc.frame_rate_index), 4);
+    w.put(static_cast<std::uint32_t>(toc.n_presentations), 9);
+    if (toc.bitstream_version > 1) {
+        // b_program_id: the TOC-level program identifier is not parsed into
+        // Toc (it rides ahead of the presentation list), so none is claimed.
+        w.put(0, 1);
+    }
+    // ac4_bitrate_dsi (Annex E.7): mode 0 with both fields 0xFFFFFFFF -
+    // "unknown", the honest value for a muxer handed frames rather than an
+    // encoder's rate plan.
+    w.put(0, 2);
+    w.put(0xFFFFFFFFu, 32);
+    w.put(0xFFFFFFFFu, 32);
+    w.byte_align();
+
+    // One entry per presentation: its version, and pres_bytes = 0 - see the
+    // header's own comment for why the per-presentation DSI body is this
+    // slice's stated boundary.
+    const auto version_of = [&](int index) {
+        if (!toc.presentations_v1.empty() &&
+            index < static_cast<int>(toc.presentations_v1.size())) {
+            return toc.presentations_v1[static_cast<std::size_t>(index)].presentation_version;
+        }
+        if (!toc.presentations_v0.empty() &&
+            index < static_cast<int>(toc.presentations_v0.size())) {
+            return toc.presentations_v0[static_cast<std::size_t>(index)].presentation_version;
+        }
+        return 0;
+    };
+    for (int p = 0; p < toc.n_presentations; ++p) {
+        w.put(static_cast<std::uint32_t>(version_of(p)), 8);
+        w.put(0, 8);  // pres_bytes
+    }
+    return w.take();
+}
+
+std::optional<std::uint32_t> samples_per_frame(const Toc& toc) {
+    // Table 83/84. At 44,1 kHz only the 2048-sample frame exists; at 48 kHz
+    // the 1000/1001-family entries with a NON-integer sample count per frame
+    // (29,97 / 59,94 / 119,88 fps - the frame length alternates) have no
+    // single answer and yield nullopt.
+    if (toc.sample_rate_hz == 44100) {
+        return toc.frame_rate_index == 13 ? std::optional<std::uint32_t>{2048} : std::nullopt;
+    }
+    switch (toc.frame_rate_index) {
+        case 0: return 2002;   // 23,976 fps
+        case 1: return 2000;   // 24
+        case 2: return 1920;   // 25
+        case 3: return std::nullopt;  // 29,97: 1601,6 - alternating
+        case 4: return 1600;   // 30
+        case 5: return 1001;   // 47,952
+        case 6: return 1000;   // 48
+        case 7: return 960;    // 50
+        case 8: return std::nullopt;  // 59,94: 800,8 - alternating
+        case 9: return 800;    // 60
+        case 10: return 480;   // 100
+        case 11: return std::nullopt;  // 119,88: 400,4 - alternating
+        case 12: return 400;   // 120
+        case 13: return 2048;  // the sample-rate-locked frame
+        default: return std::nullopt;
+    }
+}
+
+std::string rfc6381_codec_string(const Toc& toc) {
+    // Annex E.13: two lowercase hex digits per field.
+    constexpr std::string_view kHex = "0123456789abcdef";
+    const auto pair = [&](int value) {
+        std::string out;
+        out.push_back(kHex[static_cast<std::size_t>((value >> 4) & 0xF)]);
+        out.push_back(kHex[static_cast<std::size_t>(value & 0xF)]);
+        return out;
+    };
+    return "ac-4." + pair(toc.bitstream_version) + "." +
+           pair(first_presentation_version(toc)) + "." + pair(first_md_compat(toc));
 }
 
 }  // namespace ac4

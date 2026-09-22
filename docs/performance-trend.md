@@ -1,6 +1,6 @@
 # Performance trend
 
-Four separate mechanisms, not one, and it matters which is which:
+Five separate mechanisms, not one, and it matters which is which:
 
 - **The hard gate**: `ac3perf` (`tests/performance/test_performance.cpp`) asserts the
   encoder stays faster than real time (with a 2x safety margin), on every push and
@@ -9,6 +9,11 @@ Four separate mechanisms, not one, and it matters which is which:
   Not run under the ASan/UBSan leg: instrumented code has nothing useful to say about
   throughput at any slack factor, so that leg excludes the `Performance` label entirely
   (`CMakePresets.json`'s `test-linux-llvm-asan-ubsan` preset).
+- **The pull-request comparison and gate**: `performance-compare` measures the
+  PR head against its merge base and publishes the table. Its infrastructure is
+  informational (`continue-on-error`), but an explicit hard-regression verdict
+  is passed to the separate blocking `performance-gate` job. No measurement or
+  an approved `perf-regression-approved` label passes the gate.
 - **This page's whole-frame tables**: `ac3bench` (`tests/performance/bench_encoder.cpp`)
   runs the same configurations for longer (200 frames) and records the actual
   ms/frame number, not just a pass/fail, on every push to `main`. It exists
@@ -58,10 +63,10 @@ number. `ac3kernelbench` had this rule from the start; PF1 applied it to the oth
 two. The fixture is 78 frames long and the benches run 200, so frame indices wrap;
 the seam that creates lands in the same place on every run.
 
-Only `linux-gcc` is measured, not the full CI matrix — see the note below the append
-scripts for why. Every number on this page is that one runner's; nothing here is a
-cross-platform comparison, and a number from a developer machine is not comparable
-to one of these rows.
+The persistent x86 series uses `linux-gcc`; whole-frame performance also has an
+arm64 series from `linux-gcc-arm64`. Kernel and memory histories remain x86-only.
+These are fixed-runner trends, not comparisons across the 11 split platform
+legs, and developer-machine numbers are not comparable to these rows.
 
 Roadmap PF2 (inlining `to_fixed25` and fusing it with exponent extraction) does not
 show as a clean step in the whole-frame series above: the ~7% of a fast-path frame it
@@ -165,8 +170,9 @@ data* block beneath it instead.
 
 ## Whole-frame trend
 
-Each series below is a chart first, table second. The chart plots that
-series' *entire* recorded history (not just the table's last 20 rows) as
+Each series below is a chart first, table second. The chart plots the
+generated recent window (or the full history while it still fits that window),
+not just the table's last 20 rows, as
 ms/frame against commit date, with a dashed red line for the throughput
 budget and a dashed ring around any point whose commit was tagged as a
 GitHub release - hover a point for the exact commit, date and number. A
@@ -274,22 +280,24 @@ follow the same convention, table-only (no chart to style).
   // How many of each (leg, config) series' most recent rows to show in the
   // table - a trend readout, not a full audit log. Mirrors quality-trend.md's
   // own TABLE_ROWS in spirit, just scoped per-series instead of globally,
-  // since performance-trend.md only ever has one leg (linux-gcc) rather than
-  // quality-trend's five. The chart above each table is NOT capped to this -
-  // it plots the series' full history so a release from further back than
-  // the last 20 runs still shows up as a ring.
+  // since performance-trend.md has two whole-frame legs rather than
+  // quality-trend's five. The chart is not capped to this table limit; it
+  // plots every row in the fetched recent window.
   const ROWS_PER_SERIES = 20;
 
   const root = document.getElementById("performance-trend-app");
 
   async function fetchBranch(branch) {
-    try {
-      const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, `performance-${branch}.jsonl`));
-      if (!resp.ok) return [];
-      return perfTrendParseJsonl(await resp.text());
-    } catch (e) {
-      return [];
+    for (const file of [`performance-${branch}.recent.jsonl`, `performance-${branch}.jsonl`]) {
+      try {
+        const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, file));
+        if (!resp.ok) continue;
+        return perfTrendParseJsonl(await resp.text());
+      } catch (e) {
+        // fall through to the authoritative full history
+      }
     }
+    return [];
   }
 
   // Same best-effort tag->commit join quality-trend.md already relies on:
@@ -502,13 +510,16 @@ decode spends; the bare row is what the oracle costs.
   const root = document.getElementById("kernel-trend-app");
 
   async function fetchBranch(branch) {
-    try {
-      const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, `kernels-${branch}.jsonl`));
-      if (!resp.ok) return [];
-      return perfTrendParseJsonl(await resp.text());
-    } catch (e) {
-      return [];
+    for (const file of [`kernels-${branch}.recent.jsonl`, `kernels-${branch}.jsonl`]) {
+      try {
+        const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, file));
+        if (!resp.ok) continue;
+        return perfTrendParseJsonl(await resp.text());
+      } catch (e) {
+        // fall through to the authoritative full history
+      }
     }
+    return [];
   }
 
   function formatNs(ns) {
@@ -580,21 +591,88 @@ including the decode paths the timing benches don't cover. The Δ column is
 bytes/frame against the series' trailing 10-run mean, the same window and
 thresholds `append_memory_history.py` gates with (≥ +20% soft, ≥ +100% hard on
 *either* churn metric); a non-zero **live growth** is its own signal (bytes
-still held after ~200 steady-state frames - the leak check is absolute, not
-trend-relative). These counts are near-deterministic for a fixed workload: a
+still held after ~200 steady-state frames - on the trunk that check is
+absolute rather than trend-relative; see below for how it is scoped before a
+merge). These counts are near-deterministic for a fixed workload: a
 flagged row is a real change in allocation behaviour, not runner noise. The
 memory-usage optimization programme's phases land as visible downward steps in
 these series - that is what this table exists to show.
 
+The same question is now asked before the merge as well. These series are
+written by `persist-performance-trend`, which is `push` to `main` only, so for
+a while a step was reported on the trunk *after* it landed - a red check on an
+already-merged commit, blocking nothing and belonging to whoever pushed next.
+The E-AC-3 encode step from 67 to 199 allocs/frame in 2026-08 (issue #544) is
+exactly how it was found: the gate fired on the merge, and by then the merge
+was the thing it was reporting on. The
+`Memory vs merge base` job (`tools/ci/compare_memory.py`) closes that: it
+builds `ac3membench` at the pull request's head and at its merge base and runs
+each once, comparing the same two churn metrics against the same thresholds,
+imported from `append_memory_history.py` so the two gates cannot disagree. One
+run per side is the whole measurement - these counts do not move between runs
+of a fixed binary, which is why this gate needs none of the repetition and
+interleaving the `Performance vs merge base` job uses to see past timing
+noise. Its hard tier fails the `Memory gate` check;
+`memory-regression-approved` on the pull request turns that back into an
+annotation, the way `perf-regression-approved` does for speed.
+
+In that pre-merge job the leak check keeps its absolute thresholds but applies
+them to what the branch changed - crossing a threshold the merge base was
+under, or growing by more than one. Three of the six workloads already retain
+bytes across their steady state and two of them sit past the 4 KiB warn line,
+so a per-PR check copied over unchanged would annotate every pull request for
+the merge base's own findings. `persist-performance-trend` keeps the
+unconditional absolute view on the trunk.
+
+One limit still worth knowing when reading these series: the history a trunk
+run compares against is per branch, so a branch rename or a gitflow-to-trunk
+switch starts one from empty - the trailing window now widens to the sibling
+branch series when a branch's own file holds fewer than three records, and a
+workload with no history anywhere is annotated as ungated rather than passing
+quietly.
+
 Two landed programmes are the biggest steps in these series. The 2026-08
 memory-usage programme cut steady-state allocator traffic per frame by 85-88%
-on the encode series (on the measured `linux-gcc` runner: AC-3 encode
-225,028 → 26,778 bytes/frame and 286 → 86 allocations; E-AC-3
-214,808 → 28,792 and 157 → 67; Atmos 218,960 → 32,656 and 196 → 106) and
-54-61% on the decode series - and, outside these tables, took every
-output-producing CLI command memory-flat at any programme length (a 3-minute
-5.1 encode peaked at 437.8 MiB before the programme and 9.3 MiB after;
-decode 217 → 28.5 MiB, `spdif` 225.7 → 18.0 MiB).
+on the encode series (**as measured when it landed**, on the `linux-gcc`
+runner: AC-3 encode 225,028 → 26,778 bytes/frame and 286 → 86 allocations;
+E-AC-3 214,808 → 28,792 and 157 → 67; Atmos 218,960 → 32,656 and
+196 → 106) and 54-61% on the decode series - and, outside these tables, took
+every output-producing CLI command memory-flat at any programme length (a
+3-minute 5.1 encode peaked at 437.8 MiB before the programme and 9.3 MiB
+after; decode 217 → 28.5 MiB, `spdif` 225.7 → 18.0 MiB).
+
+Two of those three encode figures no longer describe the code. At `main` =
+`e982712b` the same leg records E-AC-3 encode at 53,845.7 bytes/frame and
+199.11 allocations, and Atmos at 53,606.4 and 219.10 - both of them above the
+*pre*-programme baselines quoted above, 157 and 196 allocations. The decode
+series is unaffected, and so is AC-3 encode, which still reads 26,778.5 and
+86.04. That last row is why the other two can be read at all: a workload that
+still matches its landed figure to the decimal, on the same leg, rules out
+platform, stdlib and measurement-context drift. Without that control the two
+divergences would be arguable; with it, what moved is the code the other two
+share.
+
+It is one step rather than a drift. Both E-AC-3-family workloads sit flat at
+the old values through every record up to `3aedec41` and flat at the new ones
+from `83546721` (2026-08-25) onward. Bisecting `ac3membench` brackets the
+step to PR #352's per-channel exponent-run planner: the commit before it
+(`f54ea929`) measures 95.0 allocations/frame for `eac3_51_encode`, and
+`fb58aa62` measures 248.2 (a windows-msvc build - the leg differs from this
+table's, the step does not). AC-3 encode is untouched because it plans its
+exponent runs through its own encoder.
+
+The extra churn is a defect rather than the planner's intended cost, and is
+tracked as [#544](https://github.com/iainchesworthlabs/ac3forge/issues/544).
+`encode_run` in `src/forge/src/encoder/eac3_frame.cpp` assigns the by-value
+return of `ac3::encode_exponents`, which owns a `std::vector`, so each run
+reallocates that buffer on every frame; the planner multiplied the number of
+runs from one per channel to one per run per channel. The bench's own columns
+carry the signature. Before the step each encode workload's steady-state
+count sat below its first frame's (E-AC-3 134 first, 67.00 steady), which is
+warm-up followed by reuse. After it the steady-state count exceeds the first
+frame's (159 first, 199.11 steady), which is a path allocating fresh storage
+every frame. `run.decoded` and `run.bap` in the same function reuse their
+capacity correctly, as does `ChannelPlan::runs`.
 
 The fast-IMDCT rollout that followed
 ([Validation → Performance and reference modes](verification.md#performance-and-reference-modes))
@@ -614,55 +692,160 @@ runs the old numbers on purpose.
 
 ## Minimum-footprint decoder
 
-Roadmap PF7. Not a trend series — one measured configuration, on the concrete target the
+Not a trend series — one measured configuration, on the concrete target the
 roadmap names: `arm-none-eabi` cross-compiled for QEMU's `mps2-an385` machine (Cortex-M3,
 soft float, no OS), `AC3FORGE_MINIMAL_DECODER=ON`, `CMAKE_BUILD_TYPE=MinSizeRel`. See
 [Building → Minimum-footprint decoder profile](building.md#minimum-footprint-decoder-profile)
 for what the profile changes and why.
 
-`apps/baremetal/probe.cpp` decodes six frames each of real 5.1 AC-3 (448 kbit/s, coupling) and
-E-AC-3 (384 kbit/s, AHT + spx + coupling) and reports what it cost. Numbers below are from the
-run in [this PR](https://github.com/iainchesworthlabs/ac3forge); `build-footprint` in
+`apps/baremetal/probe.cpp` decodes six frames each of ten real streams — 5.1 AC-3 (448 kbit/s,
+coupling), 2/0 AC-3 (192 kbit/s) and 1/0 AC-3 (128 kbit/s); 5.1 E-AC-3 (384 kbit/s, AHT + spx +
+standard coupling), 5.1 E-AC-3 with §E3.5 enhanced coupling (384 kbit/s, `cpl+ecpl`), E-AC-3
+Atmos (448 kbit/s, six objects over a 5.1 bed) and 2/0 E-AC-3 (192 kbit/s, which is the only
+layout §7.5.4 rematrixing exists in) and E-AC-3 7.1.4 (640 kbit/s, a bed and two dependent
+substreams) and a second Atmos stream with three of its objects raised to the ceiling, and the
+5.1 E-AC-3 stream again with film-standard dynrng words and dialnorm 24 — and reports what it
+cost. That is fourteen fixtures: the first Atmos stream is decoded twice, bed-only and with its
+objects reconstructed, the two 5.1 streams and the 7.1.4 one are decoded a second time through
+the §7.8 output stage, folded to Lo/Ro stereo in line mode (`ac3_fold`, `eac3_fold`,
+`eac3_714_fold`), the dynrng stream is decoded in line mode without a fold (`eac3_line`, the
+one fixture where line mode has work to do), and the height stream's objects are reconstructed
+and placed onto 7.1.4 (`eac3_atmos_render`). Numbers below are from runs of
+`feature/esp32-output-stage-profile` on 2026-09-11, `arm-none-eabi` GCC 14.2.1 under QEMU
+10.2.1's `mps2-an385`; `build-footprint` in
 `.github/workflows/_build.yml` reproduces them on every push, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
 
 The table below was first measured early in PF6/PF7's own feature branch (PR #351). Several
 `develop` merges landed on that branch afterwards but before it merged to `main` — most
-significantly DC10's QMF-domain JOC reconstruction, which the decode path genuinely needs
-(`src/dsp/qmf.cpp` and `src/verify/eac3_mirror.cpp`, both correctly added to
+significantly DC10's QMF-domain JOC reconstruction, which the decode path needs
+(`src/forge/src/dsp/qmf.cpp` and `src/forge/src/verify/eac3_mirror.cpp`, both correctly added to
 `src/forge/minimal.cmake`'s source list at the time, per that merge's own commit message), plus
 the PF3/PF4 FFT/IMDCT rewrite and DC1's decoder output stage — and nobody re-measured the table
-or the ceiling before merging. The image had already reached 412,516 bytes by then; the numbers
-below are that re-measurement, re-based against the current `main`.
+or the ceiling before merging. The image had already reached 412,516 bytes by then.
+
+The same thing happened a second time. The largest movement in that re-measurement was a
+relocation rather than growth. AP3's Pimpl sweep (`ee5ff91e`) gave both decoders a
+`struct Impl; std::unique_ptr<Impl> impl_;`
+(`src/forge/include/ac3/decoder/decoder.hpp:435` and `:758`), so `sizeof(ac3::FrameDecoder)` and
+`sizeof(ac3::Eac3Decoder)` fell from 12,952 and 27,408 bytes to a single 4-byte pointer each, and
+the state they used to hold in place now lives on the heap. That state came out of automatic
+storage: both decoders are locals in `decode_ac3()` and `decode_eac3()`, and `.bss` was unchanged
+at 237,592 bytes across those two measurements. It has moved since, for unrelated reasons the
+Static footprint section below sets out. Peak heap rose by 27,416 bytes, which is the E-AC-3
+decoder's former in-place size rather than the two summed — `decode_ac3()` returns before
+`decode_eac3()` runs, so only the larger of the two is ever live at the peak. The rest of the
+delta is `.text`, up 5,728 bytes and the whole of the image change, from the ordinary work of the
+intervening commits.
 
 ### Static footprint
 
 | | Bytes |
 |---|---|
-| `.text` (code + read-only data) | 174,524 |
+| `.text` (code + read-only data) | 289,484 |
 | `.data` (initialised) | 400 |
-| `.bss` (zero-initialised) | 237,592 |
-| **Image total** | **412,516** (402.8 KiB) |
+| `.bss` (zero-initialised) | 62,217 |
+| **Image total** | **352,101** (343.8 KiB) |
+
+These are `arm-none-eabi-size`'s own columns, which is what `AC3FORGE_MAX_IMAGE_BYTES` gates, so
+they group sections rather than list them: `.text` here includes `.init`, `.fini` and
+`.ARM.exidx`, `.data` includes `.init_array` and `.fini_array`, and `.bss` includes `.tbss`. Read
+per-section with `arm-none-eabi-size -A`, `.text` is 289,452, `.data` 388 and `.bss` 62,184.
+`main` at `7bdb58e7` measured 340,821 on the same leg: the 11,280 bytes since are all `.text`,
+9,216 of them the dynrng stream `eac3_line` decodes and the rest the output stage's block-wise
+fold.
+
+`.bss` fell from 237,592 bytes in two steps. Moving `ecpl_channel_spectrum`'s 32 KB scratch off
+thread-local storage — it made the library unlinkable into any FreeRTOS application, see
+[the ESP32-S3 page](platforms/bare-metal/esp32-s3.md) — took
+`.tbss` from 32,784 bytes to 24, and `tls.cpp`'s block was resized from 64 KiB to 4 KiB to
+match. The decode path then moved to float32 under this profile, halving every coefficient
+buffer. `.text` rose 5,680 bytes over the same span, which is the float32 transform
+instantiation.
+
+`.text` has risen as fixtures were added, and most of each rise is the bitstreams themselves:
+`fixture.hpp` is `constexpr` `std::array` data linked into `probe.cpp.obj`'s read-only section.
+It held 19,968 bytes of stream before the enhanced-coupling and 2/0 fixtures, 33,792 with them,
+and 52,224 now across seven streams. None of the tools those fixtures reach added code —
+`eac3_tools.cpp`, `fft.cpp`, `joc.cpp` and `oamd.cpp` were already in `src/forge/minimal.cmake`'s
+source list and already linked, which is the point: what the fixtures added was execution, not
+size.
+
+The float decode path moved it again, by less than the size of the conversion suggests. Against
+the 320,940 bytes `main` measured before it (223,260 of `.text`, 97,280 of `.bss`), `.text` is
+1,264 bytes larger and `.bss` 2,864. The `<double>` instantiations this profile no longer
+references left the image as their float forms came in, so most of the conversion was a swap:
+`eac3_decoder.cpp.obj` is 912 bytes smaller, `joc.cpp.obj` 590 larger. The `.bss` is two
+things. 1,949 bytes are the stage timers' tables, `stage_timers.cpp.obj`, linked into every
+shape of the probe so that a timed build and a plain one differ only in the library's include
+path; 912 are two tables `eac3_tools.cpp` now fills once at start-up rather than computing per
+call, spectral extension's attenuation (32 codes by 3 taps) and the AHT's inverse kernel in
+float.
+
+Enhanced coupling's float forms then took 7,067 bytes back off, to 318,001. The double `dft512`
+and its tables left the image — `fft.cpp.obj` went from 4,444 to 3,004 bytes of `.text` and
+from 9,204 to 5,116 of `.bss`, the float twiddles being half the size — and
+`eac3_decoder.cpp.obj` lost 1,150 bytes of `.text` with its double §E3.5 path.
+
+The hot-path sweep's `BitReader` cache and bit-allocation memos cost 2,520 bytes of `.text` and
+no `.bss`, for an image of 320,521. 1,686 of it is `decoder.cpp.obj`, whose read sites are the
+most numerous; 716 is `eac3_decoder.cpp.obj`. The access unit's `memcpy` and its moved object
+description are 80 bytes more: 320,601. The 7.1.4 fixture is 55,496 more, and nearly all of it
+is what it says: 30,720 bytes of stream in `.text` and 24,576 of `.bss` for the four channels the
+probe's PCM block grew by, against 168 bytes of code. 376,097. The block-granular output forms then
+took that block out altogether - the probe reads the decoders' blocks in place and holds no PCM -
+and `.bss` fell 73,824 bytes to 46,829, against 872 bytes of `.text` for the forms themselves:
+303,145, the smallest image the probe has had since its fixtures were four. The output stage's
+float forms and the two fold rows are 472 more - 456 of `.text`, 16 of `.bss` - for 303,617:
+`output.cpp.obj` went from 4.5 KiB to 4.6, the narrowed Hilbert kernel being a second static
+beside the double one, and `probe.cpp.obj` from 86.0 KiB to 86.3 with the rows. Placing objects
+is 33,640 more, for 337,257: the height stream's 10,752 bytes and
+`spatial.cpp` in `.text`, and in `.bss` a 12,288-byte render block - twelve channels of one
+256-sample block, what a player holds - with a 1,536-byte table of each object's gain per slot.
+The stage-timer table's growth from 32 zones to 64, which the encoder's rows needed, is 1,536
+more of `.bss` in every shape of the probe: 338,793.
 
 Where it went, objects over 2 KiB (see `tools/checks/footprint_report.py --map` for the full
 attribution from the linker map):
 
 | Object | `.text` | `.bss` |
 |---|---|---|
-| `probe.cpp.obj` (the harness itself — fixture, checks, allocator hooks) | 23.4 KiB | 96.1 KiB |
-| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 64.0 KiB |
-| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 21.3 KiB | 42.3 KiB |
-| `eac3_decoder.cpp.obj` (all of Annex E) | 50.5 KiB | 0 |
-| `decoder.cpp.obj` (AC-3) | 17.3 KiB | 0 |
-| `mdct.cpp.obj` (inverse transform, fast path only) | 15.2 KiB | 12.4 KiB |
-| `qmf.cpp.obj` (DC10's QMF-domain JOC reconstruction — new since 354,060) | 8.9 KiB | 4.2 KiB |
-| `eac3_mirror.cpp.obj` (E-AC-3 decode-side trace, DecoderConfig::syntax — new since 354,060) | 8.5 KiB | 0 |
-| everything else, summed | 87.7 KiB | 12.9 KiB |
+| `probe.cpp.obj` (the harness itself — fixtures, checks, allocator hooks) | 86.0 KiB | 809 B |
+| `eac3_decoder.cpp.obj` (all of Annex E) | 37.5 KiB | 0 B |
+| `eac3_tools.cpp.obj` (spx/ecpl band geometry + §3.5.5 reconstruction) | 19.8 KiB | 11.2 KiB |
+| `mdct.cpp.obj` (inverse transform, fast path only) | 15.9 KiB | 14.6 KiB |
+| `decoder.cpp.obj` (AC-3) | 20.8 KiB | 0 B |
+| `joc.cpp.obj` (§6 object reconstruction from the bed) | 14.0 KiB | 0 B |
+| `qmf.cpp.obj` (DC10's QMF-domain JOC reconstruction) | 6.0 KiB | 4.2 KiB |
+| `fft.cpp.obj` (the 512-point DFT §3.5.5 enhanced coupling needs) | 2.9 KiB | 5.0 KiB |
+| `oamd.cpp.obj` (§H.1 object metadata) | 6.8 KiB | 0 B |
+| `output.cpp.obj` (`OutputStage::apply`/`mix_levels`, both decoders') | 4.5 KiB | 16 B |
+| `tls.cpp.obj` (the single-thread TLS block — see below) | 8 B | 4.0 KiB |
+| `bitalloc.cpp.obj` (§7.2 bit allocation, both generations) | 3.9 KiB | 0 B |
+| `transient_prenoise.cpp.obj` (§3.7 post-IMDCT correction) | 744 B | 3.0 KiB |
+| `libm_a-e_pow.o` (newlib's `pow`) | 2.9 KiB | 0 B |
+| `stage_timers.cpp.obj` (the stage timers' tables, linked into every shape of the probe so that a timed build and a plain one differ only in the library's include path) | 918 B | 1.9 KiB |
+| `arm_librdimon_a-syscalls.o` (newlib's semihosting syscalls) | 2.5 KiB | 176 B |
+| `libm_a-k_rem_pio2.o` (newlib's trig argument reduction) | 2.2 KiB | 0 B |
+| everything else, summed | 22.3 KiB | 769 B |
 
-`tls.cpp.obj`'s 64 KiB is the single-thread `__aeabi_read_tp` stub's static block
-(`apps/baremetal/platform/baremetal/tls.cpp`) — oversized on purpose so ordinary growth in
-`ecpl_channel_spectrum`'s `thread_local` scratch does not need it revisited, and checked by two
-`ASSERT()`s in the linker script rather than trusted.
+One earlier correction is worth knowing when comparing this table against older versions of it.
+The attribution used to read GNU ld's "Discarded input sections" block as though it were part of
+the map proper, so every `--gc-sections` casualty was credited to the object it came from; it
+inflated the `.text` column by 63 KiB, `eac3_tools.cpp.obj` most of all (21.3 KiB reported
+against 8.4 KiB actually linked). `footprint_report.py` has skipped that block since, and both
+columns reconcile with `arm-none-eabi-size`'s own totals.
+
+`tls.cpp.obj`'s 4 KiB is the single-thread `__aeabi_read_tp` stub's static block
+(`apps/baremetal/platform/baremetal/tls.cpp`), checked by two `ASSERT()`s in the linker script
+rather than trusted.
+
+It was 64 KiB, sized against `ecpl_channel_spectrum`'s `thread_local` scratch. That scratch is no
+longer thread-local: at 32 KB it made the library unlinkable into any FreeRTOS application,
+because FreeRTOS carves each task's thread-local area out of that task's own stack and ESP-IDF's
+1 KB IPC task could not then be created. With the storage moved to the heap behind a
+`unique_ptr`, the measured `.tbss` is 24 bytes, so 4 KiB leaves the same order of headroom the
+old number did.
 
 ### Table ROM budget
 
@@ -686,24 +869,248 @@ a silent fast-path substitution — see the building doc for why.
 
 | | Value |
 |---|---|
-| Peak heap | 243,470 bytes (237.8 KiB) |
-| Leaked at exit | 0 |
-| `sizeof(ac3::FrameDecoder)` | 12,952 bytes |
-| `sizeof(ac3::Eac3Decoder)` | 27,408 bytes |
-| Caller-owned PCM buffer (16 × 1536 `float`, via `decode_*_into`) | 98,304 bytes |
-| AC-3 allocations per frame, steady state | 45 |
-| E-AC-3 allocations per frame, steady state | 87 |
+| Peak heap | 237,206 bytes (231.6 KiB), the 7.1.4 fixture folded to stereo; 230,798 as coded, 211,371 with Atmos objects |
+| Retained after teardown | 12 bytes |
+| `sizeof(ac3::FrameDecoder)` | 4 bytes (one `unique_ptr` — see above) |
+| `sizeof(ac3::Eac3Decoder)` | 4 bytes (one `unique_ptr` — see above) |
+| Caller-owned PCM buffer | none: the probe decodes through the `_by_block` forms and reads the decoders' blocks in place |
+| AC-3 allocations per frame, steady state | 3 |
+| AC-3 2/0 and 1/0 allocations per frame, steady state | 1 |
+| E-AC-3 allocations per frame, steady state | 12 |
+| E-AC-3 enhanced coupling allocations per frame, steady state | 12 |
+| E-AC-3 2/0 allocations per frame, steady state | 10 |
+| Atmos bed allocations per frame, steady state | 20 |
+| Atmos with objects allocations per frame, steady state | 31 |
+| E-AC-3 7.1.4 allocations per frame, steady state | 35 |
 
 The steady-state allocation counts are the gap [Building](building.md#gaps) records: PF7 asks
-for zero, and this is 45/87 — from the per-block geometry vectors inside the decoders and the
-`std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`, none of which the
-memory programme's [`_into` forms](#whole-frame-trend) removed because they are inherent to
-those two return types, not to allocation *reuse*. Reaching zero means those becoming
-fixed-capacity, a public-type change tracked separately from this profile.
+for zero, and this is 1–35. What is left is no longer the per-block geometry vectors inside the
+decoders — those are `Impl` members now, reused frame to frame — but the `std::vector` members
+of the returned `DecodedFrame`/`DecodedSubstream`, which the memory programme's [`_into`
+forms](#whole-frame-trend) could not remove because they are inherent to those two return types
+rather than to allocation *reuse*. `DecodedFrame::blksw` is the whole of AC-3's remaining one
+per frame; `DecodedSubstream::channels` is 7 of E-AC-3's 12. Reaching zero means those becoming
+fixed-capacity or pooled, a public-type change tracked separately from this profile.
 
-`tools/checks/run_baremetal_probe.sh` gates the image, the heap peak and both allocation counts
-at ceilings above these measured values, so a regression stops the build instead of drifting
-the table silently.
+Enhanced coupling used to be the outlier here, at 126 against 43–86, and had its own ceiling of
+140. It measures 12 now, level with plain E-AC-3, because the gap was never §E3.5's geometry:
+sixty of it were two `std::vector<double>` built per coupled channel per block in the
+reconstruction loop, and the rest went when both decoders' frame-scope buffers moved onto the
+decoder. There is one ceiling, 100, and no exemption.
+
+Both bare-metal legs report all of these counts identically, on different libstdc++ versions
+(GCC 14.2 for `arm-none-eabi`, 15.2 for Xtensa under ESP-IDF 6.1), as they do the peak and the
+retained bytes. The counts come from the decoders' own per-block geometry rather than from
+anything the standard library is free to vary, so a divergence between the legs would itself be
+news.
+
+The peak is what an Atmos fixture decoded **with its objects** costs — it was 179,064 before that
+fixture existed, and 449,826 when the object path was first measured. `Domain::kMdctBand`, a
+float32 `ReconstructionState`, per-object scratches sized to the stream and handing back the
+enhanced-coupling scratch between decodes took it to 233,546. Moving the decoders' frame-scope
+buffers onto the decoder — what closed the per-frame churn above — added 2,845 back, because a
+buffer's high-water capacity is now held for the decoder's lifetime rather than released each
+frame. JOC's mixing then began narrowing the frame's matrix once into a scratch of its own rather
+than at every read, 912 bytes more. The float form of the enhanced-coupling scratch, and of
+the decoder's own §E3.5 state, then gave 4,108 back, and the bit-allocation memos — each
+stream's last exponent set and allocation parameters, kept so an unchanged block reuses its
+allocation — hold 1,608 across a frame; they are built on a stream's first block, so a run's
+allocation total rises by 41 while every fixture's steady-state count above is unchanged.
+Moving a substream's object description into the access unit rather than copying it then gave
+24,600 back. 210,203 fits the 280,792 bytes an ESP32-S3 has free with 70,589 to spare - 26,188
+below the 236,391 `main` carried before this stack, and the lowest peak the probe has reported
+since objects were first reconstructed, with a quarter of the part's free SRAM unused at it.
+The 7.1.4 fixture then set a new one: 229,630, the widest programme the format has, against the
+257,572 bytes the probe's twelve-channel PCM block leaves free on the part - 27,942 to spare.
+The same stream folded to stereo is the peak now, 237,206. The peak by fixture, identical on
+both legs, measured on 2026-09-11:
+
+| Fixture | Peak heap | Allocations per frame |
+|---|---:|---:|
+| `ac3_mono` | 47,596 | 1 |
+| `ac3_stereo` | 49,304 | 1 |
+| `ac3` 5.1 | 56,421 | 3 |
+| `ac3_fold` | 58,469 | 3 |
+| `eac3_atmos_bed` | 124,903 | 20 |
+| `eac3_stereo` | 141,702 | 10 |
+| `eac3_ecpl` | 158,661 | 12 |
+| `eac3` 5.1 | 168,210 | 12 |
+| `eac3_line` | 168,286 | 12 |
+| `eac3_fold` | 174,566 | 12 |
+| `eac3_atmos_objects` | 211,371 | 31 |
+| `eac3_atmos_render` | 211,741 | 36 |
+| `eac3_714` | 230,798 | 35 |
+| `eac3_714_fold` | 237,206 | 35 |
+
+The AC-3 rows carry the 36,872 bytes of the block form's own frame (`decode_frame_by_block`: AC-3 has
+no substream vectors to hand out views of, so it keeps one frame, sized once); the E-AC-3 rows did
+not move, since that form copies nothing. Before the block forms the AC-3 rows were 10,652, 12,356
+and 19,457. The fold rows are their streams' rows plus the output stage's own buffers, a block of
+each and not a frame: for AC-3 a block of the two outputs (2,048 bytes), and for E-AC-3 a block
+of the six seats its layout fold stages the substreams' channels into (6,144), the fold itself
+going straight into the caller's first two channels. Until 2026-09-11 both were frame-long, and
+the fold rows peaked at 68,709, 217,574 and 280,214 bytes.
+ [The ESP32-S3 page](platforms/bare-metal/esp32-s3.md#objects) has what each step was worth.
+
+**Retained after teardown** is bytes still live when the probe finishes, after every decoder it
+made has been destroyed — so not per-frame growth and not a leak. It is 12 bytes now: one
+`__cxa_thread_atexit` registration record, for the pointer to enhanced coupling's spectrum scratch,
+the one `thread_local` the library still declares.
+
+It was 34,232 until the probe began calling `ac3::eac3::release_ecpl_scratch()` between fixtures,
+and 24 until the per-bin angle buffer stopped being a second `thread_local`. The 34,232 was
+enhanced coupling's 32,768-byte spectrum scratch and its 1,440-byte bin-angle vector, both
+`thread_local` so §E3.5 neither allocates per call nor puts 32 KB on the stack, and therefore
+resident for the life of a task that never exits. Bounded and paid once — but enough to decide
+whether something else fits, and it decided: object reconstruction failed on an ESP32-S3 whenever
+it ran after an enhanced-coupling decode, on a 6,144-byte request, and succeeds now that the
+scratch goes back. The scratch is 23,552 bytes on this profile now (its float form, tables
+included) and the angle buffer a stack array. Nothing could measure any of it until a fixture
+reached §E3.5.
+
+`tools/checks/run_baremetal_probe.sh` gates the image, the heap peak, the retained bytes and
+every fixture's allocation count at ceilings above these measured values, so a regression stops
+the build instead of drifting the table silently. The fixture names come from the probe's own
+output rather than a list in the script, so a fixture added and forgotten cannot pass unnoticed.
+
+### Instructions per frame
+
+`tools/checks/run_baremetal_probe.sh --icount` builds the probe with its clock on the
+mps2-an385's 25 MHz timer and runs QEMU under `-icount shift=0`, where the guest clock advances
+one nanosecond per executed instruction; the probe's microseconds are then thousands of Thumb-2
+instructions, the same on every host. Measured on the arm-none-eabi leg on 2026-09-11, `-Os`,
+soft float throughout (the leg has no FPU, so this is what a part without one pays):
+
+| Fixture | Instructions per frame | Ceiling |
+|---|---:|---:|
+| `ac3_mono` | 1,626,000 | 2,000,000 |
+| `ac3_stereo` | 3,550,000 | 4,500,000 |
+| `eac3_stereo` | 4,858,000 | 6,000,000 |
+| `eac3_atmos_bed` | 8,945,000 | 11,000,000 |
+| `ac3` 5.1 | 10,228,000 | 13,000,000 |
+| `ac3_fold` | 10,770,000 | 13,500,000 |
+| `eac3` 5.1 | 12,965,000 | 16,000,000 |
+| `eac3_line` | 13,595,000 | 17,000,000 |
+| `eac3_fold` | 14,244,000 | 17,000,000 |
+| `eac3_atmos_objects` | 28,218,000 | 35,000,000 |
+| `eac3_atmos_render` | 28,941,000 | 36,000,000 |
+| `eac3_ecpl` | 28,863,000 | 36,000,000 |
+| `eac3_714` | 33,900,000 | 42,000,000 |
+| `eac3_714_fold` | 36,040,000 | 45,000,000 |
+
+The fold is 542,000 instructions over plain AC-3 5.1, 1,279,000 over E-AC-3 5.1 and 2,140,000
+over 7.1.4: 5%, 10% and 6%. `eac3_line` is 630,000 over `eac3`, which is §7.7.1's gain and
+§5.4.2.8's normalisation on a stream carrying dynrng words and dialnorm 24; its stream is the
+5.1 one encoded with those two added. On the other rows' streams, at dialnorm 31 and with no
+dynrng words, line mode does no per-sample work, so the fold rows count the fold. The render
+row is the objects row plus the placing: 5% of its count is the render, the rest the same
+reconstruction.
+
+Not cycles on any real part: a Cortex-M3 would take more, an ESP32-S3 with its FPU takes a fifth
+of a 5.1 frame's count in cycles. What the column is for is that it is deterministic — two runs
+agree to the instruction — so a change that adds one per cent of work to a fixture shows in the
+run's own lines, and the ceilings above hold the same headroom the other gates do. The
+[ESP32-C3 page](platforms/bare-metal/esp32-c3.md) reads the ESP32-C3's prospects off it.
+
+### Instructions per frame, fixed-point tier
+
+The same clock on the same leg with the decoder built as its fixed-point tier
+(`tools/checks/run_baremetal_probe.sh --scalar=fixed --icount`,
+[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)),
+measured 2026-09-10. Integer arithmetic where the
+row above it is software floating point: a Q7.24 multiply is one `smull` and a
+shift where a soft-float one is a call. The ceilings are `ICOUNT_CEILING_FIXED`
+in the runner, with the same headroom rule as every other gate here. Both
+columns re-measured on 2026-09-11.
+
+| Fixture | Fixed tier | Float tier | Ratio | Ceiling |
+|---|---:|---:|---:|---:|
+| `ac3_mono` | 615,000 | 1,626,000 | 0.38x | 1,000,000 |
+| `ac3_stereo` | 1,245,000 | 3,550,000 | 0.35x | 2,000,000 |
+| `eac3_stereo` | 1,817,000 | 4,858,000 | 0.37x | 2,500,000 |
+| `eac3_atmos_bed` | 3,538,000 | 8,945,000 | 0.40x | 4,500,000 |
+| `ac3` 5.1 | 3,804,000 | 10,228,000 | 0.37x | 5,000,000 |
+| `ac3_fold` | 5,301,000 | 10,770,000 | 0.49x | 7,000,000 |
+| `eac3` 5.1 | 4,825,000 | 12,965,000 | 0.37x | 6,500,000 |
+| `eac3_line` | 6,273,000 | 13,595,000 | 0.46x | 7,000,000 |
+| `eac3_fold` | 7,985,000 | 14,244,000 | 0.56x | 10,500,000 |
+| `eac3_atmos_objects` | 25,091,000 | 28,218,000 | 0.89x | 31,500,000 |
+| `eac3_atmos_render` | 25,522,000 | 28,941,000 | 0.88x | 32,000,000 |
+| `eac3_ecpl` | 10,086,000 | 28,863,000 | 0.35x | 13,000,000 |
+| `eac3_714` | 12,087,000 | 33,900,000 | 0.36x | 15,500,000 |
+| `eac3_714_fold` | 17,019,000 | 36,040,000 | 0.47x | 21,500,000 |
+
+The output stage is where this tier gains least: its samples are `float` in and out, so
+every multiply-add converts a sample to Q7.24 and back and the add is software floating
+point, which is why the fold rows and `eac3_line` sit at 0.46x to 0.56x where the decode
+alone is 0.35x to 0.40x.
+
+The Annex E rows were measured twice. The tier reached them in two steps: the
+store and the transform first, with the adaptive hybrid transform, enhanced
+coupling and the spectral extension notch still running on `float` copies
+converted at the seam, and those three in the tier afterwards. What that
+second step moved:
+
+| Fixture | Tools through float | Tools in the tier |
+|---|---:|---:|
+| `eac3_ecpl` | 24,272,000 | 10,088,000 |
+| `eac3_714` | 17,650,000 | 12,092,000 |
+| `eac3` 5.1 | 6,639,000 | 4,827,000 |
+| `eac3_fold` | 9,870,000 | 8,053,000 |
+| `eac3_stereo` | 2,502,000 | 1,818,000 |
+
+Enhanced coupling is the row it was written for: three inverse transforms, a
+512-point DFT and a per-bin complex reconstruction per coupled channel per
+block, all of it software floating point before and integer after.
+
+The two object rows moved by neither step, and that is not the tier's doing.
+JOC's reconstruction runs in `float` in every build of this library, the
+double one included (`recon_scalar_t` in `ac3/oba/joc.hpp`), so an object row
+is a float transform sandwich whatever the decoder's own scalar is; the tier's
+only contact with it is one conversion per matrix coefficient read. Bringing
+it in would be a fixed forward MDCT and a fixed QMF path - a separate piece of
+work with its own quality question, and one that would change nothing for the
+other two tiers.
+
+The image is 364,685 bytes against the float tier's 352,101 - the fixed
+transform's tables and kernel beside the float ones the object path still
+needs - and the peak heap 244,502 on this leg, the 7.1.4 fold (238,094 for
+7.1.4 as coded). The `pcm_hash` lines
+are identical on this leg and on the x86 host for all fourteen fixtures and are
+pinned in `tests/golden/fixed-probe-pcm-hashes.json`
+(`tools/checks/check_probe_hashes.py`); with the scalar's conversions from
+`float` and `double` written as floating expressions the two legs had differed
+by a raw unit on a few AC-3 samples, and writing them on the value's bits
+(`fixed32.hpp`) is what made them agree.
+
+### Instructions per encoded frame
+
+The same clock on the encode probe, `tools/checks/run_baremetal_probe.sh --encoder --icount`,
+measured 2026-09-10 on the same leg. The encoders run in the profile's scalar end to end since
+2026-09-10, soft float on this leg as the decoders are; what is left of the gap to the decode
+rows above - 1.7 to 3 times for the same layout - is the search: exponent-run planning, several
+hundred bit-allocation calls a frame, mantissa bit counts, integer work the decoder does once a
+block. The ceilings are `ICOUNT_CEILING_ENCODE` in the runner, with the same headroom as every
+other gate.
+
+| Row | Instructions per frame | Ceiling | Peak heap | Allocations per frame |
+|---|---:|---:|---:|---:|
+| `ac3_stereo` 2/0, 192 kbit/s | 9,136,000 | 16,000,000 | 52,707 | 34 |
+| `eac3_stereo` 2/0, 192 kbit/s | 12,683,000 | 30,000,000 | 79,894 | 76 |
+| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 16,920,000 | 31,000,000 | 143,037 | 47 |
+| `ac3` 5.1, 448 kbit/s | 24,866,000 | 43,000,000 | 110,918 | 67 |
+| `eac3` 5.1, 384 kbit/s | 33,207,000 | 78,000,000 | 158,602 | 173 |
+| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 48,217,000 | 104,000,000 | 130,887 | 87 |
+
+The three 2/0 rows are new with the timing; the encode image is 225,357 bytes with them
+(157,136 `.text`, 400 `.data`, 67,821 `.bss`): the rows, the stage timers' application half
+(an encode image links it now that the probe reports its stages) and the 64-zone table, and the
+encoders' float forms beside the double ones - smaller than the image with the front end alone
+in `float` (242,589), the `double` software routines the rest of the encoder had pulled in
+having gone with it. The counts fell a further 8% to 12% when the rate-control search and the
+exponent-run planner were made cheaper (the ESP32-S3 page's Encoding section); the peaks rose
+by the cached masking curves, some 200 bytes a run. [Building](building.md#what-the-encode-direction-costs)
+has what the encode direction cannot fit on an ESP32-S3, with the host profile's numbers.
 
 <div id="memory-trend-app">
   <p class="performance-trend-status">Loading memory trend data…</p>
@@ -729,13 +1136,16 @@ the table silently.
   const root = document.getElementById("memory-trend-app");
 
   async function fetchBranch(branch) {
-    try {
-      const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, `memory-${branch}.jsonl`));
-      if (!resp.ok) return [];
-      return perfTrendParseJsonl(await resp.text());
-    } catch (e) {
-      return [];
+    for (const file of [`memory-${branch}.recent.jsonl`, `memory-${branch}.jsonl`]) {
+      try {
+        const resp = await fetch(perfTrendRawUrl(PERF_TREND_HISTORY_BRANCH, file));
+        if (!resp.ok) continue;
+        return perfTrendParseJsonl(await resp.text());
+      } catch (e) {
+        // fall through to the authoritative full history
+      }
     }
+    return [];
   }
 
   function formatBytes(b) {

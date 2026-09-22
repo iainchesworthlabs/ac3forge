@@ -140,6 +140,10 @@ constexpr std::uint8_t kPesStreamIdPrivateStream1 = 0xBD;
 constexpr std::uint8_t kTagDvbAc3Descriptor = 0x6A;
 // ETSI EN 300 468 Annex D.4, Table D.7.
 constexpr std::uint8_t kTagDvbEnhancedAc3Descriptor = 0x7A;
+// ETSI EN 300 468 §6.1: the extension descriptor, whose first payload byte
+// selects the actual descriptor. Annex D.7 registers AC-4 as extension 0x15.
+constexpr std::uint8_t kTagDvbExtensionDescriptor = 0x7F;
+constexpr std::uint8_t kExtensionTagAc4 = 0x15;
 // A/52:2018 Annex A §A4.3, Table A4.1: "The value for the AC-3
 // descriptor tag is 0x81."
 constexpr std::uint8_t kTagAtscAc3Descriptor = 0x81;
@@ -171,7 +175,7 @@ constexpr std::uint8_t kTagAtscEac3Descriptor = 0xCC;
 // pin it, honour them; where they do not, an unqualified visually-impaired,
 // hearing-impaired or commentary service is normally complete on its own.
 [[nodiscard]] bool full_service(int bsmod, int acmod, std::optional<bool> override_value) {
-    if (override_value) {
+    if (override_value.has_value()) {
         return *override_value;
     }
     switch (bsmod) {
@@ -237,7 +241,7 @@ void put_descriptor_header(Bytes& d, std::uint8_t tag, std::size_t payload_bytes
     const bool multiple = eac3 && (s.independent_substreams & 0xFEu) != 0;
     const auto flags = channel_flags(s.acmod, s.lfe, s.channels, s.dsurmod, multiple,
                                      ChannelFlagLimits{.wide = eac3, .programmes = eac3});
-    if (!flags) {
+    if (!flags.has_value()) {
         return std::nullopt;
     }
     const unsigned value = (eac3 ? 0x80u : 0x00u) |
@@ -256,7 +260,7 @@ void put_descriptor_header(Bytes& d, std::uint8_t tag, std::size_t payload_bytes
     // A substream's own bed is all its acmod describes, so no "> 5.1" rung.
     const auto flags = channel_flags(s.acmod, s.lfe, /*channels=*/0, s.dsurmod,
                                      /*multiple_programmes=*/false, ChannelFlagLimits{});
-    if (!flags) {
+    if (!flags.has_value()) {
         return std::nullopt;
     }
     const unsigned value = (s.mix_metadata ? 0x80u : 0x00u) |
@@ -288,7 +292,7 @@ void put_descriptor_header(Bytes& d, std::uint8_t tag, std::size_t payload_bytes
     const auto flags = channel_flags(s.acmod, s.lfe, /*channels=*/0, s.dsurmod,
                                      /*multiple_programmes=*/false,
                                      ChannelFlagLimits{.dual_mono = false});
-    if (!flags) {
+    if (!flags.has_value()) {
         return std::nullopt;  // Table G.6 reserves 1+1
     }
     const unsigned value = 0x80u | (s.substream_priority ? 0x40u : 0x00u) |
@@ -304,26 +308,26 @@ Bytes build_dvb_ac3_descriptor(const ServiceInfo& s) {
     const auto component_type = dvb_component_type(s, /*eac3=*/false);
     Bytes body;
     unsigned flags = 0;
-    if (component_type) {
+    if (component_type.has_value()) {
         flags |= 0x80u;
     }
     flags |= 0x40u;  // bsid_flag
-    if (s.mainid) {
+    if (s.mainid.has_value()) {
         flags |= 0x20u;
     }
-    if (s.asvc) {
+    if (s.asvc.has_value()) {
         flags |= 0x10u;
     }
     // reserved_flags (b3-b0) "should always be set to 0b0".
     put_byte(body, static_cast<std::uint8_t>(flags));
-    if (component_type) {
+    if (component_type.has_value()) {
         put_byte(body, *component_type);
     }
     put_byte(body, static_cast<std::uint8_t>(s.bsid & 0x1F));
-    if (s.mainid) {
+    if (s.mainid.has_value()) {
         put_byte(body, static_cast<std::uint8_t>(*s.mainid & 0x7));
     }
-    if (s.asvc) {
+    if (s.asvc.has_value()) {
         put_byte(body, *s.asvc);
     }
 
@@ -347,14 +351,14 @@ Bytes build_dvb_eac3_descriptor(const ServiceInfo& s) {
 
     Bytes body;
     unsigned flags = 0;
-    if (component_type) {
+    if (component_type.has_value()) {
         flags |= 0x80u;
     }
     flags |= 0x40u;  // bsid_flag
-    if (s.mainid) {
+    if (s.mainid.has_value()) {
         flags |= 0x20u;
     }
-    if (s.asvc) {
+    if (s.asvc.has_value()) {
         flags |= 0x10u;
     }
     if (s.mix_metadata) {
@@ -366,18 +370,18 @@ Bytes build_dvb_eac3_descriptor(const ServiceInfo& s) {
         }
     }
     put_byte(body, static_cast<std::uint8_t>(flags));
-    if (component_type) {
+    if (component_type.has_value()) {
         put_byte(body, *component_type);
     }
     put_byte(body, static_cast<std::uint8_t>(s.bsid & 0x1F));
-    if (s.mainid) {
+    if (s.mainid.has_value()) {
         put_byte(body, static_cast<std::uint8_t>(*s.mainid & 0x7));
     }
-    if (s.asvc) {
+    if (s.asvc.has_value()) {
         put_byte(body, *s.asvc);
     }
     for (const auto& substream : substreams) {
-        if (substream) {
+        if (substream.has_value()) {
             put_byte(body, *substream);
         }
     }
@@ -481,10 +485,10 @@ Bytes build_atsc_eac3_descriptor(const ServiceInfo& s) {
     // Byte 1: reserved '1', then bsid_flag, mainid_flag, asvc_flag,
     // mixinfoexists, substream1_flag, substream2_flag, substream3_flag.
     unsigned flags = 0x80u | 0x40u;  // reserved '1', bsid_flag
-    if (s.mainid) {
+    if (s.mainid.has_value()) {
         flags |= 0x20u;
     }
-    if (s.asvc) {
+    if (s.asvc.has_value()) {
         flags |= 0x10u;
     }
     if (s.mix_metadata) {
@@ -506,17 +510,17 @@ Bytes build_atsc_eac3_descriptor(const ServiceInfo& s) {
                        static_cast<unsigned>(flags_value.value_or(0x4))));
     // Byte 3: language_flag = 0, language_flag_2 = 0, reserved, bsid.
     put_byte(body, static_cast<std::uint8_t>(0x20u | (s.bsid & 0x1F)));
-    if (s.mainid) {
+    if (s.mainid.has_value()) {
         // reserved '111', priority (Table A4.6, which Annex G reuses), mainid.
         put_byte(body, static_cast<std::uint8_t>(0xE0u |
                                                  ((static_cast<unsigned>(s.priority) & 0x3u) << 3) |
                                                  (static_cast<unsigned>(*s.mainid) & 0x7u)));
     }
-    if (s.asvc) {
+    if (s.asvc.has_value()) {
         put_byte(body, *s.asvc);
     }
     for (const auto& substream : substreams) {
-        if (substream) {
+        if (substream.has_value()) {
             put_byte(body, *substream);
         }
     }
@@ -527,7 +531,283 @@ Bytes build_atsc_eac3_descriptor(const ServiceInfo& s) {
     return d;
 }
 
+// --- Reading the four descriptors back: parse_service_descriptor -----------
+//
+// One parser per builder above, in the same order, each the literal inverse
+// of its own bit layout - see the builder's own comments for the field
+// widths and why each one lands where it does. `body` is the descriptor's
+// payload only, after its 2-byte tag+length header, exactly as
+// select_from_pmt() in reader.cpp already has it in hand once it locates the
+// tag. std::nullopt for a body too short for what its own flags claim -
+// never a guessed value, matching every other "malformed" case this reader
+// already refuses.
+//
+// None of these populate acmod/channels/lfe/dsurmod (AC-3's descriptor does
+// not even have a dsurmod field to omit) beyond what a caller gets for free
+// from ServiceInfo's own defaults - channel_flags() is a many-to-one summary
+// forward, so there is no exact acmod to recover backward. See
+// parse_service_descriptor's own declaration in mpegts.hpp.
+
+[[nodiscard]] std::uint8_t byte_at(std::span<const std::byte> data, std::size_t at) {
+    return std::to_integer<std::uint8_t>(data[at]);
+}
+
+// Table D.8/D.9's per-substream byte: mix_metadata(1) full_service(1,
+// unstored - SubstreamService has no override field for it) svc(3)
+// channel_flags(3, unstored). Called only once the caller has already
+// confirmed the byte is present.
+[[nodiscard]] SubstreamService parse_dvb_substream_byte(std::uint8_t b) {
+    SubstreamService s{};
+    s.present = true;
+    s.mix_metadata = (b & 0x80u) != 0;
+    s.bsmod = (b >> 3) & 0x7;
+    s.bsmod_present = true;
+    return s;
+}
+
+// Table G.4's per-substream byte: reserved(1) substream_priority(1) svc(3)
+// channel_flags(3, unstored).
+[[nodiscard]] SubstreamService parse_atsc_substream_byte(std::uint8_t b) {
+    SubstreamService s{};
+    s.present = true;
+    s.substream_priority = (b & 0x40u) != 0;
+    s.bsmod = (b >> 3) & 0x7;
+    s.bsmod_present = true;
+    return s;
+}
+
+// The inverse of build_dvb_ac3_descriptor.
+[[nodiscard]] std::optional<ServiceInfo> parse_dvb_ac3_descriptor(std::span<const std::byte> body) {
+    if (body.empty()) {
+        return std::nullopt;
+    }
+    const auto flags = byte_at(body, 0);
+    ServiceInfo out{};
+    out.bsmod_present = false;
+    std::size_t at = 1;
+    if ((flags & 0x80u) != 0) {  // component_type_flag
+        if (at >= body.size()) {
+            return std::nullopt;
+        }
+        const auto component_type = byte_at(body, at++);
+        out.bsmod = (component_type >> 3) & 0x7;
+        out.bsmod_present = true;
+        out.full_service = ((component_type >> 6) & 0x1) != 0;
+    }
+    if ((flags & 0x40u) != 0) {  // bsid_flag
+        if (at >= body.size()) {
+            return std::nullopt;
+        }
+        out.bsid = byte_at(body, at++) & 0x1F;
+    }
+    if ((flags & 0x20u) != 0) {  // mainid_flag
+        if (at >= body.size()) {
+            return std::nullopt;
+        }
+        out.mainid = byte_at(body, at++) & 0x7;
+    }
+    if ((flags & 0x10u) != 0) {  // asvc_flag
+        if (at >= body.size()) {
+            return std::nullopt;
+        }
+        out.asvc = byte_at(body, at++);
+    }
+    return out;
+}
+
+// The inverse of build_dvb_eac3_descriptor.
+[[nodiscard]] std::optional<ServiceInfo> parse_dvb_eac3_descriptor(
+    std::span<const std::byte> body) {
+    if (body.empty()) {
+        return std::nullopt;
+    }
+    const auto flags = byte_at(body, 0);
+    ServiceInfo out{};
+    out.bsmod_present = false;
+    std::size_t at = 1;
+    if ((flags & 0x80u) != 0) {  // component_type_flag
+        if (at >= body.size()) {
+            return std::nullopt;
+        }
+        const auto component_type = byte_at(body, at++);
+        out.bsmod = (component_type >> 3) & 0x7;
+        out.bsmod_present = true;
+        out.full_service = ((component_type >> 6) & 0x1) != 0;
+    }
+    if ((flags & 0x40u) != 0) {  // bsid_flag
+        if (at >= body.size()) {
+            return std::nullopt;
+        }
+        out.bsid = byte_at(body, at++) & 0x1F;
+    }
+    if ((flags & 0x20u) != 0) {  // mainid_flag
+        if (at >= body.size()) {
+            return std::nullopt;
+        }
+        out.mainid = byte_at(body, at++) & 0x7;
+    }
+    if ((flags & 0x10u) != 0) {  // asvc_flag
+        if (at >= body.size()) {
+            return std::nullopt;
+        }
+        out.asvc = byte_at(body, at++);
+    }
+    out.mix_metadata = (flags & 0x08u) != 0;
+    // Bit 0 (I0) is always present by definition; bits 1-3 (I1-I3) follow
+    // exactly the substream flags below - the only independent substreams
+    // either registry's descriptor can name at all (Table D.8's own limit).
+    out.independent_substreams = 0x01;
+    for (std::size_t i = 0; i < out.associated_substreams.size(); ++i) {
+        const auto substream_flag = static_cast<std::uint8_t>(0x04u >> i);
+        if ((flags & substream_flag) != 0) {
+            if (at >= body.size()) {
+                return std::nullopt;
+            }
+            out.associated_substreams[i] = parse_dvb_substream_byte(byte_at(body, at++));
+            out.independent_substreams =
+                static_cast<std::uint8_t>(out.independent_substreams | (1u << (i + 1)));
+        }
+    }
+    return out;
+}
+
+// The inverse of build_atsc_ac3_descriptor. Unlike the DVB pair above, this
+// one is gated by LENGTH past a termination point rather than by flag bits -
+// see the builder's own comment on Table A4.1's "allowable termination
+// points" - so this walks the same fixed offsets forward rather than
+// checking flags. It never needs to parse the trailing textlen/text/
+// language fields the builder never writes and ServiceInfo has nowhere to
+// put anyway: the mainid/asvcflags byte's own offset is fully determined by
+// num_channels alone, before any of that.
+[[nodiscard]] std::optional<ServiceInfo> parse_atsc_ac3_descriptor(
+    std::span<const std::byte> body) {
+    if (body.size() < 3) {
+        return std::nullopt;
+    }
+    const auto b0 = byte_at(body, 0);
+    const auto b1 = byte_at(body, 1);
+    const auto b2 = byte_at(body, 2);
+    ServiceInfo out{};
+    out.sample_rate_code = (b0 >> 5) & 0x7;
+    out.bsid = b0 & 0x1F;
+    out.bit_rate_code = (b1 >> 2) & 0x3F;
+    out.dsurmod = b1 & 0x3;
+    const int svc = (b2 >> 5) & 0x7;
+    const int num_channels_field = (b2 >> 1) & 0xF;
+    out.bsmod = svc;
+    out.bsmod_present = true;
+    out.full_service = (b2 & 0x1u) != 0;
+
+    if (body.size() == 3) {
+        return out;  // the plain three-byte form: no service association sent
+    }
+    std::size_t at = 3;
+    ++at;  // langcod - always present once extended, deprecated, never stored
+    if (num_channels_field == 0 && at < body.size()) {
+        ++at;  // langcod2, dual-mono (1+1) only
+    }
+    if (at >= body.size()) {
+        return std::nullopt;  // longer than 3 bytes but the association byte is missing
+    }
+    const auto assoc = byte_at(body, at);
+    // Table A4.1 branches on the literal svc value, not on "is this a main
+    // service" - build_atsc_ac3_descriptor's own comment on why bsmod 7
+    // (karaoke) still takes the asvcflags branch here despite being a MAIN
+    // service by Table 5.7. Reading it back the same way is what keeps this
+    // in sync with whatever a real ATSC encoder (this one included) wrote.
+    if (svc < 0x2) {
+        out.mainid = (assoc >> 5) & 0x7;
+        out.priority = (assoc >> 3) & 0x3;
+    } else {
+        out.asvc = assoc;
+    }
+    return out;
+}
+
+// The inverse of build_atsc_eac3_descriptor - flag-gated throughout, unlike
+// its AC-3 sibling, so no termination-point walking is needed here.
+[[nodiscard]] std::optional<ServiceInfo> parse_atsc_eac3_descriptor(
+    std::span<const std::byte> body) {
+    if (body.size() < 3) {
+        return std::nullopt;
+    }
+    const auto flags = byte_at(body, 0);
+    const auto b1 = byte_at(body, 1);
+    const auto b2 = byte_at(body, 2);
+    ServiceInfo out{};
+    const int svc = (b1 >> 3) & 0x7;
+    out.bsmod = svc;
+    out.bsmod_present = true;
+    out.full_service = (b1 & 0x40u) != 0;
+    out.mix_metadata = (flags & 0x08u) != 0;
+    out.bsid = b2 & 0x1F;
+
+    std::size_t at = 3;
+    if ((flags & 0x20u) != 0) {  // mainid_flag
+        if (at >= body.size()) {
+            return std::nullopt;
+        }
+        const auto assoc = byte_at(body, at++);
+        out.mainid = assoc & 0x7;
+        out.priority = (assoc >> 3) & 0x3;
+    }
+    if ((flags & 0x10u) != 0) {  // asvc_flag
+        if (at >= body.size()) {
+            return std::nullopt;
+        }
+        out.asvc = byte_at(body, at++);
+    }
+    out.independent_substreams = 0x01;
+    for (std::size_t i = 0; i < out.associated_substreams.size(); ++i) {
+        const auto substream_flag = static_cast<std::uint8_t>(0x04u >> i);
+        if ((flags & substream_flag) != 0) {
+            if (at >= body.size()) {
+                return std::nullopt;
+            }
+            out.associated_substreams[i] = parse_atsc_substream_byte(byte_at(body, at++));
+            out.independent_substreams =
+                static_cast<std::uint8_t>(out.independent_substreams | (1u << (i + 1)));
+        }
+    }
+    return out;
+}
+
+// EN 300 468 Annex D.7's AC-4_descriptor, inside a §6.1 extension
+// descriptor. The body after the extension tag is one flag byte:
+// ac4_config_flag(1) toc_flag(1) reserved_zero_future_use(6), both flags
+// clear - the descriptor's job here is identification (the DVB pattern the
+// module header describes: stream_type 0x06 says nothing, the descriptor
+// IS the identification), and the configuration it could inline is exactly
+// what every frame's own TOC already carries. ServiceOptions' AC-3-shaped
+// fields describe elements this descriptor has no syntax for and are not
+// consulted.
+[[nodiscard]] Bytes build_dvb_ac4_descriptor() {
+    Bytes d;
+    // A registration_descriptor (ISO/IEC 13818-1 par. 2.6.8) with
+    // format_identifier 'AC-4' rides FIRST, beside the normative DVB
+    // signalling rather than instead of it: it is what FFmpeg's own MPEG-TS
+    // demuxer keys AC-4 on (verified - without it, ffprobe reports the PID
+    // as bin_data), the same belt-and-braces interop this module's READER
+    // already extends to 'AC-3'/'EAC3' registrations from other muxers.
+    put_descriptor_header(d, 0x05, 4);
+    d.push_back(std::byte{'A'});
+    d.push_back(std::byte{'C'});
+    d.push_back(std::byte{'-'});
+    d.push_back(std::byte{'4'});
+
+    Bytes body;
+    put_byte(body, kExtensionTagAc4);  // descriptor_tag_extension
+    put_byte(body, 0x00);              // ac4_config_flag=0, toc_flag=0, reserved
+    put_descriptor_header(d, kTagDvbExtensionDescriptor, body.size());
+    d.insert(d.end(), body.begin(), body.end());
+    return d;
+}
+
 [[nodiscard]] Bytes build_descriptor(const AudioTrack& track, BroadcastProfile profile) {
+    if (track.codec == AudioCodec::kAc4) {
+        // mux() has already refused kAtsc for this codec.
+        return build_dvb_ac4_descriptor();
+    }
     const bool eac3 = track.codec == AudioCodec::kEac3;
     if (profile == BroadcastProfile::kAtsc) {
         return eac3 ? build_atsc_eac3_descriptor(track.service)
@@ -539,6 +819,8 @@ Bytes build_atsc_eac3_descriptor(const ServiceInfo& s) {
 
 [[nodiscard]] std::uint8_t stream_type_for(const AudioTrack& track, BroadcastProfile profile) {
     if (profile != BroadcastProfile::kAtsc) {
+        // DVB: 0x06 for all three codecs - the descriptor is the
+        // identification (AC-4's included, EN 300 468 Annex D.7.1).
         return kStreamTypePrivateData;
     }
     return track.codec == AudioCodec::kEac3 ? kStreamTypeAtscEac3 : kStreamTypeAtscAc3;
@@ -774,6 +1056,27 @@ void emit_pes_packets(Bytes& out, std::uint16_t pid, std::uint8_t& cc,
 
 }  // namespace
 
+std::optional<ServiceInfo> parse_service_descriptor(std::uint8_t tag, std::span<const std::byte> body) {
+    // detail:: qualified only for the two ATSC tags, which - unlike the DVB
+    // pair - are declared BOTH here (this file's own anonymous namespace,
+    // used by the builders above) and in ts_detail.hpp (shared with
+    // reader.cpp, which has no local copy of its own to collide with); this
+    // function sits outside that anonymous namespace, where both become
+    // visible unqualified and genuinely ambiguous - same value either way.
+    switch (tag) {
+        case kTagDvbAc3Descriptor:
+            return parse_dvb_ac3_descriptor(body);
+        case kTagDvbEnhancedAc3Descriptor:
+            return parse_dvb_eac3_descriptor(body);
+        case detail::kTagAtscAc3Descriptor:
+            return parse_atsc_ac3_descriptor(body);
+        case detail::kTagAtscEac3Descriptor:
+            return parse_atsc_eac3_descriptor(body);
+        default:
+            return std::nullopt;
+    }
+}
+
 std::string_view describe(MuxError error) {
     switch (error) {
         case MuxError::kNoFrames:
@@ -799,6 +1102,11 @@ std::expected<std::vector<std::byte>, MuxError> mux(
     }
     if (options.pmt_pid == options.audio_pid || options.pmt_pid == kPatPid ||
         options.audio_pid == kPatPid) {
+        return std::unexpected(MuxError::kInvalidOptions);
+    }
+    if (track.codec == AudioCodec::kAc4 && options.profile == BroadcastProfile::kAtsc) {
+        // ATSC never registered AC-4 for MPEG-2 TS (A/342-2 is ATSC 3.0's
+        // ROUTE/MMT, not 13818-1) - refusing beats inventing a stream_type.
         return std::unexpected(MuxError::kInvalidOptions);
     }
 
@@ -834,7 +1142,7 @@ std::expected<std::vector<std::byte>, MuxError> mux(
 
         const auto pts = stamp_90k(i);
         auto pes = build_pes_packet(frames[i], pts);
-        if (!pes) {
+        if (!pes.has_value()) {
             return std::unexpected(pes.error());
         }
         emit_pes_packets(out, options.audio_pid, audio_cc, *pes, pts);
@@ -859,6 +1167,11 @@ std::expected<Writer, MuxError> Writer::create(const AudioTrack& track,
     }
     if (options.pmt_pid == options.audio_pid || options.pmt_pid == kPatPid ||
         options.audio_pid == kPatPid) {
+        return std::unexpected(MuxError::kInvalidOptions);
+    }
+    if (track.codec == AudioCodec::kAc4 && options.profile == BroadcastProfile::kAtsc) {
+        // ATSC never registered AC-4 for MPEG-2 TS (A/342-2 is ATSC 3.0's
+        // ROUTE/MMT, not 13818-1) - refusing beats inventing a stream_type.
         return std::unexpected(MuxError::kInvalidOptions);
     }
     const Bytes descriptor = build_descriptor(track, options.profile);
@@ -891,7 +1204,7 @@ std::expected<std::vector<std::byte>, MuxError> Writer::push(
     const std::uint64_t pts = static_cast<std::uint64_t>(index_) * track_.samples_per_frame *
                               90'000ull / track_.sample_rate;
     auto pes = build_pes_packet(access_unit, pts);
-    if (!pes) {
+    if (!pes.has_value()) {
         return std::unexpected(pes.error());
     }
     emit_pes_packets(out, options_.audio_pid, audio_cc_, *pes, pts);

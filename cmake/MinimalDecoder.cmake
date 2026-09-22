@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # MinimalDecoder.cmake
 #
-# Roadmap PF7: the minimum-footprint decoder profile. AC3FORGE_MINIMAL_DECODER
+# minimum-footprint decoder profile: the minimum-footprint decoder profile. AC3FORGE_MINIMAL_DECODER
 # turns src/forge into a single decode-only static library
 # (ac3::forge_minimal) built for a target that has a few hundred kilobytes of
 # RAM and no operating system - a set-top box, a receiver, a DSP port.
@@ -22,12 +22,13 @@
 #
 #   - -fno-exceptions -fno-rtti. The codec's own error mechanism is
 #     std::expected throughout - it has no throw, no try and no catch of its
-#     own (tools/checks/check_minimal_decoder.py asserts that on the sources
-#     this profile compiles). What remains are the standard library's own
-#     throw sites, which with -fno-exceptions become calls to std::terminate:
-#     std::vector's length_error/bad_alloc. See docs/building.md's gap note -
-#     this profile removes the exception TABLES, it does not remove the
-#     allocation.
+#     own, and -fno-exceptions is what asserts it: a throw, try or catch in
+#     the sources this profile compiles fails this build, which the QEMU leg
+#     runs through tools/checks/run_baremetal_probe.sh. What remains are the
+#     standard library's own throw sites, which with -fno-exceptions become
+#     calls to std::terminate: std::vector's length_error/bad_alloc. See
+#     docs/building.md's gap note - this profile removes the exception TABLES,
+#     it does not remove the allocation.
 #
 #   - -ffunction-sections -fdata-sections, and --gc-sections when linking an
 #     executable, so an integrator linking a subset pays for a subset.
@@ -37,14 +38,14 @@
 # extern "C" can throw, and no MSVC target this profile is aimed at exists.
 # ---------------------------------------------------------------------------
 
-if(NOT AC3FORGE_MINIMAL_DECODER)
+if(NOT AC3FORGE_MINIMAL_DECODER AND NOT AC3FORGE_MINIMAL_ENCODER)
     return()
 endif()
 
 if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
         CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang"))
     message(FATAL_ERROR
-        "AC3FORGE_MINIMAL_DECODER needs GCC or Clang; the active compiler is "
+        "The minimum-footprint profile needs GCC or Clang; the active compiler is "
         "${CMAKE_CXX_COMPILER_ID}. See cmake/MinimalDecoder.cmake for why MSVC is not "
         "approximated here.")
 endif()

@@ -52,13 +52,13 @@ ColumnLayout {
             Text {
                 text: qsTr("Quality")
                 color: Theme.neutral600
-                font.pixelSize: 10
+                font.pixelSize: Theme.fontMicro
             }
             Item { Layout.fillWidth: true }
             Text {
                 text: qsTr("%1 / 100").arg(EncoderController.vbrQuality)
                 color: Theme.text
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontMono
                 font.family: Theme.monoFamily
             }
         }

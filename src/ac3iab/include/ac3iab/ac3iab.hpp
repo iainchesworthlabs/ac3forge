@@ -14,7 +14,7 @@
 // Top-level entry points for ac3iab::ac3iab: parses SMPTE ST 2098-2:2022's Immersive Audio
 // Bitstream into an IaFrame per frame (see model.hpp for the full element graph).
 //
-// Roadmap item IM1 phase 1 of 3 (see ROADMAP.md's "IAB (SMPTE ST 2098-2) reader" entry): a
+// Roadmap item IM1 phase 1 of 3 ('s "IAB (SMPTE ST 2098-2) reader" entry): a
 // standalone bitstream reader, the "codec-blind" shape matroska::matroska, mp4::mp4 and
 // mpegts::mpegts already use for their own containers (bare `include/ac3iab/` prefix, not
 // `ac3/ac3iab/` - see CONTRIBUTING.md's repository-layout section on what that prefix means).

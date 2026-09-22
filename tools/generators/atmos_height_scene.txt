@@ -1,0 +1,16 @@
+# The eac3_atmos_height fixture's object placement, for atmos-encode
+# (tools/generators/gen_baremetal_fixture.py). The objects source's five
+# channels each become an object; the ones named here are raised - three to
+# the ceiling and one half way up at the rear - so that the footprint probe's
+# eac3_atmos_render row has signal to place on a 7.1.4 layout's four height
+# targets and on the elevation crossfade between the two rings. Object 1 keeps
+# atmos-encode's default placement on the listener plane.
+#
+# Columns, as ac3cli's atmos-path/atmos-encode keyframe form has them:
+#   object_index time_s x y z gain lfe_send
+# x runs 0 (left wall) to 1 (right), y 0 (front wall) to 1 (back), z -1 (floor)
+# to 1 (ceiling); one keyframe at 0 s is a fixed position.
+0 0.0 0.2 0.2 1.0 1.0 0.0
+2 0.0 0.8 0.3 1.0 1.0 0.0
+3 0.0 0.3 0.85 1.0 1.0 0.0
+4 0.0 0.5 0.9 0.5 1.0 0.0

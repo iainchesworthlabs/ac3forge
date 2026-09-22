@@ -171,7 +171,7 @@ std::expected<std::size_t, WavError> WavStreamReader::read_planar(
     return n;
 }
 
-void WavStreamReader::close() {
+void WavStreamReader::close() noexcept {
     auto& im = *impl_;
     if (im.file.is_open()) {
         im.file.close();

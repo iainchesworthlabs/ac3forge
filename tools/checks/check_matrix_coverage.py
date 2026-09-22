@@ -89,11 +89,19 @@ REPO = Path(__file__).resolve().parent.parent.parent
 FAILURES: list[str] = []
 
 # Commands this matrix cannot reasonably drive headlessly: real capture/
-# playback hardware (record, live, devices, outputs, play, monitor, spatial)
-# or the CLI's own meta-flag (--version). Anything else that writes a stream
-# is expected to appear in the matrix.
+# playback hardware (record, live, devices, outputs, play, monitor, spatial,
+# identify) or the CLI's own meta-flag (--version). Anything else that writes
+# a stream is expected to appear in the matrix.
+#
+# identify writes no file at all - it plays a tone through an output and
+# prints which speaker each rendered channel reached, so there is nothing for
+# a matrix to check and nothing to check it with on a runner with no sound
+# card. What can be checked without one is in tests/audio/test_pcm_output.cpp
+# (the width and the patch it chooses, against fake device records); the
+# playing itself is the hidden [.][monitor-live] case and real hardware.
 EXCLUDED_COMMANDS = {
     "--version", "record", "live", "devices", "outputs", "play", "monitor", "spatial",
+    "identify",
 }
 
 # No CLI introspection exists for this one - see the module docstring.
@@ -143,7 +151,12 @@ def layout_names(cli: str, tmp: Path, command: str) -> set[str]:
     probe = tmp / "layout_probe.out"
     _, _, err = run(cli, command, str(probe), "1", "192", "1000", "50",
                      "__coverage_probe__")
-    m = re.search(r"unknown layout '.*?' \((.*)\)\s*$", err.strip())
+    # '[^']*' rather than '.*?' for the name: a layout name can never itself
+    # contain a quote, so this closes the ambiguity between the name and the
+    # trailing "(...)" that made the lazy/greedy pair super-linear on
+    # adversarial input, without touching the deliberately-greedy-to-the-
+    # last-paren group below.
+    m = re.search(r"unknown layout '[^']*' \((.*)\)\s*$", err.strip())
     if not m:
         raise SystemExit(f"could not parse a layout list from `{command}`'s error output:\n{err}")
     return {token.strip() for token in m.group(1).split("|")}
@@ -165,7 +178,10 @@ def tool_names(cli: str, tmp: Path) -> set[str]:
     # greedy-matching to the LAST ')' on the line grabs the whole thing,
     # nested parenthetical included; stripping each split token at its own
     # first '(' then discards that explanatory tail per-token.
-    m = re.search(r"unknown tool set '.*?' \((.*)\)\s*$", err.strip())
+    # See layout_names()'s identical note: '[^']*' instead of '.*?' for the
+    # name removes the super-linear ambiguity without touching the
+    # greedy-to-the-last-paren capture the comment above documents.
+    m = re.search(r"unknown tool set '[^']*' \((.*)\)\s*$", err.strip())
     if not m:
         raise SystemExit(f"could not parse a tool list from eac3-encode's error output:\n{err}")
     tokens = set()
@@ -231,7 +247,11 @@ def matrix_tool_tokens(matrix_text: str) -> set[str]:
     # set that has no FFmpeg oracle) - 'tpn' is canonical and reachable only
     # from the third, so this deliberately finds them all rather than a fixed
     # pair.
-    for body in re.findall(r"^\s*for\s+tools\s+in\s+(.*?)\s*;\s*do\b", text, re.M):
+    # No '\s*' between the capture and ';': matrix_tool_tokens' own re-tokenize
+    # step below (\S+) already discards any whitespace this group picks up,
+    # so the two adjacent whitespace-matching quantifiers the original had
+    # here bought nothing but the super-linear backtracking Sonar flagged.
+    for body in re.findall(r"^\s*for\s+tools\s+in\s+(.*?);\s*do\b", text, re.M):
         fields.extend(re.findall(r'"[^"]*"|\'[^\']*\'|\S+', body))
     # The tools argument of a literal `run eac3-encode <wav> <out> <rate>
     # <tools> <layout>` call.

@@ -22,7 +22,7 @@
 // built its own. ac3cli's atmos-path grew a keyframe-file grammar; the GUI's
 // timeline grew a parallel one it exports in that grammar; the
 // station-broadcast example hard-codes a cue table in C++; a live position
-// source (ROADMAP UX4) would have grown a third. This is the one description
+// source (live OSC object positions) would have grown a third. This is the one description
 // they share.
 //
 // Scope, deliberately: this is METADATA AND AUTHORING. A scene says where an
@@ -228,7 +228,7 @@ struct SceneUpdate {
 // The scene as a live surface: the authored timeline underneath, with
 // per-object overrides on top for as long as something is driving them.
 //
-// This is the seam a live position source (ROADMAP UX4 - OSC, MIDI, a game
+// This is the seam a live position source (live OSC object positions - OSC, MIDI, a game
 // controller) and the GUI's live room plug into, and the reason the scene type
 // is not just a static table. An overridden object ignores its automation and
 // reports whatever was last pushed; release() hands it back to the timeline.

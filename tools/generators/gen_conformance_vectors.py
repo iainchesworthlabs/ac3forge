@@ -1,4 +1,4 @@
-"""Conformance vector set generator (roadmap VX20).
+"""Conformance vector set generator (conformance vectors publication).
 
 Builds the versioned bundle of AC-3 / E-AC-3 / Atmos streams this project
 publishes as a release artifact, so another decoder implementer has something
@@ -24,9 +24,10 @@ section, which this script writes.
 Reproducibility: run it twice on one machine and every hash matches, which is
 what --check-determinism asserts. Hashes do NOT carry across compilers or
 architectures - docs/building.md records a measured cross-toolchain
-difference, and the arm64 legs sit 6 dB off the x86 gold numbers (roadmap
-VX11/VX12) - so the manifest records the exact toolchain that produced it and
-a consumer compares hashes only against a bundle built the same way.
+difference, and the arm64 legs sit 6 dB off the x86 gold numbers
+(cross-platform bitstream reproducibility) - so the manifest records the
+exact toolchain that produced it and a consumer compares hashes only against
+a bundle built the same way.
 
 Usage (repo root, after a build):
 
@@ -96,7 +97,7 @@ UNMODELLED_TOOLS = ("ecpl", "tpn")
 # first principles rather than by resampling or by decoding one of our own
 # encodes. Stdlib only, and deterministic - a fixed seed per channel.
 #
-# Roadmap VX7 will add redistributable (CC0) speech and music beside the
+# legacy item VX7 will add redistributable (CC0) speech and music beside the
 # synthetic fixtures. When it lands, this is where those files join the set;
 # until then every vector's source is synthetic, which the README states
 # plainly because it bounds what the set proves.
@@ -178,12 +179,17 @@ def write_pcm16(path: Path, channels: list[list[float]], rate: int) -> None:
 # --------------------------------------------------------------------------
 
 
+# The one Vector.codec value naming an Annex-E-tools-plus-objects stream,
+# rather than a plain "AC-3" / "E-AC-3" one.
+CODEC_EAC3_ATMOS = "E-AC-3 (Atmos)"
+
+
 @dataclass(frozen=True)
 class Vector:
     """One published stream and everything the manifest says about it."""
 
     ident: str
-    codec: str  # "AC-3" | "E-AC-3" | "E-AC-3 (Atmos)"
+    codec: str  # "AC-3" | "E-AC-3" | CODEC_EAC3_ATMOS
     exercises: str
     args: list[str]  # ac3cli argv after the output path is substituted
     source: str | None  # key into SOURCES, or None for a synthesis command
@@ -281,6 +287,11 @@ for _rate in (44100, 32000, *FSCOD2_RATES):
     }
 
 
+# Placeholder substituted for the resolved source WAV path when a vector's
+# args run through the CLI (see the "@source" branch below).
+SOURCE_TOKEN = "@source"
+
+
 def build_vector_list() -> list[Vector]:
     """Every vector in the set, in manifest order.
 
@@ -311,7 +322,7 @@ def build_vector_list() -> list[Vector]:
                 ident=f"ac3-{ident}",
                 codec="AC-3",
                 exercises=f"{what} at {kbps} kbit/s, 48 kHz",
-                args=["encode", "@source", "@out", str(kbps), layout],
+                args=["encode", SOURCE_TOKEN, "@out", str(kbps), layout],
                 source="reference_51",
                 suffix=".ac3",
                 layout=layout,
@@ -327,7 +338,7 @@ def build_vector_list() -> list[Vector]:
                 ident=f"ac3-{ident}",
                 codec="AC-3",
                 exercises=f"{layout} with channel coupling on, {kbps} kbit/s, 48 kHz",
-                args=["encode", "@source", "@out", str(kbps), layout, "couple"],
+                args=["encode", SOURCE_TOKEN, "@out", str(kbps), layout, "couple"],
                 source="reference_51",
                 suffix=".ac3",
                 layout=layout,
@@ -344,7 +355,7 @@ def build_vector_list() -> list[Vector]:
             codec="AC-3",
             exercises=("1+1 dual mono - two independent programmes in one syncframe, "
                        "each with its own dialnorm"),
-            args=["encode", "@source", "@out", "192", "1+1", "dialnorm=27", "dialnorm2=18"],
+            args=["encode", SOURCE_TOKEN, "@out", "192", "1+1", "dialnorm=27", "dialnorm2=18"],
             source="reference_stereo",
             suffix=".ac3",
             layout="1+1",
@@ -370,7 +381,9 @@ def build_vector_list() -> list[Vector]:
             codec="AC-3",
             exercises=("§7.7.1 dynrng words from the Film Standard profile, plus "
                        "dialnorm measured from the source"),
-            args=["encode", "@source", "@out", "256", "51", "drc=film-standard", "dialnorm=auto"],
+            args=[
+                "encode", SOURCE_TOKEN, "@out", "256", "51", "drc=film-standard", "dialnorm=auto",
+            ],
             source="reference_51",
             suffix=".ac3",
             layout="51",
@@ -383,7 +396,7 @@ def build_vector_list() -> list[Vector]:
             codec="AC-3",
             exercises=("§7.7.2 heavy compression (compr), the word an RF-mode "
                        "decoder prefers over dynrng"),
-            args=["encode", "@source", "@out", "192", "mono", "heavy",
+            args=["encode", SOURCE_TOKEN, "@out", "192", "mono", "heavy",
                   "ceiling=-1.0", "dialogue=-24"],
             source="reference_51",
             suffix=".ac3",
@@ -398,7 +411,7 @@ def build_vector_list() -> list[Vector]:
             exercises=("the same 5.1 encode with the spec's direct §8.2.3.2 MDCT "
                        "instead of the default fast path - differs from ac3-51 "
                        "only at coefficient-rounding level"),
-            args=["encode", "@source", "@out", "384", "51", "mode=reference"],
+            args=["encode", SOURCE_TOKEN, "@out", "384", "51", "mode=reference"],
             source="reference_51",
             suffix=".ac3",
             layout="51",
@@ -415,7 +428,7 @@ def build_vector_list() -> list[Vector]:
                     codec="AC-3",
                     exercises=(f"{layout} at {rate} Hz - Table 5.6's fscod "
                                f"{1 if rate == 44100 else 2}"),
-                    args=["encode", "@source", "@out", str(kbps), layout],
+                    args=["encode", SOURCE_TOKEN, "@out", str(kbps), layout],
                     source=f"synth_{rate}",
                     suffix=".ac3",
                     sample_rate=rate,
@@ -447,7 +460,7 @@ def build_vector_list() -> list[Vector]:
                 exercises=(
                     f"{layout} with no Annex E coding tools - the bed plus {substream_desc}"
                 ),
-                args=["eac3-encode", "@source", "@out", str(kbps), "none", layout],
+                args=["eac3-encode", SOURCE_TOKEN, "@out", str(kbps), "none", layout],
                 source="reference_51",
                 suffix=".ec3",
                 layout=layout,
@@ -460,7 +473,7 @@ def build_vector_list() -> list[Vector]:
             codec="E-AC-3",
             exercises="1+1 dual mono in Annex E syntax, each programme with its own dialnorm",
             args=[
-                "eac3-encode", "@source", "@out", "192", "none", "1+1", "off",
+                "eac3-encode", SOURCE_TOKEN, "@out", "192", "none", "1+1", "off",
                 "dialnorm=27", "dialnorm2=18",
             ],
             source="reference_stereo",
@@ -494,7 +507,7 @@ def build_vector_list() -> list[Vector]:
                 ident=ident,
                 codec="E-AC-3",
                 exercises=f"5.1 at 192 kbit/s - {what}",
-                args=["eac3-encode", "@source", "@out", "192", tools, "51"],
+                args=["eac3-encode", SOURCE_TOKEN, "@out", "192", tools, "51"],
                 source="reference_51",
                 suffix=".ec3",
                 layout="51",
@@ -512,7 +525,7 @@ def build_vector_list() -> list[Vector]:
                 codec="E-AC-3",
                 exercises=(f"{layout} with coupling, spectral extension and AHT "
                            "stacked across the dependent substreams"),
-                args=["eac3-encode", "@source", "@out", "256", "all", layout],
+                args=["eac3-encode", SOURCE_TOKEN, "@out", "256", "all", layout],
                 source="reference_51",
                 suffix=".ec3",
                 layout=layout,
@@ -532,7 +545,7 @@ def build_vector_list() -> list[Vector]:
                 ident=ident,
                 codec="E-AC-3",
                 exercises=f"5.1, {what} - frame sizes vary across the stream",
-                args=["eac3-encode", "@source", "@out", "192", "none", "51", vbr],
+                args=["eac3-encode", SOURCE_TOKEN, "@out", "192", "none", "51", vbr],
                 source="reference_51",
                 suffix=".ec3",
                 layout="51",
@@ -555,7 +568,7 @@ def build_vector_list() -> list[Vector]:
                         if fscod2
                         else f"{layout} at {rate} Hz"
                     ),
-                    args=["eac3-encode", "@source", "@out", str(kbps), "none", layout],
+                    args=["eac3-encode", SOURCE_TOKEN, "@out", str(kbps), "none", layout],
                     source=f"synth_{rate}",
                     suffix=".ec3",
                     sample_rate=rate,
@@ -568,7 +581,7 @@ def build_vector_list() -> list[Vector]:
     v.append(
         Vector(
             ident="atmos-4obj",
-            codec="E-AC-3 (Atmos)",
+            codec=CODEC_EAC3_ATMOS,
             exercises=("a 5.1 bed plus four synthetic orbiting objects - OAMD + JOC "
                        "in the EMDF container (TS 103 420), unsigned"),
             args=["atmos", "@out", "2", "256", "4", "4", "objects"],
@@ -582,7 +595,7 @@ def build_vector_list() -> list[Vector]:
     v.append(
         Vector(
             ident="atmos-bed51",
-            codec="E-AC-3 (Atmos)",
+            codec=CODEC_EAC3_ATMOS,
             exercises=("the same programme in bed-only mode - objects panned into "
                        "the 5.1 bed with no EMDF container at all, the "
                        "graceful-fallback half of the either/or"),
@@ -596,10 +609,10 @@ def build_vector_list() -> list[Vector]:
     v.append(
         Vector(
             ident="atmos-encode-6obj",
-            codec="E-AC-3 (Atmos)",
+            codec=CODEC_EAC3_ATMOS,
             exercises=("every source channel carried as its own object rather than "
                        "a bed - six objects from the 5.1 fixture"),
-            args=["atmos-encode", "@source", "@out", "256", "6"],
+            args=["atmos-encode", SOURCE_TOKEN, "@out", "256", "6"],
             source="reference_51",
             suffix=".ec3",
             layout="51",
@@ -610,7 +623,7 @@ def build_vector_list() -> list[Vector]:
     v.append(
         Vector(
             ident="atmos-path",
-            codec="E-AC-3 (Atmos)",
+            codec=CODEC_EAC3_ATMOS,
             exercises=("object motion from an authored keyframe file instead of "
                        "the built-in orbit - two objects on crossing paths"),
             args=["atmos-path", "@out", "@input:paths.txt", "3", "256", "2"],
@@ -642,7 +655,7 @@ ATMOS_PATHS = """\
 
 SIGNED_VECTOR = Vector(
     ident="atmos-4obj-signed",
-    codec="E-AC-3 (Atmos)",
+    codec=CODEC_EAC3_ATMOS,
     exercises=("atmos-4obj's programme with the EMDF object container signed - the "
                "authenticity tag a licensed decoder gates object decoding on"),
     args=["atmos", "@out", "2", "256", "4", "4", "objects", "sign-objects"],
@@ -796,7 +809,7 @@ def generate(
         for token in vector.args:
             if token == "@out":
                 args.append(str(target))
-            elif token == "@source":
+            elif token == SOURCE_TOKEN:
                 args.append(str(out_dir / SOURCES[vector.source]["path"]))
             elif token.startswith("@input:"):
                 args.append(str(out_dir / token.removeprefix("@input:")))
@@ -850,8 +863,9 @@ def generate(
         "built_with": cli_version,
         "hash_scope": (
             "sha256 values are per-toolchain. Encoded output is not currently bit-identical "
-            "across compilers and architectures (docs/building.md; roadmap VX11/VX12 - the "
-            "arm64 legs sit 6.0 dB off every x86 leg on the gold gate), so a bundle "
+            "across compilers and architectures (docs/building.md; cross-platform bitstream "
+            "reproducibility - the arm64 legs sit 6.0 dB off every x86 leg on the gold gate), "
+            "so a bundle "
             "regenerated with a different compiler or on a different architecture will differ. "
             "Regenerating with the toolchain named in built_with reproduces every hash here "
             "exactly."

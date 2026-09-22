@@ -34,13 +34,13 @@
 #include <vector>
 
 #include "ac3/core/bitalloc.hpp"
+#include "ac3/core/eac3_tools.hpp"
 #include "ac3/core/exponents.hpp"
 #include "ac3/core/fft.hpp"
 #include "ac3/core/mantissas.hpp"
 #include "ac3/core/mdct.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/dsp/qmf.hpp"
-#include "ac3/encoder/eac3_tools.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/joc.hpp"
@@ -234,7 +234,7 @@ int main(int argc, char** argv) {
 
     // --- imdct512_windowed ----------------------------------------------------
     // The inverse transform is where a decode frame's time actually goes,
-    // and until roadmap PF1 only the direct form was benched here - while
+    // and until encoder/decode benchmarks only the direct form was benched here - while
     // the fast one became DecoderConfig::fast_imdct's default in 0.9.0, so
     // this series tracked a transform no decoder runs any more. Both forms
     // are timed for the same reason the forward pair above is: mode=reference
@@ -250,7 +250,7 @@ int main(int argc, char** argv) {
     // decode throughput; the direct row above is the reference form. Added
     // with the PF5 vector kernels, which speed up this path and not the
     // direct one: without it the whole decode side of that work is invisible
-    // to the trend tables. (ROADMAP PF1 wants more than this - E-AC-3 encode
+    // to the trend tables. (encoder/decode benchmarks wants more than this - E-AC-3 encode
     // series, decoder Tracy zones, real-audio timing inputs - and is
     // unaffected.)
     results.push_back(time_kernel("imdct512_windowed_fast", [&] {
@@ -478,7 +478,7 @@ int main(int argc, char** argv) {
         // objects that term is small: fixing it moved these 4-object series
         // by ~26%, which reads like an ordinary optimisation. At twelve it
         // was 1.8x (kMdctBand) to 2.9x (kQmf) of a real decode - the fix was
-        // worth more than every transform change in ROADMAP PF5 combined,
+        // worth more than every transform change in SIMD kernels combined,
         // and this bench was structurally unable to say so.
         //
         // Twelve is also representative rather than arbitrary: TS 103 420

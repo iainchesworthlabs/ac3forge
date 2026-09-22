@@ -28,7 +28,7 @@ the next external-tool release is as likely to need it as the last one was.
 Mirrors tools/ci/append_quality_history.py closely by design (same shape,
 same trailing-10-run window, same regression thresholds - the underlying
 metric is the same kind of dB-scale SNR number). This only runs on
-develop/main pushes (mirrors persist_quality_trend's own gating) and only
+main pushes (mirrors persist_quality_trend's own gating) and only
 after tools/ci/quality_race.py's `ci` gate has already passed on the same
 push, so what lands in history is never a broken run's numbers.
 
@@ -69,9 +69,21 @@ import os
 import sys
 from pathlib import Path
 
+from append_quality_history import write_recent_window
+
 REGRESSION_TRAILING_WINDOW = 10
 REGRESSION_DROP_DB = 0.5
 HARD_REGRESSION_DROP_DB = 10.0
+
+
+def branch_slug(branch: str) -> str:
+    """A single flat filename component for `branch` - see
+    append_memory_history.py's identical branch_slug for why: every branch
+    here is <type>/<name>, and an un-sanitised '/' interpolated into
+    a Path joins as an extra path component rather than a literal
+    character."""
+    return branch.replace("/", "_").replace("\\", "_")
+
 
 # The MOS tier is soft only - a ::warning::, never a job failure, and no hard
 # counterpart. Three reasons it is not symmetric with the SNR tiers above.
@@ -122,7 +134,7 @@ def load_history(history_path: Path):
     """(leg, variant) -> {metric: [values, oldest first]} for TRACKED_METRICS.
 
     One pass over the file, not one per (row, metric) lookup. This history
-    grows by one record per (leg, variant) on every develop/main push - eight
+    grows by one record per (leg, variant) on every main push - eight
     legs' worth is ~68 records a push against thousands already there - and
     re-reading and re-parsing all of it for each of the ~136 lookups a run
     now makes would be quadratic in a file that only ever gets longer.
@@ -183,7 +195,7 @@ def main() -> int:
                          help="Committer date, ISO 8601 (from `git show -s --format=%%cI`).")
     args = parser.parse_args()
 
-    history_path = args.history_dir / f"external-comparison-{args.branch}.jsonl"
+    history_path = args.history_dir / f"external-comparison-{branch_slug(args.branch)}.jsonl"
     rows = load_trend_rows(args.trend_json)
     if not rows:
         print(f"::warning::no rows found in {args.trend_json}; nothing to append")
@@ -258,6 +270,7 @@ def main() -> int:
             f.write(line + "\n")
 
     print(f"Appended {len(lines)} record(s) to {history_path}")
+    write_recent_window(history_path)
     emit_github_output("hard_regression", "true" if hard_regression else "false")
     return 0
 

@@ -5,7 +5,7 @@ header named where it stopped and why - "E-AC-3's own space - the Annex E tool
 tokens, VBR, the wider layouts - is a real remaining gap, and deliberately not
 smuggled in half-covered here".
 
-This file is that gap (roadmap VX1); that note now points here instead. It
+This file is that gap (E-AC-3 encoder fuzzing); that note now points here instead. It
 asks the same question of
 `eac3-encode` and `atmos-encode` that the AC-3 harness asks of `encode`: does
 the encoder, driven across its own legal configuration space by adversarial
@@ -241,7 +241,7 @@ DEPENDENTS = {"mono": 0, "stereo": 0, "1+1": 0, "51": 0,
               "71": 1, "512": 1, "514": 1, "714": 2}
 
 # Annex E coding tools, as the `[tools]` positional's own grammar spells them
-# (plan::kToolsSyntax, docs/cli/metadata-options.md).
+# (plan::kToolsSyntax, docs/forge/cli/metadata-options.md).
 #
 # `ecpl` is never drawn alone: it "only takes effect alongside cpl", so a lone
 # `ecpl` would silently be a `none` case wearing an interesting name, and the
@@ -251,7 +251,7 @@ DMIXMOD = ["ltrt", "loro", "none"]
 
 # Every way a generated configuration can be legitimately refused by
 # `eac3-encode` or `atmos-encode`, keyed by the CLI's own exact words - not by
-# exit code, since the CLI's own structured exit codes (roadmap IO8) split
+# exit code, since the CLI's own structured exit codes (CLI shell completions) split
 # these across two: exit 1 ("usage") for a configuration invalid on its face,
 # exit 5 ("runtime") for dialnorm=auto's own loudness measurement finding
 # nothing to measure once it actually reads the file. Each is correct
@@ -880,7 +880,7 @@ def classify(case, encode, out_path):
     abort happened to print a matching line first.
 
     1 and 5 both cover REFUSALS entries because the CLI's own structured exit
-    codes (roadmap IO8) split them across two classes: a configuration that is
+    codes (CLI shell completions) split them across two classes: a configuration that is
     invalid on its face, checked before any audio is read (header room, frmsiz
     ceiling, object count - exit 1, "usage") versus dialnorm=auto's own
     loudness measurement finding nothing to measure once it actually reads the

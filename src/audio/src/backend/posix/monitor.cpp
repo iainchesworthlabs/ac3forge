@@ -13,6 +13,7 @@ std::string_view describe(MonitorError error) {
         case MonitorError::kNoBackend: return "no monitor backend on this platform";
         case MonitorError::kComFailure: return "a platform audio call failed";
         case MonitorError::kDeviceNotFound: return "the requested render device was not found";
+        case MonitorError::kFormatRejected: return "the requested format was rejected";
         case MonitorError::kAlreadyRunning: return "monitor playback is already running";
         case MonitorError::kNotRunning: return "monitor playback is not running";
     }
@@ -25,7 +26,7 @@ MonitorSink::MonitorSink() : impl_(nullptr) {}
 MonitorSink::~MonitorSink() = default;
 
 std::expected<void, MonitorError> MonitorSink::start(const std::string&, std::uint32_t,
-                                                      std::uint16_t, std::uint32_t) {
+                                                      std::uint16_t, std::uint32_t, bool /*low_latency*/) {
     return std::unexpected(MonitorError::kNoBackend);
 }
 
@@ -34,5 +35,15 @@ bool MonitorSink::can_submit() const { return false; }
 void MonitorSink::stop() {}
 bool MonitorSink::running() const { return false; }
 MonitorStats MonitorSink::stats() const { return {}; }
+
+std::optional<MonitorPosition> MonitorSink::position() const { return std::nullopt; }
+void MonitorSink::flush() {}
+std::expected<void, MonitorError> MonitorSink::pause() {
+    return std::unexpected(MonitorError::kNoBackend);
+}
+std::expected<void, MonitorError> MonitorSink::resume() {
+    return std::unexpected(MonitorError::kNoBackend);
+}
+bool MonitorSink::paused() const { return false; }
 
 }  // namespace ac3::audio

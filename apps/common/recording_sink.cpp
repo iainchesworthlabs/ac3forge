@@ -70,7 +70,7 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
             .sample_rate = config.sample_rate,
             .channels = config.channels,
             .samples_per_frame = ac3::kSamplesPerFrame});
-        if (!writer) {
+        if (!writer.has_value()) {
             return std::string{matroska::describe(writer.error())};
         }
         matroska_.emplace(std::move(*writer));
@@ -80,7 +80,7 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
             .sample_rate = config.sample_rate,
             .channels = config.channels,
             .samples_per_frame = ac3::kSamplesPerFrame});
-        if (!writer) {
+        if (!writer.has_value()) {
             return std::string{mpegts::describe(writer.error())};
         }
         mpegts_.emplace(std::move(*writer));
@@ -90,7 +90,7 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
     if (!file_) {
         return kCannotOpen;
     }
-    if (matroska_ && !write_file(matroska_->header())) {
+    if (matroska_.has_value() && !write_file(matroska_->header())) {
         return write_failed_for(config_.container);
     }
     open_ = true;
@@ -106,7 +106,7 @@ std::string RecordingSink::push(std::span<const std::byte> frame) {
             break;
         case Container::kMatroska: {
             auto closed = matroska_->push(frame);
-            if (!closed) {
+            if (!closed.has_value()) {
                 return std::string{matroska::describe(closed.error())};
             }
             if (!closed->empty() && !write_file(*closed)) {
@@ -116,7 +116,7 @@ std::string RecordingSink::push(std::span<const std::byte> frame) {
         }
         case Container::kMpegts: {
             auto packets = mpegts_->push(frame);
-            if (!packets) {
+            if (!packets.has_value()) {
                 return std::string{mpegts::describe(packets.error())};
             }
             if (!write_file(*packets)) {
@@ -132,15 +132,15 @@ std::string RecordingSink::push(std::span<const std::byte> frame) {
         case Container::kSpdif: {
             if (config_.eac3) {
                 auto burst = packer_.push(frame);
-                if (!burst) {
+                if (!burst.has_value()) {
                     return kCannotWrap;
                 }
-                if (*burst && !wav_.write(**burst)) {
+                if (burst->has_value() && !wav_.write(**burst)) {
                     return write_failed_for(config_.container);
                 }
             } else {
                 auto burst = ac3::iec61937::wrap_frame(frame);
-                if (!burst) {
+                if (!burst.has_value()) {
                     return kCannotWrap;
                 }
                 if (!wav_.write(*burst)) {
@@ -191,10 +191,10 @@ std::string RecordingSink::close() {
         wav_.close();
         return {};
     }
-    if (matroska_ && !write_file(matroska_->finalize())) {
+    if (matroska_.has_value() && !write_file(matroska_->finalize())) {
         return write_failed_for(config_.container);
     }
-    if (mpegts_) {
+    if (mpegts_.has_value()) {
         // Always empty by contract; called so the two writers age uniformly.
         std::ignore = mpegts_->finalize();
     }

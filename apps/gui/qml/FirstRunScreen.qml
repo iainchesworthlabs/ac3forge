@@ -25,14 +25,14 @@ RowLayout {
 
         Text {
             text: qsTr("FIRST RUN")
-            font.pixelSize: 10
+            font.pixelSize: Theme.fontMicro
             font.letterSpacing: 1.5
             color: Theme.accent700
         }
         Text {
             Layout.fillWidth: true
             text: qsTr("Bring in some audio.")
-            font.pixelSize: 52
+            font.pixelSize: Math.round(52 * Theme.fontScale)
             font.family: Theme.headingFamily
             font.weight: Font.ExtraBold
             wrapMode: Text.WordWrap
@@ -41,7 +41,7 @@ RowLayout {
         Text {
             Layout.fillWidth: true
             text: qsTr("Everything else follows from the source: the layouts on offer, the routing, the meters. Nothing is configured until there is something to configure.")
-            font.pixelSize: 15
+            font.pixelSize: Theme.fontHeading
             wrapMode: Text.WordWrap
             color: Theme.neutral700
         }
@@ -83,7 +83,7 @@ RowLayout {
                     anchors.left: parent.left
                     anchors.leftMargin: Theme.space4
                     text: modelData.label
-                    font.pixelSize: 15
+                    font.pixelSize: Theme.fontHeading
                     font.weight: Font.DemiBold
                     color: modelData.primary ? Theme.bg : Theme.text
                 }
@@ -113,7 +113,7 @@ RowLayout {
 
             Text {
                 text: qsTr("WHAT THIS WINDOW DOES")
-                font.pixelSize: 10
+                font.pixelSize: Theme.fontMicro
                 font.letterSpacing: 1.5
                 color: Theme.textMuted
             }
@@ -142,7 +142,7 @@ RowLayout {
                         spacing: Theme.space3
                         Text {
                             text: modelData.n
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.fontMono
                             font.family: Theme.monoFamily
                             color: Theme.accent700
                         }
@@ -151,7 +151,7 @@ RowLayout {
                             spacing: 2
                             Text {
                                 text: modelData.title
-                                font.pixelSize: 15
+                                font.pixelSize: Theme.fontHeading
                                 font.weight: Font.DemiBold
                                 color: Theme.text
                             }
@@ -159,7 +159,7 @@ RowLayout {
                                 Layout.fillWidth: true
                                 text: modelData.body
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSmall
                                 color: Theme.neutral700
                             }
                         }
@@ -173,7 +173,7 @@ RowLayout {
                 Layout.fillWidth: true
                 text: qsTr("Advanced coding tools and broadcast metadata start hidden. Switch Controls to Advanced or Expert at any time.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 color: Theme.textMuted
             }
         }

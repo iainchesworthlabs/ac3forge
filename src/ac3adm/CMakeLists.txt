@@ -1,10 +1,16 @@
 # ---------------------------------------------------------------------------
 # ac3adm::ac3adm - a standalone BW64/RF64 + Audio Definition Model (ADM)
 # parser, built on top of two vendored third-party libraries: libbw64 (the
-# BW64/RF64 container layer) and libadm (the ADM XML object model), both
-# from github.com/ebu, Apache-2.0, maintained by the same BBC/IRT team that
-# wrote the underlying ITU-R Recommendations (BS.2088-1, BS.2076-2)
-# themselves.
+# BW64/RF64 container layer) and libadm (the ADM XML object model). Both are
+# Apache-2.0. libadm is github.com/ebu/libadm itself, maintained by the same
+# BBC/IRT team that wrote the underlying ITU-R Recommendations (BS.2088-1,
+# BS.2076-2). libbw64 is fetched from a maintained fork of github.com/ebu/
+# libbw64, github.com/pwnified/libbw64 - see the FetchContent_Populate call
+# below for why: the EBU's own repo has not tagged a release since 2019, and
+# the fork carries 77 commits of fixes the EBU's own CHANGELOG (Unreleased
+# section) describes as closing "buffer overruns, integer overflows, and uses
+# of uninitialised data which may be triggered by reading malformed files",
+# plus real hardening of its own on top.
 #
 # This is the one library in ac3forge that is NOT zero-third-party-dependency
 # (docs/library/index.md's stated principle for everywhere else): libadm
@@ -64,8 +70,10 @@ endif()
 include(FetchContent)
 
 # libbw64 is header-only, and is deliberately NOT add_subdirectory()'d via
-# FetchContent_MakeAvailable the way libadm is just below - its own src/CMakeLists.txt (as of
-# 0.10.0) has a real bug that breaks that: its configure_package_config_file() call resolves
+# FetchContent_MakeAvailable the way libadm is just below - its own src/CMakeLists.txt (confirmed
+# against the 0.10.0 tag this module first vendored, and not re-checked against the pin below
+# since the workaround costs nothing extra either way) has a real bug that breaks that: its
+# configure_package_config_file() call resolves
 # "config/libbw64Config.cmake.in" against CMAKE_SOURCE_DIR (this whole build's top-level source
 # dir - i.e. ac3forge's own repo root, once libbw64 is pulled in as a subdirectory of it) instead
 # of PROJECT_SOURCE_DIR/CMAKE_CURRENT_SOURCE_DIR (libbw64's own tree), so it fails outright with
@@ -91,11 +99,34 @@ include(FetchContent)
 # arguments directly here, the same way FetchContent_MakeAvailable does internally, is the
 # CMP0169-unaffected form (see FetchContent.cmake's own FetchContent_Populate: it only warns/
 # errors when called with nothing but a name).
+#
+# Pinned to a commit, not a branch or tag - github.com/pwnified/libbw64 has neither, being a
+# personal, actively-pushed-to fork rather than a versioned release. Re-pinning is a deliberate
+# act (bump the SHA below, re-run the verification this module's own tests and fuzz/README.md
+# describe), never an implicit "whatever master happens to be today".
+#
+# PATCH_COMMAND: two small patches against the pinned commit - patch_libbw64.cmake's own header
+# comment has both in full. In short: parseChunkHeaders() (reader.hpp) refuses ANY chunk that
+# runs past the end of the file, <data> included, and this module's own tests require a
+# truncated recording to still parse; FormatInfoChunk's constructor (chunks.hpp) refuses a
+# 64-bit WAVE_FORMAT_IEEE_FLOAT <fmt > outright even though this fork's own decode/encode already
+# handle 64-bit float correctly. The undefined behaviour an earlier libbw64 pin needed patching
+# for (an empty std::vector<char> passed to &buffer[0], which blocked instrumenting
+# ac3adm_objects for fuzzing - see fuzz/CMakeLists.txt) is already fixed here, upstream of this
+# fork too - that is not a third patch. The script runs in libbw64's own source directory (where
+# the patch step puts it), edits tokens rather than lines so a CRLF checkout patches the same
+# way, does nothing to an already-patched tree, and stops the configure if it finds a tree
+# matching neither form. Its own SHA256 goes on the command line so that editing the script
+# re-runs the step rather than leaving a stale patch behind in an existing build directory.
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/patch_libbw64.cmake" _ac3adm_libbw64_patch_sha)
 FetchContent_Populate(libbw64
     QUIET
-    GIT_REPOSITORY https://github.com/ebu/libbw64.git
-    GIT_TAG "0.10.0"
-    GIT_SHALLOW TRUE)
+    GIT_REPOSITORY https://github.com/pwnified/libbw64.git
+    GIT_TAG "64be927296f320b569f8191a6297d10dac6cfdcf"
+    GIT_SHALLOW FALSE
+    PATCH_COMMAND "${CMAKE_COMMAND}" "-DAC3ADM_PATCH_SHA256=${_ac3adm_libbw64_patch_sha}"
+                  -P "${CMAKE_CURRENT_SOURCE_DIR}/patch_libbw64.cmake")
+unset(_ac3adm_libbw64_patch_sha)
 
 add_library(bw64 INTERFACE)
 # SYSTEM (via the include-directories SYSTEM keyword, FetchContent's own SYSTEM option is not
@@ -169,8 +200,7 @@ endif()
 target_sources(ac3adm_objects
     PRIVATE
         src/adm_model.cpp
-        src/adm.cpp
-        src/float_pcm_bw64.cpp)
+        src/adm.cpp)
 
 target_include_directories(ac3adm_objects
     PUBLIC

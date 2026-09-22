@@ -13,7 +13,7 @@
 // application's layout direction (LTR/RTL) and QQmlEngine::retranslate().
 // Modelled directly on CountdownSolver's own language_manager.{hpp,cpp}
 // (R:\CountdownSolver\src\app) - same shape, same canonical language set
-// (roadmap UX3: build to the set already shipped there rather than invent a
+// (GUI localisation: build to the set already shipped there rather than invent a
 // second one), ported to this app's plain-global-namespace controller
 // convention (SystemTheme, EncoderController, QcController).
 //
@@ -28,11 +28,16 @@ class LanguageManager : public QObject {
 
 public:
     // `app` and `engine` must outlive this LanguageManager.
-    explicit LanguageManager(QGuiApplication& app, QQmlEngine& engine, QObject* parent = nullptr);
+    // `translation_basename` names the .qm files under :/i18n/ ("ac3gui" for
+    // the GUI; the AC3Forge Crucible passes its own), so a second Qt app in
+    // this repository reuses this class rather than copying it.
+    explicit LanguageManager(QGuiApplication& app, QQmlEngine& engine,
+                             QString translation_basename = QStringLiteral("ac3gui"),
+                             QObject* parent = nullptr);
 
     // Installs the translators for the initial language - an AC3GUI_LOCALE
     // environment override first (the pseudo-locale QA fixture and the
-    // deterministic test suites use this - see docs/gui/localisation.md),
+    // deterministic test suites use this - see docs/forge/gui/localisation.md),
     // then the persisted preference, then the system locale, then "en" - and
     // sets the initial layout direction. Called once, before the QML loads,
     // so the first frame already renders translated and RTL-mirrored where
@@ -55,6 +60,10 @@ public:
     // availableLanguages()'s codes - the pseudo-locale included, since it is
     // reached only through AC3GUI_LOCALE, never through this entry point.
     Q_INVOKABLE bool setLanguage(const QString& code);
+    // Forgets a saved override and follows the system locale again.
+    Q_INVOKABLE void useSystemLanguage();
+    // Whether a saved override is in force (false: following the system).
+    Q_INVOKABLE bool hasOverride() const;
 
 signals:
     void currentLanguageChanged();
@@ -68,4 +77,5 @@ private:
     QTranslator qt_translator_;
     QTranslator app_translator_;
     QString current_language_ = QStringLiteral("en");
+    QString translation_basename_;
 };

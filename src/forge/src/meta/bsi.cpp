@@ -3,9 +3,7 @@
 #include <array>
 #include <charconv>
 #include <cstddef>
-#include <fmt/format.h>
 #include <optional>
-#include <string>
 #include <string_view>
 #include <system_error>
 
@@ -81,12 +79,31 @@ bool valid_bsi_info(const BsiInfo& value) {
 }
 
 bool valid_alternate_bsi(const AlternateBsi& value) {
-    // xbsi1's five fields are all enumerators of exactly their field's width,
-    // and xbsi2's are too - bar the surround levels, whose reserved codes
-    // valid_surround_mix_level() already refuses on the E-AC-3 path and which
-    // Tables D2.4/D2.6 reserve identically here.
-    return !value.mix || (valid_surround_mix_level(value.mix->ltrtsurmixlev) &&
+    // xbsi1's five fields and xbsi2's are all enumerators of exactly their
+    // field's width, so none of them can overrun it. What is left to refuse is
+    // the reserved codes: dmixmod's '11' (Table D2.2), and the surround levels
+    // Tables D2.4/D2.6 reserve here exactly as valid_surround_mix_level()
+    // already refuses them on the E-AC-3 path.
+    return !value.mix || (valid_downmix_mode(value.mix->dmixmod) &&
+                          valid_surround_mix_level(value.mix->ltrtsurmixlev) &&
                           valid_surround_mix_level(value.mix->lorosurmixlev));
+}
+
+bool is_associated_service(BitstreamMode value, Acmod acmod) {
+    switch (value) {
+        case BitstreamMode::kCompleteMain:
+        case BitstreamMode::kMusicAndEffects:
+            return false;
+        case BitstreamMode::kVisuallyImpaired:
+        case BitstreamMode::kHearingImpaired:
+        case BitstreamMode::kDialogue:
+        case BitstreamMode::kCommentary:
+        case BitstreamMode::kEmergency:
+            return true;
+        case BitstreamMode::kVoiceOverOrKaraoke:
+            return acmod == Acmod::k1_0;
+    }
+    return false;
 }
 
 std::string_view describe(BitstreamMode value, Acmod acmod) {
@@ -172,6 +189,20 @@ std::string_view describe(RoomType value) {
             return "small room, flat monitor";
     }
     return "not indicated";
+}
+
+std::string_view describe(DownmixMode value) {
+    switch (value) {
+        case DownmixMode::kNotIndicated:
+            return "not indicated";
+        case DownmixMode::kLtRt:
+            return "Lt/Rt";
+        case DownmixMode::kLoRo:
+            return "Lo/Ro";
+        case DownmixMode::kReserved:
+            break;
+    }
+    return "reserved";
 }
 
 bool parse_bsmod(std::string_view text, BitstreamMode& out) {
@@ -268,10 +299,6 @@ bool parse_timecode(std::string_view text, TimeCodeCoarse& coarse, TimeCodeFine&
     return true;
 }
 
-std::string format_timecode(const TimeCodeCoarse& coarse, const TimeCodeFine& fine) {
-    return fmt::format("{:02}:{:02}:{:02}:{:02}.{}", coarse.hours, coarse.minutes,
-                       coarse.eight_seconds * 8 + fine.seconds, fine.frames,
-                       fine.sixty_fourths);
-}
+// format_timecode lives in bsi_format.cpp - see there for why.
 
 }  // namespace ac3::meta

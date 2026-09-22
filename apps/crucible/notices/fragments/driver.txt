@@ -1,0 +1,20 @@
+The silent output device: Ac3ForgeNullSink
+------------------------------------------
+
+The silent output device Crucible asks you to install, Ac3ForgeNullSink,
+is a kernel driver derived from Microsoft's AudioCodec ACX sample
+(audio/Acx/Samples in microsoft/Windows-driver-samples), Copyright (C)
+Microsoft Corporation; the modifications are Copyright (C) the ac3forge
+contributors. It is licensed separately from the rest of Crucible, under
+the Microsoft Public License (MS-PL) reproduced below, and is a separate
+work: nothing in it is linked into the application, which reaches it only
+through public Windows APIs.
+
+This package carries only its install, remove and device-creation scripts
+(bin/driver/install.ps1, remove.ps1 and NullSinkDevice.ps1). They are this
+project's own and travel under the same MS-PL terms as the directory they
+come from. The driver binary itself is not included while it is
+test-signed; apps/windows/driver/README.md in the source says how to build
+and install it.
+
+{{FILE:MSPL}}

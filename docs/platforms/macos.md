@@ -8,7 +8,7 @@
     Rosetta emulation — confirmed against
     [docs.github.com's hosted-runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)),
     configuring `config-macos-llvm-x64` / `config-macos-llvm-x64-debug`. Neither is experimental any
-    more. `macos-llvm`'s first-ever run surfaced one genuine, fully-understood issue (Homebrew's
+    more. `macos-llvm`'s first-ever run surfaced one fully-understood issue (Homebrew's
     unpinned `llvm` formula flagging Catch2's `__COUNTER__` usage under `-Wc2y-extensions` — see
     `cmake/CompilerWarnings.cmake`), fixed in one commit, followed by two consecutive clean runs.
     `macos-llvm-x64` (DR8's new leg, on a brand-new `macos-15-intel` runner label never exercised
@@ -18,6 +18,28 @@
     own `continue-on-error` escape hatch came off the same way
     (see [`.github/workflows/_build.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/_build.yml)),
     so a failure on either leg blocks like every other required leg now.
+
+    **One section of this page rests on less than that.**
+    [Per-application capture](#per-application-capture-the-core-audio-process-tap) describes code
+    added on this branch. Both legs compile it; a tap has been created exactly once, on a runner,
+    where the call after it never returned. That section says what each part rests on and what
+    that one run settled.
+
+## Status
+
+| | |
+|---|---|
+| What runs here | The library, `ac3cli` and `ac3gui`. Crucible's macOS half compiles and its suites run |
+| Build | Two required CI legs, Apple Silicon and native Intel; neither is experimental |
+| Sound | **Nothing on macOS has captured or played anything.** No Mac host is available to this project, and no hosted runner has an audio device, a desktop session, or a way to grant a consent prompt |
+| Core Audio process tap | Written, compiled, **never created at runtime** |
+| Crucible | Compiles and is exercised by the CI suites; the application has never been launched on a Mac |
+| Packaging | A `.dmg` for the CLI and a cask for the GUI; the cask has not been installed end to end on a Mac |
+
+The two build variants feed one universal end-user package. Entries marked **Source** or
+**In development** remain unconfirmed for sound hardware.
+
+--8<-- "docs-snippets/generated/platform-macos.md"
 
 ## Toolchain
 
@@ -42,7 +64,7 @@ the merged tree with `hdiutil` directly, the same call CPack's own DragNDrop gen
 the hood. Proven for real in CI: `lipo -info` on the merged `ac3cli`/`ac3gui` binaries and at
 least one bundled Qt framework binary reports both `x86_64` and `arm64` present in the same file —
 see that job's own log, not just its exit code. This was a deliberate reversal of the original
-roadmap text, which called a macOS universal binary "a separate decision, not a given" on the
+earlier plan, which called a macOS universal binary "a separate decision, not a given" on the
 assumption that Intel demand was doubtful and no Intel hosted runner existed; `macos-15-intel`
 turned out to already exist, be free for public repos, and be real native hardware rather than
 Rosetta, which removed the actual blocker (needing to cross-compile x86_64 from Apple Silicon, or
@@ -59,7 +81,7 @@ Each leg's own single-arch `.dmg` still exists as a fast per-push packaging smok
 — capture, monitor playback and IEC 61937 passthrough are built on the Audio HAL
 (`AudioObjectID`/`AudioDeviceIOProc`), the same layer WASAPI and ALSA occupy on their own
 platforms, rather than the no-backend stub that used to fall back to here. Its passthrough
-mechanism is genuinely different from both: CoreAudio has no per-open bitstream flag the way
+mechanism differs from both: CoreAudio has no per-open bitstream flag the way
 WASAPI's exclusive-mode subformat or ALSA's channel-status device name are, so bitstreaming means
 taking hog mode on a digital output and retuning its *physical* stream format
 (`kAudioStreamPropertyPhysicalFormat`) to `kAudioFormat60958AC3` for AC-3 — see
@@ -69,7 +91,7 @@ writing it, since there was no Mac available locally to try it on directly. For 
 walk additionally probes a stream's available physical formats for `kAudioFormatEnhancedAC3`:
 Apple's own documentation confirms Dolby Digital Plus/Atmos HDMI passthrough exists on Apple
 Silicon Macs without documenting the HAL mechanism behind it, so where a driver doesn't publish
-that format (older hardware, a non-HDMI output, an Intel Mac) the backend simply reports E-AC-3
+that format (older hardware, a non-HDMI output, an Intel Mac) the backend reports E-AC-3
 passthrough unavailable rather than claiming it everywhere — see `passthrough.cpp`'s own "AC-3
 and E-AC-3" section.
 
@@ -87,17 +109,17 @@ with none, format matching, sample conversion — run under `ac3tests` on the ho
 as everywhere else without real hardware, but no real Mac has ever run this code against an
 actual digital output, and no receiver has been asked to lock onto its output.
 
-**No EDID/ELD backend here either (roadmap UX9).** `ac3cli play` asks a chosen sink what it
+**No EDID/ELD backend here either.** `ac3cli play` asks a chosen sink what it
 actually accepts before committing to a format (see
-[CLI → Following the sink](../cli/commands.md#following-the-sink)), and that read
+[CLI → Following the sink](../forge/cli/commands.md#following-the-sink)), and that read
 (`ac3::audio::sink_capabilities`) is real today only on ALSA (see
-[Linux](linux.md#reading-a-sinks-own-edideld-roadmap-ux9)). CoreAudio's device properties and
+[Linux](linux.md#reading-a-sinks-own-edideld)). CoreAudio's device properties and
 IOKit's `IODisplayEDID` are both real APIs, but neither is documented to expose the CEA-861
 Short Audio Descriptor block for an HDMI *audio* endpoint specifically, and a pure optical
 output has no display EDID to read in the first place. `play` falls back to the live
-`enumerate_render_devices()` probe here, the same as before this roadmap item existed.
+`enumerate_render_devices()` probe here, the same as before.
 
-## Loopback capture: not yet implemented
+## Per-application capture: the Core Audio process tap
 
 `ac3cli devices` never lists a loopback entry here, and `ac3cli record`/`live --loopback` refuse
 outright rather than silently opening a microphone instead — unlike
@@ -105,35 +127,154 @@ outright rather than silently opening a microphone instead — unlike
 [Linux/PipeWire](linux.md#audio-backend-alsa-or-pipewire) (a sink's monitor), the Audio HAL this
 backend otherwise uses has no "capture what a render device is playing" concept at all.
 
-The mechanism Apple provides instead is a Core Audio *audio tap*
-(`AudioHardwareCreateProcessTap` paired with a `CATapDescription`, either scoped to specific
-processes or to the whole system mix), shipped in macOS 14.2 (Sonoma). It is deliberately not
-built here yet, for reasons that are not about API unfamiliarity:
+What macOS 14.2 (Sonoma) added instead is the per-*process* tap, and
+`Capture::start_process_loopback(pid, mode, format)` is built on it:
+`AudioHardwareCreateProcessTap` over a `CATapDescription`, carried by a private aggregate device
+whose `AudioDeviceIOProcID` reads the way an input device's does. Because `CATapDescription` is an
+Objective-C class with no C entry point, `src/audio/src/backend/macos/process_tap.mm` is the
+library's one Objective-C++ translation unit, behind the plain-C++ header `process_tap.hpp` that
+the rest of the backend includes; `src/audio/CMakeLists.txt`'s `APPLE` block enables `OBJCXX` for
+that one file.
 
-- `CATapDescription` has no C entry point — unlike every other CoreAudio type this backend
-  touches, using it needs an Objective-C class, not a plain C++ translation unit.
-- Creating a tap triggers a real-time **user permission prompt** the first time a session asks for
-  one, under a distinct TCC category (`SystemAudioCaptureRequests`, separate from microphone
-  access) driven by an `NSAudioCaptureUsageDescription` Info.plist key. A denial has to be a clean,
-  explained refusal — the same discipline this backend already applies to `kLoopback` today, just
-  for a different reason once this exists.
-- That prompt is tied to the *requesting binary's own code-signing identity*, and every real-world
-  report surveyed while writing this page says it simply never fires for an unsigned binary.
-  `ac3gui`/`ac3cli` ship unsigned today (see ROADMAP.md's DR6 — blocked on certificates, not on
-  code) — so even a finished tap implementation could not obtain the permission it would ask for,
-  on this project's current release artifacts.
-- Most fundamentally: ROADMAP.md's DR9 records that no real Mac has ever run this backend at all.
-  A permission dialog, a denial path and a live tap's actual behaviour are exactly the kind of
-  thing that cannot be told apart from "written wrong" without a real user, a real machine and a
-  real signed-or-unsigned binary in front of it.
+The tree holds **three `.mm` files and two directories that enable `OBJCXX`**. The other two are
+Crucible's, for AppKit rather than Core Audio — `apps/crucible/engine/platform/macos/foreground.mm`
+(NSWorkspace) and `apps/crucible/ui/platform/macos/app_icon_provider.mm` (NSWorkspace and NSImage)
+— and `apps/crucible/CMakeLists.txt`'s `APPLE` arm makes its own `enable_language(OBJCXX)` call
+rather than relying on this one. Both call sites pin `CMAKE_OBJCXX_COMPILER` to the C++ compiler
+the toolchain file chose, and `cmake/toolchains/macos.llvm.toolchain.cmake` sets
+`CMAKE_OBJCXX_FLAGS_INIT` beside `CMAKE_CXX_FLAGS_INIT` so a `.mm` resolves the standard library
+headers to the same libc++ its neighbours use.
 
-What *is* implemented, and needs none of the above to be true: `ac3::coreaudio::system_audio_tap_api_available()`
-(`src/audio/src/backend/macos/coreaudio_names.hpp`) is a pure macOS-version gate — no permission
-requested, no device touched — that a future implementation should refuse on before ever
-constructing a `CATapDescription`. It is exercised for real on every macOS CI run
-(`tests/backend/macos/test_macos_support.cpp`), the same as the rest of this backend's device-free
-logic; only the tap itself, and the permission flow around it, waits on real hardware. See
-ROADMAP.md's UX7 entry for the full item.
+The tap is created with `muteBehavior = CATapMutedWhenTapped`, and that single choice is why
+[Crucible](../crucible/index.md) needs no silent device on this platform. On Windows an
+application's audio has to be sent to an installed silent driver, and on Linux to a PipeWire node
+created at run time, so that the sound reaches the mixer instead of the speakers; here the mute
+rides on the tap itself. Nothing in the sound settings changes and there is nothing to restore on
+quit.
+
+It also makes an open tap something Crucible has to be careful about holding. Its engine opens no
+tap while its output stage has no endpoint, and releases any it holds when one goes away
+(`Impl::sync_taps()` in `apps/crucible/engine/engine.cpp`), so a Mac where the output policy finds
+nothing usable is not one where every application it listed falls silent. The same code runs on
+Windows and Linux, where a tap mutes nothing and the rule costs nothing.
+
+**Three ways this contract is narrower than the Windows one**, all of them properties of the API
+rather than shortcuts:
+
+- **One process, not a tree.** `ProcessLoopbackMode::kIncludeProcessTree` is honoured as "this
+  process" and `kExcludeProcessTree` as "everything except this process". Windows' activation
+  walks the target's children because a browser renders its audio from a utility process; a
+  `CATapDescription` names audio process objects, which carry no descendant relation to follow.
+  PipeWire's tap has the same property for its own reason, so Windows is the only one of the
+  three backends with a tap where that mode name is literal.
+- **Mono or stereo, and nothing else.** WASAPI lets a caller state any format and has the audio
+  engine convert to it. Core Audio's mixdown descriptions are mono and stereo with no converter
+  behind them, so `ProcessLoopbackFormat::channels` of 1 or 2 is accepted and anything else —
+  including the eight channels that keep a surround-rendering application's bed intact — is
+  refused with `kFormatUnsupported`.
+- **The rate is the machine's, and is checked rather than converted.** A mixdown tap runs at the
+  rate of the device it mixes down to. `capture.hpp` promises samples land in the ring at exactly
+  the format the caller asked for, so a tap whose own `kAudioTapPropertyFormat` disagrees is
+  refused rather than quietly delivering something else.
+
+A fourth difference is in what is *reported* rather than what is promised, and it rests on an
+assumption worth naming. `CaptureStats::frames_silence_filled` stays zero for a tap here, where
+the Windows and PipeWire taps both count wall-clock gaps they had to fill for a quiet process.
+The reason given in the code is that the aggregate device is clocked by the output device it
+names as its main sub-device, not by the tapped application, so its `AudioDeviceIOProcID` is
+called every device period whether that application is playing or not. That reading of the API
+has not been checked against a running one. If it turns out to be wrong — if a tap delivers
+nothing at all while its process is quiet — this backend needs the wall-clock fill the other two
+have, and has not written it.
+
+`process_loopback_available()` is **two** gates, and `audio_backend().process_loopback` reports
+the same answer with the matching reason — both go through
+`ac3::coreaudio::system_audio_tap_refusal()`, so the two reports of one fact cannot drift apart.
+
+The first is the OS version. The floor is pinned in one place —
+`ac3::coreaudio::kSystemAudioTapMinimumOs` in
+`src/audio/src/backend/macos/coreaudio_names.hpp` — and it is **14.2** rather than the 14.4 some
+third-party write-ups require. Apple's SDK annotates the API `API_AVAILABLE(macos(14.2))`, which
+is what `@available` and the weak-linked symbols are keyed to, and taking 14.4 would mean
+refusing a machine whose own operating system declares the API present, on the strength of a
+report nobody on this project can check. That constant's comment records the other figure and why
+it was not taken.
+
+The second is not a version test, and it is off by default. **On 2026-09-06 the tap path ran for
+the first time anywhere and did not return.** On the Apple Silicon CI leg (macOS 26.6.2),
+`AudioDeviceCreateIOProcID` on the tap's private aggregate device parked in `mach_msg2_trap`
+inside `HALC_ProxyIOContext::_TellServerAboutStreamUsage`, waiting on a `coreaudiod` reply that
+hadn't come 300 seconds later (`sample` caught it in three separate processes). With that request
+outstanding the whole process's HAL client was unusable, so the application froze rather than
+reporting a failed tap. `Capture::start_process_loopback()` now refuses before it reaches that
+call; `AC3FORGE_MACOS_PROCESS_TAP` in the environment turns the path back on for whoever has a Mac
+to settle it on, read once at first use.
+
+The macOS 15.7.9 Intel leg ran the same code without hanging on the same day, which is why this
+is not written as "macOS cannot do this". Two variables separate those legs — the OS version and
+the architecture — and nothing here can say which one matters.
+
+**What that run settled, and it is not what this page expected.** Two of the walls named here
+turned out not to be walls:
+
+- **The consent prompt was not it.** Crucible is unsigned and no bundle in this tree declares
+  `NSAudioCaptureUsageDescription`, and `AudioHardwareCreateProcessTap` returned a tap anyway.
+  `AudioHardwareCreateAggregateDevice` returned the private aggregate, and
+  `kAudioTapPropertyFormat` read back. Everything up to the IOProc registration worked.
+- **The runner does have a default output device**, and a window session. `system_profiler`
+  names it `Apple Virtual Sound Device`, two channels at 48 kHz, default output and default
+  system output; `launchctl managername` answers `Aqua`. That virtual device is what the tap's
+  aggregate names as its main sub-device and is clocked by, which makes it the first thing to
+  suspect and the first thing to retry on real hardware - though nothing here establishes it as
+  the cause.
+
+The missing `NSAudioCaptureUsageDescription` is still a real gap and still needs no Mac to add;
+what has changed is that it is no longer the first thing in the way. DR9 still records what CI
+cannot stand in for: no Mac has taken a single sample through this backend, and nobody here has
+one.
+
+**So what is claimed is that it compiles, that its version gate answers, and that everything up
+to `AudioDeviceCreateIOProcID` succeeds on one hosted runner while that call does not return.**
+The first macOS CI attempt at any of it never reached a compiler: it stopped during configure, at
+an `install(TARGETS ac3crucible)` rule that named no `BUNDLE DESTINATION` for a target with
+`MACOSX_BUNDLE` on. With that fixed, both legs compiled `process_tap.mm` and linked it into
+`ac3audio`. Their `ctest` runs cover the version gate
+(`tests/backend/macos/test_macos_support.cpp`, the one place the `__builtin_available` lowering
+is executed rather than merely compiled), the agreement between the capability report and
+`process_loopback_available()` and their shared refusal sentence, and — since the eleven Crucible
+Qt Quick suites run there — the engine driving the real seams and being told no by the tap.
+
+## Device notifications
+
+`DeviceWatcher` (`ac3/audio/device_watcher.hpp`) is implemented here over HAL property listeners
+on `kAudioObjectSystemObject`: `kAudioHardwarePropertyDevices` for endpoints arriving and
+leaving, and `kAudioHardwarePropertyDefaultOutputDevice`/`…DefaultInputDevice` for the two
+defaults moving. Core Audio says only "the device list changed", so the watcher keeps the
+previous list of device UIDs and diffs against it to produce `kAdded` and `kRemoved` — the
+bookkeeping Windows gets from `IMMNotificationClient` and Linux from PipeWire's registry for
+free.
+
+`kStateChanged` is never raised, which is a difference rather than an omission: it exists because
+a Windows endpoint can stay in the enumerator while becoming disabled or unplugged, where a HAL
+device that goes away leaves the device list altogether and is already reported as
+`kRemoved`.
+
+Callbacks arrive on the HAL's own notification thread rather than a realtime one, so the property
+reads the diff makes are allowed there. The watcher does **not** set
+`kAudioHardwarePropertyRunLoop`, and the file says why at length: the older listener API delivered
+on the main run loop, which a program that never runs one — `ac3cli`, Crucible's console runner, a
+test binary — would register for and then never hear, but that property is process-wide, the newer
+`AudioObjectAddPropertyListener` used here delivers on a HAL thread of its own, and the selector
+carries a deprecation annotation in recent SDKs that nobody here can check against a `-Werror`
+build. If it turns out notifications do not reach a run-loop-less process, that property is the
+lever to pull. Registration itself needs no device and no
+session, so `audio_backend().device_watch` reports available on any Mac, and the contract case in
+`tests/audio/test_audio_backend.cpp` exercises that on the runners: it starts a watcher, checks it
+is running, checks a second start is refused, stops it, starts it again and stops it again. That
+case passed on both macOS legs, so this is the one part of the backend that has run on a Mac. It
+is also the least of it. No callback has ever been seen to arrive, because a hosted runner's
+device list does not change while a test is running, so the diff, `kAdded`, `kRemoved` and the
+run-loop question above are all still unobserved.
 
 ## Building
 
@@ -160,7 +301,7 @@ isn't assumed present on every Mac, not because `ac3gui` cannot be built here. `
 already searches both Homebrew prefixes (`/opt/homebrew/opt/qt`/`/opt/homebrew/opt/qt6` on Apple
 Silicon, `/usr/local/opt/qt`/`/usr/local/opt/qt6` on Intel), and `apps/gui/CMakeLists.txt`'s
 `APPLE` branch — `MACOSX_BUNDLE`, the `.icns` bundle icon, and `qt_generate_deploy_qml_app_script()`
-for packaging — was written for this from the start; it was simply never exercised until the
+for packaging — was written for this from the start; it was never exercised until the
 `macos-llvm` CI leg turned the option on. Opt in explicitly once Qt is installed:
 
 ```bash
@@ -170,7 +311,14 @@ cmake --preset config-macos-llvm-debug -DAC3FORGE_BUILD_GUI=ON
 
 Homebrew's `qt` formula is the umbrella Qt6 package — one install pulls in QtDeclarative/QtQuick
 and their build-time tooling (`qmlcachegen`) alongside QtCore/QtGui, unlike apt's split
-`qt6-base-dev`/`qt6-declarative-dev` packages. The built app is a bundle,
+`qt6-base-dev`/`qt6-declarative-dev` packages. Fine for local iteration, where nothing leaves the
+machine that built it. CI itself no longer uses it: Homebrew's Qt6 stages its QML plugins as
+symlinks back into its own Cellar, computed as though the app were being installed under
+`/usr/local`, which is dangling the moment `cpack` stages the bundle anywhere else — every
+QtQuick/Controls plugin in a Homebrew-Qt-packaged `.app`, `Fusion` included, so the app cannot
+load QML at all once shipped. CI installs the official Qt kit instead (`_ci-macos.yml`'s
+"Install Qt (prebuilt)" step has the full story, including the upstream Homebrew issues this
+matches). The built app is a bundle,
 `build/config-macos-llvm/bin/ac3gui.app` (or `build/config-macos-llvm-x64/...` on Intel);
 `ac3gui --smoke` (the same headless check the other platforms run — see
 [Verified configuration](../building.md#verified-configuration)) lives at
@@ -220,22 +368,46 @@ above and `apps/gui/tests/CMakeLists.txt`/`qml_test_main.cpp` for the full detai
 numbers from the CI run that first proved the gate on macOS: 61.81/61.82 dB, against 67.84/67.82
 dB on Linux and Windows for the same material, comfortably clear of the gate's 30 dB floor. That
 gap is **not** a Homebrew-LLVM-libm-vs-glibc/MSVC difference, despite what this page and
-`ci.yml` used to say — roadmap VX11 (see `docs/building.md`'s "Floating-point contraction"
+`ci.yml` used to say (see `docs/building.md`'s "Floating-point contraction"
 section) traced it to every real arm64/aarch64 CI leg, `macos-llvm` included, landing on the
 same ~6.0 dB offset from every x86 leg regardless of OS or C library, which rules out a
 macOS-specific explanation; the gap tracks CPU architecture, and the actual mechanism is still
 open pending real hardware access neither this project nor `qemu-user` emulation can substitute
 for. `macos-llvm-x64` turned out to be new, confirmed data for exactly this question: same OS,
-same Homebrew Qt/LLVM stack as `macos-llvm`, x86_64 instead of arm64, and its real gold-reference
+same toolchain stack as `macos-llvm`, x86_64 instead of arm64, and its real gold-reference
 numbers land with the other x86 legs — 67.80/67.82/67.76 dB across three separate real runs — not
 with the ~61.8 dB every arm64/aarch64 leg (`macos-llvm` included) reports. That is further
 evidence the offset is architecture-bound rather than OS-bound: two macOS legs on the same
 toolchain now sit on opposite sides of the split, purely by CPU architecture. See `ci.yml`'s VX11
-comment and [ROADMAP.md](../roadmap.md)'s VX11 entry for the fuller record.
+comment for the fuller record.
 
+**Crucible on macOS, as of 2026-09-06.** Both legs build it — every `.mm`, every file under
+`apps/crucible/engine/platform/macos/`, and `bin/ac3crucible.app/Contents/MacOS/ac3crucible` —
+and both run all eleven of its Qt Quick suites. Eight of those drive the **real** macOS platform
+seams rather than fakes: `Main.qml` starts the engine whenever the window is built, so the
+session monitor, the foreground, the default device, the virtual device and the output stage
+all execute on the runner.
+
+That is how the one hang this platform half has produced was found. The Apple Silicon leg
+(`macos-latest`, macOS 26.6.2) timed out at 300 s on `ac3crucible_qml_tests_firstrun`, `_room`
+and `_shell`, which the Intel leg (`macos-15-intel`, macOS 15.7.9) passed. A temporary CI step
+ran each of the three alone and took a `sample` of the stuck process: the engine's frame thread
+was inside `AudioDeviceCreateIOProcID` on a process tap's aggregate device, and the window's own
+thread was blocked behind it in an ordinary device enumeration. See
+[Per-application capture](#per-application-capture-the-core-audio-process-tap) for the whole of
+it and for the gate that now refuses that path. The three suites run green on both legs since.
+
+Worth separating from that, because the two hangs on this runner have different causes and the
+same symptom. `macos-llvm`'s first-ever GUI run deadlocked in the threaded Qt Quick render loop,
+which is why `apps/gui/tests/CMakeLists.txt` sets `QSG_RENDER_LOOP=basic` on `APPLE` (see
+[GUI on macOS](#gui-on-macos)), and Crucible's suites set `QT_QUICK_BACKEND=software` beside
+`offscreen` for the same family of reason. Those are rendering. This one was Core Audio, and no
+amount of render-loop configuration would have moved it.
+
+The application itself has never been launched on either leg.
 ---
 
 If you get a Mac, that's still useful information for this project — running these instructions
 on real local hardware, or actually launching `ac3gui.app` and using it (CI's `--smoke` run
 proves it starts, loads its QML and drives a real encode headlessly, not that the interactive
-experience is right), would be genuinely new. Consider filing an issue with what you found.
+experience is right), would be new information. Consider filing an issue with what you found.

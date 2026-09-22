@@ -80,7 +80,7 @@ Dialog {
             Text {
                 Layout.fillWidth: true
                 text: qsTr("Open stream")
-                font.pixelSize: 18
+                font.pixelSize: Theme.fontArrow
                 font.weight: Font.ExtraBold
                 font.family: Theme.headingFamily
                 color: Theme.text
@@ -95,7 +95,7 @@ Dialog {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             text: qsTr("Decodes an already-encoded AC-3/E-AC-3 file and plays its decoded bed through an ordinary output — like every other decode in this window, an Atmos stream plays its 5.1 bed here, not unmixed objects (see Inspect objects for those). Export writes the decode to a WAV, and for an Atmos stream one WAV per object.")
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
             color: Theme.neutral700
         }
 
@@ -115,7 +115,7 @@ Dialog {
                 text: StreamPlayerController.filePath.length > 0
                       ? StreamPlayerController.filePath : qsTr("No file chosen yet")
                 color: Theme.neutral700
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 font.family: Theme.monoFamily
             }
             BusyIndicator {
@@ -136,7 +136,7 @@ Dialog {
             wrapMode: Text.WordWrap
             text: StreamPlayerController.error
             color: Theme.bad
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
         }
 
         Text {
@@ -146,7 +146,7 @@ Dialog {
             Layout.fillHeight: true
             text: qsTr("Choose an AC-3/E-AC-3 file above to play it.")
             color: Theme.textMuted
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
             verticalAlignment: Text.AlignTop
         }
 
@@ -165,7 +165,7 @@ Dialog {
                     objectName: "spSummaryText"
                     Layout.fillWidth: true
                     text: StreamPlayerController.summaryLine
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     font.family: Theme.monoFamily
                     font.weight: Font.DemiBold
                     color: Theme.text
@@ -223,7 +223,7 @@ Dialog {
                         text: qsTr("%1 / %2 s")
                                   .arg(StreamPlayerController.positionSeconds.toFixed(1))
                                   .arg(StreamPlayerController.durationSeconds.toFixed(1))
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontMicro
                         font.family: Theme.monoFamily
                         color: Theme.textMuted
                     }
@@ -265,14 +265,14 @@ Dialog {
                     wrapMode: Text.WordWrap
                     text: StreamPlayerController.exportError
                     color: Theme.bad
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                 }
 
                 // ---- levels ---------------------------------------------------
                 Text {
                     text: qsTr("LEVELS")
                     color: Theme.neutral600
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.fontMicro
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -301,7 +301,7 @@ Dialog {
                     Layout.topMargin: Theme.space2
                     text: qsTr("SOUNDFIELD")
                     color: Theme.neutral600
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.fontMicro
                 }
                 SoundfieldView {
                     objectName: "spSoundfield"

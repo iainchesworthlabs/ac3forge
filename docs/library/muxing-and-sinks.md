@@ -4,7 +4,7 @@
 
 `matroska/matroska.hpp`, library `matroska::matroska`. It links nothing from `ac3::forge` and
 takes frames as opaque bytes. Pairing it with `ac3::io::scan` is what keeps the track header
-honest.
+accurate.
 
 ```cpp
 // One Matroska frame per access unit. For E-AC-3 an access unit is the
@@ -111,6 +111,20 @@ whatever `ac3::io::scan` read out of the bitstream, fscod/bsid/bsmod/acmod/lfeon
 stream carries Dolby Atmos objects, the `flag_ec3_extension_type_a`/`complexity_index_type_a`
 extension (TS 103 420 §8.3.1/§8.3.2.2) alike.
 
+The same codec-blind contract carries **AC-4**: `codec_id = mp4::kCodecAc4`
+selects TS 103 190-2 Annex E.4's `ac-4` sample entry with a `dac4` configuration box, whose
+payload comes from `ac4::build_dac4()` off the stream's own parsed TOC — the AC-4 twin of
+`build_codec_config_box`, in `ac4::` where the codec knowledge lives. An ISOBMFF `ac-4`
+*sample* is the `raw_ac4_frame` alone (no sync word, no CRC), `samples_per_frame` comes from
+`ac4::samples_per_frame()` (Table 84 — the 1000/1001-family rates whose frame length
+alternates are refused, having no single answer), and because AC-4's RFC 6381 string is not
+its fourcc, `AudioTrack::rfc6381` carries `ac4::rfc6381_codec_string()`'s dotted form
+(`ac-4.02.01.00`) for the HLS/DASH manifests. MPEG-TS carriage is DVB-only — EN 300 468
+Annex D.7's extension descriptor `0x7F/0x15`, with an ISO 13818-1 §2.6.8 registration
+descriptor (`AC-4`) beside it for interop — and `mpegts::AudioCodec::kAc4` under the ATSC
+profile is refused rather than given an invented stream_type (A/342-2 is ATSC 3.0's
+ROUTE/MMT, not 13818-1).
+
 ```cpp
 // One MP4 sample per access unit. For E-AC-3 an access unit is the
 // independent substream plus its dependents, which is exactly what scan
@@ -140,8 +154,14 @@ Full program: [`examples/mux_mp4.cpp`](https://github.com/iainchesworthlabs/ac3f
 
 `mux` returns the whole file as bytes and does no file I/O, the same as `matroska::mux`. It
 writes `ftyp`/`moov`/`mdat` for one audio track, one sample per chunk, `stts`/`stsz`/`stco` built
-straight off the frame sizes handed in. No edit lists, no multiple tracks — those matter for
-large-file seeking and multi-track muxing, not for playing back what this project produces.
+straight off the frame sizes handed in. No multiple tracks: those matter for multi-track muxing,
+not for playing back what this project produces.
+
+An edit list is written only when `MuxOptions::edit` asks for one, and then it has one edit:
+`start_samples` to skip at the start (an encoder's priming) and `duration_samples` to play after
+them (ending before the last frame's padding). The movie and track durations become the edit's;
+the media's stays the length of its samples. An edit that runs past the frames, or plays
+nothing, is `kInvalidOptions`.
 
 Getting the `dec3`/`dac3` box right from the spec is the point: FFmpeg's MKV→MP4 remux path used
 to silently drop or mis-signal the Atmos extension
@@ -185,6 +205,17 @@ another container can hand them straight back.
 A `dec3` box that stops before the Atmos extension leaves `oba_complexity_index` empty rather
 than reporting a confident zero — the extension is a trailing addition, and a box written before
 TS 103 420 simply has nothing to say about it.
+
+**Edit lists come back as stored.** `ReadTrack::edits` holds the track's `elst` entries in file
+order (version 0 or 1), each with its `segment_duration` in the movie's timescale,
+`ReadTrack::movie_timescale` from `mvhd`, and its `media_time` in the track's own timescale, where
+-1 marks an empty edit. Nothing here applies them, because what a media time means depends on
+the codec. `apps/common/container_input.hpp` turns the shape an audio encoder writes into a
+`StreamTrim`: any empty edits, then one edit at normal speed. The trim is the samples to skip and
+the samples to play, and Hearth's player plays only that part. Any other shape leaves the stream
+whole, with a note saying why. `ac3cli` and the GUI do not apply the trim yet. Neither `elst`
+nor `mvhd` is needed to find a sample, so one too short to read, one that declares more entries
+than it holds, or one longer than `ReadOptions::max_edits` is left out, and the file still reads.
 
 **Untrusted input.** An MP4's sample table is an *index*, which is a wider attack surface than
 Matroska's in-line framing: `stsc` names chunks, `stco` names absolute file offsets and `stsz`
@@ -270,9 +301,14 @@ Annex E only carries it inside `infomdate`), `acmod`, `lfe`, the rendered `chann
 with `associated_substreams` for the `substream1`–`3` fields. Two values are *not* in any
 bitstream, because they describe how services in a multiplex relate rather than what one stream
 contains — `mainid` and `asvc` — and those stay unset unless the caller supplies them
-(`ac3cli ts ... mainid=3`, `asvc=0x0A`). An unset optional field is omitted rather than
+(`ac3cli ts ... mainid=3`, `asvc=0,2` — a comma-separated list of main-service numbers, or the
+raw bitmask directly as `asvc=0x05`). An unset optional field is omitted rather than
 zero-filled: a receiver already handles an absent one, where an invented main-service number
-links the wrong services.
+links the wrong services. What *is* checked is consistency with the stream's own `bsmod`:
+`asvc=` on a stream Table 5.7 calls a main service, or `mainid=` on one it calls an associated
+service, is a usage error (`ac3::meta::is_associated_service` is the predicate, shared with the
+`dec3`/`EC3SpecificBox` writer's own `asvc` bit) — the wire fields exist either way, but which
+one describes *this* stream is not the operator's to override.
 
 Two places where the standards' own tables cannot express something this project can read, and
 the field is omitted rather than approximated: A/52 Table G.5 reserves complete-main and
@@ -308,6 +344,18 @@ This is exactly what `ac3::io::scan` wants, and re-framing PES payloads into acc
 job, not this module's — doing it here would mean this container-blind module knowing what an
 AC-3 syncframe is.
 
+**The PMT's own service descriptor comes back too**, as `ReadStream::service` (a
+`std::optional<ServiceInfo>`, `std::nullopt` when the signalling carried no such descriptor to
+read — `kRegistrationDescriptor` and AC-4 never do). `mpegts::parse_service_descriptor` is the
+literal inverse of the four descriptor builders above, so a transport stream this module wrote
+reads back byte-for-byte what `mux`'s caller supplied — `bsmod`, `full_service`, `mainid`,
+`asvc`, `bsid`, `mix_metadata` and the `substream1`–`3` bytes alike. Not everything survives the
+round trip, because the wire format itself cannot express it: `acmod`/`channels`/`lfe`/`dsurmod`
+stay at `ServiceInfo`'s own defaults rather than reconstructed, since `channel_flags()` is a
+many-to-one summary forward (Table D.5/G.3/A4.5's "more than 5.1 channels" row covers a range,
+not one value) with no exact acmod to recover backward — a caller that has the elementary stream
+already has those exact values from `ac3::io::scan()`, the same source `mux`'s own caller used.
+
 **All three signalling forms**, one more than the writer. `mux` chooses between DVB and ATSC
 through `MuxOptions::profile` (see above), and commits to one of them wholly. A reader has no
 such luxury: a third family of files names the codec through neither, using a
@@ -334,7 +382,7 @@ if (!reader.finish(on_payload)) { /* ... */ }
 ```
 
 `Reader::finish` takes the callback — unlike the Matroska and MP4 readers' — because it can
-genuinely still emit: the unbounded PES form ends only at the next
+still emit: the unbounded PES form ends only at the next
 `payload_unit_start_indicator` or at end of input, so the last payload of a capture is only
 complete here.
 
@@ -346,12 +394,12 @@ believed — a bit-damaged PMT is thrown away rather than locking onto a wrong P
 the file. `ReadOptions` bounds the PES and PSI section sizes the reader will assemble (the
 unbounded PES form has no ceiling of its own otherwise) and how far it will search for the packet
 grid. `fuzz/fuzz_mpegts_demux.cpp` drives both entry points with arbitrary bytes — this is also
-the container reader most likely to find a genuine hang rather than a crash, since the sync
+the container reader most likely to find a hang rather than a crash, since the sync
 search, section reassembly and PES reassembly are all loops a hostile stream can try to stall.
 
 ## Fragmented MP4/CMAF + HLS/DASH: `mp4::fragment`, `mp4/hls.hpp`, `mp4/dash.hpp`
 
-ROADMAP.md's A2, the streaming-delivery follow-up `mp4::mux`'s own header deliberately left for
+The streaming-delivery follow-up `mp4::mux`'s own header deliberately left for
 later: `mp4::fragment` lays out the same track and frames as `mux`, but as a fragmented movie
 (ISO/IEC 14496-12 §8.8's `moof`/`mfhd`/`traf`/`tfhd`/`tfdt`/`trun`) split into CMAF-shaped pieces
 (ISO/IEC 23000-19) — an initialization segment (`ftyp`+`moov`, whose one `trak` carries
@@ -596,7 +644,7 @@ is the batch form, mirroring `wrap_stream`.
 The input is by definition untrusted — a burst carrier comes off a wire or out of a capture
 device — so nothing taken from `Pd` is believed past its data type's repetition period, and a
 preamble not backed by a `0x0B77` syncframe is treated as a false match to resync past rather
-than a fatal error. `fuzz/fuzz_iec61937_unwrap.cpp` keeps that honest.
+than a fatal error. `fuzz/fuzz_iec61937_unwrap.cpp` keeps that accurate.
 
 This is also what closes the loop on the wrap side: bursts written by this project *and* by
 FFmpeg's `spdif` muxer read back byte-exactly to the streams that went in, AC-3 and E-AC-3,
@@ -615,44 +663,60 @@ whole session of it.
 Windows, ALSA on Linux, CoreAudio on macOS — the path an AV receiver needs to see the raw
 compressed bitstream rather than decoded PCM.
 
-Stated plainly, because this project's docs don't soften verification gaps: **no desktop
-platform's passthrough — AC-3 and E-AC-3 alike — has been confirmed against real bitstreaming
-hardware.** The one platform with that confirmation is Android, whose backend has locked a real
-AV receiver onto real Atmos output over HDMI — see [Android](../platforms/android.md), and each
-platform page for its own status. On [Windows](../platforms/windows.md#audio-backend-wasapi)
-specifically: the development machine has no S/PDIF or HDMI endpoint behind a real
-Dolby-capable AV receiver, and WASAPI's `IsFormatSupported`
-correctly rejects both Dolby IEC 61937 subtypes everywhere it has been tried. What *is* verified
-there: the exclusive-mode path itself works (a Realtek endpoint accepts an exclusive-mode PCM
-format), and the burst framing it carries is verified as described above under
-`ac3::iec61937`. But no bitstream-capable receiver has been confirmed to lock onto output
-from this sink specifically — the one receiver-locking check that has been done used a different
-code path (bursts played as a PCM16 WAV through a passthrough output), not `PassthroughSink`
-itself, and that check has only been tried for AC-3, not E-AC-3.
+Like `MonitorSink` below, it reports where the device has got to (`position()`), and can
+`flush()`, `pause()` and `resume()`. The position counts the content's frames, 1536 to a burst in
+either format, although an E-AC-3 link runs at four times the content's rate. A pause stops the
+link, and a receiver drops its lock when that happens, so the first moments after a resume can
+be silent.
+
+When the device goes away mid-stream (the cable pulled, the receiver switched off, the endpoint
+disabled), the sink stops itself. `running()` turns false, `position()` reports nothing,
+`submit()` and `can_submit()` refuse, `flush()` returns at once, and `pause()` and `resume()`
+refuse with `kNotRunning`. A caller that retries `submit()` while the queue is full has to check
+`running()` as well, because waiting does not bring a lost device back. `start()` can be called
+again without a `stop()` first. The hidden `[passthrough-unplug]` case in `ac3tests` takes a
+person through this on real hardware.
+
+Stated plainly, because this project's docs don't soften verification gaps: of the desktop
+platforms, only **Windows** has this sink confirmed against real bitstreaming hardware — an
+Onkyo TX-RZ740 over an Nvidia GPU's HDMI output locks AC-3, E-AC-3 and signed Atmos through
+`PassthroughSink` itself, not a workaround code path; see
+[Windows](../platforms/windows.md#audio-backend-wasapi) for the full account, including two real
+`PassthroughSink` defects that real hardware surfaced and this project fixed (a cross-thread
+WASAPI crash and a stats bug that hung the CLI). Android has the same confirmation independently,
+locking a real AV receiver onto real Atmos output over HDMI — see
+[Android](../platforms/android.md). Linux and macOS remain unconfirmed against real bitstreaming
+hardware; see each platform page for its own status.
 
 ### `ac3::audio::sink_capabilities` — reading what a sink says it accepts
 
-`ac3/audio/sink_capabilities.hpp` (roadmap UX9). `read_sink_capabilities(device_id)` reads a
+`ac3/audio/sink_capabilities.hpp`. `read_sink_capabilities(device_id)` reads a
 render endpoint's own advertised capabilities — CEA-861 Short Audio Descriptors, the part of
 EDID (over HDMI) or ELD (ALSA's own EDID-Like Data, which carries the same SADs) that says which
 codecs, how many channels and which sample rates a sink accepts — rather than
 `enumerate_render_devices()`'s own live-probe answer (open the device and try). `ac3cli play`
 uses it, EDID first and the probe as the documented fallback, to decide whether a source format
 needs the automatic AC-3/PCM fallback described in
-[Commands → Following the sink](../cli/commands.md#following-the-sink).
+[Commands → Following the sink](../forge/cli/commands.md#following-the-sink).
 
-Real on exactly one backend today: ALSA, reading the HD-audio kernel driver's own
-`/proc/asound/<card>/eld#<dev>.<port>` text interface (already decoded from the raw CEA-861
-bytes, so there is no byte layout for this project to get wrong — only the driver's own field
-names to read). **Not verified against real HDMI/ELD hardware** — the development environment
-this shipped from has no Linux box with a bitstream-capable receiver attached; see
-[Linux](../platforms/linux.md) for the honest status. Every other backend (Windows, macOS,
-Android, PipeWire, and Linux without ALSA) reports `kNoBackend` rather than guessing: none has a
-documented user-mode API for reading a sink's raw SADs (Windows' WASAPI and macOS' CoreAudio
-both expose negotiated-format questions, the same kind `enumerate_render_devices()` already
-answers, not the sink's own raw descriptor; PipeWire's node properties might carry enough to
-reach the same ALSA ELD file, but no confirmed, version-stable property name was found to code
-against without a live daemon to verify it on).
+Real on two backends today:
+
+- **ALSA** reads the HD-audio kernel driver's own `/proc/asound/<card>/eld#<dev>.<port>` text
+  interface. It is already decoded from the raw CEA-861 bytes, so there is no byte layout for
+  this project to get wrong, only the driver's own field names to read.
+- **PipeWire** reads the session manager's reading of the same descriptor: the `iec958.codecs`
+  property WirePlumber sets on a digital node from the sink's ELD. That gives the codecs (AC-3,
+  E-AC-3, PCM) but no LPCM channel count or rates, which the property does not carry. A node
+  without the property reports `kNoEdid`.
+
+**Neither is verified against real HDMI/ELD hardware.** The development environment this shipped
+from has no Linux box with a bitstream-capable receiver attached; see
+[Linux](../platforms/linux.md) for the current status.
+
+Every other backend (Windows, macOS, Android, and Linux with neither ALSA nor PipeWire) reports
+`kNoBackend` rather than guessing. None has a documented user-mode API for reading a sink's raw
+SADs: Windows' WASAPI and macOS' CoreAudio both answer negotiated-format questions, the kind
+`enumerate_render_devices()` already answers, not the sink's own descriptor.
 
 ### `ac3::audio::MonitorSink` — shared-mode monitor playback
 
@@ -661,10 +725,23 @@ playback — WASAPI, ALSA or CoreAudio, resampled and mixed like any other app �
 encoded and plays it back on an ordinary output, for previewing a decode without a
 bitstream-capable receiver. Backs `ac3cli monitor` and `live`'s monitor leg.
 
+It stops itself when its device goes away, in the same way as `PassthroughSink`, and
+`[monitor-unplug]` is its hidden case. A shared-mode stream that the platform moves to another
+output keeps playing; PipeWire's session manager does this when a sink is removed.
+
+`start()` also distinguishes a device that refused this shared-mode sample rate or channel count
+(`MonitorError::kFormatRejected`) from every other WASAPI/ALSA/Core Audio failure
+(`kComFailure`). Windows and ALSA check for it precisely — the one `AUDCLNT_E_UNSUPPORTED_FORMAT`
+HRESULT, or the channel/rate `hw_params` calls specifically — while Core Audio groups its
+channel-count and nominal-rate checks under the same code, since its property-set calls report
+only success or failure and never why. PipeWire and AAudio never return it: both hand format
+negotiation to a graph/mixer that converts rather than refuses, so there is no equivalent moment
+to report.
+
 Unlike passthrough, **this one is confirmed against real hardware.** It has actually played
 decoded AC-3 and E-AC-3 (including an Atmos stream's 5.1 bed) through real Windows (Realtek)
 hardware in real time, and a live microphone capture → encode → monitor session has run
-end-to-end. Building this path against real hardware surfaced two genuine bugs that neither
+end-to-end. Building this path against real hardware surfaced two bugs that neither
 unit tests nor silent/synthetic input would have caught — see
 [Windows](../platforms/windows.md#audio-backend-wasapi) for the details, and
 `src/audio/src/backend/windows/monitor.cpp` for the fixes.
@@ -677,6 +754,44 @@ sits between the audio callback and whatever consumes the samples (an encoder, a
 or both). On macOS capture is input-only: no loopback endpoint is ever enumerated, and
 `start()` refuses `DeviceKind::kLoopback` outright rather than silently opening a microphone.
 This is what backs `ac3cli record`/`live` and the GUI's live-session tab.
+
+A third way in, `Capture::start_process_loopback(pid, mode, format)`, taps what
+one process renders and nothing else, whichever endpoint it renders to — and it is the piece the
+[AC3Forge Crucible](../crucible/index.md) is built on. Three backends have one, over three
+different mechanisms: Windows 10 build 20348+'s process-loopback activation, a PipeWire capture
+stream linked to one application node, and (macOS 14.2+) a Core Audio process tap carried by a
+private aggregate device. Only Windows walks the target's children, which is why
+`ProcessLoopbackMode`'s "tree" reads literally there and as "this process" elsewhere.
+
+It differs from an endpoint loopback in ways worth knowing before relying on it. The caller states
+the format, because there is no endpoint whose mixer format could be asked for — 48 kHz float
+stereo is the default, and eight channels is honoured on Windows, where the audio engine
+converts; the macOS tap has no converter behind it and refuses anything but mono or stereo, at
+its own rate (see [macOS](../platforms/macos.md)). On Windows a muted audio session taps as
+silence, because the tap sits after session volume, and a tap outlives its process delivering
+zeros, so "the process stopped playing" has to come from the audio session list rather than from
+the capture. Refusals are `kProcessLoopbackUnavailable` (no such tap on this platform, this
+Windows build or this macOS version — and, on **every** macOS since 2026-09-06, because the path
+is not entered by default: the one machine to run it never returned from
+`AudioDeviceCreateIOProcID` on the tap's aggregate device, so `AC3FORGE_MACOS_PROCESS_TAP` is
+what turns it back on. `process_loopback_available()` and `audio_backend().process_loopback` say
+which of those it is, up front) and `kProcessNotFound`, which the library checks itself because
+the OS does not.
+
+`ac3/audio/device_watcher.hpp`. `DeviceWatcher` delivers endpoint
+added/removed/state-changed and default-changed events on a callback, so an application that
+follows the sink can re-probe when something is plugged or unplugged instead of polling
+`enumerate_render_devices()`. Three backends have one, each over its own mechanism: Windows'
+`IMMNotificationClient`, one event per physical change (the console role only; Windows would
+otherwise report every default change three times); PipeWire's registry plus the
+`default.audio.sink`/`default.audio.source` metadata keys; and Core Audio property listeners on
+`kAudioObjectSystemObject`, which report only that the device list changed and so are diffed
+against a kept list of device UIDs. `kStateChanged` is a Windows event — on the other two an
+endpoint that goes away leaves the list, and `kRemoved` already says so. The callback runs on a
+platform thread under the watcher's own lock, which is what lets `stop()` promise no callback is
+in flight when it returns; do the minimum there and never stop the watcher from inside it. ALSA
+has no such API and the posix/android backends have no audio backend at all, so those three
+refuse `start()` with `kNoBackend`.
 
 ## Metering: `ac3::analysis`
 

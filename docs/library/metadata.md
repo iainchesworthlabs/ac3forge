@@ -91,7 +91,9 @@ auto encoder = std::make_unique<ac3::FrameEncoder>(ac3::EncoderConfig{
     // curve, so the profile is this project's reading of it.
     .drc = ac3::meta::profile(ac3::meta::ProfileId::kFilmStandard),
     // §7.7.2, independent of drc: the two answer different questions, so a
-    // stream may carry either, both or neither.
+    // stream may carry either, both or neither. Both levels are stated at
+    // the output of an RF-mode decode, which normalises dialnorm and adds
+    // 11 dB with each word, so a -20 dBFS dialogue target needs no make-up.
     .heavy = ac3::meta::HeavyConfig{.dialogue_target_dbfs = -20.0,
                                     .peak_ceiling_dbfs = -0.5},
     // Tables 5.9 / 5.10. These always define the §7.8 downmix, whatever
@@ -233,6 +235,15 @@ would decode as something else entirely.
 §D2.3.1.11's `xbsi2` byte is reserved and encoders shall set it to zero, so the writer always
 does; the decoder reports whatever it read, for a third-party stream that does otherwise.
 `encinfo` is the one bit here reserved for the encoder's own use (§D2.3.1.12).
+
+`dmixmod` has three defined codes and a reserved `11` (Table D2.2). E-AC-3's `mixmdate` carries
+the same field under the same table, since Annex E gives it no definition of its own (§E2.2);
+ETSI TS 102 366 V1.4.1 reads the same way (Table D.1.1, clause E.1.2.0). Neither standard assigns
+`11` a downmix. `DownmixMode::kReserved` names the code so that a decoded stream sending it
+reports it as sent, and `meta::describe()` calls it `"reserved"`. Both encoders refuse to write
+it (`meta::valid_downmix_mode()`), for the reason they refuse the reserved surround levels: a
+receiver may read it as "not indicated", so whatever it was meant to say would be lost. The
+Annex D path returns `FrameError::kInvalidBsi`; `mixmdate` returns `kInvalidMixLevel`.
 
 ### On decode
 

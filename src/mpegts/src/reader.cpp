@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "mpegts/mpegts.hpp"
 #include "ts_detail.hpp"
 
 namespace mpegts {
@@ -254,6 +255,7 @@ void emit_pes(ReaderState& s, const Reader::PayloadFn& on_payload) {
         }
 
         bool eac3 = false;
+        bool ac4 = false;
         bool matched = false;
         CodecSignalling signalling = CodecSignalling::kAtscStreamType;
 
@@ -278,6 +280,17 @@ void emit_pes(ReaderState& s, const Reader::PayloadFn& on_payload) {
                 signalling = CodecSignalling::kDvbDescriptor;
                 break;
             }
+            // EN 300 468 Annex D.7: AC-4 is the extension descriptor (0x7F)
+            // whose first payload byte - the descriptor_tag_extension - is
+            // 0x15. The flag byte after it is configuration this reader does
+            // not need; presence is the identification.
+            if (stream_type == kStreamTypePrivateData && tag == 0x7F && length >= 1 &&
+                byte_at(section, d + 2) == 0x15) {
+                ac4 = true;
+                matched = true;
+                signalling = CodecSignalling::kDvbExtensionDescriptor;
+                break;
+            }
             if (tag == kTagRegistrationDescriptor && length >= 4) {
                 const std::array<std::uint8_t, 4> id{byte_at(section, d + 2),
                                                      byte_at(section, d + 3),
@@ -296,13 +309,46 @@ void emit_pes(ReaderState& s, const Reader::PayloadFn& on_payload) {
         }
 
         if (matched) {
+            // The loop above only IDENTIFIES the codec: ATSC's own
+            // stream_type match never even looks at the descriptor loop
+            // (matched is already true, so the `!matched` guard on that
+            // for-loop's own condition skips its body entirely), and the DVB
+            // path stops at the first descriptor recognised for THAT
+            // purpose. A second, independent pass - run regardless of which
+            // branch above set `matched` - finds the A/52 audio descriptor's
+            // raw bytes, if any, for parse_service_descriptor(). It never
+            // changes matched/eac3/ac4/signalling, only what (if anything)
+            // ends up in ReadStream::service.
+            std::optional<ServiceInfo> service;
+            if (!ac4) {
+                const std::uint8_t dvb_tag =
+                    eac3 ? kTagEnhancedAc3Descriptor : kTagAc3Descriptor;
+                const std::uint8_t atsc_tag =
+                    eac3 ? kTagAtscEac3Descriptor : kTagAtscAc3Descriptor;
+                for (std::size_t d = descriptors_at; d + 2 <= descriptors_at + es_info_length;) {
+                    const std::uint8_t desc_tag = byte_at(section, d);
+                    const std::size_t desc_length = byte_at(section, d + 1);
+                    if (d + 2 + desc_length > descriptors_at + es_info_length) {
+                        break;  // already bounds-checked by the identification pass above
+                    }
+                    if (desc_tag == dvb_tag || desc_tag == atsc_tag) {
+                        service = parse_service_descriptor(desc_tag,
+                                                            section.subspan(d + 2, desc_length));
+                        break;
+                    }
+                    d += 2 + desc_length;
+                }
+            }
+
             s.stream = ReadStream{.program_number = program_number,
                                   .pmt_pid = s.pmt_pid,
                                   .elementary_pid = pid,
                                   .stream_type = stream_type,
                                   .eac3 = eac3,
+                                  .ac4 = ac4,
                                   .signalling = signalling,
-                                  .packet_size = s.grid.stride};
+                                  .packet_size = s.grid.stride,
+                                  .service = service};
             s.stream_found = true;
             return true;
         }
@@ -510,7 +556,7 @@ std::expected<std::size_t, DemuxError> walk(ReaderState& s, std::span<const std:
     while (at + s.grid.stride <= window.size()) {
         const auto packet = window.subspan(at + s.grid.offset, kTsPacketSize);
         const auto parsed = parse_packet(s, packet, on_payload);
-        if (!parsed) {
+        if (!parsed.has_value()) {
             return std::unexpected(parsed.error());
         }
         at += s.grid.stride;
@@ -552,7 +598,7 @@ std::expected<Demuxed, DemuxError> demux(std::span<const std::byte> file,
     };
 
     const auto walked = walk(s, file, keep);
-    if (!walked) {
+    if (!walked.has_value()) {
         return std::unexpected(walked.error());
     }
     // The last PES of a capture using the unbounded length form is only
@@ -560,7 +606,7 @@ std::expected<Demuxed, DemuxError> demux(std::span<const std::byte> file,
     emit_pes(s, keep);
 
     const auto verdict = finish_verdict(s);
-    if (!verdict) {
+    if (!verdict.has_value()) {
         return std::unexpected(verdict.error());
     }
 
@@ -590,7 +636,7 @@ std::expected<void, DemuxError> Reader::push(std::span<const std::byte> chunk,
     auto& s = *state_;
     s.buffer.insert(s.buffer.end(), chunk.begin(), chunk.end());
     const auto consumed = walk(s, s.buffer, on_payload);
-    if (!consumed) {
+    if (!consumed.has_value()) {
         return std::unexpected(consumed.error());
     }
     s.buffer.erase(s.buffer.begin(), s.buffer.begin() + static_cast<std::ptrdiff_t>(*consumed));

@@ -11,7 +11,7 @@
 #include "ac3/oba/motion.hpp"
 #include "ac3/audio/audio_backend.hpp"
 
-// Roadmap B1 phase 3 of 3 ("ADM BWF reader feeding the JOC encoder", see ROADMAP.md) - the narrow
+// ADM BWF reader phase 3 of 3 ("ADM BWF reader feeding the JOC encoder") - the narrow
 // seam between main.cpp's 'atmos-adm' command and ac3adm::ac3adm/ac3::admbridge, this project's
 // one opt-in, non-default library (AC3FORGE_BUILD_ADM, default OFF - see root CMakeLists.txt's
 // own option() for why: libadm's Boost dependency).

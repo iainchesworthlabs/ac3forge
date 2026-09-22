@@ -5,6 +5,7 @@
 #include <optional>
 
 #include "ac3/decoder/decoder.hpp"
+#include "ac3/internal/decode_scalar.hpp"
 #include "ac3/meta/drc.hpp"
 
 // The §7.7 gain math both decoders apply, shared so a future correction to
@@ -32,15 +33,19 @@ namespace ac3::internal {
             break;
         case OperatingMode::kLine:
             out.drc_scale = 1.0;
+            out.drc_boost_scale.reset();
             out.heavy_compression = false;
             break;
         case OperatingMode::kRf:
+            // block_gain() below adds RF mode's 11 dB to every compr word it
+            // applies; out.output.mode still says kRf, which is how it knows.
             out.heavy_compression = true;
             // §7.7.2.1's fallback for a syncframe carrying no compr word is
             // dynrng, and it is meant to be the whole of it - a partial scale
             // here would make the fallback quietly weaker than the word it
             // stands in for.
             out.drc_scale = 1.0;
+            out.drc_boost_scale.reset();
             break;
     }
     return out;
@@ -49,25 +54,50 @@ namespace ac3::internal {
 // The §7.7 gain for one block, resolving which of the two control signals
 // applies. §7.7.2.1: a decoder told to use compr falls back on dynrng for any
 // syncframe with no compr word, so heavy compression is a preference and not a
-// mode switch. A dependent E-AC-3 substream's compr is always std::nullopt
-// (see DecodedSubstream::compr's own comment), so this composes correctly
-// there too without any substream-type check.
+// mode switch. `compr` is whichever word governs the block's programme - an
+// E-AC-3 program with dependent substreams takes its last dependent's word for
+// every substream (§E3.8.5, resolved in Eac3Decoder::decode_access_unit_core),
+// and a dependent decoded on its own has none.
 [[nodiscard]] inline double block_gain(const DecoderConfig& config, std::uint8_t dynrng_word,
                                        std::optional<std::uint8_t> compr) {
     if (config.heavy_compression && compr) {
         // §7.7.2 states no partial-compression scaling: compr's whole purpose
         // is a hard ceiling, and a decoder that applied a fraction of it would
         // be promising a ceiling it does not deliver.
-        return meta::compr_gain(*compr);
+        const double gain = meta::compr_gain(*compr);
+        // RF mode's 11 dB are applied with the word, so a syncframe that falls
+        // back on dynrng below keeps line mode's level - what the Dolby
+        // Reference Player does frame by frame (see meta::kRfModeGainDb).
+        // kCustom's heavy_compression is the bare §7.7.2 gain, the same
+        // arithmetic FFmpeg's heavy_compr applies.
+        return config.output.mode == OperatingMode::kRf ? gain * meta::kRfModeGain : gain;
     }
-    if (config.drc_scale == 0.0 || dynrng_word == meta::kDynrngUnity) {
+    const double boost_scale = config.drc_boost_scale.value_or(config.drc_scale);
+    if ((config.drc_scale == 0.0 && boost_scale == 0.0) || dynrng_word == meta::kDynrngUnity) {
         return 1.0;
     }
     const double gain = meta::dynrng_gain(dynrng_word);
-    // §7.7.1's "Partial Compression" scales the word as a signed fraction of
-    // dB, which in the linear domain is exactly raising the gain to that
-    // power. Doing it here rather than on the bits avoids re-quantising.
-    return config.drc_scale == 1.0 ? gain : std::pow(gain, config.drc_scale);
+    // A word above unity boosts and one below it cuts, and each has its own
+    // share of §7.7.1's "Partial Compression" (DecoderConfig::drc_boost_scale).
+    const double scale = gain > 1.0 ? boost_scale : config.drc_scale;
+    if (scale == 0.0) {
+        return 1.0;
+    }
+    // Partial compression scales the word as a signed fraction of dB, which
+    // in the linear domain is exactly raising the gain to that power. Doing
+    // it here rather than on the bits avoids re-quantising.
+    return scale == 1.0 ? gain : std::pow(gain, scale);
 }
+
+// One programme's block_gain() as its coefficients take it: whether there is
+// anything to apply, the number they are multiplied by (the gain narrowed once
+// to the decode scalar, or a normalised store's mantissa of it), and the power
+// of two a normalised store moves into the block exponent instead. Both
+// decoders resolve one of these per programme per block.
+struct BlockScale {
+    bool apply = false;
+    int power = 0;
+    decode_scalar_t scale{};
+};
 
 }  // namespace ac3::internal

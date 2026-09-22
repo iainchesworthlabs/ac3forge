@@ -11,7 +11,7 @@
 #include "ac3/oba/motion.hpp"
 #include "ac3iab/ac3iab.hpp"
 
-// Roadmap item IM1 phase 3 of 3 ("IAB (SMPTE ST 2098-2) reader", see ROADMAP.md): maps the parsed
+// Roadmap item IM1 phase 3 of 3 ("IAB (SMPTE ST 2098-2) reader"): maps the parsed
 // IAB bed/object graph (ac3iab::ac3iab, phases 1-2) onto ac3::oba::AtmosEncoder's input shape - one
 // ac3::oba::ObjectPath plus one mono PCM buffer per bed speaker feed or dynamic object, the same
 // destination shape build() (bridge.hpp) already produces for ADM. This is still the one place

@@ -1,0 +1,27 @@
+menu "ac3forge I2S player"
+
+# Defaults chosen to be safe on an ESP32-S3-DevKitC-1 rather than to match any
+# particular DAC board: 5, 6 and 7 are ordinary GPIOs on the S3 - not strapping
+# pins (0, 45, 46), not the USB pair (19, 20), not the console UART (43, 44) and
+# not the flash/PSRAM range. Any free GPIO works; the I2S peripheral's signals
+# go through the GPIO matrix.
+config AC3FORGE_EXAMPLE_I2S_BCLK_GPIO
+    int "I2S bit clock (BCLK/SCK) GPIO"
+    default 5
+    help
+        The bit clock the DAC latches data on.
+
+config AC3FORGE_EXAMPLE_I2S_WS_GPIO
+    int "I2S word select (WS/LRCK) GPIO"
+    default 6
+    help
+        The left/right word clock. Runs at the sample rate, 48 kHz here.
+
+config AC3FORGE_EXAMPLE_I2S_DOUT_GPIO
+    int "I2S data out (DOUT/SDIN) GPIO"
+    default 7
+    help
+        Serial audio data from the ESP32-S3 to the DAC. This example never
+        receives, so no DIN pin is configured.
+
+endmenu

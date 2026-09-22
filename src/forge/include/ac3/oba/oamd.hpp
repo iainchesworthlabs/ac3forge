@@ -315,8 +315,16 @@ enum class BedLabel : std::uint8_t {
 // complexity_index_type_a at 16 objects and §6.3.2.4 caps joc_num_objects at
 // the same. A stream that got past this would be rejected by the frame writer
 // (FrameError::kInvalidObjectAudio) before any of it reached a file.
+// `ramp_samples` is the frame this update covers, in samples - the
+// ramp_duration the one md_update block carries, so object properties
+// interpolate across exactly one frame instead of stepping at its edge.
+// 1536 is the ordinary six-block E-AC-3 frame; a short syncframe
+// (§E2.3.1.4, AtmosConfig::numblkscod 0-2) passes 256/512/768. Table 24 has
+// a code for each: 512 and 1536 directly, 256 through the §5.6.2.7 ramp
+// table, and anything else as the 11-bit literal.
 [[nodiscard]] AC3FORGE_EXPORT std::vector<std::byte> build_payload(
-    const Program& program, std::span<const DynamicObject> objects);
+    const Program& program, std::span<const DynamicObject> objects,
+    int ramp_samples = 1536);
 
 // --- Decode ------------------------------------------------------------
 

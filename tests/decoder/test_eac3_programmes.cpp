@@ -339,7 +339,7 @@ TEST_CASE("a second independent substream is a second programme, not more frames
         // and ScannedStream::access_units - what a muxer puts in it - is the
         // first programme's units alone. A box declaring two programmes over
         // a track holding one would be worse than no signalling at all; see
-        // build_codec_config_box's own comment and roadmap IO6.
+        // build_codec_config_box's own comment and MPEG-TS broadcast profiles.
         const auto low = std::to_integer<std::uint32_t>(box[1]);
         CHECK((low & 0x07) == 0);
         // data_rate describes those same units - the first programme's own
@@ -354,6 +354,80 @@ TEST_CASE("a second independent substream is a second programme, not more frames
         REQUIRE(single.has_value());
         CHECK(box == ac3::io::build_codec_config_box(*single));
     }
+}
+
+TEST_CASE("all eight independent substreams work, and a ninth is refused",
+          "[eac3][programmes]") {
+    // §E2.3.1.2's own ceiling: I0-I7, eight programmes and no more. The
+    // 2-programme test above proves the mechanism; this proves the range it
+    // claims to support actually holds at its edge, which nothing had
+    // exercised before - kMaxProgrammes (eac3_frame.cpp) lived only behind a
+    // guard no test had ever reached.
+    ac3::eac3::AccessUnitConfig config;
+    config.independent = bed(448, 31);
+    constexpr std::array<double, 8> tones{kMainTone, 200.0, 400.0,  600.0,
+                                          800.0,    1000.0, 1200.0, 1400.0};
+    for (int i = 1; i < 8; ++i) {
+        config.additional.push_back({.independent = {.bitrate_kbps = 64,
+                                                      .acmod = ac3::Acmod::k1_0,
+                                                      .dialnorm = 20 + i}});
+    }
+    REQUIRE(config.additional.size() == 7);
+
+    constexpr int kFrames = 3;
+    const auto stream = encode(config, kFrames, tones);
+
+    const auto ids = ac3::programme_ids(stream);
+    REQUIRE(ids.has_value());
+    CHECK(*ids == std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7});
+
+    const auto all = ac3::split_access_units(stream);
+    REQUIRE(all.has_value());
+    CHECK(all->size() == static_cast<std::size_t>(kFrames) * 8);
+
+    // Every one of the eight decodes on its own, to its own audio and its
+    // own dialnorm - the same per-programme independence the 2-programme
+    // test checks, just at the format's actual ceiling instead of its
+    // smallest interesting case.
+    for (int id = 0; id < 8; ++id) {
+        CAPTURE(id);
+        const auto own = ac3::split_access_units(stream, id);
+        REQUIRE(own.has_value());
+        REQUIRE(own->size() == static_cast<std::size_t>(kFrames));
+        const auto decoded = decode_programme(*own, std::nullopt);
+        CHECK(decoded.units == kFrames);
+        CHECK(decoded.programme == id);
+        if (id == 0) {
+            CHECK(decoded.channels.size() == 6);
+            CHECK(decoded.dialnorm == 31);
+        } else {
+            REQUIRE(decoded.channels.size() == 1);
+            CHECK(decoded.dialnorm == 20 + id);
+            CHECK(std::abs(dominant_freq_hz(decoded.channels[0]) -
+                           tones[static_cast<std::size_t>(id)]) < 10.0);
+        }
+    }
+
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    REQUIRE(scanned->programmes.size() == 8);
+
+    // A ninth is refused outright, not silently dropped or merged into the
+    // eighth - §E2.3.1.2 has no substream id past 7 to give it.
+    auto nine = config;
+    nine.additional.push_back(
+        {.independent = {.bitrate_kbps = 64, .acmod = ac3::Acmod::k1_0, .dialnorm = 29}});
+    REQUIRE(nine.additional.size() == 8);
+    const auto refused = ac3::eac3::build_silent_access_unit(nine);
+    REQUIRE_FALSE(refused.has_value());
+    CHECK(refused.error() == ac3::FrameError::kInvalidSubstream);
+
+    // AccessUnitEncoder's own constructor cannot fail (see ac3cli's
+    // eac3_config_accepted, which exists for exactly this reason) - a
+    // rejected config leaves it holding no substreams, which is how a
+    // caller finds out before attempting a frame.
+    ac3::eac3::AccessUnitEncoder nine_encoder{nine};
+    CHECK(nine_encoder.channel_count() == 0);
 }
 
 TEST_CASE("a single-programme stream is unchanged by the programme layer",
@@ -431,4 +505,80 @@ TEST_CASE("an AC-3 stream reports one programme whatever crc1 happens to hold",
     REQUIRE(scanned->programmes.size() == 1);
     CHECK(scanned->programmes[0].substreamid == 0);
     CHECK(scanned->programmes[0].access_units.size() == static_cast<std::size_t>(kFrames));
+}
+
+TEST_CASE("selecting a programme decodes an AC-3 stream whatever crc1 happens to hold",
+          "[eac3][programmes]") {
+    // The decoder-side half of the test above. The framing gates on bsid, but
+    // Eac3Decoder::decode_access_unit's own §E2.3.1.2 programme-selection step
+    // used to parse_bsi() the unit's lead frame unconditionally - and in an
+    // AC-3 frame the two bits where strmtyp lives are the top of crc1. That
+    // aliased to the reserved strmtyp 0x3 on roughly a quarter of frames and
+    // failed the whole decode with kReservedValue; on the rest it read a
+    // plausible substreamid out of a checksum and silently selected on it.
+    //
+    // FFmpeg's FATE fixture the_great_wall_7.1.eac3 (a §E2.3.1.2 legacy core
+    // plus an Annex E dependent) is the stream that surfaced this: its first
+    // access unit is one of the reserved-aliasing ones, so `ac3cli decode`
+    // failed on it outright while `probe`, which does not take this path,
+    // read the whole file. A plain AC-3 stream reproduces it without needing
+    // the dependent - the lead frame is all the selection step looks at.
+    ac3::EncoderConfig config{.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0};
+    ac3::FrameEncoder encoder{config};
+    constexpr int kFrames = 24;
+    std::vector<std::vector<float>> block(2, std::vector<float>(ac3::kSamplesPerFrame));
+    std::vector<std::span<const float>> views(2);
+    std::vector<std::byte> stream;
+    std::uint64_t n0 = 0;
+    for (int f = 0; f < kFrames; ++f) {
+        for (std::size_t ch = 0; ch < block.size(); ++ch) {
+            fill_tone(block[ch], kMainTone, n0);
+            views[ch] = block[ch];
+        }
+        n0 += ac3::kSamplesPerFrame;
+        const auto frame = encoder.encode_frame(views);
+        REQUIRE(frame.has_value());
+        stream.insert(stream.end(), frame->begin(), frame->end());
+    }
+
+    const auto units = ac3::split_access_units(stream);
+    REQUIRE(units.has_value());
+    REQUIRE(units->size() == static_cast<std::size_t>(kFrames));
+
+    // Without this the test could pass vacuously: it only exercises the
+    // reserved-strmtyp path if some frame's crc1 actually starts 0b11. Byte 2
+    // of an AC-3 frame is the high half of crc1, and its top two bits are
+    // where an Annex E reader would look for strmtyp.
+    int reserved_aliasing = 0;
+    for (const auto& unit : *units) {
+        REQUIRE(unit.size() >= 3);
+        if ((static_cast<unsigned>(unit[2]) >> 6) == 0x3) {
+            ++reserved_aliasing;
+        }
+    }
+    INFO("frames whose crc1 aliases to the reserved strmtyp 0x3: " << reserved_aliasing);
+    REQUIRE(reserved_aliasing > 0);
+
+    // Programme 0 is what §E2.3.1.2 assigns the core, so every unit decodes.
+    const auto selected = decode_programme(*units, 0);
+    CHECK(selected.units == static_cast<std::size_t>(kFrames));
+    CHECK(selected.programme == 0);
+    REQUIRE(selected.channels.size() == 2);
+
+    // ...and it is the same audio the unselected decode produces.
+    const auto all = decode_programme(*units, std::nullopt);
+    CHECK(all.units == selected.units);
+    REQUIRE(all.channels.size() == selected.channels.size());
+    for (std::size_t ch = 0; ch < selected.channels.size(); ++ch) {
+        CHECK(all.channels[ch] == selected.channels[ch]);
+    }
+
+    // AC-3 has no substream layer, so there is no programme 1 to select: every
+    // unit is skipped, and skipping is not an error.
+    ac3::Eac3Decoder other{{.programme = 1}};
+    for (const auto& unit : *units) {
+        const auto decoded = other.decode_access_unit(unit);
+        REQUIRE(decoded.has_value());
+        CHECK_FALSE(decoded->has_value());
+    }
 }

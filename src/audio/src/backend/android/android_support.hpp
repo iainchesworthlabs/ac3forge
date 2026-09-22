@@ -42,6 +42,20 @@ namespace ac3::android_audio {
     return format == audio::BitstreamFormat::kEac3 ? content_rate * 4 : content_rate;
 }
 
+// AudioTrack.ERROR_DEAD_OBJECT, which AudioTrack.write() returns once the
+// track is no longer valid - its output closed under it when the HDMI sink
+// went away, or the audio server restarted - and, in the SDK's words, "needs
+// to be recreated". PassthroughBridge.submit() hands write()'s result back
+// unchanged, so this is the answer that tells PassthroughSink::submit() the
+// stream has ended rather than paused for breath. It is the only negative
+// answer read that way: the others are counted as before, and submit() keeps
+// its place in the burst for them.
+inline constexpr int kAudioTrackErrorDeadObject = -6;
+
+[[nodiscard]] constexpr bool track_is_dead(int written) {
+    return written == kAudioTrackErrorDeadObject;
+}
+
 // The Kotlin side's PassthroughBridge.probeCapabilities(int) returns
 // [ac3Supported, eac3Supported, pcmSupported] as 0/1 flags (see
 // passthrough.cpp's header comment for the full contract) - this is the pure

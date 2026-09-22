@@ -8,7 +8,7 @@
 #include "ac3/io/wav.hpp"
 #include "differential_oracle.hpp"
 
-// Differential mode for E-AC-3 (roadmap G3): the same split_access_units +
+// Differential mode for E-AC-3 (differential decoder fuzzing): the same split_access_units +
 // Eac3Decoder path fuzz_eac3_decode.cpp already crash-fuzzes (this harness
 // shares its seed corpus - see fuzz/run.sh's seed_source_for), but instead
 // of only checking for a crash/sanitizer trip, this decodes the SAME

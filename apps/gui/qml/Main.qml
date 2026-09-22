@@ -26,7 +26,7 @@ ApplicationWindow {
     visible: true
     color: Theme.bg
 
-    // Roadmap UX3: mirrors every anchor/Row/ColumnLayout in the window (and,
+    // GUI localisation: mirrors every anchor/Row/ColumnLayout in the window (and,
     // via childrenInherit, every descendant item) for right-to-left
     // languages (Arabic, Hebrew, Yiddish). Qt.application.layoutDirection
     // follows the application's layout direction, which LanguageManager
@@ -81,6 +81,12 @@ ApplicationWindow {
         // Which palette draws the app: "signal" (the design system's red),
         // "ink", "console", or "system" (the desktop's own accent colour).
         property string palette: "signal"
+        // The text size the person chose, as a percentage or "system" - the
+        // same five values, spelled the same way, that Crucible persists
+        // under appearance/textScale, so one sentence describes both windows
+        // and a person who has set one is not surprised by the other.
+        // applyTextScale() below is what turns it into Theme.fontScale.
+        property string textScale: "100"
         property string controlsOnOpen: "guided"
         property string lastTier: "guided"
         property string meterMode: "coded"
@@ -132,16 +138,47 @@ ApplicationWindow {
     // Same reason as prefsDialog above - item 33's run details popover also
     // lives on the Overlay.
     readonly property alias runDetailsPopup: runDetailsDialog
-    // Same reason again - roadmap C3's QC report dialog.
+    // Same reason again - GUI QC verification's QC report dialog.
     readonly property alias qcDialogRef: qcDialog
     // Same reason again - the decode-side object inspector.
     readonly property alias objectInspectorDialogRef: objectInspectorDialog
-    // Same reason again - roadmap UX1's stream player.
+    // Same reason again - GUI stream player's stream player.
     readonly property alias streamPlayerDialogRef: streamPlayerDialog
+
+    // The text size the person chose. Every size in the window is a multiple
+    // of this (Theme.fontScale), so Preferences > Appearance > Text size moves
+    // all of them together and a control grows rather than clipping - where
+    // its height derives from its label, which Theme.qml's own comment says
+    // is not yet everywhere.
+    //
+    // 100% is the default and is what the window is drawn at. "System" reads
+    // the point size the platform's theme reports and counts 9 pt as 100%:
+    // 9 pt is the base size on Windows and what the desktop's own Text size
+    // setting scales. Several Linux desktops report 10 or 11 pt with nothing
+    // about text size touched, so "System" starts the window larger there and
+    // is an explicit choice rather than the default; a platform that reports a
+    // pixel size instead has no point size to read and stays at 1.0. Same
+    // rule and same arithmetic as Crucible's Main.qml.
+    //
+    // Unlike Crucible's, this choice arrives from a QSettings string nothing
+    // validates on the way in (Crucible's controller clamps it to a known
+    // list before QML ever sees it), so a hand-edited store cannot leave
+    // fontScale as NaN and blank every label in the window.
+    function applyTextScale() {
+        const choice = appSettings.textScale;
+        if (choice === "system") {
+            const points = Application.font.pointSize;
+            Theme.fontScale = points > 0 ? Math.max(1.0, Math.min(2.0, points / 9)) : 1.0;
+            return;
+        }
+        const percent = Number(choice);
+        Theme.fontScale = percent >= 100 && percent <= 200 ? percent / 100 : 1.0;
+    }
 
     Component.onCompleted: {
         Theme.preference = appSettings.theme;
         Theme.paletteChoice = appSettings.palette;
+        window.applyTextScale();
         meterMode = appSettings.meterMode;
         tier = appSettings.controlsOnOpen === "last"
                ? appSettings.lastTier : appSettings.controlsOnOpen;
@@ -942,7 +979,7 @@ ApplicationWindow {
         ObjectDecodeController.inspectFile(runPathUrl(path));
     }
 
-    // Roadmap UX2's single entry point for "a file arrived from outside the
+    // GUI AppStream packaging's single entry point for "a file arrived from outside the
     // app" - the rail's own DropArea (below) and `ac3gui <file...>`
     // (main.cpp, via QMetaObject::invokeMethod on this window) both funnel
     // through here, so there is exactly one place that decides what a
@@ -951,7 +988,7 @@ ApplicationWindow {
     // files…" does - addSourceFile() already falls back to loadSourceFile()
     // itself when nothing is loaded yet, so the first-file and
     // add-another-source cases share the one call. An .ac3/.ec3 opens
-    // roadmap UX1's stream player on it instead, the same "play/export what
+    // GUI stream player's stream player on it instead, the same "play/export what
     // already exists" path Open stream…'s own header button reaches.
     function openDroppedFile(url) {
         const path = url.toString().toLowerCase();
@@ -1113,6 +1150,7 @@ ApplicationWindow {
         onApplied: {
             Theme.preference = appSettings.theme;
             Theme.paletteChoice = appSettings.palette;
+            window.applyTextScale();
             window.meterMode = appSettings.meterMode;
             EncoderController.keepPartialOutput = appSettings.keepPartial;
             if (!EncoderController.formatDefaultsTouched) {
@@ -1128,7 +1166,7 @@ ApplicationWindow {
         }
     }
 
-    // Roadmap C3 — see docs/gui/qc.md and QcDialog.qml's own header comment
+    // GUI QC verification — see docs/forge/gui/qc.md and QcDialog.qml's own header comment
     // for why this is a standalone dialog rather than a tab: opening and
     // verifying an already-encoded file is a different workflow shape to
     // every tab beside it, which all configure an encode still to come.
@@ -1151,7 +1189,7 @@ ApplicationWindow {
         id: truehdDialog
     }
 
-    // Roadmap UX1 - the GUI twin of `ac3cli monitor`/`ac3cli decode`, the
+    // GUI stream player - the GUI twin of `ac3cli monitor`/`ac3cli decode`, the
     // third of this header's "distinct surface, reachable from the header"
     // dialogs alongside the two above - see StreamPlayerDialog.qml's own
     // header comment.
@@ -1180,7 +1218,7 @@ ApplicationWindow {
 
             Text {
                 text: qsTr("This moves the stream to Dolby Digital Plus")
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontHeading
                 font.weight: Font.DemiBold
                 color: Theme.text
             }
@@ -1188,7 +1226,7 @@ ApplicationWindow {
                 Layout.preferredWidth: 380
                 text: qsTr("Anything past a bed and its LFE needs Dolby Digital Plus, so the codec follows the channels — the file becomes .ec3 rather than .ac3. Every modern receiver reads it; a DVD player will not.")
                 wrapMode: Text.WordWrap
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 color: Theme.neutral700
             }
             RowLayout {
@@ -1251,7 +1289,7 @@ ApplicationWindow {
                       ? qsTr("Run %1 — %2").arg(window.detailsRun.id).arg(window.detailsRun.filename)
                       : ""
                 wrapMode: Text.WordWrap
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontHeading
                 font.weight: Font.DemiBold
                 color: Theme.text
             }
@@ -1262,52 +1300,52 @@ ApplicationWindow {
                 columnSpacing: Theme.space3
                 rowSpacing: 4
 
-                Text { text: qsTr("Status"); font.pixelSize: 11; color: Theme.textMuted }
+                Text { text: qsTr("Status"); font.pixelSize: Theme.fontMono; color: Theme.textMuted }
                 Text {
                     text: window.detailsRun ? window.detailsRun.status : ""
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     color: Theme.text
                 }
-                Text { text: qsTr("Rate"); font.pixelSize: 11; color: Theme.textMuted }
+                Text { text: qsTr("Rate"); font.pixelSize: Theme.fontMono; color: Theme.textMuted }
                 Text {
                     text: window.detailsRun ? window.detailsRun.rateText : ""
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     color: Theme.text
                 }
-                Text { text: qsTr("Duration"); font.pixelSize: 11; color: Theme.textMuted }
+                Text { text: qsTr("Duration"); font.pixelSize: Theme.fontMono; color: Theme.textMuted }
                 Text {
                     text: window.detailsRun ? window.detailsRun.durationText : ""
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     color: Theme.text
                 }
                 Text {
                     visible: window.detailsRun && (window.detailsRun.sizeText || "").length > 0
                     text: qsTr("Size")
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontMono
                     color: Theme.textMuted
                 }
                 Text {
                     visible: window.detailsRun && (window.detailsRun.sizeText || "").length > 0
                     text: window.detailsRun ? window.detailsRun.sizeText : ""
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     color: Theme.text
                 }
                 Text {
                     visible: window.detailsRun && (window.detailsRun.framesText || "").length > 0
                     text: qsTr("Frames")
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontMono
                     color: Theme.textMuted
                 }
                 Text {
                     visible: window.detailsRun && (window.detailsRun.framesText || "").length > 0
                     text: window.detailsRun ? window.detailsRun.framesText : ""
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     color: Theme.text
                 }
                 Text {
                     visible: window.detailsRun && (window.detailsRun.path || "").length > 0
                     text: qsTr("Path")
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontMono
                     color: Theme.textMuted
                 }
                 Text {
@@ -1316,7 +1354,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     text: window.detailsRun ? window.detailsRun.path : ""
                     elide: Text.ElideMiddle
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontMono
                     font.family: Theme.monoFamily
                     color: Theme.text
                 }
@@ -1330,13 +1368,13 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: window.detailsRun ? window.detailsRun.detail : ""
                 wrapMode: Text.WordWrap
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 color: Theme.accent700
             }
 
             Text {
                 text: qsTr("COMMAND LINE AT START")
-                font.pixelSize: 10
+                font.pixelSize: Theme.fontMicro
                 font.letterSpacing: 1
                 color: Theme.textMuted
             }
@@ -1356,7 +1394,7 @@ ApplicationWindow {
                           ? window.detailsRun.cliLine : qsTr("(not recorded)")
                     wrapMode: Text.WrapAnywhere
                     font.family: Theme.monoFamily
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontMono
                     color: Theme.text
                 }
             }
@@ -1403,7 +1441,7 @@ ApplicationWindow {
                 Text {
                     Layout.leftMargin: Theme.space2
                     text: window.title.toUpperCase()
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontMono
                     font.letterSpacing: 1.2
                     color: Theme.neutral700
                 }
@@ -1416,7 +1454,7 @@ ApplicationWindow {
         RowLayout {
             Layout.fillWidth: true
             // Margins/spacing trimmed from 20/Theme.space4: a sixth header
-            // action ("Open stream…", roadmap UX1) pushed this row's own
+            // action ("Open stream…", GUI stream player) pushed this row's own
             // implicit width just far enough over the 1280 px minimum width
             // that the workbench RowLayout below it - an unrelated sibling,
             // sharing the same outer ColumnLayout - stopped being clamped to
@@ -1435,7 +1473,7 @@ ApplicationWindow {
 
             Text {
                 text: qsTr("ac3forge")
-                font.pixelSize: 22
+                font.pixelSize: Theme.fontTitle
                 font.family: Theme.headingFamily
                 font.weight: Font.ExtraBold
                 font.letterSpacing: -0.2
@@ -1444,18 +1482,21 @@ ApplicationWindow {
             Text {
                 Layout.fillWidth: true
                 text: qsTr("Clean-room AC-3 / E-AC-3 encoder — ATSC A/52, ETSI TS 103 420")
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSmall
                 elide: Text.ElideRight
                 color: Theme.neutral700
             }
 
             Text {
                 text: qsTr("CONTROLS")
-                font.pixelSize: 10
+                font.pixelSize: Theme.fontMicro
                 font.letterSpacing: 1.2
                 color: Theme.textMuted
             }
             SegmentedControl {
+                objectName: "tierChoice"
+                //: Accessible name of the Guided / Advanced / Expert switch
+                accessibleName: qsTr("Controls")
                 model: [
                     { value: "guided", label: qsTr("Guided") },
                     { value: "advanced", label: qsTr("Advanced") },
@@ -1545,8 +1586,11 @@ ApplicationWindow {
                         Layout.margins: Theme.space4
 
                         SegmentedControl {
+                            objectName: "inputModeChoice"
                             Layout.fillWidth: true
                             segHeight: 32
+                            //: Accessible name of the File / Live capture switch above the source list
+                            accessibleName: qsTr("Where the sound comes from")
                             model: [
                                 { value: "file", label: qsTr("File") },
                                 { value: "live", label: qsTr("Live capture") },
@@ -1585,7 +1629,7 @@ ApplicationWindow {
                                                 Layout.fillWidth: true
                                                 text: sourceRow.modelData.label
                                                 elide: Text.ElideMiddle
-                                                font.pixelSize: 12
+                                                font.pixelSize: Theme.fontSmall
                                                 font.family: Theme.monoFamily
                                                 font.weight: Font.DemiBold
                                                 color: Theme.text
@@ -1610,7 +1654,7 @@ ApplicationWindow {
                                                     }
                                                     return head;
                                                 }
-                                                font.pixelSize: 11
+                                                font.pixelSize: Theme.fontMono
                                                 color: Theme.textMuted
                                             }
                                         }
@@ -1650,11 +1694,17 @@ ApplicationWindow {
                                             }
                                         }
                                         Button {
+                                            objectName: "sourceRemove" + sourceRow.modelData.index
                                             text: qsTr("Remove")
                                             flat: true
-                                            font.pixelSize: 11
+                                            font.pixelSize: Theme.fontMono
                                             enabled: !EncoderController.busy
                                             onClicked: EncoderController.removeSource(sourceRow.modelData.index)
+                                            // One of these per loaded source. Named for its
+                                            // own source rather than left as a column of
+                                            // identical "Remove"s, which is what a reader
+                                            // would otherwise announce.
+                                            Accessible.name: qsTr("Remove %1").arg(sourceRow.modelData.label)
                                         }
                                     }
                                     RowLayout {
@@ -1663,7 +1713,7 @@ ApplicationWindow {
                                         spacing: Theme.space2
                                         Text {
                                             text: qsTr("Start offset")
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             color: Theme.textMuted
                                         }
                                         Item { Layout.fillWidth: true }
@@ -1683,7 +1733,9 @@ ApplicationWindow {
                                             valueFromText: (text) => Math.round(parseFloat(text) * 10) || 0
                                             onValueModified: EncoderController.setSourceOffset(
                                                                  sourceRow.modelData.index, value / 10)
-                                            Accessible.name: qsTr("Start offset")
+                                            // Per source, for the same reason Remove is.
+                                            Accessible.name: qsTr("Start offset for %1").arg(sourceRow.modelData.label)
+                                            Accessible.description: qsTr("Seconds before this source begins, in tenths.")
                                         }
                                     }
                                     Rectangle {
@@ -1699,7 +1751,7 @@ ApplicationWindow {
                                 Layout.topMargin: 8
                                 Layout.bottomMargin: 4
                                 text: qsTr("No source loaded yet.")
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSmall
                                 color: Theme.textMuted
                             }
 
@@ -1713,6 +1765,10 @@ ApplicationWindow {
                                     objectName: "chooseWavButton"
                                     text: sourceList.count === 0 ? qsTr("Choose WAV…") : qsTr("+ Add files…")
                                     enabled: !EncoderController.busy
+                                    // The button a person meets first, and the
+                                    // one place the window says a source can
+                                    // also be dropped on it (windowDropArea).
+                                    Accessible.description: qsTr("Opens a file picker. WAV files can also be dropped anywhere on the window.")
                                     onClicked: sourceList.count === 0 ? openDialog.open()
                                                                       : addSourceDialog.open()
                                 }
@@ -1725,7 +1781,7 @@ ApplicationWindow {
                                     contentItem: Text {
                                         text: qsTr("Assign")
                                         color: Theme.accent700
-                                        font.pixelSize: 13
+                                        font.pixelSize: Theme.fontBody
                                         font.weight: Font.DemiBold
                                     }
                                 }
@@ -1774,13 +1830,13 @@ ApplicationWindow {
                                         spacing: 1
                                         Text {
                                             text: modelData.label
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             font.letterSpacing: 1
                                             color: Theme.textMuted
                                         }
                                         Text {
                                             text: modelData.value
-                                            font.pixelSize: 13
+                                            font.pixelSize: Theme.fontBody
                                             font.family: Theme.monoFamily
                                             color: Theme.text
                                         }
@@ -1849,7 +1905,7 @@ ApplicationWindow {
                                                   : qsTr("%1 — slave").arg(deviceRow.modelData.name)
                                             elide: Text.ElideMiddle
                                             color: Theme.text
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSmall
                                             font.family: Theme.monoFamily
                                             font.weight: Font.DemiBold
                                         }
@@ -1872,7 +1928,7 @@ ApplicationWindow {
                                             objectName: "liveDeviceRemove" + deviceRow.modelData.slotIndex
                                             text: qsTr("Remove")
                                             color: removeArea.containsMouse ? Theme.text : Theme.textMuted
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSmall
                                             font.family: Theme.monoFamily
                                             opacity: EncoderController.busy ? 0.4 : 1.0
 
@@ -1897,7 +1953,7 @@ ApplicationWindow {
                                         objectName: "liveDeviceMeta" + deviceRow.modelData.slotIndex
                                         text: deviceRow.modelData.rateText
                                         color: Theme.textMuted
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         font.family: Theme.monoFamily
                                     }
                                     Rectangle {
@@ -1916,7 +1972,7 @@ ApplicationWindow {
                                 Layout.bottomMargin: 8
                                 text: qsTr("No capture devices were found.")
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 color: Theme.accent700
                             }
 
@@ -1966,7 +2022,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 text: qsTr("Two devices per session — remove one to add another.")
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 color: Theme.textMuted
                             }
                             Text {
@@ -1975,7 +2031,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.topMargin: 4
                                 text: EncoderController.captureDeviceTotals
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 font.family: Theme.monoFamily
                                 color: Theme.textMuted
                             }
@@ -2039,7 +2095,7 @@ ApplicationWindow {
                                     text: EncoderController.recording
                                           ? qsTr("recording %1 s").arg(EncoderController.recordedSeconds.toFixed(1))
                                           : qsTr("monitoring %1 s").arg(EncoderController.liveRunningSeconds.toFixed(1))
-                                    font.pixelSize: 12
+                                    font.pixelSize: Theme.fontSmall
                                     font.family: Theme.monoFamily
                                     color: Theme.accent700
                                 }
@@ -2051,7 +2107,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 text: qsTr("Monitoring is free — nothing is written and no filename is asked for. The levels below are real. Open Live session to set up and start a real take.")
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 color: Theme.textMuted
                             }
                             Text {
@@ -2059,7 +2115,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 text: qsTr("No capture devices were found.")
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 color: Theme.accent700
                             }
                         }
@@ -2121,7 +2177,7 @@ ApplicationWindow {
                             Text {
                                 text: EncoderController.hasLevels ? EncoderController.layoutName
                                                                   : EncoderController.channelShapeName
-                                font.pixelSize: 20
+                                font.pixelSize: Math.round(20 * Theme.fontScale)
                                 font.family: Theme.headingFamily
                                 font.weight: Font.ExtraBold
                                 color: Theme.text
@@ -2136,13 +2192,20 @@ ApplicationWindow {
                             Text {
                                 visible: EncoderController.metering
                                 text: qsTr("live")
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 color: Theme.accent700
                             }
                             Item { Layout.fillWidth: true }
                             SegmentedControl {
                                 segHeight: 24
-                                fontSize: 11
+                                // The one size a grep for font.pixelSize does
+                                // not find, because SegmentedControl takes it
+                                // as its own `fontSize` property rather than
+                                // as a font.pixelSize on a Text. It is on the
+                                // scale like the other 376; it just has to be
+                                // looked for by hand.
+                                fontSize: Theme.fontMono
+                                accessibleName: qsTr("Meters — show")
                                 model: [
                                     { value: "coded", label: qsTr("Coded") },
                                     { value: "rendered", label: qsTr("Rendered") },
@@ -2175,7 +2238,7 @@ ApplicationWindow {
                                        + EncoderController.meterFraction(modelData) * parent.trackWidth
                                        - implicitWidth / 2
                                     text: String(modelData)
-                                    font.pixelSize: 9
+                                    font.pixelSize: Theme.fontFine
                                     font.family: Theme.monoFamily
                                     color: Theme.neutral500
                                 }
@@ -2261,7 +2324,7 @@ ApplicationWindow {
                                 return qsTr("All %1 coded channels fed by the assignments.").arg(total);
                             }
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.fontMono
                             color: levelsBlock.fedCount < levelsBlock.rowCount ? Theme.accent700 : Theme.neutral800
                         }
 
@@ -2270,7 +2333,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             text: qsTr("Load a source, or start a live capture, and every coded channel gets a meter here.")
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSmall
                             color: Theme.textMuted
                         }
                     }
@@ -2323,13 +2386,13 @@ ApplicationWindow {
                                             spacing: 1
                                             Text {
                                                 text: programmeCard.modelData
-                                                font.pixelSize: 13
+                                                font.pixelSize: Theme.fontBody
                                                 font.weight: Font.DemiBold
                                                 color: Theme.text
                                             }
                                             Text {
                                                 text: qsTr("its own dialnorm and compression")
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                                 color: Theme.textMuted
                                             }
                                         }
@@ -2340,7 +2403,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 text: qsTr("No room to draw — dual mono has no soundstage. The listener's receiver plays one programme or the other.")
                                 wrapMode: Text.WordWrap
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 color: Theme.textMuted
                             }
                         }
@@ -2350,7 +2413,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             text: qsTr("Load a source, or start a live capture, and the plan's positions are drawn here at their real angles.")
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSmall
                             color: Theme.textMuted
                         }
                     }
@@ -2434,7 +2497,7 @@ ApplicationWindow {
 
                         Text {
                             text: "⚠"
-                            font.pixelSize: 18
+                            font.pixelSize: Theme.fontArrow
                             color: Theme.accent700
                         }
                         ColumnLayout {
@@ -2445,7 +2508,7 @@ ApplicationWindow {
                             Text {
                                 Layout.fillWidth: true
                                 text: failureBanner.causeText
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontNormal
                                 font.weight: Font.DemiBold
                                 color: Theme.text
                                 wrapMode: Text.WordWrap
@@ -2454,7 +2517,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 visible: text.length > 0
                                 text: failureBanner.detailText
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSmall
                                 color: Theme.neutral800
                                 wrapMode: Text.WordWrap
                             }
@@ -2510,7 +2573,7 @@ ApplicationWindow {
                         Text {
                             Layout.fillWidth: true
                             text: qsTr("You came here from the guided steps. Anything you change is kept when you go back.")
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSmall
                             elide: Text.ElideRight
                             color: Theme.neutral800
                         }
@@ -2546,14 +2609,14 @@ ApplicationWindow {
 
                         Text {
                             text: qsTr("THE STREAM")
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.fontMicro
                             font.letterSpacing: 1.5
                             color: Theme.textMuted
                         }
                         Text {
                             Layout.fillWidth: true
                             text: window.planLine
-                            font.pixelSize: 26
+                            font.pixelSize: Math.round(26 * Theme.fontScale)
                             font.family: Theme.headingFamily
                             font.weight: Font.ExtraBold
                             elide: Text.ElideRight
@@ -2562,7 +2625,7 @@ ApplicationWindow {
                         Text {
                             Layout.fillWidth: true
                             text: window.planSubLine
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSmall
                             font.family: Theme.monoFamily
                             elide: Text.ElideRight
                             color: Theme.neutral700
@@ -2575,7 +2638,7 @@ ApplicationWindow {
 
                         Text {
                             text: qsTr("TOOLS")
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.fontMicro
                             font.letterSpacing: 1.5
                             horizontalAlignment: Text.AlignRight
                             Layout.alignment: Qt.AlignRight
@@ -2597,7 +2660,7 @@ ApplicationWindow {
                                     const token = EncoderController.toolsToken;
                                     return token.length > 0 && token !== "none" ? token : "—";
                                 }
-                                font.pixelSize: 13
+                                font.pixelSize: Theme.fontBody
                                 font.family: Theme.monoFamily
                                 color: Theme.text
                             }
@@ -2610,7 +2673,10 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.leftMargin: 24
-                    Layout.preferredHeight: 40
+                    // The lane is fixed so the tabs sit on one rule; scaled so
+                    // that a larger text size moves the rule rather than
+                    // clipping the labels against it.
+                    Layout.preferredHeight: Math.round(40 * Theme.fontScale)
                     visible: window.tier !== "guided"
                     spacing: 28
 
@@ -2624,7 +2690,7 @@ ApplicationWindow {
 
                             objectName: "tab-" + modelData.key
                             implicitWidth: tabRow.implicitWidth
-                            implicitHeight: 40
+                            implicitHeight: Math.max(40, tabRow.implicitHeight + 8)
 
                             Accessible.role: Accessible.PageTab
                             Accessible.name: tabItem.modelData.label
@@ -2633,6 +2699,22 @@ ApplicationWindow {
                                 ? qsTr("%1 non-default setting(s)").arg(tabItem.modelData.badge) : ""
                             Accessible.onPressAction: window.currentTab = tabItem.modelData.key
 
+                            // The tabs were mouse-only: a person on the keyboard
+                            // could reach every control INSIDE a tab and never
+                            // reach the tab that shows it. Left and Right are
+                            // deliberately not bound here - they belong to the
+                            // segmented controls, and a tab bar that stole them
+                            // would take them from whatever had focus next.
+                            Accessible.focusable: true
+                            activeFocusOnTab: true
+                            Keys.onPressed: function(event) {
+                                if (event.key === Qt.Key_Space || event.key === Qt.Key_Return
+                                    || event.key === Qt.Key_Enter) {
+                                    window.currentTab = tabItem.modelData.key;
+                                    event.accepted = true;
+                                }
+                            }
+
                             RowLayout {
                                 id: tabRow
                                 anchors.verticalCenter: parent.verticalCenter
@@ -2640,7 +2722,7 @@ ApplicationWindow {
 
                                 Text {
                                     text: tabItem.modelData.label.toUpperCase()
-                                    font.pixelSize: 13
+                                    font.pixelSize: Theme.fontBody
                                     font.weight: Font.DemiBold
                                     font.letterSpacing: 0.5
                                     color: Theme.text
@@ -2655,7 +2737,7 @@ ApplicationWindow {
                                         id: badgeText
                                         anchors.centerIn: parent
                                         text: tabItem.modelData.badge
-                                        font.pixelSize: 10
+                                        font.pixelSize: Theme.fontMicro
                                         font.family: Theme.monoFamily
                                         color: Theme.bg
                                     }
@@ -2671,6 +2753,7 @@ ApplicationWindow {
                                 anchors.fill: parent
                                 onClicked: window.currentTab = tabItem.modelData.key
                             }
+                            FocusRing {}
                         }
                     }
                     Item { Layout.fillWidth: true }
@@ -2734,13 +2817,13 @@ ApplicationWindow {
 
                                     Text {
                                         text: qsTr("PRESETS")
-                                        font.pixelSize: 10
+                                        font.pixelSize: Theme.fontMicro
                                         font.letterSpacing: 1
                                         color: Theme.textMuted
                                     }
                                     Text {
                                         text: qsTr("starting points, not the model")
-                                        font.pixelSize: 10
+                                        font.pixelSize: Theme.fontMicro
                                         font.family: Theme.monoFamily
                                         color: Theme.neutral500
                                     }
@@ -2805,7 +2888,7 @@ ApplicationWindow {
                                               : formatGrid.codecForced
                                                 ? qsTr("Codec — follows the channels")
                                                 : qsTr("Codec")
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         color: Theme.textMuted
                                     }
                                     Text {
@@ -2816,12 +2899,12 @@ ApplicationWindow {
                                         text: EncoderController.vbrAvailable && EncoderController.vbrEnabled
                                               ? qsTr("Bit rate — band-edge reference, not a target")
                                               : qsTr("Bit rate")
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         color: Theme.textMuted
                                     }
                                     Text {
                                         text: qsTr("Container")
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         color: Theme.textMuted
                                     }
 
@@ -2885,7 +2968,7 @@ ApplicationWindow {
                                               .arg(EncoderController.fullBandwidthCodedChannelCount)
                                               .arg(EncoderController.bitrateKbps)
                                         color: Theme.textMuted
-                                        font.pixelSize: 10
+                                        font.pixelSize: Theme.fontMicro
                                         wrapMode: Text.WordWrap
                                     }
                                     Item {}
@@ -2915,7 +2998,7 @@ ApplicationWindow {
 
                                     Text {
                                         text: qsTr("CHANNELS — THE TWO-TIER PICKER")
-                                        font.pixelSize: 10
+                                        font.pixelSize: Theme.fontMicro
                                         font.letterSpacing: 1
                                         color: Theme.textMuted
                                     }
@@ -2925,7 +3008,7 @@ ApplicationWindow {
                                               .arg(EncoderController.channelBudgetUsed)
                                               .arg(EncoderController.channelBudgetMax)
                                               .arg(EncoderController.codedChannelCount)
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         font.family: Theme.monoFamily
                                         color: Theme.neutral700
                                     }
@@ -2933,7 +3016,7 @@ ApplicationWindow {
 
                                 Text {
                                     text: qsTr("Bed — pick one")
-                                    font.pixelSize: 12
+                                    font.pixelSize: Theme.fontSmall
                                     font.weight: Font.DemiBold
                                     color: Theme.text
                                 }
@@ -2954,7 +3037,10 @@ ApplicationWindow {
 
                                             objectName: "bed-" + modelData.id
                                             Layout.fillWidth: true
-                                            Layout.preferredHeight: 40
+                                            // The mockup's 40, and taller when the text is
+                                            // larger, rather than two labels clipped inside
+                                            // a fixed box at 150%.
+                                            Layout.preferredHeight: Math.max(40, bedLabels.implicitHeight + 12)
                                             color: active ? Theme.text : "transparent"
                                             // 1+1 draws DASHED - "categorically different"
                                             // (a bed of two programmes, not a speaker
@@ -2973,6 +3059,32 @@ ApplicationWindow {
                                             Accessible.checked: bedButton.active
                                             Accessible.onPressAction: EncoderController.bedIndex = bedButton.index
 
+                                            // A tab stop while it can be chosen, and Space
+                                            // or Return chooses it - the two keys every
+                                            // desktop uses on a button.
+                                            //
+                                            // Qt refuses to take an item out of the tab
+                                            // chain while it is the active focus item, so a
+                                            // chip that locks under the keyboard would keep
+                                            // both the focus and its place in the chain, and
+                                            // the person's next Tab would start from
+                                            // something they can no longer use. Hand the
+                                            // focus back first - the same rule, for the same
+                                            // reason, as CrucibleButton.qml's.
+                                            Accessible.focusable: !bedButton.locked
+                                            activeFocusOnTab: !bedButton.locked
+                                            onLockedChanged: if (bedButton.locked && bedButton.activeFocus) bedButton.focus = false;
+                                            Keys.onPressed: function(event) {
+                                                if (bedButton.locked) {
+                                                    return;
+                                                }
+                                                if (event.key === Qt.Key_Space || event.key === Qt.Key_Return
+                                                    || event.key === Qt.Key_Enter) {
+                                                    EncoderController.bedIndex = bedButton.index;
+                                                    event.accepted = true;
+                                                }
+                                            }
+
                                             Canvas {
                                                 anchors.fill: parent
                                                 visible: bedButton.dual && !bedButton.active
@@ -2990,13 +3102,14 @@ ApplicationWindow {
                                             }
 
                                             ColumnLayout {
+                                                id: bedLabels
                                                 anchors.centerIn: parent
                                                 spacing: 0
                                                 Text {
                                                     Layout.alignment: Qt.AlignHCenter
                                                     text: bedButton.dual
                                                           ? qsTr("1+1 · dual") : bedButton.modelData.id
-                                                    font.pixelSize: 12
+                                                    font.pixelSize: Theme.fontSmall
                                                     font.family: Theme.monoFamily
                                                     font.weight: Font.DemiBold
                                                     color: bedButton.active ? Theme.bg : Theme.text
@@ -3005,7 +3118,7 @@ ApplicationWindow {
                                                     Layout.alignment: Qt.AlignHCenter
                                                     text: bedButton.dual
                                                           ? qsTr("2 progs") : bedButton.modelData.channels
-                                                    font.pixelSize: 9
+                                                    font.pixelSize: Theme.fontFine
                                                     font.family: Theme.monoFamily
                                                     color: bedButton.active ? Theme.bg : Theme.neutral600
                                                     elide: Text.ElideRight
@@ -3014,8 +3127,12 @@ ApplicationWindow {
                                             MouseArea {
                                                 anchors.fill: parent
                                                 enabled: !bedButton.locked
+                                                // No forceActiveFocus here on purpose: a
+                                                // click leaves the keyboard where it was, so
+                                                // a mouse user never sees a ring.
                                                 onClicked: EncoderController.bedIndex = bedButton.index
                                             }
+                                            FocusRing {}
                                         }
                                     }
                                 }
@@ -3025,7 +3142,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: qsTr("One bed, always. Extras add to it — the format cannot carry a ceiling channel, or any other, without a bed underneath.")
                                     wrapMode: Text.WordWrap
-                                    font.pixelSize: 11
+                                    font.pixelSize: Theme.fontMono
                                     color: Theme.textMuted
                                 }
 
@@ -3036,7 +3153,7 @@ ApplicationWindow {
 
                                     Text {
                                         text: qsTr("Low frequency")
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontSmall
                                         font.weight: Font.DemiBold
                                         color: Theme.text
                                     }
@@ -3044,7 +3161,7 @@ ApplicationWindow {
                                         visible: EncoderController.bedLfeLocked
                                         text: EncoderController.dualMono
                                               ? qsTr("not part of dual mono") : qsTr("fixed by object mode")
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         color: Theme.textMuted
                                     }
                                     Item { Layout.fillWidth: true }
@@ -3102,7 +3219,7 @@ ApplicationWindow {
 
                                             objectName: "lfeCount-" + modelData.n
                                             Layout.preferredWidth: 130
-                                            Layout.preferredHeight: 32
+                                            Layout.preferredHeight: Math.max(32, lfeLabel.implicitHeight + 10)
                                             color: active ? Theme.text : "transparent"
                                             border.color: active ? Theme.text : Theme.divider
                                             border.width: 1
@@ -3117,11 +3234,36 @@ ApplicationWindow {
                                                 window.withCodecWarning(n === 2 && !lfeRow.lfe2On,
                                                     () => lfeRow.setCount(n));
                                             }
+                                            // Why "Two" is unreachable when it is, said to a
+                                            // reader as well as to the eye - the note beside
+                                            // this row carries the same text.
+                                            Accessible.description: lfeButton.locked && lfeRow.lfe2Reason.length > 0
+                                                                    ? lfeRow.lfe2Reason : ""
+
+                                            // Reachable and pressable from the keyboard, and
+                                            // handing the focus back when it locks - see the
+                                            // bed chips above for why that order matters.
+                                            Accessible.focusable: !lfeButton.locked
+                                            activeFocusOnTab: !lfeButton.locked
+                                            onLockedChanged: if (lfeButton.locked && lfeButton.activeFocus) lfeButton.focus = false;
+                                            Keys.onPressed: function(event) {
+                                                if (lfeButton.locked) {
+                                                    return;
+                                                }
+                                                if (event.key === Qt.Key_Space || event.key === Qt.Key_Return
+                                                    || event.key === Qt.Key_Enter) {
+                                                    const n = lfeButton.modelData.n;
+                                                    window.withCodecWarning(n === 2 && !lfeRow.lfe2On,
+                                                        () => lfeRow.setCount(n));
+                                                    event.accepted = true;
+                                                }
+                                            }
 
                                             Text {
+                                                id: lfeLabel
                                                 anchors.centerIn: parent
                                                 text: lfeButton.modelData.label
-                                                font.pixelSize: 11
+                                                font.pixelSize: Theme.fontMono
                                                 font.family: Theme.monoFamily
                                                 color: lfeButton.active ? Theme.bg : Theme.text
                                             }
@@ -3136,6 +3278,7 @@ ApplicationWindow {
                                                         () => lfeRow.setCount(n));
                                                 }
                                             }
+                                            FocusRing {}
                                         }
                                     }
                                     Item { Layout.fillWidth: true }
@@ -3149,7 +3292,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: lfeRow.lfe2Reason
                                     wrapMode: Text.WordWrap
-                                    font.pixelSize: 11
+                                    font.pixelSize: Theme.fontMono
                                     color: Theme.textMuted
                                 }
                                 Text {
@@ -3157,7 +3300,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: qsTr("Two means two independent low-frequency channels carrying different signal — not one signal sent to two subwoofers. This is what makes a 7.2.4 rather than a 7.1.4.")
                                     wrapMode: Text.WordWrap
-                                    font.pixelSize: 11
+                                    font.pixelSize: Theme.fontMono
                                     color: Theme.textMuted
                                 }
 
@@ -3166,14 +3309,14 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     Text {
                                         text: qsTr("Extras — added to the bed")
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontSmall
                                         font.weight: Font.DemiBold
                                         color: Theme.text
                                     }
                                     Item { Layout.fillWidth: true }
                                     Text {
                                         text: qsTr("pairs toggle together")
-                                        font.pixelSize: 10
+                                        font.pixelSize: Theme.fontMicro
                                         font.family: Theme.monoFamily
                                         color: Theme.neutral500
                                     }
@@ -3203,6 +3346,16 @@ ApplicationWindow {
                                                     objectName: "extra-" + extraRow.modelData.id
                                                     checked: extraRow.modelData.checked
                                                     enabled: extraRow.modelData.enabled && !EncoderController.busy
+                                                    // The label and the tokens are Texts
+                                                    // beside this box, not its own `text`, so
+                                                    // without these a reader announces an
+                                                    // unnamed checkbox. Borrowed from the
+                                                    // model rather than typed again, so the
+                                                    // two cannot drift.
+                                                    Accessible.name: extraRow.modelData.label
+                                                    Accessible.description: extraRow.modelData.reason.length > 0
+                                                        ? qsTr("%1. %2").arg(extraRow.modelData.tokens).arg(extraRow.modelData.reason)
+                                                        : extraRow.modelData.tokens
                                                     onToggled: {
                                                         const id = extraRow.modelData.id;
                                                         const promotes = !extraRow.modelData.checked;
@@ -3215,7 +3368,7 @@ ApplicationWindow {
                                                     spacing: 0
                                                     Text {
                                                         text: extraRow.modelData.label
-                                                        font.pixelSize: 13
+                                                        font.pixelSize: Theme.fontBody
                                                         font.weight: Font.DemiBold
                                                         color: Theme.text
                                                     }
@@ -3224,7 +3377,7 @@ ApplicationWindow {
                                                         // the same names the channel map prints -
                                                         // not a count.
                                                         text: extraRow.modelData.tokens
-                                                        font.pixelSize: 11
+                                                        font.pixelSize: Theme.fontMono
                                                         font.family: Theme.monoFamily
                                                         color: Theme.textMuted
                                                     }
@@ -3242,7 +3395,7 @@ ApplicationWindow {
                                                         }
                                                         return "";
                                                     }
-                                                    font.pixelSize: 11
+                                                    font.pixelSize: Theme.fontMono
                                                     color: Theme.textMuted
                                                 }
                                             }
@@ -3280,7 +3433,7 @@ ApplicationWindow {
                                         anchors.topMargin: 12
                                         text: qsTr("Dual mono carries two unrelated soundtracks — a second language, a commentary track — chosen by the listener, not mixed together. There is no stereo pair, no surround, no LFE and no downmix, and each programme carries its own dialnorm and compression.")
                                         wrapMode: Text.WordWrap
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontSmall
                                         color: Theme.text
                                     }
                                 }
@@ -3301,7 +3454,7 @@ ApplicationWindow {
                                         return qsTr("A bed with or without an LFE is Dolby Digital, capped at 5.1. Adding any extra — rear, ceiling or a second LFE — moves the stream to Dolby Digital Plus.");
                                     }
                                     wrapMode: Text.WordWrap
-                                    font.pixelSize: 11
+                                    font.pixelSize: Theme.fontMono
                                     color: Theme.textMuted
                                 }
                             }
@@ -3317,7 +3470,7 @@ ApplicationWindow {
 
                                 Text {
                                     text: qsTr("ROUTING — WHAT HAPPENS TO THIS SOURCE")
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontMicro
                                     font.letterSpacing: 1
                                     color: Theme.textMuted
                                 }
@@ -3337,7 +3490,7 @@ ApplicationWindow {
                                             Text {
                                                 Layout.alignment: Qt.AlignHCenter
                                                 text: qsTr("SOURCE")
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                                 font.letterSpacing: 1
                                                 color: Theme.textMuted
                                             }
@@ -3355,7 +3508,7 @@ ApplicationWindow {
                                                            ? qsTr("1 source · %1 ch").arg(channels)
                                                            : qsTr("%1 sources · %2 ch").arg(sources.length).arg(channels);
                                                 }
-                                                font.pixelSize: 19
+                                                font.pixelSize: Math.round(19 * Theme.fontScale)
                                                 font.family: Theme.headingFamily
                                                 font.weight: Font.ExtraBold
                                                 color: Theme.text
@@ -3366,7 +3519,7 @@ ApplicationWindow {
                                         Layout.leftMargin: Theme.space3
                                         Layout.rightMargin: Theme.space3
                                         text: "→"
-                                        font.pixelSize: 20
+                                        font.pixelSize: Math.round(20 * Theme.fontScale)
                                         color: Theme.neutral500
                                     }
                                     Rectangle {
@@ -3380,7 +3533,7 @@ ApplicationWindow {
                                             Text {
                                                 Layout.alignment: Qt.AlignHCenter
                                                 text: qsTr("CODED")
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                                 font.letterSpacing: 1
                                                 color: Theme.textMuted
                                             }
@@ -3402,7 +3555,7 @@ ApplicationWindow {
                                                         .arg(EncoderController.codedChannelCount)
                                                         .arg(EncoderController.renderedChannelCount);
                                                 }
-                                                font.pixelSize: 19
+                                                font.pixelSize: Math.round(19 * Theme.fontScale)
                                                 font.family: Theme.headingFamily
                                                 font.weight: Font.ExtraBold
                                                 color: Theme.text
@@ -3415,7 +3568,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: EncoderController.routingSummary
                                     wrapMode: Text.WordWrap
-                                    font.pixelSize: 12
+                                    font.pixelSize: Theme.fontSmall
                                     color: Theme.neutral800
                                 }
 
@@ -3442,7 +3595,7 @@ ApplicationWindow {
                                                 id: chipText
                                                 anchors.centerIn: parent
                                                 text: parent.modelData.token
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                                 font.family: Theme.monoFamily
                                                 color: parent.modelData.fed !== false ? Theme.bg : Theme.neutral600
                                             }
@@ -3451,7 +3604,7 @@ ApplicationWindow {
                                 }
                                 Text {
                                     text: qsTr("Filled = fed by a source. Outlined = carried silent.")
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontMicro
                                     font.family: Theme.monoFamily
                                     color: Theme.neutral500
                                 }
@@ -3468,7 +3621,7 @@ ApplicationWindow {
 
                                 Text {
                                     text: qsTr("ASSIGNMENTS — EVERY SOURCE CHANNEL GOES SOMEWHERE, OR NOWHERE ON PURPOSE")
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontMicro
                                     font.letterSpacing: 1
                                     color: Theme.textMuted
                                 }
@@ -3483,7 +3636,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: qsTr("A stereo file cannot be one object — an object is a single point in the room. Send each channel to its own object, or put the pair on bed channels.")
                                     wrapMode: Text.WordWrap
-                                    font.pixelSize: 11
+                                    font.pixelSize: Theme.fontMono
                                     color: Theme.textMuted
                                 }
                             }
@@ -3505,14 +3658,14 @@ ApplicationWindow {
 
                                 Text {
                                     text: qsTr("LOUDNESS")
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontMicro
                                     font.letterSpacing: 1
                                     color: Theme.textMuted
                                 }
                                 LoudnessGroup { Layout.fillWidth: true }
                                 Text {
                                     text: qsTr("Coding tools and broadcast metadata →")
-                                    font.pixelSize: 12
+                                    font.pixelSize: Theme.fontSmall
                                     color: Theme.accent700
                                     Accessible.role: Accessible.Link
                                     Accessible.name: text
@@ -3541,7 +3694,7 @@ ApplicationWindow {
 
                                 Text {
                                     text: qsTr("PASSTHROUGH TO A RECEIVER")
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontMicro
                                     font.letterSpacing: 1
                                     color: Theme.textMuted
                                 }
@@ -3580,7 +3733,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: qsTr("Sends the encoded stream as IEC 61937 bursts in exclusive mode, so the receiver decodes it. AC-3 rides data-type-1 bursts and E-AC-3 data-type-21 bursts at four-times rate — each endpoint's label says which it accepts, and Play stays greyed for a stream the selected endpoint cannot take. Only S/PDIF and HDMI endpoints can bitstream at all.")
                                     wrapMode: Text.WordWrap
-                                    font.pixelSize: 11
+                                    font.pixelSize: Theme.fontMono
                                     color: Theme.textMuted
                                 }
                             }
@@ -4392,7 +4545,7 @@ ApplicationWindow {
                                         Text {
                                             Layout.fillWidth: true
                                             text: qsTr("Encode as Dolby Atmos objects")
-                                            font.pixelSize: 15
+                                            font.pixelSize: Theme.fontHeading
                                             font.weight: Font.DemiBold
                                             elide: Text.ElideRight
                                             color: Theme.text
@@ -4475,7 +4628,7 @@ ApplicationWindow {
                                         Text {
                                             text: qsTr("SOUNDS AVAILABLE")
                                             color: Theme.neutral600
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             font.letterSpacing: 1
                                         }
                                         Item { Layout.fillWidth: true }
@@ -4523,13 +4676,13 @@ ApplicationWindow {
 
                                                     Text {
                                                         text: soundChip.modelData.label
-                                                        font.pixelSize: 11
+                                                        font.pixelSize: Theme.fontMono
                                                         font.family: Theme.monoFamily
                                                         color: Theme.text
                                                     }
                                                     Text {
                                                         text: qsTr("%1 ch · in use").arg(soundChip.modelData.channels)
-                                                        font.pixelSize: 10
+                                                        font.pixelSize: Theme.fontMicro
                                                         color: Theme.textMuted
                                                     }
                                                 }
@@ -4540,7 +4693,7 @@ ApplicationWindow {
                                             height: 24
                                             verticalAlignment: Text.AlignVCenter
                                             text: qsTr("Change →")
-                                            font.pixelSize: 11
+                                            font.pixelSize: Theme.fontMono
                                             font.weight: Font.DemiBold
                                             color: Theme.accent700
 
@@ -4564,7 +4717,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: qsTr("Nothing is an object yet. Objects come from the assignments — send a sound to \"an object\" and it appears here with a place in the room.")
                                         wrapMode: Text.WordWrap
-                                        font.pixelSize: 13
+                                        font.pixelSize: Theme.fontBody
                                         color: Theme.text
                                     }
                                     Button {
@@ -4590,13 +4743,13 @@ ApplicationWindow {
                                             Text {
                                                 text: qsTr("ROOM — PLAN (top-down)")
                                                 color: Theme.neutral600
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                             }
                                             Item { Layout.fillWidth: true }
                                             Text {
                                                 text: qsTr("drag to place")
                                                 color: Theme.neutral600
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                                 font.family: Theme.monoFamily
                                             }
                                         }
@@ -4604,7 +4757,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             text: qsTr("Looking down on the room: left↔right is horizontal, front↔rear is vertical.")
                                             wrapMode: Text.WordWrap
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             color: Theme.neutral500
                                         }
 
@@ -4646,7 +4799,7 @@ ApplicationWindow {
                                                 anchors.margins: 6
                                                 text: qsTr("front")
                                                 color: Theme.neutral500
-                                                font.pixelSize: 9
+                                                font.pixelSize: Theme.fontFine
                                             }
                                             Text {
                                                 anchors.left: parent.left
@@ -4654,7 +4807,7 @@ ApplicationWindow {
                                                 anchors.margins: 6
                                                 text: qsTr("rear")
                                                 color: Theme.neutral500
-                                                font.pixelSize: 9
+                                                font.pixelSize: Theme.fontFine
                                             }
 
                                             MouseArea {
@@ -4732,7 +4885,7 @@ ApplicationWindow {
                                                             anchors.centerIn: parent
                                                             text: qsTr("obj %1").arg(marker.index + 1)
                                                             color: Theme.text
-                                                            font.pixelSize: 10
+                                                            font.pixelSize: Theme.fontMicro
                                                             font.family: Theme.monoFamily
                                                         }
                                                     }
@@ -4774,7 +4927,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             text: qsTr("This object follows its authored path — dragging edits its idle position, not the path. Scrub the timeline and Add key to author motion.")
                                             wrapMode: Text.WordWrap
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             color: Theme.neutral600
                                         }
 
@@ -4785,13 +4938,13 @@ ApplicationWindow {
                                             Text {
                                                 text: qsTr("ROOM — ELEVATION (side-on)")
                                                 color: Theme.neutral600
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                             }
                                             Item { Layout.fillWidth: true }
                                             Text {
                                                 text: qsTr("drag: depth + height")
                                                 color: Theme.neutral600
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                                 font.family: Theme.monoFamily
                                             }
                                         }
@@ -4799,7 +4952,7 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             text: qsTr("Looking at the room from the side: front↔rear is horizontal, floor↔ceiling is vertical — not just up/down.")
                                             wrapMode: Text.WordWrap
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             color: Theme.neutral500
                                         }
                                         Rectangle {
@@ -4843,7 +4996,7 @@ ApplicationWindow {
                                                 x: 4; y: 2
                                                 text: qsTr("ceiling")
                                                 color: Theme.neutral500
-                                                font.pixelSize: 9
+                                                font.pixelSize: Theme.fontFine
                                             }
                                             Rectangle {
                                                 x: 0; width: parent.width
@@ -4854,13 +5007,13 @@ ApplicationWindow {
                                                 x: 4; y: elevation.earY - 12
                                                 text: qsTr("ear level")
                                                 color: Theme.neutral500
-                                                font.pixelSize: 9
+                                                font.pixelSize: Theme.fontFine
                                             }
                                             Text {
                                                 x: 4; y: parent.height - 13
                                                 text: qsTr("front")
                                                 color: Theme.neutral500
-                                                font.pixelSize: 9
+                                                font.pixelSize: Theme.fontFine
                                                 horizontalAlignment: Text.AlignLeft
                                             }
                                             Text {
@@ -4868,7 +5021,7 @@ ApplicationWindow {
                                                 y: parent.height - 13
                                                 text: qsTr("rear")
                                                 color: Theme.neutral500
-                                                font.pixelSize: 9
+                                                font.pixelSize: Theme.fontFine
                                             }
 
                                             // Context: the bed's speakers, so the
@@ -4953,7 +5106,7 @@ ApplicationWindow {
                                                               .arg(EncoderController.selectedObjectIndex + 1)
                                                               .arg(objectsTab.selZ.toFixed(2))
                                                         color: Theme.text
-                                                        font.pixelSize: 10
+                                                        font.pixelSize: Theme.fontMicro
                                                         font.family: Theme.monoFamily
                                                     }
                                                 }
@@ -4979,7 +5132,7 @@ ApplicationWindow {
                                                     Text {
                                                         text: parent.modelData
                                                         color: Theme.neutral600
-                                                        font.pixelSize: 9
+                                                        font.pixelSize: Theme.fontFine
                                                         font.capitalization: Font.AllUppercase
                                                     }
                                                     Text {
@@ -4987,7 +5140,7 @@ ApplicationWindow {
                                                                : parent.modelData === "y" ? objectsTab.selY
                                                                                           : objectsTab.selZ).toFixed(2)
                                                         color: Theme.text
-                                                        font.pixelSize: 13
+                                                        font.pixelSize: Theme.fontBody
                                                         font.family: Theme.monoFamily
                                                     }
                                                 }
@@ -5006,10 +5159,11 @@ ApplicationWindow {
                                             Text {
                                                 text: qsTr("OBJECTS")
                                                 color: Theme.neutral600
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                             }
                                             Item { Layout.fillWidth: true }
                                             SegmentedControl {
+                                                accessibleName: qsTr("How objects move")
                                                 model: [
                                                     { value: "author", label: qsTr("Author a path") },
                                                     { value: "live", label: qsTr("Drive it live") }
@@ -5052,7 +5206,7 @@ ApplicationWindow {
                                                     Layout.fillWidth: true
                                                     text: modelData
                                                     color: Theme.neutral600
-                                                    font.pixelSize: 9
+                                                    font.pixelSize: Theme.fontFine
                                                     font.capitalization: Font.AllUppercase
                                                 }
                                             }
@@ -5197,7 +5351,7 @@ ApplicationWindow {
                                                     return qsTr("%1 of %2 objects · each one is a sound with a place")
                                                         .arg(EncoderController.objectCount).arg(cap);
                                                 }
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                                 font.family: Theme.monoFamily
                                                 color: Theme.neutral600
                                             }
@@ -5216,14 +5370,14 @@ ApplicationWindow {
                                                           .arg((objectsTab.selectedObj
                                                                 ? objectsTab.selectedObj.index : 0) + 1)
                                                     color: Theme.neutral600
-                                                    font.pixelSize: 10
+                                                    font.pixelSize: Theme.fontMicro
                                                 }
                                                 Item { Layout.fillWidth: true }
                                                 Text {
                                                     text: (objectsTab.selectedObj
                                                            ? objectsTab.selectedObj.lfeSend : 0).toFixed(2)
                                                     color: Theme.text
-                                                    font.pixelSize: 11
+                                                    font.pixelSize: Theme.fontMono
                                                     font.family: Theme.monoFamily
                                                 }
                                             }
@@ -5245,9 +5399,9 @@ ApplicationWindow {
                                             }
                                             RowLayout {
                                                 Layout.fillWidth: true
-                                                Text { text: "0.00"; font.pixelSize: 9; font.family: Theme.monoFamily; color: Theme.neutral500 }
+                                                Text { text: "0.00"; font.pixelSize: Theme.fontFine; font.family: Theme.monoFamily; color: Theme.neutral500 }
                                                 Item { Layout.fillWidth: true }
-                                                Text { text: "1.00"; font.pixelSize: 9; font.family: Theme.monoFamily; color: Theme.neutral500 }
+                                                Text { text: "1.00"; font.pixelSize: Theme.fontFine; font.family: Theme.monoFamily; color: Theme.neutral500 }
                                             }
                                         }
 
@@ -5282,19 +5436,19 @@ ApplicationWindow {
                                         Text {
                                             text: qsTr("MOTION")
                                             color: Theme.neutral600
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                         }
                                         Text {
                                             text: objectsTab.formatTime(objectsTab.playheadTime)
                                                   + " / " + objectsTab.formatTime(objectsTab.timelineLength)
                                             color: Theme.textMuted
-                                            font.pixelSize: 11
+                                            font.pixelSize: Theme.fontMono
                                             font.family: Theme.monoFamily
                                         }
                                         Text {
                                             text: qsTr("scrub · double-click for a key · drag to retime (snaps) · right-click removes · shift-drag a clip moves its keys too")
                                             color: Theme.neutral500
-                                            font.pixelSize: 9
+                                            font.pixelSize: Theme.fontFine
                                             font.family: Theme.monoFamily
                                             elide: Text.ElideRight
                                         }
@@ -5313,7 +5467,7 @@ ApplicationWindow {
                                             objectName: "zoomReadout"
                                             text: Math.round(objectsTab.zoomFactor * 100) + "%"
                                             color: Theme.neutral600
-                                            font.pixelSize: 9
+                                            font.pixelSize: Theme.fontFine
                                             font.family: Theme.monoFamily
                                         }
                                         Button {
@@ -5481,7 +5635,7 @@ ApplicationWindow {
                                                                * rulerRow.width - implicitWidth / 2
                                                             text: (rulerRow.tickInterval < 1 ? t.toFixed(1) : t.toFixed(0)) + "s"
                                                             color: Theme.neutral600
-                                                            font.pixelSize: 9
+                                                            font.pixelSize: Theme.fontFine
                                                             font.family: Theme.monoFamily
                                                         }
                                                     }
@@ -5556,7 +5710,7 @@ ApplicationWindow {
                                                         text: clipRow.modelData.label
                                                         elide: Text.ElideRight
                                                         color: Theme.neutral700
-                                                        font.pixelSize: 9
+                                                        font.pixelSize: Theme.fontFine
                                                         font.family: Theme.monoFamily
                                                     }
 
@@ -5662,7 +5816,7 @@ ApplicationWindow {
                                                         text: qsTr("obj %1").arg(laneRow.index + 1)
                                                         color: laneRow.index === EncoderController.selectedObjectIndex
                                                                ? Theme.text : Theme.neutral700
-                                                        font.pixelSize: 10
+                                                        font.pixelSize: Theme.fontMicro
                                                         font.family: Theme.monoFamily
                                                         font.weight: laneRow.index === EncoderController.selectedObjectIndex
                                                                      ? Font.DemiBold : Font.Normal
@@ -5911,7 +6065,7 @@ ApplicationWindow {
                                     Text {
                                         text: qsTr("Receiver")
                                         color: Theme.neutral600
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontSmall
                                     }
                                     ComboBox {
                                         id: liveReceiverBox
@@ -5948,7 +6102,7 @@ ApplicationWindow {
                                             objectName: "liveMonitorCheck"
                                             text: qsTr("Monitor")
                                             checked: true
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSmall
                                         }
                                         Item { Layout.fillWidth: true }
                                     }
@@ -5960,7 +6114,7 @@ ApplicationWindow {
                                             id: liveWriteCheck
                                             objectName: "liveWriteCheck"
                                             text: qsTr("Also write the take to disk")
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSmall
                                         }
                                         CheckBox {
                                             id: liveWavSafetyCheck
@@ -5968,7 +6122,7 @@ ApplicationWindow {
                                             text: qsTr("Raw-WAV safety copy")
                                             enabled: liveWriteCheck.checked
                                             checked: EncoderController.liveWavSafetyCopy
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSmall
                                             onToggled: EncoderController.liveWavSafetyCopy = checked
                                         }
                                         Item { Layout.fillWidth: true }
@@ -5996,7 +6150,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: qsTr("Pick a device on the rail first, then set up the take here — monitor, an optional receiver leg, and whether to write it to disk.")
                                         wrapMode: Text.WordWrap
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         color: Theme.textMuted
                                     }
                                     Text {
@@ -6005,12 +6159,12 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: qsTr("A live session always runs at the fixed bit rate — passthrough bursts are fixed-size, so frames cannot float. Variable rate applies to file encodes only.")
                                         wrapMode: Text.WordWrap
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         color: Theme.accent700
                                     }
 
                                     // ---- positions=: a real live object-position
-                                    // source over OSC (roadmap UX4), instead of
+                                    // source over OSC (live OSC object positions), instead of
                                     // dragging objects by hand. Object mode only -
                                     // a channel session has no objects to drive.
                                     RowLayout {
@@ -6023,14 +6177,14 @@ ApplicationWindow {
                                             objectName: "liveOscCheck"
                                             text: qsTr("Drive objects from OSC")
                                             checked: EncoderController.liveOscEnabled
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSmall
                                             onToggled: EncoderController.liveOscEnabled = checked
                                         }
                                         Text {
                                             text: qsTr("port")
                                             visible: liveOscCheck.checked
                                             color: Theme.neutral600
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSmall
                                         }
                                         SpinBox {
                                             id: liveOscPortField
@@ -6049,7 +6203,7 @@ ApplicationWindow {
                                             visible: liveOscCheck.checked
                                             text: qsTr("any interface")
                                             checked: EncoderController.liveOscAnyInterface
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSmall
                                             onToggled: EncoderController.liveOscAnyInterface = checked
                                         }
                                         Item { Layout.fillWidth: true }
@@ -6059,7 +6213,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: qsTr("Objects an OSC message addresses (/object/<n>/xyz, 0-based) move live; anything it never addresses stays where you left it. \"any interface\" opens the port beyond this machine — leave it off unless you mean to.")
                                         wrapMode: Text.WordWrap
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         color: Theme.textMuted
                                     }
                                 }
@@ -6079,7 +6233,7 @@ ApplicationWindow {
 
                                     ColumnLayout {
                                         spacing: 2
-                                        Text { text: qsTr("RUNNING"); color: Theme.neutral600; font.pixelSize: 10 }
+                                        Text { text: qsTr("RUNNING"); color: Theme.neutral600; font.pixelSize: Theme.fontMicro }
                                         Text {
                                             text: {
                                                 const s = EncoderController.liveRunningSeconds;
@@ -6089,27 +6243,27 @@ ApplicationWindow {
                                                        + rem.toFixed(1).padStart(4, "0");
                                             }
                                             color: Theme.text
-                                            font.pixelSize: 15
+                                            font.pixelSize: Theme.fontHeading
                                             font.family: Theme.monoFamily
                                         }
                                     }
                                     ColumnLayout {
                                         spacing: 2
-                                        Text { text: qsTr("FRAMES"); color: Theme.neutral600; font.pixelSize: 10 }
+                                        Text { text: qsTr("FRAMES"); color: Theme.neutral600; font.pixelSize: Theme.fontMicro }
                                         Text {
                                             text: EncoderController.groupDigits(EncoderController.liveFramesEncoded)
                                             color: Theme.text
-                                            font.pixelSize: 15
+                                            font.pixelSize: Theme.fontHeading
                                             font.family: Theme.monoFamily
                                         }
                                     }
                                     ColumnLayout {
                                         spacing: 2
-                                        Text { text: qsTr("DROPPED"); color: Theme.neutral600; font.pixelSize: 10 }
+                                        Text { text: qsTr("DROPPED"); color: Theme.neutral600; font.pixelSize: Theme.fontMicro }
                                         Text {
                                             text: EncoderController.groupDigits(EncoderController.liveFramesDropped)
                                             color: EncoderController.liveFramesDropped > 0 ? Theme.accent700 : Theme.text
-                                            font.pixelSize: 15
+                                            font.pixelSize: Theme.fontHeading
                                             font.family: Theme.monoFamily
                                         }
                                     }
@@ -6118,13 +6272,13 @@ ApplicationWindow {
                                         objectName: "liveOscStatsColumn"
                                         visible: EncoderController.liveOscListening
                                         spacing: 2
-                                        Text { text: qsTr("OSC"); color: Theme.neutral600; font.pixelSize: 10 }
+                                        Text { text: qsTr("OSC"); color: Theme.neutral600; font.pixelSize: Theme.fontMicro }
                                         Text {
                                             text: qsTr("%1 updates, %2 dropped")
                                                   .arg(EncoderController.groupDigits(EncoderController.liveOscUpdatesApplied))
                                                   .arg(EncoderController.groupDigits(EncoderController.liveOscDropped))
                                             color: EncoderController.liveOscDropped > 0 ? Theme.accent700 : Theme.text
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSmall
                                             font.family: Theme.monoFamily
                                         }
                                     }
@@ -6152,7 +6306,7 @@ ApplicationWindow {
                                     ColumnLayout {
                                         objectName: "chainCaptureCell"
                                         Layout.fillWidth: true
-                                        Text { text: qsTr("CAPTURE"); color: Theme.neutral600; font.pixelSize: 10 }
+                                        Text { text: qsTr("CAPTURE"); color: Theme.neutral600; font.pixelSize: Theme.fontMicro }
                                         Text {
                                             objectName: "chainCaptureName"
                                             Layout.fillWidth: true
@@ -6166,7 +6320,7 @@ ApplicationWindow {
                                             visible: EncoderController.liveCaptureDetail.length > 0
                                             text: EncoderController.liveCaptureDetail
                                             color: Theme.textMuted
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             font.family: Theme.monoFamily
                                         }
                                         // The slave's measured clock correction - honest,
@@ -6178,20 +6332,20 @@ ApplicationWindow {
                                             visible: EncoderController.liveDriftText.length > 0
                                             text: EncoderController.liveDriftText
                                             color: Theme.textMuted
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             font.family: Theme.monoFamily
                                         }
                                     }
                                     Text {
                                         text: "→"
                                         color: Theme.neutral500
-                                        font.pixelSize: 18
+                                        font.pixelSize: Theme.fontArrow
                                         Layout.leftMargin: Theme.space2
                                         Layout.rightMargin: Theme.space2
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true
-                                        Text { text: qsTr("LIVE ENCODE"); color: Theme.neutral600; font.pixelSize: 10 }
+                                        Text { text: qsTr("LIVE ENCODE"); color: Theme.neutral600; font.pixelSize: Theme.fontMicro }
                                         Text {
                                             Layout.fillWidth: true
                                             // Suffix-free: a session may write no file,
@@ -6204,20 +6358,20 @@ ApplicationWindow {
                                         Text {
                                             text: qsTr("meters and soundfield follow this")
                                             color: Theme.textMuted
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                         }
                                     }
                                     Text {
                                         text: "→"
                                         color: Theme.neutral500
-                                        font.pixelSize: 18
+                                        font.pixelSize: Theme.fontArrow
                                         Layout.leftMargin: Theme.space2
                                         Layout.rightMargin: Theme.space2
                                     }
                                     ColumnLayout {
                                         objectName: "chainReceiverCell"
                                         Layout.fillWidth: true
-                                        Text { text: qsTr("RECEIVER LEG — IEC 61937"); color: Theme.neutral600; font.pixelSize: 10 }
+                                        Text { text: qsTr("RECEIVER LEG — IEC 61937"); color: Theme.neutral600; font.pixelSize: Theme.fontMicro }
                                         Text {
                                             objectName: "chainReceiverPlanText"
                                             Layout.fillWidth: true
@@ -6238,7 +6392,7 @@ ApplicationWindow {
                                                   ? qsTr("exclusive · E-AC-3 bursts (data type 21)")
                                                   : qsTr("exclusive · AC-3 bursts (data type 1)")
                                             color: Theme.textMuted
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             font.family: Theme.monoFamily
                                         }
                                     }
@@ -6348,7 +6502,7 @@ ApplicationWindow {
                                         Text {
                                             text: qsTr("OBJECTS IN THIS SESSION")
                                             color: Theme.neutral600
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             font.letterSpacing: 1
                                         }
                                         Item { Layout.fillWidth: true }
@@ -6360,7 +6514,7 @@ ApplicationWindow {
                                                     .arg(EncoderController.objectCount)
                                                   : qsTr("%1 objects live").arg(EncoderController.objectCount)
                                             color: Theme.accent700
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             font.family: Theme.monoFamily
                                         }
                                     }
@@ -6401,7 +6555,7 @@ ApplicationWindow {
                                                           : qsTr("obj %1 · %2")
                                                             .arg(sessionObjChip.modelData.index + 1)
                                                             .arg(sessionObjChip.modelData.sourceLabel)
-                                                    font.pixelSize: 9
+                                                    font.pixelSize: Theme.fontFine
                                                     font.family: Theme.monoFamily
                                                     color: Theme.text
                                                 }
@@ -6468,7 +6622,7 @@ ApplicationWindow {
                                         Text {
                                             text: qsTr("drag to move — you hear it immediately")
                                             color: Theme.neutral600
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             font.family: Theme.monoFamily
                                         }
                                         Item { Layout.fillWidth: true }
@@ -6508,7 +6662,7 @@ ApplicationWindow {
                                             anchors.margins: 6
                                             text: qsTr("front")
                                             color: Theme.neutral500
-                                            font.pixelSize: 9
+                                            font.pixelSize: Theme.fontFine
                                         }
                                         Text {
                                             anchors.left: parent.left
@@ -6516,7 +6670,7 @@ ApplicationWindow {
                                             anchors.margins: 6
                                             text: qsTr("rear")
                                             color: Theme.neutral500
-                                            font.pixelSize: 9
+                                            font.pixelSize: Theme.fontFine
                                         }
 
                                         MouseArea {
@@ -6568,7 +6722,7 @@ ApplicationWindow {
                                                 // Network-driven: greyed and, below,
                                                 // undraggable - positions= owns this
                                                 // object for as long as it keeps
-                                                // addressing it (roadmap UX4).
+                                                // addressing it (live OSC object positions).
                                                 color: networkDriven ? Theme.neutral400
                                                                      : (isSelected ? Theme.accent : Theme.neutral800)
                                                 opacity: networkDriven ? 0.7 : 1.0
@@ -6597,7 +6751,7 @@ ApplicationWindow {
                                                         anchors.centerIn: parent
                                                         text: qsTr("obj %1").arg(liveMarker.index + 1)
                                                         color: Theme.text
-                                                        font.pixelSize: 10
+                                                        font.pixelSize: Theme.fontMicro
                                                         font.family: Theme.monoFamily
                                                     }
                                                 }
@@ -6645,7 +6799,7 @@ ApplicationWindow {
                                                 Text {
                                                     text: parent.modelData
                                                     color: Theme.neutral600
-                                                    font.pixelSize: 9
+                                                    font.pixelSize: Theme.fontFine
                                                     font.capitalization: Font.AllUppercase
                                                 }
                                                 Text {
@@ -6662,7 +6816,7 @@ ApplicationWindow {
                                                                                            : obj.z).toFixed(2);
                                                     }
                                                     color: Theme.text
-                                                    font.pixelSize: 13
+                                                    font.pixelSize: Theme.fontBody
                                                     font.family: Theme.monoFamily
                                                 }
                                             }
@@ -6674,7 +6828,7 @@ ApplicationWindow {
                                             Text {
                                                 text: qsTr("LATENCY")
                                                 color: Theme.neutral600
-                                                font.pixelSize: 9
+                                                font.pixelSize: Theme.fontFine
                                             }
                                             Text {
                                                 objectName: "liveLatencyReadout"
@@ -6682,7 +6836,7 @@ ApplicationWindow {
                                                       ? qsTr("~%1 ms measured").arg(EncoderController.liveLatencyMs.toFixed(0))
                                                       : qsTr("~%1 ms est.").arg(EncoderController.liveLatencyMs.toFixed(0))
                                                 color: Theme.text
-                                                font.pixelSize: 13
+                                                font.pixelSize: Theme.fontBody
                                                 font.family: Theme.monoFamily
                                             }
                                         }
@@ -6747,7 +6901,7 @@ ApplicationWindow {
 
                                                         Text {
                                                             text: liveLayoutButton.modelData
-                                                            font.pixelSize: 12
+                                                            font.pixelSize: Theme.fontSmall
                                                             font.family: Theme.monoFamily
                                                             color: liveLayoutButton.active ? Theme.bg : Theme.text
                                                         }
@@ -6789,7 +6943,7 @@ ApplicationWindow {
                                                 text: qsTr("Dotted layouts encode and meter fully — %1 bitstreams Dolby Digital only, so this receiver hears a 5.1 downmix of them.")
                                                       .arg(EncoderController.liveReceiverName)
                                                 color: Theme.textMuted
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                                 font.family: Theme.monoFamily
                                                 wrapMode: Text.WordWrap
                                             }
@@ -6803,7 +6957,7 @@ ApplicationWindow {
                                             text: qsTr("%1 takes Dolby Digital Plus — every layout here bitstreams as encoded.")
                                                   .arg(EncoderController.liveReceiverName)
                                             color: Theme.textMuted
-                                            font.pixelSize: 10
+                                            font.pixelSize: Theme.fontMicro
                                             font.family: Theme.monoFamily
                                             wrapMode: Text.WordWrap
                                         }
@@ -6829,7 +6983,7 @@ ApplicationWindow {
                                                 Layout.preferredWidth: 80
                                                 text: qsTr("Format")
                                                 color: Theme.neutral600
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                             }
                                             Item { Layout.fillWidth: true }
                                             Text {
@@ -6852,7 +7006,7 @@ ApplicationWindow {
                                                 Layout.preferredWidth: 80
                                                 text: qsTr("Input")
                                                 color: Theme.neutral600
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                             }
                                             Item { Layout.fillWidth: true }
                                             Text {
@@ -6872,7 +7026,7 @@ ApplicationWindow {
                                                 Layout.preferredWidth: 80
                                                 text: qsTr("Lock")
                                                 color: Theme.neutral600
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                             }
                                             Text {
                                                 text: !EncoderController.livePassthrough ? qsTr("no passthrough")
@@ -6888,7 +7042,7 @@ ApplicationWindow {
                                                 Layout.preferredWidth: 80
                                                 text: qsTr("Underruns")
                                                 color: Theme.neutral600
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                             }
                                             Text {
                                                 text: EncoderController.liveUnderruns
@@ -6903,7 +7057,7 @@ ApplicationWindow {
                                                 Layout.preferredWidth: 80
                                                 text: qsTr("Monitor")
                                                 color: Theme.neutral600
-                                                font.pixelSize: 10
+                                                font.pixelSize: Theme.fontMicro
                                             }
                                             Text {
                                                 text: EncoderController.liveMonitoring ? qsTr("on") : qsTr("off")
@@ -6938,19 +7092,23 @@ ApplicationWindow {
                 // ---- runs --------------------------------------------------
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 34
+                    Layout.preferredHeight: Math.round(34 * Theme.fontScale)
                     // Hard cap, not just preferred: the strip's inner
                     // ScrollView pins its content to availableHeight (the
                     // centring fix), and without a cap that feedback settled
-                    // at a stretched lane on some layout passes.
-                    Layout.maximumHeight: 34
+                    // at a stretched lane on some layout passes. Scaled rather
+                    // than derived from the chips for that reason - the cap is
+                    // what stops the feedback, so it has to stay a number, and
+                    // a number that follows the text size is the most a fixed
+                    // lane can do.
+                    Layout.maximumHeight: Math.round(34 * Theme.fontScale)
                     spacing: 0
 
                     Text {
                         Layout.preferredWidth: 90
                         Layout.leftMargin: 16
                         text: qsTr("RUNS")
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontMicro
                         font.letterSpacing: 1
                         color: Theme.textMuted
                     }
@@ -7004,7 +7162,7 @@ ApplicationWindow {
                                     Text {
                                         objectName: "runChipSummary-" + modelData.id
                                         font.family: Theme.monoFamily
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontSmall
                                         color: Theme.text
                                         // Terminal states say WHICH one they are - the
                                         // mockup's "14 · failed · 212 frames" - instead of
@@ -7028,9 +7186,26 @@ ApplicationWindow {
 
                                         Accessible.role: Accessible.Button
                                         Accessible.name: text
+                                        Accessible.description: qsTr("Opens this run's details, including the command line it was started with.")
                                         Accessible.onPressAction: {
                                             window.detailsRunId = modelData.id;
                                             runDetailsDialog.open();
+                                        }
+
+                                        // The results view was mouse-only: the
+                                        // chip that opens a run's details is a
+                                        // Text with a MouseArea over it, so the
+                                        // keyboard had no way to read what a
+                                        // finished or failed run actually did.
+                                        Accessible.focusable: true
+                                        activeFocusOnTab: true
+                                        Keys.onPressed: function(event) {
+                                            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return
+                                                || event.key === Qt.Key_Enter) {
+                                                window.detailsRunId = modelData.id;
+                                                runDetailsDialog.open();
+                                                event.accepted = true;
+                                            }
                                         }
 
                                         // Item 33: clicking a run chip opens its own
@@ -7047,6 +7222,7 @@ ApplicationWindow {
                                                 runDetailsDialog.open();
                                             }
                                         }
+                                        FocusRing {}
                                     }
                                     ProgressBar {
                                         visible: encoding
@@ -7063,6 +7239,10 @@ ApplicationWindow {
                                         text: qsTr("Cancel")
                                         flat: true
                                         onClicked: EncoderController.cancel()
+                                        // Named per run: the strip can hold a
+                                        // dozen of these, and "Cancel" twelve
+                                        // times says nothing about which.
+                                        Accessible.name: qsTr("Cancel run %1").arg(modelData.id)
                                     }
                                     Button {
                                         objectName: "runPlay-" + modelData.id
@@ -7084,6 +7264,7 @@ ApplicationWindow {
                                                  && EncoderController.outputDevices.length > 0
                                         text: qsTr("Play")
                                         flat: true
+                                        Accessible.name: qsTr("Play run %1 to the receiver").arg(modelData.id)
                                         enabled: !EncoderController.busy && !EncoderController.playing
                                                  && EncoderController.outputDeviceSupportsFormat(
                                                         device, modelData.eac3 === true)
@@ -7096,6 +7277,7 @@ ApplicationWindow {
                                                  && (modelData.path || "").length > 0
                                         text: qsTr("Show in folder")
                                         flat: true
+                                        Accessible.name: qsTr("Show run %1 in its folder").arg(modelData.id)
                                         onClicked: {
                                             const path = modelData.path;
                                             const cut = Math.max(path.lastIndexOf("/"),
@@ -7112,6 +7294,7 @@ ApplicationWindow {
                                                      && (modelData.detail || "").length > 0)
                                         text: qsTr("Details")
                                         flat: true
+                                        Accessible.name: qsTr("Why run %1 did not finish").arg(modelData.id)
                                         onClicked: {
                                             window.bannerRunId = modelData.id;
                                             if (window.dismissedRunId === modelData.id) {
@@ -7119,8 +7302,8 @@ ApplicationWindow {
                                             }
                                         }
                                     }
-                                    // Roadmap UX1's own run-chip shortcut: docs/gui/qc.md and
-                                    // docs/gui/inspect-objects.md both used to end by saying
+                                    // GUI stream player's own run-chip shortcut: docs/forge/gui/qc.md and
+                                    // docs/forge/gui/inspect-objects.md both used to end by saying
                                     // there was no way to jump from a finished run straight
                                     // into either dialog - this is that way. The first Menu
                                     // in this window (every other run action above is a flat
@@ -7133,6 +7316,7 @@ ApplicationWindow {
                                                  && (modelData.path || "").length > 0
                                         text: qsTr("More…")
                                         flat: true
+                                        Accessible.name: qsTr("More for run %1").arg(modelData.id)
                                         onClicked: runMoreMenu.open()
 
                                         Menu {
@@ -7173,7 +7357,7 @@ ApplicationWindow {
                                 verticalAlignment: Text.AlignVCenter
                                 text: EncoderController.status
                                 font.family: Theme.monoFamily
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSmall
                                 color: Theme.textMuted
                             }
                         }
@@ -7200,14 +7384,28 @@ ApplicationWindow {
                         id: cliChip
                         objectName: "commandBar"
                         visible: appSettings.showCli
-                        implicitHeight: 38
+                        implicitHeight: Math.max(38, cliChipRow.implicitHeight + 14)
                         implicitWidth: cliChipRow.implicitWidth + 26
                         color: cliChipArea.containsMouse || cliPopup.opened
                                ? Theme.neutral200 : Theme.neutral100
 
                         Accessible.role: Accessible.Button
                         Accessible.name: qsTr("ac3cli command line")
+                        Accessible.description: qsTr("Opens the command line that reproduces this encode, with a Copy button.")
                         Accessible.onPressAction: cliPopup.opened ? cliPopup.close() : cliPopup.open()
+
+                        // Hand-drawn, so it needs saying: a tab stop, Space or
+                        // Return to open the popover, and Escape closes it
+                        // (the Popup's own closePolicy).
+                        Accessible.focusable: true
+                        activeFocusOnTab: true
+                        Keys.onPressed: function(event) {
+                            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return
+                                || event.key === Qt.Key_Enter) {
+                                cliPopup.opened ? cliPopup.close() : cliPopup.open();
+                                event.accepted = true;
+                            }
+                        }
 
                         Rectangle {
                             anchors.left: parent.left
@@ -7225,13 +7423,13 @@ ApplicationWindow {
                             Text {
                                 text: qsTr("ac3cli")
                                 font.family: Theme.monoFamily
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSmall
                                 font.weight: Font.DemiBold
                                 color: Theme.text
                             }
                             Text {
                                 text: qsTr("command line ↗")
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontMono
                                 color: Theme.textMuted
                             }
                         }
@@ -7245,6 +7443,7 @@ ApplicationWindow {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: cliPopup.opened ? cliPopup.close() : cliPopup.open()
                         }
+                        FocusRing {}
 
                         Popup {
                             id: cliPopup
@@ -7270,7 +7469,7 @@ ApplicationWindow {
 
                                 Text {
                                     text: qsTr("THE COMMAND LINE — REPRODUCES THIS ENCODE")
-                                    font.pixelSize: 10
+                                    font.pixelSize: Theme.fontMicro
                                     font.letterSpacing: 1
                                     color: Theme.textMuted
                                 }
@@ -7280,7 +7479,7 @@ ApplicationWindow {
                                     text: window.cliLine
                                     wrapMode: Text.WrapAnywhere
                                     font.family: Theme.monoFamily
-                                    font.pixelSize: 12
+                                    font.pixelSize: Theme.fontSmall
                                     color: Theme.text
                                 }
                                 RowLayout {
@@ -7291,7 +7490,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: qsTr("Encode runs the encoder in-process — this is the exact ac3cli equivalent, quoting and all.")
                                         wrapMode: Text.WordWrap
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontMono
                                         color: Theme.textMuted
                                     }
                                     Button {
@@ -7326,9 +7525,20 @@ ApplicationWindow {
                                    ? qsTr("Encode to folder")
                                    : qsTr("Encode to .%1").arg(EncoderController.outputSuffix());
                         }
+                        // What the press will actually do, in a sentence: the
+                        // label is only the extension, and "Encode to .ec3" on
+                        // its own does not say where the file lands or that
+                        // nothing is sent anywhere.
+                        Accessible.description: EncoderController.busy
+                            ? qsTr("An encode is running. The runs strip shows its progress.")
+                            : qsTr("Encodes the loaded sources into the output folder set in Preferences. The runs strip reports the result.")
                         enabled: EncoderController.sourceReady && !EncoderController.busy
                         highlighted: true
-                        implicitHeight: 44
+                        // implicitContentHeight, not contentItem.implicitHeight:
+                        // it is the same number, and a Control's contentItem is
+                        // still null while its own bindings are first evaluated,
+                        // which the property form does not care about.
+                        implicitHeight: Math.max(44, implicitContentHeight + 16)
                         implicitWidth: Math.max(190, contentItem.implicitWidth + 40)
                         onClicked: window.startEncodeFlow()
                     }
@@ -7337,7 +7547,7 @@ ApplicationWindow {
         }
     }
 
-    // Roadmap UX2 - spans the whole window rather than just the rail, so a
+    // GUI AppStream packaging - spans the whole window rather than just the rail, so a
     // drop lands the same way whether or not a source has ever been chosen
     // yet (the first-run screen above, or the rail once everHadSource is
     // true, both sit under this). openDroppedFile() owns the actual

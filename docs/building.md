@@ -7,13 +7,14 @@ Every command here has been run on the configuration described under
 
 | | Version | Notes |
 |---|---|---|
-| A compiler | MSVC (VS 2026), clang-cl 22, GCC 16, or Clang 22 | C++23. `std::expected` and deducing-`this` are both used. Formatted output goes through {fmt} (`fmt::format`/`fmt::print`), not `std::format`/`std::print` — see [Options](#options) and `docs/platforms/android.md`. One [preset](#presets) per compiler; all seven platform/compiler legs are required, green CI (GCC 16 covers two of them — `linux-gcc` and `linux-gcc-arm64`; Clang 22 covers three — `linux-llvm`, `linux-llvm-arm64` and `macos-llvm`, each as a separate leg, though `macos-llvm` deliberately tracks Homebrew's unpinned `llvm` formula, currently also 22, rather than an exact pin) — see [Verified configuration](#verified-configuration). |
+| A compiler | MSVC (VS 2026), clang-cl 22, GCC 16, or Clang 22 | C++23, including `std::expected` and deducing `this`. See [Verified configuration](#verified-configuration) for the CI matrix. |
 | CMake | ≥ 3.28 | `cmake_minimum_required(VERSION 3.28...4.3)`. |
 | Ninja | any recent | The presets hard-code the Ninja generator. |
-| vcpkg | any recent | Supplies fmt (a base dependency, needed by every build — see `cmake/Fmt.cmake`) and Catch2 (needed only when tests are on); with `-DVCPKG_MANIFEST_FEATURES=adm`, the Boost header libraries `AC3FORGE_BUILD_ADM=ON` needs; and with `-DVCPKG_MANIFEST_FEATURES=profiling`, the Tracy profiler `AC3FORGE_ENABLE_TRACY=ON` needs — see [Options](#options). vcpkg itself is never strictly required, though: fmt and Catch2 both fall back to a `FetchContent` build from source when no local copy is found (`AC3FORGE_FETCH_FMT`/`AC3FORGE_FETCH_CATCH2`, both default `ON`), and Boost/Tracy are opt-in features nobody gets by default. |
+| vcpkg | any recent | Supplies fmt and Catch2, plus optional Boost and Tracy features. fmt and Catch2 can use `FetchContent` when vcpkg is unavailable. See [Options](#options). |
 | Qt | 6.5+ prebuilt | GUI only. **Never from vcpkg** — see [Qt](#qt). |
-| ALSA (`libasound2-dev`) | any recent | Linux only, optional. Live capture/monitor/passthrough — see [Linux audio](#linux-audio). |
-| PipeWire (`libpipewire-0.3-dev`) | any recent | Linux only, optional, used only when ALSA is not — see [Linux audio](#linux-audio). |
+| ALSA (`libasound2-dev`) | any recent | Optional Linux audio backend. See [Linux audio](#linux-audio). |
+| PipeWire (`libpipewire-0.3-dev`) | any recent | Optional Linux audio backend; required by Crucible. See [Linux audio](#linux-audio). |
+| libxcb (`libxcb1-dev`) | any recent | Optional; used by Crucible for X11 full-screen detection. |
 | Python 3 + numpy | 3.11+ | Only for `tools/`; not part of the build. |
 | FFmpeg CLI | 8.x | Only for validation scripts; not part of the build. |
 
@@ -107,7 +108,7 @@ because it isn't a platform/compiler pair but an instrumented variant of `linux-
 which inherits `linux-llvm` plus a `sanitize-asan-ubsan` fragment setting
 `AC3FORGE_SANITIZERS=address,undefined` (see `cmake/Sanitizers.cmake`; MSVC is rejected outright,
 so this only exists for GCC/Clang). See [Verified configuration](#verified-configuration) for what CI says
-about all eighteen. There are also nine `ci-<platform>` `workflowPresets` (Release except for the
+about all eighteen. There are also 11 `ci-<platform>` `workflowPresets` (Release except for the
 two sanitizer ones, which are Debug-only) that chain configure→build→test in one
 `cmake --workflow --preset ci-windows-msvc` call. There is no coverage workflow preset — the
 `config-`/`build-`/`test-linux-gcc-coverage` trio exists, but nothing chains it — and CI does not
@@ -145,7 +146,7 @@ ctest --preset test-linux-llvm-tsan
 
 There is also a `minimal-decoder` fragment and the three configure/build presets that inherit
 it — `config-arm-none-eabi-minimal`, `config-linux-gcc-minimal`, `config-linux-llvm-minimal`.
-They are not part of the table above because they do not build the project: they build roadmap
+They are not part of the table above because they do not build the project: they build
 PF7's decode-only library and its probe, and nothing else. The arm one does not inherit `core`
 either — there is no vcpkg triplet for bare-metal arm and nothing that profile builds has a
 third-party dependency, the same reasoning the Emscripten preset follows. See
@@ -244,7 +245,7 @@ platform/compiler fragment matches your machine.
 |---|---|---|
 | `AC3FORGE_BUILD_CLI` | `ON` | Build `ac3cli`. |
 | `AC3FORGE_BUILD_GUI` | `ON` on the two Windows presets, `OFF` on Linux and macOS | Build `ac3gui`. Requires Qt. Off by default outside Windows because a Qt kit isn't assumed present there — see [Building on Linux](#building-on-linux). |
-| `AC3FORGE_FETCH_FMT` | `ON` | When no local {fmt} is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v12.2.0 from source via `FetchContent` instead of failing. Turn off to insist on a package-manager copy — see `cmake/Fmt.cmake`. Unlike the other `AC3FORGE_FETCH_*` options, this one is never irrelevant: {fmt} is a base dependency needed by every build. |
+| `AC3FORGE_FETCH_FMT` | `ON` | When no local {fmt} 11.1.0 or newer is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v12.2.0 from source via `FetchContent` instead of failing. An older local copy, such as Ubuntu 26.04's `libfmt-dev` 10.1.1, is skipped and named in the configure output. Turn off to insist on a package-manager copy — see `cmake/Fmt.cmake`. Unlike the other `AC3FORGE_FETCH_*` options, this one is never irrelevant: {fmt} is a base dependency needed by every build. |
 | `AC3FORGE_BUILD_TESTS` | `ON` | Build the Catch2 suite. Requires Catch2. |
 | `AC3FORGE_FETCH_CATCH2` | `ON` | When no local Catch2 3 is found (vcpkg, a distro package, an explicit `CMAKE_PREFIX_PATH`), fetch and build v3.15.3 from source via `FetchContent` instead of failing. Turn off to insist on a package-manager copy — see `tests/CMakeLists.txt`. Irrelevant when `AC3FORGE_BUILD_TESTS` is off. |
 | `AC3FORGE_BUILD_EXAMPLES` | `ON` | Build `examples/`, and register them as tests. |
@@ -255,9 +256,12 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_BUILD_CAPI` | `ON` | Build `ac3::forge_c` (`src/capi`), the C API over the encode/decode core — see [C API](library/c-api.md). Depends on nothing but `ac3::forge_static`, so unlike `AC3FORGE_BUILD_ADM` there is no extra dependency footprint to opt out of. |
 | `AC3FORGE_BUILD_PYTHON` | `OFF` | Build the pybind11 extension module (`python/`). Off by default for the same reason as `AC3FORGE_BUILD_ADM`: nothing under `src/`, `apps/`, `tests/` or `examples/` links it, so a normal C++ build is unaffected either way. `python/pyproject.toml` turns it on itself via scikit-build-core when `pip install`/cibuildwheel drives the configure. |
 | `AC3FORGE_BUILD_ADM` | `OFF` | Build `ac3adm::ac3adm` (`src/ac3adm`), the standalone BW64/RF64 + ADM parser — see [ADM / BW64 reading](library/adm.md). Off by default, unlike every other library component: it vendors libbw64/libadm via `FetchContent`, and libadm needs several Boost header libraries, resolved separately via `-DVCPKG_MANIFEST_FEATURES=adm` (`vcpkg.json`'s `adm` feature) — turning this `ON` without also selecting that feature fails with a clear configure-time message rather than a bare "Boost not found". |
+| `AC3FORGE_BUILD_CRUCIBLE` | `OFF` | Build the Crucible engine, console runner, and desktop window. Linux requires PipeWire; see [Crucible installation](crucible/install.md#linux). |
+| `AC3FORGE_BUILD_HEARTH` | `OFF` | Build `ac3::sendspin`, the Hearth engine, `ac3hearth-testsink`, and `ac3hearth-testserver`. With vcpkg, also select the root manifest's `hearth` feature (`-DVCPKG_MANIFEST_FEATURES=hearth`) for its network, pairing, FLAC, and Opus dependencies. There is no desktop window yet; see [Hearth](hearth/index.md). |
 | `AC3FORGE_WITH_ALSA` | `AUTO` | Linux only. `AUTO` builds the ALSA audio backend when libasound's headers are present; `ON` requires them; `OFF` never builds it. Takes precedence over `AC3FORGE_WITH_PIPEWIRE` when both are found — see [Linux audio](#linux-audio). |
 | `AC3FORGE_WITH_PIPEWIRE` | `AUTO` | Linux only. `AUTO` builds the PipeWire audio backend when libpipewire-0.3's headers are present *and* ALSA was not selected; `ON` requires the headers (independently of ALSA); `OFF` never builds it. See [Linux audio](#linux-audio). |
-| `AC3FORGE_SIMD` | `auto` | Which `src/forge/src/internal/arch/` directory supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from `CMAKE_SYSTEM_PROCESSOR` and falls back to `generic` everywhere else, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
+| `AC3FORGE_CRUCIBLE_X11` | `AUTO` | Linux only, with `AC3FORGE_BUILD_CRUCIBLE`. `AUTO` compiles Crucible's X11 full-screen check over libxcb when `libxcb1-dev` is present; `ON` requires it; `OFF` never builds it. Without it the rule is off at runtime and the Room page says so. The configure summary prints `Crucible X11   : xcb` or `none`. |
+| `AC3FORGE_SIMD` | `auto` | Which `src/forge/src/internal/arch/` directory supplies the codec's vector kernels: `auto` picks `x86_64` or `aarch64` from the *effective target* architecture (`CMAKE_SYSTEM_PROCESSOR`, or `CMAKE_OSX_ARCHITECTURES` where a macOS cross-build sets one) and falls back to `generic` everywhere else, including a macOS universal binary, and `generic`/`x86_64`/`aarch64` force one. See [SIMD kernels and the architecture tree](#simd-kernels-and-the-architecture-tree). The configure summary prints the resolved value, and so does `ac3cli --version`. |
 | `AC3FORGE_AVX2` | `ON` | x86_64 only. Compiles an AVX2 SIMD tier alongside the baseline SSE2 one, selected at *runtime* rather than at configure time. See [Runtime AVX2 dispatch](#runtime-avx2-dispatch). `OFF` (or a non-x86_64 target) yields a provably AVX2-free binary. |
 | `AC3FORGE_SANITIZERS` | empty | Comma-separated `-fsanitize=` value, e.g. `address,undefined` — see `cmake/Sanitizers.cmake`. Empty is a no-op; GCC/Clang only, MSVC is a configure error. Set via the `-asan-ubsan` preset above rather than by hand. |
 | `AC3FORGE_ENABLE_COVERAGE` | `OFF` | `--coverage` gcov instrumentation over every target it's linked into — see `cmake/Coverage.cmake`. Off is a no-op; GCC/Clang only, other compilers get a configure-time warning and no instrumentation. Set via the `-coverage` preset above rather than by hand. |
@@ -277,7 +281,7 @@ without the preset and pass the generator and build type by hand.
 
 ## Minimum-footprint decoder profile
 
-Roadmap PF7. The next users of the decoder are set-top boxes, receivers and DSP ports, and what
+The next users of the decoder are set-top boxes, receivers and DSP ports, and what
 they need is not a claim about being small but a build that is small, a target it demonstrably
 runs on, and a number that stops moving quietly.
 
@@ -322,40 +326,327 @@ writes down, and substituting a different arithmetic would defeat its only purpo
 
 ### The probe
 
-`apps/baremetal/probe.cpp` links the archive, decodes six frames each of real 5.1 AC-3 (448
-kbit/s, coupling) and E-AC-3 (384 kbit/s, AHT + spx + coupling), compares every channel's level
-against `apps/baremetal/fixture.hpp`, and prints `key=value` lines that
+`apps/baremetal/probe.cpp` links the archive, decodes six frames each of four real streams —
+5.1 AC-3 (448 kbit/s, coupling), 5.1 E-AC-3 (384 kbit/s, AHT + spx + standard coupling), 5.1
+E-AC-3 with §E3.5 enhanced coupling (`cpl+ecpl`, which `tools=all` does not select) and 2/0
+E-AC-3 (192 kbit/s, the only layout §7.5.4 rematrixing exists in) — compares every channel's
+level against `apps/baremetal/fixture.hpp`, and prints `key=value` lines that
 `tools/checks/run_baremetal_probe.sh` gates on. It is not a unit test — the profile requires
 `AC3FORGE_BUILD_TESTS=OFF`, since nothing under `tests/` builds against a decode-only archive —
 and it answers three questions a test could not: does the archive link with everything else
 absent, does it produce the right audio on a 32-bit soft-float target, and what did it cost.
-Regenerate its fixture with
-`python tools/generators/gen_baremetal_fixture.py --ac3cli <path>`.
+Regenerate its fixtures with
+`python tools/generators/gen_baremetal_fixture.py --ac3cli <path>`. Adding a configuration is a
+row in that script's `STREAMS`, a layout is a row in its `LAYOUTS`, and a fixture is a row in
+`probe.cpp`'s `kEac3Fixtures`; neither runner script names a fixture, so nothing else has to be
+widened to keep gating one.
+
+Nothing regenerates the fixtures automatically and nothing detects that they have drifted from
+the encoder — the probe decodes the committed bitstream and compares it against the committed
+levels, so both moving together is invisible to it. The header committed in August 2026 was 131
+encoder commits stale by the time the §E3.5 and 2/0 streams were added and every stream was
+re-based onto the encoder of the day. This does not weaken what the probe measures — it is a
+decode regression reference either way — but a fixture is only evidence about the encoder that
+produced it.
+
+### The encode direction
+
+The same profile pointed the other way. `AC3FORGE_MINIMAL_ENCODER` builds an encode-only
+`ac3::forge_minimal` carrying both codecs, and `apps/baremetal/encode_probe.cpp` is its probe:
+
+```bash
+tools/checks/run_baremetal_probe.sh --encoder          # arm-none-eabi under QEMU
+tools/checks/run_baremetal_probe.sh --encoder --host   # natively
+```
+
+It is **mutually exclusive** with the decoder, and that is measured rather than a simplification.
+On an ESP32-S3 with 277,400 bytes of internal SRAM free:
+
+| | Peak heap |
+|---|---|
+| Decode, including Atmos objects | 233,546 |
+| AC-3 encode | 201,770 |
+| E-AC-3 encode | 243,770 |
+| Both encoders at once | 440,420 |
+
+Each fits alone; no two fit together. A build offering both would be offering something the part
+cannot run, so the option refuses the combination rather than letting it arrive as `out_of_memory`
+on a device. Sequential use is fine — tear one down, build the other.
+
+### What the encode direction costs
+
+Six rows since 2026-09-10, each six frames of the same synthesised programme through one
+encoder, and each printing its peak heap and its time per frame on the terms the decode probe
+uses (`<row>.us_per_frame`, `realtime_permille` against a 32 ms frame). Peaks are the same on
+the `arm-none-eabi` leg and the ESP32-S3 under QEMU; the host's are about one per cent higher
+for its wider pointers. Instructions per frame are the `--encoder --icount` leg's: Thumb-2 on
+the Cortex-M3, `-Os`, soft float throughout, held to the ceilings in
+`run_baremetal_probe.sh`'s `ICOUNT_CEILING_ENCODE` table.
+
+| Row | Peak heap | Allocations per frame | Instructions per frame | Ceiling | Decode row's count |
+|---|---:|---:|---:|---:|---:|
+| `ac3_stereo` 2/0, 192 kbit/s | 52,707 | 34 | 9,136,000 | 16,000,000 | 3,548,000 |
+| `eac3_stereo` 2/0, 192 kbit/s, no tools | 79,894 | 76 | 12,683,000 | 30,000,000 | 4,851,000 |
+| `eac3_tools` 2/0, 192 kbit/s, cpl + spx + AHT | 143,037 | 47 | 16,920,000 | 31,000,000 | - |
+| `eac3_ecpl` 2/0, 192 kbit/s, §E3.5 | 130,887 | 87 | 48,217,000 | 104,000,000 | 28,861,000 |
+| `ac3` 5.1, 448 kbit/s | 110,918 | 67 | 24,866,000 | 43,000,000 | 10,224,000 |
+| `eac3` 5.1, 384 kbit/s | 158,602 | 173 | 33,207,000 | 78,000,000 | 12,928,000 |
+
+Between 1.7 and 2.6 times the decode row's count for the same layout, with the encoders in
+`float` end to end since 2026-09-10 (the analysis front end first, then the coefficient store and
+every analysis behind it; the decode path has been `float` under this profile since 2026-09-09)
+and the rate-control search and exponent-run planner made cheaper the same day. What is left of
+the gap is the search - exponent-run planning, the allocation probes, mantissa bit counts -
+which is integer work the decoder does once a block. On an ESP32-S3 the board encodes AC-3 2/0
+at 0.35x real time, E-AC-3 2/0 at 0.73x, AC-3 5.1 at 1.01x and E-AC-3 5.1 at 1.74x - the
+[ESP32-S3 page](platforms/bare-metal/esp32-s3.md#encoding) has the six rows and the stage tables, and the
+first platform choice on the search, `delta_allocation`.
+
+`eac3_tools` is the row that reaches the coupling, spectral-extension and AHT encoders at all:
+the 5.1 row's default is no tool. It is 2/0 with its band edges pinned (`cplbegf` 0, `spxbegf`
+7), and `encode_fixture.hpp` has the two findings behind that shape, with the host profile's
+numbers:
+
+| Shape | Peak heap (host) | Fits an ESP32-S3's encode build (241,664-byte largest free run)? |
+|---|---:|---|
+| 5.1 at 256 kbit/s, spx alone | 205,718 | Yes |
+| 5.1 at 256 kbit/s, standard coupling alone | 289,202 | No |
+| 5.1 at 256 kbit/s, AHT alone | 312,744 | No |
+| 5.1 at 256 kbit/s, all three | 369,790 | No |
+| 5.1 at 384 kbit/s, §E3.5 enhanced coupling | 343,483 | No (the ecpl row's own finding) |
+| 7.1.4 at 640 kbit/s through `AccessUnitEncoder` (a bed and two dependents, 14 coded channels) | 601,954 | No - three encoders resident at once, 416 allocations a frame |
+| The Atmos object encoder | about 300,000 | No, and it is not in the profile |
+
+And at 2/0 with both merely permitted, the rate defaults start spectral extension below where
+coupling would begin and §E3.3.1 then drops coupling, so the frame is spx + AHT - the pinned
+edges are what keep all three live, which `ac3cli probe` confirms on the frame. The Atmos
+figure is a bench estimate rather than a probe row: `ac3membench` shows `AtmosEncoder`
+constructing with 138,743 bytes live against the plain E-AC-3 encoder's 58,912 and its first
+frame allocating what that encoder's does, which puts it about 80 KB above the 5.1 row - and
+its per-frame QMF analysis of the bed and every object is `double` as well. What the part can
+encode is therefore one substream at a time, 5.1 with no tool or 2/0 with any, in the
+configurations the six rows are.
+
+Two things about the probe differ from the decode one, and both follow from the direction:
+
+- **The input is synthesised.** A decoder's fixture is a 10,752-byte bitstream; an encoder's is the
+  221,184 bytes of PCM behind it, which is most of an ESP32-S3's internal SRAM. Six sines at
+  non-harmonic frequencies, computed in `double` with a single narrowing to `float`, so every IEEE
+  target produces identical samples.
+- **The check is a checksum**, because there is no decoder in this profile to reconstruct with. It
+  says the target produced what the host produced from the same input. Measured, the two agree
+  exactly — so this project's encoder is bit-exact between x86_64 hardware doubles and
+  `arm-none-eabi` soft float, which extends what
+  `tests/golden/bitstream-hashes.json` already pins across x86_64 and aarch64 to a target with no
+  FPU at all.
+
+Steady-state churn is **78 allocations per frame for AC-3 and 249 for E-AC-3**, against the
+decoders' 1–31. That gap is in the API rather than the implementation: both encoders return
+`std::vector<std::byte>` from `encode_frame`, and there is no `encode_frame_into` to match
+`decode_frame_into`. It is the same zero-heap gap [above](#gaps) records for the decode side, wider
+here, and it is the thing to close before this profile is fit for a real-time encode.
 
 The measured numbers are in [the footprint table](performance-trend.md#minimum-footprint-decoder).
 CI runs this on every push (`build-footprint` in `.github/workflows/_build.yml`).
 
 ### Gaps
 
-Three of PF7's requirements are not met, and are recorded here rather than half-enforced.
+One of PF7's requirements is not met, and is recorded here rather than half-enforced: no heap
+traffic in the decode loop. The float32-only path is met for the decode path, and the retained
+scratch below has since been closed; both are kept here with what they cost and what closed them.
 
 **No heap traffic in the decode loop — not met.** The profile does not allocate the output PCM
-(`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, which is what
-the probe uses) and it leaks nothing, but the steady state is **45 allocations per frame for
-AC-3 and 87 for E-AC-3**, from the per-block geometry vectors inside the decoders and the
-`std::vector` members of the returned `DecodedFrame`/`DecodedSubstream`. Reaching zero means
-those becoming fixed-capacity storage, which changes the public types — a design change, not a
-build option. The runner gates the number at 100 so the distance from zero cannot grow while the
-gap is open.
+(`decode_frame_into`/`decode_access_unit_into` write through caller-owned spans, and the
+`_by_block` forms hand the decoder's own storage over a block at a time, which is what the probe
+uses) and no frame leaks (what stays live after teardown is the bounded scratch below,
+not per-frame growth), but the steady state is **3 allocations per frame for AC-3, 12 for
+E-AC-3 and for E-AC-3 with §E3.5 enhanced coupling, 10 for 2/0, and 41 for Atmos with
+objects**. The per-block geometry vectors inside the decoders no longer account for any of it —
+they are `Impl` members, reused frame to frame. What is left is the `std::vector` members of
+the returned `DecodedFrame`/`DecodedSubstream` (`blksw` is AC-3's whole remainder, `channels`
+is 7 of E-AC-3's 12) and, on the Atmos fixtures, the EMDF payload chain. Reaching zero means
+the first of those becoming fixed-capacity or pooled storage, which changes the public types —
+a design change, not a build option. The runner gates the number at 100 for every fixture, with
+no exemption ([the footprint table](performance-trend.md#minimum-footprint-decoder) has the
+detail), so the distance from zero cannot grow while the gap is open.
 
-**A float32-only path — not met.** The decoder's *output* is already `float`, but every
-intermediate — the transform, the coefficients, the coupling coordinates — is `double`. A
-float32 internal path would change every gold-reference number in
-[the quality trend](quality-trend.md) and needs its own oracle run to establish that the change
-is acceptable, so it is a project of its own rather than a flag. What the profile does instead is
-prove the `double` path works without hardware floating point: the Cortex-M3 target has no FPU,
-so every one of those operations is software-emulated, and the decoded levels still match the
-host build.
+**Scratch that was never released — closed.** `eac3_tools.cpp` kept enhanced coupling's
+32,768-byte `EcplSpectrumScratch` and its 1,440-byte bin-angle vector in `thread_local` storage,
+so §E3.5 neither allocates per call nor puts 32 KB on the stack. On a target whose only thread
+never exits, the destructor that would release them never runs, and 34,232 bytes stayed live for
+the life of the decoding task. That was bounded and paid once, so it was never the heap gap above
+— but on an ESP32-S3 it was 32 KB of internal SRAM that object reconstruction then had nowhere to
+fit into.
+
+`ac3::eac3::release_ecpl_scratch()` hands them back and the next call rebuilds what it needs. The
+probe calls it between fixtures, and retained bytes at exit went from 34,232 to 24, and to **12**
+once the bin-angle vector became a stack array. What is left is one `__cxa_thread_atexit`
+registration record, for the pointer to the spectrum scratch — the one `thread_local` the library
+still declares, and 23,552 bytes on this profile in its float form rather than the 32,768 above.
+Both runners gate it at 1,024 — deliberately tight, because nothing here grows a little: either
+the scratch is handed back or it is not, and the difference is five figures.
+[The ESP32-S3 page](platforms/bare-metal/esp32-s3.md#objects) has what it unblocked.
+
+**A float32-only path — met for the decode path.** `src/forge/src/internal/scalar/`'s
+seam carries `decode_scalar_t`: `float` under this profile, `double` by default in every other
+build, and selectable there with `-DAC3FORGE_DECODE_SCALAR=float`. Both
+decoders' coefficient stores, transform scratch and overlap-add history follow it, and
+`imdct512_windowed`/`imdct256_pair_windowed` have float32 overloads built from the same templated
+body as the double ones, so §7.9.4.1 is implemented once.
+
+For a while that was the buffers only. The arithmetic between the bitstream and them - mantissa
+dequantisation and the 2^-exp scale, dither, coupling and spectral-extension coordinates,
+decoupling, the whole of spectral-extension synthesis, the AHT's dequantiser and six-point
+inverse, and JOC's object mixing - stayed `double` and was narrowed at the store. On a desktop
+that costs nothing; on the ESP32-S3's single-precision FPU every one of those operations was a
+call into the ROM's software routines, and a board profile on 2026-09-09 found them to be 80% of
+a 5.1 E-AC-3 decode ([the ESP32-S3 page](platforms/bare-metal/esp32-s3.md#timing) has the stage table). Those
+paths now run in `decode_scalar_t` too, through templates whose `<double>` instantiations are the
+exported functions the ordinary build always called, so its arithmetic is unchanged. What still
+runs in `double` on this profile is stated rather than hidden: the per-block DRC gain, and the
+output stage's gains and mix coefficients - the stage's per-sample arithmetic, the dialnorm
+scale, the folds, the Hilbert phase shift and RF mode's protection, followed on 2026-09-10.
+Enhanced coupling's reconstruction followed in a second pass - its routines
+are shared with the encoder, so they exist in both scalars now, the double forms being the
+encoder's - and with it the last of the decode path is in `decode_scalar_t`.
+
+**A fixed-point decode path, for parts with no FPU.** The third value of the same axis,
+`-DAC3FORGE_DECODE_SCALAR=fixed`, carries `decode_scalar_t` as `ac3::internal::Fixed32`
+(`src/forge/src/core/fixed32.hpp`): a signed 32-bit integer read as Q7.24, products through 64
+bits and rounded once, sums wrapping, conversions saturating. It is the tier for an ESP32-C3 or
+a Cortex-M3, where even `float` is a compiled subroutine, and the minimum-footprint profile
+honours it (every other value of the option is `float` there). The ESP-IDF component
+(`esp-idf/ac3forge/`) sets it for a part with no FPU when a project has not set the option
+itself, and `float` for a part with one. What the tier does, in the order
+the decode runs: dequantisation, dither, coordinates and decoupling in `Fixed32`; a coupling
+or spectral extension coordinate kept as its mantissa and its power of two, so the product with
+a coefficient is a shift; the §7.9.4 inverse pair as its own kernel
+(`src/forge/src/core/mdct_fixed.hpp` - the same pre-twiddle, N/4-point FFT, post-twiddle and window as the fast
+branch, with no scaling inside the transform: the input's bound gives the seven bits the FFT can
+grow by); the overlap-add in 64 bits with one float conversion at the end; and Annex E's own
+tools - the adaptive hybrid transform's dequantisers and six-point inverse, the spectral
+extension notch, and enhanced coupling's spectrum, amplitudes, angles and reconstruction
+(`src/forge/src/core/eac3_tools_fixed.hpp` and the bodies beside the floating ones in
+`eac3_tools.cpp`). Enhanced coupling's 512-point DFT is the one place the tier does scale inside
+a transform: an unscaled one can grow by nine bits where the format has seven, so its stages
+shed bits only where the next would otherwise overflow and what they shed is carried in the
+exponent, the spec's own 1/N with it. On the Cortex-M3 leg that row is
+10.1 M instructions against the float tier's 28.9 M.
+
+What is not in the tier: JOC's object reconstruction, which runs in `float` in every build of
+this library including the double one (`recon_scalar_t`), so it is not a seam of this tier's at
+all - what the tier does with it is convert each matrix coefficient it reads.
+
+What makes the precision is not the word but the exponent. Q7.24 is an absolute format - a
+raw unit is 2^-24 of full scale wherever a value sits - and stored directly, a quiet dense
+channel came out 99 dB from the double decode and a coupled one 88, the mantissas' bits lost at
+dequantisation. So each stream's coefficients are stored under a block exponent
+(`src/forge/src/decoder/block_norm.hpp`): scaled up so the largest sits just below one half,
+which is the transform's precondition, and every mantissa keeps all of its bits. The exponent
+travels with the block - a tool that needs more room lowers it where it runs, an AHT stream's
+is exact from its reconstructed peaks - and the overlap-add aligns the two halves it sums before
+the conversion applies the power of two exactly. Measured with
+`tools/checks/check_decode_scalar_snr.py` on 2026-09-10: 121, 122 and 122 dB on the worst
+channel of the three gold streams, and no channel of the thirteen checked-in third-party streams
+(Dolby Encoding Engine and FFmpeg, AC-3 and E-AC-3, with coupling, spectral extension and the
+AHT) below 111 dB. The gold-reference gate passes with the fixed CLI at the same floors as the
+double one, and its encoder - `encode_scalar_t` is a separate axis - writes the pinned bitstreams
+byte for byte. The tier's own gate is a different kind: integer arithmetic is the same on every
+machine, so the bare-metal probe's `<codec>.pcm_hash` lines are identical on the x86 host and
+the Cortex-M3 leg, and CI holds both to the pinned ones in
+`tests/golden/fixed-probe-pcm-hashes.json` (`tools/checks/check_probe_hashes.py`). The
+Catch2 suite is not one of its gates: two of the encoder's mirror self-checks compare the
+encoder's model against a real decode at a tolerance set for the double decoder, and fail under
+the fixed one. The plan, phases, and measurements are in
+[`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md).
+
+**And the encoders' analysis front end, on its own axis.**
+`src/forge/src/internal/scalar/encode/{float64,float32}/` carries `encode_scalar_t`: the type
+the two encoders run in, from transient detection and the forward transform through the
+coefficient store, the coupling, spectral-extension and enhanced-coupling analyses and fits, the
+dither and delta-segment decisions and the fixed-point conversion - `double` by default, `float`
+under this profile, and selectable in any build with `-DAC3FORGE_ENCODE_SCALAR=float`. A second axis rather than a second alias beside
+`decode_scalar_t`, for the reason that one was split from the profile: a full build with either
+scalar `float` and the other `double` is what lets the float front end's bitstreams be decoded
+and measured against the double encoder's through the CLI and the oracles. What is not in it:
+the adaptive hybrid transform (its six-block DCT and vector quantiser are `double`), the masking
+model's own arithmetic, and the allocation search, which is integer. `TransientDetector` is the
+`double` instantiation of `BasicTransientDetector<Scalar>` and `DitherBallot` of
+`BasicDitherBallot<Scalar>`; `to_fixed25` is a template, exact in either scalar for the same
+reasons; `to_fixed25_block`, `accumulate_peak_exponents`, `choose_delta_segments` and
+`PerceptualModel::analyse` have `float` overloads; the short-block forward pair and the two peak
+meters that read the overlap history take either. The float path's `log2` and `exp` are the
+project's own (`src/forge/src/core/scalar_math.hpp`: a bit-level `frexp` and a short series,
+Cody-Waite reduction and a short series), because the profile's fixture hashes are checked on
+the x86 host, the Cortex-M3 leg and the ESP32-S3 and three C libraries' `logf` do not agree in
+their last bit; the `double` overloads are libm's, called as before. Every `<double>`
+instantiation is the function the ordinary build always called, so
+`tests/golden/bitstream-hashes.json` holds; the profile's own fixtures
+(`apps/baremetal/encode_fixture.hpp`) are the float encoder's streams, identical on the x86
+host, the Cortex-M3 leg and the ESP32-S3 - and the same bytes the float front end alone had
+produced, so converting everything behind it moved no fixture's hash.
+
+Why the front end first: on the ESP32-S3, with the encoders wholly in `double`, the forward
+transform and transient detection were 64% of an AC-3 5.1 frame and 36% of an E-AC-3 one. With
+them in `float` the board encoded AC-3 2/0 in 28.3 ms of its 32 (0.88x, from 2.34x over) and
+AC-3 5.1 in 71.0 ms (2.22x, from 6.25x); E-AC-3 5.1 went from 349 ms to 220. With the rest
+converted the same day: AC-3 2/0 in 12.1 ms (0.38x), E-AC-3 2/0 in 33.8 (1.06x), AC-3 5.1 in 35.1
+(1.10x), E-AC-3 5.1 in 81.2 (2.54x), and the §E3.5 row from 426 ms to 55. The
+[ESP32-S3 page](platforms/bare-metal/esp32-s3.md#encoding) has every row and the stage table; what remains
+is the integer search. CI's `linux-gcc` leg builds this scalar's full CLI beside the float
+decoder's to run its streams through the gold-reference gate and
+`tools/checks/check_encode_scalar_quality.py`, which holds the float encoder's worst channel to
+within 0.5 dB of the double encoder's on five gold streams (they are identical to the hundredth
+of a decibel), and `tests/golden/bitstream-hashes.json` pins its three streams on x86-64 under
+the `encfloat` mode.
+
+No gold-reference number moved, because the choice is per-profile rather than global. The
+ordinary build's `decode_scalar_t` is `double`, so its arithmetic is unchanged and the suite
+passes identically (4,032,916 assertions).
+
+The oracle run was done separately, and for a long time it could not be done again. `decode_scalar_t` used to live in `ac3/internal/profile.hpp` alongside the profile's
+other facts, so `float` was reachable only in a build that was also decode-only, exception-free
+and without a CLI — there was no float32 `ac3cli` any preset could produce, and the ~139 dB
+figure came from one made by hand. Which profile a build is and which scalar its decoder carries
+are independent questions, and they are two CMake axes now.
+
+So the number is a gate rather than a recollection. `tools/checks/check_decode_scalar_snr.py`
+decodes the three streams `verify_gold_reference.sh` encodes with both builds and holds the worst
+channel to 120 dB:
+
+| Stream | Worst channel |
+|---|---|
+| `gold.ac3` | Ls, 138.85 dB |
+| `gold.ec3` | Rs, 139.05 dB |
+| `gold_cpl.ec3` | Rs, 138.98 dB |
+
+The floor sits well below those on purpose: it is there to catch a float32 path that has broken,
+not to police the last decibel of a figure already under the double decode's own quantisation
+noise. For scale the gold-reference gate's tightest per-channel floor is 60 dB, and at the
+transform alone the disagreement is 2.7e-7 peak-normalised (`tests/core/test_mdct_fast.cpp`),
+about one LSB at 24 bits.
+
+What that gate does **not** say is whether either decode is right — two builds agreeing says only
+that they agree. Running `verify_gold_reference.sh` itself against a float32 CLI is the other
+half, and is not wired yet.
+
+Two things it does not cover:
+
+- The **encoder** is `double` everywhere and stays so. It is not built in this profile, and the
+  fifteen cross-platform bitstream hashes in `tests/golden/bitstream-hashes.json` pin its output.
+- The **transforms' direct form**, the QMF bank and JOC's object reconstruction are still
+  `double`. The float32 forms take no `fast` parameter: the direct form is the spec's own
+  evaluation and the oracle the fast path is validated against, so it stays double-precision.
+
+  Both directions have float32 fast paths now. The forward's exist for `oba::joc`, which analyses
+  the bed inside a *decode* before un-mixing it — the only forward transform a decode runs (PF8).
+  The encoder's forward path is untouched and stays `double`: the fifteen bitstream hashes in
+  `tests/golden/bitstream-hashes.json` pin its output, and they are byte-identical across this
+  change.
+
+The profile still exercises the `double` path without hardware floating point. `decode_scalar_t`
+is a profile choice, so an `arm-none-eabi` build of the ordinary profile software-emulates every
+operation as before.
 
 **`-fno-exceptions` removes the tables, not the throw sites.** The codec has no `throw`, `try` or
 `catch` of its own. What remains is the standard library's: `std::vector`'s `length_error` and
@@ -492,17 +783,21 @@ PipeWire has its own real, current, native mechanism for the same thing —
 aspirational API surface; `src/audio/src/backend/pipewire/passthrough.cpp`'s own header comment cites a
 real shipped client (Kodi's PipeWire passthrough support) that negotiates exactly this way. What
 it does not have is ALSA's "just works": a PipeWire sink only offers a compressed codec once its
-`iec958Codecs` control has been populated by the session manager (a WirePlumber ALSA-monitor
-rule, or a one-off `pw-cli` call) — configuration this library has no portable way to perform on
-a caller's behalf. On a stock desktop where nobody has touched that setting, every PipeWire sink
-honestly has no compressed codec enabled, even though the exact same hardware is reachable
-directly through ALSA underneath the very PipeWire daemon that's running.
+`iec958.codecs` property has been populated by the session manager. WirePlumber does that on its
+own, from the display's EDID: on 2026-09-05 a stock Raspberry Pi OS desktop that nobody had
+configured brought its HDMI sink up with `[PCM, DTS, AC3, EAC3, TrueHD, DTS-HD]` the moment an
+Atmos receiver was on the cable, and this library's PipeWire backend then streamed E-AC-3 bursts
+to it. What remains configuration — a WirePlumber ALSA-monitor rule, or a one-off `pw-cli`
+call — is the sink that advertises nothing, or a session manager that does not read EDID, and
+that this library has no portable way to perform on a caller's behalf. The precedence below is
+about that remainder, and about the fact that the exact same hardware is reachable directly
+through ALSA underneath the very PipeWire daemon that's running.
 
 That is why ALSA keeps first precedence in `src/audio/CMakeLists.txt` whenever both are found,
 rather than PipeWire winning by default for being the modern norm on most current desktops:
 preferring it unconditionally would silently regress `ac3cli outputs`/`play` on exactly the
 common case where nobody has configured `iec958Codecs`. The explicit escape hatch for a machine
-where PipeWire's compressed codecs genuinely are configured is
+where PipeWire's compressed codecs are configured is
 `-DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON`, the same shape `-DAC3FORGE_WITH_ALSA=OFF`
 alone already has today.
 
@@ -546,8 +841,9 @@ MacPorts prefixes, and so on — newest kit first, and then defers to Qt's own c
 Linux and macOS preset still forces `AC3FORGE_BUILD_GUI=OFF` by default — pass
 `-DAC3FORGE_BUILD_GUI=ON` explicitly on a machine that has Qt 6.5+, which is verified to work on
 Linux both locally (see [GUI on Linux](#gui-on-linux) above) and in CI, which installs a Qt6 kit
-and turns the flag on for the four Linux build legs (x64 and arm64, GCC and Clang) plus
-`macos-llvm` (Homebrew's `qt` formula — see [macOS](platforms/macos.md#gui-on-macos)). See
+and turns the flag on for the four Linux build legs (x64 and arm64, GCC and Clang) plus both
+macOS legs (the official kit via `install-qt-action`, not Homebrew's `qt` formula — see
+[macOS](platforms/macos.md#gui-on-macos)). See
 [Verified configuration](#verified-configuration). If your kit is somewhere else, say so explicitly and it
 wins over the search — the project's own `-DAC3FORGE_QT_ROOT=` (or the `AC3FORGE_QT_ROOT`,
 `QT_ROOT_DIR` or `QTDIR` environment variables) is the preferred way:
@@ -634,7 +930,7 @@ APIs/targets. A consumer uses the installed package via `find_package(ac3forge)`
 
 ## The standards documents
 
-`docs/spec/` is gitignored: the standards are free to download but are not redistributed here.
+`spec/` is gitignored: the standards are free to download but are not redistributed here.
 The build does not need them — every table is already transcribed into the source. They are
 needed only to re-run the generators in `tools/`.
 
@@ -692,42 +988,52 @@ also runs clean headless (`QT_QPA_PLATFORM=offscreen`), encoding real audio and 
 real QML channel meters. See [Linux audio](#linux-audio) for what the ALSA verification did,
 and did not (real hardware), prove.
 
+CI no longer has one cross-OS build matrix. `_build.yml` orchestrates three
+reusable workflows: `_ci-windows.yml`, `_ci-linux.yml`, and `_ci-macos.yml`.
+Their platform matrices contain 11 legs in total and can be gated independently
+by the change classifier.
+
 linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan,
 linux-llvm-tsan (ThreadSanitizer over the `concurrency` ctest label — `tests/audio/` and the
 headless CLI device paths — via `config-linux-llvm-tsan`), macos-llvm,
 linux-appimage (builds `ac3gui`'s self-contained AppImage in an older `ubuntu:22.04` container and
 smoke-tests it in a second container that never had Qt installed at all — see
-[Linux](platforms/linux.md#appimage), roadmap DR8),
+[Linux](platforms/linux.md#appimage)),
 script-lint (ruff over every `.py`, shellcheck over every `.sh`, actionlint over the workflows,
 all three pinned in `requirements/requirements-lint.txt`),
-static-analysis (clang-tidy), coverage (`tools/checks/coverage_report.sh` over every `src/` library
+coverage (`tools/checks/coverage_report.sh` over every `src/` library
 component *and* `apps/cli`, via `config-linux-gcc-coverage`),
 adm-validate (the opt-in ADM module) and ffmpeg-validate all run on every push, as does
 build-android (the Shield app's debug APK) — the four Linux build legs install the same
-Qt6/ALSA packages and build/smoke-test the GUI too. ffmpeg-validate is a
+Qt6/ALSA packages and build/smoke-test the GUI too. clang-tidy is no longer among them:
+since 2026-09 it runs nightly against `main` from `.github/workflows/static-analysis.yml`,
+on the same DEBUG preset with the same `-warnings-as-errors='*'`, so the local recipe above
+is unchanged and a finding opens a `nightly-analysis` issue instead of failing a PR. ffmpeg-validate is a
 separate, CLI-only linux-llvm build that runs FFmpeg as an independent oracle against the full
 layout/tool/metadata option space (see
 [CONTRIBUTING.md's Oracles section](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#oracles)) — a different question from the
 [gold-reference gate](#gold-reference-correctness-gate) below, which every leg runs against one
 fixed sample to check output *quality*; ffmpeg-validate instead checks that every option
 combination produces a *structurally correct* stream at all, plus a numeric fidelity floor for
-the Annex E tool combinations the one fixed gold-reference sample does not itself exercise. No
-leg remains experimental.
+the Annex E tool combinations the one fixed gold-reference sample does not itself exercise.
+One leg, `windows-msvc-arm64`, is still marked experimental, and still packages for release.
 
 The coverage job gates line and branch coverage per component, not as one blended
 number, using the same GCC 16 pin as the other Linux legs; the floor table, the measurement each
 floor was calibrated against, and why three components (`src/audio`'s device paths, `src/capi`'s
-E-AC-3 surface, `apps/cli`'s device-dependent command modules) are honestly floored low all live
+E-AC-3 surface, `apps/cli`'s device-dependent command modules) are floored low all live
 in `tools/checks/coverage_report.sh`, with the calibration history in the coverage job's own
 comment in `ci.yml`.
 
 On `pull_request` only, a `performance-compare` job builds `ac3bench`/`ac3kernelbench` at the
 merge base and at the PR head on one runner and posts a table of per-workload deltas to the job
 summary, using the same soft/hard tiers `tools/ci/append_performance_history.py` applies on
-merge. It is informational and never fails a build — the blocking performance checks remain
-`ac3perf`'s absolute real-time budget on every leg and the trend job's hard tier on push.
+merge. The comparison job is informational and has `continue-on-error`; its
+`hard_regression` verdict feeds the separate blocking `performance-gate` job.
+`ac3perf` also enforces its absolute real-time budget on every eligible leg,
+and the main-branch trend job enforces the same hard relative tier after push.
 
-An `abi-gate` job (`ci.yml`) runs on the same advisory footing: on a code-touching change it
+An `abi-gate` job (`_ci-core.yml`, called from `ci.yml`) runs on the same advisory footing: on a code-touching change it
 builds `config-linux-llvm-shared` at a comparison point in a git worktree beside HEAD, then
 runs `abidiff` between the two and checks the actual exported dynamic-symbol set
 (`tools/ci/check_abi_symbols.py`, `nm -D --defined-only`) against the checked-in allowlist.
@@ -738,7 +1044,7 @@ ABI"; on a push or a tag it is the last release tag instead, which is the releas
 instantiations that are not part of any ABI this project controls.
 
 Both checks report into the job summary and leave the job green, gated on a single
-`ABI_ENFORCE: 'false'` job-level variable; roadmap AP1's interface freeze is what would make
+`ABI_ENFORCE: 'false'` job-level variable; [the interface freeze](library/api-stability.md) is what would make
 the gate required, by flipping that one value. When enforcing, `abidiff` fails only on an
 *incompatible* change — a pure addition passes. The job is deliberately absent from
 `CI Status`'s `needs` list either way.
@@ -746,7 +1052,7 @@ the gate required, by flipping that one value. When enforcing, `abidiff` fails o
 `ABI_ENFORCE` deliberately replaces the `continue-on-error: true` this job used to carry.
 That setting stops a failing job from failing the *workflow run*, but GitHub still reports the
 job's own check run as `failure` — so the gate showed a red X on every pull request while
-blocking nothing, and it hid genuine build failures behind the same state as an expected
+blocking nothing, and it hid build failures behind the same state as an expected
 pre-1.0 ABI change. With it gone, anything unexpected in this job is red and a policy finding
 is not.
 
@@ -761,7 +1067,8 @@ whatever Homebrew currently ships. The gold-reference correctness gate
 below) also passes: real SNR numbers from that CI run were 61.81/61.82 dB on macOS, against
 67.84/67.82 dB on Linux and Windows for the same material - a real but modest cross-compiler
 floating-point difference, comfortably clear of the 30 dB gate. `macos-llvm` now builds the GUI
-too (Homebrew's `qt` formula — see [GUI on macOS](platforms/macos.md#gui-on-macos)), which adds
+too (Qt installed via `install-qt-action`, not Homebrew's `qt` formula — see
+[GUI on macOS](platforms/macos.md#gui-on-macos)), which adds
 the same per-suite `ac3gui_qml_tests_*` entries to that same suite the same way it does on Linux:
 confirmed on a real run before the harness split into one ctest entry per `tst_*.qml` suite (see
 `apps/gui/tests/CMakeLists.txt`), 582 ctest entries total, 100% passing, the GUI harness (then
@@ -819,6 +1126,30 @@ for first when two machines disagree. The resolved value is printed by the confi
 by `ac3cli --version`, which reads it from the compiled header rather than from a
 CMake-substituted string, so a binary cannot claim a directory it was not built with.
 
+**Cross-builds, and why `CMAKE_SYSTEM_PROCESSOR` is not the question `auto` asks.** On Apple
+platforms `CMAKE_OSX_ARCHITECTURES` overrides `CMAKE_SYSTEM_PROCESSOR` per compile line, so the two
+disagree whenever a Mac builds for the other architecture — and the compile line, not the host, is
+what the kernels have to be right for. `auto` therefore takes `-arch` as the truth wherever one is
+set: an Intel Mac configured with `-DCMAKE_OSX_ARCHITECTURES=arm64` resolves `aarch64` and not
+`x86_64`. Reading the host variable instead
+selects SSE2 intrinsics and an `-mavx2` flag for an ARM compile, which does not degrade quietly; it
+fails the build outright with `clang++: error: unsupported option '-mavx2' for target
+'x86_64-apple-darwin24.6.0'` — a diagnostic that names the host triple rather than the `-arch` the
+flag is actually invalid for, which is why the real cause is easy to misread from the log alone.
+
+This is not hypothetical: it is how `Build wheels (macos-15-intel)` failed when that runner was
+first added and inherited a wheel config that cross-built arm64. That matrix now names each row's
+architecture explicitly (`CIBW_ARCHS` in `.github/workflows/wheels.yml`), so nothing in CI
+cross-builds today — but a hand-run `cibuildwheel`, a `-DCMAKE_OSX_ARCHITECTURES` configure, or any
+future cross-targeting matrix row would hit the same gate, which is why it is fixed here rather
+than only routed around there.
+
+A macOS *universal* binary — more than one `-arch` from a single configure, so every source is
+compiled once per slice — resolves `generic`, because no single compile-time architecture choice can
+be correct for both slices at once. That is a real, if conservative, cost: universal builds get the
+scalar kernels on both halves. Configure the two slices separately and `lipo` them together if you
+want SSE2 and NEON in one binary.
+
 **What is vectorised.** The kernels live once, in shared code, written against the two 128-bit
 types the header defines (`f64x2`, two doubles; `i32x4`, four 32-bit integers) — the directories
 carry the types, not a copy of each kernel:
@@ -833,7 +1164,7 @@ carry the types, not a copy of each kernel:
 | `to_fixed25_block` | `src/forge/src/core/exponents.cpp` | Batched form of `to_fixed25`, about 9,100 calls a frame. SSE2/NEON only, same reason as `dft512` above. |
 
 **The FFT/DCT-IV core itself is not part of this seam.** `src/forge/src/core/fft_kernel.hpp`
-(ROADMAP PF4) is a radix-4 decimation-in-time kernel with a trailing radix-2 stage where
+ is a radix-4 decimation-in-time kernel with a trailing radix-2 stage where
 `log2(P)` is odd, trivial-twiddle elimination on its first stage, and the digit-reversal
 permutation folded into each caller's own input-producing loop rather than run as a pass of its
 own. That is an *algorithmic* speedup — fewer operations, not wider lanes — and it carries its
@@ -850,7 +1181,7 @@ for the same reason (its cost is the MDCT inside it, which does get faster). Ste
 inverses are permutation-dominated. This seam itself stays SSE2-width on x86-64: AVX and FMA3 are
 CPU features rather than architecture, so a compile-time `-march=` for them would produce a binary
 that faults on older hardware. [Runtime AVX2 dispatch](#runtime-avx2-dispatch) below covers the
-`cpuid`-gated mechanism that makes a *wider* tier safe to ship without that risk — ROADMAP PF5's
+`cpuid`-gated mechanism that makes a *wider* tier safe to ship without that risk — the
 dynamic-dispatch follow-on wired it to the analysis windowing and DCT-IV/IMDCT twiddle kernels in
 the table above (the two Phase 1's own measurement found a real win for); `dft512`'s normalisation,
 exponent-to-PSD and `to_fixed25_block` stay SSE2/NEON-only for the same reason. 128 bits is the native width of
@@ -908,7 +1239,7 @@ process regardless of how many call sites ask.
 
 **`AC3FORGE_SIMD_TIER`** (environment variable, read once inside that same cached initialisation)
 overrides the answer: `sse2` always forces `has_avx2()` false, `avx2` forces it true — except when
-the hardware genuinely cannot run AVX2, where forcing up `std::abort()`s with a clear message
+the hardware cannot run AVX2, where forcing up `std::abort()`s with a clear message
 rather than risk an illegal-instruction fault. `auto` (the default, same as unset) is the real
 detected answer. This is what makes cross-tier correctness checking possible without needing AVX2
 hardware physically present for the "does this at least build and dispatch correctly" half of the
@@ -920,14 +1251,18 @@ Never `-mfma`: this project's code must not call an FMA intrinsic regardless of 
 otherwise permit — see [Floating-point contraction](#floating-point-contraction) — and not
 requesting it keeps the CPUID gate to the single AVX2 bit. `INTERPROCEDURAL_OPTIMIZATION` is forced
 `OFF` on this target specifically: LTO/LTCG is the one mechanism that could hoist AVX2-flagged
-codegen across a translation-unit boundary into a caller `has_avx2()` never approved for it.
+codegen across a translation-unit boundary into a caller `has_avx2()` never approved for it. The
+target exists only where `AC3FORGE_SIMD` resolved to `x86_64`, so it follows the effective target
+architecture through a [cross-build](#simd-kernels-and-the-architecture-tree) rather than the host:
+an arm64 or universal macOS build does not build it at all, rather than building it without the
+flag.
 
 **Testing — compile everywhere, execute only where capable.** `forge_simd_avx2` links into
 `ac3tests` on every x86_64 leg unconditionally, proving the AVX2 code is valid, compilable,
 linkable C++ on MSVC, clang-cl, GCC, Clang and AppleClang alike, with zero hardware dependency.
 `tests/core/test_simd_kernels.cpp`'s `[avx2]`-tagged cases go further and actually execute it —
 guarded by `has_avx2()`, with a loud, explicit `SKIP()` (never a silent pass) on hardware that
-genuinely lacks it. The four x86_64 CI legs resolve to self-hosted-or-GitHub-hosted dynamically per
+lacks it. The four x86_64 CI legs resolve to self-hosted-or-GitHub-hosted dynamically per
 run and self-hosted CPU features are not documented anywhere in this repo, so no leg may assume the
 host it landed on qualifies. `AC3FORGE_REQUIRE_AVX2=1` turns that skip into a hard failure instead —
 set on the `linux-llvm-asan-ubsan` leg (`.github/workflows/_build.yml`), the one leg pinned to a
@@ -947,7 +1282,7 @@ guarantee, never silently claiming a check that did not run:
 AC3FORGE_CROSS_TIER_CHECK=1 ./tools/ci/run_codec_matrix.sh build/config-linux-llvm/bin/ac3cli
 ```
 
-ROADMAP PF5's dynamic-dispatch follow-on proved this whole mechanism end to end against one trivial
+The dynamic-dispatch follow-on proved this whole mechanism end to end against one trivial
 function first (`ac3::internal::avx2::avx2_probe_matches_expected()`, no codec bit-exactness stakes
 of its own) — deliberately, so the build/link/dispatch/test pipeline was proven before any kernel's
 correctness depended on it — then wired two real kernels behind it: `apply_analysis_window` and the
@@ -1045,7 +1380,7 @@ as the explanation for this gap; the correlation that matters is architecture (a
 three cases — `macos-llvm`'s GitHub-hosted runner is Apple Silicon), not compiler family or libm
 package.
 
-**Architecture-specific libm `sin`/`cos` — tested directly (roadmap VX11), also ruled out.** The
+**Architecture-specific libm `sin`/`cos` — tested directly, also ruled out.** The
 standing hypothesis was aarch64's own compiled `libm` (glibc ships an architecture-specific
 `sincos`/`cos`/`sin`, so "the same libm" as a source package does not mean bit-identical machine
 code) producing different last-bit results in the transform twiddle tables. Two things needed
@@ -1079,8 +1414,35 @@ instruction set" as an explanation in the abstract, and narrows what is left to 
 neither locally reproducible: the specific *natively*-packaged aarch64 compiler GitHub's hosted
 arm64/macOS runners use (as opposed to a Debian **cross**-compiler package, the only kind available
 without that hardware — a native package can carry different default codegen/tuning even with
-identical flags and the identical GCC version), or a genuine real-silicon floating-point behaviour
+identical flags and the identical GCC version), or a real-silicon floating-point behaviour
 `qemu-user`'s software emulation does not reproduce. Both need the real runners to test further.
+
+**FFmpeg's own architecture-specific kernels — tested directly, ruled out.** Every hypothesis
+above is about this project's side of the comparison, but the gold-reference gate measures
+*agreement between two decoders*, and the other one is FFmpeg — which ships hand-written SIMD for
+its AC-3 decoder and therefore runs different code on x86-64 (SSE/AVX) than on aarch64 (NEON). If
+FFmpeg's NEON decode differed from its SSE decode by a last bit, that alone would move the measured
+agreement and nothing in this project would be at fault.
+
+It does not. Decoding `tests/golden/external-baseline/ac3-51-448/dee.ac3` twice on the same x86-64
+host, once normally and once with `ffmpeg -cpuflags 0` forcing its plain-C reference path, gives
+two WAVs that are *not* byte-identical — FFmpeg's kernel choice does change its output — but the
+difference sits at **100–117 dB** per channel. That is 30 dB or more below the ~88 dB level at
+which this project's decode and FFmpeg's actually agree, so it is buried: `ac3cli`'s SNR against
+FFmpeg is identical to two decimal places (57.50 / 63.84 / 58.19 / 88.23 / 22.76 / 22.67 dB)
+whether FFmpeg decoded with SIMD or without. A difference that cannot move the number by 0.01 dB
+on one architecture cannot produce 6.02 dB across two. The reference side is exonerated; whatever
+is left is on this project's side of the comparison.
+
+**Where the gap appears is level-dependent, which constrains what it can be.** Sorting all 52
+(check, channel) pairs in the recorded history by their x86-64 SNR gives a step rather than a
+gradient: every pair below 67 dB shows an arm64 difference of 0.00–0.11 dB, every pair above it
+shows 5.85–6.05 dB, and nothing lands in between. So the gap is not a systematic codec error,
+which would be level-independent and shift every channel equally. It appears only where the two
+decoders agree closely enough that arithmetic is the only thing left to disagree about — which is
+also why the LFE is the only channel to split on the fixed third-party fixtures, at 88 dB the one
+channel there whose comparison is rounding-limited. See
+[Validation](verification.md#why-arm64-and-x86-64-disagree).
 
 The flag stays pinned regardless of either result, for an unrelated and unconditional reason: it is
 what makes the SIMD seam's bit-exactness argument hold. The seam maps every operation to one
@@ -1095,17 +1457,33 @@ instruction to emit — proven, not assumed, by the corpus comparison above comi
 byte-identical against a build without the flag. On aarch64 it gives up FMLA in the transform
 inner loops for a bit-exactness guarantee, not for a change in the gold-gate numbers.
 
-ROADMAP VX11's mystery therefore stays open — both hypotheses proposed for it are now closed out
+That mystery therefore stays open — both hypotheses proposed for it are now closed out
 by direct measurement rather than by argument — but it is no longer *unwatched*: a cross-platform
 bitstream-hash gate (`tools/checks/check_cross_platform_hash.py`, wired into
 [the gold-reference gate](#gold-reference-correctness-gate)) pins a SHA-256 of the actual encoded
 bytes per `(kernel, transform mode)` pair in `tests/golden/bitstream-hashes.json`, so this specific
 divergence — resolved or not — cannot silently change size without a CI failure pointing straight
-at it. `x86_64-sse2` and `generic` are pinned from the measurements above; `aarch64-neon` and the
-macOS kernel are deliberately left unpinned rather than pre-filled from the qemu measurement, since
-that measurement is exactly the evidence that an emulated cross-build is not equivalent to a real
-CI leg — the next person with those CI logs in front of them should pin what the real hardware
-actually produces.
+at it. `x86_64-sse2` and `generic` were pinned from the measurements above, and `aarch64-neon` is now
+pinned too — from the real arm64 CI legs rather than the qemu cross-build this file declined to
+pre-fill from (PR #503, CI run 33635430769: `linux-gcc-arm64`, `linux-llvm-arm64`,
+`windows-msvc-arm64`, `macos-llvm`).
+
+**All three streams came back byte-identical to `x86_64-sse2`.** That is a result, not a
+formality: this project's *encoder* is bit-exact across architectures, so the ~6.02 dB
+gold-reference gap the arm64 legs measure is entirely **decode-side** — the same bytes go in and
+different PCM comes out.
+
+It also resolves what looked like it needed two mechanisms. Only the LFE splits on the fixed
+third-party fixtures, but *every* channel splits on this project's own gold-reference streams,
+which invites the inference that the arm64 encoder must be producing different bytes. It is not.
+The gold-reference streams are encoded `dither=off` (`nodither` for E-AC-3), so nothing is
+dither-limited and every channel sits in the rounding-limited regime above 67 dB where the
+last-bit difference is all that is left; the third-party fixtures carry dither, which dominates
+every channel except the LFE. One mechanism, two fixture populations.
+
+With the encoder excluded by these hashes, FFmpeg's own kernels excluded by the `-cpuflags 0`
+test above, and contraction and libm excluded before that, what remains for VX11 is the decode
+path on real arm64 silicon — which is also the one thing no emulated run has reproduced.
 
 ## Gold-reference correctness gate
 
@@ -1123,8 +1501,7 @@ CI-hosted runner already ships Python 3, so this needs no new provisioning). The
 checks are perceptual/SNR-based rather than a bit-exact bitstream comparison deliberately: nothing
 in this project verifies that Homebrew LLVM, GCC and MSVC round the codec's floating-point
 pipeline identically, and the real numbers above show they in fact do not, by a small but
-measurable margin. `tools/checks/check_cross_platform_hash.py` runs immediately after (roadmap
-VX11) and does add a bit-exact comparison, but as a pinned-regression gate over each leg's own
+measurable margin. `tools/checks/check_cross_platform_hash.py` runs immediately after and does add a bit-exact comparison, but as a pinned-regression gate over each leg's own
 encoded bytes rather than a cross-leg equality assertion — see
 [Floating-point contraction](#floating-point-contraction) above for why the latter cannot pass
 today.

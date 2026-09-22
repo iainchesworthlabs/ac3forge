@@ -29,7 +29,7 @@
 # consecutive clean runs including the gold-reference gate
 # (tools/checks/verify_gold_reference.sh). windows-msvc-arm64 (a separate
 # DR8 half, Windows ARM64, unrelated to this file's own macOS work) is the
-# one leg still experimental, on its own runner label (windows-11-arm)
+# one leg still experimental, on its own runner label (windows-11-vs2026-arm)
 # nothing here had used before it either - same bar, not yet met. See the
 # table in ci.yml.
 #
@@ -73,11 +73,56 @@ on:
       publish_conformance_vectors:
         description: >-
           Run the conformance-vector generator's determinism check and upload the bundle as an
-          artifact for release.yml to attach (roadmap VX20, docs/conformance-vectors.md). The
+          artifact for release.yml to attach (conformance vectors publication, docs/conformance-vectors.md). The
           generator itself runs on the linux-gcc leg either way - see that step's own comment;
           this input only adds the second, verifying pass and the upload. Set by release.yml.
         type: boolean
         default: false
+      # CI lane partitions (docs/ci-lanes.md). Every default is true so a
+      # caller that does not pass one of these - release.yml's call, today -
+      # still builds and tests everything, unchanged.
+      #
+      # Windows, Linux and macOS each have a reusable workflow call below.
+      # Their matrices live in _ci-windows.yml, _ci-linux.yml and
+      # _ci-macos.yml, so these inputs can gate each platform call and its
+      # satellites directly at this orchestration level.
+      run_core:
+        description: "Reserved for caller compatibility. Core checks run in _ci-core.yml, called directly by ci.yml; no job in this workflow reads this input."
+        type: boolean
+        default: true
+      run_windows:
+        description: "Gates _ci-windows.yml's build matrix and windows-driver."
+        type: boolean
+        default: true
+      run_linux:
+        description: "Gates _ci-linux.yml's build matrix and linux-appimage."
+        type: boolean
+        default: true
+      run_macos:
+        description: "Gates _ci-macos.yml's build matrix and package-macos-universal (together with do_package)."
+        type: boolean
+        default: true
+      run_android:
+        description: "Build/test build-android."
+        type: boolean
+        default: true
+      run_wasm:
+        description: "Build/test build-wasm and device-ui (apps/wasm/tests, the device web page harness)."
+        type: boolean
+        default: true
+      run_esp:
+        description: >-
+          Build/test build-esp32s3, hearth-esp32s3, build-esp32c3 and build-footprint. The last one runs on a
+          Linux-fleet runner and cross-compiles arm-none-eabi rather than ESP-IDF, but it shares
+          apps/baremetal/'s probe and fixtures with the other two (see its own "sibling" comment)
+          and classify_changes.py's LANE_PREFIXES puts apps/baremetal/ in `esp`, not `linux` - the
+          lane a source path maps to, not the runner OS a job happens to execute on.
+        type: boolean
+        default: true
+      run_rust:
+        description: "Build/test build-rust."
+        type: boolean
+        default: true
     secrets:
       ATMOS_SIGNING_KEY:
         description: "EMDF object-signing key, base64-encoded. When set (passed by BOTH ci.yml and release.yml), build-android decodes it into the app's bundled signing.key asset so the DEBUG APK - which is a never-uploaded smoke test - signs Atmos objects at runtime. The asset is deleted again before any release step, and the staged release APK is asserted key-free, so a published .apk is always the safe unsigned bed51 app. Unset -> no asset is written at all. An APK that does carry the asset IS the key and must never be distributed."
@@ -144,6 +189,8 @@ jobs:
       linux_runner_3: ${{ steps.decide.outputs.linux_runner_3 }}
       linux_runner_4: ${{ steps.decide.outputs.linux_runner_4 }}
       linux_runner_5: ${{ steps.decide.outputs.linux_runner_5 }}
+      linux_runner_6: ${{ steps.decide.outputs.linux_runner_6 }}
+      linux_runner_7: ${{ steps.decide.outputs.linux_runner_7 }}
       windows_runner_1: ${{ steps.decide.outputs.windows_runner_1 }}
       windows_runner_2: ${{ steps.decide.outputs.windows_runner_2 }}
     steps:
@@ -164,14 +211,22 @@ jobs:
           HOSTED_WINDOWS='["windows-latest"]'
           SELF_LINUX='["self-hosted","Linux","X64"]'
           SELF_WINDOWS='["self-hosted","Windows","X64"]'
-          # One check-runners call covers every plain Linux/Windows leg in
-          # the build matrix below - four Linux (GCC, LLVM, LLVM ASan+UBSan,
-          # LLVM TSan) and two Windows (MSVC, LLVM) today - plus, as leg 5,
-          # the standalone containerised build-footprint job below the
-          # matrix. Bump these, and add a matching numbered output above and
-          # matrix.runner (or job runs-on) reference below, if a leg is
-          # added or removed.
-          LINUX_LEGS=5
+          # One check-runners call covers every self-hosted-eligible leg in
+          # the split Linux/Windows workflows - four Linux (GCC, LLVM, LLVM
+          # ASan+UBSan, LLVM TSan) and two Windows (MSVC, LLVM) - plus, as legs 5-7,
+          # the standalone containerised build-footprint, build-esp32s3 and
+          # build-esp32c3 jobs below the matrix. Bump these, and add a
+          # matching numbered output above and matrix.runner (or job runs-on)
+          # reference below, if a leg is added or removed.
+          #
+          # Legs 6 and 7 (S3 and C3) used to be one job, combined specifically
+          # to avoid spending a queued runner on the C3 leg's few extra
+          # minutes when the self-hosted fleet was a fixed-size pool - see
+          # build-esp32s3's own comment. That constraint no longer holds: the
+          # fleet now launches self-hosted runners dynamically rather than
+          # running a fixed-size pool, so the two run as separate legs and
+          # finish in parallel instead of back-to-back on one runner.
+          LINUX_LEGS=7
           WINDOWS_LEGS=2
 
           # Untrusted fork-PR code never touches self-hosted infra - decided
@@ -264,1255 +319,76 @@ jobs:
     secrets:
       ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
 
-  build:
-    name: ${{ matrix.name }}
+  # CI lane partitions plan (docs/ci-lanes.md): the single cross-OS `build`
+  # job that used to live here is now three reusable-workflow calls, one per
+  # platform (_ci-windows.yml, _ci-linux.yml, _ci-macos.yml) - see each
+  # file's own header for what moved and why, and docs/ci-lanes.md's "What's
+  # gated today" for the matrix-context limitation that kept this from
+  # happening in the previous phase. Each call forwards check-runners' and
+  # toolchain-versions' outputs as plain inputs, since `needs:` cannot cross
+  # a workflow_call boundary the way it can between two jobs in this file.
+  build-windows:
+    name: Build (Windows)
     needs: [check-runners, toolchain-versions]
-    # Fork PRs never reach self-hosted (check-runners' own fork-PR branch
-    # already forces hosted labels for them) - this is belt-and-braces so a
-    # gap in that logic can't silently hand a fork PR a self-hosted runner.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ fromJSON(matrix.runner) }}
-    # A backstop against GitHub's own 360-minute default: the macos-llvm
-    # leg's first-ever GUI run hung in the Test step and silently consumed
-    # the full 6 hours before being force-cancelled (see
-    # apps/gui/tests/CMakeLists.txt's QSG_RENDER_LOOP comment for the
-    # hypothesis and the per-test TIMEOUT that now also bounds that specific
-    # case). This is deliberately generous - the slowest leg observed so far
-    # (windows-llvm, packaging included on windows-msvc) is ~22 minutes - so
-    # it should never fire for a legitimately slow-but-working run, only for
-    # a genuine hang anywhere in the job, known or not-yet-known.
-    timeout-minutes: 90
+    if: inputs.run_windows
+    uses: ./.github/workflows/_ci-windows.yml
+    with:
+      do_package: ${{ inputs.do_package }}
+      version_tag: ${{ inputs.version_tag }}
+      fetch_depth: ${{ inputs.fetch_depth }}
+      persist_quality_trend: ${{ inputs.persist_quality_trend }}
+      llvm_version: ${{ needs.toolchain-versions.outputs.llvm_version }}
+      llvm_windows_version: ${{ needs.toolchain-versions.outputs.llvm_windows_version }}
+      msvc_toolset: ${{ needs.toolchain-versions.outputs.msvc_toolset }}
+      cmake_min: ${{ needs.toolchain-versions.outputs.cmake_min }}
+      qt_version: ${{ needs.toolchain-versions.outputs.qt_version }}
+      vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+      windows_runner_1: ${{ needs.check-runners.outputs.windows_runner_1 }}
+      windows_runner_2: ${{ needs.check-runners.outputs.windows_runner_2 }}
 
-    # Ubuntu 26.04 for the Linux legs, where the distro archive carries
-    # gcc-16 (universe component - 02-gcc-toolchain.sh enables it) and LLVM 22
-    # outright. This is a pin, not a convenience: on ubuntu-latest (24.04 at
-    # the time of writing) the LLVM script has to fall back to apt.llvm.org,
-    # whose noble repo is missing clang-tidy-22, lld-22 and libc++-22-dev, so
-    # the install fails before a single file is compiled.
-    # Pinning the container also stops a runner-image bump silently changing
-    # the compiler under the matrix. Empty for the Windows/macOS legs, which
-    # run directly on the host runner.
-    container: ${{ matrix.container }}
-    # A failing experimental leg annotates the run but does not fail it.
-    continue-on-error: ${{ matrix.experimental || false }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: "Windows MSVC"
-            runner: ${{ needs.check-runners.outputs.windows_runner_1 }}
-            preset: windows-msvc
-            # Declared once, here, so `matrix.experimental` in continue-on-error
-            # above resolves against a property the matrix actually defines -
-            # without it every leg silently reads null and actionlint reports the
-            # reference as undefined. Every other leg is non-experimental by
-            # omission (the `|| false` fallback); a leg that IS experimental sets
-            # this to true and continue-on-error keeps it out of CI Status.
-            experimental: false
-            # VS 2026 Build Tools / MSVC 14.5x, from the aka.ms/vs/18/stable
-            # channel. Pinned by channel, not exact version: the runner image
-            # ships whatever 18.x is current, and the assert step below fails
-            # loudly if that ever stops being a 14.5x toolset.
-            msvc: true
-            packageable: true
-            release_package: true
-            gold_reference: true
+  build-linux:
+    name: Build (Linux)
+    needs: [check-runners, toolchain-versions]
+    if: inputs.run_linux
+    uses: ./.github/workflows/_ci-linux.yml
+    with:
+      do_package: ${{ inputs.do_package }}
+      version_tag: ${{ inputs.version_tag }}
+      fetch_depth: ${{ inputs.fetch_depth }}
+      persist_quality_trend: ${{ inputs.persist_quality_trend }}
+      publish_conformance_vectors: ${{ inputs.publish_conformance_vectors }}
+      gcc_version: ${{ needs.toolchain-versions.outputs.gcc_version }}
+      llvm_version: ${{ needs.toolchain-versions.outputs.llvm_version }}
+      cmake_min: ${{ needs.toolchain-versions.outputs.cmake_min }}
+      vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+      linux_runner_1: ${{ needs.check-runners.outputs.linux_runner_1 }}
+      linux_runner_2: ${{ needs.check-runners.outputs.linux_runner_2 }}
+      linux_runner_3: ${{ needs.check-runners.outputs.linux_runner_3 }}
+      linux_runner_4: ${{ needs.check-runners.outputs.linux_runner_4 }}
 
-          - name: "Windows LLVM (clang-cl)"
-            runner: ${{ needs.check-runners.outputs.windows_runner_2 }}
-            preset: windows-llvm
-            msvc: true          # clang-cl targets the MSVC ABI: same headers, same libs
-            llvm: true
-            packageable: true
-            gold_reference: true
+  build-macos:
+    name: Build (macOS)
+    needs: [check-runners, toolchain-versions]
+    if: inputs.run_macos
+    uses: ./.github/workflows/_ci-macos.yml
+    with:
+      do_package: ${{ inputs.do_package }}
+      version_tag: ${{ inputs.version_tag }}
+      fetch_depth: ${{ inputs.fetch_depth }}
+      persist_quality_trend: ${{ inputs.persist_quality_trend }}
+      llvm_version: ${{ needs.toolchain-versions.outputs.llvm_version }}
+      cmake_min: ${{ needs.toolchain-versions.outputs.cmake_min }}
+      qt_version: ${{ needs.toolchain-versions.outputs.qt_version }}
+      vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
 
-          # ARM64 - GitHub's hosted windows-11-arm runner (roadmap DR8). Real
-          # ARM64 hardware, not emulation. Deliberately NOT routed through
-          # check-runners' self-hosted/hosted fan-out (the windows_runner_1/2
-          # outputs the two legs above use) - that logic is sized for exactly
-          # those two existing x64 Windows legs, and there is no self-hosted
-          # ARM64 Windows capacity to fan out to; the literal runner label is
-          # used directly instead.
-          #
-          # experimental: true, the same promotion path macos-llvm and
-          # build-android both went through (see this file's own header) -
-          # this leg's first real runs are exactly what confirms or corrects
-          # the toolchain/vcvarsall/Qt/ffmpeg choices made without hosted-
-          # runner access at authoring time. Delete this line once a run has
-          # gone green for real.
-          #
-          # msvc_arch: arm64 threads through to the "Setup MSVC environment"
-          # step, which otherwise always loads the x64 developer environment
-          # (see .github/actions/setup-msvc-env/action.yml) - every other
-          # matrix.msvc leg omits it and gets the action's own x64 default.
-          #
-          # No gui: true, unlike every other packageable leg. At authoring
-          # time, Qt's only Windows ARM64 kit for the pinned 6.8.3
-          # (win64_msvc2022_arm64_cross_compiled) is a cross-compile kit that
-          # expects a paired win64_msvc2022_64 install for its host tools, and
-          # aqtinstall has a documented CI bug against exactly that
-          # combination (qtpaths.bat pointing at the wrong x64 setup) - real
-          # complexity this leg's native-ARM64-host build doesn't need to
-          # take on for a first pass. CMakePresets.json's windows-msvc-arm64
-          # preset defaults AC3FORGE_BUILD_GUI off for exactly this reason
-          # (see its own description) - the same "Qt kit not assumed present"
-          # shape linux-gcc/linux-llvm/macos-llvm already use below, not a new
-          # pattern. See docs/platforms/windows.md's ARM64 section.
-          #
-          # gold_reference: true - choco's ffmpeg package is x64-only, so this
-          # leg installs BtbN's static win-arm64 ffmpeg build instead (see the
-          # dedicated install step below).
-          #
-          # release_package: true, not just packageable: a genuinely new
-          # architecture earns its own canonical release artifact, the same
-          # precedent linux-gcc-arm64 already set sitting next to linux-gcc -
-          # not a redundant same-arch compiler variant like windows-llvm
-          # above (which stays non-canonical: no release_package there).
-          - name: "Windows MSVC (arm64)"
-            runner: '["windows-11-arm"]'
-            preset: windows-msvc-arm64
-            experimental: true
-            msvc: true
-            msvc_arch: arm64
-            packageable: true
-            release_package: true
-            gold_reference: true
-
-          # gui: true builds ac3gui too (the linux-gcc/linux-llvm presets
-          # otherwise default AC3FORGE_BUILD_GUI off - see the preset's own
-          # description in CMakePresets.json) and smoke-tests it headlessly
-          # after Test, below. alsa_fallback: true additionally builds and
-          # tests the no-ALSA fallback (see the step at the end). Both are
-          # carried by this leg alone rather than doubled on linux-llvm too:
-          # neither switch (Qt present/absent, ALSA present/absent) differs
-          # between compilers, so paying for either twice would buy nothing.
-          - name: "Linux GCC"
-            runner: ${{ needs.check-runners.outputs.linux_runner_1 }}
-            container: ubuntu:26.04
-            preset: linux-gcc
-            gcc: true
-            gui: true
-            packageable: true
-            release_package: true
-            alsa_fallback: true
-            gold_reference: true
-            conformance_vectors: true
-
-          - name: "Linux LLVM (clang)"
-            runner: ${{ needs.check-runners.outputs.linux_runner_2 }}
-            container: ubuntu:26.04
-            preset: linux-llvm
-            llvm: true
-            gui: true
-            packageable: true
-            gold_reference: true
-
-          # arm64 - Raspberry Pi 4/5 and any other aarch64 Debian/Ubuntu
-          # target (see docs/platforms/raspberry-pi.md). Real ARM hardware via
-          # GitHub's hosted ubuntu-24.04-arm runner label, not QEMU emulation -
-          # the same ubuntu:26.04 container image as the x64 legs, which pulls
-          # its arm64 variant automatically on an arm64 runner. Otherwise the
-          # same shape as linux-gcc/linux-llvm above, including which leg
-          # carries alsa_fallback (compiler and architecture both don't affect
-          # that switch - see linux-gcc's own comment).
-          - name: "Linux GCC (arm64)"
-            runner: '["ubuntu-24.04-arm"]'
-            container: ubuntu:26.04
-            preset: linux-gcc-arm64
-            gcc: true
-            gui: true
-            packageable: true
-            release_package: true
-            alsa_fallback: true
-            gold_reference: true
-
-          - name: "Linux LLVM (arm64)"
-            runner: '["ubuntu-24.04-arm"]'
-            container: ubuntu:26.04
-            preset: linux-llvm-arm64
-            llvm: true
-            gui: true
-            packageable: true
-            gold_reference: true
-
-          # AddressSanitizer + UndefinedBehaviorSanitizer (cmake/Sanitizers.cmake),
-          # -fno-sanitize-recover=all so a violation fails the job outright. Shares
-          # the Linux LLVM container/toolchain; `sanitizer: true` additionally runs
-          # the codec-matrix step below, since ctest's 200+ cases alone do not
-          # reach every layout/tool/atmos code path a sanitizer needs to see
-          # execute to be worth anything.
-          #
-          # Not `packageable`: there is no pack-linux-llvm-asan-ubsan preset
-          # and there should not be one - a sanitizer-instrumented debug build
-          # is a diagnostic tool, not something to ship.
-          - name: "Linux LLVM ASan+UBSan"
-            runner: ${{ needs.check-runners.outputs.linux_runner_3 }}
-            container: ubuntu:26.04
-            preset: linux-llvm-asan-ubsan
-            llvm: true
-            sanitizer: true
-
-          # ThreadSanitizer (roadmap VX16). A DIFFERENT question from the
-          # ASan+UBSan leg above, not a duplicate of it: ASan/UBSan ask
-          # whether one thread's memory and arithmetic are sound, TSan asks
-          # whether two threads agree on who owns what - and no other gate in
-          # this repository can see a data race at all. src/audio is a
-          # lock-free SPSC ring, a silence watchdog and a clock-drift servo
-          # shared between a real-time callback thread and the encoder
-          # thread, which is exactly the shape where a missing
-          # acquire/release is both easy to write and invisible until it
-          # corrupts audio on someone else's machine.
-          #
-          # Its test preset runs `-L concurrency` rather than the whole
-          # suite (CMakePresets.json's test-linux-llvm-tsan filter): TSan's
-          # shadow memory makes every test several times slower, and the
-          # other ~600 cases are single-threaded codec maths where it has
-          # nothing to report. That keeps this leg to about the cost of a
-          # build rather than a second full matrix entry - the ctest run
-          # itself was 7 seconds over 36 tests when this landed.
-          #
-          # No `sanitizer: true`: that flag means the codec-matrix step, and
-          # driving every layout/tool combination through ac3cli is an
-          # ASan/UBSan errand. Not `gold_reference` or `packageable` either,
-          # same reasoning as the ASan+UBSan leg's own comment above.
-          # Self-hosted-capable again (reverted to ubuntu-latest in #460).
-          # The failure was Docker's default seccomp profile rejecting the
-          # personality(ADDR_NO_RANDOMIZE) call TSan uses to disable ASLR
-          # from inside a container. The fleet image now sets
-          # kernel.randomize_va_space=0 on the VM (ci-runners#13, deployed
-          # 2026-08-28) - the sysctl is not namespaced, the container
-          # inherits it, and TSan never needs the blocked syscall. If this
-          # leg ever fails that way again, the fleet image regressed; the
-          # per-job fallback is container options --security-opt
-          # seccomp=unconfined, which is a much blunter instrument.
-          - name: "Linux LLVM TSan"
-            runner: ${{ needs.check-runners.outputs.linux_runner_4 }}
-            container: ubuntu:26.04
-            preset: linux-llvm-tsan
-            llvm: true
-
-          # No Mac is available to the project locally, so CI remains the only
-          # place this is exercised - proven green (build+test+gold-reference
-          # gate) as of the CI run that landed this comment; see _build.yml's
-          # own header for how that happened. llvm: true pulls in the Homebrew
-          # LLVM install step below - without it,
-          # cmake/toolchains/macos.llvm.toolchain.cmake's find_program still
-          # succeeds (its NAMES list falls back to plain "clang", which
-          # resolves to Apple's system clang via HINTS/PATH), so a bare
-          # runner would not fail to configure - it would silently build with
-          # whatever AppleClang Xcode ships instead of the Homebrew LLVM
-          # every other leg's pinned equivalent aims for.
-          #
-          # gui: true builds ac3gui here too, same meaning as the Linux gui:
-          # true legs above: CMakePresets.json's macos-llvm preset defaults
-          # AC3FORGE_BUILD_GUI off for the same "Qt kit not assumed present"
-          # reason as Linux, not because ac3gui cannot be built on macOS -
-          # cmake/FindQt6.cmake already carries Homebrew's Qt6 prefixes
-          # (/opt/homebrew/opt/qt, /opt/homebrew/opt/qt6) and
-          # apps/gui/CMakeLists.txt's APPLE branch (MACOSX_BUNDLE,
-          # qt_generate_deploy_qml_app_script under `if(WIN32 OR APPLE)`) was
-          # already written for this, just never exercised. "Install Qt6
-          # (macOS GUI)" below installs Homebrew's "qt" formula, which bundles
-          # qtdeclarative (and so qmlcachegen) the same way the Linux apt
-          # packages do. cmake/Packaging.cmake's DragNDrop generator needs no
-          # change either - it already packages whatever install() rules ran,
-          # ac3gui's included, once AC3FORGE_BUILD_GUI is ON.
-          #
-          # No release_package any more (DR8): this leg's own cpack .dmg is
-          # arm64-only and no longer what a release ships as "the" macOS
-          # package - package-macos-universal below lipo-merges this leg's
-          # install tree with macos-llvm-x64's into one universal binary and
-          # that job packages and uploads the canonical release artifact
-          # instead. This leg still packages on every ordinary push
-          # (packageable stays true, and the Package/Upload steps below now
-          # special-case both macOS legs the same way windows-msvc always
-          # has) as its own single-arch smoke test of the packaging path -
-          # just not as a release artifact any more. mac_arch feeds the
-          # per-arch artifact name the do_package-only install/upload steps
-          # below use, so package-macos-universal can download each leg's
-          # tree by exact name.
-          - name: "macOS LLVM (Homebrew)"
-            runner: '["macos-latest"]'
-            preset: macos-llvm
-            mac_arch: arm64
-            llvm: true
-            gui: true
-            packageable: true
-            gold_reference: true
-
-          # x86_64 half of DR8's macOS universal binaries. macos-15-intel is
-          # real native Intel hardware (confirmed against
-          # docs.github.com/en/actions/reference/runners/github-hosted-runners
-          # directly, not assumed), free for public repos - so this is a real
-          # build, not a cross-compile or Rosetta emulation. Same toolchain
-          # file, same Homebrew install steps, same reasoning as the arm64 leg
-          # above throughout this job; only the preset/triplet (x64-macos-llvm)
-          # and runner label differ.
-          #
-          # No longer experimental: three consecutive real, hosted-runner runs
-          # went green on this brand-new macos-15-intel label before this line
-          # came off - the v0.0.0-alpha.1 and v0.0.0-alpha.2 release dry runs
-          # and this feature branch's own required PR CI - each with a real
-          # gold-reference pass (67.80/67.82/67.76 dB, matching the x86
-          # baseline every other non-arm64 leg reports), not just "it
-          # compiled." Same promotion process macos-llvm and build-android
-          # went through before it - see this file's own header.
-          - name: "macOS LLVM x64 (Homebrew, Intel)"
-            runner: '["macos-15-intel"]'
-            preset: macos-llvm-x64
-            mac_arch: x64
-            llvm: true
-            gui: true
-            packageable: true
-            gold_reference: true
-
-    steps:
-      # Before checkout: the bare ubuntu image has no git, and actions/checkout
-      # silently degrades to a REST tarball download without it. Also installs
-      # what the toolchain scripts assume is present (lsb_release,
-      # add-apt-repository, curl+gnupg for the apt.llvm.org key path).
-      #
-      # libasound2-dev is the ALSA backend's only dependency, and the reason it
-      # is here rather than left out is that its ABSENCE is not a build
-      # failure: src/audio/CMakeLists.txt would fall back to the no-op
-      # posix/ directory and CI would go green having compiled none of
-      # src/audio/src/backend/alsa/. The alsa_fallback step at the end covers
-      # the other half of that switch on purpose.
-      - name: Bootstrap container
-        if: matrix.container
-        run: |
-          set -eu
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends \
-            build-essential ca-certificates cmake curl file git gnupg libasound2-dev lsb-release \
-            ninja-build pkg-config rpm software-properties-common tar unzip wget zip
-
-      # Qt is a prebuilt dependency (cmake/FindQt6.cmake), never a vcpkg port -
-      # see that file's own header. qt6-declarative-dev-tools/qt6-base-dev-tools
-      # pull in qmlcachegen and the other build-time QML tooling
-      # qt_add_qml_module needs; without them the GUI configure step fails
-      # rather than quietly building without AOT-compiled QML. The LinguistTools
-      # component (roadmap UX3) needs BOTH of two separate Debian/Ubuntu
-      # packages, confirmed via packages.ubuntu.com's file lists after the
-      # single-package version of this line still failed on arm64 with the
-      # exact symptom below: qt6-l10n-tools ships only the lupdate/lrelease/
-      # lconvert binaries and phrasebooks (no CMake integration at all),
-      # while Qt6LinguistToolsConfig.cmake - the file that actually defines
-      # qt_add_translations()/qt6_add_lupdate()/qt6_add_lrelease() - ships in
-      # qt6-tools-dev instead, bundled there with the unrelated Designer/
-      # Assistant tools upstream's own qttools repo groups it with. Missing
-      # qt6-tools-dev doesn't fail find_package(Qt6 ... COMPONENTS ...
-      # LinguistTools) itself (Core/Gui/Qml/Quick/QuickControls2/Concurrent
-      # all resolve fine, so the REQUIRED call as a whole reports success);
-      # it instead leaves qt_add_translations undefined, surfacing much
-      # later as "Unknown CMake command" at the call site in
-      # apps/gui/CMakeLists.txt - a confusing error to trace back to a
-      # missing apt package, which is why this comment spells it out.
-      - name: Install Qt6 (Linux GUI)
-        if: matrix.gui && runner.os == 'Linux'
-        run: |
-          set -eu
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get install -y -qq --no-install-recommends \
-            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
-            qt6-l10n-tools qt6-tools-dev
-
-      # Homebrew's "qt" formula is the umbrella Qt6 package (unlike apt's
-      # split qt6-base-dev/qt6-declarative-dev): one install pulls in
-      # QtDeclarative/QtQuick and their build-time tooling (qmlcachegen)
-      # alongside QtCore/QtGui, so there is no second "-dev-tools" formula to
-      # add the way there is on Linux. cmake/FindQt6.cmake already searches
-      # /opt/homebrew/opt/qt and /opt/homebrew/opt/qt6 (Apple Silicon's
-      # Homebrew prefix, which is what macos-latest runners are), so no
-      # -DAC3FORGE_QT_ROOT/CMAKE_PREFIX_PATH override is needed here the way
-      # Windows' prebuilt-kit install does.
-      - name: Install Qt6 (macOS GUI)
-        if: matrix.gui && runner.os == 'macOS'
-        run: brew install qt
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: ${{ inputs.fetch_depth }}
-
-      # ---------------------------------------------------------------------
-      # Toolchains
-      # ---------------------------------------------------------------------
-      # gcc-16 and LLVM 22, from the scripts the org-shared runner fleet repo,
-      # iainchesworthlabs/ci-runners, uses to build its own images, copied
-      # verbatim. On the pinned 26.04 container both take
-      # the distribution-archive path and neither fallback runs. Each script
-      # asserts its own resulting version and exits non-zero on drift.
-      # `sudo` is absent in the container (already root) and required on the
-      # host runners, hence the probe rather than a hardcoded prefix.
-      - name: Install GCC 16
-        if: matrix.gcc
-        run: |
-          set -eu
-          if command -v sudo >/dev/null 2>&1; then sudo -E bash .github/toolchain/02-gcc-toolchain.sh
-          else bash .github/toolchain/02-gcc-toolchain.sh; fi
-
-      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }}
-        if: matrix.llvm && runner.os == 'Linux'
-        run: |
-          set -eu
-          if command -v sudo >/dev/null 2>&1; then sudo -E bash .github/toolchain/03-llvm-toolchain.sh
-          else bash .github/toolchain/03-llvm-toolchain.sh; fi
-
-      # The Windows runner image ships an LLVM, but not necessarily the pinned
-      # one. Install the official build straight from the llvm-project release,
-      # pinned via llvm_windows_version to the same point release the Ubuntu
-      # 26.04 archive carries (see toolchain-versions.json's own comment), so
-      # both LLVM legs are on one version. Chocolatey is deliberately avoided:
-      # its llvm package tracks whatever is newest and would drift off the pin.
-      #
-      # Checks the installed version before downloading anything: GitHub-hosted
-      # windows-latest is always a fresh VM (never a match, always installs),
-      # but a self-hosted runner's own Packer template now bakes this exact
-      # pinned version in (see ci-runners' scripts/windows/03-llvm-toolchain.ps1)
-      # and a prior job on that same long-lived box may already have installed
-      # it too - either way, a match means this step can skip the ~10+ minute
-      # download+install outright. A mismatch (wrong version, or nothing
-      # installed) renames any existing C:\Program Files\LLVM out of the way
-      # first (see the run block's own comment for why a rename, not a
-      # delete), so the installer always writes into a fresh directory -
-      # NSIS `/S` overwrites same-named files but never uninstalls first, so
-      # installing straight over a *different* version can leave stale
-      # compiler-rt builtins/libs behind that silently break linking far
-      # downstream (see iainchesworthlabs/ci-runners#9, which hit exactly
-      # this on a long-lived self-hosted runner after a toolchain version
-      # bump).
-      - name: Install LLVM ${{ needs.toolchain-versions.outputs.llvm_version }} (Windows)
-        if: matrix.llvm && runner.os == 'Windows'
-        # Windows PowerShell (always present on self-hosted + GitHub-hosted), NOT
-        # pwsh/PowerShell 7 which the self-hosted runner image does not ship -
-        # same reasoning as ./.github/actions/setup-msvc-env. GitHub-hosted
-        # windows-latest ships pwsh too, which is why this only surfaced once a
-        # job actually landed on a self-hosted Windows runner.
-        shell: powershell
-        env:
-          LLVM_WINDOWS_VERSION: ${{ needs.toolchain-versions.outputs.llvm_windows_version }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $version = $env:LLVM_WINDOWS_VERSION
-          $llvmDir = "$env:ProgramFiles\LLVM"
-          $clangCl = "$llvmDir\bin\clang-cl.exe"
-
-          $alreadyCurrent = $false
-          if (Test-Path $clangCl) {
-            # Collect ALL of clang-cl's output before taking the first line.
-            # The previous form (`& $clangCl ... | Select-Object -First 1`)
-            # early-terminated the pipeline, which can kill clang-cl before
-            # it finishes writing - the killed process leaves a non-zero
-            # $LASTEXITCODE that GitHub's powershell wrapper propagates as
-            # the STEP's exit code at script end, failing the job with no
-            # error text. A race: only when the skip path runs (LLVM already
-            # current - i.e. only on the self-hosted fleet), and only when
-            # Select-Object wins it. Confirmed on PR #445's clang-cl leg.
-            $verOutput = & $clangCl --version 2>&1
-            $verLine = $verOutput | Select-Object -First 1
-            if ($verLine -match 'version (\S+)' -and $matches[1] -eq $version) {
-              $alreadyCurrent = $true
-            }
-          }
-
-          if ($alreadyCurrent) {
-            Write-Host "LLVM $version already installed at $clangCl - skipping download/install"
-          } else {
-            if (Test-Path $llvmDir) {
-              # NOT a delete. GitHub-hosted windows-latest images ship their
-              # own pre-installed LLVM at this same path, and BOTH
-              # Remove-Item -Recurse -Force and cmd's rd /s /q hung
-              # indefinitely against it - confirmed the hard way, twice, each
-              # running the full 90-minute CI timeout with zero progress
-              # after printing this line. Since two independently-implemented
-              # deletion paths hit the identical wall, this isn't a
-              # PowerShell-recursion-algorithm problem, it's something (most
-              # likely realtime antivirus scanning, possibly a lingering
-              # handle from image provisioning) holding the tree busy on a
-              # per-file basis. A rename is a single directory-level metadata
-              # operation - no per-file access at all - so it sidesteps
-              # whatever that is entirely, and is effectively instant
-              # regardless of tree size (confirmed: 9ms against a real test
-              # tree). The renamed-away copy is simply abandoned: harmless on
-              # windows-latest (VM is discarded after the job) and expected
-              # to be rare on self-hosted post ci-runners#10 (only happens
-              # between an ac3forge pin bump and the next template rebuild).
-              $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
-              Write-Host "Existing LLVM install does not match $version - renaming out of the way ($staleName) before reinstalling"
-              Rename-Item -Path $llvmDir -NewName $staleName
-            }
-            $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
-            $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
-            Invoke-WebRequest -Uri $url -OutFile $exe
-            # NSIS installer; /S is a silent install into the default location.
-            $installer = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow -PassThru
-            if ($installer.ExitCode -ne 0) {
-              throw "LLVM installer exited with code $($installer.ExitCode)"
-            }
-          }
-
-          "$llvmDir\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          # Belt and braces for the $LASTEXITCODE propagation above: nothing
-          # after the probe re-runs a native command, so make the step's
-          # success explicit rather than inheriting whatever the last native
-          # invocation happened to leave behind.
-          exit 0
-
-      # Homebrew's core "llvm" formula has no versioned sibling the way
-      # apt.llvm.org or the official win64 installer do (there is no "llvm@21"
-      # to pin against), so unlike the Linux/Windows LLVM steps above this
-      # cannot pin an exact build - it installs whatever is current and reports
-      # it via the assert step below. macos.llvm.toolchain.cmake's HINTS
-      # already cover Homebrew's install prefix (/opt/homebrew/opt/llvm on
-      # Apple Silicon, which is what macos-latest runners are), so this alone
-      # is enough for find_program to pick it over Apple's system clang -
-      # PATH is exported too so plain `c++`/`clang++` invocations (the assert
-      # step, ad-hoc debugging) see the same compiler CMake configures with.
-      - name: Install LLVM (macOS)
-        if: matrix.llvm && runner.os == 'macOS'
-        run: |
-          set -euo pipefail
-          brew install llvm
-          llvm_prefix="$(brew --prefix llvm)"
-          echo "${llvm_prefix}/bin" >> "$GITHUB_PATH"
-
-      # ffmpeg is the gold-reference gate's decode oracle (see
-      # tools/checks/verify_gold_reference.sh). Proven first on macOS alone (the
-      # newest, least-trusted leg); gold_reference now covers every packaged
-      # leg except linux-llvm-asan-ubsan, which stays a diagnostic-only build
-      # (see that matrix entry's own comment) but still needs it: the codec
-      # matrix step below (matrix.sanitizer) runs tools/ci/run_codec_matrix.sh,
-      # which also uses ffmpeg as its independent oracle regardless of the
-      # gold-reference gate being skipped on this leg.
-      - name: Install ffmpeg (Linux)
-        if: (matrix.gold_reference || matrix.sanitizer) && runner.os == 'Linux'
-        run: apt-get install -y -qq --no-install-recommends ffmpeg
-
-      - name: Install ffmpeg (Windows)
-        if: matrix.gold_reference && runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
-        shell: bash
-        run: choco install ffmpeg -y --no-progress --requirechecksums
-
-      # choco's ffmpeg package is x64-only (Chocolatey packages here are
-      # typically x64 binaries) - there is no arm64 equivalent to install the
-      # same way. BtbN/FFmpeg-Builds publishes static win-arm64 GPL builds
-      # instead (confirmed for real - see the release page's asset list under
-      # the "latest" tag); the n8.1 release build is used rather than the
-      # "master" one for the same reason choco's package tracks an actual
-      # FFmpeg release rather than a git snapshot. The zip's ffmpeg.exe is
-      # nested under a versioned subfolder that can drift between builds, so
-      # this searches for it instead of hardcoding that path.
-      - name: Install ffmpeg (Windows ARM64)
-        if: matrix.gold_reference && matrix.preset == 'windows-msvc-arm64'
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $zip = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64.zip'
-          $dest = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64'
-          Invoke-WebRequest -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-winarm64-gpl-8.1.zip' -OutFile $zip
-          Expand-Archive -Path $zip -DestinationPath $dest
-          $exe = Get-ChildItem -Path $dest -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
-          if (-not $exe) {
-              throw "ffmpeg.exe not found anywhere under $dest after extracting $zip"
-          }
-          Write-Host "Found ffmpeg.exe at $($exe.FullName)"
-          $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-
-      - name: Install ffmpeg (macOS)
-        if: matrix.gold_reference && runner.os == 'macOS'
-        run: brew install ffmpeg
-
-      # DR7: makensis is what turns the NSIS block in cmake/Packaging.cmake
-      # from a graceful, silent no-op into a real installer. Installed fresh
-      # here rather than baked into the ci-runners Packer image, same
-      # reasoning as ffmpeg/Ninja above - see
-      # docs/ci-self-hosted-runners.md's "Measuring whether it's actually
-      # worth it": nothing is pre-baked onto the self-hosted image without
-      # data justifying it, and there is none for NSIS specifically yet.
-      # Scoped to the same condition as the Package step below (only
-      # windows-msvc packages on Windows today) so a leg that never runs
-      # cpack doesn't pay for an installer it won't use.
-      #
-      # PowerShell, not bash: both GitHub-hosted windows-latest AND (per a
-      # real CI run) this fleet's self-hosted runners already carry NSIS -
-      # `choco install nsis` reports "already installed" and exits without
-      # running the shim-creation step a fresh install would, so makensis
-      # was on disk but never on PATH, and find_program(makensis) still
-      # missed it (confirmed empirically: cpack packaged ZIP-only with the
-      # cmake/Packaging.cmake warning firing, even though choco reported
-      # success). Probing both Program Files roots and appending to
-      # GITHUB_PATH explicitly - rather than assuming choco's shim exists -
-      # is what actually fixes that, on a fresh runner or an already-primed
-      # one alike.
-      - name: Install NSIS (Windows)
-        if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package)) && runner.os == 'Windows'
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          choco install nsis -y --no-progress --requirechecksums
-          $nsisDir = @(
-            (Join-Path ${env:ProgramFiles(x86)} 'NSIS'),
-            (Join-Path $env:ProgramFiles 'NSIS')
-          ) | Where-Object { Test-Path (Join-Path $_ 'makensis.exe') } | Select-Object -First 1
-          if (-not $nsisDir) {
-            throw "makensis.exe not found under Program Files after 'choco install nsis' - the package layout may have changed."
-          }
-          Write-Host "Adding $nsisDir to PATH"
-          $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-
-      # cl.exe, INCLUDE and LIB are not on the default PATH, and Ninja does not
-      # set them up itself (unlike MSBuild). clang-cl needs them too.
-      - name: Setup MSVC environment
-        if: matrix.msvc
-        uses: ./.github/actions/setup-msvc-env
-        with:
-          arch: ${{ matrix.msvc_arch || 'x64' }}
-
-      - name: Install Ninja
-        if: ${{ !matrix.container }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "$RUNNER_OS" in
-            macOS)   brew install ninja ;;
-            Windows) choco install ninja -y --no-progress --requirechecksums ;;
-          esac
-
-      # AC3FORGE_BUILD_GUI is ON only on the two Windows presets (see
-      # CMakePresets.json), and cmake/FindQt6.cmake only widens
-      # CMAKE_PREFIX_PATH to LOCAL install roots (C:/Qt/6.x/msvc2022_64, and
-      # so on) - it has no notion of a CI runner, so a Windows leg with no
-      # Qt kit on the image at all would fail at find_package(Qt6 ...)
-      # without this. clang-cl (windows-llvm) targets the MSVC ABI, so it
-      # shares this same msvc2022_64 kit with windows-msvc rather than
-      # needing its own. Version pinned to the exact kit already verified
-      # locally (see docs/building.md's Verified configuration table); the
-      # pinned action itself is CountdownSolver's own precedent
-      # (R:\CountdownSolver\.github\workflows\release.yml), the other
-      # project sharing this same "prebuilt Qt, never vcpkg" convention.
-      # windows-msvc-arm64 is excluded: no gui: true on that leg (see its
-      # matrix comment above), so there is no Qt kit to install for it here.
-      - name: Install Qt (prebuilt)
-        if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
-        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
-        with:
-          version: ${{ needs.toolchain-versions.outputs.qt_version }}
-          cache: true
-
-      # CMakePresets.json declares the project's real minimum (cmakeMinimumRequired);
-      # this asserts the RUNNER actually meets it rather than letting a stale image
-      # fail later with a confusing "unknown preset field" error. gcc/llvm/msvc are
-      # asserted the same way, all against the pins toolchain-versions resolved
-      # above - see docs/ci-self-hosted-runners.md.
-      - name: Report and assert toolchain versions
-        shell: bash
-        env:
-          GCC_VERSION: ${{ needs.toolchain-versions.outputs.gcc_version }}
-          LLVM_VERSION: ${{ needs.toolchain-versions.outputs.llvm_version }}
-          MSVC_TOOLSET: ${{ needs.toolchain-versions.outputs.msvc_toolset }}
-          CMAKE_MIN: ${{ needs.toolchain-versions.outputs.cmake_min }}
-        run: |
-          set -euo pipefail
-          cmake --version
-          ninja --version
-          # Let CMake do its own version comparison rather than parsing it in sh.
-          # Unquoted heredoc so $CMAKE_MIN expands - \$CMAKE_VERSION stays escaped
-          # so it's still CMake's own variable, not a (unset) shell one.
-          cat > "${RUNNER_TEMP}/assert-cmake-version.cmake" <<EOF
-          if(CMAKE_VERSION VERSION_LESS ${CMAKE_MIN})
-            message(FATAL_ERROR "CMake \${CMAKE_VERSION} is too old; ac3forge needs >= ${CMAKE_MIN}")
-          endif()
-          EOF
-          cmake -P "${RUNNER_TEMP}/assert-cmake-version.cmake"
-          case "${{ matrix.preset }}" in
-            linux-gcc|linux-gcc-arm64)
-                          g++ --version | head -1
-                          g++ --version | head -1 | grep -q " ${GCC_VERSION}\." || { echo "::error::expected g++ ${GCC_VERSION}"; exit 1; } ;;
-            linux-llvm|linux-llvm-arm64|linux-llvm-asan-ubsan)
-                          clang++ --version | head -1
-                          clang++ --version | head -1 | grep -qE "version ${LLVM_VERSION}\." || { echo "::error::expected clang ${LLVM_VERSION}"; exit 1; } ;;
-            windows-llvm) clang-cl --version | head -1
-                          clang-cl --version | head -1 | grep -qE "version ${LLVM_VERSION}\." || { echo "::error::expected clang-cl ${LLVM_VERSION}"; exit 1; } ;;
-            windows-msvc)
-                          echo "MSVC toolset: ${VCToolsVersion:-unknown}"
-                          case "${VCToolsVersion:-}" in
-                            ${MSVC_TOOLSET}*) ;;
-                            *) echo "::error::expected an MSVC ${MSVC_TOOLSET}x toolset, got '${VCToolsVersion:-unset}'"; exit 1 ;;
-                          esac ;;
-            # Report-only, unlike windows-msvc above - confirmed empirically on
-            # a real windows-11-arm run (2026-08-26): the hosted ARM64 image
-            # ships an older VS Build Tools generation (14.44.35207, VS2022
-            # ~17.14) than windows-latest's x64 image (14.5x, "VS 2026"/18.x),
-            # so the ${MSVC_TOOLSET} pin - resolved against the x64 image - does
-            # not hold here. The two runner images are maintained on separate
-            # GitHub-side update cadences; asserting they stay in lockstep
-            # isn't realistic yet. Same shape as macos-llvm's own case arm
-            # below, and the same reasoning: report whatever toolset this
-            # runner actually has rather than failing a leg still proving out
-            # its own baseline. Revisit once GitHub's ARM64 image catches up -
-            # or drops far enough behind to need its own pin.
-            windows-msvc-arm64)
-                          echo "MSVC toolset: ${VCToolsVersion:-unknown}" ;;
-            # No hard version assert here unlike the other LLVM legs: Homebrew's
-            # llvm formula has no versioned pin to check against (see the
-            # install step's own comment), so this reports whatever it finds
-            # rather than failing a leg that's still proving out its baseline.
-            # Same for macos-llvm-x64 - identical toolchain install step, just
-            # a different CPU architecture underneath.
-            macos-llvm|macos-llvm-x64) c++ --version | head -1 ;;
-          esac
-
-      - uses: ./.github/actions/setup-vcpkg
-        with:
-          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
-
-      # ---------------------------------------------------------------------
-      # Configure / build / test
-      # ---------------------------------------------------------------------
-      # The presets carry everything: generator, compiler, Release, and
-      # AC3FORGE_BUILD_GUI=OFF. The toolchain-preset system splits each leg into
-      # config-/build-/test-<leg> (the bare <leg> is a hidden fragment), so the
-      # matrix value is the suffix and each step names its own prefix. Running
-      # `cmake --preset config-<leg>` locally reproduces CI exactly - EXCEPT
-      # for two overrides bolted on here:
-      #   - -DCMAKE_PREFIX_PATH on Windows: install-qt-action installs into a
-      #     runner-specific path (QT_ROOT_DIR) that cmake/FindQt6.cmake's
-      #     local search roots do not cover, so it has to be passed in
-      #     explicitly rather than relying on auto-detection the way a local
-      #     build does.
-      #   - -DAC3FORGE_BUILD_GUI=ON on the `gui: true` Linux and macOS legs,
-      #     which default the GUI off (see CMakePresets.json) so a machine
-      #     that hasn't installed Qt still builds everything else.
-      - name: Configure
-        shell: bash
-        # VERSION_TAG_INPUT goes through env:, not straight into the script
-        # text, for the same reason release.yml's resolve-version job does -
-        # inputs.version_tag is attacker-reachable via workflow_dispatch and
-        # substituted directly it would be shell CODE, not data (zizmor:
-        # template-injection). Empty by default (ordinary CI): GitVersionDerivation.cmake
-        # then falls through to `git describe`, which finds nothing on this
-        # leg's shallow checkout and stamps 0.0.0-dev - expected, see the
-        # `fetch_depth` input's description above.
-        env:
-          VERSION_TAG_INPUT: ${{ inputs.version_tag }}
-        run: |
-          set -euo pipefail
-          extra_args=()
-          # QT_ROOT_DIR is only set when the "Install Qt (prebuilt)" step ran
-          # (every Windows leg except windows-msvc-arm64, which has no Qt kit
-          # to point at - see that step's own comment) - guarded rather than
-          # unconditional on "$RUNNER_OS" = "Windows" alone, because
-          # referencing an unset variable under this script's `set -u` would
-          # otherwise fail the Configure step outright on that leg.
-          if [ "$RUNNER_OS" = "Windows" ] && [ -n "${QT_ROOT_DIR:-}" ]; then
-            extra_args+=(-DCMAKE_PREFIX_PATH="$QT_ROOT_DIR")
-          fi
-          if [ "${{ matrix.gui }}" = "true" ]; then
-            extra_args+=(-DAC3FORGE_BUILD_GUI=ON)
-          fi
-          if [ -n "$VERSION_TAG_INPUT" ]; then
-            extra_args+=(-DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT")
-          fi
-          # Not "${extra_args[@]}" unguarded: macOS's /bin/bash is stuck on
-          # 3.2 (GPLv2 was the last version Apple could ship), and 3.2's
-          # `set -u` treats expanding a zero-element array as an unbound
-          # variable - fixed upstream in bash 4.4, but not on this runner.
-          # ${#extra_args[@]} (a length, not an element expansion) does not
-          # trip the same bug on either version.
-          if [ ${#extra_args[@]} -eq 0 ]; then
-            cmake --preset config-${{ matrix.preset }}
-          else
-            cmake --preset config-${{ matrix.preset }} "${extra_args[@]}"
-          fi
-
-      # -k 0 so a first-time port sees every diagnostic in one run rather than
-      # one-per-push. Warnings are errors on every compiler
-      # (cmake/CompilerWarnings.cmake) and CI does not relax that.
-      - name: Build
-        shell: bash
-        run: cmake --build --preset build-${{ matrix.preset }} -- -k 0
-
-      # AC3FORGE_REQUIRE_AVX2 turns tests/core/test_simd_kernels.cpp's [avx2]
-      # probe case from a loud skip into a hard failure - only safe to set on
-      # a leg pinned to `runner: '["ubuntu-latest"]'` above rather than the
-      # dynamic self-hosted/GitHub-hosted `matrix.runner` most legs use,
-      # since self-hosted CPU features aren't documented anywhere in this
-      # repo (see src/forge/src/internal/cpu/cpu_features.hpp) but GitHub's
-      # own hosted Linux runners are AVX2-capable. This guarantees at least
-      # one leg per PR where "the AVX2 path actually ran and passed" is
-      # asserted, not just possible.
-      - name: Test
-        shell: bash
-        env:
-          AC3FORGE_REQUIRE_AVX2: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '' }}
-        run: ctest --preset test-${{ matrix.preset }}
-
-      # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
-      # lightweight L4 SNR check from the project's original validation-
-      # pyramid design, now docs/verification.md - wired into CI for the
-      # first time here; see tools/checks/verify_gold_reference.sh's own header).
-      # Proven on
-      # macOS alone first; now every leg has it except linux-llvm-asan-ubsan,
-      # which stays diagnostic-only (same reasoning as its `packageable`
-      # exclusion below - a sanitizer build's job is catching memory/UB
-      # errors, not re-proving codec correctness a plain build already did).
-      - name: Gold reference gate
-        if: matrix.gold_reference
-        shell: bash
-        env:
-          # See tools/checks/verify_gold_reference.sh's own comment: set, this asks
-          # compare_wav.py to also write a structured per-codec result here,
-          # which the "Upload gold-reference results" step below picks up.
-          # Unset (persist_quality_trend false, e.g. every PR run) the gate
-          # behaves exactly as it did before this existed - no extra files,
-          # no extra step running.
-          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
-        run: |
-          set -euo pipefail
-          bin="build/config-${{ matrix.preset }}/bin/ac3cli"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            bin="${bin}.exe"
-          fi
-          bash tools/checks/verify_gold_reference.sh "$bin"
-
-      # The same gate a second time, on the spec's own direct transform
-      # evaluations instead of the fast paths (roadmap VX10). 0.9.0 flipped
-      # both transform defaults, and from then until this step existed every
-      # CI gate that touched a real stream ran in performance mode: the
-      # normative §8.2.3.2 forward MDCT and §7.9.4 step-3 inverse - the oracle
-      # every fast path is validated against - were covered only by
-      # transform-level unit tests. A change to either fast path could take
-      # its own reference with it and no end-to-end gate would notice.
-      #
-      # One leg, not all seven: mode=reference changes the arithmetic inside
-      # the transforms, not anything platform-specific, so paying for it on
-      # every leg would buy nothing. linux-gcc is the leg with the broadest
-      # coverage elsewhere (GUI, the ALSA fallback) and is a required check.
-      # Its labels are suffixed (see the script's own TRANSFORM_MODE comment),
-      # so its per-check JSON results sit beside the performance-mode run's in
-      # the same artifact rather than overwriting them.
-      - name: Gold reference gate (mode=reference)
-        if: matrix.gold_reference && matrix.preset == 'linux-gcc'
-        shell: bash
-        env:
-          TRANSFORM_MODE: reference
-          RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
-        run: bash tools/checks/verify_gold_reference.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
-
-      # Handed off to the quality-trend job below, which runs once (not once
-      # per leg) after every gold_reference leg has passed - see that job's
-      # own header comment for why it is a separate job rather than each leg
-      # pushing its own commit.
-      - name: Upload gold-reference results
-        if: matrix.gold_reference && inputs.persist_quality_trend
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: gold-reference-${{ matrix.preset }}
-          path: ${{ runner.temp }}/gold-reference-results/*.json
-          if-no-files-found: error
-
-      # ctest above already covers the codec; this covers the one thing it
-      # can't - that ac3gui actually starts, loads its QML, and drives a real
-      # encode through the Qt event loop. offscreen needs no display, so it
-      # runs the same in this container as it does on a workstation. See
-      # docs/building.md's Linux section for why the qmlshapesplugin /
-      # labsmodelsplugin / qmlfolderlistmodelplugin CMake warnings during
-      # Configure, above, don't affect this.
-      - name: Smoke test ac3gui (headless)
-        if: matrix.gui
-        shell: bash
-        env:
-          QT_QPA_PLATFORM: offscreen
-        # apps/gui/CMakeLists.txt sets MACOSX_BUNDLE ON unconditionally, but it
-        # is a no-op everywhere except APPLE, where it moves the built
-        # executable to bin/ac3gui.app/Contents/MacOS/ac3gui instead of plain
-        # bin/ac3gui - the property Linux never sets and Windows doesn't need
-        # (WIN32_EXECUTABLE controls the console-vs-GUI subsystem there, not
-        # where the .exe lands).
-        #
-        # QSG_RENDER_LOOP=basic and the perl-alarm wrapper are both macOS-only
-        # and both about the same hang the "Test" step hit on this leg's
-        # first-ever GUI run (see apps/gui/tests/CMakeLists.txt's identical
-        # QSG_RENDER_LOOP comment for the render-loop-deadlock hypothesis).
-        # ac3gui --smoke drives the same QQmlApplicationEngine/QQuickWindow
-        # path ac3gui_qmltests does, so it is at equal risk and had no bound
-        # of its own - a hang here would silently eat the rest of this leg's
-        # 6-hour job ceiling exactly like the Test step did. `perl` (not
-        # `timeout`, which macOS's BSD userland doesn't ship) is on every
-        # macOS runner image by default.
-        run: |
-          set -euo pipefail
-          bin="build/config-${{ matrix.preset }}/bin/ac3gui"
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            bin="build/config-${{ matrix.preset }}/bin/ac3gui.app/Contents/MacOS/ac3gui"
-            export QSG_RENDER_LOOP=basic
-          fi
-          smoke_args=(--smoke
-            fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav
-            "${RUNNER_TEMP}/ac3gui-smoke.ac3"
-            "${RUNNER_TEMP}/ac3gui-smoke.png")
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            perl -e 'alarm shift; exec @ARGV' 120 "$bin" "${smoke_args[@]}"
-          else
-            "$bin" "${smoke_args[@]}"
-          fi
-
-      # Roadmap UX3's own literal ask: "newly added strings cannot silently
-      # fall out of the catalogue". Re-runs lupdate (the ac3gui_lupdate
-      # target qt_add_translations() creates - apps/gui/CMakeLists.txt)
-      # against the same QML/C++ sources it scans at release time, then
-      # fails if that changed any of the six real .ts files - a qsTr()
-      # string added or edited without re-running lupdate would otherwise
-      # rot silently until someone happened to notice. Only runs once (this
-      # leg) since extraction doesn't depend on OS/compiler - the sources it
-      # scans are identical everywhere gui: true builds ac3gui.
-      #
-      # Deliberately NOT the stricter "zero unfinished" gate the sibling
-      # CountdownSolver project runs (R:\CountdownSolver's own
-      # .github/workflows/ci.yml, "Translations complete") - translation
-      # coverage here is real but partial by design (docs/gui/
-      # localisation.md tracks exactly what), so that bar would fail today
-      # on content nobody has touched. Tightening to it is the natural next
-      # step once coverage is complete, not before.
-      - name: Check translations are up to date
-        if: matrix.gui && matrix.name == 'Linux GCC'
-        shell: bash
-        run: |
-          cmake --build --preset build-${{ matrix.preset }} --target ac3gui_lupdate -- -k 0
-          echo "::group::translations git diff debug"
-          pwd
-          echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
-          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
-          git config --global --add safe.directory '*'
-          git rev-parse --show-toplevel || echo "rev-parse failed"
-          echo "::endgroup::"
-          cd "${GITHUB_WORKSPACE}"
-          git diff --exit-code -- apps/gui/translations
-
-      # Sanitizers only catch what actually executes. ctest's cases exercise
-      # encoder/decoder logic in isolation; this drives the real CLI across
-      # every layout, every Annex E tool token, both Atmos container modes and
-      # the metadata options, so the sanitizer sees code paths a unit test
-      # would not reach on its own. ASAN_OPTIONS/UBSAN_OPTIONS mirror what the
-      # ctest preset already sets for the Test step above.
-      #
-      # AC3FORGE_CROSS_TIER_CHECK runs this same matrix twice more, under
-      # AC3FORGE_SIMD_TIER=sse2 then =avx2, byte-diffing the two output
-      # trees (see run_codec_matrix.sh's own header comment) - gated the
-      # same way AC3FORGE_REQUIRE_AVX2 is above, to the one leg pinned to a
-      # GitHub-hosted (therefore AVX2-capable) runner rather than the
-      # dynamic self-hosted/GitHub-hosted labels most legs use.
-      - name: Codec matrix (sanitizer build)
-        if: matrix.sanitizer
-        shell: bash
-        env:
-          ASAN_OPTIONS: detect_leaks=1
-          UBSAN_OPTIONS: print_stacktrace=1
-          AC3FORGE_CROSS_TIER_CHECK: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '0' }}
-        run: bash tools/ci/run_codec_matrix.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
-
-      # Roadmap VX20: the conformance vector set - one stream per coding tool,
-      # layout and sample rate this encoder can produce, each with the PCM it
-      # was encoded from and the expected decode hashes, published as a
-      # release asset so another decoder implementer has something concrete to
-      # test against (docs/conformance-vectors.md).
-      #
-      # It runs on EVERY call, not just a release, deliberately: the generator
-      # drives real ac3cli command lines, and an option rename would otherwise
-      # rot it silently until the next tag - by which point the fix is
-      # blocking a release rather than a pull request. The release-only extra
-      # is --check-determinism, which regenerates the whole bundle a second
-      # time and fails if a single hash moved; that doubles the runtime, which
-      # is worth paying once per release and not once per push.
-      #
-      # One leg only. Encoded output is not bit-identical across compilers or
-      # architectures yet (docs/building.md; roadmap VX11/VX12), so a second
-      # leg's bundle would differ from this one's for no useful reason - the
-      # manifest records the toolchain that built it either way. linux-gcc is
-      # the leg that carries it because it is the x86-64 reference toolchain
-      # and already a release_package leg.
-      #
-      # python3 is not in the container bootstrap: nothing else in this job
-      # needs it.
-      - name: Install python3 (conformance vectors)
-        if: matrix.conformance_vectors
-        run: apt-get install -y -qq --no-install-recommends python3
-
-      - name: Generate conformance vectors
-        if: matrix.conformance_vectors
-        shell: bash
-        env:
-          PRESET: ${{ matrix.preset }}
-          PUBLISH: ${{ inputs.publish_conformance_vectors }}
-        run: |
-          set -euo pipefail
-          cli="build/config-${PRESET}/bin/ac3cli"
-          version="$("$cli" --version | head -1 | awk '{print $NF}')"
-          extra=""
-          if [ "$PUBLISH" = "true" ]; then
-            extra="--check-determinism --archive"
-          fi
-          # Word-split on purpose: $extra is either empty or two flags.
-          # shellcheck disable=SC2086
-          python3 tools/generators/gen_conformance_vectors.py --cli "$cli" --out "dist/ac3forge-conformance-vectors-${version}" $extra
-
-      - name: Upload conformance vectors
-        if: matrix.conformance_vectors && inputs.publish_conformance_vectors
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: conformance-vectors
-          path: dist/*.tar.gz
-          if-no-files-found: error
-
-      # The other side of the ALSA switch: a Linux machine without libasound's
-      # development headers must still configure, build and pass everything,
-      # falling back to src/audio/src/backend/posix/ - that is the whole point
-      # of the dependency being optional, and it is a claim that rots silently
-      # unless something checks it.
-      #
-      # CMAKE_DISABLE_FIND_PACKAGE_ALSA rather than -DAC3FORGE_WITH_ALSA=OFF,
-      # because OFF skips find_package() altogether: this way the AUTO path
-      # runs and genuinely fails to find ALSA, which is what a machine missing
-      # the package actually does. The assertion afterwards is the point of the
-      # step - without it a mistake that quietly built the ALSA backend anyway
-      # would still go green.
-      - name: Configure, build and test without ALSA
-        if: matrix.alsa_fallback
-        shell: bash
-        run: |
-          set -euo pipefail
-          cmake --preset config-${{ matrix.preset }} -B build/no-alsa \
-            -DCMAKE_DISABLE_FIND_PACKAGE_ALSA=TRUE 2>&1 | tee /tmp/no-alsa-configure.log
-          grep -q 'Audio backend  : posix' /tmp/no-alsa-configure.log || {
-            echo "::error::ALSA was disabled but the build did not fall back to the posix backend"
-            exit 1
-          }
-          cmake --build build/no-alsa -- -k 0
-          ctest --test-dir build/no-alsa
-
-      # Proves BUILD_SHARED_LIBS=ON actually works before it ships in a real
-      # release: ac3::forge_shared/matroska::matroska_shared existing and
-      # configuring cleanly (already exercised by every leg's normal
-      # config-<preset> build, since both variants are always built
-      # regardless of BUILD_SHARED_LIBS - see src/forge/CMakeLists.txt) is not
-      # the same claim as every in-tree consumer actually linking and
-      # running against the real .so - ac3cli/ac3tests/every example,
-      # including mux_mkv, the one that needs libmatroska.so alongside
-      # libac3forge.so. On linux-llvm only, the same "one extra pass inside
-      # an existing leg, not a new matrix entry" shape as the ALSA fallback
-      # step above - confirmed locally in WSL2 Ubuntu before landing here,
-      # not assumed: 304/304 tests passed, and `ldd bin/ac3cli` showed both
-      # .so files resolved via the build tree's own automatic RPATH, with
-      # nothing here needing to place them next to the executable the way
-      # examples/CMakeLists.txt's Windows-only DLL-copy step does.
-      #
-      # -LE Performance: this pass's own job is "does it link and run
-      # correctly as a shared library", not "is it still real-time under
-      # PIC/indirect-symbol codegen" - a materially different, never-promised
-      # performance bar the plain linux-llvm pass (same leg, run just before
-      # this one, static by default - the configuration every real consumer
-      # actually ships) already enforces. Confirmed for real on a shared
-      # GitHub Actions runner: the Atmos/JOC encoder measured a consistent
-      # ~79ms/frame here (encode_frame under PIC + hidden-visibility indirect
-      # calls) against the plain pass's real-time budget, comfortably inside
-      # the WSL2 measurement above's own margin - a genuine, repeatable
-      # characteristic of this configuration, not runner noise, and not a
-      # regression in the codec itself.
-      - name: Configure, build and test with BUILD_SHARED_LIBS=ON
-        if: matrix.preset == 'linux-llvm'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cmake --preset config-linux-llvm-shared
-          cmake --build build/config-linux-llvm-shared -- -k 0
-          ctest --preset test-linux-llvm-shared -LE Performance
-
-      # Packaging. windows-msvc always packages, on every push, as a
-      # continuous smoke test of the packaging path itself. For a real
-      # release (do_package set, from release.yml), only one leg per
-      # OS/arch actually packages as the release's own canonical artifact -
-      # `release_package: true` on windows-msvc, linux-gcc and
-      # linux-gcc-arm64 - rather than every packageable leg. A release ships
-      # one canonical build per platform for people to download, not a build
-      # per compiler-toolchain leg: windows-llvm and linux-llvm exist to
-      # catch compiler-specific bugs in CI, which they still do in full
-      # (build+test, unchanged) - packaging them too would just be two
-      # redundant, unlabelled-as-to-which-is-canonical zips per OS with
-      # nothing to tell a downloader apart. A packaging failure on a
-      # release_package leg blocks like any other leg's would, rather than
-      # being absorbed by continue-on-error. linux-llvm-asan-ubsan is never
-      # packaged at all (not `packageable` - see the matrix entry): there is
-      # no pack-linux-llvm-asan-ubsan preset, a sanitizer-instrumented debug
-      # build is a diagnostic tool, not something to ship.
-      #
-      # macOS (DR8) is neither of the two shapes above any more: macos-llvm
-      # and macos-llvm-x64 are each `packageable` but never `release_package`
-      # - a release doesn't want either leg's own single-arch .dmg as "the"
-      # macOS package now that a universal one exists. They still package on
-      # every ORDINARY push (the windows-msvc-style continuous smoke test,
-      # extended to both of them - useful as an independent per-arch check
-      # that packaging itself still works), just never on a do_package
-      # release run, where they instead run the install-tree steps below for
-      # package-macos-universal to lipo-merge, and that job uploads the
-      # actual release artifact.
-      #
-      # cpack reuses the same build/config-<leg> tree the Configure and Build
-      # steps above already produced - pack-<leg> points at the same
-      # config-<leg> configurePreset - so this proves the packaging path
-      # against the exact build that was just tested, not a separate one.
-      - name: Package
-        if: >-
-          matrix.packageable &&
-          (matrix.preset == 'windows-msvc' ||
-           (inputs.do_package && matrix.release_package) ||
-           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
-        shell: bash
-        run: cpack --preset pack-${{ matrix.preset }}
-
-      # DR7: the whole point of installing makensis above is that its
-      # absence stops being silent. cmake/Packaging.cmake's find_program()
-      # gate degrades to a ZIP-only package with just a message(WARNING ...)
-      # rather than failing cpack outright - the right behaviour for a local
-      # dev build without NSIS installed, the wrong one here, where makensis
-      # was just installed on purpose and a missing .exe means that install
-      # broke rather than a deliberate choice. Failing loudly on this leg is
-      # what keeps DR7 fixed instead of quietly regressing the same way
-      # again - see docs/releasing.md#winget-manifest.
-      - name: Assert the NSIS installer was produced (Windows)
-        if: matrix.packageable && (matrix.preset == 'windows-msvc' || (inputs.do_package && matrix.release_package)) && runner.os == 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          exes=(packages/*.exe)
-          if [ ${#exes[@]} -eq 0 ]; then
-            echo "::error::cpack produced no NSIS installer (.exe) - makensis is missing or cmake/Packaging.cmake's find_program() gate silently dropped NSIS again. Check the 'Install NSIS (Windows)' step and the configure log's warnings above."
-            exit 1
-          fi
-
-      - name: Upload package artifacts
-        if: >-
-          matrix.packageable &&
-          (matrix.preset == 'windows-msvc' ||
-           (inputs.do_package && matrix.release_package) ||
-           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: packages-${{ matrix.preset }}
-          # An explicit extension allowlist, not packages/* - CPack leaves its
-          # per-generator staging tree behind under packages/_CPack_Packages/
-          # (never cleaned up; this is normal CPack behaviour, not a bug
-          # here), and a bare packages/* glob matches that directory too.
-          # DragNDrop's staging tree in particular contains a symlink to
-          # /Applications for the drag-to-install UX - upload-artifact
-          # dereferences symlinks by default, so on a macOS runner that walks
-          # straight into the real /Applications (Xcode's framework tree is
-          # notorious for symlink cycles) and OOMs the upload step's Node
-          # process trying to archive it. See actions/upload-artifact#619 and
-          # #590. Restricting the glob to real package files and their
-          # checksums - the same extensions github-release's own glob looks
-          # for - sidesteps the staging tree entirely rather than trying to
-          # outrun it with excludes.
-          path: |
-            packages/*.zip
-            packages/*.zip.sha512
-            packages/*.tar.gz
-            packages/*.tar.gz.sha512
-            packages/*.deb
-            packages/*.deb.sha512
-            packages/*.rpm
-            packages/*.rpm.sha512
-            packages/*.exe
-            packages/*.exe.sha512
-            packages/*.dmg
-            packages/*.dmg.sha512
-          if-no-files-found: error
-
-      # Feeds package-macos-universal below: a plain `cmake --install` of just
-      # the runtime component (ac3cli/ac3gui, plus the man page/completions -
-      # see cmake/InstallLibrary.cmake's COMPONENT split), not a cpack
-      # invocation - that job lipo-merges this leg's tree against
-      # macos-llvm(-x64)'s counterpart into one universal bundle rather than
-      # either leg shipping its own single-arch .dmg as the release's macOS
-      # package (see the matrix entries' own comments). Gated on
-      # inputs.do_package so an ordinary push never pays for a second install
-      # pass on top of the one ctest already exercised against this same
-      # build tree.
-      #
-      # apps/gui/CMakeLists.txt's qt_generate_deploy_qml_app_script()
-      # install(SCRIPT) needed an explicit COMPONENT runtime added for this
-      # to actually pick up Qt's own copied Frameworks/PlugIns/QML - an
-      # install(SCRIPT) with no COMPONENT only runs during a FULL install,
-      # never a component-filtered one like this (confirmed against CMake's
-      # own install(SCRIPT) documentation), and every packaging path
-      # exercised before this one always did a full install (cpack's
-      # CPACK_MONOLITHIC_INSTALL for DragNDrop, and the archive/DEB/RPM
-      # generators, which install every requested component in the same
-      # pass) - so the gap never showed up until something asked for
-      # --component runtime on its own.
-      - name: Install runtime component (macOS universal merge)
-        if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
-        shell: bash
-        run: cmake --install "build/config-${{ matrix.preset }}" --prefix stage --component runtime
-
-      - name: Upload install tree (macOS universal merge)
-        if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: macos-install-runtime-${{ matrix.mac_arch }}
-          path: stage/
-          if-no-files-found: error
-
-      # Nice-to-have companion to the runtime tree above: the library SDK
-      # (headers, static archives, CMake package config, the versioned
-      # .dylib - see cmake/InstallLibrary.cmake) for package-macos-universal
-      # to attempt merging into a universal `ac3forge-dev-*` archive too.
-      # cmake --install takes one --component per invocation, so this is two
-      # calls into the same prefix rather than one. Best-effort: if this
-      # step or the merge job's own dev-archive half fails, the runtime .dmg
-      # above is unaffected - see that job's own comment.
-      - name: Install library components (macOS universal merge, dev archive)
-        if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
-        shell: bash
-        run: |
-          set -euo pipefail
-          cmake --install "build/config-${{ matrix.preset }}" --prefix stage-dev --component library
-          cmake --install "build/config-${{ matrix.preset }}" --prefix stage-dev --component libruntime
-
-      - name: Upload dev install tree (macOS universal merge)
-        if: (matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && inputs.do_package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: macos-install-dev-${{ matrix.mac_arch }}
-          path: stage-dev/
-          if-no-files-found: error
-
-  # DR8: merges macos-llvm's arm64 install tree with macos-llvm-x64's x86_64
-  # one (both plain `cmake --install --component runtime`, uploaded above)
-  # into one universal ac3cli/ac3gui bundle via lipo, then packages it as a
-  # DragNDrop .dmg with hdiutil directly - the same call CPack's own
-  # DragNDrop generator makes under the hood (see cmake/Packaging.cmake's
-  # APPLE branch and cmake/CPackProjectConfig.cmake's CPACK_MONOLITHIC_INSTALL
-  # override), just pointed at an already-merged tree CPack itself never
-  # built, since CPack has no notion of combining two separate install trees
-  # from two separate builds into one package.
-  #
-  # Needs a macOS runner (any label - lipo/hdiutil are the only tools used,
-  # and merging itself has no dependency on which architecture is doing the
-  # merging), gated on inputs.do_package the same way every other
-  # release-only step in this file is (release.yml's call only - ci.yml never
-  # sets it, so this job is skipped, not failed, on every ordinary push/PR).
-  # needs: build, not a narrower dependency on just the two macOS matrix
-  # entries: GitHub Actions has no way to depend on individual matrix
-  # combinations of another job, only the whole job - the same tradeoff
-  # quality-trend below already accepts for the same reason (see its own
-  # header comment).
   package-macos-universal:
     name: Package macOS universal (arm64 + x86_64)
-    needs: build
-    if: inputs.do_package
+    # Narrowed from `needs: build` (the old cross-OS job) to just this one
+    # - the CI lane partitions split (docs/ci-lanes.md) gives macOS its own
+    # job-call, so this no longer has to wait on Windows/Linux legs it never
+    # depended on in the first place.
+    needs: build-macos
+    if: inputs.do_package && inputs.run_macos
     runs-on: macos-latest
     timeout-minutes: 30
     permissions:
@@ -1664,6 +540,20 @@ jobs:
             echo "::warning::ad-hoc re-sign of the merged ac3gui.app failed - shipping it with a stale single-architecture signature instead. Gatekeeper already refuses an unsigned/ad-hoc app outright (see the Homebrew Cask's caveats and DR6), so this does not change what a downloader has to do to run it."
           fi
 
+      # The universal .dmg is the one macOS artifact a release actually
+      # publishes, and it is built below from `merged/` rather than by cpack,
+      # so the packaging-leg assertion on ac3cli's man page and completions
+      # (see the build job's own step) never sees it. This tree has two ways
+      # to lose those files: the install steps that fed it (`cmake --install
+      # --component runtime`, which is where an install(SCRIPT) with no
+      # COMPONENT was already found to be skipped - see that step's comment),
+      # and the lipo-merge above, which walks the arm64 tree and copies
+      # through what it finds. Checking here, before hdiutil, keeps the .dmg
+      # from being the one published package that ships without them.
+      - name: Assert the merged tree carries the CLI man page and completions
+        shell: bash
+        run: python3 tools/ci/check_cli_docs_package.py merged
+
       # hdiutil, not cpack: CPack's DragNDrop generator only ever packages a
       # tree IT installed from a single build - there is no CPack entry point
       # that packages an arbitrary pre-built directory from two separate
@@ -1780,7 +670,7 @@ jobs:
             ac3forge-dev-*-Darwin.zip.sha512
           if-no-files-found: error
 
-  # Roadmap DR8 (Reach): a self-contained AppImage for ac3gui, so a user on a
+  # Windows ARM64 / reach builds (Reach): a self-contained AppImage for ac3gui, so a user on a
   # distro whose own Qt 6 is too old, or split differently than
   # qt6-declarative-dev/qt6-declarative-dev-tools expect (the `linux-gcc`/
   # `linux-llvm` legs' own "Install Qt6 (Linux GUI)" step above), can still
@@ -1800,12 +690,12 @@ jobs:
   # PipeWire access works exactly like any other installed binary - see
   # docs/platforms/linux.md's own "AppImage" section for the full writeup.
   #
-  # Its own job, not a `build` matrix entry: the base image, the Qt install
+  # Its own job, outside the split Linux matrix: the base image, the Qt install
   # method and the packaging tool below all genuinely differ from every
   # other Linux leg, not just one cacheVariable.
   #
   # ubuntu:22.04 (glibc 2.35), deliberately OLDER than the ubuntu:26.04
-  # every other Linux leg pins (see the `build` matrix's own container
+  # every other Linux leg pins (see _ci-linux.yml's container
   # comment) - an AppImage's entire reason to exist is running on a distro
   # whose own glibc/Qt is older than what built it; compiling against
   # 26.04's much newer glibc would make the result LESS portable than the
@@ -1823,15 +713,16 @@ jobs:
   linux-appimage:
     name: Linux AppImage (ac3gui)
     needs: [toolchain-versions]
+    if: inputs.run_linux
     runs-on: ubuntu-latest
-    # See the `build` matrix's own container comment for why this is pinned
-    # at all; unlike that matrix, this is the one Linux leg that pins an
+    # See _ci-linux.yml's container comment for why this is pinned at all;
+    # unlike that matrix, this is the one Linux leg that pins an
     # OLDER base on purpose.
     container: ubuntu:22.04
     timeout-minutes: 90
 
     steps:
-      # Same reasoning as the `build` matrix's own "Bootstrap container"
+      # Same reasoning as _ci-linux.yml's "Bootstrap container"
       # step: the bare ubuntu:22.04 image has no git (actions/checkout
       # silently degrades to a REST tarball download without it) and none of
       # the rest of this either. python3/python3-pip is aqtinstall's own
@@ -2314,7 +1205,7 @@ jobs:
           echo "ac3gui ran clean on debian:12-slim, which never had Qt installed and only gained ALSA/graphics-stack libraries as normal runtime dependencies"
 
   # The Shield app (apps/android): a Gradle/NDK build, not a CMake preset
-  # leg, so it is its own job rather than a `build` matrix entry - there is
+  # leg, so it is its own job outside the split platform workflows - there is
   # no config-android/build-android/pack-android preset to reuse, and trying
   # to force this into the same matrix shape as the CMake legs above would
   # buy nothing. debug builds every push (this job's own continuous
@@ -2349,9 +1240,10 @@ jobs:
   # pushes after it) before this line came off - see this file's header.
   build-android:
     name: Android (Shield)
+    if: inputs.run_android
     runs-on: ubuntu-latest
-    # Unset elsewhere in this file's `build` matrix (which sets 90 for the
-    # slowest desktop legs, see its own header) - this job had no bound at
+    # The split desktop workflows allow 90 minutes for their slowest legs;
+    # this job had no bound at
     # all before the emulator step below existed. An emulator boot that
     # never completes is the most likely hang in this job now, not the
     # Gradle/CMake build; 45 is generous for boot + connectedDebugAndroidTest
@@ -2359,13 +1251,6 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
-      # CodeQL's java-kotlin analyze step below uploads SARIF - see the
-      # "Initialize CodeQL"/"Perform CodeQL Analysis" steps' own comment for
-      # why that leg lives here instead of codeql.yml. ci.yml's build-and-test
-      # and release.yml's build-packages both raise this same ceiling on their
-      # calls into this reusable workflow, the same override pattern they
-      # already use for contents: write/actions: read.
-      security-events: write
     env:
       # A step's `if:` cannot read `secrets` directly, only `env` - so the
       # presence check happens once here and the materialize step reads this
@@ -2432,21 +1317,12 @@ jobs:
           printf '%s' "$ATMOS_SIGNING_KEY" > "$asset_dir/signing.key"
           echo "Wrote $asset_dir/signing.key ($(wc -c < "$asset_dir/signing.key") base64 chars) - object signing enabled."
 
-      # java-kotlin has no buildless extractor mode (build-mode: none extracts
-      # nothing from this 100%-Kotlin app - see codeql.yml's own header for
-      # the measured run that found this), so it needs a real Gradle build to
-      # trace. This job already pays for JDK 17, the pinned NDK and the
-      # signing key material above, and already runs assembleDebug on every
-      # push - init before that build, analyze right after, is cheaper than a
-      # second Android toolchain standing up its own leg in codeql.yml.
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
-        with:
-          languages: java-kotlin
-          build-mode: manual
-          config-file: ./.github/codeql/codeql-config.yml
-          queries: security-and-quality
-
+      # This job used to wrap the build below in a CodeQL init/analyze pair
+      # for java-kotlin, because it already pays for the Android toolchain
+      # the Kotlin extractor needs. That scan moved to codeql.yml's nightly
+      # matrix in 2026-09: here it was an analysis engine inside a required
+      # check, and a CodeQL failure failed this job, build-and-test and then
+      # CI Status. The APK build and the emulator tests below stay.
       - name: Build debug APK
         working-directory: apps/android
         shell: bash
@@ -2455,12 +1331,7 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:assembleDebug --console=plain
 
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
-        with:
-          category: "/language:java-kotlin"
-
-      # Roadmap VX18(b): device-free instrumented coverage for
+      # WASM/mobile headless coverage(b): device-free instrumented coverage for
       # NativeBridge/PassthroughBridge (apps/android/app/src/androidTest/) -
       # nothing before this ran ANY Kotlin-level test, only the C++-side
       # pure logic on the desktop ctest suite (docs/platforms/android.md).
@@ -2603,11 +1474,11 @@ jobs:
             packages/*.apk.sha512
           if-no-files-found: error
 
-  # The WASM browser decode demo (apps/wasm, roadmap F3): a real CMake
+  # The WASM browser decode demo (apps/wasm, WASM browser demo): a real CMake
   # preset (config-wasm-emscripten) unlike build-android above, but still its
-  # own job rather than a `build` matrix entry, for the same reason
+  # own job outside the split platform workflows, for the same reason
   # build-android's own header gives - this leg has none of the shape that
-  # matrix's steps assume (no ctest suite to run, no cpack package to stage,
+  # desktop workflows' steps assume (no ctest suite, no cpack package,
   # no gold-reference gate), so folding it in would mean threading new `if:`
   # exclusions through most of that job's steps for no benefit. Runs on
   # every push - a continuous smoke test that the Emscripten toolchain and
@@ -2618,6 +1489,7 @@ jobs:
   # shipped from here (see that workflow and docs/platforms/wasm.md).
   build-wasm:
     name: WASM (browser demos)
+    if: inputs.run_wasm
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2630,7 +1502,7 @@ jobs:
       - uses: ./.github/actions/setup-emscripten
 
       # Moved ahead of the CMake build (unlike the setup-node this job used
-      # to do only for the Playwright harness below): roadmap UX5's
+      # to do only for the Playwright harness below): WASM streaming decoder package's
       # ac3forge-wasm-decoder package (js/) has to be built before the
       # "Assemble" step further down can copy its dist/ into the servable
       # wasm_decode_demo/ directory - the demo is a consumer of the package
@@ -2694,7 +1566,7 @@ jobs:
           path: build/config-wasm-emscripten/bin/wasm_encode_demo
           if-no-files-found: error
 
-      # Roadmap VX18(a): until this, "it compiles" was the only thing any CI
+      # WASM/mobile headless coverage(a): until this, "it compiles" was the only thing any CI
       # leg checked - docs/platforms/wasm.md's "Not yet verified" section
       # recorded decode/playback/render correctness as manual-only,
       # re-checked by eye every time either demo changed. apps/wasm/tests'
@@ -2727,17 +1599,70 @@ jobs:
           CI: "1"
         run: npm test
 
-  # The Rust bindings (rust/, roadmap AP9): a Cargo workspace living in-tree but deliberately
+  # The ESP32 player's web page (esp-idf/ac3forge/ui/, planning/esp32-device-ui.md)
+  # in Chromium, against a stand-in for the firmware's REST routes that each test
+  # starts for itself: every action and its error paths, the polling, the status
+  # payloads recorded from the emulated board, accessibility and the flash
+  # budget, with coverage of the page's script held to the thresholds in
+  # apps/wasm/tests/package.json. The WASM demos' Playwright harness - its
+  # package, lockfile and browser - with a configuration of its own
+  # (device-ui.config.js). A job of its own because it needs nothing built;
+  # build-esp32s3 runs the same page against the emulated board.
+  device-ui:
+    name: Device web page (Chromium)
+    if: inputs.run_wasm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/wasm/tests/package-lock.json
+
+      - name: Install Playwright harness
+        working-directory: apps/wasm/tests
+        run: |
+          set -euo pipefail
+          npm ci
+          npx playwright install --with-deps --only-shell chromium
+
+      - name: Web page against a stand-in device
+        working-directory: apps/wasm/tests
+        env:
+          CI: "1"
+        run: npm run test:device-ui
+
+      - name: Coverage of the page's script
+        working-directory: apps/wasm/tests
+        run: npm run coverage:device-ui
+
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: device-ui-coverage
+          path: apps/wasm/tests/test-results/device-ui-coverage
+          if-no-files-found: warn
+
+  # The Rust bindings (rust/, Rust bindings): a Cargo workspace living in-tree but deliberately
   # never add_subdirectory()'d from the root CMakeLists.txt - see rust/README.md's "why this
   # lives in-tree" section. Its own job for the same reason build-wasm/build-footprint are: none
-  # of the `build` matrix's steps apply (no ctest suite, no cpack package, no gold-reference
+  # of the desktop workflows' steps apply (no ctest suite, no cpack package, no gold-reference
   # gate) - rust/ac3forge-sys/build.rs drives its own trimmed CMake configure of just
   # ac3::forge_c_shared rather than reusing a desktop preset.
   #
-  # Linux-only for this first pass, matching build-wasm/build-footprint each being single-OS
-  # too: build.rs links libac3forge_c.so dynamically and copies it next to cargo's own build
-  # output (see rust/README.md's "how linking works") - a real CI run on the simplest platform
-  # first, before widening to the Windows/macOS legs that approach hasn't been proven on yet.
+  # All three desktop OSes, one job each (Rust bindings's completeness pass): the
+  # dynamic-linking approach was proven on Linux first and then validated on Windows locally -
+  # where the FIRST MSVC build immediately found a real portability bug (bindgen types C enums
+  # i32 on MSVC and u32 elsewhere; Error::Other's payload had baked the Linux answer in) -
+  # which is exactly the class of finding a matrix exists to keep finding.
   #
   # No toolchain-selection step: rustup (preinstalled on this runner image) auto-detects and
   # installs rust/rust-toolchain.toml's pinned channel plus its clippy/rustfmt components the
@@ -2745,8 +1670,13 @@ jobs:
   # duplicated into this file too, the same "no second copy of a version string" reasoning
   # _toolchain-versions.yml's own header states for the C/C++ toolchains.
   build-rust:
-    name: Rust bindings (ac3forge-sys, ac3forge)
-    runs-on: ubuntu-latest
+    name: Rust bindings (${{ matrix.os }})
+    if: inputs.run_rust
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     permissions:
       contents: read
     steps:
@@ -2777,11 +1707,105 @@ jobs:
         working-directory: rust
         run: cargo fmt --check
 
-  # The minimum-footprint decoder profile (roadmap PF7, docs/building.md) built
+  # The AC3Forge Crucible's null-sink driver (apps/windows/driver, roadmap
+  # UX11): an ACX/KMDF kernel driver, built and test-signed the way Microsoft's
+  # own driver-samples CI builds theirs - the WDK and SDK as NuGet packages
+  # (apps/windows/driver/packages.config) restored into the tree, MSBuild from
+  # the image's Visual Studio developer shell. GitHub's windows-latest image
+  # carries what the packages do not: the "Windows Driver Kit" VS component
+  # (the WindowsKernelModeDriver10.0 toolset) and the Spectre-mitigated
+  # libraries. Deliberately a GitHub-hosted satellite, not a Windows matrix leg:
+  # the self-hosted fleet has no WDK component, and none of the desktop steps
+  # (CMake, ctest, cpack, the gold-reference gate) apply to a .sys.
+  #
+  # What it gates on: the package builds (sys, stamped inf, cat, and the
+  # build's own test certificate beside it), and Code Analysis at the WDK's
+  # driver rule set reports zero defects - the static tier of
+  # apps/windows/driver/Analyze-Driver.ps1 minus CodeQL and the DVL, which
+  # need the CodeQL CLI and the windows-drivers pack. The dynamic tier (Driver
+  # Verifier, KASAN) needs the throwaway guest and stays local
+  # (apps/windows/driver-vm). The package is uploaded as an artifact and is
+  # NOT a release asset: it is test-signed, so it loads only with test
+  # signing on, and shipping it waits on the EV certificate (Phase 6).
+  windows-driver:
+    name: Windows null-sink driver (WDK NuGet)
+    if: inputs.run_windows
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: apps/windows/driver
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - name: Restore the WDK and SDK NuGet packages
+        run: nuget restore .\packages.config -PackagesDirectory .\packages -NonInteractive
+
+      - name: Build and test-sign the package
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw 'no Visual Studio with the C++ tools on this runner' }
+          Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
+          Set-Location "$env:GITHUB_WORKSPACE\apps\windows\driver"
+          Write-Host "Visual Studio: $vs"
+          Write-Host "MSVC toolset:  $env:VCToolsVersion"
+          msbuild .\Ac3ForgeNullSink.sln /p:Configuration=Release /p:Platform=x64 /t:Rebuild /m /v:m /nologo
+          if ($LASTEXITCODE -ne 0) { throw "msbuild failed ($LASTEXITCODE)" }
+          $package = Get-ChildItem -Recurse -Filter 'Ac3ForgeNullSink.inf' | Where-Object { $_.FullName -match 'Release\\package\\' } | Select-Object -First 1
+          if (-not $package) { throw 'no stamped INF under a Release\package directory' }
+          $dir = $package.Directory.FullName
+          foreach ($f in 'Ac3ForgeNullSink.sys', 'Ac3ForgeNullSink.inf', 'ac3forgenullsink.cat') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "package is missing $f" }
+          }
+          $cer = Get-ChildItem (Split-Path $dir) -Filter '*.cer' | Select-Object -First 1
+          if (-not $cer) { throw 'no test certificate beside the package' }
+          Get-ChildItem $dir | Format-Table Name, Length | Out-String | Write-Host
+          "AC3FORGE_DRIVER_PACKAGE=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "AC3FORGE_DRIVER_CERT=$($cer.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # The same rule set and the same "any defect fails" bar Analyze-Driver.ps1
+      # applies locally; the reports are the per-file *.nativecodeanalysis.xml
+      # the driver project writes.
+      - name: Code Analysis (DriverRecommendedRules)
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
+          Set-Location "$env:GITHUB_WORKSPACE\apps\windows\driver"
+          $ruleset = (Get-ChildItem .\packages -Recurse -Filter 'DriverRecommendedRules.ruleset' | Select-Object -First 1).FullName
+          if (-not $ruleset) { throw 'DriverRecommendedRules.ruleset not found in the WDK package' }
+          Get-ChildItem .\Source -Recurse -Filter '*.nativecodeanalysis.xml' | Remove-Item -Force
+          msbuild .\Source\Main\Main.vcxproj /p:Configuration=Release /p:Platform=x64 /t:Rebuild /p:RunCodeAnalysis=true "/p:CodeAnalysisRuleSet=$ruleset" /p:CodeAnalysisTreatWarningsAsErrors=false /m /v:m /nologo
+          if ($LASTEXITCODE -ne 0) { throw "msbuild (Code Analysis) failed ($LASTEXITCODE)" }
+          $reports = Get-ChildItem .\Source -Recurse -Filter '*.nativecodeanalysis.xml'
+          $defects = 0
+          foreach ($r in $reports) { $defects += ([regex]::Matches((Get-Content $r.FullName -Raw), '<DEFECT>')).Count }
+          Write-Host "$($reports.Count) reports, $defects defects"
+          if ($reports.Count -eq 0) { throw 'Code Analysis produced no reports' }
+          if ($defects -gt 0) { throw "Code Analysis reported $defects defect(s); see the build log" }
+
+      - name: Upload the test-signed package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ac3forge-nullsink-driver-testsigned
+          path: |
+            ${{ env.AC3FORGE_DRIVER_PACKAGE }}
+            ${{ env.AC3FORGE_DRIVER_CERT }}
+          if-no-files-found: error
+
+  # The minimum-footprint decoder profile (minimum-footprint decoder profile, docs/building.md) built
   # for arm-none-eabi and run on QEMU's mps2-an385 - a Cortex-M3 with no
   # operating system, no filesystem and no hardware floating point. Its own job
-  # rather than a `build` matrix entry for the same reason build-wasm is: none
-  # of that matrix's steps apply here (no ctest suite, no cpack package, no
+  # outside the split platform workflows for the same reason build-wasm is:
+  # none of their steps apply here (no ctest suite, no cpack package, no
   # gold-reference gate, and the profile's own guard refuses the options those
   # steps assume).
   #
@@ -2796,6 +1820,1220 @@ jobs:
   # codec for a 32-bit target at all, and the first one to do so found three
   # real portability faults that no LP64 leg could have (see the profile's own
   # commit). A leg that only ran before releases would have found them then.
+  build-esp32s3:
+    name: Minimum-footprint codec (ESP32-S3, QEMU)
+    # Leg 6 of check-runners' Linux fan-out. The sibling of build-footprint
+    # below and of build-esp32c3 further down: same profile, same probe, same
+    # fixtures, different bare-metal targets - an Xtensa LX7 with a
+    # single-precision FPU here, a RISC-V C3 with none in build-esp32c3, and
+    # the arm-none-eabi leg's Cortex-M3 with none either. Between them they
+    # cover both answers to "does this build have hardware floating point",
+    # which is the axis decode_scalar_t turns on, and all three of its values.
+    #
+    # This and build-esp32c3 used to be one job: see check-runners' comment
+    # beside LINUX_LEGS for why they were combined and why that stopped
+    # applying.
+    #
+    # espressif/idf is Espressif's own image and carries ESP-IDF, its toolchain
+    # AND qemu-xtensa, so this needs no composite action and no multi-gigabyte
+    # download step - the same reason build-footprint uses a container rather
+    # than apt-ing a cross toolchain onto a bare runner.
+    #
+    # WHAT THIS LEG DOES AND DOES NOT PROVE. It proves the profile builds for
+    # Xtensa, links, decodes every fixture to the right levels and encodes to
+    # the right bytes, all inside the ESP32-S3's internal SRAM. It proves
+    # NOTHING about speed: QEMU is not cycle-accurate and reports a CPU clock
+    # that disagrees with its own boot log. The probe's us_per_frame lines are
+    # printed here for shape, and the real-time number has to come from
+    # hardware - see docs/platforms/bare-metal/esp32-s3.md.
+    needs: check-runners
+    if: inputs.run_esp
+    runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_6) }}
+    container: espressif/idf:v6.1
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      # Normally a no-op: v6.1's image already carries qemu-xtensa, and this
+      # reports "already installed". Kept anyway, because the alternative is
+      # depending on an image's contents silently - if a future tag drops it,
+      # this installs it rather than failing several steps later with a
+      # confusing "qemu-system-xtensa: not found".
+      - name: Ensure QEMU for Xtensa is present
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          python "$IDF_PATH/tools/idf_tools.py" install qemu-xtensa
+
+      - name: Report toolchain versions
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          idf.py --version
+          xtensa-esp32s3-elf-g++ --version | head -1
+
+      - name: Build and run the probe under QEMU
+        shell: bash
+        env:
+          # Inside the build directory rather than ${{ runner.temp }}, which is
+          # what build-footprint uses and what this job used first. That failed
+          # to upload: on this container the workspace is /__w/ac3forge/ac3forge
+          # while runner.temp expanded to /data/work/_temp - a container path and
+          # a host path in the same job - so the script wrote the file somewhere
+          # the upload step could not then find. The build directory is the one
+          # place both agree on, it is gitignored already, and it puts the
+          # summary beside the map it belongs with.
+          AC3FORGE_ESP32S3_SUMMARY: apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          ./tools/checks/run_esp32s3_probe.sh
+
+      # The other direction of the same profile, on the same target - the
+      # sibling of build-footprint's ENCODE step, and here for the same reason.
+      #
+      # It is a second full build, not a second fixture: the two profiles are
+      # mutually exclusive because no two of decode / AC-3 encode / E-AC-3
+      # encode fit in this part's internal SRAM at once. The runner notices the
+      # direction changed and runs `idf.py fullclean` first, so this step costs
+      # a cold build - which is the price of the profiles being exclusive, and
+      # cheaper than finding out on hardware that they are.
+      #
+      # This is also the leg that exercises the RELOCATED component the way an
+      # integrator reaches it: the project points EXTRA_COMPONENT_DIRS at
+      # esp-idf/ and selects a profile through AC3FORGE_ESP_PROFILE, which is
+      # exactly the two lines a consuming project writes. If the published shape
+      # breaks, this goes red rather than the break waiting for someone to try
+      # it.
+      - name: Build and run the ENCODE probe under QEMU
+        env:
+          AC3FORGE_ESP32S3_SUMMARY: apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          ./tools/checks/run_esp32s3_probe.sh --encoder
+
+      # BUILD ONLY, and the reason is the peripheral rather than the code:
+      # qemu-system-xtensa has no I2S, so there is nothing for the DMA to drain
+      # into and the first i2s_channel_write would block until the job timed
+      # out. What this step proves is that the example still COMPILES and LINKS
+      # against the component - which is the failure this repo actually keeps
+      # hitting, an example nobody builds drifting away from the API it
+      # demonstrates. Whether it makes a noise is a hardware question, and the
+      # example prints the numbers that answer it when flashed.
+      #
+      # It also exercises the component through EXTRA_COMPONENT_DIRS from a
+      # DIFFERENT project directory than the probe uses, which is the closest
+      # this repo gets to testing the integrator's path.
+      - name: Build the I2S player example
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/i2s_player
+          idf.py set-target esp32s3
+          idf.py build
+          idf.py size | tee "$GITHUB_STEP_SUMMARY"
+
+      # RUN, not just build, and that is the difference between this step and
+      # the i2s_player one above it. The streaming path - reading a partition a
+      # block at a time, assembling access units across those block boundaries,
+      # decoding them - is all ordinary code with no peripheral behind it, so it
+      # runs under QEMU perfectly well. What it needs is a sink that does not
+      # use the I2S peripheral, because qemu-system-xtensa has none and the real
+      # sink's first write blocks on a DMA that never drains.
+      #
+      # sdkconfig.ci supplies exactly that: the capture sink, which converts
+      # with the code the sinks share (ac3forge/interleave.hpp) and checks the
+      # result with no peripheral behind it, and a two-lap limit so the
+      # application stops with a verdict instead of playing forever. Two laps
+      # rather than one so the rewind at end of stream is exercised. This step
+      # does not gate on the capture sink's figures; the capture and render
+      # steps below do.
+      - name: Build and run the Hearth sink example under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          idf.py set-target esp32s3
+          idf.py build
+          idf.py size | tee -a "$GITHUB_STEP_SUMMARY"
+          # QEMU has to be ended from outside: an ESP-IDF app that returns from
+          # app_main goes on idling rather than exiting. TIMEOUT_SECS is still
+          # the ultimate ceiling if nothing ever shows up.
+          #
+          # This step used to just wait out the full 300s every time - the
+          # HTTP and web-page steps below already end early on their own
+          # verdict, and tools/checks/run_esp32s3_probe.sh's copy of this
+          # comment has the CI measurements and the fault-injection numbers
+          # behind SETTLE_SECS. No shell: bash on this step (this container
+          # runs steps without one under sh), so this is POSIX rather than
+          # bash arithmetic.
+          : > qemu-stream.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-stream.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-stream.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
+          if ! grep -q '^result=pass' qemu-stream.txt; then
+            echo "::error title=ESP32-S3 Hearth sink failed::the example did not report result=pass" >&2
+            grep -E 'result=|error|Guru Meditation|assert failed' qemu-stream.txt >&2 || true
+            exit 1
+          fi
+          # And nothing wrong after it. QEMU runs on to the timeout once the
+          # verdict is printed, so a panic or a reset that came later is in the
+          # capture too; tools/checks/check_esp_console.py fails the step on
+          # either, and its header says why that matters.
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 Hearth sink" qemu-stream.txt
+          # Nothing should ever be skipped looking for a sync word: the build
+          # tells the player exactly how many bytes of the partition are audio.
+          # A non-zero count means either that length is wrong or the framing is.
+          resync=$(sed -n 's/.*stream\.resync_bytes=\([0-9]*\).*/\1/p' qemu-stream.txt | tail -1)
+          echo "resynchronised bytes: ${resync:-unknown}"
+          if [ "${resync:-1}" != "0" ]; then
+            echo "::error title=ESP32-S3 Hearth sink::${resync} bytes were skipped looking for a sync word, expected 0" >&2
+            exit 1
+          fi
+
+          # AND THAT THE AUDIO IS RIGHT, which is the part result=pass does not
+          # cover: that verdict is "some units decoded without returning an
+          # error", which a stream decoding to silence or to full-scale noise
+          # satisfies completely.
+          #
+          # The reference is the HOST's answer for the same file through the
+          # same configuration, obtained independently of anything this leg
+          # builds:
+          #
+          #   ac3cli decode stream/sample.ac3 out.wav downmix=loro drcmode=line
+          #
+          # giving RMS x 1e6 of 107370 and 106234. The target reports 107811 and
+          # 106647 - 0.41% and 0.39% out, which is the float32 decode path
+          # against the host's float64 and not a defect.
+          #
+          # Tolerance is apps/baremetal/probe.cpp's own convention, expected/20
+          # + 200, for the same reason: it absorbs the scalar-width difference
+          # and nothing larger. A channel that came back silent, or at the wrong
+          # level, is several times outside it.
+          check_rms() {
+            local channel="$1" expected="$2"
+            local got
+            got=$(sed -n "s/.*stream\.rms\[$channel\]=\([0-9]*\).*/\1/p" qemu-stream.txt | tail -1)
+            if [ -z "$got" ]; then
+              echo "::error title=ESP32-S3 Hearth sink::no stream.rms[$channel] line" >&2
+              exit 1
+            fi
+            local slack=$(( expected / 20 + 200 ))
+            echo "rms[$channel] = $got (host $expected, tolerance +/-$slack)"
+            if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
+              echo "::error title=ESP32-S3 Hearth sink::channel $channel decoded to $got, host says $expected" >&2
+              exit 1
+            fi
+          }
+          check_rms 0 107370
+          check_rms 1 106234
+
+      # The second runnable configuration, and the one that covers the
+      # boundaries the first cannot.
+      #
+      #   * The TDM CONVERSION, checked as integers rather than as floats. A
+      #     sample scaled to 32 bits instead of shifted into the top 24 sounds
+      #     identical in a host test comparing floats and is wrong on the wire;
+      #     padding slots left unwritten play whatever the previous frame put in
+      #     the DMA buffer. Neither shows up in an RMS.
+      #
+      #   * The SD source's FILE LAYER. QEMU has no SD host, but FATFS does not
+      #     care what block device it sits on - so a FAT volume in flash runs
+      #     the identical VFS, FATFS and stdio path through
+      #     main/source/file_common.hpp. Only the SDMMC host stays untested.
+      #
+      # Neither is a stub standing in for the code: both run the real thing with
+      # the one unmockable piece - a peripheral, a card - replaced.
+      - name: Run the capture sink and flash-backed FAT source under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-tdm"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          # Poll for a verdict instead of waiting out the fixed window - see
+          # the streaming step above for the full reasoning and
+          # tools/checks/run_esp32s3_probe.sh for the CI measurements and the
+          # fault-injection numbers behind SETTLE_SECS.
+          : > qemu-capture.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-capture.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-capture.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
+
+          if ! grep -q '^result=pass' qemu-capture.txt; then
+            echo "::error title=ESP32-S3 capture run::did not report result=pass" >&2
+            grep -E 'result=|error|Guru Meditation|assert failed' qemu-capture.txt >&2 || true
+            exit 1
+          fi
+          # And no panic or reset after it, as in the streaming step above.
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 capture run" qemu-capture.txt
+
+          value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-capture.txt | tail -1; }
+
+          # Every 24-in-32 slot is left-justified: the DAC takes the top 24 bits,
+          # so a low byte that is set means the sample was scaled to 32 rather
+          # than shifted.
+          low=$(value 'capture\.low_byte_set')
+          # The six slots a 2-channel programme leaves on an 8-slot bus, which
+          # must be WRITTEN as zeros - the DMA buffer is reused, and skipping
+          # them plays the previous frame's audio on channels nobody is watching.
+          pad=$(value 'capture\.padding_nonzero')
+          # And something must actually be in the carried slots, or the two
+          # checks above pass by everything being zero.
+          carried=$(value 'capture\.carried_nonzero')
+          echo "low_byte_set=$low padding_nonzero=$pad carried_nonzero=$carried"
+          if [ "${low:-1}" != "0" ] || [ "${pad:-1}" != "0" ] || [ "${carried:-0}" -eq 0 ]; then
+            echo "::error title=ESP32-S3 capture run::TDM slot layout is wrong (low_byte_set=$low padding_nonzero=$pad carried_nonzero=$carried)" >&2
+            exit 1
+          fi
+
+          # And the level survived the conversion. 106803 is the host's combined
+          # RMS for this file through the same fold - sqrt((L^2 + R^2)/2) over
+          # the 107370 and 106234 the streaming step above uses - so a
+          # conversion that halved every sample would satisfy every structural
+          # check and fail here. Same tolerance as everywhere else.
+          rms=$(value 'capture\.rms')
+          expected=106803
+          slack=$(( expected / 20 + 200 ))
+          echo "capture rms=$rms (host $expected, tolerance +/-$slack)"
+          if [ -z "$rms" ] || [ "$rms" -lt $(( expected - slack )) ] || [ "$rms" -gt $(( expected + slack )) ]; then
+            echo "::error title=ESP32-S3 capture run::converted audio is at $rms, host says $expected" >&2
+            exit 1
+          fi
+
+      # The same capture shape at 16-bit slots: the eight a TDM line carries at
+      # that width, through ac3forge::interleave_16in16 (sdkconfig.ci-tdm16).
+      # The checks are the step above's on 16-bit integers, where a slot has no
+      # low byte to leave clear: padding written as zeros, carried slots
+      # nonzero, and the converted level against the host's.
+      - name: Run the capture sink at 16-bit TDM slots under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-tdm;sdkconfig.ci-tdm16"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          : > qemu-capture16.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-capture16.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-capture16.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
+
+          if ! grep -q '^result=pass' qemu-capture16.txt; then
+            echo "::error title=ESP32-S3 16-bit capture run::did not report result=pass" >&2
+            grep -E 'result=|error|Guru Meditation|assert failed' qemu-capture16.txt >&2 || true
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 16-bit capture run" qemu-capture16.txt
+
+          value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-capture16.txt | tail -1; }
+          if ! grep -q '^sink: capture .* 16-bit x2 in 8 slots' qemu-capture16.txt; then
+            echo "::error title=ESP32-S3 16-bit capture run::the sink did not open eight 16-bit slots" >&2
+            exit 1
+          fi
+          pad=$(value 'capture\.padding_nonzero')
+          carried=$(value 'capture\.carried_nonzero')
+          echo "padding_nonzero=$pad carried_nonzero=$carried"
+          if [ "${pad:-1}" != "0" ] || [ "${carried:-0}" -eq 0 ]; then
+            echo "::error title=ESP32-S3 16-bit capture run::TDM slot layout is wrong (padding_nonzero=$pad carried_nonzero=$carried)" >&2
+            exit 1
+          fi
+          rms=$(value 'capture\.rms')
+          expected=106803
+          slack=$(( expected / 20 + 200 ))
+          echo "capture rms=$rms (host $expected, tolerance +/-$slack)"
+          if [ -z "$rms" ] || [ "$rms" -lt $(( expected - slack )) ] || [ "$rms" -gt $(( expected + slack )) ]; then
+            echo "::error title=ESP32-S3 16-bit capture run::converted audio is at $rms, host says $expected" >&2
+            exit 1
+          fi
+
+      # The widest frame the part reaches: sixteen 16-bit slots, two lines of
+      # eight (ac3forge::sink_ceiling(16, true)), onto a sixteen-speaker 9.1.6
+      # layout so every slot carries a channel rather than padding
+      # (sdkconfig.ci-tdm916). The i2s sink cannot run here - QEMU emulates no
+      # I2S - so what this holds is everything up to the peripheral: the
+      # planner's two-line split, interleave_16in16 across a full sixteen
+      # slots, and the renderer putting a 5.1 stream where a 9.1.6 layout
+      # expects it, with the six height slots silent because the stream has
+      # nothing for them.
+      - name: Run the capture sink at sixteen 16-bit TDM slots under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-tdm;sdkconfig.ci-tdm916"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          : > qemu-capture916.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-capture916.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-capture916.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
+
+          if ! grep -q '^result=pass' qemu-capture916.txt; then
+            echo "::error title=ESP32-S3 sixteen-slot capture run::did not report result=pass" >&2
+            grep -E 'result=|error|Guru Meditation|assert failed' qemu-capture916.txt >&2 || true
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 sixteen-slot capture run" qemu-capture916.txt
+
+          value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-capture916.txt | tail -1; }
+          if ! grep -q '^sink: capture .* 16-bit x16 in 16 slots' qemu-capture916.txt; then
+            echo "::error title=ESP32-S3 sixteen-slot capture run::the sink did not open sixteen 16-bit slots" >&2
+            grep -E '^sink: capture|^player: layout' qemu-capture916.txt >&2 || true
+            exit 1
+          fi
+          pad=$(value 'capture\.padding_nonzero')
+          carried=$(value 'capture\.carried_nonzero')
+          slots=$(value 'capture\.slots')
+          echo "slots=$slots padding_nonzero=$pad carried_nonzero=$carried"
+          if [ "${slots:-0}" != "16" ] || [ "${pad:-1}" != "0" ] || [ "${carried:-0}" -eq 0 ]; then
+            echo "::error title=ESP32-S3 sixteen-slot capture run::TDM slot layout is wrong (slots=$slots padding_nonzero=$pad carried_nonzero=$carried)" >&2
+            exit 1
+          fi
+          # Every slot a 5.1 stream has nothing for - the wides, the rear
+          # surrounds and the six heights - silent, with the LFE in slot 15:
+          # the check that the renderer placed the channels rather than
+          # filling the frame with whatever came next.
+          # Through value() rather than an anchored pattern of its own: the
+          # console ends every line with a CR, so a `$` after the digits
+          # matches nothing and every slot reads as empty.
+          for slot in 5 6 7 8 9 10 11 12 13 14; do
+            level=$(value "stream\.rms\[$slot\]")
+            if [ "${level:-1}" != "0" ]; then
+              echo "::error title=ESP32-S3 sixteen-slot capture run::slot $slot should be silent for a 5.1 stream, it is at $level" >&2
+              exit 1
+            fi
+          done
+
+      # A height layout, rendered from the stream's objects: the footprint
+      # probe's eac3_atmos_height fixture (stream/height.ec3, the same bytes as
+      # fixture.hpp's kEac3AtmosHeightStream) played onto 7.1.4 through the
+      # player - decode_access_unit_by_block, the objects reconstructed and
+      # placed by ac3::spatial::pan_direction, the bed's LFE passed through -
+      # into the twelve-slot TDM conversion. The reference is the probe's own
+      # eac3_atmos_render row (apps/baremetal/render_fixture.hpp): same
+      # objects, same panner, same float arithmetic in the same order, so the
+      # levels agree to the digit and the tolerance below is one unit of
+      # rounding. sdkconfig.ci-render says why one lap and why the MDCT-band
+      # domain and no DRC.
+      - name: Render a height-object stream onto 7.1.4 under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-render"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          # Poll for a verdict instead of waiting out the fixed window - see
+          # the streaming step above for the full reasoning and
+          # tools/checks/run_esp32s3_probe.sh for the CI measurements and the
+          # fault-injection numbers behind SETTLE_SECS.
+          : > qemu-render.txt
+          TIMEOUT_SECS=300
+          SETTLE_SECS=20
+          (
+            elapsed=0
+            settled=
+            while [ "$elapsed" -lt "$TIMEOUT_SECS" ]; do
+              sleep 2
+              elapsed=$(( elapsed + 2 ))
+              if grep -qE '^result=|Guru Meditation|assert failed' qemu-render.txt 2>/dev/null; then
+                settled=${settled:-$elapsed}
+                if [ $(( elapsed - settled )) -ge "$SETTLE_SECS" ]; then
+                  pkill -f 'qemu-system-xtensa' 2>/dev/null || true
+                  break
+                fi
+              fi
+            done
+          ) &
+          watcher=$!
+          timeout "$TIMEOUT_SECS" idf.py qemu 2>&1 | tee qemu-render.txt || true
+          kill "$watcher" 2>/dev/null || true
+          wait "$watcher" 2>/dev/null || true
+
+          fail() { echo "::error title=ESP32-S3 render run::$1" >&2; grep -E 'result=|error|player:|stream:|Guru Meditation|assert failed' qemu-render.txt >&2 || true; exit 1; }
+          grep -q '^result=pass' qemu-render.txt || fail "did not report result=pass"
+          # And no panic or reset after it, as in the streaming step above.
+          python3 "$GITHUB_WORKSPACE/tools/checks/check_esp_console.py" --title "ESP32-S3 render run" qemu-render.txt
+          grep -q 'onto 7.1.4 (12 slots, objects placed)' qemu-render.txt || fail "the player did not place the objects onto 7.1.4"
+          value() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" qemu-render.txt | tail -1; }
+          units=$(value 'stream\.units')
+          resync=$(value 'stream\.resync_bytes')
+          mismatches=$(value 'stream\.layout_mismatches')
+          [ "${units:-0}" = "6" ] || fail "expected 6 access units, got ${units:-none}"
+          [ "${resync:-1}" = "0" ] || fail "${resync} bytes skipped looking for a sync word"
+          [ "${mismatches:-1}" = "0" ] || fail "${mismatches} units decoded to a layout their headers did not announce"
+          # Twelve of twelve slots carried, so nothing to pad; every slot
+          # left-justified 24-in-32.
+          low=$(value 'capture\.low_byte_set')
+          pad=$(value 'capture\.padding_nonzero')
+          carried=$(value 'capture\.carried_nonzero')
+          echo "low_byte_set=$low padding_nonzero=$pad carried_nonzero=$carried"
+          if [ "${low:-1}" != "0" ] || [ "${pad:-1}" != "0" ] || [ "${carried:-0}" -eq 0 ]; then
+            fail "TDM slot layout is wrong (low_byte_set=$low padding_nonzero=$pad carried_nonzero=$carried)"
+          fi
+          # The probe's reference, slot by slot: L C R Ls Rs Lrs Rrs Vhl Vhr Lts
+          # Rts LFE. Three objects on the ceiling and one half way up at the
+          # rear, so the heights carry most of it; the front left and the
+          # surrounds have nothing pointing at them and must be exactly silent.
+          slot=0
+          for expected in 0 0 7867 0 104 20201 20201 82431 97537 102185 58776 0; do
+            got=$(value "stream\.rms\[$slot\]")
+            [ -n "$got" ] || fail "no stream.rms[$slot] line"
+            echo "rms[$slot] = $got (probe $expected)"
+            if [ "$got" -lt $(( expected - 1 )) ] || [ "$got" -gt $(( expected + 1 )) ]; then
+              fail "slot $slot rendered to $got, the probe's row says $expected"
+            fi
+            slot=$(( slot + 1 ))
+          done
+
+      # The HTTP source, end to end, with no board and no access point. QEMU
+      # has no WiFi, but `idf.py qemu` attaches an OpenCores Ethernet MAC to
+      # the host's network, so the source's own network seam picks net/openeth/
+      # (main/source/http/network.hpp, selected by sdkconfig.ci-http) and a
+      # python http.server on the runner serves apps/wasm/assets/ - the same
+      # E-AC-3 demo the WASM page plays: 5.1 with JOC objects, 448 kbit/s, 250
+      # access units. The guest reaches the host at 10.0.2.2. Everything above
+      # the radio runs as it does on a board: the HTTP client, the framer, the
+      # E-AC-3 decode; only WiFi itself is left for hardware.
+      #
+      # The levels are held against the host's
+      #   ac3cli decode apps/wasm/assets/demo.ec3 out.wav downmix=loro drcmode=line
+      # 56,673 and 47,346 (x 1e6), which the float32 target reproduced to the
+      # digit on 2026-09-10. Same tolerance as the steps above.
+      #
+      # QEMU is stopped as soon as the verdict prints rather than left to a
+      # timeout: the application returns from app_main into an idle FreeRTOS
+      # system and would otherwise sit there for the whole 300 seconds.
+      - name: Fetch and decode an E-AC-3 stream over QEMU's Ethernet
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-http"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+
+          # QEMU by hand rather than `idf.py qemu`, for one reason: the port
+          # forward. idf.py fixes the network options, and the control surface
+          # (ac3forge::Control, on port 80 in this shape) is only reachable from
+          # the runner through hostfwd. The flash image is the same merge idf.py
+          # performs, from the build's own flash_args; the eFuse image is
+          # idf.py's own default blob, read from its module rather than pasted.
+          (cd build && esptool --chip esp32s3 merge-bin --output qemu_flash.bin --pad-to-size 16MB @flash_args >/dev/null)
+          PYTHONPATH="$IDF_PATH/tools" python3 -c "from idf_py_actions.qemu_ext import QEMU_TARGETS; open('build/qemu_efuse.bin','wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"
+          qemu_bin=$(find "${IDF_TOOLS_PATH:-$HOME/.espressif}/tools/qemu-xtensa" -name qemu-system-xtensa -type f | head -1)
+          if [ -z "$qemu_bin" ]; then
+            echo "::error title=ESP32-S3 HTTP source::qemu-system-xtensa not found under the IDF tools" >&2
+            exit 1
+          fi
+          command -v curl >/dev/null || { echo "::error title=ESP32-S3 HTTP source::curl is not in this image" >&2; exit 1; }
+          : > qemu-http.txt
+          "$qemu_bin" -M esp32s3 -m 32M \
+            -drive file=build/qemu_flash.bin,if=mtd,format=raw \
+            -drive file=build/qemu_efuse.bin,if=none,format=raw,id=efuse \
+            -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \
+            -global driver=timer.esp32s3.timg,property=wdt_disable,value=true \
+            -nic user,model=open_eth,hostfwd=tcp::8080-:80 \
+            -nographic -monitor none -serial file:qemu-http.txt &
+          qemu=$!
+          trap 'kill "$qemu" 2>/dev/null || true; kill "$server" 2>/dev/null || true' EXIT
+
+          # fail() checks the console first, so a curl that times out or a check
+          # that trips because the part panicked and rebooted is reported as the
+          # panic, beside the check that noticed it.
+          console="$GITHUB_WORKSPACE/tools/checks/check_esp_console.py"
+          fail() { python3 "$console" --title "ESP32-S3 HTTP source" qemu-http.txt || true; echo "::error title=ESP32-S3 HTTP source::$1" >&2; grep -E 'result=|error|network|source:|control|Guru Meditation|assert failed' qemu-http.txt >&2 || true; exit 1; }
+          check_rms() {
+            local channel="$1" expected="$2"
+            local got
+            got=$(sed -n "s/.*stream\.rms\[$channel\]=\([0-9]*\).*/\1/p" qemu-http.txt | tail -1)
+            [ -n "$got" ] || fail "no stream.rms[$channel] line"
+            local slack=$(( expected / 20 + 200 ))
+            echo "rms[$channel] = $got (host $expected, tolerance +/-$slack)"
+            if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
+              fail "channel $channel decoded to $got, host says $expected"
+            fi
+          }
+
+          # The first run: the configured stream, played at boot.
+          for _ in $(seq 1 60); do
+            if grep -q '^result=' qemu-http.txt; then break; fi
+            sleep 5
+          done
+          grep -q '^result=pass' qemu-http.txt || fail "the first run did not report result=pass"
+          units=$(sed -n 's/.*stream\.units=\([0-9]*\).*/\1/p' qemu-http.txt | tail -1)
+          resync=$(sed -n 's/.*stream\.resync_bytes=\([0-9]*\).*/\1/p' qemu-http.txt | tail -1)
+          echo "access units: ${units:-unknown}, resynchronised bytes: ${resync:-unknown}"
+          if [ "${units:-0}" != "250" ] || [ "${resync:-1}" != "0" ]; then
+            fail "expected 250 access units and 0 resynchronised bytes, got ${units:-none} and ${resync:-none}"
+          fi
+          check_rms 0 56673
+          check_rms 1 47346
+
+          # The control surface, through the port forward. /status must know
+          # the run ended; /volume and /play must be taken; the replay must
+          # play every unit again at half volume, which is a level check on the
+          # gain the decode task applies; /stop must answer.
+          status=$(curl -s -m 10 http://127.0.0.1:8080/status) || fail "GET /status did not answer (curl exit $?)"
+          echo "status: $status"
+          echo "$status" | grep -q '"state":"finished"' || fail "/status did not report the run as finished"
+          echo "$status" | grep -q '"frames":250' || fail "/status did not report 250 frames"
+          curl -s -m 10 -X POST -d 0.5 http://127.0.0.1:8080/volume | grep -q '^ok' || fail "POST /volume was not accepted"
+          code=$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST -d http://10.0.2.2:8000/demo.ec3 http://127.0.0.1:8080/play) || fail "POST /play did not answer (curl exit $?)"
+          [ "$code" = "202" ] || fail "POST /play answered $code, expected 202"
+          for _ in $(seq 1 60); do
+            if [ "$(grep -c '^result=' qemu-http.txt)" -ge 2 ]; then break; fi
+            sleep 5
+          done
+          [ "$(grep -c '^result=pass' qemu-http.txt)" -ge 2 ] || fail "the replay did not report result=pass"
+          # Half of 56,673 and 47,346; measured 28,336 and 23,673 on 2026-09-10.
+          check_rms 0 28336
+          check_rms 1 23673
+          curl -s -m 10 -X POST http://127.0.0.1:8080/stop | grep -q '^stopped' || fail "POST /stop was not accepted"
+
+          # Then the console, once the part has nothing left to do. /stop is
+          # answered as soon as it is queued, and /status reads "stopped" only
+          # once app_main has taken it - which is after the replay's teardown,
+          # the code that freed the ring twice on 2026-09-10.
+          stopped=
+          for _ in $(seq 1 30); do
+            if curl -s -m 10 http://127.0.0.1:8080/status | grep -q '"state":"stopped"'; then stopped=1; break; fi
+            sleep 1
+          done
+          [ -n "$stopped" ] || fail "/status did not report the player as stopped"
+          python3 "$console" --title "ESP32-S3 HTTP source" qemu-http.txt
+          kill "$qemu" 2>/dev/null || true
+      # The web page (planning/esp32-device-ui.md) on the emulated board: the
+      # image the step above built, booted again with the same port forward,
+      # and the page the firmware serves driven by Playwright - the only place
+      # CI runs the routes ac3forge::Control serves it on. A step of its own so
+      # the one above stays as it is. The WASM demos' Playwright harness
+      # (apps/wasm/tests, device-ui.config.js's board project) comes into this
+      # container with Node, which the IDF image does not carry.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/wasm/tests/package-lock.json
+
+      - name: Drive the web page on the emulated board
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          (cd apps/wasm/tests && npm ci && npx playwright install --with-deps --only-shell chromium)
+          python3 -m http.server 8000 --bind 0.0.0.0 --directory apps/wasm/assets >/dev/null 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          cd esp-idf/ac3forge/examples/hearth_sink
+          if [ ! -f build/qemu_flash.bin ] || [ ! -f build/qemu_efuse.bin ]; then
+            echo "::error title=ESP32-S3 web page::the HTTP step's QEMU images are not in build/" >&2
+            exit 1
+          fi
+          qemu_bin=$(find "${IDF_TOOLS_PATH:-$HOME/.espressif}/tools/qemu-xtensa" -name qemu-system-xtensa -type f | head -1)
+          : > qemu-ui.txt
+          "$qemu_bin" -M esp32s3 -m 32M \
+            -drive file=build/qemu_flash.bin,if=mtd,format=raw \
+            -drive file=build/qemu_efuse.bin,if=none,format=raw,id=efuse \
+            -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \
+            -global driver=timer.esp32s3.timg,property=wdt_disable,value=true \
+            -nic user,model=open_eth,hostfwd=tcp::8080-:80 \
+            -nographic -monitor none -serial file:qemu-ui.txt &
+          qemu=$!
+          trap 'kill "$qemu" 2>/dev/null || true; kill "$server" 2>/dev/null || true' EXIT
+
+          # fail() checks the console first, as the HTTP step's does, so a check
+          # that trips because the part panicked is reported as the panic.
+          console="$GITHUB_WORKSPACE/tools/checks/check_esp_console.py"
+          fail() { python3 "$console" --title "ESP32-S3 web page" qemu-ui.txt || true; echo "::error title=ESP32-S3 web page::$1" >&2; grep -E 'result=|error|control|source:' qemu-ui.txt >&2 || true; exit 1; }
+          check_rms() {
+            local channel="$1" expected="$2"
+            local got
+            got=$(sed -n "s/.*stream\.rms\[$channel\]=\([0-9]*\).*/\1/p" qemu-ui.txt | tail -1)
+            [ -n "$got" ] || fail "no stream.rms[$channel] line"
+            local slack=$(( expected / 20 + 200 ))
+            echo "rms[$channel] = $got (a quarter of the host's, $expected, tolerance +/-$slack)"
+            if [ "$got" -lt $(( expected - slack )) ] || [ "$got" -gt $(( expected + slack )) ]; then
+              fail "channel $channel decoded to $got at the volume the test set, expected $expected"
+            fi
+          }
+
+          for _ in $(seq 1 60); do
+            if grep -q '^result=' qemu-ui.txt; then break; fi
+            sleep 5
+          done
+          grep -q '^result=pass' qemu-ui.txt || fail "the boot play did not report result=pass"
+          echo "served: GET / $(curl -s -m 10 -o /dev/null -w '%{size_download}' http://127.0.0.1:8080/) bytes, GET /ui.js $(curl -s -m 10 -o /dev/null -w '%{size_download}' http://127.0.0.1:8080/ui.js) bytes"
+
+          # The page loads from the firmware and shows the boot play; a name
+          # saved from it reads back through GET /status; a layout the capture
+          # sink cannot carry is refused in the firmware's words; a volume set
+          # over REST reads back, and a play started over REST finishes at it;
+          # Stop reads back as stopped, on the page too.
+          # device-ui/board/smoke.spec.js has the details.
+          (cd "$GITHUB_WORKSPACE/apps/wasm/tests" && AC3FORGE_DEVICE_URL=http://127.0.0.1:8080/ CI=1 npm run test:board) || fail "the page did not drive the board (Playwright's output is above)"
+
+          # The play the test started, at the volume it set: a quarter of the
+          # boot play's levels, 56,673 and 47,346.
+          [ "$(grep -c '^result=pass' qemu-ui.txt)" -ge 2 ] || fail "the play the test started did not report result=pass"
+          check_rms 0 14168
+          check_rms 1 11837
+
+          # Then the console, once the part has nothing left to do: /status
+          # reads "stopped" only after app_main has taken the page's Stop, and
+          # with it any teardown. The smoke waits for the same, but this step
+          # should not rest on what the test happens to do last.
+          stopped=
+          for _ in $(seq 1 30); do
+            if curl -s -m 10 http://127.0.0.1:8080/status | grep -q '"state":"stopped"'; then stopped=1; break; fi
+            sleep 1
+          done
+          [ -n "$stopped" ] || fail "/status did not report the player as stopped"
+          python3 "$console" --title "ESP32-S3 web page" qemu-ui.txt
+          kill "$qemu" 2>/dev/null || true
+
+      # The stream set (esp-idf/ac3forge/examples/hearth_sink/www/,
+      # planning/esp32-stream-set.md) over the HTTP source, rendered onto
+      # 7.1.4: sdkconfig.ci-http714 is the HTTP shape with the capture sink's
+      # twelve-slot TDM conversion, levels as coded and objects as their bed,
+      # booting on the set's walk. tools/checks/check_stream_set.py holds the
+      # boot play, and then every stream the shape can carry played one POST
+      # /play at a time, to www/streams.json: each slot's level within 1% + 20
+      # of the host's decode and the silent ones at exactly 0, the access units,
+      # no bytes skipped for sync, and what GET /status says about the play; a
+      # stream the manifest marks refused must fail for the reason it names.
+      # Then the web page on this twelve-slot board, and the console.
+      - name: Play the stream set onto 7.1.4 over QEMU's Ethernet
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-http;sdkconfig.ci-http714"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          www="$GITHUB_WORKSPACE/esp-idf/ac3forge/examples/hearth_sink/www"
+          python3 -m http.server 8000 --bind 0.0.0.0 --directory "$www" >/dev/null 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          (cd build && esptool --chip esp32s3 merge-bin --output qemu_flash.bin --pad-to-size 16MB @flash_args >/dev/null)
+          PYTHONPATH="$IDF_PATH/tools" python3 -c "from idf_py_actions.qemu_ext import QEMU_TARGETS; open('build/qemu_efuse.bin','wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"
+          qemu_bin=$(find "${IDF_TOOLS_PATH:-$HOME/.espressif}/tools/qemu-xtensa" -name qemu-system-xtensa -type f | head -1)
+          : > qemu-set.txt
+          "$qemu_bin" -M esp32s3 -m 32M \
+            -drive file=build/qemu_flash.bin,if=mtd,format=raw \
+            -drive file=build/qemu_efuse.bin,if=none,format=raw,id=efuse \
+            -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \
+            -global driver=timer.esp32s3.timg,property=wdt_disable,value=true \
+            -nic user,model=open_eth,hostfwd=tcp::8080-:80 \
+            -nographic -monitor none -serial file:qemu-set.txt &
+          qemu=$!
+          trap 'kill "$qemu" 2>/dev/null || true; kill "$server" 2>/dev/null || true' EXIT
+
+          # fail() checks the console first, as the HTTP step's does, so a check
+          # that trips because the part panicked is reported as the panic.
+          console="$GITHUB_WORKSPACE/tools/checks/check_esp_console.py"
+          checker="$GITHUB_WORKSPACE/tools/checks/check_stream_set.py"
+          fail() { python3 "$console" --title "ESP32-S3 stream set" qemu-set.txt || true; echo "::error title=ESP32-S3 stream set::$1" >&2; grep -E 'result=|error|source:|player:|stream:' qemu-set.txt >&2 || true; exit 1; }
+
+          # The boot play: the walk, one speaker at a time.
+          for _ in $(seq 1 60); do
+            if grep -q '^result=' qemu-set.txt; then break; fi
+            sleep 5
+          done
+          grep -q '^result=pass' qemu-set.txt || fail "the boot play did not report result=pass"
+          python3 "$checker" check "$www/streams.json" qemu-set.txt || fail "the boot play's levels were not the host's"
+
+          # The rest of the set, one play at a time.
+          python3 "$checker" play "$www/streams.json" qemu-set.txt \
+            --device http://127.0.0.1:8080 --base http://10.0.2.2:8000 \
+            || fail "a play of the stream set was not the host's (the lines above say which)"
+
+          # What the page says each output layout does with each stream, on
+          # this board: device-ui/board/layouts.spec.js.
+          (cd "$GITHUB_WORKSPACE/apps/wasm/tests" && AC3FORGE_DEVICE_URL=http://127.0.0.1:8080/ AC3FORGE_STREAM_BASE=http://10.0.2.2:8000 CI=1 npm run test:board-layouts) || fail "the page did not report the layouts (Playwright's output is above)"
+
+          # Then the console, once the page's last play has ended.
+          settled=
+          for _ in $(seq 1 30); do
+            if curl -s -m 10 http://127.0.0.1:8080/status | grep -qE '"state":"(finished|failed|stopped)"'; then settled=1; break; fi
+            sleep 1
+          done
+          [ -n "$settled" ] || fail "/status did not report the play as ended"
+          # --min-heap-free: this is the widest shape the part runs - twelve
+          # channels out of three substreams, with the Ethernet driver and the
+          # HTTP server in the same internal RAM - so it is where a decoder or
+          # player that starts holding more is seen first.
+          #
+          # The floor moved from 24,576 to 20,480 when B2 put mDNS on the
+          # board: being findable costs about 8 KB of internal RAM in every
+          # shape. The plan asks for that cost, and this gate caught it the
+          # afternoon it arrived. With the player's block storage sized from
+          # the layout (PR #719), the shape measures 28,304 bytes with mDNS,
+          # so 20,480 leaves about 8 KB for run-to-run movement and for what
+          # the Sendspin player adds, and still fails on a change of the size
+          # that put this step in the ground: PR #698 spent 10 KB and left
+          # the play running on 7-9.5 KB. The Improv listener's own 4 KB is
+          # not in this figure - a board with a network does not start it.
+          python3 "$console" --title "ESP32-S3 stream set" --min-heap-free 20480 qemu-set.txt
+          kill "$qemu" 2>/dev/null || true
+
+      # BUILD ONLY, for the four combinations no step above runs: i2s, sd,
+      # http and null. Each entry sets one choice over sdkconfig.defaults and
+      # leaves the others at their Kconfig defaults: the I2S sink, the
+      # partition source, WiFi under the HTTP source.
+      #
+      # Three of them drive hardware QEMU does not emulate. The code they
+      # share with the runnable configurations already runs in the QEMU steps
+      # above:
+      #
+      #   * i2s drives the I2S peripheral - standard mode or TDM, decided at
+      #     RUNTIME by the layout it is asked to carry
+      #     (ac3forge/sink_plan.hpp), so one build here compiles both, not one
+      #     each. The conversion it calls (ac3forge/interleave.hpp) runs
+      #     through the capture sink - stereo in the streaming and HTTP steps,
+      #     8 and 12 TDM slots in the capture and render steps - and is
+      #     unit-tested on the host (tests/io/test_interleave.cpp). The model
+      #     of the DMA queue it keeps for its sink.* line
+      #     (ac3forge/dac_queue_model.hpp) runs in no QEMU step, since the
+      #     capture sink has no DMA, and is unit-tested on the host as well
+      #     (tests/io/test_dac_queue_model.cpp). The mode/slot-count
+      #     arithmetic itself (ac3forge/sink_plan.hpp) is unit-tested on the
+      #     host too (tests/io/test_sink_plan.cpp).
+      #   * sd drives the SDMMC host. The file layer it shares with the
+      #     flash-backed FAT source (main/source/file_common.hpp) runs in the
+      #     capture and render steps.
+      #   * http drives WiFi (net/wifi/). The HTTP client, the framer and the
+      #     decode run over QEMU's OpenCores Ethernet MAC (net/openeth/) in
+      #     the HTTP step.
+      #
+      # The fourth, null, drives no hardware. It is built here because the
+      # QEMU runs above all use the capture sink in its place.
+      #
+      # And the Sendspin player as a board builds it (sdkconfig.sendspin, over
+      # the hardware and PSRAM overlays): WiFi, PSRAM and the I2S sink, none of
+      # which QEMU has. Its protocol, playout and levels run under QEMU in
+      # hearth-esp32s3, from the image the step after this one builds.
+      #
+      # What can go wrong in a build nothing runs is that it stops compiling -
+      # an IDF component is renamed, a driver API changes shape - and CI should
+      # find that before an integrator does. It has found one: the SD and HTTP
+      # sources compiled against a REQUIRES list that had silently resolved to
+      # the partition branch, because IDF expands REQUIRES in an earlier pass
+      # than the source list and CONFIG_ is not reliably set in it.
+      # main/CMakeLists.txt now lists every component unconditionally.
+      - name: Build every sink and source combination
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          for combo in \
+            "i2s:CONFIG_AC3FORGE_EXAMPLE_SINK_I2S=y" \
+            "sd:CONFIG_AC3FORGE_EXAMPLE_SOURCE_SD=y" \
+            "http:CONFIG_AC3FORGE_EXAMPLE_SOURCE_HTTP=y" \
+            "null:CONFIG_AC3FORGE_EXAMPLE_SINK_NULL=y"; do
+            name="${combo%%:*}"
+            setting="${combo#*:}"
+            echo "--- $name ---"
+            rm -rf build sdkconfig
+            printf '%s\n' "$setting" > sdkconfig.probe
+            SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.probe" idf.py set-target esp32s3 >/dev/null
+            SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.probe" idf.py build >/dev/null
+            echo "$name: built"
+          done
+          rm -f sdkconfig.probe
+          echo "--- sendspin board ---"
+          rm -rf build sdkconfig
+          board="sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram;sdkconfig.sendspin"
+          SDKCONFIG_DEFAULTS="$board" idf.py set-target esp32s3 >/dev/null
+          SDKCONFIG_DEFAULTS="$board" idf.py build >/dev/null
+          echo "sendspin board: built"
+          # Leave the tree as CI's runnable configuration found it, so a later
+          # step or a re-run does not inherit a probe build.
+          rm -rf build sdkconfig
+
+      # The Sendspin player on QEMU's Ethernet (sdkconfig.ci-sendspin, over the
+      # HTTP shape), for hearth-esp32s3 to play to: that job needs the host's
+      # test server, which is a GCC 16 and vcpkg build this image does not
+      # carry, so the image goes to it as an artifact. The flash and eFuse
+      # images are made as the HTTP step makes them.
+      - name: Build the Sendspin player for QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-http;sdkconfig.ci-sendspin"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          image="$GITHUB_WORKSPACE/sendspin-qemu-image"
+          mkdir -p "$image"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          (cd build && esptool --chip esp32s3 merge-bin --output "$image/qemu_flash.bin" --pad-to-size 16MB @flash_args >/dev/null)
+          PYTHONPATH="$IDF_PATH/tools" IMAGE="$image" python3 -c "import os; from idf_py_actions.qemu_ext import QEMU_TARGETS; open(os.path.join(os.environ['IMAGE'], 'qemu_efuse.bin'), 'wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"
+          ls -l "$image"
+          rm -rf build sdkconfig
+
+      # The same player on WiFi with nothing stored and nothing built in
+      # (sdkconfig.ci-wifi), which hearth-esp32s3's Improv step boots: what a
+      # board runs before anyone has given it a network. Its images go into
+      # the same artifact, under wifi/.
+      - name: Build the unprovisioned WiFi player for QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-http;sdkconfig.ci-sendspin;sdkconfig.ci-wifi"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          image="$GITHUB_WORKSPACE/sendspin-qemu-image/wifi"
+          mkdir -p "$image"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          idf.py build
+          (cd build && esptool --chip esp32s3 merge-bin --output "$image/qemu_flash.bin" --pad-to-size 16MB @flash_args >/dev/null)
+          PYTHONPATH="$IDF_PATH/tools" IMAGE="$image" python3 -c "import os; from idf_py_actions.qemu_ext import QEMU_TARGETS; open(os.path.join(os.environ['IMAGE'], 'qemu_efuse.bin'), 'wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"
+          ls -l "$image"
+          rm -rf build sdkconfig
+
+      - name: Upload the Sendspin player's QEMU images
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: esp32s3-sendspin-qemu
+          path: sendspin-qemu-image/
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Upload the ESP32-S3 map and console output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: footprint-esp32s3
+          path: |
+            apps/baremetal/platform/esp32s3/build/ac3probe_esp32s3.map
+            apps/baremetal/platform/esp32s3/build/esp32s3-probe.txt
+            apps/baremetal/platform/esp32s3/build/esp32s3-encode-probe.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-stream.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-capture.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-capture16.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-capture916.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-render.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-http.txt
+            esp-idf/ac3forge/examples/hearth_sink/qemu-set.txt
+          # error, not warn: this artifact is the only way to read what the
+          # probe measured without re-running the leg, and it silently uploaded
+          # just the map the first time. A missing file here should say so.
+          if-no-files-found: error
+
+  # Hearth B4 (planning/hearth-reference-player.md): the Sendspin player
+  # build-esp32s3 built for QEMU, played to from the host. ac3hearth-testserver
+  # pairs with the emulated board by the token on its console, gives it a 2.0
+  # layout and plays it the E-AC-3 JOC fixture in one group with a test sink of
+  # its own; tools/checks/run_sendspin_qemu.sh then holds the board's levels to
+  # the test sink's WAV and its console to one clean boot and the heap floor.
+  # A connection, pairing, setting, burst or level that goes wrong fails it.
+  #
+  # A job of its own rather than a step in build-esp32s3: the test server is a
+  # host build with GCC 16 and vcpkg's hearth feature, made as hearth-validate
+  # makes it, and Espressif's image carries neither. QEMU is Espressif's
+  # release that ESP-IDF v6.1's tools.json pins, checked against that file's
+  # SHA-256, and the second apt line is what it links.
+  hearth-esp32s3:
+    name: Hearth Sendspin sink (ESP32-S3, QEMU)
+    needs: [check-runners, toolchain-versions, build-esp32s3]
+    if: inputs.run_esp
+    runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_6) }}
+    container: ubuntu:26.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      QEMU_XTENSA_URL: https://github.com/espressif/qemu/releases/download/esp-develop-9.2.2-20260417/qemu-xtensa-softmmu-esp_develop_9.2.2_20260417-x86_64-linux-gnu.tar.xz
+      QEMU_XTENSA_SHA256: 0eecb2a34a5586c0e59110f77b9343b7b336e82fdb0e1a30e1dc1bab8a547e35
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config python3 python3-venv software-properties-common tar unzip \
+            wget xz-utils zip \
+            libgcrypt20 libglib2.0-0t64 libpixman-1-0 libsdl2-2.0-0 libslirp0
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+          # hearth-validate's install set, so its cache.
+          cache-key-suffix: hearth
+
+      - name: Build the test server
+        shell: bash
+        run: |
+          set -eu
+          cmake --preset config-linux-gcc \
+            -DVCPKG_MANIFEST_FEATURES=hearth \
+            -DAC3FORGE_BUILD_HEARTH=ON \
+            -DAC3FORGE_BUILD_EXAMPLES=OFF
+          cmake --build --preset build-linux-gcc --target ac3hearth-testserver
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: esp32s3-sendspin-qemu
+          path: sendspin-qemu-image
+
+      - name: Install QEMU for Xtensa
+        shell: bash
+        run: |
+          set -eu
+          curl -sSfL --retry 3 -o /tmp/qemu-xtensa.tar.xz "$QEMU_XTENSA_URL"
+          echo "$QEMU_XTENSA_SHA256  /tmp/qemu-xtensa.tar.xz" | sha256sum -c -
+          mkdir -p /opt/qemu-xtensa
+          tar -xJf /tmp/qemu-xtensa.tar.xz -C /opt/qemu-xtensa
+          qemu="$(find /opt/qemu-xtensa -name qemu-system-xtensa -type f -print -quit)"
+          [ -n "$qemu" ] || { echo "::error title=Hearth Sendspin sink::qemu-system-xtensa is not in the release archive" >&2; exit 1; }
+          "$qemu" --version
+          echo "QEMU_XTENSA=$qemu" >> "$GITHUB_ENV"
+
+      - name: Play to the emulated board and hold its levels to a test sink's
+        shell: bash
+        run: |
+          tools/checks/run_sendspin_qemu.sh \
+            --qemu "$QEMU_XTENSA" \
+            --image sendspin-qemu-image \
+            --server build/config-linux-gcc/bin/ac3hearth-testserver \
+            --out sendspin-qemu-run
+
+      # B2's Improv provisioning, which the step above never reaches: its
+      # board has a network from boot. tools/checks/run_improv_qemu.sh boots
+      # the same image with its link down, gives it a network over Improv,
+      # brings the link up while it waits, and plays to the player it starts
+      # then. It also boots the WiFi build with nothing stored, which must come
+      # up once with its control surface and answer Improv. Before #741 the
+      # first board aborted and the second restarted in a loop. Each boots a
+      # copy of its image, since QEMU writes its NVS into the one it runs.
+      - name: Give the emulated board a network over Improv, and play to it
+        shell: bash
+        run: |
+          tools/checks/run_improv_qemu.sh \
+            --qemu "$QEMU_XTENSA" \
+            --image sendspin-qemu-image \
+            --wifi-image sendspin-qemu-image/wifi \
+            --server build/config-linux-gcc/bin/ac3hearth-testserver \
+            --out improv-qemu-run
+
+      - name: Upload the run
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hearth-esp32s3-sendspin
+          path: |
+            sendspin-qemu-run/qemu-sendspin.txt
+            sendspin-qemu-run/server.txt
+            sendspin-qemu-run/report.json
+          if-no-files-found: warn
+
+      - name: Upload the Improv run
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hearth-esp32s3-improv
+          path: |
+            improv-qemu-run/*/qemu-improv.txt
+            improv-qemu-run/late-network/server.txt
+            improv-qemu-run/late-network/report.json
+          if-no-files-found: warn
+
+  build-esp32c3:
+    name: Minimum-footprint codec (ESP32-C3, QEMU)
+    # Leg 7 of check-runners' Linux fan-out - split out of build-esp32s3 (leg
+    # 6) into its own job; see check-runners' comment beside LINUX_LEGS for
+    # why they were one job and why that stopped applying. Same profile, same
+    # probe, same fixtures as build-esp32s3 and build-footprint, on the third
+    # of decode_scalar_t's three targets: a RISC-V C3 with no floating-point
+    # unit, where build-esp32s3 is an Xtensa LX7 with one and build-footprint
+    # is a Cortex-M3 with neither.
+    #
+    # The fixed-point tier's own leg (planning/arithmetic-tiers.md, Phase D).
+    # What it's FOR is the hash check inside the runner: the tier promises PCM
+    # that is identical on every machine, integer arithmetic having no
+    # rounding mode or library last bit to differ by; the x86 host and the
+    # Cortex-M3 leg already agree, and two architectures agreeing is a
+    # coincidence a third can break. The runner holds this leg's
+    # <codec>.pcm_hash lines to the same pinned values
+    # (tests/golden/fixed-probe-pcm-hashes.json).
+    #
+    # espressif/idf is Espressif's own image and carries ESP-IDF, its
+    # toolchains AND both emulators, so this needs no composite action and no
+    # multi-gigabyte download step, the same reason build-esp32s3 uses it.
+    needs: check-runners
+    if: inputs.run_esp
+    runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_7) }}
+    container: espressif/idf:v6.1
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ inputs.fetch_depth }}
+
+      - name: Ensure QEMU for RISC-V is present
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          python "$IDF_PATH/tools/idf_tools.py" install qemu-riscv32
+          # And enable the target, which is a separate thing. idf_tools.py
+          # exports only the tools whose supported targets intersect the ones
+          # recorded in $IDF_TOOLS_PATH/idf-env.json, so on an installation
+          # that was set up for other targets alone the line above downloads
+          # qemu-system-riscv32 and export.sh still does not put it on PATH -
+          # `idf.py qemu` then reports it as not installed, several steps
+          # later and pointing at the install that just succeeded. Idempotent
+          # where the image already enables every target.
+          python "$IDF_PATH/tools/idf_tools.py" install --targets=esp32c3
+
+      - name: Report toolchain versions
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          idf.py --version
+          riscv32-esp-elf-g++ --version | head -1
+
+      - name: Build and run the FIXED-POINT probe on ESP32-C3 under QEMU
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          ./tools/checks/run_esp32c3_probe.sh
+
+      # The ESP32-C6 probe project, built and not run. ESP-IDF v6.1's
+      # qemu-system-riscv32 emulates the esp32c3 machine and no other RISC-V
+      # part, so this part's figures come from a board
+      # (docs/platforms/bare-metal/esp32-c6.md); what CI can hold is that both
+      # of its network loads still compile and link for the target, the WiFi
+      # one against IDF's radio and lwIP. Same container and toolchain as the
+      # C3 step above, so it costs two builds and no setup.
+      - name: Build the ESP32-C6 probe, both network loads (no emulator for this part)
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd apps/baremetal/platform/esp32c6
+          for load in none wifi; do
+            dir="$RUNNER_TEMP/esp32c6-$load"
+            defaults="sdkconfig.defaults"
+            if [ "$load" = wifi ]; then defaults="sdkconfig.defaults;sdkconfig.wifi"; fi
+            idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
+              "-DSDKCONFIG_DEFAULTS=$defaults" build
+          done
+
   build-footprint:
     name: Minimum-footprint decoder (arm-none-eabi, QEMU)
     # Leg 5 of check-runners' Linux fan-out: everything here runs inside the
@@ -2807,6 +3045,7 @@ jobs:
     # that the self-hosted image does not - route them only if/when
     # ci-runners bakes those toolchains into the fleet image.
     needs: check-runners
+    if: inputs.run_esp
     runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_5) }}
     container: ubuntu:26.04
     permissions:
@@ -2839,6 +3078,64 @@ jobs:
           AC3FORGE_FOOTPRINT_SUMMARY: ${{ runner.temp }}/footprint.txt
         run: ./tools/checks/run_baremetal_probe.sh
 
+      # The other direction of the same profile, on the same target. A second
+      # configure and build rather than a second fixture, because the two are
+      # mutually exclusive: on an ESP32-S3 with 277,400 bytes of internal SRAM
+      # free, decode peaks at 233,546, AC-3 encode at 201,770 and E-AC-3 encode
+      # at 243,770 - each fits alone and no two fit at once, so a library
+      # carrying both would be carrying something the part cannot run.
+      #
+      # Worth a leg rather than a local check. The encoder had never been
+      # compiled for a 32-bit embedded ABI before this profile existed, and the
+      # first attempt found four std::min calls that do not compile where
+      # int32_t is long int, a translation unit pulling in fmt for one
+      # presentation function, and a printf conversion newlib-nano does not
+      # carry. None of those were reachable from the decode side.
+      - name: Build and run the ENCODE probe under QEMU
+        run: ./tools/checks/run_baremetal_probe.sh --encoder
+
+      # The leg's one timing figure that reproduces: under QEMU -icount the
+      # probe's clock (its own preset, AC3FORGE_BAREMETAL_CLOCK=timer) counts
+      # instructions, deterministically, and the runner gates each fixture's
+      # count against docs/performance-trend.md's instructions-per-frame table.
+      - name: Instructions per frame under QEMU -icount
+        # Into the build directory, not ${{ runner.temp }}: on this container that
+        # expands to a host path tee cannot create ("No such file or directory"),
+        # and since tee is last in the pipeline under `sh -e` its failure fails the
+        # step - after the probe has already printed "pass", which makes it read as
+        # a probe regression that it is not. Same reason, same fix as build-esp32s3's
+        # AC3FORGE_ESP32S3_SUMMARY above.
+        run: ./tools/checks/run_baremetal_probe.sh --icount | tee "build/config-arm-none-eabi-minimal/icount.txt"
+
+      # The encode direction on the same terms. Both encoders are double
+      # throughout, so on this FPU-less leg every operation is a software call
+      # and the counts are several times the decode rows' - the figure an
+      # integrator sizing an encoder for a part without an FPU actually needs.
+      - name: Instructions per ENCODED frame under QEMU -icount
+        run: ./tools/checks/run_baremetal_probe.sh --encoder --icount | tee "build/config-arm-none-eabi-minimal/icount-encode.txt"
+
+      # The fixed-point tier on the same leg (planning/arithmetic-tiers.md):
+      # the probe built with -DAC3FORGE_DECODE_SCALAR=fixed, every fixture's
+      # levels gated as the float build's are, and its <codec>.pcm_hash lines
+      # kept: the tier is integer arithmetic, so those hashes are the same on
+      # this leg, on the host and on a RISC-V part by construction, and the
+      # step below holds this leg's to the pinned ones
+      # (tests/golden/fixed-probe-pcm-hashes.json), as the gold leg holds its
+      # native run's.
+      - name: Build and run the FIXED-POINT probe under QEMU
+        # Into the FLOAT build directory, which the first step of this job
+        # already created - not ${{ runner.temp }}, for the reason the -icount
+        # steps above give, and not this run's own -fixed directory either:
+        # the shell opens tee's file when it builds the pipeline, before the
+        # script has configured anything, so the target has to exist already.
+        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed | tee "build/config-arm-none-eabi-minimal/fixed-arm.txt"
+
+      - name: Fixed-point hashes against the pinned ones
+        run: python3 tools/checks/check_probe_hashes.py --expected tests/golden/fixed-probe-pcm-hashes.json "build/config-arm-none-eabi-minimal/fixed-arm.txt"
+
+      - name: Fixed-point instructions per frame under QEMU -icount
+        run: ./tools/checks/run_baremetal_probe.sh --scalar=fixed --icount | tee "build/config-arm-none-eabi-minimal/icount-fixed.txt"
+
       # The footprint table in docs/performance-trend.md is written by hand
       # from these numbers, so keep the run's own copy: a table nobody can
       # check against the run that produced it is a claim, not a measurement.
@@ -2847,6 +3144,24 @@ jobs:
         run: |
           set -eu
           python3 tools/checks/footprint_report.py             --probe "${{ runner.temp }}/footprint.txt"             --elf build/config-arm-none-eabi-minimal/bin/ac3probe             --map build/config-arm-none-eabi-minimal/apps/baremetal/ac3probe.map             --markdown >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "build/config-arm-none-eabi-minimal/icount.txt" ]; then
+            {
+              echo '### Instructions per frame (QEMU -icount)'
+              echo
+              echo '| Fixture | Instructions per frame |'
+              echo '| --- | --- |'
+              sed -n 's/^\([a-z0-9_]*\)\.instructions_per_frame=\([0-9]*\)$/| \1 | \2 |/p' "build/config-arm-none-eabi-minimal/icount.txt"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f "build/config-arm-none-eabi-minimal/icount-encode.txt" ]; then
+            {
+              echo '### Instructions per encoded frame (QEMU -icount)'
+              echo
+              echo '| Fixture | Instructions per frame |'
+              echo '| --- | --- |'
+              sed -n 's/^\([a-z0-9_]*\)\.instructions_per_frame=\([0-9]*\)$/| \1 | \2 |/p' "build/config-arm-none-eabi-minimal/icount-encode.txt"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload footprint artifacts
         if: always()
@@ -2860,29 +3175,29 @@ jobs:
 
   # Persists this run's gold-reference SNR numbers (docs/quality-trend.md) so
   # they outlive the CI run that produced them, instead of only ever living in
-  # a log that ages out. One job, not one push per leg: `needs: build` waits
-  # for every matrix leg, so this both (a) only runs when the hard gate passed
-  # everywhere - a leg failing fails `build` outright, which skips this job by
-  # its default `if`, so a broken run's numbers never get recorded - and
-  # (b) writes one commit per CI run instead of up to five racing to push at
-  # once. gold_reference is not set on linux-llvm-asan-ubsan, so it never
+  # a log that ages out. One job, not one push per leg: `needs:` waits for
+  # every platform's build-<os> job-call, so this both (a) only runs when the
+  # hard gate passed everywhere - a leg failing fails its platform's job-call
+  # outright, which skips this job by its default `if` (needing all three to
+  # succeed is GitHub Actions' own default for a job with `needs:` and no
+  # `always()`/`failure()` override - unchanged by the CI lane partitions
+  # split, just now checked per-platform instead of via one cross-OS job) -
+  # and (b) writes one commit per CI run instead of up to five racing to push
+  # at once. gold_reference is not set on linux-llvm-asan-ubsan, so it never
   # contributes an artifact; `download-artifact` only requires that at least
   # the pattern's namespace exist, not every leg specifically.
   #
-  # The quality-history branch (not gh-pages) holds the data: `mkdocs
-  # gh-deploy` replaces gh-pages' entire tree on every deploy (it is a
-  # publish-a-directory-as-a-branch tool, not an incremental one), which would
-  # silently wipe anything appended there that mkdocs itself didn't generate.
-  # A dedicated branch sidesteps that entirely, and - since this is a public
-  # repo - is fetchable client-side from raw.githubusercontent.com with no
-  # auth, no API rate limit, and no server: see docs/quality-trend.md's own
-  # script. That also decouples data collection (every main push) from the
-  # docs site's own publish cadence (also push to main, per docs.yml, but a
-  # separate job) - a push's numbers show up on the trend page without
-  # waiting on that job to finish.
+  # `needs: [build-windows, build-linux, build-macos]` rather than a narrower
+  # list looks like it could be defeated by a lane skip (docs/ci-lanes.md):
+  # `if: inputs.persist_quality_trend` is only ever true for a direct push to
+  # `main` (see that input's own description), and ci.yml's classify_changes
+  # wiring forces every `run_<lane>` true on that exact same trigger - so on
+  # the one trigger where this job can run at all, none of the three
+  # job-calls below is ever skipped for a lane reason. A skip here would
+  # still mean what it always has: something upstream did not run clean.
   quality-trend:
     name: Publish quality trend
-    needs: build
+    needs: [build-windows, build-linux, build-macos]
     if: inputs.persist_quality_trend
     runs-on: ubuntu-latest
     permissions:
@@ -2974,8 +3289,13 @@ jobs:
             # routinely finish within seconds of each other, so losing the
             # push race is an expected outcome rather than an error - it is
             # what "! [rejected] (fetch first)" on main means. Each writes its
-            # own data file, so rebasing onto whichever sibling won is
-            # conflict-free; only a genuine conflict stops the retry.
+            # own data file, so rebasing onto whichever SIBLING won is
+            # conflict-free. Rebasing onto another run of THIS publisher is
+            # not: both runs add records to the end of the same file, which is
+            # what failed main's quality trend on 2026-09-18 (run
+            # 35317914064). resolve_history_conflict.py keeps both runs'
+            # records and writes the derived window again; anything it cannot
+            # account for it refuses, and this step then fails as it used to.
             pushed=""
             for attempt in 1 2 3 4 5; do
               if git push -q origin quality-history 2>/dev/null; then
@@ -2984,7 +3304,10 @@ jobs:
               fi
               echo "push rejected (attempt ${attempt}); rebasing onto origin/quality-history"
               git fetch -q origin quality-history
-              git rebase -q origin/quality-history
+              if ! git rebase -q origin/quality-history; then
+                python3 "${GITHUB_WORKSPACE}/tools/ci/resolve_history_conflict.py"
+                GIT_EDITOR=true git rebase --continue
+              fi
               sleep $(( (RANDOM % 5) + 1 ))
             done
             if [ -z "${pushed}" ]; then

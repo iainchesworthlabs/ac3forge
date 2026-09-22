@@ -13,7 +13,7 @@
 // sub-4 GB RIFF/WAVE carrying the same chunks) file into an AdmDocument -
 // the ADM object graph plus the <chna> join table plus the decoded PCM.
 //
-// Roadmap item B1 phase 1 of 3 (see ROADMAP.md's "ADM BWF reader feeding the
+// Roadmap item B1 phase 1 of 3 ('s "ADM BWF reader feeding the
 // JOC encoder" entry): this module knows nothing about AC-3, E-AC-3 or the
 // JOC/Atmos object layer - it is a container + XML metadata reader only, the
 // same "codec-blind" shape as matroska::matroska, mp4::mp4 and
@@ -44,25 +44,17 @@
 namespace ac3adm {
 
 enum class AdmError : std::uint8_t {
-    kCannotOpen,        // path could not be opened for reading
-    kNotRiff,            // not a well-formed RIFF/RF64/BW64 WAVE file. Two cases: the file is
-                         // not RIFF at all (reserved, like kMissingFmt/kMissingData below -
-                         // libbw64 rejects that at open time through the same untyped exception
-                         // family, so it surfaces as kCannotOpen instead), OR its chunk table is
-                         // internally inconsistent - a chunk other than <data> declaring more
-                         // bytes than the file contains, which adm.cpp's chunk_sizes_fit()
-                         // refuses before libbw64 can allocate from that number
-    kMissingFmt,         // no <fmt > chunk found
-    kMissingData,        // no <data> chunk found
-    kUnsupportedFormat,  // <fmt > names a format no reader here decodes - a compressed WAVE
-                         // codec, or an integer width that is not a whole number of bytes.
-                         // IEEE-float/formatTag 3 used to land here (via kCannotOpen) and no
-                         // longer does: see model.hpp's PcmAudio comment. Reported precisely,
-                         // alongside kNotRiff/kMissingFmt/kMissingData, only on the float
-                         // reader's own container walk; a file libbw64 opens and then rejects
-                         // still surfaces as kCannotOpen, since its exceptions carry no type
-                         // this module could map from - see adm.cpp's own comment on
-                         // parse_bw64_path.
+    kCannotOpen,        // path could not be opened for reading, OR libbw64 opened it and then
+                         // rejected it (not RIFF at all, a missing mandatory chunk, an
+                         // unsupported <fmt > format) - all reported through the same untyped
+                         // exception family, with no distinguishing type this module could map
+                         // from, so every case in that family collapses to kCannotOpen rather
+                         // than inventing false precision - see adm.cpp's own comment on
+                         // parse_bw64_path
+    kNotRiff,            // the file's chunk table is internally inconsistent - a chunk other
+                         // than <data> declaring more bytes than the file contains, which
+                         // adm.cpp's chunk_sizes_fit() refuses before libbw64 can allocate from
+                         // that number
     kMalformedXml,       // <axml> content failed to parse: genuinely malformed XML (an
                          // unterminated tag, say), OR well-formed XML missing a mandatory ADM
                          // attribute/element - libadm's own parser reports both through the same

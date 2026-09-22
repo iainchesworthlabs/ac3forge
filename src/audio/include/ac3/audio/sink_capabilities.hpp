@@ -22,7 +22,7 @@
 // platforms today (see each backend/<platform>/sink_capabilities.cpp), so a
 // caller that wants the AC-3/E-AC-3/PCM question answered unconditionally
 // should fall back to enumerate_render_devices() rather than treat kNoBackend
-// as a hard failure - see 'ac3cli play' (roadmap UX9) for that fallback.
+// as a hard failure - see 'ac3cli play' (play/monitor follow mode) for that fallback.
 
 namespace ac3::audio {
 

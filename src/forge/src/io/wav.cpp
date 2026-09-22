@@ -307,7 +307,7 @@ std::expected<void, WavError> write_wav_f32(std::ostream& out,
     // capture whose length isn't known until the session ends), this never
     // needs to seek back and patch the header once the truth is known. That
     // makes it exactly as safe on an unseekable stream (a pipe to `-`) as it
-    // is on a plain file - see docs/cli/commands.md's "-" convention.
+    // is on a plain file - see docs/forge/cli/commands.md's "-" convention.
     out.write("RIFF", 4);
     put_u32(out, 36 + data_bytes);
     out.write("WAVE", 4);

@@ -33,6 +33,7 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/audio/playback_counter.hpp"
 #include "ac3/audio/ring_buffer.hpp"
 #include "alsa_support.hpp"
 
@@ -100,12 +101,21 @@ struct Opened {
     Pcm pcm;
     FormatChoice format;
     snd_pcm_uframes_t period = 0;
+    // Whether the hardware can pause and resume without losing what it
+    // holds; read from the parameter space that was accepted, since
+    // nothing can be asked of the handle once the worker owns it.
+    bool can_pause = false;
 };
 
 // Open `name` and configure it for `channels` of PCM at `sample_rate`, or
-// return nothing if it will not take them.
+// return nothing if it will not take them. `format_rejected` is reset to
+// false on entry and set true only when the channel/rate negotiation itself
+// is what refused - see start()'s use of it, and the Windows backend's
+// AUDCLNT_E_UNSUPPORTED_FORMAT check for the same distinction made precisely
+// rather than approximately.
 std::optional<Opened> open_configured(const std::string& name, std::uint32_t sample_rate,
-                                      std::uint16_t channels, bool quiet) {
+                                      std::uint16_t channels, bool quiet, bool& format_rejected) {
+    format_rejected = false;
     // The first of the two attempts start() makes is allowed to fail as a
     // matter of course, so it is silenced; the second is the one whose failure
     // the caller actually hears about, and alsa-lib's own line about it is
@@ -117,7 +127,7 @@ std::optional<Opened> open_configured(const std::string& name, std::uint32_t sam
     if (snd_pcm_open(&handle, name.c_str(), SND_PCM_STREAM_PLAYBACK, 0) < 0) {
         return std::nullopt;
     }
-    Opened opened{.pcm = Pcm{handle}, .format = {}, .period = 0};
+    Opened opened{.pcm = Pcm{handle}, .format = {}, .period = 0, .can_pause = false};
 
     HwParams params;
     if (!params || snd_pcm_hw_params_any(handle, params.get()) < 0 ||
@@ -136,6 +146,7 @@ std::optional<Opened> open_configured(const std::string& name, std::uint32_t sam
     // says no here is what the `plug` retry in start() is for.
     if (snd_pcm_hw_params_set_channels(handle, params.get(), channels) < 0 ||
         snd_pcm_hw_params_set_rate(handle, params.get(), sample_rate, 0) < 0) {
+        format_rejected = true;
         return std::nullopt;
     }
 
@@ -150,6 +161,7 @@ std::optional<Opened> open_configured(const std::string& name, std::uint32_t sam
         return std::nullopt;
     }
     opened.period = period;
+    opened.can_pause = snd_pcm_hw_params_can_pause(params.get()) == 1;
 
     SwParams software;
     if (software && snd_pcm_sw_params_current(handle, software.get()) >= 0) {
@@ -176,9 +188,9 @@ std::string_view describe(MonitorError error) {
     switch (error) {
         case MonitorError::kNoBackend: return "no monitor backend on this platform";
         case MonitorError::kComFailure: return "an ALSA call failed";
-        case MonitorError::kDeviceNotFound:
-            return "the requested playback device was not found, or will not play this many "
-                   "channels at this rate";
+        case MonitorError::kDeviceNotFound: return "the requested playback device was not found";
+        case MonitorError::kFormatRejected:
+            return "the device will not play this many channels at this rate";
         case MonitorError::kAlreadyRunning: return "monitor playback is already running";
         case MonitorError::kNotRunning: return "monitor playback is not running";
     }
@@ -189,11 +201,29 @@ struct MonitorSink::Impl {
     std::unique_ptr<RingBuffer> queue;
     std::jthread worker;
     snd_pcm_t* pcm = nullptr;
+    // Raised by start(). Lowered by stop(), or by the render thread itself
+    // when the device goes away under it (see the end of its loop).
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
     std::uint16_t channels = 0;
+    // What the render thread last read from the device, for position():
+    // snd_pcm_delay() is the frames it still has to play, against the frames
+    // handed over. Only the render thread touches the handle - alsa-lib's PCM
+    // object is not for two threads at once - so a position() on the caller's
+    // thread reads the counter.
+    PlaybackCounter counter;
+    // Whether the hardware can pause without losing what it holds
+    // (snd_pcm_hw_params_can_pause); see pause() for what happens when it
+    // cannot.
+    bool can_pause = false;
+    std::atomic_bool paused{false};
+    std::atomic_bool flushing{false};
+    std::atomic<std::uint64_t> flushes{0};
+    // How far the queue had been written when the flush was asked for: what
+    // the render thread drops.
+    std::atomic<std::size_t> flush_mark{0};
 };
 
 MonitorSink::MonitorSink() : impl_(std::make_unique<Impl>()) {}
@@ -207,13 +237,72 @@ bool MonitorSink::running() const {
 }
 
 MonitorStats MonitorSink::stats() const {
-    return {.frames_submitted = impl_->submitted.load(std::memory_order_relaxed),
-            .frames_rendered = impl_->rendered.load(std::memory_order_relaxed),
-            .underruns = impl_->underruns.load(std::memory_order_relaxed)};
+    return {.frames_submitted = impl_->submitted.load(),
+            .frames_rendered = impl_->rendered.load(),
+            .underruns = impl_->underruns.load()};
+}
+
+std::optional<MonitorPosition> MonitorSink::position() const {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
+        return std::nullopt;
+    }
+    const std::uint64_t queued_here = impl_->queue->available() / impl_->channels;
+    // snd_pcm_delay() already counts the whole path to the speaker, and it is
+    // reported as the device's queue; ALSA offers no separate figure beyond
+    // it, so there is no latency left to add.
+    return impl_->counter.position(queued_here, /*latency=*/0);
+}
+
+void MonitorSink::flush() {
+    if (!running()) {
+        return;
+    }
+    const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
+    impl_->flushing.store(true, std::memory_order_release);
+    for (int waited = 0; waited < 200; ++waited) {
+        if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    // The render thread did not get to it - a device that has stopped
+    // answering snd_pcm_wait. The flush is left for the thread to make when
+    // it next runs. It drops only what was queued before the mark, so audio
+    // submitted after this call returned is kept. A device whose recovery
+    // failed has ended the thread instead, which lowered `running` and ended
+    // the wait at once.
+}
+
+std::expected<void, MonitorError> MonitorSink::pause() {
+    if (!running()) {
+        return std::unexpected(MonitorError::kNotRunning);
+    }
+    // A device whose hardware cannot pause is stopped and prepared again
+    // instead, which drops the frames it was holding - up to a buffer's worth,
+    // the same frames a flush() would drop. The queue survives either way, so
+    // playback resumes from where the caller's stream had got to rather than
+    // from silence.
+    impl_->paused.store(true, std::memory_order_release);
+    return {};
+}
+
+std::expected<void, MonitorError> MonitorSink::resume() {
+    if (!running()) {
+        return std::unexpected(MonitorError::kNotRunning);
+    }
+    impl_->paused.store(false, std::memory_order_release);
+    return {};
+}
+
+bool MonitorSink::paused() const {
+    // A pause is a property of a running stream, so one whose device has
+    // gone is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
 }
 
 bool MonitorSink::can_submit() const {
-    if (!impl_->queue || impl_->channels == 0) {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
         return false;
     }
     // Room for at least ~20 ms at a typical rate, in samples (interleaved).
@@ -239,7 +328,7 @@ bool MonitorSink::submit(std::span<const float> interleaved) {
     if (wrote != interleaved.size()) {
         return false;
     }
-    impl_->submitted.fetch_add(interleaved.size() / impl_->channels, std::memory_order_relaxed);
+    impl_->submitted.fetch_add(interleaved.size() / impl_->channels);
     return true;
 }
 
@@ -252,13 +341,16 @@ void MonitorSink::stop() {
         snd_pcm_close(impl_->pcm);
         impl_->pcm = nullptr;
     }
+    // A pause is a property of a running stream, so it does not outlive one.
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
     impl_->running.store(false, std::memory_order_release);
 }
 
 std::expected<void, MonitorError> MonitorSink::start(const std::string& device_id,
                                                      std::uint32_t sample_rate,
                                                      std::uint16_t channels,
-                                                     std::uint32_t /*channel_mask*/) {
+                                                     std::uint32_t /*channel_mask*/, bool /*low_latency*/) {
     // channel_mask is a WASAPI speaker mask and has no ALSA counterpart: an
     // ALSA PCM stream carries a channel COUNT and the convention that the
     // channels are in the order the card documents. It is accepted and ignored
@@ -267,21 +359,33 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     if (running()) {
         return std::unexpected(MonitorError::kAlreadyRunning);
     }
+    // A render thread that ended because its device went away still has its
+    // handle open; stop() joins the one and closes the other. With nothing
+    // started it does nothing.
+    stop();
     if (channels == 0) {
         return std::unexpected(MonitorError::kComFailure);
     }
 
     const std::string name = device_id.empty() ? "default" : device_id;
-    auto opened = open_configured(name, sample_rate, channels, /*quiet=*/true);
+    bool format_rejected = false;
+    auto opened = open_configured(name, sample_rate, channels, /*quiet=*/true, format_rejected);
     if (!opened) {
         // Second chance through `plug`. Reached when the device is a raw one
         // that cannot itself do the caller's rate or channel count - and never
         // for `default`, which is already a plugin chain and either worked or
         // is not there at all.
-        opened = open_configured(through_plug(name), sample_rate, channels, /*quiet=*/false);
+        opened = open_configured(through_plug(name), sample_rate, channels, /*quiet=*/false,
+                                 format_rejected);
     }
     if (!opened) {
-        return std::unexpected(MonitorError::kDeviceNotFound);
+        // format_rejected reflects whichever of the two attempts above ran
+        // last: if `plug` was reached and still failed at the channel/rate
+        // step, that is the operative answer, same as the Windows backend's
+        // HRESULT from whichever Initialize call actually determined the
+        // failure.
+        return std::unexpected(format_rejected ? MonitorError::kFormatRejected
+                                                : MonitorError::kDeviceNotFound);
     }
     if (snd_pcm_prepare(opened->pcm.get()) < 0) {
         return std::unexpected(MonitorError::kComFailure);
@@ -292,9 +396,14 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     impl_->queue =
         std::make_unique<RingBuffer>(static_cast<std::size_t>(channels) * sample_rate);
     impl_->channels = channels;
-    impl_->submitted.store(0, std::memory_order_relaxed);
-    impl_->rendered.store(0, std::memory_order_relaxed);
-    impl_->underruns.store(0, std::memory_order_relaxed);
+    impl_->submitted.store(0);
+    impl_->rendered.store(0);
+    impl_->underruns.store(0);
+    impl_->counter.restart();
+    impl_->paused.store(false);
+    impl_->flushing.store(false);
+    impl_->flushes.store(0);
+    impl_->can_pause = opened->can_pause;
     impl_->running.store(true, std::memory_order_release);
     impl_->pcm = opened->pcm.release();
 
@@ -307,11 +416,81 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
 
         std::vector<float> chunk(samples_per_period);
         std::vector<std::byte> raw;
+        std::uint64_t handed_over = 0;
+        bool device_paused = false;
+        // Whether the pause in force was performed by dropping rather than by
+        // snd_pcm_pause, which decides how it is undone.
+        bool dropped_to_pause = false;
+        // Set when the loop ends because the device did - a recovery that
+        // failed, -ENODEV for a card unplugged - rather than because stop()
+        // asked it to. A device that goes while paused is found on resume,
+        // when the first wait or write fails.
+        bool lost = false;
 
         while (!stop.stop_requested()) {
+            // The device and the queue belong to this thread; pause() and
+            // flush() only raise a flag. A hardware pause keeps what the
+            // device holds; a device that cannot pause is dropped and
+            // prepared again, which loses it (see pause()).
+            const bool wanted_pause = impl_->paused.load(std::memory_order_acquire);
+            if (wanted_pause != device_paused) {
+                if (wanted_pause) {
+                    // snd_pcm_pause only works from RUNNING, and only on
+                    // hardware that claimed it: a stream still PREPARED (the
+                    // start threshold is a whole buffer, so an immediate
+                    // pause after start() is exactly that case) refuses it.
+                    // A refusal is not a pause, so fall through to the drop,
+                    // which always works and loses what the device held -
+                    // the same trade pause() documents for hardware that
+                    // cannot pause at all.
+                    const bool held = impl_->can_pause && snd_pcm_pause(pcm, 1) == 0;
+                    if (!held) {
+                        snd_pcm_drop(pcm);
+                        snd_pcm_prepare(pcm);
+                        // The dropped frames will never be heard, so what
+                        // the device was given is what it played, and it now
+                        // holds nothing.
+                        handed_over = impl_->counter.played();
+                        impl_->counter.report(handed_over, 0);
+                    }
+                    dropped_to_pause = !held;
+                } else if (!dropped_to_pause) {
+                    snd_pcm_pause(pcm, 0);
+                } else {
+                    // Dropped rather than paused, so the stream is PREPARED
+                    // and the writes below start it again; prepare() only
+                    // repeats what the drop path already did.
+                    dropped_to_pause = false;
+                }
+                device_paused = wanted_pause;
+            }
+            if (device_paused && !impl_->flushing.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+            if (impl_->flushing.exchange(false, std::memory_order_acq_rel)) {
+                // drop discards what the device holds; prepare puts the stream
+                // back in a state that can be written to.
+                snd_pcm_drop(pcm);
+                snd_pcm_prepare(pcm);
+                impl_->queue->discard_to(impl_->flush_mark.load(std::memory_order_acquire));
+                handed_over = 0;
+                impl_->counter.restart();
+                impl_->rendered.store(0, std::memory_order_relaxed);
+                impl_->submitted.store(0, std::memory_order_relaxed);
+                impl_->flushes.fetch_add(1, std::memory_order_release);
+                if (device_paused) {
+                    continue;
+                }
+            }
+            snd_pcm_sframes_t delay = 0;
+            if (snd_pcm_delay(pcm, &delay) == 0 && delay >= 0) {
+                impl_->counter.report(handed_over, static_cast<std::uint64_t>(delay));
+            }
             const int ready = snd_pcm_wait(pcm, kWaitMs);
             if (ready < 0) {
                 if (snd_pcm_recover(pcm, ready, /*silent=*/1) < 0) {
+                    lost = true;
                     break;
                 }
                 continue;
@@ -325,20 +504,31 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                 // Nothing queued: emit silence for the remainder, counted
                 // rather than hidden, matching PassthroughSink's discipline.
                 std::fill(chunk.begin() + static_cast<std::ptrdiff_t>(got), chunk.end(), 0.0f);
-                impl_->underruns.fetch_add(1, std::memory_order_relaxed);
+                impl_->underruns.fetch_add(1);
             }
             convert(chunk, format.kind, raw);
 
             const snd_pcm_sframes_t written = snd_pcm_writei(pcm, raw.data(), period);
             if (written < 0) {
                 if (snd_pcm_recover(pcm, static_cast<int>(written), /*silent=*/1) < 0) {
+                    lost = true;
                     break;
                 }
                 continue;
             }
-            impl_->rendered.fetch_add(got / channels, std::memory_order_relaxed);
+            handed_over += static_cast<std::uint64_t>(written);
+            impl_->rendered.fetch_add(got / channels);
         }
 
+        if (lost) {
+            // As in the Windows backend: the stream has ended with its
+            // device, and running() says so as a stop() would have it, so
+            // position(), submit(), flush(), pause() and resume() answer at
+            // once. Only the flag is touched; stop() still joins this thread,
+            // closes the handle and lowers the caller's `paused` and
+            // `flushing`.
+            impl_->running.store(false, std::memory_order_release);
+        }
         snd_pcm_drop(pcm);
     });
 

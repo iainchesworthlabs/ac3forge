@@ -131,11 +131,11 @@ distance, ViSQOL) show it trading SNR against per-band spectral shape. `kPercept
 currently loses at every rate tested - a real finding about the model's calibration on real
 material, not a claim this page is hiding.
 
-`eac3::FrameConfig::search` (roadmap EQ13) is the E-AC-3 side, narrower on purpose: CBR only,
+`eac3::FrameConfig::search` is the E-AC-3 side, narrower on purpose: CBR only,
 `kDistortion` only, and one axis (`dbpbcod`) rather than the two AC-3's search has, because
 E-AC-3 has no per-frame `fgaincod` to search yet. Measured on real CC0 stereo material, its effect
 is negligible at every rate tried - see [Encoding E-AC-3](encoding-eac3.md)'s own `search` row and
-ROADMAP.md's EQ13/EQ8 entries for the numbers and why a single-axis search over an already-tuned
+the encoder notes for the numbers, and why a single-axis search over an already-tuned
 default has little left to find.
 
 Reproducing the numbers needs material this project does not check in (the committed fixtures are

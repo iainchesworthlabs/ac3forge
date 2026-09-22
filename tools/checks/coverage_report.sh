@@ -11,7 +11,7 @@
 # src/forge - and "which module is thin" is exactly the question a
 # per-component table exists to answer.
 #
-# apps/cli is gated here too (roadmap VX15), not just src/. It is about 6,500
+# apps/cli is gated here too (coverage floors), not just src/. It is about 6,500
 # lines across seven command modules, it is the executable the codec matrix,
 # the gold-reference gate and the encoder-space fuzzer all drive, and it had
 # no floor at all - while the two CLI bugs this project has actually shipped
@@ -27,8 +27,19 @@
 # either putting Qt on the coverage job or standing up a second instrumented
 # leg - a separate decision with its own runner-time cost, not something to
 # smuggle in behind a threshold table. apps/gui's interactive surfaces are
-# covered by its own Qt Quick tests, and its one Qt-free class
-# (RecordingSink) is already in ac3tests.
+# covered by its own Qt Quick tests, and its Qt-free pieces are exercised by
+# ac3tests on every leg even though no row below gates them: RecordingSink
+# (since moved to apps/common) and, from 2026-09-06,
+# apps/gui/gui_diagnostics.cpp, whose whole reason for being Qt-free is that
+# the no-secrets rule it holds is checked on legs that build no window.
+#
+# apps/crucible is out of scope here for the same reason and gated anyway,
+# somewhere else: tools/checks/coverage_crucible.ps1 holds its line and branch
+# floors and runs on the Windows clang-cl leg, where a Qt kit already is
+# (.github/workflows/_build.yml, "Crucible coverage floor"). Most of that tree
+# only executes under Qt - the window, its controller, and the Qt Quick suites
+# that are the only thing driving its platform seams - so a figure taken in
+# this job would cover the platform-free engine core and nothing else.
 #
 # Run by .github/workflows/ci.yml's coverage job after `ctest`; runnable
 # locally the same way, from the repository root (see docs/building.md):
@@ -63,16 +74,16 @@ while getopts "b:g:" opt; do
     esac
 done
 
-if [ ! -f CMakePresets.json ]; then
+if [[ ! -f CMakePresets.json ]]; then
     echo "::error::coverage: run this from the repository root (CMakePresets.json not found)" >&2
     exit 2
 fi
 
 # Component floors, one row per component: <path> <line%> <branch%>. A path,
-# not a bare name, since roadmap VX15 added apps/ alongside src/.
+# not a bare name, since coverage floors added apps/ alongside src/.
 #
 # Calibrated 2026-08-20 (src/*) and 2026-08-24 (apps/cli, re-measured after
-# merging roadmap IO2's container-reader/probe work) against WSL2 runs on
+# merging container readers (mkv/mp4/ts)'s container-reader/probe work) against WSL2 runs on
 # the CI toolchain pins (gcov 15.2.0, gcovr 8.6), measured per component as:
 #
 #   forge 93.2/86.0 audio 34.2/22.8   signing 89.2/68.9  matroska 92.9/87.7
@@ -129,7 +140,7 @@ html="$build_dir/coverage.html"
 # artifact glob would have to chase), and prints the whole-library summary.
 #
 # --gcov-ignore-parse-errors=suspicious_hits.warn: mdct.cpp's
-# ForwardCosTable-driven hot loop (src/core/mdct.cpp) trips a documented gcov
+# ForwardCosTable-driven hot loop (src/forge/src/core/mdct.cpp) trips a documented gcov
 # bug (gcc.gnu.org/bugzilla#68080, a false "suspicious hit value" on a tight
 # accumulation loop) that otherwise aborts gcovr outright rather than just
 # under/over-reporting that one line's count - gcovr's own error message
@@ -148,7 +159,7 @@ gcovr --root . \
 
 fail=0
 while read -r comp line_min branch_min; do
-    [ -n "$comp" ] || continue
+    [[ -n "$comp" ]] || continue
 
     # A component with zero files in the trace is a broken measurement (built
     # without instrumentation, or not built at all - e.g. a coverage preset
@@ -186,7 +197,7 @@ echo
 echo "== apps/cli per command (reported, not gated) =="
 printf '%-26s %8s %8s\n' "module" "line" "branch"
 for src in apps/cli/*.cpp apps/cli/commands/*.cpp; do
-    [ -e "$src" ] || continue
+    [[ -e "$src" ]] || continue
     # --print-summary writes its two lines after the per-file table, so the
     # whole report is captured and those two picked out of it. Redirecting the
     # table away with --txt /dev/null takes the summary with it.

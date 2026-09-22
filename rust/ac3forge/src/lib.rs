@@ -21,9 +21,12 @@
 //! ```
 
 pub mod ac3;
+pub mod atmos;
 mod bytes;
 pub mod eac3;
 mod error;
+pub mod meter;
+pub mod stream;
 pub mod types;
 mod version;
 

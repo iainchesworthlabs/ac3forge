@@ -94,7 +94,9 @@ int main() {
         // curve, so the profile is this project's reading of it.
         .drc = ac3::meta::profile(ac3::meta::ProfileId::kFilmStandard),
         // §7.7.2, independent of drc: the two answer different questions, so a
-        // stream may carry either, both or neither.
+        // stream may carry either, both or neither. Both levels are stated at
+        // the output of an RF-mode decode, which normalises dialnorm and adds
+        // 11 dB with each word, so a -20 dBFS dialogue target needs no make-up.
         .heavy = ac3::meta::HeavyConfig{.dialogue_target_dbfs = -20.0,
                                         .peak_ceiling_dbfs = -0.5},
         // Tables 5.9 / 5.10. These always define the §7.8 downmix, whatever

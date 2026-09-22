@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 58> kOptionTokens{{
+constexpr std::array<OptionToken, 60> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -69,6 +69,7 @@ constexpr std::array<OptionToken, 58> kOptionTokens{{
     {"mode=", "performance (default) or reference - both transforms at once"},
     {"dither=", "off pins §7.3.4 dithflag at 0 wherever this command encodes"},
     {"joc-domain=", "atmos*/decode: mdct estimates JOC over 256 MDCT bins, not §7.1's QMF"},
+    {"numblkscod=", "atmos* encode: 0-3 (default 3), §E2.3.1.4 short syncframes of 1/2/3/6 blocks"},
     {"search=", "AC-3 encode, and eac3-encode under CBR: bit-allocation search, off (default)"},
     {"fgaincod=", "encode: auto (default) or 0..7, §7.2.2.4 fast gain pinned for the whole encode"},
     {"verify", "eac3-encode: decode every access unit as it's encoded and diff against it"},
@@ -85,10 +86,13 @@ constexpr std::array<OptionToken, 58> kOptionTokens{{
     {"layout=", "record/live: the encoded layout (default stereo)"},
     {"codec=", "record/live: ac3 or eac3, instead of deriving it from layout="},
     {"watchdog=", "record/live: capture-silence timeout in seconds (0 disables)"},
+    {"bed-only", "decode: render an Atmos stream's 5.1 bed and skip its objects (§6 JOC "
+                 "reconstruction needs ~233 KB of state; the bed does not)"},
     {"objects=", "live mode=atmos: the object-slot budget, 1..15"},
     {"positions=", "live mode=atmos: osc:[<bind>:]<port> - a real live object-position source"},
     {"downmix=", "live: off refuses an AC-3-only receiver instead of capping to 5.1 - "
-                "decode/monitor: loro, ltrt or mono fold the §7.8 output stage"},
+                "decode/monitor: loro, ltrt or mono fold the §7.8 output stage, auto follows "
+                "the stream's dmixmod"},
     {"follow=", "play: off refuses a sink that rejects the source format instead of "
                "transcoding to AC-3 or falling back to decoded PCM"},
     {"preset=", "qc: gate the measurement against a named delivery spec"},
@@ -96,13 +100,20 @@ constexpr std::array<OptionToken, 58> kOptionTokens{{
     {"detail=", "probe: frames or blocks - add per-access-unit/per-block detail"},
     {"fallback-51", "fmp4: also write the object-stripped 5.1 companion rendition"},
     {"mainid=", "ts: this service's A/52 Annex A main-service number"},
-    {"asvc=", "ts: the main service this one is associated with (A/52 Annex A)"},
+    {"asvc=", "ts: the main service(s) this one is associated with (A/52 Annex A) - a raw "
+             "0-255/0x00-0xFF mask, or a comma list of main-service numbers, e.g. asvc=0,2"},
     {"programme=", "decode/qc/levels: which independent substream (0..7) of a multi-programme "
                    "stream"},
-    {"programme2=", "eac3-encode: a second input file, encoded as its own independent substream"},
-    {"programme2-layout=", "eac3-encode: programme2's own layout (default stereo; not 1+1)"},
-    {"programme2-bitrate=", "eac3-encode: programme2's own bitrate in kbit/s"},
-    {"programme2-dialnorm=", "eac3-encode: programme2's own dialnorm, 1..31 (§5.4.2.8)"},
+    {"programme2=", "eac3-encode: another input file, encoded as its own independent substream "
+                   "(§E2.3.1.2's I1); programme3= up to programme8= work the same way, for I2-I7"},
+    {"programme2-layout=", "eac3-encode: that programme's own layout (default stereo; not 1+1) - "
+                           "programme3-layout= etc. the same way"},
+    {"programme2-bitrate=", "eac3-encode: that programme's own bitrate in kbit/s - programme3-bitrate= "
+                            "etc. the same way"},
+    {"programme2-<field>=", "eac3-encode: that programme's own metadata - the same key vocabulary "
+                            "the primary programme's own bare tokens above use (dialnorm=<1..31>|"
+                            "auto, bsmod=, mixdef=, pgmscl=, and the rest; see 'help eac3-encode') - "
+                            "programme3-<field>= etc. the same way"},
 }};
 
 // The note column of the usage listing starts here; a row whose spec already
@@ -211,7 +222,7 @@ void print_play_topic() {
     fmt::println("       ALSA; other backends fall back to the same live probe 'outputs' uses,");
     fmt::println("       noted on stderr when that happens). A source format the sink rejects");
     fmt::println("       gets an automatic fallback rather than a refusal: E-AC-3 on an");
-    fmt::println("       AC-3-only sink is transcoded to AC-3 first (roadmap DC9 feeding this");
+    fmt::println("       AC-3-only sink is transcoded to AC-3 first (stream tools feeding this");
     fmt::println("       same passthrough, the \"no 5.1 PCM over optical\" case in one command");
     fmt::println("       instead of two); a sink that bitstreams neither format falls back to");
     fmt::println("       decoded PCM ('monitor's own path, so a wide programme is folded per");
@@ -332,7 +343,9 @@ void print_decode_topic() {
     fmt::println("       by default so a plain invocation still emits the coded channels");
     fmt::println("       untouched: channels=2|1 applies dialnorm normalisation and folds down");
     fmt::println("       to that many channels (as-coded, the default, does nothing); downmix=");
-    fmt::println("       loro|ltrt|mono picks the fold (naming one implies channels=); ltrt-");
+    fmt::println("       loro|ltrt|mono picks the fold (naming one implies channels=), and");
+    fmt::println("       downmix=auto takes the stream's own dmixmod (§D3.1.1): Lt/Rt when it");
+    fmt::println("       prefers Lt/Rt, otherwise Lo/Ro (reserved and absent included); ltrt-");
     fmt::println("       phase=off takes §7.8.2's sign-only matrix instead of the real 90°");
     fmt::println("       surround phase shift; mix-lfe folds the LFE in too. drcmode=line|rf");
     fmt::println("       applies §7.7's two named consumer DRC modes, both with dialnorm");
@@ -370,7 +383,7 @@ void print_probe_topic() {
     fmt::println("       ranges, EMDF payload ids, OAMD/JOC with complexity_index and the");
     fmt::println("       object/bed configuration, whether an authenticity tag is present,");
     fmt::println("       per-frame CRC validity and how often each coding tool was used.");
-    fmt::println("       json=1 emits the ac3forge.probe/1 document instead (docs/cli/");
+    fmt::println("       json=1 emits the ac3forge.probe/1 document instead (docs/forge/cli/");
     fmt::println("       commands.md documents it as a stable contract); detail=frames adds");
     fmt::println("       a per-access-unit dump and detail=blocks adds each block's Annex E");
     fmt::println("       tools and exponent strategies. Exit code is non-zero if any frame");
@@ -524,6 +537,19 @@ void print_option_blocks(std::uint32_t mask) {
                      "part of mode= either way: unlike the two transform switches, these are "
                      "different answers rather than the same one at different speed, and the "
                      "default is already the domain the clause states");
+        fmt::println("  bed-only          decode: render an Atmos stream's 5.1 bed and skip §6 "
+                     "JOC object reconstruction. The bed is bit-identical either way - this "
+                     "is a MEMORY option, not a quality one: reconstruction needs an "
+                     "oba::joc::ReconstructionState (147,504 bytes in one block) plus a QMF "
+                     "pair, ~233 KB together, which does not fit on every target the library "
+                     "builds for (see docs/platforms/bare-metal/esp32-s3.md). Harmless on a stream with no "
+                     "object layer");
+        fmt::println("  numblkscod=<N>    atmos* encode: 0-3 (default 3), section E2.3.1.4's short "
+                     "syncframes of 1/2/3/6 blocks (5.3/10.7/16/32 ms). The object layer scales "
+                     "with the frame: the OAMD update's ramp covers exactly one shortened frame "
+                     "and the JOC matrix interpolates over the frame's own QMF timeslots, so "
+                     "objects update proportionally more often at the same cost in header "
+                     "repetition eac3-encode's numblkscod:N tools token already pays");
         fmt::println("  search=<what>     choose §7.2.2's transmitted bit allocation parameters "
                      "per frame from the reconstruction error a decoder will produce, instead of "
                      "the rate-derived defaults. distortion minimises that error; perceptual "
@@ -549,6 +575,12 @@ void print_option_blocks(std::uint32_t mask) {
                      "decoder-defined, so this is for a run that needs bit-for-bit agreement "
                      "with another decoder more than it needs dither's own perceptual benefit "
                      "(tools/checks/verify_gold_reference.sh is the one that does)");
+        fmt::println("  delta=off         skip §7.2.2.6 delta bit allocation - the corrections "
+                     "chosen per run from the real coefficients and the second fit that weighs "
+                     "them - wherever this command encodes; eac3-encode's [tools] argument has "
+                     "the bare nodelta token. The encoders' first effort level "
+                     "(planning/arithmetic-tiers.md): what a part with little time for the "
+                     "search gives up, measured on the ESP32-S3 page");
         fmt::println("  sign-objects      atmos/atmos-path/atmos-encode: write a keyed EMDF object "
                      "signature (needs signing-key=); see docs/concepts/object-signing.md");
         fmt::println("  verify-objects    decode/monitor: check each frame's EMDF object signature "
@@ -634,7 +666,7 @@ void print_option_blocks(std::uint32_t mask) {
         fmt::println("");
         fmt::println("probe options (probe; any order, after the positional arguments):");
         fmt::println("  json=1            emit the JSON document instead of the human table");
-        fmt::println("                    (schema ac3forge.probe/1 - docs/cli/commands.md)");
+        fmt::println("                    (schema ac3forge.probe/1 - docs/forge/cli/commands.md)");
         fmt::println("  detail=frames     add a per-access-unit dump: offsets, sizes, CRC,");
         fmt::println("                    substream headers and each frame's object layer");
         fmt::println("  detail=blocks     the same, plus every block's coding tools and");
@@ -726,8 +758,9 @@ void print_exit_codes() {
     fmt::println("  {}  runtime: the run started and then failed for none of the above reasons",
                  kExitRuntime);
     fmt::println("     - a capture device that stopped delivering audio (the record/live");
-    fmt::println("     watchdog), a loudness measurement with nothing above the gate, a signing");
-    fmt::println("     pass that could not complete.");
+    fmt::println("     watchdog), an output device that went away mid-playback, a loudness");
+    fmt::println("     measurement with nothing above the gate, a signing pass that could not");
+    fmt::println("     complete.");
     fmt::println("  {}  a QC gate failed. Distinct from {} so a CI step can tell 'the stream is",
                  kExitQcGate, kExitInput);
     fmt::println("     out of spec' (a result) from 'qc could not read the file' (a fault).");
@@ -750,7 +783,8 @@ void print_command_index(std::span<const CommandInfo> commands) {
 }
 
 void print_usage(std::span<const CommandInfo> commands) {
-    fmt::println("ac3forge — clean-room AC-3 / E-AC-3 (ATSC A/52) encoder/decoder");
+    fmt::println("Forge — the AC3Forge encoder tools: clean-room AC-3 / E-AC-3 (ATSC A/52) "
+                 "encoder/decoder");
     fmt::println("");
     print_command_index(commands);
     print_unavailable_reasons(commands);

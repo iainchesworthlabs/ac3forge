@@ -23,7 +23,7 @@
 
 int main() {
     const auto locations = ac3::plan::parse_channels("L,C,R,Ls,Rs,LFE,Ts,Lw,Rw");
-    if (!locations) {
+    if (!locations.has_value()) {
         fmt::printf("parse_channels failed\n");
         return 1;
     }
@@ -70,7 +70,7 @@ int main() {
             }
         }
         const auto unit = encoder.encode_access_unit(views);
-        if (!unit) {
+        if (!unit.has_value()) {
             fmt::printf("encode failed: %d\n", std::to_underlying(unit.error()));
             return 1;
         }

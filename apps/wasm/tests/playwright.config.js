@@ -4,7 +4,7 @@
 const path = require('path');
 const { defineConfig } = require('@playwright/test');
 
-// roadmap VX18(a): headless-browser coverage for the WASM demos -
+// WASM/mobile headless coverage(a): headless-browser coverage for the WASM demos -
 // docs/platforms/wasm.md's "Not yet verified" section names every
 // functional claim this closes. WASM_DEMO_DIR/WASM_ENCODE_DEMO_DIR point at
 // the directories apps/wasm/CMakeLists.txt's build produces
@@ -60,12 +60,42 @@ module.exports = defineConfig({
     projects: [
         {
             name: 'decode',
-            testMatch: 'decode.spec.js',
+            // Both specs drive the decode demo directory, so both belong to
+            // this project - worklet.spec.js is the AudioWorklet/Worker/
+            // SharedArrayBuffer pipeline over the same package/ and the same
+            // bundled fixture, not a separate demo needing its own server.
+            // A list, not a glob: an unmatched spec file is silently *no
+            // tests*, not an error, and worklet.spec.js sat unrun from the
+            // day it was added because the single-filename form here was
+            // never extended. Naming each file keeps that failure mode loud
+            // - a new spec that nothing lists shows up as a missing test in
+            // the run summary the moment anyone looks.
+            testMatch: ['decode.spec.js', 'worklet.spec.js'],
             use: { baseURL: decodeBase },
         },
         {
             name: 'encode',
             testMatch: 'encode.spec.js',
+            use: {
+                baseURL: encodeBase,
+                // The microphone-capture test needs a microphone: Chromium's
+                // fake media stack supplies a synthetic device (a tone) and
+                // auto-grants the getUserMedia permission prompt, so the test
+                // exercises the real capture path headlessly.
+                launchOptions: {
+                    args: [
+                        '--use-fake-ui-for-media-stream',
+                        '--use-fake-device-for-media-stream',
+                    ],
+                },
+            },
+        },
+        {
+            // The Atmos authoring page ships as a subdirectory of the encode
+            // demo (see apps/wasm/CMakeLists.txt), so it is served by the
+            // same server under the same base URL.
+            name: 'atmos',
+            testMatch: 'atmos.spec.js',
             use: { baseURL: encodeBase },
         },
     ],

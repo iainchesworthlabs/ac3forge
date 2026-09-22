@@ -12,7 +12,7 @@ page in this project, and the reason is specific rather than incidental.
 FFmpeg implements no JOC reconstruction — it decodes these streams as their
 5.1 bed and never produces objects to compare against. Dolby's own decoder
 does implement it, but [gates object decoding on a keyed authenticity
-tag](concepts/atmos-joc.md#two-honest-limitations) this project ships no key
+tag](concepts/atmos-joc.md#two-limitations) this project ships no key
 for, so it plays them as the bed too. Nothing outside this repository can
 currently produce an independent object decode of an ac3forge stream. What
 these numbers say is that this project's encoder and decoder still agree
@@ -178,13 +178,16 @@ a row toward 0 dB, not by a fraction of one. See `REGRESSION_DROP_DB` and
   }
 
   async function fetchTrack(branch) {
-    try {
-      const resp = await fetch(rawUrl(HISTORY_BRANCH, `object-quality-${branch}.jsonl`));
-      if (!resp.ok) return [];
-      return parseJsonl(await resp.text());
-    } catch (e) {
-      return [];
+    for (const file of [`object-quality-${branch}.recent.jsonl`, `object-quality-${branch}.jsonl`]) {
+      try {
+        const resp = await fetch(rawUrl(HISTORY_BRANCH, file));
+        if (!resp.ok) continue;
+        return parseJsonl(await resp.text());
+      } catch (e) {
+        // fall through to the authoritative full history
+      }
     }
+    return [];
   }
 
   // Same client-side, best-effort tag->release join as quality-trend.md -
@@ -508,8 +511,9 @@ branch into one line per object instead, which is how a single object
 drifting away from its four siblings becomes visible as its own line rather
 than something you would only find by cycling the focus selector.
 
-`develop` and `main` behave as on the sibling pages: `main`'s full history is
-the default view, `develop`'s frozen pre-2026-08-25 history is available as
+`develop` and `main` behave as on the sibling pages: `main`'s recent window
+is the default view (falling back to the full file while still small), and
+`develop`'s frozen pre-2026-08-25 history is available as
 an explicitly-labelled historical track (dashed, muted) via the "Show
 historical" control, and a 🏷 badge marks a row whose commit was tagged. This
 page's own history is thin enough that the distinction barely shows yet —
@@ -558,9 +562,10 @@ Four metrics, and only SNR is regression-checked:
 
 Same `quality-history` branch mechanism as
 [Quality trend](quality-trend.md#where-the-data-lives) and its siblings —
-`object-quality-<branch>.jsonl` this time, written by a job in `ci.yml`
-(`persist-object-quality-trend`) downstream of `ffmpeg-validate`'s
-compute-only `objects` step, on direct pushes to `main` only.
+`object-quality-<branch>.jsonl` this time, written by a job in `_ci-core.yml`
+(`persist-object-quality-trend`, called from `ci.yml`) downstream of
+`ffmpeg-validate`'s compute-only `objects` step, on direct pushes to `main`
+only.
 
 Unlike its siblings, this page's history has no `develop` era to show yet:
 neither `object-quality-develop.jsonl` nor `object-quality-main.jsonl` had

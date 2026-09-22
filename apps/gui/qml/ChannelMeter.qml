@@ -65,7 +65,7 @@ RowLayout {
         text: root.channelName
         color: Theme.text
         opacity: root.fed ? 1.0 : 0.45
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         font.family: Theme.monoFamily
         elide: Text.ElideLeft
         horizontalAlignment: Text.AlignRight
@@ -124,7 +124,7 @@ RowLayout {
               ? "-∞" : root.peakDb.toFixed(1)
         color: root.clipped ? Theme.accent700 : Theme.text
         opacity: root.fed ? 1.0 : 0.45
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         font.family: Theme.monoFamily
         horizontalAlignment: Text.AlignRight
     }
@@ -155,7 +155,7 @@ RowLayout {
             anchors.centerIn: parent
             text: qsTr("CLIP")
             color: root.clipped ? Theme.bg : Theme.neutral500
-            font.pixelSize: 8
+            font.pixelSize: Math.round(8 * Theme.fontScale)
             font.bold: true
         }
 

@@ -1,0 +1,10 @@
+PipeWire
+--------
+
+ac3crucible links libpipewire-0.3 (version {{PIPEWIRE_VERSION}} at build
+time) to tap each application, to make the silent device and to move the
+default sink. Copyright (c) 2018 Wim Taymans and the PipeWire contributors,
+under the MIT licence reproduced below. It is provided by your distribution
+and is not included in this package.
+
+{{FILE:PW_MIT}}

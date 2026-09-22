@@ -11,23 +11,29 @@ cmake --preset config-windows-msvc-debug && cmake --build --preset build-windows
 There is no bare `debug` preset — swap `windows-msvc` for whichever platform/compiler fragment matches your machine (`windows-llvm`, `linux-gcc`, `linux-llvm`, `linux-gcc-arm64`, `linux-llvm-arm64`, `macos-llvm`).
 
 Everything must pass before you push. There are no known-failing tests and no skips; if
-something fails, that is your change or a genuine regression, not noise.
+something fails, that is your change or a regression, not noise.
 
 ## Branches and pull requests
 
-The branch model is trunk-based: `main` is the only long-lived branch, and every topic branch
-merges straight into it — there is no separate integration branch to land on first. Topic
-branches are named `<type>/<short-name>`, with `<type>` one of `feature` or `bugfix` (a hotfix
-is just a `bugfix/*` branch — there is no separate hotfix flow) — CI's `Branch Name` check
-enforces `^(feature|bugfix)/[a-z0-9._-]+$` on every PR, and its error message points back to
-this file.
+The branch model is trunk-based (GitHub Flow): `main` is the only long-lived branch, and every
+topic branch merges straight into it — there is no separate integration branch to land on
+first. Topic branches are named `<type>/<short-name>`, with `<type>` one of `feature`,
+`bugfix`, `hotfix`, `docs`, or `chore`. The short name is lowercase letters and digits
+separated by single hyphens — no underscores, dots, spaces, other special characters, or
+trailing hyphens (for example `feature/eac3-decoder` or `chore/bump-packaging-manifests`).
+CI's `Branch Name` check enforces
+`^(feature|bugfix|hotfix|docs|chore)/[a-z0-9]+(-[a-z0-9]+)*$` on every PR, and its error
+message points back to this file.
 
 PRs target `main`. To merge, a PR must pass the required checks: `Branch Name`, the `CI Status`
-aggregate (every required CI job — the build/test matrix, clang-tidy, coverage, the
-FFmpeg-oracle validation and the rest), CodeQL's `Analyze (C++)`, and the `Scan dependency diff`
-dependency review; a merge queue serializes landing when several PRs are ready at once (see
+aggregate (every required CI job — the build/test matrix, coverage, the
+FFmpeg-oracle validation and the rest) and the `Scan dependency diff` dependency review; a
+merge queue serializes landing when several PRs are ready at once (see
 [.github/branch-protection.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/branch-protection.md)
-for the full required-check list and the merge-queue rationale). Releases are tags cut directly
+for the full required-check list and the merge-queue rationale). clang-tidy, CodeQL, MSVC
+PREfast and SonarCloud do not gate a PR: they run nightly against `main` and open a
+`nightly-analysis` issue when a run finds something new (same file, "Nightly analysis and
+other visible-only scanners"). Releases are tags cut directly
 from `main` — see [docs/releasing.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md).
 
 ## The clean-room rule
@@ -48,8 +54,29 @@ If you cannot cite where something came from, it does not go in.
 ## Repository layout
 
 **`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/forge` is
-the codec itself; `apps/{cli,gui,wasm,android}` are its consumers. Nothing under `src/` may
-depend on anything under `apps/`.
+the codec itself; `apps/{cli,gui,crucible,hearth,android,wasm,baremetal}` are its consumers, and
+`apps/common` is shared application code, compiled directly into its consumers. `apps/windows`
+holds Crucible's separately licensed null-sink driver and its guest VM. Nothing under `src/`
+may depend on anything under `apps/`.
+
+**The tree holds four products, and the directories say which is which.** `src/`
+other than `src/audio`, the bindings under `python/`, `js/` and `rust/`, and `examples/`,
+`fuzz/` and `apps/baremetal` are **the library** — `ac3forge` and `ac3::forge` name it, and
+those identifiers name its packages too. `apps/cli`, `apps/gui` and `apps/common` are
+**Forge**, the tooling pair, built and packaged as one thing. `apps/crucible`, with the driver
+in `apps/windows`, is **Crucible**. `apps/hearth`, `src/sendspin` and the `hearth_sink` example
+are **Hearth**. `apps/android` and `apps/wasm` are library demonstrations. `src/audio`, `tests/`,
+`tools/`, `cmake/`, `packaging/` and the version line are shared and owned by no one product.
+[The naming and scope plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/recasting.md)
+records what each member owns, down to the targets, packages and CI legs.
+
+**These naming rules govern prose and code.** `ac3forge` and
+`ac3::forge` name the library and the family's identifiers — the CMake project, the packages,
+the namespace, the C symbol prefix; **Forge**, capitalised and standing alone, names the
+`ac3cli` + `ac3gui` pair. "AC3Forge" is the family in prose, every identifier stays lowercase,
+and "AC3Forge Forge" is never written. `ac3cli --version` keeps printing `ac3forge <version>`
+(`src/forge/src/version.cpp`), because that is the library's version line and the published
+Homebrew formula's test asserts it.
 
 **The `ac3/` header prefix marks a dependency on `ac3::forge`, not just anything codec-adjacent.**
 A module installs its public headers under `include/ac3/<name>/` exactly when it depends on or
@@ -259,12 +286,61 @@ API, update the example — the build will tell you if you forget. Do not add a 
 docs that is not backed by a compiled file.
 
 If you add a capability or find a new limitation, the tables in
-[docs/index.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/index.md) ("What it
-does" / "What it does not do") and, for oracle coverage specifically,
+[docs/library/capabilities.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md)
+("What it does" / "What it does not do") and, for oracle coverage specifically,
 [docs/verification.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/verification.md)
 are the authority and must be updated with it. README.md's own summary of the same material
 should stay a summary, not grow back into a second copy. [docs/history.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/history.md) is a
 record of past work and is not maintained against the current state.
+
+**Voice.** No hyperbole, marketing copy, or flourishes. State the fact; do not set it up as
+"it is not A, it is B." Shorter is better. If two sentences say the same thing, keep one.
+
+Product and usage pages — Forge, Crucible, Hearth (except `design/`), install and first-run
+guides — are for a technical lay reader. Be clear, professional, and direct. Explain a domain
+term on the page that uses it, not in a summary that points there. Examples and screenshots
+belong where they show the thing being described, and they must match that context.
+
+Developer pages — the library, building, platforms, CI, `design/` records, `planning/` — assume
+a mid-level developer who does not already know this audio domain.
+
+**Put information in one place.**
+
+- README is the GitHub summary; `docs/index.md` routes readers into the site.
+- A product index states current status and links to tasks. A usage page explains one task.
+- A platform page records support and evidence for an operating system or device. Product
+  walkthroughs stay with the product and link to platform measurements.
+- `docs/concepts/` defines audio-domain terms. Developer pages link there when a term is not
+  explained locally.
+- `docs/performance-quality.md` and its trend pages own performance and quality reporting. Their
+  client-side code reads append-only data from the `quality-history` branch. Preserve those page
+  paths, element IDs, data names and branch-fed assets unless the data pipeline changes with them.
+- `CHANGELOG.md` records user-visible changes by release.
+- `ROADMAP.md` is the **status board** for in-flight, partial, proposed, blocked, and out-of-scope
+  work. It uses plain-English names; do not allocate new numeric roadmap IDs (`EQ1`, `UX12`, …).
+  Legacy IDs at the bottom of `ROADMAP.md` resolve old PR references only.
+- Product index pages (`docs/*/index.md`) and [`docs/library/capabilities.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md)
+  state **what ships today**.
+- Detailed implementation decisions belong in [`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning)
+  or a product's `design/` record. When a plan lands, update CHANGELOG and the product index; trim
+  the roadmap row; leave or mark the plan superseded ([`planning/SUPERSEDED.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/SUPERSEDED.md)).
+
+**Each product page set follows one shape.** An `index.md` opens with a status callout (what's
+built, what isn't, what's verified on real hardware versus under emulation or in CI only),
+sub-pages carry plain topic titles rather than repeating the product's binary name, and a
+`design/` subfolder holds phase records and promotion plans — evidence a reference page cites,
+not a guide a user reads first. [docs/crucible/design/promotion.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/crucible/design/promotion.md)
+and [docs/hearth/design/player-appliance.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/design/player-appliance.md)
+are the pattern to follow for a new one.
+
+**Non-trivial design work starts in `planning/`, not `docs/`.** A phase plan, a naming decision,
+or a proposal that touches more than a page or two belongs in
+[`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning) first —
+see [`planning/README.md`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning/README.md)
+for the index and how it relates to the roadmap. `docs/` describes what exists; `planning/` is
+where what might exist gets argued out first, and a page only moves (or a `design/` record
+gets written) once the work has actually landed. Plans link to the roadmap for status; they do
+not duplicate the roadmap's tables or allocate numeric roadmap IDs.
 
 ## Commits
 

@@ -8,9 +8,11 @@
 # "Scan dependency diff" (dependency-review.yml) - see .github/branch-protection.md.
 # Nothing merges without the full build/test matrix going green.
 #
-# codeql.yml, osv-scanner.yml, zizmor.yml and scorecard.yml are all
-# visible-only (upload to Security > Code scanning, never gate a PR - see
-# each workflow's own header), so a finding there does not block auto-merge.
+# osv-scanner.yml, zizmor.yml and scorecard.yml are all visible-only
+# (upload to Security > Code scanning, never gate a PR - see each workflow's
+# own header), and codeql.yml and msvc-analysis.yml run nightly against main
+# without ever reporting on a PR, so a finding from any of them does not
+# block auto-merge.
 #
 # Scope: only non-major updates auto-merge. For the grouped github-actions PR,
 # fetch-metadata reports the HIGHEST bump in the group, so a group containing

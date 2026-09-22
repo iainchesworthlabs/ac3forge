@@ -290,6 +290,12 @@ struct Tools {
     // real dither values are inherently decoder-specific).
     bool dither = true;
 
+    // §7.2.2.6 delta bit allocation (EncoderConfig::delta_allocation /
+    // eac3::FrameConfig::delta_allocation) - the first level of the encoders'
+    // effort axis, off with the "nodelta" token. Not a coding tool either: a
+    // stream without the corrections is a stream with dbaflde clear.
+    bool delta = true;
+
     // §E2.3.1.4: how many 256-sample blocks a syncframe carries - see
     // eac3::FrameConfig::numblkscod for what a value below the default 3
     // (six blocks) buys and what it forces off (AHT, the hoisted exponent-

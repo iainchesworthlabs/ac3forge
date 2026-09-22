@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn one bare-metal probe run into the footprint table (roadmap PF7).
+"""Turn one bare-metal probe run into the footprint table (minimum-footprint decoder profile).
 
     python3 tools/checks/footprint_report.py \\
         --probe /tmp/footprint.txt \\
@@ -103,7 +103,24 @@ def read_map(path: pathlib.Path) -> dict[str, dict[str, int]]:
         per_object.setdefault(name, {"text": 0, "bss": 0})[kind] += size
 
     pending: str | None = None
+    discarded = False
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        # GNU ld lists every --gc-sections casualty under this heading, ahead of
+        # the map proper. Those sections are not in the linked image, and
+        # counting them credits an object with code it did not contribute -
+        # here that inflated the .text column by ~36% (63 KiB), enough that it
+        # no longer reconciled with arm-none-eabi-size's own total. The block
+        # runs to the next column-0 heading ("Memory Configuration"); every
+        # entry inside it is indented, so an unindented line ends it.
+        if line.startswith("Discarded input sections"):
+            discarded = True
+            pending = None
+            continue
+        if discarded:
+            if line[:1].strip():
+                discarded = False
+            else:
+                continue
         full = _SECTION_FULL.match(line)
         if full:
             pending = None
@@ -174,16 +191,21 @@ def main() -> int:
             ("heap.peak_bytes", "Peak heap"),
             ("static.frame_decoder_bytes", "sizeof(ac3::FrameDecoder)"),
             ("static.eac3_decoder_bytes", "sizeof(ac3::Eac3Decoder)"),
-            ("static.pcm_bytes", "Caller-owned PCM (16 x 1536 float)"),
+            ("static.pcm_bytes",
+             "Caller-owned PCM (0: the probe reads the decoders' blocks in place)"),
         ):
             if key in probe:
                 rows.append((label, human(int(probe[key]))))
         for key, label in (
             ("ac3.steady_allocs_per_frame", "AC-3 allocations per frame (steady state)"),
             ("eac3.steady_allocs_per_frame", "E-AC-3 allocations per frame (steady state)"),
+            ("eac3_ecpl.steady_allocs_per_frame",
+             "E-AC-3 enhanced coupling allocations per frame (steady state)"),
+            ("eac3_stereo.steady_allocs_per_frame",
+             "E-AC-3 2/0 allocations per frame (steady state)"),
             ("ac3.first_frame_allocs", "AC-3 allocations, first frame"),
             ("eac3.first_frame_allocs", "E-AC-3 allocations, first frame"),
-            ("heap.leaked_bytes", "Leaked at exit"),
+            ("heap.retained_bytes", "Retained after teardown"),
         ):
             if key in probe:
                 rows.append((label, probe[key]))

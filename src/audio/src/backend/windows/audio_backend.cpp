@@ -1,26 +1,33 @@
 #include "ac3/audio/audio_backend.hpp"
 
-// Windows: all four capabilities are real. capture.cpp is WASAPI in shared
-// mode (input endpoints plus render endpoints opened for loopback),
-// passthrough.cpp is WASAPI in exclusive mode with an IEC 61937 format,
-// monitor.cpp is WASAPI in shared mode for ordinary PCM playback, and
-// spatial.cpp activates ISpatialAudioClient/ISpatialAudioObjectRenderStream -
-// so no Capability carries a reason - there is nothing to excuse. Whether a
-// given endpoint currently has a spatial sound format (Windows Sonic, Dolby
-// Atmos for Home Theater/Headphones, DTS:X) turned on is a per-endpoint,
-// runtime question answered by SpatialObjectSink::start()'s own
-// kNoSpatialFormat, not by this static report - exactly like passthrough's
-// per-device IsFormatSupported split.
+#include "ac3/audio/capture.hpp"
+
+// The Windows report: everything this tree knows how to do, it does over
+// WASAPI. One answer is the machine's rather than the build's - per-process
+// loopback exists from Windows 10 build 20348 on - so unlike the other
+// backends' constexpr tables this one is computed once, at first use.
 
 namespace ac3::audio {
 
 const AudioBackend& audio_backend() {
-    static constexpr AudioBackend kBackend{
-        .capture = {.available = true, .reason = {}},
-        .passthrough = {.available = true, .reason = {}},
-        .monitor = {.available = true, .reason = {}},
-        .spatial = {.available = true, .reason = {}},
-    };
+    static const AudioBackend kBackend = [] {
+        AudioBackend backend{
+            .capture = {.available = true, .reason = {}},
+            .passthrough = {.available = true, .reason = {}},
+            .monitor = {.available = true, .reason = {}},
+            .spatial = {.available = true, .reason = {}},
+            .process_loopback = {.available = true, .reason = {}},
+            .device_watch = {.available = true, .reason = {}},
+        };
+        if (!process_loopback_available()) {
+            backend.process_loopback = {
+                .available = false,
+                .reason = "per-process loopback capture needs Windows 10 build 20348 or "
+                          "later (AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK); this "
+                          "machine is older"};
+        }
+        return backend;
+    }();
     return kBackend;
 }
 

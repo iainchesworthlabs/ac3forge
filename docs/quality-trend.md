@@ -10,14 +10,22 @@ trended quality signal — the gate itself has run on every commit since it
 landed; what's below is what makes the *numbers*, not just the pass/fail,
 outlive the run that produced them.
 
-The gate's own threshold (currently 55 dB, see `MIN_SNR_DB` in
-`verify_gold_reference.sh`) is a fixed floor that always fails CI outright.
+The gate's own thresholds are fixed floors that always fail CI outright, and
+there is now one **per channel** rather than one per fixture — each derived
+from that channel's own lowest measurement across every leg and every recorded
+commit (`tools/checks/derive_channel_floors.py`). `MIN_SNR_DB` in
+`verify_gold_reference.sh` remains the scalar fallback for any check with no
+derived vector. [Validation](verification.md#one-floor-per-channel-not-one-per-file)
+carries the derivation and the reason: one floor across six channels turned out
+to be one gate on the worst channel and 30-70 dB of dead slack on the rest.
 On top of that, the append step applies two trailing-baseline checks against
 each run's own leg/codec history: a soft one (0.5 dB below the trailing
 10-run mean) that only annotates a row below, never fails anything, and a
 hard one (10 dB below that mean) that *does* fail the run — after the
 numbers are still recorded here, so a big regression is never silently
-un-recorded just because it also failed. See `REGRESSION_DROP_DB` and
+un-recorded just because it also failed. That failure is the `Publish quality
+trend` job in `_build.yml`, surfaced through `ci.yml`'s `build-and-test` call;
+it is not one of `_ci-core.yml`'s trend jobs. See `REGRESSION_DROP_DB` and
 `HARD_REGRESSION_DROP_DB` in `tools/ci/append_quality_history.py`.
 
 Every point below is measured against `tests/golden/audio/reference_51.wav`,
@@ -134,14 +142,35 @@ that question — see [Landscape](landscape.md) and
     return text.split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l));
   }
 
+  // The trailing window first, the full history only if it is not there.
+  //
+  // The history files on quality-history are append-only and unbounded -
+  // main.jsonl passed 1.7 MB and develop.jsonl 1.8 MB by September 2026 - and
+  // this page was fetching BOTH in full to render TABLE_ROWS entries per
+  // series. 3.5 MB of download to display fifty commits' worth of it, growing
+  // with every merge.
+  //
+  // The window is produced by tools/ci/append_quality_history.py rather than
+  // requested here, because requesting it does not work: an HTTP suffix Range
+  // is the natural fix and `Range` is not a CORS-safelisted request header, so
+  // a cross-origin fetch preflights and raw.githubusercontent.com answers
+  // OPTIONS with a 403. Verified from this very origin - the plain fetch
+  // returns 1789155 bytes, the ranged one fails outright.
+  //
+  // Falling back rather than assuming: a page served before that script first
+  // ran, or a branch whose window has not been generated, still renders from
+  // the full file exactly as it always did.
   async function fetchTrack(branch) {
-    try {
-      const resp = await fetch(rawUrl(HISTORY_BRANCH, `${branch}.jsonl`));
-      if (!resp.ok) return [];
-      return parseJsonl(await resp.text());
-    } catch (e) {
-      return [];
+    for (const file of [`${branch}.recent.jsonl`, `${branch}.jsonl`]) {
+      try {
+        const resp = await fetch(rawUrl(HISTORY_BRANCH, file));
+        if (!resp.ok) continue;
+        return parseJsonl(await resp.text());
+      } catch (e) {
+        // Try the next candidate; only a total failure of both yields [].
+      }
     }
+    return [];
   }
 
   // Maps a commit SHA to the release tagged at it, keyed off the GitHub
@@ -201,6 +230,47 @@ that question — see [Landscape](landscape.md) and
 
   function channelBreakdownText(r) {
     return r.channels_db.map((v, i) => `${channelLabel(i, r.channels_db.length)} ${v.toFixed(2)} dB`).join(" · ");
+  }
+
+  // --- Per-channel floors ---------------------------------------------------
+  // Each channel is gated against its own floor, so the channel closest to
+  // FAILING is not generally the channel with the lowest number - on these
+  // 5.1 fixtures the surrounds are always lowest and are also, by design, the
+  // furthest above their own (much lower) floors. A table that shows only the
+  // worst dB therefore shows the same two channels forever and never the one
+  // actually at risk.
+  //
+  // Records written before per-channel floors carry no thresholds_db. They
+  // render "-" rather than a computed-from-a-scalar number: the old rows were
+  // gated on one floor for all channels, and inventing a per-channel
+  // margin for them would make history look like it had a gate it did not.
+  function hasPerChannelFloors(r) {
+    return Array.isArray(r.thresholds_db) && r.thresholds_db.length === r.channels_db.length;
+  }
+
+  function tightestIndex(r) {
+    if (typeof r.tightest_channel === "number") return r.tightest_channel;
+    let best = 0;
+    for (let i = 1; i < r.channels_db.length; i++) {
+      if (r.channels_db[i] - r.thresholds_db[i] < r.channels_db[best] - r.thresholds_db[best]) best = i;
+    }
+    return best;
+  }
+
+  function tightestMarginText(r) {
+    if (!hasPerChannelFloors(r)) return "—";
+    const i = tightestIndex(r);
+    const margin = r.channels_db[i] - r.thresholds_db[i];
+    return `${channelLabel(i, r.channels_db.length)} +${margin.toFixed(2)} dB`;
+  }
+
+  function marginBreakdownText(r) {
+    if (!hasPerChannelFloors(r)) {
+      return "Gated on a single floor for every channel - this row predates per-channel floors.";
+    }
+    return r.channels_db.map((v, i) =>
+      `${channelLabel(i, r.channels_db.length)} ${(v - r.thresholds_db[i]).toFixed(2)} dB over ${r.thresholds_db[i]}`
+    ).join(" · ");
   }
 
   // The records currently in scope given the historical toggle - both the
@@ -382,6 +452,7 @@ that question — see [Landscape](landscape.md) and
           <td>${r.codec} @ ${r.bitrate_kbps} kbps</td>
           <td>${check}</td>
           <td title="${channelBreakdownText(r)}">${worstChannelLabel(r)} ${r.worst_db.toFixed(2)} dB</td>
+          <td title="${marginBreakdownText(r)}">${tightestMarginText(r)}</td>
           <td>${releaseBadge}</td>
           <td>${flag}</td>
         </tr>`;
@@ -391,7 +462,7 @@ that question — see [Landscape](landscape.md) and
       return '<p class="quality-trend-status">No rows in the current view - try a different branch/codec combination.</p>';
     }
     return `<div class="quality-trend-table-wrap"><table>
-      <thead><tr><th>Date</th><th>Branch</th><th>Commit</th><th>Leg</th><th>Codec</th><th>Check</th><th>Worst channel</th><th>Release</th><th></th></tr></thead>
+      <thead><tr><th>Date</th><th>Branch</th><th>Commit</th><th>Leg</th><th>Codec</th><th>Check</th><th>Worst channel</th><th>Tightest margin</th><th>Release</th><th></th></tr></thead>
       <tbody>${trs}</tbody>
     </table></div>`;
   }
@@ -485,7 +556,7 @@ that question — see [Landscape](landscape.md) and
   }
 
   function render(allRecords, releasesBySha) {
-    // Leg view always looks at one branch's full history - the whole point
+    // Leg view looks at one branch's fetched history window - the whole point
     // is seeing a per-leg trend over many commits, so the develop-collapse
     // and other-branch filters that branch view uses don't apply here.
     const visible = state.view === "leg"
@@ -548,7 +619,8 @@ the chart rather than something you'd only catch by scanning the table leg
 by leg. Both views read the same underlying rows; nothing about which view
 is active changes what counts as a regression in the table below.
 
-`main`'s full history is the default view. Before 2026-08-25's move to
+`main`'s recent window is the default view, with the full history used while
+it still fits that window. Before 2026-08-25's move to
 trunk-based development (see "Where the data lives" below), `develop` was
 the everyday integration branch nearly every commit landed on and `main`
 only advanced on a release promotion, so the two really were separate
@@ -584,19 +656,75 @@ across every leg and commit recorded so far — which tracks with the encoder
 allocating fewer bits to the less-dominant surround channels, not a
 per-run fluke.
 
+The **tightest margin** column is the one to watch, and it is deliberately a
+different question. Every channel is gated against its *own* floor now (see
+[Validation](verification.md#one-floor-per-channel-not-one-per-file) for how
+those floors are derived), and the channel closest to failing is not the
+channel with the lowest number — usually the reverse. The surrounds are lowest
+*and* have the lowest floors, so they typically sit further above their gate
+than a front channel does above its much higher one. Hovering shows every
+channel's margin.
+
+Rows written before per-channel floors show `—` here rather than a number.
+They were gated on one floor shared by all six channels, and
+back-computing a per-channel margin for them would make the history look like
+it carried a gate it did not have. The `worst channel` column is directly
+comparable across that boundary; this one is not, by construction.
+
+A regression is now flagged when **any channel** falls 0.5 dB below its own
+trailing average, not only when the worst channel does. That closed a real
+hole: the worst channel was the same dither-dominated surround on every single
+run, so a front channel could fall a long way without the trend check ever
+looking at it.
+
 A 🏷 badge marks a row whose commit was tagged as a GitHub release (fetched
 client-side from the GitHub API, best-effort — it silently shows nothing if
 that call is rate-limited or offline). Release tagging happens after the
 fact, on an existing `main` commit, so the badge is a join against the
 commit SHA already in quality-history, not a separate data source.
 
+## The fixed-point decode has its own series too
+
+`_fixed`-suffixed checks are the gate run against a decoder built with
+`-DAC3FORGE_DECODE_SCALAR=fixed` - Q7.24 integer arithmetic under a block
+exponent, the tier for a part with no FPU
+([`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)).
+It differs from the double decode at 121 dB and above on the gold streams
+(`tools/checks/check_decode_scalar_snr.py`, held to 110 in CI), which is as
+far below this gate's coding noise as the float32 decode's 139, so the same
+reading applies: the series exists to show the arithmetic contributes nothing
+this gate can see, and would show a lost bit the day it did.
+
+## The float32 decode has its own series
+
+`_float32`-suffixed checks are the same gate run against a decoder built with
+`-DAC3FORGE_DECODE_SCALAR=float` — the arithmetic the minimum-footprint profile
+uses, and the arithmetic every fixture on both bare-metal legs is decoded
+through. Until that option existed the float32 path could not be built into
+anything with a CLI, so nothing here had ever measured it: `docs/building.md`
+carried a single hand-taken SNR figure and nothing re-derived it.
+
+Measured against the double build, channel for channel, it comes out **the
+same to the resolution this gate reports** — 18.47, 45.63, 51.47, 54.67, 88.21,
+35.89, 36.45 dB and so on, identically. That is not the two decodes being
+bit-identical; they differ at about 139 dB
+(`tools/checks/check_decode_scalar_snr.py`). It is that this gate's SNR is
+dominated by *coding* noise 80 dB above that difference, so float32 contributes
+nothing measurable to the error budget the quality gate actually measures.
+
+The chart shows one line per codec (`check === codec`), so these sit in the
+history data rather than on it — the point of trending them is that a future
+change to the float32 path shows up as a divergence from the double series,
+which is a comparison no single figure in a document can make.
+
 ## Where the data lives
 
 Results are appended to a dedicated `quality-history` branch (`develop.jsonl`
 / `main.jsonl`), not `gh-pages` — `mkdocs gh-deploy` replaces gh-pages'
 entire tree on every deploy, which would silently discard anything appended
-there outside of what `mkdocs build` itself generates. This page fetches the
-two files directly from `raw.githubusercontent.com` client-side, so a new
+there outside of what `mkdocs build` itself generates. This page prefers each
+history's generated `.recent.jsonl` window and falls back to the full file,
+both fetched from `raw.githubusercontent.com`, so a new
 push shows up here without waiting on a docs deploy (which,
 per [docs.yml](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/docs.yml),
 only runs on push to `main`).
@@ -625,3 +753,14 @@ run but the last, silently dropping the gold-reference gate — and this
 page's append step with it — before either finished. Push runs are now keyed
 per-commit so this can't happen going forward; the specific commits already
 lost to it were backfilled by hand rather than left blank.
+
+Per-commit runs mean two of them can write here at once, which is what
+happens when several pull requests merge within a build's runtime. The run
+that pushes second is rejected, rebases onto the first, and meets a conflict:
+both runs added records to the end of the same file.
+[`tools/ci/resolve_history_conflict.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/resolve_history_conflict.py)
+settles it by keeping both runs' records and writing the `.recent.jsonl`
+window again from the result, so what this page reads carries every commit's
+numbers whichever run finishes first. Anything it cannot account for fails the
+publishing job rather than being guessed at, which is what happened to
+`main@681a083a` on 2026-09-18 before the script existed.

@@ -1,10 +1,20 @@
 # Quick start
 
-Clone to first encode in under ten minutes. This page shows the shortest path; see
-[building.md](building.md) for the full preset list, building without Qt, the Linux GUI opt-in,
-and machine-local preset overrides.
+Choose the path that matches what you want to run:
 
-## Prerequisites
+| Goal | Instructions |
+|---|---|
+| Install the `ac3cli` and `ac3gui` applications | [Install Forge](forge/index.md#installing) |
+| Build the library, CLI, and tests from source | Continue below |
+| Build and flash an ESP32-S3 network player | [Set up a Hearth sink](hearth/sink-esp32-s3.md) |
+| Use another platform or interface | [Choose a platform](platforms/index.md) |
+
+## Build from source
+
+This path builds the library, CLI, and tests on Windows or Linux. See
+[Building from source](building.md) for macOS, all presets and options, and troubleshooting.
+
+### Prerequisites
 
 | | Version | Notes |
 |---|---|---|
@@ -14,7 +24,7 @@ and machine-local preset overrides.
 | [vcpkg](https://github.com/microsoft/vcpkg) | any recent, with `VCPKG_ROOT` set | Supplies Catch2 (plus Boost/Tracy only for the opt-in `adm`/`profiling` features — see [building.md](building.md)). |
 | Qt | 6.5+ prebuilt | **GUI only.** Never from vcpkg — see [building.md](building.md). |
 
-## Configure, build, test
+### Configure, build, and test
 
 === "Windows"
 
@@ -38,15 +48,14 @@ and machine-local preset overrides.
     ctest --preset test-linux-gcc-debug
     ```
 
-    Swap `gcc` for `llvm` to build with Clang instead. The GUI is opt-in here via
-    `-DAC3FORGE_BUILD_GUI=ON` rather than on by default.
+    Swap `gcc` for `llvm` to build with Clang. The GUI defaults off on Linux; enable it with
+    `-DAC3FORGE_BUILD_GUI=ON`.
 
-That's it — the vcpkg toolchain file supplies Catch2, the presets pin the exact compiler, and
-`ctest` runs the full suite (the Catch2 tests plus one ctest entry per example program). See
-[building.md](building.md) for Release presets, the `ci-<platform>` workflow presets that chain
-all three steps in one command, and what to do when no compiler is found.
+The vcpkg toolchain supplies Catch2, the preset selects the compiler, and `ctest` runs the test
+suite and compiled examples. [Building from source](building.md) covers release presets,
+workflow presets, and compiler-detection errors.
 
-## Write your first encoder
+## Call the library from C++
 
 Two headers and about a dozen lines to encode a frame. This is excerpted from
 [`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_ac3.cpp),
@@ -76,12 +85,10 @@ for (int frame = 0; frame < 31; ++frame) {
 }
 ```
 
-## Where to go next
+## Next steps
 
-- [Library conventions](library/index.md) — the full API reference: `ac3::eac3::FrameEncoder`
-  and `AccessUnitEncoder`, both decoders, `ac3::io::scan`, the spatial object layer, the Atmos
-  encoder, and `matroska::mux`.
-- [CLI reference](cli/index.md) — `ac3cli`, the thirty-nine-command front end, for encoding and
-  decoding from the shell without writing any C++.
-- [GUI guide](gui/index.md) — `ac3gui`, the Qt Quick front end: file and live-capture encoding,
-  a plan view for placing objects, and channel-level metering.
+- [Library](library/index.md) — C++ API, modules, and package integration.
+- [CLI reference](forge/cli/index.md) — encode, decode, inspect, and validate from a shell.
+- [GUI guide](forge/gui/index.md) — file and live audio, objects, metadata, and quality checks.
+- [Crucible](crucible/index.md) — capture and position desktop applications.
+- [Hearth](hearth/index.md) — ESP32 network playback and desktop-player status.

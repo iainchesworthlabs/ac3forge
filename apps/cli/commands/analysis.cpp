@@ -30,6 +30,7 @@
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/qc.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 #include "ac3/spatial/spatial.hpp"
@@ -38,7 +39,7 @@ namespace ac3cli::commands {
 
 namespace {
 
-// --- qc (roadmap C2) --------------------------------------------------------
+// --- qc (bitstream-aware loudness QC) --------------------------------------------------------
 // Bitstream-aware loudness QC: decode a whole stream, measure it with the
 // real BS.1770-4/EBU Tech 3342 meter (the same ac3::meta::LoudnessMeter
 // dialnorm=auto already uses), and compare the result against what the
@@ -328,8 +329,8 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
     for (const auto& frame : *frames) {
         const auto decoded = decoder->decode_substream(frame);
         if (!decoded) {
-            fmt::println(stderr, "error: decode failed (code {})",
-                         static_cast<int>(decoded.error()));
+            fmt::println(stderr, "error: decode failed: {}",
+                         ac3::describe(decoded.error()));
             return std::nullopt;
         }
         // §3.7: this substream's frame is being held back pending transient
@@ -380,7 +381,7 @@ std::optional<QcResult> measure_qc_eac3_bed(std::span<const std::byte> stream, i
     return result;
 }
 
-// layout=rendered's E-AC-3 counterpart (roadmap IO10): measures the whole
+// layout=rendered's E-AC-3 counterpart (legacy item IO10): measures the whole
 // assembled program - the independent substream's bed with every dependent's
 // height, wide and rear channels laid over it, in Table E2.5 location order -
 // through BS.1770-5 Annex 3's extended algorithm, which weights each channel
@@ -426,8 +427,8 @@ std::optional<QcResult> measure_qc_eac3_rendered(std::span<const std::byte> stre
     for (const auto& unit : *units) {
         const auto decoded = decoder->decode_access_unit(unit);
         if (!decoded) {
-            fmt::println(stderr, "error: decode failed (code {})",
-                         static_cast<int>(decoded.error()));
+            fmt::println(stderr, "error: decode failed: {}",
+                         ac3::describe(decoded.error()));
             return std::nullopt;
         }
         if (!decoded->has_value()) {
@@ -533,7 +534,7 @@ std::optional<ac3::eac3::chanmap::Layout> object_render_target(ac3::plan::Layout
     }
 }
 
-// objects=<layout> (roadmap IO12): BS.1770-5 Annex 4, which prescribes no
+// objects=<layout> (legacy item IO12): BS.1770-5 Annex 4, which prescribes no
 // weighting table of its own - it says to render object-based (or combined
 // channel- and object-based) audio to a real loudspeaker configuration first,
 // meter THAT through Annexes 1/3 (measure_qc_eac3_rendered above is exactly
@@ -574,17 +575,27 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
         fmt::println(stderr, "error: not a valid E-AC-3 stream");
         return std::nullopt;
     }
-    auto decoder = std::make_unique<ac3::Eac3Decoder>(ac3::DecoderConfig{.programme = programme});
+    // Named rather than a temporary passed straight to the decoder: lfe_delay
+    // below reads .joc_domain back off it, so the two can never disagree on
+    // which domain the reconstruction this measurement actually decodes with.
+    const ac3::DecoderConfig decoder_config{.programme = programme};
+    auto decoder = std::make_unique<ac3::Eac3Decoder>(decoder_config);
     std::optional<ac3::meta::LoudnessMeter> meter;
     QcProgrammeResult result;
     result.label = "objects";
     bool have_first = false;
+    // The panned object buffers below are JOC-reconstructed and so lag the
+    // bed LFE buffer beside them by reconstruction_delay(joc_domain) samples
+    // (LfeDelayLine's own comment, apps/cli/support.hpp) - held back to match
+    // before either reaches the meter.
+    LfeDelayLine lfe_delay{
+        static_cast<std::size_t>(ac3::oba::joc::reconstruction_delay(decoder_config.joc_domain))};
 
     for (const auto& unit : *units) {
         const auto decoded = decoder->decode_access_unit(unit);
         if (!decoded) {
-            fmt::println(stderr, "error: decode failed (code {})",
-                         static_cast<int>(decoded.error()));
+            fmt::println(stderr, "error: decode failed: {}",
+                         ac3::describe(decoded.error()));
             return std::nullopt;
         }
         if (!decoded->has_value()) {
@@ -593,7 +604,7 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
         const auto& out = **decoded;
         if (!have_first) {
             have_first = true;
-            if (!out.object_metadata || !out.object_metadata->program.dynamic_only) {
+            if (!out.object_metadata.has_value() || !out.object_metadata->program.dynamic_only) {
                 fmt::println(stderr,
                              "error: programme {} carries no dynamic-object-only OAMD - "
                              "objects= needs OAMD dynamic objects (try layout=rendered or "
@@ -618,13 +629,18 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
         // as "no object update this unit" rather than the refusal the FIRST
         // unit's absence gets above, since only the first unit decides what
         // kind of programme this is.
-        if (out.object_metadata && out.object_metadata->program.lfe) {
+        if (out.object_metadata.has_value() && out.object_metadata->program.lfe) {
             const auto source_lfe = out.layout.index_of(Location::kLfe);
             if (source_lfe >= 0 &&
                 static_cast<std::size_t>(source_lfe) < out.channels.size()) {
                 lfe_buffer = out.channels[static_cast<std::size_t>(source_lfe)];
             }
         }
+        // Held back to arrive with the panned object buffers below, not ahead
+        // of them - see lfe_delay's own comment above. Fed every unit, real
+        // LFE data or this unit's silence filler alike, so the line's own
+        // sample count always matches how much bed audio has actually gone by.
+        lfe_buffer = lfe_delay.process(lfe_buffer);
         const auto objects = out.object_metadata
                                  ? ac3::oba::describe_objects(*out.object_metadata)
                                  : std::vector<ac3::oba::DisplayObject>{};
@@ -682,7 +698,7 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
 bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::string>& preset_arg) {
     const std::string heading = p.label.empty() ? std::string{} : fmt::format("{}: ", p.label);
     fmt::println("{}measured (BS.1770-4 gated / EBU Tech 3342 / BS.1770-4 Annex 2):", heading);
-    if (p.integrated_lkfs) {
+    if (p.integrated_lkfs.has_value()) {
         fmt::println("  integrated loudness  {:>+8.2f} LKFS", *p.integrated_lkfs);
         fmt::println("  loudness range       {}", p.lra_lu ? fmt::format("{:>7.2f} LU", *p.lra_lu)
                                                              : std::string{"n/a"});
@@ -696,13 +712,13 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
     fmt::println("{}embedded metadata:", heading);
     fmt::println("  dialnorm             {:>3}  (claims dialogue at {:.2f} LKFS)", p.dialnorm,
                  -static_cast<double>(p.dialnorm));
-    if (p.compr) {
+    if (p.compr.has_value()) {
         fmt::println("  compr                present, {:+.2f} dB",
                      ac3::meta::to_db(ac3::meta::compr_gain(*p.compr)));
     } else {
         fmt::println("  compr                absent");
     }
-    if (p.integrated_lkfs) {
+    if (p.integrated_lkfs.has_value()) {
         // §5.4.2.8: dialnorm states how far dialogue sits below digital
         // 100%, so the stream's own claimed programme level is simply its
         // negation - delta is measured minus that claim, positive meaning
@@ -738,14 +754,14 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
                 ? fmt::format("limit  <= {:+.1f} LKFS", preset.target_lkfs)
                 : fmt::format("target {:+.1f} +/-{:.1f} LKFS", preset.target_lkfs,
                               preset.tolerance_lu);
-        if (p.integrated_lkfs) {
+        if (p.integrated_lkfs.has_value()) {
             fmt::println("    loudness   {}   measured {:+.2f} LKFS   delta {:+.2f} LU   {}",
                          loudness_limit, *p.integrated_lkfs, *verdict.loudness_delta_lu,
                          verdict.loudness_pass ? "PASS" : "FAIL");
         } else {
             fmt::println("    loudness   {}   measured n/a   FAIL", loudness_limit);
         }
-        if (p.true_peak_dbtp) {
+        if (p.true_peak_dbtp.has_value()) {
             fmt::println("    true peak  limit  <= {:+.1f} dBTP        measured {:+.2f} dBTP        "
                          "{}",
                          preset.max_true_peak_dbtp, *p.true_peak_dbtp,
@@ -794,7 +810,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     // separate pieces of audio, so one set of per-channel figures across both
     // would describe neither.
     const auto programme = ac3cli::choose_programme(*ids, want_programme);
-    if (!programme) {
+    if (!programme.has_value()) {
         return 1;
     }
     const auto units = ac3::split_access_units(stream, *programme);
@@ -812,8 +828,8 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     for (const auto& unit : *units) {
         const auto decoded = decoder.decode_access_unit(unit);
         if (!decoded) {
-            fmt::println(stderr, "error: {}: decode failed (code {})", in_path,
-                         static_cast<int>(decoded.error()));
+            fmt::println(stderr, "error: {}: decode failed: {}", in_path,
+                         ac3::describe(decoded.error()));
             return kExitInput;
         }
         if (!decoded->has_value()) {
@@ -923,7 +939,7 @@ bool wrap_eac3_stream(std::span<const std::byte> stream, std::uint32_t& rate_out
 
 std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte> stream) {
     const auto bsid = ac3::stream_bsid(stream);
-    if (!bsid) {
+    if (!bsid.has_value()) {
         fmt::println(stderr, "error: too short to hold a syncframe");
         return std::nullopt;
     }
@@ -960,7 +976,7 @@ std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte>
     // Dual mono has no whole-programme figure of its own; Ch1's is what a
     // caller wanting "the" loudness of such a stream means, and reporting it
     // here keeps every caller from having to special-case the layout.
-    if (!out.integrated_lkfs) {
+    if (!out.integrated_lkfs.has_value()) {
         out.integrated_lkfs = out.ch1_lkfs;
     }
     return out;
@@ -974,7 +990,7 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
-    if (!bsid) {
+    if (!bsid.has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
@@ -990,7 +1006,7 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
             return 1;
         }
         const auto programme = ac3cli::choose_programme(*ids, want_programme);
-        if (!programme) {
+        if (!programme.has_value()) {
             return 1;
         }
         if (ids->size() > 1) {
@@ -1076,7 +1092,7 @@ int run_levels(std::string_view in_path, std::optional<int> want_programme) {
         // E-AC-3 has its own decoder here now, so this is no longer a wall to
         // turn a wider syntax away at - bsid only decides which reader runs.
         const auto bsid = ac3::stream_bsid(bytes);
-        if (bsid && *bsid > 8) {
+        if (bsid.has_value() && *bsid > 8) {
             return run_levels_eac3(bytes, in_path, want_programme);
         }
         const auto frames = ac3::split_frames(bytes);
@@ -1178,7 +1194,7 @@ int run_loudness(std::string_view in_path) {
         return kExitInput;
     }
     const auto dialnorm = measured_dialnorm(*wav, sr, layout->acmod, layout->lfe);
-    if (!dialnorm) {
+    if (!dialnorm.has_value()) {
         fmt::println("no audio above the -70 LKFS absolute gate: loudness undefined");
         return kExitRuntime;
     }
@@ -1197,7 +1213,7 @@ int run_spdif(std::string_view in_path, std::string_view out_path) {
         return kExitInput;
     }
     const auto bsid = ac3::stream_bsid(stream);
-    if (!bsid) {
+    if (!bsid.has_value()) {
         fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
         return kExitInput;
     }
@@ -1213,7 +1229,8 @@ int run_spdif(std::string_view in_path, std::string_view out_path) {
     std::uint32_t content_rate = 0;
     Pcm16RawWavSink sink;
     bool sink_failed = false;
-    const auto push = [&](std::span<const std::byte> burst) {
+    const auto push = [&sink, &content_rate, &eac3, &sink_failed,
+                       &out_path](std::span<const std::byte> burst) {
         if (!sink.is_open() &&
             !sink.open(out_path, eac3 ? content_rate * 4 : content_rate, 2)) {
             sink_failed = true;
@@ -1399,7 +1416,7 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
         remaining -= got;
         payload.clear();
         const auto pushed = reader.push(std::span{carrier}.first(got), payload);
-        if (!pushed) {
+        if (!pushed.has_value()) {
             sink.abort();
             fmt::println(stderr, "error: {}: {}", in_path,
                          ac3::iec61937::describe(pushed.error()));
@@ -1460,7 +1477,7 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
                        "resynced past {} preamble pattern(s) with no syncframe behind them",
                        reader.false_syncs());
     }
-    if (!finished) {
+    if (!finished.has_value()) {
         // A warning even under quiet: the take still finished and wrote
         // something, but the reader's own contract (a whole final burst) was
         // not met, which the exit code alone does not distinguish from a

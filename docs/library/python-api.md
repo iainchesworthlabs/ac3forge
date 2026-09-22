@@ -1,6 +1,6 @@
 # Python bindings
 
-Roadmap **F2**: a pybind11 module (`python/src/ac3forge_ext/bindings.cpp`) bound straight onto
+A pybind11 module (`python/src/ac3forge_ext/bindings.cpp`) bound straight onto
 `ac3::FrameEncoder`, `ac3::FrameDecoder`, `ac3::Eac3Decoder`, `ac3::eac3::FrameEncoder`,
 `ac3::eac3::AccessUnitEncoder` and `ac3::oba::AtmosEncoder` — pybind11-direct, not layered on a
 separate C API. Install from PyPI:
@@ -83,7 +83,7 @@ into individual syncframes or access units before decoding each one.
 
 ## Zero-copy numpy and buffer reuse
 
-Roadmap **AP6**. Every `encode_frame`/`encode_access_unit` call above (AC-3, E-AC-3, and
+Every `encode_frame`/`encode_access_unit` call above (AC-3, E-AC-3, and
 `AtmosEncoder.encode_frame`'s `objects`) and every decoded `.channels`/`.object_audio` property
 avoids a `memcpy` when it can:
 
@@ -138,7 +138,7 @@ empty either way — read the PCM back from `out`.
 
 ## Scanning a stream
 
-Roadmap **AP6**: `ac3.scan()` wraps `ac3::io::scan` (`ac3/io/elementary.hpp`) — reading an
+`ac3.scan()` wraps `ac3::io::scan` (`ac3/io/elementary.hpp`) — reading an
 elementary stream's shape (channel layout, every programme, every access unit's byte range)
 without decoding any audio, the same walk `ac3cli probe`/a muxer's own input stage does:
 
@@ -173,7 +173,7 @@ convention as encode/decode failures, see [Errors](#errors) below.
 
 ## Research trace export
 
-Roadmap AP12. `ac3.verify.FrameTrace`/`Eac3AccessUnitTrace` are caller-owned handles that
+`ac3.verify.FrameTrace`/`Eac3AccessUnitTrace` are caller-owned handles that
 `DecoderConfig(trace=...)`/`(eac3_trace=...)` fills, per block per stream, as a real decode runs —
 exponents, bit allocation pointers, the §7.2.2.6 masking curve and the composite SNR offset.
 `ac3.verify.trace_to_csv`/`trace_to_json_lines` turn one of those into text, one tidy row per
@@ -201,10 +201,10 @@ Load the CSV/JSON Lines text with `pandas.read_csv`/`read_json(lines=True)` and 
 
 ## Encoding E-AC-3
 
-Roadmap **AP6**: `ac3.eac3.FrameEncoder`/`AccessUnitEncoder` wrap `ac3::eac3::FrameEncoder`/
+`ac3.eac3.FrameEncoder`/`AccessUnitEncoder` wrap `ac3::eac3::FrameEncoder`/
 `AccessUnitEncoder` directly (pybind11-direct, like everything else in this binding) — a real
 submodule rather than a flat `Eac3FrameEncoder` name, since `ac3::FrameEncoder` and
-`ac3::eac3::FrameEncoder` share a name across C++ namespaces (roadmap AP2); `ac3.FrameEncoder`
+`ac3::eac3::FrameEncoder` share a name across C++ namespaces; `ac3.FrameEncoder`
 (AC-3) and `ac3.eac3.FrameEncoder` (E-AC-3) keep that collision out of the Python surface too.
 
 ```python
@@ -300,17 +300,37 @@ documented as "a programming error, not a runtime one"). `decode_frame_into`/
 buffer that's too short, or one that isn't C-contiguous or writeable all raise `ValueError`; the
 wrong dtype raises `TypeError`. See [Zero-copy numpy](#zero-copy-numpy-and-buffer-reuse) above.
 
-## What isn't exposed
+## Containers, metering, QC and signing
 
-`ac3::io::dash_channel_configuration`/`build_codec_config_box` (`ac3/io/dec3.hpp`) — DASH/ISOBMFF
-codec-config-box helpers built on top of a `ScannedStream` — are not here; they belong with the
-container writers (`AC3FORGE_BUILD_MATROSKA/MP4/MPEGTS`), which this binding does not build at all
-yet (see ROADMAP.md's AP6 entry), rather than with `scan()` itself.
+A completeness pass added four submodules, each pybind11-direct over the same C++
+classes every other binding here wraps:
+
+- **`ac3forge.containers`** — the three container writers and the batch read side, bytes in /
+  bytes out: `mux_matroska`/`mux_mp4`/`mux_mpegts` over `MatroskaTrack`/`Mp4Track`/`TsTrack`
+  (kwargs constructors, the same convention every config class here uses), and
+  `demux_matroska`/`demux_mp4`/`demux_mpegts` bringing frames back out. `Mp4Track.codec_config`
+  takes the `dac3`/`dec3` payload `ac3forge.build_codec_config_box(stream)` produces — built
+  straight off the bitstream, never off whatever a source container declared, exactly like
+  `ac3cli mp4`. The incremental `Reader`/`Writer` classes and the fragmented-MP4/HLS/DASH
+  surface stay C++-only for now — a boundary, not a silent gap.
+- **`ac3forge.meta`** — `LoudnessMeter` (BS.1770; every gated measurement is `None` until it
+  can mean anything), the cited `qc_preset()` table, and `evaluate_qc_gate()` — `ac3cli qc`'s
+  own machinery, callable from a notebook.
+- **`ac3forge.signing`** — `SigningKey` (base64 or raw, the single decode every front end
+  shares), `sign_atmos_stream` (returns a signed copy — Python bytes are immutable),
+  `has_authenticity_tag` and `verify_atmos_stream`.
+- **`Eac3Decoder` is a context manager** — `with ac3forge.Eac3Decoder() as d:` drains the §3.7
+  hold-back on scope exit (discarding it; call `flush()` yourself to keep it).
+
+The hand-written stubs in `__init__.pyi` cover all of it, and wheels.yml's `stubtest` step
+holds them to the compiled module on every push.
+
+## What isn't exposed
 
 `FrameEncoder`/`AtmosEncoder`'s self-check `trace` hook (`ac3::verify::FrameTrace`) and
 `AtmosEncoder`'s `bed()`/`parameters()` introspection accessors are internal verification
 tooling, not part of this binding's surface — the DECODE-side `trace`/`eac3_trace` on
-`DecoderConfig` above is a different thing (roadmap AP12's research export, not the
+`DecoderConfig` above is a different thing (the research export, not the
 encoder/decoder mirror self-check `ac3::verify::MirrorEncoder`/`Eac3MirrorEncoder` drive
 in-repo) and is exposed. `DecodedAccessUnit`/`DecodedSubstream`'s full Table E2.5 channel-map
 machinery (`chanmap`, `location_map()`, `layout`) is likewise not exposed beyond the convenience
@@ -333,7 +353,7 @@ single substream's own PCM is always freshly allocated.
 export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not
 here either, and that is a decision rather than an omission - but no longer the shape-instability
 one it used to be. `SceneCursor` existed precisely because the seam a live position source would
-plug into wasn't finished; roadmap `UX4`'s OSC wire form
+plug into wasn't finished; the OSC wire form
 ([`ac3/oba/scene_osc.hpp`](spatial-and-atmos.md#the-osc-wire-form)) has since landed as a sibling
 header, and it changed nothing about `scene.hpp`: no method on `ObjectScene`/`SceneCursor` gained
 or lost a parameter, nothing was added to either class. The shape has settled. What is left is a

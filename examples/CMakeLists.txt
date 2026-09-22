@@ -35,7 +35,7 @@ set(AC3FORGE_EXAMPLES
 
 # read_adm demonstrates ac3adm::ac3adm (src/ac3adm), the standalone BW64/RF64 + ADM
 # parser - "standalone" meaning zero dependency on ac3::forge, unlike every other
-# example in the list above. encode_adm (roadmap B1 phase 3) is the end-to-end
+# example in the list above. encode_adm (ADM BWF reader phase 3) is the end-to-end
 # counterpart: ac3adm::parse_bw64 -> ac3::admbridge::build -> ac3::oba::AtmosEncoder, so unlike
 # every other entry here (including read_adm) it needs BOTH ac3::forge and the opt-in ADM modules
 # together. Both are only added when AC3FORGE_BUILD_ADM turned those modules on (default OFF - see
@@ -43,7 +43,7 @@ set(AC3FORGE_EXAMPLES
 # present the way it can for e.g. mux_mkv.
 if(AC3FORGE_BUILD_ADM)
     list(APPEND AC3FORGE_EXAMPLES read_adm encode_adm)
-    # encode_iab (roadmap IM1 phase 3) needs ac3::admbridge's own IAB mapping (build_iab), gated
+    # encode_iab (IAB reader phase 3) needs ac3::admbridge's own IAB mapping (build_iab), gated
     # the same way encode_adm needs the ADM one - see src/admbridge/CMakeLists.txt's own header
     # comment for why that whole module rides AC3FORGE_BUILD_ADM. Unlike encode_adm it does NOT
     # need ac3adm::ac3adm directly (ac3iab::ac3iab, its own container reader, is always available -
@@ -51,7 +51,7 @@ if(AC3FORGE_BUILD_ADM)
     list(APPEND AC3FORGE_EXAMPLES encode_iab)
 endif()
 
-# mux_iamf demonstrates roadmap IM3 phase 1's decode -> IAMF bridge: it encodes a synthetic
+# mux_iamf demonstrates IAMF writer phase 1's decode -> IAMF bridge: it encodes a synthetic
 # 7.1.4 E-AC-3 stream, decodes it back with ac3::Eac3Decoder, permutes the result into iamf::'s
 # own channel order and calls iamf::mux() - so, like encode_adm above, it needs BOTH ac3::forge
 # and the standalone writer module together, and only exists to build when AC3FORGE_BUILD_IAMF
@@ -60,7 +60,7 @@ if(AC3FORGE_BUILD_IAMF)
     list(APPEND AC3FORGE_EXAMPLES mux_iamf)
 endif()
 
-# read_iab demonstrates ac3iab::ac3iab (src/ac3iab), roadmap IM1 phases 1-2 - "standalone" meaning
+# read_iab demonstrates ac3iab::ac3iab (src/ac3iab), IAB reader phases 1-2 - "standalone" meaning
 # zero dependency on ac3::forge, the same shape read_adm has for ac3adm::ac3adm above. Unlike
 # AC3FORGE_BUILD_ADM (default OFF), AC3FORGE_BUILD_IAB defaults ON, so this is unconditional like
 # mux_mkv rather than gated in the foreach below.
@@ -76,7 +76,7 @@ foreach(example IN LISTS AC3FORGE_EXAMPLES)
         # the parser itself plus the same ac3::warnings every other example gets.
         target_link_libraries(${example} PRIVATE ac3adm::ac3adm ac3::warnings ac3::fmt)
     elseif(example STREQUAL "encode_adm")
-        # The one example (and roadmap B1's own phase-3 deliverable) needing ac3::forge
+        # The one example (and ADM BWF reader's own phase-3 deliverable) needing ac3::forge
         # (AtmosEncoder) and the ADM modules (parse/bridge) at the same time.
         target_link_libraries(${example} PRIVATE ac3::forge ac3adm::ac3adm ac3::admbridge
                                                   ac3::warnings ac3::fmt)
@@ -87,7 +87,7 @@ foreach(example IN LISTS AC3FORGE_EXAMPLES)
         # src/ac3iab/CMakeLists.txt's header comment), the same reason read_adm above needs none.
         target_link_libraries(${example} PRIVATE ac3iab::ac3iab ac3::warnings ac3::fmt)
     elseif(example STREQUAL "encode_iab")
-        # The one example (and roadmap IM1's own phase-3 deliverable) needing ac3::forge
+        # The one example (and IAB reader's own phase-3 deliverable) needing ac3::forge
         # (AtmosEncoder), ac3iab::ac3iab (its own container reader) and ac3::admbridge (build_iab)
         # at the same time - the IAB mirror of encode_adm above.
         target_link_libraries(${example} PRIVATE ac3::forge ac3iab::ac3iab ac3::admbridge
@@ -107,7 +107,7 @@ target_link_libraries(mux_ts PRIVATE mpegts::mpegts)
 # Only this one needs the object signer.
 target_link_libraries(object_signing PRIVATE ac3::signing)
 
-# capi_encode_decode (roadmap F1) is a plain C source, not C++ - the .c extension is what actually
+# capi_encode_decode (C API) is a plain C source, not C++ - the .c extension is what actually
 # proves ac3forge_c/ac3forge.h compiles under a C toolchain rather than merely under a C++ one
 # parsing valid-C syntax, so it cannot join the foreach()/AC3FORGE_EXAMPLES list above (that loop
 # hardcodes add_executable(${example} "${example}.cpp")) and gets its own block instead. It links

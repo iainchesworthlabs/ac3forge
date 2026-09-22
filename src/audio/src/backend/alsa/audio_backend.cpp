@@ -25,6 +25,14 @@ const AudioBackend& audio_backend() {
         .spatial = {.available = false,
                    .reason = "this build has no spatial backend: "
                              "ISpatialAudioObjectRenderStream is a Windows-only API"},
+        .process_loopback = {.available = false,
+                             .reason = "per-process loopback capture needs a per-application tap "
+                                       "this backend does not have. The PipeWire backend links "
+                                       "a capture stream to one application node; Windows uses "
+                                       "AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK; macOS has "
+                                       "had Core Audio process taps since 14.2 (legacy item UX7)"},
+                .device_watch = {.available = false,
+                         .reason = "no device-notification backend: libasound has no endpoint-change API, so this would be a udev listener, which is not implemented"},
     };
     return kBackend;
 }

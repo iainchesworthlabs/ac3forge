@@ -15,7 +15,7 @@
 #include "ac3/encoder/eac3_frame.hpp"
 
 // §E2.3.1.4 short syncframes (numblkscod 0-2) and §E2.3.1.64 convsync
-// (roadmap EQ11). The encoder always wrote numblkscod == 0x3 before this;
+// (E-AC-3 short syncframes). The encoder always wrote numblkscod == 0x3 before this;
 // the decoder's numblkscod != 0x3 path (parse_audfrm/parse_bsi) is spec-
 // derived from the same source EQ1's per-block machinery already exercises
 // at six blocks, but had never been driven by a real encoded stream. These

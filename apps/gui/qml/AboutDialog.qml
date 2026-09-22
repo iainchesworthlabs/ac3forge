@@ -20,6 +20,21 @@ Dialog {
     padding: Theme.space6
     title: ""
 
+    // The version as version_details() headlines it: the first line of
+    // appVersionDetails reads "ac3forge <version>", the same text the
+    // VERSION block below prints in full, and the version is everything
+    // after that line's first space - so the subtitle and the block can
+    // never disagree. typeof guards the context property's absence (the
+    // Qt Quick Test harness registers none), where a bare reference would
+    // raise a second ReferenceError beside the VERSION block's own.
+    readonly property string headlineVersion: {
+        if (typeof appVersionDetails !== "string")
+            return "";
+        const first = appVersionDetails.split("\n")[0];
+        const space = first.indexOf(" ");
+        return space < 0 ? first : first.substring(space + 1);
+    }
+
     background: Rectangle {
         color: Theme.bg
         border.color: Theme.text
@@ -28,14 +43,14 @@ Dialog {
 
     component AboutKicker: Text {
         Layout.topMargin: Theme.space2
-        font.pixelSize: 10
+        font.pixelSize: Theme.fontMicro
         font.letterSpacing: 1.2
         color: Theme.textMuted
     }
     component AboutBody: Text {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
-        font.pixelSize: 11
+        font.pixelSize: Theme.fontMono
         color: Theme.textMuted
         onLinkActivated: (link) => Qt.openUrlExternally(link)
     }
@@ -46,10 +61,10 @@ Dialog {
         // A Popup/Dialog is not itself an Item ("Accessible must be
         // attached to an Item or an Action" at runtime otherwise) - its
         // contentItem is. title is "" (a styled Text below draws the
-        // visible "ac3forge" heading instead), so Dialog's own
+        // visible "Forge" heading instead), so Dialog's own
         // title-derived accessible name has nothing to read without this.
         Accessible.role: Accessible.Dialog
-        Accessible.name: qsTr("About ac3forge")
+        Accessible.name: qsTr("About Forge")
 
         RowLayout {
             Layout.fillWidth: true
@@ -66,16 +81,27 @@ Dialog {
                 spacing: Theme.space1
 
                 Text {
-                    text: qsTr("ac3forge")
-                    font.pixelSize: 22
+                    text: qsTr("Forge")
+                    font.pixelSize: Theme.fontTitle
                     font.family: Theme.headingFamily
                     font.weight: Font.ExtraBold
                     color: Theme.text
                 }
                 Text {
+                    // The member's name above, the family and the version
+                    // beneath it (docs/family/recasting.md, "The name"):
+                    // "AC3Forge" is the family in prose and "Forge" is the
+                    // ac3cli + ac3gui pair; "AC3Forge Forge" is never written.
+                    Layout.fillWidth: true
+                    text: qsTr("the AC3Forge encoder tools, %1").arg(root.headlineVersion)
+                    font.pixelSize: Theme.fontSmall
+                    wrapMode: Text.WordWrap
+                    color: Theme.neutral700
+                }
+                Text {
                     Layout.fillWidth: true
                     text: qsTr("Clean-room AC-3 / E-AC-3 encoder — ATSC A/52, ETSI TS 103 420")
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSmall
                     wrapMode: Text.WordWrap
                     color: Theme.neutral700
                 }
@@ -90,7 +116,7 @@ Dialog {
             Layout.fillWidth: true
             text: appVersionDetails
             font.family: Theme.monoFamily
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSmall
             color: Theme.text
             wrapMode: Text.WordWrap
         }
@@ -100,7 +126,7 @@ Dialog {
         AboutKicker { text: qsTr("LICENSE") }
         AboutBody {
             textFormat: Text.RichText
-            text: qsTr("ac3forge is free software: you can redistribute it and/or modify it "
+            text: qsTr("AC3Forge is free software: you can redistribute it and/or modify it "
                         + "under the terms of the GNU General Public License as published by "
                         + "the Free Software Foundation, either version 3 of the License, or "
                         + "(at your option) any later version. It is distributed WITHOUT ANY "

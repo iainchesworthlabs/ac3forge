@@ -32,6 +32,8 @@ qt_add_executable(ac3gui_qmltests
     stream_player_controller.hpp
     channel_geometry.cpp
     channel_geometry.hpp
+    gui_diagnostics.cpp
+    gui_diagnostics.hpp
     ../common/fmp4_folder_writer.cpp
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp
@@ -47,8 +49,8 @@ qt_add_executable(ac3gui_qmltests
 
 # apps/common, for the same reason ../CMakeLists.txt names it: RecordingSink
 # and Fmp4FolderWriter moved there when ac3cli's own takes started streaming
-# through them (roadmap IO9), and container_input.cpp joined them the same
-# way for roadmap IO2. This target compiles the same files in, exactly as it
+# through them (wide-layout record/live paths), and container_input.cpp joined them the same
+# way for container readers (mkv/mp4/ts). This target compiles the same files in, exactly as it
 # always did - qc_controller.cpp/object_decode_controller.cpp call
 # ac3::apps::elementary_stream_from_bytes too, so it needs the same
 # definition ac3gui's own target links.
@@ -73,7 +75,7 @@ qt_add_qml_module(ac3gui_qmltests
 add_dependencies(ac3gui_qmltests ac3gui)
 
 # ---------------------------------------------------------------------------
-# Roadmap UX3: a second, independent .qm embedding for this target - same
+# GUI localisation: a second, independent .qm embedding for this target - same
 # rationale as the AC3_QML_FILES embedding above, and for the same reason
 # that comment gives: a shared library between the two targets would be more
 # machinery than what it wraps. lrelease only, not lupdate - the QML files

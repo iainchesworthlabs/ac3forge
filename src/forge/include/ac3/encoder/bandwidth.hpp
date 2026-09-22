@@ -45,6 +45,11 @@ namespace ac3::encoder {
 AC3FORGE_EXPORT void accumulate_peak_exponents(std::span<const double> coefficients,
                                                std::span<std::uint8_t> peak_exponents);
 
+// The float form, for the float encode path (AC3FORGE_ENCODE_SCALAR): the
+// same pair, rounding the float coefficient itself.
+AC3FORGE_EXPORT void accumulate_peak_exponents(std::span<const float> coefficients,
+                                               std::span<std::uint8_t> peak_exponents);
+
 // The highest bin worth coding, as an endmant (exclusive), given the frame's
 // own spectrum.
 //

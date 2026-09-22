@@ -1,5 +1,5 @@
 """Compare a built shared library's exported dynamic symbols against a
-checked-in allowlist (roadmap AP4).
+checked-in allowlist (legacy item AP4).
 
 Every library here already builds with CXX_VISIBILITY_PRESET hidden, so
 nm -D --defined-only is the exact set a consumer can link against - anything
@@ -34,11 +34,14 @@ build first and confirm it reproduces the mismatch set CI itself reports.
 Libraries that then regenerate byte-identical are the corroboration - if the
 local demangler disagreed with the committed files, those would churn too.
 
-Unlike tools/ci/compare_performance.py, this script DOES exit non-zero on a
-real mismatch - the advisory/non-blocking behaviour AP4 wants pre-1.0 comes
-from the calling CI job's own ABI_ENFORCE switch, not from this script staying
-silent. That is deliberate: once AP1's freeze flips that one value, this
-script's behaviour does not need to change at all.
+This script DOES exit non-zero on a real mismatch - the advisory/non-blocking
+behaviour AP4 wants pre-1.0 comes from the calling CI job's own ABI_ENFORCE
+switch, not from this script staying silent. That is deliberate: once AP1's
+freeze flips that one value, this script's behaviour does not need to change
+at all. (tools/ci/compare_performance.py splits the same problem the other
+way round - it reports its verdict as a step output and lets a separate gate
+job decide - because the job that runs IT is continue-on-error and would
+swallow an exit code.)
 
 stdlib-only (argparse/pathlib/subprocess), matching every other script in
 this directory - the runner needs no provisioning beyond nm/c++filt, which

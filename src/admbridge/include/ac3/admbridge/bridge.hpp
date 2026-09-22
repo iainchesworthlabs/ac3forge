@@ -13,7 +13,7 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac3adm/model.hpp"
 
-// Roadmap item B1 phase 2 of 3 ("ADM BWF reader feeding the JOC encoder", see ROADMAP.md): maps
+// Roadmap item B1 phase 2 of 3 ("ADM BWF reader feeding the JOC encoder"): maps
 // the object graph ac3adm::ac3adm (phase 1) parses from a BW64/ADM master onto
 // ac3::oba::AtmosEncoder's input shape - one ac3::oba::ObjectPath plus one mono PCM span per
 // channel, ready to drive encode_frame() in a loop. Phase 3 (a CLI/GUI-facing end-to-end command)
@@ -28,7 +28,7 @@
 // src/admbridge/CMakeLists.txt's own header comment for the full reasoning, including why this
 // is a new standalone module rather than folded into either side.
 //
-// ROADMAP.md's B2 entry (a future DAMF `.atmos`/`.atmos.metadata`/`.atmos.audio` reader) names
+// a future DAMF reader (out of scope; was B2 `.atmos`/`.atmos.metadata`/`.atmos.audio` reader) names
 // this module as the "mapping layer" it plans to share - reason enough to keep the bed/object
 // classification, coordinate conversion (coordinates.hpp) and keyframe-timeline construction
 // below independent of ac3adm's own BW64/ADM-XML-specific parsing, even though ac3adm::AdmDocument

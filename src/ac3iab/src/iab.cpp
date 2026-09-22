@@ -91,7 +91,7 @@ std::string_view describe(IabError error) {
 
 std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(std::istream& in) {
     auto bytes = read_all(in);
-    if (!bytes) {
+    if (!bytes.has_value()) {
         return std::unexpected(bytes.error());
     }
 
@@ -106,7 +106,7 @@ std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(std::is
             return std::unexpected(IabError::kBadPreambleTag);
         }
         auto preamble_length = read_be32(remaining.subspan(1));  // §8.1.2
-        if (!preamble_length) {
+        if (!preamble_length.has_value()) {
             return std::unexpected(preamble_length.error());
         }
         remaining = remaining.subspan(5);
@@ -126,7 +126,7 @@ std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(std::is
             return std::unexpected(IabError::kBadFrameTag);
         }
         auto frame_length = read_be32(remaining.subspan(1));  // §8.1.5
-        if (!frame_length) {
+        if (!frame_length.has_value()) {
             return std::unexpected(frame_length.error());
         }
         remaining = remaining.subspan(5);
@@ -139,7 +139,7 @@ std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(std::is
         // the inner payload to parse_iaframe(), which takes a bare payload.
         detail::BitReader element_header(remaining.subspan(0, *frame_length));
         auto element_id = element_header.read_plex(8);
-        if (!element_id) {
+        if (!element_id.has_value()) {
             return std::unexpected(element_id.error());
         }
         constexpr std::uint32_t kIaFrameElementId = 0x08;  // §10.1.1 Table 14
@@ -147,16 +147,16 @@ std::expected<std::vector<IABitstreamFrame>, IabError> parse_iabitstream(std::is
             return std::unexpected(IabError::kBadFrameTag);
         }
         auto element_size = element_header.read_plex(8);
-        if (!element_size) {
+        if (!element_size.has_value()) {
             return std::unexpected(element_size.error());
         }
         auto element_payload = element_header.read_bytes(static_cast<std::size_t>(*element_size));
-        if (!element_payload) {
+        if (!element_payload.has_value()) {
             return std::unexpected(element_payload.error());
         }
 
         auto frame = parse_iaframe(*element_payload);
-        if (!frame) {
+        if (!frame.has_value()) {
             return std::unexpected(frame.error());
         }
         entry.frame = std::move(*frame);

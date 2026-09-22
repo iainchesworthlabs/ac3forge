@@ -10,8 +10,8 @@ because it also failed the run).
 This is the trend-tracking HALF of the performance suite, not the hard
 real-time gate - that is tests/performance/test_performance.cpp's ac3perf
 target, a separate CI-blocking ctest run on every push/PR. This script only
-ever runs on develop/main pushes (mirrors persist_quality_trend's own
-gating), records numbers ac3perf's pass/fail already implicitly bounds, and
+ever runs on main pushes (mirrors persist_quality_trend's own gating),
+records numbers ac3perf's pass/fail already implicitly bounds, and
 raises a softer, trend-relative signal on top: not "did this exceed the
 absolute real-time budget" (ac3perf's job) but "is this drifting slower over
 time even while still passing that gate".
@@ -44,6 +44,8 @@ import os
 import sys
 from pathlib import Path
 
+from append_quality_history import write_recent_window
+
 # How many trailing same-(branch,leg,config) entries the regression check
 # averages over - same window append_quality_history.py uses, for the same
 # reason (enough to smooth ordinary run-to-run noise without going stale).
@@ -62,23 +64,82 @@ HARD_REGRESSION_SLOWDOWN_FRACTION = 1.0
 def load_leg_results(results_dir: Path):
     """results_dir holds one subdirectory per leg (an artifact named
     'performance-<preset>', downloaded with the prefix stripped back off by
-    the caller - see the workflow step), each holding bench_encoder.cpp's
-    --json-out file."""
+    the caller - see the workflow step), each holding one or more of
+    bench_encoder.cpp's --json-out files.
+
+    MULTIPLE files per leg are reduced to ONE record per (leg, config), not
+    appended as several. The workflow runs ac3bench more than once so this
+    reduction has something to work on; one file still works and simply
+    reduces to itself.
+
+    The reduction is the MINIMUM run, and the whole record is taken from that
+    run rather than assembled from per-field minima across different runs -
+    so mean, p95 and max in a record always describe the same measurement
+    rather than a composite that never happened.
+
+    Minimum, not mean, for the reason compare_performance.py already documents
+    for the PR-time comparison: timing noise on a shared runner is one-sided.
+    A co-tenant, a thermal event or a page-cache miss can only ever make a run
+    slower, never faster, so the fastest of N is the closest estimate of what
+    the machine can actually do and the mean mostly measures the neighbours.
+    This script previously recorded a SINGLE unrepeated sample straight into
+    the permanent history, which is a weaker signal than the PR comparison
+    feeding into the same merge already used - the trailing-mean tiers were
+    being fed a noisier number than the reviewer saw.
+
+    `runs` and `spread` are recorded alongside so a reader (and
+    docs/performance-trend.md) can tell a real move from a noisy one: spread
+    is this workload's own (max-min)/min across the repetitions of THIS run,
+    the same definition compare_performance.py uses.
+    """
     for leg_dir in sorted(results_dir.iterdir()):
         if not leg_dir.is_dir():
             continue
         leg = leg_dir.name.removeprefix("performance-")
-        for json_file in sorted(leg_dir.glob("*.json")):
+        # {config: [per-run record]}, in file order.
+        by_config: dict[str, list[dict]] = {}
+        budget = None
+        environment = {}
+        environment_path = leg_dir / "environment.json"
+        if environment_path.exists():
+            environment = json.loads(environment_path.read_text())
+        for json_file in sorted(leg_dir.glob("bench*.json")):
             payload = json.loads(json_file.read_text())
+            budget = payload["real_time_budget_ms_per_frame"]
             for result in payload["results"]:
-                yield {
-                    "leg": leg,
-                    "config": result["name"],
-                    "frames": result["frames"],
-                    "total_ms": result["total_ms"],
-                    "ms_per_frame": result["ms_per_frame"],
-                    "real_time_budget_ms_per_frame": payload["real_time_budget_ms_per_frame"],
-                }
+                by_config.setdefault(result["name"], []).append(result)
+
+        for config, runs in by_config.items():
+            best = min(runs, key=lambda r: r["ms_per_frame"])
+            values = [r["ms_per_frame"] for r in runs]
+            low = min(values)
+            spread = (max(values) - low) / low if low > 0 else 0.0
+            yield {
+                "leg": leg,
+                "config": config,
+                "frames": best["frames"],
+                "total_ms": best["total_ms"],
+                "ms_per_frame": best["ms_per_frame"],
+                # .get(), not [...]: ac3bench only started emitting the
+                # per-frame distribution later than this script, so any JSON
+                # produced by an older binary - a rebuilt merge base, a re-run
+                # of an old artifact - simply has no tail to record. None is
+                # written rather than a zero, so a reader can tell "not
+                # measured" from "measured as fast".
+                "p95_ms_per_frame": best.get("p95_ms_per_frame"),
+                "max_ms_per_frame": best.get("max_ms_per_frame"),
+                "runs": len(runs),
+                "spread": spread,
+                # Per LEG, not per invocation: with more than one leg the
+                # measurements come from different machines, so a single
+                # command-line value could not describe them both. Each leg's
+                # job drops an environment.json beside its bench JSON (see
+                # .github/scripts/capture-bench-environment.sh); a leg without
+                # one records empty strings.
+                "cpu_model": environment.get("cpu_model", ""),
+                "runner_image": environment.get("runner_image", ""),
+                "real_time_budget_ms_per_frame": budget,
+            }
 
 
 def trailing_mean(history_path: Path, leg: str, config: str, window: int):
@@ -138,6 +199,20 @@ def main() -> int:
             "frames": rec["frames"],
             "total_ms": rec["total_ms"],
             "ms_per_frame": rec["ms_per_frame"],
+            "p95_ms_per_frame": rec["p95_ms_per_frame"],
+            "max_ms_per_frame": rec["max_ms_per_frame"],
+            "runs": rec["runs"],
+            "spread": rec["spread"],
+            # What the number was measured ON, not just what it was. ms/frame
+            # is hardware-relative in a way the quality series' dB is not (see
+            # this module's own header on why the thresholds here are
+            # percentages rather than fixed deltas), so a hosted-image bump or
+            # a differently-specced runner shows up as an unattributable step
+            # in the series unless the environment is recorded beside it.
+            # Empty string on a leg whose job wrote no environment.json - an
+            # older workflow, or a local run.
+            "cpu_model": rec["cpu_model"],
+            "runner_image": rec["runner_image"],
             "real_time_budget_ms_per_frame": rec["real_time_budget_ms_per_frame"],
         }
         lines.append(json.dumps(entry, sort_keys=True))
@@ -167,6 +242,7 @@ def main() -> int:
             f.write(line + "\n")
 
     print(f"Appended {len(lines)} record(s) to {history_path}")
+    write_recent_window(history_path)
     emit_github_output("hard_regression", "true" if hard_regression else "false")
     return 0
 

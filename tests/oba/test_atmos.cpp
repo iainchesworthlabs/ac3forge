@@ -1,7 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <ranges>
 #include <array>
 #include <cmath>
 #include <complex>
@@ -548,7 +550,7 @@ TEST_CASE("oba::joc::reconstruct recovers well-separated objects through the rea
 
 TEST_CASE("QMF-domain JOC reconstructs objects at least as well as the MDCT-band path",
           "[atmos][joc][decoder][qmf]") {
-    // Roadmap DC10's actual question, measured rather than argued: the same
+    // legacy item DC10's actual question, measured rather than argued: the same
     // objects, the same placements, the same real encoded bytes, differing
     // only in which domain the matrix is estimated and applied in. Both legs
     // run encoder and decoder in the SAME domain, because that is the only
@@ -783,11 +785,23 @@ TEST_CASE("JOC bed analysis's fast forward MDCT agrees with the direct form", "[
         }
         const double snr_db = 10.0 * std::log10(signal / std::max(error, 1e-30));
         CAPTURE(snr_db);
-        // The fast forward fold's own tolerance (mdct512_forward's fast-path
-        // tests hold ~1e-13 relative error), carried through six blocks of
-        // bed analysis feeding three objects' worth of matrixing and
-        // synthesis - loose next to that, tight next to anything audible.
-        CHECK(snr_db > 200.0);
+        // What bounds this is float32, not the fold.
+        //
+        // It used to be the fast forward fold's own tolerance - mdct512_forward's
+        // fast-path tests hold ~1e-13 relative error - carried through six blocks
+        // of bed analysis, and 200 dB was loose next to that. Since
+        // ReconstructionState went float32 (joc.hpp's recon_scalar_t) both legs
+        // round-trip their spectra through 24-bit mantissas, so the agreement is
+        // capped by float32's own epsilon of 1.19e-7 - about 138 dB for a single
+        // rounding - whatever the transforms do. Measured 134-136 dB across the
+        // three objects, which is that floor, not a defect in either path.
+        //
+        // 120 dB keeps ~14 dB of margin, the same margin
+        // tools/checks/check_decode_scalar_snr.py leaves over its own measured
+        // float32-vs-double figure, and is still far above anything audible. A
+        // drop below it would mean something other than storage precision had
+        // changed.
+        CHECK(snr_db > 120.0);
     }
     REQUIRE(any_difference);
 }
@@ -852,6 +866,165 @@ TEST_CASE("Eac3Decoder recovers the object positions AtmosEncoder wrote", "[atmo
     }
 }
 
+TEST_CASE("decode_access_unit_by_block hands over the objects a block at a time",
+          "[atmos][decoder][joc]") {
+    // The block form's PcmBlock carries the reconstructed objects beside the
+    // bed: views onto the unit's own object_audio, cut to the block, with the
+    // indices and the metadata the value form reports. Encoded here rather
+    // than read from a fixture so the objects are known to be three dynamic
+    // ones at known positions, then decoded both ways and compared sample for
+    // sample - nothing is copied on the way out, so what is checked is that
+    // the views ARE the value form's samples, block by block, in order.
+    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
+    const std::array<ac3::oba::ObjectPlacement, 3> placement{{
+        {.position = {.x = 0.1, .y = 0.2, .z = 0.5}},
+        {.position = {.x = 0.9, .y = 0.2, .z = 0.0}},
+        {.position = {.x = 0.5, .y = 0.9, .z = 1.0}},
+    }};
+
+    std::vector<std::vector<float>> essences;
+    std::vector<std::span<const float>> views(3);
+    ac3::Eac3Decoder value_decoder;
+    ac3::Eac3Decoder block_decoder;
+    ac3::Eac3Decoder bed_decoder{{.skip_object_reconstruction = true}};
+    for (int frame = 0; frame < 3; ++frame) {
+        const auto start = static_cast<std::uint64_t>(frame) * kFrame;
+        essences = {tone(440.0, 0.3, 0.0, start), tone(880.0, 0.3, 0.5, start),
+                    tone(120.0, 0.3, 1.0, start)};
+        for (std::size_t i = 0; i < views.size(); ++i) {
+            views[i] = essences[i];
+        }
+        const auto encoded = encoder.encode_frame(views, placement);
+        REQUIRE(encoded.has_value());
+
+        const auto value = value_decoder.decode_access_unit(encoded->bytes);
+        REQUIRE(value.has_value());
+        REQUIRE(value->has_value());
+        REQUIRE((*value)->object_metadata.has_value());
+        REQUIRE((*value)->object_audio.size() == 3);
+        REQUIRE((*value)->object_indices.size() == 3);
+
+        std::vector<std::vector<float>> bed;
+        std::vector<std::vector<float>> objects;
+        int blocks_seen = 0;
+        bool metadata_every_block = true;
+        bool indices_every_block = true;
+        const auto sink = [&](const ac3::PcmBlock& pcm) {
+            ++blocks_seen;
+            bed.resize(pcm.channels.size());
+            for (std::size_t slot = 0; slot < pcm.channels.size(); ++slot) {
+                bed[slot].insert(bed[slot].end(), pcm.channels[slot].begin(),
+                                 pcm.channels[slot].end());
+            }
+            objects.resize(pcm.objects.size());
+            for (std::size_t o = 0; o < pcm.objects.size(); ++o) {
+                CHECK(pcm.objects[o].size() == static_cast<std::size_t>(ac3::kSamplesPerBlock));
+                objects[o].insert(objects[o].end(), pcm.objects[o].begin(), pcm.objects[o].end());
+            }
+            if (pcm.object_metadata == nullptr || pcm.object_metadata->objects.size() != 3) {
+                metadata_every_block = false;
+            }
+            if (!std::ranges::equal(pcm.object_indices, (*value)->object_indices)) {
+                indices_every_block = false;
+            }
+        };
+        const auto by_block = block_decoder.decode_access_unit_by_block(encoded->bytes, sink);
+        REQUIRE(by_block.has_value());
+        REQUIRE(by_block->has_value());
+        CHECK(blocks_seen == ac3::kBlocksPerFrame);
+        CHECK(metadata_every_block);
+        CHECK(indices_every_block);
+
+        REQUIRE(bed.size() == (*value)->channels.size());
+        for (std::size_t slot = 0; slot < bed.size(); ++slot) {
+            CAPTURE(frame, slot);
+            CHECK(std::ranges::equal(bed[slot], (*value)->channels[slot]));
+        }
+        REQUIRE(objects.size() == 3);
+        for (std::size_t o = 0; o < objects.size(); ++o) {
+            CAPTURE(frame, o);
+            REQUIRE(objects[o].size() == (*value)->object_audio[o].size());
+            CHECK(std::ranges::equal(objects[o], (*value)->object_audio[o]));
+        }
+
+        // A bed-only decode hands over the bed alone: no object views, no
+        // indices, no metadata pointer, exactly as its value form's
+        // object_audio is empty.
+        int bed_only_objects = 0;
+        bool bed_only_metadata = false;
+        const auto bed_sink = [&](const ac3::PcmBlock& pcm) {
+            bed_only_objects += static_cast<int>(pcm.objects.size() + pcm.object_indices.size());
+            bed_only_metadata = bed_only_metadata || pcm.object_metadata != nullptr;
+        };
+        const auto bed_only = bed_decoder.decode_access_unit_by_block(encoded->bytes, bed_sink);
+        REQUIRE(bed_only.has_value());
+        CHECK(bed_only_objects == 0);
+        CHECK_FALSE(bed_only_metadata);
+    }
+}
+
+TEST_CASE("skip_object_reconstruction leaves the bed untouched and the objects absent",
+          "[atmos][decoder][joc]") {
+    // The embedded case: an Atmos stream decoded for its 5.1 bed on a target
+    // that cannot hold oba::joc::ReconstructionState. What has to hold is that
+    // the flag costs the BED nothing - a decoder that quietly changed the
+    // rendered audio to save memory would be worse than one that ran out of it.
+    ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, 3};
+    const std::array<ac3::oba::ObjectPlacement, 3> placement{{
+        {.position = {.x = 0.1, .y = 0.2, .z = 0.5}},
+        {.position = {.x = 0.9, .y = 0.2, .z = 0.5}, .gain = 0.5},
+        {.position = {.x = 0.5, .y = 0.9, .z = -0.5}, .lfe_send = 0.3},
+    }};
+
+    std::vector<std::vector<float>> essences;
+    std::vector<std::span<const float>> views(3);
+    ac3::eac3::AccessUnit unit;
+    for (int frame = 0; frame < 3; ++frame) {
+        const auto start = static_cast<std::uint64_t>(frame) * kFrame;
+        essences = {tone(440.0, 0.3, 0.0, start), tone(880.0, 0.3, 0.5, start),
+                    tone(120.0, 0.3, 1.0, start)};
+        for (std::size_t i = 0; i < views.size(); ++i) {
+            views[i] = essences[i];
+        }
+        auto encoded = encoder.encode_frame(views, placement);
+        REQUIRE(encoded.has_value());
+        unit = *encoded;
+    }
+
+    ac3::Eac3Decoder full;
+    const auto with_objects = full.decode_substream(unit.substream(0));
+    REQUIRE(with_objects.has_value());
+    REQUIRE(with_objects->has_value());
+
+    ac3::Eac3Decoder bed_only{{.skip_object_reconstruction = true}};
+    const auto without = bed_only.decode_substream(unit.substream(0));
+    REQUIRE(without.has_value());
+    REQUIRE(without->has_value());
+
+    // The objects are gone, and only the objects.
+    CHECK_FALSE((*with_objects)->object_audio.empty());
+    CHECK((*without)->object_audio.empty());
+    CHECK((*without)->object_indices.empty());
+
+    // The metadata still arrives: it is parsed out of a block's skip field and
+    // costs nothing to keep, and a renderer choosing a speaker layout still
+    // wants to know what the stream declared.
+    REQUIRE((*without)->object_metadata.has_value());
+    REQUIRE((*with_objects)->object_metadata.has_value());
+    CHECK((*without)->object_metadata->objects.size() ==
+          (*with_objects)->object_metadata->objects.size());
+
+    // The bed is bit-for-bit what the full decode produced. Not "close":
+    // skipping reconstruction touches no coefficient the bed is built from, so
+    // any difference here would be a real one.
+    REQUIRE((*without)->channels.size() == (*with_objects)->channels.size());
+    for (std::size_t ch = 0; ch < (*without)->channels.size(); ++ch) {
+        CAPTURE(ch);
+        REQUIRE((*without)->channels[ch].size() == (*with_objects)->channels[ch].size());
+        CHECK(std::ranges::equal((*without)->channels[ch], (*with_objects)->channels[ch]));
+    }
+}
+
 TEST_CASE("Eac3Decoder reports no object metadata for a plain (non-Atmos) stream", "[atmos][decoder]") {
     const ac3::eac3::FrameConfig config{
         .bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true};
@@ -879,5 +1052,167 @@ TEST_CASE("the splice counter starts at zero and wraps to one", "[atmos]") {
         views[0] = essence;
         REQUIRE(encoder.encode_frame(views, placement).has_value());
         CHECK(encoder.parameters().seq_count == frame);
+    }
+}
+
+
+// --------------------------------------------------------------------------
+// E-AC-3 short syncframes's second half: the object layer over short syncframes
+// (numblkscod 0-2). Everything the six-block path carries has to survive the
+// shortened frame: the OAMD update's ramp must cover exactly one (shortened)
+// frame, the JOC matrix must interpolate over the frame's own timeslot count,
+// and the reconstruction - in BOTH domains - must still pull the objects back
+// out of a bed whose blocks arrive 1/2/3 at a time. numblkscod 3 runs in the
+// same loop as the control, and the short codes are additionally held to
+// within a few dB of whatever it scores - so the test measures the cost of
+// shortening the frame, not the corner tones' codability. Measured on
+// landing: worst-object SNR 22.1 dB at six blocks and 22.3 at every short
+// code (QMF domain) - shortening the frame costs nothing on stationary
+// material, because the matrix updates six times as often and has less
+// motion to interpolate across.
+TEST_CASE("short syncframes carry the object layer end to end",
+          "[atmos][decoder][numblkscod]") {
+    constexpr std::array<int, ac3::oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+    const std::array<ac3::oba::ObjectPlacement, 4> placement{{
+        {.position = {.x = 0.0, .y = 0.0, .z = 0.0}},
+        {.position = {.x = 1.0, .y = 0.0, .z = 0.0}},
+        {.position = {.x = 0.0, .y = 1.0, .z = 1.0}},
+        {.position = {.x = 1.0, .y = 1.0, .z = 1.0}},
+    }};
+    const std::array<double, 4> hz{311.0, 997.0, 2200.0, 5000.0};
+    const std::array<double, 4> amplitude{0.30, 0.25, 0.20, 0.22};
+    // ~1.2 s of audio whatever the frame length, so the SNR average covers
+    // the same amount of material at every code.
+    constexpr std::size_t kTotalSamples = 36 * 1536;
+
+    const auto domain = GENERATE(ac3::oba::joc::Domain::kQmf, ac3::oba::joc::Domain::kMdctBand);
+    CAPTURE(domain == ac3::oba::joc::Domain::kQmf ? "qmf" : "mdct");
+
+    // Per-code bit rates, not one rate for all: the OAMD+JOC container
+    // repeats per syncframe whatever its length, so its FIXED cost is a
+    // six-times-larger share of a one-block frame's budget - at 640 kbit/s a
+    // 256-sample frame is 426 bytes and the four-object container simply
+    // does not fit beside a 5.1 bed, and encode_frame correctly refuses it.
+    // That refusal is the honest price of short Atmos frames (the docs' own
+    // header-repetition warning, compounded by the container); these rates
+    // keep the per-frame budget NET of the container roughly comparable so
+    // the SNR comparison below measures the timing machinery, not four
+    // different starvation levels.
+    const auto bitrate_for = [](int code) -> std::uint32_t {
+        switch (code) {
+            case 0: return 2048;
+            case 1: return 1024;
+            case 2: return 768;
+            default: return 640;
+        }
+    };
+
+    std::array<double, 4> worst_by_code{};
+    for (const int code : {3, 0, 1, 2}) {
+        const auto frame_samples = static_cast<std::size_t>(
+            ac3::eac3::blocks_per_syncframe(code) * ac3::kSamplesPerBlock);
+        const std::size_t frames = kTotalSamples / frame_samples;
+
+        ac3::oba::AtmosEncoder encoder{
+            {.bitrate_kbps = bitrate_for(code), .joc_domain = domain, .numblkscod = code}, 4};
+        ac3::Eac3Decoder decoder;
+        ac3::oba::joc::ReconstructionState state;
+
+        std::array<std::vector<float>, 4> source;
+        std::array<std::vector<float>, 4> recovered;
+
+        std::vector<std::vector<float>> essences(4);
+        std::vector<std::span<const float>> views(4);
+        for (std::size_t frame = 0; frame < frames; ++frame) {
+            const std::uint64_t start = frame * frame_samples;
+            for (std::size_t i = 0; i < 4; ++i) {
+                auto& e = essences[i];
+                e.assign(frame_samples, 0.0f);
+                for (std::size_t n = 0; n < frame_samples; ++n) {
+                    const double t = static_cast<double>(start + n) / 48000.0;
+                    e[n] = static_cast<float>(amplitude[i] *
+                                              std::sin(2.0 * std::numbers::pi * hz[i] * t +
+                                                       0.7 * static_cast<double>(i)));
+                }
+                source[i].insert(source[i].end(), e.begin(), e.end());
+                views[i] = e;
+            }
+            const auto encoded = encoder.encode_frame(views, placement);
+            REQUIRE(encoded.has_value());
+            REQUIRE(encoded->substream_count() == 1);
+            const auto frame_bytes = encoded->substream(0);
+
+            const auto decoded = decoder.decode_substream(frame_bytes);
+            REQUIRE(decoded.has_value());
+            REQUIRE(decoded->has_value());
+            const auto& sub = **decoded;
+            // The decoded bed is the shortened frame, not padded to six
+            // blocks.
+            REQUIRE(sub.channels.size() >= 5);
+            for (const auto& channel : sub.channels) {
+                REQUIRE(channel.size() == frame_samples);
+            }
+
+            // The OAMD update's ramp covers exactly one frame - the field a
+            // fixed-1536 writer would get wrong at every short code.
+            const auto oamd_bytes = find_payload(frame_bytes, ac3::emdf::kPayloadIdOamd);
+            REQUIRE(oamd_bytes.has_value());
+            const auto program = ac3::oba::parse_payload(*oamd_bytes);
+            REQUIRE(program.has_value());
+            REQUIRE(program->blocks.size() == 1);
+            CHECK(program->blocks[0].ramp_duration == static_cast<int>(frame_samples));
+
+            const auto joc_bytes = find_payload(frame_bytes, ac3::emdf::kPayloadIdJoc);
+            REQUIRE(joc_bytes.has_value());
+            const auto params = ac3::oba::joc::parse_payload(*joc_bytes);
+            REQUIRE(params.has_value());
+
+            std::array<std::span<const float>, ac3::oba::joc::kNumChannels5X> bed{};
+            for (int jc = 0; jc < ac3::oba::joc::kNumChannels5X; ++jc) {
+                bed[static_cast<std::size_t>(jc)] = sub.channels[static_cast<std::size_t>(
+                    kAc3FromJoc[static_cast<std::size_t>(jc)])];
+            }
+            const auto objects =
+                ac3::oba::joc::reconstruct(bed, *params, state, /*fast_mdct=*/false,
+                                           /*fast_imdct=*/false, domain);
+            REQUIRE(objects.size() == 4);
+            for (std::size_t i = 0; i < 4; ++i) {
+                REQUIRE(objects[i].size() == frame_samples);
+                recovered[i].insert(recovered[i].end(), objects[i].begin(), objects[i].end());
+            }
+        }
+
+        const auto delay =
+            static_cast<std::size_t>(256 + ac3::oba::joc::reconstruction_delay(domain));
+        constexpr std::size_t kSkip = 1536;  // warm-up/cool-down, all codes alike
+        double worst = 1e9;
+        for (std::size_t i = 0; i < 4; ++i) {
+            double signal = 0.0;
+            double error = 0.0;
+            for (std::size_t n = kSkip; n + kSkip < recovered[i].size(); ++n) {
+                const double want = static_cast<double>(source[i][n - delay]);
+                const double got = static_cast<double>(recovered[i][n]);
+                signal += want * want;
+                error += (got - want) * (got - want);
+            }
+            const double snr_db = 10.0 * std::log10(signal / std::max(error, 1e-30));
+            CAPTURE(code, i, snr_db);
+            // The six-block wire test's own floor: whatever the frame
+            // length, the chain has to genuinely separate the objects.
+            CHECK(snr_db > 10.0);
+            worst = std::min(worst, snr_db);
+        }
+        worst_by_code[static_cast<std::size_t>(code)] = worst;
+    }
+
+    // The relative claim, which is the one that catches a short-frame
+    // regression the absolute floor would forgive: shortening the frame must
+    // not cost more than a few dB against the six-block control on the same
+    // material through the same chain. Measured margin is ~0 (the short
+    // codes score fractionally HIGHER); 3 dB allows for material and
+    // platform variation without letting a real timing bug through.
+    for (const int code : {0, 1, 2}) {
+        CAPTURE(code, worst_by_code[static_cast<std::size_t>(code)], worst_by_code[3]);
+        CHECK(worst_by_code[static_cast<std::size_t>(code)] > worst_by_code[3] - 3.0);
     }
 }

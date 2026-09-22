@@ -1,0 +1,148 @@
+diff --git a/httplib.h b/httplib.h
+index bf22373..0e90e05 100644
+--- a/httplib.h
++++ b/httplib.h
+@@ -4653,9 +4653,15 @@ bool is_valid_utf8(const std::string &s);
+ // a frame and the connection cannot be reused, the second can just be retried.
+ enum class FrameRead { Ok, Fail, Timeout };
+ 
++// `in_message` says a fragmented message has begun, so that even its next
++// frame's first byte is no longer on a boundary the caller can resume from.
++// With `closed` given, a timeout inside a frame waits on until `closed` is set
++// (read_exact()).
+ FrameRead read_websocket_frame(Stream &strm, Opcode &opcode,
+                                std::string &payload, bool &fin,
+-                               bool expect_masked, size_t max_len);
++                               bool expect_masked, size_t max_len,
++                               bool in_message = false,
++                               const std::atomic<bool> *closed = nullptr);
+ 
+ } // namespace impl
+ 
+@@ -5579,18 +5585,25 @@ namespace impl {
+ // to loop. Reading a 2-byte header with a single read() fails whenever the
+ // header straddles the read buffer's boundary.
+ //
+-// Timeout is reported only when nothing at all was consumed. Once a byte has
+-// been taken the stream sits mid-field and cannot be resumed, so a timeout
+-// there is a failure like any other. (When read() fails it always records why,
+-// so the error belongs to this call and not to an earlier one.)
+-inline FrameRead read_exact(Stream &strm, void *buf, size_t size) {
++// Timeout is reported only when nothing at all was consumed and no frame has
++// begun (`in_frame`). Once one has, the caller cannot resume it. A timeout
++// there still consumed nothing, since read() waits before it takes a byte, so
++// the rest of the frame may simply be late: with `closed` given, the read
++// waits on until it arrives or `closed` is set. Without it, a timeout there is
++// a failure like any other. (When read() fails it always records why, so the
++// error belongs to this call and not to an earlier one.)
++inline FrameRead read_exact(Stream &strm, void *buf, size_t size,
++                            bool in_frame = false,
++                            const std::atomic<bool> *closed = nullptr) {
+   auto p = static_cast<char *>(buf);
+   size_t total = 0;
+   while (total < size) {
+     auto n = strm.read(p + total, size - total);
+     if (n <= 0) {
+-      auto timed_out = total == 0 && strm.get_error() == Error::Timeout;
+-      return timed_out ? FrameRead::Timeout : FrameRead::Fail;
++      auto timed_out = strm.get_error() == Error::Timeout;
++      if (timed_out && total == 0 && !in_frame) { return FrameRead::Timeout; }
++      if (timed_out && closed && !closed->load()) { continue; }
++      return FrameRead::Fail;
+     }
+     total += static_cast<size_t>(n);
+   }
+@@ -5599,11 +5612,13 @@ inline FrameRead read_exact(Stream &strm, void *buf, size_t size) {
+ 
+ inline FrameRead read_websocket_frame(Stream &strm, Opcode &opcode,
+                                       std::string &payload, bool &fin,
+-                                      bool expect_masked, size_t max_len) {
++                                      bool expect_masked, size_t max_len,
++                                      bool in_message,
++                                      const std::atomic<bool> *closed) {
+   // Read first 2 bytes. This is the only read that may report a timeout: it
+   // sits on a frame boundary, where nothing has been consumed yet.
+   uint8_t header[2];
+-  FrameRead first = read_exact(strm, header, 2);
++  FrameRead first = read_exact(strm, header, 2, in_message, closed);
+   if (first != FrameRead::Ok) { return first; }
+ 
+   fin = (header[0] & 0x80) != 0;
+@@ -5628,11 +5643,15 @@ inline FrameRead read_websocket_frame(Stream &strm, Opcode &opcode,
+   // Extended payload length
+   if (payload_len == 126) {
+     uint8_t ext[2];
+-    if (read_exact(strm, ext, 2) != FrameRead::Ok) { return FrameRead::Fail; }
++    if (read_exact(strm, ext, 2, true, closed) != FrameRead::Ok) {
++      return FrameRead::Fail;
++    }
+     payload_len = (static_cast<uint64_t>(ext[0]) << 8) | ext[1];
+   } else if (payload_len == 127) {
+     uint8_t ext[8];
+-    if (read_exact(strm, ext, 8) != FrameRead::Ok) { return FrameRead::Fail; }
++    if (read_exact(strm, ext, 8, true, closed) != FrameRead::Ok) {
++      return FrameRead::Fail;
++    }
+     // RFC 6455 Section 5.2: the most significant bit MUST be 0
+     if (ext[0] & 0x80) { return FrameRead::Fail; }
+     payload_len = 0;
+@@ -5646,7 +5665,7 @@ inline FrameRead read_websocket_frame(Stream &strm, Opcode &opcode,
+   // Read mask key if present
+   uint8_t mask_key[4] = {0};
+   if (masked) {
+-    if (read_exact(strm, mask_key, 4) != FrameRead::Ok) {
++    if (read_exact(strm, mask_key, 4, true, closed) != FrameRead::Ok) {
+       return FrameRead::Fail;
+     }
+   }
+@@ -5654,8 +5673,8 @@ inline FrameRead read_websocket_frame(Stream &strm, Opcode &opcode,
+   // Read payload
+   payload.resize(static_cast<size_t>(payload_len));
+   if (payload_len > 0 &&
+-      read_exact(strm, &payload[0], static_cast<size_t>(payload_len)) !=
+-          FrameRead::Ok) {
++      read_exact(strm, &payload[0], static_cast<size_t>(payload_len), true,
++                 closed) != FrameRead::Ok) {
+     return FrameRead::Fail;
+   }
+ 
+@@ -22315,14 +22334,19 @@ inline bool WebSocket::send_frame(Opcode op, const char *data, size_t len,
+ 
+ inline ReadResult WebSocket::read(std::string &msg) {
+   std::unique_lock<std::mutex> read_lock(read_mutex_);
++  // A timeout the caller set is a chance to look for a close, not a sign the
++  // peer has gone, so a frame that has begun is waited for until the
++  // connection closes. Under the compile-time default, a timeout inside a
++  // frame still fails it.
++  const std::atomic<bool> *wait = read_timeout_set_ ? &closed_ : nullptr;
+   while (!closed_) {
+     Opcode opcode;
+     std::string payload;
+     bool fin;
+ 
+-    impl::FrameRead r =
+-        impl::read_websocket_frame(strm_, opcode, payload, fin, is_server_,
+-                                   CPPHTTPLIB_WEBSOCKET_MAX_PAYLOAD_LENGTH);
++    impl::FrameRead r = impl::read_websocket_frame(
++        strm_, opcode, payload, fin, is_server_,
++        CPPHTTPLIB_WEBSOCKET_MAX_PAYLOAD_LENGTH, false, wait);
+     // A timeout landed on a frame boundary: the connection is untouched and
+     // still usable, so hand control back without closing it. That is only
+     // useful to a caller who asked for the timeout; the compile-time default
+@@ -22367,12 +22391,12 @@ inline ReadResult WebSocket::read(std::string &msg) {
+           std::string cont_payload;
+           bool cont_fin;
+           // A timeout is not reportable here: half of a fragmented message is
+-          // already in `msg` and read() has no way to resume it, so it is a
+-          // failure like any other. Timeouts are only ever seen on a message
+-          // boundary.
++          // already in `msg` and read() has no way to resume it, so the read
++          // waits on as it does inside a frame, and fails like any other
++          // otherwise. Timeouts are only ever seen on a message boundary.
+           if (impl::read_websocket_frame(
+                   strm_, cont_opcode, cont_payload, cont_fin, is_server_,
+-                  CPPHTTPLIB_WEBSOCKET_MAX_PAYLOAD_LENGTH) !=
++                  CPPHTTPLIB_WEBSOCKET_MAX_PAYLOAD_LENGTH, true, wait) !=
+               impl::FrameRead::Ok) {
+             closed_ = true;
+             return Fail;

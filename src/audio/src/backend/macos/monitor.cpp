@@ -43,8 +43,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <thread>
 #include <vector>
 
+#include "ac3/audio/playback_counter.hpp"
 #include "ac3/audio/ring_buffer.hpp"
 #include "coreaudio_names.hpp"
 #include "coreaudio_support.hpp"
@@ -61,9 +63,10 @@ std::string_view describe(MonitorError error) {
     switch (error) {
         case MonitorError::kNoBackend: return "no monitor backend on this platform";
         case MonitorError::kComFailure: return "a Core Audio HAL call failed";
-        case MonitorError::kDeviceNotFound:
-            return "the requested output device was not found, or will not play this many "
-                   "channels at this rate";
+        case MonitorError::kDeviceNotFound: return "the requested output device was not found";
+        case MonitorError::kFormatRejected:
+            return "the device will not run this channel count, or would not retune to this "
+                   "sample rate";
         case MonitorError::kAlreadyRunning: return "monitor playback is already running";
         case MonitorError::kNotRunning: return "monitor playback is not running";
     }
@@ -77,15 +80,39 @@ struct MonitorSink::Impl {
     coreaudio::SampleFormat format = coreaudio::SampleFormat::kFloat32;
     bool interleaved = true;
     std::uint16_t channels = 0;
+    std::uint32_t sample_rate = 0;
+    // Raised by start(). Lowered by stop(), or by `alive` when the device
+    // dies under the stream.
     std::atomic_bool running{false};
+    coreaudio::AliveWatch alive{running};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
+    // What the IOProc last saw of the device's own clock, for position(): the
+    // frames handed over against the lead between the device's time now and
+    // the time the frames it is writing will be heard.
+    PlaybackCounter counter;
+    // kAudioDevicePropertyLatency plus the safety offset, read at start: the
+    // delay past the buffer the IOProc fills.
+    std::atomic<std::uint32_t> latency{0};
+    // Set by pause()/resume(); the device is stopped and started while the
+    // IOProc stays registered, so the queue and the format survive.
+    std::atomic_bool paused{false};
+    // A flush the IOProc performs, since the queue's read side is its own;
+    // `flushes` counts the ones it has done, which is what flush() waits for,
+    // and `flush_mark` is how far the queue had been written when the flush
+    // was asked for: what it drops.
+    std::atomic_bool flushing{false};
+    std::atomic<std::uint64_t> flushes{0};
+    std::atomic<std::size_t> flush_mark{0};
     // Reused by the IOProc so it never allocates on Apple's realtime I/O
     // thread once warmed up - see platform/macos/capture.cpp's own comment
     // on why this lives here rather than as a lambda capture.
     std::vector<float> scratch;
     std::vector<float> channel_scratch;
+    // Frames handed to the device since the last start() or flush(); only the
+    // IOProc touches it.
+    std::uint64_t handed_over = 0;
 };
 
 MonitorSink::MonitorSink() : impl_(std::make_unique<Impl>()) {}
@@ -104,8 +131,108 @@ MonitorStats MonitorSink::stats() const {
             .underruns = impl_->underruns.load(std::memory_order_relaxed)};
 }
 
+std::optional<MonitorPosition> MonitorSink::position() const {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
+        return std::nullopt;
+    }
+    const std::uint64_t queued_here = impl_->queue->available() / impl_->channels;
+    return impl_->counter.position(queued_here, impl_->latency.load(std::memory_order_relaxed));
+}
+
+void MonitorSink::flush() {
+    if (!running() || !impl_->queue) {
+        return;
+    }
+    // What a flush cannot do here: recall the frames the hardware already
+    // holds. The HAL has no counterpart to WASAPI's Reset or ALSA's drop -
+    // the IOProc writes into the buffer the device is about to play, so the
+    // output latency's worth already handed over will still be heard. Both
+    // buffers this sink owns are dropped, which is the part it can promise.
+    //
+    // A stopped device has no IOProc running, so while paused there is nobody
+    // to hand the work to and nobody to race with either: AudioDeviceStop
+    // does not return while the IOProc is still in use. Any flush still
+    // waiting for the IOProc is this one's too, and is done with here.
+    if (impl_->paused.load(std::memory_order_acquire)) {
+        impl_->flushing.store(false, std::memory_order_release);
+        impl_->queue->discard_to(impl_->queue->write_mark());
+        impl_->handed_over = 0;
+        impl_->counter.restart();
+        impl_->rendered.store(0, std::memory_order_relaxed);
+        impl_->submitted.store(0, std::memory_order_relaxed);
+        return;
+    }
+    // Running: the IOProc owns the queue's read side, so it does the work and
+    // this waits for it. Longer than any device period, and giving up after
+    // that is better than blocking a caller on a device that has stopped
+    // calling back.
+    const std::uint64_t done = impl_->flushes.load(std::memory_order_acquire);
+    impl_->flush_mark.store(impl_->queue->write_mark(), std::memory_order_release);
+    impl_->flushing.store(true, std::memory_order_release);
+    for (int waited = 0; waited < 200; ++waited) {
+        if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    // The device stopped calling back before it could do the work - an HDMI
+    // output whose display has gone to sleep. The flush is left for the next
+    // callback, whenever the device comes back. It drops only what was queued
+    // before the mark, so audio submitted after this call returned is kept.
+    // A device pulled out never calls back again; its death lowers `running`,
+    // which ends the wait above at once.
+}
+
+std::expected<void, MonitorError> MonitorSink::pause() {
+    if (!running() || impl_->io_proc_id == nullptr) {
+        return std::unexpected(MonitorError::kNotRunning);
+    }
+    if (impl_->paused.load(std::memory_order_acquire)) {
+        return {};
+    }
+    // The IOProc stays registered: stopping the device only stops it being
+    // called, so the queue, the format and the device are all still here for
+    // resume().
+    //
+    // The flag is raised only AFTER the stop returns, which is what makes
+    // flush()'s paused branch safe: that branch resets the queue and the
+    // frame count from the caller's thread, and may only do so once no
+    // IOProc call can be in flight. Raising the flag first would open a
+    // window in which a flush on another thread saw "paused" while the
+    // IOProc was still running.
+    if (AudioDeviceStop(impl_->device, impl_->io_proc_id) != noErr) {
+        return std::unexpected(MonitorError::kComFailure);
+    }
+    impl_->paused.store(true, std::memory_order_release);
+    return {};
+}
+
+std::expected<void, MonitorError> MonitorSink::resume() {
+    if (!running() || impl_->io_proc_id == nullptr) {
+        return std::unexpected(MonitorError::kNotRunning);
+    }
+    if (!impl_->paused.load(std::memory_order_acquire)) {
+        return {};
+    }
+    // Cleared before the start, for the mirror of pause()'s reason: the
+    // device must not be calling back while anything still believes it is
+    // stopped and may therefore touch the queue from another thread.
+    impl_->paused.store(false, std::memory_order_release);
+    if (AudioDeviceStart(impl_->device, impl_->io_proc_id) != noErr) {
+        impl_->paused.store(true, std::memory_order_release);
+        return std::unexpected(MonitorError::kComFailure);
+    }
+    return {};
+}
+
+bool MonitorSink::paused() const {
+    // A pause is a property of a running stream, so one whose device has
+    // died is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
+}
+
 bool MonitorSink::can_submit() const {
-    if (!impl_->queue || impl_->channels == 0) {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
         return false;
     }
     // Room for at least ~20 ms at a typical rate, in samples (interleaved).
@@ -135,18 +262,24 @@ bool MonitorSink::submit(std::span<const float> interleaved) {
 }
 
 void MonitorSink::stop() {
+    // Unwatched first, so nothing lowers the flag of a stream being taken
+    // down anyway.
+    impl_->alive.reset();
     if (impl_->io_proc_id != nullptr) {
         AudioDeviceStop(impl_->device, impl_->io_proc_id);
         AudioDeviceDestroyIOProcID(impl_->device, impl_->io_proc_id);
         impl_->io_proc_id = nullptr;
     }
+    // A pause is a property of a running stream, so it does not outlive one.
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
     impl_->running.store(false, std::memory_order_release);
 }
 
 std::expected<void, MonitorError> MonitorSink::start(const std::string& device_id,
                                                       std::uint32_t sample_rate,
                                                       std::uint16_t channels,
-                                                      std::uint32_t /*channel_mask*/) {
+                                                      std::uint32_t /*channel_mask*/, bool /*low_latency*/) {
     // channel_mask is a WASAPI speaker mask with no HAL counterpart - a HAL
     // stream carries a channel COUNT and the driver's own documented
     // channel order, the same reason platform/alsa/monitor.cpp also accepts
@@ -155,6 +288,9 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     if (running()) {
         return std::unexpected(MonitorError::kAlreadyRunning);
     }
+    // A stream whose device died still has its IOProc registered, and its
+    // watch; stop() lets go of both. With nothing started it does nothing.
+    stop();
     if (channels == 0) {
         return std::unexpected(MonitorError::kComFailure);
     }
@@ -164,9 +300,13 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     if (device == kAudioObjectUnknown) {
         return std::unexpected(MonitorError::kDeviceNotFound);
     }
+    // No downmix/upmix matrix of its own (see this file's header comment), so
+    // a width the device does not already run at is a format refusal, not a
+    // missing device - the same "exact match or nothing" limit
+    // platform/alsa/monitor.cpp's channel/rate hw_params calls enforce.
     if (coreaudio::channel_count(device, kAudioDevicePropertyScopeOutput) !=
         static_cast<std::uint32_t>(channels)) {
-        return std::unexpected(MonitorError::kDeviceNotFound);
+        return std::unexpected(MonitorError::kFormatRejected);
     }
 
     const auto current_rate = coreaudio::nominal_sample_rate(device);
@@ -176,7 +316,15 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                                      static_cast<Float64>(sample_rate)) ||
             !coreaudio::wait_for_nominal_rate(device, static_cast<Float64>(sample_rate),
                                               kRateChangeTimeout)) {
-            return std::unexpected(MonitorError::kDeviceNotFound);
+            // set_property reports only success or failure, never why (see
+            // coreaudio_support.hpp), so this cannot be narrowed to a single
+            // status code the way the Windows backend narrows
+            // AUDCLNT_E_UNSUPPORTED_FORMAT. A device already confirmed
+            // present and of the right width failing to retune to a rate it
+            // does not already run at is squarely the same class of refusal
+            // as the channel-count check above, not a device that vanished
+            // between the two calls.
+            return std::unexpected(MonitorError::kFormatRejected);
         }
     }
 
@@ -197,23 +345,73 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
         std::make_unique<RingBuffer>(static_cast<std::size_t>(channels) * sample_rate);
     impl_->device = device;
     impl_->channels = channels;
+    impl_->sample_rate = sample_rate;
     impl_->format = format;
     impl_->interleaved = (asbd->mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0;
     impl_->scratch.reserve(static_cast<std::size_t>(channels) * 4096);
+    // Reserved too, for the same reason: a non-interleaved device's IOProc
+    // resizes this one per call, and the first such call would otherwise
+    // allocate on Apple's realtime I/O thread.
+    impl_->channel_scratch.reserve(4096);
     impl_->submitted.store(0, std::memory_order_relaxed);
     impl_->rendered.store(0, std::memory_order_relaxed);
     impl_->underruns.store(0, std::memory_order_relaxed);
+    impl_->counter.restart();
+    impl_->paused.store(false, std::memory_order_relaxed);
+    impl_->flushing.store(false, std::memory_order_relaxed);
+    impl_->flushes.store(0, std::memory_order_relaxed);
+    impl_->handed_over = 0;
+    // The delay past the buffer the IOProc fills, in frames, which is what
+    // MonitorPosition::latency_frames reports: the device's own presentation
+    // latency plus the stream's, both already in frames at the nominal rate.
+    //
+    // Deliberately NOT the safety offset. The IOProc's own timestamps already
+    // carry it - the lead between `now` and `output_time` is the safety
+    // offset plus the buffer being filled - and that lead is reported as part
+    // of MonitorPosition::frames_queued below, so adding it here as well
+    // would have a caller summing queue and latency count it twice.
+    //
+    // The stream's latency is read as well as the device's because many
+    // drivers publish the figure on one and leave the other at zero; they
+    // describe different stages of the same path, so the sum is the delay,
+    // and zero from both means "cannot say" as the header's comment has it.
+    const auto device_latency = coreaudio::get_property<UInt32>(
+        device, coreaudio::address(kAudioDevicePropertyLatency, kAudioDevicePropertyScopeOutput));
+    UInt32 stream_latency = 0;
+    const auto streams =
+        coreaudio::device_streams(device, kAudioDevicePropertyScopeOutput);
+    if (!streams.empty()) {
+        stream_latency =
+            coreaudio::get_property<UInt32>(streams.front(),
+                                            coreaudio::address(kAudioStreamPropertyLatency))
+                .value_or(0);
+    }
+    impl_->latency.store(device_latency.value_or(0) + stream_latency, std::memory_order_relaxed);
 
     // A captureless lambda, not a free function - see
     // platform/macos/capture.cpp's own start() for why: AudioDeviceIOProc
     // needs a plain C function pointer, but `Impl` is private to
     // MonitorSink, so only a member function (or something lexically
     // nested inside one, which is exactly what this is) has access to it.
-    const auto io_proc = [](AudioObjectID /*device*/, const AudioTimeStamp* /*now*/,
+    const auto io_proc = [](AudioObjectID /*device*/, const AudioTimeStamp* now,
                             const AudioBufferList* /*input_data*/,
                             const AudioTimeStamp* /*input_time*/, AudioBufferList* output,
-                            const AudioTimeStamp* /*output_time*/, void* client_data) -> OSStatus {
+                            const AudioTimeStamp* output_time, void* client_data) -> OSStatus {
         auto* impl = static_cast<Impl*>(client_data);
+        // A flush the caller asked for: drop what this sink holds and restart
+        // the counters with it, which is what position() promises. Done first,
+        // so a call with nothing to fill still makes it. The buffer then goes
+        // out silent from the empty queue, and counts as an underrun - the
+        // same bookkeeping the other backends show after a flush, and the
+        // honest description of what the device played.
+        if (impl->flushing.exchange(false, std::memory_order_acq_rel)) {
+            impl->queue->discard_to(impl->flush_mark.load(std::memory_order_acquire));
+            impl->handed_over = 0;
+            impl->counter.restart();
+            impl->rendered.store(0, std::memory_order_relaxed);
+            impl->submitted.store(0, std::memory_order_relaxed);
+            impl->flushes.fetch_add(1, std::memory_order_release);
+        }
         if (output == nullptr || output->mNumberBuffers == 0 || impl->channels == 0) {
             return noErr;
         }
@@ -256,6 +454,27 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             }
         }
         impl->rendered.fetch_add(got / impl->channels, std::memory_order_relaxed);
+
+        // The device's own clock, which the HAL hands over on every call: the
+        // first frame of this buffer is heard at output_time, so at now every
+        // frame handed over before it has been heard bar the lead between the
+        // two. What the device still holds is this buffer plus that lead.
+        // Both timestamps carry flags saying which of their fields are
+        // filled in, and a device is free to leave the sample time out. A
+        // lead of more than a second is a driver saying something this code
+        // has no use for, and is dropped rather than reported as a queue
+        // depth nothing put there.
+        std::uint64_t lead = 0;
+        if (now != nullptr && output_time != nullptr &&
+            (now->mFlags & kAudioTimeStampSampleTimeValid) != 0 &&
+            (output_time->mFlags & kAudioTimeStampSampleTimeValid) != 0 &&
+            output_time->mSampleTime > now->mSampleTime) {
+            const auto reported =
+                static_cast<std::uint64_t>(output_time->mSampleTime - now->mSampleTime);
+            lead = reported <= impl->sample_rate ? reported : 0;
+        }
+        impl->handed_over += frames;
+        impl->counter.report(impl->handed_over, frames + lead);
         return noErr;
     };
 
@@ -271,6 +490,12 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
 
     impl_->io_proc_id = proc_id;
     impl_->running.store(true, std::memory_order_release);
+    // A device that dies from here on lowers the flag through the watch. One
+    // that died before the watch was in place never tells it, so it is asked.
+    impl_->alive.watch(device);
+    if (!coreaudio::device_alive(device)) {
+        impl_->running.store(false, std::memory_order_release);
+    }
     return {};
 }
 

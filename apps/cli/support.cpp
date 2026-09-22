@@ -33,6 +33,7 @@
 #include "ac3/decoder/output.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
+#include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/drc.hpp"
@@ -40,6 +41,7 @@
 #include "ac3/meta/mixing.hpp"
 #include "ac3/meta/qc.hpp"
 #include "ac3/oba/joc.hpp"
+#include "ac3/oba/oamd.hpp"
 #include "ac3/quality/distortion.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
@@ -251,6 +253,463 @@ bool parse_block_mix_config(std::string_view text,
     return true;
 }
 
+// parse_programme_metadata_option's own three-way answer: a metadata key that
+// matched and was accepted, one that matched but was invalid (the message is
+// already on stderr), or a suffix that is not a metadata key at all - which
+// parse_options then leaves for programmeN-layout=/-bitrate= or, failing
+// those too, its own final "unknown option".
+enum class MetadataOptionResult : std::uint8_t { kNotMetadata, kOk, kError };
+
+// "programmeN" or "programmeN-<suffix>" for N in 2..8 - the range §E2.3.1.2
+// allows beyond the primary programme (kMaxProgrammes - 1 extra independent
+// substreams, I1-I7). Returns the 0-based slot into Options::extra_programmes
+// (N - 2) and whatever follows the '-', empty for the bare "programmeN="
+// form. Anything else - "programme" alone (the decode-side programme=
+// selector, handled by its own existing check), programme9 and up, or no
+// digit at all - returns nullopt and is left for the rest of parse_options
+// (or its final "unknown option") to deal with.
+std::optional<std::pair<std::size_t, std::string_view>> match_extra_programme(
+    std::string_view key) {
+    constexpr std::string_view kPrefix = "programme";
+    if (!key.starts_with(kPrefix) || key.size() <= kPrefix.size()) {
+        return std::nullopt;
+    }
+    const char digit = key[kPrefix.size()];
+    if (digit < '2' || digit > '8') {
+        return std::nullopt;
+    }
+    const auto slot = static_cast<std::size_t>(digit - '2');
+    const auto rest = key.substr(kPrefix.size() + 1);
+    if (rest.empty()) {
+        return std::make_pair(slot, std::string_view{});
+    }
+    if (rest.front() != '-') {
+        return std::nullopt;
+    }
+    return std::make_pair(slot, rest.substr(1));
+}
+
+// Every plan::Metadata option an extra programme (programmeN-, N = 2..8) can
+// set, dispatched by SUFFIX (whatever match_extra_programme found after the
+// '-') against that programme's own plan::Metadata - the same fields, the
+// same parsing, the same defaults the primary programme's bare tokens use
+// below, just aimed at a different Metadata. `full_key` is the ORIGINAL
+// "programmeN-..." spelling, kept for error messages so a caller sees which
+// programme's option was wrong rather than a bare, ambiguous field name.
+//
+// Two families are deliberately refused rather than silently accepted and
+// left inert:
+//   - The seven 1+1-only fields (dialnorm2, drc2, heavy2/ceiling2/dialogue2,
+//     mixlevel2, roomtyp2, pgmscl2, paninfo2) - 1+1 is already refused as an
+//     extra programme's own layout (run_eac3_encode), so Ch2's fields have no
+//     programme left to describe.
+//   - AC-3 Annex D's own fields (annexd, encinfo, langcod, langcod2,
+//     timecode) - an extra programme is always an E-AC-3 independent
+//     substream (§E2.3.1.2 does not exist in plain AC-3), so bsid-6's
+//     alternate syntax can never apply to one.
+// Both get the same treatment programmeN-layout=1+1 already does: refused
+// with a reason, not accepted and quietly dropped.
+//
+// bare drc='s numeric form (a §7.7.1 partial-compression SCALE for decode)
+// has no meaning for AUTHORING a programme, so only the named-profile half of
+// that token generalizes here.
+MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
+                                                      std::string_view value,
+                                                      std::string_view full_key, plan::Metadata& p) {
+    if (suffix == "langcod" || suffix == "langcod2") {
+        fmt::println(stderr,
+                     "error: {} is an AC-3 Annex D field; an extra programme is always E-AC-3 "
+                     "and has no bsid-6 alternate syntax to carry it",
+                     full_key);
+        return MetadataOptionResult::kError;
+    }
+    static constexpr std::array<std::string_view, 3> kAnnexDOnly{"annexd", "encinfo", "timecode"};
+    if (std::ranges::find(kAnnexDOnly, suffix) != kAnnexDOnly.end()) {
+        fmt::println(stderr,
+                     "error: {} is an AC-3 Annex D field; an extra programme is always E-AC-3 "
+                     "and has no bsid-6 alternate syntax to carry it",
+                     full_key);
+        return MetadataOptionResult::kError;
+    }
+    static constexpr std::array<std::string_view, 7> kDualMonoOnly{
+        "dialnorm2", "drc2", "heavy2", "ceiling2", "dialogue2", "pgmscl2", "paninfo2"};
+    if (std::ranges::find(kDualMonoOnly, suffix) != kDualMonoOnly.end()) {
+        fmt::println(stderr,
+                     "error: {} is 1+1 dual-mono only, and layout 1+1 is not supported for an "
+                     "extra programme (see programmeN-layout=)",
+                     full_key);
+        return MetadataOptionResult::kError;
+    }
+    static constexpr std::array<std::string_view, 2> kMixlevel2Roomtyp2{"mixlevel2", "roomtyp2"};
+    if (std::ranges::find(kMixlevel2Roomtyp2, suffix) != kMixlevel2Roomtyp2.end()) {
+        fmt::println(stderr,
+                     "error: {} is 1+1 dual-mono only, and layout 1+1 is not supported for an "
+                     "extra programme (see programmeN-layout=)",
+                     full_key);
+        return MetadataOptionResult::kError;
+    }
+    if (suffix == "heavy" || suffix == "mixmeta") {
+        if (suffix == "heavy") {
+            p.heavy.emplace();
+        } else {
+            p.mixmeta = true;
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "infomdat") {
+        p.infomdat = true;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "copyright") {
+        p.infomdat = true;
+        p.info.copyrightb = true;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "sourcefscod") {
+        p.infomdat = true;
+        p.info.sourcefscod = true;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "drc") {
+        ac3::meta::ProfileId id{};
+        if (!ac3::meta::parse_profile(value, id)) {
+            fmt::println(stderr, "error: unknown DRC profile '{}' ({})", value,
+                         ac3::meta::kProfileNames);
+            return MetadataOptionResult::kError;
+        }
+        p.drc = ac3::meta::profile(id);
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "ceiling" || suffix == "dialogue") {
+        double db = 0.0;
+        if (!parse_double(value, db)) {
+            fmt::println(stderr, "error: {} needs a level in dBFS", full_key);
+            return MetadataOptionResult::kError;
+        }
+        if (!p.heavy.has_value()) {
+            p.heavy.emplace();
+        }
+        if (suffix == "ceiling") {
+            p.heavy->peak_ceiling_dbfs = db;
+        } else {
+            p.heavy->dialogue_target_dbfs = db;
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "dialnorm") {
+        if (value == "auto") {
+            p.measure_dialnorm = true;
+            return MetadataOptionResult::kOk;
+        }
+        const auto n = parse_u32_or(value, 0);
+        if (n < 1 || n > 31) {
+            fmt::println(stderr, "error: {} must be auto or 1..31 (§5.4.2.8)", full_key);
+            return MetadataOptionResult::kError;
+        }
+        p.dialnorm = static_cast<int>(n);
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "bsmod") {
+        ac3::meta::BitstreamMode mode{};
+        if (!ac3::meta::parse_bsmod(value, mode)) {
+            fmt::println(stderr, "error: {} must be 0..7 (Table 5.5's service type) or one of: {}",
+                         full_key, ac3::meta::kBsmodNames);
+            return MetadataOptionResult::kError;
+        }
+        p.infomdat = true;
+        p.info.bsmod = mode;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "dsurmod") {
+        const auto n = parse_u32_or(value, 4);
+        ac3::meta::SurroundMode mode{};
+        if (n <= 3) {
+            mode = n < 3 ? static_cast<ac3::meta::SurroundMode>(n)
+                         : ac3::meta::SurroundMode::kNotIndicated;
+        } else if (!ac3::meta::parse_surround_mode(value, mode)) {
+            fmt::println(stderr,
+                         "error: {} must be 0..3 (Table 5.11's Dolby Surround mode) or one of: {}",
+                         full_key, ac3::meta::kSurroundModeNames);
+            return MetadataOptionResult::kError;
+        }
+        p.infomdat = true;
+        p.info.dsurmod = mode;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "cmixlev") {
+        if (value == "-3") {
+            p.cmixlev = ac3::meta::CentreMixLevel::kMinus3dB;
+        } else if (value == "-4.5") {
+            p.cmixlev = ac3::meta::CentreMixLevel::kMinus4_5dB;
+        } else if (value == "-6") {
+            p.cmixlev = ac3::meta::CentreMixLevel::kMinus6dB;
+        } else {
+            fmt::println(stderr, "error: {} must be -3, -4.5 or -6 (Table 5.9)", full_key);
+            return MetadataOptionResult::kError;
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "surmixlev") {
+        if (value == "-3") {
+            p.surmixlev = ac3::meta::SurroundMixLevel::kMinus3dB;
+        } else if (value == "-6") {
+            p.surmixlev = ac3::meta::SurroundMixLevel::kMinus6dB;
+        } else if (value == "off") {
+            p.surmixlev = ac3::meta::SurroundMixLevel::kSilent;
+        } else {
+            fmt::println(stderr, "error: {} must be -3, -6 or off (Table 5.10)", full_key);
+            return MetadataOptionResult::kError;
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "lfemix") {
+        p.mixmeta = true;
+        if (value == "off") {
+            p.lfemix = std::nullopt;
+            return MetadataOptionResult::kOk;
+        }
+        const auto n = parse_u32_or(value, 99);
+        if (n > 31) {
+            fmt::println(stderr, "error: {} must be off or 0..31 (§E2.3.1.11)", full_key);
+            return MetadataOptionResult::kError;
+        }
+        p.lfemix = static_cast<int>(n);
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "dmixmod") {
+        p.mixmeta = true;
+        p.annexd = true;
+        if (value == "ltrt") {
+            p.dmixmod = ac3::meta::DownmixMode::kLtRt;
+        } else if (value == "loro") {
+            p.dmixmod = ac3::meta::DownmixMode::kLoRo;
+        } else if (value == "none") {
+            p.dmixmod = ac3::meta::DownmixMode::kNotIndicated;
+        } else {
+            fmt::println(stderr, "error: {} must be ltrt, loro or none (Table D2.2)", full_key);
+            return MetadataOptionResult::kError;
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "ltrtcmixlev" || suffix == "lorocmixlev" || suffix == "ltrtsurmixlev" ||
+        suffix == "lorosurmixlev") {
+        ac3::meta::MixLevel level{};
+        if (!parse_mix_level(value, level)) {
+            fmt::println(stderr,
+                         "error: {} must be +3, +1.5, 0, -1.5, -3, -4.5, -6 or off "
+                         "(Tables D2.3-D2.6)",
+                         full_key);
+            return MetadataOptionResult::kError;
+        }
+        const bool surround = suffix == "ltrtsurmixlev" || suffix == "lorosurmixlev";
+        if (surround && !ac3::meta::valid_surround_mix_level(level)) {
+            fmt::println(stderr,
+                         "error: {} must be -1.5, -3, -4.5, -6 or off - Tables D2.4/D2.6 "
+                         "reserve the three louder codes",
+                         full_key);
+            return MetadataOptionResult::kError;
+        }
+        p.mixmeta = true;
+        p.annexd = true;
+        if (suffix == "ltrtcmixlev") {
+            p.ltrtcmixlev = level;
+        } else if (suffix == "lorocmixlev") {
+            p.lorocmixlev = level;
+        } else if (suffix == "ltrtsurmixlev") {
+            p.ltrtsurmixlev = level;
+        } else {
+            p.lorosurmixlev = level;
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "dsurexmod" || suffix == "dheadphonmod" || suffix == "adconvtyp") {
+        p.infomdat = true;
+        p.annexd = true;
+        bool ok = false;
+        if (suffix == "dsurexmod") {
+            ok = ac3::meta::parse_surround_ex_mode(value, p.info.dsurexmod);
+        } else if (suffix == "dheadphonmod") {
+            ok = ac3::meta::parse_headphone_mode(value, p.info.dheadphonmod);
+        } else {
+            ok = ac3::meta::parse_ad_converter(value, p.adconvtyp);
+        }
+        if (!ok) {
+            fmt::println(stderr, "error: {} must be one of: {}", full_key,
+                         suffix == "dsurexmod"      ? ac3::meta::kSurroundExModeNames
+                         : suffix == "dheadphonmod" ? ac3::meta::kHeadphoneModeNames
+                                                    : ac3::meta::kAdConverterNames);
+            return MetadataOptionResult::kError;
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "mixlevel") {
+        const auto db = parse_u32_or(value, 0);
+        if (db < 80 || db > 111) {
+            fmt::println(stderr, "error: {} is a peak mixing level of 80..111 dB SPL (§5.4.2.14)",
+                         full_key);
+            return MetadataOptionResult::kError;
+        }
+        p.infomdat = true;
+        if (!p.info.audprod) {
+            p.info.audprod.emplace();
+        }
+        p.info.audprod->mixlevel = static_cast<int>(db) - ac3::meta::kMixLevelBaseDbSpl;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "roomtyp") {
+        ac3::meta::RoomType room{};
+        if (!ac3::meta::parse_room_type(value, room)) {
+            fmt::println(stderr, "error: {} must be one of: {} (Table 5.12)", full_key,
+                         ac3::meta::kRoomTypeNames);
+            return MetadataOptionResult::kError;
+        }
+        p.infomdat = true;
+        if (!p.info.audprod) {
+            p.info.audprod.emplace();
+        }
+        p.info.audprod->roomtyp = room;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "origbs") {
+        p.infomdat = true;
+        if (value == "on") {
+            p.info.origbs = true;
+        } else if (value == "off") {
+            p.info.origbs = false;
+        } else {
+            fmt::println(stderr, "error: {} must be on or off (§5.4.2.25)", full_key);
+            return MetadataOptionResult::kError;
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "pgmscl" || suffix == "extpgmscl") {
+        int code = 0;
+        if (!parse_pgm_scale(value, code)) {
+            fmt::println(stderr, "error: {} is mute or a level in -50..+12 dB (§E2.3.1.13)",
+                         full_key);
+            return MetadataOptionResult::kError;
+        }
+        p.mixmeta = true;
+        (suffix == "pgmscl" ? p.mixdepth.pgmscl : p.mixdepth.extpgmscl) = code;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "mixdef") {
+        p.mixmeta = true;
+        if (value == "none") {
+            p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kNone;
+        } else if (value == "premix") {
+            p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kPremix;
+        } else if (value == "reserved") {
+            p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kReserved;
+        } else if (value == "ext") {
+            p.mixdepth.mixing.mixdef = ac3::meta::MixDefinition::kExtended;
+        } else {
+            fmt::println(stderr, "error: {} must be none, premix, reserved or ext (Table E2.6)",
+                         full_key);
+            return MetadataOptionResult::kError;
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "premixcmp") {
+        ac3::meta::PremixCompression premix;
+        if (!parse_premix(value, premix)) {
+            fmt::println(stderr,
+                         "error: {} is <dynrng|compr>:<external|local>:<0..7> (§E2.3.1.19-21)",
+                         full_key);
+            return MetadataOptionResult::kError;
+        }
+        p.mixmeta = true;
+        p.mixdepth.mixing.premix = premix;
+        // mixdef 0x3 carries its own copy inside mixdata2e, so the value has
+        // to reach whichever of the two the mixdef= token selects.
+        if (!p.mixdepth.mixing.external.has_value()) {
+            p.mixdepth.mixing.external.emplace();
+        }
+        p.mixdepth.mixing.external->premix = premix;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "mixdata") {
+        const auto bits = parse_u32_or(value, 0xFFFF);
+        if (bits > 0x0FFF) {
+            fmt::println(stderr,
+                         "error: {} is the twelve bits mixdef=reserved reserves, 0..4095 "
+                         "(§E2.3.1.23)",
+                         full_key);
+            return MetadataOptionResult::kError;
+        }
+        p.mixmeta = true;
+        p.mixdepth.mixing.reserved = static_cast<std::uint16_t>(bits);
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "extmix" || suffix == "auxmix") {
+        std::vector<std::optional<int>> scales;
+        const std::size_t wanted = suffix == "extmix" ? 6 : 2;
+        if (!parse_scale_list(value, scales) || scales.size() < wanted ||
+            scales.size() > wanted + (suffix == "extmix" ? 1 : 0)) {
+            fmt::println(stderr, "error: {} takes {} Table E2.8 codes (0..15 or 'off'){}",
+                         full_key, wanted,
+                         suffix == "extmix" ? ", optionally a seventh for the downmix scale" : "");
+            return MetadataOptionResult::kError;
+        }
+        p.mixmeta = true;
+        if (!p.mixdepth.mixing.external.has_value()) {
+            p.mixdepth.mixing.external.emplace();
+        }
+        auto& external = *p.mixdepth.mixing.external;
+        if (suffix == "extmix") {
+            external.left = scales[0];
+            external.centre = scales[1];
+            external.right = scales[2];
+            external.left_surround = scales[3];
+            external.right_surround = scales[4];
+            external.lfe = scales[5];
+            external.dmixscl = scales.size() > 6 ? scales[6] : std::nullopt;
+        } else {
+            external.auxiliary = std::array<std::optional<int>, 2>{scales[0], scales[1]};
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "speechmix") {
+        ac3::meta::SpeechEnhancement speech;
+        if (!parse_speech(value, speech)) {
+            fmt::println(stderr,
+                         "error: {} is <0..31>[,<0..31>:<0..3>[,<0..31>:<0..7>]] (§E2.3.1.44-51)",
+                         full_key);
+            return MetadataOptionResult::kError;
+        }
+        p.mixmeta = true;
+        p.mixdepth.mixing.speech = speech;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "paninfo") {
+        ac3::meta::PanInfo pan;
+        if (!parse_pan(value, pan)) {
+            fmt::println(stderr,
+                         "error: {} is <0..239>[:<0..63>] - 1.5 degree steps clockwise from "
+                         "centre (§E2.3.1.54)",
+                         full_key);
+            return MetadataOptionResult::kError;
+        }
+        p.mixmeta = true;
+        p.mixdepth.pan = pan;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "blkmixcfg") {
+        std::array<std::optional<int>, ac3::kBlocksPerFrame> words{};
+        if (!parse_block_mix_config(value, words)) {
+            fmt::println(stderr,
+                         "error: {} is six comma-separated 0..31 words, '-' for a block that "
+                         "sends none (§E2.3.1.59-61)",
+                         full_key);
+            return MetadataOptionResult::kError;
+        }
+        p.mixmeta = true;
+        p.mixdepth.blkmixcfginfo = words;
+        return MetadataOptionResult::kOk;
+    }
+    return MetadataOptionResult::kNotMetadata;
+}
+
 std::vector<std::byte> to_bytes(std::span<const char> raw) {
     std::vector<std::byte> bytes(raw.size());
     for (std::size_t i = 0; i < raw.size(); ++i) {
@@ -363,6 +822,14 @@ void Progress::finish() {
         fmt::println(stderr, "\r  {} {:>8} units   ", verb_, done_);
     }}
 
+bool is_extra_programme_token(std::string_view token) {
+    // match_extra_programme reads a KEY (the part before '='), same as
+    // parse_options' own token.substr(0, eq) - strip it here too so this
+    // answers correctly whether or not the caller already split on '='.
+    const auto key = token.substr(0, token.find('='));
+    return match_extra_programme(key).has_value();
+}
+
 bool parse_options(std::span<char*> tokens, Options& out, std::string_view command) {
     for (char* raw : tokens) {
         const std::string_view token{raw};
@@ -443,6 +910,27 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             continue;
         }
         if (key == "asvc") {
+            // A comma means a list of main-service indices (0-7) to OR
+            // together instead of a hand-computed mask - "goes with
+            // services 0 and 2" rather than 0x05. A comma was always a hard
+            // parse error for the plain mask form below, so this
+            // reinterprets nothing that used to work.
+            if (value.find(',') != std::string_view::npos) {
+                unsigned mask = 0;
+                for (const auto part : split(value, ',')) {
+                    int index = 0;
+                    if (!parse_index(part, 7, index)) {
+                        fmt::println(stderr,
+                                     "error: asvc main-service list must be comma-separated "
+                                     "0-7 (got '{}')",
+                                     token);
+                        return false;
+                    }
+                    mask |= (1u << index);
+                }
+                out.asvc = static_cast<int>(mask);
+                continue;
+            }
             // Eight bits, one per main service this associated service may be
             // reproduced with; bit 7 is main service 7. Accepts decimal or
             // 0x-prefixed hex, since it reads as a mask far more often than
@@ -461,6 +949,10 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         }
         if (token == "sign-objects") {
             out.sign_objects = true;
+            continue;
+        }
+        if (token == "bed-only") {
+            out.bed_only = true;
             continue;
         }
         if (token == "verify-objects") {
@@ -499,6 +991,20 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                          "direct §7.9.4 step-3 evaluation (got '{}')",
                          token);
             return false;
+        }
+        if (key == "numblkscod") {
+            unsigned parsed = 0;
+            const auto [ptr, ec] =
+                std::from_chars(value.data(), value.data() + value.size(), parsed);
+            if (ec != std::errc{} || ptr != value.data() + value.size() || parsed > 3) {
+                fmt::println(stderr,
+                             "error: numblkscod is 0-3 (1/2/3/6 blocks per syncframe, "
+                             "section E2.3.1.4) (got '{}')",
+                             token);
+                return false;
+            }
+            out.atmos_numblkscod = static_cast<int>(parsed);
+            continue;
         }
         if (key == "joc-domain") {
             if (value == "qmf") {
@@ -568,6 +1074,17 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.fgaincod = static_cast<int>(parsed);
             continue;
         }
+        if (key == "delta") {
+            if (value == "off") {
+                out.delta = false;
+                continue;
+            }
+            fmt::println(stderr,
+                         "error: delta bit allocation is on by default; 'delta=off' skips "
+                         "the corrections and the second fit that weighs them (got '{}')",
+                         token);
+            return false;
+        }
         if (key == "dither") {
             // No bare-word form: unlike fast-mdct, dither has no prior
             // opt-in spelling to keep parsing, so only the value form -
@@ -616,10 +1133,12 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             // channels= alone is enough to get a usable fold.
             if (value == "as-coded") {
                 out.output.target = ac3::DownmixTarget::kAsCoded;
+                out.downmix_auto = false;
                 continue;
             }
             if (value == "1") {
                 out.output.target = ac3::DownmixTarget::kMono;
+                out.downmix_auto = false;
                 continue;
             }
             if (value == "2") {
@@ -648,24 +1167,34 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             } else if (value == "loro") {
                 out.output.target = ac3::DownmixTarget::kLoRo;
                 out.downmix_named = true;
+                out.downmix_auto = false;
             } else if (value == "ltrt") {
                 out.output.target = ac3::DownmixTarget::kLtRt;
                 out.downmix_named = true;
+                out.downmix_auto = false;
             } else if (value == "mono") {
                 out.output.target = ac3::DownmixTarget::kMono;
                 out.downmix_named = true;
+                out.downmix_auto = false;
+            } else if (value == "auto") {
+                // §D3.1.1's automatic choice, which needs the stream -
+                // resolve_output() settles it. Lo/Ro stands in until then, so
+                // a channels=2 either side of it sees a stereo target.
+                out.output.target = ac3::DownmixTarget::kLoRo;
+                out.downmix_named = true;
+                out.downmix_auto = true;
             } else {
                 fmt::println(stderr,
                              "error: downmix is 'on'/'off' (live) or 'loro' (§7.8.1)/'ltrt' "
-                             "(§7.8.2, Dolby Surround compatible)/'mono' (decode/monitor) "
-                             "(got '{}')",
+                             "(§7.8.2, Dolby Surround compatible)/'mono'/'auto' (the stream's "
+                             "own dmixmod, §D3.1.1) (decode/monitor) (got '{}')",
                              token);
                 return false;
             }
             continue;
         }
         if (key == "follow") {
-            // 'play' only: the sink-following fallback (roadmap UX9) toggle.
+            // 'play' only: the sink-following fallback (play/monitor follow mode) toggle.
             // Unlike downmix=, no other command reads this key, so there is
             // no value space to disambiguate against.
             if (value == "on") {
@@ -713,6 +1242,27 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             }
             continue;
         }
+        // Scoped to `decode`, which is the only command that builds a census -
+        // run_decode is reached from nowhere else, and the loudness commands
+        // run their own decode loop that never accumulates one. Unscoped, this
+        // key parsed for every command and then did nothing on all but one, so
+        // `qc … bap-census=x.json` exited 0 having written no file. That reads
+        // as a census of zero evidence rather than as the refusal it should be,
+        // and it is the same silent-no-output trap the E-AC-3 path had. Falling
+        // through instead hands the token to the unknown-option error below,
+        // which is what the rest of this parser already promises for a key it
+        // cannot honour.
+        if (key == "bap-census" && command == "decode") {
+            // A path, not a flag: the census is a file a checker reads, and
+            // making the caller name it keeps this out of stdout where the
+            // decode's own status lines live.
+            if (value.empty()) {
+                fmt::println(stderr, "error: bap-census needs an output path");
+                return false;
+            }
+            out.bap_census_path = std::string{value};
+            continue;
+        }
         if (key == "conceal") {
             // §7.10. Off by default: a decode that hits a damaged frame says
             // so and stops, which is what a verification tool should do.
@@ -755,7 +1305,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 fmt::println(stderr, "error: {} needs a level in dBFS", key);
                 return false;
             }
-            if (!out.p.heavy) {
+            if (!out.p.heavy.has_value()) {
                 out.p.heavy.emplace();
             }
             if (key == "ceiling") {
@@ -784,7 +1334,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 fmt::println(stderr, "error: {} needs a level in dBFS", key);
                 return false;
             }
-            if (!out.p.heavy2) {
+            if (!out.p.heavy2.has_value()) {
                 out.p.heavy2.emplace();
             }
             if (key == "ceiling2") {
@@ -1116,7 +1666,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.p.mixdepth.mixing.premix = premix;
             // mixdef 0x3 carries its own copy inside mixdata2e, so the value
             // has to reach whichever of the two the mixdef= token selects.
-            if (!out.p.mixdepth.mixing.external) {
+            if (!out.p.mixdepth.mixing.external.has_value()) {
                 out.p.mixdepth.mixing.external.emplace();
             }
             out.p.mixdepth.mixing.external->premix = premix;
@@ -1147,7 +1697,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 return false;
             }
             out.p.mixmeta = true;
-            if (!out.p.mixdepth.mixing.external) {
+            if (!out.p.mixdepth.mixing.external.has_value()) {
                 out.p.mixdepth.mixing.external.emplace();
             }
             auto& external = *out.p.mixdepth.mixing.external;
@@ -1256,7 +1806,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         if (key == "container") {
             // The same five containers RecordingSink streams incrementally,
             // shared verbatim with the GUI's own Container combo for a live
-            // take (roadmap IO9). Plain mp4 is deliberately absent: moov/stco
+            // take (wide-layout record/live paths). Plain mp4 is deliberately absent: moov/stco
             // need every frame's final offset, so the standalone 'mp4'
             // command wraps an already-finished file instead ('ts' IS
             // streamable, hence its own token below).
@@ -1291,7 +1841,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         }
         if (key == "objects" && command == "qc") {
             const auto id = ac3::plan::parse_layout(value);
-            if (!id) {
+            if (!id.has_value()) {
                 fmt::println(stderr, "error: objects layout '{}' not recognised ({})", value,
                              ac3::plan::layout_names());
                 return false;
@@ -1464,44 +2014,54 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.programme = static_cast<int>(id);
             continue;
         }
-        if (key == "programme2") {
-            if (value.empty()) {
-                fmt::println(stderr, "error: programme2= needs an input file path");
-                return false;
+        // programmeN= / programmeN-layout= / programmeN-bitrate= / programmeN-
+        // <metadata key>= (N = 2..8): an extra programme's source file, its
+        // own layout and bit rate (plan::Plan fields, so handled here rather
+        // than through parse_programme_metadata_option below), and the whole
+        // of its own plan::Metadata, dispatched by the same key vocabulary
+        // the primary programme's bare tokens above use. programme2's own
+        // three tokens keep exactly the spellings and defaults they always
+        // had; programme3-8 are new, and programme2-dialnorm= now reaches
+        // plan::Metadata::dialnorm directly (including dialnorm=auto, which
+        // it could not ask for before).
+        if (const auto match = match_extra_programme(key); match.has_value()) {
+            const auto& [slot, suffix] = *match;
+            auto& extra = out.extra_programmes[slot];
+            if (suffix.empty()) {
+                if (value.empty()) {
+                    fmt::println(stderr, "error: {}= needs an input file path", key);
+                    return false;
+                }
+                extra.path = std::string{value};
+                continue;
             }
-            out.programme2 = std::string{value};
-            continue;
-        }
-        if (key == "programme2-layout") {
-            if (value.empty()) {
-                fmt::println(stderr, "error: programme2-layout= needs a layout name ({})",
-                             plan::layout_names(plan::Codec::kEac3));
-                return false;
+            if (suffix == "layout") {
+                if (value.empty()) {
+                    fmt::println(stderr, "error: {}= needs a layout name ({})", key,
+                                 plan::layout_names(plan::Codec::kEac3));
+                    return false;
+                }
+                extra.layout = std::string{value};
+                continue;
             }
-            out.programme2_layout = std::string{value};
-            continue;
-        }
-        if (key == "programme2-bitrate") {
-            const auto kbps = parse_u32_or(value, 0);
-            if (kbps == 0) {
-                fmt::println(stderr,
-                             "error: programme2-bitrate= needs a rate in kbit/s (got '{}')",
-                             token);
-                return false;
+            if (suffix == "bitrate") {
+                const auto kbps = parse_u32_or(value, 0);
+                if (kbps == 0) {
+                    fmt::println(stderr, "error: {}= needs a rate in kbit/s (got '{}')", key,
+                                 token);
+                    return false;
+                }
+                extra.bitrate = kbps;
+                continue;
             }
-            out.programme2_bitrate = kbps;
-            continue;
-        }
-        if (key == "programme2-dialnorm") {
-            const auto dialnorm = parse_u32_or(value, 0);
-            if (dialnorm < 1 || dialnorm > 31) {
-                fmt::println(stderr,
-                             "error: programme2-dialnorm= needs 1..31 (§5.4.2.8; got '{}')",
-                             token);
-                return false;
+            switch (parse_programme_metadata_option(suffix, value, key, extra.meta)) {
+                case MetadataOptionResult::kOk:
+                    continue;
+                case MetadataOptionResult::kError:
+                    return false;
+                case MetadataOptionResult::kNotMetadata:
+                    break;  // falls through to "unknown option" below
             }
-            out.programme2_dialnorm = static_cast<int>(dialnorm);
-            continue;
         }
         fmt::println(stderr, "error: unknown option '{}'", token);
         print_meta_usage();
@@ -1514,7 +2074,7 @@ std::optional<int> finish_measurement(const ac3::meta::LoudnessMeter& meter,
                                       std::string_view programme, std::string_view field,
                                       FILE* out) {
     const auto lkfs = meter.integrated_lkfs();
-    if (!lkfs) {
+    if (!lkfs.has_value()) {
         return std::nullopt;
     }
     const int dialnorm = ac3::meta::dialnorm_from_lkfs(*lkfs);
@@ -1604,7 +2164,7 @@ bool prepare_dual_mono_source(ac3::io::WavData& wav, std::string_view layout,
         return false;
     }
     auto second = ac3::io::read_wav(std::string{in2_path});
-    if (!second) {
+    if (!second.has_value()) {
         fmt::println(stderr, "error: {}: {}", in2_path, ac3::io::describe(second.error()));
         return false;
     }
@@ -1652,7 +2212,7 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
     // hard-coded 0: §E2.3.1.2 numbers independent substreams from 0, but a
     // stream someone has already cut a programme out of need not still start
     // at one, and refusing it would be refusing a stream that decodes fine.
-    if (!wanted) {
+    if (!wanted.has_value()) {
         return ids.front();
     }
     if (std::ranges::find(ids, *wanted) == ids.end()) {
@@ -1661,6 +2221,67 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
         return std::nullopt;
     }
     return wanted;
+}
+
+namespace {
+
+// The first dmixmod a programme's independent substream sends, and the acmod
+// it rode in on - ac3::automatic_stereo_target() needs both, since Table
+// D2.2's own note leaves dmixmod's meaning reserved below acmod 3/0 (see that
+// function's comment). Same value `ac3cli probe` reports for the lead
+// programme. Headers only, and it stops at the first answer, which is the
+// stream's first syncframe for ordinary content. An unset `programme` follows
+// choose_programme(): the first programme the stream carries. Dependents are
+// passed over, since the independent substream is the one every decoder of
+// the programme reads.
+struct PreferredDownmix {
+    ac3::meta::DownmixMode dmixmod;
+    ac3::Acmod acmod;
+};
+
+std::optional<PreferredDownmix> preferred_downmix(std::span<const std::byte> stream,
+                                                   std::optional<int> programme) {
+    std::size_t offset = 0;
+    while (offset < stream.size()) {
+        const auto header = ac3::io::read_frame_header(stream.subspan(offset));
+        if (!header.has_value()) {
+            break;
+        }
+        if (header->strmtyp != ac3::eac3::StreamType::kDependent) {
+            if (!programme.has_value()) {
+                programme = header->substreamid;
+            }
+            if (header->substreamid == *programme && header->dmixmod.has_value()) {
+                return PreferredDownmix{*header->dmixmod, header->acmod};
+            }
+        }
+        offset += header->bytes;
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
+ac3::OutputConfig resolve_output(const Options& meta, std::span<const std::byte> stream,
+                                 FILE* status) {
+    auto output = meta.output;
+    if (!meta.downmix_auto) {
+        return output;
+    }
+    const auto preferred = preferred_downmix(stream, meta.programme);
+    // No dmixmod found at all is the same "no preference" case
+    // automatic_stereo_target() answers Lo/Ro to for any acmod, so there is no
+    // acmod to invent one for here.
+    output.target = preferred.has_value()
+                        ? ac3::automatic_stereo_target(preferred->acmod, preferred->dmixmod)
+                        : ac3::DownmixTarget::kLoRo;
+    status_println(status, "  downmix=auto: dmixmod {} -> {} (§D3.1.1)",
+                   preferred.has_value()
+                       ? fmt::format("{} ({})", static_cast<int>(preferred->dmixmod),
+                                     ac3::meta::describe(preferred->dmixmod))
+                       : std::string{"absent"},
+                   output.target == ac3::DownmixTarget::kLtRt ? "Lt/Rt stereo" : "Lo/Ro stereo");
+    return output;
 }
 
 bool write_frames(std::string_view path, std::span<const std::vector<std::byte>> frames) {
@@ -2217,13 +2838,13 @@ bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Pl
         return true;
     }
     const auto custom = ac3::plan::parse_channels(name);
-    if (!custom) {
+    if (!custom.has_value()) {
         fmt::println(stderr, "error: unknown layout '{}' ({})", name,
                      ac3::plan::layout_names(codec));
         return false;
     }
     const auto allocated = ac3::eac3::chanmap::allocate(*custom);
-    if (!allocated) {
+    if (!allocated.has_value()) {
         fmt::println(stderr, "error: channel selection '{}' is invalid - {}", name,
                      ac3::eac3::chanmap::describe(allocated.error()));
         return false;
@@ -2328,7 +2949,7 @@ std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bit
     // it is given kAc3 - asked here without printing, because a "no" is the
     // ordinary path into E-AC-3 rather than an error.
     bool ac3_can_carry = false;
-    if (take.plan.custom_locations) {
+    if (take.plan.custom_locations.has_value()) {
         const auto allocated = ac3::eac3::chanmap::allocate(*take.plan.custom_locations);
         ac3_can_carry = allocated.has_value() && allocated->dependents.empty();
     } else {
@@ -2380,7 +3001,7 @@ std::optional<ac3::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_vie
 
 std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std::size_t channels) {
     auto routing = plan::route(plan::resolve(p), channels, p.meta.cmixlev, p.meta.surmixlev);
-    if (!routing) {
+    if (!routing.has_value()) {
         fmt::println(stderr, "error: {} channels - {}", channels,
                      plan::describe(plan::PlanError::kNoSourceLayout));
         return std::nullopt;
@@ -2389,12 +3010,12 @@ std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std
 }
 
 std::optional<ac3::signing::VerifySummary> apply_object_verification(
-    std::span<const std::byte> stream, const Options& meta) {
+    std::span<const std::byte> stream, const Options& meta, FILE* status) {
     if (!meta.verify_objects) {
         return ac3::signing::VerifySummary{};
     }
     const auto key = ac3::signing::load_signing_key(meta.signing_key.value_or(""));
-    if (!key) {
+    if (!key.has_value()) {
         if (key.error().kind == ac3::signing::KeyErrorKind::kAbsent) {
             fmt::println(stderr,
                          "error: verify-objects needs a key — pass signing-key=<path>, or set "
@@ -2405,8 +3026,8 @@ std::optional<ac3::signing::VerifySummary> apply_object_verification(
         return std::nullopt;
     }
     const auto summary = ac3::signing::verify_atmos_stream(stream, *key);
-    fmt::println("  object signature: {} valid, {} mismatched, {} unsigned frame(s)",
-                 summary.valid, summary.mismatch, summary.no_container);
+    status_println(status, "  object signature: {} valid, {} mismatched, {} unsigned frame(s)",
+                   summary.valid, summary.mismatch, summary.no_container);
     if (summary.mismatch > 0) {
         fmt::println(stderr,
                      "error: object signature verification failed ({} of {} signed frames did "
@@ -2415,6 +3036,56 @@ std::optional<ac3::signing::VerifySummary> apply_object_verification(
         return std::nullopt;
     }
     return summary;
+}
+
+void print_object_summary(FILE* status, const std::optional<ac3::oba::DecodedProgram>& metadata,
+                          std::string_view joc_note) {
+    if (!metadata.has_value()) {
+        return;
+    }
+    const auto& decoded = *metadata;
+    const auto& program = decoded.program;
+    if (program.dynamic_only) {
+        status_println(status, "  {} dynamic objects{} = {} objects, OAMD present{}",
+                       decoded.objects.size(), program.lfe ? " + the bed's LFE" : "",
+                       ac3::oba::object_count(program), joc_note);
+    } else {
+        // A bed program - what channel-based-immersive third-party content
+        // is. Naming the bed's channels is the useful half here: "12 objects"
+        // says nothing, "L R C LFE Ls Rs Lb Rb Tfl Tfr Tbl Tbr" says what the
+        // stream actually carries.
+        std::string labels;
+        for (const auto label : ac3::oba::bed_labels(program.bed)) {
+            if (!labels.empty()) {
+                labels += ' ';
+            }
+            labels += ac3::oba::describe(label);
+        }
+        if (labels.empty()) {
+            labels = fmt::format("{} channels", ac3::oba::bed_channel_count(program));
+        }
+        status_println(status, "  bed [{}] + {} dynamic objects = {} objects, OAMD present{}",
+                       labels, program.dynamic_objects, ac3::oba::object_count(program),
+                       joc_note);
+    }
+    if (decoded.trim.has_value()) {
+        const auto& trim = *decoded.trim;
+        status_println(status, "  OAMD trim element: warp mode {}, global trim mode {}",
+                       trim.warp_mode, trim.global_trim_mode);
+    }
+    if (!decoded.skipped_elements.empty()) {
+        std::string ids;
+        for (const int id : decoded.skipped_elements) {
+            if (!ids.empty()) {
+                ids += ", ";
+            }
+            ids += std::to_string(id);
+        }
+        status_println(status, "  OAMD elements skipped by size (unrecognised id): {}", ids);
+    }
+    if (decoded.blocks.size() > 1) {
+        status_println(status, "  {} metadata update blocks per frame", decoded.blocks.size());
+    }
 }
 
 }  // namespace ac3cli

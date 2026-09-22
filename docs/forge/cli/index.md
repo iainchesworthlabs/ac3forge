@@ -1,0 +1,116 @@
+# ac3cli
+
+`ac3cli` is the command-line front end over `ac3::forge` — 42 commands covering
+synthesis, file encoding/decoding, container wrapping, inspection, live capture/playback, and the
+tool's own self-description (`help`, `man`, `completions`).
+Two of the 42 (`atmos-adm` and `atmos-iab`) only *run* in a build configured with
+`-DAC3FORGE_BUILD_ADM=ON`, but are always *listed* — the same "shown, not hidden" treatment
+this page's own live-audio commands get when the platform can't run them either (see
+[Commands](commands.md)'s own ADM section). Every command it can run is backed by the same public
+library documented under [Library](../../library/index.md); every codec and format decision lives in
+the library, and the CLI keeps only small local helpers of its own (the DASH MPD document wrapper
+`fmp4` writes; the scene files behind `atmos-path`/`atmos-encode` are parsed by the library's
+own `ac3::oba::read_scene`).
+
+Run it with no arguments for the full usage text — the command list in [Commands](commands.md)
+is transcribed from it by hand. Nothing in the build compares the two, so the binary is the
+authority where they disagree; `ac3cli help` on your own build settles any question either page
+raises.
+
+```bash
+ac3cli
+```
+
+## Installing
+
+`ac3cli` installs as part of Forge. See [Installing Forge](../index.md#installing) for the
+prebuilt archives, Homebrew, winget, and source-build paths.
+
+## Version
+
+```bash
+ac3cli --version
+```
+
+Prints the semantic version plus git provenance — commit, branch, and a dirty flag. The version
+itself is derived from the nearest reachable `v*` git tag at configure time, so it tracks the
+latest release tag (see [Releasing](../../releasing.md) and `cmake/GitVersionDerivation.cmake`);
+the rest is stamped in at build time by `cmake/GenerateVersion.cmake`:
+
+```
+ac3forge 0.5.0-beta.1
+  release: v0.5.0-beta.1
+  commit:  971a547390ff21560e370fb5cb2a22ef362f75de
+  branch:  main
+  target:  Windows x86_64 (MSVC 1951)
+```
+
+A build from past the tag says so in the headline, as semver build metadata: `ac3forge
+0.10.0-beta.1+100` is a hundred commits past `v0.10.0-beta.1` (the `release:` line carries
+git's own describe of it), so it is not mistaken for the tagged release. A tree with
+uncommitted changes adds a `state: dirty` line.
+
+`--version` (or its `-v` alias) is a flag, not one of the 42 commands — it's handled
+before argument parsing and exits immediately. So are `--help` and `-h`, which print the named
+command's own help (or the full listing when no command was named).
+
+## Conventions shared across commands
+
+- **Layouts** (`mono | stereo | 1+1 | 51 | 71 | 512 | 514 | 714`) name a channel bed by
+  ear-friendly shorthand. AC-3 only reaches `mono | stereo | 1+1 | 51`; anything wider needs
+  the dependent substreams that only E-AC-3 has. A layout can also be a comma-separated
+  [Table E2.5](../../library/channel-plans-and-routing.md) location list
+  (e.g. `L,C,R,LFE,Vhl,Vhr`) for a channel set none of the named layouts cover — AC-3 accepts
+  one too, as long as it needs no dependent substream — see
+  [Options & grammars](metadata-options.md) for the full grammar.
+- **`out.ac3` vs. `out.ec3`** is how commands tell AC-3 output from E-AC-3 output; extensions
+  aren't enforced, they're just the convention the examples follow.
+- **`-` means stdin or stdout** for `encode`, `eac3-encode`, `atmos-encode`, `decode`,
+  `strip-objects`, `probe` and `unspdif`'s WAV/AC-3/E-AC-3 path arguments — the conventional Unix
+  pipe convention, so a WAV or stream never needs to touch a disk at all:
+
+  ```bash
+  ac3cli encode - - 448 couple < in.wav > out.ac3
+  ac3cli decode - - < out.ac3 > out.wav
+  ```
+
+  Everything else about the command is unchanged; only the argument's meaning changes from "open
+  this path" to "use the standard stream instead". Windows needs no special handling on the
+  caller's part — ac3cli puts stdin/stdout into binary mode itself before the first byte crosses
+  either one.
+- **Metadata options** (`drc=`, `heavy`, `dialnorm=`, `cmixlev=`, …) can follow the positional
+  arguments of any encoding command, in any order — see
+  [Options & grammars](metadata-options.md), including which commands ignore which options.
+- **PCM-carrying commands report per-channel peak/RMS levels when they finish**; `record` meters
+  live. With `-` as the output path, every encode and decode path sends that report (and the rest
+  of its status text — `dialnorm=auto`'s measurement line and the `src=`/`map=` multi-source
+  paths' summary/routing/levels report included) to stderr, so it never lands in the middle of
+  the piped stream.
+- **Exit codes are documented and distinct**: `0` success, `1` usage, `2` input, `3` output,
+  `4` unavailable here, `5` runtime, `6` a failed QC gate, `7` internal. `ac3cli help exit-codes`
+  prints the table; [Options & grammars](metadata-options.md#exit-codes) explains each.
+- **`quiet` and `verbose`** follow the positional arguments of any command: `quiet` silences the
+  status output (never the errors, never a reporting command's report, never a `-` payload), and
+  `verbose` turns on the stderr progress line whatever the run's length.
+- **`help <command>`, `--help` and `-h`** print one command's own row and the grammars it uses;
+  `man` and `completions <shell>` print a generated man page and shell completion script, all
+  four rendered from the same command table so none of them can drift from what dispatch accepts.
+- **Commands needing audio hardware** (`devices`, `record`, `monitor`, `live`, `outputs`, `play`,
+  `spatial`) report themselves unavailable on a build with no capture, passthrough, monitor or
+  spatial backend, rather than failing to link — see the per-OS Platform notes pages
+  ([Windows](../../platforms/windows.md), [Linux](../../platforms/linux.md),
+  [Raspberry Pi](../../platforms/raspberry-pi.md), [macOS](../../platforms/macos.md),
+  [Android](../../platforms/android.md)) for what's actually hardware-confirmed on each OS.
+- **`play` follows the sink**: given a `device_index`, it reads that endpoint's own
+  advertised capabilities before committing to a format. That read is itself backend-specific —
+  real today only on ALSA, a live probe everywhere else, same per-OS pages above — see
+  [Commands → Following the sink](commands.md#following-the-sink).
+
+## Next
+
+- [Commands](commands.md) — all 42 commands, grouped and with the usage text they print
+  (`atmos-adm` and `atmos-iab` only *run* with `-DAC3FORGE_BUILD_ADM=ON`, but are listed either
+  way), plus the exit-code table.
+- [Options & grammars](metadata-options.md) — the `drc=`/`heavy`/`dialnorm=`/… options grammar,
+  the `tools` argument grammar, and the full layout/location-list grammar.
+- [Concepts](../../concepts/index.md) — if `bsid`, `syncframe`, or `JOC` aren't already familiar.

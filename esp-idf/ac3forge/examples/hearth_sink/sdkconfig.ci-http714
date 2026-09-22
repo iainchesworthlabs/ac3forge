@@ -1,0 +1,25 @@
+# The fifth thing CI runs under QEMU: the stream set over the HTTP source,
+# rendered onto 7.1.4 (www/, planning/esp32-stream-set.md).
+#
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci-http;sdkconfig.ci-http714"
+#
+# Layered on sdkconfig.ci-http - the same source, network and control surface -
+# with the capture sink's twelve-slot TDM conversion in place of its stereo one,
+# so that every play's twelve levels can be held to the host's in
+# www/streams.json. The workflow serves www/ on port 8000 for the run, and the
+# boot play is the set's walk: one speaker at a time, all twelve.
+CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM=1
+CONFIG_AC3FORGE_EXAMPLE_TDM_SLOTS=12
+CONFIG_AC3FORGE_EXAMPLE_LAYOUT="7.1.4"
+CONFIG_AC3FORGE_EXAMPLE_HTTP_URL="http://10.0.2.2:8000/714-walk.ec3"
+
+# As coded, with no dialnorm normalisation and no DRC: the manifest's levels are
+# the host's decode measured that way (tools/generators/gen_device_streams.py).
+CONFIG_AC3FORGE_EXAMPLE_DRC_MODE=2
+
+# Objects as their bed. Placing them was measured under QEMU on 2026-09-11 and
+# does not fit this shape's internal RAM: the reconstruction's allocations failed
+# with no free block large enough, and demo.ec3, which did place its objects,
+# left 1,872 bytes of the decode task's stack. sdkconfig.ci-render places objects
+# from FAT, where there is no network sharing the heap.
+CONFIG_AC3FORGE_EXAMPLE_OBJECTS=1

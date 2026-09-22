@@ -1,0 +1,1926 @@
+# Core-library checks: coverage, the ADM module build, the PR-time
+# performance/memory comparisons and their gates, the ABI gate, and
+# FFmpeg-oracle validation (plus the two quality-trend persisters that read
+# FFmpeg Validate's artifacts) - the CI lane partitions plan's `_ci-core.yml`
+# (docs/ci-lanes.md). Moved out of ci.yml so `run_core`/the `core` lane
+# finally gates something: none of these jobs test anything platform-specific
+# (see each one's own header, carried over unchanged below), so a PR confined
+# to a single platform lane (`apps/android/`, `apps/windows/driver/`, ...)
+# no longer pays for any of them.
+#
+# `ci.yml`'s `core` job-call is gated on `needs.changes.outputs.core ==
+# 'true'` at the OUTER level, not per-job in here the way `changes.outputs.
+# code` gated each of these individually before the move - so every job below
+# that used to check `needs.changes.outputs.code` has had that check dropped
+# entirely (unconditional once this file runs at all) rather than replaced
+# with an inputs.* equivalent. performance-gate/memory-gate/
+# persist-external-comparison-trend/persist-object-quality-trend never
+# checked `code` in the first place (see each one's own `if:`) and are
+# unchanged.
+#
+# NOT moved here despite being perf-trend jobs: persist-performance-trend and
+# performance-trend-arm64 stay in ci.yml directly. Both `needs: build-and-test`
+# (a job in a different reusable workflow, _build.yml) to know the full
+# matrix passed before recording a trend point - a same-file `needs:` edge
+# ci.yml can express but this file cannot, since `needs:` cannot cross a
+# workflow_call boundary. Gating the WHOLE core call on build-and-test instead
+# would serialize coverage/adm-validate/ffmpeg-validate/performance-compare/
+# memory-compare/abi-gate behind the entire build matrix on every PR - they
+# run in parallel with it today - for the sake of two jobs that only ever run
+# on a direct push to main anyway, where the extra wait is free. Leaving them
+# in ci.yml keeps that parallelism and avoids the awkward plumbing for no
+# benefit.
+name: Reusable Core Checks
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: "needs.check-runner.outputs.runner, at the ci.yml call site (the shared Linux runner-label JSON array every job below that needs one reuses - unlike _build.yml's per-leg check-runners fan-out, these jobs share one decision)."
+        type: string
+        required: true
+      vcpkg_commit:
+        description: "needs.toolchain-versions.outputs.vcpkg_commit, at the ci.yml call site."
+        type: string
+        required: true
+      llvm_version:
+        description: "needs.toolchain-versions.outputs.llvm_version - display-only, in two step names below (abi-gate, ffmpeg-validate)."
+        type: string
+        required: true
+    outputs:
+      # Threaded individually, not folded into one aggregate result, so
+      # ci-status's own summary keeps naming which of these failed - the same
+      # per-job breakdown it already printed before this file existed. See
+      # docs/ci-lanes.md for why this file does that and _build.yml's
+      # build-and-test call does not (that one folds ~15 jobs into a single
+      # "the build" concern; these ten are independent concerns a reviewer
+      # needs to tell apart at a glance).
+      coverage_result:
+        value: ${{ jobs.coverage.outputs.result }}
+      adm_result:
+        value: ${{ jobs.adm-validate.outputs.result }}
+      hearth_result:
+        value: ${{ jobs.hearth-validate.outputs.result }}
+      ffmpeg_result:
+        value: ${{ jobs.ffmpeg-validate.outputs.result }}
+      performance_gate_result:
+        value: ${{ jobs.performance-gate.outputs.result }}
+      memory_gate_result:
+        value: ${{ jobs.memory-gate.outputs.result }}
+      persist_external_trend_result:
+        value: ${{ jobs.persist-external-comparison-trend.outputs.result }}
+      persist_object_trend_result:
+        value: ${{ jobs.persist-object-quality-trend.outputs.result }}
+
+permissions:
+  contents: read
+
+jobs:
+  # ac3tests coverage over every library component: src/forge plus audio,
+  # signing, matroska, mp4, mpegts, capi, and - via the coverage preset's
+  # AC3FORGE_BUILD_ADM=ON with vcpkg's 'adm' feature, the same pair
+  # adm-validate passes by hand - ac3adm/admbridge. Originally src/forge only
+  # ("the library is what was asked for"); extended once the rest of the
+  # library surface existed and was already being EXERCISED by this same
+  # suite, just uninstrumented and unreported. apps/cli and apps/gui stay out
+  # of scope: they are applications, not the library, and the coverage
+  # preset builds neither.
+  #
+  # config-linux-gcc-coverage (CMakePresets.json) builds just the library
+  # components and their test suite - AC3FORGE_BUILD_CLI/EXAMPLES are off
+  # there purely to save build time: ac3cli and the example executables
+  # would link fine against the instrumented libraries (the gcov runtime
+  # propagates to consumers automatically - see cmake/Coverage.cmake), but
+  # tools/checks/coverage_report.sh filters the report to the library components,
+  # so building them instrumented buys nothing.
+  #
+  # The gate is PER COMPONENT - a line floor and a branch floor per
+  # src/<dir>, not one blended number a small component's regression could
+  # hide inside - and lives in tools/checks/coverage_report.sh alongside the
+  # measured baseline each floor was calibrated against. src/forge's original
+  # 80/70 floor (set a few points under its first hosted run's 81.3/72.0,
+  # measured 2026-08-09 while block switching, delta bit allocation, half
+  # sample rate and dual mono were still landing) is now 88/78: the suite
+  # grew well past the old numbers, and that first calibration's own
+  # instruction was to raise the floors as the suite grows rather than leave
+  # the headroom in place indefinitely.
+  #
+  # Calibration provenance: the current floors were set against a WSL2
+  # measurement on the same toolchain pins (gcc/gcov 15.2.0, gcovr 8.6).
+  # Same-machine comparisons have read a couple of points HIGHER than hosted
+  # runs (environment-specific gcov/header-instantiation differences), and
+  # the floors' margins already allow for that - re-check against this job's
+  # own first hosted run after any recalibration and tighten where the
+  # margin proves generous.
+  coverage:
+    name: Coverage (Linux, GCC)
+    # Stays GitHub-hosted for now - the one leg of the #460 revert that is
+    # NOT re-enabled with the rest. Its self-hosted failure ("The runner has
+    # received a shutdown signal" 34s in) was a runner-lifecycle kill, not
+    # the gh/profile/ASLR class fixed in ci-runners#12/#13, and remains
+    # undiagnosed (suspected --replace eviction race in the supervisor's
+    # recycle loop). If it is re-routed and the failure recurs, capture
+    # `journalctl -u github-runner.service` off the affected VM before the
+    # fleet replaces it - that is the missing evidence.
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    outputs:
+      result: ${{ steps.record-result.outputs.status }}
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg libasound2-dev lsb-release \
+            ninja-build pkg-config python3-pip software-properties-common tar unzip wget zip
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+
+      # ubuntu:26.04's python3-pip enforces PEP 668 (no bare `pip install` at
+      # system scope) - --break-system-packages is safe here specifically
+      # because this container is thrown away at the end of the job, unlike a
+      # real machine where that flag risks the system's own Python tooling.
+      # requirements/requirements-coverage.txt is a pip-compile --generate-hashes lock (see
+      # its own header for how to regenerate) so this install is hash-pinned.
+      - name: Install gcovr
+        run: pip install --quiet --break-system-packages --require-hashes -r requirements/requirements-coverage.txt
+
+      - name: Configure
+        shell: bash
+        run: cmake --preset config-linux-gcc-coverage
+
+      - name: Build
+        shell: bash
+        run: cmake --build --preset build-linux-gcc-coverage -- -k 0
+
+      # -LE Performance: gcov's per-basic-block instrumentation adds real,
+      # measurable overhead - a coverage build has no more business being
+      # held to a hard real-time budget than the linux-llvm-asan-ubsan leg
+      # does (same reasoning, see that matrix entry's own comment). This
+      # job's question is "how much of the library executes", not "how
+      # fast" - tests/performance/'s own suite covers the latter on a
+      # genuinely optimized build.
+      - name: Test
+        shell: bash
+        run: ctest --preset test-linux-gcc-coverage -LE Performance
+
+      # The gcov extraction, the per-component floors, and the gate itself
+      # all live in tools/checks/coverage_report.sh, shared verbatim with local
+      # runs (docs/building.md shows the local recipe) so CI and a developer
+      # machine cannot drift onto different filters or thresholds. The
+      # mdct.cpp suspicious-hits gcov-bug workaround this step used to carry
+      # inline moved there with the rest of the gcovr flags.
+      #
+      # The gate covers apps/cli as well as the nine library components since
+      # coverage floors - which is why config-linux-gcc-coverage now builds the
+      # CLI, and why the Test step above takes longer than it used to. That
+      # table also prints a per-command breakdown below the gate, so a
+      # command module sitting at 0% is visible rather than averaged away.
+      - name: Coverage report + gate
+        shell: bash
+        run: bash tools/checks/coverage_report.sh -g gcov-16
+
+      # apps/gui is the one first-party tree with no coverage number at all,
+      # and deliberately so (coverage floors called it out as a separate
+      # decision): instrumenting its C++ needs a Qt kit on THIS job, and no
+      # Linux leg installs one - _build.yml puts Qt only on its `gui: true`
+      # matrix entries, which are plain builds. Adding it means either putting
+      # Qt on this container or standing up a second instrumented leg, both of
+      # which cost real runner time for a tree whose interactive surfaces are
+      # already covered by apps/gui/tests' own Qt Quick suite and whose one
+      # Qt-free class (RecordingSink) is already in ac3tests. See
+      # tools/checks/coverage_report.sh's header for the same note beside the
+      # threshold table.
+      #
+      # apps/crucible is the other tree missing from this table, and for the
+      # same reason - but it IS gated, elsewhere. Its floor lives in
+      # tools/checks/coverage_crucible.ps1 (line and branch over apps/crucible,
+      # calibrated 2026-09-05) and runs on the Windows clang-cl leg, where the
+      # Qt kit already is: _build.yml's "Crucible coverage floor" step. The
+      # Qt Quick suites are the only thing that drives Crucible's platform
+      # seams at all, so a Linux figure taken in this job would cover the
+      # platform-free engine core alone while calling itself the
+      # application's coverage.
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: build/config-linux-gcc-coverage/coverage*.html
+
+
+      # Exposes this job's own pass/fail through _ci-core.yml's own
+      # workflow_call.outputs (`jobs.<id>.result` is not a valid reference
+      # there - confirmed against actionlint, which rejects it as
+      # "property 'result' is not defined" - so the job has to report its
+      # own status through a real output instead). job.status reflects every
+      # step that already ran in this job, so reading it from the LAST step
+      # - itself always() so it still runs after an earlier failure - is the
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
+      - name: Record result
+        id: record-result
+        if: always()
+        shell: bash
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+  # ac3adm::ac3adm (src/ac3adm) is opt-in - AC3FORGE_BUILD_ADM defaults OFF, unlike every other
+  # library component (see the root CMakeLists.txt's own option() and src/ac3adm/CMakeLists.txt's
+  # header comment for why: it is the one module in this repo with a third-party dependency,
+  # libadm's Boost header libraries, resolved only via -DVCPKG_MANIFEST_FEATURES=adm). No leg in
+  # build-and-test's matrix (_build.yml) ever passes -DAC3FORGE_BUILD_ADM=ON; besides this job,
+  # the only other build with it on is the coverage job's instrumented Debug preset, which turns
+  # the CLI and examples OFF - so without this job, ADM BWF reader phase 3's CLI command and example
+  # (see below) would still have zero CI builds, and a change to the module or to its vendored
+  # libbw64/libadm pins (src/ac3adm/CMakeLists.txt's GIT_TAG values) would never be exercised at
+  # -O2 or under the full default configuration anybody actually installs.
+  #
+  # A dedicated job rather than an extra pass inside an existing Linux leg (the shape
+  # alsa_fallback and BUILD_SHARED_LIBS already use in _build.yml): those legs are already the
+  # busiest in the matrix (GUI, ALSA fallback, a second shared-libs configure+build+test pass,
+  # the gold-reference gate, packaging), and this module's own dependency footprint - two
+  # FetchContent git clones (vendored libbw64/libadm) plus eight vcpkg Boost header packages - is
+  # real enough to be worth keeping off that critical path rather than adding to it. A standalone
+  # job instead runs in parallel with everything else, the same reasoning coverage and
+  # ffmpeg-validate already follow for their own container+toolchain setup.
+  #
+  # One leg, not the whole matrix - same reasoning as ffmpeg-validate above: this module's own
+  # code does not vary by platform/compiler (no #ifdefs anywhere in this repo - see
+  # tools/checks/check_platform_macros.ps1), so one Linux leg is enough to catch a real regression.
+  # GCC 15, matching one of the two Linux toolchains this module was verified against locally
+  # before landing (see the PR that introduced it, branch feature/adm-bw64-parser: Windows MSVC,
+  # WSL2 gcc-15, WSL2 clang++-21, all green).
+  #
+  # AC3FORGE_BUILD_CLI/EXAMPLES stay at their preset default (ON): ADM BWF reader phase 3 (the
+  # 'atmos-adm' ac3cli command, apps/cli/main.cpp's run_atmos_adm, and examples/encode_adm.cpp) is
+  # the first code outside tests/ to link ac3adm::ac3adm/ac3::admbridge at all, so unlike phases 1
+  # and 2 (when neither the CLI nor the examples touched this module, hence this job originally
+  # turning both off), this job now has to build and run both too or the CLI command and example
+  # get zero CI coverage - the same gap this job's own header comment above already exists to close
+  # for the library modules themselves. examples/ registers each example as its own ctest case
+  # (examples/CMakeLists.txt), so `ctest --preset test-linux-gcc` below already exercises
+  # encode_adm's own standalone fixture-driven run alongside adm/test_adm.cpp/admbridge/test_adm_bridge.cpp/
+  # test_cli_atmos_adm.cpp (tests/CMakeLists.txt only compiles that last one in when
+  # AC3FORGE_BUILD_ADM AND ac3cli are both present, exactly the combination this job now builds).
+  # AC3FORGE_BUILD_GUI already defaults OFF on this preset.
+  adm-validate:
+    name: ADM Module (Linux, GCC)
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    container: ubuntu:26.04
+    outputs:
+      result: ${{ steps.record-result.outputs.status }}
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+          # Distinct archives-cache key: this is the only job that enables
+          # the adm manifest feature and so the only one whose install set
+          # includes the 43-port boost tree - see the input's own
+          # description in setup-vcpkg/action.yml for why sharing the
+          # default key locks boost out of the cache permanently.
+          cache-key-suffix: adm
+
+      # Retried, unlike the other Configure steps (so far): this is the job
+      # that rebuilds the whole 43-port boost set whenever the shared vcpkg
+      # archives cache is cold (the adm manifest feature is the only thing
+      # that pulls boost in), and codeload.github.com intermittently answers
+      # 400 under parallel-download bursts - which vcpkg treats as
+      # non-transient and fatal. One bad download out of ~43 kills the
+      # attempt, but every port already built stays in ~/.cache/vcpkg/
+      # archives, so an in-job retry resumes from where the last attempt
+      # died instead of coin-flipping from zero. Three attempts covered the
+      # worst observed run (2026-08-31: attempt 1 died at 31/43 on main).
+      - name: Configure
+        shell: bash
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3; do
+            if cmake --preset config-linux-gcc \
+                 -DVCPKG_MANIFEST_FEATURES=adm \
+                 -DAC3FORGE_BUILD_ADM=ON; then
+              exit 0
+            fi
+            rm -rf build/config-linux-gcc/CMakeCache.txt
+            if [ "$attempt" -lt 3 ]; then
+              # Real backoff, not an immediate loop: the 400s are codeload
+              # throttling the runner's egress under download bursts (the
+              # same tarball URLs answer 200 from an unthrottled client), so
+              # a retry two seconds later lands inside the same throttle
+              # window and three immediate attempts are effectively one -
+              # observed on this PR's own first CI cycle, three failures
+              # 2.1s apart on the same tarball. A warm retry costs seconds
+              # once the archives hold the already-built ports, so a
+              # generous wait is far cheaper than one cold rebuild.
+              delay=$(( attempt == 1 ? 30 : 120 ))
+              echo "::warning::Configure attempt $attempt failed (codeload throttling?) - waiting ${delay}s, then resuming from the locally-built archives"
+              sleep "$delay"
+            fi
+          done
+          echo "::error::Configure failed after 3 attempts"
+          exit 1
+
+      - name: Build
+        shell: bash
+        run: cmake --build --preset build-linux-gcc -- -k 0
+
+      - name: Test
+        shell: bash
+        run: ctest --preset test-linux-gcc
+
+
+      # Exposes this job's own pass/fail through _ci-core.yml's own
+      # workflow_call.outputs (`jobs.<id>.result` is not a valid reference
+      # there - confirmed against actionlint, which rejects it as
+      # "property 'result' is not defined" - so the job has to report its
+      # own status through a real output instead). job.status reflects every
+      # step that already ran in this job, so reading it from the LAST step
+      # - itself always() so it still runs after an earlier failure - is the
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
+      - name: Record result
+        id: record-result
+        if: always()
+        shell: bash
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+  # ac3::sendspin (src/sendspin, planning/hearth-reference-player.md A4) is opt-in:
+  # AC3FORGE_BUILD_HEARTH defaults OFF like AC3FORGE_BUILD_ADM, because the library's later
+  # parts take cpp-httplib, mdns, mbedTLS, libFLAC and Opus from vcpkg's "hearth" feature.
+  # A7 has since put that feature on every build-and-test leg, so the [sendspin] and [hearth]
+  # cases run everywhere and this job is no longer where they are proved. What is only here is
+  # A4's exit: the test sink against aiosendspin 9.1.1, scripted as a player and as Music
+  # Assistant's server, which needs a Python environment no build leg carries. The short
+  # [sendspin],[hearth] run below stays as this job's own check that the binary it is about to
+  # drive is sound. One Linux leg, for adm-validate's reason: the module has little platform
+  # code. Only ac3tests and ac3hearth-testsink are built; the rest of the suite is
+  # build-and-test's.
+  hearth-validate:
+    name: Hearth Sendspin (Linux, GCC)
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    container: ubuntu:26.04
+    outputs:
+      result: ${{ steps.record-result.outputs.status }}
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config python3 python3-venv software-properties-common tar unzip \
+            wget zip
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+          # This job's install set adds the hearth feature's ports; see
+          # adm-validate's same input for why it needs a key of its own.
+          cache-key-suffix: hearth
+
+      - name: Configure
+        shell: bash
+        run: >-
+          cmake --preset config-linux-gcc
+          -DVCPKG_MANIFEST_FEATURES=hearth
+          -DAC3FORGE_BUILD_HEARTH=ON
+          -DAC3FORGE_BUILD_EXAMPLES=OFF
+
+      - name: Build
+        shell: bash
+        run: cmake --build --preset build-linux-gcc --target ac3tests ac3hearth-testsink -- -k 0
+
+      - name: Test
+        shell: bash
+        run: ./build/config-linux-gcc/bin/ac3tests "[sendspin],[hearth]"
+
+      # A4's exit with the stand-in for Sendspin's reference player
+      # (planning/hearth-sendspin-extension.md, Decisions): a host pairs with a scripted
+      # aiosendspin 9.1.1 player over loopback and plays it PCM, FLAC and Opus, which the script
+      # checks against the programme. The SDK, PyAV, numpy and Pillow come from
+      # tools/sendspin/requirements.txt.
+      - name: aiosendspin 9.1.1 player
+        shell: bash
+        run: |
+          set -eu
+          python3 -m venv /tmp/aiosendspin-venv
+          /tmp/aiosendspin-venv/bin/pip install --no-cache-dir --only-binary=:all: \
+            -r tools/sendspin/requirements.txt
+          /tmp/aiosendspin-venv/bin/python tools/sendspin/aiosendspin_exit.py \
+            --ac3tests ./build/config-linux-gcc/bin/ac3tests
+
+      # Music Assistant's side of the same exit, rehearsed: aiosendspin 9.1.1's server, which Music
+      # Assistant runs, pairs with the test sink by its token and by its dynamic code, and plays it
+      # PCM, FLAC and Opus.
+      - name: aiosendspin 9.1.1 server
+        shell: bash
+        run: |
+          set -eu
+          for pair in token code; do
+            /tmp/aiosendspin-venv/bin/python tools/sendspin/aiosendspin_server.py \
+              --testsink ./build/config-linux-gcc/bin/ac3hearth-testsink --pair "$pair"
+          done
+
+      # See adm-validate's identical step for why the result is recorded this way.
+      - name: Record result
+        id: record-result
+        if: always()
+        shell: bash
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+  # Encoder throughput, this PR against its own merge base, on one runner
+  # (PR-time performance comparison).
+  #
+  # The gap this closes: persist-performance-trend below only runs on pushes to
+  # main, so the relative "is this slower than it was" question is not
+  # asked until after a PR has merged. The absolute question IS asked on every
+  # PR - tests/performance/test_performance.cpp's ac3perf, in every
+  # build-and-test leg - but its real-time budget carries enough headroom that
+  # a change could double ms/frame and still pass it comfortably. A PR that
+  # halved the encoder's speed would therefore go green everywhere and only
+  # surface on the trend chart afterwards.
+  #
+  # Its INFRASTRUCTURE is non-blocking; its HARD VERDICT is not. The split
+  # matters, so it is worth being precise about which is which:
+  #
+  #   - continue-on-error stays. This job builds twice, and a container
+  #     bootstrap flake or a vcpkg hiccup in a job nobody asked for must not
+  #     block a PR. Everything mechanical here stays advisory.
+  #   - The hard tier (100% - the workload takes at least twice as long) now
+  #     fails a check, via the hard_regression output and the one-step
+  #     performance-gate job below. continue-on-error would swallow an exit
+  #     code, which is exactly why the verdict travels as an output instead.
+  #   - The soft tier (20%) is unchanged and still advisory. That is where the
+  #     runner-noise argument genuinely bites.
+  #
+  # Why the hard tier is safe to block on, when the soft tier is not: this
+  # comparison is PAIRED - same runner, same job, both sides built from the
+  # same checkout, timed interleaved with the order alternating, each side
+  # reduced by minimum-of-N. Measured run-to-run spread is single-digit
+  # percent. A doubling is an order of magnitude outside that.
+  #
+  # And it already blocked, just later and worse: the identical 100% threshold
+  # fails append_performance_history.py on the push to main. The old behaviour
+  # was not "a doubling does not fail CI", it was "a doubling fails CI on main
+  # after it has merged, for whoever pushes next".
+  #
+  # Escape hatch is a label, not an admin merge - see performance-gate.
+  #
+  # Runner budget. This is a new job rather than an addition to an existing
+  # leg, and it builds twice, so it is kept as narrow as it can be and still
+  # answer the question:
+  #   - `--target ac3bench ac3kernelbench` only. Not the library's tests, not
+  #     the CLI, not the GUI - the same two binaries persist-performance-trend
+  #     builds, and nothing else.
+  #   - One container, one GCC install, one vcpkg setup, two builds inside
+  #     them. The second configure reuses the first's vcpkg binary cache, so
+  #     it costs a compile of this repository's own sources and not of its
+  #     dependencies.
+  #   - Gated on `changes` like every other heavy job, so a docs-only PR
+  #     never starts it.
+  #   - PERF_RUNS repetitions per side. Three is the smallest number that
+  #     gives compare_performance.py a spread to report alongside each delta,
+  #     which is what lets a reader tell a real 25% move from a noisy one;
+  #     ac3bench is 200 frames per workload and takes seconds, so the
+  #     repetitions are a rounding error next to the two builds.
+  performance-compare:
+    name: Performance vs merge base
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    container: ubuntu:26.04
+    continue-on-error: true
+    outputs:
+      # Read by performance-gate below. Empty when this job was skipped or died
+      # before the compare step, both of which that job treats as "no verdict".
+      hard_regression: ${{ steps.compare.outputs.hard_regression }}
+    env:
+      PERF_RUNS: 3
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
+
+      # fetch-depth: 0 so the base commit and its history are in the object
+      # store for `git merge-base` and the worktree below - the default shallow
+      # clone has neither.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+
+      - name: Resolve the merge base
+        id: base
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          # On a pull_request event the checked-out HEAD is the merge commit,
+          # so BASE_SHA is already an ancestor of it and this returns BASE_SHA
+          # itself. Asking git rather than trusting that keeps the answer right
+          # if GitHub ever hands over a base tip that has moved on.
+          merge_base="$(git merge-base "$BASE_SHA" HEAD)"
+          echo "sha=$merge_base" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short "$merge_base")" >> "$GITHUB_OUTPUT"
+          echo "Merge base: $merge_base"
+
+      - name: Build the benchmarks at this PR's head
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-linux-gcc
+          cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
+
+      # A worktree rather than `git checkout <sha>`: it leaves this checkout
+      # (and its build tree, and tools/ci/compare_performance.py, which the
+      # base commit may not even have) exactly where they are, and gives the
+      # base its own source dir - so CMakePresets.json's
+      # ${sourceDir}/build/${presetName} puts the two builds in separate
+      # directories with no cache to invalidate between them.
+      - name: Build the benchmarks at the merge base
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach ../base-perf "$BASE_SHA"
+          pushd ../base-perf >/dev/null
+          cmake --preset config-linux-gcc
+          cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
+          popd >/dev/null
+
+      # BOTH builds finish before EITHER is timed, and the two are then
+      # INTERLEAVED rather than run one block each. That ordering IS the
+      # measurement, not a detail:
+      #
+      #   - Timed-right-after-built meant head was timed on a machine still
+      #     warm from compiling head, and base on one warm from compiling
+      #     base. Building both first puts each binary in the same state.
+      #   - A shared runner drifts (thermal, co-tenants, page cache). Run in
+      #     blocks, ALL of any drift between the blocks lands on the delta,
+      #     indistinguishable from the code change. Alternating spreads it
+      #     over both sides instead, where compare_performance.py's
+      #     minimum-of-N can reject it.
+      #   - The order within a round alternates too, so neither side is
+      #     permanently the one running first and paying for whatever the
+      #     other left in cache.
+      #
+      # Same shape as the manual A/B measurements docs/performance-trend.md
+      # describes, for the same reason.
+      - name: Run both benchmark sets, interleaved
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p perf-results/head perf-results/base
+          head_bin=build/config-linux-gcc/bin
+          base_bin=../base-perf/build/config-linux-gcc/bin
+          for i in $(seq 1 "$PERF_RUNS"); do
+            if [ $((i % 2)) -eq 1 ]; then order="head base"; else order="base head"; fi
+            for side in $order; do
+              if [ "$side" = head ]; then bin="$head_bin"; else bin="$base_bin"; fi
+              "$bin/ac3bench" --json-out "perf-results/$side/bench$i.json"
+              "$bin/ac3kernelbench" --json-out "perf-results/$side/kernels$i.json"
+            done
+          done
+
+      - name: Compare and publish the job summary
+        id: compare
+        shell: bash
+        env:
+          BASE_SHORT: ${{ steps.base.outputs.short }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/compare_performance.py \
+            --base-dir perf-results/base \
+            --head-dir perf-results/head \
+            --base-ref "merge base $BASE_SHORT"
+
+  # The blocking half of performance-compare, split out so that job can keep
+  # continue-on-error for its builds while its VERDICT still fails a check.
+  # Builds nothing, checks out nothing, runs one bash step - there is no
+  # infrastructure here to flake and produce a false red.
+  #
+  # `always()` so a verdict is still enforced when some unrelated job failed;
+  # the step itself is what decides, and it passes on anything that is not an
+  # explicit `true`. That covers a skipped performance-compare (docs-only PR),
+  # a cancelled one, and one that died before the compare step ran - a job
+  # that produced no measurement must not fail a PR on a measurement it does
+  # not have.
+  #
+  # The label escape hatch is checked HERE rather than in
+  # compare_performance.py so the summary table keeps saying what it measured
+  # either way: with the label the hard row is still rendered, still annotated
+  # and still visible to a reviewer, it just stops failing the check. Labels
+  # are also live - adding one and re-running this seconds-long job is the
+  # whole loop, with no rebuild and no new commit.
+  performance-gate:
+    name: Performance gate
+    needs: [performance-compare]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    outputs:
+      result: ${{ steps.record-result.outputs.status }}
+    steps:
+      - name: Gate on the hard-tier verdict
+        shell: bash
+        env:
+          VERDICT: ${{ needs.performance-compare.outputs.hard_regression }}
+          APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'perf-regression-approved') }}
+        run: |
+          set -euo pipefail
+          echo "hard_regression=${VERDICT:-<none>}  perf-regression-approved=$APPROVED"
+          if [ "${VERDICT:-}" != "true" ]; then
+            echo "No hard performance regression to gate on."
+            exit 0
+          fi
+          if [ "$APPROVED" = "true" ]; then
+            echo "::warning title=Hard performance regression (approved)::A workload takes at least twice as long as at the merge base. Allowed through by the 'perf-regression-approved' label - see the Performance vs merge base summary for which workload and by how much."
+            exit 0
+          fi
+          echo "::error title=Hard performance regression::A workload takes at least twice as long as at the merge base. See the 'Performance vs merge base' job summary for which one and by how much. This is the same 100% threshold that fails the trend job on main once merged. If the slowdown is deliberate, label this PR 'perf-regression-approved' and re-run this job."
+          exit 1
+
+
+      # Exposes this job's own pass/fail through _ci-core.yml's own
+      # workflow_call.outputs (`jobs.<id>.result` is not a valid reference
+      # there - confirmed against actionlint, which rejects it as
+      # "property 'result' is not defined" - so the job has to report its
+      # own status through a real output instead). job.status reflects every
+      # step that already ran in this job, so reading it from the LAST step
+      # - itself always() so it still runs after an earlier failure - is the
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
+      - name: Record result
+        id: record-result
+        if: always()
+        shell: bash
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+  # Heap churn, this PR against its own merge base, on one runner. The memory
+  # counterpart to performance-compare above, closing the identical hole one
+  # resource over.
+  #
+  # The gap this closes: persist-performance-trend is the ONLY job that builds
+  # or runs ac3membench, and it is gated to pushes on main. So the relative
+  # "does this allocate more than it did" question was not asked until after a
+  # PR had merged - and unlike throughput, there is no absolute per-PR gate
+  # underneath it at all. tests/performance/test_performance.cpp's ac3perf
+  # keeps a real-time budget on every PR; nothing anywhere kept an allocation
+  # budget.
+  #
+  # That has already cost this repository a regression. E-AC-3 encode churn
+  # stepped 67 -> 199 allocs/frame and Atmos 106 -> 219 at PR #352's
+  # per-channel exponent-run planner. The trend gate fired correctly, and late:
+  #
+  #   ##[error] linux-gcc/eac3_51_encode: 199.1 allocs/frame is 197% above the
+  #            trailing 10-run mean (67.0)
+  #
+  # on run 32823518403, event `push`, branch `main`, 2026-08-25 - a red check
+  # on a commit that had already merged, blocking nothing and belonging to
+  # whoever pushed next. The regression is still in the tree as issue #544.
+  #
+  # WHY MEMORY MAKES AN EASIER PRE-MERGE GATE THAN SPEED. performance-compare
+  # needs PERF_RUNS repetitions per side, an interleaved run order and a
+  # minimum-of-N reduction, all of it to see past a shared runner's timing
+  # noise. ac3membench's counts carry no such noise: for a fixed workload and a
+  # fixed binary they are the same every run. One run per side is the whole
+  # measurement, which makes this job cheaper than the speed comparison at the
+  # same two builds, and leaves its hard tier with no noise argument to answer.
+  #
+  # Its INFRASTRUCTURE is non-blocking; its HARD VERDICT is not. Same split as
+  # performance-compare, for the same reasons: continue-on-error stays, because
+  # this builds twice and a container or vcpkg flake in a job nobody asked for
+  # must not block a PR; and because continue-on-error swallows exit codes, the
+  # hard verdict travels as an output to the one-step memory-gate job below.
+  #
+  # Runner budget. Kept as narrow as it can be and still answer the question:
+  #   - `--target ac3membench` only. Not the tests, not the CLI, not the other
+  #     two benchmarks.
+  #   - One container, one GCC install, one vcpkg setup, two builds inside
+  #     them. The second configure reuses the first's vcpkg binary cache, so it
+  #     costs a compile of this repository's own sources and not of its
+  #     dependencies.
+  #   - One benchmark run per side, for the determinism reason above.
+  #   - Gated on `changes` like every other heavy job, so a docs-only PR never
+  #     starts it.
+  # This is deliberately a separate job from performance-compare rather than
+  # two more steps inside it, matching how every other gate here is shaped: the
+  # two verdicts stay independent, so a flake while timing the speed benches
+  # cannot take the memory verdict with it. The cost of that independence is a
+  # second container bootstrap and vcpkg setup on each code PR.
+  memory-compare:
+    name: Memory vs merge base
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    container: ubuntu:26.04
+    continue-on-error: true
+    outputs:
+      # Read by memory-gate below. Empty when this job was skipped or died
+      # before the compare step, both of which that job treats as "no verdict".
+      hard_regression: ${{ steps.compare.outputs.hard_regression }}
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
+
+      # fetch-depth: 0 so the base commit and its history are in the object
+      # store for `git merge-base` and the worktree below - the default shallow
+      # clone has neither.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+
+      - name: Resolve the merge base
+        id: base
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          # On a pull_request event the checked-out HEAD is the merge commit,
+          # so BASE_SHA is already an ancestor of it and this returns BASE_SHA
+          # itself. Asking git rather than trusting that keeps the answer right
+          # if GitHub ever hands over a base tip that has moved on.
+          merge_base="$(git merge-base "$BASE_SHA" HEAD)"
+          echo "sha=$merge_base" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short "$merge_base")" >> "$GITHUB_OUTPUT"
+          echo "Merge base: $merge_base"
+
+      - name: Build ac3membench at this PR's head
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-linux-gcc
+          cmake --build --preset build-linux-gcc --target ac3membench -- -k 0
+
+      # A worktree rather than `git checkout <sha>`: it leaves this checkout
+      # (and its build tree, and tools/ci/compare_memory.py, which the base
+      # commit may not even have) exactly where they are, and gives the base
+      # its own source dir - so CMakePresets.json's
+      # ${sourceDir}/build/${presetName} puts the two builds in separate
+      # directories with no cache to invalidate between them.
+      #
+      # A base that cannot build the target is reported rather than fatal. A
+      # merge base predating ac3membench has no such target to build, and that
+      # is a comparison with nothing to say, not a broken job -
+      # compare_memory.py sees one empty side and prints its skip warning.
+      - name: Build ac3membench at the merge base
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach ../base-mem "$BASE_SHA"
+          pushd ../base-mem >/dev/null
+          cmake --preset config-linux-gcc
+          if ! cmake --build --preset build-linux-gcc --target ac3membench -- -k 0; then
+            echo "::warning title=Memory comparison baseline unavailable::the merge base does not build ac3membench; the comparison will report a skip."
+          fi
+          popd >/dev/null
+
+      # One run per side, no interleaving and no repetitions - the whole point
+      # of gating on this metric rather than on time. See compare_memory.py's
+      # module docstring.
+      #
+      # The memory-<leg> subdirectory layout, and the leg name `linux-gcc`, are
+      # append_memory_history.py's - the two gates share that reader, so the
+      # workload names in this PR's table read identically to the ones on
+      # docs/performance-trend.md's memory tables.
+      - name: Run ac3membench on both sides
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p mem-results/head/memory-linux-gcc mem-results/base/memory-linux-gcc
+          build/config-linux-gcc/bin/ac3membench \
+            --json-out mem-results/head/memory-linux-gcc/membench.json
+          base_bin=../base-mem/build/config-linux-gcc/bin/ac3membench
+          if [ -x "$base_bin" ]; then
+            "$base_bin" --json-out mem-results/base/memory-linux-gcc/membench.json
+          fi
+
+      - name: Compare and publish the job summary
+        id: compare
+        shell: bash
+        env:
+          BASE_SHORT: ${{ steps.base.outputs.short }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/compare_memory.py \
+            --base-dir mem-results/base \
+            --head-dir mem-results/head \
+            --base-ref "merge base $BASE_SHORT"
+
+  # The blocking half of memory-compare, split out so that job can keep
+  # continue-on-error for its builds while its VERDICT still fails a check.
+  # Builds nothing, checks out nothing, runs one bash step - there is no
+  # infrastructure here to flake and produce a false red. Same shape as
+  # performance-gate above.
+  #
+  # `always()` so a verdict is still enforced when some unrelated job failed;
+  # the step itself is what decides, and it passes on anything that is not an
+  # explicit `true`. That covers a skipped memory-compare (docs-only PR), a
+  # cancelled one, and one that died before the compare step ran - a job that
+  # produced no measurement must not fail a PR on a measurement it does not
+  # have.
+  #
+  # The label escape hatch is checked HERE rather than in compare_memory.py so
+  # the summary tables keep saying what they measured either way: with the
+  # label the hard row is still rendered, still annotated and still visible to
+  # a reviewer, it just stops failing the check. A deliberate doubling of heap
+  # churn is a legitimate thing to merge - a buffer sized for the worst case, a
+  # cache that buys back real work - and this is the same escape hatch, with
+  # its own label, that perf-regression-approved gives the speed gate. Labels
+  # are live: adding one and re-running this seconds-long job is the whole
+  # loop, with no rebuild and no new commit.
+  memory-gate:
+    name: Memory gate
+    needs: [memory-compare]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    outputs:
+      result: ${{ steps.record-result.outputs.status }}
+    steps:
+      - name: Gate on the hard-tier verdict
+        shell: bash
+        env:
+          VERDICT: ${{ needs.memory-compare.outputs.hard_regression }}
+          APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'memory-regression-approved') }}
+        run: |
+          set -euo pipefail
+          echo "hard_regression=${VERDICT:-<none>}  memory-regression-approved=$APPROVED"
+          if [ "${VERDICT:-}" != "true" ]; then
+            echo "No hard memory regression to gate on."
+            exit 0
+          fi
+          if [ "$APPROVED" = "true" ]; then
+            echo "::warning title=Hard memory regression (approved)::A workload's heap churn at least doubled against the merge base, or it started retaining megabytes it did not before. Allowed through by the 'memory-regression-approved' label - see the Memory vs merge base summary for which workload and by how much."
+            exit 0
+          fi
+          echo "::error title=Hard memory regression::A workload's heap churn at least doubled against the merge base, or it started retaining megabytes it did not before. See the 'Memory vs merge base' job summary for which one and by how much. This is the same 100% threshold that fails the trend job on main once merged - see docs/performance-trend.md. If the increase is deliberate, label this PR 'memory-regression-approved' and re-run this job."
+          exit 1
+
+
+      # Exposes this job's own pass/fail through _ci-core.yml's own
+      # workflow_call.outputs (`jobs.<id>.result` is not a valid reference
+      # there - confirmed against actionlint, which rejects it as
+      # "property 'result' is not defined" - so the job has to report its
+      # own status through a real output instead). job.status reflects every
+      # step that already ran in this job, so reading it from the LAST step
+      # - itself always() so it still runs after an earlier failure - is the
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
+      - name: Record result
+        id: record-result
+        if: always()
+        shell: bash
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+  # legacy item AP4: an ABI gate for the shared libraries, over the
+  # linux-llvm-shared build. Two independent checks, both against
+  # config-linux-llvm-shared (already Debug - has DWARF - and
+  # BUILD_SHARED_LIBS=ON):
+  #   - abidiff: does this change alter anything abigail can see in the
+  #     public interface of a library that already existed at the
+  #     comparison point.
+  #   - check_abi_symbols.py: does the actual dynamic-symbol export set
+  #     (nm -D --defined-only - exactly what CXX_VISIBILITY_PRESET hidden
+  #     leaves reachable) still match the checked-in allowlist, catching an
+  #     accidentally-exported internal symbol even on a brand first release
+  #     with no tag yet to abidiff against.
+  #
+  # Comparison point. On a pull request this is the PR's own merge base,
+  # exactly like performance-compare above and exactly what this job's first
+  # bullet claims to answer - "what does this branch do to the ABI" is a
+  # question only a merge base can answer. It used to compare against the
+  # last release tag, which answers a different question (how far the ABI has
+  # moved this cycle) and so reported the whole cycle's accumulated drift on
+  # every PR: 806 commits' worth by 2026-08-28, which made the job fail on
+  # 100% of open pull requests - including #449, which touched only CI and
+  # docs and so could not have changed anything. That release-relative view
+  # is still worth having, just not per-PR, so on a push or a tag the
+  # comparison point stays the last release tag.
+  #
+  # Advisory vs enforcing. ABI_ENFORCE below is the single switch, and
+  # flipping it to 'true' is the whole of AP1's promotion - the same one-line
+  # pattern _build.yml's matrix.experimental flag already documents. Pre-1.0
+  # there is no ABI-compatibility promise to enforce (see
+  # docs/library/index.md's pimpl/config-growth note), so both checks report
+  # into the job summary and leave the job green.
+  #
+  # This replaces the job-level `continue-on-error: true` that used to serve
+  # that purpose, which did not actually do it: continue-on-error keeps a
+  # failing job from failing the *workflow run*, but GitHub still reports
+  # that job's own check run as `failure`, so the gate showed a red X on
+  # every pull request while blocking nothing - no signal, and an active
+  # incentive to stop reading CI. It also flattened two very different things
+  # into one ignored state: an expected pre-1.0 ABI change and a genuine
+  # infrastructure failure (a broken build, a library that did not link)
+  # looked identical. With it gone, anything unexpected in this job is red
+  # and a policy finding is not.
+  #
+  # When enforcing, abidiff fails only on ABIDIFF_ABI_INCOMPATIBLE_CHANGE
+  # (exit bit 8). A pure addition sets bit 4 alone and passes, which is the
+  # policy a library that expects to keep growing after 1.0 wants; bit 1 is
+  # abidiff itself erroring and always fails, enforcing or not, because that
+  # is a broken check rather than a finding about the code.
+  abi-gate:
+    name: ABI gate
+    # Not on a merge-queue entry. The PR run already produced the merge-base
+    # comparison this job exists for; a merge_group run takes the
+    # release-relative view instead (HEAD against the latest v* tag - see the
+    # base-selection step below), which the push to main then repeats. While
+    # ABI_ENFORCE is 'false' that second view blocks nothing and nobody reads
+    # it before the merge lands, so it was two shared-library builds per queue
+    # entry for a result with no audience. Revisit with AP1: when ABI_ENFORCE
+    # flips, decide whether the queue needs its own check or can keep trusting
+    # the PR run.
+    if: github.event_name != 'merge_group'
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    container: ubuntu:26.04
+    env:
+      # AP1 promotion: flip to 'true' when the API freeze ships. Nothing
+      # else in this job needs to change.
+      ABI_ENFORCE: 'false'
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            abigail-tools build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config python3 software-properties-common tar unzip wget zip
+
+      # fetch-depth: 0 so the comparison point (a merge base on a PR, the
+      # last release tag otherwise) and its history are in the object store
+      # for the worktree below - the default shallow clone has neither.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install LLVM ${{ inputs.llvm_version }}
+        run: |
+          set -eu
+          if command -v sudo >/dev/null 2>&1; then sudo -E bash .github/toolchain/03-llvm-toolchain.sh
+          else bash .github/toolchain/03-llvm-toolchain.sh; fi
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+
+      - name: Resolve the comparison point
+        id: base
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            # On a pull_request event the checked-out HEAD is the merge
+            # commit, so BASE_SHA is already an ancestor of it and this
+            # returns BASE_SHA itself. Asking git rather than trusting that
+            # keeps the answer right if GitHub ever hands over a base tip
+            # that has moved on - same reasoning as performance-compare.
+            ref="$(git merge-base "$BASE_SHA" HEAD)"
+            {
+              echo "skip=false"
+              echo "ref=$ref"
+              echo "label=merge base $(git rev-parse --short "$ref")"
+            } >> "$GITHUB_OUTPUT"
+            echo "Comparing HEAD against merge base $ref"
+          else
+            # Push, tag or manual run: the release-relative view.
+            tag="$(git tag -l 'v*' --sort=-v:refname | head -1)"
+            if [ -z "$tag" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "No v* tag found yet - nothing to diff against."
+            else
+              {
+                echo "skip=false"
+                echo "ref=$tag"
+                echo "label=$tag"
+              } >> "$GITHUB_OUTPUT"
+              echo "Comparing HEAD against $tag"
+            fi
+          fi
+
+      - name: Build HEAD (config-linux-llvm-shared)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-linux-llvm-shared
+          cmake --build build/config-linux-llvm-shared -- -k 0
+
+      # A worktree, exactly like performance-compare's own base build: leaves
+      # this checkout's build tree alone and gives the comparison point its
+      # own source dir, so config-linux-llvm-shared's ${sourceDir}/build/...
+      # path never collides between the two.
+      - name: Build the comparison point (config-linux-llvm-shared)
+        if: steps.base.outputs.skip == 'false'
+        shell: bash
+        env:
+          BASE_REF: ${{ steps.base.outputs.ref }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach ../abi-base "$BASE_REF"
+          pushd ../abi-base >/dev/null
+          cmake --preset config-linux-llvm-shared
+          cmake --build build/config-linux-llvm-shared -- -k 0
+          popd >/dev/null
+
+      # Both steps below discover libraries dynamically - `find .../src -name '*.so'` - rather
+      # than a hardcoded `for lib in ...` list: this project's own SHARED targets each produce a
+      # bare, unversioned libFOO.so symlink (alongside the real, version-suffixed libFOO.so.X.Y.Z)
+      # directly in the build tree under src/<component>/, with no install step needed to see it.
+      # Scoped to .../src specifically - not the whole build tree - so a FetchContent'd
+      # third-party dependency's own .so (e.g. a hypothetical libadm.so, if AC3FORGE_BUILD_ADM
+      # were ever turned on for this preset) is never picked up: those build under .../_deps/,
+      # a disjoint subtree, and this project never install()s them in their own right regardless.
+      # A hardcoded list is exactly what let libac3iab.so go uncovered by both steps below (and
+      # unrepresented in tools/ci/abi-allowlist/) from the day ac3iab landed until this fix.
+      - name: abidiff each shared library against the comparison point
+        if: steps.base.outputs.skip == 'false'
+        shell: bash
+        env:
+          BASE_LABEL: ${{ steps.base.outputs.label }}
+        run: |
+          set -uo pipefail
+          fence='```'
+          {
+            echo "## ABI diff vs $BASE_LABEL"
+            echo
+            if [ "$ABI_ENFORCE" != "true" ]; then
+              echo "_Advisory: pre-1.0 there is no ABI-compatibility promise to"
+              echo "enforce. This reports; it does not fail the build._"
+              echo
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # tools/ci/abi-suppressions.ini drops the libstdc++/runtime
+          # template instantiations that are not part of any ABI this
+          # project controls - see that file's header for why they show up
+          # in the first place.
+          errors=0
+          incompatible=0
+          changed=0
+          mapfile -t libs < <(
+            { find build/config-linux-llvm-shared/src -name '*.so' -exec basename {} \;
+              find ../abi-base/build/config-linux-llvm-shared/src -name '*.so' -exec basename {} \;
+            } 2>/dev/null | sort -u)
+          for lib in "${libs[@]}"; do
+            head_lib="$(find build/config-linux-llvm-shared/src -name "$lib" -print -quit)"
+            base_lib="$(find ../abi-base/build/config-linux-llvm-shared/src -name "$lib" -print -quit)"
+            if [ -z "$head_lib" ]; then
+              echo "### $lib" >> "$GITHUB_STEP_SUMMARY"
+              echo "(not built at HEAD)" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            if [ -z "$base_lib" ]; then
+              echo "### $lib" >> "$GITHUB_STEP_SUMMARY"
+              echo "(not present at $BASE_LABEL - new library)" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            out="$(abidiff --suppressions tools/ci/abi-suppressions.ini \
+                     "$base_lib" "$head_lib" 2>&1)" && rc=0 || rc=$?
+
+            # abidiff's exit status is a bitfield: 1 ABIDIFF_ERROR,
+            # 4 ABIDIFF_ABI_CHANGE, 8 ABIDIFF_ABI_INCOMPATIBLE_CHANGE.
+            if [ "$(( rc & 1 ))" -ne 0 ]; then
+              errors=1
+              verdict="abidiff errored"
+            elif [ "$(( rc & 8 ))" -ne 0 ]; then
+              incompatible=1
+              verdict="incompatible change"
+            elif [ "$(( rc & 4 ))" -ne 0 ]; then
+              changed=1
+              verdict="additive change"
+            else
+              verdict="no change"
+            fi
+
+            echo "$lib: $verdict"
+            echo "### $lib - $verdict" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$rc" -ne 0 ]; then
+              echo "$out"
+              {
+                echo "$fence"
+                echo "$out"
+                echo "$fence"
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+          if [ "$errors" -ne 0 ]; then
+            echo "::error title=ABI gate::abidiff failed to run - that is a broken check, not a finding about the code."
+            exit 1
+          fi
+          if [ "$incompatible" -ne 0 ]; then
+            if [ "$ABI_ENFORCE" = "true" ]; then
+              echo "::error title=ABI gate::Incompatible ABI change vs $BASE_LABEL."
+              exit 1
+            fi
+            echo "::notice title=ABI gate::Incompatible ABI change vs $BASE_LABEL - advisory pre-1.0, would fail once ABI_ENFORCE is true."
+          elif [ "$changed" -ne 0 ]; then
+            echo "::notice title=ABI gate::Additive ABI change vs $BASE_LABEL - passes even when enforcing."
+          fi
+          exit 0
+
+      - name: Exported-symbol allowlist check
+        # Independent of the abidiff step above (see this job's header
+        # comment) - must run even when abidiff already reported a diff,
+        # which pre-1.0 it does on plenty of PRs. Without this, GitHub
+        # Actions' default success()-only condition means an abidiff failure
+        # silently skips the one check here that catches a real regression.
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          fence='```'
+          libs=()
+          while IFS= read -r found; do
+            libs+=(--lib "$found")
+          done < <(find build/config-linux-llvm-shared/src -name '*.so' | sort)
+          if [ "${#libs[@]}" -eq 0 ]; then
+            echo "::error title=ABI gate::No shared libraries were built - nothing to check."
+            exit 1
+          fi
+          out="$(python3 tools/ci/check_abi_symbols.py \
+                   --allowlist-dir tools/ci/abi-allowlist "${libs[@]}" 2>&1)" && rc=0 || rc=$?
+          echo "$out"
+          {
+            echo "## Exported-symbol allowlist"
+            echo
+            echo "$fence"
+            echo "$out"
+            echo "$fence"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -eq 0 ]; then
+            exit 0
+          fi
+          if [ "$ABI_ENFORCE" = "true" ]; then
+            echo "::error title=ABI gate::Exported symbols no longer match the allowlist."
+            exit 1
+          fi
+          echo "::notice title=ABI gate::Exported symbols no longer match the allowlist - advisory pre-1.0, would fail once ABI_ENFORCE is true. Regenerate with --update if the change is deliberate."
+          exit 0
+
+  # FFmpeg as an independent oracle (CONTRIBUTING.md's "Oracles" list, #2),
+  # automated - previously a manual/developer-only practice. Builds ac3cli
+  # only (linux-llvm preset; no GUI, and build-and-test already covers
+  # ctest), then runs three layers against it, all against FFmpeg and all
+  # already exiting non-zero on their own failure - this job's only new work
+  # is wiring them up, pinning FFmpeg, and gating on the result. Answers a
+  # different question from _build.yml's gold-reference gate (every leg,
+  # one fixed sample, ac3cli's own decoder vs FFmpeg's - output *quality* and
+  # cross-platform reproducibility): this leg checks that every layout,
+  # Annex E tool token and metadata option in the encoder's surface produces
+  # a structurally valid stream at all - output *correctness* across the
+  # full option space, which one fixed sample can never exercise:
+  #   - conformance: tools/ci/run_codec_matrix.sh's FFmpeg strict-decode
+  #     additions, across the layout/tool/metadata matrix. Skips 7.1.4 and
+  #     7.1.4+Annex-E-tool combinations on purpose - see the script's own
+  #     header comment and README.md's Verification gaps table for why no
+  #     oracle exists for either.
+  #   - metadata: tools/checks/check_drc.py (dynrng/compr/downmix/dialnorm) and
+  #     tools/checks/check_coupling.py + check_coupling_level.py (coupling envelope
+  #     and absolute level), all discriminating checks that compare a decode
+  #     which applies the metadata against one that doesn't.
+  #   - fidelity: tools/ci/quality_race.py's `ci` mode, a numeric SNR/LSD floor
+  #     per E-AC-3 tool variant (stereo and 5.1) plus AC-3, set well below
+  #     today's measured numbers (README.md's own SNR table) so it trips on
+  #     a genuine regression without chasing normal drift.
+  #   - coverage: tools/checks/check_matrix_coverage.py, a different question from
+  #     the three layers above - not "is the output correct" but "does
+  #     anything exercise this at all". Reads the CLI's own canonical option
+  #     lists (usage text, and the "unknown layout"/"unknown tool set" error
+  #     messages a bad argument hits) and fails if a layout, Annex E tool
+  #     token or command the CLI accepts today is never mentioned in
+  #     run_codec_matrix.sh - so a new option landing in the library without
+  #     a matching matrix entry fails CI instead of shipping unvalidated.
+  #     Caught exactly this for real while this job was being built: E-AC-3
+  #     VBR support landed with zero matrix coverage, on this same branch.
+  # FFmpeg is pinned to the exact ubuntu:26.04 archive build so its behaviour
+  # cannot silently drift out from under the codec-matrix decodes or the
+  # fidelity floors above - the same discipline this project already applies
+  # to the vcpkg commit and the LLVM/GCC versions.
+  ffmpeg-validate:
+    name: FFmpeg Validate
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    container: ubuntu:26.04
+    outputs:
+      result: ${{ steps.record-result.outputs.status }}
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config python3-pip software-properties-common \
+            tar unzip wget zip \
+            ffmpeg=7:8.0.1-3ubuntu2
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install LLVM ${{ inputs.llvm_version }}
+        run: bash .github/toolchain/03-llvm-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+
+      # requirements/requirements-ffmpeg-validate.txt is a pip-compile --generate-hashes
+      # lock (see its own header for how to regenerate) so this install is
+      # hash-pinned.
+      #
+      # `visqol-python` (tools/ci/quality_race.py's perceptual_score(), see its
+      # own docstring for why ViSQOL/why that package) IS installed here now.
+      # It used to be held out on supply-chain grounds; what that bought was a
+      # MOS column nobody could read - every one of the ~3,758 rows on the
+      # quality-history branch carried "mos_lqo": null and every MOS cell in
+      # docs/landscape.md and docs/tool-comparison-trend.md rendered n/a, so
+      # the perceptual half of this project's own published comparison did not
+      # exist. It is pinned by hash like everything else in that lock; see the
+      # .in file's header for exactly which seven packages it added.
+      #
+      # It does NOT change what gates. The `ci` step below is still the hard
+      # fidelity gate and still scores SNR/LSD only - perceptual_score() is
+      # never called from race_ci(). Only the `trend` step (compute-only,
+      # feeds quality-history) pays for MOS.
+      #
+      # What that costs, measured rather than estimated: a full `trend` run
+      # took 10m48s with ViSQOL and 3m59s with it stubbed out, so the MOS
+      # column is about seven minutes of it across the 62 distinct scorings
+      # eight legs produce - and that is already WITH quality_race.py's
+      # MOS_WINDOW_S cap, without which it would be far worse, since ViSQOL's
+      # patch matching is super-linear (3.9 s to score 3 s of audio, 127.8 s
+      # to score 30 s). Those figures are from a Windows DEBUG build, so the
+      # encode/decode half will be faster here on config-linux-llvm; the
+      # ViSQOL half is pure Python and will not be.
+      #
+      # Roughly doubling this job (~5 min today) is affordable because it is
+      # nowhere near the critical path: the same run's longest job is Windows
+      # LLVM at ~21 min, so the wall clock of a CI run does not move. If that
+      # ever stops being true, the lever is MOS_WINDOW_S or scoring only the
+      # `landscape` rows - not dropping the column again.
+      #
+      # --ignore-installed: matplotlib (added for render_spectrograms()) pulls
+      # in `packaging` transitively, which ubuntu:26.04's base image already
+      # has as an apt-installed package with no RECORD file - pip's own
+      # in-place-upgrade path refuses to touch a package it can't prove the
+      # contents of ("Cannot uninstall packaging ... no RECORD file was
+      # found", confirmed for real in this job's own first CI run). This
+      # flag tells pip to install fresh into site-packages over top of it
+      # rather than trying to uninstall first - fine in a throwaway
+      # container that gets discarded after the job either way.
+      - name: Install numpy, matplotlib and visqol-python
+        run: pip install --quiet --break-system-packages --ignore-installed --require-hashes -r requirements/requirements-ffmpeg-validate.txt
+
+      - name: Report ffmpeg version
+        run: ffmpeg -version | head -1
+
+      - name: Configure
+        run: cmake --preset config-linux-llvm
+
+      - name: Build ac3cli
+        run: cmake --build --preset build-linux-llvm --target ac3cli -- -k 0
+
+      - name: Codec matrix against the FFmpeg oracle
+        run: bash tools/ci/run_codec_matrix.sh build/config-linux-llvm/bin/ac3cli
+
+      - name: Metadata checks against FFmpeg (dynrng, compr, downmix, dialnorm)
+        run: python3 tools/checks/check_drc.py --cli build/config-linux-llvm/bin/ac3cli
+
+      - name: Coupling checks against FFmpeg (envelope and absolute level)
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+        run: |
+          python3 tools/checks/check_coupling.py
+          python3 tools/checks/check_coupling_level.py
+
+      - name: Fidelity gate against FFmpeg (SNR/LSD floors)
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/ci/quality_race.py ci
+
+      - name: Matrix coverage (every CLI option is exercised somewhere)
+        run: python3 tools/checks/check_matrix_coverage.py --cli build/config-linux-llvm/bin/ac3cli
+
+      # The generator half of this job's question. Everything above walks a
+      # HAND-ENUMERATED set of command lines against one bootstrap tone: the
+      # matrix says which options exist, the coverage check says each one is
+      # named somewhere, and neither has any notion of option COMBINATIONS or
+      # of the input material. tools/ci/fuzz_encoder_space.py draws random legal
+      # configurations crossed with adversarial PCM whose character changes
+      # part-way through a frame, and holds every resulting stream against
+      # both decoders - see that file's own header for the encoder defect
+      # (PR #186) that escaped every gate above and takes seconds to find
+      # this way.
+      #
+      # The envelope check runs first and is cheap: it re-measures the
+      # per-layout rate floors the generator draws from, so a run cannot pass
+      # by drawing configurations the encoder was never going to accept.
+      #
+      # Bounded to ~2 minutes here, on top of a job that already runs several
+      # minutes, so a pull request is not slowed noticeably. The deeper run is
+      # fuzz.yml's nightly encoder-space job. Unseeded on purpose: a fixed
+      # seed would walk the same few hundred configurations every run forever,
+      # which is a regression test, not a search. Every failure prints the
+      # exact seed that produced it and --replay reruns just that case, so a
+      # random run is still fully reproducible after the fact.
+      #
+      # This half DOES gate: it is deterministic, it takes seconds, and a
+      # failure means either the encoder now refuses configurations it used to
+      # fit or the generator is drawing outside the accepted space - in which
+      # case the search step below would come back "clean" having encoded
+      # almost nothing.
+      - name: Encoder acceptance envelope (the rate floors the search draws from)
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/ci/fuzz_encoder_space.py --check-envelope
+
+      # Every case seed that ever produced a wrong verdict - from the encoder
+      # or from the harness itself - replayed exactly (REGRESSION_SEEDS in the
+      # script). Deterministic and seconds-cheap, so it gates like the
+      # envelope check does; the unseeded search below stays a search.
+      - name: Encoder input-space regressions (recorded past failures)
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/ci/fuzz_encoder_space.py --regressions
+
+      - name: Encoder input-space fuzz (bounded, both decoders)
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/ci/fuzz_encoder_space.py --seconds 120
+
+      # The same question asked of the E-AC-3 encoder (E-AC-3 encoder fuzzing), which the
+      # AC-3 harness above deliberately does not cover: Annex E tool tokens,
+      # fscod2 half rates, VBR, the layouts that need dependent substreams,
+      # and atmos-encode's object counts.
+      #
+      # It needs its own steps rather than a flag on the ones above because
+      # its ORACLE is a different shape. FFmpeg reads AC-3 whole; it does not
+      # read E-AC-3 whole - no second dependent substream (so no 7.1.4), no
+      # model at all of enhanced coupling or transient pre-noise, and no
+      # fscod2 decode - so the harness classifies each case first and holds
+      # the cells FFmpeg cannot decode against ffprobe's syncframe walk
+      # instead. --check-oracles is what keeps that classification honest: it
+      # re-measures every entry against the ffmpeg pinned below, so a cell
+      # wrongly listed as a gap cannot quietly stop being tested.
+      - name: E-AC-3 encoder oracle model (what this FFmpeg can actually read)
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/ci/fuzz_eac3_encoder_space.py --check-oracles
+
+      # Same role as the AC-3 envelope check above - the rate floors the
+      # search draws from, so a run cannot pass by drawing configurations the
+      # encoder was never going to accept - plus §E2.3.1.3's 11-bit frmsiz
+      # word ceiling, which at the Annex E half rates sits inside Table 5.18's
+      # own rate list. That half is a regression gate on a real defect: the
+      # refusal there used to be an assert() rather than a message.
+      - name: E-AC-3 encoder acceptance envelope (rate floors + the frmsiz ceiling)
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/ci/fuzz_eac3_encoder_space.py --check-envelope
+
+      - name: E-AC-3 encoder input-space regressions (recorded past failures)
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/ci/fuzz_eac3_encoder_space.py --regressions
+
+      - name: E-AC-3 encoder input-space fuzz (bounded, both decoders)
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/ci/fuzz_eac3_encoder_space.py --seconds 120
+
+      - name: Upload failing encoder-space inputs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: encoder-space-artifacts
+          path: |
+            fuzz-encoder-artifacts/
+            fuzz-eac3-encoder-artifacts/
+          if-no-files-found: ignore
+
+      # Compute-only: scores this build against the same three fixed legs
+      # tools/generators/gen_external_baseline.py measures FFmpeg/DEE against, using
+      # this project's own decoder throughout (see quality_race.py's
+      # race_trend docstring) - neither FFmpeg's nor DEE's encoder ever
+      # runs here. Not yet persisted to quality-history (a later phase);
+      # this step only produces the artifact so the numbers are visible
+      # per-run before that lands.
+      #
+      # --spectrogram-dir renders docs/landscape.md's visual supplement
+      # (one PNG per leg: original/ac3forge/FFmpeg/DEE spectrograms stacked)
+      # in the same invocation, straight off the encode/decode this step is
+      # already doing - see render_spectrograms()'s own docstring for why
+      # this is a second flag on this call, not a separate step that would
+      # otherwise re-encode all three legs from scratch. It does still need
+      # an `ffmpeg` binary (already installed above, for the codec-matrix
+      # steps) to decode the committed external-baseline bitstreams - never
+      # to encode.
+      - name: External-encoder landscape trend (compute-only)
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/ci/quality_race.py trend --json-out results/trend.json --spectrogram-dir results/spectrograms
+
+      - name: Upload landscape trend
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: external-encoder-landscape-trend
+          path: results/trend.json
+
+      - name: Upload quality spectrograms
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-spectrograms
+          path: results/spectrograms
+
+      # Compute-only, same as the landscape trend above: encodes the
+      # committed five-object scene (tests/golden/audio/reference_objects.wav
+      # plus its .paths placements) with this build's `atmos-encode`, decodes
+      # it back to per-object WAVs with this build's `decode`, and scores each
+      # object against the channel it came from. No external tool is involved
+      # at any point and none could be - there is no external oracle for
+      # object decode at all (FFmpeg implements no JOC reconstruction, and
+      # Dolby's own decoder needs a key this project does not ship), which is
+      # exactly the gap this leg exists to close: before it, the object layer
+      # was measured once anywhere in the tree, in a unit test with a 10 dB
+      # floor against 18-35 dB measured. See race_objects() in
+      # tools/ci/quality_race.py and docs/object-quality-trend.md.
+      #
+      # It lives on this job rather than a job of its own because it needs
+      # exactly what this one already has built and installed - ac3cli and
+      # numpy - and takes a couple of seconds on top of a job that already
+      # runs several minutes.
+      - name: Object-reconstruction quality (compute-only)
+        env:
+          AC3CLI: build/config-linux-llvm/bin/ac3cli
+        run: python3 tools/ci/quality_race.py objects --json-out results/objects.json
+
+      - name: Upload object-reconstruction quality
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: object-reconstruction-quality
+          path: results/objects.json
+
+
+      # Exposes this job's own pass/fail through _ci-core.yml's own
+      # workflow_call.outputs (`jobs.<id>.result` is not a valid reference
+      # there - confirmed against actionlint, which rejects it as
+      # "property 'result' is not defined" - so the job has to report its
+      # own status through a real output instead). job.status reflects every
+      # step that already ran in this job, so reading it from the LAST step
+      # - itself always() so it still runs after an earlier failure - is the
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
+      - name: Record result
+        id: record-result
+        if: always()
+        shell: bash
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+  # Persists ffmpeg-validate's landscape-trend numbers (see that job's own
+  # comment) to the quality-history branch, same mechanism as
+  # persist-performance-trend beside it - one job downstream of a single
+  # producer job rather than a per-leg matrix, so this is one commit per CI
+  # run, not a race between several. Needs neither a container nor a build:
+  # tools/ci/append_external_comparison_history.py is stdlib-only, and
+  # tests/golden/external-baseline/manifest.json (the FFmpeg/DEE numbers to
+  # diff against) is a committed file the checkout below already has.
+  persist-external-comparison-trend:
+    name: Publish external-encoder landscape trend
+    needs: ffmpeg-validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      result: ${{ steps.record-result.outputs.status }}
+    steps:
+      # persist-credentials: false - same reasoning as persist-performance-
+      # trend's identical checkout: this working tree is only ever read from
+      # (the append script, `git show` on this commit); the "Prepare
+      # quality-history checkout" step below pushes through its own
+      # explicitly-scoped remote instead.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download landscape trend
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: external-encoder-landscape-trend
+          path: results
+
+      # Only actually persisted below on `main` (see "Copy quality
+      # spectrograms into history" below), but downloaded unconditionally -
+      # harmless on a non-main run, and keeps this step identical regardless
+      # of branch rather than adding an `if` two different ways to the same
+      # artifact.
+      - name: Download quality spectrograms
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-spectrograms
+          path: results/spectrograms
+
+      # Same mechanic as persist-performance-trend's identical step: plain
+      # git over an HTTPS remote carrying the token, not actions/checkout,
+      # which fails outright if quality-history does not exist yet.
+      - name: Prepare quality-history checkout
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          mkdir -p history
+          cd history
+          if git ls-remote --exit-code --heads "$remote" quality-history >/dev/null 2>&1; then
+            git init -q
+            git remote add origin "$remote"
+            git fetch -q origin quality-history
+            git checkout -q quality-history
+          else
+            git init -q -b quality-history
+            git remote add origin "$remote"
+            git commit -q --allow-empty -m "Initialize quality-history branch"
+          fi
+
+      - name: Append external-comparison history
+        id: append
+        shell: bash
+        env:
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          commit_date="$(git show -s --format=%cI "$COMMIT_SHA")"
+          python3 tools/ci/append_external_comparison_history.py \
+            --trend-json results/trend.json \
+            --manifest-json tests/golden/external-baseline/manifest.json \
+            --history-dir history \
+            --branch "$BRANCH" \
+            --commit "$COMMIT_SHA" \
+            --commit-date "$commit_date"
+
+      # main-only: this records the latest comparison on the trunk branch.
+      # See docs/landscape.md's release-by-release framing.
+      # Unlike the JSONL append above, a fresh PNG every push doesn't
+      # delta-compress the way small JSON text does, so this deliberately
+      # does NOT run on every main push the way the numbers do; the
+      # numbers' own cadence is untouched. Overwrites the same three files
+      # in place each time (no per-commit accumulation) - there's no
+      # per-release image history, only "latest", which is what
+      # docs/landscape.md's img tags read.
+      - name: Copy quality spectrograms into history
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p history/spectrograms
+          cp results/spectrograms/*.png history/spectrograms/
+
+      - name: Commit and push external-comparison-history update
+        shell: bash
+        env:
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cd history
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -q -m "External-comparison trend: ${BRANCH}@${COMMIT_SHA}"
+            # Four trend publishers (quality, performance,
+            # external-comparison, object-quality) share this one branch and
+            # routinely finish within seconds of each other, so losing the
+            # push race is an expected outcome rather than an error - it is
+            # what "! [rejected] (fetch first)" on main means. Each writes its
+            # own data file, so rebasing onto whichever SIBLING won is
+            # conflict-free. Rebasing onto another run of THIS publisher is
+            # not: both runs add records to the end of the same file, which is
+            # what failed main's quality trend on 2026-09-18 (run
+            # 35317914064). resolve_history_conflict.py keeps both runs'
+            # records and writes the derived window again; anything it cannot
+            # account for it refuses, and this step then fails as it used to.
+            pushed=""
+            for attempt in 1 2 3 4 5; do
+              if git push -q origin quality-history 2>/dev/null; then
+                pushed=yes
+                break
+              fi
+              echo "push rejected (attempt ${attempt}); rebasing onto origin/quality-history"
+              git fetch -q origin quality-history
+              if ! git rebase -q origin/quality-history; then
+                python3 "${GITHUB_WORKSPACE}/tools/ci/resolve_history_conflict.py"
+                GIT_EDITOR=true git rebase --continue
+              fi
+              sleep $(( (RANDOM % 5) + 1 ))
+            done
+            if [ -z "${pushed}" ]; then
+              echo "::error::could not push quality-history after 5 attempts"
+              exit 1
+            fi
+          fi
+
+      # Deliberately after the push above, not instead of the append step
+      # failing outright - same reasoning as persist-performance-trend's and
+      # append_quality_history.py's identical hard-regression step.
+      - name: Fail on hard external-comparison regression
+        if: steps.append.outputs.hard_regression == 'true'
+        shell: bash
+        run: |
+          echo "::error::A leg/variant's SNR dropped at least 10 dB below its trailing average - see the job log above."
+          exit 1
+
+
+      # Exposes this job's own pass/fail through _ci-core.yml's own
+      # workflow_call.outputs (`jobs.<id>.result` is not a valid reference
+      # there - confirmed against actionlint, which rejects it as
+      # "property 'result' is not defined" - so the job has to report its
+      # own status through a real output instead). job.status reflects every
+      # step that already ran in this job, so reading it from the LAST step
+      # - itself always() so it still runs after an earlier failure - is the
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
+      - name: Record result
+        id: record-result
+        if: always()
+        shell: bash
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+  # Persists ffmpeg-validate's object-reconstruction numbers to the same
+  # quality-history branch, a different file again
+  # (object-quality-<branch>.jsonl, read by docs/object-quality-trend.md).
+  # A separate job from persist-external-comparison-trend beside it rather
+  # than a second step inside it: the two write different files with
+  # different regression thresholds and either can fail on its own, and
+  # keeping them apart means an object regression fails a job named for
+  # object quality. Both push to the same branch, so both take the same
+  # fetch-checkout-commit-push shape and a concurrent push from the other is
+  # handled the same way it already is between this job and
+  # persist-performance-trend: one CI run, one commit each, sequenced by the
+  # remote.
+  #
+  # No manifest argument, unlike the external-comparison job: there is no
+  # external baseline for object decode and there cannot be one - see
+  # tools/ci/append_object_quality_history.py's own header.
+  persist-object-quality-trend:
+    name: Publish object-reconstruction quality trend
+    needs: ffmpeg-validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      result: ${{ steps.record-result.outputs.status }}
+    steps:
+      # persist-credentials: false - same reasoning as every other persist-*
+      # job's identical checkout: this working tree is only read from (the
+      # append script, `git show` on this commit); the "Prepare
+      # quality-history checkout" step below pushes through its own
+      # explicitly-scoped remote instead.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download object-reconstruction quality
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: object-reconstruction-quality
+          path: results
+
+      # Same mechanic as the other persist-* jobs' identical step: plain git
+      # over an HTTPS remote carrying the token, not actions/checkout, which
+      # fails outright if quality-history does not exist yet.
+      - name: Prepare quality-history checkout
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          mkdir -p history
+          cd history
+          if git ls-remote --exit-code --heads "$remote" quality-history >/dev/null 2>&1; then
+            git init -q
+            git remote add origin "$remote"
+            git fetch -q origin quality-history
+            git checkout -q quality-history
+          else
+            git init -q -b quality-history
+            git remote add origin "$remote"
+            git commit -q --allow-empty -m "Initialize quality-history branch"
+          fi
+
+      - name: Append object-quality history
+        id: append
+        shell: bash
+        env:
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          commit_date="$(git show -s --format=%cI "$COMMIT_SHA")"
+          python3 tools/ci/append_object_quality_history.py \
+            --objects-json results/objects.json \
+            --history-dir history \
+            --branch "$BRANCH" \
+            --commit "$COMMIT_SHA" \
+            --commit-date "$commit_date"
+
+      - name: Commit and push object-quality-history update
+        shell: bash
+        env:
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cd history
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -q -m "Object-quality trend: ${BRANCH}@${COMMIT_SHA}"
+            # Four trend publishers (quality, performance,
+            # external-comparison, object-quality) share this one branch and
+            # routinely finish within seconds of each other, so losing the
+            # push race is an expected outcome rather than an error - it is
+            # what "! [rejected] (fetch first)" on main means. Each writes its
+            # own data file, so rebasing onto whichever SIBLING won is
+            # conflict-free. Rebasing onto another run of THIS publisher is
+            # not: both runs add records to the end of the same file, which is
+            # what failed main's quality trend on 2026-09-18 (run
+            # 35317914064). resolve_history_conflict.py keeps both runs'
+            # records and writes the derived window again; anything it cannot
+            # account for it refuses, and this step then fails as it used to.
+            pushed=""
+            for attempt in 1 2 3 4 5; do
+              if git push -q origin quality-history 2>/dev/null; then
+                pushed=yes
+                break
+              fi
+              echo "push rejected (attempt ${attempt}); rebasing onto origin/quality-history"
+              git fetch -q origin quality-history
+              if ! git rebase -q origin/quality-history; then
+                python3 "${GITHUB_WORKSPACE}/tools/ci/resolve_history_conflict.py"
+                GIT_EDITOR=true git rebase --continue
+              fi
+              sleep $(( (RANDOM % 5) + 1 ))
+            done
+            if [ -z "${pushed}" ]; then
+              echo "::error::could not push quality-history after 5 attempts"
+              exit 1
+            fi
+          fi
+
+      # Deliberately after the push above, not instead of the append step
+      # failing outright - same reasoning as every other persist-* job's
+      # identical hard-regression step.
+      - name: Fail on hard object-quality regression
+        if: steps.append.outputs.hard_regression == 'true'
+        shell: bash
+        run: |
+          echo "::error::An object's SNR dropped at least 5 dB below its trailing average - see the job log above."
+          exit 1
+
+
+      # Exposes this job's own pass/fail through _ci-core.yml's own
+      # workflow_call.outputs (`jobs.<id>.result` is not a valid reference
+      # there - confirmed against actionlint, which rejects it as
+      # "property 'result' is not defined" - so the job has to report its
+      # own status through a real output instead). job.status reflects every
+      # step that already ran in this job, so reading it from the LAST step
+      # - itself always() so it still runs after an earlier failure - is the
+      # job's real final status, not just this one step's. job.status goes
+      # through env:, not straight into the run: text, for the same
+      # zizmor template-injection reason as every other context value
+      # threaded that way in this repo (e.g. build-leg/action.yml's
+      # VERSION_TAG_INPUT) - even though job.status can only ever be one of
+      # a fixed enum (success/failure/cancelled), zizmor does not special-case
+      # that and flags any `${{ }}` expansion inside run: on principle.
+      - name: Record result
+        id: record-result
+        if: always()
+        shell: bash
+        env:
+          STATUS: ${{ job.status }}
+        run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"

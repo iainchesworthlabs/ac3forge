@@ -25,6 +25,13 @@ substream-group loop stops there, cleanly, rather than silently going out of
 sync.
 
 Usage:  python tools/references/ac4_parse.py <file.ac4> [frame_index]
+
+tools/references/ac4_syntax.py, the Python transcription of the substream
+syntax, takes its table of contents from here. For it,
+presentation_config 1 and 4 read two and three ac4_sgi_specifier() elements
+(6.2.1.3) while n_substream_groups is 1 and 2, and the returned dicts carry
+b_iframe / b_audio_ndot, add_ch_base, the presentation and EMDF payload
+substream indices, the HSF and OAMD indices, sus_ver and n_substream_groups.
 """
 
 import sys
@@ -74,6 +81,18 @@ class Reader:
 
     def byte_align(self):
         self.pos = (self.pos + 7) & ~7
+
+    def skip(self, n):
+        """Advances by n bits without materialising a value - for a raw field
+        the syntax does not interpret and whose width the stream can make
+        huge via variable_bits() escalation (oamd_common_data()'s add_data).
+        Fails exactly where bits() would if asked to read this many bits one
+        at a time, without paying bits()'s O(n) value-accumulation cost or
+        building a value nothing uses."""
+        end = self.pos + n
+        if end > len(self.data) * 8:
+            raise IndexError(f'skip({n}) at bit {self.pos} runs past the end of the data')
+        self.pos = end
 
 
 def variable_bits(r, n_bits):
@@ -225,6 +244,13 @@ def parse_hsf_ext_substream_info(r, b_substreams_present=True):
 # --- §4.2.3.8 / §6.2.1.5 presentation_config_ext_info -----------------------
 
 def parse_presentation_config_ext_info(r):
+    """Skipped as n_skip_bytes whole bytes. For bitstream_version 1 with
+    presentation_config 7, §6.2.1.5 puts a nested ac4_presentation_v1_info()
+    at the start of those bytes and counts it inside n_skip_bytes, so the
+    skip keeps the TOC in step, but the nested presentation is not reported.
+    That nested element is the only way parse_presentation_v1_info() and
+    parse_sgi_specifier() could see bitstream_version 1, so their
+    bitstream_version 1 branches are not reached from parse_ac4_toc()."""
     n_skip_bytes = r.bits(5)
     if r.bits(1):  # b_more_skip_bytes
         n_skip_bytes += variable_bits(r, 2) << 5
@@ -254,15 +280,16 @@ def parse_substream_info_v0(r, fs_index, frame_rate_factor):
     if r.bits(1):  # b_bitrate_info
         bitrate_indicator = _read_bitrate_indicator(r)
         bitrate_kbps = BITRATE_KBPS.get(bitrate_indicator, 'unlimited')
+    add_ch_base = 0
     if channel_mode in (0b1111010, 0b1111011, 0b1111100, 0b1111101):
-        r.bits(1)  # add_ch_base
+        add_ch_base = r.bits(1)  # add_ch_base
     content_type = parse_content_type(r) if r.bits(1) else None  # b_content_type
-    for _ in range(frame_rate_factor):
-        r.bits(1)  # b_iframe
+    b_iframe = [r.bits(1) for _ in range(frame_rate_factor)]
     substream_index = parse_substream_index_ref(r)
     return {'channel_mode': channel_mode, 'channel_mode_name': name, 'ch_mode': ch_mode,
             'sf_multiplier': sf_multiplier, 'bitrate_kbps': bitrate_kbps,
-            'content_type': content_type, 'substream_index': substream_index}
+            'add_ch_base': add_ch_base,
+            'content_type': content_type, 'b_iframe': b_iframe, 'substream_index': substream_index}
 
 
 def _read_bitrate_indicator(r):
@@ -321,14 +348,15 @@ def parse_substream_info_chan(r, fs_index, frame_rate_factor, b_substreams_prese
     if r.bits(1):
         bitrate_indicator = _read_bitrate_indicator(r)
         bitrate_kbps = BITRATE_KBPS.get(bitrate_indicator, 'unlimited')
+    add_ch_base = 0
     if channel_mode in (0b1111010, 0b1111011, 0b1111100, 0b1111101):
-        r.bits(1)  # add_ch_base
-    for _ in range(frame_rate_factor):
-        r.bits(1)  # b_audio_ndot
+        add_ch_base = r.bits(1)  # add_ch_base
+    b_audio_ndot = [r.bits(1) for _ in range(frame_rate_factor)]
     substream_index = parse_substream_index_ref(r) if b_substreams_present else None
     return {'channel_mode': channel_mode, 'channel_mode_name': name, 'ch_mode': ch_mode,
             'original_content': original, 'sf_multiplier': sf_multiplier,
-            'bitrate_kbps': bitrate_kbps, 'substream_index': substream_index}
+            'bitrate_kbps': bitrate_kbps, 'add_ch_base': add_ch_base,
+            'b_audio_ndot': b_audio_ndot, 'substream_index': substream_index}
 
 
 # --- §4.2.3.2 ac4_presentation_info (presentation_version 0 path) ----------
@@ -358,7 +386,11 @@ def parse_presentation_info(r, fs_index, frame_rate_index):
     substreams = []
     emdf_substreams = []
     if not b_single_substream and presentation_config == 6:
-        b_add_emdf_substreams = True
+        # §4.2.3.2: presentation_config == 6 implies b_add_emdf_substreams is
+        # always true, so unlike the `else` branch below it is never read from
+        # the bitstream here - the shared tail after this if/else parses the
+        # EMDF substream count and list unconditionally for this branch.
+        pass
     else:
         md_compat = r.bits(3)
         presentation_id = None
@@ -375,10 +407,10 @@ def parse_presentation_info(r, fs_index, frame_rate_index):
                 parse_presentation_config_ext_info(r)
             else:
                 for i, role in enumerate(roles):
-                    substreams.append(
-                        (role, parse_substream_info_v0(r, fs_index, frame_rate_factor)))
+                    info = parse_substream_info_v0(r, fs_index, frame_rate_factor)
+                    substreams.append((role, info))
                     if i == 0 and b_hsf_ext:
-                        parse_hsf_ext_substream_info(r)
+                        info['hsf_ext_substream_index'] = parse_hsf_ext_substream_info(r)
         b_pre_virtualized = r.bits(1)
         b_add_emdf_substreams = r.bits(1)
         if b_add_emdf_substreams:
@@ -391,6 +423,7 @@ def parse_presentation_info(r, fs_index, frame_rate_index):
                 'presentation_config': presentation_config,
                 'md_compat': md_compat, 'presentation_id': presentation_id, 'emdf': emdf,
                 'substreams': substreams, 'emdf_substreams': emdf_substreams,
+                'frame_rate_factor': frame_rate_factor,
                 'b_pre_virtualized': bool(b_pre_virtualized)}
     n = r.bits(2)
     if n == 0:
@@ -398,7 +431,7 @@ def parse_presentation_info(r, fs_index, frame_rate_index):
     for _ in range(n):
         emdf_substreams.append(parse_emdf_info(r))
     return {'presentation_version': presentation_version,
-            'presentation_config': presentation_config,
+            'presentation_config': presentation_config, 'emdf': None, 'frame_rate_factor': 1,
             'substreams': [], 'emdf_substreams': emdf_substreams}
 
 
@@ -420,17 +453,15 @@ def parse_oamd_substream_info(r, b_substreams_present):
 _BED_CHAN_ASSIGN_COUNT_AJOC = [2, 3, 5, 7, 9, 7, 9, 11]
 _BED_CHAN_ASSIGN_COUNT_DIRECT = [2, 3, 6, 8, 10, 8, 10, 12]
 _STD_BED_GROUP_SIZE = [2, 1, 1, 2, 2, 2, 2, 2, 2, 1]
+_ISF_COUNTS = [4, 8, 10, 14, 15, 30]  # isf_config, read in both elements below
 
 
-class OamdCommonDataPresent(Exception):
-    """Raised when ac4_substream_info_ajoc() sets b_oamd_common_data_present.
-    oamd_common_data() (§6.2.8.1) is a large, separate metadata structure
-    (bed assignment, DRC, target-device categories, dialogue enhancement)
-    this parser does not transcribe - see the module docstring. It is
-    reached only from this one TOC-level info element; the OAMD substream
-    DATA payload itself (oamd_substream(), §6.2.2.4) is always treated as
-    an opaque byte range regardless of this flag, the same as every other
-    non-channel-audio substream."""
+def _count_for_code(table, code):
+    """The object count a 3-bit code names in a table shorter than eight
+    entries. Codes past its end are reserved and name no count, so they
+    expand to no objects and parsing continues, as ac4.cpp's count_for_code()
+    does; indexing the list directly raised IndexError on them."""
+    return table[code] if code < len(table) else 0
 
 
 def parse_bed_dyn_obj_assignment(r, n_signals):
@@ -447,7 +478,7 @@ def parse_bed_dyn_obj_assignment(r, n_signals):
         return objects  # every object in this substream is dynamic and unlisted here
     if r.bits(1):  # b_isf
         isf_config = r.bits(3)
-        n_isf = [4, 8, 10, 14, 15, 30][isf_config]
+        n_isf = _count_for_code(_ISF_COUNTS, isf_config)
         for _ in range(n_isf):
             add('ISF', False)
         return objects
@@ -490,6 +521,161 @@ def parse_bed_dyn_obj_assignment(r, n_signals):
     return objects
 
 
+# --- §6.2.8.13-16 tool_tb_to_f_s[_b] / tool_tf_to_f_s[_b], §6.2.9.9-10 -----
+# tool_t2_to_f_s[_b]: eight tables, three call shapes total (t2/tb/tf each
+# with and without a "to side" middle branch), differing only in field
+# names - one shared reader, one thin wrapper per table for its own names.
+
+def _parse_gain_tool(r, has_side_branch):
+    """Returns (code_a, code_b, code_c); unused entries are None, and
+    code_b is the derived value 7 (never transmitted) wherever code_a's or
+    code_c's branch was taken instead of an explicit code_b read."""
+    if r.bits(1):  # b_..._to_front
+        return r.bits(3), 7, None
+    if not has_side_branch:
+        return None, r.bits(3), None
+    if r.bits(1):  # b_..._to_side
+        return None, r.bits(3), None
+    return None, 7, r.bits(3)
+
+
+# --- §6.2.8.8a stereo_dmx_coeff ----------------------------------------------
+
+def parse_stereo_dmx_coeff(r):
+    loro_centre_mixgain = r.bits(3)
+    loro_surround_mixgain = r.bits(3)
+    ltrt_centre_mixgain = ltrt_surround_mixgain = None
+    if r.bits(1):  # b_ltrt_mixinfo
+        ltrt_centre_mixgain = r.bits(3)
+        ltrt_surround_mixgain = r.bits(3)
+    lfe_mixgain = None
+    if r.bits(1):  # b_lfe_mixinfo
+        lfe_mixgain = r.bits(5)
+    preferred_dmx_method = r.bits(2)
+    return {'loro_centre_mixgain': loro_centre_mixgain,
+            'loro_surround_mixgain': loro_surround_mixgain,
+            'ltrt_centre_mixgain': ltrt_centre_mixgain,
+            'ltrt_surround_mixgain': ltrt_surround_mixgain,
+            'lfe_mixgain': lfe_mixgain, 'preferred_dmx_method': preferred_dmx_method}
+
+
+# --- §6.2.8.8 bed_render_info ------------------------------------------------
+
+def parse_bed_render_info(r):
+    if not r.bits(1):  # b_bed_render_info
+        return None
+    stereo_dmx_coeff = parse_stereo_dmx_coeff(r) if r.bits(1) else None  # b_stereo_dmx_coeff
+    info = {'stereo_dmx_coeff': stereo_dmx_coeff}
+    if not r.bits(1):  # b_cdmx_data_present
+        return info
+    info['gain_w_to_f_code'] = r.bits(3) if r.bits(1) else None  # b_cdmx_w_to_f
+    info['gain_b4_to_b2_code'] = r.bits(3) if r.bits(1) else None  # b_cdmx_b4_to_b2
+    if r.bits(1):  # b_tm_ch_present
+        info['t2_to_f_s_b'] = _parse_gain_tool(r, True) if r.bits(1) else None
+        info['t2_to_f_s'] = _parse_gain_tool(r, False) if r.bits(1) else None
+    b_tb_ch_present = r.bits(1)
+    if b_tb_ch_present:
+        info['tb_to_f_s_b'] = _parse_gain_tool(r, True) if r.bits(1) else None
+        info['tb_to_f_s'] = _parse_gain_tool(r, False) if r.bits(1) else None
+    b_tf_ch_present = r.bits(1)
+    if b_tf_ch_present:
+        info['tf_to_f_s_b'] = _parse_gain_tool(r, True) if r.bits(1) else None
+        info['tf_to_f_s'] = _parse_gain_tool(r, False) if r.bits(1) else None
+    if (b_tb_ch_present or b_tf_ch_present) and r.bits(1):  # b_cdmx_tfb_to_tm
+        info['gain_tfb_to_tm_code'] = r.bits(3)
+    return info
+
+
+# --- §6.2.8.9 trim / §6.2.8.9a headphone -------------------------------------
+
+# §6.3.9.10.4: "the number of trim configurations is nine".
+_NUM_TRIM_CONFIGS = 9
+
+
+def parse_trim(r):
+    if not r.bits(1):  # b_trim_present
+        return None
+    warp_mode = r.bits(2)
+    r.bits(2)  # reserved
+    global_trim_mode = r.bits(2)
+    configs = []
+    if global_trim_mode == 0b10:
+        for _ in range(_NUM_TRIM_CONFIGS):
+            if r.bits(1):  # b_default_trim
+                configs.append(None)
+                continue
+            if r.bits(1):  # b_disable_trim
+                configs.append(False)
+                continue
+            presence = r.bits(5)  # trim_balance_presence[]
+            cfg = {'presence': presence}
+            if presence & 0b10000:  # [4]
+                cfg['trim_centre'] = r.bits(4)
+            if presence & 0b01000:  # [3]
+                cfg['trim_surround'] = r.bits(4)
+            if presence & 0b00100:  # [2]
+                cfg['trim_height'] = r.bits(4)
+            if presence & 0b00010:  # [1]: sign, amount
+                cfg['bal3D_Y_tb'] = (r.bits(1), r.bits(4))
+            if presence & 0b00001:  # [0]: sign, amount
+                cfg['bal3D_Y_lis'] = (r.bits(1), r.bits(4))
+            configs.append(cfg)
+    return {'warp_mode': warp_mode, 'global_trim_mode': global_trim_mode, 'configs': configs}
+
+
+def parse_headphone(r):
+    if not r.bits(1):  # b_headphone
+        return None
+    hp_operation_mode = r.bits(3)
+    b_head_track_disable_all = None
+    if hp_operation_mode in (0b001, 0b010):
+        b_head_track_disable_all = r.bits(1)
+    return {'hp_operation_mode': hp_operation_mode,
+            'b_head_track_disable_all': b_head_track_disable_all}
+
+
+# --- §6.2.8.1 oamd_common_data ------------------------------------------------
+
+def parse_oamd_common_data(r):
+    """Embedded, at the TOC level, in ac4_substream_info_ajoc() when it sets
+    b_oamd_common_data_present. (It appears again inside every
+    oamd_substream() - the A-JOC/object substream's own DATA content, which
+    this TOC-only parser does not walk at all - see the module docstring.)"""
+    b_default_screen_size_ratio = r.bits(1)
+    master_screen_size_ratio_code = None if b_default_screen_size_ratio else r.bits(5)
+    b_bed_object_chan_distribute = r.bits(1)
+    trim = bed_render_info = headphone = None
+    if r.bits(1):  # b_additional_data
+        add_data_bytes = r.bits(1) + 1  # add_data_bytes_minus1
+        if add_data_bytes == 2:
+            add_data_bytes += variable_bits(r, 2)
+        add_data_bits = add_data_bytes * 8
+
+        def spend(parse):
+            # bits_used = X(); add_data_bits -= bits_used, tracked by reader
+            # position rather than each parser returning its own bit count.
+            nonlocal add_data_bits
+            start = r.pos
+            value = parse(r)
+            add_data_bits -= r.pos - start
+            if add_data_bits < 0:
+                raise ValueError('oamd_common_data(): a nested element read past the byte '
+                                  'budget add_data_bytes gave it')
+            return value
+
+        trim = spend(parse_trim)
+        if add_data_bits:
+            bed_render_info = spend(parse_bed_render_info)
+        if add_data_bits:
+            headphone = spend(parse_headphone)
+        if add_data_bits:
+            r.skip(add_data_bits)  # add_data: raw bits this parser does not interpret
+    return {'b_default_screen_size_ratio': b_default_screen_size_ratio,
+            'master_screen_size_ratio_code': master_screen_size_ratio_code,
+            'b_bed_object_chan_distribute': b_bed_object_chan_distribute,
+            'trim': trim, 'bed_render_info': bed_render_info, 'headphone': headphone}
+
+
 # --- §6.2.1.9 ac4_substream_info_ajoc ---------------------------------------
 
 def parse_substream_info_ajoc(r, fs_index, frame_rate_factor, b_substreams_present):
@@ -501,10 +687,8 @@ def parse_substream_info_ajoc(r, fs_index, frame_rate_factor, b_substreams_prese
     else:
         n_fullband_dmx_signals = r.bits(4) + 1
         static_objects = parse_bed_dyn_obj_assignment(r, n_fullband_dmx_signals)
-    if r.bits(1):  # b_oamd_common_data_present
-        raise OamdCommonDataPresent(
-            'ac4_substream_info_ajoc sets b_oamd_common_data_present; '
-            'oamd_common_data() (TS 103 190-2 §6.2.8.1) not implemented')
+    b_oamd_common_data_present = r.bits(1)
+    oamd_common_data = parse_oamd_common_data(r) if b_oamd_common_data_present else None
     n_fullband_upmix_signals = r.bits(4) + 1
     if n_fullband_upmix_signals == 16:
         n_fullband_upmix_signals += variable_bits(r, 3)
@@ -515,14 +699,14 @@ def parse_substream_info_ajoc(r, fs_index, frame_rate_factor, b_substreams_prese
     bitrate_kbps = None
     if r.bits(1):  # b_bitrate_info
         bitrate_kbps = BITRATE_KBPS.get(_read_bitrate_indicator(r))
-    for _ in range(frame_rate_factor):
-        r.bits(1)  # b_audio_ndot
+    b_audio_ndot = [r.bits(1) for _ in range(frame_rate_factor)]
     substream_index = parse_substream_index_ref(r) if b_substreams_present else None
     return {'b_lfe': b_lfe, 'b_static_dmx': b_static_dmx,
             'n_fullband_dmx_signals': n_fullband_dmx_signals, 'static_objects': static_objects,
+            'oamd_common_data': oamd_common_data,
             'n_fullband_upmix_signals': n_fullband_upmix_signals, 'upmix_objects': upmix_objects,
             'sf_multiplier': sf_multiplier, 'bitrate_kbps': bitrate_kbps,
-            'substream_index': substream_index}
+            'b_audio_ndot': b_audio_ndot, 'substream_index': substream_index}
 
 
 # --- §6.2.1.11 ac4_substream_info_obj ---------------------------------------
@@ -539,8 +723,9 @@ def parse_substream_info_obj(r, fs_index, frame_rate_factor, b_substreams_presen
     # 6-entry array regardless, and b_lfe is folded in separately below
     # rather than by this array, so a "reserved" code still parses (just
     # with a count this parser cannot cross-check against the semantics
-    # table's own account of it).
-    num_objects = [0, 1, 2, 3, 5, 7][n_objects_code]
+    # table's own account of it). Codes 6 and 7 fall past the end of the
+    # array and name no objects - see _count_for_code().
+    num_objects = _count_for_code([0, 1, 2, 3, 5, 7], n_objects_code)
     b_dynamic_objects = r.bits(1)
     if b_dynamic_objects:
         # No early return: fs_index/bitrate/b_audio_ndot/substream_index
@@ -570,7 +755,7 @@ def parse_substream_info_obj(r, fs_index, frame_rate_factor, b_substreams_presen
     elif r.bits(1):  # b_isf
         if r.bits(1):  # b_isf_start
             isf_config = r.bits(3)
-            n_isf = [4, 8, 10, 14, 15, 30][isf_config]
+            n_isf = _count_for_code(_ISF_COUNTS, isf_config)
             for _ in range(n_isf):
                 add('ISF', False)
     else:
@@ -582,17 +767,16 @@ def parse_substream_info_obj(r, fs_index, frame_rate_factor, b_substreams_presen
     bitrate_kbps = None
     if r.bits(1):  # b_bitrate_info
         bitrate_kbps = BITRATE_KBPS.get(_read_bitrate_indicator(r))
-    for _ in range(frame_rate_factor):
-        r.bits(1)  # b_audio_ndot
+    b_audio_ndot = [r.bits(1) for _ in range(frame_rate_factor)]
     substream_index = parse_substream_index_ref(r) if b_substreams_present else None
     return {'objects': objects, 'b_dynamic_objects': bool(b_dynamic_objects),
             'sf_multiplier': sf_multiplier, 'bitrate_kbps': bitrate_kbps,
-            'substream_index': substream_index}
+            'b_audio_ndot': b_audio_ndot, 'substream_index': substream_index}
 
 
 # --- §6.2.1.6 ac4_substream_group_info / §6.2.1.8 ac4_substream_info_chan --
 
-def parse_substream_group_info(r, fs_index, frame_rate_factor):
+def parse_substream_group_info(r, bitstream_version, fs_index, frame_rate_factor):
     # frame_rate_factor is a frame-global quantity in the spec's own telling
     # (§6.3.2.1.3's b_iframe_global talks about "a series of 2 or 4
     # substreams" at the whole-FRAME level, not per presentation), even
@@ -619,13 +803,17 @@ def parse_substream_group_info(r, fs_index, frame_rate_factor):
     oamd = None
     if b_channel_coded:
         for _ in range(n_lf_substreams):
-            # sus_ver only exists for bitstream_version == 1; the caller only
-            # reaches this function for bitstream_version >= 2, where it is
-            # implicitly 1 (extended ac4_substream() syntax) per §6.2.1.6.
+            # §6.2.1.6: sus_ver is transmitted only for bitstream_version == 1
+            # and is 1 (extended ac4_substream() syntax) otherwise. Only
+            # parse_sgi_specifier()'s inline form passes 1, and parse_ac4_toc()
+            # never reaches that - see parse_presentation_config_ext_info().
+            sus_ver = r.bits(1) if bitstream_version == 1 else 1
             chan = parse_substream_info_chan(r, fs_index, frame_rate_factor, b_substreams_present)
+            hsf_index = None
             if b_hsf_ext:
-                parse_hsf_ext_substream_info(r, b_substreams_present)
-            substreams.append({'kind': 'chan', 'info': chan})
+                hsf_index = parse_hsf_ext_substream_info(r, b_substreams_present)
+            substreams.append({'kind': 'chan', 'info': chan, 'sus_ver': sus_ver,
+                               'hsf_ext_substream_index': hsf_index})
     else:
         if r.bits(1):  # b_oamd_substream
             oamd = parse_oamd_substream_info(r, b_substreams_present)
@@ -638,24 +826,31 @@ def parse_substream_group_info(r, fs_index, frame_rate_factor):
                 info = parse_substream_info_obj(
                     r, fs_index, frame_rate_factor, b_substreams_present)
                 kind = 'obj'
+            hsf_index = None
             if b_hsf_ext:
-                parse_hsf_ext_substream_info(r, b_substreams_present)
-            substreams.append({'kind': kind, 'info': info})
+                hsf_index = parse_hsf_ext_substream_info(r, b_substreams_present)
+            substreams.append({'kind': kind, 'info': info, 'sus_ver': 1,
+                               'hsf_ext_substream_index': hsf_index})
     content_type = parse_content_type(r) if r.bits(1) else None  # b_content_type
-    return {'b_substreams_present': b_substreams_present, 'b_channel_coded': bool(b_channel_coded),
+    return {'b_substreams_present': b_substreams_present, 'b_hsf_ext': b_hsf_ext,
+            'b_channel_coded': bool(b_channel_coded), 'frame_rate_factor': frame_rate_factor,
             'oamd': oamd, 'substreams': substreams, 'content_type': content_type}
 
 
 # --- §6.2.1.3 ac4_presentation_v1_info / §6.2.1.7 ac4_sgi_specifier --------
 
-_V1_CONFIG_GROUP_COUNTS = {0: 2, 1: 1, 2: 2, 3: 3, 4: 2}
+# §6.2.1.3: ac4_sgi_specifier() elements the syntax reads per presentation_config
+# (Main + DE and Main + DE + Associated read one more specifier than the
+# n_substream_groups value the syntax assigns, _V1_N_SUBSTREAM_GROUPS).
+_V1_CONFIG_GROUP_COUNTS = {0: 2, 1: 2, 2: 2, 3: 3, 4: 3}
+_V1_N_SUBSTREAM_GROUPS = {0: 2, 1: 1, 2: 2, 3: 3, 4: 2}
 
 
 def parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor):
     """Returns a group_index (int) for bitstream_version >= 2, or an inline
     ac4_substream_group_info() dict for bitstream_version == 1."""
     if bitstream_version == 1:
-        return parse_substream_group_info(r, fs_index, frame_rate_factor)
+        return parse_substream_group_info(r, bitstream_version, fs_index, frame_rate_factor)
     group_index = r.bits(3)
     if group_index == 7:
         group_index += variable_bits(r, 2)
@@ -673,23 +868,35 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
     if bitstream_version != 1:
         presentation_version = parse_presentation_version(r)
     group_refs = []
+    md_compat = None
+    b_enable_presentation = None
+    frame_rate_factor = 1
+    frame_rate_fraction = 1
+    emdf = None
+    n_substream_groups = 0
+    b_pre_virtualized = 0
+    pres_sub = None
     if not b_single_substream_group and presentation_config == 6:
-        pass  # EMDF-only presentation; handled by the caller like v0's case
+        # §6.2.1.3: an EMDF-only presentation. b_add_emdf_substreams is set
+        # without being transmitted, and the n_add_emdf_substreams loop after
+        # this if/else is read for it as for any other presentation. It sends
+        # no frame_rate_multiply_info(), so frame_rate_factor stays 1.
+        b_add_emdf_substreams = 1
     else:
-        md_compat = None
         if bitstream_version != 1:
             md_compat = r.bits(3)
         if r.bits(1):  # b_presentation_id
             variable_bits(r, 2)  # presentation_id, unused downstream
         frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index)
-        parse_frame_rate_fractions_info(r, frame_rate_index, frame_rate_factor)
-        parse_emdf_info(r)
-        b_enable_presentation = None
+        frame_rate_fraction = parse_frame_rate_fractions_info(r, frame_rate_index,
+                                                              frame_rate_factor)
+        emdf = parse_emdf_info(r)
         if r.bits(1):  # b_presentation_filter
             b_enable_presentation = bool(r.bits(1))
         if b_single_substream_group:
             group_refs.append(
                 parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
+            n_substream_groups = 1
         else:
             r.bits(1)  # b_multi_pid
             n_groups = _V1_CONFIG_GROUP_COUNTS.get(presentation_config)
@@ -697,34 +904,36 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
                 for _ in range(n_groups):
                     group_refs.append(
                         parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
+                n_substream_groups = _V1_N_SUBSTREAM_GROUPS[presentation_config]
             elif presentation_config == 5:
                 n = r.bits(2) + 2
                 if n == 5:
                     n += variable_bits(r, 2)
+                n_substream_groups = n
                 for _ in range(n):
                     group_refs.append(
                         parse_sgi_specifier(r, bitstream_version, fs_index, frame_rate_factor))
             else:
                 parse_presentation_config_ext_info(r)
-        r.bits(1)  # b_pre_virtualized
+        b_pre_virtualized = r.bits(1)
         b_add_emdf_substreams = r.bits(1)
         # ac4_presentation_substream_info() (§6.2.1.12)
-        r.bits(1)  # b_alternative
-        r.bits(1)  # b_pres_ndot
-        parse_substream_index_ref(r)
-        if b_add_emdf_substreams:
-            n = r.bits(2)
-            if n == 0:
-                n = variable_bits(r, 2) + 4
-            for _ in range(n):
-                parse_emdf_info(r)
-        return {'presentation_version': presentation_version,
-                'presentation_config': presentation_config, 'group_refs': group_refs,
-                'md_compat': md_compat, 'enable_presentation': b_enable_presentation,
-                'frame_rate_factor': frame_rate_factor}
+        pres_sub = {'b_alternative': r.bits(1), 'b_pres_ndot': r.bits(1),
+                    'substream_index': parse_substream_index_ref(r)}
+    emdf_substreams = []
+    if b_add_emdf_substreams:
+        n = r.bits(2)  # n_add_emdf_substreams
+        if n == 0:
+            n = variable_bits(r, 2) + 4
+        for _ in range(n):
+            emdf_substreams.append(parse_emdf_info(r))
     return {'presentation_version': presentation_version,
             'presentation_config': presentation_config, 'group_refs': group_refs,
-            'frame_rate_factor': 1}
+            'md_compat': md_compat, 'enable_presentation': b_enable_presentation,
+            'frame_rate_factor': frame_rate_factor, 'frame_rate_fraction': frame_rate_fraction,
+            'n_substream_groups': n_substream_groups,
+            'emdf': emdf, 'b_pre_virtualized': b_pre_virtualized,
+            'presentation_substream': pres_sub, 'emdf_substreams': emdf_substreams}
 
 
 # --- §4.2.3.11 substream_index_table ----------------------------------------
@@ -786,6 +995,7 @@ def parse_ac4_toc(r):
             payload_base += variable_bits(r, 3)
     toc = {'bitstream_version': bitstream_version, 'sequence_counter': sequence_counter,
            'wait_frames': wait_frames, 'sample_rate': BASE_SAMP_FREQ[fs_index],
+           'fs_index': fs_index,
            'frame_rate_index': frame_rate_index, 'b_iframe_global': b_iframe_global,
            'n_presentations': n_presentations, 'payload_base': payload_base}
     if bitstream_version <= 1:
@@ -812,15 +1022,22 @@ def parse_ac4_toc(r):
                     max_group_index = max(max_group_index, ref)
         total_groups = max_group_index + 1
         # See parse_substream_group_info()'s own comment: frame_rate_factor
-        # is frame-global in practice, so the first presentation's resolved
-        # value is what every group's ac4_substream_info_chan() call uses.
-        group_frame_rate_factor = presentations[0]['frame_rate_factor'] if presentations else 1
-        toc['substream_groups'] = [parse_substream_group_info(r, fs_index, group_frame_rate_factor)
-                                    for _ in range(total_groups)]
+        # is frame-global in practice, so every group's
+        # ac4_substream_info_chan() call uses the value from the first
+        # presentation that transmits frame_rate_multiply_info(). An
+        # EMDF-only presentation (presentation_config 6; it is None when
+        # b_single_substream_group is set) transmits none and is passed over.
+        group_frame_rate_factor = next(
+            (p['frame_rate_factor'] for p in presentations if p['presentation_config'] != 6), 1)
+        toc['substream_groups'] = [
+            parse_substream_group_info(r, bitstream_version, fs_index, group_frame_rate_factor)
+            for _ in range(total_groups)]
     n_substreams, substream_sizes = parse_substream_index_table(r)
     toc['n_substreams'] = n_substreams
     toc['substream_sizes'] = substream_sizes
+    toc['b_size_present'] = bool(substream_sizes) or n_substreams != 1
     r.byte_align()
+    toc['toc_bytes'] = r.pos // 8
     return toc
 
 
@@ -898,7 +1115,7 @@ def main():
 
     try:
         toc, substreams = parse_raw_frame(raw)
-    except (OamdCommonDataPresent, ValueError) as exc:
+    except (ValueError, IndexError) as exc:
         raise SystemExit(f'REFUSED: {exc}') from exc
 
     print(f"  bitstream_version={toc['bitstream_version']} "

@@ -1,0 +1,361 @@
+# SonarCloud (SonarQube Cloud) analysis of the C++ library and CLI, plus the
+# Kotlin, TypeScript/JS and Python trees, nightly against main.
+#
+# The fourth analysis engine in this repo, alongside codeql.yml (security and
+# quality queries), msvc-analysis.yml (PREfast) and static-analysis.yml
+# (clang-tidy), and the only one that is not already covered by one of them:
+# it is the maintainability and duplication view - cognitive complexity,
+# duplicated blocks, coverage on new code - rather than a second defect
+# scanner. It runs nightly for the same reason the other three do, and its
+# findings surface the same way, through .github/actions/report-nightly-failure.
+# docs/ci-self-hosted-runners.md "Nightly analysis window" has the cron table.
+#
+# Free for this repository because it is public; SonarQube Cloud charges for
+# C and C++ analysis on private ones.
+#
+# Pinned to GitHub-hosted, deliberately, and never routed through
+# decide-runner. The sibling repo that shares this org's self-hosted fleet
+# measured the CFamily analyser's footprint scaling with changeset size and
+# not fitting the fleet's 12 GB guests:
+#
+#     ~7 files   self-hosted  12 GB  OK    36 min
+#     41 files   ubuntu-latest 16 GB OK    77 min
+#     71 files   self-hosted  12 GB  DIED  48 min (shutdown mid-scan)
+#
+# 16 GB is demonstrably enough and 12 GB is not, so hosted is the smallest
+# shape that works - and it costs the shared fleet nothing, which is the point
+# of moving analysis off the per-PR path in the first place.
+#
+# Unlike the sibling, this does NOT use build-wrapper: CMakeLists.txt already
+# sets CMAKE_EXPORT_COMPILE_COMMANDS, and ci.yml's clang-tidy leg has consumed
+# that compile database since it existed, so the scanner can read the same
+# file. Fewer moving parts, and one less tool whose version has to track the
+# scanner's.
+name: SonarCloud
+
+on:
+  schedule:
+    # Nightly, six minutes after static-analysis.yml's cron. Last of the four
+    # nightly analysis slots; see docs/ci-self-hosted-runners.md "Nightly
+    # analysis window".
+    - cron: "35 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sonarcloud-nightly
+  cancel-in-progress: false
+
+# Deliberately empty: every job below states its own full permissions set (see
+# each job's own comment), so this top-level block is only ever a fallback for
+# a future job that forgets to - it should never itself carry anything wider
+# than read.
+permissions: {}
+
+jobs:
+  # Single source of truth for the vcpkg pin this build resolves against -
+  # the same reusable workflow ci.yml's own jobs call.
+  toolchain-versions:
+    uses: ./.github/workflows/_toolchain-versions.yml
+    permissions:
+      contents: read
+      actions: read
+    secrets:
+      ORG_RUNNERS_TOKEN: ${{ secrets.ORG_RUNNERS_TOKEN }}
+
+  # SONAR_TOKEN is provisioned by hand against a SonarCloud project that has to
+  # be created there first (see docs/ci-self-hosted-runners.md). Until both
+  # exist, the scan below cannot do anything useful - and a nightly that fails
+  # every night would open a `nightly-analysis` issue every night for a
+  # configuration step nobody has taken yet. So check first and skip cleanly
+  # with a notice instead. A job-level `if:` cannot read `secrets` directly,
+  # which is why this is a job with an output rather than a condition.
+  preflight:
+    name: Check SonarCloud is configured
+    runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Every job here states its own permissions rather than relying on the
+    # workflow-level default above, so that widening one job never silently
+    # widens the others. This one reads nothing and writes nothing; it only
+    # looks at whether a secret is non-empty.
+    permissions: {}
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        shell: bash
+        env:
+          HAVE_SONAR_TOKEN: ${{ secrets.SONAR_TOKEN != '' && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          echo "configured=${HAVE_SONAR_TOKEN}" >> "$GITHUB_OUTPUT"
+          if [ "${HAVE_SONAR_TOKEN}" != "true" ]; then
+            echo "::notice title=SonarCloud not configured::SONAR_TOKEN is not set, so the scan was skipped. Create the project on sonarcloud.io, turn Automatic Analysis off, and add the token as the SONAR_TOKEN repository secret."
+          fi
+
+  scan:
+    name: SonarCloud scan
+    needs: [preflight, toolchain-versions]
+    # Forks never have SONAR_TOKEN and schedules do not run on them anyway; the
+    # repository check keeps a fork's manual dispatch from failing confusingly.
+    if: needs.preflight.outputs.configured == 'true' && github.repository == 'iainchesworthlabs/ac3forge'
+    runs-on: ubuntu-latest
+    # Same image and container ci.yml's coverage job builds this preset in, so
+    # the GCC 16 toolchain script and the vcpkg cache behave identically here.
+    container: ubuntu:26.04
+    # Unmeasured on this repository. The sibling's comparable job takes 43-58
+    # minutes for build, test and scan; this build is about 290 first-party
+    # translation units and ci.yml's coverage job does its build and ctest in
+    # 11-12 minutes on the same runner, so the scan itself is the unknown.
+    # Generous on purpose for the first cold-cache run - tighten it once a
+    # week of real runs has a number in it.
+    timeout-minutes: 150
+    # No issues: write - opening the issue is the `surface` job's business now.
+    # security-events: write is for the SARIF upload below, the same
+    # permission msvc-analysis.yml's analyze job carries for the same reason.
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      BUILD_DIR: build/config-linux-gcc-coverage
+    steps:
+      # Same package list as ci.yml's coverage job, plus unzip, which the
+      # scanner needs to unpack itself.
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg libasound2-dev lsb-release \
+            ninja-build pkg-config python3-pip software-properties-common tar unzip wget zip
+
+      # fetch-depth: 0 - SonarCloud's new-code detection and its blame
+      # annotations both need real history, not a depth-1 clone.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+          # This preset turns on the adm manifest feature, whose boost tree
+          # cannot share the default archives cache key - see the action's own
+          # comment about cache-entry immutability.
+          cache-key-suffix: adm
+
+      # --only-binary :all: so a source distribution's setup.py never runs:
+      # requirements-coverage.txt is a pip-compile --generate-hashes lock and
+      # every package in it publishes wheels, so nothing needs building.
+      # A block scalar, not a plain one: `:all:` followed by a space reads as a
+      # YAML mapping key and will not parse.
+      - name: Install gcovr
+        run: |
+          pip install --quiet --break-system-packages --only-binary :all: \
+            --require-hashes -r requirements/requirements-coverage.txt
+
+      # config-linux-gcc-coverage, the preset ci.yml's coverage job uses: a
+      # debug, gcov-instrumented build of the library, the CLI and the test
+      # suite, with the ADM module on. One configure therefore produces the
+      # compile database, the test binaries and the coverage instrumentation.
+      # Debug also keeps asserts in front of the analyser, the same reasoning
+      # static-analysis.yml gives for clang-tidy.
+      #
+      # AC3FORGE_BUILD_EXAMPLES=ON overrides the preset, which turns examples
+      # off because ctest would then run each one as a process of its own for
+      # coverage the test suite already provides. That reasoning is about
+      # coverage, and this job wants the compile database: the CFamily
+      # analyser only sees a file the database names, so with examples off the
+      # ~15 translation units under examples/ were listed in
+      # sonar-project.properties' sonar.sources and then silently skipped.
+      # They are documentation people copy from, which is a good reason to
+      # analyse them rather than a reason not to. sonar.coverage.exclusions
+      # already lists examples/**, so they stay unmeasured rather than
+      # reading as 0% and moving the coverage figure.
+      - name: Configure
+        shell: bash
+        run: cmake --preset config-linux-gcc-coverage -DAC3FORGE_BUILD_EXAMPLES=ON
+
+      # A full build, not just a configure: the compile database's command
+      # lines reference per-TU .modmap files that only exist once ninja has
+      # run. -k 0 keeps going past a failing TU so the database is as complete
+      # as it can be.
+      - name: Build
+        shell: bash
+        run: cmake --build --preset build-linux-gcc-coverage -- -k 0
+
+      # continue-on-error: a test failure is ci.yml's business - its coverage
+      # and matrix legs gate the PR that caused it. Here it only means the
+      # coverage report is partial, and a partial report is a better input to
+      # the scan than no scan at all.
+      - name: Test
+        continue-on-error: true
+        shell: bash
+        run: ctest --preset test-linux-gcc-coverage -LE Performance
+
+      # tools/checks/ac4_syntax_trace.cpp is deliberately not a CMake target
+      # (see its own header) - a development tool, built here the same way its
+      # header documents building it by hand, against the coverage build's own
+      # already-instrumented ac4dec_static/ac4_static. gcov accumulates a
+      # binary's hits into the same .gcda files across every process that
+      # exercises those objects, the same way ctest's many separate test
+      # binaries already do above, so this run's counts fold into Test's
+      # rather than replace them.
+      #
+      # tools/checks/ac4_syntax_differential.py exists because most of the
+      # AC-4 decoder's syntax - noise fill, VARVAR framing, time-interleaved
+      # A-SPX, the mono/3.0/7.X channel modes, transmitted DRC gains,
+      # dialogue enhancement, alternative presentations - is not something any
+      # encoded stream here reaches (docs/verification.md, "Where no stream
+      # reaches"); its mutated-DEE-frame and synthetic-table-of-contents
+      # streams are what does. That is also most of why new_coverage read
+      # 70.3% against the required 80% when issue #664 opened: this decoder's
+      # own test suite does not reach it either. 3800 streams (measured
+      # locally: ~5s for 600, so comfortably inside this job's timeout even at
+      # 10x that) took new-code coverage on the worst files - metadata.cpp,
+      # channel_elements.cpp, presentation.cpp, decoder.cpp and friends - from
+      # single digits to 47-91%. A fixed --seed keeps the same streams, and so
+      # the same coverage figure, every night.
+      #
+      # continue-on-error, same reasoning as Test above: a DIVERGE/END/TOC/
+      # KIND finding here is the differential doing its actual job (catching
+      # a real decoder/reference-parser disagreement), not a coverage-scan
+      # concern - it belongs to whoever is driving the AC-4 decoder work, not
+      # to a failed nightly quality scan.
+      - name: AC-4 syntax differential (coverage)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          g++ -std=c++23 --coverage -o "${BUILD_DIR}/ac4_syntax_trace" \
+            tools/checks/ac4_syntax_trace.cpp \
+            -DAC4_STATIC_DEFINE -DAC4DEC_STATIC_DEFINE \
+            -Isrc/ac4/include -Isrc/ac4dec/include \
+            -I"${BUILD_DIR}/src/ac4/generated" -I"${BUILD_DIR}/src/ac4dec/generated" \
+            "${BUILD_DIR}/src/ac4dec/libac4dec_static.a" "${BUILD_DIR}/src/ac4/libac4_static.a"
+          python3 tools/checks/ac4_syntax_differential.py \
+            --trace-tool "${BUILD_DIR}/ac4_syntax_trace" \
+            --work-dir "${BUILD_DIR}/ac4-differential" \
+            --mutations 3000 --synthetic 800 --seed 1
+
+      # SonarQube's generic coverage XML, from the same gcov data
+      # tools/checks/coverage_report.sh reads, with the same flags for
+      # throw/unreachable branches and the mdct.cpp suspicious-hits gcov bug.
+      # No component --filter, unlike that script: Sonar treats a compiled file
+      # with no coverage entry as 0% rather than as unmeasured, so every
+      # instrumented file is reported and sonar-project.properties'
+      # coverage.exclusions draws the scope instead.
+      - name: Coverage report (SonarQube XML)
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcovr --root . \
+            --gcov-executable gcov-16 \
+            --exclude-throw-branches --exclude-unreachable-branches \
+            --gcov-ignore-errors=no_working_dir_found \
+            --gcov-ignore-parse-errors=suspicious_hits.warn \
+            --exclude "${BUILD_DIR}/.*" \
+            --object-directory "${BUILD_DIR}" \
+            --sonarqube "${BUILD_DIR}/coverage-sonarqube.xml"
+          # gcovr writes a well-formed but empty report over a tree it found
+          # nothing in, which Sonar would accept as "0% everywhere". A real one
+          # has at least one <file> element.
+          grep -q "<file " "${BUILD_DIR}/coverage-sonarqube.xml" \
+            || { echo "::error::coverage-sonarqube.xml has no <file> entries - gcovr found no instrumented objects."; exit 1; }
+
+      # sonar.cfamily.threads=3, not 4: SonarSource budget about 4 GB per
+      # analysis thread for C++, and this runner has 16 GB.
+      # sonar.qualitygate.wait=true is what turns a failed gate into a failed
+      # job, which is what the surfacing step below reports on. The analysis
+      # cache is left at its server-side default, so each night reuses the
+      # previous night's cache for this branch with no CI plumbing.
+      #
+      # No -Dproject.settings: the scanner already auto-loads
+      # sonar-project.properties from sonar.projectBaseDir, which the action
+      # sets to `.`, and naming the file explicitly is a trap in a container
+      # job. `github.workspace` expands on the HOST, to
+      # /home/runner/work/ac3forge/ac3forge, while the container sees the same
+      # tree at /__w/ac3forge/ac3forge - so the path resolves to nothing
+      # inside, the scanner logs "Project root configuration file: NONE" and
+      # fails on missing sonar.projectKey/sonar.organization. Every other
+      # property below is relative and resolves against the base dir.
+      - name: Run SonarCloud scan
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.cfamily.compile-commands=${{ env.BUILD_DIR }}/compile_commands.json
+            -Dsonar.cfamily.threads=3
+            -Dsonar.coverageReportPaths=${{ env.BUILD_DIR }}/coverage-sonarqube.xml
+            -Dsonar.qualitygate.wait=true
+
+      # Unlike the other three nightlies, SonarCloud has no server-side
+      # option to publish into Security > Code scanning -
+      # tools/ci/sonar_to_sarif.py bridges it by querying the issues the scan
+      # above just produced and converting them to SARIF. `!cancelled()`
+      # rather than `always()`, matching the `surface` job below: this should
+      # still run when the scan step failed the quality gate (the analysis it
+      # failed on was uploaded and processed before the gate check ran, so
+      # the issues queried here are tonight's, not stale), but not when
+      # someone cancelled the run by hand. Scoped to BUG and VULNERABILITY,
+      # not CODE_SMELL - see the script's own header for why the
+      # maintainability view stays on the SonarCloud dashboard instead.
+      - name: Export SonarQube issues to SARIF
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          python3 tools/ci/sonar_to_sarif.py \
+            --organization iainchesworthlabs \
+            --project-key iainchesworthlabs_ac3forge \
+            --branch main \
+            --output "${BUILD_DIR}/sonarqube.sarif"
+
+      # No explicit category: the SARIF's own tool name (SonarQube Cloud) is
+      # what the alert history is keyed by, the same reasoning
+      # msvc-analysis.yml's upload gives for PREfast.
+      - name: Upload SARIF to GitHub
+        if: ${{ !cancelled() }}
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: ${{ env.BUILD_DIR }}/sonarqube.sarif
+
+  # A job of its own, on a runner with no container - the same shape
+  # codeql.yml, msvc-analysis.yml and static-analysis.yml all use. It cannot
+  # be a step inside `scan`: report-nightly-failure is a gh CLI script, and gh
+  # is not in ubuntu:26.04, so inlining it there fails with "gh: command not
+  # found" and the nightly stays silent about its own failure.
+  #
+  # Unlike the other three nightlies, the quality gate failing (or the build
+  # failing) is still the whole signal this job reacts to, even though BUG
+  # and VULNERABILITY findings now also reach Security > Code scanning (see
+  # the SARIF export step above) - CODE_SMELL findings and the gate's overall
+  # pass/fail never do, so a maintainability-only regression or a gate
+  # tightened without new BUG/VULNERABILITY findings would still be invisible
+  # without this issue.
+  #
+  # `== 'failure'` rather than the `!= 'success'` the other three use: `scan`
+  # here skips itself deliberately when SONAR_TOKEN is absent, and a skip is
+  # not something to open an issue about.
+  surface:
+    name: Surface findings
+    needs: scan
+    if: ${{ !cancelled() && needs.scan.result == 'failure' }}
+    runs-on: ${{ fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/report-nightly-failure
+        with:
+          engine: SonarCloud
+          detail: "The SonarCloud quality gate failed on new code, or the build or scan itself failed. BUG and VULNERABILITY findings are also in Security > Code scanning; everything else, and the gate status itself, is only in the project dashboard: https://sonarcloud.io/project/overview?id=iainchesworthlabs_ac3forge"

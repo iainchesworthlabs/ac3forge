@@ -47,7 +47,7 @@ android {
         versionCode = 2
         versionName = "0.3.0-beta.1"
 
-        // roadmap VX18(b): connectedAndroidTest needs an instrumentation
+        // WASM/mobile headless coverage(b): connectedAndroidTest needs an instrumentation
         // runner declared before Gradle will run anything under
         // src/androidTest/ at all.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -61,7 +61,22 @@ android {
                 // process ever pulled in libc++ too - shared avoids that
                 // question entirely rather than relying on there being
                 // nothing else to collide with today.
-                arguments += listOf("-DANDROID_STL=c++_shared")
+                arguments += listOf(
+                    "-DANDROID_STL=c++_shared",
+                    // The NDK's LLVM toolchain does not ship clang-scan-deps,
+                    // so Ninja's C++20 module-dependency prescan (which
+                    // cmake_minimum_required(VERSION 3.28...4.3)'s policy
+                    // range enables by default) fails outright on every
+                    // source file with CMAKE_CXX_COMPILER_CLANG_SCAN_DEPS-
+                    // NOTFOUND before a single object file compiles. This
+                    // project has no C++20 `import`/`export module` usage
+                    // anywhere, so there is nothing for the scan to find -
+                    // disabling it is a build-system no-op, not a behavior
+                    // change, and is scoped to this Android build only so
+                    // desktop/other-platform builds (whose host toolchains
+                    // do ship clang-scan-deps) are unaffected.
+                    "-DCMAKE_CXX_SCAN_FOR_MODULES=OFF"
+                )
             }
         }
 
@@ -128,7 +143,7 @@ android {
             // on-device debug testing on the (arm64-only) Shield must keep
             // working. x86_64 is for CI only:
             // _build.yml's build-android job runs connectedDebugAndroidTest
-            // (roadmap VX18b) against a GitHub-hosted emulator, which needs
+            // (Android JNI instrumented coverage) against a GitHub-hosted emulator, which needs
             // KVM hardware acceleration to be usable in CI time budgets -
             // only available for an x86/x86_64 system image on these
             // runners, not arm64-v8a under software translation. release
@@ -140,7 +155,7 @@ android {
             }
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Real release keystore when one is provisioned (see
             // releaseSigningAvailable above); debug-keystore signed
@@ -181,14 +196,58 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.appcompat:appcompat:1.8.0")
 
-    // roadmap VX18(b): device-free instrumented coverage for
+    // WASM/mobile headless coverage(b): device-free instrumented coverage for
     // NativeBridge/PassthroughBridge (src/androidTest/), run via
     // connectedDebugAndroidTest - see _build.yml's build-android job.
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:core:1.7.0")
+}
+
+// SonarCloud text:S8569 - pin resolved dependency versions (including
+// transitives) so a build is reproducible from the committed lockfile
+// rather than whatever Google/Maven Central happen to resolve to on a
+// given day. Regenerate with `./gradlew --write-locks` after changing a
+// dependency above; a normal build fails if the resolution then drifts
+// from the committed gradle.lockfile without a matching lockfile update.
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+// This app has no direct dependency on netty/protobuf-java/commons-io -
+// they arrive only as transitives of AGP's Unified Test Platform (the
+// com.google.testing.platform:* / _internal-unified-test-platform-*
+// tooling that runs connectedDebugAndroidTest), which was still pinned to
+// versions with disclosed CVEs (Netty HTTP/2 Rapid Reset and several SNI-
+// handling issues through 4.1.93.Final; protobuf-java stack overflow
+// GHSA-735f-pc8j-v9w8; commons-io XmlStreamReader DoS GHSA-78wr-2p64-hpwj).
+// AGP 8.9.1 doesn't offer a newer UTP version to pick these up, so force
+// every configuration - including the UTP-internal ones, which don't
+// extend implementation/androidTestImplementation and so aren't reachable
+// via a `constraints` block - to patched releases. All netty artifacts are
+// forced to the same version because Netty only supports matched versions
+// across its modules. Re-run `./gradlew --write-locks` after bumping any
+// of these.
+configurations.all {
+    resolutionStrategy {
+        force(
+            "io.netty:netty-buffer:4.1.138.Final",
+            "io.netty:netty-codec:4.1.138.Final",
+            "io.netty:netty-codec-http:4.1.138.Final",
+            "io.netty:netty-codec-http2:4.1.138.Final",
+            "io.netty:netty-codec-socks:4.1.138.Final",
+            "io.netty:netty-common:4.1.138.Final",
+            "io.netty:netty-handler:4.1.138.Final",
+            "io.netty:netty-handler-proxy:4.1.138.Final",
+            "io.netty:netty-resolver:4.1.138.Final",
+            "io.netty:netty-transport:4.1.138.Final",
+            "io.netty:netty-transport-native-unix-common:4.1.138.Final",
+            "com.google.protobuf:protobuf-java:3.25.8",
+            "commons-io:commons-io:2.22.0"
+        )
+    }
 }

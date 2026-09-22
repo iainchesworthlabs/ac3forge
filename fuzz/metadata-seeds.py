@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seed corpora for the metadata-parser harnesses (roadmap VX3).
+"""Seed corpora for the metadata-parser harnesses (signing-verify fuzz walk).
 
 Two subcommands, both driven from fuzz/generate-seeds.sh:
 

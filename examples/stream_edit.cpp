@@ -38,7 +38,7 @@ namespace {
 // stream is itself the proof that the re-stamp came out right.
 std::vector<float> decode_all(std::span<const std::byte> stream, int& dialnorm) {
     const auto frames = ac3::split_frames(stream);
-    if (!frames) {
+    if (!frames.has_value()) {
         return {};
     }
     ac3::FrameDecoder decoder;
@@ -46,7 +46,7 @@ std::vector<float> decode_all(std::span<const std::byte> stream, int& dialnorm) 
     bool first = true;
     for (const auto& frame : *frames) {
         const auto decoded = decoder.decode_frame(frame);
-        if (!decoded) {
+        if (!decoded.has_value()) {
             std::printf("decode failed: %d\n", std::to_underlying(decoded.error()));
             return {};
         }
@@ -86,7 +86,7 @@ int main() {
             views.emplace_back(channel);
         }
         const auto encoded = encoder->encode_frame(views);
-        if (!encoded) {
+        if (!encoded.has_value()) {
             std::printf("encode failed: %d\n", std::to_underlying(encoded.error()));
             return 1;
         }
@@ -95,7 +95,7 @@ int main() {
 
     // --- where each access unit sits ---------------------------------------
     const auto scanned = ac3::io::scan(stream);
-    if (!scanned) {
+    if (!scanned.has_value()) {
         std::printf("scan failed: %.*s\n",
                     static_cast<int>(ac3::io::describe(scanned.error()).size()),
                     ac3::io::describe(scanned.error()).data());
@@ -105,7 +105,7 @@ int main() {
                 ac3::io::stream_duration_seconds(*scanned));
     for (const std::size_t index : {std::size_t{0}, std::size_t{6}, std::size_t{11}}) {
         const auto at = ac3::io::access_unit_timing(*scanned, index);
-        if (!at) {
+        if (!at.has_value()) {
             continue;
         }
         // 90 kHz is MPEG-2 systems' clock; every figure is derived from the
@@ -125,7 +125,7 @@ int main() {
 
     auto rewritten = stream;
     const auto summary = ac3::io::edit_stream_metadata(rewritten, {.dialnorm = 24, .bsmod = 2});
-    if (!summary) {
+    if (!summary.has_value()) {
         std::printf("rewrite failed: %.*s\n",
                     static_cast<int>(ac3::io::describe(summary.error()).size()),
                     ac3::io::describe(summary.error()).data());
@@ -147,7 +147,7 @@ int main() {
     // always the whole unit, never a split, so the two halves together are
     // exactly the stream they came from.
     const auto split = ac3::io::access_unit_at_seconds(*scanned, 0.2);
-    if (!split) {
+    if (!split.has_value()) {
         std::printf("split point past the end\n");
         return 1;
     }

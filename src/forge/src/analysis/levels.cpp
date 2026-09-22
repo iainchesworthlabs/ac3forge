@@ -283,7 +283,7 @@ SoundfieldVector energy_vector(std::span<const ChannelLevel> levels, Acmod acmod
         // A channel resting on the floor contributes nothing: counting it
         // would let the floor's own symmetry invent an image, and a silent
         // bed would report a phantom centre.
-        if (!azimuth || levels[ch].rms_db <= kFloorDb) {
+        if (!azimuth.has_value() || levels[ch].rms_db <= kFloorDb) {
             continue;
         }
         // rms_db is a level, so 10^(dB/10) recovers the power the vector sum

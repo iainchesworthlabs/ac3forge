@@ -1,0 +1,15 @@
+<Project>
+  <!--
+    Wires the WDK and SDK NuGet packages (packages.config) into every project
+    under this directory, the way microsoft/Windows-driver-samples does: each
+    import is conditional on the package being restored, so a build under the
+    EWDK, where packages\ does not exist, sees nothing here. The version must
+    match packages.config.
+  -->
+  <PropertyGroup>
+    <Ac3ForgeWdkNuGetVersion>10.0.28000.2526</Ac3ForgeWdkNuGetVersion>
+  </PropertyGroup>
+  <Import Project="$(MSBuildThisFileDirectory)packages\Microsoft.Windows.WDK.x64.$(Ac3ForgeWdkNuGetVersion)\build\native\Microsoft.Windows.WDK.x64.props" Condition="Exists('$(MSBuildThisFileDirectory)packages\Microsoft.Windows.WDK.x64.$(Ac3ForgeWdkNuGetVersion)\build\native\Microsoft.Windows.WDK.x64.props') and '$(Platform)' == 'x64'" />
+  <Import Project="$(MSBuildThisFileDirectory)packages\Microsoft.Windows.SDK.CPP.x64.$(Ac3ForgeWdkNuGetVersion)\build\native\Microsoft.Windows.SDK.cpp.x64.props" Condition="Exists('$(MSBuildThisFileDirectory)packages\Microsoft.Windows.SDK.CPP.x64.$(Ac3ForgeWdkNuGetVersion)\build\native\Microsoft.Windows.SDK.cpp.x64.props') and '$(Platform)' == 'x64'" />
+  <Import Project="$(MSBuildThisFileDirectory)packages\Microsoft.Windows.SDK.CPP.$(Ac3ForgeWdkNuGetVersion)\build\native\Microsoft.Windows.SDK.cpp.props" Condition="Exists('$(MSBuildThisFileDirectory)packages\Microsoft.Windows.SDK.CPP.$(Ac3ForgeWdkNuGetVersion)\build\native\Microsoft.Windows.SDK.cpp.props')" />
+</Project>

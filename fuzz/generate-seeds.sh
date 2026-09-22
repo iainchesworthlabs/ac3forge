@@ -31,7 +31,8 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 mkdir -p "$OUT/fuzz_scan" "$OUT/fuzz_ac3_decode" "$OUT/fuzz_eac3_decode" "$OUT/fuzz_wav_read" \
-         "$OUT/fuzz_signing_verify" "$OUT/fuzz_iec61937_unwrap"
+         "$OUT/fuzz_signing_verify" "$OUT/fuzz_iec61937_unwrap" \
+         "$OUT/fuzz_ac4_parse" "$OUT/fuzz_iab_parse"
 
 run() { "$AC3CLI" "$@" >/dev/null; }
 
@@ -44,6 +45,20 @@ add_seed() {
         cp "$file" "$OUT/$name/$base"
     done
 }
+
+# AC-4 has no encoder here, so its seed is the checked-in Dolby Encoding
+# Engine baseline tests/ac4 already parses - a real stream from a real
+# encoder, and a better starting corpus than anything this repo could
+# synthesise for a format it only reads.
+echo "==> AC-4: the checked-in DEE baseline, as a parser seed"
+add_seed "fuzz_ac4_parse" "$REPO_ROOT/tests/golden/external-baseline/ac4-stereo-64/dee.ac4"
+
+# The IAB seed comes from examples/encode_iab.cpp's own --write-fixture mode,
+# the one tools/ci/run_codec_matrix.sh drives, so it needs that example built -
+# which this script's AC3CLI_BIN contract does not cover. It is committed
+# instead; regenerate with:
+#
+#     encode_iab --write-fixture fuzz/seeds/fuzz_iab_parse/iab-bed-object.iab
 
 echo "==> AC-3: silence, sine and orbit across every layout AC-3 can carry"
 for layout in mono stereo 51 51c; do
@@ -110,7 +125,7 @@ run atmos-encode "$WORK/roundtrip-51.wav" "$WORK/atmos-encode.ec3" 448 0
 add_seed "fuzz_scan,fuzz_eac3_decode" "$WORK/atmos-encode.ec3"
 
 echo "==> Third-party structure: the committed external-baseline bitstreams"
-echo "    (Dolby Encoding Engine 6.5.4 and FFmpeg 8.0.1 - roadmap VX4)"
+echo "    (Dolby Encoding Engine 6.5.4 and FFmpeg 8.0.1 - third-party decode interop)"
 # Everything above this point is ac3forge's own output, so every seed shares
 # ac3forge's own encoder choices: frame-hoisted exponent strategies, coupling
 # either on for all six blocks or off, snroffststr 0, frmfgaincode 0, geometry
@@ -191,7 +206,7 @@ signing_seed "atmos-encode-unsigned.bin" "$WORK/atmos-encode.ec3"
 signing_seed "atmos-bed51.bin" "$WORK/atmos-bed51.ec3"
 
 echo "==> Metadata payloads: the EMDF containers, and the OAMD and JOC payloads"
-echo "    inside them, extracted from the Atmos streams above (roadmap VX3)"
+echo "    inside them, extracted from the Atmos streams above (signing-verify fuzz walk)"
 python3 "$SCRIPT_DIR/metadata-seeds.py" extract "$OUT" \
     "$WORK/atmos-objects.ec3" "$WORK/atmos-encode.ec3" "$WORK/atmos-bed51.ec3"
 
@@ -199,7 +214,7 @@ echo "==> ADM: BW64/RF64 fixtures for fuzz_adm_parse - synthesised rather than"
 echo "    encoded, since nothing ac3cli produces is an ADM file"
 python3 "$SCRIPT_DIR/metadata-seeds.py" adm "$OUT"
 
-echo "==> IEC 61937 carriers, for the burst de-framer (roadmap IO3)"
+echo "==> IEC 61937 carriers, for the burst de-framer (IEC 61937 de-framing)"
 # Both data types and both burst periods: AC-3's 6144 bytes and E-AC-3's
 # 24576. The WAV header stays on deliberately - unspdif walks the RIFF chunk
 # list itself, and a fuzzer that only ever saw bare carrier bytes would never

@@ -3,19 +3,19 @@
 `ac3/admbridge/bridge.hpp`, `ac3/admbridge/coordinates.hpp`, library `ac3::admbridge`. Two
 directions live here now:
 
-- **Read** (roadmap item B1 phase 2 of 3, see [ROADMAP.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/ROADMAP.md)):
+- **Read** (phase 2 of 3):
   maps the ADM object graph [`ac3adm::ac3adm`](adm.md) parses from a BW64/ADM master onto
   [`ac3::oba::AtmosEncoder`](spatial-and-atmos.md)'s input shape — one `ac3::oba::ObjectPath` plus
   one mono PCM span per bed speaker feed or dynamic object, ready to drive `encode_frame()` in a
   loop. Driven end to end by `ac3cli atmos-adm` and
   [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp).
-- **Write** (roadmap item IM2, "JOC → ADM BWF writer"): the mirror image — maps a decoded
+- **Write** ("JOC → ADM BWF writer"): the mirror image — maps a decoded
   `ac3::Eac3Decoder` programme's own bed/object PCM and OAMD automation onto an
   `ac3adm::AdmDocument`, ready for `ac3adm::write_bw64()`. Driven end to end by
   `ac3cli decode ... adm_out`.
 
 Both directions are the same "one place `ac3adm` and `ac3::forge`/`ac3::oba` are allowed to meet"
-seam this module has always been, see [Commands](../cli/commands.md) for both commands.
+seam this module has always been, see [Commands](../forge/cli/commands.md) for both commands.
 
 **Opt-in, gated by the same flag as `ac3adm::ac3adm`.** `ac3::admbridge` depends on both
 `ac3adm::ac3adm` and `ac3::forge`, so it is meaningless without `AC3FORGE_BUILD_ADM=ON` and is
@@ -53,13 +53,13 @@ Two hard constraints rule out folding this into either side it bridges:
 shape `ac3::signing` uses for its own `ac3::forge` dependency. Like `ac3adm::ac3adm` itself
 (see [ADM / BW64 reading](adm.md)), it IS part of the installed `find_package(ac3forge)` package,
 but shared-only: `ac3::admbridge_shared`/the bare `ac3::admbridge` alias, no `_static` variant.
-ROADMAP.md's IM1 (an IAB / SMPTE ST 2098-2 reader; the DAMF reader it replaced is now
-in the roadmap's "not on the list" section for want of a public specification) named this module
+The IAB / SMPTE ST 2098-2 reader (which replaced a DAMF reader, since no public
+specification for that format exists) named this module
 as the "mapping layer" it intended to share, and phase 3 has now landed: `build_iab()`
 (`ac3/admbridge/iab_bridge.hpp`) maps a whole parsed `ac3iab::IABitstreamFrame` sequence — from
 either of `ac3iab::ac3iab`'s two readers (`src/ac3iab`, phases 1-2: a bare elementary `.iab` file
 or a real MXF Track File) — onto this same `ObjectPath` layer, driven end to end by `ac3cli
-atmos-iab` (see [Commands](../cli/commands.md)). `ac3adm::AdmDocument` and `ac3iab::
+atmos-iab` (see [Commands](../forge/cli/commands.md)). `ac3adm::AdmDocument` and `ac3iab::
 IABitstreamFrame` are therefore both input shapes here, sharing the coordinate-conversion and
 `ObjectPath`-construction logic this module exists to keep independent of either container's own
 parsing — see "Bridging IAB" below for exactly what differs between the two.
@@ -148,7 +148,7 @@ an object in the downmix would have the receiving renderer spread it a second ti
 caller constructing paths directly can set them; it is only the ADM-derived route that leaves them
 at their defaults.
 
-## Bridging IAB (roadmap IM1 phase 3)
+## Bridging IAB
 
 `build_iab(std::span<const ac3iab::IABitstreamFrame> frames)` maps a whole parsed Immersive Audio
 Bitstream sequence — `ac3iab::parse_iabitstream()` or `ac3iab::parse_mxf_iab()`'s own return value,
@@ -215,7 +215,7 @@ many independently-parsed frames, so `IabBridgeResult::pcm` is **owned**
 caller-owned `AdmDocument` — there is no equivalent single upstream object here to borrow spans
 from once `build_iab()` returns.
 
-## Write direction (roadmap IM2)
+## Write direction
 
 `write()` takes a `WriteInput` — a sample rate plus one `WriteChannel` per channel to place in the
 master, in any order — and returns an `ac3adm::AdmDocument` ready for `ac3adm::write_bw64()`. A
@@ -227,7 +227,7 @@ Scoped to exactly what this project's own decoder ever produces: a dynamic-objec
 bed-instance programme (`Eac3Decoder` never emits ISF objects, several bed instances, or
 non-standard Table 13 assignments — see `oamd.hpp`'s own `Program` comment), no nested
 `audioObject`s, cartesian positions only. `ac3cli decode`'s own `--adm` wiring (`decode.cpp`)
-additionally only attempts this for a `dynamic_only` programme — a genuine bed program (channel-
+additionally only attempts this for a `dynamic_only` programme — a channel-based bed program (
 based-immersive third-party content) is warned about and skipped, not written incorrectly.
 
 **`WriteObjectUpdate` is the write-direction input for one OAMD update**, timestamped in absolute

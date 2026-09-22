@@ -2,7 +2,7 @@
 
 Three independent anchors are tied together here:
 1. Table 7.33 of ATSC A/52:2018 (the 256 published window values), parsed
-   verbatim from the spec text extraction in docs/spec/A52-2018.txt.
+   verbatim from the spec text extraction in spec/A52-2018.txt.
 2. The Kaiser-Bessel-derived window computed from first principles with
    numpy (np.i0 Bessel kernel, alpha = 5 -> beta = 5*pi, kernel length 257).
    The script FAILS if this does not reproduce Table 7.33 to 5-decimal
@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent.parent
-SPEC_TXT = REPO / "docs" / "spec" / "A52-2018.txt"
+SPEC_TXT = REPO / "spec" / "A52-2018.txt"
 OUT = REPO / "tests" / "golden" / "mdct_goldens.hpp"
 
 N = 512  # long-transform length

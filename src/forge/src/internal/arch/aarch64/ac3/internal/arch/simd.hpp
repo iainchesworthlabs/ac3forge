@@ -62,6 +62,48 @@ struct f64x2 {
 // definition, so the seam's contract holds with nothing to argue about.
 [[nodiscard]] inline f64x2 round_ties_away(f64x2 a) { return f64x2{vrndaq_f64(a.v)}; }
 
+// Four IEEE-754 single-precision floats. See the generic header for what this
+// type is for and why it carries no round_ties_away.
+//
+// Single-precision Advanced SIMD is fully IEEE-754 in AArch64: the vector
+// unit reads the same FPCR the scalar one does, whose default has FZ clear,
+// so vaddq_f32 and its siblings produce the floats scalar `float` arithmetic
+// produces, denormals included. That is what makes this type's bit-exactness
+// claim the same claim f64x2 makes. It is worth stating because it is a
+// property of A64 specifically - AArch32's Advanced SIMD flushed
+// single-precision denormals to zero whatever FPCR said, and a lane type like
+// this could not have been bit-exact against a scalar reference there.
+//
+// -ffp-contract=off (top-level CMakeLists.txt) carries the same weight here
+// as it does for f64x2: FMLA contracts a*b - c*d just as readily in single
+// precision, and a float has 29 fewer significand bits for the extra rounding
+// step to hide in. vfmaq_f32 is deliberately absent, as vfmaq_f64 is.
+struct f32x4 {
+    float32x4_t v;
+
+    [[nodiscard]] static f32x4 load(const float* p) { return f32x4{vld1q_f32(p)}; }
+    [[nodiscard]] static f32x4 set(float a, float b, float c, float d) {
+        float32x4_t r = vdupq_n_f32(a);
+        r = vsetq_lane_f32(b, r, 1);
+        r = vsetq_lane_f32(c, r, 2);
+        r = vsetq_lane_f32(d, r, 3);
+        return f32x4{r};
+    }
+    [[nodiscard]] static f32x4 broadcast(float a) { return f32x4{vdupq_n_f32(a)}; }
+
+    void store(float* p) const { vst1q_f32(p, v); }
+
+    [[nodiscard]] float lane0() const { return vgetq_lane_f32(v, 0); }
+    [[nodiscard]] float lane1() const { return vgetq_lane_f32(v, 1); }
+    [[nodiscard]] float lane2() const { return vgetq_lane_f32(v, 2); }
+    [[nodiscard]] float lane3() const { return vgetq_lane_f32(v, 3); }
+};
+
+[[nodiscard]] inline f32x4 operator+(f32x4 a, f32x4 b) { return f32x4{vaddq_f32(a.v, b.v)}; }
+[[nodiscard]] inline f32x4 operator-(f32x4 a, f32x4 b) { return f32x4{vsubq_f32(a.v, b.v)}; }
+[[nodiscard]] inline f32x4 operator*(f32x4 a, f32x4 b) { return f32x4{vmulq_f32(a.v, b.v)}; }
+[[nodiscard]] inline f32x4 operator-(f32x4 a) { return f32x4{vnegq_f32(a.v)}; }
+
 struct i32x4 {
     int32x4_t v;
 

@@ -1,0 +1,50 @@
+# Overlay for a board WITH PSRAM - the ESP32-S3-DevKitC-1-N16R8's 8 MB of octal
+# PSRAM - for the shapes that run a network:
+#
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram" idf.py build
+#
+# WiFi, lwIP, the HTTP client and server, the player and the E-AC-3 decoder do
+# not all fit the S3's internal SRAM. Measured on a DevKitC-1 on 2026-09-10 with
+# the demo stream (E-AC-3 5.1 with objects, folded to Lo/Ro): even with WiFi's
+# IRAM optimisations turned off to give the heap more, 227,852 bytes of internal
+# heap were free when the player started, and 31 ms later the next 6,144 bytes
+# the decoder asked for failed with 7,656 left. So the larger allocations go to
+# PSRAM: plain malloc, and with it every `new` the decoder makes, may use it
+# (SPIRAM_USE_MALLOC), and anything of 16 KB or more tries it first
+# (SPIRAM_MALLOC_ALWAYSINTERNAL), which keeps the small, hot allocations in
+# internal SRAM. The WiFi and lwIP stacks try PSRAM first too, and the player
+# puts its ring there.
+#
+# A decoder with part of its state in PSRAM is slower in bursts, which the
+# default 21 ms DMA queue does not ride out: 484 of 12,000 blocks arrived to an
+# empty queue over the demo looped for 64 s. With 64 ms - twelve descriptors of
+# 256 frames - none did, and the queue never fell below 3 ms. That is 43 ms more
+# latency, on a source that has network latency anyway.
+#
+# For a 7.1.4 stream, two things more (planning/esp32-714-realtime.md,
+# decisions 13 and 14). A 32 KB instruction cache, where the default is 16 KB:
+# the decoder's code runs from flash through it, and at 32 KB a 7.1.4 frame
+# decodes 3.1 ms faster folded to 2.0 and 3.8 ms faster onto twelve slots, for
+# 16 KB of internal SRAM. And a play's first unit held until its second has
+# decoded, so the DAC starts with two frames queued: a play's first frames
+# decode more slowly than the rest, and with one frame queued they ran it dry.
+# Measured on a DevKitC-1 with the output stage folding a block at a time:
+# 714-walk.ec3 and 714-tones.ec3 at 2.0 over WiFi, no block to an empty queue.
+#
+# A local source (partition, fatfs, sd) needs none of this: its decoder, a
+# 7.1.4 render included, runs out of internal SRAM.
+#
+# QEMU cannot emulate S3 PSRAM (espressif/qemu#129), so CI never uses this file.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+# Not in the memory test at boot: it takes a second on 8 MB and says nothing
+# a player needs to know.
+CONFIG_SPIRAM_MEMTEST=n
+CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12
+CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_FRAMES=256
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
+CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT=1

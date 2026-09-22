@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-// Windows Spatial Sound object rendering (roadmap UX8): hand decoded Atmos
+// Windows Spatial Sound object rendering (Windows spatial object renderer): hand decoded Atmos
 // objects to the OS's own object renderer - ISpatialAudioObjectRenderStream -
 // as DYNAMIC objects carrying their real OAMD positions, and the programme's
 // bed as STATIC ones.
@@ -160,6 +160,20 @@ public:
 
     void stop();
 
+    // True from a successful start() until stop() - or until the render
+    // stream goes away under it: the endpoint unplugged, disabled, or its
+    // stream taken by a format change or the audio service restarting. The
+    // sink stops itself then, the way PassthroughSink::running() and
+    // MonitorSink::running() describe: submit() and can_submit() answer as
+    // they would after stop(), and start() may be called again with no
+    // stop() first. On Windows the loss shows within a render period or two
+    // either way it happens - BeginUpdatingAudioObjects failing outright, or,
+    // when the endpoint simply stops signalling its render-ready event
+    // instead (the same WASAPI behaviour passthrough.hpp's running()
+    // documents for GetCurrentPadding), a GetMaxDynamicObjectCount read-back
+    // on the ISpatialAudioClient, on the next wait timeout, catching it.
+    // Builds with no spatial backend (kNoBackend) never start anything, so
+    // this is always false there.
     [[nodiscard]] bool running() const;
     [[nodiscard]] SpatialObjectStats stats() const;
 

@@ -75,6 +75,24 @@ inline constexpr std::uint8_t kComprUnity = 0x00;
 static_assert(dynrng_gain(kDynrngUnity) == 1.0);
 static_assert(compr_gain(kComprUnity) == 1.0);
 
+// RF mode's line-up. A/52 describes what RF mode is for (§7.7.2.1) but gives
+// no output level. In practice RF mode puts dialogue at -20 dBFS, 11 dB above
+// line mode's -31 dBFS reference, and the DECODER adds those 11 dB: an
+// RF-mode decode is dialnorm normalisation, then this gain and the compr word
+// together, in every syncframe that carries a word. A syncframe that falls
+// back on dynrng (§7.7.2.1) gets neither and plays at line mode's level. A
+// compr word therefore says how far its syncframe sits from the -20 dBFS
+// line-up, which is why an encoder sends about 0 dB for dialogue-level
+// material. The Dolby Reference Player's decoder behaves this way frame by
+// frame, and Dolby's own encoder writes its words on that basis
+// (docs/library/decoding.md has the measurements). That decoder's own
+// arithmetic lands within 0.3 dB of an exact 11 dB, the amount depending on
+// the word; kRfModeGain is the exact figure.
+inline constexpr double kRfModeGainDb = 11.0;
+inline constexpr double kRfModeGain = 3.548133892335755;  // 10^(11/20)
+// Where RF mode puts dialogue: line mode's -31 dBFS plus the 11 dB above.
+inline constexpr double kRfDialogueDbfs = -20.0;
+
 // The representable extremes, as the spec states them.
 static_assert(dynrng_gain(0x7F) == 15.75);       // X = 3, Y = 31: +23.95 dB
 static_assert(dynrng_gain(0x80) == 0.0625);      // X = −4, Y = 0: −24.08 dB
@@ -223,6 +241,10 @@ inline constexpr std::string_view kProfileNames =
 // an empty span when there is none to account for.
 [[nodiscard]] AC3FORGE_EXPORT double channel_peak_dbfs(std::span<const double> history,
                                                        std::span<const float> samples);
+// The same, for a history the caller keeps in float - the encoders' analysis
+// front end under ac3/internal/encode_scalar.hpp's float variant.
+[[nodiscard]] AC3FORGE_EXPORT double channel_peak_dbfs(std::span<const float> history,
+                                                       std::span<const float> samples);
 
 // One dynrng word per audio block. State carries across blocks AND frames:
 // the smoothing filter has no idea where a syncframe boundary is, and it must
@@ -253,13 +275,16 @@ class AC3FORGE_EXPORT RangeController {
     std::unique_ptr<Impl> impl_;
 };
 
-// §7.7.2. Every field is about the ceiling, because the ceiling is the only
-// thing compr promises.
+// §7.7.2. Both levels below are stated at the output of an RF-mode decode -
+// dialnorm normalised, kRfModeGain applied, then the word - because that is
+// the decode compr is written for.
 struct HeavyConfig {
-    // Where dialogue lands after heavy compression. −20 dBFS against a
-    // dialnorm of 31 is the classic RF-mode +11 dB line-up.
-    double dialogue_target_dbfs = -20.0;
-    // The promise: the §7.8 mono downmix will not exceed this.
+    // Where dialogue lands in an RF-mode decode. The default is RF mode's own
+    // line-up (kRfDialogueDbfs), so dialogue-level material gets a word of
+    // 0 dB whatever its dialnorm, and only the ceiling below moves it.
+    double dialogue_target_dbfs = kRfDialogueDbfs;
+    // The promise: the §7.8 mono downmix of an RF-mode decode will not exceed
+    // this.
     //
     // Nominal, and unavoidably so. It is measured on the encoder's INPUT
     // downmix, while the ceiling a listener meets applies to a decoder's
@@ -289,7 +314,10 @@ class AC3FORGE_EXPORT HeavyCompressor {
     HeavyCompressor(HeavyCompressor&&) noexcept;
     HeavyCompressor& operator=(HeavyCompressor&&) noexcept;
 
-    // peak: the frame's true peak of the §7.8 mono downmix, in dBFS.
+    // peak: the frame's true peak of the §7.8 mono downmix, in dBFS, as the
+    // encoder sees it - before any dialnorm normalisation. dialnorm: the
+    // value the syncframe carries, which an RF-mode decoder normalises by
+    // before it applies the word.
     [[nodiscard]] std::uint8_t next(double peak, int dialnorm);
 
     [[nodiscard]] double gain_db() const;
