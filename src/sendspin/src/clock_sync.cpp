@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -82,11 +83,26 @@ void ClockSync::finish_burst(std::int64_t now) {
             ++updates_;
             if (converged_) {
                 learning_left_ = learning_left_ > 0 ? learning_left_ - 1 : 0;
+            } else if (confirming_) {
+                // The confirming burst, a learning interval after the run that first reached
+                // kConvergedUpdates: only a raw measurement genuinely apart in time from that
+                // run, not the filter's error estimate again (which a run of samples biased the
+                // same way satisfies just as well as an accurate run), can catch that the run
+                // was wrong.
+                confirming_ = false;
+                if (std::llabs(*best_measurement_ - confirm_measurement_) <= kConvergedError) {
+                    converged_ = true;
+                    learning_left_ = kLearningBursts;
+                } else {
+                    // Disagreed: a real bias, not the filter's own noise agreeing with itself.
+                    // The run that looked converged is not trusted; start over.
+                    under_threshold_ = 0;
+                }
             } else {
                 under_threshold_ = filter_->get_error() < kConvergedError ? under_threshold_ + 1 : 0;
                 if (under_threshold_ >= kConvergedUpdates) {
-                    converged_ = true;
-                    learning_left_ = kLearningBursts;
+                    confirming_ = true;
+                    confirm_measurement_ = *best_measurement_;
                 }
             }
         } else {
@@ -95,10 +111,12 @@ void ClockSync::finish_burst(std::int64_t now) {
     }
     best_measurement_.reset();
     burst_count_ = 0;
-    if (!converged_) {
-        next_due_ = now;
-    } else {
+    if (converged_) {
         next_due_ = now + (learning_left_ > 0 ? kLearningInterval : kBurstInterval);
+    } else if (confirming_) {
+        next_due_ = now + kLearningInterval;
+    } else {
+        next_due_ = now;
     }
 }
 
@@ -132,6 +150,8 @@ void ClockSync::reset() {
     floor_count_ = 0;
     floor_next_ = 0;
     rejected_ = 0;
+    confirming_ = false;
+    confirm_measurement_ = 0;
 }
 
 }  // namespace ac3::sendspin
