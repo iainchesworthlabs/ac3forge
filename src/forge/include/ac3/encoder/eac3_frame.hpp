@@ -650,6 +650,14 @@ struct ProgrammeConfig {
 // `independent`/`dependents` are the first programme, kept spelled out at this
 // level rather than moved into `programmes[0]` so that every caller that ever
 // built a single-programme config still does.
+
+// §E2.3.1.2: eight independent substreams, I0-I7, no more. Exported (rather
+// than staying local to eac3_frame.cpp, where access_unit_configs() enforces
+// it) so a caller sizing anything against "how many programmes can this
+// format hold" - ac3cli's programmeN= surface among them - has one source of
+// truth instead of a second, hand-copied 8.
+inline constexpr std::size_t kMaxProgrammes = 8;
+
 struct AccessUnitConfig {
     FrameConfig independent{};
     std::vector<FrameConfig> dependents{};

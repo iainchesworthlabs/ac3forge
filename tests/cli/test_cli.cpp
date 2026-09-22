@@ -4625,3 +4625,177 @@ TEST_CASE("programme2= reports why its own source could not be used", "[cli][enc
         CHECK(text.find("no standard speaker layout has that many channels") != std::string::npos);
     }
 }
+
+TEST_CASE("programmeN= generalizes past two, each with its own metadata",
+          "[cli][encode][programme2]") {
+    const auto dir = scratch_dir();
+    const auto primary = dir / "programmeN_primary.wav";
+    const auto p2 = dir / "programmeN_p2.wav";
+    const auto p3 = dir / "programmeN_p3.wav";
+    const auto p4 = dir / "programmeN_p4.wav";
+    REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4800, 48000), 48000)
+                .has_value());
+    REQUIRE(
+        ac3::io::write_wav_f32(p2.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
+    REQUIRE(
+        ac3::io::write_wav_f32(p3.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
+    REQUIRE(
+        ac3::io::write_wav_f32(p4.string(), make_tone_channels(1, 4800, 48000), 48000).has_value());
+
+    const auto out_path = dir / "programmeN_4pgm.ec3";
+    const auto log = dir / "programmeN_4pgm.log";
+    fs::remove(out_path);
+    const auto rc = run_cli(
+        "eac3-encode \"" + primary.string() + "\" \"" + out_path.string() +
+            "\" 256 none 51 off"
+            " programme2=\"" + p2.string() + "\" programme2-layout=mono programme2-bitrate=96"
+            " programme2-bsmod=commentary programme2-dialnorm=20"
+            " programme3=\"" + p3.string() + "\" programme3-layout=mono programme3-bitrate=96"
+            " programme3-bsmod=vi programme3-dialnorm=15"
+            " programme4=\"" + p4.string() + "\" programme4-layout=mono programme4-bitrate=96"
+            " programme4-bsmod=hi programme4-dialnorm=10",
+        log);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(rc == 0);
+    REQUIRE(fs::exists(out_path));
+    // Adjacent-literal split after \xA7: a bare \x escape is greedy and would
+    // otherwise swallow "E2" as more hex digits, overflowing a char.
+    CHECK(text.find("programme 1 (\xC2\xA7" "E2.3.1.2 I1)") != std::string::npos);
+    CHECK(text.find("programme 2 (\xC2\xA7" "E2.3.1.2 I2)") != std::string::npos);
+    CHECK(text.find("programme 3 (\xC2\xA7" "E2.3.1.2 I3)") != std::string::npos);
+
+    const auto probe_log = dir / "programmeN_4pgm_probe.log";
+    REQUIRE(run_cli("probe \"" + out_path.string() + "\"", probe_log) == 0);
+    const auto probe_text = read_log(probe_log);
+    INFO(probe_text);
+    CHECK(probe_text.find("independent id 0") != std::string::npos);
+    CHECK(probe_text.find("independent id 3") != std::string::npos);
+
+    // Every extra programme's own bsmod and its own fixed dialnorm round-trip
+    // back out of the stream independently - not just the primary's, and not
+    // all three sharing one value.
+    struct Expected {
+        int programme;
+        std::string_view bsmod_text;
+        double dialnorm;
+    };
+    for (const auto& want : {Expected{1, "commentary", 20},
+                             Expected{2, "visually impaired", 15},
+                             Expected{3, "hearing impaired", 10}}) {
+        CAPTURE(want.programme);
+        const auto decode_log =
+            dir / ("programmeN_4pgm_decode" + std::to_string(want.programme) + ".log");
+        const auto wav_out =
+            dir / ("programmeN_4pgm_p" + std::to_string(want.programme) + ".wav");
+        const auto rc2 = run_cli("decode \"" + out_path.string() + "\" \"" + wav_out.string() +
+                                     "\" programme=" + std::to_string(want.programme),
+                                 decode_log);
+        const auto decode_text = read_log(decode_log);
+        INFO(decode_text);
+        CHECK(rc2 == 0);
+        CHECK(decode_text.find(want.bsmod_text) != std::string::npos);
+
+        // decode's own report has no per-programme dialnorm line (that is
+        // encode's own status line above, already checked structurally via
+        // the "programme N (...)" text) - qc's "embedded metadata:" block
+        // does, straight off THIS programme's own independent substream, so
+        // this is the genuine decode-side round-trip for the value.
+        const auto qc_log =
+            dir / ("programmeN_4pgm_qc" + std::to_string(want.programme) + ".log");
+        run_cli("qc \"" + out_path.string() + "\" programme=" + std::to_string(want.programme),
+               qc_log);
+        const auto qc_text = read_log(qc_log);
+        INFO(qc_text);
+        const auto dialnorm = value_after(qc_text, "dialnorm");
+        REQUIRE(dialnorm.has_value());
+        CHECK(*dialnorm == want.dialnorm);
+    }
+}
+
+TEST_CASE("a later programmeN= without an earlier one is refused, not silently renumbered",
+          "[cli][encode][programme2]") {
+    // §E2.3.1.2 assigns substream ids sequentially - programme4= alone would
+    // have no honest answer for what I1/I2 are, so this refuses rather than
+    // quietly making programme4's file I1.
+    const auto dir = scratch_dir();
+    const auto primary = dir / "programme_gap_primary.wav";
+    const auto p4 = dir / "programme_gap_p4.wav";
+    REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000), 48000)
+                .has_value());
+    REQUIRE(
+        ac3::io::write_wav_f32(p4.string(), make_tone_channels(1, 4000, 48000), 48000).has_value());
+
+    const auto out_path = dir / "programme_gap.ec3";
+    const auto log = dir / "programme_gap.log";
+    fs::remove(out_path);
+    const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" + out_path.string() +
+                                "\" 256 none 51 off programme4=\"" + p4.string() +
+                                "\" programme4-layout=mono",
+                            log);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(rc != 0);
+    CHECK_FALSE(fs::exists(out_path));
+    CHECK(text.find("without programme2=") != std::string::npos);
+}
+
+TEST_CASE("a 1+1-only field on an extra programme is refused, not silently inert",
+          "[cli][encode][programme2]") {
+    // dialnorm2/drc2/heavy2/pgmscl2/paninfo2 and their *2 siblings describe
+    // Ch2 of a 1+1 bed, which an extra programme can never be - see
+    // programmeN-layout=1+1's own refusal just below for why.
+    const auto dir = scratch_dir();
+    const auto primary = dir / "programme_dead_primary.wav";
+    const auto p2 = dir / "programme_dead_p2.wav";
+    REQUIRE(ac3::io::write_wav_f32(primary.string(), make_tone_channels(6, 4000, 48000), 48000)
+                .has_value());
+    REQUIRE(
+        ac3::io::write_wav_f32(p2.string(), make_tone_channels(1, 4000, 48000), 48000).has_value());
+
+    SECTION("a 1+1-only field") {
+        const auto out_path = dir / "programme_dead_11.ec3";
+        const auto log = dir / "programme_dead_11.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
+                                    out_path.string() + "\" 256 none 51 off programme2=\"" +
+                                    p2.string() + "\" programme2-layout=mono "
+                                    "programme2-dialnorm2=15",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(text.find("1+1 dual-mono only") != std::string::npos);
+    }
+
+    SECTION("an AC-3 Annex D field, as a bare token") {
+        const auto out_path = dir / "programme_dead_annexd.ec3";
+        const auto log = dir / "programme_dead_annexd.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
+                                    out_path.string() + "\" 256 none 51 off programme2=\"" +
+                                    p2.string() + "\" programme2-layout=mono programme2-annexd",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(text.find("Annex D") != std::string::npos);
+    }
+
+    SECTION("layout 1+1 on an extra programme") {
+        const auto out_path = dir / "programme_dead_layout11.ec3";
+        const auto log = dir / "programme_dead_layout11.log";
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + primary.string() + "\" \"" +
+                                    out_path.string() + "\" 256 none 51 off programme2=\"" +
+                                    p2.string() + "\" programme2-layout=1+1",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc != 0);
+        CHECK_FALSE(fs::exists(out_path));
+        CHECK(text.find("programme2-layout=1+1 is not supported") != std::string::npos);
+    }
+}

@@ -108,7 +108,7 @@ as active roadmap rows; the new roadmap may mention them only in a legacy index 
 | **AC-4 decode** | *(absent)* | `src/ac4dec/`: syntax only | **Partial** — separate row in section A |
 | **IAMF** | IM3 Shipped (phase 1) | `iamf/iamf.hpp`: "phase 1 of 3"; phases 2–3 wait on IAMF v2.0 final | Shipped = channel-based writer; object elements **blocked** |
 | **IAB reader** | IM1 Shipped | `ac3iab`: full header parse; **AudioDataDLC** opaque bytes only | Shipped = reader; Annex B DLC decode is **follow-on**, not ID'd |
-| **Multi-programme E-AC-3** | *(capabilities wording)* | `encode.cpp` `programme2=` works; `capabilities.md` L24: **`bsmod` / programme mixing metadata not there yet** | **Partial** — authoring yes, receiver-side mix metadata no |
+| **Multi-programme E-AC-3** | *(capabilities wording)* | `encode.cpp` generalizes `programme2=`..`programme8=`, each with its own `bsmod`/full `mixmdate` via `programmeN-<field>=`; `capabilities.md` L24 updated | **Shipped** — authoring complete for all eight §E2.3.1.2 substreams; receiver-side use of the metadata during mixdown remains a separate, open follow-on |
 | **E-AC-3 programme decode** | DC5 Shipped (structural) | `DecoderConfig::programme` selects one programme at a time | Shipped = structural; mixing metadata decode per DC4 |
 
 ---

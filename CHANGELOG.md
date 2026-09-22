@@ -737,6 +737,20 @@ The sections below contain the complete change list and fixes.
 
 **Containers and encoding**
 
+- **`eac3-encode` authors all eight §E2.3.1.2 programmes, each with its own metadata.**
+  `programme2=` (previously the only extra programme the CLI could author) is now
+  `programme2=` through `programme8=`, one independent substream per token (I1–I7 beside
+  the primary's I0), each with its own `programmeN-layout=`/`-bitrate=` and the full
+  `programmeN-<field>=` metadata surface the primary programme's own bare tokens already
+  had — `bsmod=`, `dsurmod=`, `dmixmod=`, `pgmscl=`/`extpgmscl=`, the whole `mixdef=`/
+  `premixcmp=`/`extmix=`/`speechmix=`/`paninfo=`/`blkmixcfg=` group, `dialnorm=<1..31>|auto`
+  (including its own BS.1770 measurement pass) and more. The library side
+  (`AccessUnitConfig::additional`, `plan::eac3_programme`) already supported this; the gap
+  was CLI surface, now closed. A `programmeN=` past `programme2=` without the ones before it
+  is refused rather than silently renumbered, since §E2.3.1.2 assigns substream ids
+  sequentially. The five fields meaningful only under 1+1 dual mono and AC-3's own Annex D
+  fields are refused on an extra programme rather than accepted and left inert, since an
+  extra programme can be neither.
 - **AC-4 container carriage** (roadmap IM4): `ac3cli mp4`/`ts` read and write an AC-4
   elementary stream (TS 103 190-2 Annex E's `ac-4` sample entry/`dac4` box, EN 300 468
   Annex D.7's DVB descriptors); `demux` brings either back out byte-identical.

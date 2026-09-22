@@ -405,9 +405,10 @@ rate, since they all code the same frame period. An Atmos EMDF container still r
 substream of the **first** programme (TS 103 420 §8.2) — the objects belong to a programme, so a
 later programme's substreams are never it.
 
-The CLI authors a second programme with `programme2=<file>` plus `programme2-layout=`,
-`programme2-bitrate=` and `programme2-dialnorm=`; see
-[docs/forge/cli/commands.md](../forge/cli/commands.md).
+The CLI authors up to seven further programmes with `programme2=<file>` through `programme8=<file>`,
+each with its own `programmeN-layout=`, `programmeN-bitrate=` and the rest of the primary
+programme's own metadata keys via `programmeN-<field>=` (dialnorm, bsmod, the whole mixmdate
+group); see [docs/forge/cli/metadata-options.md](../forge/cli/metadata-options.md).
 
 One caveat worth knowing before you ship such a stream: **FFmpeg cannot read it at all**, and not
 just the second programme — see

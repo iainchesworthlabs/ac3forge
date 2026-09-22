@@ -356,6 +356,80 @@ TEST_CASE("a second independent substream is a second programme, not more frames
     }
 }
 
+TEST_CASE("all eight independent substreams work, and a ninth is refused",
+          "[eac3][programmes]") {
+    // §E2.3.1.2's own ceiling: I0-I7, eight programmes and no more. The
+    // 2-programme test above proves the mechanism; this proves the range it
+    // claims to support actually holds at its edge, which nothing had
+    // exercised before - kMaxProgrammes (eac3_frame.cpp) lived only behind a
+    // guard no test had ever reached.
+    ac3::eac3::AccessUnitConfig config;
+    config.independent = bed(448, 31);
+    constexpr std::array<double, 8> tones{kMainTone, 200.0, 400.0,  600.0,
+                                          800.0,    1000.0, 1200.0, 1400.0};
+    for (int i = 1; i < 8; ++i) {
+        config.additional.push_back({.independent = {.bitrate_kbps = 64,
+                                                      .acmod = ac3::Acmod::k1_0,
+                                                      .dialnorm = 20 + i}});
+    }
+    REQUIRE(config.additional.size() == 7);
+
+    constexpr int kFrames = 3;
+    const auto stream = encode(config, kFrames, tones);
+
+    const auto ids = ac3::programme_ids(stream);
+    REQUIRE(ids.has_value());
+    CHECK(*ids == std::vector<int>{0, 1, 2, 3, 4, 5, 6, 7});
+
+    const auto all = ac3::split_access_units(stream);
+    REQUIRE(all.has_value());
+    CHECK(all->size() == static_cast<std::size_t>(kFrames) * 8);
+
+    // Every one of the eight decodes on its own, to its own audio and its
+    // own dialnorm - the same per-programme independence the 2-programme
+    // test checks, just at the format's actual ceiling instead of its
+    // smallest interesting case.
+    for (int id = 0; id < 8; ++id) {
+        CAPTURE(id);
+        const auto own = ac3::split_access_units(stream, id);
+        REQUIRE(own.has_value());
+        REQUIRE(own->size() == static_cast<std::size_t>(kFrames));
+        const auto decoded = decode_programme(*own, std::nullopt);
+        CHECK(decoded.units == kFrames);
+        CHECK(decoded.programme == id);
+        if (id == 0) {
+            CHECK(decoded.channels.size() == 6);
+            CHECK(decoded.dialnorm == 31);
+        } else {
+            REQUIRE(decoded.channels.size() == 1);
+            CHECK(decoded.dialnorm == 20 + id);
+            CHECK(std::abs(dominant_freq_hz(decoded.channels[0]) -
+                           tones[static_cast<std::size_t>(id)]) < 10.0);
+        }
+    }
+
+    const auto scanned = ac3::io::scan(stream);
+    REQUIRE(scanned.has_value());
+    REQUIRE(scanned->programmes.size() == 8);
+
+    // A ninth is refused outright, not silently dropped or merged into the
+    // eighth - §E2.3.1.2 has no substream id past 7 to give it.
+    auto nine = config;
+    nine.additional.push_back(
+        {.independent = {.bitrate_kbps = 64, .acmod = ac3::Acmod::k1_0, .dialnorm = 29}});
+    REQUIRE(nine.additional.size() == 8);
+    const auto refused = ac3::eac3::build_silent_access_unit(nine);
+    REQUIRE_FALSE(refused.has_value());
+    CHECK(refused.error() == ac3::FrameError::kInvalidSubstream);
+
+    // AccessUnitEncoder's own constructor cannot fail (see ac3cli's
+    // eac3_config_accepted, which exists for exactly this reason) - a
+    // rejected config leaves it holding no substreams, which is how a
+    // caller finds out before attempting a frame.
+    ac3::eac3::AccessUnitEncoder nine_encoder{nine};
+    CHECK(nine_encoder.channel_count() == 0);
+}
+
 TEST_CASE("a single-programme stream is unchanged by the programme layer",
           "[eac3][programmes]") {
     constexpr int kFrames = 4;

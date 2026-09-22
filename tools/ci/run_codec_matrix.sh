@@ -630,6 +630,31 @@ run_ffmpeg_check eac3enc_2pgm.mkv
 run mp4 eac3enc_2pgm.ec3 eac3enc_2pgm.mp4
 run_ffmpeg_check eac3enc_2pgm.mp4
 
+# --- Four independent substreams: the range past two, each its own service -
+# §E2.3.1.2 allows eight (I0-I7); the pair above proves the mechanism, this
+# proves programmeN= generalizes past a hardcoded second one, with each
+# extra programme carrying its own bsmod service label as well as its own
+# layout/bitrate/dialnorm - not just authored, but round-tripped back out
+# through decode/levels/qc independently per programme.
+run sine mono_c.ac3 3 448 880 70 mono
+run decode mono_c.ac3 mono_c.wav
+run sine mono_d.ac3 3 448 1200 70 mono
+run decode mono_d.ac3 mono_d.wav
+run eac3-encode bootstrap_51.wav eac3enc_4pgm.ec3 256 none 51 off \
+    programme2=mono_b.wav programme2-layout=mono programme2-bitrate=96 \
+    programme2-bsmod=commentary programme2-dialnorm=20 \
+    programme3=mono_c.wav programme3-layout=mono programme3-bitrate=96 \
+    programme3-bsmod=vi programme3-dialnorm=15 \
+    programme4=mono_d.wav programme4-layout=mono programme4-bitrate=96 \
+    programme4-bsmod=hi programme4-dialnorm=10
+for programme in 0 1 2 3; do
+    run decode eac3enc_4pgm.ec3 "eac3enc_4pgm_p${programme}.wav" "programme=${programme}"
+    run levels eac3enc_4pgm.ec3 "programme=${programme}"
+    run qc eac3enc_4pgm.ec3 "programme=${programme}"
+done
+# No FFmpeg check on the raw stream - same refusal as the 2-programme case
+# above, for the same reason (ff_ac3_parse_header rejects substreamid != 0).
+
 # --- Atmos: object counts, orbit rates, both container modes ----------------
 # Always a 5.1 bed (JOC/OAMD ride in the same independent substream's EMDF
 # container, never a dependent one), so FFmpeg reads all of these - it is how
