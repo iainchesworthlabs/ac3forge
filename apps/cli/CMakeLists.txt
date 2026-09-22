@@ -141,6 +141,29 @@ target_link_libraries(ac3cli
 set_source_files_properties(commands/stream_tools.cpp
     PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
 
+# The same post-inlining misattribution as stream_tools.cpp's
+# -Wnull-dereference case just above, a different diagnostic from the same
+# root cause: run_demux's AC-4 re-wrap lambda (on_mp4_sample, the MP4 branch)
+# builds `framed` with reserve() then a nested `put` lambda's push_back()
+# loop (commands/containers.cpp ~901-907). At -O3 (Release; not seen at the
+# -debug preset's lower optimization - confirmed building config-linux-gcc-debug
+# clean with the same compiler) GCC inlines the whole call chain - through
+# std::_Function_handler<...>::_M_invoke, the lambda itself, and
+# vector<byte>::push_back's _M_realloc_append - down into the growth guard's
+# own destructor (_Guard_alloc::~_Guard_alloc, bits/stl_vector.h), and
+# misattributes ITS deallocate() call as freeing a pointer at a nonzero
+# offset. Confirmed by actually building config-linux-gcc (Release) with a
+# plain WSL2 g++ 15.2.0: the diagnostic's full inlining chain bottoms out at
+# containers.cpp:901 (reserve) and :904 (push_back), nowhere else in this
+# file. `framed` is an ordinary local std::vector<std::byte>, never aliased
+# and never manually freed - nothing here is genuinely unsafe. Not seen on
+# CI's pinned GCC 16 (main builds this file clean there), so scoped to the
+# file the same way stream_tools.cpp's instance is rather than version-gated
+# in cmake/CompilerWarnings.cmake - a GCC-version condition earns its keep
+# there for a warning several files hit; this is one lambda in one file.
+set_source_files_properties(commands/containers.cpp
+    PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-free-nonheap-object>")
+
 include(GNUInstallDirs)
 
 # COMPONENT runtime: without one, CPack files this under its own
