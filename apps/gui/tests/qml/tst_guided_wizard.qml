@@ -289,9 +289,12 @@ TestCase {
         EncoderController.codecIndex = 0;
         EncoderController.bitrateKbps = 192;
         EncoderController.applyChannelPreset("7.1");
-        // Alphabetically this test runs first, so no earlier test has loaded
-        // a source yet — without one the first-run screen hides the wizard
-        // and every click lands on nothing.
+        // This test is no longer alphabetically first — other test_
+        // functions now sort earlier and leave a source loaded — so this
+        // normally finds one already. The guard stays for running this
+        // function on its own, where nothing earlier has run and the
+        // first-run screen would otherwise hide the wizard from every click
+        // below.
         if (!EncoderController.sourceReady) {
             EncoderController.loadSourceFile(stereoUrl);
             tryCompare(EncoderController, "sourceReady", true);
@@ -314,6 +317,14 @@ TestCase {
         verify(stayCard !== null);
         mouseClick(stayCard);
         compare(EncoderController.atmosEnabled, false);
+
+        // atmosEnabled only forces codec/bitrate on the way in (see
+        // setAtmosEnabled in encoder_controller.cpp) — turning it back off
+        // reverts neither, so unlike every other test here that touches
+        // them, codecIndex and bitrateKbps have to be reset explicitly or
+        // they leak into whatever runs next alphabetically.
+        EncoderController.codecIndex = 0;
+        EncoderController.bitrateKbps = 192;
     }
 
     function test_wizardBitrateFloorAdvisoryShowsForAWideRoomOnGood() {
@@ -600,6 +611,14 @@ TestCase {
         EncoderController.atmosEnabled = false;
         EncoderController.codecIndex = 0;  // AC-3 - vbrAvailable is false
         EncoderController.vbrEnabled = false;
+        // A known starting point distinct from the 768 the card below sets -
+        // this test is run in its own process alongside every other
+        // function in this file (see CMakeLists.txt), so bitrateKbps could
+        // otherwise still be carrying whatever an earlier test's own cards
+        // left it at. Without an explicit value here, a card tap that
+        // silently failed to fire would read back as an unchanged
+        // (and therefore unnoticed) leftover rather than a real failure.
+        EncoderController.bitrateKbps = 192;
         const wizard = waitForWizardLayout(win);
         verify(wizard !== null);
         compare(wizard.vbrQualityMode, false);

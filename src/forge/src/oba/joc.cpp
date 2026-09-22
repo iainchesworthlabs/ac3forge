@@ -76,7 +76,14 @@ double dequantize(int code, bool fine_quant) {
 
 std::vector<std::byte> build_payload(const FrameParameters& params) {
     assert(params.objects >= 1 && params.objects <= kMaxObjects);
-    assert(params.channels == kNumChannels5X);
+    // The true encode-side inverse of parse_payload's own dmx_channel_count()
+    // check, covering every configuration Table 47 defines - not just
+    // kDmxConfig5X. This project's own AtmosEncoder only ever builds a
+    // kDmxConfig5X FrameParameters (joc.hpp's own comment on that), so this
+    // assert never narrowed what AtmosEncoder itself could produce; it only
+    // ever blocked a caller building one of the other four configurations by
+    // hand, which is exactly what a test exercising them needs to do.
+    assert(params.channels == dmx_channel_count(params.dmx_config_idx));
     assert(params.matrix.size() == params.coefficient_count());
 
     const int bands = params.bands();
@@ -89,7 +96,7 @@ std::vector<std::byte> build_payload(const FrameParameters& params) {
     BitWriter w;
 
     // --- joc_header (§6.2.2) ---
-    w.put(kDmxConfig5X, 3);
+    w.put(static_cast<std::uint32_t>(params.dmx_config_idx), 3);
     w.put(static_cast<std::uint32_t>(params.objects - 1), 6);  // joc_num_objects_bits
     w.put(0, 3);  // joc_ext_config_idx: no extensional configuration data
 
