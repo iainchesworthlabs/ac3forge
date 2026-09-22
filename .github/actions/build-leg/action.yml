@@ -20,6 +20,13 @@ inputs:
   crucible:
     description: "matrix.crucible, same shape as gui. Adds -DAC3FORGE_BUILD_CRUCIBLE=ON to Configure, on Windows/macOS only."
     default: ""
+  hearth:
+    description: >-
+      matrix.hearth, same shape as gui. Adds -DAC3FORGE_BUILD_HEARTH=ON and vcpkg's "hearth"
+      feature to Configure, so src/sendspin, apps/hearth and their ac3tests cases build and run
+      on this leg (planning/hearth-reference-player.md, A7). It also gives the leg its own
+      vcpkg cache key, since its install set is larger.
+    default: ""
   version-tag:
     description: "The reusable workflow's own version_tag input, threaded into Configure as DERIVED_VERSION_OVERRIDE."
     default: ""
@@ -106,9 +113,14 @@ runs:
           macos-llvm|macos-llvm-x64) c++ --version | head -1 ;;
         esac
 
+    # A hearth leg installs five more ports (see vcpkg.json's "hearth" feature), so it takes a
+    # key of its own: cache entries are immutable, and a leg without them would otherwise save
+    # the shared key first and leave the larger set nowhere to go. See setup-vcpkg's own
+    # cache-key-suffix description, and adm-validate, which does the same for its ports.
     - uses: ./.github/actions/setup-vcpkg
       with:
         vcpkg-commit: ${{ inputs.vcpkg-commit }}
+        cache-key-suffix: ${{ inputs.hearth == 'true' && 'hearth' || '' }}
 
     # The presets carry everything: generator, compiler, Release, and
     # AC3FORGE_BUILD_GUI=OFF. The toolchain-preset system splits each leg into
@@ -140,6 +152,7 @@ runs:
         LEG_PRESET: ${{ inputs.preset }}
         LEG_GUI: ${{ inputs.gui }}
         LEG_CRUCIBLE: ${{ inputs.crucible }}
+        LEG_HEARTH: ${{ inputs.hearth }}
       run: |
         set -euo pipefail
         extra_args=()
@@ -178,6 +191,15 @@ runs:
         # anyone claim.
         if [ "$LEG_CRUCIBLE" = "true" ] && { [ "$RUNNER_OS" = "Windows" ] || [ "$RUNNER_OS" = "macOS" ]; }; then
           extra_args+=(-DAC3FORGE_BUILD_CRUCIBLE=ON)
+        fi
+        # Hearth (planning/hearth-reference-player.md, A7): src/sendspin and apps/hearth, whose
+        # dependencies come from vcpkg's "hearth" feature. Both are OFF by default in
+        # CMakeLists.txt and vcpkg.json, so a leg that wants them asks here, and its ac3tests
+        # then carries the [sendspin] and [hearth] cases that ctest runs below. The feature is
+        # named on the command line rather than in the presets so a local build stays as light
+        # as it is today.
+        if [ "$LEG_HEARTH" = "true" ]; then
+          extra_args+=(-DVCPKG_MANIFEST_FEATURES=hearth -DAC3FORGE_BUILD_HEARTH=ON)
         fi
         if [ -n "$VERSION_TAG_INPUT" ]; then
           extra_args+=(-DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT")

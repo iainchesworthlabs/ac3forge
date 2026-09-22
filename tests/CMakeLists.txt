@@ -503,7 +503,10 @@ endif()
 # stream_playback.cpp joined for the reason its own header gives: 'monitor'
 # and 'spatial' pick their decoder and drain the end-of-stream flush through
 # it, and neither command reaches its decode loop without a render device, so
-# decoder/test_stream_playback.cpp holds both here instead.
+# decoder/test_stream_playback.cpp holds both here instead. sink_wait.hpp is
+# header-only and here for the same reason: 'play', 'monitor', 'identify' and
+# 'live' wait on their sinks through it, and audio/test_sink_wait.cpp holds
+# those waits against sinks that stop on cue.
 # ac3gui's diagnostics module (apps/gui/gui_diagnostics.hpp) rides the same
 # target for the same reason and with the same discipline: it is Qt-free, so
 # the rule it exists to hold - the support file carries no signing key, no
@@ -517,6 +520,7 @@ target_sources(ac3tests PRIVATE
     gui/test_recording_sink.cpp
     gui/test_gui_diagnostics.cpp
     decoder/test_stream_playback.cpp
+    audio/test_sink_wait.cpp
     "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp"

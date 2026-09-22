@@ -45,17 +45,17 @@ LANE_PREFIXES: dict[str, tuple[str, ...]] = {
     "windows": (
         "apps/windows/", "apps/notices/platform/windows/", "packaging/winget/",
         "packaging/conan/", "packaging/vcpkg-port/",
-        "apps/cli/", "apps/gui/", "apps/common/", "apps/crucible/",
+        "apps/cli/", "apps/gui/", "apps/common/", "apps/crucible/", "apps/hearth/",
     ),
     "linux": (
         "apps/linux/", "apps/notices/platform/linux/",
         "packaging/conan/", "packaging/vcpkg-port/",
-        "apps/cli/", "apps/gui/", "apps/common/", "apps/crucible/",
+        "apps/cli/", "apps/gui/", "apps/common/", "apps/crucible/", "apps/hearth/",
     ),
     "macos": (
         "apps/notices/platform/macos/", "packaging/homebrew/",
         "packaging/conan/", "packaging/vcpkg-port/",
-        "apps/cli/", "apps/gui/", "apps/common/", "apps/crucible/",
+        "apps/cli/", "apps/gui/", "apps/common/", "apps/crucible/", "apps/hearth/",
     ),
     "android": ("apps/android/",),
     "wasm": ("apps/wasm/", "js/"),

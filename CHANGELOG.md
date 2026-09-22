@@ -803,6 +803,18 @@ The sections below contain the complete change list and fixes.
 
 **Verification and CI**
 
+- **Hearth builds and is tested on every build-and-test leg.** `src/sendspin` and
+  `apps/hearth` used to be compiled by one Linux job, so the `[sendspin]` and `[hearth]`
+  cases ran there and nowhere else, and neither Windows nor macOS had ever compiled
+  them in CI. Each leg now configures with vcpkg's `hearth` feature, and `ctest` runs
+  those cases with the rest of the suite. A leg with the feature takes a vcpkg cache key
+  of its own, since its install set is five ports larger. The first macOS build found
+  one error: Sendspin's mDNS discovery passed `poll()` a `size_t` count, which narrows
+  to macOS's 32-bit `nfds_t`. It is now cast.
+- **A change under `apps/hearth/` now lights the three desktop lanes**, not every lane.
+  It was an unmapped path, which the classifier deliberately treats as "build
+  everything"; it is one desktop program built on Windows, Linux and macOS, like
+  `apps/cli/` and `apps/crucible/` beside it.
 - **Heap churn is now gated before a merge, not only after one** (`Memory gate` in
   `ci.yml`): `ac3membench` used to run only on `push` to `main`, so a regression (E-AC-3
   encode churn 67→199 allocs/frame at PR #352) was found blocking nothing. The new job
@@ -1075,8 +1087,19 @@ The sections below contain the complete change list and fixes.
   1.** Each `presentations_v0[].substreams[]` entry held an unnamed object beside its
   `role`. The substream's members now sit beside `role` in the entry. No stream on hand has
   such a table of contents, so no output seen so far changes.
-
-**ESP32 / bare-metal**
+- **`ac3cli play`, `monitor`, `identify` and `live`'s output legs spun for ever once an
+  output device went away.** None of them looked at `running()`, so a lost render endpoint
+  left `submit()` refusing and a drain loop waiting on counts that had stopped moving -
+  the same hang the queue-full case already had before the sinks themselves learned to stop
+  (see "An output device that went away left the sink saying it was still playing" above).
+  Every submit and drain loop now ends as soon as the sink reports itself not running, and
+  says which endpoint went and how (unplugged, switched off, disabled, or taken by the
+  system), through a shared `ac3::apps::submit_while_running`/`wait_while_running`
+  (`apps/common/sink_wait.hpp`). `play`, `monitor` and `identify` exit `5`; `live`'s
+  monitor and passthrough legs are dropped and the take carries on, ending the session as a
+  failure only because it did not do everything asked. `tools/checks/passthrough_probe.cpp`
+  gets the same fix, exiting `5` rather than looping past a pulled cable. `ac3cli spatial`
+  is unchanged - `SpatialObjectSink` was not touched by #775 and needs its own fix.
 
 - **A twelve-channel play aborted on the ESP32-S3 for want of internal RAM.** The E-AC-3
   decoder held all 32 substream-identity slots (`strmtyp * 8 + substreamid`) by value, so
@@ -1203,6 +1226,21 @@ The sections below contain the complete change list and fixes.
     freeing the player's memory, and the board rejoins from there: on a board with
     about a kilobyte of internal heap free while streaming, the rejoin came 8.7 s after
     the access point returned, and the next play was clean.
+- **A Hearth sink refused a network whose name is 13 characters, and answered with a
+  broken one about a 10-character board name.** Improv's packets share the console with
+  the lines the board prints, and ESP-IDF's default line endings rewrite bytes inside
+  them: a CR from a client arrives as LF, and a CR goes out before every LF. Either one
+  lands in a packet - a length byte, a string, a checksum - and the packet then fails
+  its checksum at the other end. A `wifi_settings` whose SSID is 13 bytes long, so that
+  the length byte in front of it is a CR, was answered `invalid_packet`: a board could
+  not be told about a network named, for instance, `MyHomeNetwork`. In the other
+  direction, with a 10-character name stored, the `device_info` and `device_name`
+  answers carrying it reached the client broken. The example's console now converts
+  nothing in either direction. A command typed on it still ends at either CR or LF, and
+  each line the application prints now ends in LF alone, which `idf.py monitor` and the
+  checks under `tools/checks` read as they did; a terminal that needs the CR has a
+  setting for it. The ROM's lines, and anything logged from an interrupt, still end
+  CR LF: they are written by `esp_rom_printf`, which this setting never reached.
 - **A Hearth sink's page could reach its Sendspin player before the player had started,
   and after a failed start had freed it.** `hearth_sink` set two global pointers to the
   player and its server as it made them, on the task that starts them. The control

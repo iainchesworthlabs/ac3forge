@@ -1,6 +1,6 @@
 # Hearth: a desktop reference player and Sendspin sinks
 
-!!! note "Status as of 2026-09-16: being built"
+!!! note "Status as of 2026-09-22: being built"
     Written and decided on 2026-09-15, in one session of questions and answers recorded under
     [Decisions](#decisions). What has merged since, by chip:
 
@@ -8,8 +8,8 @@
         - Merged: A1 (#686), A2 (#708) and A3 (#714, #720, #727, #732, #736, #742 and #745 to
           #752).
         - A4 has merged (#684, #704 and #706), but its Music Assistant exit is still open.
-        - A0's first design round is published and waits for review. A5 starts once it is
-          signed off, and A6 to A8 follow A5.
+        - A0 is signed off (2026-09-22; [planning/hearth-design.md](hearth-design.md)). A5 is
+          starting; A6 to A8 follow it.
     - **[The ESP32-S3 sink](#chip-b-the-esp32-s3-sink).**
         - Merged: B1 (#709), B2 (#726), B3 (#737), B4 (#738) and B5 (#756), with fixes in #741
           and #743.
