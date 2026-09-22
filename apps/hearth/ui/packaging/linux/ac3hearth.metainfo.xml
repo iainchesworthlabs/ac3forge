@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metainfo (Hearth phase A7) - what puts ac3hearth in a Linux
+  desktop's own application menu/software centre, alongside
+  ac3hearth.desktop (the entry itself) and apps/gui/packaging/linux/
+  ac3gui-mime.xml (the audio/ac3, audio/eac3 types it opens - the same
+  shared-mime-info fragment ac3gui installed first; declaring the same
+  glob twice would conflict, so this component reuses it rather than
+  shipping its own copy). <id> matches the .desktop file's own basename,
+  the launchable AppStream itself requires to associate the two.
+-->
+<component type="desktop-application">
+  <id>ac3hearth.desktop</id>
+  <name>ac3hearth</name>
+  <summary>Hearth — the AC3Forge desktop reference player, with passthrough and Sendspin network outputs</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>
+      ac3hearth is the AC3Forge project's reference player. It decodes AC-3, E-AC-3 and Dolby
+      Atmos object-layer streams under every decoder setting the library has, renders to a
+      chosen speaker layout, and plays to a local device, a passthrough receiver over HDMI or
+      S/PDIF, or a group of Sendspin network sinks.
+    </p>
+  </description>
+  <launchable type="desktop-id">ac3hearth.desktop</launchable>
+  <url type="homepage">https://github.com/iainchesworthlabs/ac3forge</url>
+  <provides>
+    <binary>ac3hearth</binary>
+    <mediatype>audio/ac3</mediatype>
+    <mediatype>audio/eac3</mediatype>
+  </provides>
+  <content_rating type="oars-1.1"/>
+</component>

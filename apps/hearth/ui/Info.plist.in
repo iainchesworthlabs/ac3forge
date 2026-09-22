@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hearth phase A7's macOS leg (planning/hearth-reference-player.md): a custom
+  Info.plist, the same reason and shape as apps/gui/Info.plist.in - CMake's
+  own default template carries no CFBundleDocumentTypes/
+  UTExportedTypeDeclarations, and supplying a template of our own means
+  every MACOSX_BUNDLE_* token substituted by default has to be set
+  explicitly here too. See apps/hearth/ui/CMakeLists.txt's APPLE branch for
+  where each ${VAR} is set.
+
+  ac3hearth is the reference player, so it now owns .ac3/.ec3: this file
+  both DECLARES the two UTIs (UTExportedTypeDeclarations, conforming to
+  public.audio) and CLAIMS them (CFBundleDocumentTypes, LSHandlerRank
+  Owner). apps/gui/Info.plist.in no longer does either - a UTI can only
+  have one owner, and two LSHandlerRank Owner claims for the same type
+  is undefined which one Launch Services picks.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleExecutable</key>
+	<string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+	<key>CFBundleGetInfoString</key>
+	<string>${MACOSX_BUNDLE_INFO_STRING}</string>
+	<key>CFBundleIconFile</key>
+	<string>${MACOSX_BUNDLE_ICON_FILE}</string>
+	<key>CFBundleIdentifier</key>
+	<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleLongVersionString</key>
+	<string>${MACOSX_BUNDLE_LONG_VERSION_STRING}</string>
+	<key>CFBundleName</key>
+	<string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
+	<key>CSResourcesFileMapped</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>${MACOSX_BUNDLE_COPYRIGHT}</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>AC-3 Audio Stream</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>${MACOSX_BUNDLE_ICON_FILE}</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.ac3</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>E-AC-3 Audio Stream</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>${MACOSX_BUNDLE_ICON_FILE}</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.ec3</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.ac3</string>
+			<key>UTTypeDescription</key>
+			<string>AC-3 Audio Stream</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.audio</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ac3</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>audio/ac3</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.ec3</string>
+			<key>UTTypeDescription</key>
+			<string>E-AC-3 Audio Stream</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.audio</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ec3</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>audio/eac3</string>
+			</dict>
+		</dict>
+	</array>
+</dict>
+</plist>

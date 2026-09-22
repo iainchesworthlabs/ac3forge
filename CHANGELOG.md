@@ -233,6 +233,13 @@ The sections below contain the complete change list and fixes.
 
 **Hearth**
 
+- **`ac3hearth` packages, as `ac3forge-hearth`, on Windows (NSIS and ZIP), macOS (DMG) and
+  Linux (DEB, RPM and TGZ).** Its own CPack component follows `apps/crucible`'s own pattern -
+  notices and licence beside the executable, Qt's runtime deployed into the package - except
+  that it ships in the shared NSIS installer and the CI-built RPM, since neither of Crucible's
+  reasons for staying out (a test-signed driver, no RPM host to verify against) applies to it.
+  `ac3hearth` also becomes the `.ac3`/`.ec3` handler on all three platforms, taking that role
+  from `ac3gui`.
 - **The Sendspin time filter learns faster and ignores delayed replies.** Once it has
   converged, `ac3::sendspin::ClockSync` runs thirty bursts a second apart before settling to one
   every ten seconds. It leaves out a burst whose best reply is well above the recent floor, since
