@@ -228,6 +228,30 @@ TEST_CASE("stream decoder: a reset starts the next stream clean", "[hearth][stre
     CHECK(play(decoder, second).frames == 4 * ac3::kSamplesPerFrame);
 }
 
+TEST_CASE("stream decoder: a reset (a seek) keeps the crossover corner set before it",
+          "[hearth][stream-decoder]") {
+    // A layout with a small speaker, so the corner is not just stored but has
+    // a filter to move (render.hpp's LayoutRenderer) - the list form, since
+    // ":small" is not a recognised modifier on a name like "5.1".
+    const auto layout = ac3::render::OutputLayout::parse("L:small,C,R,Ls,Rs,LFE");
+    REQUIRE(layout.has_value());
+    StreamDecoder decoder{*layout, 48000};
+
+    REQUIRE(decoder.set_crossover_hz(120.0));
+    REQUIRE(decoder.crossover_hz() == 120.0);
+
+    // reset() is what Session::start_at()/seek() call on every seek within
+    // the same item (session.cpp) - a fresh LayoutRenderer built inside it
+    // must not silently hand the corner back to kDefaultCrossoverHz.
+    decoder.reset();
+    CHECK(decoder.crossover_hz() == 120.0);
+
+    // And decoding after the reset still works, at the kept corner.
+    const Played played = play(decoder, eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 3));
+    CHECK(played.frames == 3 * ac3::kSamplesPerFrame);
+    CHECK(decoder.crossover_hz() == 120.0);
+}
+
 TEST_CASE("stream decoder: a unit that is not a stream is reported, not played",
           "[hearth][stream-decoder]") {
     const auto layout = ac3::render::OutputLayout::parse("2.0");
