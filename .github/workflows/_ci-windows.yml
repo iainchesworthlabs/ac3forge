@@ -965,6 +965,28 @@ jobs:
           # failure mode here, not an empty one - see the script's own header.
           python tools/ci/check_crucible_package.py "${zips[0]}"
 
+      # Hearth's own archive (cmake/Packaging.cmake's hearth component,
+      # apps/hearth/ui/CMakeLists.txt's install rules, phase A7). Guarded by
+      # matrix.hearth rather than matrix.crucible above: Hearth builds and
+      # packages on every Windows leg, windows-msvc-arm64 included, where
+      # Crucible does not.
+      - name: Assert the AC3Forge Hearth was packaged (Windows)
+        if: matrix.hearth && matrix.release_package && (matrix.preset == 'windows-msvc' || inputs.do_package)
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(packages/ac3forge-hearth-*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "::error::cpack produced no ac3forge-hearth-*.zip - the hearth component did not reach CPACK_COMPONENTS_ALL (cmake/Packaging.cmake) or its install rules produced nothing (apps/hearth/ui/CMakeLists.txt)."
+            ls -1 packages/ || true
+            exit 1
+          fi
+          printf 'packaged: %s\n' "${zips[@]}"
+          # The same failure mode as Crucible's own step above: a plausible
+          # archive with no Qt beside the window - see the script's own header.
+          python tools/ci/check_hearth_package.py "${zips[0]}"
+
       - name: Upload package artifacts
         if: >-
           matrix.packageable &&
