@@ -11,6 +11,12 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "ac3/io/wav.hpp"
 
 // WavStreamReader exists so an encode of a feature-length input holds one
@@ -24,14 +30,24 @@ namespace {
 
 // Rooted at AC3FORGE_TEST_SCRATCH_DIR rather than
 // std::filesystem::temp_directory_path() for the reason tests/cli/test_cli.cpp's
-// own scratch_dir explains; the leaf is this file's own. The directory is created
-// in the constructor rather than by a scratch_dir() helper of the shape the other
-// files use because this file reaches its scratch space only through this RAII
-// type, which every test here already goes through.
+// own scratch_dir explains; the leaf is this file's own, with this process's own
+// PID folded on top for the same cross-process reason that file's comment gives.
+// The directory is created in the constructor rather than by a scratch_dir()
+// helper of the shape the other files use because this file reaches its scratch
+// space only through this RAII type, which every test here already goes through.
+std::string scratch_pid_suffix() {
+#ifdef _WIN32
+    return std::to_string(_getpid());
+#else
+    return std::to_string(getpid());
+#endif
+}
+
 struct TempWav {
     std::string path;
     explicit TempWav(const char* name) {
-        const auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} / "wav_stream_reader";
+        const auto dir =
+            std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} / ("wav_stream_reader_" + scratch_pid_suffix());
         std::filesystem::create_directories(dir);
         path = (dir / name).string();
     }

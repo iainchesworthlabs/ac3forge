@@ -7,6 +7,12 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "desktop_entries.hpp"
 
 // The freedesktop side of the Linux application icon (apps/crucible/ui/
@@ -31,9 +37,19 @@ namespace {
 // Scratch space for this file's own tests. AC3FORGE_TEST_SCRATCH_DIR (see
 // tests/CMakeLists.txt for why it is a build-tree path) is the whole
 // suite's root; the leaf below is this file's own, emptied on each use so a
-// previous run's files cannot pass a case.
+// previous run's files cannot pass a case. The leaf also carries this
+// process's own PID - see tests/cli/test_cli.cpp's own scratch_dir comment
+// for why that is needed on top of the build-tree root.
+std::string scratch_pid_suffix() {
+#ifdef _WIN32
+    return std::to_string(_getpid());
+#else
+    return std::to_string(getpid());
+#endif
+}
+
 fs::path scratch_dir() {
-    const auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "crucible_icons";
+    const auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("crucible_icons_" + scratch_pid_suffix());
     fs::remove_all(dir);
     fs::create_directories(dir);
     return dir;

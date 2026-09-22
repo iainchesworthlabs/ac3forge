@@ -13,6 +13,12 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "ac3/core/crc16.hpp"
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
@@ -51,9 +57,17 @@ namespace fs = std::filesystem;
 namespace {
 
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
-// shares; the leaf name below is this file's own.
+// shares, including the PID fold; the leaf name below is this file's own.
+std::string scratch_pid_suffix() {
+#ifdef _WIN32
+    return std::to_string(_getpid());
+#else
+    return std::to_string(getpid());
+#endif
+}
+
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "cli_live";
+    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_live_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }

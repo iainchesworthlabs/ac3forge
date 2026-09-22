@@ -19,7 +19,9 @@
 #include <string_view>
 #include <vector>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <process.h>
+#else
 #include <sys/wait.h>
 #endif
 
@@ -57,8 +59,24 @@ namespace {
 // file's own. Duplicated in every test file that needs scratch space rather
 // than shared, per this project's per-file test-helper convention - only the
 // leaf name differs between the copies.
+//
+// The leaf also carries this process's own PID. AC3FORGE_TEST_SCRATCH_DIR is
+// rooted in the build tree, not per process, so two ac3tests/ac3cli processes
+// pointed at the same build tree at once (a concurrent re-run, or two sessions
+// sharing one tree) would otherwise race on this exact directory - one's
+// fs::remove_all/create_directories/file-open colliding with the other's
+// mid-test. Folding the PID on top keeps the build-tree rooting (still no
+// cross-worktree collision) while giving each process its own leaf under it.
+std::string scratch_pid_suffix() {
+#ifdef _WIN32
+    return std::to_string(_getpid());
+#else
+    return std::to_string(getpid());
+#endif
+}
+
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "cli";
+    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }

@@ -9,6 +9,12 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "ac3/admbridge/bridge.hpp"
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
@@ -32,6 +38,17 @@ namespace fs = std::filesystem;
 namespace {
 
 using ac3::eac3::chanmap::Location;
+
+// See tests/cli/test_cli.cpp's own scratch_dir comment for why the scratch
+// path below folds this in, on top of AC3FORGE_TEST_SCRATCH_DIR's
+// build-tree rooting.
+std::string scratch_pid_suffix() {
+#ifdef _WIN32
+    return std::to_string(_getpid());
+#else
+    return std::to_string(getpid());
+#endif
+}
 
 double channel_energy(std::span<const float> samples) {
     double energy = 0.0;
@@ -142,7 +159,7 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
     CHECK(built->audio.channels.size() == 2);
     CHECK(built->audio.sample_rate == 48000);
 
-    const auto scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "admbridge_write";
+    const auto scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("admbridge_write_" + scratch_pid_suffix());
     fs::create_directories(scratch);
     const auto master_path = (scratch / "write_roundtrip.wav").string();
     const auto written = ac3adm::write_bw64(master_path, *built);

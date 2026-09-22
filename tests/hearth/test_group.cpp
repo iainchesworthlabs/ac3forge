@@ -23,6 +23,12 @@
 #include <utility>
 #include <vector>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
@@ -65,6 +71,17 @@ namespace fs = std::filesystem;
 namespace m = ac3::sendspin::messages;
 namespace testsink = ac3::hearth::testsink;
 using namespace std::chrono_literals;
+
+// See tests/cli/test_cli.cpp's own scratch_dir comment for why every
+// TEST_CASE below folds this into its scratch leaf, on top of
+// AC3FORGE_TEST_SCRATCH_DIR's build-tree rooting.
+std::string scratch_pid_suffix() {
+#ifdef _WIN32
+    return std::to_string(_getpid());
+#else
+    return std::to_string(getpid());
+#endif
+}
 
 class QuietLog final : public testsink::SinkLog {
    public:
@@ -458,7 +475,7 @@ void play_joc_programme(const fs::path& scratch, const std::string& layout_text,
 }  // namespace
 
 TEST_CASE("group: two test sinks play one programme in step, in PCM and FLAC", "[hearth][group][websocket]") {
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "hearth_group";
+    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     QuietLog log;
     const std::unique_ptr<testsink::Sink> kitchen = start_sink(scratch / "kitchen", "Kitchen", m::Codec::kPcm, log);
@@ -555,7 +572,7 @@ TEST_CASE("group: two test sinks play one programme in step, in PCM and FLAC", "
 }
 
 TEST_CASE("group: a host pairs one test sink by its token and another by a dynamic code", "[hearth][group][websocket]") {
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "hearth_pairing";
+    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_pairing_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     QuietLog token_log;
     QuietLog code_log;
@@ -616,7 +633,7 @@ TEST_CASE("group: test sinks' other roles get the group's metadata, colours, tra
           "[hearth][group][websocket][roles]") {
     namespace ss = ac3::sendspin;
     namespace controller = ac3::sendspin::controller;
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "hearth_roles";
+    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_roles_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     QuietLog log;
     const auto make_sink = [&](const fs::path& directory, std::string sink_name, std::vector<std::string> listed) {
@@ -810,11 +827,11 @@ TEST_CASE("group: test sinks' other roles get the group's metadata, colours, tra
 
 TEST_CASE("group: two paired test sinks play E-AC-3 JOC in step over the extension role",
           "[hearth][group][websocket][ac3forge]") {
-    play_joc_programme(fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "hearth_group_joc", "7.1.4", 2);
+    play_joc_programme(fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_joc_" + scratch_pid_suffix()), "7.1.4", 2);
 }
 
 // A4's exit at its full length: ten minutes of the programme, rendered to four speakers to keep the
 // WAV files near half a gigabyte each. Run by name.
 TEST_CASE("group: ten minutes of E-AC-3 JOC in step on two test sinks", "[.][hearth-soak]") {
-    play_joc_programme(fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "hearth_group_soak", "2.0.2", 298);
+    play_joc_programme(fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_soak_" + scratch_pid_suffix()), "2.0.2", 298);
 }
