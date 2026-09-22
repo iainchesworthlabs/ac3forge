@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -131,6 +132,11 @@ struct Assignment {
     // substream's own index except in a frame-rate-multiplied series, where
     // every instance shares the first one's - see assign_instances().
     int state_key = 0;
+    // For a kAudio assignment: the raw ac4_hsf_ext_substream_info() index its
+    // group/channel carried, if any - resolved against the map in parse()
+    // once every substream's own claim has been made, since the two are read
+    // from different elements (see assign_v1()/assign_v0()).
+    std::optional<int> hsf_ext_index;
 };
 
 void refuse(std::map<int, Assignment>& out, int index, DecodeError error, std::string_view reason) {
@@ -140,6 +146,20 @@ void refuse(std::map<int, Assignment>& out, int index, DecodeError error, std::s
     Assignment a;
     a.kind = SubstreamReport::Kind::kOther;
     a.refusal = detail::SyntaxError{error, reason};
+    out.emplace(index, std::move(a));
+}
+
+// Claims `index` as an ac4_hsf_ext_substream(), the way refuse() claims one
+// as kOther - a substream named twice (Part 1 Table 15) is read as the first
+// element names it, so a collision (including a self-reference, where the
+// owning channel's own claim on `index` already stands) leaves this call a
+// no-op, exactly as it would if the second claim were a refusal instead.
+void claim_hsf_ext(std::map<int, Assignment>& out, int index) {
+    if (out.contains(index)) {
+        return;
+    }
+    Assignment a;
+    a.kind = SubstreamReport::Kind::kHsfExt;
     out.emplace(index, std::move(a));
 }
 
@@ -184,7 +204,7 @@ void assign_audio(const Toc& toc, const ChannelSubstreamInfo& chan, int index, i
     ctx.b_iframe = b_iframe;
     ctx.sus_ver = sus_ver;
     ctx.ch_mode = *chan.ch_mode;
-    ctx.sf_multiplier = chan.sf_multiplier.has_value();
+    ctx.sf_multiplier = chan.sf_multiplier;
     ctx.add_ch_base = chan.add_ch_base.value_or(false);
     if (chan.original_content) {
         ctx.b_4_back_channels_present = chan.original_content->b_4_back_channels_present;
@@ -299,10 +319,15 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                     // sus_ver is 1 for bitstream_version 2 (Part 2 6.2.1.6).
                     assign_instances(toc, *sub.chan, p.presentation_version, 1, b_associated, b_dialog,
                                      p.b_alternative, out);
+                    if (sub.hsf_ext_substream_index && sub.chan->substream_index) {
+                        if (auto it = out.find(*sub.chan->substream_index);
+                            it != out.end() && it->second.kind == SubstreamReport::Kind::kAudio) {
+                            it->second.hsf_ext_index = *sub.hsf_ext_substream_index;
+                        }
+                    }
                 }
                 if (sub.hsf_ext_substream_index) {
-                    refuse(out, *sub.hsf_ext_substream_index, DecodeError::kUnsupported,
-                           "HSF extension substreams are not decoded yet");
+                    claim_hsf_ext(out, *sub.hsf_ext_substream_index);
                 }
             }
         }
@@ -326,8 +351,13 @@ void assign_v0(const Toc& toc, std::map<int, Assignment>& out) {
             const bool b_dialog = role == "Dialog" || classifier == 0b100;
             assign_instances(toc, chan, p.presentation_version, 0, b_associated, b_dialog, false, out);
             if (chan.hsf_ext_substream_index) {
-                refuse(out, *chan.hsf_ext_substream_index, DecodeError::kUnsupported,
-                       "HSF extension substreams are not decoded yet");
+                if (chan.substream_index) {
+                    if (auto it = out.find(*chan.substream_index);
+                        it != out.end() && it->second.kind == SubstreamReport::Kind::kAudio) {
+                        it->second.hsf_ext_index = *chan.hsf_ext_substream_index;
+                    }
+                }
+                claim_hsf_ext(out, *chan.hsf_ext_substream_index);
             }
         }
     }
@@ -408,6 +438,110 @@ std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte
         assign_v0(toc, assignments);
     }
 
+    // Owner substreams whose ac4_hsf_ext_substream_info() names a distinct,
+    // still-unclaimed substream, on a channel that actually reports
+    // sf_multiplier (Table 89 gives no HSF extension table for plain
+    // 48 kHz, so a link without it - and a self-reference, since
+    // assign_v1()/assign_v0() never set hsf_ext_index for one - is left for
+    // the general handling below, which reads the channel plainly and
+    // refuses the orphaned extension). Resolved together, in whichever order
+    // this map holds them: the owner's own asf_section_data() needs
+    // max_sfb_ext_hsf, a value only the extension's own bits carry, before
+    // either can be fully read (ERRATA.md).
+    std::vector<int> resolved;
+    std::set<int> claimed_ext;
+    for (auto& [index, assignment] : assignments) {
+        if (assignment.kind != SubstreamReport::Kind::kAudio || !assignment.hsf_ext_index ||
+            !assignment.audio.sf_multiplier || *assignment.hsf_ext_index == index) {
+            continue;
+        }
+        const int ext_index = *assignment.hsf_ext_index;
+        const auto ext_it = assignments.find(ext_index);
+        if (ext_it == assignments.end() || ext_it->second.kind != SubstreamReport::Kind::kHsfExt ||
+            !claimed_ext.insert(ext_index).second) {
+            continue;
+        }
+
+        SubstreamReport owner_report;
+        owner_report.index = index;
+        owner_report.kind = SubstreamReport::Kind::kAudio;
+        SubstreamReport ext_report;
+        ext_report.index = ext_index;
+        ext_report.kind = SubstreamReport::Kind::kHsfExt;
+        resolved.push_back(index);
+        resolved.push_back(ext_index);
+
+        const bool owner_in_range = index >= 0 && static_cast<std::size_t>(index) < frame->substreams.size();
+        const bool ext_in_range = ext_index >= 0 && static_cast<std::size_t>(ext_index) < frame->substreams.size();
+        if (!owner_in_range || !ext_in_range) {
+            owner_report.refused = DecodeError::kInvalidStream;
+            owner_report.refused_reason = "a substream index outside the substream index table";
+            ext_report.refused = DecodeError::kInvalidStream;
+            ext_report.refused_reason = "a substream index outside the substream index table";
+            report.substreams.push_back(owner_report);
+            report.substreams.push_back(ext_report);
+            continue;
+        }
+        const Substream& owner_loc = frame->substreams[static_cast<std::size_t>(index)];
+        const Substream& ext_loc = frame->substreams[static_cast<std::size_t>(ext_index)];
+        owner_report.size_bits = owner_loc.size * 8U;
+        ext_report.size_bits = ext_loc.size * 8U;
+        if (owner_loc.offset + owner_loc.size > raw_ac4_frame.size() ||
+            ext_loc.offset + ext_loc.size > raw_ac4_frame.size()) {
+            owner_report.refused = DecodeError::kTruncated;
+            owner_report.refused_reason = "the substream runs past the end of the frame";
+            ext_report.refused = DecodeError::kTruncated;
+            ext_report.refused_reason = "the substream runs past the end of the frame";
+            report.substreams.push_back(owner_report);
+            report.substreams.push_back(ext_report);
+            continue;
+        }
+
+        BitReader owner_reader(raw_ac4_frame.subspan(owner_loc.offset, owner_loc.size), index, impl_->config.syntax);
+        BitReader ext_reader(raw_ac4_frame.subspan(ext_loc.offset, ext_loc.size), ext_index, impl_->config.syntax);
+        AudioSubstreamState& state = impl_->audio[assignment.state_key];
+        if (state.ch_mode != assignment.audio.ch_mode || state.sus_ver != assignment.audio.sus_ver) {
+            state = AudioSubstreamState{};
+            state.ch_mode = assignment.audio.ch_mode;
+            state.sus_ver = assignment.audio.sus_ver;
+        }
+        AudioSubstream parsed;
+        const ParseResult owner_result =
+            detail::parse_audio_substream(owner_reader, assignment.audio, state, parsed, &ext_reader);
+        owner_report.bits_read = owner_reader.position();
+        if (!owner_result) {
+            owner_report.refused = owner_result.error().error;
+            owner_report.refused_reason = owner_result.error().reason;
+            ext_report.refused = DecodeError::kUnsupported;
+            ext_report.refused_reason = "its owning channel substream could not be read";
+            ext_report.bits_read = ext_reader.position();
+        } else {
+            ParseResult ext_result;
+            for (detail::Track& track : parsed.element.tracks) {
+                const int groups =
+                    parsed.element.infos[static_cast<std::size_t>(track.info)].psy.num_window_groups;
+                ext_result = detail::parse_sf_hsf_data(ext_reader, groups, track.data, track.hsf);
+                if (!ext_result) {
+                    break;
+                }
+            }
+            if (ext_result) {
+                ext_reader.align();
+                ext_result = detail::check(ext_reader);
+            }
+            ext_report.bits_read = ext_reader.position();
+            if (!ext_result) {
+                ext_report.refused = ext_result.error().error;
+                ext_report.refused_reason = ext_result.error().reason;
+            }
+        }
+        report.substreams.push_back(owner_report);
+        report.substreams.push_back(ext_report);
+    }
+    for (const int index : resolved) {
+        assignments.erase(index);
+    }
+
     for (auto& [index, assignment] : assignments) {
         SubstreamReport substream;
         substream.index = index;
@@ -462,6 +596,14 @@ std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte
                 result = detail::parse_emdf_payloads_substream(reader, parsed);
                 break;
             }
+            case SubstreamReport::Kind::kHsfExt:
+                // Reaching this case rather than the combined handling above
+                // means its owning channel substream either does not exist,
+                // has no sf_multiplier, or is this same substream (a
+                // self-reference) - see the loop above.
+                result = detail::fail(DecodeError::kUnsupported,
+                                      "no active HSF extension was read alongside its owning channel substream");
+                break;
             default:
                 break;
         }
@@ -472,6 +614,7 @@ std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte
         }
         report.substreams.push_back(substream);
     }
+    std::ranges::sort(report.substreams, {}, &SubstreamReport::index);
     return report;
 }
 
