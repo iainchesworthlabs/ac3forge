@@ -72,7 +72,7 @@ MIN_TRAILING_RECORDS = 3
 def branch_slug(branch: str) -> str:
     """A single flat filename component for `branch`.
 
-    Every branch in this repo is feature/* or bugfix/* (CONTRIBUTING.md's
+    Every topic branch in this repo is <type>/<name> (CONTRIBUTING.md's
     branch-name convention), so `branch` always contains at least one '/' -
     and '/' inside an f-string interpolated straight into a Path joins as an
     extra path component, not a literal character. Left unsanitised,

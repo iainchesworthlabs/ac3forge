@@ -93,6 +93,7 @@ jobs:
           - name: "Windows MSVC"
             runner: ${{ inputs.windows_runner_1 }}
             preset: windows-msvc
+            hearth: true
             # Declared once, here, so `matrix.experimental` in continue-on-error
             # above resolves against a property the matrix actually defines -
             # without it every leg silently reads null and actionlint reports the
@@ -122,6 +123,7 @@ jobs:
           - name: "Windows LLVM (clang-cl)"
             runner: ${{ inputs.windows_runner_2 }}
             preset: windows-llvm
+            hearth: true
             msvc: true          # clang-cl targets the MSVC ABI: same headers, same libs
             llvm: true
             packageable: true
@@ -177,6 +179,7 @@ jobs:
           - name: "Windows MSVC (arm64)"
             runner: '["windows-11-vs2026-arm"]'
             preset: windows-msvc-arm64
+            hearth: true
             experimental: true
             msvc: true
             msvc_arch: arm64
@@ -225,7 +228,16 @@ jobs:
       # this on a long-lived self-hosted runner after a toolchain version
       # bump).
       - name: Install LLVM ${{ inputs.llvm_version }} (Windows)
+        id: install_llvm
         if: matrix.llvm && runner.os == 'Windows'
+        # ci-runners#26: this step has repeatedly hung for ~90 minutes (both
+        # self-hosted and windows-latest) with no progress, only ever caught
+        # by the whole job's 90-minute backstop above - which means one
+        # occurrence burns the entire job budget instead of failing fast.
+        # ~15-16 min is the worst historically-observed *legitimate* cost
+        # (before the progress-bar fix below existed); 20 min leaves headroom
+        # over that while still cutting a genuine hang to a fraction of 90.
+        timeout-minutes: 20
         # Windows PowerShell (always present on self-hosted + GitHub-hosted), NOT
         # pwsh/PowerShell 7 which the self-hosted runner image does not ship -
         # same reasoning as ./.github/actions/setup-msvc-env. GitHub-hosted
@@ -236,14 +248,85 @@ jobs:
           LLVM_WINDOWS_VERSION: ${{ inputs.llvm_windows_version }}
         run: |
           $ErrorActionPreference = 'Stop'
-          # Invoke-WebRequest renders a progress bar by default, and updating
-          # it in a non-interactive CI console (no real terminal to redraw
-          # in-place) turns into the dominant cost of the download - observed
-          # turning this step's ~10 minute download+install into 36+ minutes
-          # on a run that otherwise had nothing else wrong with it. This is
-          # the well-known PowerShell fix, not a workaround for anything
-          # ac3forge-specific.
-          $ProgressPreference = 'SilentlyContinue'
+          # DIAGNOSTIC (ci-runners#26): the 2026-09-16/17 hosted-runner hang
+          # left a rename-fallback directory timestamped over a week before
+          # this job ran - on a runner that should be a fresh VM. Not proof
+          # of VM reuse: it's equally consistent with this VM's clock not
+          # having finished NTP sync yet this early in its own boot sequence
+          # (Defender's own event log from the same run was mid-startup too:
+          # cycling LoadingEngine -> ServiceStartedSuccessfully repeatedly,
+          # not a settled "protection is off" state). Actual OS uptime
+          # settles which: seconds/minutes since boot supports "still
+          # settling"; hours/days would instead mean the VM really is being
+          # reused. Logged unconditionally, not just on failure, so we get a
+          # baseline from healthy runs too, not only hung ones.
+          try {
+            $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+            $bootTime = $os.LastBootUpTime
+            $wallClockNow = Get-Date
+            Write-Host "VM boot time: $($bootTime.ToString('u')) - wall clock now: $($wallClockNow.ToString('u')) - uptime: $($wallClockNow - $bootTime)"
+          } catch {
+            Write-Host "Could not read boot time ($_)"
+          }
+          # DRAFT (ci-runners#26): prefers winget over the hand-rolled
+          # Invoke-WebRequest + NSIS '/S' dance, with that original dance
+          # kept as a fallback for any runner without winget - confirmed
+          # absent from actions/runner-images' own software manifest for
+          # the exact hosted image build (win25-vs2026/20260907.229) this
+          # repo last hit the hang on, so hosted availability is unverified
+          # either way; self-hosted only has it once ci-runners provisions
+          # it (Chocolatey, 05-choco-packages.ps1). See the winget-pkgs
+          # manifest for LLVM.LLVM: same installer this step already
+          # fetched directly (same SHA256, still nullsoft/NSIS under the
+          # hood), so winget is not a different binary, just different
+          # orchestration - NOT yet confirmed to fix the underlying hang,
+          # since the manifest has no InstallerSwitches override and most
+          # likely still runs the identical `/S` invocation for install.
+          # What winget changes is the uninstall side - `winget uninstall`
+          # drives the NSIS installer's own Uninstall.exe instead of our
+          # rename-away workaround, which should also clear the registry
+          # uninstall record the rename never touched (see this step's git
+          # history for the registry-orphan hypothesis this is meant to
+          # test). Still timed and polled either way, never a bare call,
+          # because uninstall/install are exactly the shape of operation
+          # (touching every file LLVM ships) that hung for the full
+          # 90 minutes in the original 2026-08-28 incident.
+          function Invoke-TimedProcess {
+            param([string]$FilePath, [string[]]$ArgumentList, [string]$Label, [string]$WatchDir)
+            $sw = [System.Diagnostics.Stopwatch]::StartNew()
+            $p = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -NoNewWindow -PassThru
+            $lastMpCpu = (Get-Process MsMpEng -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CPU)
+            while (-not $p.WaitForExit(30000)) {
+              $mpCpu = (Get-Process MsMpEng -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CPU)
+              $mpDelta = if ($null -ne $mpCpu -and $null -ne $lastMpCpu) { [math]::Round($mpCpu - $lastMpCpu, 1) } else { 'n/a' }
+              $lastMpCpu = $mpCpu
+              $fileInfo = ''
+              if ($WatchDir -and (Test-Path $WatchDir)) {
+                $fileCount = (Get-ChildItem -Path $WatchDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
+                $fileInfo = " files_under=$fileCount"
+              }
+              Write-Host "[$($sw.Elapsed.ToString('mm\:ss'))] $Label still running (pid $($p.Id))$fileInfo MsMpEng_cpu_delta=${mpDelta}s"
+            }
+            Write-Host "[$($sw.Elapsed.ToString('mm\:ss'))] $Label exited: code=$($p.ExitCode)"
+            return $p.ExitCode
+          }
+
+          # Best-effort, kept from the previous approach: harmless if
+          # realtime protection turns out to be off (as observed on the
+          # 2026-09-16/17 hang - see this step's git history), still cheap
+          # insurance on a runner where it's on.
+          try {
+            Add-MpPreference -ExclusionPath "$env:ProgramFiles\LLVM", $env:RUNNER_TEMP, $env:TEMP -ErrorAction Stop
+          } catch {
+            Write-Host "::warning::Could not add Defender exclusion for LLVM ($_) - continuing without it"
+          }
+          try {
+            $mpStatus = Get-MpComputerStatus -ErrorAction Stop
+            Write-Host "Defender: AntivirusEnabled=$($mpStatus.AntivirusEnabled) RealTimeProtectionEnabled=$($mpStatus.RealTimeProtectionEnabled) engine=$($mpStatus.AMEngineVersion)"
+          } catch {
+            Write-Host "Defender: Get-MpComputerStatus unavailable ($_)"
+          }
+
           $version = $env:LLVM_WINDOWS_VERSION
           $pinnedMajor = $version.Split('.')[0]
           $llvmDir = "$env:ProgramFiles\LLVM"
@@ -251,66 +334,130 @@ jobs:
 
           $alreadyCurrent = $false
           if (Test-Path $clangCl) {
-            # Collect ALL of clang-cl's output before taking the first line.
-            # The previous form (`& $clangCl ... | Select-Object -First 1`)
-            # early-terminated the pipeline, which can kill clang-cl before
-            # it finishes writing - the killed process leaves a non-zero
-            # $LASTEXITCODE that GitHub's powershell wrapper propagates as
-            # the STEP's exit code at script end, failing the job with no
-            # error text. A race: only when the skip path runs (LLVM already
-            # current - i.e. only on the self-hosted fleet), and only when
-            # Select-Object wins it. Confirmed on PR #445's clang-cl leg.
+            # Collect ALL of clang-cl's output before taking the first line -
+            # see this step's git history (PR #473) for why an early-
+            # terminated pipeline here previously poisoned $LASTEXITCODE.
             $verOutput = & $clangCl --version 2>&1
             $verLine = $verOutput | Select-Object -First 1
-            # Major only - see this step's leading comment for why the exact
-            # point release isn't the right bar for "is this close enough".
             if ($verLine -match 'version (\d+)\.' -and $matches[1] -eq $pinnedMajor) {
               $alreadyCurrent = $true
             }
           }
 
           if ($alreadyCurrent) {
-            Write-Host "LLVM $($matches[1]).x already installed at $clangCl (pinned major $pinnedMajor) - skipping download/install"
+            Write-Host "LLVM $($matches[1]).x already installed at $clangCl (pinned major $pinnedMajor) - skipping install"
           } else {
-            if (Test-Path $llvmDir) {
-              # NOT a delete. GitHub-hosted windows-latest images ship their
-              # own pre-installed LLVM at this same path, and BOTH
-              # Remove-Item -Recurse -Force and cmd's rd /s /q hung
-              # indefinitely against it - confirmed the hard way, twice, each
-              # running the full 90-minute CI timeout with zero progress
-              # after printing this line. Since two independently-implemented
-              # deletion paths hit the identical wall, this isn't a
-              # PowerShell-recursion-algorithm problem, it's something (most
-              # likely realtime antivirus scanning, possibly a lingering
-              # handle from image provisioning) holding the tree busy on a
-              # per-file basis. A rename is a single directory-level metadata
-              # operation - no per-file access at all - so it sidesteps
-              # whatever that is entirely, and is effectively instant
-              # regardless of tree size (confirmed: 9ms against a real test
-              # tree). The renamed-away copy is simply abandoned: harmless on
-              # windows-latest (VM is discarded after the job) and expected
-              # to be rare on self-hosted post ci-runners#10 (only happens
-              # between an ac3forge pin bump and the next template rebuild).
-              $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
-              Write-Host "Existing LLVM install is not major $pinnedMajor - renaming out of the way ($staleName) before installing $version"
-              Rename-Item -Path $llvmDir -NewName $staleName
-            }
-            $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
-            $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
-            Invoke-WebRequest -Uri $url -OutFile $exe
-            # NSIS installer; /S is a silent install into the default location.
-            $installer = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -NoNewWindow -PassThru
-            if ($installer.ExitCode -ne 0) {
-              throw "LLVM installer exited with code $($installer.ExitCode)"
+            $winget = Get-Command winget -ErrorAction SilentlyContinue
+            if ($winget) {
+              Write-Host "winget found ($($winget.Source)) - using it"
+              if (Test-Path $llvmDir) {
+                Write-Host "Existing LLVM install is not major $pinnedMajor - forcing uninstall via winget before installing $version"
+                # --force here: "Direct run the command and continue with
+                # non security related issues" (winget's own help text) -
+                # the previous plain `uninstall --silent` came back with a
+                # blank exit code in ~2-3s (ci-runners#26 git history), too
+                # fast to be a real per-file uninstall and not a value
+                # PowerShell's process object should ever leave blank.
+                $code = Invoke-TimedProcess -FilePath 'winget' -ArgumentList @('uninstall', '--id', 'LLVM.LLVM', '--silent', '--force') -Label 'winget uninstall' -WatchDir $llvmDir
+                if ($code -ne 0 -and (Test-Path $llvmDir)) {
+                  # winget doesn't recognize a previous install it didn't
+                  # make itself (e.g. a hosted image's pre-baked LLVM, or
+                  # one this same step installed before this change) - fall
+                  # back to the rename workaround rather than leaving a
+                  # dirty directory for winget install to walk into.
+                  Write-Host "::warning::winget uninstall exited $code and $llvmDir still exists - falling back to rename"
+                  $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+                  Rename-Item -Path $llvmDir -NewName $staleName
+                }
+              }
+              # --force on install (ci-runners#26): winget's own --help is
+              # explicit - "By default, install command will check package
+              # installed status and try to perform an upgrade if
+              # applicable. Override with --force to perform a direct
+              # install." A prior occurrence's log showed exactly that
+              # upgrade path triggering ("Found an existing package already
+              # installed. Trying to upgrade the installed package...")
+              # right before hanging - --force bypasses it. Applied
+              # regardless of whether the uninstall above fully succeeded,
+              # since winget's own detection is registry/product-code
+              # based, not directory-presence based, so a rename alone
+              # doesn't necessarily stop it from trying to upgrade.
+              $code = Invoke-TimedProcess -FilePath 'winget' -ArgumentList @('install', '--id', 'LLVM.LLVM', '--exact', '--version', $version, '--silent', '--force', '--accept-source-agreements', '--accept-package-agreements') -Label 'winget install' -WatchDir $llvmDir
+              if ($code -ne 0) {
+                throw "winget install exited with code $code"
+              }
+            } else {
+              Write-Host "winget not found - falling back to direct NSIS install"
+              if (Test-Path $llvmDir) {
+                $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+                Write-Host "Existing LLVM install is not major $pinnedMajor - renaming out of the way ($staleName) before installing $version"
+                $renameSw = [System.Diagnostics.Stopwatch]::StartNew()
+                Rename-Item -Path $llvmDir -NewName $staleName
+                Write-Host "Rename completed in $([math]::Round($renameSw.Elapsed.TotalMilliseconds)) ms"
+              }
+              # Invoke-WebRequest renders a progress bar by default, and
+              # updating it in a non-interactive CI console turns into the
+              # dominant cost of the download - see this step's git history
+              # (PR #673) for the 10-vs-36-minute measurement.
+              $ProgressPreference = 'SilentlyContinue'
+              $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe"
+              $exe = Join-Path $env:RUNNER_TEMP "LLVM-$version-win64.exe"
+              $dlSw = [System.Diagnostics.Stopwatch]::StartNew()
+              Invoke-WebRequest -Uri $url -OutFile $exe
+              Write-Host "[$($dlSw.Elapsed.ToString('mm\:ss'))] download complete: $((Get-Item $exe).Length) bytes"
+              $code = Invoke-TimedProcess -FilePath $exe -ArgumentList @('/S') -Label 'NSIS install' -WatchDir $llvmDir
+              if ($code -ne 0) {
+                throw "LLVM installer exited with code $code"
+              }
             }
           }
 
+          # Neither winget nor the NSIS '/S' install adds this to PATH.
           "$llvmDir\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           # Belt and braces for the $LASTEXITCODE propagation above: nothing
           # after the probe re-runs a native command, so make the step's
           # success explicit rather than inheriting whatever the last native
           # invocation happened to leave behind.
           exit 0
+
+      # DIAGNOSTIC (ci-runners#26, temporary - delete this whole step once
+      # the hang is confirmed fixed or we know what to look for instead):
+      # only fires when the step above actually fails or times out, since a
+      # hung self-hosted VM normally recycles - and a hosted one is simply
+      # discarded - before anyone can look at it by hand. Best-effort: a
+      # failure in here should never mask the real failure above.
+      - name: Diagnose LLVM install timeout (Windows)
+        # always() is required here, not optional: GitHub silently ANDs an
+        # implicit success() onto any `if:` that doesn't itself call
+        # always()/failure()/cancelled() as a function - a plain
+        # `steps.x.outcome == 'failure'` string comparison does NOT count,
+        # so without always() this step silently never runs once the step
+        # above fails. Confirmed the hard way: this exact bug cost the
+        # 2026-09-16/17 hang's forensics (step showed completed/skipped).
+        if: always() && runner.os == 'Windows' && (steps.install_llvm.outcome == 'failure' || steps.install_llvm.outcome == 'cancelled')
+        shell: powershell
+        timeout-minutes: 3
+        continue-on-error: true
+        run: |
+          Write-Host "=== Recent Windows Defender operational events ==="
+          Get-WinEvent -LogName 'Microsoft-Windows-Windows Defender/Operational' -MaxEvents 100 -ErrorAction SilentlyContinue |
+            Select-Object TimeCreated, Id, LevelDisplayName, Message |
+            Format-List | Out-String -Width 300 | Write-Host
+
+          Write-Host "=== Top CPU processes ==="
+          Get-Process | Sort-Object CPU -Descending | Select-Object -First 15 Name, Id, CPU, Handles, WorkingSet |
+            Format-Table -AutoSize | Out-String -Width 300 | Write-Host
+
+          Write-Host "=== LLVM install dir state ==="
+          $llvmDir = "$env:ProgramFiles\LLVM"
+          if (Test-Path $llvmDir) {
+            $count = (Get-ChildItem -Path $llvmDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
+            Write-Host "files under ${llvmDir}: $count"
+          } else {
+            Write-Host "${llvmDir} does not exist"
+          }
+          Get-ChildItem -Path "$env:ProgramFiles" -Filter 'LLVM*' -ErrorAction SilentlyContinue |
+            Select-Object Name, LastWriteTime | Format-Table -AutoSize | Out-String -Width 300 | Write-Host
 
       - name: Install ffmpeg (Windows)
         if: matrix.gold_reference && runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
@@ -463,6 +610,7 @@ jobs:
           # `${{ matrix.gui }}` used to evaluate on this platform.
           gui: "false"
           crucible: ${{ matrix.crucible }}
+          hearth: ${{ matrix.hearth }}
           version-tag: ${{ inputs.version_tag }}
           # No Windows leg needs a GCC version to assert - see build-leg's
           # own toolchain-assert step, which only reads this inside its

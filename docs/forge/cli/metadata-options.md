@@ -753,7 +753,7 @@ only *that* it did. `ac3cli help exit-codes` prints the same table.
 | `2` | Input — unreadable, absent, or not a valid AC-3/E-AC-3/WAV/ADM file, or a stream that stopped decoding part-way. |
 | `3` | Output — the destination could not be created, written or finalized. |
 | `4` | Unavailable here — this build or this machine cannot run the command at all (no audio backend, no capture/render endpoint, an endpoint that refuses the format, a library this build was not configured with). The same command line may well succeed elsewhere. |
-| `5` | Runtime — the run started and then failed for none of the above reasons: a capture device that stopped delivering audio (the `record`/`live` watchdog), a loudness measurement with nothing above the gate, a signing pass that could not complete. |
+| `5` | Runtime — the run started and then failed for none of the above reasons: a capture device that stopped delivering audio (the `record`/`live` watchdog), an output device that went away mid-playback (`play`, `monitor`, `identify`, `live`'s output legs), a loudness measurement with nothing above the gate, a signing pass that could not complete. |
 | `6` | A QC gate failed. Distinct from `2` so a CI step can tell "the stream is out of spec" (a result) from "`qc` could not read the file" (a fault). |
 | `7` | Internal — an exception escaped a command. Never expected. |
 

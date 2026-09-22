@@ -33,6 +33,13 @@ struct SinkRecord {
     std::uint32_t max_dynamic_objects = 0;
     bool started = false;
     bool stopped = false;
+    // running()'s answer - set true by a successful start() and left for a
+    // test to flip false directly, to script a device loss (see the "lost
+    // running()" output_stage cases). Not touched by stop(): a real sink is
+    // already not running() by the time anything calls stop() on it, so a
+    // test scripting "started fresh, then lost, THEN torn down" sets this
+    // itself rather than relying on stop() to have done it.
+    bool running = false;
     bool refuse_start = false;
     // submit() returns false this many times before accepting, to exercise
     // the stage's patience and its underrun count.
@@ -60,6 +67,7 @@ public:
         record_->sample_rate = sample_rate;
         record_->eac3 = eac3;
         record_->started = true;
+        record_->running = true;
         return {};
     }
     bool submit(std::span<const std::byte> burst) override {
@@ -71,6 +79,10 @@ public:
         ++record_->submits;
         record_->bytes += burst.size();
         return true;
+    }
+    bool running() const override {
+        const std::lock_guard lock(record_->mutex);
+        return record_->running;
     }
     void stop() override {
         const std::lock_guard lock(record_->mutex);
@@ -97,6 +109,7 @@ public:
         record_->channel_mask = channel_mask;
         record_->low_latency = low_latency;
         record_->started = true;
+        record_->running = true;
         return {};
     }
     bool submit(std::span<const float> interleaved) override {
@@ -113,6 +126,10 @@ public:
     std::size_t queued_frames() const override {
         const std::lock_guard lock(record_->mutex);
         return record_->queued_frames;
+    }
+    bool running() const override {
+        const std::lock_guard lock(record_->mutex);
+        return record_->running;
     }
     void stop() override {
         const std::lock_guard lock(record_->mutex);
@@ -138,6 +155,7 @@ public:
         record_->static_channels = static_channels;
         record_->max_dynamic_objects = max_dynamic_objects;
         record_->started = true;
+        record_->running = true;
         return {};
     }
     bool submit(std::span<const ac3::audio::DynamicObjectUpdate> dynamic,
@@ -156,6 +174,10 @@ public:
             record_->samples += d.pcm.size();
         }
         return true;
+    }
+    bool running() const override {
+        const std::lock_guard lock(record_->mutex);
+        return record_->running;
     }
     void stop() override {
         const std::lock_guard lock(record_->mutex);

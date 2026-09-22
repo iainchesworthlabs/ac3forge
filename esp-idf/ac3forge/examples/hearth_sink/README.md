@@ -740,7 +740,11 @@ down, so the board's own attempt gives up after 30 s and it listens for
 Improv. `tools/checks/improv_qemu.py` then asks the board its state, gives it
 a network, and brings the link up while the board waits for an address. The
 board must answer with its page, `http://10.0.2.15/`, then advertise itself
-and start the player, which the test server plays to as above. The script
+and start the player, which the test server plays to as above. The network it
+is given has a 13-byte name and the board is then told to take a 10-character
+one, so that the length byte in front of each is a CR one way and an LF the
+other: a console that converted line endings, as ESP-IDF's default does and
+`sdkconfig.defaults` does not, corrupts exactly those packets. The script
 also boots `sdkconfig.ci-wifi`, the player on WiFi with nothing stored and
 nothing built in. That board must boot once, with its control surface up, and
 answer Improv's state and device requests. It is never given a network: QEMU

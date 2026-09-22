@@ -272,6 +272,47 @@ TEST_CASE("output stage: a probe that changes the answer switches sinks mid-stre
     CHECK(devices->pcm_sinks.size() == 2);
 }
 
+TEST_CASE("output stage: a sink that lost running is restarted on a reprobe at the same endpoint",
+         "[crucible][output_stage]") {
+    auto devices = std::make_shared<FakeDevices>();
+    devices->devices = {null_sink(), hdmi_avr()};
+    OutputStage stage(config_over(devices));
+    CHECK(stage.reprobe(false).mode == OutputMode::kDdPlus51);
+    REQUIRE(devices->burst_sinks.size() == 1);
+
+    // The device goes away, but the endpoint stays listed and still answers
+    // the same probe the same way - a driver reset or a format renegotiation
+    // the sink itself does not survive, as opposed to an outright unplug.
+    devices->burst_sinks[0]->running = false;
+
+    // Same facts, so the policy names the identical mode/endpoint again -
+    // exactly the case that used to read as "nothing changed" and keep the
+    // dead sink forever.
+    const auto& status = stage.reprobe(false);
+    CHECK(status.mode == OutputMode::kDdPlus51);
+    CHECK(status.running);
+    CHECK(devices->burst_sinks[0]->stopped);    // the dead one was torn down
+    REQUIRE(devices->burst_sinks.size() == 2);  // and a fresh one took its place
+    CHECK(devices->burst_sinks[1]->started);
+}
+
+TEST_CASE("output stage: headphones survive a reprobe before the spatial sink has ever started",
+         "[crucible][output_stage]") {
+    auto devices = std::make_shared<FakeDevices>();
+    devices->devices = {null_sink(), headphones_spatial()};
+    OutputStage stage(config_over(devices, std::nullopt, true));
+    CHECK(stage.reprobe(true).mode == OutputMode::kHeadphones);
+    REQUIRE(devices->object_sinks.size() == 1);
+    CHECK_FALSE(devices->object_sinks[0]->started);  // lazy - see ensure_spatial()
+
+    // Nothing has been submitted yet, so the spatial sink was never asked to
+    // start and is not itself "lost" - a reprobe over the same facts must
+    // not tear it down and rebuild it just because it never opened.
+    stage.reprobe(true);
+    CHECK(devices->object_sinks.size() == 1);
+    CHECK_FALSE(devices->object_sinks[0]->stopped);
+}
+
 TEST_CASE("output stage: a sink that refuses to start leaves no output and a reason", "[crucible][output_stage]") {
     auto devices = std::make_shared<FakeDevices>();
     devices->devices = {null_sink(), hdmi_avr()};

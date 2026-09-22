@@ -29,6 +29,9 @@
 //
 //   passthrough_probe                         list endpoints and what they accept
 //   passthrough_probe <id> <file.ec3|.ac3> [seconds]   bitstream it, looping (default 25 s)
+//
+// If the device goes away mid-stream (the cable pulled, the receiver switched
+// off), the sink stops itself and the probe stops with it, says so, and exits 5.
 
 #include <chrono>
 #include <cstdio>
@@ -45,12 +48,20 @@
 
 namespace {
 
-void submit_paced(ac3::audio::PassthroughSink& sink, std::span<const std::byte> burst) {
-    // submit() returns false when the sink is ahead of real time; the
-    // caller waits, exactly as the sink documents.
+bool submit_paced(ac3::audio::PassthroughSink& sink, std::span<const std::byte> burst,
+                  std::chrono::steady_clock::time_point until) {
+    // submit() returns false when the sink is ahead of real time, and the
+    // caller waits, exactly as the sink documents. It also returns false once
+    // the sink has stopped itself because its device went away, which no
+    // wait changes, so that ends the wait; so does `until`, which a sink that
+    // takes nothing would otherwise hold this past.
     while (!sink.submit(burst)) {
+        if (!sink.running() || std::chrono::steady_clock::now() >= until) {
+            return false;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
+    return true;
 }
 
 }  // namespace
@@ -119,7 +130,8 @@ int main(int argc, char** argv) {
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
     std::size_t bursts = 0;
     std::size_t loops = 0;
-    while (std::chrono::steady_clock::now() < until) {
+    bool taking = true;
+    while (taking && std::chrono::steady_clock::now() < until) {
         for (const auto& unit : *units) {
             if (std::chrono::steady_clock::now() >= until) {
                 break;
@@ -131,10 +143,10 @@ int main(int argc, char** argv) {
                     sink.stop();
                     return 4;
                 }
-                if (*burst) {
-                    submit_paced(sink, **burst);
-                    ++bursts;
+                if (!*burst) {
+                    continue;  // the packer is still gathering this burst
                 }
+                taking = submit_paced(sink, **burst, until);
             } else {
                 const auto burst = ac3::iec61937::wrap_frame(unit);
                 if (!burst) {
@@ -142,14 +154,36 @@ int main(int argc, char** argv) {
                     sink.stop();
                     return 4;
                 }
-                submit_paced(sink, *burst);
-                ++bursts;
+                taking = submit_paced(sink, *burst, until);
             }
+            if (!taking) {
+                break;
+            }
+            ++bursts;
         }
         ++loops;
     }
     const auto stats = sink.stats();
+    // Not running, having not been stopped: the device went away under the
+    // stream, and the sink stopped itself.
+    const bool lost = !sink.running();
     sink.stop();
+    if (lost) {
+        std::string endpoint = id;
+        for (const auto& d : *devices) {
+            if (d.id == id) {
+                endpoint = "\"" + d.name + "\" (" + id + ")";
+            }
+        }
+        std::printf("stopped: %s went away mid-stream (unplugged, switched off, disabled, or "
+                    "taken by the system) after %zu bursts; sink reports %llu submitted, "
+                    "%llu rendered, %llu underruns\n",
+                    endpoint.c_str(), bursts,
+                    static_cast<unsigned long long>(stats.bursts_submitted),
+                    static_cast<unsigned long long>(stats.bursts_rendered),
+                    static_cast<unsigned long long>(stats.underruns));
+        return 5;
+    }
     std::printf("done: %zu bursts over %zu loop(s); sink reports %llu submitted, %llu rendered, "
                 "%llu underruns\n",
                 bursts, loops, static_cast<unsigned long long>(stats.bursts_submitted),

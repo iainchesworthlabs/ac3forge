@@ -1089,6 +1089,11 @@ void run_loop() {
                         kInteractiveObjects, kAmbientObjects);
 
     std::uint64_t frames = 0;
+    // Set the moment sink.running() is found false, so the log line at the
+    // very end of this function (and any future reader) can tell "the user
+    // pressed stop" apart from "the device disappeared" - the two both end
+    // this loop the same way otherwise.
+    bool sink_lost = false;
     while (!g_stop_requested.load(std::memory_order_acquire)) {
         // Placement is advanced FIRST, before the tone synthesis below reads
         // it for distance_attenuation() - this frame's positions have to be
@@ -1345,8 +1350,24 @@ void run_loop() {
                                     (*push_result)->size(), ac3::iec61937::kEac3BurstBytes);
             }
             int retry_count = 0;
-            while (!sink.submit(**push_result)) {
+            bool submitted = false;
+            while (!(submitted = sink.submit(**push_result))) {
                 if (g_stop_requested.load(std::memory_order_acquire)) {
+                    break;
+                }
+                // running() turns false, not just submit() false-forever,
+                // once the device goes away under the stream - MainActivity's
+                // own underrun-rising check (reconcileReceiverState) stops
+                // noticing at exactly this point, because a sink that has
+                // stopped running() refuses every submit() without ever
+                // reaching the render code that counts a real underrun, so
+                // the count it polls never rises again either. This is what
+                // ends the loop instead.
+                if (!sink.running()) {
+                    __android_log_print(ANDROID_LOG_WARN, kLogTag,
+                                        "frame %llu: output sink lost its device - stopping "
+                                        "the encode loop",
+                                        static_cast<unsigned long long>(frames));
                     break;
                 }
                 if (++retry_count == 250) {  // ~500ms of retrying one burst
@@ -1356,6 +1377,10 @@ void run_loop() {
                                         retry_count, static_cast<unsigned long long>(frames));
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+            if (!submitted && !sink.running()) {
+                sink_lost = true;
+                break;  // ends the outer while(!g_stop_requested) loop below
             }
         } else if (frames == 0) {
             __android_log_print(ANDROID_LOG_WARN, kLogTag,
@@ -1421,8 +1446,15 @@ void run_loop() {
     // stopped loop used to leave the waiting screen drawing a phantom orbit
     // phased off whenever the device happened to boot.
     g_start_time_ns.store(0, std::memory_order_relaxed);
+    // g_running going false here is how nativeIsLiveCursorRunning reports a
+    // sink_lost exit, the same way it already reports a user-requested stop
+    // - MainActivity's reconcileReceiverState() treats "not running" as one
+    // case regardless of which of the two this was, and probes fresh from
+    // there (see that function's own comment).
     g_running.store(false, std::memory_order_release);
-    __android_log_print(ANDROID_LOG_INFO, kLogTag, "encode loop stopped");
+    __android_log_print(ANDROID_LOG_INFO, kLogTag,
+                        sink_lost ? "encode loop stopped: output device lost"
+                                  : "encode loop stopped");
 }
 
 }  // namespace

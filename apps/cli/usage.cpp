@@ -751,8 +751,9 @@ void print_exit_codes() {
     fmt::println("  {}  runtime: the run started and then failed for none of the above reasons",
                  kExitRuntime);
     fmt::println("     - a capture device that stopped delivering audio (the record/live");
-    fmt::println("     watchdog), a loudness measurement with nothing above the gate, a signing");
-    fmt::println("     pass that could not complete.");
+    fmt::println("     watchdog), an output device that went away mid-playback, a loudness");
+    fmt::println("     measurement with nothing above the gate, a signing pass that could not");
+    fmt::println("     complete.");
     fmt::println("  {}  a QC gate failed. Distinct from {} so a CI step can tell 'the stream is",
                  kExitQcGate, kExitInput);
     fmt::println("     out of spec' (a result) from 'qc could not read the file' (a fault).");

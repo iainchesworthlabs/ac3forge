@@ -32,8 +32,10 @@
 //      command line.
 //   5  the run started and then failed for a reason that is none of the
 //      above - a capture device that stopped delivering audio mid-session
-//      (the live/record watchdog), a loudness measurement with nothing
-//      above the gate to measure, a signing pass that could not complete.
+//      (the live/record watchdog), an output device that went away
+//      mid-playback (play, monitor, identify, live's output legs), a loudness
+//      measurement with nothing above the gate to measure, a signing pass
+//      that could not complete.
 //   6  a QC gate failed. `qc`'s own long-standing contract - "exit code is 0
 //      only when every requested gate passes" - is unchanged; this just
 //      names the non-zero half, so a CI step can tell "the stream is out of

@@ -169,6 +169,15 @@ bool play_file(const std::string& path) {
                 sink.stop();
                 return false;
             }
+            // The same kNoProgressTimeout below already ends this loop
+            // either way, but running() says WHY at once - a lost device
+            // is confirmed, not merely slow to drain.
+            if (!sink.running()) {
+                __android_log_print(ANDROID_LOG_ERROR, kLogTag,
+                                    "output device disappeared - giving up");
+                sink.stop();
+                return false;
+            }
             if (std::chrono::steady_clock::now() - blocked_since > kNoProgressTimeout) {
                 __android_log_print(ANDROID_LOG_ERROR, kLogTag,
                                     "sink accepted nothing for %llds - giving up",
@@ -187,6 +196,11 @@ bool play_file(const std::string& path) {
     while (sink.stats().bursts_rendered < sink.stats().bursts_submitted) {
         if (g_replay_stop.load(std::memory_order_relaxed)) {
             __android_log_print(ANDROID_LOG_INFO, kLogTag, "stop requested during drain");
+            break;
+        }
+        if (!sink.running()) {
+            __android_log_print(ANDROID_LOG_WARN, kLogTag,
+                                "output device disappeared during drain");
             break;
         }
         const auto rendered = sink.stats().bursts_rendered;

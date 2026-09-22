@@ -80,7 +80,11 @@ std::vector<std::size_t> wait_readable(const std::vector<int>& sockets, int time
         polled.push_back({.fd = socket, .events = POLLIN, .revents = 0});
     }
     std::vector<std::size_t> readable;
-    if (polled.empty() || poll(polled.data(), polled.size(), timeout_ms) <= 0) {
+    // nfds_t is 32-bit on macOS and 64-bit on glibc, so the count is cast rather than left to
+    // an implicit conversion that one of the two warns about. One entry per socket, and a
+    // browse holds one per interface, so nothing can be lost.
+    if (polled.empty() ||
+        poll(polled.data(), static_cast<nfds_t>(polled.size()), timeout_ms) <= 0) {
         return readable;
     }
     for (std::size_t i = 0; i < polled.size(); ++i) {
