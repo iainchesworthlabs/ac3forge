@@ -29,8 +29,23 @@ ApplicationWindow {
 
     readonly property var pageOrder: ["play", "media", "speakers", "decoder", "network", "settings"]
     property string page: "play"
+    // A capture run (main.cpp, --shot) sets this before the first event-loop
+    // turn, so the first-run dialog never lands in a screenshot that did not
+    // ask for it.
+    property bool suppressFirstRun: false
 
-    Component.onCompleted: HearthController.start()
+    Component.onCompleted: {
+        HearthController.start();
+        // One turn later, so main.cpp's setProperty("suppressFirstRun", ...)
+        // - which runs after this handler and before the event loop starts -
+        // has already landed (Crucible's own Main.qml carries the identical
+        // comment for the identical reason).
+        Qt.callLater(function() {
+            if (!HearthController.firstRunSeen && !window.suppressFirstRun) {
+                firstRun.open();
+            }
+        });
+    }
 
     // The one place that opens the output picker: the header's own summary
     // below, main.cpp's `--open-output-picker` debug flag (there is no
@@ -189,4 +204,7 @@ ApplicationWindow {
         objectName: "outputPicker"
         onNetworkPageRequested: window.page = "network"
     }
+
+    FirstRunDialog { id: firstRun; onOpenSpeakers: window.page = "speakers" }
+    function openFirstRun() { firstRun.open(); }
 }
