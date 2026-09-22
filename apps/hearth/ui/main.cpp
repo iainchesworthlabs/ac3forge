@@ -5,6 +5,9 @@
 // the window after it has settled and quits, so a headless check (or the
 // screenshot script, later) can see it; `--page <name>` picks the page it
 // opens on first - play, media, speakers, decoder, network or settings.
+// `--page shortcuts` opens the keyboard-shortcuts reference (issue #830)
+// over Play, the same way Crucible's `--page about`/`--page licences` open
+// their own dialogs over Room.
 //
 // Translations and the first-run dialog are not wired up yet: this slice is
 // the shell and the Play page over the real engine, with the other five
@@ -85,7 +88,10 @@ int main(int argc, char** argv) {
     if (engine.rootObjects().isEmpty()) {
         return 1;
     }
-    if (!page.isEmpty()) {
+    if (page == QLatin1String("shortcuts")) {  // over Play, for a capture
+        engine.rootObjects().first()->setProperty("page", QStringLiteral("play"));
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openShortcuts");
+    } else if (!page.isEmpty()) {
         engine.rootObjects().first()->setProperty("page", page);
     }
 

@@ -42,6 +42,7 @@ ApplicationWindow {
     // when nothing is sounding the tone, so this needs no guard on which
     // page is showing.
     Shortcut { sequence: "Escape"; onActivated: HearthController.stopIdentify() }
+    Shortcut { sequence: StandardKey.HelpContents; onActivated: shortcuts.open() }
 
     header: Rectangle {
         color: Theme.surface
@@ -86,8 +87,21 @@ ApplicationWindow {
                 ]
                 onSelected: function(value) { window.page = value; }
             }
+
+            Button {
+                objectName: "helpButton"
+                text: "?"
+                implicitWidth: 30
+                onClicked: shortcuts.open()
+                Accessible.name: qsTr("Keyboard shortcuts")
+            }
         }
     }
+
+    ShortcutsDialog { id: shortcuts }
+    // For `--page shortcuts` (main.cpp): a screenshot with the dialog open.
+    function openShortcuts() { shortcuts.open(); }
+    property alias shortcutsDialog: shortcuts
 
     StackLayout {
         anchors.fill: parent
