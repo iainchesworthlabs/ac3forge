@@ -808,7 +808,9 @@ The sections below contain the complete change list and fixes.
   cases ran there and nowhere else, and neither Windows nor macOS had ever compiled
   them in CI. Each leg now configures with vcpkg's `hearth` feature, and `ctest` runs
   those cases with the rest of the suite. A leg with the feature takes a vcpkg cache key
-  of its own, since its install set is five ports larger.
+  of its own, since its install set is five ports larger. The first macOS build found
+  one error: Sendspin's mDNS discovery passed `poll()` a `size_t` count, which narrows
+  to macOS's 32-bit `nfds_t`. It is now cast.
 - **A change under `apps/hearth/` now lights the three desktop lanes**, not every lane.
   It was an unmapped path, which the classifier deliberately treats as "build
   everything"; it is one desktop program built on Windows, Linux and macOS, like
