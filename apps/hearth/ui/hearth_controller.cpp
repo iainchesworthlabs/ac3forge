@@ -3,6 +3,7 @@
 #include <QFileInfo>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 
@@ -165,6 +166,7 @@ constexpr int kPollMs = 60;
 [[nodiscard]] QVariantMap decoder_settings_to_map(const ac3::hearth::DecoderSettings& settings) {
     QVariantMap map;
     map[QStringLiteral("mode")] = mode_name(settings.mode);
+    map[QStringLiteral("rfCeilingDb")] = settings.rf_ceiling_db;
     map[QStringLiteral("drcCut")] = settings.drc_cut;
     map[QStringLiteral("drcBoost")] = settings.drc_boost;
     map[QStringLiteral("heavyCompression")] = settings.heavy_compression;
@@ -187,6 +189,9 @@ constexpr int kPollMs = 60;
     ac3::hearth::DecoderSettings out = base;
     if (map.contains(QStringLiteral("mode"))) {
         out.mode = mode_from_name(map[QStringLiteral("mode")].toString());
+    }
+    if (map.contains(QStringLiteral("rfCeilingDb"))) {
+        out.rf_ceiling_db = map[QStringLiteral("rfCeilingDb")].toDouble();
     }
     if (map.contains(QStringLiteral("drcCut"))) {
         out.drc_cut = map[QStringLiteral("drcCut")].toDouble();
@@ -361,6 +366,12 @@ void HearthController::previous() {
     }
 }
 
+void HearthController::seek(qlonglong ms) {
+    if (engine_ && ms >= 0) {
+        engine_->seek(std::chrono::milliseconds(ms));
+    }
+}
+
 void HearthController::playItem(int index) {
     if (engine_ && index >= 0) {
         engine_->play_item(static_cast<std::size_t>(index));
@@ -422,6 +433,18 @@ void HearthController::poll() {
         error_ = new_error;
         output_format_ = std::move(new_output_format);
         emit stateChanged();
+    }
+
+    // Read apart from status() - Engine::position()'s own comment says why -
+    // and on its own signal, so the scrubber does not have to sit through
+    // queue-row rebuilding sixty times a second just to hear it move.
+    const ac3::hearth::PlayPosition position = engine_->position();
+    const qlonglong new_position_ms = static_cast<qlonglong>(position.heard.count());
+    const qlonglong new_duration_ms = static_cast<qlonglong>(position.duration.count());
+    if (new_position_ms != position_ms_ || new_duration_ms != duration_ms_) {
+        position_ms_ = new_position_ms;
+        duration_ms_ = new_duration_ms;
+        emit positionChanged();
     }
 
     const QVariantMap new_decoder_settings = decoder_settings_to_map(status.settings);
@@ -633,6 +656,23 @@ void HearthController::useDeviceOrder() {
     if (patch) {
         engine_->set_routing(*patch);
     }
+}
+
+bool HearthController::firstRunSeen() const {
+    return settings_.value(QStringLiteral("firstRun/seen"), false).toBool();
+}
+
+void HearthController::setFirstRunSeen(bool seen) {
+    if (seen == firstRunSeen()) {
+        return;
+    }
+    if (seen) {
+        settings_.setValue(QStringLiteral("firstRun/seen"), true);
+    } else {
+        settings_.remove(QStringLiteral("firstRun/seen"));
+    }
+    settings_.sync();  // survive a hard exit
+    emit firstRunSeenChanged();
 }
 
 }  // namespace ac3::hearth::ui
