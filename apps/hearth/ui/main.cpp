@@ -4,7 +4,9 @@
 // QML up and offers Crucible's own debugging aid: `--shot <path.png>` grabs
 // the window after it has settled and quits, so a headless check (or the
 // screenshot script, later) can see it; `--page <name>` picks the page it
-// opens on first - play, media, speakers, decoder, network or settings.
+// opens on first - play, media, speakers, decoder, network or settings;
+// `--open-output-picker` opens the output picker dialog (OutputPicker.qml)
+// before the grab, since nothing else drives its mouse click headlessly.
 //
 // Translations and the first-run dialog are not wired up yet: this slice is
 // the shell and the Play page over the real engine, with the other five
@@ -70,6 +72,9 @@ int main(int argc, char** argv) {
     QString shot_path;
     QString page;
     const QStringList args = QCoreApplication::arguments();
+    // A bare flag, not a "--name value" pair: checked separately so it can
+    // be the last argument with nothing following it.
+    const bool open_output_picker = args.contains(QLatin1String("--open-output-picker"));
     for (qsizetype i = 1; i + 1 < args.size(); ++i) {
         if (args[i] == QLatin1String("--shot")) {
             shot_path = args[i + 1];
@@ -87,6 +92,9 @@ int main(int argc, char** argv) {
     }
     if (!page.isEmpty()) {
         engine.rootObjects().first()->setProperty("page", page);
+    }
+    if (open_output_picker) {
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openOutputPicker");
     }
 
     if (!shot_path.isEmpty()) {

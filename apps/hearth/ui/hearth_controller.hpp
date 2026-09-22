@@ -23,10 +23,14 @@ class Engine;
 //
 // This first slice owns the engine directly, with a device PCM sink
 // (apps/hearth/engine/pcm_sink.hpp) and a loader that reads raw
-// `.ac3`/`.ec3` files (item_loader.hpp). The output picker, the speaker
-// layout and the decoder settings pages are not built yet, so the sink is
-// the platform's default device and the layout is a fixed "2.0" until they
-// are.
+// `.ac3`/`.ec3` files (item_loader.hpp). The layout is a fixed "2.0" until
+// the Speakers page grows a layout picker of its own (its speakerLabels
+// property's own comment says why). The engine is given every render
+// endpoint to decide between (EngineOutputs::endpoints,
+// apps/hearth/engine/output_selector.hpp) rather than one fixed sink, so the
+// output picker's "Play here" can name an endpoint - no passthrough sink is
+// given yet, so every item still decodes to PCM, on the platform's default
+// device until a picker row is chosen.
 
 namespace ac3::hearth::ui {
 
@@ -73,6 +77,11 @@ class HearthController : public QObject {
     Q_PROPERTY(QVariantList routing READ routing NOTIFY speakerSetupChanged)
     Q_PROPERTY(int routingOutputs READ routingOutputs NOTIFY speakerSetupChanged)
     Q_PROPERTY(QString deviceName READ deviceName NOTIFY speakerSetupChanged)
+    // The open device's own endpoint id - what the output picker (A5's
+    // output-picker dialog) compares each row's own id against to say which
+    // one is "playing here", rather than matching on the name, which two
+    // distinct endpoints can share.
+    Q_PROPERTY(QString currentDeviceId READ currentDeviceId NOTIFY speakerSetupChanged)
     // Each render layout slot's own speaker name ("L", "C", "LFE", ...),
     // from the layout this engine was built with - fixed for this slice
     // (Player::layout()'s own comment says why there is no live layout
@@ -89,6 +98,19 @@ class HearthController : public QObject {
     // corner those small speakers share (crossoverHz). Same NOTIFY, same
     // reason as speakerLabels.
     Q_PROPERTY(QVariantList speakerSmall READ speakerSmall NOTIFY speakerSetupChanged)
+
+    // --- output picker (Main.qml's header, OutputPicker.qml) -------------
+    // This machine's own render endpoints, refreshed on request rather than
+    // polled: refreshOutputDevices() is what the dialog calls when it opens,
+    // since enumerating them can probe each one and is not free enough to
+    // read on every poll() tick. Each entry: id, name, isDefault (bool),
+    // channels (int, 0 for "not reported"), speakers (the mask's speaker
+    // names, "" for "not reported"), sampleRates (a list of Hz, empty for
+    // "not reported"), supportsAc3, supportsEac3 (bool, ac3::audio::
+    // RenderDeviceInfo's own probe of IEC 61937 passthrough in exclusive
+    // mode - read here, not acted on: no passthrough sink is wired into this
+    // engine yet).
+    Q_PROPERTY(QVariantList outputDevices READ outputDevices NOTIFY outputDevicesChanged)
 
 public:
     explicit HearthController(QObject* parent = nullptr);
@@ -133,6 +155,7 @@ public:
     [[nodiscard]] QVariantList routing() const { return routing_; }
     [[nodiscard]] int routingOutputs() const { return routing_outputs_; }
     [[nodiscard]] QString deviceName() const { return device_name_; }
+    [[nodiscard]] QString currentDeviceId() const { return device_id_; }
     [[nodiscard]] QStringList speakerLabels() const { return speaker_labels_; }
     [[nodiscard]] QVariantList speakerSmall() const { return speaker_small_; }
 
@@ -150,11 +173,27 @@ public:
     // order" button.
     Q_INVOKABLE void useDeviceOrder();
 
+    [[nodiscard]] QVariantList outputDevices() const { return output_devices_; }
+    // Enumerates this machine's render endpoints again and replaces
+    // outputDevices() with the result - the dialog's own onOpened. Runs on
+    // the calling (GUI) thread and can probe each endpoint in turn
+    // (ac3::audio::enumerate_render_devices's own comment), so it is not
+    // bound to a poll tick; a dialog open is an occasional, deliberate ask,
+    // not a per-frame one.
+    Q_INVOKABLE void refreshOutputDevices();
+    // Pins playback to `deviceId` (one of outputDevices()'s own "id"
+    // fields) and decodes to it - the picker's "Play here" on a "this
+    // computer" row. The item playing is decided again and moves there if
+    // it is not already (Engine::set_output_preferences's own comment);
+    // what changed, or why nothing did, shows up in noteText().
+    Q_INVOKABLE void selectOutputDevice(const QString& deviceId);
+
 signals:
     void queueChanged();
     void stateChanged();
     void decoderSettingsChanged();
     void speakerSetupChanged();
+    void outputDevicesChanged();
 
 private:
     void poll();
@@ -178,8 +217,11 @@ private:
     QVariantList routing_;
     int routing_outputs_ = 0;
     QString device_name_;
+    QString device_id_;
     QStringList speaker_labels_;
     QVariantList speaker_small_;
+
+    QVariantList output_devices_;
 };
 
 }  // namespace ac3::hearth::ui

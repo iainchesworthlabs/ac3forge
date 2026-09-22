@@ -32,6 +32,13 @@ ApplicationWindow {
 
     Component.onCompleted: HearthController.start()
 
+    // The one place that opens the output picker: the header's own summary
+    // below, main.cpp's `--open-output-picker` debug flag (there is no
+    // other way to drive a mouse click headlessly for a screenshot), and -
+    // once their own issues build them - the Play page's signal-path
+    // "Choose..." button and the Speakers page's "SETUP FOR" device summary.
+    function openOutputPicker() { outputPicker.open(); }
+
     Shortcut { sequence: "Ctrl+1"; onActivated: window.page = "play" }
     Shortcut { sequence: "Ctrl+2"; onActivated: window.page = "media" }
     Shortcut { sequence: "Ctrl+3"; onActivated: window.page = "speakers" }
@@ -58,14 +65,78 @@ ApplicationWindow {
                 font.bold: true
             }
 
-            Text {
+            // The output summary, opening the output picker (#828): where
+            // this used to be plain text, it is now a bordered, focusable
+            // control - a Rectangle + MouseArea rather than a native Button,
+            // for the same reason PlayPage.qml's queue rows and Speakers.qml's
+            // routing cells are (qml-native-button-repeater-offscreen-hang;
+            // this one is not inside a Repeater, but the family keeps the
+            // idiom for every custom-shaped clickable control regardless).
+            // The Play page's own signal-path "Choose..." button and the
+            // Speakers page's "SETUP FOR" summary are meant to open the same
+            // dialog too, once their own issues build them - this is the
+            // first of the three.
+            Rectangle {
+                id: outputSummary
+                objectName: "outputSummaryButton"
                 Layout.fillWidth: true
-                text: HearthController.outputReason.length > 0
-                      ? HearthController.outputReason : qsTr("no output chosen yet")
-                color: Theme.textMuted
-                font.pixelSize: Theme.fontSmall
-                elide: Text.ElideRight
-                horizontalAlignment: Text.AlignHCenter
+                Layout.preferredHeight: summaryRow.implicitHeight + Theme.gap
+                color: outputSummaryArea.containsMouse ? Theme.neutral200 : Theme.bg
+                border.color: Theme.border
+                border.width: 1
+                radius: Theme.radius
+
+                Accessible.role: Accessible.Button
+                Accessible.name: summaryLabel.text
+                Accessible.description: qsTr("Opens where Hearth plays")
+                Accessible.onPressAction: window.openOutputPicker()
+
+                activeFocusOnTab: true
+                Keys.onSpacePressed: window.openOutputPicker()
+                Keys.onReturnPressed: window.openOutputPicker()
+
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: -Theme.focusRingOffset
+                    visible: outputSummary.activeFocus
+                    color: "transparent"
+                    border.color: Theme.focusRing
+                    border.width: Theme.focusRingWidth
+                    z: 100
+                }
+
+                RowLayout {
+                    id: summaryRow
+                    anchors.fill: parent
+                    anchors.leftMargin: Theme.gap
+                    anchors.rightMargin: Theme.gap
+                    spacing: Theme.gap / 2
+
+                    Text {
+                        id: summaryLabel
+                        Layout.fillWidth: true
+                        text: HearthController.outputReason.length > 0
+                              ? HearthController.outputReason : qsTr("no output chosen yet")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                        elide: Text.ElideRight
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    Text {
+                        text: "›"
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                    }
+                }
+
+                MouseArea {
+                    id: outputSummaryArea
+                    objectName: "outputSummaryArea"
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: window.openOutputPicker()
+                }
             }
 
             SegmentedControl {
@@ -98,4 +169,10 @@ ApplicationWindow {
     }
 
     footer: TransportBar { }
+
+    OutputPicker {
+        id: outputPicker
+        objectName: "outputPicker"
+        onNetworkPageRequested: window.page = "network"
+    }
 }

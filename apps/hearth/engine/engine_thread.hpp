@@ -115,6 +115,9 @@ struct EngineStatus {
     double crossover_hz = render::LayoutRenderer::kDefaultCrossoverHz;
     render::Routing routing{};
     std::string device_name{};
+    // The open device's endpoint id (PcmSink::device_id()) - empty where
+    // there is no PCM sink or nothing is open, the same as device_name.
+    std::string device_id{};
     std::uint32_t speaker_mask = 0;
     // What every item is rendered onto (Player::layout()) - fixed for this
     // engine's lifetime. A settings page reads each slot's own name

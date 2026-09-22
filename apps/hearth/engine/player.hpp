@@ -251,6 +251,7 @@ public:
     [[nodiscard]] std::string device_name() const {
         return sink_ ? sink_->device_name() : std::string{};
     }
+    [[nodiscard]] std::string device_id() const { return sink_ ? sink_->device_id() : std::string{}; }
     [[nodiscard]] std::uint32_t speaker_mask() const { return sink_ ? sink_->speaker_mask() : 0U; }
 
     // The output decision the open output, or the last one, was made by.
