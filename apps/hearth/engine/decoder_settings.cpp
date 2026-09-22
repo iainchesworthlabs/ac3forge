@@ -3,6 +3,7 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,10 @@ DecoderSetup decoder_setup(const DecoderSettings& settings, const render::Output
     config.heavy_compression = settings.heavy_compression;
     config.fast_imdct = settings.fast_inverse_transform;
     config.output.mode = settings.mode;
+    // dB to the linear magnitude OutputConfig wants, held to full scale: a
+    // ceiling above it would let kRf's fold clip, which is the one thing
+    // kRf promises not to do (output.hpp's own comment on rf_ceiling).
+    config.output.rf_ceiling = std::pow(10.0, std::min(settings.rf_ceiling_db, 0.0) / 20.0);
     config.output.apply_dialnorm = settings.normalise_dialogue;
     config.output.ltrt_phase_shift = settings.ltrt_phase_shift;
     config.output.mix_lfe = settings.mix_lfe;
@@ -61,7 +66,9 @@ std::string describe(const DecoderSettings& settings) {
     std::vector<std::string> parts;
     switch (settings.mode) {
         case OperatingMode::kLine: parts.emplace_back("line mode"); break;
-        case OperatingMode::kRf: parts.emplace_back("RF mode"); break;
+        case OperatingMode::kRf:
+            parts.push_back(fmt::format("RF mode (ceiling {:.1f} dBFS)", settings.rf_ceiling_db));
+            break;
         case OperatingMode::kCustom:
             parts.push_back(fmt::format("custom mode (cut {:.2f}, boost {:.2f}, compr {}, dialogue {})",
                                         settings.drc_cut, settings.drc_boost,
@@ -120,6 +127,7 @@ std::string describe(const DecoderSettings& settings) {
 DecoderSettings transcode_settings(const DecoderSettings& listener) {
     DecoderSettings neutral;
     neutral.mode = OperatingMode::kCustom;
+    neutral.rf_ceiling_db = 0.0;
     neutral.drc_cut = 0.0;
     neutral.drc_boost = 0.0;
     neutral.heavy_compression = false;

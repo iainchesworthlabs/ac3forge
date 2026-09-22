@@ -349,7 +349,7 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
     rf.objects = ac3::render::ObjectsPolicy::kAlways;
     rf.concealment = ac3::ConcealmentPolicy::kMute;
     CHECK(describe(rf) ==
-          "RF mode, stereo fold Lo/Ro, no LFE in folds, "
+          "RF mode (ceiling 0.0 dBFS), stereo fold Lo/Ro, no LFE in folds, "
           "mix levels Lo/Ro surround 0.000, Lt/Rt centre 1.000, "
           "dual mono: channel 1, the first programme, objects always, concealment: mute, "
           "fast inverse transform");
