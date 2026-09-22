@@ -769,48 +769,69 @@ case $? in
 esac
 ```
 
-## Programme options (`eac3-encode`): `programme2=`
+## Programme options (`eac3-encode`)
 
 ```text
-programme options (eac3-encode; any order, after the positional arguments):
-  programme2=<path> author a SECOND programme into the same stream, as a second independent
-                    substream (§E2.3.1.2's I1)
-  programme2-layout=<name>   its layout; omitted follows its own source
-  programme2-bitrate=<kbps>  its own rate, spent ON TOP of the primary's; omitted is half
-  programme2-dialnorm=<1..31>  its own dialnorm (§5.4.2.8, default 31)
+programme options (eac3-encode; any order, after the positional arguments; N = 2..8):
+  programmeN=<path>  author another programme into the same stream, as an
+                    independent substream of its own (§E2.3.1.2's I(N-1))
+  programmeN-layout=<name>   its layout; omitted follows its own source
+  programmeN-bitrate=<kbps>  its own rate, spent ON TOP of the primary's; omitted is half
+  programmeN-<field>=...     its own metadata - the same key vocabulary the primary programme's
+                    own bare tokens above use (bsmod=, dsurmod=, dmixmod=, cmixlev=/surmixlev=,
+                    lfemix=, pgmscl=/extpgmscl=, mixdef=/premixcmp=/mixdata=/extmix=/auxmix=/
+                    speechmix=, paninfo=, blkmixcfg=, dialnorm=<1..31>|auto, drc=/ceiling=/
+                    dialogue=, heavy, infomdat, copyright, sourcefscod, and more) applied to this
+                    programme's own plan::Metadata instead of the primary's
 ```
 
 A/52 Annex E allows eight *independent* substreams (I0–I7) in one elementary stream. That is a
 different thing from the dependent substreams a wide layout uses: a dependent extends one
-programme's soundfield, while a second independent substream is a whole second programme with its
-own layout, rate and level. Broadcast DD+ uses them for the services §5.4.2.2 names — a second
-language, an audio description, a commentary — so one stream carries the main mix and the
-alternatives, and a receiver plays one of them.
+programme's soundfield, while an independent substream is a whole separate programme with its own
+layout, rate, level and service label. Broadcast DD+ uses them for the services §5.4.2.2 names —
+a second language, an audio description, a commentary — so one stream carries the main mix and
+the alternatives, and a receiver plays one of them.
 
 ```bash
-ac3cli eac3-encode film51.wav out.ec3 448 none 51 off     programme2=commentary.wav programme2-layout=mono     programme2-bitrate=96 programme2-dialnorm=20
+ac3cli eac3-encode film51.wav out.ec3 448 none 51 off \
+    programme2=commentary.wav programme2-layout=mono programme2-bitrate=96 \
+    programme2-bsmod=commentary programme2-dialnorm=20 \
+    programme3=description.wav programme3-layout=mono programme3-bitrate=96 \
+    programme3-bsmod=vi programme3-dialnorm=auto
 ```
 
-That writes I0 as 5.1 at 448 kbit/s and I1 as mono at 96 kbit/s, one access unit of each per
-frame period. The rates **add**: substreams share a frame period rather than a frame, so the file
-above runs at 544 kbit/s, not 448.
+That writes I0 as 5.1 at 448 kbit/s, I1 as a mono commentary at 96 kbit/s labelled `bsmod`
+commentary, and I2 as a mono audio description at 96 kbit/s labelled visually-impaired, its own
+dialnorm measured from its own audio. The rates **add**: substreams share a frame period rather
+than a frame, so the file above runs at 640 kbit/s, not 448.
 
-`programme2-dialnorm=` is deliberately not inherited from `dialnorm=`. A commentary or
-description track is levelled independently of the mix it plays against — that independence is
-the reason it is carried as a separate programme at all — so leaving it unset gives it the
-default 31 rather than quietly copying the main programme's measurement onto it.
+Every `programmeN-` token is its own programme's own value, never inherited from the primary or
+from a lower-numbered `programmeN-`: a commentary or description track is levelled and labelled
+independently of the mix it plays against and of any other associated service in the same stream
+— that independence is the reason each is carried as a separate programme at all. Omitting a
+field gives that programme the same default the primary's own bare token would (`dialnorm=`
+defaults to 31, `bsmod=` to complete main, and so on).
 
-Not yet supported, and refused rather than ignored:
+`programmeN=` slots fill in order — `programme2=` first, then `programme3=`, and so on — because
+§E2.3.1.2 assigns substream ids (I1, I2, …) sequentially with no way to leave a gap in the
+sequence. `programme4=` given without `programme2=`/`programme3=` is refused rather than quietly
+becoming I1: the number in the token is a promise about which substream it becomes.
 
-- `programme2-layout=1+1`. 1+1 already carries two programmes in one substream, levelled by
-  `dialnorm`/`dialnorm2`; nesting it inside a second independent substream would mean three
+Not supported, and refused rather than ignored:
+
+- `programmeN-layout=1+1`. 1+1 already carries two programmes in one substream, levelled by
+  `dialnorm`/`dialnorm2`; nesting it inside another independent substream would mean three
   programmes described two different ways with only one of the levels reachable. Use 1+1 on the
-  primary programme instead, or give `programme2` a layout of its own.
-- `programme2=` together with `src=`/`map=`. The multi-source router assigns channels to one
+  primary programme instead, or give the extra programme a layout of its own.
+- The five fields that only ever mean anything under 1+1 (`dialnorm2=`, `drc2=`, `heavy2`/
+  `ceiling2=`/`dialogue2=`, `mixlevel2=`, `roomtyp2=`) and the two Table E1.2 fields §E2.3.1.13/54
+  reserve for a 1+1 programme's own second channel (`pgmscl2=`, `paninfo2=`) — since 1+1 is
+  refused as an extra programme's layout, none of these has a second channel left to describe.
+- AC-3 Annex D's own fields (`annexd`, `encinfo`, `langcod`, `langcod2`, `timecode=`) — an extra
+  programme is always an E-AC-3 independent substream, which has no bsid-6 alternate syntax to
+  carry them.
+- `programmeN=` together with `src=`/`map=`. The multi-source router assigns channels to one
   programme.
-- Labelling a programme as a service (`bsmod`) or supplying the mixing metadata a receiver would
-  use to mix an associated service against the main one, and this
-  is the structural half.
 
 One thing worth knowing before shipping such a stream: **FFmpeg refuses it outright**, and not
 only the second programme — see

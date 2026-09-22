@@ -113,7 +113,7 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 |---|---|---|
 | **IAMF** (was IM3) | Channel-based 7.1.4 `ipcm` writer (`src/iamf`, phase 1 of 3) | Object elements and OBU reader — **blocked on IAMF v2.0 final** |
 | **IAB reader** (was IM1) | Full header and PCM essence parse | Annex B **AudioDataDLC** lossless decode — opaque bytes today |
-| **Multi-programme E-AC-3 encode** | `programme2=` authoring via CLI | Programme-mix metadata (`mixmdate`, `bsmod`, associated-service mixing) — see [capabilities](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md) |
+| **Multi-programme E-AC-3 encode** | `programme2=`..`programme8=` authoring via CLI (all eight §E2.3.1.2 substreams, full per-programme `mixmdate`/`bsmod` metadata) | Receiver-side use of that metadata — actually combining an associated service with the main programme during mixdown, rather than just carrying it — see [capabilities](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md) |
 | **Encoder reproducibility** (was VX12) | Audit done; `ilogb` fix landed | Re-validate FP-gated bit-cost thresholds; fixed-point transient port optional |
 | **Listening test** (was VX9) | Apparatus in `tools/listening/` | **No session run yet** — see [`tools/listening/responses/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/listening/responses/README.md) |
 | **Crucible translations** (was CR1) | Six catalogues complete (385 messages each) | Native-speaker reading of mechanical translations |

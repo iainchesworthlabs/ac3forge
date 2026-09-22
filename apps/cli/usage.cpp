@@ -103,10 +103,16 @@ constexpr std::array<OptionToken, 60> kOptionTokens{{
     {"asvc=", "ts: the main service this one is associated with (A/52 Annex A)"},
     {"programme=", "decode/qc/levels: which independent substream (0..7) of a multi-programme "
                    "stream"},
-    {"programme2=", "eac3-encode: a second input file, encoded as its own independent substream"},
-    {"programme2-layout=", "eac3-encode: programme2's own layout (default stereo; not 1+1)"},
-    {"programme2-bitrate=", "eac3-encode: programme2's own bitrate in kbit/s"},
-    {"programme2-dialnorm=", "eac3-encode: programme2's own dialnorm, 1..31 (§5.4.2.8)"},
+    {"programme2=", "eac3-encode: another input file, encoded as its own independent substream "
+                   "(§E2.3.1.2's I1); programme3= up to programme8= work the same way, for I2-I7"},
+    {"programme2-layout=", "eac3-encode: that programme's own layout (default stereo; not 1+1) - "
+                           "programme3-layout= etc. the same way"},
+    {"programme2-bitrate=", "eac3-encode: that programme's own bitrate in kbit/s - programme3-bitrate= "
+                            "etc. the same way"},
+    {"programme2-<field>=", "eac3-encode: that programme's own metadata - the same key vocabulary "
+                            "the primary programme's own bare tokens above use (dialnorm=<1..31>|"
+                            "auto, bsmod=, mixdef=, pgmscl=, and the rest; see 'help eac3-encode') - "
+                            "programme3-<field>= etc. the same way"},
 }};
 
 // The note column of the usage listing starts here; a row whose spec already

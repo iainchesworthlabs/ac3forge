@@ -5756,9 +5756,6 @@ std::expected<std::vector<FrameConfig>, FrameError> programme_configs(
     return out;
 }
 
-// §E2.3.1.2: eight independent substreams, I0-I7, no more.
-constexpr std::size_t kMaxProgrammes = 8;
-
 // Every programme of an access unit, each as programme_configs above built it,
 // in transmission order. The outer index IS the substreamid of that
 // programme's independent substream.
