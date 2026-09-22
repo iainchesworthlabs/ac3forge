@@ -58,6 +58,27 @@ std::int64_t simulate(ClockSync& sync, const ServerClock& server, std::int64_t s
     return now;
 }
 
+// Runs one burst of exactly ClockSync::kBurstLength exchanges, every one delayed `out_delay`
+// microseconds on the way to the server and `back_delay` on the way back: for a scenario where
+// every reply in a run is skewed the same way, as they can be in the seconds after a Wi-Fi
+// reconnect, rather than `simulate`'s independent random delay per exchange.
+std::int64_t run_burst(ClockSync& sync, const ServerClock& server, std::int64_t now, std::int64_t out_delay,
+                       std::int64_t back_delay) {
+    for (std::size_t i = 0; i < ClockSync::kBurstLength; ++i) {
+        const std::optional<m::ClientTime> request = sync.poll(now);
+        REQUIRE(request.has_value());
+        const std::int64_t arrive = now + out_delay;
+        const std::int64_t leave = arrive + 50;
+        const std::int64_t back = leave + back_delay;
+        sync.receive({.client_transmitted = request->client_transmitted,
+                      .server_received = server.at(arrive),
+                      .server_transmitted = server.at(leave)},
+                     back);
+        now = back;
+    }
+    return now;
+}
+
 }  // namespace
 
 TEST_CASE("clock sync: converges on a local network and maps both ways", "[sendspin][clock_sync]") {
@@ -72,7 +93,9 @@ TEST_CASE("clock sync: converges on a local network and maps both ways", "[sends
         now = simulate(sync, server, now, now + 100'000, 500, 3'000, random, &requests);
     }
     REQUIRE(sync.converged());
-    // Bursts follow one another while converging: well under a second on this network.
+    // The run that reaches kConvergedUpdates follows one another at once, well under a second
+    // on this network; the confirming burst after it waits a learning interval, so convergence
+    // itself takes about a second, still well under kBurstInterval.
     CHECK(now < 2'000'000);
     CHECK(sync.updates() >= ClockSync::kConvergedUpdates);
     CHECK(requests == sync.updates() * ClockSync::kBurstLength);
@@ -81,6 +104,59 @@ TEST_CASE("clock sync: converges on a local network and maps both ways", "[sends
     const std::int64_t local = now + 5'000;
     CHECK(std::llabs(sync.to_local(server.at(local)) - local) < 1'000);
     CHECK(std::llabs(sync.to_server(local) - server.at(local)) < 1'000);
+}
+
+TEST_CASE("clock sync: a run of replies biased the same way reads as converged but is not confirmed",
+          "[sendspin][clock_sync]") {
+    ClockSync sync;
+    const ServerClock server{.offset_us = 500'000, .drift_ppm = 0.0};
+    std::int64_t now = 0;
+
+    // Bursts, every exchange delayed 1 ms out and 11 ms back: consistent with each other, so
+    // the filter's own error estimate reads as converged, but 5 ms off the true offset - as
+    // every reply can be for a while right after a Wi-Fi reconnect, where reassociation, mDNS's
+    // re-announce and an ARP round can all delay a reply the same way. Runs until the run first
+    // reads as converged (next_due() jumps ahead rather than staying at once): the filter needs
+    // a handful of consistent updates before its own error estimate first drops this low, not
+    // exactly kConvergedUpdates of them.
+    for (std::size_t i = 0; i < 50 && sync.next_due() <= now; ++i) {
+        now = run_burst(sync, server, now, 1'000, 11'000);
+    }
+    CHECK_FALSE(sync.converged());
+    const std::size_t biased_updates = sync.updates();
+    CHECK(biased_updates >= ClockSync::kConvergedUpdates);
+    // The confirming burst does not follow at once: it waits a learning interval.
+    CHECK(sync.next_due() == now + ClockSync::kLearningInterval);
+    CHECK_FALSE(sync.poll(now).has_value());
+
+    // The network is accurate again by the time the confirming burst goes out: it disagrees
+    // with the biased run by 5 ms, well past kConvergedError, so convergence is not reported -
+    // its measurement still reaches the filter, though, which is why the run is not repeated
+    // verbatim below.
+    now = sync.next_due();
+    now = run_burst(sync, server, now, 1'000, 1'000);
+    CHECK_FALSE(sync.converged());
+    CHECK(sync.updates() == biased_updates + 1);
+
+    // The run starts over, and enough accurate bursts - including a confirming one, a learning
+    // interval after the run that reaches kConvergedUpdates again - reach a real convergence.
+    for (std::size_t i = 0; i < 200 && !sync.converged(); ++i) {
+        now = run_burst(sync, server, now, 1'000, 1'000);
+        if (!sync.converged() && sync.next_due() > now) {
+            now = sync.next_due();
+        }
+    }
+    REQUIRE(sync.converged());
+    // A confirming burst only has to disagree enough to be caught, not enough to fully correct
+    // the filter in one sample: the accurate learning bursts that follow convergence - the same
+    // kLearningBursts of them a real stream gets before a played-to server ever sees the clock
+    // reported converged - finish washing out what the earlier biased run had put into it.
+    for (std::size_t i = 0; i < ClockSync::kLearningBursts; ++i) {
+        now = sync.next_due();
+        now = run_burst(sync, server, now, 1'000, 1'000);
+    }
+    CHECK(std::llabs(sync.to_server(now) - server.at(now)) < 1'000);
+    CHECK(std::llabs(sync.to_local(server.at(now)) - now) < 1'000);
 }
 
 TEST_CASE("clock sync: once converged, bursts a second apart learn the drift, then one runs every ten seconds",
