@@ -95,6 +95,18 @@ AudioObjectType audio_object_type_for_speaker(std::uint32_t speaker_bit) {
     }
 }
 
+// The answers that mean the client/stream has gone for good, identical to
+// passthrough.cpp's own stream_gone(): ISpatialAudioClient is activated
+// straight off the same IMMDevice/audio engine passthrough.cpp and
+// monitor.cpp use, and Microsoft's own reference pages for this API
+// (BeginUpdatingAudioObjects, GetAvailableDynamicObjectCount) list the same
+// endpoint-removal code, AUDCLNT_E_DEVICE_INVALIDATED, alongside their own
+// spatial-specific codes - so the shared WASAPI-family failure this predicate
+// already knows about is the one worth matching here too.
+bool stream_gone(HRESULT result) {
+    return result == AUDCLNT_E_DEVICE_INVALIDATED || result == AUDCLNT_E_SERVICE_NOT_RUNNING;
+}
+
 class ComScope {
 public:
     ComScope() : hr_(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
@@ -340,6 +352,10 @@ std::expected<void, SpatialError> SpatialObjectSink::start(const std::string& de
     if (running()) {
         return std::unexpected(SpatialError::kAlreadyRunning);
     }
+    // A render thread that ended because its device went away is joined
+    // before another is started, exactly as MonitorSink::start() does; with
+    // nothing started this does nothing.
+    stop();
 
     ComScope com;
     if (!com.ok()) {
@@ -457,18 +473,45 @@ std::expected<void, SpatialError> SpatialObjectSink::start(const std::string& de
     impl_->underruns.store(0, std::memory_order_relaxed);
     impl_->running.store(true, std::memory_order_release);
 
-    impl_->worker = std::jthread([this, stream, ready](const std::stop_token& stop) mutable {
+    impl_->worker = std::jthread([this, client_ptr = *client, stream, ready](
+                                     const std::stop_token& stop) mutable {
         ComScope thread_com;
         std::vector<float> chunk;
-        stream->Start();
 
-        while (!stop.stop_requested()) {
+        // Set when the loop ends because the stream did rather than because
+        // stop() asked it to - mirroring PassthroughSink/MonitorSink's own
+        // `lost` (see the end of this loop for what it does). A stream that
+        // will not start has already gone; no render-ready event would ever
+        // come for it, and the timeout path below cannot be relied on to
+        // notice every reason Start() can fail.
+        bool lost = FAILED(stream->Start());
+
+        while (!lost && !stop.stop_requested()) {
             if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
+                // Many periods without an event. A removed endpoint need
+                // never signal `ready` again - the same WASAPI behaviour
+                // passthrough.hpp's running() documents for GetCurrentPadding
+                // - so the wait alone would not notice. The stream's own
+                // GetAvailableDynamicObjectCount is not it: Microsoft's
+                // reference for that call says not to use it once streaming
+                // has started, since BeginUpdatingAudioObjects already
+                // provides the same count from then on. GetMaxDynamicObjectCount
+                // on the ISpatialAudioClient this stream came from carries no
+                // such restriction - it is a property of the client's
+                // relationship with the device, not of the stream's own
+                // render cycle - so it stands in for GetCurrentPadding's role
+                // in the other two backends.
+                UINT32 max_objects = 0;
+                if (stream_gone(client_ptr->GetMaxDynamicObjectCount(&max_objects))) {
+                    lost = true;
+                    break;
+                }
                 continue;
             }
             UINT32 available_dynamic = 0;
             UINT32 frame_count = 0;
             if (FAILED(stream->BeginUpdatingAudioObjects(&available_dynamic, &frame_count))) {
+                lost = true;
                 break;
             }
 
@@ -511,6 +554,13 @@ std::expected<void, SpatialError> SpatialObjectSink::start(const std::string& de
             impl_->rendered.fetch_add(1, std::memory_order_relaxed);
         }
 
+        if (lost) {
+            // The stream has ended with its device, and running() says so as
+            // a stop() would have it - see PassthroughSink/MonitorSink's own
+            // Windows backends. Only the flag is touched here; stop() still
+            // joins this thread and clears the object rings.
+            impl_->running.store(false, std::memory_order_release);
+        }
         stream->Stop();
         CloseHandle(ready);
     });
