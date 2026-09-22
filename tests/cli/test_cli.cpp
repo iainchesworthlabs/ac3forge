@@ -23,6 +23,7 @@
 #include <process.h>
 #else
 #include <sys/wait.h>
+#include <unistd.h>  // getpid() - <sys/wait.h> alone does not declare it
 #endif
 
 #include "ac3/core/eac3_tables.hpp"
