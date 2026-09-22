@@ -127,13 +127,22 @@ TEST_CASE("render devices: a device arriving is noticed without a notification",
 
     // The receiver is plugged in.
     fake.set({device_of("jack", 2), device_of("hdmi", 8)});
-    REQUIRE(waited_for([&watch] { return watch.snapshot().generation == 2; }));
+    // Waits for the callback too, not just the generation: notify() runs
+    // after probe_once() has released the lock that bumps generation (so a
+    // caller cannot re-enter the watch from its own callback), so a snapshot
+    // can already show generation 2 on the main thread before the worker has
+    // actually called back and incremented `changes`.
+    REQUIRE(waited_for([&watch, &changes] {
+        return watch.snapshot().generation == 2 && changes.load() == 1;
+    }));
     CHECK(changes.load() == 1);
     CHECK(watch.snapshot().devices.size() == 2);
 
     // And unplugged again.
     fake.set({device_of("jack", 2)});
-    REQUIRE(waited_for([&watch] { return watch.snapshot().generation == 3; }));
+    REQUIRE(waited_for([&watch, &changes] {
+        return watch.snapshot().generation == 3 && changes.load() == 2;
+    }));
     CHECK(changes.load() == 2);
     CHECK(watch.snapshot().devices.size() == 1);
 
