@@ -972,6 +972,197 @@ TEST_CASE("OAMD skips an oa_element it does not recognise", "[oba][oamd]") {
     CHECK(decoded->objects[0].position.x == 31.0 / 62.0);
 }
 
+// --- Encoder breadth: syntax build_payload used to hardcode away -----------
+
+TEST_CASE("OAMD writes b_object_not_active and nothing else for a silent object",
+         "[oba][oamd]") {
+    // §5.5.9's short-circuit on the WRITE side: object 1 gets exactly two
+    // bits (not_active, then b_additional_table_data_exists), none of the
+    // basic/render info object 0 gets right beside it.
+    const ac3::oba::Program program{.dynamic_only = true, .lfe = false, .dynamic_objects = 2};
+    const std::array<ac3::oba::DynamicObject, 2> objects{{
+        {.position = {.x = 0.5, .y = 0.5, .z = 0.0}, .gain_db = 0.0},
+        {.position = {.x = 1.0, .y = 0.0, .z = -1.0}, .gain_db = 9.0, .active = false},
+    }};
+    const auto payload = ac3::oba::build_payload(program, objects);
+    ac3::BitReader r{payload};
+
+    r.skip(2 + 5);  // version, object_count
+    r.skip(1 + 1);  // b_dyn_object_only_program, b_lfe_present
+    r.skip(1 + 4);  // alternate data, oa_element_count
+    r.skip(4);      // oa_element_id_idx
+    read_variable_bits_max(r, 4, 4);  // oa_element_size_bits
+    r.skip(1);      // b_discard_unknown_element
+    r.skip(2 + 3 + 6 + 2 + 1);  // md_update_info, block_update_info, reserved
+
+    // Object 0: active, the ordinary shape - skipped over, not checked here.
+    r.skip(1 + 2 + 1);          // not_active, gain (0 dB), priority
+    r.skip(6 + 6 + 1 + 4 + 1);  // position and distance
+    r.skip(3 + 1 + 2 + 1 + 1);  // zone, size, screen ref, snap
+    r.skip(1);                  // b_additional_table_data_exists
+
+    // Object 1: not active. Exactly two bits, nothing else before the
+    // element's own trailing padding.
+    CHECK(r.read(1) == 1);  // b_object_not_active
+    CHECK(r.read(1) == 0);  // b_additional_table_data_exists
+    CHECK_FALSE(r.overflowed());
+    CHECK(payload.size() * 8 - r.bit_position() < 8);
+}
+
+TEST_CASE("OAMD round-trips an inactive object back to its defaults", "[oba][oamd]") {
+    const ac3::oba::Program program{.dynamic_only = true, .lfe = false, .dynamic_objects = 2};
+    // Object 0's position sits exactly on the quantizer's grid (0, 1 over
+    // 62nds/15ths), the same reason the very first OAMD test in this file can
+    // assert exact codes rather than tolerances - a mid-scale value like 0.25
+    // does not survive round-tripping exactly and would be the wrong thing to
+    // compare with ==. Object 1's fields do not need that care: nothing about
+    // it is transmitted at all, so what it held going in is never compared.
+    const std::array<ac3::oba::DynamicObject, 2> objects{{
+        {.position = {.x = 0.0, .y = 1.0, .z = -1.0}, .gain_db = -6.0},
+        // Every field below is a value build_payload would ordinarily
+        // transmit - active = false is what has to suppress all of them.
+        {.position = {.x = 1.0, .y = 0.0, .z = -1.0},
+         .gain_db = 9.0,
+         .size = {.width = 0.5, .depth = 0.5, .height = 0.5},
+         .priority = 0.5,
+         .zone = ac3::oba::ZoneConstraint::kScreenOnly,
+         .snap = true,
+         .active = false},
+    }};
+    const auto payload = ac3::oba::build_payload(program, objects);
+    const auto decoded = ac3::oba::parse_payload(payload);
+    REQUIRE(decoded.has_value());
+    REQUIRE(decoded->objects.size() == 2);
+
+    CHECK(decoded->objects[0].active);
+    CHECK(decoded->objects[0].position.x == 0.0);
+    CHECK(decoded->objects[0].position.y == 1.0);
+    CHECK(decoded->objects[0].gain_db == -6.0);
+
+    const auto& inactive = decoded->objects[1];
+    CHECK_FALSE(inactive.active);
+    // Nothing was transmitted for it, so it comes back as a fresh
+    // DynamicObject{.active = false} - not the values it was given.
+    CHECK(inactive.position.x == ac3::oba::DynamicObject{}.position.x);
+    CHECK(inactive.position.y == ac3::oba::DynamicObject{}.position.y);
+    CHECK(inactive.gain_db == 0.0);
+    CHECK(inactive.priority == 1.0);
+    CHECK(inactive.size.is_point());
+    CHECK(inactive.zone == ac3::oba::ZoneConstraint::kNone);
+    CHECK_FALSE(inactive.snap);
+}
+
+TEST_CASE("OAMD writes every representable sample_offset_code shape", "[oba][oamd]") {
+    const ac3::oba::Program program{.dynamic_only = true, .lfe = false, .dynamic_objects = 1};
+    const std::array<ac3::oba::DynamicObject, 1> objects{
+        {{.position = {.x = 0.5, .y = 0.5, .z = 0.0}}}};
+
+    const auto skip_to_sample_offset = [](ac3::BitReader& r) {
+        r.skip(2 + 5);  // version, object_count
+        r.skip(1 + 1);  // b_dyn_object_only_program, b_lfe_present
+        r.skip(1 + 4);  // alternate data, oa_element_count
+        r.skip(4);      // oa_element_id_idx
+        read_variable_bits_max(r, 4, 4);  // oa_element_size_bits
+        r.skip(1);      // b_discard_unknown_element
+    };
+
+    SECTION("zero takes the one-code-word shape") {
+        const ac3::oba::ObjectUpdate update{.sample_offset = 0, .objects = objects};
+        const auto payload = ac3::oba::build_payload_updates(program, std::span{&update, 1});
+        ac3::BitReader r{payload};
+        skip_to_sample_offset(r);
+        CHECK(r.read(2) == 0b00);
+    }
+    SECTION("a Table 23 value takes the two-bit index shape") {
+        constexpr std::array<int, 4> kOffsets{8, 16, 18, 24};
+        for (std::size_t i = 0; i < kOffsets.size(); ++i) {
+            CAPTURE(kOffsets[i]);
+            const ac3::oba::ObjectUpdate update{.sample_offset = kOffsets[i], .objects = objects};
+            const auto payload = ac3::oba::build_payload_updates(program, std::span{&update, 1});
+            ac3::BitReader r{payload};
+            skip_to_sample_offset(r);
+            CHECK(r.read(2) == 0b01);
+            CHECK(r.read(2) == i);
+        }
+    }
+    SECTION("any other in-range value takes the 5-bit literal") {
+        for (const int offset : {1, 5, 30, 31}) {
+            CAPTURE(offset);
+            const ac3::oba::ObjectUpdate update{.sample_offset = offset, .objects = objects};
+            const auto payload = ac3::oba::build_payload_updates(program, std::span{&update, 1});
+            ac3::BitReader r{payload};
+            skip_to_sample_offset(r);
+            CHECK(r.read(2) == 0b10);
+            CHECK(r.read(5) == static_cast<std::uint32_t>(offset));
+        }
+    }
+}
+
+TEST_CASE("OAMD round-trips every representable sample_offset value", "[oba][oamd]") {
+    const ac3::oba::Program program{.dynamic_only = true, .lfe = false, .dynamic_objects = 1};
+    const std::array<ac3::oba::DynamicObject, 1> objects{
+        {{.position = {.x = 0.5, .y = 0.5, .z = 0.0}}}};
+    for (const int offset : {0, 8, 16, 18, 24, 1, 5, 30, 31}) {
+        CAPTURE(offset);
+        const ac3::oba::ObjectUpdate update{.sample_offset = offset, .objects = objects};
+        const auto payload = ac3::oba::build_payload_updates(program, std::span{&update, 1});
+        const auto decoded = ac3::oba::parse_payload(payload);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->blocks.size() == 1);
+        CHECK(decoded->blocks[0].sample_offset == offset);
+    }
+}
+
+TEST_CASE("OAMD writes several metadata updates within one frame", "[oba][oamd]") {
+    // A bed's LFE plus two dynamic objects, one of which goes quiet in the
+    // second update - exercises the anchored object's "reuse" path, the
+    // dynamic objects' "full, absolute" path, and the not_active
+    // short-circuit together, all at blk != 0.
+    const ac3::oba::Program program{
+        .dynamic_only = false, .bed = ac3::oba::bed::kLfe, .dynamic_objects = 2};
+
+    const std::array<ac3::oba::DynamicObject, 2> first_block{{
+        {.position = {.x = 0.0, .y = 0.0, .z = 0.0}, .gain_db = 0.0},
+        {.position = {.x = 1.0, .y = 1.0, .z = 1.0}, .gain_db = -6.0},
+    }};
+    const std::array<ac3::oba::DynamicObject, 2> second_block{{
+        {.position = {.x = 0.5, .y = 0.5, .z = 0.0}, .gain_db = 3.0},
+        {.active = false},
+    }};
+    const std::array<ac3::oba::ObjectUpdate, 2> updates{{
+        {.block_offset_factor = 0, .ramp_duration = 768, .objects = first_block},
+        {.block_offset_factor = 40, .ramp_duration = 512, .objects = second_block},
+    }};
+
+    const auto payload = ac3::oba::build_payload_updates(program, updates);
+    const auto decoded = ac3::oba::parse_payload(payload);
+    REQUIRE(decoded.has_value());
+    REQUIRE(decoded->blocks.size() == 2);
+
+    CHECK(decoded->blocks[0].block_offset_factor == 0);
+    CHECK(decoded->blocks[0].ramp_duration == 768);
+    CHECK(decoded->blocks[1].block_offset_factor == 40);
+    CHECK(decoded->blocks[1].ramp_duration == 512);
+
+    REQUIRE(decoded->blocks[0].objects.size() == 2);
+    CHECK(decoded->blocks[0].objects[0].position.x == 0.0);
+    CHECK(decoded->blocks[0].objects[1].gain_db == -6.0);
+    CHECK(decoded->blocks[0].objects[0].active);
+    CHECK(decoded->blocks[0].objects[1].active);
+
+    REQUIRE(decoded->blocks[1].objects.size() == 2);
+    CHECK(decoded->blocks[1].objects[0].position.x == 0.5);
+    CHECK(decoded->blocks[1].objects[0].gain_db == 3.0);
+    CHECK(decoded->blocks[1].objects[0].active);
+    CHECK_FALSE(decoded->blocks[1].objects[1].active);
+
+    // objects/program still describe the FIRST block, matching every other
+    // overload's contract - a caller that does not care about intra-frame
+    // motion reads these two exactly as it always could.
+    CHECK(decoded->objects[0].position.x == 0.0);
+    CHECK(decoded->objects[1].gain_db == -6.0);
+}
+
 TEST_CASE("JOC parses every Table 47 downmix configuration it can", "[oba][joc]") {
     CHECK(ac3::oba::joc::dmx_channel_count(ac3::oba::joc::kDmxConfig5X) == 5);
     CHECK(ac3::oba::joc::dmx_channel_count(ac3::oba::joc::kDmxConfig7X) == 7);

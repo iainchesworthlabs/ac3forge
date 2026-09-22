@@ -378,6 +378,18 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
         }
     }
 
+    // An object with zero energy in every band has nothing for the JOC solve
+    // below to reconstruct - step 4's own p > 0.0 gate, aggregated across the
+    // whole object rather than tested per band - so it also has nothing for a
+    // renderer to place, and §5.5.9's b_object_not_active says exactly that
+    // instead of re-sending position/gain metadata nobody needs this frame.
+    std::vector<bool> object_active(count, false);
+    for (std::size_t object = 0; object < count; ++object) {
+        const auto slot = std::span{power}.subspan(
+            object * static_cast<std::size_t>(bands), static_cast<std::size_t>(bands));
+        object_active[object] = std::ranges::any_of(slot, [](double p) { return p > 0.0; });
+    }
+
     // --- 4. The reconstruction matrix ---------------------------------------
     // Minimum mean-square estimate of each object from the downmix. With
     // downmix = D s for known panning gains D and objects s of per-band power
@@ -455,6 +467,7 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
         described[object].snap = placement[object].snap;
         described[object].zone = placement[object].zone;
         described[object].enable_elevation = placement[object].enable_elevation;
+        described[object].active = object_active[object];
     }
     // §6.3.3.3: 0 marks the first frame, after which the counter runs 1..1023
     // and wraps to 1 rather than to 0 - a decoder reads 0 as a splice and

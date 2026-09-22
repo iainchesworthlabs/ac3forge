@@ -304,10 +304,47 @@ enum class BedLabel : std::uint8_t {
 // somewhere to draw a bed channel, and nothing in encode or decode reads it.
 [[nodiscard]] AC3FORGE_EXPORT Position bed_label_position(BedLabel label);
 
+// One §5.5.6/§5.5.7 metadata update within a frame's object_element: where in
+// the frame it takes effect and the object states it establishes. Passing
+// more than one to build_payload_updates() lets an object's position/gain
+// change more than once inside a single E-AC-3 frame (num_obj_info_blocks_bits,
+// 1-8) instead of only at the frame boundary - the encode-side, non-owning
+// mirror of UpdateBlock, which owns its objects because a decoded one has to
+// outlive the parse call that produced it; an update here does not, so it
+// borrows the caller's.
+struct ObjectUpdate {
+    // §5.5.6 Table 22/23. Only the FIRST update's offset reaches the wire -
+    // it is md_update_info's own field, read once per object_element - so
+    // this is ignored on every later update, which places itself with
+    // block_offset_factor instead. Must be representable: 0, one of
+    // {8, 16, 18, 24}, or a literal in [0, 31].
+    int sample_offset = 0;
+    // §5.5.7's own 6-bit field, in [0, 63].
+    int block_offset_factor = 0;
+    // This update's own ramp_duration, in samples - see build_payload()'s own
+    // comment for the encodable values.
+    int ramp_duration = 1536;
+    // The dynamic objects' state as of this update, program.dynamic_objects
+    // long, same order every overload takes.
+    std::span<const DynamicObject> objects;
+};
+
 // One object_audio_metadata_payload (§5.5.2), padded to whole bytes because
-// emdf_payload_size counts bytes. `objects` describes the dynamic objects in
-// order; the bed's are implied by the channel assignment and are sent at unity
-// gain and default priority.
+// emdf_payload_size counts bytes. `updates` is 1-8 metadata updates for this
+// frame (num_obj_info_blocks_bits is a 3-bit count); the bed's channels are
+// implied by the channel assignment and are sent at unity gain and default
+// priority in every update, since this Program model gives them no way to
+// vary. A dynamic object update always resends a full, absolute render info
+// (object_basic/render_info_status_idx 0b01, b_differential_position_specified
+// 0) rather than detecting an unchanged value to reuse or coding a stepped
+// position - both legal per §5.5.9 and both left to a future encoder that
+// wants the smaller payload, since this one only has to be correct.
+//
+// Not overloaded as build_payload(): an empty `{}` second argument would be
+// ambiguous between this and build_payload()'s own std::span<const
+// DynamicObject> - both are default-constructible to an empty span, and
+// build_payload(program, {}) is exactly how a bed-only, no-dynamic-objects
+// program is written today, so that ambiguity is not just theoretical.
 //
 // object_count(program) must be in [1, 31]. §5.5.2 has an escape for larger
 // counts - object_count_bits 0x1F plus a 7-bit extension - and it is not
@@ -315,8 +352,13 @@ enum class BedLabel : std::uint8_t {
 // complexity_index_type_a at 16 objects and §6.3.2.4 caps joc_num_objects at
 // the same. A stream that got past this would be rejected by the frame writer
 // (FrameError::kInvalidObjectAudio) before any of it reached a file.
-// `ramp_samples` is the frame this update covers, in samples - the
-// ramp_duration the one md_update block carries, so object properties
+[[nodiscard]] AC3FORGE_EXPORT std::vector<std::byte> build_payload_updates(
+    const Program& program, std::span<const ObjectUpdate> updates);
+
+// The ordinary shape: one update covering the whole frame, aligned to its
+// first sample - implemented on top of build_payload_updates() with a single
+// ObjectUpdate. `ramp_samples` is the frame this update covers, in samples -
+// the ramp_duration the one md_update block carries, so object properties
 // interpolate across exactly one frame instead of stepping at its edge.
 // 1536 is the ordinary six-block E-AC-3 frame; a short syncframe
 // (§E2.3.1.4, AtmosConfig::numblkscod 0-2) passes 256/512/768. Table 24 has

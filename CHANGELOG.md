@@ -770,6 +770,13 @@ The sections below contain the complete change list and fixes.
   over §E2.3.1.4 short syncframes across 1/2/3-block frames — completing roadmap EQ11.
   Worst-object SNR at every short code matches the six-block control on stationary
   material.
+- **OAMD encoding now covers what this project's decoder already reads.** `AtmosEncoder`
+  marks an object `b_object_not_active` for a frame where it has no energy in any band —
+  the same per-band test the JOC reconstruction matrix already used for silence, now also
+  read off as object metadata rather than only affecting the mix. `oba::build_payload_updates()`
+  writes more than one §5.5.6/§5.5.7 metadata update inside a single E-AC-3 frame
+  (`sample_offset_code`, `num_obj_info_blocks_bits`) instead of only at the frame boundary,
+  for a caller that wants sub-frame object motion; `oba::build_payload()` itself is unchanged.
 - **`downmix=auto` on `decode` and `monitor`**: A/52 §D3.1.1's automatic choice of
   stereo fold, from the stream's own `dmixmod`. Lt/Rt when it prefers Lt/Rt at an
   acmod Table D2.2 defines the field for (`3/0`, `2/1`, `3/1`, `2/2`, `3/2`); Lo/Ro
