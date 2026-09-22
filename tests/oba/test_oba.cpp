@@ -209,6 +209,68 @@ TEST_CASE("reconstruct is a delayed identity when the matrix is a pure passthrou
     }
 }
 
+TEST_CASE("clip_gain scales reconstructed object PCM by exactly that factor", "[oba][joc]") {
+    // Sec 6.3.3.2: joc_clipgain is a flat per-frame post-multiply applied once in
+    // reconstruct()'s own dispatcher, on reconstructed OBJECT PCM only - see its
+    // comment for the Dolby Reference Player evidence behind both the formula and
+    // the application point. Runs the identical bed/matrix through two independent
+    // ReconstructionStates that differ ONLY in clip_gain - nothing upstream of the
+    // multiply reads it, so the two runs' pre-multiply PCM is identical and any
+    // deviation from an exact `* clip_gain` relationship means the multiply landed
+    // in the wrong place, or not at all.
+    for (const auto domain : {ac3::oba::joc::Domain::kMdctBand, ac3::oba::joc::Domain::kQmf}) {
+        CAPTURE(domain == ac3::oba::joc::Domain::kQmf);
+
+        ac3::oba::joc::FrameParameters unity{.objects = 1, .num_bands_idx = 4};
+        unity.matrix.assign(unity.coefficient_count(), 0.0);
+        for (int band = 0; band < unity.bands(); ++band) {
+            unity.at(0, 0, band) = 1.0;  // pass bed channel 0 straight through
+        }
+        ac3::oba::joc::FrameParameters scaled = unity;
+        // x=4, y=25 -> 1 + (25/32) * 2^(4-4) = 1.78125, the exact clip_gain
+        // measured from a real DEE stream during the oracle comparison this
+        // multiply is based on.
+        scaled.clip_gain = 1.0 + (25.0 / 32.0) * std::exp2(4.0 - 4.0);
+
+        std::vector<std::vector<float>> bed(5, std::vector<float>(ac3::kSamplesPerFrame, 0.0f));
+        for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            bed[0][static_cast<std::size_t>(n)] = static_cast<float>(
+                0.3 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(n) / 48000.0));
+        }
+        const std::vector<std::span<const float>> bed_views(bed.begin(), bed.end());
+
+        ac3::oba::joc::ReconstructionState unity_state;
+        ac3::oba::joc::ReconstructionState scaled_state;
+        std::vector<std::vector<float>> unity_out;
+        std::vector<std::vector<float>> scaled_out;
+        // A few frames so both states are past their initial warmup, same as the
+        // pure-passthrough delayed-identity test above - both states evolve in
+        // lockstep since only clip_gain differs and nothing upstream reads it.
+        for (int frame = 0; frame < 3; ++frame) {
+            unity_out = ac3::oba::joc::reconstruct(bed_views, unity, unity_state,
+                                                   /*fast_mdct=*/false, /*fast_imdct=*/false,
+                                                   domain);
+            scaled_out = ac3::oba::joc::reconstruct(bed_views, scaled, scaled_state,
+                                                    /*fast_mdct=*/false, /*fast_imdct=*/false,
+                                                    domain);
+        }
+        REQUIRE(unity_out.size() == 1);
+        REQUIRE(scaled_out.size() == 1);
+        REQUIRE(unity_out[0].size() == scaled_out[0].size());
+
+        double signal = 0.0;
+        double max_diff = 0.0;
+        for (std::size_t n = 0; n < unity_out[0].size(); ++n) {
+            const double expected = static_cast<double>(unity_out[0][n]) * scaled.clip_gain;
+            const double actual = static_cast<double>(scaled_out[0][n]);
+            signal += expected * expected;
+            max_diff = std::max(max_diff, std::abs(actual - expected));
+        }
+        REQUIRE(signal > 0.0);  // the passthrough must have produced real content
+        CHECK(max_diff < 1e-5);
+    }
+}
+
 TEST_CASE("an object's overlap tail drains while absent instead of staying stale for its return",
           "[oba][joc]") {
     // reconstruct_mdct_band's own comment: an object with shape.present == false still has to

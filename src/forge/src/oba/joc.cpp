@@ -190,16 +190,12 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
     // unscaled bed decode to bit-exact correlation (1.0000) regardless of
     // clip gain - i.e. the gain is applied to reconstructed OBJECT PCM only,
     // never to the bed. See docs/library/decoding.md for the full writeup.
-    // The multiply belongs ONCE in reconstruct()'s own dispatcher, on the
-    // per-object PCM it gets back from whichever of reconstruct_qmf/
-    // reconstruct_mdct_band it calls - both of reconstruct()'s callers
-    // (decode_substream_core and, once landed, decode_access_unit_core's
-    // 7-channel path) already pass FrameParameters through unchanged, so a
-    // single post-multiply there covers everything with no duplication.
-    // Left unwired here only to avoid colliding with concurrent work
-    // restructuring the domain functions themselves (phase-shift downmix +
-    // 7-channel Lb/Rb) - not because anything here, including where it goes,
-    // is still in doubt.
+    // Applied ONCE in reconstruct()'s own dispatcher, on the per-object PCM
+    // it gets back from whichever of reconstruct_qmf/reconstruct_mdct_band it
+    // calls - both of reconstruct()'s callers (decode_substream_core and, for
+    // the 7-channel configs, decode_access_unit_core) already pass
+    // FrameParameters through unchanged, so a single post-multiply there
+    // covers everything with no duplication.
     const auto clipgain_x = r.read(3);
     const auto clipgain_y = r.read(5);
     const double clip_gain = 1.0 + (static_cast<double>(clipgain_y) / 32.0) *
@@ -1310,8 +1306,26 @@ std::vector<std::vector<float>> reconstruct(std::span<const std::span<const floa
     // post-processing step here - unlike params.matrix itself, that state
     // cannot be copied verbatim between calls once band counts and data
     // points are allowed to vary per object.
-    return domain == Domain::kQmf ? reconstruct_qmf(bed, params, state)
-                                  : reconstruct_mdct_band(bed, params, state, fast_mdct, fast_imdct);
+    auto objects = domain == Domain::kQmf
+                       ? reconstruct_qmf(bed, params, state)
+                       : reconstruct_mdct_band(bed, params, state, fast_mdct, fast_imdct);
+
+    // §6.3.3.2: a flat per-frame post-multiply on the final object PCM only,
+    // never the bed - see parse_payload's comment for the formula and
+    // application-point evidence. No ramp: unlike joc_mix_mtx, clip_gain
+    // carries no steep/smooth flag or data points to interpolate between.
+    // y_bits == 0 makes clip_gain exactly 1.0 (no floating-point drift, see
+    // parse_payload), so this skips a no-op pass over every object's PCM for
+    // what is expected to be the overwhelmingly common case.
+    if (params.clip_gain != 1.0) {
+        const auto gain = static_cast<float>(params.clip_gain);
+        for (auto& object : objects) {
+            for (auto& sample : object) {
+                sample *= gain;
+            }
+        }
+    }
+    return objects;
 }
 
 }  // namespace ac3::oba::joc
