@@ -813,9 +813,12 @@ in `tools/references/ac4_parse.py`.
 `src/ac4dec` is the start of an AC-4 decoder written from the same two standards. It reads every
 syntax element of a frame's substreams and produces no audio yet: the presentation substream,
 channel-coded audio substreams in the Part 1 channel elements (ASF spectral data, stereo processing,
-companding, A-SPX and A-CPL data, and `metadata()` with its DRC and dialogue enhancement), and EMDF
-payload substreams. It refuses, with a named reason, the speech spectral frontend, the immersive and
-22.2 channel elements, object substreams and the HSF extension.
+companding, A-SPX and A-CPL data, and `metadata()` with its DRC and dialogue enhancement), a
+channel-coded substream's HSF extension substream where one resolves to a distinct, readable
+substream (the additional scale factor bands, spectral data and noise fill above 24 kHz a 96 kHz or
+192 kHz substream carries), and EMDF payload substreams. It refuses, with a named reason, the speech
+spectral frontend, the immersive and 22.2 channel elements, object substreams, and a 96/192 kHz
+substream whose HSF extension substream could not be resolved.
 
 With no reference output to compare against, the syntax is transcribed twice, separately, from the
 text: in C++ in the decoder, and in Python in `tools/references/ac4_syntax.py`, which takes its table

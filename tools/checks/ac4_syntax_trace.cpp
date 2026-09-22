@@ -58,6 +58,8 @@ const char* kind_name(ac4::SubstreamReport::Kind kind) {
             return "presentation";
         case ac4::SubstreamReport::Kind::kEmdfPayloads:
             return "emdf_payloads";
+        case ac4::SubstreamReport::Kind::kHsfExt:
+            return "hsf_ext";
         default:
             return "other";
     }

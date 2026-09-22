@@ -5,7 +5,7 @@
 namespace ac4::detail {
 
 ParseResult parse_audio_substream(BitReader& r, const SubstreamContext& ctx, AudioSubstreamState& state,
-                                  AudioSubstream& out) {
+                                  AudioSubstream& out, BitReader* hsf_reader) {
     out = AudioSubstream{};
 
     // Part 2 6.2.2.2. The header is always a whole number of bytes: 16 bits,
@@ -17,10 +17,15 @@ ParseResult parse_audio_substream(BitReader& r, const SubstreamContext& ctx, Aud
     if (auto ok = check(r); !ok) {
         return ok;
     }
-    if (ctx.sf_multiplier) {
-        // The ASF tables at 96 kHz and 192 kHz (Annex B's other columns) and
-        // the HSF extension are not transcribed.
-        return fail(DecodeError::kUnsupported, "96 kHz and 192 kHz substreams are not decoded");
+    if (ctx.sf_multiplier && hsf_reader == nullptr) {
+        // The core ASF syntax does not depend on sample rate (its tables are
+        // keyed by transform length in samples, not Hz - only the HSF
+        // extension's own tables are per-rate), so a 96/192 kHz substream is
+        // refused only where its HSF extension substream could not be
+        // resolved to read alongside it (decoder.cpp), not for being 96 or
+        // 192 kHz as such.
+        return fail(DecodeError::kUnsupported,
+                    "a 96 kHz or 192 kHz substream whose HSF extension substream could not be read");
     }
     const std::size_t audio_start = r.position();
     const std::size_t metadata_start = audio_start + static_cast<std::size_t>(audio_size) * 8U;
@@ -29,7 +34,7 @@ ParseResult parse_audio_substream(BitReader& r, const SubstreamContext& ctx, Aud
     }
     out.audio_size = static_cast<std::uint32_t>(audio_size);
 
-    if (auto ok = parse_audio_data_chan(r, ctx, state.element, out.element); !ok) {
+    if (auto ok = parse_audio_data_chan(r, ctx, state.element, out.element, hsf_reader); !ok) {
         return ok;
     }
     if (r.position() > metadata_start) {

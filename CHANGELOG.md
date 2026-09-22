@@ -752,6 +752,21 @@ The sections below contain the complete change list and fixes.
   `tools/checks/ac4_syntax_differential.py` over hand-built synthetic streams and a random
   corpus exercising every branch. `oamd_substream()`'s own, separate `oamd_common_data()` embed
   stays out of scope, like every other non-audio substream.
+- **A channel-coded substream's HSF extension, `ac4_hsf_ext_substream()` (§4.2.4.3), is read**
+  for a 96 kHz or 192 kHz substream whose extension substream resolves to a distinct, readable
+  one: the additional scale factor bands, spectral data and noise fill above 24 kHz. Reading it
+  needs genuine interleaving between the two substreams' own bits - the owning channel's
+  `asf_section_data()` needs a bound (`get_max_sfb_hsf(g)`, §4.3.16.2) that only the extension's
+  own header carries, before either can be fully read - resolved regardless of which of the two
+  substream indices is numerically lower. A substream reporting `sf_multiplier` whose extension
+  cannot be resolved (unlinked, self-referencing, or itself unreadable) is refused, as before, now
+  by that reason alone rather than for being 96 or 192 kHz as such. Transcribed independently in
+  `tools/references/ac4_syntax.py`; cross-checked by `tools/checks/ac4_syntax_differential.py`
+  over 3,800 mutated and synthetic streams, and by two hand-built synthetic frames
+  (`tests/ac4dec/test_ac4dec_decoder.cpp`) covering both index orderings. The readings taken for
+  Table 39's own `max_sfb` (an active extension needs it to mean `get_max_sfb_hsf(g)`, not
+  `get_max_sfb(g)` as written) and for `ac4_hsf_ext_substream()`'s `num_channels`/
+  `b_different_framing` are in `src/ac4dec/ERRATA.md`.
 
 **Browser (WASM)**
 

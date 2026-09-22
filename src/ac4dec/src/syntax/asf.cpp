@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdlib>
+#include <span>
 
 #include "huffman.hpp"
 #include "tables/huffman_tables.hpp"
@@ -132,19 +133,44 @@ int get_transf_length(const SubstreamContext& ctx, const AsfPsyInfo& psy, int g)
     return psy.transf_length[0];
 }
 
-int get_max_sfb(const SubstreamContext& ctx, const AsfPsyInfo& psy, int g, bool side_channel) noexcept {
-    int idx = 0;
+namespace {
+
+// The idx get_max_sfb() (Pseudocode 5) and get_max_sfb_hsf() (Pseudocode 18)
+// both start with: which of a differently-framed track's two transform
+// lengths group g belongs to.
+[[nodiscard]] int psy_group_idx(const SubstreamContext& ctx, const AsfPsyInfo& psy, int g) noexcept {
     if (ctx.frame_len_base >= 1536 && !psy.b_long_frame &&
         psy.transf_length[0] != psy.transf_length[1]) {
         const int num_windows_0 = 1 << (3 - psy.transf_length[0]);
         if (g >= psy.window_to_group[at(num_windows_0)]) {
-            idx = 1;
+            return 1;
         }
     }
+    return 0;
+}
+
+}  // namespace
+
+int get_max_sfb(const SubstreamContext& ctx, const AsfPsyInfo& psy, int g, bool side_channel) noexcept {
+    const int idx = psy_group_idx(ctx, psy, g);
     if (psy.b_side_limited || (psy.b_dual_maxsfb && side_channel)) {
         return psy.max_sfb_side[at(idx)];
     }
     return psy.max_sfb[at(idx)];
+}
+
+int get_max_sfb_hsf(const SubstreamContext& ctx, const AsfPsyInfo& psy, int g, const HsfExtHeader& hsf) noexcept {
+    const int idx = psy_group_idx(ctx, psy, g);
+    return psy.max_sfb[at(idx)] + hsf.max_sfb_ext_hsf[at(idx)];
+}
+
+ParseResult parse_hsf_ext_header(BitReader& r, bool b_different_framing, HsfExtHeader& out) {
+    out = HsfExtHeader{};
+    out.max_sfb_ext_hsf[0] = static_cast<int>(r.read(6, "max_sfb_ext_hsf[0]"));
+    if (b_different_framing) {
+        out.max_sfb_ext_hsf[1] = static_cast<int>(r.read(6, "max_sfb_ext_hsf[1]"));
+    }
+    return check(r);
 }
 
 ParseResult parse_sf_info(BitReader& r, const SubstreamContext& ctx, int spec_frontend, bool b_dual_maxsfb,
@@ -323,44 +349,97 @@ void split_codeword(const Codebook& cb, int dim, int index, std::array<std::int3
 }  // namespace
 
 ParseResult parse_sf_data(BitReader& r, const SubstreamContext& ctx, const SfInfo& info, bool side_channel,
-                          SfData& out) {
+                          const HsfExtHeader* hsf, SfData& out, HsfSfData& hsf_out) {
     if (info.spec_frontend != 0) {
         return fail(DecodeError::kUnsupported, "the speech spectral frontend (SSF) is not decoded");
     }
     const AsfPsyInfo& psy = info.psy;
     out = SfData{};
+    const bool hsf_active = hsf != nullptr && ctx.sf_multiplier.has_value();
+    if (hsf_active) {
+        hsf_out = HsfSfData{};
+    }
+    // sf_multiplier 0 is 96 kHz (twice the owning track's own length), 1 is
+    // 192 kHz (four times) - Part 1 Table 89.
+    const bool is_192 = hsf_active && *ctx.sf_multiplier == 1;
 
-    // Pseudocode 4, with each group's own band table.
+    // Pseudocode 4, with each group's own band table, extended (ERRATA.md,
+    // "asf_section_data()'s max_sfb, with an active HSF extension") to
+    // get_max_sfb_hsf(g) where HSF is active. The extension's own bands (at
+    // or past num_sfb_48, which every max_sfb of Table 106's six bits stays
+    // at or under) go to hsf_out; sfb_offsets_96()/_192() repeat
+    // sfb_offsets_48()'s own entries up to there (verified against the
+    // generated tables), so num_sfb_48 is also where SfData's fixed-size
+    // arrays would overflow, not only where the spec's own boundary sits.
     int group_offset = 0;
+    int hsf_group_offset = 0;
+    std::array<int, kMaxWindows> n48_of{};
+    std::array<int, kMaxWindows> eff_max_sfb_of{};
     for (int g = 0; g < psy.num_window_groups; ++g) {
         const int length = transform_length_samples(ctx, get_transf_length(ctx, psy, g));
-        const int max_sfb = get_max_sfb(ctx, psy, g, side_channel);
-        const auto offsets = tables::sfb_offsets_48(length);
-        if (offsets.empty() || max_sfb < 0 || max_sfb > tables::num_sfb_48(length)) {
+        const int core_max_sfb = get_max_sfb(ctx, psy, g, side_channel);
+        const int n48 = tables::num_sfb_48(length);
+        const auto core_offsets = tables::sfb_offsets_48(length);
+        if (core_offsets.empty() || core_max_sfb < 0 || core_max_sfb > n48) {
             return fail(DecodeError::kInvalidStream, "max_sfb exceeds the scale factor bands of its transform");
         }
-        out.max_sfb[at(g)] = max_sfb;
-        const int wins = psy.num_win_in_group[at(g)];
-        for (int sfb = 0; sfb <= max_sfb; ++sfb) {
-            out.sect_sfb_offset[at(g)][at(sfb)] =
-                static_cast<std::uint16_t>(group_offset + offsets[at(sfb)] * wins);
+        int eff_max_sfb = core_max_sfb;
+        std::span<const std::uint16_t> ext_offsets;
+        if (hsf_active) {
+            eff_max_sfb = get_max_sfb_hsf(ctx, psy, g, *hsf);
+            const int hsf_length = length * (is_192 ? 4 : 2);
+            ext_offsets = is_192 ? tables::sfb_offsets_192(hsf_length) : tables::sfb_offsets_96(hsf_length);
+            const int n_hsf = is_192 ? tables::num_sfb_192(hsf_length) : tables::num_sfb_96(hsf_length);
+            if (ext_offsets.empty() || eff_max_sfb < core_max_sfb || eff_max_sfb > n_hsf) {
+                return fail(DecodeError::kInvalidStream,
+                            "max_sfb_hsf exceeds the scale factor bands of its transform");
+            }
         }
-        group_offset += offsets[at(max_sfb)] * wins;
+        n48_of[at(g)] = n48;
+        eff_max_sfb_of[at(g)] = eff_max_sfb;
+
+        const int wins = psy.num_win_in_group[at(g)];
+        const int core_fill = std::min(eff_max_sfb, n48);
+        out.max_sfb[at(g)] = core_fill;
+        for (int sfb = 0; sfb <= core_fill; ++sfb) {
+            out.sect_sfb_offset[at(g)][at(sfb)] =
+                static_cast<std::uint16_t>(group_offset + core_offsets[at(sfb)] * wins);
+        }
+        group_offset += core_offsets[at(core_fill)] * wins;
+
+        if (hsf_active) {
+            hsf_out.start_sfb[at(g)] = n48;
+            hsf_out.max_sfb_hsf[at(g)] = eff_max_sfb;
+            if (eff_max_sfb > n48) {
+                const int count = eff_max_sfb - n48;
+                hsf_out.sect_sfb_offset[at(g)].resize(at(count) + 1);
+                hsf_out.sfb_cb[at(g)].assign(at(count), 0);
+                const int base = ext_offsets[at(n48)] * wins;
+                for (int sfb = n48; sfb <= eff_max_sfb; ++sfb) {
+                    hsf_out.sect_sfb_offset[at(g)][at(sfb - n48)] =
+                        static_cast<std::uint32_t>(hsf_group_offset + ext_offsets[at(sfb)] * wins - base);
+                }
+                hsf_group_offset += ext_offsets[at(eff_max_sfb)] * wins - base;
+            }
+        }
     }
     out.quant_spec.assign(static_cast<size_t>(group_offset), 0);
+    if (hsf_active) {
+        hsf_out.quant_spec.assign(static_cast<size_t>(hsf_group_offset), 0);
+    }
 
-    // 4.2.8.3 asf_section_data()
+    // 4.2.8.3 asf_section_data(), extended the same way.
     for (int g = 0; g < psy.num_window_groups; ++g) {
         const int transf_length_g = get_transf_length(ctx, psy, g);
         const int sect_esc_val = transf_length_g <= 2 ? 7 : 31;
         const int n_sect_bits = transf_length_g <= 2 ? 3 : 5;
-        const int num_sfb = tables::num_sfb_48(transform_length_samples(ctx, transf_length_g));
-        const int max_sfb = out.max_sfb[at(g)];
+        const int n48 = n48_of[at(g)];
+        const int max_sfb = eff_max_sfb_of[at(g)];
         auto& sections = out.sections[at(g)];
+        auto* hsf_sections = hsf_active ? &hsf_out.sections[at(g)] : nullptr;
         int k = 0;
         while (k < max_sfb) {
-            AsfSection section;
-            section.cb = static_cast<std::uint8_t>(r.read(4, "sect_cb"));
+            const std::uint8_t cb = static_cast<std::uint8_t>(r.read(4, "sect_cb"));
             int sect_len = 1;
             int incr = static_cast<int>(r.read(n_sect_bits, "sect_len_incr"));
             while (incr == sect_esc_val) {
@@ -371,21 +450,44 @@ ParseResult parse_sf_data(BitReader& r, const SubstreamContext& ctx, const SfInf
                 }
             }
             sect_len += incr;
-            if (section.cb > 11) {
+            if (cb > 11) {
                 return fail(DecodeError::kInvalidStream, "sect_cb 12 to 15 name no codebook");
             }
-            if (k + sect_len > max_sfb) {
+            const int start = k;
+            const int end = k + sect_len;
+            if (end > max_sfb) {
                 return fail(DecodeError::kInvalidStream, "a section runs past max_sfb");
             }
-            section.start = static_cast<std::uint8_t>(k);
-            section.end = static_cast<std::uint8_t>(k + sect_len);
-            if (section.start < num_sfb && section.end >= num_sfb) {
-                out.num_sec_lsf[at(g)] = static_cast<int>(sections.size()) + 1;
+            // Table 39's split: a section straddling num_sfb_48 becomes two
+            // bookkeeping entries sharing one codebook (nothing extra is
+            // read), so num_sec_lsf marks exactly which sections
+            // asf_spectral_data() owns and which belong to
+            // asf_hsf_spectral_data() instead.
+            const bool at_boundary = start < n48 && end >= n48;
+            const bool split = at_boundary && end > n48;
+            const int core_end = split ? n48 : end;
+            if (start < n48) {
+                if (at_boundary) {
+                    out.num_sec_lsf[at(g)] = static_cast<int>(sections.size()) + 1;
+                }
+                AsfSection section;
+                section.cb = cb;
+                section.start = static_cast<std::uint8_t>(start);
+                section.end = static_cast<std::uint8_t>(core_end);
+                sections.push_back(section);
+            }
+            if (split && hsf_sections != nullptr) {
+                hsf_sections->push_back(HsfSection{cb, n48, end});
+            } else if (start >= n48 && hsf_sections != nullptr) {
+                hsf_sections->push_back(HsfSection{cb, start, end});
             }
             for (int sfb = k; sfb < k + sect_len; ++sfb) {
-                out.sfb_cb[at(g)][at(sfb)] = section.cb;
+                if (sfb < n48) {
+                    out.sfb_cb[at(g)][at(sfb)] = cb;
+                } else if (hsf_active) {
+                    hsf_out.sfb_cb[at(g)][at(sfb - n48)] = cb;
+                }
             }
-            sections.push_back(section);
             k += sect_len;
             if (auto ok = check(r); !ok) {
                 return ok;
@@ -467,23 +569,23 @@ ParseResult parse_sf_data(BitReader& r, const SubstreamContext& ctx, const SfInf
         }
     }
 
-    // 4.2.8.5 asf_scalefac_data()
+    // 4.2.8.5 asf_scalefac_data(). first_scf_found is left in out: Table 42b's
+    // asf_hsf_scalefac_data() carries it on rather than starting over.
     out.reference_scale_factor = static_cast<int>(r.read(8, "reference_scale_factor"));
-    bool first_scf_found = false;
     for (int g = 0; g < psy.num_window_groups; ++g) {
         const int num_sfb = tables::num_sfb_48(transform_length_samples(ctx, get_transf_length(ctx, psy, g)));
         const int max_sfb = std::min(out.max_sfb[at(g)], num_sfb);
         for (int sfb = 0; sfb < max_sfb; ++sfb) {
             if (out.sfb_cb[at(g)][at(sfb)] != 0 && out.max_quant_idx[at(g)][at(sfb)] > 0) {
                 out.scale_factor_present[at(g)][at(sfb)] = true;
-                if (first_scf_found) {
+                if (out.first_scf_found) {
                     const int index = huff_decode(r, tables::kAsfHcbScalefac, "asf_sf_hcw");
                     if (index < 0) {
                         return fail(DecodeError::kInvalidStream, "no ASF scale factor codeword matches");
                     }
                     out.dpcm_sf[at(g)][at(sfb)] = static_cast<std::int16_t>(index);
                 } else {
-                    first_scf_found = true;
+                    out.first_scf_found = true;
                 }
             }
         }
@@ -506,6 +608,142 @@ ParseResult parse_sf_data(BitReader& r, const SubstreamContext& ctx, const SfInf
                     }
                     out.snf_present[at(g)][at(sfb)] = true;
                     out.dpcm_snf[at(g)][at(sfb)] = static_cast<std::int16_t>(index);
+                }
+            }
+        }
+    }
+    return check(r);
+}
+
+ParseResult parse_sf_hsf_data(BitReader& r, int num_window_groups, const SfData& core, HsfSfData& hsf_out) {
+    // 4.2.8.7 asf_hsf_spectral_data() (Table 42a): every section
+    // asf_section_data() placed at or past num_sfb_48 - exactly the sections
+    // with index num_sec_lsf[g] to num_sec[g] the spec's own loop names,
+    // since core.sections[g] holds every earlier one.
+    for (int g = 0; g < num_window_groups; ++g) {
+        const int start_sfb = hsf_out.start_sfb[at(g)];
+        for (const HsfSection& section : hsf_out.sections[at(g)]) {
+            if (section.cb == 0) {
+                continue;
+            }
+            const Codebook& cb = *tables::kAsfSpectrumCodebooks[section.cb];
+            const int dim = tables::kCbDim[section.cb];
+            const bool is_unsigned = tables::kUnsignedCb[section.cb];
+            const int start_line =
+                static_cast<int>(hsf_out.sect_sfb_offset[at(g)][at(section.start - start_sfb)]);
+            const int end_line = static_cast<int>(hsf_out.sect_sfb_offset[at(g)][at(section.end - start_sfb)]);
+            for (int k = start_line; k < end_line; k += dim) {
+                const int index = huff_decode(r, cb, "asf_qspec_hcw");
+                if (index < 0) {
+                    return fail(DecodeError::kInvalidStream, "no ASF spectrum codeword matches");
+                }
+                std::array<std::int32_t, 4> lines{};
+                split_codeword(cb, dim, index, lines);
+                if (is_unsigned) {
+                    int nonzero = 0;
+                    for (int d = 0; d < dim; ++d) {
+                        nonzero += lines[at(d)] != 0 ? 1 : 0;
+                    }
+                    const std::uint32_t signs = r.read(nonzero, dim == 4 ? "quad_sign_bits" : "pair_sign_bits");
+                    int bit = nonzero - 1;
+                    for (int d = 0; d < dim; ++d) {
+                        if (lines[at(d)] != 0) {
+                            if (((signs >> static_cast<unsigned>(bit)) & 1U) != 0) {
+                                lines[at(d)] = -lines[at(d)];
+                            }
+                            --bit;
+                        }
+                    }
+                }
+                if (section.cb == 11) {
+                    for (int d = 0; d < 2; ++d) {
+                        if (std::abs(lines[at(d)]) == 16) {
+                            const std::int32_t magnitude = read_ext_code(r);
+                            if (magnitude < 0) {
+                                return fail(DecodeError::kInvalidStream, "ext_code is longer than 21 bits");
+                            }
+                            lines[at(d)] = lines[at(d)] < 0 ? -magnitude : magnitude;
+                        }
+                    }
+                }
+                if (k + dim > end_line) {
+                    return fail(DecodeError::kInvalidStream, "a codeword runs past its section");
+                }
+                for (int d = 0; d < dim; ++d) {
+                    hsf_out.quant_spec[at(k + d)] = lines[at(d)];
+                }
+                if (auto ok = check(r); !ok) {
+                    return ok;
+                }
+            }
+        }
+    }
+
+    // max_quant_idx[g][sfb - start_sfb[g]]: the note under Table 41, which
+    // asf_hsf_scalefac_data() and asf_hsf_snf_data() need the same way.
+    for (int g = 0; g < num_window_groups; ++g) {
+        const int count = hsf_out.max_sfb_hsf[at(g)] - hsf_out.start_sfb[at(g)];
+        if (count <= 0) {
+            continue;
+        }
+        hsf_out.max_quant_idx[at(g)].assign(at(count), 0);
+        for (int i = 0; i < count; ++i) {
+            std::int32_t peak = 0;
+            for (int k = static_cast<int>(hsf_out.sect_sfb_offset[at(g)][at(i)]);
+                 k < static_cast<int>(hsf_out.sect_sfb_offset[at(g)][at(i + 1)]); ++k) {
+                peak = std::max(peak, std::abs(hsf_out.quant_spec[at(k)]));
+            }
+            hsf_out.max_quant_idx[at(g)][at(i)] = static_cast<std::uint16_t>(std::min(peak, 65535));
+        }
+    }
+
+    // 4.2.8.8 asf_hsf_scalefac_data() (Table 42b): first_scf_found continues
+    // from core's own asf_scalefac_data() pass rather than starting over.
+    bool first_scf_found = core.first_scf_found;
+    for (int g = 0; g < num_window_groups; ++g) {
+        const int count = hsf_out.max_sfb_hsf[at(g)] - hsf_out.start_sfb[at(g)];
+        if (count <= 0) {
+            continue;
+        }
+        hsf_out.dpcm_sf[at(g)].assign(at(count), 0);
+        hsf_out.scale_factor_present[at(g)].assign(at(count), false);
+        for (int i = 0; i < count; ++i) {
+            if (hsf_out.sfb_cb[at(g)][at(i)] != 0 && hsf_out.max_quant_idx[at(g)][at(i)] > 0) {
+                hsf_out.scale_factor_present[at(g)][at(i)] = true;
+                if (first_scf_found) {
+                    const int index = huff_decode(r, tables::kAsfHcbScalefac, "asf_sf_hcw");
+                    if (index < 0) {
+                        return fail(DecodeError::kInvalidStream, "no ASF scale factor codeword matches");
+                    }
+                    hsf_out.dpcm_sf[at(g)][at(i)] = static_cast<std::int16_t>(index);
+                } else {
+                    first_scf_found = true;
+                }
+            }
+        }
+    }
+    if (auto ok = check(r); !ok) {
+        return ok;
+    }
+
+    // 4.2.8.9 asf_hsf_snf_data() (Table 42c): gated on core's own
+    // b_snf_data_exists, which is not re-read.
+    if (core.b_snf_data_exists) {
+        for (int g = 0; g < num_window_groups; ++g) {
+            const int count = hsf_out.max_sfb_hsf[at(g)] - hsf_out.start_sfb[at(g)];
+            if (count <= 0) {
+                continue;
+            }
+            hsf_out.dpcm_snf[at(g)].assign(at(count), 0);
+            hsf_out.snf_present[at(g)].assign(at(count), false);
+            for (int i = 0; i < count; ++i) {
+                if (hsf_out.sfb_cb[at(g)][at(i)] == 0 || hsf_out.max_quant_idx[at(g)][at(i)] == 0) {
+                    const int index = huff_decode(r, tables::kAsfHcbSnf, "asf_snf_hcw");
+                    if (index < 0) {
+                        return fail(DecodeError::kInvalidStream, "no ASF noise fill codeword matches");
+                    }
+                    hsf_out.snf_present[at(g)][at(i)] = true;
+                    hsf_out.dpcm_snf[at(g)][at(i)] = static_cast<std::int16_t>(index);
                 }
             }
         }

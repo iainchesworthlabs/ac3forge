@@ -14,8 +14,9 @@ using std::size_t;
 
 class ElementParser {
    public:
-    ElementParser(BitReader& r, const SubstreamContext& ctx, ChannelElementState& state, ChannelElement& out)
-        : r_(r), ctx_(ctx), state_(state), out_(out) {}
+    ElementParser(BitReader& r, const SubstreamContext& ctx, ChannelElementState& state, ChannelElement& out,
+                  BitReader* hsf_reader)
+        : r_(r), ctx_(ctx), state_(state), out_(out), hsf_reader_(hsf_reader) {}
 
     ParseResult single_channel_element();
     ParseResult channel_pair_element();
@@ -52,6 +53,9 @@ class ElementParser {
     ChannelElementState& state_;
     ChannelElement& out_;
     int aspx_position_ = 0;
+    BitReader* hsf_reader_ = nullptr;
+    HsfExtHeader hsf_header_{};
+    bool hsf_peeked_ = false;
 };
 
 ParseResult ElementParser::begin(ElementKind kind, int mode, bool needs_aspx,
@@ -135,7 +139,21 @@ ParseResult ElementParser::add_track(int info, bool side_channel, bool lfe) {
     track.info = info;
     track.side_channel = side_channel;
     track.lfe = lfe;
-    if (auto ok = parse_sf_data(r_, ctx_, out_.infos[static_cast<size_t>(info)], side_channel, track.data); !ok) {
+    if (hsf_reader_ != nullptr && !hsf_peeked_) {
+        // Table 17's max_sfb_ext_hsf[]: read once, before this element's
+        // first track's asf_section_data() needs it, using that track's own
+        // b_different_framing - the only one known this early (see
+        // parse_audio_data_chan's doc comment).
+        const SfInfo& first = out_.infos[static_cast<size_t>(info)];
+        if (auto ok = parse_hsf_ext_header(*hsf_reader_, first.psy.b_different_framing, hsf_header_); !ok) {
+            return ok;
+        }
+        hsf_peeked_ = true;
+    }
+    const HsfExtHeader* hsf = hsf_reader_ != nullptr ? &hsf_header_ : nullptr;
+    if (auto ok = parse_sf_data(r_, ctx_, out_.infos[static_cast<size_t>(info)], side_channel, hsf, track.data,
+                                track.hsf);
+        !ok) {
         return ok;
     }
     out_.tracks.push_back(std::move(track));
@@ -818,9 +836,9 @@ ParseResult ElementParser::element_7_x() {
 }  // namespace
 
 ParseResult parse_audio_data_chan(BitReader& r, const SubstreamContext& ctx, ChannelElementState& state,
-                                  ChannelElement& out) {
+                                  ChannelElement& out, BitReader* hsf_reader) {
     out = ChannelElement{};
-    ElementParser parser(r, ctx, state, out);
+    ElementParser parser(r, ctx, state, out, hsf_reader);
     switch (ctx.ch_mode) {
         case ch_mode::kMono:
             return parser.single_channel_element();

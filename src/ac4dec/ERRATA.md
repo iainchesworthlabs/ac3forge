@@ -251,6 +251,45 @@ Later phases add the readings their processing needs.
   two transcriptions detect these at different elements, which changes only where a corrupt
   substream's trace stops.
 
+### asf_section_data()'s max_sfb, with an active HSF extension
+
+- **Where:** Part 1 Table 39, p. 45, sets `max_sfb = get_max_sfb(g)`. Its own section-splitting branch,
+  two lines later (`if (sect_end[g][i] > num_sfb_48(transf_length_g)) { ... }`), can only trigger when
+  the loop reads past `num_sfb_48`, which `get_max_sfb(g)` alone never permits: 4.3.6.2.2 gives
+  `max_sfb[i]` a ceiling of `num_sfb` (`num_sfb_48`, at this call), so `get_max_sfb(g) <= num_sfb_48`
+  always holds. Tables 42a to 42c (`asf_hsf_spectral_data()`, `asf_hsf_scalefac_data()`,
+  `asf_hsf_snf_data()`, pp. 48 and 49), read from this channel's `ac4_hsf_ext_substream()`, depend on
+  `num_sec_lsf[g] < num_sec[g]` and on `sfb_cb[g][sfb]`/`sect_sfb_offset[g][sfb]` being set for `sfb` up
+  to `get_max_sfb_hsf(g)` (4.3.16.2, p. 138) - reachable only if `asf_section_data()` itself reads that
+  far.
+- **Reading:** `max_sfb` in Table 39's own pseudocode is `get_max_sfb_hsf(g)`, not `get_max_sfb(g)`,
+  whenever this channel's HSF extension is active (its `ac4_hsf_ext_substream_info()` links a substream,
+  and this channel's own `sf_multiplier` is set - Part 2 Table 89, p. 78). `asf_spectral_data()`,
+  `asf_scalefac_data()` and `asf_snf_data()` (Tables 40 to 42) are unaffected: their own `get_max_sfb(g)`
+  and `min(get_max_sfb(g), num_sfb_48(...))` calls keep the core-only reading, which is what makes a
+  channel with no active extension unaffected byte for byte by touching the section loop at all.
+- **Evidence:** Text; no stream here uses the mode.
+
+### ac4_hsf_ext_substream()'s max_sfb_ext_hsf and num_channels
+
+- **Where:** Part 1 Table 17, p. 34: `max_sfb_ext_hsf[0]` and, `if (b_different_framing)`, `[1]` are read
+  once, before a `for (ch = 0; ch < num_channels; ch++) { sf_hsf_data(); }` loop. Neither
+  `b_different_framing` nor `num_channels` is defined in this substream's own syntax; both are properties
+  `sf_info()`/`asf_psy_info()` (4.2.7.1, 4.2.8.2) set once per track of the *owning* channel-coded
+  substream's own element (`single_channel_element`, `channel_pair_element`, and so on, 4.2.6) - most of
+  which read one shared `sf_info()` for every track (3_0, 5_X, 7_X), leaving only a `channel_pair_element`
+  without `b_enable_mdct_stereo_proc` able to hold two, one per track.
+- **Reading:** `num_channels` is the owning element's own track count, in the order its `sf_data()` calls
+  are made (`mono_data()`, `stereo_data()`, `two_channel_data()`, and so on) - the same order and count
+  `sf_hsf_data()`'s loop needs to match, LFE and ASPX_ACPL_1 residual tracks included. `b_different_framing`
+  is the first of those tracks' own value: every track's `sf_info()` (hence its own `b_different_framing`)
+  is read before the element's *first* `sf_data()` call, the point `asf_section_data()` first needs
+  `max_sfb_ext_hsf` - the first track's is the only one available to size this header when it must be
+  read. A later track whose own `b_different_framing` calls for `max_sfb_ext_hsf[1]` where the first
+  track's did not read one takes it as 0: no additional bands for that track's own second half, rather
+  than a failure.
+- **Evidence:** Text; no stream here uses the mode.
+
 ## Channel elements
 
 ### Configuration belongs to the codec mode it was sent for

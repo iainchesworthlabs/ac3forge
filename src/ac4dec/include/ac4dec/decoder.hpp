@@ -22,15 +22,17 @@
 //
 // What this version does: it reads every syntax element of a raw AC-4
 // frame's substreams - the presentation substream, channel-coded audio
-// substreams in the Part 1 channel elements, and EMDF payload substreams -
-// and reports what a frame carries. It produces no audio yet. The table of
+// substreams in the Part 1 channel elements (their HSF extension substreams,
+// ac4_hsf_ext_substream(), included), and EMDF payload substreams - and
+// reports what a frame carries. It produces no audio yet. The table of
 // contents and the substream framing come from ac4::parse_raw_frame (the
 // inspector, src/ac4); this library starts where the inspector stops.
 //
 // What it refuses, with DecodeError::kUnsupported and a reason: the speech
 // spectral frontend (Part 1 clause 5.2), immersive and 22.2 channel elements,
-// object substreams, 96 kHz and 192 kHz substreams and the HSF extension.
-// Refusing is per substream and per frame; the next frame is attempted afresh.
+// object substreams, and a 96/192 kHz substream whose HSF extension
+// substream could not be resolved and read alongside it. Refusing is per
+// substream and per frame; the next frame is attempted afresh.
 //
 // ERRATA.md beside this library records where the two standards are
 // ambiguous or defective and the reading taken for each.
@@ -111,7 +113,7 @@ struct DecoderConfig {
 
 // What one substream of a frame turned out to be.
 struct SubstreamReport {
-    enum class Kind : std::uint8_t { kAudio, kPresentation, kEmdfPayloads, kOther };
+    enum class Kind : std::uint8_t { kAudio, kPresentation, kEmdfPayloads, kHsfExt, kOther };
     int index = 0;
     Kind kind = Kind::kOther;
     std::size_t size_bits = 0;           // the substream's size in substream_index_table(), in bits
