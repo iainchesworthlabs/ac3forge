@@ -2,6 +2,8 @@
 
 #include <QFileInfo>
 
+#include <chrono>
+
 // hearth_controller.hpp's Qt headers define `slots` as a macro for the
 // classic SIGNAL/SLOT syntax (unless QT_NO_KEYWORDS is set, which this
 // project's Qt targets do not - CrucibleController and EncoderController
@@ -295,6 +297,12 @@ void HearthController::previous() {
     }
 }
 
+void HearthController::seek(qlonglong ms) {
+    if (engine_ && ms >= 0) {
+        engine_->seek(std::chrono::milliseconds(ms));
+    }
+}
+
 void HearthController::playItem(int index) {
     if (engine_ && index >= 0) {
         engine_->play_item(static_cast<std::size_t>(index));
@@ -354,6 +362,18 @@ void HearthController::poll() {
         note_ = new_note;
         error_ = new_error;
         emit stateChanged();
+    }
+
+    // Read apart from status() - Engine::position()'s own comment says why -
+    // and on its own signal, so the scrubber does not have to sit through
+    // queue-row rebuilding sixty times a second just to hear it move.
+    const ac3::hearth::PlayPosition position = engine_->position();
+    const qlonglong new_position_ms = static_cast<qlonglong>(position.heard.count());
+    const qlonglong new_duration_ms = static_cast<qlonglong>(position.duration.count());
+    if (new_position_ms != position_ms_ || new_duration_ms != duration_ms_) {
+        position_ms_ = new_position_ms;
+        duration_ms_ = new_duration_ms;
+        emit positionChanged();
     }
 
     const QVariantMap new_decoder_settings = decoder_settings_to_map(status.settings);
