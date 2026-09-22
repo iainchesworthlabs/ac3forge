@@ -17,9 +17,27 @@
 # this change's PR for the WSL configure-only check that confirmed it.
 # ---------------------------------------------------------------------------
 find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Qml Quick QuickControls2 LinguistTools)
+
+# Exported so apps/hearth/notices/notices.cmake (include()d from
+# apps/hearth/CMakeLists.txt, one directory up) can tell whether the hearth
+# package's NOTICES.txt needs a Qt section, on the platforms that bundle Qt
+# into it (Windows, macOS - the install() rules below). Set unconditionally,
+# not only in the Qt6_FOUND branch, so that file can tell "Qt6 not found
+# here" (this defined and false) apart from "apps/hearth/CMakeLists.txt
+# hasn't add_subdirectory()'d this directory yet" (not defined at all) - the
+# same PARENT_SCOPE-across-add_subdirectory() reason apps/gui/CMakeLists.txt
+# exports AC3FORGE_GUI_QT_VERSION for apps/notices/notices.cmake.
+set(AC3HEARTH_UI_QT_FOUND "${Qt6_FOUND}" PARENT_SCOPE)
+
 if(NOT Qt6_FOUND)
     message(WARNING "Qt6 not found: ac3hearth is skipped; the engine and its tests still build.")
 else()
+    # The version, for that same Qt section. Empty here while
+    # AC3HEARTH_UI_QT_FOUND reads true would mean this export broke loose
+    # from the find_package it is meant to travel with - notices.cmake
+    # treats that as a configure error rather than a blank notice.
+    set(AC3HEARTH_UI_QT_VERSION "${Qt6_VERSION}" PARENT_SCOPE)
+
     qt_standard_project_setup(REQUIRES 6.8)
 
     # The shared family components, copied from apps/gui/qml the way
