@@ -198,11 +198,24 @@ public:
     // since it is a different list of units.
     void set_decoder_settings(const DecoderSettings& settings);
     [[nodiscard]] const DecoderSettings& decoder_settings() const { return settings_; }
-    // What every item is rendered onto. Fixed for this player's lifetime -
-    // there is no set_layout() yet; changing the layout while playing needs
-    // the output reopened at the new width, which A5's Speakers page defers
-    // (planning/hearth-reference-player.md).
+    // What every item is rendered onto.
     [[nodiscard]] const render::OutputLayout& layout() const { return layout_; }
+    // Changes it. A no-op, returning true, for the same layout (by text());
+    // false only for one with no slots at all, which nothing valid ever
+    // parses to - see OutputLayout::parse(). The per-slot speaker setup
+    // (trim_db_/delay_ms_/the trim-delay processor) is reset to its defaults,
+    // since a slot index means a different speaker under a different layout
+    // and carrying old settings over would silently misapply one speaker's
+    // trim to another; crossover_hz_ is not per-slot and survives. With
+    // nothing playing, that is all - the next item opens at the new layout.
+    // Playing or paused through an open output, the output is reopened at
+    // the new width and the current item resumes from where it had got to:
+    // the same close/reopen/seek-back shape refollow() uses for an output
+    // that changed underneath it (a different endpoint, there; a different
+    // layout, here) - so, like any other reopen in this player, there is a
+    // gap, not a click: nothing here attempts to cross-fade or otherwise
+    // hide a channel-count change mid-stream.
+    bool set_layout(const render::OutputLayout& layout);
     // Why the decoder settings are not what the listener hears, or empty
     // when they are: a bitstream is decoded by the receiver.
     [[nodiscard]] std::string_view settings_note() const;

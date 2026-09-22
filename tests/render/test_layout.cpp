@@ -650,6 +650,88 @@ TEST_CASE("the named form's realization modifier applies to every height slot", 
     REQUIRE_FALSE(OutputLayout::named("7.1.4:sideways").has_value());
 }
 
+TEST_CASE("with_small changes one slot's ':small' in place, keeping everything else",
+          "[io][layout]") {
+    const auto base = OutputLayout::parse("L,C,R,Ls,Rs,LFE");
+    REQUIRE(base.has_value());
+
+    const auto small_l = base->with_small(0, true);
+    REQUIRE(small_l.has_value());
+    REQUIRE(small_l->slot(0).small);
+    REQUIRE(small_l->text() == "L:small,C,R,Ls,Rs,LFE");
+    for (std::size_t i = 1; i < base->slots(); ++i) {
+        CAPTURE(i);
+        REQUIRE_FALSE(small_l->slot(i).small);
+        REQUIRE(small_l->slot(i).location == base->slot(i).location);
+        REQUIRE(small_l->slot(i).kind == base->slot(i).kind);
+    }
+
+    // Turning it off again round-trips exactly back to the plain list.
+    const auto back = small_l->with_small(0, false);
+    REQUIRE(back.has_value());
+    REQUIRE_FALSE(back->slot(0).small);
+    REQUIRE(back->text() == base->text());
+
+    // Refused: a slot out of range, LFE (not a speaker), and turning small ON
+    // where there is no LFE feed to redirect the bass to.
+    REQUIRE_FALSE(base->with_small(6, true).has_value());
+    REQUIRE_FALSE(base->with_small(5, true).has_value());  // slot 5 is LFE
+    const auto no_lfe = OutputLayout::named("2.0");
+    REQUIRE(no_lfe.has_value());
+    REQUIRE_FALSE(no_lfe->with_small(0, true).has_value());
+    // Turning small off never needs an LFE feed.
+    REQUIRE(no_lfe->with_small(0, false).has_value());
+}
+
+TEST_CASE("with_realization sets every re-tierable height slot, and nothing else",
+          "[io][layout]") {
+    const auto base = OutputLayout::named("7.1.4");
+    REQUIRE(base.has_value());
+
+    const auto ceiling = base->with_realization(Speaker::Realization::kTop);
+    for (const Location height_location :
+         {Location::kVhl, Location::kVhr, Location::kLts, Location::kRts}) {
+        const int slot = ceiling.index_of(height_location);
+        REQUIRE(slot >= 0);
+        CAPTURE(height_location);
+        REQUIRE(ceiling.slot(static_cast<std::size_t>(slot)).realization ==
+                Speaker::Realization::kTop);
+        REQUIRE(ceiling.slot(static_cast<std::size_t>(slot)).direction.elevation_deg ==
+                Approx(90.0));
+    }
+    // The ring is untouched.
+    const int left = ceiling.index_of(Location::kLeft);
+    REQUIRE(left >= 0);
+    REQUIRE(ceiling.slot(static_cast<std::size_t>(left)).realization ==
+            Speaker::Realization::kDefault);
+    REQUIRE(ceiling.slot(static_cast<std::size_t>(left)).direction.elevation_deg == Approx(0.0));
+
+    // What with_realization() wrote reparses to the same shape.
+    const auto reparsed = OutputLayout::parse(ceiling.text());
+    REQUIRE(reparsed.has_value());
+    REQUIRE(reparsed->slots() == ceiling.slots());
+    REQUIRE(reparsed->index_of(Location::kVhl) == ceiling.index_of(Location::kVhl));
+
+    // Back to on-the-wall: no suffix, elevation back to nominal.
+    const auto wall = ceiling.with_realization(Speaker::Realization::kDefault);
+    for (const Location height_location :
+         {Location::kVhl, Location::kVhr, Location::kLts, Location::kRts}) {
+        const int slot = wall.index_of(height_location);
+        REQUIRE(slot >= 0);
+        REQUIRE(wall.slot(static_cast<std::size_t>(slot)).realization ==
+                Speaker::Realization::kDefault);
+        REQUIRE(wall.slot(static_cast<std::size_t>(slot)).direction.elevation_deg ==
+                Approx(ac3::spatial::kHeightElevationDeg));
+    }
+
+    // A layout with no re-tierable slot at all comes back exactly as it was -
+    // still the name text, not expanded into a list nothing needed changing.
+    const auto flat = OutputLayout::named("5.1");
+    REQUIRE(flat.has_value());
+    const auto still_flat = flat->with_realization(Speaker::Realization::kUpFiring);
+    REQUIRE(still_flat.text() == flat->text());
+}
+
 TEST_CASE("bass management: a small speaker's bass moves to the LFE feed",
           "[io][layout][render]") {
     const auto layout = OutputLayout::parse("L:small,C,R,Ls,Rs,LFE");

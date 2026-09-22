@@ -23,10 +23,11 @@ class Engine;
 //
 // This first slice owns the engine directly, with a device PCM sink
 // (apps/hearth/engine/pcm_sink.hpp) and a loader that reads raw
-// `.ac3`/`.ec3` files (item_loader.hpp). The output picker, the speaker
-// layout and the decoder settings pages are not built yet, so the sink is
-// the platform's default device and the layout is a fixed "2.0" until they
-// are.
+// `.ac3`/`.ec3` files (item_loader.hpp). The output picker and the decoder
+// settings pages are not built yet, so the sink is the platform's default
+// device - but the layout is no longer fixed: start() opens at "2.0" and
+// the Speakers page's setLayoutText()/setHeights()/setSpeakerSmall() can
+// change it from there for the engine's whole life (Player::set_layout()).
 
 namespace ac3::hearth::ui {
 
@@ -73,22 +74,45 @@ class HearthController : public QObject {
     Q_PROPERTY(QVariantList routing READ routing NOTIFY speakerSetupChanged)
     Q_PROPERTY(int routingOutputs READ routingOutputs NOTIFY speakerSetupChanged)
     Q_PROPERTY(QString deviceName READ deviceName NOTIFY speakerSetupChanged)
-    // Each render layout slot's own speaker name ("L", "C", "LFE", ...),
-    // from the layout this engine was built with - fixed for this slice
-    // (Player::layout()'s own comment says why there is no live layout
-    // change yet). NOTIFY, not CONSTANT, despite being fixed once set:
-    // QML reads this property while building the page tree, which happens
-    // before start() has posted anything to the engine thread, let alone
-    // before its first status has come back - CONSTANT would tell the
-    // binding engine to cache that first, empty read forever.
+    // Each render layout slot's own speaker name ("L", "C", "LFE", ...), from
+    // the layout currently in effect - recomputed whenever layoutText
+    // changes, since setLayout()/setLayoutText() can change what a slot index
+    // even means. NOTIFY, not CONSTANT: QML reads this property while
+    // building the page tree, before start() has posted anything to the
+    // engine thread, let alone before its first status has come back -
+    // CONSTANT would tell the binding engine to cache that first, empty read
+    // forever, and this can then go on changing for the engine's whole life.
     Q_PROPERTY(QStringList speakerLabels READ speakerLabels NOTIFY speakerSetupChanged)
     // Each slot's own render::Speaker::small - whether its bass is
-    // redirected to the LFE feed rather than reproduced there. Baked into
-    // the fixed layout the same as speakerLabels, so read-only here: there
-    // is no per-speaker size control in this slice, only the crossover
-    // corner those small speakers share (crossoverHz). Same NOTIFY, same
-    // reason as speakerLabels.
+    // redirected to the LFE feed rather than reproduced there. Read-write:
+    // setSpeakerSmall() is the Size column's Large/Small control. Same
+    // NOTIFY, same recompute-on-layout-change reason as speakerLabels.
     Q_PROPERTY(QVariantList speakerSmall READ speakerSmall NOTIFY speakerSetupChanged)
+    // Each slot's own kind - true where render() never places anything but
+    // the bed's LFE (render::Speaker::Kind::kLfe) - what the Size column
+    // shows "-" for instead of a Large/Small control, and what setHeights()
+    // and the size toggle both need to leave alone.
+    Q_PROPERTY(QVariantList speakerIsLfe READ speakerIsLfe NOTIFY speakerSetupChanged)
+
+    // --- speaker layout (the Speakers page's "01 Speaker layout" card) ---
+    // The layout in effect, as OutputLayout::text() gives it back: a name
+    // ("7.1.4") when it was chosen as one and nothing since has needed the
+    // list form, or the list form (with any ':small'/realization suffixes)
+    // once it has. The "As text" field reads and writes this directly;
+    // the layout picker's own "selected" segment is computed in QML by
+    // comparing this against its six preset names, falling back to "List".
+    Q_PROPERTY(QString layoutText READ layoutText NOTIFY speakerSetupChanged)
+    // Whether the current layout has any slot the Heights control can act on
+    // (OutputLayout::is_realizable_height()) - what gates that control.
+    Q_PROPERTY(bool layoutHasHeight READ layoutHasHeight NOTIFY speakerSetupChanged)
+    // Whether the current layout has an LFE feed at all - what gates the
+    // Size column's controls (render::Speaker::small needs one to redirect a
+    // small speaker's bass to; see OutputLayout::with_small()).
+    Q_PROPERTY(bool layoutHasLfe READ layoutHasLfe NOTIFY speakerSetupChanged)
+    // "wall"/"ceiling"/"upfiring" when every re-tierable height slot agrees,
+    // "" when they do not (or there is none) - the Heights SegmentedControl's
+    // currentValue, matching the values setHeights() takes.
+    Q_PROPERTY(QString heightsRealization READ heightsRealization NOTIFY speakerSetupChanged)
 
 public:
     explicit HearthController(QObject* parent = nullptr);
@@ -135,6 +159,11 @@ public:
     [[nodiscard]] QString deviceName() const { return device_name_; }
     [[nodiscard]] QStringList speakerLabels() const { return speaker_labels_; }
     [[nodiscard]] QVariantList speakerSmall() const { return speaker_small_; }
+    [[nodiscard]] QVariantList speakerIsLfe() const { return speaker_is_lfe_; }
+    [[nodiscard]] QString layoutText() const { return layout_text_; }
+    [[nodiscard]] bool layoutHasHeight() const { return layout_has_height_; }
+    [[nodiscard]] bool layoutHasLfe() const { return layout_has_lfe_; }
+    [[nodiscard]] QString heightsRealization() const { return heights_realization_; }
 
     Q_INVOKABLE void setTrimDb(int slot, double db);
     Q_INVOKABLE void setDelayMs(int slot, double ms);
@@ -149,6 +178,25 @@ public:
     // slot per output in slot order) - the routing grid's "Use the device's
     // order" button.
     Q_INVOKABLE void useDeviceOrder();
+
+    // A name ("7.1.4") or a list (ac3::render::OutputLayout::parse()'s own
+    // grammar - the layout picker's presets and the "As text" field both call
+    // this directly), parsed here so an unparseable edit is simply refused
+    // with nothing posted to the engine, the same way an out-of-range trim or
+    // delay is dropped by the double-parsing TextFields elsewhere on this
+    // page - there is no engine round trip to fail against.
+    Q_INVOKABLE void setLayoutText(const QString& text);
+    // Every re-tierable height slot set to `realization` ("wall"/"ceiling"/
+    // "upfiring" - see heightsRealization()), keeping everything else about
+    // the current layout - built from a fresh engine_->status().layout()
+    // rather than the (possibly one poll stale) layoutText property, the way
+    // setDecoderSettings() already reads a fresh snapshot rather than a
+    // cached one for the same reason.
+    Q_INVOKABLE void setHeights(const QString& realization);
+    // One slot's ':small' flipped, keeping everything else - same fresh-read
+    // reasoning as setHeights(). A no-op when the engine refuses it (out of
+    // range, or no LFE feed to redirect a newly-small speaker's bass to).
+    Q_INVOKABLE void setSpeakerSmall(int slot, bool small);
 
 signals:
     void queueChanged();
@@ -180,6 +228,11 @@ private:
     QString device_name_;
     QStringList speaker_labels_;
     QVariantList speaker_small_;
+    QVariantList speaker_is_lfe_;
+    QString layout_text_;
+    bool layout_has_height_ = false;
+    bool layout_has_lfe_ = false;
+    QString heights_realization_;
 };
 
 }  // namespace ac3::hearth::ui
