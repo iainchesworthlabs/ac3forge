@@ -600,6 +600,14 @@ TestCase {
         EncoderController.atmosEnabled = false;
         EncoderController.codecIndex = 0;  // AC-3 - vbrAvailable is false
         EncoderController.vbrEnabled = false;
+        // A known starting point distinct from the 768 the card below sets -
+        // this test is run in its own process alongside every other
+        // function in this file (see CMakeLists.txt), so bitrateKbps could
+        // otherwise still be carrying whatever an earlier test's own cards
+        // left it at. Without an explicit value here, a card tap that
+        // silently failed to fire would read back as an unchanged
+        // (and therefore unnoticed) leftover rather than a real failure.
+        EncoderController.bitrateKbps = 192;
         const wizard = waitForWizardLayout(win);
         verify(wizard !== null);
         compare(wizard.vbrQualityMode, false);
