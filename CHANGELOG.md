@@ -112,7 +112,11 @@ The sections below contain the complete change list and fixes.
   server and WiFi's own buffers are all resident: the decoder's scratch allocation failed 10 to
   12 seconds into a 5.1 stream in each of two runs, one AC-3 and one E-AC-3, and by then the heap
   was short enough that even the C++ exception the failed allocation threw could not itself be
-  allocated, which aborts the board rather than closing the stream. See
+  allocated, which aborted the board rather than closing the stream - `outputs.count` in the
+  role's capability advertisement bounds routing, the stage after decode, and did nothing to
+  stop a server sending one. `BurstPlayerConfig::max_coded_channels`
+  (`CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS`, 2 on this board) now refuses a wider
+  syncframe before a decoder opens for it, in every build that sets it. See
   `docs/platforms/bare-metal/esp32-c6.md`.
 - **`delta_allocation`** on `EncoderConfig`/`eac3::FrameConfig` (`delta=off`): the first
   rung of an effort axis for parts with little time for the §7.2.2.6 search. Removes

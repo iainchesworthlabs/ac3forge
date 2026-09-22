@@ -772,22 +772,34 @@ AC-3 and E-AC-3 5.1 do not fit this player's memory budget once the ring,
 the WebSocket server and WiFi's own buffers are all resident, though both
 decode in real time on the part with none of that overhead (see
 [Real time, with WiFi and a stream](../../../../docs/platforms/bare-metal/esp32-c6.md#status)
-on the platform page). Playing either onto 5.1 aborted the board 10 to 12
-seconds in: the decoder's own scratch allocation failed, and by then the
-heap was short enough that even the C++ exception the failed allocation
-threw could not itself be allocated (`__wrap___cxa_allocate_exception`),
-which aborts rather than closing the stream in the ordinary way. Only 2.0
-and 5.1 were tried; a layout between them may or may not fit, since the
-decoder's own scratch scales with its channel count and 5.1's alone is
-36,864 bytes. **The board's capability advertisement does not yet reflect
-this:** `support().outputs.count` is `sink_slots()`, the I2S wiring's own
-ceiling (up to 8 on this board), not a memory-derived one, so a compliant
-server sees nothing to stop it offering 5.1 and the board abort above is
-reachable from ordinary use, not only a misbehaving server. Until PSRAM, a
-second controller, or a smaller decoder scratch changes the trade, this
-needs either a lower advertised count on a part this constrained or a
-memory check ahead of the decode that refuses cleanly
-(`SendspinEvents::on_settings_refused`) instead of aborting.
+on the platform page). Before this was a Kconfig setting, playing either
+onto 5.1 aborted the board 10 to 12 seconds in: the decoder's own scratch
+allocation failed, and by then the heap was short enough that even the C++
+exception the failed allocation threw could not itself be allocated
+(`__wrap___cxa_allocate_exception`), which aborts rather than closing the
+stream in the ordinary way.
+
+`_ac3forge_player@v1` sends the server's own programme at whatever channel
+count it codes: `outputs.count` in the role's capability advertisement
+bounds *routing*, the stage after decode, not what reaches the decoder, so
+it does nothing to stop a wide syncframe from being sent and decoded in
+the first place - `support().outputs.count` being `sink_slots()`, the I2S
+wiring's own ceiling (up to 8 on this board), made that plainer still,
+since a compliant server following it would see no reason not to offer
+5.1. `CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS` closes this at
+the one place both codecs' frame headers already say the channel count
+before any decoder-specific memory is touched: `BurstPlayer` reads
+`FrameHeader::coded_channels()` and, past this count, refuses the
+syncframe instead of opening a decoder for it, printing why once a stream
+(not once a burst). `sdkconfig.sendspin-c6` sets it to 2: playing the same
+AC-3 and E-AC-3 5.1 fixtures with the setting in place, the board stayed up
+for the whole run, printed `refusing a 6-channel syncframe: more than the
+2 this part decodes in this build` once, and reported every burst refused
+through the ordinary invalid_chunks counter rather than going quiet mid-
+play - the counter the test server's own "found invalid chunks" failure
+reads. Only 2.0 and 5.1 were tried; a layout between them may or may not
+fit, since the decoder's own scratch scales with its channel count and
+5.1's alone is 36,864 bytes.
 
 ### Under QEMU
 
