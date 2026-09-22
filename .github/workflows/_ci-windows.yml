@@ -403,6 +403,38 @@ jobs:
             $winget = Get-Command winget -ErrorAction SilentlyContinue
             if ($winget) {
               Write-Host "winget found ($($winget.Source)) - using it"
+              # ROOT CAUSE FOUND (ci-runners#26, 2026-09-22): a live
+              # occurrence on ac3forge#796 (job 106687216920) caught winget
+              # mid-hang, not just before/after it - `winget uninstall`
+              # (which never had --accept-source-agreements, unlike install
+              # below) tried to refresh its configured sources, hit the
+              # unaccepted `msstore` source's terms prompt, and blocked
+              # reading a response from a console that doesn't exist in a
+              # headless CI job. That occurrence happened to fail fast
+              # (0x8a150042 "Error reading input in prompt") rather than
+              # hang, but whether a blocked stdin read errors immediately or
+              # blocks forever depends on exactly how the child process's
+              # stdin handle is set up - plausibly the same mechanism as
+              # every prior hang here, on both this step's uninstall call
+              # and its now-abandoned attempts. Fixed three ways:
+              # 1) --accept-source-agreements added to uninstall too
+              #    (already present on install below - this was the actual
+              #    gap, `winget uninstall --help` lists this flag too, it
+              #    was just never added there).
+              # 2) The `msstore` source removed up front, best-effort - we
+              #    never install from it, so there is nothing it needs to
+              #    still be configured for, and removing it means no winget
+              #    subcommand can hit its prompt even if a future edit adds
+              #    a call that forgets this flag the way uninstall did.
+              # 3) --disable-interactivity added to both calls as a
+              #    catch-all: converts ANY prompt this doesn't anticipate
+              #    into a fast, visible error instead of a silent hang,
+              #    same as the two known ones above.
+              try {
+                winget source remove --name msstore 2>&1 | Out-String | Write-Host
+              } catch {
+                Write-Host "::warning::Could not remove msstore winget source ($_) - continuing without it"
+              }
               if (Test-Path $llvmDir) {
                 Write-Host "Existing LLVM install is not major $pinnedMajor - forcing uninstall via winget before installing $version"
                 # --force here: "Direct run the command and continue with
@@ -411,7 +443,7 @@ jobs:
                 # blank exit code in ~2-3s (ci-runners#26 git history), too
                 # fast to be a real per-file uninstall and not a value
                 # PowerShell's process object should ever leave blank.
-                $code = Invoke-TimedProcess -FilePath 'winget' -ArgumentList @('uninstall', '--id', 'LLVM.LLVM', '--silent', '--force') -Label 'winget uninstall' -WatchDir $llvmDir
+                $code = Invoke-TimedProcess -FilePath 'winget' -ArgumentList @('uninstall', '--id', 'LLVM.LLVM', '--silent', '--force', '--accept-source-agreements', '--disable-interactivity') -Label 'winget uninstall' -WatchDir $llvmDir
                 if ($code -ne 0 -and (Test-Path $llvmDir)) {
                   # winget doesn't recognize a previous install it didn't
                   # make itself (e.g. a hosted image's pre-baked LLVM, or
@@ -435,7 +467,7 @@ jobs:
               # since winget's own detection is registry/product-code
               # based, not directory-presence based, so a rename alone
               # doesn't necessarily stop it from trying to upgrade.
-              $code = Invoke-TimedProcess -FilePath 'winget' -ArgumentList @('install', '--id', 'LLVM.LLVM', '--exact', '--version', $version, '--silent', '--force', '--accept-source-agreements', '--accept-package-agreements') -Label 'winget install' -WatchDir $llvmDir
+              $code = Invoke-TimedProcess -FilePath 'winget' -ArgumentList @('install', '--id', 'LLVM.LLVM', '--exact', '--version', $version, '--silent', '--force', '--accept-source-agreements', '--accept-package-agreements', '--disable-interactivity') -Label 'winget install' -WatchDir $llvmDir
               if ($code -ne 0) {
                 throw "winget install exited with code $code"
               }
