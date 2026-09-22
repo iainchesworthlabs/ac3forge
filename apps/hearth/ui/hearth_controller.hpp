@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QSettings>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -52,6 +53,21 @@ class HearthController : public QObject {
     Q_PROPERTY(QString outputReason READ outputReason NOTIFY stateChanged)
     Q_PROPERTY(QString noteText READ noteText NOTIFY stateChanged)
     Q_PROPERTY(QString errorText READ errorText NOTIFY stateChanged)
+    // Whether FirstRunDialog.qml has been dismissed once already. Persisted
+    // through QSettings under organisation "ac3forge", application "Hearth"
+    // (set in main.cpp) - this window's only settings storage so far. The
+    // queue/decoder/speaker settings apps/hearth/engine/settings_model.hpp
+    // describes are a separate, later piece (the Settings page proper), not
+    // wired to this controller yet.
+    Q_PROPERTY(bool firstRunSeen READ firstRunSeen WRITE setFirstRunSeen NOTIFY firstRunSeenChanged)
+
+    // --- position (the transport bar's scrubber) -------------------------
+    // Where the item playing now has got to - Engine::position(), read apart
+    // from status() so a poll sixteen times a second does not copy the whole
+    // queue with it (that method's own comment). Both zero with nothing
+    // current to play.
+    Q_PROPERTY(qlonglong positionMs READ positionMs NOTIFY positionChanged)
+    Q_PROPERTY(qlonglong durationMs READ durationMs NOTIFY positionChanged)
 
     // --- media information (the Media page; also the Decoder page's "This
     // stream"/"Programme" cards and the Play page's "Now playing" line) ----
@@ -77,10 +93,9 @@ class HearthController : public QObject {
     // The whole of DecoderSettings, as one map QML reads field by field and
     // writes back through setDecoderSettings() - see that method's own
     // comment for the field names. Not every control the design shows has a
-    // field here yet: rf_ceiling (OutputConfig's, not DecoderSettings')
-    // and the JOC domain/fast-inverse-transform switches are library-level
-    // settings this app does not carry a knob for yet, so the page shows
-    // them inactive.
+    // field here yet: the JOC domain/fast-inverse-transform switches are
+    // library-level settings this app does not carry a knob for yet, so the
+    // page shows them inactive.
     Q_PROPERTY(QVariantMap decoderSettings READ decoderSettings NOTIFY decoderSettingsChanged)
 
     // --- speaker setup (the Speakers page) -------------------------------
@@ -131,6 +146,11 @@ public:
     [[nodiscard]] QString outputReason() const { return output_reason_; }
     [[nodiscard]] QString noteText() const { return note_; }
     [[nodiscard]] QString errorText() const { return error_; }
+    [[nodiscard]] bool firstRunSeen() const;
+    void setFirstRunSeen(bool seen);
+
+    [[nodiscard]] qlonglong positionMs() const { return position_ms_; }
+    [[nodiscard]] qlonglong durationMs() const { return duration_ms_; }
 
     [[nodiscard]] QVariantMap currentMedia() const { return current_media_; }
     [[nodiscard]] QVariantMap inspectedMedia() const { return inspected_media_; }
@@ -149,6 +169,10 @@ public:
     Q_INVOKABLE void stop();
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
+    // Jumps the item playing now to `ms` from its start, clamped to it.
+    // Legal whatever the transport state, and does not itself start or stop
+    // playback (Player::seek()'s own comment).
+    Q_INVOKABLE void seek(qlonglong ms);
     Q_INVOKABLE void playItem(int index);
     Q_INVOKABLE void removeAt(int index);
     // Each path becomes one queue item, titled by its file name.
@@ -190,14 +214,17 @@ signals:
     void stateChanged();
     void currentMediaChanged();
     void inspectedMediaChanged();
+    void positionChanged();
     void decoderSettingsChanged();
     void speakerSetupChanged();
+    void firstRunSeenChanged();
 
 private:
     void poll();
 
     std::unique_ptr<ac3::hearth::Engine> engine_;
     QTimer poll_timer_;
+    QSettings settings_;
 
     QVariantList queue_;
     int current_index_ = -1;
@@ -219,6 +246,9 @@ private:
     // -1 until inspectItem() is called with a real index: "follow
     // currentIndex", which also covers the queue being empty.
     int inspected_index_ = -1;
+
+    qlonglong position_ms_ = 0;
+    qlonglong duration_ms_ = 0;
 
     QVariantMap decoder_settings_;
 
