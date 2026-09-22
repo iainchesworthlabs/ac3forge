@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <optional>
@@ -31,6 +32,7 @@ TEST_CASE("decoder settings: the defaults are line mode, a Lo/Ro fold for two sp
           "[hearth][decoder-settings]") {
     const auto stereo = decoder_setup(DecoderSettings{}, layout("2.0"));
     CHECK(stereo.config.output.mode == ac3::OperatingMode::kLine);
+    CHECK(stereo.config.output.rf_ceiling == 1.0);
     CHECK(stereo.serving.fold == ac3::DownmixTarget::kLoRo);
     CHECK(stereo.config.output.target == ac3::DownmixTarget::kLoRo);
     CHECK(stereo.config.output.ltrt_phase_shift);
@@ -53,6 +55,7 @@ TEST_CASE("decoder settings: the defaults are line mode, a Lo/Ro fold for two sp
 TEST_CASE("decoder settings: every control reaches the configuration", "[hearth][decoder-settings]") {
     DecoderSettings settings;
     settings.mode = ac3::OperatingMode::kCustom;
+    settings.rf_ceiling_db = -20.0;
     settings.drc_cut = 0.25;
     settings.drc_boost = 0.75;
     settings.heavy_compression = true;
@@ -69,6 +72,9 @@ TEST_CASE("decoder settings: every control reaches the configuration", "[hearth]
     const auto setup = decoder_setup(settings, layout("2.0"));
     const ac3::DecoderConfig& config = setup.config;
     CHECK(config.output.mode == ac3::OperatingMode::kCustom);
+    // Reaches OutputConfig whatever the mode - it just has no effect outside
+    // kRf, the same as every other custom-only field has no effect here.
+    CHECK(config.output.rf_ceiling == Catch::Approx(0.1).margin(1e-9));
     CHECK(config.drc_scale == 0.25);
     REQUIRE(config.drc_boost_scale.has_value());
     CHECK(*config.drc_boost_scale == 0.75);
@@ -97,6 +103,18 @@ TEST_CASE("decoder settings: shares outside 0 to 1 are held to it", "[hearth][de
     CHECK(setup.config.drc_scale == 0.0);
     REQUIRE(setup.config.drc_boost_scale.has_value());
     CHECK(*setup.config.drc_boost_scale == 1.0);
+}
+
+TEST_CASE("decoder settings: the RF ceiling never exceeds full scale", "[hearth][decoder-settings]") {
+    DecoderSettings settings;
+    settings.mode = ac3::OperatingMode::kRf;
+    settings.rf_ceiling_db = 6.0;  // above full scale - held to it instead
+    CHECK(decoder_setup(settings, layout("5.1")).config.output.rf_ceiling == 1.0);
+    // Below full scale is not held to anything: more headroom than asked
+    // for is a quieter fold, not an invalid one (output.hpp's own comment).
+    settings.rf_ceiling_db = -20.0;
+    CHECK(decoder_setup(settings, layout("5.1")).config.output.rf_ceiling ==
+          Catch::Approx(0.1).margin(1e-9));
 }
 
 TEST_CASE("decoder settings: the fold follows the layout, and only the two stereo folds are "
@@ -139,6 +157,9 @@ TEST_CASE("decoder settings: equal settings compare equal, and any control tells
     changed = base;
     changed.dual_mono = ac3::hearth::DualMonoChoice::kSecond;
     CHECK_FALSE(changed == base);
+    changed = base;
+    changed.rf_ceiling_db = -3.0;
+    CHECK_FALSE(changed == base);
 }
 
 TEST_CASE("decoder settings: a transcode decodes the programme as coded, whatever the listener "
@@ -146,6 +167,7 @@ TEST_CASE("decoder settings: a transcode decodes the programme as coded, whateve
           "[hearth][decoder-settings][transcode]") {
     DecoderSettings listener;
     listener.mode = ac3::OperatingMode::kRf;
+    listener.rf_ceiling_db = -6.0;
     listener.drc_cut = 0.5;
     listener.heavy_compression = true;
     listener.stereo_fold = ac3::DownmixTarget::kLtRt;
@@ -158,6 +180,7 @@ TEST_CASE("decoder settings: a transcode decodes the programme as coded, whateve
     listener.programme = 3;
 
     const DecoderSettings neutral = ac3::hearth::transcode_settings(listener);
+    CHECK(neutral.rf_ceiling_db == 0.0);
     CHECK(neutral.dual_mono == ac3::hearth::DualMonoChoice::kSecond);
     CHECK(neutral.concealment == ac3::ConcealmentPolicy::kMute);
     CHECK(neutral.programme == std::optional<int>{3});
