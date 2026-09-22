@@ -118,6 +118,25 @@ struct OutputStage::Impl {
     std::optional<LfeDelayLine> lfe_delay;
     std::vector<float> delayed_lfe;
 
+    // Whether the sink `mode` currently owns still has its device, for
+    // apply()'s "nothing changed" check below. kHeadphones reads true before
+    // its first submit() - the spatial sink is opened lazily (ensure_spatial)
+    // and is not itself lost just because it has never been asked to start -
+    // and kNone has no sink to ask, so it reads true too (apply() only
+    // consults this once it already knows `choice.mode` is not kNone).
+    [[nodiscard]] bool sink_running(OutputMode mode) const {
+        switch (mode) {
+            case OutputMode::kAtmos:
+            case OutputMode::kDdPlus51:
+            case OutputMode::kDd51: return !passthrough || passthrough->running();
+            case OutputMode::kPcmSurround:
+            case OutputMode::kStereo: return !monitor || monitor->running();
+            case OutputMode::kHeadphones: return !spatial_started || spatial->running();
+            case OutputMode::kNone: return true;
+        }
+        return true;
+    }
+
     void teardown() {
         if (passthrough) {
             passthrough->stop();
@@ -196,8 +215,16 @@ const OutputStatus& OutputStage::apply(std::vector<EndpointFacts> facts, bool si
     status_.endpoints = std::move(facts);
     status_.reason = choice.reason;
 
+    // Not just "did the policy's answer change": an endpoint that lost its
+    // stream (unplugged, taken by another exclusive app, reset by its
+    // driver) can still be re-enumerated with the same id and the same
+    // accepted formats, so the policy answers exactly as before and this
+    // would otherwise conclude nothing needs doing - keeping the dead sink
+    // forever, since nothing else ever revisits this decision. running()
+    // is what tells the two cases apart.
     const bool unchanged = status_.running && choice.mode == status_.mode &&
-                           choice.endpoint_id == status_.endpoint_id;
+                           choice.endpoint_id == status_.endpoint_id &&
+                           impl_->sink_running(status_.mode);
     if (unchanged) {
         return status_;
     }
