@@ -136,6 +136,15 @@ is deliberately explicit about the difference.
     `"[monitor-unplug]"` are hidden cases that take a person through it; what the two of them
     check has not yet been reported from this workstation's own receiver.
 
+    `SpatialObjectSink` answers the same way, over its own two calls:
+    `BeginUpdatingAudioObjects` failing outright, or — a removed endpoint need never signal the
+    render-ready event again either — a wait that times out reading back
+    `GetMaxDynamicObjectCount` on the `ISpatialAudioClient` instead of `GetCurrentPadding`. Not
+    the stream's own `GetAvailableDynamicObjectCount`: Microsoft's reference for that call says
+    not to use it once streaming has started, since `BeginUpdatingAudioObjects` already provides
+    the same count from then on - the client-level call carries no such restriction.
+    `ac3tests "[spatial-unplug]"` is its own hidden case, not yet run against real hardware.
+
 !!! note "No EDID/ELD backend on Windows"
     `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
     see [CLI → Following the sink](../forge/cli/commands.md#following-the-sink) — and that read

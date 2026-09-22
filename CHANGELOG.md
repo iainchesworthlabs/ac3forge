@@ -1551,6 +1551,16 @@ The sections below contain the complete change list and fixes.
   that will not move again; before, a lost device left it playing for ever with nothing
   said. Two hidden cases, `ac3tests "[passthrough-unplug]"` and `"[monitor-unplug]"`, take
   a person through unplugging a real output.
+- **`SpatialObjectSink` was left out of that same fix, and still reported itself running
+  after its render stream had gone.** `BeginUpdatingAudioObjects` failing outright, or the
+  endpoint simply going quiet with no other word - a removed one need never signal the
+  render-ready event again either - left `running()` true, so `submit()`/`can_submit()` went
+  on taking objects into rings nobody drained. The Windows backend now stops itself the same
+  way, reading back `GetMaxDynamicObjectCount` on the `ISpatialAudioClient` on a wait that
+  times out to catch the quiet case (not the stream's own `GetAvailableDynamicObjectCount`,
+  which Microsoft's own reference says not to call once streaming has started), and `start()`
+  opens again with no `stop()` needed first, as the other two sinks already do. `ac3tests
+  "[spatial-unplug]"` is its own hidden case.
 - **`PassthroughSink` crashed the instant a real exclusive-mode bitstream endpoint drove
   it** — surfaced once an Onkyo TX-RZ740 over HDMI locked AC-3, E-AC-3 and signed Atmos
   through it for the first time. `Activate`/`Initialize` ran on the calling thread while
