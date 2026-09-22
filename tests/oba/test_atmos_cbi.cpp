@@ -71,7 +71,6 @@ constexpr std::array<BedChannel, 10> kInput = {{
     {"L", 220.0}, {"R", 277.2}, {"C", 330.0}, {"LFE", 55.0}, {"Ls", 554.4},
     {"Rs", 660.0}, {"Tfl", 740.0}, {"Tfr", 831.6}, {"Tbl", 880.0}, {"Tbr", 1108.8},
 }};
-constexpr std::size_t kLfeIndex = 3;
 
 constexpr std::uint16_t kBed514 = ac3::oba::bed::kLR | ac3::oba::bed::kC | ac3::oba::bed::kLfe |
                                   ac3::oba::bed::kLsRs | ac3::oba::bed::kTflTfr |
