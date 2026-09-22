@@ -399,15 +399,21 @@ void HearthController::poll() {
         new_routing.push_back(status.routing.output_of(slot));
     }
     const QString new_device_name = QString::fromStdString(status.device_name);
+    const int new_identify_slot = status.identify_slot == ac3::hearth::Queue::kNone
+                                      ? -1
+                                      : static_cast<int>(status.identify_slot);
     if (new_trim_db != trim_db_ || new_delay_ms != delay_ms_ || status.crossover_hz != crossover_hz_ ||
         new_routing != routing_ || static_cast<int>(status.routing.outputs()) != routing_outputs_ ||
-        new_device_name != device_name_) {
+        new_device_name != device_name_ || status.identify_level_db != identify_level_db_ ||
+        new_identify_slot != identify_slot_) {
         trim_db_ = std::move(new_trim_db);
         delay_ms_ = std::move(new_delay_ms);
         crossover_hz_ = status.crossover_hz;
         routing_ = std::move(new_routing);
         routing_outputs_ = static_cast<int>(status.routing.outputs());
         device_name_ = new_device_name;
+        identify_level_db_ = status.identify_level_db;
+        identify_slot_ = new_identify_slot;
         emit speakerSetupChanged();
     }
 }
@@ -475,6 +481,24 @@ void HearthController::useDeviceOrder() {
                                                        static_cast<std::size_t>(routing_outputs_));
     if (patch) {
         engine_->set_routing(*patch);
+    }
+}
+
+void HearthController::setIdentifyLevelDb(double db) {
+    if (engine_) {
+        engine_->set_identify_level_db(db);
+    }
+}
+
+void HearthController::startIdentify(int slot) {
+    if (engine_ && slot >= 0) {
+        engine_->identify_start(static_cast<std::size_t>(slot));
+    }
+}
+
+void HearthController::stopIdentify() {
+    if (engine_) {
+        engine_->identify_stop();
     }
 }
 

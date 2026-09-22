@@ -259,6 +259,34 @@ void Engine::set_routing(const render::Routing& routing) {
     });
 }
 
+void Engine::set_identify_level_db(double db) {
+    post([this, db](Player& player) {
+        if (!player.set_identify_level_db(db)) {
+            return fmt::format("identify level refused: {:.0f} dB", db);
+        }
+        note(fmt::format("identify level: {:.0f} dB", db));
+        return std::string{};
+    });
+}
+
+void Engine::identify_start(std::size_t slot) {
+    post([this, slot](Player& player) {
+        if (!player.identify_start(slot)) {
+            return fmt::format("identify refused: slot {}", slot);
+        }
+        note(fmt::format("identify: slot {}", slot));
+        return std::string{};
+    });
+}
+
+void Engine::identify_stop() {
+    post([this](Player& player) {
+        note("identify: stopped");
+        player.identify_stop();
+        return std::string{};
+    });
+}
+
 void Engine::set_gapless(bool on) {
     post([this, on](Player& player) {
         if (on != player.transport().gapless()) {
@@ -406,6 +434,8 @@ void Engine::publish(const std::string& note, std::uint64_t carried) {
     next.routing = player_.routing();
     next.device_name = player_.device_name();
     next.speaker_mask = player_.speaker_mask();
+    next.identify_level_db = player_.identify_level_db();
+    next.identify_slot = player_.identify_slot();
     next.layout = player_.layout();
     const PlayPosition position = player_.position();
 
