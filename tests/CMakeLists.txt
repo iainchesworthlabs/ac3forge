@@ -55,6 +55,7 @@ add_executable(ac3tests
     encoder/test_bandwidth.cpp
     oba/test_atmos.cpp
     oba/test_dee_joc_fixture.cpp
+    oba/test_joc_7channel.cpp
     oba/test_atmos_motion.cpp
     audio/test_audio_backend.cpp
     core/test_bitalloc.cpp

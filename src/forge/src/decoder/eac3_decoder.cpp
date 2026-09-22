@@ -3742,33 +3742,40 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
             !impl_->config_.skip_object_reconstruction) {
             const auto params = oba::joc::parse_payload(joc_bytes);
             const auto indices = oba::joc_object_indices(out.object_metadata->program);
-            // §6.3.2.2 Table 47: the JOC downmix is the five channels this
-            // substream carries, in JOC order. A 7-channel downmix needs
-            // Lb/Rb from a dependent substream, which decode_substream does
-            // not have in hand here, so those configurations parse but do
-            // not reconstruct.
-            if (params && params->objects == static_cast<int>(indices.size()) &&
-                params->channels == oba::joc::kNumChannels5X) {
-                constexpr std::array<int, oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
-                // Spans, not copies: this permutation used to deep-copy five
-                // channels (~30 KB a frame) purely to reorder them.
-                std::array<std::span<const float>, oba::joc::kNumChannels5X> bed_joc_order{};
-                bool have_bed =
-                    static_cast<std::size_t>(oba::joc::kNumChannels5X) <= out.channels.size();
-                for (int jc = 0; have_bed && jc < oba::joc::kNumChannels5X; ++jc) {
-                    bed_joc_order[static_cast<std::size_t>(jc)] =
-                        out.channels[static_cast<std::size_t>(
-                            kAc3FromJoc[static_cast<std::size_t>(jc)])];
-                }
-                if (have_bed) {
-                    auto& joc_slot = impl_->joc_state_[static_cast<std::size_t>(key)];
-                    if (!joc_slot) {
-                        joc_slot = std::make_unique<oba::joc::ReconstructionState>();
+            // §6.3.2.2 Table 47: a downmix wider than the five channels this
+            // substream carries needs a dependent substream's extra pair -
+            // Lb/Rb (kDmxConfig7X) or Tfl/Tfr (kDmxConfig5XPlus2 and
+            // kDmxConfig5XPlus2PhaseShift) - which decode_substream_core does
+            // not have in hand here. Those three configurations still parse;
+            // the else branch below hands the raw payload to
+            // decode_access_unit_core, which finishes the job once the
+            // programme's channels are unioned (see joc_pending_bytes's own
+            // comment, decoder.hpp).
+            if (params && params->objects == static_cast<int>(indices.size())) {
+                if (params->channels == oba::joc::kNumChannels5X) {
+                    constexpr std::array<int, oba::joc::kNumChannels5X> kAc3FromJoc = {0, 2, 1, 3, 4};
+                    // Spans, not copies: this permutation used to deep-copy five
+                    // channels (~30 KB a frame) purely to reorder them.
+                    std::array<std::span<const float>, oba::joc::kNumChannels5X> bed_joc_order{};
+                    bool have_bed =
+                        static_cast<std::size_t>(oba::joc::kNumChannels5X) <= out.channels.size();
+                    for (int jc = 0; have_bed && jc < oba::joc::kNumChannels5X; ++jc) {
+                        bed_joc_order[static_cast<std::size_t>(jc)] =
+                            out.channels[static_cast<std::size_t>(
+                                kAc3FromJoc[static_cast<std::size_t>(jc)])];
                     }
-                    out.object_audio = oba::joc::reconstruct(
-                        bed_joc_order, *params, *joc_slot, impl_->config_.fast_mdct,
-                        impl_->config_.fast_imdct, impl_->config_.joc_domain);
-                    out.object_indices = indices;
+                    if (have_bed) {
+                        auto& joc_slot = impl_->joc_state_[static_cast<std::size_t>(key)];
+                        if (!joc_slot) {
+                            joc_slot = std::make_unique<oba::joc::ReconstructionState>();
+                        }
+                        out.object_audio = oba::joc::reconstruct(
+                            bed_joc_order, *params, *joc_slot, impl_->config_.fast_mdct,
+                            impl_->config_.fast_imdct, impl_->config_.joc_domain);
+                        out.object_indices = indices;
+                    }
+                } else {
+                    out.joc_pending_bytes.assign(joc_bytes.begin(), joc_bytes.end());
                 }
             }
         }
@@ -3900,6 +3907,36 @@ MixLevels resolve_mix_levels(int bsid, Acmod acmod, const std::optional<meta::Mi
         return mix_levels(acmod, cmixlev, surmixlev, alternate_bsi);
     }
     return mix_levels(mixing);
+}
+
+// §6.3.2.2 Table 47: which Annex E channel locations a JOC downmix of
+// `dmx_config_idx` needs, in JOC channel order. Table 53 (§6.3.5.2) confirms
+// channel POSITIONS 5/6 are generic in the reconstruction maths themselves,
+// keyed only by joc_num_channels (5 or 7) - Table 47 is what says which
+// physical channels occupy them for a given config, and it lists all three
+// 7-channel configs' extra pair in the same left-to-right order as the base
+// five, which is what the ordering below follows. Positions 0-4 agree with
+// this file's own five-channel kAc3FromJoc permutation (decode_substream_core)
+// once read in JOC order: L, R, C, Ls, Rs. Empty for a reserved or 5-channel
+// config - callers only reach this for the three 7-channel ones.
+std::vector<eac3::chanmap::Location> joc_wide_locations(int dmx_config_idx) {
+    using eac3::chanmap::Location;
+    std::vector<Location> locations = {Location::kLeft, Location::kRight, Location::kCentre,
+                                       Location::kLeftSurround, Location::kRightSurround};
+    switch (dmx_config_idx) {
+        case oba::joc::kDmxConfig7X:
+            locations.push_back(Location::kLrs);
+            locations.push_back(Location::kRrs);
+            break;
+        case oba::joc::kDmxConfig5XPlus2:
+        case oba::joc::kDmxConfig5XPlus2PhaseShift:
+            locations.push_back(Location::kVhl);
+            locations.push_back(Location::kVhr);
+            break;
+        default:
+            break;
+    }
+    return locations;
 }
 
 }  // namespace
@@ -4458,6 +4495,78 @@ std::expected<std::optional<DecodedAccessUnit>, DecodeError> Eac3Decoder::decode
     if (impl_->config_.skip_reconstruction) {
         return UnitResult(std::in_place, std::in_place, std::move(out));
     }
+
+    // §6.3.2.2 Table 47: the three 7-channel JOC downmix configurations
+    // parse inside decode_substream_core but cannot reconstruct there - see
+    // joc_pending_bytes's own comment (decoder.hpp). out.layout now unions
+    // every substream's channels, so finish the job here - early enough for
+    // both emission modes below: Mode A (sink != nullptr) reads
+    // out.object_audio inside emit_blocks, defined above but not called
+    // until further down; Mode B just carries out.object_audio through to
+    // its own return, so this is ahead of both. TS 103 420 §8.3.1 leaves the
+    // choice of carrying substream to the encoder, so this takes the first
+    // one with pending bytes, the same "first wins" rule the object_metadata
+    // loop above already applies - there is only ever one JOC container per
+    // programme in practice, so a failed candidate does not fall through to
+    // a second.
+    if (!impl_->config_.skip_object_reconstruction) {
+        for (auto& sub : substreams) {
+            if (sub.joc_pending_bytes.empty()) {
+                continue;
+            }
+            const auto params = oba::joc::parse_payload(sub.joc_pending_bytes);
+            const auto indices = out.object_metadata.has_value()
+                                      ? oba::joc_object_indices(out.object_metadata->program)
+                                      : std::vector<int>{};
+            if (!params || !out.object_metadata.has_value() ||
+                params->objects != static_cast<int>(indices.size())) {
+                break;
+            }
+            const auto needed = joc_wide_locations(params->dmx_config_idx);
+            if (needed.empty() || static_cast<int>(needed.size()) != params->channels) {
+                break;  // reserved, or a config already handled inline above
+            }
+            // Resolved against the unioned layout, the same lookup Mode A/B's
+            // own loops make further down for the programme's bed channels -
+            // here for JOC's extra pair instead. A later dependent's own copy
+            // of a shared location still wins, matching write_slot's
+            // "transmission order is overwrite order" rule below.
+            std::vector<std::span<const float>> bed(needed.size());
+            for (auto& source : substreams) {
+                const auto locations = eac3::chanmap::expand(source.location_map());
+                for (int i = 0; i < locations.count &&
+                                static_cast<std::size_t>(i) < source.channels.size();
+                     ++i) {
+                    for (std::size_t n = 0; n < needed.size(); ++n) {
+                        if (locations[i] == needed[n]) {
+                            bed[n] = source.channels[static_cast<std::size_t>(i)];
+                        }
+                    }
+                }
+            }
+            const bool have_bed = std::ranges::none_of(
+                bed, [](std::span<const float> ch) { return ch.empty(); });
+            if (!have_bed) {
+                break;  // dmx_config_idx promised a channel no substream delivered
+            }
+            const int key = static_cast<int>(sub.strmtyp) * 8 + sub.substreamid;
+            auto& joc_slot = impl_->joc_state_[static_cast<std::size_t>(key)];
+            if (!joc_slot) {
+                joc_slot = std::make_unique<oba::joc::ReconstructionState>();
+            }
+            // Domain forced to kMdctBand: reconstruct_qmf/reconstruct_qmf_short
+            // and QmfState are hardcoded to kNumChannels5X throughout and
+            // pinned by golden decode hashes (joc.cpp's own comments), while
+            // reconstruct_mdct_band is already generic in params.channels -
+            // this is new wiring onto an existing generic path, not new DSP.
+            out.object_audio =
+                oba::joc::reconstruct(bed, *params, *joc_slot, impl_->config_.fast_mdct,
+                                      impl_->config_.fast_imdct, oba::joc::Domain::kMdctBand);
+            out.object_indices = indices;
+            break;
+        }
+    }
+
     if (sink != nullptr) {
         std::array<std::span<float>, kMaxSlots> views{};
         for (auto& sub : substreams) {
