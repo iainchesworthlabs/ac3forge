@@ -681,6 +681,15 @@ page, the ESP32 player plan's status block, CHANGELOG.
 **Exit and verified by:** `mkdocs build --strict` and `check_doc_paths.py`; someone flashing a
 board from the guide alone.
 
+## Sink module tiers (C6 / S3 / P4)
+
+Same `hearth_sink` family on a longer-term **shared PCB** with a modular ESP32 and a **pair of
+ES9080** DACs. Ceilings: C6 **≤5.1** (one DAC); S3 **≤7.1.4 without enhanced coupling** (both
+DACs, both I2S controllers, 16×16-bit); P4 **≤9.1.6 with full tools** desired (both DACs, one
+I2S controller, 16×32-bit). Detail and P4 exit criteria:
+[`esp32-sink-tiers.md`](esp32-sink-tiers.md). Chip B is better; Chip C is good; P4 is Proposed
+best, not a chip letter here yet.
+
 ## Chip C: the ESP32-C6
 
 C1 and C2 start at once; the board arrived on 2026-09-15. C3 follows chip B.
@@ -760,8 +769,8 @@ AC-4 data type (IEC 61937-14 defines AC-4 carriage, to be confirmed against the 
 
 ## Coordination
 
-- Before each phase: `gh pr list`. Branch names start with `feature/` or `bugfix/`, which CI's
-  branch-name gate requires.
+- Before each phase: `gh pr list`. Branch names are `<type>/<kebab-name>` with type one of
+  `feature`, `bugfix`, `hotfix`, `docs`, or `chore`, which CI's branch-name gate requires.
 - A1 moves headers the ESP-IDF component and its QEMU steps include. An open ESP32 branch that
   edits `layout.hpp` or `render.hpp` lands first, or rebases onto the move.
 - The 16-bit TDM interleave and planner change belong to whichever of C2 and B1 starts first; the

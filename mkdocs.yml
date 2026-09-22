@@ -84,6 +84,7 @@ nav:
   - Library:
       - Overview: library/index.md
       - Capabilities: library/capabilities.md
+      - Development status: library/development-status.md
       - Application coverage: library/application-coverage.md
       - Using the library:
           - Example programs: library/examples.md

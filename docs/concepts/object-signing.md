@@ -179,6 +179,29 @@ the app streams the unsigned `bed51`-equivalent, always safe on any receiver.
     releases. Anyone with such an APK can extract the key, so it is as sensitive as the key itself:
     sideload it to your own device and never distribute it. See [Android](../platforms/android.md).
 
+## Sibling: TrueHD Evolution
+
+This page is **E-AC-3 / EMDF** object signing only. TrueHD uses a different keyed check —
+**Evolution frame protection** (truncated HMAC-SHA-256 over the access unit and the Evolution
+frame). That seam belongs on the TrueHD/MLP branch (`feature/truehd-atmos-support`, roadmap IM5),
+not in `ac3::signing`. Open tools such as truehdd expose it as an optional `--evo-key`; decode
+without a key stays unchecked. Any future multi-key verify / licensed soft-gate for MLP should
+target Evolution HMAC, parallel to but separate from the EMDF policy on this page.
+
+## Planned decode modes
+
+Roadmap: [Object authenticity modes](https://github.com/iainchesworthlabs/ac3forge/blob/main/ROADMAP.md) (Partial tail + Proposed). Three policies
+for decode into multi-channel / objects — only the first two ship today:
+
+| Mode | Intent | Today |
+|---|---|---|
+| **Unchecked** (default) | FOSS-style: reconstruct objects without checking the tag | Shipped — omit `verify-objects` |
+| **Verify** | Multi-key HMAC QC; mismatch **fails** the command | Partial — single `signing-key=` only; keyring not yet |
+| **Licensed** | AVR-like: match → reconstruct; mismatch / unsigned → **bed only**, decode continues | Not started — e.g. future `gate-objects` |
+
+Sign remains single-key (`sign-objects`). Keys are always operator-provisioned; nothing here forges
+a licensed decoder's secret.
+
 ## What this is not
 
 - **Not a key you get from us.** The library ships the machinery, never a key — see above. Whoever

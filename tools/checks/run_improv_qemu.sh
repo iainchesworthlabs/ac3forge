@@ -128,6 +128,7 @@ boot "$image" "$dir" 15571 15572 \
     -nic user,id=n0,model=open_eth,hostfwd=tcp:127.0.0.1:28928-:8928,hostfwd=tcp:127.0.0.1:28080-:80
 python3 "$here/improv_qemu.py" late-network \
     --serial 127.0.0.1:15571 --monitor 127.0.0.1:15572 \
+    --control http://127.0.0.1:28080 \
     --capture "$console" --ready "$dir/improv.ready" --title "$title" &
 helper_pid=$!
 
@@ -143,8 +144,9 @@ if [ ! -e "$dir/improv.ready" ]; then
     stop
     fail "$title" "$console" "the board was not provisioned over Improv (the helper's annotation above says why)"
 else
-    # The token, which the helper has seen. The console ends lines with CR on
-    # the wire, so the pattern is not anchored at either end.
+    # The token, which the helper has seen. The pattern is anchored at neither
+    # end: the token has a word in front of it, and how a console ends its
+    # lines is its own business.
     token="$(grep -aoE 'pairing token SP:0[A-Za-z0-9_-]+' "$console" | head -1 | sed 's/^pairing token //')" || true
     server_status=0
     "$server" \
