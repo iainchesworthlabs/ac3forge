@@ -233,6 +233,17 @@ The sections below contain the complete change list and fixes.
 
 **Hearth**
 
+- **The Media page reads a queue item's own file** (`Media.qml`;
+  `HearthController.currentMedia`/`inspectedMedia`, backed by `apps/hearth/engine/media_info.hpp`'s
+  already-built `MediaInfo` and `MediaInspector`, off a thread of their own): codec, sample rate,
+  measured bitrate, duration and container for AC-3, E-AC-3 and AC-4 alike; dialogue level, mix
+  levels and the programme list for AC-3/E-AC-3; the table of contents, presentations and
+  substream groups for AC-4, which this build still cannot play but can now describe. A "Showing"
+  picker follows the item playing now by default and can point at any other queue item instead -
+  the only way to reach an AC-4 item's own information, since it never plays here. Copy and Export
+  JSON reuse `media_info_json()`'s own document. `ItemFacts` gains a measured `bitrate_kbps`, and
+  the file loader accepts `.ac4` for reading (never for playback) so the Media page can describe
+  one.
 - **`ac3hearth` packages, as `ac3forge-hearth`, on Windows (NSIS and ZIP), macOS (DMG) and
   Linux (DEB, RPM and TGZ).** Its own CPack component follows `apps/crucible`'s own pattern -
   notices and licence beside the executable, Qt's runtime deployed into the package - except

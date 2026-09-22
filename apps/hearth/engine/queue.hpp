@@ -37,6 +37,10 @@ struct ItemFacts {
     std::uint32_t sample_rate = 0;
     std::uint16_t channels = 0;
     bool has_objects = false;
+    // Measured over the whole programme, the same definition
+    // io::ProbeReport::bitrate_kbps uses: its bytes * 8, over its duration.
+    // Unset until the item has been probed, the same as the fields above.
+    std::optional<double> bitrate_kbps = std::nullopt;
     // From the access-unit count and the samples each one carries - NOT a
     // fixed 1536, which is wrong for an E-AC-3 frame with fewer than six
     // blocks (the plan's own note on apps/gui/stream_player_controller.cpp).

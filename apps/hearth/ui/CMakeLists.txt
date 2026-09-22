@@ -54,17 +54,29 @@ else()
         hearth_controller.cpp
         hearth_controller.hpp
         item_loader.cpp
-        item_loader.hpp)
+        item_loader.hpp
+        "${PROJECT_SOURCE_DIR}/apps/common/container_input.cpp"
+        "${PROJECT_SOURCE_DIR}/apps/common/container_input.hpp")
     target_include_directories(ac3hearth PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../engine")
+        "${CMAKE_CURRENT_SOURCE_DIR}/../engine"
+        "${PROJECT_SOURCE_DIR}/apps/common")
     target_link_libraries(ac3hearth PRIVATE
         ac3hearth_engine
+        # container_input.cpp's own container readers - apps/gui/CMakeLists.txt's
+        # ac3gui target links the same three for the same reason: the media
+        # information this application's loader hands to describe_media() needs
+        # a container's own facts (container_input.hpp, "whose functions the
+        # engine does not compile" - apps/hearth/engine/session.hpp's comment).
+        matroska::matroska
+        mp4::mp4
+        mpegts::mpegts
         Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
 
     set(AC3HEARTH_QML_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/Main.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlayPage.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/Media.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/Speakers.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/DecoderPage.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/DecoderEac3.qml"
