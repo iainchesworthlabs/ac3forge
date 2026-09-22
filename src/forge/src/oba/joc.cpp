@@ -189,11 +189,17 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
     // target), while the player's own BED output matched this project's
     // unscaled bed decode to bit-exact correlation (1.0000) regardless of
     // clip gain - i.e. the gain is applied to reconstructed OBJECT PCM only,
-    // never to the bed. See docs/library/decoding.md for the full writeup;
-    // wiring the multiply into reconstruct_mdct_band/reconstruct_qmf is
-    // deferred to avoid colliding with concurrent work on those same
-    // functions (phase-shift downmix + 7-channel Lb/Rb), not because
-    // anything here is still in doubt.
+    // never to the bed. See docs/library/decoding.md for the full writeup.
+    // The multiply belongs ONCE in reconstruct()'s own dispatcher, on the
+    // per-object PCM it gets back from whichever of reconstruct_qmf/
+    // reconstruct_mdct_band it calls - both of reconstruct()'s callers
+    // (decode_substream_core and, once landed, decode_access_unit_core's
+    // 7-channel path) already pass FrameParameters through unchanged, so a
+    // single post-multiply there covers everything with no duplication.
+    // Left unwired here only to avoid colliding with concurrent work
+    // restructuring the domain functions themselves (phase-shift downmix +
+    // 7-channel Lb/Rb) - not because anything here, including where it goes,
+    // is still in doubt.
     const auto clipgain_x = r.read(3);
     const auto clipgain_y = r.read(5);
     const double clip_gain = 1.0 + (static_cast<double>(clipgain_y) / 32.0) *

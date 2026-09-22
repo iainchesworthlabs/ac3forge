@@ -555,8 +555,11 @@ decode chain the gain belongs, but that was confirmed empirically (2026-09-22, D
 Player oracle): it multiplies reconstructed *object* PCM, never the bed — the player's raw bed
 output matched this project's own bed decode at correlation 1.0000 regardless of clip gain, while
 its object output tracked the formula's prediction to within ~0.03 dB with the OAR's own limiter
-disabled. Wiring the multiply in is deferred to a follow-up rather than done alongside concurrent
-work on the same reconstruction functions. And Table 47's two "90 degree
+disabled. The multiply belongs once in `reconstruct()`'s own dispatcher, on the per-object PCM it
+gets back from whichever domain function it calls — every caller already passes `FrameParameters`
+through unchanged, so one post-multiply there covers all of them with no duplication. Wiring it in
+is deferred to a follow-up rather than done alongside concurrent work on the domain functions
+themselves. And Table 47's two "90 degree
 phase shift" downmix configurations reconstruct like their unshifted siblings — the shift is a
 property of how the downmix was *built*, §6.6.6 says nothing about undoing it before matrixing,
 and there is no Hilbert filterbank here to undo it with.
