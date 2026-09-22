@@ -123,8 +123,13 @@ streams rather than your own:
 
 - **A programme need not be objects.** OAMD describes a *bed* just as happily — a fixed
   7.1.4 speaker layout, coded exactly like objects but anchored to speakers. That is what most
-  channel-based-immersive Atmos content actually is, and JOC still reconstructs its eleven
-  non-LFE channels out of the 5.1 downmix.
+  channel-based-immersive (CBI) Atmos content actually is, and JOC still reconstructs its eleven
+  non-LFE channels out of the 5.1 downmix. `ac3cli atmos-cbi` produces this shape directly from a
+  channel-based WAV already mixed into a 5.1.4/7.1.4/9.1.6 bed — see
+  [Spatial & Atmos objects](../library/spatial-and-atmos.md#channel-based-immersive-cbi-beds) for
+  the API and [CLI commands](../forge/cli/commands.md) for the command. It is a different thing
+  from `bed51` above: `atmos-cbi` still writes the OAMD+JOC container (`program.bed != 0`, an
+  object layer a JOC-aware decoder reconstructs), while `bed51` omits the container entirely.
 - **Metadata updates are not once per frame.** A frame can carry several update blocks, each
   taking effect at its own offset into the frame and each able to code positions as steps
   against the previous one — which is how an object moves faster than one position per 32 ms.
@@ -206,7 +211,8 @@ Atmos-in-E-AC-3 stream that plays as 5.1 on that decoder. See
 !!! example "See it in code"
     - [Spatial & Atmos objects](../library/spatial-and-atmos.md)
     - [Object signing](object-signing.md) — the EMDF protection tag and how to provision a key
-    - [CLI commands](../forge/cli/commands.md) — see the `atmos` and `atmos-encode` commands
+    - [CLI commands](../forge/cli/commands.md) — see the `atmos`, `atmos-encode` and `atmos-cbi`
+      commands
     - [Objects & motion (GUI)](../forge/gui/objects-and-motion.md)
 
 ---

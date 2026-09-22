@@ -1,6 +1,7 @@
 #include "atmos.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -128,6 +129,52 @@ std::optional<ac3::oba::ObjectScene> scene_of(std::string_view path,
         return std::nullopt;
     }
     return std::move(*scene);
+}
+
+// atmos-cbi's named layouts. DEE's own --input-format cbi_wav channel order
+// (measured against a real Dolby Encoding Engine 5.1.4 stream - see
+// tools/generators/gen_object_fixture.py and tests/oba/test_dee_joc_fixture.cpp)
+// is exactly ac3::oba::bed_labels()'s Table 12 order for that bed, so this
+// table names each layout only by its bed flags and lets bed_labels() derive
+// the channel order AtmosEncoder::encode_bed_frame expects - no separate,
+// hand-maintained channel list to keep in sync with it. Only the 5.1.4 row has
+// been checked against a real DEE-produced stream; 7.1.4 and 9.1.6 extend it
+// by Table 12's own channel order, unverified against DEE itself - see
+// docs/concepts/atmos-joc.md.
+struct CbiLayout {
+    std::string_view name;
+    std::uint16_t bed;
+};
+
+constexpr std::array<CbiLayout, 3> kCbiLayouts{{
+    {"5.1.4", ac3::oba::bed::kLR | ac3::oba::bed::kC | ac3::oba::bed::kLfe |
+                  ac3::oba::bed::kLsRs | ac3::oba::bed::kTflTfr | ac3::oba::bed::kTblTbr},
+    {"7.1.4", ac3::oba::bed::kLR | ac3::oba::bed::kC | ac3::oba::bed::kLfe |
+                  ac3::oba::bed::kLsRs | ac3::oba::bed::kLbRb | ac3::oba::bed::kTflTfr |
+                  ac3::oba::bed::kTblTbr},
+    {"9.1.6", ac3::oba::bed::kLR | ac3::oba::bed::kC | ac3::oba::bed::kLfe |
+                  ac3::oba::bed::kLsRs | ac3::oba::bed::kLbRb | ac3::oba::bed::kLwRw |
+                  ac3::oba::bed::kTflTfr | ac3::oba::bed::kTslTsr | ac3::oba::bed::kTblTbr},
+}};
+
+[[nodiscard]] std::optional<std::uint16_t> resolve_cbi_layout(std::string_view name) {
+    for (const auto& layout : kCbiLayouts) {
+        if (layout.name == name) {
+            return layout.bed;
+        }
+    }
+    return std::nullopt;
+}
+
+// The layout whose channel count matches, when the caller didn't name one -
+// unambiguous because 10 (5.1.4), 12 (7.1.4) and 16 (9.1.6) are all distinct.
+[[nodiscard]] std::optional<std::uint16_t> cbi_layout_for_channel_count(std::size_t channels) {
+    for (const auto& layout : kCbiLayouts) {
+        if (static_cast<std::size_t>(ac3::oba::bed::channel_count(layout.bed)) == channels) {
+            return layout.bed;
+        }
+    }
+    return std::nullopt;
 }
 
 }  // namespace
@@ -1067,6 +1114,183 @@ int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint
                    "  {} bed channel(s) + {} dynamic object(s) + the bed's LFE = {} objects, "
                    "JOC over a 5.1 downmix",
                    bed_count, count - bed_count, ac3::oba::object_count(encoder.program()));
+    print_channel_summary(meter, status);
+    return kExitOk;
+}
+
+int run_atmos_cbi(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
+                  std::string_view layout_arg, const Options& meta) {
+    if (!meta.sources.empty() || meta.map_spec.has_value()) {
+        fmt::println(stderr,
+                     "error: src=/map= are not supported by atmos-cbi - a CBI bed's channel order "
+                     "IS its layout (see layout=), with no per-channel destination to state");
+        return kExitUsage;
+    }
+    // Same refusal, same reason as run_atmos_adm's/run_atmos_iab's own: a bed
+    // this wide has no single fixed layout ac3::io::ac3_layout_for maps, so
+    // there is nothing for dialnorm=auto to measure against - see that
+    // function's own comment above.
+    if (meta.p.measure_dialnorm) {
+        fmt::println(stderr,
+                     "error: dialnorm=auto is not supported by atmos-cbi - a channel-based-"
+                     "immersive bed has no single fixed layout to measure loudness against the "
+                     "way atmos-encode's plain WAV input does; pass dialnorm=<1..31> explicitly");
+        return kExitUsage;
+    }
+
+    // The same streaming-vs-whole-file split as run_atmos_encode - see its
+    // comment. dialnorm=auto is already refused above, so only stdin forces
+    // the whole-file read here.
+    ac3::io::WavStreamReader stream_in;
+    const bool streaming = !is_stdio_path(in_path) && stream_in.open(std::string{in_path}).has_value();
+    std::expected<ac3::io::WavData, ac3::io::WavError> wav =
+        std::unexpected(ac3::io::WavError::kCannotOpen);
+    if (!streaming) {
+        wav = read_wav_arg(in_path);
+        if (!wav.has_value()) {
+            fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
+            return kExitInput;
+        }
+    }
+    const std::uint32_t src_rate = streaming ? stream_in.sample_rate() : wav->sample_rate;
+    const std::size_t src_channels = streaming ? stream_in.channels() : wav->channels.size();
+    const auto sr = wav_sample_rate(src_rate, "E-AC-3", true);
+    if (!sr.has_value()) {
+        return kExitInput;
+    }
+
+    std::optional<std::uint16_t> bed_flags;
+    if (!layout_arg.empty()) {
+        bed_flags = resolve_cbi_layout(layout_arg);
+        if (!bed_flags.has_value()) {
+            fmt::println(stderr, "error: layout must be one of 5.1.4, 7.1.4, 9.1.6 (got '{}')",
+                         layout_arg);
+            return kExitUsage;
+        }
+        const auto expected = static_cast<std::size_t>(ac3::oba::bed::channel_count(*bed_flags));
+        if (expected != src_channels) {
+            fmt::println(stderr, "error: {} is a {}-channel bed, but {} has {} channel(s)",
+                         layout_arg, expected, in_path, src_channels);
+            return kExitUsage;
+        }
+    } else {
+        bed_flags = cbi_layout_for_channel_count(src_channels);
+        if (!bed_flags.has_value()) {
+            fmt::println(stderr,
+                         "error: {} has {} channel(s), which is none of the 10 (5.1.4), 12 "
+                         "(7.1.4) or 16 (9.1.6) this command recognizes - pass layout= explicitly",
+                         in_path, src_channels);
+            return kExitUsage;
+        }
+    }
+
+    // One frame of input per encode_bed_frame call - kSamplesPerFrame at the
+    // default numblkscod, 256/512/768 under a short syncframe. Derived once,
+    // next to the config that set it, the same convention every other Atmos-
+    // encode command here uses.
+    const std::size_t frame_samples = static_cast<std::size_t>(
+        ac3::eac3::blocks_per_syncframe(meta.atmos_numblkscod) * ac3::kSamplesPerBlock);
+    ac3::oba::AtmosEncoder encoder{
+        {.sample_rate = *sr, .bitrate_kbps = bitrate, .dialnorm = meta.p.dialnorm,
+         .num_bands_idx = 4, .fast_mdct = meta.fast_mdct, .joc_domain = meta.joc_domain,
+         .numblkscod = meta.atmos_numblkscod},
+        ac3::oba::BedProgram{.bed = *bed_flags}};
+
+    ac3::analysis::LevelMeter meter{ac3::Acmod::k3_2, true, src_rate};
+    const std::size_t total =
+        streaming ? static_cast<std::size_t>(stream_in.frame_count()) : wav->frame_count();
+    std::vector<std::vector<float>> block(src_channels, std::vector<float>(frame_samples));
+    std::vector<std::span<const float>> views(src_channels);
+    std::vector<std::span<const float>> metered(6);
+    // Streamed out as encoded - except under sign-objects, where the frames
+    // defer inside the sink because the signing pass below rewrites every one
+    // of them after this loop, same as run_atmos_encode.
+    EncodedStreamSink out_sink;
+    if (!out_sink.open(out_path, meta.keep_partial, /*defer=*/meta.sign_objects)) {
+        return kExitOutput;
+    }
+    // Streaming reads every file channel (read_planar's contract) - unlike
+    // run_atmos_encode, every one of them is a bed channel here, so there is
+    // no discard buffer for channels beyond some smaller object count.
+    std::vector<std::span<float>> stream_dst(streaming ? src_channels : 0);
+
+    Progress progress;
+    progress.start("encoding", (total + frame_samples - 1) / frame_samples);
+    for (std::size_t start = 0; start < total; start += frame_samples) {
+        const auto valid = std::min<std::size_t>(frame_samples, total - start);
+        if (streaming) {
+            for (std::size_t ch = 0; ch < src_channels; ++ch) {
+                stream_dst[ch] = std::span{block[ch]}.first(valid);
+            }
+            const auto got = stream_in.read_planar(stream_dst, valid);
+            if (!got || *got != valid) {
+                fmt::println(stderr, "error: {}: {}", in_path,
+                             ac3::io::describe(got ? ac3::io::WavError::kTruncated : got.error()));
+                out_sink.abort();
+                return kExitInput;
+            }
+            for (std::size_t ch = 0; ch < src_channels; ++ch) {
+                // The tail frame zero-pads past the file's end, exactly as
+                // the whole-file loop below writes 0.0f there.
+                std::fill(block[ch].begin() + static_cast<std::ptrdiff_t>(valid), block[ch].end(),
+                          0.0f);
+                views[ch] = block[ch];
+            }
+        } else {
+            for (std::size_t ch = 0; ch < src_channels; ++ch) {
+                for (std::size_t i = 0; i < frame_samples; ++i) {
+                    const std::size_t at = start + i;
+                    block[ch][i] = at < total ? wav->channels[ch][at] : 0.0f;
+                }
+                views[ch] = block[ch];
+            }
+        }
+
+        auto unit = encoder.encode_bed_frame(views);
+        if (!unit.has_value()) {
+            fmt::println(stderr,
+                         "error: cannot encode a {}-channel bed at {} kbps - the metadata and the "
+                         "mantissas share one frame, so try a higher bit rate",
+                         src_channels, bitrate);
+            out_sink.abort();
+            return kExitUsage;
+        }
+        // The bed exists only once the frame is encoded, so it is metered
+        // afterwards - and it is the bed, not the source, that a legacy
+        // decoder plays.
+        for (std::size_t ch = 0; ch < metered.size(); ++ch) {
+            metered[ch] = std::span{encoder.bed()[ch]}.first(valid);
+        }
+        meter.process(metered);
+        if (!out_sink.push(std::move(unit->bytes))) {
+            out_sink.abort();
+            return kExitOutput;
+        }
+        progress.tick(start / frame_samples + 1);
+    }
+    progress.finish();
+    // Optional object signing, same as atmos-encode - see the comments at its
+    // call site there, the key-failure plain return included.
+    const auto signed_count = apply_object_signing(out_sink.deferred(), meta);
+    if (!signed_count.has_value()) {
+        return kExitRuntime;
+    }
+    if (*signed_count > 0) {
+        status_println(status_stream(out_path),
+                       "  signed {} frames' EMDF object container with the supplied key",
+                       *signed_count);
+    }
+    if (!out_sink.close()) {
+        return kExitOutput;
+    }
+    const auto status = status_stream(out_path);
+    status_println(status, "encoded {} E-AC-3 access units ({} kbps, {} Hz) from {} to {}",
+                   out_sink.frames(), bitrate, src_rate, in_path, out_path);
+    status_println(status,
+                   "  {}-channel channel-based-immersive bed, 0 dynamic objects -> {} objects "
+                   "total, {} of them JOC-reconstructed from a 5.1 downmix",
+                   src_channels, ac3::oba::object_count(encoder.program()),
+                   ac3::oba::joc_object_count(encoder.program()));
     print_channel_summary(meter, status);
     return kExitOk;
 }
