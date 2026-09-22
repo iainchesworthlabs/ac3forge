@@ -136,6 +136,7 @@ add_executable(ac3tests
     audio/test_render_devices.cpp
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
+    audio/test_spatial_live.cpp
     audio/test_speakers.cpp
     oba/test_scene.cpp
     oba/test_scene_osc.cpp
