@@ -40,23 +40,14 @@ else()
 
     qt_standard_project_setup(REQUIRES 6.8)
 
-    # The shared family components, copied from apps/gui/qml the way
-    # apps/crucible/CMakeLists.txt does (see its own comment for why this
-    # generates into the source tree, ignored by git, rather than the build
-    # tree). Edit apps/gui/qml/*.qml and every app that copies it follows.
-    set(AC3HEARTH_SHARED_QML Theme.qml Card.qml RailBlock.qml SegmentedControl.qml FocusRing.qml)
+    # The shared family components, copied from apps/gui/qml and rewritten by
+    # cmake/SharedFamilyQml.cmake's ac3forge_stage_shared_qml() - the same
+    # function apps/crucible/CMakeLists.txt calls (see that file's header for
+    # why this is a shared function rather than each app running its own copy
+    # of the loop). Edit apps/gui/qml/*.qml and every app that copies it follows.
+    include(SharedFamilyQml)
     set(AC3HEARTH_SHARED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/qml/shared")
-    file(MAKE_DIRECTORY "${AC3HEARTH_SHARED_DIR}")
-    set(AC3HEARTH_SHARED_OUT)
-    foreach(name IN LISTS AC3HEARTH_SHARED_QML)
-        set(src "${CMAKE_CURRENT_SOURCE_DIR}/../../gui/qml/${name}")
-        set(dst "${AC3HEARTH_SHARED_DIR}/${name}")
-        file(READ "${src}" contents)
-        string(REPLACE "import Ac3Forge\n" "import Ac3ForgeHearth\n" contents "${contents}")
-        file(WRITE "${dst}" "${contents}")
-        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${src}")
-        list(APPEND AC3HEARTH_SHARED_OUT "${dst}")
-    endforeach()
+    ac3forge_stage_shared_qml(Ac3ForgeHearth "${AC3HEARTH_SHARED_DIR}" AC3HEARTH_SHARED_OUT)
 
     qt_add_executable(ac3hearth
         main.cpp
