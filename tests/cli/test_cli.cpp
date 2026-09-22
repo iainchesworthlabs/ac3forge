@@ -23,6 +23,7 @@
 #include <process.h>
 #else
 #include <sys/wait.h>
+#include <unistd.h>  // getpid
 #endif
 
 #include "ac3/core/eac3_tables.hpp"
