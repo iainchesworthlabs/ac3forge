@@ -25,7 +25,7 @@ receiver.
 |---|---|---|
 | [ESP32-S3](../platforms/bare-metal/esp32-s3.md) | `hearth_sink`, a Sendspin sink ([setup guide](sink-esp32-s3.md)); `i2s_player`, which loops a fixed test stream | Two boards in a Wi-Fi group for ten minutes without an underrun; all decode fixtures run in real time on a board; the sink pairs and plays under QEMU in CI |
 | [ESP32-C3](../platforms/bare-metal/esp32-c3.md) | The same decoder, in the fixed-point tier | Correct under `qemu-riscv32` emulation. No board has run it |
-| [ESP32-C6](../platforms/bare-metal/esp32-c6.md) | Fixed-point decoder; the example includes a `hearth_sink` build overlay | All decode fixtures run on a board. There is no C6 sink guide or Sendspin CI job |
+| [ESP32-C6](../platforms/bare-metal/esp32-c6.md) | Fixed-point decoder; `hearth_sink`'s Sendspin player, stereo only | All decode fixtures run on a board; a stereo Sendspin group with an ESP32-S3 played ten minutes with no underruns on either board ([setup guide](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6)). There is still no C6 Sendspin CI job |
 | [ESPHome](../platforms/bare-metal/esphome.md) | An external component wrapping the ESP32-S3 decoder | Config-checked in CI against the manifest; not yet a `media_player` or `speaker` source |
 | Windows, Linux and macOS | `ac3hearth` engine; `ac3hearth-testsink` and `ac3hearth-testserver` development tools | Engine and Sendspin interoperability tests run in CI. There is no desktop window |
 

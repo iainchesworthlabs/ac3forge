@@ -270,7 +270,7 @@
         "macos": ["unavailable", "not-applicable", ""],
         "browser": ["unavailable", "not-applicable", ""],
         "android": ["unavailable", "not-applicable", ""],
-        "esp32": ["source", "hardware", "S3 group run, no DAC; C6 overlay has no sink guide"],
+        "esp32": ["source", "hardware", "S3 group run, no DAC; C6 stereo only, no Sendspin CI"],
         "bare-metal": ["unavailable", "not-applicable", ""]
       }
     },
@@ -387,7 +387,7 @@
         ["AC-3 and E-AC-3 decode", ["source", "emulated", "all fixtures"], ["source", "hardware", "all fixtures in real time"], ["limited", "emulated", "12 of 14; 7.1.4 exceeds heap"], ["limited", "hardware", "all except 7.1.4 fit; most real time with Wi-Fi"], ["source", "ci", "wraps the S3 decoder"]],
         ["AC-3 and E-AC-3 encode", ["source", "emulated", "six fixture rows"], ["limited", "hardware", "correct; widest layouts miss real time"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", ""]],
         ["Atmos object reconstruction", ["source", "emulated", "fixture coverage"], ["source", "hardware", "placed onto 7.1.4"], ["unavailable", "not-applicable", "7.1.4 fixtures exceed heap"], ["unavailable", "not-applicable", "7.1.4 exceeds heap"], ["source", "ci", "inherits S3 component"]],
-        ["Hearth Sendspin sink", ["unavailable", "not-applicable", ""], ["source", "hardware", "two-board group run; no DAC connected"], ["unavailable", "not-applicable", ""], ["development", "build", "build overlay; no setup guide or Sendspin CI"], ["unavailable", "not-applicable", "not yet a media_player or speaker"]],
+        ["Hearth Sendspin sink", ["unavailable", "not-applicable", ""], ["source", "hardware", "two-board group run; no DAC connected"], ["unavailable", "not-applicable", ""], ["limited", "hardware", "stereo only; two-board group with an S3, no underruns; no Sendspin CI"], ["unavailable", "not-applicable", "not yet a media_player or speaker"]],
         ["Downloadable firmware", ["unavailable", "not-applicable", "build from source"], ["unavailable", "not-applicable", "build and flash from source"], ["unavailable", "not-applicable", "probe target only"], ["unavailable", "not-applicable", "probe/overlay only"], ["unavailable", "not-applicable", "external component source"]]
       ]
     }
@@ -553,11 +553,11 @@
       "product": "Hearth",
       "platform": "ESP32",
       "variant": "ESP32-C6",
-      "state": "development",
-      "artifact": "Build overlay only",
-      "action": "Read Hearth status",
-      "url": "hearth/",
-      "note": "There is no C6 sink setup guide or Sendspin CI job."
+      "state": "limited",
+      "artifact": "Source project to build and flash",
+      "action": "Open the sink setup guide on GitHub",
+      "url": "https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6",
+      "note": "Stereo only; no firmware image is published and there is still no C6 Sendspin CI job."
     },
     {
       "product": "C++ library",

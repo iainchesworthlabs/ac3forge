@@ -55,7 +55,7 @@ without it. [The null-sink driver on ACX](windows-driver-acx.md) has the detail,
 | **A shell** — `ac3cli` | Windows, Linux (including the Pi), macOS | [CLI reference](../forge/cli/index.md), [Forge](../forge/index.md) |
 | **A window** — `ac3gui` | Windows, Linux and macOS. Shipped prebuilt for Windows and macOS; from source, only the Windows presets default it on (`-DAC3FORGE_BUILD_GUI=ON` elsewhere, and Qt is needed either way) | [GUI guide](../forge/gui/index.md) |
 | **A desktop app** — Crucible | Windows and Linux; the macOS half compiles but has never been run | [Crucible](../crucible/index.md) |
-| **A Hearth sink** — `hearth_sink` | ESP32-S3 network player. Two boards as a group. Example has a C6 overlay; no C6 setup guide | [Hearth](../hearth/index.md), [An ESP32-S3 sink](../hearth/sink-esp32-s3.md) |
+| **A Hearth sink** — `hearth_sink` | ESP32-S3 network player. Two boards as a group. Also runs on an ESP32-C6, stereo only ([setup guide](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6)); still no C6 Sendspin CI job | [Hearth](../hearth/index.md), [An ESP32-S3 sink](../hearth/sink-esp32-s3.md) |
 | **C++** | Every desktop platform above, plus WebAssembly and [bare metal](bare-metal/index.md) | [Library conventions](../library/index.md) |
 | **C** | Wherever the C++ library builds | [C API](../library/c-api.md) |
 | **Python** | `pip install ac3forge` — wheels for Windows x64, macOS arm64 and x86_64, Linux x86_64 and aarch64 | [Python bindings](../library/python-api.md) |
