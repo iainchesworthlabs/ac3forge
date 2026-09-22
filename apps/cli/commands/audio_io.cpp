@@ -43,6 +43,7 @@
 #include "ac3/render/routing.hpp"
 #include "live_audio.hpp"
 #include "recording_sink.hpp"
+#include "sink_wait.hpp"
 #include "stream_tools.hpp"
 
 namespace ac3cli::commands {
@@ -696,9 +697,10 @@ int run_identify(int device_index, std::string_view layout_text, std::uint32_t s
 
     std::array<char, ac3::render::Routing::kTextBytes> patch_text{};
     output.routing().format(patch_text);
-    fmt::println("{} - {} outputs{}, {} Hz", opened->device_name.empty() ? "default output"
-                                                                         : opened->device_name,
-                 opened->outputs, opened->from_device ? "" : " (the backend does not say; assumed)",
+    const std::string output_name =
+        opened->device_name.empty() ? std::string{"default output"} : opened->device_name;
+    fmt::println("{} - {} outputs{}, {} Hz", output_name, opened->outputs,
+                 opened->from_device ? "" : " (the backend does not say; assumed)",
                  opened->sample_rate);
     const std::string speaker_names = ac3::audio::describe_speakers(opened->speakers);
     fmt::println("speakers: {}", speaker_names.empty() ? "not reported" : speaker_names);
@@ -743,8 +745,9 @@ int run_identify(int device_index, std::string_view layout_text, std::uint32_t s
                               : ac3::render::IdentifyTone::Band::kFull;
         for (std::size_t block = 0; block < blocks; ++block) {
             tone.fill(writable, slot, band);
-            while (!output.submit(readable, kBlockFrames)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(4));
+            if (!ac3::apps::submit_while_running(output, std::chrono::milliseconds(4), readable,
+                                                 kBlockFrames)) {
+                break;  // the device went away; reported below
             }
         }
         // Drain before the next slot, so two speakers are never sounding at
@@ -765,6 +768,15 @@ int run_identify(int device_index, std::string_view layout_text, std::uint32_t s
             const auto left = position->frames_queued + position->latency_frames;
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(20 + static_cast<int>((left * 1000) / kRate)));
+        }
+        // The device can go away while a block waits for room, while the
+        // queue drains or while its own buffer plays out. Each of those stops
+        // waiting once the sink has stopped itself, and this is where the
+        // walk finds out: no later slot could be heard.
+        if (!output.running()) {
+            fmt::println(stderr, "error: \"{}\" went away ({}); stopped at slot {} ({})",
+                         output_name, kOutputGoneReasons, slot, name);
+            return kExitRuntime;
         }
     }
 
@@ -820,9 +832,12 @@ struct SplitStream {
 
 // Wraps `units` into IEC 61937 bursts and feeds them to `sink`, already
 // started - the tail every 'play' path shares: native passthrough, and
-// play/monitor follow mode's AC-3 transcode fallback.
+// play/monitor follow mode's AC-3 transcode fallback. `device_name` is how
+// the caller's own status lines name the endpoint, for the error if it goes
+// away mid-stream.
 int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
-                         std::span<const std::span<const std::byte>> units, bool eac3) {
+                         std::span<const std::span<const std::byte>> units, bool eac3,
+                         std::string_view device_name) {
     ac3::iec61937::Eac3BurstPacker eac3_packer;
     for (const auto& unit : units) {
         std::vector<std::byte> burst;
@@ -845,14 +860,24 @@ int submit_units_to_sink(ac3::audio::PassthroughSink& sink,
             burst = *wrapped;
         }
         // Wait for room rather than racing ahead: the render thread consumes
-        // in real time, one burst per burst period.
-        while (!sink.submit(burst)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+        // in real time, one burst per burst period. A sink whose device went
+        // away never makes room again, so that ends the wait.
+        if (!ac3::apps::submit_while_running(sink, std::chrono::milliseconds(4), burst)) {
+            fmt::println(stderr, "error: \"{}\" went away ({}); playback stopped", device_name,
+                         kOutputGoneReasons);
+            return kExitRuntime;
         }
     }
     // Let the queue drain before tearing the endpoint down.
-    while (sink.stats().bursts_rendered < sink.stats().bursts_submitted) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    const bool played_out =
+        ac3::apps::wait_while_running(sink, std::chrono::milliseconds(10), [&sink] {
+            const auto stats = sink.stats();
+            return stats.bursts_rendered >= stats.bursts_submitted;
+        });
+    if (!played_out) {
+        fmt::println(stderr, "error: \"{}\" went away ({}) before the last bursts played",
+                     device_name, kOutputGoneReasons);
+        return kExitRuntime;
     }
     return kExitOk;
 }
@@ -924,7 +949,7 @@ int play_via_ac3_transcode(std::string_view in_path, const std::string& device_i
     }
     status_println(status_stream(), "streaming {} frames to \"{}\" ({} Hz carrier)…",
                    split->units.size(), device_name, split->content_rate);
-    const auto result = submit_units_to_sink(sink, split->units, /*eac3=*/false);
+    const auto result = submit_units_to_sink(sink, split->units, /*eac3=*/false, device_name);
     const auto stats = sink.stats();
     sink.stop();
     status_println(status_stream(), "submitted {} bursts, rendered {}, {} underruns",
@@ -1060,7 +1085,7 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
                  eac3 ? "access units" : "frames", device_name, content_rate,
                  eac3 ? ", carrier 4x that" : " carrier");
 
-    const auto result = submit_units_to_sink(sink, units, eac3);
+    const auto result = submit_units_to_sink(sink, units, eac3, device_name);
     const auto stats = sink.stats();
     sink.stop();
     status_println(status_stream(), "submitted {} bursts, rendered {}, {} underruns",

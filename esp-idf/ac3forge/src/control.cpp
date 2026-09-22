@@ -121,6 +121,8 @@ void append_sendspin(std::string& out, const ControlSendspin& s) {
     append_string(out, "role", s.role);
     append_bool(out, "clock_converged", s.clock_converged);
     append_signed(out, "clock_error_us", s.clock_error_us);
+    append_number(out, "clock_updates", s.clock_updates);
+    append_number(out, "clock_rejected", s.clock_rejected);
     append_number(out, "connections", s.connections);
     append_string(out, "client_id", s.client_id);
     append_number(out, "paired", s.paired);

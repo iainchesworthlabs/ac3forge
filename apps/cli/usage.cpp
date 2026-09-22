@@ -100,13 +100,20 @@ constexpr std::array<OptionToken, 60> kOptionTokens{{
     {"detail=", "probe: frames or blocks - add per-access-unit/per-block detail"},
     {"fallback-51", "fmp4: also write the object-stripped 5.1 companion rendition"},
     {"mainid=", "ts: this service's A/52 Annex A main-service number"},
-    {"asvc=", "ts: the main service this one is associated with (A/52 Annex A)"},
+    {"asvc=", "ts: the main service(s) this one is associated with (A/52 Annex A) - a raw "
+             "0-255/0x00-0xFF mask, or a comma list of main-service numbers, e.g. asvc=0,2"},
     {"programme=", "decode/qc/levels: which independent substream (0..7) of a multi-programme "
                    "stream"},
-    {"programme2=", "eac3-encode: a second input file, encoded as its own independent substream"},
-    {"programme2-layout=", "eac3-encode: programme2's own layout (default stereo; not 1+1)"},
-    {"programme2-bitrate=", "eac3-encode: programme2's own bitrate in kbit/s"},
-    {"programme2-dialnorm=", "eac3-encode: programme2's own dialnorm, 1..31 (§5.4.2.8)"},
+    {"programme2=", "eac3-encode: another input file, encoded as its own independent substream "
+                   "(§E2.3.1.2's I1); programme3= up to programme8= work the same way, for I2-I7"},
+    {"programme2-layout=", "eac3-encode: that programme's own layout (default stereo; not 1+1) - "
+                           "programme3-layout= etc. the same way"},
+    {"programme2-bitrate=", "eac3-encode: that programme's own bitrate in kbit/s - programme3-bitrate= "
+                            "etc. the same way"},
+    {"programme2-<field>=", "eac3-encode: that programme's own metadata - the same key vocabulary "
+                            "the primary programme's own bare tokens above use (dialnorm=<1..31>|"
+                            "auto, bsmod=, mixdef=, pgmscl=, and the rest; see 'help eac3-encode') - "
+                            "programme3-<field>= etc. the same way"},
 }};
 
 // The note column of the usage listing starts here; a row whose spec already
@@ -751,8 +758,9 @@ void print_exit_codes() {
     fmt::println("  {}  runtime: the run started and then failed for none of the above reasons",
                  kExitRuntime);
     fmt::println("     - a capture device that stopped delivering audio (the record/live");
-    fmt::println("     watchdog), a loudness measurement with nothing above the gate, a signing");
-    fmt::println("     pass that could not complete.");
+    fmt::println("     watchdog), an output device that went away mid-playback, a loudness");
+    fmt::println("     measurement with nothing above the gate, a signing pass that could not");
+    fmt::println("     complete.");
     fmt::println("  {}  a QC gate failed. Distinct from {} so a CI step can tell 'the stream is",
                  kExitQcGate, kExitInput);
     fmt::println("     out of spec' (a result) from 'qc could not read the file' (a fault).");

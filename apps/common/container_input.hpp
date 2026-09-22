@@ -115,6 +115,25 @@ struct ContainerFacts {
     std::uint8_t stream_type = 0;
     std::string signalling{};
     std::size_t packet_size = 0;
+    // MPEG-TS: the PMT's own AC-3/E-AC-3 audio descriptor, decoded (see
+    // mpegts::parse_service_descriptor) rather than pulled in as
+    // mpegts::ServiceInfo directly - plain values here, matching CodecBox
+    // above, so this header stays free of every container library's own
+    // types. service_present false (the default, every other service_*
+    // field also left at its own default) means the PMT had no such
+    // descriptor at all - registration-descriptor and AC-4 signalling, or a
+    // malformed one - not that it said "nothing". mainid/asvc/full_service
+    // stay std::nullopt for the same reason mpegts::ServiceInfo's own fields
+    // do: nothing here is guessed.
+    bool service_present = false;
+    int service_bsmod = 0;
+    bool service_bsmod_present = false;
+    std::optional<bool> service_full_service = std::nullopt;
+    int service_bsid = 0;
+    std::optional<int> service_mainid = std::nullopt;
+    int service_priority = 3;
+    std::optional<int> service_asvc = std::nullopt;
+    bool service_mix_metadata = false;
 };
 
 // The part of a decoded stream its container says to play, in samples at the

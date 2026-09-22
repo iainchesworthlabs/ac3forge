@@ -148,7 +148,9 @@ TEST_CASE("every spatial error describes itself", "[audio-backend][concurrency]"
 TEST_CASE("a spatial sink that was never started refuses work", "[audio-backend][concurrency]") {
     // Same contract as PassthroughSink's own never-started test: true of
     // every backend including the stub, and the reason submit() checks
-    // running() first.
+    // running() first. A sink whose device has gone answers the same way,
+    // which needs a device to lose, and is test_spatial_live.cpp's
+    // [.][spatial-unplug] case.
     ac3::audio::SpatialObjectSink sink;
     CHECK_FALSE(sink.running());
     CHECK_FALSE(sink.can_submit());
@@ -279,8 +281,8 @@ TEST_CASE("every passthrough error describes itself", "[audio-backend][concurren
 TEST_CASE("every monitor error describes itself", "[audio-backend][concurrency]") {
     using ac3::audio::MonitorError;
     for (const auto error : {MonitorError::kNoBackend, MonitorError::kComFailure,
-                             MonitorError::kDeviceNotFound, MonitorError::kAlreadyRunning,
-                             MonitorError::kNotRunning}) {
+                             MonitorError::kDeviceNotFound, MonitorError::kFormatRejected,
+                             MonitorError::kAlreadyRunning, MonitorError::kNotRunning}) {
         const std::string_view text = ac3::audio::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown monitor error");

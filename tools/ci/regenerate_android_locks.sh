@@ -24,7 +24,7 @@ fi
 if [[ ! -x "$sm" ]]; then
   mkdir -p "$sdk/cmdline-tools"
   tmp="$(mktemp -d)"
-  curl -fsSL -o "$tmp/cmdline-tools.zip" \
+  curl -fsSL --proto '=https' --tlsv1.2 -o "$tmp/cmdline-tools.zip" \
     "https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip"
   unzip -qo "$tmp/cmdline-tools.zip" -d "$sdk/cmdline-tools"
   mv "$sdk/cmdline-tools/cmdline-tools" "$sdk/cmdline-tools/latest"

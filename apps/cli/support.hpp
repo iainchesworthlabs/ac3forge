@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -419,19 +420,40 @@ struct Options {
     // programmes: they are alternatives (a second language, an audio
     // description), not layers, so mixing them is never what a caller wants.
     std::optional<int> programme;
-    // 'eac3-encode': a SECOND programme to author into the same stream as a
-    // second independent substream (§E2.3.1.2). Unset - the default - writes
-    // the single-programme stream this command always has.
-    std::optional<std::string> programme2;
-    // That programme's own layout token, bit rate and dialnorm. Empty/unset
-    // follow the second source's own channel count, half the primary's rate
-    // (an associated service is normally much narrower than the main mix) and
-    // dialnorm 31. Its own, not the primary's: a commentary track is levelled
-    // independently of the mix it is played against, which is the whole point
-    // of carrying it as a separate programme.
-    std::string programme2_layout;
-    std::optional<std::uint32_t> programme2_bitrate;
-    int programme2_dialnorm = 31;
+    // 'eac3-encode': further programmes to author into the same stream, each
+    // its own independent substream (§E2.3.1.2's I1-I7) - up to
+    // ac3::eac3::kMaxProgrammes - 1 of them, so index 0 is I1 (the CLI's
+    // programme2=) and the last is I7 (programme8=). An entry with no `path`
+    // is unused. §E2.3.1.2 assigns substreamid sequentially with no gaps, so
+    // neither can the CLI: run_eac3_encode refuses a later slot with a path
+    // when an earlier one has none (programme4= without programme2=/
+    // programme3=), rather than silently renumbering programme4's own file
+    // onto I1 - the number in the token is a promise about which substream it
+    // becomes. Unset - the default - writes the single-programme stream this
+    // command always has.
+    struct ExtraProgramme {
+        std::optional<std::string> path;
+        // Its own layout token and bit rate - plan::Plan fields, not
+        // plan::Metadata ones, so they live here rather than in `meta`
+        // below. Empty/unset follow the source's own channel count and half
+        // the primary's rate (an associated service is normally much
+        // narrower than the main mix), the same defaults programme2= always
+        // had.
+        std::string layout;
+        std::optional<std::uint32_t> bitrate;
+        // Everything else about this programme - dialnorm (defaults to 31,
+        // plan::Metadata's own default), DRC, bsmod, the whole mixmdate
+        // group - set via programmeN-<field>=, the same key vocabulary the
+        // primary programme's bare tokens above use. Its own, not the
+        // primary's: a commentary track is levelled independently of the
+        // mix it is played against, which is the whole point of carrying it
+        // as a separate programme. See parse_programme_metadata_option in
+        // support.cpp for exactly which of the primary's keys generalize
+        // here and which do not (the five 1+1-only fields and AC-3's own
+        // Annex D fields - an extra programme is always E-AC-3).
+        ac3::plan::Metadata meta{};
+    };
+    std::array<ExtraProgramme, ac3::eac3::kMaxProgrammes - 1> extra_programmes{};
     // 'qc' only: which soundfield to meter. false (layout=bed, the default)
     // measures the independent substream's own Table 5.8 bed through
     // BS.1770 Annex 1's basic algorithm - what this command has always
@@ -457,6 +479,16 @@ struct Options {
 // each context - so this is the one place that has to know which command is
 // asking, everywhere else in this function stays command-agnostic.
 bool parse_options(std::span<char*> tokens, Options& out, std::string_view command);
+
+// True for "programmeN" or "programmeN-<suffix>" (N = 2..8): the whole
+// family of extra-programme tokens, bare ones (programmeN-heavy, the
+// refused programmeN-annexd) included. main()'s own positional/option split
+// has to recognize a BARE token (no '=') as an option by name before
+// parse_options ever sees it - the same reason it already lists "heavy",
+// "annexd" and the rest of the primary's bare words - and this is that
+// check for the programmeN- family, so the two can never disagree about
+// what counts as one.
+[[nodiscard]] bool is_extra_programme_token(std::string_view token);
 
 // Reads a loudness measurement someone else already pushed every sample
 // into, reports it the same way every dialnorm=auto path does, and returns
@@ -575,6 +607,14 @@ inline void status_println(FILE* out) {
         fmt::println(out, "");
     }
 }
+
+// What can take an output away mid-run, for the error that says it went.
+// A PassthroughSink or MonitorSink whose device goes away stops itself
+// (PassthroughSink::running()), and every command that plays to one ends up
+// saying so the same way: 'play', 'monitor', 'identify' and the output legs
+// of 'live'.
+inline constexpr std::string_view kOutputGoneReasons =
+    "unplugged, switched off, disabled, or taken by the system";
 
 // A one-line "done / total" report on stderr for a run long enough to be
 // worth watching, rewritten in place the way print_live_meter's own line is.

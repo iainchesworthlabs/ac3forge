@@ -47,6 +47,13 @@ inline constexpr std::uint8_t kPesStreamIdPrivateStream1 = 0xBD;
 // ETSI EN 300 468 Annex D.2 Table D.1 and Annex D.4 Table D.3.
 inline constexpr std::uint8_t kTagAc3Descriptor = 0x6A;
 inline constexpr std::uint8_t kTagEnhancedAc3Descriptor = 0x7A;
+// A/52:2018 Annex A §A4.3, Table A4.1 / Annex G §G3.5, Table G.1. Read-side
+// only until the reader also parsed the descriptor body rather than just its
+// tag; mpegts.cpp's writer keeps its own copy of these two (see that file),
+// which is fine - both sides only need to agree that the VALUE is 0x81/0xCC,
+// and mpegts.cpp's own constant is what actually goes on the wire either way.
+inline constexpr std::uint8_t kTagAtscAc3Descriptor = 0x81;
+inline constexpr std::uint8_t kTagAtscEac3Descriptor = 0xCC;
 // ISO/IEC 13818-1 §2.6.8's registration_descriptor. Read-side only: a
 // stream carrying format_identifier 'AC-3' or 'EAC3' here is naming its
 // codec the third way the wild actually does it, alongside the ATSC

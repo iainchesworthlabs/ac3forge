@@ -14,3 +14,10 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     add_subdirectory(testserver)
     include("${CMAKE_CURRENT_SOURCE_DIR}/notices/notices.cmake")
 endif()
+
+# The window (A5). Same three platforms as apps/crucible, and for the same
+# reason: apps/crucible/CMakeLists.txt's own comment on why the guard names
+# them rather than dropping a platform with no arm here.
+if(WIN32 OR APPLE OR LINUX)
+    add_subdirectory(ui)
+endif()

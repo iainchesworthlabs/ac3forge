@@ -1585,16 +1585,22 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
             }
             w.put(mix.blkmixcfginfo ? 1 : 0, 1);  // frmmixcfginfoe
             if (mix.blkmixcfginfo.has_value()) {
-                // Six blocks per syncframe, always - either numblkscod 0x3
-                // written above or the implicit six of a reduced-rate fscod2
-                // frame. §E2.3.1.60's one-block form (where the per-block flag
-                // is inferred set and the word is unconditional) cannot arise
-                // from this encoder, so it is not written; the decoder reads
-                // it, because a third-party stream may well use it.
-                for (const auto& word : *mix.blkmixcfginfo) {
-                    w.put(word ? 1 : 0, 1);  // blkmixcfginfoe
-                    if (word.has_value()) {
-                        w.put(static_cast<std::uint32_t>(*word), 5);
+                // §E2.3.1.60: at numblkscod 0x0 (one block per syncframe) the
+                // per-block flag is INFERRED set, so entry 0 alone is written,
+                // unconditionally - the mirror of the decoder's own read_mixing_
+                // metadata(). Every other case - the six blocks of numblkscod
+                // 0x3, or the implicit six of a reduced-rate fscod2 frame -
+                // writes the full per-block form. MixMetadata::blkmixcfginfo's
+                // own comment documents the numblkscod-0x0 contract: entry 0
+                // must be set whenever the group itself is.
+                if (config.numblkscod == 0x0) {
+                    w.put(static_cast<std::uint32_t>((*mix.blkmixcfginfo)[0].value_or(0)), 5);
+                } else {
+                    for (const auto& word : *mix.blkmixcfginfo) {
+                        w.put(word ? 1 : 0, 1);  // blkmixcfginfoe
+                        if (word.has_value()) {
+                            w.put(static_cast<std::uint32_t>(*word), 5);
+                        }
                     }
                 }
             }
@@ -5755,9 +5761,6 @@ std::expected<std::vector<FrameConfig>, FrameError> programme_configs(
     }
     return out;
 }
-
-// §E2.3.1.2: eight independent substreams, I0-I7, no more.
-constexpr std::size_t kMaxProgrammes = 8;
 
 // Every programme of an access unit, each as programme_configs above built it,
 // in transmission order. The outer index IS the substreamid of that

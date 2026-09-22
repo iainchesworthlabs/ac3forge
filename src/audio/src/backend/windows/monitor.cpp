@@ -25,56 +25,27 @@
 #include "ac3/audio/playback_counter.hpp"
 #include "ac3/audio/ring_buffer.hpp"
 #include "ac3/audio/speakers.hpp"
+#include "windows_support.hpp"
 
 namespace ac3::audio {
 
 namespace {
 
 using Microsoft::WRL::ComPtr;
+using windows_audio::ComScope;
+using windows_audio::kClsidMmDeviceEnumerator;
+using windows_audio::kIidAudioClient;
+using windows_audio::kIidAudioRenderClient;
+using windows_audio::kIidMmDeviceEnumerator;
 
-// The class and interface identifiers, spelled out for the same reason as the
-// capture and passthrough backends: the SDK declares these but ships no
-// import library defining them, and __uuidof is an MSVC extension clang
-// rejects under -Wpedantic.
-constexpr CLSID kClsidMmDeviceEnumerator = {  // {bcde0395-e52f-467c-8e3d-c4579291692e}
-    0xbcde0395, 0xe52f, 0x467c, {0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e}};
-constexpr IID kIidMmDeviceEnumerator = {  // {a95664d2-9614-4f35-a746-de8db63617e6}
-    0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6}};
-constexpr IID kIidAudioClient = {  // {1cb9ad4c-dbfa-4c32-b178-c2f568a703b2}
-    0x1cb9ad4c, 0xdbfa, 0x4c32, {0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2}};
+// IAudioClient3, this file's own low-latency path - windows_support.hpp has
+// no other caller for it.
 constexpr IID kIidAudioClient3 = {  // {7ed4ee07-8e67-4cd4-8c1a-2b7a5987ad42}
     0x7ed4ee07, 0x8e67, 0x4cd4, {0x8c, 0x1a, 0x2b, 0x7a, 0x59, 0x87, 0xad, 0x42}};
-constexpr IID kIidAudioRenderClient = {  // {f294acfc-3146-4483-a7bf-addca7c260e2}
-    0xf294acfc, 0x3146, 0x4483, {0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2}};
 
 // KSDATAFORMAT_SUBTYPE_IEEE_FLOAT from mmreg.h.
 constexpr GUID kSubtypeIeeeFloat = {  // {00000003-0000-0010-8000-00aa00389b71}
     0x00000003, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
-
-class ComScope {
-public:
-    ComScope() : hr_(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
-    ~ComScope() {
-        if (SUCCEEDED(hr_)) {
-            CoUninitialize();
-        }
-    }
-    ComScope(const ComScope&) = delete;
-    ComScope& operator=(const ComScope&) = delete;
-    [[nodiscard]] bool ok() const { return SUCCEEDED(hr_) || hr_ == RPC_E_CHANGED_MODE; }
-
-private:
-    HRESULT hr_;
-};
-
-std::expected<ComPtr<IMMDeviceEnumerator>, MonitorError> make_enumerator() {
-    ComPtr<IMMDeviceEnumerator> enumerator;
-    if (FAILED(CoCreateInstance(kClsidMmDeviceEnumerator, nullptr, CLSCTX_ALL,
-                                kIidMmDeviceEnumerator, &enumerator))) {
-        return std::unexpected(MonitorError::kComFailure);
-    }
-    return enumerator;
-}
 
 // The mask the audio engine is given for a bare channel count, when a caller
 // does not name one: speakers.hpp's own table, so the arrangement a width
@@ -88,6 +59,8 @@ std::string_view describe(MonitorError error) {
         case MonitorError::kNoBackend: return "no monitor backend on this platform";
         case MonitorError::kComFailure: return "a Windows audio (WASAPI/COM) call failed";
         case MonitorError::kDeviceNotFound: return "the requested render device was not found";
+        case MonitorError::kFormatRejected:
+            return "the endpoint refused this sample rate or channel count in shared mode";
         case MonitorError::kAlreadyRunning: return "monitor playback is already running";
         case MonitorError::kNotRunning: return "monitor playback is not running";
     }
@@ -263,7 +236,7 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     if (!com.ok()) {
         return std::unexpected(MonitorError::kComFailure);
     }
-    auto enumerator = make_enumerator();
+    auto enumerator = windows_audio::make_enumerator(MonitorError::kComFailure);
     if (!enumerator) {
         return std::unexpected(enumerator.error());
     }
@@ -337,7 +310,13 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                                 default_period, 0, &format.Format, nullptr);
     }
     if (FAILED(hr)) {
-        return std::unexpected(MonitorError::kComFailure);
+        // AUDCLNT_E_UNSUPPORTED_FORMAT specifically means the engine refused
+        // this shared-mode sample rate/channel count (confirmed against a
+        // real HDMI/AVR endpoint locked to a non-48kHz rate); every other
+        // failure from either Initialize attempt above is a COM/WASAPI
+        // problem and stays kComFailure.
+        return std::unexpected(hr == AUDCLNT_E_UNSUPPORTED_FORMAT ? MonitorError::kFormatRejected
+                                                                   : MonitorError::kComFailure);
     }
 
     UINT32 buffer_frames = 0;
@@ -451,7 +430,11 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             // can stall and come back, but one that has been removed need
             // never signal again, so a wait that times out says nothing on
             // its own. A shared-mode stream always answers for its padding,
-            // so a refusal is the stream's end, as a refused buffer is below.
+            // so a refusal is the stream's end, as a refused buffer is below
+            // - ANY failure here, deliberately not narrowed to
+            // windows_audio::stream_gone()'s exclusive-mode allowlist; see
+            // that function's own comment for why shared and exclusive mode
+            // need different answers to what looks like the same question.
             const bool woken = WaitForSingleObject(ready, 200) == WAIT_OBJECT_0;
             UINT32 padding = 0;
             if (FAILED(client->GetCurrentPadding(&padding))) {

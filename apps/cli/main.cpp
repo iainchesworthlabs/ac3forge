@@ -292,9 +292,10 @@ constexpr std::array<Command, 43> kCommands{{
     {"eac3-encode", 3,
      "<in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav]",
      "in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= "
-     "for more than one source. programme2= is a different thing entirely - a second, "
-     "independent E-AC-3 substream (its own layout/bitrate/dialnorm via "
-     "programme2-layout=/-bitrate=/-dialnorm=), not another channel of this one",
+     "for more than one source. programme2= (up to programme8=) is a different thing "
+     "entirely - another independent E-AC-3 substream (its own layout/bitrate/dialnorm "
+     "and metadata via programmeN-layout=/-bitrate=/-<field>=), not another channel of "
+     "this one",
      topic::kStdio | topic::kLayout | topic::kTools | topic::kVbr | topic::kMulti | topic::kMeta,
      Needs::kNothing,
      [](const Args& x) {
@@ -597,7 +598,8 @@ int run_main(int argc, char** argv) {
                                token == "infomdat" || token == "encinfo" ||
                                token == "langcod" || token == "langcod2" ||
                                token == "copyright" || token == "sourcefscod" ||
-                               token == "quiet" || token == "verbose";
+                               token == "quiet" || token == "verbose" ||
+                               is_extra_programme_token(token);
         if (token == "couple") {
             couple_flag = true;
         }

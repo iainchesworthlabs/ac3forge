@@ -261,32 +261,105 @@ void print_bsi_summary(FILE* status, const ac3::meta::BsiInfo& info, ac3::Acmod 
 // out - they are present on every mixmdate group and say nothing about
 // whether this stream is an associated service.
 void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
-    if (mix.pgmscl.has_value()) {
-        status_println(status, "  programme scale: {}",
-                       *mix.pgmscl == ac3::meta::kPgmScaleMute
+    const auto print_scale = [status](std::string_view label, const std::optional<int>& code) {
+        if (!code.has_value()) {
+            return;
+        }
+        status_println(status, "  {}: {}", label,
+                       *code == ac3::meta::kPgmScaleMute
                            ? std::string{"mute"}
-                           : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*mix.pgmscl)));
+                           : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*code)));
+    };
+    print_scale("programme scale", mix.pgmscl);
+    print_scale("Ch2 programme scale", mix.pgmscl2);
+    print_scale("external programme scale", mix.extpgmscl);
+
+    const auto print_premix = [status](std::string_view indent,
+                                       const ac3::meta::PremixCompression& premix) {
+        status_println(status, "{}premix compression: {} word, {} source, {}/6", indent,
+                       premix.premixcmpsel == ac3::meta::PremixCompressionSource::kDynrng
+                           ? "dynrng"
+                           : "compr",
+                       premix.drcsrc == ac3::meta::DrcSource::kExternal ? "external"
+                                                                        : "this substream",
+                       premix.premixcmpscl);
+    };
+    switch (mix.mixing.mixdef) {
+        case ac3::meta::MixDefinition::kNone:
+            break;
+        case ac3::meta::MixDefinition::kPremix:
+            status_println(status, "  mixdef 1 (premix compression)");
+            print_premix("    ", mix.mixing.premix);
+            break;
+        case ac3::meta::MixDefinition::kReserved:
+            status_println(status, "  mixdef 2 (reserved): 0x{:03X}", mix.mixing.reserved);
+            break;
+        case ac3::meta::MixDefinition::kExtended: {
+            status_println(status, "  mixdef 3 (extended)");
+            if (mix.mixing.external.has_value()) {
+                const auto& external = *mix.mixing.external;
+                print_premix("    ", external.premix);
+                const auto print_ext_scale = [status](std::string_view label,
+                                                      const std::optional<int>& code) {
+                    if (!code.has_value()) {
+                        status_println(status, "    {}: off", label);
+                        return;
+                    }
+                    status_println(
+                        status, "    {}: {}", label,
+                        *code == 15 ? std::string{"mute"}
+                                   : fmt::format("{:+.0f} dB",
+                                                 ac3::meta::kExternalScaleDb[
+                                                     static_cast<std::size_t>(*code)]));
+                };
+                print_ext_scale("left", external.left);
+                print_ext_scale("centre", external.centre);
+                print_ext_scale("right", external.right);
+                print_ext_scale("left surround", external.left_surround);
+                print_ext_scale("right surround", external.right_surround);
+                print_ext_scale("lfe", external.lfe);
+                print_ext_scale("downmix", external.dmixscl);
+                if (external.auxiliary.has_value()) {
+                    print_ext_scale("aux 1", (*external.auxiliary)[0]);
+                    print_ext_scale("aux 2", (*external.auxiliary)[1]);
+                }
+            }
+            if (mix.mixing.speech.has_value()) {
+                const auto& speech = *mix.mixing.speech;
+                status_println(status, "    speech enhancement: spchdat={}", speech.spchdat);
+                if (speech.additional.has_value()) {
+                    status_println(status, "      spchdat1={} spchan1att={}",
+                                   speech.additional->spchdat1, speech.additional->spchan1att);
+                    if (speech.additional->more.has_value()) {
+                        status_println(status, "        spchdat2={} spchan2att={}",
+                                       speech.additional->more->spchdat2,
+                                       speech.additional->more->spchan2att);
+                    }
+                }
+            }
+            break;
+        }
     }
-    if (mix.extpgmscl.has_value()) {
-        status_println(status, "  external programme scale: {}",
-                       *mix.extpgmscl == ac3::meta::kPgmScaleMute
-                           ? std::string{"mute"}
-                           : fmt::format("{:+.0f} dB", ac3::meta::pgm_scale_db(*mix.extpgmscl)));
-    }
-    if (mix.mixing.mixdef != ac3::meta::MixDefinition::kNone) {
-        status_println(status, "  mixdef {} ({}{}{})",
-                       static_cast<int>(mix.mixing.mixdef),
-                       mix.mixing.external ? "external channel scales" : "",
-                       mix.mixing.external && mix.mixing.speech ? ", " : "",
-                       mix.mixing.speech ? "speech enhancement data"
-                                         : (mix.mixing.external ? "" : "no sub-fields"));
-    }
-    if (mix.pan.has_value()) {
-        status_println(status, "  pan: {:.1f} degrees clockwise from centre",
-                       static_cast<double>(mix.pan->panmean) * ac3::meta::kPanMeanDegreesPerStep);
-    }
+
+    const auto print_pan = [status](std::string_view label,
+                                    const std::optional<ac3::meta::PanInfo>& pan) {
+        if (!pan.has_value()) {
+            return;
+        }
+        status_println(status, "  {}: {:.1f} degrees clockwise from centre (paninfo {})", label,
+                       static_cast<double>(pan->panmean) * ac3::meta::kPanMeanDegreesPerStep,
+                       pan->paninfo);
+    };
+    print_pan("pan", mix.pan);
+    print_pan("Ch2 pan", mix.pan2);
+
     if (mix.blkmixcfginfo.has_value()) {
-        status_println(status, "  per-block mixing configuration present");
+        status_println(status, "  per-block mixing configuration:");
+        for (std::size_t blk = 0; blk < mix.blkmixcfginfo->size(); ++blk) {
+            const auto& word = (*mix.blkmixcfginfo)[blk];
+            status_println(status, "    block {}: {}", blk,
+                           word.has_value() ? std::to_string(*word) : std::string{"-"});
+        }
     }
 }
 

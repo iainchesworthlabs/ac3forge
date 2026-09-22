@@ -22,11 +22,18 @@
 #include <cstring>
 #include <thread>
 
+#include "windows_support.hpp"
+
 namespace ac3::audio {
 
 namespace {
 
 using Microsoft::WRL::ComPtr;
+using windows_audio::ComScope;
+using windows_audio::kClsidMmDeviceEnumerator;
+using windows_audio::kIidAudioClient;
+using windows_audio::kIidMmDeviceEnumerator;
+using windows_audio::kIidUnknown;
 
 // 100-ns units: the unit every WASAPI duration is expressed in.
 constexpr REFERENCE_TIME kBufferDuration = 200'000;  // 20 ms
@@ -46,23 +53,14 @@ constexpr PROPERTYKEY kPkeyDeviceFriendlyName = {
 constexpr PROPERTYKEY kPkeyDeviceDescription = {
     {0xa45c254e, 0xdf1c, 0x4efd, {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}}, 2};
 
-// The class and interface identifiers, spelled out for a related reason: the
-// SDK declares CLSID_MMDeviceEnumerator and the IAudio* IIDs but ships no
-// import library that defines them, so the only header-only way to name them
-// is __uuidof - an MSVC extension that clang rejects under -Wpedantic. The
-// values are the DECLSPEC_UUID / MIDL_INTERFACE strings in mmdeviceapi.h and
-// audioclient.h.
-constexpr CLSID kClsidMmDeviceEnumerator = {  // {bcde0395-e52f-467c-8e3d-c4579291692e}
-    0xbcde0395, 0xe52f, 0x467c, {0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e}};
-constexpr IID kIidMmDeviceEnumerator = {  // {a95664d2-9614-4f35-a746-de8db63617e6}
-    0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6}};
-constexpr IID kIidAudioClient = {  // {1cb9ad4c-dbfa-4c32-b178-c2f568a703b2}
-    0x1cb9ad4c, 0xdbfa, 0x4c32, {0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2}};
+// The remaining class/interface identifiers this file alone needs, spelled
+// out for the reason windows_support.hpp's own constants give (the SDK
+// declares these but ships no import library defining them as linkable
+// symbols, and __uuidof is an MSVC extension clang rejects under
+// -Wpedantic): the process-loopback activation's capture-client and
+// completion-handler ids.
 constexpr IID kIidAudioCaptureClient = {  // {c8adbd64-e71e-48a0-a4de-185c395cd317}
     0xc8adbd64, 0xe71e, 0x48a0, {0xa4, 0xde, 0x18, 0x5c, 0x39, 0x5c, 0xd3, 0x17}};
-// For the process-loopback activation's completion handler, same reason.
-constexpr IID kIidUnknown = {  // {00000000-0000-0000-c000-000000000046}
-    0x00000000, 0x0000, 0x0000, {0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
 constexpr IID kIidActivateCompletionHandler = {  // {41d949ab-9862-444a-80f6-c261334da5eb}
     0x41d949ab, 0x9862, 0x444a, {0x80, 0xf6, 0xc2, 0x61, 0x33, 0x4d, 0xa5, 0xeb}};
 constexpr IID kIidAgileObject = {  // {94ea2b94-e9cc-49e0-c0ff-ee64ca8f5b90}
@@ -119,24 +117,6 @@ std::string endpoint_display_name(IMMDevice* device, const std::string& id) {
     }
     return id.empty() ? std::string{"Unnamed audio endpoint"} : "Unnamed endpoint " + id;
 }
-
-// COM lifetime for one thread. WASAPI is apartment-sensitive, so every thread
-// that touches an interface initialises and uninitialises its own.
-class ComScope {
-public:
-    ComScope() : hr_(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
-    ~ComScope() {
-        if (SUCCEEDED(hr_)) {
-            CoUninitialize();
-        }
-    }
-    ComScope(const ComScope&) = delete;
-    ComScope& operator=(const ComScope&) = delete;
-    [[nodiscard]] bool ok() const { return SUCCEEDED(hr_) || hr_ == RPC_E_CHANGED_MODE; }
-
-private:
-    HRESULT hr_;
-};
 
 // How the endpoint hands us samples. WASAPI shared mode is almost always
 // 32-bit float, but exclusive-capable devices can report packed integers.
@@ -208,16 +188,6 @@ void convert(const BYTE* data, std::size_t sample_count, SampleFormat format,
             std::ranges::fill(out, 0.0f);
             break;
     }
-}
-
-std::expected<ComPtr<IMMDeviceEnumerator>, CaptureError> make_enumerator() {
-    ComPtr<IMMDeviceEnumerator> enumerator;
-    const HRESULT hr = CoCreateInstance(kClsidMmDeviceEnumerator, nullptr, CLSCTX_ALL,
-                                        kIidMmDeviceEnumerator, &enumerator);
-    if (FAILED(hr)) {
-        return std::unexpected(CaptureError::kComFailure);
-    }
-    return enumerator;
 }
 
 void append_devices(IMMDeviceEnumerator* enumerator, EDataFlow flow, DeviceKind kind,
@@ -421,7 +391,7 @@ std::expected<std::vector<DeviceInfo>, CaptureError> enumerate_devices() {
     if (!com.ok()) {
         return std::unexpected(CaptureError::kComFailure);
     }
-    auto enumerator = make_enumerator();
+    auto enumerator = windows_audio::make_enumerator(CaptureError::kComFailure);
     if (!enumerator) {
         return std::unexpected(enumerator.error());
     }
@@ -589,7 +559,7 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
     if (!com.ok()) {
         return std::unexpected(CaptureError::kComFailure);
     }
-    auto enumerator = make_enumerator();
+    auto enumerator = windows_audio::make_enumerator(CaptureError::kComFailure);
     if (!enumerator) {
         return std::unexpected(enumerator.error());
     }

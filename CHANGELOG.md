@@ -23,6 +23,18 @@ The sections below contain the complete change list and fixes.
 
 ### Added
 
+**Associated-service identification, both directions**
+
+- **MPEG-TS's `mainid`/`asvc` now read back, not just write.** `mpegts::demux`/`Reader` decode
+  the PMT's own AC-3/E-AC-3 audio descriptor into `ReadStream::service` — `bsmod`, `full_service`,
+  `mainid`, `asvc`, `bsid`, `mix_metadata` and the `substream1`–`3` bytes, for both the DVB and
+  ATSC profiles — where before only the descriptor *tag* was read, to identify the codec.
+- **`ac3cli ts`'s `asvc=` accepts a comma-separated main-service list** (`asvc=0,2`) alongside the
+  existing raw mask (`asvc=0x05`), and `mainid=`/`asvc=` are now checked against the stream's own
+  `bsmod`: giving `asvc=` on a stream `bsmod` calls a main service, or `mainid=` on one it calls
+  an associated service, is a usage error instead of a descriptor that silently says the wrong
+  thing.
+
 **Minimum-footprint / ESP32 decode profile**
 
 - **A Hearth sink knows what it is, joins a network it was told about, and is
@@ -88,6 +100,35 @@ The sections below contain the complete change list and fixes.
   AC-3 and E-AC-3 5.1, stereo and mono decode in real time (after the fixed-point arithmetic
   change under Changed), E-AC-3 7.1 does not, and 7.1.4 fits only with ESP-IDF's WiFi IRAM
   options off. QEMU does not emulate the part, so CI builds it and runs nothing. See
+  `docs/platforms/bare-metal/esp32-c6.md`.
+- **`hearth_sink`'s Sendspin player runs on the ESP32-C6**, the part's single core doing double
+  duty as the WebSocket server and the decode task. A clock reply is now dated by when its bytes
+  reached the board rather than by when the server task got to read them: lwIP's IPv4 input hook
+  (`ac3forge/tcp_arrivals.hpp`, `ESP_IDF_LWIP_HOOK_FILENAME`) logs each Sendspin connection's TCP
+  stream as its segments arrive, well above the decode task, and `PlayerSession::receive()` takes
+  that time instead of `esp_timer_get_time()` at the read. Without it every reply the server task
+  read while a burst decoded looked as late as the decode, and once thirty such bursts in a row
+  had been left out of the clock's filter the offset jumped 13 to 31 ms; with it a ten-minute play
+  kept every reading within 651 us of the server's own clock. Quad SPI flash reads
+  (`CONFIG_ESPTOOLPY_FLASHMODE_QIO`) left the part 6 to 9% idle while a stream played, where
+  DIO left about 1%, and cut a burst's decode and render from 22.4 to 20.7 ms. The Sendspin ring
+  is 48 KB (`sdkconfig.sendspin-c6`, up from 32 KB): a WiFi link that goes quiet for close to a
+  second, seen a few times an hour on this network, drains a smaller ring before it recovers, and
+  the chunks queued behind the gap arrive too late to play; 48 KB cut how often that happened by
+  about two thirds with no allocation ever failing, where 64 KB stopped it in a ten-minute run at
+  the cost of the same WiFi receive-buffer allocation failures the IRAM options above are there to
+  avoid. One ESP32-C6 and one ESP32-S3, both running `hearth_sink`, played one programme from
+  `ac3hearth-testserver` as a group for ten minutes with zero underruns on either board and a
+  479 us worst spread between their play times, inside B3's 1 ms group criterion. AC-3 and
+  E-AC-3 5.1 do not fit the player's memory budget once the ring, the WebSocket
+  server and WiFi's own buffers are all resident: the decoder's scratch allocation failed 10 to
+  12 seconds into a 5.1 stream in each of two runs, one AC-3 and one E-AC-3, and by then the heap
+  was short enough that even the C++ exception the failed allocation threw could not itself be
+  allocated, which aborted the board rather than closing the stream - `outputs.count` in the
+  role's capability advertisement bounds routing, the stage after decode, and did nothing to
+  stop a server sending one. `BurstPlayerConfig::max_coded_channels`
+  (`CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS`, 2 on this board) now refuses a wider
+  syncframe before a decoder opens for it, in every build that sets it. See
   `docs/platforms/bare-metal/esp32-c6.md`.
 - **`delta_allocation`** on `EncoderConfig`/`eac3::FrameConfig` (`delta=off`): the first
   rung of an effort axis for parts with little time for the §7.2.2.6 search. Removes
@@ -708,6 +749,20 @@ The sections below contain the complete change list and fixes.
 
 **Containers and encoding**
 
+- **`eac3-encode` authors all eight §E2.3.1.2 programmes, each with its own metadata.**
+  `programme2=` (previously the only extra programme the CLI could author) is now
+  `programme2=` through `programme8=`, one independent substream per token (I1–I7 beside
+  the primary's I0), each with its own `programmeN-layout=`/`-bitrate=` and the full
+  `programmeN-<field>=` metadata surface the primary programme's own bare tokens already
+  had — `bsmod=`, `dsurmod=`, `dmixmod=`, `pgmscl=`/`extpgmscl=`, the whole `mixdef=`/
+  `premixcmp=`/`extmix=`/`speechmix=`/`paninfo=`/`blkmixcfg=` group, `dialnorm=<1..31>|auto`
+  (including its own BS.1770 measurement pass) and more. The library side
+  (`AccessUnitConfig::additional`, `plan::eac3_programme`) already supported this; the gap
+  was CLI surface, now closed. A `programmeN=` past `programme2=` without the ones before it
+  is refused rather than silently renumbered, since §E2.3.1.2 assigns substream ids
+  sequentially. The five fields meaningful only under 1+1 dual mono and AC-3's own Annex D
+  fields are refused on an extra programme rather than accepted and left inert, since an
+  extra programme can be neither.
 - **AC-4 container carriage** (roadmap IM4): `ac3cli mp4`/`ts` read and write an AC-4
   elementary stream (TS 103 190-2 Annex E's `ac-4` sample entry/`dac4` box, EN 300 468
   Annex D.7's DVB descriptors); `demux` brings either back out byte-identical.
@@ -752,6 +807,21 @@ The sections below contain the complete change list and fixes.
   `tools/checks/ac4_syntax_differential.py` over hand-built synthetic streams and a random
   corpus exercising every branch. `oamd_substream()`'s own, separate `oamd_common_data()` embed
   stays out of scope, like every other non-audio substream.
+- **A channel-coded substream's HSF extension, `ac4_hsf_ext_substream()` (§4.2.4.3), is read**
+  for a 96 kHz or 192 kHz substream whose extension substream resolves to a distinct, readable
+  one: the additional scale factor bands, spectral data and noise fill above 24 kHz. Reading it
+  needs genuine interleaving between the two substreams' own bits - the owning channel's
+  `asf_section_data()` needs a bound (`get_max_sfb_hsf(g)`, §4.3.16.2) that only the extension's
+  own header carries, before either can be fully read - resolved regardless of which of the two
+  substream indices is numerically lower. A substream reporting `sf_multiplier` whose extension
+  cannot be resolved (unlinked, self-referencing, or itself unreadable) is refused, as before, now
+  by that reason alone rather than for being 96 or 192 kHz as such. Transcribed independently in
+  `tools/references/ac4_syntax.py`; cross-checked by `tools/checks/ac4_syntax_differential.py`
+  over 3,800 mutated and synthetic streams, and by two hand-built synthetic frames
+  (`tests/ac4dec/test_ac4dec_decoder.cpp`) covering both index orderings. The readings taken for
+  Table 39's own `max_sfb` (an active extension needs it to mean `get_max_sfb_hsf(g)`, not
+  `get_max_sfb(g)` as written) and for `ac4_hsf_ext_substream()`'s `num_channels`/
+  `b_different_framing` are in `src/ac4dec/ERRATA.md`.
 
 **Browser (WASM)**
 
@@ -803,6 +873,18 @@ The sections below contain the complete change list and fixes.
 
 **Verification and CI**
 
+- **Hearth builds and is tested on every build-and-test leg.** `src/sendspin` and
+  `apps/hearth` used to be compiled by one Linux job, so the `[sendspin]` and `[hearth]`
+  cases ran there and nowhere else, and neither Windows nor macOS had ever compiled
+  them in CI. Each leg now configures with vcpkg's `hearth` feature, and `ctest` runs
+  those cases with the rest of the suite. A leg with the feature takes a vcpkg cache key
+  of its own, since its install set is five ports larger. The first macOS build found
+  one error: Sendspin's mDNS discovery passed `poll()` a `size_t` count, which narrows
+  to macOS's 32-bit `nfds_t`. It is now cast.
+- **A change under `apps/hearth/` now lights the three desktop lanes**, not every lane.
+  It was an unmapped path, which the classifier deliberately treats as "build
+  everything"; it is one desktop program built on Windows, Linux and macOS, like
+  `apps/cli/` and `apps/crucible/` beside it.
 - **Heap churn is now gated before a merge, not only after one** (`Memory gate` in
   `ci.yml`): `ac3membench` used to run only on `push` to `main`, so a regression (E-AC-3
   encode churn 67→199 allocs/frame at PR #352) was found blocking nothing. The new job
@@ -1016,6 +1098,14 @@ The sections below contain the complete change list and fixes.
 
 ### Fixed
 
+**Containers**
+
+- **The `dec3`/`EC3SpecificBox` `asvc` bit misclassified karaoke as an associated service.**
+  `ac3::io::build_codec_config_box` used a plain `bsmod >= 2` test, which reads bsmod 7 (karaoke
+  at an acmod other than 1/0 — a *main* service per A/52 Table 5.7) the same as bsmod 7's other
+  meaning, voice-over. The MPEG-TS descriptor writer already got this split right; the `dec3`
+  writer now shares its rule, `ac3::meta::is_associated_service`.
+
 **Command line and GUI**
 
 - **`ac3cli monitor` refused a §E2.3.1.2 legacy-core stream and dropped every stream's last
@@ -1075,8 +1165,19 @@ The sections below contain the complete change list and fixes.
   1.** Each `presentations_v0[].substreams[]` entry held an unnamed object beside its
   `role`. The substream's members now sit beside `role` in the entry. No stream on hand has
   such a table of contents, so no output seen so far changes.
-
-**ESP32 / bare-metal**
+- **`ac3cli play`, `monitor`, `identify` and `live`'s output legs spun for ever once an
+  output device went away.** None of them looked at `running()`, so a lost render endpoint
+  left `submit()` refusing and a drain loop waiting on counts that had stopped moving -
+  the same hang the queue-full case already had before the sinks themselves learned to stop
+  (see "An output device that went away left the sink saying it was still playing" above).
+  Every submit and drain loop now ends as soon as the sink reports itself not running, and
+  says which endpoint went and how (unplugged, switched off, disabled, or taken by the
+  system), through a shared `ac3::apps::submit_while_running`/`wait_while_running`
+  (`apps/common/sink_wait.hpp`). `play`, `monitor` and `identify` exit `5`; `live`'s
+  monitor and passthrough legs are dropped and the take carries on, ending the session as a
+  failure only because it did not do everything asked. `tools/checks/passthrough_probe.cpp`
+  gets the same fix, exiting `5` rather than looping past a pulled cable. `ac3cli spatial`
+  is unchanged - `SpatialObjectSink` was not touched by #775 and needs its own fix.
 
 - **A twelve-channel play aborted on the ESP32-S3 for want of internal RAM.** The E-AC-3
   decoder held all 32 substream-identity slots (`strmtyp * 8 + substreamid`) by value, so
@@ -1203,6 +1304,33 @@ The sections below contain the complete change list and fixes.
     freeing the player's memory, and the board rejoins from there: on a board with
     about a kilobyte of internal heap free while streaming, the rejoin came 8.7 s after
     the access point returned, and the next play was clean.
+- **A Hearth sink's first play right after a Wi-Fi reconnect could start with a few chunks
+  late and an underrun or two, converging again over about a second.** Learning bursts run
+  one after another until the clock filter's own error estimate reads as converged, which
+  says only how well a run of replies agrees with itself, not with the truth - and a run
+  taken in the turbulent seconds right after a reconnect, where reassociation, mDNS's
+  re-announce and an ARP round can all delay a reply the same way, could agree with itself
+  as well as an accurate run and read as converged on an offset that was still several
+  milliseconds off. `ac3::sendspin::ClockSync` now takes convergence in two steps: once a
+  run reads as converged, one more burst, a learning interval later and so genuinely apart
+  in time, must measure within a millisecond of that run's own last reading before the
+  clock is reported converged and a stream is let start. A confirming burst that disagrees
+  is not trusted; the run starts over.
+- **A Hearth sink refused a network whose name is 13 characters, and answered with a
+  broken one about a 10-character board name.** Improv's packets share the console with
+  the lines the board prints, and ESP-IDF's default line endings rewrite bytes inside
+  them: a CR from a client arrives as LF, and a CR goes out before every LF. Either one
+  lands in a packet - a length byte, a string, a checksum - and the packet then fails
+  its checksum at the other end. A `wifi_settings` whose SSID is 13 bytes long, so that
+  the length byte in front of it is a CR, was answered `invalid_packet`: a board could
+  not be told about a network named, for instance, `MyHomeNetwork`. In the other
+  direction, with a 10-character name stored, the `device_info` and `device_name`
+  answers carrying it reached the client broken. The example's console now converts
+  nothing in either direction. A command typed on it still ends at either CR or LF, and
+  each line the application prints now ends in LF alone, which `idf.py monitor` and the
+  checks under `tools/checks` read as they did; a terminal that needs the CR has a
+  setting for it. The ROM's lines, and anything logged from an interrupt, still end
+  CR LF: they are written by `esp_rom_printf`, which this setting never reached.
 - **A Hearth sink's page could reach its Sendspin player before the player had started,
   and after a failed start had freed it.** `hearth_sink` set two global pointers to the
   player and its server as it made them, on the task that starts them. The control
@@ -1539,6 +1667,17 @@ The sections below contain the complete change list and fixes.
 
 **Audio backend and object signing**
 
+- **`MonitorSink::start()` could not say a device had refused this shared-mode format,
+  rather than something else failing.** Every failure past device resolution returned the
+  same `kComFailure` on Windows, ALSA and Core Audio, so a caller could not tell "this
+  device will not do the rate or channel count you asked for" from a COM/ALSA/HAL problem —
+  diagnosing an HDMI/AVR endpoint locked to a non-48kHz shared-mode rate needed a
+  standalone WASAPI probe written outside this codebase to find the `AUDCLNT_E_UNSUPPORTED_FORMAT`
+  underneath the generic message. `start()` now reports a new `MonitorError::kFormatRejected`
+  for that HRESULT specifically on Windows, for the channel/rate `hw_params` calls on ALSA,
+  and for the equivalent channel-count/nominal-rate checks on Core Audio. PipeWire and AAudio
+  hand format negotiation to a graph or mixer that converts rather than refuses, so neither
+  backend returns it.
 - **An output device that went away left the sink saying it was still playing.** A render
   thread that met a device failure - an unplugged endpoint answering
   `AUDCLNT_E_DEVICE_INVALIDATED`, ALSA giving up on `-ENODEV`, an AAudio write refused -
@@ -1551,6 +1690,30 @@ The sections below contain the complete change list and fixes.
   that will not move again; before, a lost device left it playing for ever with nothing
   said. Two hidden cases, `ac3tests "[passthrough-unplug]"` and `"[monitor-unplug]"`, take
   a person through unplugging a real output.
+- **`SpatialObjectSink` was left out of that same fix, and still reported itself running
+  after its render stream had gone.** `BeginUpdatingAudioObjects` failing outright, or the
+  endpoint simply going quiet with no other word - a removed one need never signal the
+  render-ready event again either - left `running()` true, so `submit()`/`can_submit()` went
+  on taking objects into rings nobody drained. The Windows backend now stops itself the same
+  way, reading back `GetMaxDynamicObjectCount` on the `ISpatialAudioClient` on a wait that
+  times out to catch the quiet case (not the stream's own `GetAvailableDynamicObjectCount`,
+  which Microsoft's own reference says not to call once streaming has started), and `start()`
+  opens again with no `stop()` needed first, as the other two sinks already do. `ac3tests
+  "[spatial-unplug]"` is its own hidden case.
+- **The GUI, Crucible and the Shield Android demo still spun forever on a lost output
+  device.** `running()` turning false (see above) was not enough on its own:
+  `EncoderController`'s file-to-receiver, motion-preview and live-session workers,
+  `ObjectDecodeController`'s audition and `StreamPlayerController`'s playback all retried
+  `submit()` on nothing but a stop or pause flag, so a lost device left each one waiting
+  on audio that would never resume - the file-to-receiver play flag never cleared,
+  refusing every later play. `OutputStage`'s own seam (`BurstSink`/`PcmSink`/`ObjectSink`)
+  exposed no `running()` at all, so a re-probe that still found the same dead endpoint
+  listed read as "nothing changed" and kept the dead sink for good. Shield's
+  `live_cursor` encode loop had the same shape, and `MainActivity`'s underrun-based
+  recovery stopped working at exactly the point it mattered, because a sink that has
+  stopped `running()` refuses every `submit()` without ever reaching the render code
+  that counts a real underrun. All now stop (or, once their next reprobe/reconcile
+  runs, restart) instead of hanging.
 - **`PassthroughSink` crashed the instant a real exclusive-mode bitstream endpoint drove
   it** — surfaced once an Onkyo TX-RZ740 over HDMI locked AC-3, E-AC-3 and signed Atmos
   through it for the first time. `Activate`/`Initialize` ran on the calling thread while

@@ -301,9 +301,14 @@ Annex E only carries it inside `infomdate`), `acmod`, `lfe`, the rendered `chann
 with `associated_substreams` for the `substream1`–`3` fields. Two values are *not* in any
 bitstream, because they describe how services in a multiplex relate rather than what one stream
 contains — `mainid` and `asvc` — and those stay unset unless the caller supplies them
-(`ac3cli ts ... mainid=3`, `asvc=0x0A`). An unset optional field is omitted rather than
+(`ac3cli ts ... mainid=3`, `asvc=0,2` — a comma-separated list of main-service numbers, or the
+raw bitmask directly as `asvc=0x05`). An unset optional field is omitted rather than
 zero-filled: a receiver already handles an absent one, where an invented main-service number
-links the wrong services.
+links the wrong services. What *is* checked is consistency with the stream's own `bsmod`:
+`asvc=` on a stream Table 5.7 calls a main service, or `mainid=` on one it calls an associated
+service, is a usage error (`ac3::meta::is_associated_service` is the predicate, shared with the
+`dec3`/`EC3SpecificBox` writer's own `asvc` bit) — the wire fields exist either way, but which
+one describes *this* stream is not the operator's to override.
 
 Two places where the standards' own tables cannot express something this project can read, and
 the field is omitted rather than approximated: A/52 Table G.5 reserves complete-main and
@@ -338,6 +343,18 @@ const auto scanned = ac3::io::scan(elementary_stream);
 This is exactly what `ac3::io::scan` wants, and re-framing PES payloads into access units is its
 job, not this module's — doing it here would mean this container-blind module knowing what an
 AC-3 syncframe is.
+
+**The PMT's own service descriptor comes back too**, as `ReadStream::service` (a
+`std::optional<ServiceInfo>`, `std::nullopt` when the signalling carried no such descriptor to
+read — `kRegistrationDescriptor` and AC-4 never do). `mpegts::parse_service_descriptor` is the
+literal inverse of the four descriptor builders above, so a transport stream this module wrote
+reads back byte-for-byte what `mux`'s caller supplied — `bsmod`, `full_service`, `mainid`,
+`asvc`, `bsid`, `mix_metadata` and the `substream1`–`3` bytes alike. Not everything survives the
+round trip, because the wire format itself cannot express it: `acmod`/`channels`/`lfe`/`dsurmod`
+stay at `ServiceInfo`'s own defaults rather than reconstructed, since `channel_flags()` is a
+many-to-one summary forward (Table D.5/G.3/A4.5's "more than 5.1 channels" row covers a range,
+not one value) with no exact acmod to recover backward — a caller that has the elementary stream
+already has those exact values from `ac3::io::scan()`, the same source `mux`'s own caller used.
 
 **All three signalling forms**, one more than the writer. `mux` chooses between DVB and ATSC
 through `MuxOptions::profile` (see above), and commits to one of them wholly. A reader has no
@@ -711,6 +728,15 @@ bitstream-capable receiver. Backs `ac3cli monitor` and `live`'s monitor leg.
 It stops itself when its device goes away, in the same way as `PassthroughSink`, and
 `[monitor-unplug]` is its hidden case. A shared-mode stream that the platform moves to another
 output keeps playing; PipeWire's session manager does this when a sink is removed.
+
+`start()` also distinguishes a device that refused this shared-mode sample rate or channel count
+(`MonitorError::kFormatRejected`) from every other WASAPI/ALSA/Core Audio failure
+(`kComFailure`). Windows and ALSA check for it precisely — the one `AUDCLNT_E_UNSUPPORTED_FORMAT`
+HRESULT, or the channel/rate `hw_params` calls specifically — while Core Audio groups its
+channel-count and nominal-rate checks under the same code, since its property-set calls report
+only success or failure and never why. PipeWire and AAudio never return it: both hand format
+negotiation to a graph/mixer that converts rather than refuses, so there is no equivalent moment
+to report.
 
 Unlike passthrough, **this one is confirmed against real hardware.** It has actually played
 decoded AC-3 and E-AC-3 (including an Atmos stream's 5.1 bed) through real Windows (Realtek)

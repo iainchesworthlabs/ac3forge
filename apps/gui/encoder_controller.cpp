@@ -2398,11 +2398,20 @@ void EncoderController::startMotionPreview() {
             // second deep) is full, so retrying on a short sleep is what
             // paces this at real wall-clock speed instead of flat-out -
             // the queue itself is the real-time clock, exactly as it is for
-            // runLiveSession's monitor leg.
+            // runLiveSession's monitor leg. running() turns false, not just
+            // submit() false-forever, once the device goes away under the
+            // stream - without that check this retried until stopMotionPreview
+            // was pressed by hand, however long the source file runs.
             const auto interleaved = interleave_reordered(encoder->bed(), order);
-            while (!motion_preview_monitor_sink_->submit(interleaved) &&
-                  !stop_motion_preview_.load(std::memory_order_relaxed)) {
+            bool submitted = false;
+            while (!(submitted = motion_preview_monitor_sink_->submit(interleaved)) &&
+                  !stop_motion_preview_.load(std::memory_order_relaxed) &&
+                  motion_preview_monitor_sink_->running()) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(4));
+            }
+            if (!submitted && !motion_preview_monitor_sink_->running()) {
+                problem = QStringLiteral("The preview output device disappeared.");
+                break;
             }
 
             const auto now = std::chrono::steady_clock::now();
@@ -3902,18 +3911,47 @@ void EncoderController::playFileToReceiver(const QString& path, int deviceIndex)
                                 }
                                 burst = *wrapped;
                             }
+                            // sink.running() turns false, not just submit()
+                            // false-forever, once the device goes away under
+                            // the stream - a queue-full retry loop with no
+                            // way out otherwise hangs here for the rest of
+                            // the file.
+                            bool lost = false;
                             while (!sink.submit(burst)) {
+                                if (!sink.running()) {
+                                    lost = true;
+                                    break;
+                                }
                                 std::this_thread::sleep_for(std::chrono::milliseconds(4));
                             }
+                            if (lost) {
+                                message = QStringLiteral(
+                                    "\"%1\" stopped accepting audio - the output device may "
+                                    "have been disconnected.")
+                                              .arg(QString::fromStdString(device.name));
+                                break;
+                            }
                         }
-                        while (sink.stats().bursts_rendered < sink.stats().bursts_submitted) {
-                            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                        if (message.isEmpty()) {
+                            // Same reasoning as the submit loop above: a
+                            // sink that stops rendering mid-drain must not
+                            // hold this thread here forever either.
+                            while (sink.running() &&
+                                  sink.stats().bursts_rendered < sink.stats().bursts_submitted) {
+                                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                            }
+                            const auto stats = sink.stats();
+                            message = sink.running()
+                                          ? QStringLiteral("Streamed %1 bursts (%2 underruns).")
+                                                .arg(stats.bursts_rendered)
+                                                .arg(stats.underruns)
+                                          : QStringLiteral(
+                                                "\"%1\" stopped accepting audio during the "
+                                                "final drain - the output device may have "
+                                                "been disconnected.")
+                                                .arg(QString::fromStdString(device.name));
                         }
-                        const auto stats = sink.stats();
                         sink.stop();
-                        message = QStringLiteral("Streamed %1 bursts (%2 underruns).")
-                                      .arg(stats.bursts_rendered)
-                                      .arg(stats.underruns);
                     }
                 }
             }
@@ -4756,6 +4794,15 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
         // actual device that went quiet rather than always blaming the
         // master.
         bool lost_is_slave = false;
+        // Set the moment either OUTPUT sink's own running() turns false -
+        // unlike device_lost above (a capture-side SilenceWatchdog timeout,
+        // since a dead microphone just stops delivering data with no signal
+        // of its own), there is nothing to time out here: running() already
+        // is the signal, the same way it is for playFileToReceiver and
+        // startMotionPreview. Checked right where each leg submits, and the
+        // message is set there too so it can say which leg it was.
+        bool output_lost = false;
+        QString output_lost_message;
         // Set if matroska::Writer::push() ever refuses a frame - see the
         // write_to_disk block below. In practice unreachable (a SimpleBlock's
         // own limit is 2^40 bytes; no real AC-3/E-AC-3 access unit comes
@@ -5050,8 +5097,14 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                 bool submitted = false;
                 if (to_play) {
                     while (!(submitted = live_monitor_sink_->submit(*to_play)) &&
-                          !stop_live_.load(std::memory_order_relaxed)) {
+                          !stop_live_.load(std::memory_order_relaxed) &&
+                          live_monitor_sink_->running()) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(4));
+                    }
+                    if (!submitted && !live_monitor_sink_->running()) {
+                        output_lost = true;
+                        output_lost_message =
+                            QStringLiteral("The preview output device disappeared.");
                     }
                 }
                 // The real capture->monitor round trip: from this frame's
@@ -5107,11 +5160,24 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                     }
                 }
                 if (burst) {
-                    while (!live_passthrough_sink_->submit(*burst) &&
-                          !stop_live_.load(std::memory_order_relaxed)) {
+                    bool leg_submitted = false;
+                    while (!(leg_submitted = live_passthrough_sink_->submit(*burst)) &&
+                          !stop_live_.load(std::memory_order_relaxed) &&
+                          live_passthrough_sink_->running()) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(4));
                     }
+                    if (!leg_submitted && !live_passthrough_sink_->running()) {
+                        output_lost = true;
+                        output_lost_message = QStringLiteral(
+                            "The receiver stopped accepting the bitstream - it may have "
+                            "been disconnected, switched off, or switched to a different "
+                            "input.");
+                    }
                 }
+            }
+
+            if (output_lost) {
+                break;
             }
 
             if (write_to_disk && writers) {
@@ -5234,6 +5300,9 @@ void EncoderController::runLiveSession(ac3::audio::DeviceInfo device,
                           "disconnected. Wrote %2 frames before it went quiet.")
                           .arg(lost_is_slave ? device2_name : device_name)
                           .arg(frames_written);
+        }
+        if (problem.isEmpty() && output_lost) {
+            problem = output_lost_message;
         }
         if (problem.isEmpty() && mux_error) {
             const auto why = matroska::describe(*mux_error);

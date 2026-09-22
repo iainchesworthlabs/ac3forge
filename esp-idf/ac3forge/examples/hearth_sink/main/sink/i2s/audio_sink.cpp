@@ -64,6 +64,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "hal/i2s_ll.h"
 
 #include "../../settings.hpp"
 #include "../sink_common.hpp"
@@ -87,7 +88,12 @@ constexpr bool kSlave = CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE != 0;
 // and is stored beside the slot width (settings.hpp): both describe what the
 // DACs on this board are, and both survive a reflash. Kconfig is still the
 // answer until something stores another.
-[[nodiscard]] bool second_line_wired() { return settings().second_line; }
+//
+// Only where the part has a second I2S controller to open that line on: two on
+// an ESP32-S3, one on an ESP32-C6. ESP-IDF v6.1 states the count in its I2S
+// low-level layer (I2S_LL_INST_NUM) and no longer in soc_caps.h.
+constexpr bool kSecondController = I2S_LL_INST_NUM > 1;
+[[nodiscard]] bool second_line_wired() { return kSecondController && settings().second_line; }
 constexpr ac3forge::SinkFrame kFrame = CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME != 0
                                            ? ac3forge::SinkFrame::fixed
                                            : ac3forge::SinkFrame::follow_layout;
@@ -491,6 +497,13 @@ std::optional<ac3forge::PlayoutWrite> sink_write_timed(std::span<const std::span
 const char* sink_name() { return "i2s"; }
 
 int sink_slots() { return static_cast<int>(ceiling()); }
+
+int sink_max_slots() {
+    return static_cast<int>(std::max(ac3forge::sink_ceiling(16, kSecondController),
+                                     ac3forge::sink_ceiling(32, kSecondController)));
+}
+
+bool sink_second_line_possible() { return kSecondController; }
 
 int sink_slot_bits() { return g_slot_bits; }
 

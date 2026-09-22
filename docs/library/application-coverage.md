@@ -11,5 +11,6 @@ but the library development packages do not install. “Output policy” means C
 path according to the active device rather than presenting it as a separate command.
 
 For codec-level detail—layouts, rates, metadata fields and individual coding tools—see
-[Capabilities and limitations](capabilities.md). For operating-system and architecture
-differences, see [Platforms](../platforms/index.md).
+[Capabilities and limitations](capabilities.md). For the compact status matrix across every
+codec and bitstream feature, see [Development status](development-status.md). For
+operating-system and architecture differences, see [Platforms](../platforms/index.md).

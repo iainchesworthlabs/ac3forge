@@ -69,6 +69,23 @@ is deliberately explicit about the difference.
     `src/audio/src/backend/windows/monitor.cpp` and `run_live` in
     `apps/cli/commands/live_audio.cpp`.
 
+!!! note "MonitorSink now distinguishes a format refusal from a WASAPI failure"
+    Found 2026-09-22, debugging why `ac3tests "[monitor-unplug]"` would not open the same "AV
+    Receiver (NVIDIA High Definition Audio)" HDMI endpoint the exclusive-mode passthrough
+    confirmation below used. `MonitorSink::start()` had no way to say why beyond the generic
+    "a Windows audio (WASAPI/COM) call failed" — diagnosing it took a standalone WASAPI probe
+    written outside this codebase, which pinned the cause down to the sample rate rather than
+    the bit depth: this endpoint's shared-mode engine is locked to whatever its Advanced-tab
+    "Default Format" is set to (192 kHz here), converts bit depth but not sample rate, and
+    `IAudioClient::Initialize(AUDCLNT_SHAREMODE_SHARED, ..., 48kHz)` returns
+    `AUDCLNT_E_UNSUPPORTED_FORMAT` (`0x88890008`) for every 48 kHz variant tried while the same
+    formats at 192 kHz succeed. `start()` now reports `MonitorError::kFormatRejected` for that
+    HRESULT specifically, checked on both the `IAudioClient3` low-latency path and the ordinary
+    fallback; every other failure in `start()` still reports `kComFailure`. `"[monitor-unplug]"`
+    still needs either this endpoint's default format changed to a 48 kHz variant or a different
+    default output to run at all, but the CLI and the test now say why instead of only the
+    generic WASAPI/COM message.
+
 !!! note "Playback position, pause and flush are confirmed; a multichannel patch is not"
     `MonitorSink`'s playback position, `pause()`/`resume()` and `flush()` have been exercised
     against the default Realtek endpoint by `ac3tests "[monitor-live]"` — a hidden case, since it
@@ -133,8 +150,26 @@ is deliberately explicit about the difference.
     padding rather than waiting again. Either answer stops the sink — `running()` turns false,
     `position()` reports nothing, `submit()` refuses — and `start()` opens again with no
     `stop()` first, on the same endpoint once it is back. `ac3tests "[passthrough-unplug]"` and
-    `"[monitor-unplug]"` are hidden cases that take a person through it; what the two of them
-    check has not yet been reported from this workstation's own receiver.
+    `"[monitor-unplug]"` are hidden cases that take a person through it.
+
+    **`[passthrough-unplug]` is confirmed**, against the same AV Receiver endpoint the exclusive-
+    mode validation above used: the cable was pulled mid-stream, and the sink noticed on its own —
+    `running()` false, `position()`/`can_submit()`/`submit()`/`paused()` all answering as a stopped
+    sink would, `flush()` returning at once, `pause()`/`resume()` both refusing with `kNotRunning`
+    — then a second `start()`, with no `stop()` in between, reopened the same endpoint and played
+    real frames once the cable went back in. `[monitor-unplug]` (`MonitorSink`'s shared-mode path)
+    has not yet been reported from this workstation's own receiver — its own hidden case opens the
+    system's current *default* render endpoint rather than a named one, so what it actually
+    exercises depends on whatever that is at the time.
+
+    `SpatialObjectSink` answers the same way, over its own two calls:
+    `BeginUpdatingAudioObjects` failing outright, or — a removed endpoint need never signal the
+    render-ready event again either — a wait that times out reading back
+    `GetMaxDynamicObjectCount` on the `ISpatialAudioClient` instead of `GetCurrentPadding`. Not
+    the stream's own `GetAvailableDynamicObjectCount`: Microsoft's reference for that call says
+    not to use it once streaming has started, since `BeginUpdatingAudioObjects` already provides
+    the same count from then on - the client-level call carries no such restriction.
+    `ac3tests "[spatial-unplug]"` is its own hidden case, not yet run against real hardware.
 
 !!! note "No EDID/ELD backend on Windows"
     `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —

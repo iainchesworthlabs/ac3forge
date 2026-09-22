@@ -568,6 +568,25 @@ config AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS
         The delay lines are one buffer per output of this length: sixteen
         outputs of 20 ms is about 61 KB, in PSRAM when the part has it.
 
+config AC3FORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS
+    int "Widest syncframe decoded: full-bandwidth channels plus LFE (0 = no limit)"
+    default 0
+    range 0 8
+    help
+        _ac3forge_player@v1 sends the server's own stream, at whatever
+        channel count its programme codes: `outputs.count` bounds routing,
+        not the source, so this is the only thing that stops a wider
+        syncframe reaching the decoder. Past this count a syncframe is
+        refused before a decoder is opened for it - the console prints why,
+        once per stream - rather than decoded: the decoder's own scratch
+        scales with the channel count, and on a part with no PSRAM and a
+        Sendspin ring resident, running out partway through a 5.1 open can
+        fail an allocation the heap has no room left to recover from, which
+        aborts the board. On an ESP32-C6 with sdkconfig.sendspin-c6's 48 KB
+        ring, 2.0 played every fixture measured; the AC-3 and E-AC-3 5.1
+        fixtures each aborted within about 10 to 12 seconds, so
+        sdkconfig.sendspin-c6 sets this to 2.
+
 config AC3FORGE_EXAMPLE_SENDSPIN_LEAD_MS
     int "Lead a stream's first chunk needs, milliseconds (required_lead_time_ms)"
     default 250

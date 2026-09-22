@@ -490,21 +490,25 @@ ac3forge::ControlHandlers control_handlers() {
         player::sendspin_board_changed();
         return true;
     };
-    h.second_line = []() { return player::settings().second_line; };
-    h.set_second_line = [](bool wired) {
-        xSemaphoreTake(g_player_mutex, portMAX_DELAY);
-        const bool playing = g_player != nullptr || player::sendspin_playing();
-        xSemaphoreGive(g_player_mutex);
-        if (playing || !player::settings_set_second_line(wired)) {
-            return false;
-        }
-        // The sink's ceiling moves with the wiring, so the next play plans
-        // against the new one rather than what is open now, and a server is
-        // told how many outputs the board has now.
-        g_sink_channels_open = 0;
-        player::sendspin_board_changed();
-        return true;
-    };
+    h.second_line = []() { return player::sink_second_line_possible() && player::settings().second_line; };
+    // On a part with one I2S controller (an ESP32-C6) the wiring is fixed, and
+    // PUT /wiring says so rather than storing a line nothing can open.
+    if (player::sink_second_line_possible()) {
+        h.set_second_line = [](bool wired) {
+            xSemaphoreTake(g_player_mutex, portMAX_DELAY);
+            const bool playing = g_player != nullptr || player::sendspin_playing();
+            xSemaphoreGive(g_player_mutex);
+            if (playing || !player::settings_set_second_line(wired)) {
+                return false;
+            }
+            // The sink's ceiling moves with the wiring, so the next play plans
+            // against the new one rather than what is open now, and a server is
+            // told how many outputs the board has now.
+            g_sink_channels_open = 0;
+            player::sendspin_board_changed();
+            return true;
+        };
+    }
     h.set_network = [](std::string_view ssid, std::string_view password) {
         return player::settings_set_network(ssid, password);
     };

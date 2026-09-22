@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <string_view>
 
 #include "ac4dec/decoder.hpp"
@@ -87,7 +88,8 @@ struct SubstreamContext {
     bool b_iframe = false;            // b_iframe (v0) or b_audio_ndot (v1) for this substream
     int sus_ver = 1;                  // Part 2 clause 6.2.1.6; 1 for bitstream_version 2
     int ch_mode = ch_mode::kStereo;
-    bool sf_multiplier = false;       // b_sf_multiplier: a 96 kHz or 192 kHz substream (Table 57)
+    // sf_multiplier: nullopt at 48 kHz: 0 for 96 kHz, 1 for 192 kHz (Table 89).
+    std::optional<int> sf_multiplier;
     bool add_ch_base = false;         // Part 1 clause 4.3.3.7.6, for the 7.X modes that carry it
     bool b_associated = false;        // Part 1 clause 4.3.12.4.1, a parameter of extended_metadata
     bool b_dialog = false;            // Part 1 clause 4.3.12.4.2, likewise

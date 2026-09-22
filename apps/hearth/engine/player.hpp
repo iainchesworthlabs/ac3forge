@@ -12,6 +12,8 @@
 
 #include "ac3/iec61937/iec61937.hpp"
 #include "ac3/render/layout.hpp"
+#include "ac3/render/routing.hpp"
+#include "ac3/render/trim_delay.hpp"
 #include "ac3_transcoder.hpp"
 #include "bitstream_sink.hpp"
 #include "decoder_settings.hpp"
@@ -196,9 +198,60 @@ public:
     // since it is a different list of units.
     void set_decoder_settings(const DecoderSettings& settings);
     [[nodiscard]] const DecoderSettings& decoder_settings() const { return settings_; }
+    // What every item is rendered onto. Fixed for this player's lifetime -
+    // there is no set_layout() yet; changing the layout while playing needs
+    // the output reopened at the new width, which A5's Speakers page defers
+    // (planning/hearth-reference-player.md).
+    [[nodiscard]] const render::OutputLayout& layout() const { return layout_; }
     // Why the decoder settings are not what the listener hears, or empty
     // when they are: a bitstream is decoded by the receiver.
     [[nodiscard]] std::string_view settings_note() const;
+
+    // The speaker setup (planning/hearth-reference-player.md, A5's Speakers
+    // page): the per-slot trim and delay applied to the renderer's slots
+    // before they reach the open sink, local or not. Routing itself lives on
+    // the sink (PcmSink::set_routing()/routing()): ac3::audio::PcmOutput
+    // already carries a patch and builds a sensible default from the
+    // device's own speaker mask, so there is nothing for the player to add
+    // there. Trim and delay are the player's own instead, so one TrimDelay
+    // covers whichever sink is open.
+    //
+    // Every setting is keyed by the render layout's OWN slot (0 is always
+    // this Player's first coded-channel slot), not the sink's output - the
+    // routing patch is what may send slot 0 to output 5. Settings survive a
+    // rate change: a new decoder at a new rate keeps them, converted to that
+    // rate's sample counts. False, changing nothing: a slot at or past
+    // layout().slots(), a trim TrimDelay::set_trim_db() itself refuses, a
+    // delay past kMaxDelayMs, or a frequency
+    // render::LayoutRenderer::set_crossover_hz() itself refuses.
+    //
+    // 40 ms is room-scale: about 14 metres of path-length difference at the
+    // speed of sound, well past what a domestic room's largest speaker
+    // asymmetry needs, with headroom over the figures an AVR's own manual
+    // typically quotes (Onkyo and Denon both stop their distance setting
+    // well under that). TrimDelay's storage is outputs * max_delay_samples
+    // floats, rebuilt only on a rate change, so the cost of headroom here is
+    // a few hundred kilobytes at 96 kHz, not a per-block one.
+    static constexpr double kMaxDelayMs = 40.0;
+
+    bool set_trim_db(std::size_t slot, double db);
+    bool set_delay_ms(std::size_t slot, double ms);
+    [[nodiscard]] double trim_db(std::size_t slot) const;
+    [[nodiscard]] double delay_ms(std::size_t slot) const;
+    bool set_crossover_hz(double hz);
+    [[nodiscard]] double crossover_hz() const { return crossover_hz_; }
+
+    // The routing patch, and what the local device is: PcmSink's own
+    // (pcm_sink.hpp), forwarded - sink_ is this player's PCM sink whether or
+    // not it is the output currently open, and is null for a player given no
+    // PCM sink at all (PlayerOutputs::pcm unset), which these all answer as
+    // "nothing to route or say".
+    bool set_routing(const render::Routing& routing) { return sink_ && sink_->set_routing(routing); }
+    [[nodiscard]] render::Routing routing() const { return sink_ ? sink_->routing() : render::Routing{}; }
+    [[nodiscard]] std::string device_name() const {
+        return sink_ ? sink_->device_name() : std::string{};
+    }
+    [[nodiscard]] std::uint32_t speaker_mask() const { return sink_ ? sink_->speaker_mask() : 0U; }
 
     // The output decision the open output, or the last one, was made by.
     [[nodiscard]] const OutputChoice& output_choice() const { return choice_; }
@@ -434,6 +487,28 @@ private:
     ItemLoader loader_;
     render::OutputLayout layout_;
     DecoderSettings settings_;
+
+    // The speaker setup: source-of-truth settings (kept in real units, which
+    // survive a rate change unlike the sample counts render::TrimDelay
+    // itself holds) and the processor built_decoder() reconfigures onto
+    // whenever decoder_rate_ changes. Sized to render::OutputLayout::kMaxSlots
+    // regardless of layout_.slots(), the way render::TrimDelay's own arrays
+    // are sized to kMaxOutputs, so a slot index never needs bounds-checking
+    // against two different limits.
+    std::array<double, render::OutputLayout::kMaxSlots> trim_db_{};
+    std::array<double, render::OutputLayout::kMaxSlots> delay_ms_{};
+    double crossover_hz_ = render::LayoutRenderer::kDefaultCrossoverHz;
+    render::TrimDelay trim_delay_;
+    std::vector<float> trim_delay_storage_;
+    // The rate trim_delay_ is configured for, kept apart from decoder_rate_:
+    // build_decoder() runs for a transcode's decoder too, which trim and
+    // delay do not apply to (transcoded audio is not rendered to speakers),
+    // so trim_delay_ is reconfigured only when the LOCAL decoder's rate
+    // actually changes.
+    std::uint32_t trim_delay_rate_ = 0;
+    // Reconfigures trim_delay_ for `rate` if it is not already, then
+    // reapplies trim_db_/delay_ms_ converted to that rate's sample counts.
+    void reconfigure_trim_delay(std::uint32_t rate);
     Queue queue_;
     Transport transport_{queue_};
 

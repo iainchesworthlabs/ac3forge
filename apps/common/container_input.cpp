@@ -187,6 +187,19 @@ constexpr std::size_t kContainerSniffBytes = 64 * 1024;
     facts.stream_type = stream.stream_type;
     facts.signalling = std::string{signalling_token(stream.signalling)};
     facts.packet_size = stream.packet_size;
+    if (stream.service.has_value()) {
+        const mpegts::ServiceInfo& service = *stream.service;
+        facts.service_present = true;
+        facts.service_bsmod = service.bsmod;
+        facts.service_bsmod_present = service.bsmod_present;
+        facts.service_full_service = service.full_service;
+        facts.service_bsid = service.bsid;
+        facts.service_mainid = service.mainid;
+        facts.service_priority = service.priority;
+        facts.service_asvc = service.asvc.has_value() ? std::optional<int>{*service.asvc}
+                                                       : std::nullopt;
+        facts.service_mix_metadata = service.mix_metadata;
+    }
     return facts;
 }
 

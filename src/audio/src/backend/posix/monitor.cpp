@@ -13,6 +13,7 @@ std::string_view describe(MonitorError error) {
         case MonitorError::kNoBackend: return "no monitor backend on this platform";
         case MonitorError::kComFailure: return "a platform audio call failed";
         case MonitorError::kDeviceNotFound: return "the requested render device was not found";
+        case MonitorError::kFormatRejected: return "the requested format was rejected";
         case MonitorError::kAlreadyRunning: return "monitor playback is already running";
         case MonitorError::kNotRunning: return "monitor playback is not running";
     }

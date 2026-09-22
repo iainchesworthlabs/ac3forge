@@ -89,6 +89,23 @@ bool valid_alternate_bsi(const AlternateBsi& value) {
                           valid_surround_mix_level(value.mix->lorosurmixlev));
 }
 
+bool is_associated_service(BitstreamMode value, Acmod acmod) {
+    switch (value) {
+        case BitstreamMode::kCompleteMain:
+        case BitstreamMode::kMusicAndEffects:
+            return false;
+        case BitstreamMode::kVisuallyImpaired:
+        case BitstreamMode::kHearingImpaired:
+        case BitstreamMode::kDialogue:
+        case BitstreamMode::kCommentary:
+        case BitstreamMode::kEmergency:
+            return true;
+        case BitstreamMode::kVoiceOverOrKaraoke:
+            return acmod == Acmod::k1_0;
+    }
+    return false;
+}
+
 std::string_view describe(BitstreamMode value, Acmod acmod) {
     switch (value) {
         case BitstreamMode::kCompleteMain:

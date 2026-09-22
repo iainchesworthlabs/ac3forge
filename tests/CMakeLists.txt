@@ -84,6 +84,7 @@ add_executable(ac3tests
     io/test_improv.cpp
     io/test_interleave.cpp
     io/test_sink_plan.cpp
+    io/test_tcp_arrivals.cpp
     io/test_block_ring.cpp
     io/test_unit_hold.cpp
     render/test_layout.cpp
@@ -137,6 +138,7 @@ add_executable(ac3tests
     audio/test_render_devices.cpp
     audio/test_resampler.cpp
     audio/test_ring_buffer.cpp
+    audio/test_spatial_live.cpp
     audio/test_speakers.cpp
     oba/test_scene.cpp
     oba/test_scene_osc.cpp
@@ -427,6 +429,12 @@ elseif(AC3FORGE_AUDIO_BACKEND STREQUAL "macos")
     # compiles and runs this file.
     target_sources(ac3tests PRIVATE backend/macos/test_macos_support.cpp)
     target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
+elseif(AC3FORGE_AUDIO_BACKEND STREQUAL "windows")
+    # Like macos above, this branch runs on desktop-hosted ac3tests for real:
+    # src/audio/CMakeLists.txt selects windows/ unconditionally under WIN32,
+    # so every Windows CI leg's ac3tests build compiles and runs this file.
+    target_sources(ac3tests PRIVATE backend/windows/test_windows_support.cpp)
+    target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
 endif()
 
 # audio/test_live_positions.cpp needs UdpSocket (src/audio/src/net/udp_socket.hpp)
@@ -503,7 +511,10 @@ endif()
 # stream_playback.cpp joined for the reason its own header gives: 'monitor'
 # and 'spatial' pick their decoder and drain the end-of-stream flush through
 # it, and neither command reaches its decode loop without a render device, so
-# decoder/test_stream_playback.cpp holds both here instead.
+# decoder/test_stream_playback.cpp holds both here instead. sink_wait.hpp is
+# header-only and here for the same reason: 'play', 'monitor', 'identify' and
+# 'live' wait on their sinks through it, and audio/test_sink_wait.cpp holds
+# those waits against sinks that stop on cue.
 # ac3gui's diagnostics module (apps/gui/gui_diagnostics.hpp) rides the same
 # target for the same reason and with the same discipline: it is Qt-free, so
 # the rule it exists to hold - the support file carries no signing key, no
@@ -517,6 +528,7 @@ target_sources(ac3tests PRIVATE
     gui/test_recording_sink.cpp
     gui/test_gui_diagnostics.cpp
     decoder/test_stream_playback.cpp
+    audio/test_sink_wait.cpp
     "${CMAKE_SOURCE_DIR}/apps/common/fmp4_folder_writer.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/recording_sink.cpp"
     "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp"

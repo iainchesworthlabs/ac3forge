@@ -30,9 +30,18 @@ class SendspinTimeFilter;
 // that one-sided delay for a change of offset. Every burst counts towards the floor, so a
 // network that has become slower for good is followed once the window has passed.
 //
-// Converged means the filter's own error estimate has stayed under kConvergedError for
-// kConvergedUpdates updates in a row (planning/hearth-sendspin-extension.md, Q4). A player
-// reports available: true only once converged.
+// The filter's own error estimate says how well its samples agree with each other, not with
+// the truth, and bursts before convergence follow one another at once - so a run of exchanges
+// taken in the seconds right after a Wi-Fi reconnect, where reassociation, mDNS's re-announce
+// and an ARP round can all delay a reply the same way, can agree with each other as tightly as
+// a run of accurate ones and read as converged regardless. Convergence is therefore taken in
+// two steps: once the error estimate has stayed under kConvergedError for kConvergedUpdates
+// updates in a row (planning/hearth-sendspin-extension.md, Q4), one more burst - a learning
+// interval later, so genuinely apart in time from the run before it - must measure within
+// kConvergedError of that run's own last raw measurement, not the filter's error estimate
+// again, before the filter counts as converged. A run whose confirming burst disagrees is not
+// the truth catching up with a stale estimate; it starts over. A player reports available: true
+// only once converged.
 //
 // Every time is a local monotonic microsecond count the caller passes in; nothing here reads
 // a clock. The filter itself ignores any update not later than its starting point of zero, so
@@ -74,8 +83,10 @@ class ClockSync {
     // are ignored.
     void receive(const messages::ServerTime& time, std::int64_t now);
 
-    // When poll() next has something to send; the caller's timer can sleep until then.
-    [[nodiscard]] std::int64_t next_due() const { return next_due_; }
+    // When poll() next has something to do: the next exchange or, while one waits for its
+    // reply, the moment it is given up, since the reply moves the burst on through receive().
+    // The caller's timer can sleep until then.
+    [[nodiscard]] std::int64_t next_due() const { return in_flight_ ? sent_at_ + kReplyTimeout : next_due_; }
 
     [[nodiscard]] bool converged() const { return converged_; }
     [[nodiscard]] std::size_t updates() const { return updates_; }
@@ -117,6 +128,10 @@ class ClockSync {
     std::size_t floor_count_ = 0;
     std::size_t floor_next_ = 0;
     std::size_t rejected_ = 0;
+    // Set once a run reaches kConvergedUpdates: the run's own last raw measurement, waiting on
+    // one more burst - a learning interval later - to confirm it before converged_ is set.
+    bool confirming_ = false;
+    std::int64_t confirm_measurement_ = 0;
 };
 
 }  // namespace ac3::sendspin

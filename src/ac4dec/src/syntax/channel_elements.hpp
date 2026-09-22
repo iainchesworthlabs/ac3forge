@@ -45,6 +45,10 @@ struct Track {
     bool side_channel = false;  // Pseudocode 5's b_side_channel
     bool lfe = false;
     SfData data;
+    // Populated alongside `data` only where this substream's HSF extension
+    // is active (see parse_audio_data_chan's `hsf_reader` parameter); a
+    // default-constructed HsfSfData otherwise.
+    HsfSfData hsf;
 };
 
 // Everything an audio substream's channel element carried in one frame.
@@ -84,7 +88,15 @@ struct ChannelElementState {
     std::array<AspxElementState, 4> aspx{};
 };
 
+// `hsf_reader` is the owning substream's HSF extension reader, positioned at
+// the start of its ac4_hsf_ext_substream() (Table 17), or nullptr where no
+// extension is linked. When set, this peeks the extension's own header
+// (max_sfb_ext_hsf[]) once, before the element's first track's sf_data(),
+// using that track's own b_different_framing (see HsfExtHeader) - the reader
+// is left positioned at sf_hsf_data()'s first bit for parse_sf_hsf_data() to
+// continue with, once every track here has been read.
 [[nodiscard]] ParseResult parse_audio_data_chan(BitReader& r, const SubstreamContext& ctx,
-                                                ChannelElementState& state, ChannelElement& out);
+                                                ChannelElementState& state, ChannelElement& out,
+                                                BitReader* hsf_reader = nullptr);
 
 }  // namespace ac4::detail

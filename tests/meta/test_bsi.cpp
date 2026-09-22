@@ -457,6 +457,28 @@ TEST_CASE("E-AC-3: programme scale factors round trip", "[bsi]") {
     CHECK(!decoded.mixing->pgmscl2);
 }
 
+TEST_CASE("E-AC-3: mixdef 0x0 sends no sub-field bits at all", "[bsi]") {
+    // Table E2.6: mixdef 0x0 is "no additional bits" - the 2-bit selector
+    // alone. This is the struct's default, but it still needs its own round
+    // trip: every other mixdef case in this file sets sub-fields that would
+    // shift the rest of mixmdate if the 0x0 branch ever wrote one bit too
+    // many or too few.
+    ac3::eac3::FrameConfig config;
+    config.acmod = ac3::Acmod::k3_2;
+    ac3::meta::MixMetadata mix;
+    mix.pgmscl = 40;  // something past mixdef to prove the offset landed right
+    mix.mixing.mixdef = ac3::meta::MixDefinition::kNone;
+    config.mixing = mix;
+
+    const auto decoded = round_trip_eac3(config);
+    REQUIRE(decoded.mixing);
+    CHECK(decoded.mixing->mixing.mixdef == ac3::meta::MixDefinition::kNone);
+    CHECK(!decoded.mixing->mixing.external);
+    CHECK(!decoded.mixing->mixing.speech);
+    REQUIRE(decoded.mixing->pgmscl);
+    CHECK(*decoded.mixing->pgmscl == 40);
+}
+
 TEST_CASE("E-AC-3: mixdef 0x1's premix compression triple round trips", "[bsi]") {
     ac3::eac3::FrameConfig config;
     config.acmod = ac3::Acmod::k3_2;
@@ -547,6 +569,80 @@ TEST_CASE("E-AC-3: mixdef 0x3 carries external scales and speech data", "[bsi]")
     CHECK(mixing.speech->additional->more->spchan2att == 6);
 }
 
+TEST_CASE("E-AC-3: mixdef 0x3's auxiliary pair round trips both set, and cleared",
+          "[bsi]") {
+    ac3::eac3::FrameConfig config;
+    config.acmod = ac3::Acmod::k3_2;
+    ac3::meta::MixMetadata mix;
+    mix.mixing.mixdef = ac3::meta::MixDefinition::kExtended;
+    ac3::meta::ExternalScales external;
+    external.left = 3;
+
+    SECTION("both halves set") {
+        external.auxiliary = std::array<std::optional<int>, 2>{5, 9};
+        mix.mixing.external = external;
+        config.mixing = mix;
+
+        const auto decoded = round_trip_eac3(config);
+        REQUIRE(decoded.mixing);
+        REQUIRE(decoded.mixing->mixing.external);
+        REQUIRE(decoded.mixing->mixing.external->auxiliary);
+        CHECK((*decoded.mixing->mixing.external->auxiliary)[0] == 5);
+        CHECK((*decoded.mixing->mixing.external->auxiliary)[1] == 9);
+    }
+
+    SECTION("addche cleared outright, with other external scales still present") {
+        // §E2.3.1.40: addche itself clear, not just its two scales absent -
+        // the flag bit, not the values, is what this checks.
+        external.auxiliary = std::nullopt;
+        mix.mixing.external = external;
+        config.mixing = mix;
+
+        const auto decoded = round_trip_eac3(config);
+        REQUIRE(decoded.mixing);
+        REQUIRE(decoded.mixing->mixing.external);
+        CHECK(decoded.mixing->mixing.external->left == 3);
+        CHECK(!decoded.mixing->mixing.external->auxiliary);
+    }
+}
+
+TEST_CASE("E-AC-3: mixdef 0x3's speech enhancement round trips at each nesting depth",
+          "[bsi]") {
+    ac3::eac3::FrameConfig config;
+    config.acmod = ac3::Acmod::k3_2;
+
+    SECTION("spchdat alone, addspchdate clear") {
+        ac3::meta::MixMetadata mix;
+        mix.mixing.mixdef = ac3::meta::MixDefinition::kExtended;
+        mix.mixing.speech = ac3::meta::SpeechEnhancement{.spchdat = 11};
+        config.mixing = mix;
+
+        const auto decoded = round_trip_eac3(config);
+        REQUIRE(decoded.mixing);
+        REQUIRE(decoded.mixing->mixing.speech);
+        CHECK(decoded.mixing->mixing.speech->spchdat == 11);
+        CHECK(!decoded.mixing->mixing.speech->additional);
+    }
+
+    SECTION("spchdat and additional, addspchdat1e clear") {
+        ac3::meta::MixMetadata mix;
+        mix.mixing.mixdef = ac3::meta::MixDefinition::kExtended;
+        mix.mixing.speech = ac3::meta::SpeechEnhancement{
+            .spchdat = 11,
+            .additional = ac3::meta::SpeechEnhancement::Additional{.spchdat1 = 19,
+                                                                    .spchan1att = 1}};
+        config.mixing = mix;
+
+        const auto decoded = round_trip_eac3(config);
+        REQUIRE(decoded.mixing);
+        REQUIRE(decoded.mixing->mixing.speech);
+        REQUIRE(decoded.mixing->mixing.speech->additional);
+        CHECK(decoded.mixing->mixing.speech->additional->spchdat1 == 19);
+        CHECK(decoded.mixing->mixing.speech->additional->spchan1att == 1);
+        CHECK(!decoded.mixing->mixing.speech->additional->more);
+    }
+}
+
 TEST_CASE("E-AC-3: mixdef 0x3's mixdeflen sizes the whole element", "[bsi]") {
     // The reader is placed from mixdeflen, not from where the field walk
     // stopped, so a nearly empty mixdata block still has to leave the decoder
@@ -575,6 +671,44 @@ TEST_CASE("E-AC-3: mixdef 0x3's mixdeflen sizes the whole element", "[bsi]") {
     CHECK(words[3] == 31);
     CHECK(!words[4]);
     CHECK(words[5] == 0);
+}
+
+TEST_CASE("E-AC-3: blkmixcfginfo's one-block word is unconditional at numblkscod 0x0",
+          "[bsi]") {
+    // §E2.3.1.60: with one block per syncframe, the per-block flag is
+    // INFERRED set and blkmixcfginfo[0] is unconditional - there is no flag
+    // bit on the wire at all, unlike the six-block case the test above
+    // already covers.
+    ac3::eac3::FrameConfig config;
+    config.acmod = ac3::Acmod::k2_0;
+    config.numblkscod = 0;
+    ac3::meta::MixMetadata mix;
+    mix.blkmixcfginfo = std::array<std::optional<int>, ac3::kBlocksPerFrame>{
+        19, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt};
+    config.mixing = mix;
+
+    ac3::eac3::FrameEncoder encoder{config};
+    const auto samples = static_cast<std::size_t>(encoder.samples_per_frame());
+    const auto full = tone(2);
+    std::vector<std::vector<float>> shortened(full.size());
+    for (std::size_t ch = 0; ch < full.size(); ++ch) {
+        shortened[ch].assign(full[ch].begin(),
+                             full[ch].begin() + static_cast<std::ptrdiff_t>(samples));
+    }
+    const auto spans = views(shortened);
+    auto frame = encoder.encode_frame(spans);
+    REQUIRE(frame.has_value());
+    frame = encoder.encode_frame(spans);
+    REQUIRE(frame.has_value());
+
+    ac3::Eac3Decoder decoder;
+    const auto decoded = decoder.decode_substream(*frame);
+    REQUIRE(decoded.has_value());
+    REQUIRE(decoded->has_value());
+    const auto& substream = **decoded;
+    REQUIRE(substream.mixing);
+    REQUIRE(substream.mixing->blkmixcfginfo);
+    CHECK((*substream.mixing->blkmixcfginfo)[0] == 19);
 }
 
 TEST_CASE("E-AC-3: pan information round trips on a mono programme", "[bsi]") {
@@ -696,6 +830,63 @@ TEST_CASE("E-AC-3: a mixmdate value wider than its field is refused", "[bsi]") {
     const auto frame = encoder.encode_frame(views(pcm));
     REQUIRE(!frame.has_value());
     CHECK(frame.error() == ac3::FrameError::kInvalidBsi);
+}
+
+TEST_CASE("E-AC-3: valid_mix_metadata() checks mixdef, pan and blkmixcfginfo ranges too",
+          "[bsi]") {
+    // The dmixmod/pgmscl cases above already exercise this function; this
+    // covers the rest of what it validates: premixcmpscl's field width
+    // (0..7, §E2.3.1.21), the twelve reserved bits (§E2.3.1.23), each Table
+    // E2.8 external scale (0..15), panmean/paninfo (§E2.3.1.54-55) and each
+    // blkmixcfginfo word (§E2.3.1.61).
+    ac3::meta::MixMetadata mix;
+
+    SECTION("mixdef 0x1's premixcmpscl over 7 is refused") {
+        mix.mixing.mixdef = ac3::meta::MixDefinition::kPremix;
+        mix.mixing.premix.premixcmpscl = 8;
+        CHECK_FALSE(ac3::meta::valid_mix_metadata(mix));
+    }
+
+    SECTION("mixdef 0x2's reserved bits over twelve wide is refused") {
+        mix.mixing.mixdef = ac3::meta::MixDefinition::kReserved;
+        mix.mixing.reserved = 0x1000;  // one bit past the twelve
+        CHECK_FALSE(ac3::meta::valid_mix_metadata(mix));
+    }
+
+    SECTION("mixdef 0x3's external scale over 15 is refused") {
+        mix.mixing.mixdef = ac3::meta::MixDefinition::kExtended;
+        ac3::meta::ExternalScales external;
+        external.left = 16;
+        mix.mixing.external = external;
+        CHECK_FALSE(ac3::meta::valid_mix_metadata(mix));
+    }
+
+    SECTION("panmean over 239 is refused") {
+        mix.pan = ac3::meta::PanInfo{.panmean = 240};
+        CHECK_FALSE(ac3::meta::valid_mix_metadata(mix));
+    }
+
+    SECTION("paninfo over 63 is refused") {
+        mix.pan = ac3::meta::PanInfo{.panmean = 0, .paninfo = 64};
+        CHECK_FALSE(ac3::meta::valid_mix_metadata(mix));
+    }
+
+    SECTION("a blkmixcfginfo word over 31 is refused") {
+        mix.blkmixcfginfo = std::array<std::optional<int>, ac3::kBlocksPerFrame>{
+            32, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt};
+        CHECK_FALSE(ac3::meta::valid_mix_metadata(mix));
+    }
+
+    SECTION("every field at its widest legal value is accepted") {
+        mix.mixing.mixdef = ac3::meta::MixDefinition::kExtended;
+        ac3::meta::ExternalScales external;
+        external.left = 15;
+        mix.mixing.external = external;
+        mix.pan = ac3::meta::PanInfo{.panmean = 239, .paninfo = 63};
+        mix.blkmixcfginfo =
+            std::array<std::optional<int>, ac3::kBlocksPerFrame>{31, 31, 31, 31, 31, 31};
+        CHECK(ac3::meta::valid_mix_metadata(mix));
+    }
 }
 
 TEST_CASE("E-AC-3: mixmdate's reserved dmixmod is kept as sent and never written",

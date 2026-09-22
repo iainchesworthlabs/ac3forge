@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -39,6 +40,7 @@
 #include "ac3/sendspin/player_session.hpp"
 #include "ac3/sendspin/session.hpp"
 #include "ac3/sendspin/transport.hpp"
+#include "ac3forge/tcp_arrivals.hpp"
 
 namespace ac3forge {
 namespace {
@@ -117,6 +119,48 @@ void copy_text(std::span<char> out, std::string_view text) {
     return std::find(roles.begin(), roles.end(), role) != roles.end();
 }
 
+// What the host keeps on each socket beside esp_http_server's own: the bytes
+// read from it so far, which place a message in its stream, and the stream's
+// entry in the arrival log, or -1.
+struct SocketLog {
+    std::uint64_t read = 0;
+    int stream = -1;
+};
+
+// esp_http_server's recv, counting what it returns.
+int recv_counted(httpd_handle_t server, int fd, char* buf, std::size_t buf_len, int flags) {
+    if (buf == nullptr) {
+        return HTTPD_SOCK_ERR_INVALID;
+    }
+    const int n = recv(fd, buf, buf_len, flags);
+    if (n < 0) {
+        switch (errno) {
+            case EAGAIN:
+            case EINTR:
+                return HTTPD_SOCK_ERR_TIMEOUT;
+            case EINVAL:
+            case EBADF:
+            case EFAULT:
+            case ENOTSOCK:
+                return HTTPD_SOCK_ERR_INVALID;
+            default:
+                return HTTPD_SOCK_ERR_FAIL;
+        }
+    }
+    if (n > 0 && (flags & MSG_PEEK) == 0) {
+        if (auto* log = static_cast<SocketLog*>(httpd_sess_get_transport_ctx(server, fd))) {
+            log->read += static_cast<std::uint64_t>(n);
+        }
+    }
+    return n;
+}
+
+void free_socket_log(void* ctx) {
+    auto* log = static_cast<SocketLog*>(ctx);
+    ac3forge::tcp_arrivals::release(log->stream);
+    delete log;
+}
+
 }  // namespace
 
 class HostConnection;
@@ -193,6 +237,7 @@ struct SendspinHost::Impl {
     void deliver(HostConnection& connection, ss::SessionOutput out);
     void after_call();
     void refresh_status();
+    [[nodiscard]] std::int64_t arrival_of(int fd) const;
     void displace(Arbiter::Id id);
     void queue_pending();
 
@@ -499,6 +544,8 @@ void SendspinHost::Impl::refresh_status() {
         s.role = "";
         s.clock_converged = false;
         s.clock_error_us = 0;
+        s.clock_updates = 0;
+        s.clock_rejected = 0;
         s.server_has_lost_pairing = false;
     } else {
         const ss::PlayerSession& session = held->session();
@@ -514,6 +561,8 @@ void SendspinHost::Impl::refresh_status() {
                                                              : "";
         s.clock_converged = session.clock_converged();
         s.clock_error_us = session.clock().updates() > 0 ? session.clock().error_us() : 0;
+        s.clock_updates = static_cast<std::uint32_t>(session.clock().updates());
+        s.clock_rejected = static_cast<std::uint32_t>(session.clock().rejected());
         s.server_has_lost_pairing = session.fell_back();
     }
     if (server_task != nullptr) {
@@ -538,12 +587,33 @@ void SendspinHost::Impl::after_call() {
 // it on, a small message waits for the server to acknowledge the one before,
 // which a server may delay by up to 200 ms: a clock exchange measures that wait
 // as network delay, and a frame's second segment arrives that much later.
-esp_err_t SendspinHost::Impl::on_open(httpd_handle_t /*server*/, int fd) {
+//
+// And the socket's reads counted from its first byte, with its stream's entry
+// in the arrival log, so a message is dated by when it came
+// (ac3forge/tcp_arrivals.hpp). Without either, it is dated by when it is read.
+esp_err_t SendspinHost::Impl::on_open(httpd_handle_t server, int fd) {
     const int on = 1;
     if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on)) != 0) {
         std::printf("sendspin: could not turn off Nagle's algorithm on a connection\n");
     }
+    if (auto* log = new (std::nothrow) SocketLog{}) {
+        log->stream = tcp_arrivals::claim(fd);
+        httpd_sess_set_transport_ctx(server, fd, log, &free_socket_log);
+        (void)httpd_sess_set_recv_override(server, fd, &recv_counted);
+    }
     return ESP_OK;
+}
+
+// When the message whose last byte was just read on `fd` came: from the
+// arrival log, or now.
+std::int64_t SendspinHost::Impl::arrival_of(int fd) const {
+    const std::int64_t now = esp_timer_get_time();
+    const auto* log = static_cast<const SocketLog*>(httpd_sess_get_transport_ctx(server, fd));
+    if (log == nullptr || log->stream < 0) {
+        return now;
+    }
+    const std::optional<std::int64_t> at = tcp_arrivals::arrival(log->stream, log->read);
+    return at ? std::min(*at, now) : now;
 }
 
 esp_err_t SendspinHost::Impl::on_upgraded(httpd_req_t* req) {
@@ -624,7 +694,7 @@ esp_err_t SendspinHost::Impl::on_frame(httpd_req_t* req) {
         return ESP_OK;
     }
     connection->set_assembling(false);
-    host->deliver(*connection, connection->session().receive(incoming));
+    host->deliver(*connection, connection->session().receive(incoming, host->arrival_of(connection->fd())));
     host->after_call();
     return ESP_OK;
 }
@@ -794,6 +864,8 @@ bool SendspinHost::start(SendspinHostConfig config, SendspinEvents& events) {
     http.keep_alive_interval = 5;
     http.keep_alive_count = 3;
     http.open_fn = &Impl::on_open;
+    // Logged from each connection's SYN, before esp_http_server accepts it.
+    tcp_arrivals::watch(im.config.port);
     if (httpd_start(&im.server, &http) != ESP_OK) {
         std::printf("sendspin: could not start the WebSocket server on port %u\n",
                     static_cast<unsigned>(im.config.port));
@@ -850,6 +922,7 @@ void SendspinHost::stop() {
         (void)httpd_stop(im.server);
         im.server = nullptr;
     }
+    tcp_arrivals::watch(0);
     // Its task is gone with it; a restarted server has a new one.
     im.server_task = nullptr;
     const std::lock_guard lock(im.status_mutex);

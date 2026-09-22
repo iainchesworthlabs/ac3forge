@@ -130,6 +130,12 @@ PLANNED_PATHS = {
     "apps/windows/ui": "the pre-promotion layout the promotion record names",
     "apps/windows/translations": "the pre-promotion layout the promotion record names",
     "apps/windows/spikes": "the pre-promotion layout the promotion record names",
+    "src/forge/include/ac3/decoder/associated_service.hpp": (
+        "proposed by the programme-mixing-metadata plan's Phase 5, not created yet"
+    ),
+    "src/forge/src/decoder/associated_service.cpp": (
+        "proposed by the programme-mixing-metadata plan's Phase 5, not created yet"
+    ),
 }
 
 # Markdown pages whose prose deliberately names paths that do not exist: a plan

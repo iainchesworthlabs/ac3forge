@@ -8,11 +8,14 @@ trace contract (docs/verification.md); the TOC is parsed but not recorded.
 
 In scope: ac4_presentation_substream() (Part 2 6.2.2.3), ac4_substream()
 (Part 2 6.2.2.2) with audio_data_chan() and the Part 1 channel elements
-(single, pair, 3_0, 5_X, 7_X) in every codec mode, and
-emdf_payloads_substream() (Part 1 4.2.4.4). Refused (records read before the
-refusal are kept): object, A-JOC, OAMD and HSF extension substreams,
-immersive_channel_element(), 22_2_channel_element(), the speech spectral
-frontend, 96/192 kHz substreams.
+(single, pair, 3_0, 5_X, 7_X) in every codec mode, emdf_payloads_substream()
+(Part 1 4.2.4.4), and a channel-coded substream's HSF extension substream,
+ac4_hsf_ext_substream() (Part 1 4.2.4.3), where one is linked and its channel
+reports sf_multiplier. Refused (records read before the refusal are kept):
+object and A-JOC substreams, OAMD, immersive_channel_element(),
+22_2_channel_element(), the speech spectral frontend, and an HSF extension
+substream that could not be resolved (a self-reference, no sf_multiplier, an
+object/A-JOC owner, or the extension substream itself being unreadable).
 
 Invariants checked (a failure is reported, the substream stops): audio_data
 ends inside audio_size (only fill and byte_align left), the tools metadata of
@@ -322,6 +325,7 @@ class SfInfo:
     Part 1 4.3.6.2.6 (Pseudocode 3/4) and get_max_sfb / get_transf_length."""
 
     __slots__ = (
+        'b_diff',
         'b_dual_maxsfb',
         'b_side_limited',
         'flb',
@@ -348,6 +352,12 @@ class SfInfo:
             return self.max_sfb_side[idx]
         return self.max_sfb[idx]
 
+    def get_max_sfb_hsf(self, g, hsf_header):
+        """4.3.16.2 Pseudocode 18: get_max_sfb(g) plus this group's share of
+        the HSF extension's own additional bands."""
+        idx = self.group_idx[g]
+        return self.max_sfb[idx] + hsf_header['max_sfb_ext_hsf'][idx]
+
     def largest_len(self):
         return max(self.tl_len)
 
@@ -367,6 +377,7 @@ def sf_info_lfe(r, ctx):
     s = SfInfo()
     s.flb = flb
     s.long_frame = 1
+    s.b_diff = 0
     # Table 35 gives the LFE no transf_length: its transform covers the frame,
     # so the index is the whole-frame one. This used to be 4 whatever the frame
     # length, which reads sect_len_incr 5 bits wide at 512 and 384 samples where
@@ -425,6 +436,7 @@ def sf_info(r, ctx, b_dual_maxsfb=0, b_side_limited=0):
         n_grp_bits = T.N_GRP_BITS_SHORT_BASE[flb][t]
     # asf_psy_info()
     b_diff = 1 if (flb >= 1536 and s.long_frame == 0 and s.tl[0] != s.tl[1]) else 0
+    s.b_diff = b_diff
     s.max_sfb = [0, 0]
     s.max_sfb_side = [0, 0]
     for i in ((0, 1) if b_diff else (0,)):
@@ -485,21 +497,54 @@ def sf_info(r, ctx, b_dual_maxsfb=0, b_side_limited=0):
     return s
 
 
-def _group_offsets(sfi, g, max_sfb, group_offset):
-    """sect_sfb_offset[g][0..max_sfb] (Pseudocode 4, extended to sfb == max_sfb)."""
-    off = T.SFB_OFFSET_48[sfi.group_len[g]]
-    nw = sfi.num_win_in_group[g]
-    return [group_offset + off[sfb] * nw for sfb in range(max_sfb + 1)]
+def parse_hsf_ext_header(r, b_different_framing):
+    """Peeks ac4_hsf_ext_substream()'s header (Table 17): max_sfb_ext_hsf[0],
+    and [1] when the owning element's first track's own b_diff is set - the
+    only b_different_framing known before any track's sf_data() (hence
+    asf_section_data(), which needs this value) has been read."""
+    header = {'max_sfb_ext_hsf': [r.f(6, 'max_sfb_ext_hsf[0]'), 0]}
+    if b_different_framing:
+        header['max_sfb_ext_hsf'][1] = r.f(6, 'max_sfb_ext_hsf[1]')
+    return header
 
 
 def sf_data(r, ctx, sfi, side=False):
-    """Part 1 Table 36 for ASF: section, spectral, scale factor, SNF data."""
+    """Part 1 Table 36 for ASF: section, spectral, scale factor, SNF data.
+    Extended per 4.3.16 when ctx.hsf_reader is linked and ctx.sf_multiplier is
+    set (ERRATA.md, "asf_section_data()'s max_sfb, with an active HSF
+    extension"): asf_section_data() reads on to get_max_sfb_hsf(g) instead of
+    get_max_sfb(g), which is what lets a section straddle num_sfb_48 and
+    split (the loop below already carries that split for when this happens).
+    ctx.hsf_tracks gets one entry per call, parallel to ctx.tracks, carrying
+    what sf_hsf_data() (parse_sf_hsf_data()) needs once every track here has
+    been read - None where this call's own HSF extension is empty or
+    inactive."""
+    hsf_active = ctx.hsf_reader is not None and ctx.sf_multiplier is not None
+    if hsf_active and not ctx.hsf_peeked:
+        ctx.hsf_header = parse_hsf_ext_header(ctx.hsf_reader, sfi.b_diff)
+        ctx.hsf_peeked = True
     ngroups = sfi.num_window_groups
-    max_sfbs = [sfi.get_max_sfb(g, side) for g in range(ngroups)]
+    core_max_sfbs = [sfi.get_max_sfb(g, side) for g in range(ngroups)]
+    eff_max_sfbs = list(core_max_sfbs)
+    ext_tables = [None] * ngroups
+    if hsf_active:
+        is_192 = ctx.sf_multiplier == 1
+        for g in range(ngroups):
+            eff_max_sfbs[g] = sfi.get_max_sfb_hsf(g, ctx.hsf_header)
+            hsf_length = sfi.group_len[g] * (4 if is_192 else 2)
+            num_sfb_hsf = T.NUM_SFB_192[hsf_length] if is_192 else T.NUM_SFB_96[hsf_length]
+            offsets_hsf = T.SFB_OFFSET_192[hsf_length] if is_192 else T.SFB_OFFSET_96[hsf_length]
+            if eff_max_sfbs[g] < core_max_sfbs[g] or eff_max_sfbs[g] > num_sfb_hsf:
+                raise SyntaxFail(f'max_sfb_hsf {eff_max_sfbs[g]} exceeds the scale factor '
+                                 f'bands of its transform ({num_sfb_hsf})')
+            ext_tables[g] = offsets_hsf
+    max_sfbs = eff_max_sfbs
     offsets = []
     group_offset = 0
     for g in range(ngroups):
-        bounds = _group_offsets(sfi, g, max_sfbs[g], group_offset)
+        table = ext_tables[g] if ext_tables[g] is not None else T.SFB_OFFSET_48[sfi.group_len[g]]
+        nw = sfi.num_win_in_group[g]
+        bounds = [group_offset + table[sfb] * nw for sfb in range(max_sfbs[g] + 1)]
         offsets.append(bounds)
         group_offset = bounds[-1]
     # asf_section_data() (Table 39)
@@ -621,7 +666,8 @@ def sf_data(r, ctx, sfi, side=False):
                 else:
                     first = 1
     # asf_snf_data() (Table 42)
-    if r.f(1, 'b_snf_data_exists'):
+    b_snf_data_exists = r.f(1, 'b_snf_data_exists')
+    if b_snf_data_exists:
         for g in range(ngroups):
             lim = min(max_sfbs[g], T.NUM_SFB_48[sfi.group_len[g]])
             cbs = sfb_cbs[g]
@@ -630,6 +676,107 @@ def sf_data(r, ctx, sfi, side=False):
                 if cbs[sfb] == 0 or not mq[sfb]:
                     CB_SNF.decode(r, 'asf_snf_hcw')
     ctx.tracks.append(sfi)
+    # Carried for parse_sf_hsf_data(), once every track here has been read
+    # with the extended bound - None where this call's own extension is
+    # inactive or empty (max_quant[g] for sfb >= num_sfb_48 stays the default
+    # 0 until then, since asf_hsf_spectral_data() has not read it yet).
+    ctx.hsf_tracks.append({
+        'sections': sections, 'sec_lsf': sec_lsf, 'sfb_cbs': sfb_cbs, 'offsets': offsets,
+        'max_quant': max_quant, 'first_scf_found': first, 'b_snf_data_exists': b_snf_data_exists,
+    } if hsf_active else None)
+
+
+def parse_sf_hsf_data(r, sfi, core):
+    """sf_hsf_data(), 4.2.7.4: asf_hsf_spectral_data(), asf_hsf_scalefac_data()
+    and asf_hsf_snf_data() (Tables 36a, 42a to 42c) for one track, using the
+    section/codebook/offset state `core` (sf_data()'s own ctx.hsf_tracks
+    entry for this track) already built while reading with the extended
+    bound. Like sf_data(), this only needs to track whether a band's
+    quantised lines were all zero (max_quant's booleans), not their values."""
+    ngroups = sfi.num_window_groups
+    sections, sec_lsf, sfb_cbs, offsets, max_quant = (
+        core['sections'], core['sec_lsf'], core['sfb_cbs'], core['offsets'], core['max_quant'])
+    # asf_hsf_spectral_data() (Table 42a): every section sf_data() placed at
+    # or past num_sfb_48 - exactly sections[g][sec_lsf[g]:], since sf_data()
+    # put every earlier one before them.
+    for g in range(ngroups):
+        bounds = offsets[g]
+        mq = max_quant[g]
+        for i in range(sec_lsf[g], len(sections[g])):
+            cb, sstart, send = sections[g][i]
+            if cb == 0 or cb > 11:
+                if cb > 11:
+                    raise SyntaxFail(f'sect_cb {cb} is not a Huffman codebook')
+                continue
+            hcb = ASF_CB[cb]
+            dim = T.CB_DIM[cb]
+            unsigned = T.UNSIGNED_CB[cb]
+            off = hcb.cb_off
+            k = bounds[sstart]
+            kend = bounds[send]
+            s = sstart
+            decode = hcb.decode
+            while k < kend:
+                while k >= bounds[s + 1]:
+                    s += 1
+                idx = decode(r, 'asf_qspec_hcw')
+                if dim == 4:
+                    m3, m2, m1 = hcb.cb_mod3, hcb.cb_mod2, hcb.cb_mod
+                    q1 = idx // m3 - off
+                    idx -= (q1 + off) * m3
+                    q2 = idx // m2 - off
+                    idx -= (q2 + off) * m2
+                    q3 = idx // m1 - off
+                    idx -= (q3 + off) * m1
+                    q4 = idx - off
+                    if unsigned:
+                        nz = (q1 != 0) + (q2 != 0) + (q3 != 0) + (q4 != 0)
+                        if nz:
+                            r.f(nz, 'quad_sign_bits')
+                    if q1 or q2 or q3 or q4:
+                        mq[s] = 1
+                    k += 4
+                else:
+                    m1 = hcb.cb_mod
+                    q1 = idx // m1 - off
+                    q2 = idx - (q1 + off) * m1 - off
+                    if unsigned:
+                        nz = (q1 != 0) + (q2 != 0)
+                        if nz:
+                            r.f(nz, 'pair_sign_bits')
+                    if cb == 11:
+                        if q1 == 16:
+                            ext_code(r)
+                        if q2 == 16:
+                            ext_code(r)
+                    if q1 or q2:
+                        mq[s] = 1
+                    k += 2
+            if k != kend:
+                raise SyntaxFail('spectral codewords overrun the section end')
+    # asf_hsf_scalefac_data() (Table 42b): first continues from sf_data()'s
+    # own asf_scalefac_data() pass rather than starting over.
+    first = core['first_scf_found']
+    for g in range(ngroups):
+        n48 = T.NUM_SFB_48[sfi.group_len[g]]
+        cbs = sfb_cbs[g]
+        mq = max_quant[g]
+        for sfb in range(n48, len(cbs)):
+            if cbs[sfb] != 0 and mq[sfb]:
+                if first:
+                    CB_SCALEFAC.decode(r, 'asf_sf_hcw')
+                else:
+                    first = 1
+    # asf_hsf_snf_data() (Table 42c): gated on sf_data()'s own
+    # b_snf_data_exists, which is not re-read.
+    if core['b_snf_data_exists']:
+        for g in range(ngroups):
+            n48 = T.NUM_SFB_48[sfi.group_len[g]]
+            cbs = sfb_cbs[g]
+            mq = max_quant[g]
+            for sfb in range(n48, len(cbs)):
+                if cbs[sfb] == 0 or not mq[sfb]:
+                    CB_SNF.decode(r, 'asf_snf_hcw')
 
 
 def ext_code(r):
@@ -1059,7 +1206,8 @@ def acpl_data_2ch(r, ctx):
 
 
 class AudioCtx:
-    def __init__(self, flb, b_iframe, state, ch_mode, add_ch_base=0):
+    def __init__(self, flb, b_iframe, state, ch_mode, add_ch_base=0, sf_multiplier=None,
+                hsf_reader=None):
         self.flb = flb
         self.b_iframe = b_iframe
         self.state = state
@@ -1071,6 +1219,18 @@ class AudioCtx:
         # The sf_info of every sf_data() read so far in the element, in order:
         # track k of the channel data is tracks[mark + k].
         self.tracks = []
+        # nullopt-equivalent None: absent at 48 kHz, 0 for 96 kHz, 1 for
+        # 192 kHz (Table 89). hsf_reader is the linked HSF extension
+        # substream's own Reader, or None where none is linked; sf_data()
+        # peeks its header (hsf_header) once, before this element's first
+        # track's asf_section_data() needs it. hsf_tracks parallels tracks:
+        # one entry per sf_data() call, carrying what parse_sf_hsf_data()
+        # needs for that call once every track has been read (see sf_data()).
+        self.sf_multiplier = sf_multiplier
+        self.hsf_reader = hsf_reader
+        self.hsf_header = None
+        self.hsf_peeked = False
+        self.hsf_tracks = []
 
     def next_aspx_occurrence(self):
         occ = self.aspx_occ
@@ -1863,20 +2023,33 @@ def metadata(r, ctx, sus_ver, b_alternative, b_ajoc, b_associated=0, b_dialog=0)
 
 
 def parse_ac4_substream(data, info, b_iframe, flb, state, recs, b_alternative, sus_ver,
-                        b_associated=0, b_dialog=0):
-    """Part 2 6.2.2.2 for a channel-coded substream."""
+                        b_associated=0, b_dialog=0, hsf_reader=None):
+    """Part 2 6.2.2.2 for a channel-coded substream. Returns the AudioCtx
+    built. A caller with a linked HSF extension substream (hsf_reader) uses
+    it afterward: sf_data() peeks ac4_hsf_ext_substream()'s own header along
+    the way (leaving hsf_reader positioned at sf_hsf_data()'s first bit), and
+    ctx.tracks/ctx.hsf_tracks are what parse_sf_hsf_data() needs to read the
+    rest, once every track here has been read (StreamWalker.frame())."""
     r = Reader(data, recs)
     audio_size = r.f(15, 'audio_size_value')
     if r.f(1, 'b_more_bits'):
         audio_size += r.vb(7, 'variable_bits') << 15
-    if info.get('sf_multiplier') is not None:
-        raise Refused('substream sampling frequency multiplier (96/192 kHz)')
+    sf_multiplier = info.get('sf_multiplier')
+    if sf_multiplier is not None and hsf_reader is None:
+        # The core ASF syntax does not depend on sample rate (its tables are
+        # keyed by transform length in samples, not Hz - only the HSF
+        # extension's own tables are per-rate), so this is refused only
+        # where its HSF extension substream could not be resolved to read
+        # alongside it, not for being 96 or 192 kHz as such.
+        raise Refused('a 96 kHz or 192 kHz substream whose HSF extension substream could not be '
+                     'read')
     r.align()  # Part 1 Table 16 byte_align; a no-op after 16 (+ 8k) bits
     audio_start = r.pos
     audio_end = audio_start + 8 * audio_size
     if audio_end > r.end:
         raise SyntaxFail(f'audio_size {audio_size} runs past the substream ({r.end // 8} bytes)')
-    ctx = AudioCtx(flb, b_iframe, state, info['ch_mode'], info.get('add_ch_base', 0))
+    ctx = AudioCtx(flb, b_iframe, state, info['ch_mode'], info.get('add_ch_base', 0),
+                  sf_multiplier, hsf_reader)
     audio_data_chan(r, ctx, info['ch_mode'])
     if r.pos > audio_end:
         raise SyntaxFail(f'audio_data ends at bit {r.pos}, beyond audio_size end {audio_end}')
@@ -1885,6 +2058,7 @@ def parse_ac4_substream(data, info, b_iframe, flb, state, recs, b_alternative, s
     r.align()
     if r.pos != r.end:
         raise SyntaxFail(f'ac4_substream ends at byte {r.pos // 8}, substream_size is {r.end // 8}')
+    return ctx
 
 
 def custom_dmx_data(r, pc):
@@ -2229,7 +2403,7 @@ def substream_roles(toc):
         if idx is not None and idx not in roles:
             roles[idx] = role
 
-    def audio(info, sus_ver, kind, owner, frames_key):
+    def audio(info, sus_ver, kind, owner, frames_key, hsf_ext_index=None):
         idx = info.get('substream_index')
         if idx is None:
             return
@@ -2242,7 +2416,12 @@ def substream_roles(toc):
         for i, ndot in enumerate(frames):
             put(idx + i, ('audio', {'info': info, 'sus_ver': sus_ver, 'kind': kind,
                                     'b_iframe': ndot, 'owner': owner,
-                                    'state_key': idx, 'frame_rate_factor': len(frames)}))
+                                    'state_key': idx, 'frame_rate_factor': len(frames),
+                                    # Only the series' first instance carries
+                                    # it - matching state_key, and there is
+                                    # only one ac4_hsf_ext_substream_info()
+                                    # per element regardless of factor.
+                                    'hsf_ext_index': hsf_ext_index if i == 0 else None}))
 
     pres = toc['presentations']
     for p in pres:
@@ -2253,12 +2432,12 @@ def substream_roles(toc):
         if ps:
             put(ps['substream_index'], ('presentation', p))
         for _, info in p.get('substreams', []):
-            audio(info, 0, 'chan', p, 'b_iframe')
             # The owner is info itself, not p: a presentation's HSF-carrying
             # role is always its first (§4.2.3.2), so this never actually
             # disambiguates among several substreams the way the v1 path
             # below needs to - kept the same shape regardless, so the
             # content parser has one place to look, not two.
+            audio(info, 0, 'chan', p, 'b_iframe', info.get('hsf_ext_substream_index'))
             put(info.get('hsf_ext_substream_index'), ('hsf_ext', info))
     seen = []
     for p in pres:
@@ -2269,11 +2448,12 @@ def substream_roles(toc):
             if g.get('oamd') and g['oamd'].get('substream_index') is not None:
                 put(g['oamd']['substream_index'], ('oamd', g))
             for s in g['substreams']:
-                audio(s['info'], s['sus_ver'], s['kind'], p, 'b_audio_ndot')
                 # s, not g: a group can carry several substreams when
                 # b_hsf_ext is set, each with its own hsf_ext_substream_index
                 # naming its own extension - g alone would not say which of
                 # several is which extension's actual owner.
+                audio(s['info'], s['sus_ver'], s['kind'], p, 'b_audio_ndot',
+                      s.get('hsf_ext_substream_index'))
                 put(s.get('hsf_ext_substream_index'), ('hsf_ext', s))
     return roles
 
@@ -2359,9 +2539,105 @@ class StreamWalker:
         # frame reads as a change of source (src/ac4dec/ERRATA.md, "A change of
         # source").
         self.previous_counter = counter
+        datas = []
+        o = offset
+        for size in sizes:
+            datas.append(raw[o:o + size])
+            o += size
+
+        # Owner substreams whose ac4_hsf_ext_substream_info() names a
+        # distinct, still-unclaimed substream, on a channel that actually
+        # reports sf_multiplier (Table 89 gives no HSF extension table for
+        # plain 48 kHz, so a link without it - and a self-reference, since
+        # substream_roles() never sets hsf_ext_index for one - is left for
+        # the general handling below, which reads the channel plainly and
+        # refuses the orphaned extension). Resolved together, in whichever
+        # order this dict holds them: the owner's own asf_section_data()
+        # needs max_sfb_ext_hsf, a value only the extension's own bits carry,
+        # before either can be fully read (ERRATA.md, decoder.cpp's own
+        # pre-pass - the two must resolve a stream the same way).
+        out = []
+        handled = set()
+        if not fragmented:
+            claimed_ext = set()
+            for idx in range(len(sizes)):
+                role = roles.get(idx)
+                if not role or role[0] != 'audio':
+                    continue
+                a = role[1]
+                info = a['info']
+                ext_idx = a.get('hsf_ext_index')
+                if (ext_idx is None or ext_idx == idx or a['kind'] != 'chan'
+                        or info.get('sf_multiplier') is None):
+                    continue
+                ext_role = roles.get(ext_idx)
+                if not ext_role or ext_role[0] != 'hsf_ext' or ext_idx in claimed_ext:
+                    continue
+                claimed_ext.add(ext_idx)
+                handled.add(idx)
+                handled.add(ext_idx)
+
+                owner_recs, ext_recs = [], []
+                owner_err = ext_err = None
+                owner_data, ext_data = datas[idx], datas[ext_idx]
+                if len(owner_data) != sizes[idx] or len(ext_data) != sizes[ext_idx]:
+                    msg = f'substream {idx} or {ext_idx} runs past the end of the frame'
+                    owner_err = ext_err = f'FAIL: {msg}'
+                elif info['ch_mode'] is None:
+                    owner_err = f'refused: reserved channel_mode {info["channel_mode"]:#b}'
+                    ext_err = 'refused: its owning channel substream could not be read'
+                elif flb is None:
+                    msg = f'frame_rate_index {toc["frame_rate_index"]} is reserved'
+                    owner_err = ext_err = f'FAIL: {msg}'
+                else:
+                    owner = a['owner']
+                    ps = owner.get('presentation_substream') if owner else None
+                    b_alt = ps['b_alternative'] if ps else 0
+                    b_assoc = b_dlg = 0
+                    if a['sus_ver'] == 0 and owner is not None:
+                        b_assoc, b_dlg = _derive_assoc_dialog(owner, info)
+                    st = self.state.setdefault(('audio', a['state_key']), {})
+                    if st.get('carried_for') != (info['ch_mode'], a['sus_ver']):
+                        st.clear()
+                        st['carried_for'] = (info['ch_mode'], a['sus_ver'])
+                    factor = a['frame_rate_factor']
+                    if factor <= 0 or flb % factor:
+                        owner_err = (f'FAIL: frame_rate_factor {factor} does not divide '
+                                    f'frame_len_base {flb}')
+                        ext_err = 'refused: its owning channel substream could not be read'
+                    else:
+                        ext_reader = Reader(ext_data, ext_recs)
+                        try:
+                            ctx = parse_ac4_substream(
+                                owner_data, info, a['b_iframe'], flb // factor, st, owner_recs,
+                                b_alt, a['sus_ver'], b_assoc, b_dlg, ext_reader)
+                        except Refused as exc:
+                            owner_err = f'refused: {exc}'
+                            ext_err = 'refused: its owning channel substream could not be read'
+                        except SyntaxFail as exc:
+                            owner_err = f'FAIL: {exc}'
+                            ext_err = 'refused: its owning channel substream could not be read'
+                        else:
+                            try:
+                                for track_sfi, core in zip(ctx.tracks, ctx.hsf_tracks, strict=True):
+                                    if core is not None:
+                                        parse_sf_hsf_data(ext_reader, track_sfi, core)
+                                ext_reader.align()
+                                if ext_reader.pos != ext_reader.end:
+                                    end_byte = ext_reader.pos // 8
+                                    size_byte = ext_reader.end // 8
+                                    raise SyntaxFail(
+                                        f'ac4_hsf_ext_substream ends at byte {end_byte}, '
+                                        f'substream_size is {size_byte}')
+                            except SyntaxFail as exc:
+                                ext_err = f'FAIL: {exc}'
+                out.append((idx, 'audio', owner_recs, owner_err))
+                out.append((ext_idx, 'hsf_ext', ext_recs, ext_err))
+
         for idx, size in enumerate(sizes):
-            data = raw[offset:offset + size]
-            offset += size
+            if idx in handled:
+                continue
+            data = datas[idx]
             role = roles.get(idx)
             kind = role[0] if role else 'unreferenced'
             recs = []
@@ -2426,7 +2702,13 @@ class StreamWalker:
                 err = f'refused: {exc}'
             except SyntaxFail as exc:
                 err = f'FAIL: {exc}'
-            out.append((idx, 'audio' if kind in ('audio', 'hsf_ext', 'oamd') else kind, recs, err))
+            # 'hsf_ext' keeps its own label now that one can carry real
+            # content (records), which the KIND check in
+            # ac4_syntax_differential.py compares against C++'s SubstreamReport::
+            # Kind::kHsfExt; 'oamd' stays folded into 'audio' as before -
+            # still always refused, so always empty either side.
+            out.append((idx, 'audio' if kind == 'oamd' else kind, recs, err))
+        out.sort(key=lambda t: t[0])
         return out
 
 

@@ -254,6 +254,9 @@ struct BurstPlayer::Impl {
     std::uint64_t bursts_played = 0;
     bool have_decoder_report = false;
     ac::DecoderReport decoder_report;
+    // Whether this stream has already printed why it refused a syncframe
+    // over config.max_coded_channels: once per stream, not once per burst.
+    bool channels_refused_warned = false;
 
     // --- from other tasks -------------------------------------------------------
     std::atomic<std::uint64_t> dropped_chunks{0};
@@ -486,6 +489,7 @@ struct BurstPlayer::Impl {
         late_chunks = 0;
         dropped_chunks.store(0);
         invalid_chunks.store(0);
+        channels_refused_warned = false;
         decode_us_total = 0;
         sink_us_total = 0;
         timed_bursts = 0;
@@ -767,6 +771,17 @@ struct BurstPlayer::Impl {
     void decode_unit(std::span<const std::byte> unit) {
         const auto header = ac3::io::read_frame_header(unit);
         if (!header) {
+            restart_after_error();
+            return;
+        }
+        if (config.max_coded_channels != 0 &&
+            static_cast<std::size_t>(header->coded_channels()) > config.max_coded_channels) {
+            if (!channels_refused_warned) {
+                channels_refused_warned = true;
+                std::printf("burst player: refusing a %d-channel syncframe: more than the %u this part decodes "
+                            "in this build\n",
+                            header->coded_channels(), static_cast<unsigned>(config.max_coded_channels));
+            }
             restart_after_error();
             return;
         }

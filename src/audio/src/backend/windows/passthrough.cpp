@@ -29,12 +29,19 @@
 #include "ac3/audio/ring_buffer.hpp"
 #include "ac3/audio/speakers.hpp"
 #include "ac3/iec61937/iec61937.hpp"
+#include "windows_support.hpp"
 
 namespace ac3::audio {
 
 namespace {
 
 using Microsoft::WRL::ComPtr;
+using windows_audio::ComScope;
+using windows_audio::kClsidMmDeviceEnumerator;
+using windows_audio::kIidAudioClient;
+using windows_audio::kIidAudioRenderClient;
+using windows_audio::kIidMmDeviceEnumerator;
+using windows_audio::stream_gone;
 
 // PKEY_Device_FriendlyName, spelled out for the same reason as in the capture
 // backend: functiondiscoverykeys_devpkey.h needs a fragile include ordering.
@@ -67,21 +74,6 @@ constexpr GUID kSubtypeIec61937DolbyDigitalPlus = {
 // which ask about ordinary PCM rather than a bitstream.
 constexpr GUID kSubtypePcm = {
     0x00000001, 0x0000, 0x0010, {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}};
-
-// The class and interface identifiers, spelled out for a related reason: the
-// SDK declares CLSID_MMDeviceEnumerator and the IAudio* IIDs but ships no
-// import library that defines them, so the only header-only way to name them
-// is __uuidof - an MSVC extension that clang rejects under -Wpedantic. The
-// values are the DECLSPEC_UUID / MIDL_INTERFACE strings in mmdeviceapi.h and
-// audioclient.h.
-constexpr CLSID kClsidMmDeviceEnumerator = {  // {bcde0395-e52f-467c-8e3d-c4579291692e}
-    0xbcde0395, 0xe52f, 0x467c, {0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e}};
-constexpr IID kIidMmDeviceEnumerator = {  // {a95664d2-9614-4f35-a746-de8db63617e6}
-    0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6}};
-constexpr IID kIidAudioClient = {  // {1cb9ad4c-dbfa-4c32-b178-c2f568a703b2}
-    0x1cb9ad4c, 0xdbfa, 0x4c32, {0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2}};
-constexpr IID kIidAudioRenderClient = {  // {f294acfc-3146-4483-a7bf-addca7c260e2}
-    0xf294acfc, 0x3146, 0x4483, {0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2}};
 
 // The IEC 61937 carrier is a 2-channel 16-bit stream; one AC-3 frame occupies
 // one 6144-byte burst = 1536 stereo frames, matching the AC-3 frame duration.
@@ -158,14 +150,6 @@ std::size_t burst_bytes_for(BitstreamFormat format) {
     return format == BitstreamFormat::kEac3 ? iec61937::kEac3BurstBytes : iec61937::kBurstBytes;
 }
 
-// The answers that mean the stream has gone for good: its endpoint unplugged,
-// disabled or reconfigured under it, or the audio service stopped (Microsoft's
-// "Recovering from an Invalid-Device Error"). Distinct from a call a driver
-// merely declines to answer, which the render loop below allows for.
-bool stream_gone(HRESULT result) {
-    return result == AUDCLNT_E_DEVICE_INVALIDATED || result == AUDCLNT_E_SERVICE_NOT_RUNNING;
-}
-
 std::string to_utf8(const wchar_t* wide) {
     if (wide == nullptr) {
         return {};
@@ -203,22 +187,6 @@ std::string endpoint_display_name(IMMDevice* device, const std::string& id) {
     }
     return id.empty() ? std::string{"Unnamed audio endpoint"} : "Unnamed endpoint " + id;
 }
-
-class ComScope {
-public:
-    ComScope() : hr_(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
-    ~ComScope() {
-        if (SUCCEEDED(hr_)) {
-            CoUninitialize();
-        }
-    }
-    ComScope(const ComScope&) = delete;
-    ComScope& operator=(const ComScope&) = delete;
-    [[nodiscard]] bool ok() const { return SUCCEEDED(hr_) || hr_ == RPC_E_CHANGED_MODE; }
-
-private:
-    HRESULT hr_;
-};
 
 // The endpoint's configured speaker arrangement, which the mix format does not
 // always carry: a stereo mix on a 5.1 endpoint has dwChannelMask 0x3, while
@@ -280,15 +248,6 @@ std::vector<std::uint32_t> probe_sample_rates(IAudioClient* client, WORD channel
     return rates;
 }
 
-std::expected<ComPtr<IMMDeviceEnumerator>, PassthroughError> make_enumerator() {
-    ComPtr<IMMDeviceEnumerator> enumerator;
-    if (FAILED(CoCreateInstance(kClsidMmDeviceEnumerator, nullptr, CLSCTX_ALL,
-                                kIidMmDeviceEnumerator, &enumerator))) {
-        return std::unexpected(PassthroughError::kComFailure);
-    }
-    return enumerator;
-}
-
 }  // namespace
 
 std::string_view describe(PassthroughError error) {
@@ -315,7 +274,7 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
     if (!com.ok()) {
         return std::unexpected(PassthroughError::kComFailure);
     }
-    auto enumerator = make_enumerator();
+    auto enumerator = windows_audio::make_enumerator(PassthroughError::kComFailure);
     if (!enumerator) {
         return std::unexpected(enumerator.error());
     }
@@ -591,7 +550,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (!com.ok()) {
         return std::unexpected(PassthroughError::kComFailure);
     }
-    auto enumerator = make_enumerator();
+    auto enumerator = windows_audio::make_enumerator(PassthroughError::kComFailure);
     if (!enumerator) {
         return std::unexpected(enumerator.error());
     }

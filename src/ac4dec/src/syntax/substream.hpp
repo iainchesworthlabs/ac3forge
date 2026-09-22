@@ -31,8 +31,13 @@ struct AudioSubstream {
 
 // Reads the whole substream. The reader spans exactly the substream's bytes.
 // Checks that audio_data() ends inside audio_size (leaving only fill and
-// alignment) and that metadata() ends inside the substream.
+// alignment) and that metadata() ends inside the substream. `hsf_reader`, as
+// for parse_audio_data_chan(), is the linked HSF extension substream's own
+// reader, or nullptr where none is linked or `ctx.sf_multiplier` is unset -
+// see decoder.cpp, which reads the rest of the extension (sf_hsf_data() per
+// track) once this call returns.
 [[nodiscard]] ParseResult parse_audio_substream(BitReader& r, const SubstreamContext& ctx,
-                                                AudioSubstreamState& state, AudioSubstream& out);
+                                                AudioSubstreamState& state, AudioSubstream& out,
+                                                BitReader* hsf_reader = nullptr);
 
 }  // namespace ac4::detail

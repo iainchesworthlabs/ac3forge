@@ -120,6 +120,14 @@ void member_or_null(JsonSink& json, std::string_view name, const std::optional<i
     }
 }
 
+void member_or_null(JsonSink& json, std::string_view name, const std::optional<bool>& value) {
+    if (value) {
+        json.member(name, *value);
+    } else {
+        json.member_null(name);
+    }
+}
+
 void text_or_null(JsonSink& json, std::string_view name, std::string_view text) {
     if (text.empty()) {
         json.member_null(name);
@@ -180,6 +188,8 @@ void write_container(JsonSink& json, const apps::ContainerFacts& facts) {
             json.member("fscod", static_cast<std::int64_t>(box.fscod));
             json.member("bsid", static_cast<std::int64_t>(box.bsid));
             json.member("bsmod", static_cast<std::int64_t>(box.bsmod));
+            json.member("bsmod_label",
+                        apps::probe_json::bsmod_label(box.bsmod, static_cast<Acmod>(box.acmod)));
             json.member("acmod", static_cast<std::int64_t>(box.acmod));
             json.member("lfeon", box.lfeon);
             json.member("bit_rate_code", static_cast<std::int64_t>(box.bit_rate_code));
@@ -189,6 +199,7 @@ void write_container(JsonSink& json, const apps::ContainerFacts& facts) {
             json.member("num_dep_sub", static_cast<std::int64_t>(box.num_dep_sub));
             json.member("chan_loc", static_cast<std::int64_t>(box.chan_loc));
             json.member("asvc", box.asvc);
+            json.member("asvc_label", apps::probe_json::asvc_label(box.asvc));
             member_or_null(json, "complexity_index", box.complexity_index);
             json.end_object();
         } else {
@@ -207,6 +218,29 @@ void write_container(JsonSink& json, const apps::ContainerFacts& facts) {
         json.member("stream_type", static_cast<std::int64_t>(facts.stream_type));
         json.member("signalling", facts.signalling);
         json.member("packet_size", static_cast<std::uint64_t>(facts.packet_size));
+        json.key("service");
+        if (facts.service_present) {
+            json.begin_object();
+            json.member("bsmod", static_cast<std::int64_t>(facts.service_bsmod));
+            json.member("bsmod_present", facts.service_bsmod_present);
+            // No bsmod_label here: bsmod 7's label depends on acmod (voice
+            // over vs. karaoke), and channel_flags() - the only acmod-shaped
+            // thing this descriptor carries - is a many-to-one summary that
+            // cannot be read back into an exact acmod (see
+            // mpegts::parse_service_descriptor's own comment). Showing one
+            // label anyway would sometimes just be wrong; a caller that has
+            // the elementary stream can label service_bsmod itself with the
+            // acmod ac3::io::scan() actually read.
+            member_or_null(json, "full_service", facts.service_full_service);
+            json.member("bsid", static_cast<std::int64_t>(facts.service_bsid));
+            member_or_null(json, "mainid", facts.service_mainid);
+            json.member("priority", static_cast<std::int64_t>(facts.service_priority));
+            member_or_null(json, "asvc", facts.service_asvc);
+            json.member("mix_metadata", facts.service_mix_metadata);
+            json.end_object();
+        } else {
+            json.value_null();
+        }
         json.end_object();
     } else {
         json.value_null();
@@ -390,6 +424,157 @@ void write_mix(JsonSink& json, const meta::MixMetadata& mix) {
     scale("pgmscl", mix.pgmscl);
     scale("pgmscl2", mix.pgmscl2);
     scale("extpgmscl", mix.extpgmscl);
+
+    // Table E2.7's premix-compression triple, shared by mixdef 0x1 (carried
+    // directly) and mixdef 0x3 (carried again inside mixdata2e - see
+    // MixingParameters::premix's own comment).
+    const auto write_premix = [&json](const meta::PremixCompression& premix) {
+        json.begin_object();
+        json.member("premixcmpsel", static_cast<std::int64_t>(premix.premixcmpsel));
+        json.member("premixcmpsel_label", premix.premixcmpsel == meta::PremixCompressionSource::kDynrng
+                                               ? "dynrng"
+                                               : "compr");
+        json.member("drcsrc", static_cast<std::int64_t>(premix.drcsrc));
+        json.member("drcsrc_label",
+                    premix.drcsrc == meta::DrcSource::kExternal ? "external" : "this_substream");
+        json.member("premixcmpscl", static_cast<std::int64_t>(premix.premixcmpscl));
+        json.end_object();
+    };
+    // Table E2.8's per-channel external-programme scale, code 15 is mute.
+    const auto write_scale_value = [&json](const std::optional<int>& code) {
+        if (!code) {
+            json.value_null();
+            return;
+        }
+        json.begin_object();
+        json.member("code", static_cast<std::int64_t>(*code));
+        if (*code == 15) {
+            json.member_null("db");
+        } else {
+            json.member("db", meta::kExternalScaleDb[static_cast<std::size_t>(*code)], 2);
+        }
+        json.end_object();
+    };
+    const auto write_scale_opt = [&json, &write_scale_value](std::string_view name,
+                                                              const std::optional<int>& code) {
+        json.key(name);
+        write_scale_value(code);
+    };
+
+    json.key("mixdef");
+    json.begin_object();
+    json.member("code", static_cast<std::int64_t>(mix.mixing.mixdef));
+    switch (mix.mixing.mixdef) {
+        case meta::MixDefinition::kNone:
+            json.member("label", "none");
+            break;
+        case meta::MixDefinition::kPremix:
+            json.member("label", "premix");
+            json.key("premix");
+            write_premix(mix.mixing.premix);
+            break;
+        case meta::MixDefinition::kReserved:
+            json.member("label", "reserved");
+            // §E2.3.1.23: twelve reserved bits, carried verbatim.
+            json.member("reserved", static_cast<std::int64_t>(mix.mixing.reserved));
+            break;
+        case meta::MixDefinition::kExtended:
+            json.member("label", "extended");
+            json.key("external");
+            if (mix.mixing.external) {
+                const auto& external = *mix.mixing.external;
+                json.begin_object();
+                json.key("premix");
+                write_premix(external.premix);
+                write_scale_opt("left", external.left);
+                write_scale_opt("centre", external.centre);
+                write_scale_opt("right", external.right);
+                write_scale_opt("left_surround", external.left_surround);
+                write_scale_opt("right_surround", external.right_surround);
+                write_scale_opt("lfe", external.lfe);
+                write_scale_opt("dmixscl", external.dmixscl);
+                json.key("auxiliary");
+                if (external.auxiliary) {
+                    json.begin_array();
+                    write_scale_value((*external.auxiliary)[0]);
+                    write_scale_value((*external.auxiliary)[1]);
+                    json.end_array();
+                } else {
+                    json.value_null();
+                }
+                json.end_object();
+            } else {
+                json.value_null();
+            }
+            json.key("speech");
+            if (mix.mixing.speech) {
+                const auto& speech = *mix.mixing.speech;
+                json.begin_object();
+                json.member("spchdat", static_cast<std::int64_t>(speech.spchdat));
+                json.key("additional");
+                if (speech.additional) {
+                    const auto& additional = *speech.additional;
+                    json.begin_object();
+                    json.member("spchdat1", static_cast<std::int64_t>(additional.spchdat1));
+                    json.member("spchan1att", static_cast<std::int64_t>(additional.spchan1att));
+                    json.key("more");
+                    if (additional.more) {
+                        json.begin_object();
+                        json.member("spchdat2", static_cast<std::int64_t>(additional.more->spchdat2));
+                        json.member("spchan2att",
+                                    static_cast<std::int64_t>(additional.more->spchan2att));
+                        json.end_object();
+                    } else {
+                        json.value_null();
+                    }
+                    json.end_object();
+                } else {
+                    json.value_null();
+                }
+                json.end_object();
+            } else {
+                json.value_null();
+            }
+            break;
+    }
+    json.end_object();
+
+    // §E2.3.1.53-58: placement for a mono or 1+1 programme. pan2 is Ch2's own,
+    // 1+1 only.
+    const auto write_pan = [&json](const std::optional<meta::PanInfo>& pan) {
+        if (!pan) {
+            json.value_null();
+            return;
+        }
+        json.begin_object();
+        json.member("panmean", static_cast<std::int64_t>(pan->panmean));
+        json.member("degrees", static_cast<double>(pan->panmean) * meta::kPanMeanDegreesPerStep, 1);
+        json.member("paninfo", static_cast<std::int64_t>(pan->paninfo));
+        json.end_object();
+    };
+    json.key("pan");
+    write_pan(mix.pan);
+    json.key("pan2");
+    write_pan(mix.pan2);
+
+    // §E2.3.1.59-61: one 5-bit word per block, each independently optional.
+    json.key("blkmixcfginfo");
+    if (mix.blkmixcfginfo) {
+        json.begin_array();
+        for (const auto& word : *mix.blkmixcfginfo) {
+            if (word) {
+                json.begin_object();
+                json.member("code", static_cast<std::int64_t>(*word));
+                json.end_object();
+            } else {
+                json.value_null();
+            }
+        }
+        json.end_array();
+    } else {
+        json.value_null();
+    }
+
     json.end_object();
 }
 
