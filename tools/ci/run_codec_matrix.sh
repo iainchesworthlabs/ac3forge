@@ -988,7 +988,9 @@ run ts atmos_4.ec3 atmos_4.ts
 run ts enc_51.ac3 enc_51_atsc.ts atsc
 run ts eac3enc_none.ec3 eac3enc_none_atsc.ts atsc
 run ts atmos_4.ec3 atmos_4_atsc.ts atsc mainid=0
-run ts enc_51.ac3 enc_51_dvb_assoc.ts dvb asvc=0x05
+run ts meta_rewritten.ac3 enc_51_dvb_assoc.ts dvb asvc=0,2  # bsmod=2 (VI) from line 794 above -
+# asvc= is only valid on an associated service now (validate_service_association in
+# containers.cpp), and this exercises the comma-list form alongside the raw mask
 run_ffmpeg_check enc_51_atsc.ts
 run_ffmpeg_check eac3enc_none_atsc.ts
 run_ffmpeg_check atmos_4_atsc.ts

@@ -5,11 +5,13 @@
 #include <expected>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
 
 #include "mpegts/export.hpp"
+#include "mpegts/mpegts.hpp"
 
 // The read side of mpegts::mux()/mpegts::Writer: pulling one programme's
 // audio back out of a transport stream.
@@ -96,6 +98,21 @@ struct ReadStream {
     CodecSignalling signalling = CodecSignalling::kAtscStreamType;
     // The detected grid: 188 (TS), 192 (M2TS) or 204 (TS with RS parity).
     std::size_t packet_size = 188;
+    // The PMT's own AC-3/E-AC-3 audio descriptor, decoded back into the same
+    // ServiceInfo shape mpegts::mux()'s caller supplies - see mpegts.hpp's
+    // own header comment on why this module's job stops at descriptor
+    // syntax. std::nullopt when signalling carries no such
+    // descriptor to read (kAtscStreamType's own stream_type IDs the codec
+    // without one being required, kRegistrationDescriptor has no A/52-shaped
+    // descriptor at all, and ac4 never does either) or when this codec's
+    // descriptor is malformed - never a guessed value. Some ServiceInfo
+    // fields cannot be recovered exactly from these bytes (see
+    // mpegts::parse_service_descriptor's own comment) and are left at their
+    // ServiceInfo default rather than approximated; acmod/channels/lfe/
+    // dsurmod in particular are better read from ac3::io::scan() on the
+    // elementary stream itself, the same source mux()'s caller used to fill
+    // this in the first place.
+    std::optional<ServiceInfo> service = std::nullopt;
 };
 
 struct ReadOptions {

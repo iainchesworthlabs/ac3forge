@@ -31,6 +31,9 @@ namespace ac3::apps::probe_json {
 // A/52 Table 5.7, where bsmod 7 is voice over at acmod 1/0 and karaoke above
 // it.
 [[nodiscard]] std::string_view bsmod_label(int bsmod, Acmod acmod);
+// ETSI TS 102 366 Annex F §F.6's dec3 asvc bit, in the same two words a
+// receiver's own choice between them comes down to.
+[[nodiscard]] std::string_view asvc_label(bool asvc);
 [[nodiscard]] std::string_view exp_strategy_token(ExpStrategy strategy);
 // TS 103 420 Table 55's names for two EMDF payload ids, and empty for the rest.
 [[nodiscard]] std::string_view emdf_payload_label(int id);

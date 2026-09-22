@@ -3846,16 +3846,51 @@ TEST_CASE("mainid= and asvc= are range-checked", "[cli][ts]") {
     const auto source = dir / "ts_service.ac3";
     const auto out = dir / "ts_service.ts";
     REQUIRE(run_cli("sine \"" + source.string() + "\" 1 192 440 60 stereo", log) == 0);
+    // asvc= only makes sense on an associated service (validate_service_
+    // association in containers.cpp) - a second source whose bsmod actually
+    // is one, so the range checks below exercise asvc='s own parsing rather
+    // than tripping that consistency check first.
+    const auto assoc_source = dir / "ts_service_assoc.ac3";
+    REQUIRE(run_cli("sine \"" + assoc_source.string() + "\" 1 192 440 60 stereo bsmod=vi", log) ==
+          0);
 
     CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" atsc mainid=7", log) ==
           0);
-    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=0xFF", log) ==
-          0);
+    CHECK(run_cli("ts \"" + assoc_source.string() + "\" \"" + out.string() + "\" dvb asvc=0xFF",
+                  log) == 0);
     CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" atsc mainid=8", log) !=
           0);
-    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=256", log) !=
-          0);
+    CHECK(run_cli("ts \"" + assoc_source.string() + "\" \"" + out.string() + "\" dvb asvc=256",
+                  log) != 0);
     CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb mainid=x", log) !=
+          0);
+}
+
+TEST_CASE("asvc= accepts a comma-separated main-service list", "[cli][ts]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ts_service_list.log";
+    const auto source = dir / "ts_service_list.ac3";
+    const auto out = dir / "ts_service_list.ts";
+    REQUIRE(run_cli("sine \"" + source.string() + "\" 1 192 440 60 stereo bsmod=vi", log) == 0);
+
+    const auto bytes_of = [](const fs::path& path) {
+        std::ifstream in{path, std::ios::binary};
+        return std::vector<char>{std::istreambuf_iterator<char>{in},
+                                 std::istreambuf_iterator<char>{}};
+    };
+
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=0,2", log) ==
+          0);
+    // 0,2 and the equivalent raw mask (bit 0 | bit 2 = 0x05) must produce the
+    // same descriptor bytes - the comma form is sugar, not a second meaning.
+    const auto comma_list = bytes_of(out);
+    REQUIRE(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=0x05", log) ==
+          0);
+    CHECK(comma_list == bytes_of(out));
+
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=0,8", log) !=
+          0);
+    CHECK(run_cli("ts \"" + source.string() + "\" \"" + out.string() + "\" dvb asvc=0,,2", log) !=
           0);
 }
 
