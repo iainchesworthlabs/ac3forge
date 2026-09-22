@@ -160,6 +160,7 @@ constexpr int kPollMs = 60;
 [[nodiscard]] QVariantMap decoder_settings_to_map(const ac3::hearth::DecoderSettings& settings) {
     QVariantMap map;
     map[QStringLiteral("mode")] = mode_name(settings.mode);
+    map[QStringLiteral("rfCeilingDb")] = settings.rf_ceiling_db;
     map[QStringLiteral("drcCut")] = settings.drc_cut;
     map[QStringLiteral("drcBoost")] = settings.drc_boost;
     map[QStringLiteral("heavyCompression")] = settings.heavy_compression;
@@ -182,6 +183,9 @@ constexpr int kPollMs = 60;
     ac3::hearth::DecoderSettings out = base;
     if (map.contains(QStringLiteral("mode"))) {
         out.mode = mode_from_name(map[QStringLiteral("mode")].toString());
+    }
+    if (map.contains(QStringLiteral("rfCeilingDb"))) {
+        out.rf_ceiling_db = map[QStringLiteral("rfCeilingDb")].toDouble();
     }
     if (map.contains(QStringLiteral("drcCut"))) {
         out.drc_cut = map[QStringLiteral("drcCut")].toDouble();
