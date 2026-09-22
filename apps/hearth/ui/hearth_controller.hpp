@@ -58,6 +58,14 @@ class HearthController : public QObject {
     // wired to this controller yet.
     Q_PROPERTY(bool firstRunSeen READ firstRunSeen WRITE setFirstRunSeen NOTIFY firstRunSeenChanged)
 
+    // --- position (the transport bar's scrubber) -------------------------
+    // Where the item playing now has got to - Engine::position(), read apart
+    // from status() so a poll sixteen times a second does not copy the whole
+    // queue with it (that method's own comment). Both zero with nothing
+    // current to play.
+    Q_PROPERTY(qlonglong positionMs READ positionMs NOTIFY positionChanged)
+    Q_PROPERTY(qlonglong durationMs READ durationMs NOTIFY positionChanged)
+
     // --- decoder settings (the Decoder page, AC-3 and E-AC-3) ------------
     // The whole of DecoderSettings, as one map QML reads field by field and
     // writes back through setDecoderSettings() - see that method's own
@@ -119,11 +127,18 @@ public:
     [[nodiscard]] bool firstRunSeen() const;
     void setFirstRunSeen(bool seen);
 
+    [[nodiscard]] qlonglong positionMs() const { return position_ms_; }
+    [[nodiscard]] qlonglong durationMs() const { return duration_ms_; }
+
     Q_INVOKABLE void play();
     Q_INVOKABLE void pause();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
+    // Jumps the item playing now to `ms` from its start, clamped to it.
+    // Legal whatever the transport state, and does not itself start or stop
+    // playback (Player::seek()'s own comment).
+    Q_INVOKABLE void seek(qlonglong ms);
     Q_INVOKABLE void playItem(int index);
     Q_INVOKABLE void removeAt(int index);
     // Each path becomes one queue item, titled by its file name.
@@ -163,6 +178,7 @@ public:
 signals:
     void queueChanged();
     void stateChanged();
+    void positionChanged();
     void decoderSettingsChanged();
     void speakerSetupChanged();
     void firstRunSeenChanged();
@@ -181,6 +197,9 @@ private:
     QString output_reason_;
     QString note_;
     QString error_;
+
+    qlonglong position_ms_ = 0;
+    qlonglong duration_ms_ = 0;
 
     QVariantMap decoder_settings_;
 
