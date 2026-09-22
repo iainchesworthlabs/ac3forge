@@ -227,7 +227,7 @@ def replace_bare_roadmap_ids(text: str) -> str:
         return name + tail
 
     text = re.sub(
-        r"(?i)\b(?:roadmap|ROADMAP(?!\.md))\s+([A-Z]{1,2}[0-9]+[a-z]?)((?:'s\b[^)\n]*)?|\s+phase[s]?[^)\n]*)?",
+        r"(?i)\b(?:roadmap|ROADMAP(?!\.md))\s+([A-Z]{1,2}[0-9]+[a-z]?)('s\b[^)\n]*|\s+phase[s]?[^)\n]*)?",
         repl,
         text,
     )
