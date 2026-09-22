@@ -133,8 +133,17 @@ is deliberately explicit about the difference.
     padding rather than waiting again. Either answer stops the sink — `running()` turns false,
     `position()` reports nothing, `submit()` refuses — and `start()` opens again with no
     `stop()` first, on the same endpoint once it is back. `ac3tests "[passthrough-unplug]"` and
-    `"[monitor-unplug]"` are hidden cases that take a person through it; what the two of them
-    check has not yet been reported from this workstation's own receiver.
+    `"[monitor-unplug]"` are hidden cases that take a person through it.
+
+    **`[passthrough-unplug]` is confirmed**, against the same AV Receiver endpoint the exclusive-
+    mode validation above used: the cable was pulled mid-stream, and the sink noticed on its own —
+    `running()` false, `position()`/`can_submit()`/`submit()`/`paused()` all answering as a stopped
+    sink would, `flush()` returning at once, `pause()`/`resume()` both refusing with `kNotRunning`
+    — then a second `start()`, with no `stop()` in between, reopened the same endpoint and played
+    real frames once the cable went back in. `[monitor-unplug]` (`MonitorSink`'s shared-mode path)
+    has not yet been reported from this workstation's own receiver — its own hidden case opens the
+    system's current *default* render endpoint rather than a named one, so what it actually
+    exercises depends on whatever that is at the time.
 
 !!! note "No EDID/ELD backend on Windows"
     `ac3cli play` asks a chosen sink what it actually accepts before committing to a format —
