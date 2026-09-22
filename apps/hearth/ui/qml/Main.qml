@@ -29,6 +29,10 @@ ApplicationWindow {
 
     readonly property var pageOrder: ["play", "media", "speakers", "decoder", "network", "settings"]
     property string page: "play"
+    // A capture run (main.cpp, --shot) sets this before the first event-loop
+    // turn, so the first-run dialog never lands in a screenshot that did not
+    // ask for it.
+    property bool suppressFirstRun: false
 
     // The text size choice becomes Theme.fontScale here rather than in
     // Theme.qml itself, the same split apps/crucible/ui/qml/Main.qml's own
@@ -52,6 +56,15 @@ ApplicationWindow {
         Theme.paletteChoice = HearthController.palette;
         window.applyTextScale();
         HearthController.start();
+        // One turn later, so main.cpp's setProperty("suppressFirstRun", ...)
+        // - which runs after this handler and before the event loop starts -
+        // has already landed (Crucible's own Main.qml carries the identical
+        // comment for the identical reason).
+        Qt.callLater(function() {
+            if (!HearthController.firstRunSeen && !window.suppressFirstRun) {
+                firstRun.open();
+            }
+        });
     }
 
     // HearthController.settingsChanged covers theme/palette/textScale
@@ -147,4 +160,7 @@ ApplicationWindow {
     }
 
     footer: TransportBar { }
+
+    FirstRunDialog { id: firstRun; onOpenSpeakers: window.page = "speakers" }
+    function openFirstRun() { firstRun.open(); }
 }
