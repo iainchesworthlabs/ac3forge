@@ -8,7 +8,7 @@
 | Forge CLI | **Published**<br>confirmed on hardware<br>ZIP and NSIS installer | **Next release**<br>experimental CI<br>ZIP and NSIS installer |
 | Forge GUI | **Published**<br>confirmed on hardware<br>ships with Forge | **Unavailable**<br>Qt kit is not wired |
 | Crucible | **Published**<br>confirmed on hardware<br>UI/driver run; receiver output untested | **Unavailable** |
-| Hearth desktop player | **In development**<br>required CI<br>engine and test tools only | **Unavailable** |
+| Hearth desktop player | **In development**<br>confirmed on hardware<br>Qt/QML shell built and run; Play page confirmed, other tabs are placeholders | **Unavailable** |
 | Live capture and PCM monitor | **Source**<br>confirmed on hardware<br>WASAPI | **Source**<br>experimental CI<br>compiled with the CLI |
 | IEC 61937 output | **Source**<br>confirmed on hardware<br>AC-3, E-AC-3 and signed Atmos | **Source**<br>experimental CI<br>no receiver run |
 | Per-application capture | **Source**<br>confirmed on hardware<br>Windows process loopback | **Source**<br>experimental CI<br>compiled; runtime untested |
