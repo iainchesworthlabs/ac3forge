@@ -322,6 +322,12 @@ void HearthController::addFiles(const QStringList& paths) {
     engine_->add(std::move(items));
 }
 
+void HearthController::setVolumeDb(double db) {
+    if (engine_) {
+        engine_->set_volume_db(db);
+    }
+}
+
 void HearthController::poll() {
     if (!engine_) {
         return;
@@ -346,10 +352,11 @@ void HearthController::poll() {
     const QString new_output_reason = QString::fromStdString(status.output_reason);
     const QString new_note = QString::fromStdString(status.note);
     const QString new_error = QString::fromStdString(status.error);
-    if (new_state != state_ || status.gapless != gapless_ || new_output_reason != output_reason_ ||
-        new_note != note_ || new_error != error_) {
+    if (new_state != state_ || status.gapless != gapless_ || status.volume_db != volume_db_ ||
+        new_output_reason != output_reason_ || new_note != note_ || new_error != error_) {
         state_ = new_state;
         gapless_ = status.gapless;
+        volume_db_ = status.volume_db;
         output_reason_ = new_output_reason;
         note_ = new_note;
         error_ = new_error;

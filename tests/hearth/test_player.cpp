@@ -2219,3 +2219,61 @@ TEST_CASE("player: routing and device facts are PcmSink's own, and default to it
     CHECK(player->device_name().empty());
     CHECK(player->speaker_mask() == 0);
 }
+
+// The transport bar's master volume (planning/hearth-reference-player.md,
+// A5's Player): one gain for every slot, applied after render and after the
+// per-speaker trim above - not part of the speaker setup, and not keyed by
+// slot.
+
+TEST_CASE("player: volume attenuates every slot's rendered samples by the configured amount",
+          "[hearth][player]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(4);
+
+    auto quiet_log = std::make_shared<FakeDevice::Log>();
+    quiet_log->keep = true;
+    const auto quiet = make_player(library, quiet_log);
+    REQUIRE(quiet->set_volume_db(-6.0));
+    quiet->queue().add(item("a.ec3"));
+    quiet->play();
+    REQUIRE(play_out(*quiet, *quiet_log));
+
+    auto plain_log = std::make_shared<FakeDevice::Log>();
+    plain_log->keep = true;
+    const auto plain = make_player(library, plain_log);
+    plain->queue().add(item("a.ec3"));
+    plain->play();
+    REQUIRE(play_out(*plain, *plain_log));
+
+    REQUIRE_FALSE(plain_log->kept.empty());
+    const double gain = std::pow(10.0, -6.0 / 20.0);
+    for (std::size_t slot = 0; slot < plain_log->kept.size(); ++slot) {
+        REQUIRE_FALSE(plain_log->kept[slot].empty());
+        REQUIRE(quiet_log->kept[slot].size() == plain_log->kept[slot].size());
+        for (std::size_t i = 0; i < quiet_log->kept[slot].size(); ++i) {
+            CHECK(static_cast<double>(quiet_log->kept[slot][i]) ==
+                  Catch::Approx(static_cast<double>(plain_log->kept[slot][i]) * gain).margin(1e-5));
+        }
+    }
+}
+
+TEST_CASE("player: set_volume_db refuses outside [kMinVolumeDb, kMaxVolumeDb], and the setting "
+          "survives the decoder the first item builds",
+          "[hearth][player]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(2);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log, 8192, "5.1");
+
+    CHECK(player->volume_db() == 0.0);  // unity by default
+    CHECK(player->set_volume_db(-9.0));
+    CHECK(player->volume_db() == -9.0);
+    CHECK_FALSE(player->set_volume_db(Player::kMinVolumeDb - 1.0));
+    CHECK_FALSE(player->set_volume_db(Player::kMaxVolumeDb + 1.0));
+    CHECK(player->volume_db() == -9.0);  // unchanged by the refused calls
+
+    player->queue().add(item("a.ec3"));
+    player->play();
+    REQUIRE(play_out(*player, *log));
+    CHECK(player->volume_db() == -9.0);
+}

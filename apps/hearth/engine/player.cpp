@@ -488,6 +488,17 @@ bool Player::set_crossover_hz(double hz) {
     return true;
 }
 
+bool Player::set_volume_db(double db) {
+    // A static range, the same whatever is playing - no decoder to ask, the
+    // way set_crossover_hz()'s own check needs none either.
+    if (!(db >= kMinVolumeDb && db <= kMaxVolumeDb)) {
+        return false;
+    }
+    volume_db_ = db;
+    volume_gain_ = static_cast<float>(std::pow(10.0, db / 20.0));
+    return true;
+}
+
 bool Player::decoder_fits(std::uint32_t rate, bool transcode) const {
     if (!decoder_ || decoder_rate_ != rate) {
         return false;
@@ -1167,6 +1178,15 @@ void Player::take_block(std::span<const std::span<const float>> rendered, std::s
             out_spans[slot] = std::span<float>(block.samples).subspan(slot * n, n);
         }
         trim_delay_.process(std::span<std::span<float>>(out_spans.data(), slots));
+    }
+    if (volume_gain_ != 1.0F) {
+        // The master volume, last: after render and after the per-speaker
+        // trim/delay above, the same way and for the same reason - unity
+        // costs nothing per block, so this is gated on the gain rather than
+        // on active().
+        for (float& sample : block.samples) {
+            sample *= volume_gain_;
+        }
     }
     pending_frames_ += n;
 }

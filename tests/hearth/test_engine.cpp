@@ -45,6 +45,7 @@ using ac3::hearth::OpenOutputFormat;
 using ac3::hearth::OutputMode;
 using ac3::hearth::PcmSink;
 using ac3::hearth::PlayPosition;
+using ac3::hearth::Player;
 using ac3::hearth::QueueItem;
 using ac3::hearth::TransportState;
 
@@ -701,4 +702,26 @@ TEST_CASE("engine: the speaker setup commands reach EngineStatus, and a refused 
     CHECK(routing_status.note.find("refused") != std::string::npos);
     CHECK(routing_status.device_name.empty());
     CHECK(routing_status.speaker_mask == 0);
+}
+
+TEST_CASE("engine: the volume command reaches EngineStatus, and a refused one leaves it alone "
+          "but says so",
+          "[hearth][engine]") {
+    Library library;
+    auto state = std::make_shared<ClockedDevice::State>();
+    const auto engine = make_engine(library, state);
+
+    CHECK(engine->status().volume_db == 0.0);  // unity by default
+
+    engine->set_volume_db(-9.0);
+    engine->sync();
+    CHECK(engine->status().volume_db == -9.0);
+
+    // Outside [Player::kMinVolumeDb, Player::kMaxVolumeDb]: refused, noted,
+    // and nothing changes.
+    engine->set_volume_db(Player::kMaxVolumeDb + 1.0);
+    engine->sync();
+    const EngineStatus after_refusal = engine->status();
+    CHECK(after_refusal.note.find("refused") != std::string::npos);
+    CHECK(after_refusal.volume_db == -9.0);
 }

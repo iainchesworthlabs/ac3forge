@@ -259,6 +259,16 @@ void Engine::set_routing(const render::Routing& routing) {
     });
 }
 
+void Engine::set_volume_db(double db) {
+    post([this, db](Player& player) {
+        if (!player.set_volume_db(db)) {
+            return fmt::format("volume refused: {:.1f} dB", db);
+        }
+        note(fmt::format("volume: {:.1f} dB", db));
+        return std::string{};
+    });
+}
+
 void Engine::set_gapless(bool on) {
     post([this, on](Player& player) {
         if (on != player.transport().gapless()) {
@@ -384,6 +394,7 @@ void Engine::publish(const std::string& note, std::uint64_t carried) {
     next.current = player_.queue().current_index();
     next.gapless = player_.transport().gapless();
     next.repeat = player_.transport().repeat();
+    next.volume_db = player_.volume_db();
     next.on_failure = player_.transport().on_failure();
     next.settings = player_.decoder_settings();
     next.settings_note = player_.settings_note();
