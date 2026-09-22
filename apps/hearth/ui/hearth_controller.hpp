@@ -89,6 +89,52 @@ class HearthController : public QObject {
     // corner those small speakers share (crossoverHz). Same NOTIFY, same
     // reason as speakerLabels.
     Q_PROPERTY(QVariantList speakerSmall READ speakerSmall NOTIFY speakerSetupChanged)
+    // The layout's own text ("5.1.2", or a list form) - render::OutputLayout::
+    // text(). Same fixed-once-slots-appear lifetime as speakerLabels.
+    Q_PROPERTY(QString layoutText READ layoutText NOTIFY speakerSetupChanged)
+
+    // --- play monitor (the Play page: levels, loudness, this frame's ------
+    // detail, object placement and signal path) ---------------------------
+    // Everything below comes from Engine::meters() and Engine::unit_report(),
+    // polled the same tick as status() - planning/hearth-reference-player.md's
+    // Monitor, which A5's first slice deferred until there was something real
+    // to read (PlayPage.qml's own former header comment said so). Neither
+    // call is new: both have existed on Engine since A3 slices 6 and 8: this
+    // is the first thing in the tree to poll them.
+
+    // One entry per render layout slot, in slot order (matching
+    // speakerLabels): {peakDb, holdDb, rmsDb, clipped}, from
+    // MeterSnapshot::levels (ac3::analysis::ChannelLevel). Empty while no
+    // output is open or nothing has been metered yet.
+    Q_PROPERTY(QVariantList levels READ levels NOTIFY monitorChanged)
+    // momentary/shortTerm/integrated (LUFS), range (LU) and truePeak (dBTP).
+    // A key is ABSENT, not zero, while that reading has no value yet
+    // (MeterSnapshot's own optionals) - QML checks with `!== undefined`.
+    Q_PROPERTY(QVariantMap loudness READ loudness NOTIFY monitorChanged)
+    // The access unit the device is playing now: dialnorm, compr, dynrng
+    // (its block range) and shortBlocks. shortBlocks is AC-3 only and absent
+    // for E-AC-3 (UnitReport::short_blocks' own comment says why) - the
+    // panel says so rather than showing a wrong number.
+    Q_PROPERTY(QVariantMap thisFrame READ thisFrame NOTIFY monitorChanged)
+    // This unit's objects, bed channels and dynamic alike, one entry per
+    // oba::describe_objects() result: {x, y, z, gainDb, snap, active, label,
+    // raised}. label is empty for a dynamic object; raised is position.z
+    // above the bed plane, the same test objectsPlaced counts active,
+    // unlabelled entries by.
+    Q_PROPERTY(QVariantList objects READ objects NOTIFY monitorChanged)
+    // Dynamic (unlabelled), active objects right now - the Objects panel's
+    // own "N placed".
+    Q_PROPERTY(int objectsPlaced READ objectsPlaced NOTIFY monitorChanged)
+    // Whether the playing unit carries object metadata at all - a plain
+    // AC-3/E-AC-3 stream has none, and the Objects panel says so rather than
+    // drawing an empty room.
+    Q_PROPERTY(bool hasObjectMetadata READ hasObjectMetadata NOTIFY monitorChanged)
+    // sampleRate, channels and mode ("pcm"/"bitstream"/"bitstreamAsAc3"/
+    // "networkGroup"/"none") - EngineStatus::output, named for the Signal
+    // path panel's "you hear it on" stage. Polled with output_reason (both
+    // change together, at an open or a reopen), so this shares stateChanged
+    // rather than adding a signal nothing else would use.
+    Q_PROPERTY(QVariantMap outputFormat READ outputFormat NOTIFY stateChanged)
 
 public:
     explicit HearthController(QObject* parent = nullptr);
@@ -135,6 +181,15 @@ public:
     [[nodiscard]] QString deviceName() const { return device_name_; }
     [[nodiscard]] QStringList speakerLabels() const { return speaker_labels_; }
     [[nodiscard]] QVariantList speakerSmall() const { return speaker_small_; }
+    [[nodiscard]] QString layoutText() const { return layout_text_; }
+
+    [[nodiscard]] QVariantList levels() const { return levels_; }
+    [[nodiscard]] QVariantMap loudness() const { return loudness_; }
+    [[nodiscard]] QVariantMap thisFrame() const { return this_frame_; }
+    [[nodiscard]] QVariantList objects() const { return objects_; }
+    [[nodiscard]] int objectsPlaced() const { return objects_placed_; }
+    [[nodiscard]] bool hasObjectMetadata() const { return has_object_metadata_; }
+    [[nodiscard]] QVariantMap outputFormat() const { return output_format_; }
 
     Q_INVOKABLE void setTrimDb(int slot, double db);
     Q_INVOKABLE void setDelayMs(int slot, double ms);
@@ -155,6 +210,7 @@ signals:
     void stateChanged();
     void decoderSettingsChanged();
     void speakerSetupChanged();
+    void monitorChanged();
 
 private:
     void poll();
@@ -180,6 +236,15 @@ private:
     QString device_name_;
     QStringList speaker_labels_;
     QVariantList speaker_small_;
+    QString layout_text_;
+
+    QVariantList levels_;
+    QVariantMap loudness_;
+    QVariantMap this_frame_;
+    QVariantList objects_;
+    int objects_placed_ = 0;
+    bool has_object_metadata_ = false;
+    QVariantMap output_format_;
 };
 
 }  // namespace ac3::hearth::ui
