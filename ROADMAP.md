@@ -8,7 +8,7 @@ library's capability record, see
 Detailed design lives in [`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning)
 and product `design/` records — linked below, not copied here.
 
-Last reviewed: 2026-09-17. Reconciliation source:
+Last reviewed: 2026-09-21. Reconciliation source:
 [`planning/roadmap-inventory.md`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning/roadmap-inventory.md).
 
 ## How to read this
@@ -38,12 +38,18 @@ and [`docs/hearth/index.md`](https://github.com/iainchesworthlabs/ac3forge/blob/
 |---|---|---|---|
 | Desktop player engine | Queue, transport, gapless, passthrough, meters, settings, diagnostics (`apps/hearth/engine/`; `[hearth]` tests) | Qt application window (planning A5); packaging and user guide (A7–A8) | [Hearth index](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/index.md) |
 | Sendspin server in the app | Protocol library, testserver, testsink, group/pairing tests, aiosendspin CI exit | `ServerHost` wired into the desktop engine for network output | [Sendspin extension plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-sendspin-extension.md) |
-| ESP32-S3 sink | `hearth_sink` firmware, Improv, groups, QEMU CI | TDM DAC hardware exits; Music Assistant on a real MA instance | [ESP32-S3 sink guide](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/sink-esp32-s3.md) |
+| ESP32-S3 sink | `hearth_sink` firmware, Improv, groups, QEMU CI | TDM DAC hardware exits (ES9080 pair); Music Assistant on a real MA instance | [ESP32-S3 sink guide](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/sink-esp32-s3.md) |
+
+**Sink module tiers (shared PCB → pair of ES9080s):** **good** C6 (5.1, one DAC) · **better**
+S3 (7.1.4 without enhanced coupling, both DACs @ 16-bit) · **best** P4 (9.1.6 + full tools
+desired, both DACs @ 32-bit on one I2S). Study:
+[`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md).
 
 **Proposed next (blocked on UI design sign-off):** planning A0 UI design round, then A5 window,
 then A6 network UI.
 
-**Not started:** ESP32-C6 Sendspin sink (planning C3, after the S3 sink pattern).
+**Not started:** ESP32-C6 Sendspin sink (planning C3, after the S3 sink pattern); ESP32-P4
+wide sink (tier study P1+, after S3 DAC / C6 pattern as needed).
 
 ### Library — AC-4 audio decode (Partial)
 
@@ -72,6 +78,13 @@ Substantial internal codec on branch `feature/truehd-atmos-support` — not on `
 rebase, gate as `ac3::mlp` / `AC3FORGE_BUILD_MLP`, remove non-redistributable PDFs, label output
 accurately (no real TrueHD decoder reads the current block layout). Forge front ends follow as a
 separate item (was UX10).
+
+**Authenticity note (for that branch):** TrueHD carries a separate keyed check from DD+ EMDF
+object signing — **Evolution frame protection**, a truncated HMAC-SHA-256 over the access unit
+and the Evolution frame. Open decoders (e.g. truehdd `--evo-key`) optionally verify it with an
+operator-supplied key; without a key they decode unchecked. When authenticity policy lands for
+MLP (multi-key verify / unchecked / licensed soft-gate), wire it to Evolution HMAC, not to
+`ac3::signing`'s EMDF path. See [Object signing](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/concepts/object-signing.md#sibling-truehd-evolution).
 
 ### Crucible — cross-platform product (was UX12, Partial)
 
@@ -113,6 +126,7 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 |---|---|---|
 | **IAMF** (was IM3) | Channel-based 7.1.4 `ipcm` writer (`src/iamf`, phase 1 of 3) | Object elements and OBU reader — **blocked on IAMF v2.0 final** |
 | **IAB reader** (was IM1) | Full header and PCM essence parse | Annex B **AudioDataDLC** lossless decode — opaque bytes today |
+| **Object authenticity modes** | `ac3::signing` HMAC tag; `sign-objects`; single-key `verify-objects` (hard fail); default decode reconstructs objects **unchecked** (FOSS-style) | **Multi-key** verify (keyring / repeated `signing-key=`); **licensed** soft-gate (e.g. `gate-objects`: tag mismatch / unsigned → bed-only, decode continues); CLI + docs naming the three modes — [Object signing](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/concepts/object-signing.md#planned-decode-modes). TrueHD Evolution HMAC is the parallel on IM5, not EMDF |
 | **Multi-programme E-AC-3 encode** | `programme2=` authoring via CLI | Programme-mix metadata (`mixmdate`, `bsmod`, associated-service mixing) — see [capabilities](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/capabilities.md) |
 | **Encoder reproducibility** (was VX12) | Audit done; `ilogb` fix landed | Re-validate FP-gated bit-cost thresholds; fixed-point transient port optional |
 | **Listening test** (was VX9) | Apparatus in `tools/listening/` | **No session run yet** — see [`tools/listening/responses/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/listening/responses/README.md) |
@@ -128,8 +142,10 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 | GStreamer element or FFmpeg external encoder for >5.1 / JOC encode | Out of tree, over the C API; AP5 (C API) is done | AP10 |
 | Dolby Reference Player wider CI crosscheck | Extend beyond `none/cpl/spx/aht/all`; self-hosted Windows job | VX5 |
 | Perceptual encoder criterion calibration | EQ13 follow-on; `kPerceptual` | EQ14 |
+| Object authenticity: multi-key + licensed gate | Completes the Partial tail above — keyring verify and AVR-like bed-only soft-gate for EMDF; Evolution HMAC for TrueHD rides IM5 | — |
 | QC delivery report file | `ac3cli qc` writes stdout today | [`planning/qc-report.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/qc-report.md) |
 | DAW / NLE host plugin | Feasibility study only | [`planning/host-plugin.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/host-plugin.md) |
+| ESP32 sink tiers (C6 / S3 / P4) on one ES9080 PCB | Modular MCU: C6 ≤5.1 / one DAC; S3 ≤7.1.4 no ecpl / both DACs @ 16-bit; P4 ≤9.1.6 full tools desired / both DACs @ 32-bit on one I2S. P4 reopened only as best tier | [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md) |
 | vcpkg git registry | Consumers install via `vcpkg install ac3forge` | DR3 |
 | winget and ConanCenter | Manifests staged; CLA and submission pending | DR4 |
 
@@ -147,7 +163,7 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 
 ## Out of scope
 
-- **Forging Dolby's authenticity tag** — see [`docs/concepts/object-signing.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/concepts/object-signing.md). The signer ships; the key is the operator's.
+- **Forging Dolby's authenticity tag** — see [`docs/concepts/object-signing.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/concepts/object-signing.md). The signer ships; the key is the operator's. Multi-key verify and licensed soft-gate (Partial / Proposed above) use **operator-provisioned** keys only — they do not recover or invent decoder secrets.
 - **AC-3 VBR** — structurally impossible; frame size indexes a fixed table.
 - **Renderer and room-correction territory** — covered by [Cavern](https://github.com/VoidXH/Cavern). A headphone/binaural preview for the WASM demo stays off unless that boundary is redrawn on purpose.
 - **A DAMF reader** — no public specification; IM1 / ADM BWF is the replacement.
@@ -157,7 +173,7 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 - **Enabling PipeWire `iec958Codecs` on the user's behalf** — session-manager policy; documented instead.
 - **HOA, Matrix and Binaural ADM pack types** — refused with `kUnsupportedType` until a design exists.
 - **APT/DNF repositories and Docker images** — not planned; see [`docs/releasing.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md).
-- **An ESP32-P4 decoder target** — assessed and closed; see [`docs/platforms/bare-metal/esp32-s3.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-s3.md).
+- **ESP32-P4 as a replacement for the S3 Wi-Fi Sendspin sink** — closed 2026-09-08 (no on-die radio; no float PIE win; S3 probe already real-time). **Complementary P4 “best” module** (Ethernet / hosted C6, dual ES9080 @ 32-bit) is Proposed — see [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md) and [`esp32-c3.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-c3.md#why-not-the-esp32-p4).
 - **Per-channel and per-block SNR offsets** — tried and declined (EQ2); reference encoders agree with shipped behaviour.
 - **Multi-service (multi-PID) MPEG-TS authoring** — one PMT with a main-service PID plus associated-service PIDs, built in one invocation. `mpegts::mux` stays a single-elementary-stream muxer (its own header comment calls a general multiplexer out of scope); `mainid`/`asvc` describe links an operator authors across separately-muxed files, not a multiplex this tool builds for them.
 
@@ -196,7 +212,7 @@ Full ledger text preserved in git history of this file before 2026-09-17.
 | EQ | EQ1–EQ13 encoder quality work | EQ14 proposed; EQ2 out of scope |
 | DC | DC1–DC10 decoder and stream tools | Multi-programme mix metadata tail |
 | IO | IO1–IO12 containers, QC, loudness | QC report file proposed |
-| IM | IM1–IM4, IM7 | IM5 in progress; IM6 blocked; IM3/IAB tails |
+| IM | IM1–IM4, IM7 | IM5 in progress; IM6 blocked; IM3/IAB tails; object authenticity modes Partial |
 | VX | VX1–VX23 except VX9/VX12 tails | VX9/VX12 partial; VX5 proposed |
 | PF | PF1–PF8 performance | — |
 | AP | AP2–AP7, AP9, AP11–AP12 | AP1 in progress; AP8/AP10 proposed |

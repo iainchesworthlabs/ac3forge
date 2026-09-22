@@ -2,10 +2,12 @@
 
 *Maintainer notes — repo administration; not published on the docs site.*
 
-Trunk-based development: `main` is the only long-lived branch. Every topic branch
-(`feature/*`, `bugfix/*`, Dependabot's `dependabot/**`) targets it directly and merges
-straight there — there is no separate integration branch, no promotion PR, and no sync-back
-step. Releases are tags cut from `main` (see `docs/releasing.md`).
+Trunk-based development (GitHub Flow): `main` is the only long-lived branch. Every topic
+branch (`feature/*`, `bugfix/*`, `hotfix/*`, `docs/*`, `chore/*`, Dependabot's
+`dependabot/**`) targets it directly and merges straight there — there is no separate
+integration branch, no promotion PR, and no sync-back step. Releases are tags cut from
+`main` (see `docs/releasing.md`). Short names are lowercase kebab-case; see
+`CONTRIBUTING.md`.
 
 GitHub branch/repo security settings can't be expressed as a workflow file - they're applied
 in **Settings → Branches** (or **Settings → Rules → Rulesets**) by someone with admin rights

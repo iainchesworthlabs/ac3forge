@@ -16,9 +16,18 @@ these scenarios:
                  board must answer as a client expects: error none, its page's
                  URL, provisioned. Then it must start what boot would have
                  started: mDNS, the Sendspin player and the player's console
-                 commands. The capture goes on while the runner plays to the
-                 player, until QEMU exits. Before #741 the board aborted in
-                 that second network_up() and restarted.
+                 commands. With --control it then renames the board over the
+                 REST surface and asks device_info for the name back, and it
+                 types a console command, whose Enter reaches the board as the
+                 CR a terminal sends. The capture goes on while the runner
+                 plays to the player, until QEMU exits. Before #741 the board
+                 aborted in that second network_up() and restarted.
+
+                 The SSID it sends is 13 bytes and the name it stores is 10
+                 characters, so that the length byte in front of each is a CR
+                 one way and an LF the other: a console that converts line
+                 endings (ESP-IDF's default, and what sdkconfig.defaults turns
+                 off) corrupts those packets, and this fails when it does.
   unprovisioned  The WiFi build with nothing stored and nothing built in
                  (sdkconfig.ci-wifi). It must boot with its control surface up,
                  listen, and answer current_state (ready) and device_info. It is
@@ -55,6 +64,7 @@ import socket
 import sys
 import threading
 import time
+import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -492,10 +502,14 @@ class Run:
     """A scenario's steps. Each waits from where the one before it left off,
     and says what it found and when."""
 
-    def __init__(self, console: Console, monitor: Monitor, started: float) -> None:
+    def __init__(
+        self, console: Console, monitor: Monitor, started: float, control: str | None = None
+    ) -> None:
         self.console = console
         self.monitor = monitor
         self.started = started
+        # The board's REST surface, where QEMU forwards it, or None.
+        self.control = control
         # The record the next wait starts from.
         self.at = 0
 
@@ -523,6 +537,15 @@ class Run:
         self.at = self.console.mark()
         self.console.send(data)
         self.say(f"sent {name}")
+
+    def type_line(self, text: str) -> None:
+        """Types a console command, ending it with CR as a terminal's Enter
+        key does. With the console's line endings left alone (sdkconfig.defaults)
+        that CR arrives as a CR, which the console's reader takes as the end of
+        a line just as it takes LF."""
+        self.at = self.console.mark()
+        self.console.send(text.encode() + b"\r")
+        self.say(f"typed {text!r}")
 
     def answers(self, expected: list[tuple[str, str]], seconds: float, what: str) -> list[Answer]:
         """The board's next packets, which must be `expected`, (kind, value)
@@ -555,12 +578,21 @@ def say(text: str, started: float) -> None:
 
 
 # The network the board is given. The openeth seam ignores the name and joins
-# QEMU's Ethernet, but the board still stores what it was given. No byte of
-# either request is a CR or an LF: the console's line-ending conversion
-# rewrites those on their way in (CONFIG_LIBC_STDIN_LINE_ENDING_CR), and that
-# is not what this check measures.
-SSID = "qemu-net"
+# QEMU's Ethernet, but the board still stores what it was given, and answers
+# with it.
+#
+# THIRTEEN BYTES, ON PURPOSE. The length byte in front of an SSID that long is
+# 0x0D, a CR, and a console that converts line endings on the way in turns it
+# into an LF: the packet then fails its checksum and the board answers
+# invalid_packet. sdkconfig.defaults asks for no conversion either way, and
+# this is what holds it to that - a board that cannot be told about
+# "MyHomeNetwork" is no use.
+SSID = "qemu-net-1234"
 PASSPHRASE = "qemu-passphrase"
+# Ten characters, for the same reason in the other direction: the length byte
+# in front of the name is 0x0A, and a console that sends CR before every LF
+# corrupts the device_info answer carrying it.
+NEW_NAME = "kitchen-01"
 # Where QEMU's user-mode network puts the guest, so the page a client is sent to.
 URL = "http://10.0.2.15/"
 # The name a board with nothing stored takes from its MAC address, all zeros
@@ -573,6 +605,7 @@ NAME = "hearth-000000"
 BOOT_SECONDS = 120
 ANSWER_SECONDS = 15
 JOIN_SECONDS = 60
+HTTP_SECONDS = 15
 # How long after the board says it is provisioning the link comes up: inside
 # network_up()'s 30 s wait, and well after its start.
 LINK_DELAY_SECONDS = 5
@@ -636,7 +669,39 @@ def late_network(run: Run) -> None:
     )[2]
     if result.strings[:1] != (URL,):
         raise Failed(f"current_state answered {result.strings}, not the page at {URL}")
+
+    if run.control is not None:
+        named_answer(run)
+
+    # The console still takes commands typed on it, which is the other half of
+    # leaving its line endings alone: the Enter that ends this line arrives as
+    # a CR rather than the LF a converting console would have made of it.
+    run.type_line("sendspin")
+    run.line("sendspin: server", ANSWER_SECONDS)
     run.no_bad_packets()
+
+
+def named_answer(run: Run) -> None:
+    """An answer whose own bytes include an LF, over the board's REST surface:
+    a ten-character name, which device_info then has to carry back whole."""
+    request = urllib.request.Request(
+        f"{run.control.rstrip('/')}/name", data=NEW_NAME.encode(), method="PUT"
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=HTTP_SECONDS) as reply:
+            run.say(f"PUT /name {NEW_NAME}: {reply.status}")
+    except OSError as error:
+        raise Failed(f"PUT /name {NEW_NAME}: {error}") from error
+
+    run.request(rpc(GET_DEVICE_INFO), f"device_info, with the board named {NEW_NAME}")
+    info = run.answers(
+        [("error_state", "none"), ("rpc_result", "device_info")],
+        ANSWER_SECONDS,
+        "device_info",
+    )[1]
+    if info.strings[-1:] != (NEW_NAME,):
+        raise Failed(f"device_info answered {info.strings}, and the board is named {NEW_NAME}")
+    run.say(f"device_info: {', '.join(info.strings)}")
 
 
 def unprovisioned(run: Run) -> None:
@@ -704,6 +769,12 @@ def main(argv: list[str] | None = None) -> int:
         "--monitor", type=parse_address, required=True, help="QEMU's monitor, as HOST:PORT"
     )
     parser.add_argument("--capture", type=Path, required=True, help="where the console goes")
+    parser.add_argument(
+        "--control",
+        metavar="URL",
+        help="the board's REST surface, as QEMU forwards it; late-network then renames the "
+        "board over it and asks device_info for the name back",
+    )
     parser.add_argument("--ready", type=Path, help="a file to create once the checks have passed")
     parser.add_argument(
         "--hold",
@@ -727,7 +798,7 @@ def main(argv: list[str] | None = None) -> int:
     console = Console(serial, args.capture, lambda text: say(text, started))
     try:
         try:
-            SCENARIOS[args.scenario](Run(console, monitor, started))
+            SCENARIOS[args.scenario](Run(console, monitor, started, args.control))
         except (Failed, OSError) as error:
             if console.stopped:
                 console.hold(AFTER_STOP_SECONDS)
