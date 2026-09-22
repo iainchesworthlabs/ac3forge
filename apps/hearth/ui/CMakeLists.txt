@@ -70,6 +70,7 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/DecoderEac3.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/DecoderAc4.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlaceholderPage.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/ShortcutsDialog.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/TransportBar.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/FirstRunDialog.qml"
         ${AC3HEARTH_SHARED_OUT})

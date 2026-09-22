@@ -4,11 +4,14 @@
 // QML up and offers Crucible's own debugging aid: `--shot <path.png>` grabs
 // the window after it has settled and quits, so a headless check (or the
 // screenshot script, later) can see it; `--page <name>` picks the page it
-// opens on first - play, media, speakers, decoder, network, settings, or
-// firstrun for the "Before you play anything" dialog over the Play page. A
-// `--shot` run never shows that dialog unless `--page firstrun` asked for
-// it, so a capture against a fresh settings store is clean (Crucible's own
-// main.cpp carries the identical shape for the identical reason).
+// opens on first - play, media, speakers, decoder, network or settings.
+// `--page firstrun` opens the "Before you play anything" dialog over the
+// Play page; a `--shot` run never shows that dialog unless `--page firstrun`
+// asked for it, so a capture against a fresh settings store is clean
+// (Crucible's own main.cpp carries the identical shape for the identical
+// reason). `--page shortcuts` opens the keyboard-shortcuts reference (issue
+// #830) over Play, the same way Crucible's `--page about`/`--page licences`
+// open their own dialogs over Room.
 //
 // Translations are not wired up yet: this slice is the shell and the Play
 // page over the real engine, with the other five pages as placeholders, and
@@ -77,7 +80,7 @@ int main(int argc, char** argv) {
         if (args[i] == QLatin1String("--shot")) {
             shot_path = args[i + 1];
         } else if (args[i] == QLatin1String("--page")) {
-            page = args[i + 1];  // play, media, speakers, decoder, network, settings or firstrun
+            page = args[i + 1];  // play, media, speakers, decoder, network, settings, firstrun or shortcuts
         }
     }
 
@@ -96,9 +99,10 @@ int main(int argc, char** argv) {
     }
     if (page == QLatin1String("firstrun")) {
         QMetaObject::invokeMethod(engine.rootObjects().first(), "openFirstRun");
-        page.clear();
-    }
-    if (!page.isEmpty()) {
+    } else if (page == QLatin1String("shortcuts")) {  // over Play, for a capture
+        engine.rootObjects().first()->setProperty("page", QStringLiteral("play"));
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openShortcuts");
+    } else if (!page.isEmpty()) {
         engine.rootObjects().first()->setProperty("page", page);
     }
 
