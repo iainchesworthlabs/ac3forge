@@ -38,6 +38,16 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                      std::uint32_t bitrate, std::uint32_t objects,
                      const ac3cli::Options& meta, std::string_view paths_path = {});
 
+// A channel-based-immersive (CBI) bed: a WAV already mixed into a fixed 5.1.4/7.1.4/9.1.6 speaker
+// layout (Dolby's own dee_ddpjoc_encoder --input-format cbi_wav shape), straight to DD+ JOC E-AC-3
+// with program.bed != 0 and 0 dynamic objects - a bed anchored to speaker labels, coded through
+// OAMD+JOC exactly like an object stream, so a JOC-aware decoder still reconstructs the height/
+// surround channels out of the 5.1 downmix. Distinct from 'atmos-encode', which turns every
+// source channel into a free-floating dynamic object, and from bed51 (see run_atmos's own mode
+// argument), which omits the object container entirely - see docs/concepts/atmos-joc.md.
+int run_atmos_cbi(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
+                  std::string_view layout, const ac3cli::Options& meta);
+
 // The inverse of the four encoders above (object-layer strip): takes the object layer OUT of a finished
 // DD+ JOC stream, leaving a plain DD+ 5.1 stream whose bed audio is bit-identical - not decoded,
 // not re-encoded, just the EMDF container and its addbsi marker removed and the framing

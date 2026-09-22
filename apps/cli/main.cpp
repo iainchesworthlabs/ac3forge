@@ -172,13 +172,13 @@ int run_help(const Args& x);
 int run_man();
 int run_completions(std::string_view shell);
 
-// 42 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
+// 43 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
 // linked ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above
 // and run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating
 // it, never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 42> kCommands{{
+constexpr std::array<Command, 43> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
@@ -237,6 +237,15 @@ constexpr std::array<Command, 42> kCommands{{
      topic::kAtmos | topic::kMeta | topic::kObjects,
      Needs::kAdm,
      [](const Args& x) { return run_atmos_iab(x.str(1), x.str(2), x.u32(3, 448), x.meta); }},
+    {"atmos-cbi", 3, "<in.wav> <out.ec3> [bitrate_kbps] [layout]",
+     "a channel-based-immersive bed (Dolby's dee_ddpjoc_encoder --input-format cbi_wav shape) "
+     "straight to DD+ JOC E-AC-3 with program.bed != 0 and 0 dynamic objects; layout is one of "
+     "5.1.4, 7.1.4, 9.1.6 (default: inferred from the file's channel count)",
+     topic::kStdio | topic::kAtmos | topic::kMeta | topic::kObjects,
+     Needs::kNothing,
+     [](const Args& x) {
+         return run_atmos_cbi(x.str(1), x.str(2), x.u32(3, 448), x.str(4), x.meta);
+     }},
     {"strip-objects", 3, "<in.ec3> <out.ec3>",
      "remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed",
      topic::kStdio | topic::kMeta,

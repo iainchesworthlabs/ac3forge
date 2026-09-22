@@ -106,6 +106,64 @@ constexpr double kAbsoluteFloor = 1e-20;
     return true;
 }
 
+// Where a bed channel's audio is folded onto the 5-channel ring for a CBI
+// programme's physical downmix - NOT bed_label_position()'s room-cuboid
+// coordinates (oamd.hpp is explicit those are for a view to draw with,
+// "nothing in encode or decode reads it", and they are not even on the same
+// projection pan_room() uses: bed_label_position(kL) sits at 45 degrees
+// through pan_room's own atan2(left, forward), not the 30 the ring actually
+// puts L at). This table gives the REAL ring azimuth instead, agreeing with
+// pan_azimuth's own kSpeakerAzimuthDeg for the five it names directly and
+// with spatial::direction_of's Lrs/Rrs/Lw/Rw for the two further pairs
+// Table 12 has that direction_of also names. A height pair folds onto its
+// underlying horizontal pair's own azimuth - pan_azimuth has no elevation to
+// fold with either, the same "no z" rule pan_room documents for a raised
+// dynamic object. std::nullopt is the two LFEs: unpanned, fed straight into
+// the bed's own LFE channel instead of through this table at all (see
+// AtmosEncoder::encode_bed_frame).
+[[nodiscard]] std::optional<double> bed_label_azimuth_deg(BedLabel label) {
+    switch (label) {
+        case BedLabel::kL:
+        case BedLabel::kTfl:  return 30.0;
+        case BedLabel::kC:    return 0.0;
+        case BedLabel::kR:
+        case BedLabel::kTfr:  return -30.0;
+        case BedLabel::kLs:
+        case BedLabel::kTsl:  return 110.0;
+        case BedLabel::kRs:
+        case BedLabel::kTsr:  return -110.0;
+        case BedLabel::kLb:
+        case BedLabel::kTbl:  return 150.0;
+        case BedLabel::kRb:
+        case BedLabel::kTbr:  return -150.0;
+        case BedLabel::kLw:   return 60.0;
+        case BedLabel::kRw:   return -60.0;
+        case BedLabel::kLfe:
+        case BedLabel::kLfe2: return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+// Downmix headroom for a bed channel folding onto a ring position another
+// bed channel already occupies at unity (a height pair shares its underlying
+// pair's azimuth exactly, so e.g. L and Tfl pan identically) - an ordinary
+// film-mix fold-down figure, and unlike the reconstruction below, not a
+// normative one: TS 103 420 says nothing about how an encoder builds its
+// physical bed (see this file's own header comment), and JOC recovers each
+// channel at its OWN original level regardless of what this constant is,
+// because the energy this scales is the same energy step 3 below
+// reconstructs FROM (power = signal * scale^2) - only a legacy 5.1-only
+// listener's fold-down balance depends on the actual value.
+constexpr double kExtensionDownmixScale = 0.70710678118654752;  // -3 dB
+
+// The base 5.1 ring channels fold in at unity - literally the same audio a
+// plain 5.1 mix would carry, physically unattenuated - and only a channel
+// ADDED alongside them takes kExtensionDownmixScale's headroom cut.
+[[nodiscard]] constexpr bool is_base_ring_label(BedLabel label) {
+    return label == BedLabel::kL || label == BedLabel::kC || label == BedLabel::kR ||
+          label == BedLabel::kLs || label == BedLabel::kRs;
+}
+
 }  // namespace
 
 // Energy of one object per JOC parameter band, over the whole frame.
@@ -184,12 +242,22 @@ void qmf_band_energy(std::span<const float> signal, std::span<const std::uint8_t
 struct AtmosEncoder::Impl {
     AtmosConfig config_;
     int objects_ = 0;
+    // How many pan-and-reconstruct essences one encode call feeds: objects_
+    // itself for a dynamic-object programme, or the bed's own non-LFE
+    // channel count for a CBI one (the LFE never goes through this pipeline
+    // either way - see joc_object_count's own §6.3.2.2 bypass). Always equal
+    // to joc_object_count(program_).
+    int essences_ = 0;
     Program program_{};
     eac3::AccessUnitEncoder encoder_;
     joc::FrameParameters params_{};
 
-    // Per object, its bed gains in JOC channel order plus its LFE send. Kept
+    // Per essence, its bed gains in JOC channel order plus its LFE send. Kept
     // between frames so the bed can ramp from where the last frame left off.
+    // A CBI programme's own target never changes frame to frame (see
+    // bed_pan_ below), so this settles after frame 1's priming and every
+    // later ramp is a no-op "already there" - the same machinery, not a
+    // special case.
     std::vector<std::array<double, joc::kNumChannels5X>> gains_;
     std::vector<double> lfe_gains_;
     bool primed_ = false;
@@ -199,14 +267,30 @@ struct AtmosEncoder::Impl {
     // bed_ so the constructor's init list can size bed_ from it.
     int frame_samples_ = kSamplesPerFrame;
     std::vector<std::vector<float>> bed_;
-    // One analysis filterbank per object, for joc::Domain::kQmf's band
+    // One analysis filterbank per essence, for joc::Domain::kQmf's band
     // energies. Left empty - and so free - under kMdctBand.
     std::vector<dsp::QmfAnalysis> object_qmf_;
     std::uint64_t frames_ = 0;
 
+    // --- CBI bed mode only (BedProgram constructor) --------------------
+    // bed_labels(program_.bed) index that is the LFE, if the bed has one -
+    // encode_bed_frame feeds it straight into bed_[5], never through
+    // bed_pan_/the JOC pipeline (§6.3.2.2 bypasses it, same as a dynamic
+    // programme's LFE). Every OTHER bed_labels() index maps, in order, onto
+    // bed_pan_/bed_scale_ below.
+    std::optional<std::size_t> bed_lfe_index_{};
+    // Fixed pan (JOC channel order, see kAc3FromJoc) and downmix scale per
+    // essence, resolved once here from each bed channel's own speaker label
+    // (bed_label_azimuth_deg) rather than supplied per frame the way
+    // encode_frame's ObjectPlacement is - a bed channel's position comes
+    // from its label, never from an argument (TS 103 420 §5.5.9).
+    std::vector<std::array<double, joc::kNumChannels5X>> bed_pan_;
+    std::vector<double> bed_scale_;
+
     Impl(const AtmosConfig& config, int objects)
         : config_(config),
           objects_(objects),
+          essences_(objects),
           program_{.dynamic_only = true, .lfe = true, .dynamic_objects = objects},
           encoder_(eac3::AccessUnitConfig{
               .independent = {.sample_rate = config.sample_rate,
@@ -253,6 +337,88 @@ struct AtmosEncoder::Impl {
             object_qmf_.resize(static_cast<std::size_t>(objects));
         }
     }
+
+    // CBI: dynamic_objects is always 0, and object_count(program_) - the
+    // encoder_ complexity index and params_.objects below both read it via
+    // the same free functions the dynamic-object constructor uses - is the
+    // bed's own channel_count(bed), so this needs no field this struct does
+    // not already have.
+    Impl(const AtmosConfig& config, BedProgram bed)
+        : config_(config),
+          objects_(0),
+          essences_(joc_object_count(Program{.dynamic_only = false, .bed = bed.bed})),
+          program_{.dynamic_only = false, .bed = bed.bed, .dynamic_objects = 0},
+          encoder_(eac3::AccessUnitConfig{
+              .independent = {.sample_rate = config.sample_rate,
+                              .bitrate_kbps = config.bitrate_kbps,
+                              .acmod = Acmod::k3_2,
+                              .lfe = true,
+                              .numblkscod = config.numblkscod,
+                              .dialnorm = config.dialnorm,
+                              .fast_mdct = config.fast_mdct,
+                              .oba_complexity_index =
+                                  config.emit_object_metadata
+                                      ? std::optional<int>{object_count(program_)}
+                                      : std::nullopt}}),
+          gains_(static_cast<std::size_t>(essences_)),
+          lfe_gains_(static_cast<std::size_t>(essences_), 0.0),
+          frame_samples_(eac3::blocks_per_syncframe(config.numblkscod) * kSamplesPerBlock),
+          bed_(6, std::vector<float>(static_cast<std::size_t>(frame_samples_))),
+          bed_pan_(static_cast<std::size_t>(essences_)),
+          bed_scale_(static_cast<std::size_t>(essences_)) {
+        params_.objects = joc_object_count(program_);
+        params_.channels = kChannels;
+        params_.num_bands_idx = config.num_bands_idx;
+        params_.fine_quant = config.fine_quant;
+        params_.matrix.assign(params_.coefficient_count(), 0.0);
+        if (config.joc_domain == joc::Domain::kQmf) {
+            object_qmf_.resize(static_cast<std::size_t>(essences_));
+        }
+
+        // Walk the bed's own channel order once, splitting it into the LFE
+        // (if any) and every other label's fixed pan/scale - the same order
+        // encode_bed_frame's own `channels` argument must arrive in, and the
+        // same order build_payload's anchored-object loop assumes.
+        std::size_t essence = 0;
+        std::size_t index = 0;
+        for (const auto label : bed_labels(program_.bed)) {
+            const auto azimuth = bed_label_azimuth_deg(label);
+            if (!azimuth.has_value()) {
+                assert(!bed_lfe_index_.has_value() &&
+                       "a second bed LFE has no home in a 6-channel physical bed");
+                bed_lfe_index_ = index;
+                ++index;
+                continue;
+            }
+            const auto ring = spatial::pan_azimuth(*azimuth);
+            const double scale = is_base_ring_label(label) ? 1.0 : kExtensionDownmixScale;
+            for (int channel = 0; channel < kChannels; ++channel) {
+                bed_pan_[essence][static_cast<std::size_t>(channel)] =
+                    ring[static_cast<std::size_t>(kAc3FromJoc[static_cast<std::size_t>(channel)])];
+            }
+            bed_scale_[essence] = scale;
+            ++essence;
+            ++index;
+        }
+        assert(essence == static_cast<std::size_t>(essences_));
+    }
+
+    // Shared by encode_frame (whose step 1 resolves `pan`/`target`/`scale`/
+    // `target_lfe` from this call's ObjectPlacement) and encode_bed_frame
+    // (whose bed_pan_/bed_scale_ above are fixed at construction instead):
+    // renders `essences_` sources into the 5.1 bed_ and solves this frame's
+    // JOC reconstruction matrix into params_. `audio` is one frame per
+    // essence, in the same order as `pan`/`target`/`scale`/`target_lfe`.
+    //
+    // Does NOT advance gains_/lfe_gains_ to `target`/`target_lfe` - the
+    // caller does that itself, and only once encode_access_unit has actually
+    // succeeded (see encode_frame's own tail), so a failed frame does not
+    // silently consume its own ramp step.
+    void render_and_reconstruct(std::span<const std::span<const float>> audio,
+                                std::span<const std::array<double, joc::kNumChannels5X>> pan,
+                                std::span<const std::array<double, joc::kNumChannels5X>> target,
+                                std::span<const double> scale,
+                                std::span<const double> target_lfe);
 };
 
 AtmosEncoder::~AtmosEncoder() = default;
@@ -275,47 +441,24 @@ const joc::FrameParameters& AtmosEncoder::parameters() const { return impl_->par
 AtmosEncoder::AtmosEncoder(const AtmosConfig& config, int objects)
     : impl_(std::make_unique<Impl>(config, objects)) {}
 
-std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
-    std::span<const std::span<const float>> objects,
-    std::span<const ObjectPlacement> placement) {
-    AC3_ZONE_SCOPED_N("AtmosEncoder::encode_frame");
-    assert(static_cast<int>(objects.size()) == impl_->objects_);
-    assert(static_cast<int>(placement.size()) == impl_->objects_);
+AtmosEncoder::AtmosEncoder(const AtmosConfig& config, BedProgram bed)
+    : impl_(std::make_unique<Impl>(config, bed)) {}
 
-    const auto count = static_cast<std::size_t>(impl_->objects_);
-    const int bands = impl_->params_.bands();
-    const auto& mapping =
-        joc::kSubbandToBand[static_cast<std::size_t>(impl_->config_.num_bands_idx)];
+void AtmosEncoder::Impl::render_and_reconstruct(
+    std::span<const std::span<const float>> audio,
+    std::span<const std::array<double, joc::kNumChannels5X>> pan,
+    std::span<const std::array<double, joc::kNumChannels5X>> target,
+    std::span<const double> scale, std::span<const double> target_lfe) {
+    const auto count = static_cast<std::size_t>(essences_);
+    const int bands = params_.bands();
+    const auto& mapping = joc::kSubbandToBand[static_cast<std::size_t>(config_.num_bands_idx)];
+    assert(pan.size() == count && target.size() == count && scale.size() == count &&
+          target_lfe.size() == count);
 
-    // --- 1. Where each object ends the frame ------------------------------
-    // Two matrices come out of this and they are deliberately different. The
-    // BED gets the panning gains times the object's gain, because that is the
-    // mix. The reconstruction solve gets the panning gains alone, and the
-    // object's gain is folded into its power instead - so what JOC hands back
-    // is the object already at its intended level and object_gain can stay at
-    // 0 dB. The alternative, reconstructing the raw essence and sending the
-    // gain as metadata, would push it through Table 19's 1 dB steps for no
-    // reason.
-    std::vector<std::array<double, kChannels>> pan(count);
-    std::vector<std::array<double, kChannels>> target(count);
-    std::vector<double> scale(count);
-    std::vector<double> target_lfe(count);
-    for (std::size_t object = 0; object < count; ++object) {
-        const auto& place = placement[object];
-        const auto ring = spatial::pan_room(place.position.x, place.position.y);
-        for (int channel = 0; channel < kChannels; ++channel) {
-            const double g =
-                ring[static_cast<std::size_t>(kAc3FromJoc[static_cast<std::size_t>(channel)])];
-            pan[object][static_cast<std::size_t>(channel)] = g;
-            target[object][static_cast<std::size_t>(channel)] = g * place.gain;
-        }
-        scale[object] = place.gain;
-        target_lfe[object] = place.lfe_send * place.gain;
-    }
-    if (!impl_->primed_) {
-        impl_->gains_ = target;
-        impl_->lfe_gains_ = target_lfe;
-        impl_->primed_ = true;
+    if (!primed_) {
+        gains_.assign(target.begin(), target.end());
+        lfe_gains_.assign(target_lfe.begin(), target_lfe.end());
+        primed_ = true;
     }
 
     // --- 2. The bed ---------------------------------------------------------
@@ -324,22 +467,24 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     // 1 536-sample ramp_duration, and §6.6.5 interpolates the JOC matrix from
     // the previous frame's across every QMF timeslot in this one. A bed that
     // moved on a different schedule from the matrix that inverts it would
-    // leave the reconstruction chasing the downmix.
+    // leave the reconstruction chasing the downmix. (A CBI caller's target
+    // never moves at all - see bed_pan_'s own comment - so this ramp settles
+    // to "already there" after frame 1 and costs nothing extra to share.)
     AC3_ZONE_BEGIN(zone_bed, "step2_bed_render");
-    for (auto& channel : impl_->bed_) {
+    for (auto& channel : bed_) {
         std::ranges::fill(channel, 0.0f);
     }
-    const int frame_samples = impl_->frame_samples_;
+    const int frame_samples = frame_samples_;
     for (std::size_t object = 0; object < count; ++object) {
-        const auto& source = objects[object];
+        const auto& source = audio[object];
         assert(static_cast<int>(source.size()) == frame_samples);
         for (int channel = 0; channel < kChannels; ++channel) {
-            const double from = impl_->gains_[object][static_cast<std::size_t>(channel)];
+            const double from = gains_[object][static_cast<std::size_t>(channel)];
             const double to = target[object][static_cast<std::size_t>(channel)];
             if (from == 0.0 && to == 0.0) {
                 continue;
             }
-            auto& out = impl_->bed_[static_cast<std::size_t>(
+            auto& out = bed_[static_cast<std::size_t>(
                 kAc3FromJoc[static_cast<std::size_t>(channel)])];
             for (int n = 0; n < frame_samples; ++n) {
                 const double g = from + (to - from) * (n + 1) / frame_samples;
@@ -347,11 +492,11 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
                     g * static_cast<double>(source[static_cast<std::size_t>(n)]));
             }
         }
-        if (impl_->lfe_gains_[object] != 0.0 || target_lfe[object] != 0.0) {
-            auto& lfe = impl_->bed_[5];
+        if (lfe_gains_[object] != 0.0 || target_lfe[object] != 0.0) {
+            auto& lfe = bed_[5];
             for (int n = 0; n < frame_samples; ++n) {
-                const double g = impl_->lfe_gains_[object] +
-                                 (target_lfe[object] - impl_->lfe_gains_[object]) *
+                const double g = lfe_gains_[object] +
+                                 (target_lfe[object] - lfe_gains_[object]) *
                                      (n + 1) / frame_samples;
                 lfe[static_cast<std::size_t>(n)] += static_cast<float>(
                     g * static_cast<double>(source[static_cast<std::size_t>(n)]));
@@ -365,10 +510,10 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     for (std::size_t object = 0; object < count; ++object) {
         const auto slot = std::span{power}.subspan(
             object * static_cast<std::size_t>(bands), static_cast<std::size_t>(bands));
-        if (impl_->config_.joc_domain == joc::Domain::kQmf) {
-            qmf_band_energy(objects[object], mapping, slot, impl_->object_qmf_[object]);
+        if (config_.joc_domain == joc::Domain::kQmf) {
+            qmf_band_energy(audio[object], mapping, slot, object_qmf_[object]);
         } else {
-            band_energy(objects[object], mapping, slot, impl_->config_.fast_mdct);
+            band_energy(audio[object], mapping, slot, config_.fast_mdct);
         }
         // The signal being reconstructed is the object AT ITS GAIN, so its
         // power carries the gain squared and the geometry stays in `pan`.
@@ -446,12 +591,52 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
                 // here rather than letting quantize() do it silently keeps the
                 // transmitted matrix and the one this encoder believes it sent
                 // the same object.
-                impl_->params_.at(static_cast<int>(object), channel, band) =
+                params_.at(static_cast<int>(object), channel, band) =
                     std::clamp(value, -9.5, 9.4);
             }
         }
     }
     AC3_ZONE_END(zone_joc_invert);
+}
+
+std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
+    std::span<const std::span<const float>> objects,
+    std::span<const ObjectPlacement> placement) {
+    AC3_ZONE_SCOPED_N("AtmosEncoder::encode_frame");
+    assert(impl_->program_.dynamic_only);
+    assert(static_cast<int>(objects.size()) == impl_->objects_);
+    assert(static_cast<int>(placement.size()) == impl_->objects_);
+
+    const auto count = static_cast<std::size_t>(impl_->objects_);
+
+    // --- 1. Where each object ends the frame ------------------------------
+    // Two matrices come out of this and they are deliberately different. The
+    // BED gets the panning gains times the object's gain, because that is the
+    // mix. The reconstruction solve gets the panning gains alone, and the
+    // object's gain is folded into its power instead - so what JOC hands back
+    // is the object already at its intended level and object_gain can stay at
+    // 0 dB. The alternative, reconstructing the raw essence and sending the
+    // gain as metadata, would push it through Table 19's 1 dB steps for no
+    // reason.
+    std::vector<std::array<double, kChannels>> pan(count);
+    std::vector<std::array<double, kChannels>> target(count);
+    std::vector<double> scale(count);
+    std::vector<double> target_lfe(count);
+    for (std::size_t object = 0; object < count; ++object) {
+        const auto& place = placement[object];
+        const auto ring = spatial::pan_room(place.position.x, place.position.y);
+        for (int channel = 0; channel < kChannels; ++channel) {
+            const double g =
+                ring[static_cast<std::size_t>(kAc3FromJoc[static_cast<std::size_t>(channel)])];
+            pan[object][static_cast<std::size_t>(channel)] = g;
+            target[object][static_cast<std::size_t>(channel)] = g * place.gain;
+        }
+        scale[object] = place.gain;
+        target_lfe[object] = place.lfe_send * place.gain;
+    }
+
+    // --- 2-4. Bed render and JOC reconstruction matrix -----------------------
+    impl_->render_and_reconstruct(objects, pan, target, scale, target_lfe);
 
     // --- 5. Metadata --------------------------------------------------------
     std::vector<DynamicObject> described(count);
@@ -500,6 +685,95 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     }
 
     // --- 6. The stream ------------------------------------------------------
+    std::array<std::span<const float>, 6> views{};
+    for (std::size_t channel = 0; channel < views.size(); ++channel) {
+        views[channel] = impl_->bed_[channel];
+    }
+    auto unit = impl_->encoder_.encode_access_unit(views, container);
+    if (!unit) {
+        return std::unexpected(unit.error());
+    }
+
+    impl_->gains_ = target;
+    impl_->lfe_gains_ = target_lfe;
+    ++impl_->frames_;
+    return unit;
+}
+
+std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_bed_frame(
+    std::span<const std::span<const float>> channels) {
+    AC3_ZONE_SCOPED_N("AtmosEncoder::encode_bed_frame");
+    assert(!impl_->program_.dynamic_only);
+    assert(channels.size() == static_cast<std::size_t>(bed_channel_count(impl_->program_)));
+
+    const auto essences = static_cast<std::size_t>(impl_->essences_);
+
+    // Slice `channels` into the essences_ non-LFE spans render_and_reconstruct
+    // expects, in the same order bed_pan_/bed_scale_ were built in - the
+    // constructor's own walk of bed_labels(program_.bed), skipping the LFE.
+    std::vector<std::span<const float>> audio;
+    audio.reserve(essences);
+    for (std::size_t index = 0; index < channels.size(); ++index) {
+        if (impl_->bed_lfe_index_ == index) {
+            continue;
+        }
+        audio.push_back(channels[index]);
+    }
+    assert(audio.size() == essences);
+
+    // bed_pan_ scaled by bed_scale_ IS the target, and there is no authored
+    // per-frame gain on top of it to fold in separately - recomputed fresh
+    // each call rather than cached alongside bed_pan_/bed_scale_, the same
+    // choice encode_frame's own `power` (step 3) makes for a per-frame
+    // buffer this cheap.
+    std::vector<std::array<double, kChannels>> target(essences);
+    for (std::size_t essence = 0; essence < essences; ++essence) {
+        for (int channel = 0; channel < kChannels; ++channel) {
+            target[essence][static_cast<std::size_t>(channel)] =
+                impl_->bed_pan_[essence][static_cast<std::size_t>(channel)] *
+                impl_->bed_scale_[essence];
+        }
+    }
+    // No essence sends to the LFE by panning - the bed's own LFE channel
+    // feeds bed_[5] directly below instead, exactly as a plain 5.1 stream's
+    // LFE would.
+    const std::vector<double> target_lfe(essences, 0.0);
+
+    impl_->render_and_reconstruct(audio, impl_->bed_pan_, target, impl_->bed_scale_, target_lfe);
+
+    // The bed's own LFE: unpanned, unramped, unity gain - it is not
+    // reconstructed by JOC either (§6.3.2.2 bypasses it for a bed programme
+    // exactly as it does for a dynamic-object one), so there is no matrix or
+    // ramp state for a direct passthrough to disturb.
+    if (impl_->bed_lfe_index_.has_value()) {
+        const auto& lfe_source = channels[*impl_->bed_lfe_index_];
+        assert(static_cast<int>(lfe_source.size()) == impl_->frame_samples_);
+        auto& lfe = impl_->bed_[5];
+        for (int n = 0; n < impl_->frame_samples_; ++n) {
+            lfe[static_cast<std::size_t>(n)] += lfe_source[static_cast<std::size_t>(n)];
+        }
+    }
+
+    // --- Metadata -------------------------------------------------------
+    // No DynamicObject to describe: program_.dynamic_objects is 0, so every
+    // one of this programme's objects is anchored to its bed label -
+    // build_payload's own anchored-object path, which an empty `objects`
+    // span here selects (and which its own assert requires, matching
+    // dynamic_objects == 0 exactly).
+    impl_->params_.seq_count =
+        impl_->frames_ == 0 ? 0 : static_cast<int>((impl_->frames_ - 1) % 1023 + 1);
+
+    std::vector<std::byte> container;
+    if (impl_->config_.emit_object_metadata) {
+        const auto oamd = build_payload(impl_->program_, {}, impl_->frame_samples_);
+        const auto joc_payload = joc::build_payload(impl_->params_);
+        const std::array<emdf::Payload, 2> payloads{{
+            {.id = emdf::kPayloadIdOamd, .bytes = oamd},
+            {.id = emdf::kPayloadIdJoc, .bytes = joc_payload},
+        }};
+        container = emdf::build_container(payloads);
+    }
+
     std::array<std::span<const float>, 6> views{};
     for (std::size_t channel = 0; channel < views.size(); ++channel) {
         views[channel] = impl_->bed_[channel];

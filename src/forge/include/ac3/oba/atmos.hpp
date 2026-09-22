@@ -142,9 +142,26 @@ struct ObjectPlacement {
     bool enable_elevation = true;
 };
 
+// Selects AtmosEncoder's other constructor: a channel-based-immersive (CBI)
+// bed programme instead of dynamic objects. `bed` is the Table 12 standard
+// assignment (ac3::oba::bed::k* flags, OR'd together - e.g. bed::k51 |
+// bed::kTflTfr | bed::kTblTbr for a 5.1.4 bed) this encoder declares; the
+// programme's dynamic_objects is always 0. A distinct type rather than a
+// second int/uint16_t constructor parameter so the two constructors cannot be
+// mixed up at the call site or by overload resolution.
+struct BedProgram {
+    std::uint16_t bed = 0;
+};
+
 class AC3FORGE_EXPORT AtmosEncoder {
    public:
     AtmosEncoder(const AtmosConfig& config, int objects);
+    // Channel-based-immersive construction: see BedProgram and
+    // encode_bed_frame() below. dynamic_object_count() reads 0 afterwards -
+    // program().bed is what is non-zero - and encode_frame() must not be
+    // called on an encoder built this way (nor encode_bed_frame() on one
+    // built with the constructor above); each asserts the other's shape.
+    AtmosEncoder(const AtmosConfig& config, BedProgram bed);
     // Declared (and defined in atmos.cpp, where Impl below is complete)
     // rather than implicit/inline-defaulted: a dllexport class generates
     // every implicit special member whether or not called, and the
@@ -167,6 +184,32 @@ class AC3FORGE_EXPORT AtmosEncoder {
     [[nodiscard]] std::expected<eac3::AccessUnit, FrameError> encode_frame(
         std::span<const std::span<const float>> objects,
         std::span<const ObjectPlacement> placement);
+
+    // One frame of a CBI bed's audio - only on an encoder built with the
+    // BedProgram constructor. `channels` is exactly bed_channel_count(program())
+    // spans of one frame each (kSamplesPerFrame by default, 256/512/768 under a
+    // short AtmosConfig::numblkscod, same as encode_frame), one per
+    // bed_labels(program().bed) entry IN THAT ORDER - the LFE included, at
+    // whichever position §5.6.1.1.4's Table 12 order puts it (build_payload's
+    // own anchored-object loop assumes this same order, and it is also DEE's
+    // own cbi_wav channel order for the layouts this project has verified
+    // against a real DEE stream - see docs/concepts/atmos-joc.md).
+    //
+    // Every channel but the LFE is folded onto the 5-channel ring at its own
+    // FIXED, speaker-implied position (computed once, at construction - a bed
+    // channel's position comes from its label, never from a per-frame
+    // argument, exactly as TS 103 420 §5.5.9 has it) and reconstructed by JOC
+    // from there, the same reconstruction-matrix math encode_frame() runs for
+    // a dynamic object. The LFE feeds the bed's own LFE channel directly,
+    // unpanned and at unity gain - it is not a JOC object either way
+    // (§6.3.2.2 bypasses it for a dynamic-object programme and for a bed one
+    // alike).
+    //
+    // Returns one E-AC-3 access unit, same as encode_frame(): a single
+    // independent substream carrying the 5.1 bed, with program.bed != 0 and
+    // program.dynamic_objects == 0 in its EMDF object container.
+    [[nodiscard]] std::expected<eac3::AccessUnit, FrameError> encode_bed_frame(
+        std::span<const std::span<const float>> channels);
 
     // bare-metal probe harness. The OBJECT path's budget - what this encoder is for.
     //

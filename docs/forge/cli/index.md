@@ -1,9 +1,9 @@
 # ac3cli
 
-`ac3cli` is the command-line front end over `ac3::forge` — 42 commands covering
+`ac3cli` is the command-line front end over `ac3::forge` — 43 commands covering
 synthesis, file encoding/decoding, container wrapping, inspection, live capture/playback, and the
 tool's own self-description (`help`, `man`, `completions`).
-Two of the 42 (`atmos-adm` and `atmos-iab`) only *run* in a build configured with
+Two of the 43 (`atmos-adm` and `atmos-iab`) only *run* in a build configured with
 `-DAC3FORGE_BUILD_ADM=ON`, but are always *listed* — the same "shown, not hidden" treatment
 this page's own live-audio commands get when the platform can't run them either (see
 [Commands](commands.md)'s own ADM section). Every command it can run is backed by the same public
@@ -50,7 +50,7 @@ A build from past the tag says so in the headline, as semver build metadata: `ac
 git's own describe of it), so it is not mistaken for the tagged release. A tree with
 uncommitted changes adds a `state: dirty` line.
 
-`--version` (or its `-v` alias) is a flag, not one of the 42 commands — it's handled
+`--version` (or its `-v` alias) is a flag, not one of the 43 commands — it's handled
 before argument parsing and exits immediately. So are `--help` and `-h`, which print the named
 command's own help (or the full listing when no command was named).
 
@@ -108,7 +108,7 @@ command's own help (or the full listing when no command was named).
 
 ## Next
 
-- [Commands](commands.md) — all 42 commands, grouped and with the usage text they print
+- [Commands](commands.md) — all 43 commands, grouped and with the usage text they print
   (`atmos-adm` and `atmos-iab` only *run* with `-DAC3FORGE_BUILD_ADM=ON`, but are listed either
   way), plus the exit-code table.
 - [Options & grammars](metadata-options.md) — the `drc=`/`heavy`/`dialnorm=`/… options grammar,

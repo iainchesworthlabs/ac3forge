@@ -54,6 +54,7 @@ add_executable(ac3tests
     encoder/test_assignment.cpp
     encoder/test_bandwidth.cpp
     oba/test_atmos.cpp
+    oba/test_atmos_cbi.cpp
     oba/test_dee_joc_fixture.cpp
     oba/test_atmos_motion.cpp
     audio/test_audio_backend.cpp
@@ -465,8 +466,8 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_NET_DIR}")
 # `ctest -L concurrency` (ThreadSanitizer leg).
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
-        cli/test_cli.cpp cli/test_cli_containers.cpp cli/test_cli_live.cpp cli/test_cli_probe.cpp
-        cli/test_cli_stream_tools.cpp)
+        cli/test_cli.cpp cli/test_cli_atmos_cbi.cpp cli/test_cli_containers.cpp
+        cli/test_cli_live.cpp cli/test_cli_probe.cpp cli/test_cli_stream_tools.cpp)
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
     # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
     # well as this encoder's own output - they exercise syntax ac3forge never
