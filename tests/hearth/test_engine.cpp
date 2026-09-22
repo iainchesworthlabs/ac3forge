@@ -736,10 +736,17 @@ TEST_CASE("engine: set_layout while playing reopens the output at the new width,
           "engine's own thread",
           "[hearth][concurrency]") {
     Library library;
-    library.files["long"] = eac3_stream(40);
+    library.files["long"] = eac3_stream(200);
     auto state = std::make_shared<ClockedDevice::State>();
     const auto engine = make_engine(library, state);  // "2.0"
-    const ClockThread clock{state};
+    // Ten times real time, not the default hundred: the item still has to be
+    // mid-play by the time this test reads status() well after the reopen -
+    // real work (posting the command, sync()'s wait) happens between the
+    // eventually() below and that read, and a hundred-times clock could race
+    // a short item to its end inside that gap, especially with TSan's own
+    // overhead slowing this thread down. Same reasoning as "engine: commands
+    // from several threads..." above.
+    const ClockThread clock{state, 480};
 
     engine->add({item("long")});
     engine->play();
