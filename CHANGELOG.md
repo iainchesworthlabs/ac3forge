@@ -1215,6 +1215,21 @@ The sections below contain the complete change list and fixes.
   in time, must measure within a millisecond of that run's own last reading before the
   clock is reported converged and a stream is let start. A confirming burst that disagrees
   is not trusted; the run starts over.
+- **A Hearth sink refused a network whose name is 13 characters, and answered with a
+  broken one about a 10-character board name.** Improv's packets share the console with
+  the lines the board prints, and ESP-IDF's default line endings rewrite bytes inside
+  them: a CR from a client arrives as LF, and a CR goes out before every LF. Either one
+  lands in a packet - a length byte, a string, a checksum - and the packet then fails
+  its checksum at the other end. A `wifi_settings` whose SSID is 13 bytes long, so that
+  the length byte in front of it is a CR, was answered `invalid_packet`: a board could
+  not be told about a network named, for instance, `MyHomeNetwork`. In the other
+  direction, with a 10-character name stored, the `device_info` and `device_name`
+  answers carrying it reached the client broken. The example's console now converts
+  nothing in either direction. A command typed on it still ends at either CR or LF, and
+  each line the application prints now ends in LF alone, which `idf.py monitor` and the
+  checks under `tools/checks` read as they did; a terminal that needs the CR has a
+  setting for it. The ROM's lines, and anything logged from an interrupt, still end
+  CR LF: they are written by `esp_rom_printf`, which this setting never reached.
 - **A Hearth sink's page could reach its Sendspin player before the player had started,
   and after a failed start had freed it.** `hearth_sink` set two global pointers to the
   player and its server as it made them, on the task that starts them. The control
