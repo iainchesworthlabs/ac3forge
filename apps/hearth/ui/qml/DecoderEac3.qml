@@ -9,13 +9,13 @@ import Ac3ForgeHearth
 // HearthController.decoderSettings - a real, working decoder, not a
 // settings-only form.
 //
-// Three controls the design shows have no field to bind yet, and are shown
+// Two controls the design shows have no field to bind yet, and are shown
 // inactive with a short reason rather than silently dropped: RF ceiling
-// (OutputConfig's, not DecoderSettings') and the JOC domain and fast-
-// inverse-transform switches (library-level choices this app does not
-// carry a setting for). "This stream" and "Programme" need the current
-// item's own media information, which this controller does not read yet -
-// left for the Media page's own slice.
+// (OutputConfig's, not DecoderSettings') and the JOC domain switch (a
+// library-level choice this app does not carry a setting for). "This
+// stream" and "Programme" need the current item's own media information,
+// which this controller does not read yet - left for the Media page's own
+// slice.
 ScrollView {
     id: root
     clip: true
@@ -294,17 +294,22 @@ ScrollView {
                             onSelected: function(value) { root.set("concealment", value); }
                         }
                     }
-                    CheckBox {
-                        text: qsTr("Fast inverse transform")
-                        enabled: false
-                        checked: true
-                    }
-                    Text {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        text: qsTr("Not adjustable from this build yet; the FFT form is always used.")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSmall
-                        wrapMode: Text.WordWrap
+                        spacing: 0
+                        CheckBox {
+                            text: qsTr("Fast inverse transform")
+                            checked: root.settings.fastInverseTransform ?? true
+                            onToggled: root.set("fastInverseTransform", checked)
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 32
+                            text: qsTr("The FFT form. Off uses the reference form, to compare the two.")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
                     }
                 }
             }

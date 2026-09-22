@@ -168,6 +168,7 @@ constexpr int kPollMs = 60;
     map[QStringLiteral("dualMono")] = dual_mono_name(settings.dual_mono);
     map[QStringLiteral("objects")] = objects_policy_name(settings.objects);
     map[QStringLiteral("concealment")] = concealment_name(settings.concealment);
+    map[QStringLiteral("fastInverseTransform")] = settings.fast_inverse_transform;
     return map;
 }
 
@@ -210,6 +211,9 @@ constexpr int kPollMs = 60;
     }
     if (map.contains(QStringLiteral("concealment"))) {
         out.concealment = concealment_from_name(map[QStringLiteral("concealment")].toString());
+    }
+    if (map.contains(QStringLiteral("fastInverseTransform"))) {
+        out.fast_inverse_transform = map[QStringLiteral("fastInverseTransform")].toBool();
     }
     return out;
 }
