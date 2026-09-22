@@ -291,6 +291,33 @@ jobs:
           # because uninstall/install are exactly the shape of operation
           # (touching every file LLVM ships) that hung for the full
           # 90 minutes in the original 2026-08-28 incident.
+          # DIAGNOSTIC (ci-runners#26): a top-15-by-CPU snapshot from a prior
+          # occurrence showed nothing installer-related, but that only
+          # covers the top 15 by CPU - a near-zero-CPU child process (an
+          # NSIS-chained sub-installer, a vcredist, anything winget or NSIS
+          # spawned) could be sitting just outside that window the whole
+          # time. Walk direct children + grandchildren by PID instead of
+          # trusting a CPU-sorted top-N. Uses Win32_Process's own -Filter
+          # (server-side) rather than fetching the full process list and
+          # filtering client-side with a recursive walk - an earlier draft
+          # of this that did an unbounded recursive BFS over the full list
+          # hung for 20+ seconds even against a single already-known PID
+          # with zero children, almost certainly PID-reuse turning
+          # coincidental ParentProcessId matches into runaway expansion.
+          # Bounded to two levels on purpose, not full recursion - measured
+          # locally at <1s either way (0.3s single-PID filter, 0.7-1s for a
+          # real parent+child pair), fast enough to run on every 30s poll.
+          function Get-ProcessTree {
+            param([int]$RootId)
+            $result = @(Get-CimInstance Win32_Process -Filter "ProcessId=$RootId" -ErrorAction SilentlyContinue)
+            $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$RootId" -ErrorAction SilentlyContinue)
+            $result += $children
+            foreach ($c in $children) {
+              $result += @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($c.ProcessId)" -ErrorAction SilentlyContinue)
+            }
+            return $result
+          }
+
           function Invoke-TimedProcess {
             param([string]$FilePath, [string[]]$ArgumentList, [string]$Label, [string]$WatchDir)
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -306,6 +333,32 @@ jobs:
                 $fileInfo = " files_under=$fileCount"
               }
               Write-Host "[$($sw.Elapsed.ToString('mm\:ss'))] $Label still running (pid $($p.Id))$fileInfo MsMpEng_cpu_delta=${mpDelta}s"
+
+              try {
+                $tree = Get-ProcessTree -RootId $p.Id
+                Write-Host "  process tree:"
+                ($tree | Select-Object ProcessId, ParentProcessId, Name | Format-Table -AutoSize | Out-String -Width 300).Trim() | Write-Host
+                $treePids = @($tree.ProcessId)
+                $conns = Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object { $treePids -contains $_.OwningProcess }
+                if ($conns) {
+                  Write-Host "  network connections:"
+                  ($conns | Select-Object LocalPort, RemoteAddress, RemotePort, State, OwningProcess | Format-Table -AutoSize | Out-String -Width 300).Trim() | Write-Host
+                } else {
+                  Write-Host "  network connections: none"
+                }
+              } catch {
+                Write-Host "  process tree/network snapshot failed: $_"
+              }
+              try {
+                $proc = Get-Process -Id $p.Id -ErrorAction Stop
+                $waits = $proc.Threads | ForEach-Object {
+                  $state = $_.ThreadState
+                  if ($state -eq 'Wait') { try { "Wait/$($_.WaitReason)" } catch { "Wait/?" } } else { "$state" }
+                } | Group-Object | Select-Object Name, Count
+                Write-Host "  thread states: $(($waits | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join ', ')"
+              } catch {
+                Write-Host "  thread states unavailable: $_"
+              }
             }
             Write-Host "[$($sw.Elapsed.ToString('mm\:ss'))] $Label exited: code=$($p.ExitCode)"
             return $p.ExitCode
