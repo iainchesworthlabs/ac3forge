@@ -564,9 +564,15 @@ configurations reconstruct like their unshifted siblings — the shift is a prop
 downmix was *built*, §6.6.6 says nothing about undoing it before matrixing, and there is no
 Hilbert filterbank here to undo it with.
 
-Reconstruction needs the downmix JOC asks for. Table 47's 7-channel configurations want Lb/Rb
-from a dependent substream, which `decode_substream` does not have in hand, so those parse but
-leave `object_audio` empty; the metadata still decodes and is still reported.
+Reconstruction needs the downmix JOC asks for. Table 47's three widest configurations need a
+dependent substream's extra channel pair before they can reconstruct at all — `kDmxConfig7X` wants
+Lb/Rb, and `kDmxConfig5XPlus2`/`kDmxConfig5XPlus2PhaseShift` want Tfl/Tfr instead — which
+`decode_substream` does not have in hand on its own. It parses the payload and defers: once
+`decode_access_unit` has unioned every substream's channels into the programme's full layout,
+reconstruction runs there instead, in `Domain::kMdctBand` (the QMF pair's own state stays hardcoded
+to the five-channel case). Called one substream at a time rather than through `decode_access_unit`,
+these three configurations still parse but leave `object_audio` empty; the metadata still decodes
+and is still reported either way.
 
 ## The mirror self-check
 
