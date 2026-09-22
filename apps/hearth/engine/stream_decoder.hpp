@@ -140,6 +140,15 @@ public:
     // What a seek needs before the first unit at its new position.
     void reset();
 
+    // The small-speaker crossover's corner (render.hpp's LayoutRenderer).
+    // False, changing nothing, for a frequency set_crossover_hz() itself
+    // refuses. A player applies this once per StreamDecoder - a new one is
+    // built on every rate change (decoder_rate_) - rather than this taking
+    // it in its constructor, so the one setting that changes at runtime does
+    // not grow every call site that only ever passes the default.
+    bool set_crossover_hz(double hz) { return renderer_.set_crossover_hz(hz); }
+    [[nodiscard]] double crossover_hz() const { return renderer_.crossover_hz(); }
+
     [[nodiscard]] const render::Serving& serving() const { return serving_; }
     [[nodiscard]] const render::OutputLayout& layout() const { return layout_; }
     [[nodiscard]] const DecoderSettings& settings() const { return settings_; }

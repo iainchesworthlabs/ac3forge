@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <iterator>
 #include <span>
 #include <string_view>
@@ -415,8 +416,76 @@ void Player::build_decoder(std::uint32_t rate, bool transcode) {
                          Substreams::kIndependent);
     } else {
         decoder_.emplace(layout_, rate, settings_);
+        // Not for a transcode: its output goes to Ac3Transcoder, not to
+        // speakers, so the crossover and the trim/delay a room's setup asks
+        // for do not apply to it - see take_block()'s own guard.
+        decoder_->set_crossover_hz(crossover_hz_);
+        reconfigure_trim_delay(rate);
     }
     decoder_rate_ = rate;
+}
+
+void Player::reconfigure_trim_delay(std::uint32_t rate) {
+    if (trim_delay_rate_ == rate) {
+        return;
+    }
+    const std::size_t slots = layout_.slots();
+    const std::size_t max_delay_samples = render::TrimDelay::samples_for_ms(kMaxDelayMs, rate);
+    trim_delay_storage_.assign(render::TrimDelay::storage_floats(slots, max_delay_samples), 0.0F);
+    const bool configured = trim_delay_.configure(trim_delay_storage_, slots, max_delay_samples);
+    static_cast<void>(configured);  // slots <= kMaxSlots == kMaxOutputs; storage sized to fit
+    for (std::size_t slot = 0; slot < slots; ++slot) {
+        trim_delay_.set_trim_db(slot, trim_db_[slot]);
+        trim_delay_.set_delay(slot, render::TrimDelay::samples_for_ms(delay_ms_[slot], rate));
+    }
+    trim_delay_rate_ = rate;
+}
+
+bool Player::set_trim_db(std::size_t slot, double db) {
+    if (slot >= layout_.slots() ||
+        !(db >= render::TrimDelay::kMinTrimDb && db <= render::TrimDelay::kMaxTrimDb)) {
+        return false;
+    }
+    trim_db_[slot] = db;
+    if (trim_delay_rate_ != 0) {
+        trim_delay_.set_trim_db(slot, db);
+    }
+    return true;
+}
+
+bool Player::set_delay_ms(std::size_t slot, double ms) {
+    if (slot >= layout_.slots() || !std::isfinite(ms) || ms < 0.0 || ms > kMaxDelayMs) {
+        return false;
+    }
+    delay_ms_[slot] = ms;
+    if (trim_delay_rate_ != 0) {
+        trim_delay_.set_delay(slot, render::TrimDelay::samples_for_ms(ms, trim_delay_rate_));
+    }
+    return true;
+}
+
+double Player::trim_db(std::size_t slot) const {
+    return slot < layout_.slots() ? trim_db_[slot] : 0.0;
+}
+
+double Player::delay_ms(std::size_t slot) const {
+    return slot < layout_.slots() ? delay_ms_[slot] : 0.0;
+}
+
+bool Player::set_crossover_hz(double hz) {
+    // set_crossover_hz()'s own check is a static range, the same whatever
+    // layout or sample rate it is asked against, so validating here needs no
+    // decoder to ask - only decoder_->set_crossover_hz(), when there is a
+    // decoder, actually reaches into the renderer to apply it.
+    if (!(hz >= render::LayoutRenderer::kMinCrossoverHz &&
+          hz <= render::LayoutRenderer::kMaxCrossoverHz)) {
+        return false;
+    }
+    crossover_hz_ = hz;
+    if (decoder_) {
+        decoder_->set_crossover_hz(hz);  // already validated above; cannot fail
+    }
+    return true;
 }
 
 bool Player::decoder_fits(std::uint32_t rate, bool transcode) const {
@@ -1086,6 +1155,18 @@ void Player::take_block(std::span<const std::span<const float>> rendered, std::s
         } else {
             std::fill_n(out, n, 0.0F);
         }
+    }
+    if (trim_delay_rate_ != 0) {
+        // In place, on this player's own copy - never on `rendered`, which
+        // is the decoder's reused buffer and, for a bitstream or a
+        // transcode, has already returned above without reaching here.
+        // TrimDelay costs nothing per output at 0 dB with no delay, so this
+        // is unconditional rather than gated on active().
+        std::array<std::span<float>, render::OutputLayout::kMaxSlots> out_spans{};
+        for (std::size_t slot = 0; slot < slots; ++slot) {
+            out_spans[slot] = std::span<float>(block.samples).subspan(slot * n, n);
+        }
+        trim_delay_.process(std::span<std::span<float>>(out_spans.data(), slots));
     }
     pending_frames_ += n;
 }

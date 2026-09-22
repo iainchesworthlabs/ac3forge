@@ -3,6 +3,7 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <array>
 #include <string_view>
 #include <utility>
 
@@ -216,6 +217,48 @@ void Engine::set_decoder_settings(const DecoderSettings& settings) {
     });
 }
 
+void Engine::set_trim_db(std::size_t slot, double db) {
+    post([this, slot, db](Player& player) {
+        if (!player.set_trim_db(slot, db)) {
+            return fmt::format("trim refused: slot {} at {:.1f} dB", slot, db);
+        }
+        note(fmt::format("trim: slot {} {:.1f} dB", slot, db));
+        return std::string{};
+    });
+}
+
+void Engine::set_delay_ms(std::size_t slot, double ms) {
+    post([this, slot, ms](Player& player) {
+        if (!player.set_delay_ms(slot, ms)) {
+            return fmt::format("delay refused: slot {} at {:.1f} ms", slot, ms);
+        }
+        note(fmt::format("delay: slot {} {:.1f} ms", slot, ms));
+        return std::string{};
+    });
+}
+
+void Engine::set_crossover_hz(double hz) {
+    post([this, hz](Player& player) {
+        if (!player.set_crossover_hz(hz)) {
+            return fmt::format("crossover refused: {:.0f} Hz", hz);
+        }
+        note(fmt::format("crossover: {:.0f} Hz", hz));
+        return std::string{};
+    });
+}
+
+void Engine::set_routing(const render::Routing& routing) {
+    post([this, routing](Player& player) {
+        std::array<char, render::Routing::kTextBytes> text{};
+        routing.format(text);
+        if (!player.set_routing(routing)) {
+            return fmt::format("routing refused: {}", text.data());
+        }
+        note(fmt::format("routing: {}", text.data()));
+        return std::string{};
+    });
+}
+
 void Engine::set_gapless(bool on) {
     post([this, on](Player& player) {
         if (on != player.transport().gapless()) {
@@ -352,6 +395,17 @@ void Engine::publish(const std::string& note, std::uint64_t carried) {
     next.output_opens = player_.output_opens();
     next.history = player_.history();
     next.error = player_.last_error();
+    const std::size_t slots = player_.layout().slots();
+    next.trim_db.resize(slots);
+    next.delay_ms.resize(slots);
+    for (std::size_t slot = 0; slot < slots; ++slot) {
+        next.trim_db[slot] = player_.trim_db(slot);
+        next.delay_ms[slot] = player_.delay_ms(slot);
+    }
+    next.crossover_hz = player_.crossover_hz();
+    next.routing = player_.routing();
+    next.device_name = player_.device_name();
+    next.speaker_mask = player_.speaker_mask();
     const PlayPosition position = player_.position();
 
     std::function<void(const EngineStatus&)> callback;

@@ -56,6 +56,14 @@ public:
 
     bool resume() override { return output_.resume().has_value(); }
 
+    bool set_routing(const render::Routing& routing) override { return output_.set_routing(routing); }
+
+    [[nodiscard]] render::Routing routing() const override { return output_.routing(); }
+
+    [[nodiscard]] std::string device_name() const override { return output_.info().device_name; }
+
+    [[nodiscard]] std::uint32_t speaker_mask() const override { return output_.info().speakers; }
+
 private:
     std::string device_id_;
     bool low_latency_ = false;
