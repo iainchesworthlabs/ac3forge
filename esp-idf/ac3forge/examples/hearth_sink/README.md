@@ -603,8 +603,17 @@ its own clock, and the player follows that clock with Sendspin's time
 filter
 ([`clock_sync.hpp`](../../../../src/sendspin/include/ac3/sendspin/clock_sync.hpp)):
 bursts of eight exchanges, one after another until the filter has converged,
-then thirty a second apart, then one every ten seconds. A burst whose replies
-all came back late, as they do behind a stream's chunks, is left out. A
+then thirty a second apart, then one every ten seconds. Convergence itself is
+confirmed rather than taken on trust: once a run of bursts reads as converged,
+one more burst, a learning interval later and so genuinely apart in time, must
+measure within a millisecond of that run before the player calls the clock
+converged and a stream is let start. Without that, a run taken in the seconds
+right after a Wi-Fi reconnect - where reassociation, mDNS's re-announce and an
+ARP round can all delay a reply the same way - could read as converged on an
+offset that was still off by several milliseconds, since the filter's own
+error estimate says only that its samples agree with each other. A burst
+whose replies all came back late, as they do behind a stream's chunks, is
+left out. A
 chunk's local time is worked out when it arrives, which may be seconds before
 it plays, and it is moved by as much as the clock has moved by the time it
 does. The I2S sink says when each buffer it is given will play, from the
