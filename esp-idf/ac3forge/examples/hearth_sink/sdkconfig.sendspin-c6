@@ -28,6 +28,12 @@ CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES=4096
 CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES=24576
 CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS=0
 
+# 2.0 played every fixture measured on this board; AC-3 and E-AC-3 5.1 each aborted
+# within about 10 to 12 seconds, the decoder's own scratch failing an allocation the
+# heap no longer had room for. Past 2 coded channels a syncframe is refused before a
+# decoder opens for it - the console says why, once per stream - instead.
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CODED_CHANNELS=2
+
 # 16-bit slots, the width an ES9080 on this part runs, and half the bytes a frame a
 # 32-bit stereo pair takes. A board can still take 32 (PUT /slot-width).
 CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS=16
