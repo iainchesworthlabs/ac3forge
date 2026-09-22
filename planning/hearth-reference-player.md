@@ -608,7 +608,10 @@ sound from a local device using that page alone.
 ## Chip B: the ESP32-S3 sink
 
 Starts once A4 has landed on main: the extension page reviewed, `src/sendspin` and the test sink
-merged. Proven on the S3 development boards with TDM DACs.
+merged. Proven on the S3 development boards. No DAC is wired to either of them: the ES9080 design
+is on paper, and the boards clock their audio out with nothing listening. So each phase's exit
+below is met as far as reported levels, timing and counters go, and the parts that need a DAC
+wait for one.
 
 ### B1: the firmware and its outputs
 
@@ -677,6 +680,15 @@ page, the ESP32 player plan's status block, CHANGELOG.
 
 **Exit and verified by:** `mkdocs build --strict` and `check_doc_paths.py`; someone flashing a
 board from the guide alone.
+
+## Sink module tiers (C6 / S3 / P4)
+
+Same `hearth_sink` family on a longer-term **shared PCB** with a modular ESP32 and a **pair of
+ES9080** DACs. Ceilings: C6 **≤5.1** (one DAC); S3 **≤7.1.4 without enhanced coupling** (both
+DACs, both I2S controllers, 16×16-bit); P4 **≤9.1.6 with full tools** desired (both DACs, one
+I2S controller, 16×32-bit). Detail and P4 exit criteria:
+[`esp32-sink-tiers.md`](esp32-sink-tiers.md). Chip B is better; Chip C is good; P4 is Proposed
+best, not a chip letter here yet.
 
 ## Chip C: the ESP32-C6
 
@@ -750,15 +762,15 @@ AC-4 data type (IEC 61937-14 defines AC-4 carriage, to be confirmed against the 
 | Two boards are aligned at their DAC outputs | **partly** | Reported play times measure the software schedule; no capture interface is available to record both analogue outputs together |
 | Music Assistant's Sendspin server matches the specification version implemented here | **at a version** | Sendspin is moving; each interoperability run records the versions |
 | Decoded AC-4 audio is correct | **partly**, after chip D | No local AC-4 decode oracle; scoring against DEE's source WAVs measures closeness, not identity |
-| 16-bit TDM works with DACs other than the bench boards | **no** | One family of DAC boards on the bench |
+| A sink's outputs are heard, at either slot width | **no** | No DAC hardware exists. The ES9080 design is on paper, so a board clocks its audio out with nothing listening: levels, timing and counters are measured, and nothing is heard |
 | Group alignment holds on a congested WiFi network | **partly** | Measured on the user's network only |
 | A screen-reader user can operate the application | **partly** | Automated role and name checks; no screen-reader pass has been done on any member |
 | Pairing and Noise interoperate with Sendspin implementations beyond the two partners | **at a version** | The reference Python player and Music Assistant are the partners available |
 
 ## Coordination
 
-- Before each phase: `gh pr list`. Branch names start with `feature/` or `bugfix/`, which CI's
-  branch-name gate requires.
+- Before each phase: `gh pr list`. Branch names are `<type>/<kebab-name>` with type one of
+  `feature`, `bugfix`, `hotfix`, `docs`, or `chore`, which CI's branch-name gate requires.
 - A1 moves headers the ESP-IDF component and its QEMU steps include. An open ESP32 branch that
   edits `layout.hpp` or `render.hpp` lands first, or rebases onto the move.
 - The 16-bit TDM interleave and planner change belong to whichever of C2 and B1 starts first; the
@@ -807,7 +819,7 @@ marked. Six were given in the user's own words rather than as one of the options
 | 12 | Groups in v1 | One output at a time | **Synchronised groups** ← against |
 | 13 | What a group is | (multi-room, a split layout, or both) | **Sendspin's groups rather than a new design: become a Sendspin client with an extension** |
 | 14 | Which outputs join a group | Hearth sinks only | **Whatever is a stepping stone to a Sendspin client with E-AC-3**: sinks, test sinks and standard players |
-| 15 | Verification hardware | (asked) | **Two or more S3 boards with TDM DACs, the Onkyo over HDMI from a PC, and a multichannel test sink to build** |
+| 15 | Verification hardware | (asked) | **Two or more S3 boards with TDM DACs, the Onkyo over HDMI from a PC, and a multichannel test sink to build**. The DAC boards have not arrived: every board run so far has had nothing on its I2S pins |
 | 16 | Speaker setup in v1 | (asked) | **Identify tone, per-output trim, per-output delay, bass management** |
 | 17 | When encryption arrives | The profile now, Noise second | **Fully conformant in v1** ← against |
 | 18 | The sink's page | Status and sink-owned settings | **Status and sink-owned settings** |

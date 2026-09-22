@@ -158,6 +158,14 @@ std::size_t burst_bytes_for(BitstreamFormat format) {
     return format == BitstreamFormat::kEac3 ? iec61937::kEac3BurstBytes : iec61937::kBurstBytes;
 }
 
+// The answers that mean the stream has gone for good: its endpoint unplugged,
+// disabled or reconfigured under it, or the audio service stopped (Microsoft's
+// "Recovering from an Invalid-Device Error"). Distinct from a call a driver
+// merely declines to answer, which the render loop below allows for.
+bool stream_gone(HRESULT result) {
+    return result == AUDCLNT_E_DEVICE_INVALIDATED || result == AUDCLNT_E_SERVICE_NOT_RUNNING;
+}
+
 std::string to_utf8(const wchar_t* wide) {
     if (wide == nullptr) {
         return {};
@@ -424,6 +432,9 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
 struct PassthroughSink::Impl {
     std::unique_ptr<ByteRingBuffer> queue;
     std::jthread worker;
+    // Raised by the render thread once the device is open. Lowered by stop(),
+    // or by the render thread itself when the device goes away under it: the
+    // loop's end says how, and why that is the only flag it touches.
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     // Accumulated in bytes, not bursts: the exclusive-mode buffer WASAPI
@@ -496,7 +507,9 @@ void PassthroughSink::flush() {
     // at most, so this waits far longer than it should need to. Past that the
     // device has stopped answering, and the flush is left for the thread to
     // make when it next runs; the mark keeps it from dropping bursts
-    // submitted after this call returned.
+    // submitted after this call returned. A thread that has ended because
+    // its device went away will not run again, and lowers `running` as it
+    // goes, which ends the wait at once.
     for (int waited = 0; waited < 200; ++waited) {
         if (impl_->flushes.load(std::memory_order_acquire) != done || !running()) {
             return;
@@ -522,11 +535,15 @@ std::expected<void, PassthroughError> PassthroughSink::resume() {
 }
 
 bool PassthroughSink::paused() const {
-    return impl_->paused.load(std::memory_order_acquire);
+    // A pause is a property of a running stream, so one whose device has
+    // gone is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
 }
 
 bool PassthroughSink::can_submit() const {
-    if (!impl_->queue) {
+    // Nothing takes a burst once the stream has ended, whatever room the
+    // queue it leaves behind still has.
+    if (!running() || !impl_->queue) {
         return false;
     }
     return impl_->queue->capacity() - impl_->queue->available() > impl_->burst_bytes;
@@ -564,6 +581,11 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (running()) {
         return std::unexpected(PassthroughError::kAlreadyRunning);
     }
+    // A render thread that ended because its device went away still holds
+    // its client until it is joined, and an exclusive hold can refuse the
+    // next Initialize until then. stop() joins it; with nothing started it
+    // does nothing.
+    stop();
 
     ComScope com;
     if (!com.ok()) {
@@ -725,21 +747,30 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         HANDLE mmcss = AvSetMmThreadCharacteristicsW(L"Pro Audio", &mmcss_index);
 
         std::vector<std::byte> chunk;
-        client->Start();
-        bool device_running = true;
         std::uint64_t handed_over = 0;
+        // Set when the loop ends because the device did rather than because
+        // stop() asked it to. A device that will not start has gone, or will
+        // not play this stream; no render event would ever come for it.
+        bool lost = FAILED(client->Start());
+        bool device_running = !lost;
 
-        while (!stop.stop_requested()) {
+        while (!lost && !stop.stop_requested()) {
             // A pause stops the device and leaves everything else standing:
             // the queue keeps its bursts and goes on taking more. No render
             // event arrives while stopped, so the loop sleeps rather than
-            // wait for one.
+            // wait for one - and asks the device whether it is still there,
+            // since nothing else would say.
             if (impl_->paused.load(std::memory_order_acquire)) {
                 if (device_running) {
                     client->Stop();
                     device_running = false;
                 }
                 if (!impl_->flushing.load(std::memory_order_acquire)) {
+                    UINT32 held = 0;
+                    if (stream_gone(client->GetCurrentPadding(&held))) {
+                        lost = true;
+                        break;
+                    }
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
                     continue;
                 }
@@ -764,12 +795,28 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
             if (!device_running) {
                 // An event signalled before the stop is stale: after a pause
                 // the device still holds the buffer it had, and would refuse
-                // another until it has played that one.
+                // another until it has played that one. A flush's Stop and
+                // Reset on a device that has gone fail quietly, so it is this
+                // Start that finds out.
                 ResetEvent(ready);
-                client->Start();
+                if (FAILED(client->Start())) {
+                    lost = true;
+                    break;
+                }
                 device_running = true;
             }
             if (WaitForSingleObject(ready, 200) != WAIT_OBJECT_0) {
+                // Many periods without an event. A device can stall and come
+                // back - an HDMI display asleep - but one that has been
+                // removed need never signal again, so the wait alone would
+                // not notice. The padding is the cheapest thing to ask; only
+                // an answer that the stream has gone ends it, since some
+                // drivers decline the question (see below).
+                UINT32 held = 0;
+                if (stream_gone(client->GetCurrentPadding(&held))) {
+                    lost = true;
+                    break;
+                }
                 continue;
             }
             // Exclusive event-driven streams take a whole buffer each period,
@@ -786,10 +833,12 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
             if (buffer_result == AUDCLNT_E_BUFFER_TOO_LARGE) {
                 // The buffer is not free yet, which only a wake from before a
                 // restart can say; the next event is a real one. Anything
-                // else is the device failing, and ends the thread as before.
+                // else is the device failing - AUDCLNT_E_DEVICE_INVALIDATED
+                // for one unplugged - and ends the thread.
                 continue;
             }
             if (FAILED(buffer_result)) {
+                lost = true;
                 break;
             }
             const std::size_t wanted = static_cast<std::size_t>(buffer_frames) * frame_bytes;
@@ -810,6 +859,17 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
             impl_->rendered_bytes.fetch_add(got, std::memory_order_relaxed);
         }
 
+        if (lost) {
+            // The stream has ended with its device, and says so the way a
+            // stop() would: running() false, so position() reports nothing,
+            // submit() refuses, and flush(), pause() and resume() return at
+            // once - a flush() already waiting sees it on its next look.
+            // Only the flag is touched. The queue's read side and the counts
+            // are this thread's to the end, and it has finished with them;
+            // `paused` and `flushing` are the caller's, and stop() lowers
+            // them when it joins this thread, which it still has to do.
+            impl_->running.store(false, std::memory_order_release);
+        }
         client->Stop();
         if (mmcss != nullptr) {
             AvRevertMmThreadCharacteristics(mmcss);

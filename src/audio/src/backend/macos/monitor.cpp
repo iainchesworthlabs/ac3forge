@@ -80,7 +80,10 @@ struct MonitorSink::Impl {
     bool interleaved = true;
     std::uint16_t channels = 0;
     std::uint32_t sample_rate = 0;
+    // Raised by start(). Lowered by stop(), or by `alive` when the device
+    // dies under the stream.
     std::atomic_bool running{false};
+    coreaudio::AliveWatch alive{running};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
@@ -172,10 +175,11 @@ void MonitorSink::flush() {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     // The device stopped calling back before it could do the work - an HDMI
-    // output whose display has gone to sleep, a device pulled out. The flush
-    // is left for the next callback, whenever the device comes back. It drops
-    // only what was queued before the mark, so audio submitted after this
-    // call returned is kept.
+    // output whose display has gone to sleep. The flush is left for the next
+    // callback, whenever the device comes back. It drops only what was queued
+    // before the mark, so audio submitted after this call returned is kept.
+    // A device pulled out never calls back again; its death lowers `running`,
+    // which ends the wait above at once.
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
@@ -221,11 +225,13 @@ std::expected<void, MonitorError> MonitorSink::resume() {
 }
 
 bool MonitorSink::paused() const {
-    return impl_->paused.load(std::memory_order_acquire);
+    // A pause is a property of a running stream, so one whose device has
+    // died is not paused either.
+    return running() && impl_->paused.load(std::memory_order_acquire);
 }
 
 bool MonitorSink::can_submit() const {
-    if (!impl_->queue || impl_->channels == 0) {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
         return false;
     }
     // Room for at least ~20 ms at a typical rate, in samples (interleaved).
@@ -255,6 +261,9 @@ bool MonitorSink::submit(std::span<const float> interleaved) {
 }
 
 void MonitorSink::stop() {
+    // Unwatched first, so nothing lowers the flag of a stream being taken
+    // down anyway.
+    impl_->alive.reset();
     if (impl_->io_proc_id != nullptr) {
         AudioDeviceStop(impl_->device, impl_->io_proc_id);
         AudioDeviceDestroyIOProcID(impl_->device, impl_->io_proc_id);
@@ -278,6 +287,9 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     if (running()) {
         return std::unexpected(MonitorError::kAlreadyRunning);
     }
+    // A stream whose device died still has its IOProc registered, and its
+    // watch; stop() lets go of both. With nothing started it does nothing.
+    stop();
     if (channels == 0) {
         return std::unexpected(MonitorError::kComFailure);
     }
@@ -465,6 +477,12 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
 
     impl_->io_proc_id = proc_id;
     impl_->running.store(true, std::memory_order_release);
+    // A device that dies from here on lowers the flag through the watch. One
+    // that died before the watch was in place never tells it, so it is asked.
+    impl_->alive.watch(device);
+    if (!coreaudio::device_alive(device)) {
+        impl_->running.store(false, std::memory_order_release);
+    }
     return {};
 }
 

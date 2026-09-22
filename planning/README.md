@@ -36,6 +36,7 @@ a record or mark it superseded — see [SUPERSEDED.md](SUPERSEDED.md).
 | [topology.md](topology.md) | Source, transport, sink roles; HLS/CMAF transport | Hearth sinks use Sendspin instead ([SUPERSEDED.md](SUPERSEDED.md)); HLS frame still applies elsewhere |
 | [host-plugin.md](host-plugin.md) | DAW/NLE metering/QC plugin feasibility | [Proposed — DAW/NLE host plugin](../ROADMAP.md#proposed) |
 | [qc-report.md](qc-report.md) | Delivery-shaped QC report file | [Proposed — QC delivery report file](../ROADMAP.md#proposed) |
+| [esp32-sink-tiers.md](esp32-sink-tiers.md) | C6 / S3 / P4 good·better·best modules on one dual-ES9080 PCB | [Proposed — ESP32 sink tiers](../ROADMAP.md#proposed) |
 
 ---
 

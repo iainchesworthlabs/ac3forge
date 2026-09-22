@@ -679,8 +679,11 @@ extern "C" void app_main() {
     start_sendspin();
     // Whether the calls above had a network to start on. One that comes up
     // later - over Improv, on a board that had none stored or could not join
-    // the one it had - gets the same calls from the loop below, in the same
-    // order; the control surface is already listening.
+    // the one it had, or by itself once a network that was down at boot is
+    // back - gets the same calls from the loop below, in the same order; the
+    // control surface is already listening. A network that drops after this
+    // and comes back needs none of them again: the servers keep listening,
+    // and mDNS announces the board again when it has an address.
     bool networked = player::network_ready();
     player::provisioning_start(player::sendspin_running() ? &player::sendspin_console : nullptr);
 

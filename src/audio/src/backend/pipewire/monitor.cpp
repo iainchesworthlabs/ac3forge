@@ -63,6 +63,8 @@ struct MonitorSink::Impl {
     ThreadLoop loop;
     Stream stream;
     std::unique_ptr<RingBuffer> queue;
+    // Raised by start(). Lowered by stop(), or by state_changed() when the
+    // stream ends on its own (see there).
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
@@ -103,6 +105,21 @@ struct MonitorSink::Impl {
     static void state_changed(void* data, pw_stream_state /*old_state*/, pw_stream_state state,
                                const char* /*error*/) {
         auto& impl = *static_cast<Impl*>(data);
+        if (state == PW_STREAM_STATE_ERROR || state == PW_STREAM_STATE_UNCONNECTED) {
+            // The stream's own end: an error (its node failed, or the daemon
+            // went), or its node removed by the server, which is what a
+            // device going away leads to when nothing links the stream
+            // elsewhere. No more process() calls will come, so running() says
+            // so as stop() would have it: position() reports nothing, and
+            // submit(), flush(), pause() and resume() answer at once. start()
+            // raises the flag with the loop locked, after the connect, so
+            // this cannot come between the two; stop() and a failed start()
+            // reach UNCONNECTED themselves, with the flag already down or
+            // about to be. A stream the session manager leaves unlinked,
+            // waiting for its target to come back, is only PAUSED - not an
+            // end, and position() stands still until it is linked again.
+            impl.running.store(false, std::memory_order_release);
+        }
         if (state == PW_STREAM_STATE_STREAMING || state == PW_STREAM_STATE_PAUSED) {
             auto expected = ConnectState::kPending;
             impl.connect_state.compare_exchange_strong(expected, ConnectState::kReady);
@@ -281,7 +298,8 @@ void MonitorSink::flush() {
     // The graph stopped calling back before it could do the work. The flush
     // is left for the next callback - a resume, a route change - and drops
     // only what was queued before the mark, so audio submitted after this
-    // call returned is kept.
+    // call returned is kept. A stream that has ended will make no callback,
+    // and state_changed() lowering `running` ends the wait above at once.
 }
 
 std::expected<void, MonitorError> MonitorSink::pause() {
@@ -334,7 +352,7 @@ bool MonitorSink::paused() const {
 }
 
 bool MonitorSink::can_submit() const {
-    if (!impl_->queue || impl_->channels == 0) {
+    if (!running() || !impl_->queue || impl_->channels == 0) {
         return false;
     }
     return impl_->queue->capacity() - impl_->queue->available() >
@@ -383,6 +401,10 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
     if (running()) {
         return std::unexpected(MonitorError::kAlreadyRunning);
     }
+    // A stream that ended on its own still has its loop and its stream, and
+    // the loop must go after the stream, not be replaced before it. stop()
+    // tears both down in that order; with nothing started it does nothing.
+    stop();
     if (channels == 0) {
         return std::unexpected(MonitorError::kComFailure);
     }
@@ -471,9 +493,10 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
         return std::unexpected(MonitorError::kDeviceNotFound);
     }
 
-    pw_thread_loop_unlock(impl_->loop.get());
-
+    // Raised before the loop is unlocked, so that a state change ending the
+    // stream cannot fall between the connect and the flag (state_changed()).
     impl_->running.store(true, std::memory_order_release);
+    pw_thread_loop_unlock(impl_->loop.get());
     return {};
 }
 

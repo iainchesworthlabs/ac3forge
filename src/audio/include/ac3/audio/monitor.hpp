@@ -84,6 +84,9 @@ public:
     // caller submitting small chunks at a steady cadence gets a shorter
     // queue-to-speaker path; one submitting 32 ms frames gains nothing and
     // should leave it off. Ignored on platforms without such a knob.
+    // Refused while running(); once running() is false - after stop(), or
+    // after the device went away - it may be called again, with nothing to
+    // tidy up first.
     [[nodiscard]] std::expected<void, MonitorError> start(const std::string& device_id,
                                                            std::uint32_t sample_rate,
                                                            std::uint16_t channels,
@@ -92,16 +95,22 @@ public:
 
     // Queues interleaved float samples (a multiple of `channels` long).
     // Returns false if the queue is full - the caller is running ahead of
-    // real time and should wait rather than spin.
+    // real time and should wait rather than spin - and whenever the sink is
+    // not running(), which no wait will change: a caller that retries on
+    // false has to look at running() too.
     bool submit(std::span<const float> interleaved);
 
     // Room for at least one more period's worth of samples without blocking.
+    // False while not running().
     [[nodiscard]] bool can_submit() const;
 
+    // Stops and closes the device. Harmless when nothing is running, and
+    // what lets go of a stream that ended with its device.
     void stop();
 
-    // Where playback has got to, while it is running; nothing when it is not,
-    // or on a platform whose backend cannot ask.
+    // Where playback has got to, while it is running; nothing when it is not
+    // - including once the device has gone - or on a platform whose backend
+    // cannot ask.
     [[nodiscard]] std::optional<MonitorPosition> position() const;
 
     // Drops what has been submitted and not yet played, here and in the
@@ -113,7 +122,8 @@ public:
     // it, latency_frames' worth - cannot be recalled by anyone. A device that
     // has stopped answering is not waited for past a moment. Its flush is
     // then made when the render thread next runs, and it drops only what was
-    // submitted before this call.
+    // submitted before this call. Returns at once when nothing is running,
+    // and as soon as the device goes away if that happens while it waits.
     void flush();
 
     // Stops the device without closing the stream: the format, the device and
@@ -124,8 +134,19 @@ public:
     // harmless; both refuse only when nothing is running.
     [[nodiscard]] std::expected<void, MonitorError> pause();
     [[nodiscard]] std::expected<void, MonitorError> resume();
+    // True between a pause() and a resume(), and only while running().
     [[nodiscard]] bool paused() const;
 
+    // True from a successful start() until stop() - or until the device goes
+    // away under the stream: unplugged, disabled, or its stream taken by the
+    // system. The sink stops itself then, as PassthroughSink::running()
+    // describes, and answers every call as it would after stop(). When the
+    // loss shows depends on the platform: WASAPI within a fraction of a
+    // second, paused or not; ALSA at the render thread's next wait or write,
+    // which for a paused stream is its resume; Core Audio when the device
+    // reports itself dead; AAudio when a write fails or the stream reports
+    // itself disconnected. A shared-mode stream the platform moves to another
+    // output - PipeWire's session manager does, when a sink goes - carries on.
     [[nodiscard]] bool running() const;
     [[nodiscard]] MonitorStats stats() const;
 

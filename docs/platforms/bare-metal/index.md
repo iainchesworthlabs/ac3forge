@@ -11,8 +11,10 @@ The variant table keeps codec support, Hearth support, distribution and evidence
 --8<-- "docs-snippets/generated/platform-bare-metal.md"
 
 Whether a part is viable at all comes down to floating point, not RAM — the comparison across the
-wider ESP32 family, and why the ESP32-P4 was assessed and declined, is on
-[ESP32-C3 → Why this part](esp32-c3.md#why-this-part-and-not-another-esp32-variant).
+wider ESP32 family, why the ESP32-P4 was declined as an S3 *replacement*, and the complementary
+C6 / S3 / P4 sink modules on one dual-ES9080 PCB, are on
+[ESP32-C3 → Why this part](esp32-c3.md#why-this-part-and-not-another-esp32-variant) and
+[`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md).
 
 ## Which page
 

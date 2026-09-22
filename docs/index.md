@@ -36,6 +36,7 @@ performance, decoder-accuracy, listening-quality, object-quality, and memory his
 ## Project information
 
 - [Capabilities](library/capabilities.md) — supported formats, coding tools, layouts, and limits.
+- [Development status](library/development-status.md) — done / partial / not-started across every codec surface.
 - [Application coverage](library/application-coverage.md) — which library features each
   application exposes.
 - [Validation](verification.md) — how output is checked and where independent checking ends.

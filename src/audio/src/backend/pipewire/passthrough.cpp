@@ -407,6 +407,8 @@ struct PassthroughSink::Impl {
     Stream stream;
     std::unique_ptr<ByteRingBuffer> queue;
     std::size_t burst_bytes = iec61937::kBurstBytes;
+    // Raised by start(). Lowered by stop(), or by state_changed() when the
+    // stream ends on its own.
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
@@ -442,6 +444,15 @@ struct PassthroughSink::Impl {
     static void state_changed(void* data, pw_stream_state /*old_state*/, pw_stream_state state,
                                const char* /*error*/) {
         auto& impl = *static_cast<Impl*>(data);
+        if (state == PW_STREAM_STATE_ERROR || state == PW_STREAM_STATE_UNCONNECTED) {
+            // The stream's own end - its node failed or was removed with the
+            // device behind it, or the daemon went - as MonitorSink's
+            // PipeWire backend reads it, with the same ordering against
+            // start() and stop(). A bitstream the session manager holds
+            // unlinked until its sink comes back is only PAUSED, and not an
+            // end.
+            impl.running.store(false, std::memory_order_release);
+        }
         if (state == PW_STREAM_STATE_STREAMING || state == PW_STREAM_STATE_PAUSED) {
             auto expected = ConnectState::kPending;
             impl.connect_state.compare_exchange_strong(expected, ConnectState::kReady);
@@ -611,7 +622,8 @@ void PassthroughSink::flush() {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     // Not reached in time: left for the next callback, and dropping only what
-    // came before the mark.
+    // came before the mark. A stream that has ended makes no callback, and
+    // its lowered `running` ends the wait above at once.
 }
 
 std::expected<void, PassthroughError> PassthroughSink::pause() {
@@ -660,7 +672,7 @@ bool PassthroughSink::paused() const {
 }
 
 bool PassthroughSink::can_submit() const {
-    if (!impl_->queue) {
+    if (!running() || !impl_->queue) {
         return false;
     }
     return impl_->queue->capacity() - impl_->queue->available() > impl_->burst_bytes;
@@ -703,6 +715,10 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (running()) {
         return std::unexpected(PassthroughError::kAlreadyRunning);
     }
+    // A stream that ended on its own still has its loop and its stream, and
+    // still holds its sink exclusively; stop() tears both down in the right
+    // order. With nothing started it does nothing.
+    stop();
 
     ac3::pipewire::ensure_initialized();
 
@@ -817,9 +833,10 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         return std::unexpected(PassthroughError::kFormatRejected);
     }
 
-    pw_thread_loop_unlock(impl_->loop.get());
-
+    // Raised before the loop is unlocked, as MonitorSink's PipeWire backend
+    // raises it, so an end of the stream cannot fall between the two.
     impl_->running.store(true, std::memory_order_release);
+    pw_thread_loop_unlock(impl_->loop.get());
     return {};
 }
 
