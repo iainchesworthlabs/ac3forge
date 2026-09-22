@@ -68,8 +68,8 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 |---|---|---|---|---|---|
 | **Encoder** | Independent + dependent substreams | 🟢 | High | Essential | `AccessUnitEncoder` for wide layouts |
 | | Layouts through 7.1.4 (`chanmap`) | 🟢 | High | Essential | 7.1.4 = two dependents |
-| | Multi-programme authoring (I0–I7) | 🟡 | Medium | Important | Up to eight programmes; each with own layout / rate / dialnorm |
-| | Associated-service `bsmod` / `mainid` labelling | 🟡 | Medium | Important | Wire fields exist; automatic associated-service semantics not authored yet |
+| | Multi-programme authoring (I0–I7) | 🟢 | Medium | Important | All eight programmes; each with own layout, dialnorm and full `mixmdate`/`bsmod` metadata — sample rate and block count shared across the stream (§E2.3.1.2 requires it) |
+| | Associated-service `bsmod` / `mainid` labelling | 🟡 | Medium | Important | Written, read back and validated against the stream's own `bsmod` (`mpegts::parse_service_descriptor`); consumed by Hearth's container facts, not yet surfaced in `ac3cli probe` |
 | | Sample rates + `fscod2` half rates | 🟢 | Medium | Important | Enc/dec complete; no external PCM oracle for half rates |
 | | CBR and VBR (per substream) | 🟢 | High | Essential | VBR E-AC-3 only; ABR mode shipped |
 | | Short syncframes (`numblkscod` 0–2) + `convsync` | 🟢 | Medium | Important | Including object layer scaling; `eac3_latency()` still ignores short frames |
@@ -83,7 +83,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Bit allocation transmitted (`bamode` 1) | 🟢 | High | Essential | Table E1.4 defaults |
 | | Closed-loop `auto` tool selection | 🟢 | High | Essential | Spectrum-aware cpl / spx / aht only |
 | **Metadata** | `mixmdate` downmix levels | 🟢 | High | Essential | Tables D2.2–D2.6 |
-| | Programme-mix wire format (`pgmscl`, `mixdef`, pan, `blkmixcfg`, …) | 🟡 | Medium | Important | Written and decoded (§E2.3.1.12–61) |
+| | Programme-mix wire format (`pgmscl`, `mixdef`, pan, `blkmixcfg`, …) | 🟢 | Medium | Important | Written and decoded (§E2.3.1.12–61); the `blkmixcfginfo` desync at `numblkscod==0x0` is fixed and round-trip gaps are closed |
 | | Receiver-side programme mixer | 🔴 | Medium | Important | No runtime mix of main + AD / commentary / external programme |
 | | `infomdat` service / production | 🟢 | Medium | Important | Table E1.2 |
 | **Decoder** | Full E-AC-3 reconstruction | 🟢 | High | Essential | Every Annex E tool, alone or stacked |
@@ -102,7 +102,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | **EMDF** | Container parse / write (Annex H) | 🟢 | High | Essential | Skip-field placement verified vs DEE |
 | | Reserved / unsupported EMDF variants (§H.2.2) | 🔴 | Low | Optional | e.g. `protection_length_primary` = 00, `emdf_version` ≠ 0 — refused rather than guessed |
 | **OAMD** | Payload encode (project subset) | 🟢 | High | Essential | `AtmosEncoder` |
-| | Payload parse (broader than encode) | 🟡 | Medium | Important | Most §5.5; commercial shapes like `sample_offset_code`, `b_object_not_active`, multi-block updates still refused |
+| | Payload parse (broader than encode) | 🟡 | Medium | Important | Most §5.5; commercial shapes like `sample_offset_code`, `b_object_not_active`, multi-block updates still refused by the encoder — PR #801 (open) widens it |
 | | Channel-based immersive (OAMD bed, no dynamic objects) | 🟡 | Medium | Optional | Decode path exists; not a separate encode product surface |
 | **JOC** | Matrix encode (5.X downmix) | 🟢 | High | Essential | 7.X configs decode-only |
 | | Object reconstruction (QMF + MDCT, §6.6.6) | 🟢 | High | Essential | Default QMF domain; self-check > −20 dB |
@@ -147,7 +147,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Speech spectral frontend (SSF) | 🔴 | Low | Nice-to-have | Refused `kUnsupported` |
 | | Immersive / 22.2 channel elements | 🔴 | Medium | Important | Refused today |
 | | Object / A-JOC audio substreams | 🔴 | Medium | Important | Refused at TOC |
-| | HSF / 96–192 kHz | 🔴 | Low | Nice-to-have | Refused |
+| | HSF / 96–192 kHz | 🟡 | Low | Nice-to-have | Extension substream content read when it resolves to its owning channel substream; an unresolved link is refused `kUnsupported` — synthetic frames only, no real HSF stream available |
 | | PCM reconstruction | 🔴 | High | Essential | Next phase after syntax |
 
 ---
@@ -245,7 +245,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Cross-toolchain encoder bit-identical output | 🟡 | Medium | Important | Audit + `ilogb` fix done; FP thresholds / cross-leg gate still open (VX12) |
 | | Listening-test apparatus (MUSHRA/ABX) | 🟡 | Low | Optional | Tools under `tools/listening/`; no human session run (VX9) |
 | | Perceptual encoder criterion calibration | 🔴 | Medium | Optional | Proposed as EQ14; not wired |
-| **Audio I/O** | Capture / monitor / passthrough | 🟡 | Medium | Important | `ac3::audio` in-tree only; platform verification uneven |
+| **Audio I/O** | Capture / monitor / passthrough | 🟡 | Medium | Important | `ac3::audio` in-tree only; every output backend now stops itself on device loss (Windows passthrough-unplug hardware-confirmed), but platform verification stays uneven |
 | | Sink capability discovery (EDID / ELD) | 🟡 | Medium | Important | Used for passthrough negotiation; uneven across platforms |
 | **Out of scope** | Headphone / binaural renderer | 🔴 | Low | Out-of-scope | Deliberate product boundary (external renderer) |
 
@@ -288,7 +288,8 @@ this register is the checklist that those bounds appear here too.
 | §6.2.2.4 | OAMD substream DATA body | 🔴 |
 | Channel-coded syntax without fixtures | Noise fill, VARVAR, ASPX_ACPL_1, … | 🟡 |
 | Dialogue enhancement | PCM apply | 🔴 |
-| SSF / immersive / objects / HSF | Decode | 🔴 |
+| SSF / immersive / objects | Decode | 🔴 |
+| §4.2.4.3 | HSF extension substream content (syntax only; synthetic frames only) | 🟡 |
 | Whole codec | PCM reconstruction | 🔴 |
 
 ### SMPTE ST 2098-2 / ST 2067-201 (IAB)
