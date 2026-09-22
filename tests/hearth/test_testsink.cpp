@@ -16,6 +16,12 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "ac3/io/wav.hpp"
 #include "ac3/sendspin/base64url.hpp"
 #include "ac3/sendspin/codec.hpp"
@@ -49,6 +55,17 @@ namespace testsink = ac3::hearth::testsink;
 namespace websocket = ac3::sendspin::transport::websocket;
 using ac3::sendspin::crypto::Key32;
 using namespace std::chrono_literals;
+
+// See tests/cli/test_cli.cpp's own scratch_dir comment for why the TEST_CASE
+// below folds this into its scratch leaf, on top of
+// AC3FORGE_TEST_SCRATCH_DIR's build-tree rooting.
+std::string scratch_pid_suffix() {
+#ifdef _WIN32
+    return std::to_string(_getpid());
+#else
+    return std::to_string(getpid());
+#endif
+}
 
 class QuietLog final : public testsink::SinkLog {
    public:
@@ -130,7 +147,7 @@ std::vector<std::int32_t> tone() {
 TEST_CASE("test sink: paired by its token over loopback, it writes what it plays", "[hearth][testsink][websocket]") {
     const m::Codec kind = GENERATE(m::Codec::kPcm, m::Codec::kFlac, m::Codec::kOpus);
     const m::AudioFormat format{.codec = kind, .channels = 2, .sample_rate = 48000, .bit_depth = 16};
-    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "hearth_testsink";
+    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_testsink_" + scratch_pid_suffix());
     fs::remove_all(scratch);
     testsink::SinkOptions options;
     options.name = "Loopback sink";

@@ -9,6 +9,12 @@
 #include <system_error>
 #include <vector>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "proc_facts.hpp"
 #include "session_monitor.hpp"
 
@@ -63,9 +69,21 @@ namespace {
 // case. `name` is per CASE and not per file, deliberately: catch_discover_tests
 // registers one ctest entry per test case, so two cases in this file are two
 // processes that ctest -j may run at once, and a directory they shared would
-// be removed under whichever of them started second.
+// be removed under whichever of them started second. This process's own PID
+// is folded in too, on top of `name`: two separate ac3tests processes running
+// the identical case (a concurrent re-run, or two sessions sharing a build
+// tree) would otherwise still share one directory, since `name` alone repeats
+// run to run.
+std::string scratch_pid_suffix() {
+#ifdef _WIN32
+    return std::to_string(_getpid());
+#else
+    return std::to_string(getpid());
+#endif
+}
+
 fs::path fake_proc(const std::string& name) {
-    const auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("crucible_proc_" + name);
+    const auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("crucible_proc_" + name + "_" + scratch_pid_suffix());
     fs::remove_all(dir);
     fs::create_directories(dir);
     return dir;

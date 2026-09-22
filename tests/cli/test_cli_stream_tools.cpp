@@ -15,6 +15,12 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
@@ -46,9 +52,19 @@ namespace fs = std::filesystem;
 namespace {
 
 // Rooted at AC3FORGE_TEST_SCRATCH_DIR rather than fs::temp_directory_path() -
-// see tests/CMakeLists.txt's comment on that define for why.
+// see tests/CMakeLists.txt's comment on that define for why. The leaf also
+// carries this process's own PID - see tests/cli/test_cli.cpp's own
+// scratch_dir comment for why that is needed on top of the build-tree root.
+std::string scratch_pid_suffix() {
+#ifdef _WIN32
+    return std::to_string(_getpid());
+#else
+    return std::to_string(getpid());
+#endif
+}
+
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / "cli_stream_tools";
+    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_stream_tools_" + scratch_pid_suffix());
     fs::create_directories(dir);
     return dir;
 }
