@@ -12,6 +12,7 @@ Run: python3 -m unittest discover -s tools/checks -p 'test_*.py'
 
 import argparse
 import contextlib
+import http.server
 import io
 import socket
 import sys
@@ -59,18 +60,22 @@ class Requests(unittest.TestCase):
         self.assertEqual(sent[6:-1], b"\x01\x03\x07\x01\x05\x03net\x00")
         self.assertEqual(sent[-1], sum(sent[:-1]) % 256)
 
-    def test_the_checks_own_request_has_no_line_ending_byte(self):
-        # The board's console turns CR into LF on the way in, which would break
-        # the packet: the check's network is chosen so that no byte is either.
+    def test_the_checks_own_network_carries_a_cr_byte(self):
+        # 13 bytes on purpose: the length byte in front of the SSID is then CR,
+        # which a console that converts line endings on the way in turns into
+        # LF. The check exists to fail when that happens.
         sent = improv.wifi_settings(improv.SSID, improv.PASSPHRASE)
+        self.assertEqual(len(improv.SSID), 13)
         self.assertEqual(sent[8], 2 + 1 + len(improv.SSID) + 1 + len(improv.PASSPHRASE))
-        for request in (
-            sent,
-            improv.rpc(improv.GET_CURRENT_STATE),
-            improv.rpc(improv.GET_DEVICE_INFO),
-        ):
-            self.assertNotIn(b"\r", request)
-            self.assertNotIn(b"\n", request)
+        self.assertIn(b"\r", sent)
+
+    def test_the_checks_own_name_carries_an_lf_byte(self):
+        # And 10 characters the other way: the length byte in front of the name
+        # in a device_info answer is LF, which a console that sends CR before
+        # every LF corrupts.
+        self.assertEqual(len(improv.NEW_NAME), 10)
+        answer = result(3, "AC3Forge Hearth sink", "1", "ESP32-S3", improv.NEW_NAME)
+        self.assertIn(b"\n", answer)
 
     def test_refuses_what_a_packet_cannot_carry(self):
         with self.assertRaises(ValueError):
@@ -261,6 +266,8 @@ class FakeQemu:
     def __init__(self, board, refusal: bytes = b"") -> None:
         self.board = board
         self.refusal = refusal
+        # Called with this object and a console command someone typed.
+        self.on_typed = None
         self.commands: list[str] = []
         self.started = threading.Event()
         self.link_up = threading.Event()
@@ -313,9 +320,26 @@ class FakeQemu:
     def send(self, data: bytes) -> None:
         self.conn.sendall(data)
 
-    def request(self) -> tuple[int, bytes]:
-        """The next RPC the client sent: its command and payload."""
+    def typed_lines(self) -> list[str]:
+        """Console commands typed since the last call: whole lines of text
+        before any packet, as a terminal's Enter key ends them."""
+        lines = []
         while True:
+            start = self._pending.find(improv.HEADER)
+            text = self._pending if start == -1 else self._pending[:start]
+            end = min((at for at in (text.find(b"\r"), text.find(b"\n")) if at != -1), default=-1)
+            if end == -1:
+                return lines
+            lines.append(text[:end].decode())
+            self._pending = self._pending[end + 1 :]
+
+    def request(self) -> tuple[int, bytes]:
+        """The next RPC the client sent: its command and payload. A console
+        command typed in between is answered by `on_typed`, if it is set."""
+        while True:
+            for line in self.typed_lines():
+                if self.on_typed is not None:
+                    self.on_typed(self, line)
             start = self._pending.find(improv.HEADER)
             if start != -1 and len(self._pending) > start + improv.LENGTH_AT:
                 end = start + improv.OVERHEAD + self._pending[start + improv.LENGTH_AT]
@@ -335,9 +359,57 @@ class FakeQemu:
         self._monitor.close()
 
 
-def late_board(qemu: FakeQemu, abort_on_join: bool = False) -> None:
+def crlf(data: bytes) -> bytes:
+    """What a console with ESP-IDF's default output line endings sends for
+    `data`: CR before every LF, a packet's own bytes included."""
+    return data.replace(b"\n", b"\r\n")
+
+
+class FakeControl:
+    """The board's REST surface, as far as this needs one: PUT /name changes
+    the name device_info answers with."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        control = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_PUT(self) -> None:  # http.server's own spelling
+                size = int(self.headers.get("Content-Length", 0))
+                control.name = self.rfile.read(size).decode()
+                self.send_response(200)
+                self.send_header("Content-Length", "3")
+                self.end_headers()
+                self.wfile.write(b"ok\n")
+
+            def log_message(self, *args) -> None:
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_port}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def late_board(
+    qemu: FakeQemu,
+    abort_on_join: bool = False,
+    control: FakeControl | None = None,
+    rewrite: bool = False,
+) -> None:
     """hearth_sink's openeth image with its link down, as #741 left it, or as it
-    was before (`abort_on_join`)."""
+    was before (`abort_on_join`). With `rewrite`, its console converts line
+    endings as ESP-IDF's defaults do, which is what corrupts its answers."""
+    send = (lambda data: qemu.send(crlf(data))) if rewrite else qemu.send
+
+    def answer_typed(board: FakeQemu, line: str) -> None:
+        if line == "sendspin":
+            board.send(b"sendspin: server '' (, , ), role , 0 connection(s), playing idle\n")
+
+    qemu.on_typed = answer_typed
     qemu.send(BOOT + b"error: openeth got no address in 30 s\r\nmdns: no network\r\n")
     qemu.send(STATE_READY + b"improv: listening on the console for Wi-Fi credentials\r\n")
     provisioned = False
@@ -347,8 +419,14 @@ def late_board(qemu: FakeQemu, abort_on_join: bool = False) -> None:
             qemu.send(ERROR_NONE + STATE_READY)
         elif command == improv.GET_CURRENT_STATE:
             qemu.send(ERROR_NONE + STATE_PROVISIONED + result(2, "http://10.0.2.15/"))
+        elif command == improv.GET_DEVICE_INFO:
+            name = control.name if control is not None else "hearth-000000"
+            send(ERROR_NONE + result(3, "AC3Forge Hearth sink", "1", "ESP32-S3", name))
         elif command == improv.WIFI_SETTINGS:
-            assert payload == b"\x08qemu-net\x0fqemu-passphrase", payload
+            # What the check sends, with the 13-byte SSID whose length byte is
+            # CR. A console that converted it would not get this far: the
+            # board's own reader would drop the packet.
+            assert payload == b"\x0dqemu-net-1234\x0fqemu-passphrase", payload
             qemu.send(STATE_PROVISIONING)
             if abort_on_join:
                 qemu.send(
@@ -395,26 +473,29 @@ class Scenarios(unittest.TestCase):
             setattr(improv, key, value)
         self.dir.cleanup()
 
-    def run_scenario(self, scenario: str, board, refusal: bytes = b"") -> tuple[int, str]:
+    def run_scenario(
+        self, scenario: str, board, refusal: bytes = b"", control: str | None = None
+    ) -> tuple[int, str]:
         qemu = FakeQemu(board, refusal)
+        arguments = [
+            scenario,
+            "--serial",
+            f"{qemu.serial[0]}:{qemu.serial[1]}",
+            "--monitor",
+            f"{qemu.monitor[0]}:{qemu.monitor[1]}",
+            "--capture",
+            str(self.capture),
+            "--ready",
+            str(self.ready),
+            "--hold",
+            "0",
+        ]
+        if control is not None:
+            arguments += ["--control", control]
         out = io.StringIO()
         try:
             with contextlib.redirect_stdout(out):
-                status = improv.main(
-                    [
-                        scenario,
-                        "--serial",
-                        f"{qemu.serial[0]}:{qemu.serial[1]}",
-                        "--monitor",
-                        f"{qemu.monitor[0]}:{qemu.monitor[1]}",
-                        "--capture",
-                        str(self.capture),
-                        "--ready",
-                        str(self.ready),
-                        "--hold",
-                        "0",
-                    ]
-                )
+                status = improv.main(arguments)
         finally:
             qemu.close()
         self.commands = qemu.commands
@@ -428,6 +509,42 @@ class Scenarios(unittest.TestCase):
         capture = self.capture.read_text(encoding="utf-8").splitlines()
         self.assertIn("[improv] rpc_result wifi_settings 'http://10.0.2.15/'", capture)
         self.assertIn("sendspin: pairing token SP:0ABC", capture)
+
+    def test_late_network_holds_the_name_the_board_answers_with(self):
+        control = FakeControl("hearth-000000")
+        self.addCleanup(control.close)
+        status, out = self.run_scenario(
+            "late-network", lambda qemu: late_board(qemu, control=control), control=control.url
+        )
+        self.assertEqual(status, 0, out)
+        self.assertEqual(control.name, improv.NEW_NAME)
+        self.assertIn(f"device_info: AC3Forge Hearth sink, 1, ESP32-S3, {improv.NEW_NAME}", out)
+
+    def test_late_network_fails_when_the_console_rewrites_the_answer(self):
+        # The bug this covers: with ESP-IDF's default line endings the board
+        # sends CR before the LF that is the name's length byte, and the packet
+        # a client reads is broken.
+        control = FakeControl("hearth-000000")
+        self.addCleanup(control.close)
+        status, out = self.run_scenario(
+            "late-network",
+            lambda qemu: late_board(qemu, control=control, rewrite=True),
+            control=control.url,
+        )
+        self.assertEqual(status, 1, out)
+        self.assertIn("device_info", out)
+        self.assertIn("bad packet", out)
+
+    def test_late_network_fails_when_the_board_keeps_its_old_name(self):
+        control = FakeControl("hearth-000000")
+        self.addCleanup(control.close)
+        status, out = self.run_scenario(
+            "late-network",
+            lambda qemu: late_board(qemu, control=FakeControl("hearth-000000")),
+            control=control.url,
+        )
+        self.assertEqual(status, 1, out)
+        self.assertIn(f"and the board is named {improv.NEW_NAME}", out)
 
     def test_late_network_fails_at_the_abort_the_board_had_before_741(self):
         status, out = self.run_scenario(
