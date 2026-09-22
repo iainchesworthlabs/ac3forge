@@ -76,6 +76,7 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkPairing.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkInfo.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlaceholderPage.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/ShortcutsDialog.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/TransportBar.qml"
         ${AC3HEARTH_SHARED_OUT})
     foreach(qml_file IN LISTS AC3HEARTH_QML_FILES)
