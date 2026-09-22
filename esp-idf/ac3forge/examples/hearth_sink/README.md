@@ -719,6 +719,76 @@ board underran. A larger `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL` changed
 nothing: ESP-IDF v6.1 lets ordinary small allocations take that reserve once
 the rest of internal RAM is full.
 
+### On the ESP32-C6
+
+The C6 has one core, which the Sendspin server task and the decode task
+(priority 5 and 6) share. A clock reply used to be dated by when the server
+task read it, and a burst's decode holds that task off the CPU for up to
+about 45 ms; every reply read during a burst looked that late, and once
+thirty bursts in a row had been left out of the clock's filter this way
+(`ClockSync::kFloorBursts`), the offset followed the delay and jumped 13 to
+31 ms. A reply is now dated by when its bytes reached the board instead: an
+lwIP IPv4 input hook (`ac3forge/tcp_arrivals.hpp`, installed through
+`ESP_IDF_LWIP_HOOK_FILENAME` on the `lwip` component) logs each Sendspin
+connection's TCP stream from its SYN, on the network task, well above the
+decode task; `PlayerSession::receive()` takes an arrival time from that log
+instead of reading its own clock at the point it happens to be scheduled. A
+ten-minute play with the fix kept every clock reading within 651 us of the
+server's own clock, with no jump.
+
+`sdkconfig.c6` reads the flash in quad I/O mode rather than the default
+single-I/O DIO: on this board that left the part 6 to 9% idle while a stream
+played, where DIO left about 1%, and took a burst's decode and render from
+22.4 to 20.7 ms - every task, the decode included, spends less time waiting
+on flash reads through a narrower bus. A bootloader that cannot set a flash
+chip's quad-enable bit stays in DIO on its own.
+
+Sendspin's ring (`sdkconfig.sendspin-c6`) is 48 KB, up from an earlier
+32 KB. Playing AC-3 2.0 over WiFi for five to ten isolated minutes at a
+time, this board's WiFi link went quiet for close to a second every few
+minutes - its wifi and tcpip tasks' shares of the part fell by half or more
+rather than rose, so this was a gap in the link, not a backlog of work
+still to do - and by the time it cleared, a 32 KB ring had run dry and the
+chunks queued behind the gap arrived too late to play: 43 to 131 of them a
+run, in one or two clusters. 48 KB cut that by about two thirds with the
+internal heap never short an allocation across several ten-minute runs. A
+64 KB ring stopped it entirely in one ten-minute run, but at the cost of
+two failed 1,848-byte WiFi receive-buffer allocations against a
+1,824-byte largest free block - the fragmentation the WiFi and PHY IRAM
+options above are there to avoid, back once the ring leaves this little
+room for it. 48 KB is the ring kept.
+
+On 2026-09-22, this ESP32-C6 and one ESP32-S3-DevKitC-1-N16R8, both playing
+2.0 (the S3 on 32-bit standard I2S), played one AC-3 2.0 programme from
+`ac3hearth-testserver` as a group for ten minutes:
+0 underruns on either board and a 479 us worst spread between their play
+times, inside B3's 1 ms group criterion. An earlier ten-minute run with the
+same two boards had one underrun on the S3 board alone, about two minutes
+in, with no late chunk before or after it and no effect on the group's
+alignment; a repeat of that run had none, and the C6 has never underrun in
+any run in this section.
+
+AC-3 and E-AC-3 5.1 do not fit this player's memory budget once the ring,
+the WebSocket server and WiFi's own buffers are all resident, though both
+decode in real time on the part with none of that overhead (see
+[Real time, with WiFi and a stream](../../../../docs/platforms/bare-metal/esp32-c6.md#status)
+on the platform page). Playing either onto 5.1 aborted the board 10 to 12
+seconds in: the decoder's own scratch allocation failed, and by then the
+heap was short enough that even the C++ exception the failed allocation
+threw could not itself be allocated (`__wrap___cxa_allocate_exception`),
+which aborts rather than closing the stream in the ordinary way. Only 2.0
+and 5.1 were tried; a layout between them may or may not fit, since the
+decoder's own scratch scales with its channel count and 5.1's alone is
+36,864 bytes. **The board's capability advertisement does not yet reflect
+this:** `support().outputs.count` is `sink_slots()`, the I2S wiring's own
+ceiling (up to 8 on this board), not a memory-derived one, so a compliant
+server sees nothing to stop it offering 5.1 and the board abort above is
+reachable from ordinary use, not only a misbehaving server. Until PSRAM, a
+second controller, or a smaller decoder scratch changes the trade, this
+needs either a lower advertised count on a part this constrained or a
+memory check ahead of the decode that refuses cleanly
+(`SendspinEvents::on_settings_refused`) instead of aborting.
+
 ### Under QEMU
 
 `sdkconfig.ci-sendspin`, over `sdkconfig.ci-http`, is the player on QEMU's

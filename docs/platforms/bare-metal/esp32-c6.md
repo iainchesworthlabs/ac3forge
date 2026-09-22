@@ -355,12 +355,14 @@ with socket.create_connection((host, port)) as s:
 
 - Levels for the three stream-set rows, which ran in a copy of the probe with no reference
   levels for them.
-- Playback: the probe decodes six frames a fixture into no output. I2S, a DMA queue and
-  underruns belong to the sink.
 - WiFi 6, stream rates other than 1,536 kbit/s, and modem sleep on.
 - The float tier with WiFi's code kept in flash.
 - Encode.
-- A second board.
+
+Playback (I2S, a DMA queue, underruns) and a second board are outside this probe's own scope, but
+both are covered on the part now: `hearth_sink`'s Sendspin player runs on this board, and its
+[README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6)
+has the clock, memory and two-board figures.
 
 ## Where to go next
 
