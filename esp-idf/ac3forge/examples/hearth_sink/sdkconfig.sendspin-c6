@@ -7,11 +7,23 @@
 # a C6 playing an AC-3 2.0 stream from ac3hearth-testserver over WiFi, 2026-09-17.
 
 # The player's buffers. The S3's defaults (a 256 KB ring, 25 KB chunks, 20 ms delay
-# lines for 16 outputs) are about 426 KB here, more than the part has. A 32 KB ring
-# holds about a second of a 192 kbit/s stream and 0.4 s of a 640 kbit/s one, which a
-# server fills to three quarters; 4 KB takes an AC-3 burst at 640 kbit/s. The decode
-# task used 12.9 KB of its stack. No delay lines: a server that sets a delay is refused.
-CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_RING_BYTES=32768
+# lines for 16 outputs) are about 426 KB here, more than the part has. Playing AC-3 2.0
+# over WiFi for 5 to 10 isolated minutes at a time on 2026-09-17/20, a 32 KB ring (about
+# 1.5 s of a 192 kbit/s stream, 1.1 s at the three quarters a server fills it to) saw 43
+# to 131 chunks come back marked late in one or two clusters a run, each following
+# roughly a second where this board's wifi and tcpip tasks' shares of the part fell by
+# half or more rather than rose - not a backlog to work through, an actual gap in the
+# link - after which the ring had run dry and the chunks behind the gap were already
+# too late to play. 48 KB (about 2.2 s / 1.65 s the same way) cut that to 41 chunks over
+# ten minutes with the internal heap never short an allocation, heap_least 35,668 bytes;
+# 64 KB (2.9 s / 2.2 s) played the same ten minutes with none late, but two 1,848-byte
+# WiFi receive allocations failed against an 1,824-byte largest block and heap_least fell
+# to 4,792 bytes - the fragmented-heap failure IRAM options being off was meant to avoid,
+# back once the ring leaves it this little room. 48 KB is the trade kept: a real
+# improvement with no allocation failure seen. See docs/platforms/bare-metal/esp32-c6.md.
+# 4 KB takes an AC-3 burst at 640 kbit/s. The decode task used 12.9 KB of its stack. No
+# delay lines: a server that sets a delay is refused.
+CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_RING_BYTES=49152
 CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_CHUNK_BYTES=4096
 CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_DECODE_STACK_BYTES=24576
 CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS=0
