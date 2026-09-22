@@ -21,6 +21,12 @@ Item {
 
         // --- queue -----------------------------------------------------
         ColumnLayout {
+            // A ColumnLayout child's Layout.fillWidth defaults to true
+            // (unlike a plain Item's), which without this override claimed
+            // leftover width alongside the Card below and left it a sliver -
+            // caught by actually running the built window, not by any
+            // static check.
+            Layout.fillWidth: false
             Layout.preferredWidth: 340
             Layout.fillHeight: true
             spacing: Theme.gap
