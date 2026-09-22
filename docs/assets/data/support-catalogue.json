@@ -507,7 +507,7 @@
       "artifact": "No desktop package",
       "action": "Read Hearth status",
       "url": "hearth/",
-      "note": "The engine and development tools exist; there is no desktop window."
+      "note": "The Qt/QML shell builds and runs on Windows, with the Play page confirmed on hardware; the other five tabs are still placeholders."
     },
     {
       "product": "Hearth",
@@ -517,7 +517,7 @@
       "artifact": "No desktop package",
       "action": "Read Hearth status",
       "url": "hearth/",
-      "note": "The engine and development tools exist; there is no desktop window."
+      "note": "The Qt/QML shell builds in CI with a working Play page, but it has not been run on Linux; the other five tabs are still placeholders."
     },
     {
       "product": "Hearth",
@@ -527,7 +527,7 @@
       "artifact": "No desktop package",
       "action": "Read Hearth status",
       "url": "hearth/",
-      "note": "The engine and development tools exist; there is no desktop window."
+      "note": "The Qt/QML shell builds in CI with a working Play page, but it has not been run on Linux; the other five tabs are still placeholders."
     },
     {
       "product": "Hearth",
@@ -537,7 +537,7 @@
       "artifact": "No desktop package",
       "action": "Read Hearth status",
       "url": "hearth/",
-      "note": "The engine and development tools exist; there is no desktop window."
+      "note": "The Qt/QML shell builds in CI with a working Play page, but it has not been used on a Mac; the other five tabs are still placeholders."
     },
     {
       "product": "Hearth",
@@ -557,7 +557,7 @@
       "artifact": "Build overlay only",
       "action": "Read Hearth status",
       "url": "hearth/",
-      "note": "There is no C6 sink setup guide or Sendspin CI job."
+      "note": "The example's README documents a two-board Sendspin group run confirmed on hardware; the sink is stereo only, and there is still no Sendspin CI job for the C6."
     },
     {
       "product": "C++ library",
