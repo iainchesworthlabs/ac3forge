@@ -83,6 +83,7 @@ add_executable(ac3tests
     io/test_improv.cpp
     io/test_interleave.cpp
     io/test_sink_plan.cpp
+    io/test_tcp_arrivals.cpp
     io/test_block_ring.cpp
     io/test_unit_hold.cpp
     render/test_layout.cpp

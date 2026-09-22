@@ -560,33 +560,6 @@ config AC3FORGE_EXAMPLE_SENDSPIN_SERVER_STACK_BYTES
         SHA-256 included. The page's Sendspin section says what a run left
         spare.
 
-config AC3FORGE_EXAMPLE_SENDSPIN_SERVER_PRIORITY
-    int "Priority of the Sendspin WebSocket server's task"
-    default 5
-    range 1 20
-    help
-        The decode task runs at 6. On an ESP32-S3 the two are on different
-        cores and this one's priority decides little. On a part with one core
-        it decides whether a clock reply or a chunk that arrives during a
-        burst's decode waits for the burst: below 6 it does, and the reply is
-        timestamped late.
-
-config AC3FORGE_EXAMPLE_SENDSPIN_CLOCK_PRIORITY
-    int "Priority of the Sendspin server's task while a clock reply is due (0 = unchanged)"
-    default 0
-    range 0 20
-    help
-        Above the decode task's 6 only while the playback server's clock
-        exchange waits for its reply, for at most 200 ms after it went out
-        (SendspinHostConfig::clock_priority). On a part with one core the
-        replies are otherwise read when a burst's decode ends, every reply of
-        a burst about as late as the others. On an ESP32-C6 playing a stream
-        every such burst was left out of the clock, and once thirty had been
-        the clock followed the delay and moved 13 to 31 ms. At 7, ten minutes
-        kept the clock within 3 ms, but the server task handled the stream's
-        chunks above the decode for every clock burst, and 595 blocks
-        underran. Off until that work costs less.
-
 config AC3FORGE_EXAMPLE_SENDSPIN_MAX_DELAY_MS
     int "Longest per-output delay a server can set, milliseconds (0 = none)"
     default 20

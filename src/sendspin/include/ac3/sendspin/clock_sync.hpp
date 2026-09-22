@@ -74,16 +74,10 @@ class ClockSync {
     // are ignored.
     void receive(const messages::ServerTime& time, std::int64_t now);
 
-    // When poll() next has something to send; the caller's timer can sleep until then.
-    [[nodiscard]] std::int64_t next_due() const { return next_due_; }
-
-    // When the exchange that is waiting for its reply was sent, or nothing while none is.
-    // receive() stamps a reply with the time it is called, so a player whose replies are read
-    // on a task that shares a core with heavier work can raise that task while one is due, and
-    // the stamp is then the reply's arrival rather than the end of the other task's turn.
-    [[nodiscard]] std::optional<std::int64_t> awaiting_since() const {
-        return in_flight_ ? std::optional<std::int64_t>(sent_at_) : std::nullopt;
-    }
+    // When poll() next has something to do: the next exchange or, while one waits for its
+    // reply, the moment it is given up, since the reply moves the burst on through receive().
+    // The caller's timer can sleep until then.
+    [[nodiscard]] std::int64_t next_due() const { return in_flight_ ? sent_at_ + kReplyTimeout : next_due_; }
 
     [[nodiscard]] bool converged() const { return converged_; }
     [[nodiscard]] std::size_t updates() const { return updates_; }

@@ -195,6 +195,11 @@ class PlayerSession {
     [[nodiscard]] SessionOutput open();
     // A frame arrived.
     [[nodiscard]] SessionOutput receive(const transport::Frame& frame);
+    // A frame that reached the host at `arrival`, on the session's clock, before the host
+    // could read it. A clock reply is dated by it: a host whose reading task can wait behind
+    // other work (esp-idf/ac3forge/include/ac3forge/tcp_arrivals.hpp) passes the time the
+    // frame's last byte came. The overload above passes the clock's time.
+    [[nodiscard]] SessionOutput receive(const transport::Frame& frame, std::int64_t arrival);
     // Timers: handshake and provisional timeouts, clock exchanges, and the available: true
     // report once the clock has converged. Call at least every next_tick_us() microseconds.
     [[nodiscard]] SessionOutput tick();

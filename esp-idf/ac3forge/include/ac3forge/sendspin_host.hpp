@@ -91,16 +91,12 @@ struct SendspinHostConfig {
     // The server task: every session runs on it, the Noise handshake
     // included. SendspinStatus::stack_free says what a run left spare.
     std::size_t stack_bytes = 8192;
+    // Below a burst player's decode task (BurstPlayerConfig::priority, 6),
+    // which on a part with one core cannot wait for this one. A message this
+    // task reads late is still dated by when it arrived, where the project
+    // installs the arrival hook (ac3forge/tcp_arrivals.hpp).
     UBaseType_t priority = 5;
     BaseType_t core = tskNO_AFFINITY;
-    // The server task's priority while the playback server's clock exchange
-    // waits for its reply (for at most 200 ms after it went out), or 0 to
-    // leave it at `priority`. A reply is timestamped when this task reads it,
-    // so on a part with one core, where this task sits below the decode task,
-    // every reply of a burst would otherwise be read at the end of a burst's
-    // decode, and the clock would follow that delay. Above the decode task
-    // only for those moments, the replies are read as they arrive.
-    UBaseType_t clock_priority = 0;
     // Connections at once: the one admitted for playback, a pairing
     // connection held beside it, and one arriving to displace either
     // (connection.md, Multiple servers). esp_http_server keeps three sockets of

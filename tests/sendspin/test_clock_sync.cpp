@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 #include <optional>
 #include <random>
 #include <vector>
@@ -199,37 +200,30 @@ TEST_CASE("clock sync: a reply that never comes ends the burst after the timeout
     CHECK(sync.updates() == 0);
 }
 
-TEST_CASE("clock sync: says when the exchange waiting for its reply was sent", "[sendspin][clock_sync]") {
+TEST_CASE("clock sync: while a reply is due, nothing is due before its timeout", "[sendspin][clock_sync]") {
+    // A caller's timer can sleep until then: the reply moves the burst on through receive().
     ClockSync sync;
-    CHECK_FALSE(sync.awaiting_since().has_value());
     const std::optional<m::ClientTime> first = sync.poll(1'000);
     REQUIRE(first.has_value());
-    REQUIRE(sync.awaiting_since().has_value());
-    CHECK(*sync.awaiting_since() == 1'000);
-    // Still the same exchange while its reply is due.
+    CHECK(sync.next_due() == 1'000 + ClockSync::kReplyTimeout);
     CHECK_FALSE(sync.poll(2'000).has_value());
-    CHECK(*sync.awaiting_since() == 1'000);
+    CHECK(sync.next_due() == 1'000 + ClockSync::kReplyTimeout);
 
-    // Answered: nothing waits until the next exchange goes out.
+    // Answered mid-burst: the next exchange is due at once, and its own timeout after it.
     sync.receive({.client_transmitted = first->client_transmitted, .server_received = 5'000, .server_transmitted = 5'050},
                  3'000);
-    CHECK_FALSE(sync.awaiting_since().has_value());
-    const std::optional<m::ClientTime> second = sync.poll(3'500);
+    CHECK(sync.next_due() <= 3'000);
+    const std::optional<m::ClientTime> second = sync.poll(3'000);
     REQUIRE(second.has_value());
-    CHECK(*sync.awaiting_since() == 3'500);
+    CHECK(sync.next_due() == 3'000 + ClockSync::kReplyTimeout);
 
-    // Abandoned after the timeout: the exchange that replaces it is the one waiting.
-    const std::int64_t late = 3'500 + ClockSync::kReplyTimeout;
+    // Abandoned at the timeout: the exchange that replaces it goes out, and waits in turn.
+    const std::int64_t late = 3'000 + ClockSync::kReplyTimeout;
     REQUIRE(sync.poll(late).has_value());
-    CHECK(*sync.awaiting_since() == late);
-
-    // A reply to an exchange that is not the one waiting changes nothing.
-    sync.receive({.client_transmitted = second->client_transmitted, .server_received = 1, .server_transmitted = 2},
-                 late + 10);
-    CHECK(*sync.awaiting_since() == late);
+    CHECK(sync.next_due() == late + ClockSync::kReplyTimeout);
 
     sync.reset();
-    CHECK_FALSE(sync.awaiting_since().has_value());
+    CHECK(sync.next_due() == std::numeric_limits<std::int64_t>::min());
 }
 
 TEST_CASE("clock sync: a local clock that reads negative", "[sendspin][clock_sync]") {
