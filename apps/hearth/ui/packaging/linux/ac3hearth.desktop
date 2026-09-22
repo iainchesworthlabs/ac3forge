@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=ac3hearth
+GenericName=AC-3 / E-AC-3 Reference Player
+Comment=Hearth — the AC3Forge desktop reference player, with passthrough and Sendspin network outputs
+Exec=ac3hearth %F
+Icon=ac3hearth
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+MimeType=audio/ac3;audio/eac3;
+StartupNotify=true
