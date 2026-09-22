@@ -88,6 +88,8 @@ std::string_view describe(MonitorError error) {
         case MonitorError::kNoBackend: return "no monitor backend on this platform";
         case MonitorError::kComFailure: return "a Windows audio (WASAPI/COM) call failed";
         case MonitorError::kDeviceNotFound: return "the requested render device was not found";
+        case MonitorError::kFormatRejected:
+            return "the endpoint refused this sample rate or channel count in shared mode";
         case MonitorError::kAlreadyRunning: return "monitor playback is already running";
         case MonitorError::kNotRunning: return "monitor playback is not running";
     }
@@ -337,7 +339,13 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                                 default_period, 0, &format.Format, nullptr);
     }
     if (FAILED(hr)) {
-        return std::unexpected(MonitorError::kComFailure);
+        // AUDCLNT_E_UNSUPPORTED_FORMAT specifically means the engine refused
+        // this shared-mode sample rate/channel count (confirmed against a
+        // real HDMI/AVR endpoint locked to a non-48kHz rate); every other
+        // failure from either Initialize attempt above is a COM/WASAPI
+        // problem and stays kComFailure.
+        return std::unexpected(hr == AUDCLNT_E_UNSUPPORTED_FORMAT ? MonitorError::kFormatRejected
+                                                                   : MonitorError::kComFailure);
     }
 
     UINT32 buffer_frames = 0;

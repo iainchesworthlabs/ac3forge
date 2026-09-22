@@ -69,6 +69,20 @@ is deliberately explicit about the difference.
     `src/audio/src/backend/windows/monitor.cpp` and `run_live` in
     `apps/cli/commands/live_audio.cpp`.
 
+!!! note "MonitorSink now distinguishes a format refusal from a WASAPI failure"
+    Found 2026-09-22, debugging why `ac3tests "[monitor-unplug]"` would not open the same "AV
+    Receiver (NVIDIA High Definition Audio)" HDMI endpoint the exclusive-mode passthrough
+    confirmation below used: that endpoint refuses ordinary shared-mode PCM outright, and
+    `MonitorSink::start()` had no way to say so beyond the generic "a Windows audio (WASAPI/COM)
+    call failed" — diagnosing it took a standalone WASAPI probe written outside this codebase,
+    which confirmed `IAudioClient::Initialize(AUDCLNT_SHAREMODE_SHARED, ..., float32/2ch/48kHz)`
+    returns `AUDCLNT_E_UNSUPPORTED_FORMAT` (`0x88890008`) and nothing earlier in the call chain
+    fails. `start()` now reports `MonitorError::kFormatRejected` for that HRESULT specifically,
+    checked on both the `IAudioClient3` low-latency path and the ordinary fallback; every other
+    failure in `start()` still reports `kComFailure`. `"[monitor-unplug]"` still needs a default
+    device that actually accepts shared-mode PCM to run at all — this endpoint is not one — but
+    the CLI and the test now say why instead of only the generic WASAPI/COM message.
+
 !!! note "Playback position, pause and flush are confirmed; a multichannel patch is not"
     `MonitorSink`'s playback position, `pause()`/`resume()` and `flush()` have been exercised
     against the default Realtek endpoint by `ac3tests "[monitor-live]"` — a hidden case, since it

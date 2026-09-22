@@ -279,8 +279,8 @@ TEST_CASE("every passthrough error describes itself", "[audio-backend][concurren
 TEST_CASE("every monitor error describes itself", "[audio-backend][concurrency]") {
     using ac3::audio::MonitorError;
     for (const auto error : {MonitorError::kNoBackend, MonitorError::kComFailure,
-                             MonitorError::kDeviceNotFound, MonitorError::kAlreadyRunning,
-                             MonitorError::kNotRunning}) {
+                             MonitorError::kDeviceNotFound, MonitorError::kFormatRejected,
+                             MonitorError::kAlreadyRunning, MonitorError::kNotRunning}) {
         const std::string_view text = ac3::audio::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown monitor error");

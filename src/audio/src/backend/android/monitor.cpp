@@ -94,6 +94,8 @@ std::string_view describe(MonitorError error) {
         case MonitorError::kNoBackend: return "no monitor backend on this platform";
         case MonitorError::kComFailure: return "an AAudio call failed";
         case MonitorError::kDeviceNotFound: return "AAudio could not open an output stream";
+        case MonitorError::kFormatRejected:
+            return "AAudio refused this sample rate or channel count";
         case MonitorError::kAlreadyRunning: return "monitor playback is already running";
         case MonitorError::kNotRunning: return "monitor playback is not running";
     }
