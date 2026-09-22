@@ -50,6 +50,46 @@ class HearthController : public QObject {
     Q_PROPERTY(QString noteText READ noteText NOTIFY stateChanged)
     Q_PROPERTY(QString errorText READ errorText NOTIFY stateChanged)
 
+    // --- decoder settings (the Decoder page, AC-3 and E-AC-3) ------------
+    // The whole of DecoderSettings, as one map QML reads field by field and
+    // writes back through setDecoderSettings() - see that method's own
+    // comment for the field names. Not every control the design shows has a
+    // field here yet: rf_ceiling (OutputConfig's, not DecoderSettings')
+    // and the JOC domain/fast-inverse-transform switches are library-level
+    // settings this app does not carry a knob for yet, so the page shows
+    // them inactive.
+    Q_PROPERTY(QVariantMap decoderSettings READ decoderSettings NOTIFY decoderSettingsChanged)
+
+    // --- speaker setup (the Speakers page) -------------------------------
+    // One entry per render layout slot (0 is always this engine's first
+    // coded-channel slot; the routing patch below may send it to any
+    // device output). Sized and ordered to match speakerLabels.
+    Q_PROPERTY(QVariantList trimDb READ trimDb NOTIFY speakerSetupChanged)
+    Q_PROPERTY(QVariantList delayMs READ delayMs NOTIFY speakerSetupChanged)
+    Q_PROPERTY(double crossoverHz READ crossoverHz NOTIFY speakerSetupChanged)
+    // routing[slot] is the device output that slot is patched to, or -1 for
+    // unpatched (render::Routing::kUnassigned) - what the Speakers page's
+    // routing grid draws one radio button per (slot, output) pair from.
+    Q_PROPERTY(QVariantList routing READ routing NOTIFY speakerSetupChanged)
+    Q_PROPERTY(int routingOutputs READ routingOutputs NOTIFY speakerSetupChanged)
+    Q_PROPERTY(QString deviceName READ deviceName NOTIFY speakerSetupChanged)
+    // Each render layout slot's own speaker name ("L", "C", "LFE", ...),
+    // from the layout this engine was built with - fixed for this slice
+    // (Player::layout()'s own comment says why there is no live layout
+    // change yet). NOTIFY, not CONSTANT, despite being fixed once set:
+    // QML reads this property while building the page tree, which happens
+    // before start() has posted anything to the engine thread, let alone
+    // before its first status has come back - CONSTANT would tell the
+    // binding engine to cache that first, empty read forever.
+    Q_PROPERTY(QStringList speakerLabels READ speakerLabels NOTIFY speakerSetupChanged)
+    // Each slot's own render::Speaker::small - whether its bass is
+    // redirected to the LFE feed rather than reproduced there. Baked into
+    // the fixed layout the same as speakerLabels, so read-only here: there
+    // is no per-speaker size control in this slice, only the crossover
+    // corner those small speakers share (crossoverHz). Same NOTIFY, same
+    // reason as speakerLabels.
+    Q_PROPERTY(QVariantList speakerSmall READ speakerSmall NOTIFY speakerSetupChanged)
+
 public:
     explicit HearthController(QObject* parent = nullptr);
     ~HearthController() override;
@@ -79,9 +119,42 @@ public:
     // Each path becomes one queue item, titled by its file name.
     Q_INVOKABLE void addFiles(const QStringList& paths);
 
+    [[nodiscard]] QVariantMap decoderSettings() const { return decoder_settings_; }
+    // Rebuilds a DecoderSettings from `settings` (every key
+    // decoderSettings() reads back) and posts it whole, the way a settings
+    // page's "apply what changed" always does here - Engine::
+    // set_decoder_settings() takes the whole struct in any case. Unknown or
+    // missing keys keep the engine's last-known value for that field.
+    Q_INVOKABLE void setDecoderSettings(const QVariantMap& settings);
+
+    [[nodiscard]] QVariantList trimDb() const { return trim_db_; }
+    [[nodiscard]] QVariantList delayMs() const { return delay_ms_; }
+    [[nodiscard]] double crossoverHz() const { return crossover_hz_; }
+    [[nodiscard]] QVariantList routing() const { return routing_; }
+    [[nodiscard]] int routingOutputs() const { return routing_outputs_; }
+    [[nodiscard]] QString deviceName() const { return device_name_; }
+    [[nodiscard]] QStringList speakerLabels() const { return speaker_labels_; }
+    [[nodiscard]] QVariantList speakerSmall() const { return speaker_small_; }
+
+    Q_INVOKABLE void setTrimDb(int slot, double db);
+    Q_INVOKABLE void setDelayMs(int slot, double ms);
+    Q_INVOKABLE void setCrossoverHz(double hz);
+    // Patches `slot` to `output`, or unpatches it with output < 0. Refused
+    // (engine-side, EngineStatus::note says so) for an output another slot
+    // already has - swap or clear that one first, matching render::Routing::
+    // assign()'s own rule.
+    Q_INVOKABLE void setRoutingAssignment(int slot, int output);
+    Q_INVOKABLE void clearRouting();
+    // Patches each slot to the device's own reported order (identity, one
+    // slot per output in slot order) - the routing grid's "Use the device's
+    // order" button.
+    Q_INVOKABLE void useDeviceOrder();
+
 signals:
     void queueChanged();
     void stateChanged();
+    void decoderSettingsChanged();
+    void speakerSetupChanged();
 
 private:
     void poll();
@@ -96,6 +169,17 @@ private:
     QString output_reason_;
     QString note_;
     QString error_;
+
+    QVariantMap decoder_settings_;
+
+    QVariantList trim_db_;
+    QVariantList delay_ms_;
+    double crossover_hz_ = 80.0;
+    QVariantList routing_;
+    int routing_outputs_ = 0;
+    QString device_name_;
+    QStringList speaker_labels_;
+    QVariantList speaker_small_;
 };
 
 }  // namespace ac3::hearth::ui

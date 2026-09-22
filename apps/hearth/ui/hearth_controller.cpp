@@ -52,6 +52,168 @@ constexpr int kPollMs = 60;
     return facts.has_objects ? QStringLiteral("E-AC-3 JOC") : QStringLiteral("AC-3/E-AC-3");
 }
 
+// --- DecoderSettings <-> QVariantMap, field by field (decoder_settings.hpp) ---
+// Only the controls the Decoder page can set without stream-dependent
+// information: not mix_levels (the design's "From the stream/Set here"
+// choice needs the stream's own levels, which this controller does not read
+// yet) and not programme (Session's choice of units, not part of
+// DecoderSettings at all).
+
+[[nodiscard]] QString mode_name(ac3::OperatingMode mode) {
+    switch (mode) {
+        case ac3::OperatingMode::kLine:
+            return QStringLiteral("line");
+        case ac3::OperatingMode::kRf:
+            return QStringLiteral("rf");
+        case ac3::OperatingMode::kCustom:
+        default:
+            return QStringLiteral("custom");
+    }
+}
+
+[[nodiscard]] ac3::OperatingMode mode_from_name(const QString& name) {
+    if (name == QLatin1String("line")) {
+        return ac3::OperatingMode::kLine;
+    }
+    if (name == QLatin1String("rf")) {
+        return ac3::OperatingMode::kRf;
+    }
+    return ac3::OperatingMode::kCustom;
+}
+
+[[nodiscard]] QString downmix_name(ac3::DownmixTarget target) {
+    return target == ac3::DownmixTarget::kLtRt ? QStringLiteral("ltrt") : QStringLiteral("loro");
+}
+
+[[nodiscard]] ac3::DownmixTarget downmix_from_name(const QString& name) {
+    return name == QLatin1String("ltrt") ? ac3::DownmixTarget::kLtRt : ac3::DownmixTarget::kLoRo;
+}
+
+[[nodiscard]] QString dual_mono_name(ac3::hearth::DualMonoChoice choice) {
+    switch (choice) {
+        case ac3::hearth::DualMonoChoice::kFirst:
+            return QStringLiteral("first");
+        case ac3::hearth::DualMonoChoice::kSecond:
+            return QStringLiteral("second");
+        case ac3::hearth::DualMonoChoice::kBoth:
+        default:
+            return QStringLiteral("both");
+    }
+}
+
+[[nodiscard]] ac3::hearth::DualMonoChoice dual_mono_from_name(const QString& name) {
+    if (name == QLatin1String("first")) {
+        return ac3::hearth::DualMonoChoice::kFirst;
+    }
+    if (name == QLatin1String("second")) {
+        return ac3::hearth::DualMonoChoice::kSecond;
+    }
+    return ac3::hearth::DualMonoChoice::kBoth;
+}
+
+[[nodiscard]] QString objects_policy_name(ac3::render::ObjectsPolicy policy) {
+    switch (policy) {
+        case ac3::render::ObjectsPolicy::kNever:
+            return QStringLiteral("never");
+        case ac3::render::ObjectsPolicy::kAlways:
+            return QStringLiteral("always");
+        case ac3::render::ObjectsPolicy::kAuto:
+        default:
+            return QStringLiteral("auto");
+    }
+}
+
+[[nodiscard]] ac3::render::ObjectsPolicy objects_policy_from_name(const QString& name) {
+    if (name == QLatin1String("never")) {
+        return ac3::render::ObjectsPolicy::kNever;
+    }
+    if (name == QLatin1String("always")) {
+        return ac3::render::ObjectsPolicy::kAlways;
+    }
+    return ac3::render::ObjectsPolicy::kAuto;
+}
+
+[[nodiscard]] QString concealment_name(ac3::ConcealmentPolicy policy) {
+    switch (policy) {
+        case ac3::ConcealmentPolicy::kNone:
+            return QStringLiteral("stop");
+        case ac3::ConcealmentPolicy::kMute:
+            return QStringLiteral("mute");
+        case ac3::ConcealmentPolicy::kRepeatFade:
+        default:
+            return QStringLiteral("repeatFade");
+    }
+}
+
+[[nodiscard]] ac3::ConcealmentPolicy concealment_from_name(const QString& name) {
+    if (name == QLatin1String("stop")) {
+        return ac3::ConcealmentPolicy::kNone;
+    }
+    if (name == QLatin1String("mute")) {
+        return ac3::ConcealmentPolicy::kMute;
+    }
+    return ac3::ConcealmentPolicy::kRepeatFade;
+}
+
+[[nodiscard]] QVariantMap decoder_settings_to_map(const ac3::hearth::DecoderSettings& settings) {
+    QVariantMap map;
+    map[QStringLiteral("mode")] = mode_name(settings.mode);
+    map[QStringLiteral("drcCut")] = settings.drc_cut;
+    map[QStringLiteral("drcBoost")] = settings.drc_boost;
+    map[QStringLiteral("heavyCompression")] = settings.heavy_compression;
+    map[QStringLiteral("normaliseDialogue")] = settings.normalise_dialogue;
+    map[QStringLiteral("stereoFold")] = downmix_name(settings.stereo_fold);
+    map[QStringLiteral("ltrtPhaseShift")] = settings.ltrt_phase_shift;
+    map[QStringLiteral("mixLfe")] = settings.mix_lfe;
+    map[QStringLiteral("dualMono")] = dual_mono_name(settings.dual_mono);
+    map[QStringLiteral("objects")] = objects_policy_name(settings.objects);
+    map[QStringLiteral("concealment")] = concealment_name(settings.concealment);
+    return map;
+}
+
+// Starts from `base` (the engine's last-known settings) so a key this map
+// does not carry - or a caller that reads decoderSettings(), changes one
+// key and writes the rest back unmodified - keeps its value rather than
+// resetting to DecoderSettings{}'s defaults.
+[[nodiscard]] ac3::hearth::DecoderSettings decoder_settings_from_map(
+    const QVariantMap& map, const ac3::hearth::DecoderSettings& base) {
+    ac3::hearth::DecoderSettings out = base;
+    if (map.contains(QStringLiteral("mode"))) {
+        out.mode = mode_from_name(map[QStringLiteral("mode")].toString());
+    }
+    if (map.contains(QStringLiteral("drcCut"))) {
+        out.drc_cut = map[QStringLiteral("drcCut")].toDouble();
+    }
+    if (map.contains(QStringLiteral("drcBoost"))) {
+        out.drc_boost = map[QStringLiteral("drcBoost")].toDouble();
+    }
+    if (map.contains(QStringLiteral("heavyCompression"))) {
+        out.heavy_compression = map[QStringLiteral("heavyCompression")].toBool();
+    }
+    if (map.contains(QStringLiteral("normaliseDialogue"))) {
+        out.normalise_dialogue = map[QStringLiteral("normaliseDialogue")].toBool();
+    }
+    if (map.contains(QStringLiteral("stereoFold"))) {
+        out.stereo_fold = downmix_from_name(map[QStringLiteral("stereoFold")].toString());
+    }
+    if (map.contains(QStringLiteral("ltrtPhaseShift"))) {
+        out.ltrt_phase_shift = map[QStringLiteral("ltrtPhaseShift")].toBool();
+    }
+    if (map.contains(QStringLiteral("mixLfe"))) {
+        out.mix_lfe = map[QStringLiteral("mixLfe")].toBool();
+    }
+    if (map.contains(QStringLiteral("dualMono"))) {
+        out.dual_mono = dual_mono_from_name(map[QStringLiteral("dualMono")].toString());
+    }
+    if (map.contains(QStringLiteral("objects"))) {
+        out.objects = objects_policy_from_name(map[QStringLiteral("objects")].toString());
+    }
+    if (map.contains(QStringLiteral("concealment"))) {
+        out.concealment = concealment_from_name(map[QStringLiteral("concealment")].toString());
+    }
+    return out;
+}
+
 [[nodiscard]] QVariantMap queue_row(const ac3::hearth::QueueItem& item, bool current) {
     QVariantMap row;
     row[QStringLiteral("path")] = QString::fromStdString(item.path);
@@ -192,6 +354,127 @@ void HearthController::poll() {
         note_ = new_note;
         error_ = new_error;
         emit stateChanged();
+    }
+
+    const QVariantMap new_decoder_settings = decoder_settings_to_map(status.settings);
+    if (new_decoder_settings != decoder_settings_) {
+        decoder_settings_ = new_decoder_settings;
+        emit decoderSettingsChanged();
+    }
+
+    const std::size_t slots = status.layout.slots();
+    if (speaker_labels_.isEmpty() && slots > 0) {
+        // Fixed for the engine's lifetime (Player::layout()'s own comment
+        // says why), so computed only the first time slots appear - the
+        // block below's speakerSetupChanged() still covers telling QML,
+        // since trim_db/delay_ms/routing all go from empty to populated on
+        // this same tick.
+        QStringList labels;
+        QVariantList small_flags;
+        labels.reserve(static_cast<qsizetype>(slots));
+        small_flags.reserve(static_cast<qsizetype>(slots));
+        for (std::size_t slot = 0; slot < slots; ++slot) {
+            std::array<char, 32> name{};
+            status.layout.slot_name(slot, name);
+            labels.push_back(QString::fromLatin1(name.data()));
+            small_flags.push_back(status.layout.slot(slot).small);
+        }
+        speaker_labels_ = labels;
+        speaker_small_ = small_flags;
+    }
+
+    QVariantList new_trim_db;
+    QVariantList new_delay_ms;
+    new_trim_db.reserve(static_cast<qsizetype>(status.trim_db.size()));
+    new_delay_ms.reserve(static_cast<qsizetype>(status.delay_ms.size()));
+    for (const double db : status.trim_db) {
+        new_trim_db.push_back(db);
+    }
+    for (const double ms : status.delay_ms) {
+        new_delay_ms.push_back(ms);
+    }
+    QVariantList new_routing;
+    new_routing.reserve(static_cast<qsizetype>(slots));
+    for (std::size_t slot = 0; slot < slots; ++slot) {
+        new_routing.push_back(status.routing.output_of(slot));
+    }
+    const QString new_device_name = QString::fromStdString(status.device_name);
+    if (new_trim_db != trim_db_ || new_delay_ms != delay_ms_ || status.crossover_hz != crossover_hz_ ||
+        new_routing != routing_ || static_cast<int>(status.routing.outputs()) != routing_outputs_ ||
+        new_device_name != device_name_) {
+        trim_db_ = std::move(new_trim_db);
+        delay_ms_ = std::move(new_delay_ms);
+        crossover_hz_ = status.crossover_hz;
+        routing_ = std::move(new_routing);
+        routing_outputs_ = static_cast<int>(status.routing.outputs());
+        device_name_ = new_device_name;
+        emit speakerSetupChanged();
+    }
+}
+
+void HearthController::setDecoderSettings(const QVariantMap& settings) {
+    if (!engine_) {
+        return;
+    }
+    // A fresh read rather than a cached struct: engine_->status() is already
+    // a cheap, synchronous snapshot (poll() calls it every tick), and this
+    // avoids hearth_controller.hpp itself needing ac3::hearth::DecoderSettings
+    // by value, which would pull in ac3::render::OutputLayout (through
+    // decoder_settings.hpp) ahead of this header's own Qt includes and
+    // reintroduce the slots-macro collision hearth_controller.cpp's own
+    // #undef only guards its own translation unit against.
+    engine_->set_decoder_settings(decoder_settings_from_map(settings, engine_->status().settings));
+}
+
+void HearthController::setTrimDb(int slot, double db) {
+    if (engine_ && slot >= 0) {
+        engine_->set_trim_db(static_cast<std::size_t>(slot), db);
+    }
+}
+
+void HearthController::setDelayMs(int slot, double ms) {
+    if (engine_ && slot >= 0) {
+        engine_->set_delay_ms(static_cast<std::size_t>(slot), ms);
+    }
+}
+
+void HearthController::setCrossoverHz(double hz) {
+    if (engine_) {
+        engine_->set_crossover_hz(hz);
+    }
+}
+
+void HearthController::setRoutingAssignment(int slot, int output) {
+    if (!engine_ || slot < 0) {
+        return;
+    }
+    ac3::render::Routing patch = ac3::render::Routing::identity(
+                                     static_cast<std::size_t>(routing_.size()),
+                                     static_cast<std::size_t>(routing_outputs_))
+                                     .value_or(ac3::render::Routing{});
+    for (qsizetype i = 0; i < routing_.size(); ++i) {
+        patch.assign(static_cast<std::size_t>(i), routing_[i].toInt());
+    }
+    patch.assign(static_cast<std::size_t>(slot), output);
+    engine_->set_routing(patch);
+}
+
+void HearthController::clearRouting() {
+    if (!engine_) {
+        return;
+    }
+    const auto patch = ac3::render::Routing::identity(static_cast<std::size_t>(routing_.size()), 0);
+    engine_->set_routing(patch.value_or(ac3::render::Routing{}));
+}
+
+void HearthController::useDeviceOrder() {
+    if (!engine_) {
+        return;
+    }
+    const auto patch = ac3::render::Routing::identity(static_cast<std::size_t>(routing_.size()),
+                                                       static_cast<std::size_t>(routing_outputs_));
+    if (patch) {
+        engine_->set_routing(*patch);
     }
 }
 
