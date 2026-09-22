@@ -73,6 +73,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+4"; onActivated: window.page = "decoder" }
     Shortcut { sequence: "Ctrl+5"; onActivated: window.page = "network" }
     Shortcut { sequence: "Ctrl+6"; onActivated: window.page = "settings" }
+    Shortcut { sequence: StandardKey.HelpContents; onActivated: shortcuts.open() }
 
     header: Rectangle {
         color: Theme.surface
@@ -117,8 +118,21 @@ ApplicationWindow {
                 ]
                 onSelected: function(value) { window.page = value; }
             }
+
+            Button {
+                objectName: "helpButton"
+                text: "?"
+                implicitWidth: 30
+                onClicked: shortcuts.open()
+                Accessible.name: qsTr("Keyboard shortcuts")
+            }
         }
     }
+
+    ShortcutsDialog { id: shortcuts }
+    // For `--page shortcuts` (main.cpp): a screenshot with the dialog open.
+    function openShortcuts() { shortcuts.open(); }
+    property alias shortcutsDialog: shortcuts
 
     StackLayout {
         anchors.fill: parent
