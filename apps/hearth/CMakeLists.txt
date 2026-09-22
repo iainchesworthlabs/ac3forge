@@ -28,6 +28,17 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     # add_subdirectory()/include() here runs as one configure regardless of
     # order.
     set(AC3HEARTH_NOTICES_FILE "${CMAKE_BINARY_DIR}/notices/hearth/NOTICES.txt")
+    # A placeholder, so the file exists (file(WRITE) creates its parent
+    # directories too) before ui/'s own qt_add_resources() call embeds it
+    # below - Qt's target finalization for ac3hearth runs at the end of
+    # add_subdirectory(ui)'s own scope, before notices.cmake ever runs in
+    # this (the parent) scope, so a resource added from notices.cmake after
+    # that finalization has already happened is silently left out of the
+    # build - confirmed by a real build whose Licences dialog fell back to
+    # its "no embedded notices file" text. ac3_generate_notices overwrites
+    # this with the real content later in this same configure, still well
+    # before ninja's rcc step reads it at build time.
+    file(WRITE "${AC3HEARTH_NOTICES_FILE}" "")
 
     # The window (A5) before notices.cmake, for the Qt-export reason above.
     # Same three platforms as apps/crucible, and for the same reason:

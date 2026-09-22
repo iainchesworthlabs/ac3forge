@@ -1,5 +1,6 @@
 #include "hearth_controller.hpp"
 
+#include <QFile>
 #include <QFileInfo>
 
 // hearth_controller.hpp's Qt headers define `slots` as a macro for the
@@ -17,6 +18,7 @@
 #undef slots
 
 #include "ac3/render/layout.hpp"
+#include "ac3/version.hpp"
 #include "decoder_settings.hpp"
 #include "engine_thread.hpp"
 #include "item_loader.hpp"
@@ -239,6 +241,26 @@ HearthController::HearthController(QObject* parent) : QObject(parent) {
 }
 
 HearthController::~HearthController() = default;
+
+QString HearthController::versionDetails() const {
+    return QString::fromStdString(ac3::version_details());
+}
+
+QString HearthController::licenceNotices() const {
+    // The same file the package installs, embedded by
+    // apps/hearth/notices/notices.cmake once ac3hearth exists for it to
+    // embed into, so the dialog cannot say something the package does not.
+    // A binary built without the embedding gets a sentence that says so
+    // rather than an empty view - the same fallback
+    // CrucibleController::licenceNotices() uses.
+    QFile file(QStringLiteral(":/notices/NOTICES.txt"));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return tr("This build carries no embedded notices file (:/notices/NOTICES.txt was not "
+                  "compiled in); the NOTICES.txt beside the application and the repository's "
+                  "LICENSE say what it ships.");
+    }
+    return QString::fromUtf8(file.readAll());
+}
 
 void HearthController::start() {
     if (engine_) {

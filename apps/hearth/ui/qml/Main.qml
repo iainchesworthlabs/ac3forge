@@ -38,6 +38,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+4"; onActivated: window.page = "decoder" }
     Shortcut { sequence: "Ctrl+5"; onActivated: window.page = "network" }
     Shortcut { sequence: "Ctrl+6"; onActivated: window.page = "settings" }
+    Shortcut { sequence: StandardKey.HelpContents; onActivated: about.open() }
 
     header: Rectangle {
         color: Theme.surface
@@ -82,8 +83,23 @@ ApplicationWindow {
                 ]
                 onSelected: function(value) { window.page = value; }
             }
+            Button {
+                objectName: "aboutButton"
+                text: "?"
+                implicitWidth: 30
+                onClicked: about.open()
+                Accessible.name: qsTr("About Hearth")
+            }
         }
     }
+
+    // Reached from the header's "?" button, and from `--page about` /
+    // `--page licences` (main.cpp) for a capture - the same wiring
+    // apps/crucible/ui/qml/Main.qml uses for its own About and Licences.
+    AboutDialog { id: about; onShowLicences: licences.open() }
+    function openAbout() { about.open(); }
+    LicencesDialog { id: licences }
+    function openLicences() { licences.open(); }
 
     StackLayout {
         anchors.fill: parent

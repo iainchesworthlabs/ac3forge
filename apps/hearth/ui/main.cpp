@@ -4,7 +4,10 @@
 // QML up and offers Crucible's own debugging aid: `--shot <path.png>` grabs
 // the window after it has settled and quits, so a headless check (or the
 // screenshot script, later) can see it; `--page <name>` picks the page it
-// opens on first - play, media, speakers, decoder, network or settings.
+// opens on first - play, media, speakers, decoder, network or settings, or
+// opens the About dialog (about) or its Licences view (licences) over the
+// Play page, the same two special values apps/crucible/ui/main.cpp's own
+// `--page` accepts.
 //
 // Translations and the first-run dialog are not wired up yet: this slice is
 // the shell and the Play page over the real engine, with the other five
@@ -74,7 +77,7 @@ int main(int argc, char** argv) {
         if (args[i] == QLatin1String("--shot")) {
             shot_path = args[i + 1];
         } else if (args[i] == QLatin1String("--page")) {
-            page = args[i + 1];  // play, media, speakers, decoder, network or settings
+            page = args[i + 1];  // play, media, speakers, decoder, network, settings, about or licences
         }
     }
 
@@ -85,7 +88,15 @@ int main(int argc, char** argv) {
     if (engine.rootObjects().isEmpty()) {
         return 1;
     }
-    if (!page.isEmpty()) {
+    // `--page about` opens the About dialog over the Play page, for a
+    // capture; `--page licences` opens the notices view the same way.
+    if (page == QLatin1String("about")) {
+        engine.rootObjects().first()->setProperty("page", QStringLiteral("play"));
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openAbout");
+    } else if (page == QLatin1String("licences")) {
+        engine.rootObjects().first()->setProperty("page", QStringLiteral("play"));
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openLicences");
+    } else if (!page.isEmpty()) {
         engine.rootObjects().first()->setProperty("page", page);
     }
 
