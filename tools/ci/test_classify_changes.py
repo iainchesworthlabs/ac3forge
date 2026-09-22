@@ -67,7 +67,7 @@ class PlatformOnlyChangeTest(unittest.TestCase):
 
 
 class SharedDesktopAppTest(unittest.TestCase):
-    """apps/cli, apps/gui, apps/common, apps/crucible are one program on three OSes."""
+    """apps/cli, apps/gui, apps/common, apps/crucible, apps/hearth: one program on three OSes."""
 
     def test_shared_cli_change_lights_all_three_desktop_platforms_only(self):
         hits = gate.classify(["apps/cli/commands/audio_io.cpp"])
@@ -75,6 +75,10 @@ class SharedDesktopAppTest(unittest.TestCase):
 
     def test_crucible_change_lights_all_three_desktop_platforms_only(self):
         hits = gate.classify(["apps/crucible/engine/engine.cpp"])
+        self.assertEqual(lit(hits, *ALL_LANES), {"windows", "linux", "macos"})
+
+    def test_hearth_change_lights_all_three_desktop_platforms_only(self):
+        hits = gate.classify(["apps/hearth/engine/player.cpp"])
         self.assertEqual(lit(hits, *ALL_LANES), {"windows", "linux", "macos"})
 
 
