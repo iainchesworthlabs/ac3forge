@@ -120,6 +120,13 @@ if(WIN32)
         if(TARGET ac3gui)
             set(CPACK_PACKAGE_EXECUTABLES "ac3gui" "ac3gui")
         endif()
+        # Hearth phase A7: a Start Menu entry beside ac3gui's own, appended
+        # rather than replacing it - CPACK_PACKAGE_EXECUTABLES is a flat
+        # name/label pair list, so a second application adds a second pair
+        # rather than overwriting the first.
+        if(TARGET ac3hearth)
+            list(APPEND CPACK_PACKAGE_EXECUTABLES "ac3hearth" "ac3hearth")
+        endif()
         if(TARGET ac3cli)
             set(CPACK_NSIS_CREATE_ICONS_EXTRA [[
             SetOutPath "$INSTDIR\bin"
@@ -131,17 +138,23 @@ if(WIN32)
             ]])
         endif()
 
-        # GUI AppStream packaging: .ac3/.ec3 open in ac3gui - the same "double-click a
-        # stream you already have" gesture the app's own DropArea and
-        # `ac3gui <file>` launch handling (GUI AppStream packaging's other two legs)
-        # already understand once the file reaches the app; this is what
-        # gets it there from Explorer. One ProgID for both extensions - they
-        # are the same stream format (bsid decides AC-3 vs E-AC-3, the same
-        # way every ac3gui/ac3cli command that takes either already does),
-        # so a single "open in ac3gui" entry is the honest description
-        # rather than two identical ones. $INSTDIR\bin matches
-        # CMAKE_INSTALL_BINDIR, where apps/gui/CMakeLists.txt's own
-        # install(TARGETS ac3gui RUNTIME DESTINATION ...) puts it.
+        # .ac3/.ec3 open in ac3hearth, the reference player (Hearth phase A7 -
+        # this used to point at ac3gui; planning/hearth-reference-player.md's
+        # A7 asked which application is the default handler, decided with
+        # the user as switching it here). ac3gui falls back to being the
+        # opener only in a build that has no ac3hearth at all, so a
+        # GUI-only package still associates something rather than leaving
+        # Explorer with no entry.
+        #
+        # The gesture itself - the app's own DropArea and
+        # `ac3hearth <file>` launch handling already understanding a file
+        # once it reaches the process - is unchanged from ac3gui's own
+        # original comment; this is only what gets it there from Explorer.
+        # One ProgID for both extensions - they are the same stream format
+        # (bsid decides AC-3 vs E-AC-3) - so a single "open in" entry is the
+        # honest description rather than two identical ones. $INSTDIR\bin
+        # matches CMAKE_INSTALL_BINDIR, where apps/hearth/ui/CMakeLists.txt's
+        # own install(TARGETS ac3hearth RUNTIME DESTINATION ...) puts it.
         # SHChangeNotify is what makes Explorer pick the new association up
         # without a logoff/logon - without it the icon/"Open with" entry
         # only appears after one. Bracket arguments (CMake's raw-string
@@ -151,7 +164,25 @@ if(WIN32)
         # all of that through CMake's quoted-argument rules would be far
         # more error-prone than writing the NSIS script exactly as NSIS
         # wants it.
-        set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS [[
+        # Two complete, literal blocks rather than one with the exe name
+        # substituted in: bracket arguments (used here and by the uninstall
+        # block below, for the reason given above) take NO ${VAR}
+        # expansion at all, by design - that is what makes them safe from
+        # CMake's quoting rules in the first place. Interpolating the one
+        # thing that differs between the two would mean a quoted string
+        # instead, right back into the trap this comment already warns
+        # against.
+        if(TARGET ac3hearth)
+            set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS [[
+            WriteRegStr HKCR ".ac3" "" "AC3Forge.Stream"
+            WriteRegStr HKCR ".ec3" "" "AC3Forge.Stream"
+            WriteRegStr HKCR "AC3Forge.Stream" "" "AC-3 / E-AC-3 Stream"
+            WriteRegStr HKCR "AC3Forge.Stream\DefaultIcon" "" "$INSTDIR\bin\ac3hearth.exe,0"
+            WriteRegStr HKCR "AC3Forge.Stream\shell\open\command" "" '"$INSTDIR\bin\ac3hearth.exe" "%1"'
+            System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+        ]])
+        elseif(TARGET ac3gui)
+            set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS [[
             WriteRegStr HKCR ".ac3" "" "AC3Forge.Stream"
             WriteRegStr HKCR ".ec3" "" "AC3Forge.Stream"
             WriteRegStr HKCR "AC3Forge.Stream" "" "AC-3 / E-AC-3 Stream"
@@ -159,12 +190,15 @@ if(WIN32)
             WriteRegStr HKCR "AC3Forge.Stream\shell\open\command" "" '"$INSTDIR\bin\ac3gui.exe" "%1"'
             System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
         ]])
-        set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS [[
+        endif()
+        if(TARGET ac3hearth OR TARGET ac3gui)
+            set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS [[
             DeleteRegKey HKCR ".ac3"
             DeleteRegKey HKCR ".ec3"
             DeleteRegKey HKCR "AC3Forge.Stream"
             System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
         ]])
+        endif()
     else()
         # DR7: this used to be silent - a missing makensis just meant the ZIP
         # packaged alone with no diagnostic anywhere, which is how the
@@ -336,6 +370,53 @@ elseif(UNIX)
         # (confirmed empirically against a real dpkg-deb -I). See
         # CPACK_SYSTEM_NAME's identical trap, documented below.
         set(CPACK_DEBIAN_LIBRARY_PACKAGE_DEPENDS "libac3forge0 (= ${PROJECT_VERSION})")
+
+        # ac3hearth, the desktop reference player (Hearth phase A7): its own
+        # package, since like AC3Forge Crucible it is its own download
+        # everywhere else - and unlike Crucible, this one ships DEB, RPM and
+        # TGZ in CI (planning/hearth-reference-player.md's own A7 text),
+        # with no local-only caveat, because there is no test-signed driver
+        # or PipeWire dependency holding it back the way Crucible's own
+        # comment further down explains for that component's RPM.
+        if(TARGET ac3hearth)
+            set(CPACK_DEBIAN_HEARTH_PACKAGE_NAME "ac3forge-hearth")
+            set(CPACK_DEBIAN_HEARTH_FILE_NAME DEB-DEFAULT)
+            set(CPACK_DEBIAN_HEARTH_PACKAGE_SECTION "sound")
+            set(CPACK_DEBIAN_HEARTH_DESCRIPTION
+                "AC3Forge Hearth - the desktop reference player
+ Decodes AC-3, E-AC-3 and Dolby Atmos object-layer streams under every decoder
+ setting the library has, renders to a chosen speaker layout, and plays to a
+ local device, a passthrough receiver over HDMI or S/PDIF, or a group of
+ Sendspin network sinks.")
+            # The QML modules THIS window's own qml/*.qml files import today
+            # (apps/hearth/ui/qml/, plus the shared family components it
+            # copies from apps/gui/qml/) - the same shlibdeps gap and the
+            # same reasoning as CPACK_DEBIAN_RUNTIME_PACKAGE_DEPENDS's own
+            # comment above: a QML import is invisible to a library-level
+            # scan in every case, distro kit or not, so this states what the
+            # window needs rather than inheriting it from ac3gui's own list,
+            # which imports a different set (QtQuick.Window and QtCore among
+            # them - this window imports neither yet). Two entries named
+            # that no .qml file imports directly, for the same reason
+            # ac3gui's own four are: qml6-module-qtquick-templates is what
+            # QtQuick.Controls is implemented on top of, and
+            # qml6-module-qt-labs-folderlistmodel is QtQuick.Dialogs'
+            # non-native FileDialog fallback, which is what runs where no
+            # XDG portal answers. Revisit this list as later A5 slices add
+            # imports - the window's own settings page (QtCore's Settings),
+            # its queue list (a ListView/Repeater, which is where
+            # qml6-module-qtqml-models and qml6-module-qtqml-workerscript
+            # would come from) and its speaker layout diagram are none of
+            # them here yet.
+            set(AC3FORGE_HEARTH_QML_MODULES
+                qml6-module-qtquick
+                qml6-module-qtquick-controls
+                qml6-module-qtquick-dialogs
+                qml6-module-qtquick-layouts
+                qml6-module-qtquick-templates
+                qml6-module-qt-labs-folderlistmodel)
+            list(JOIN AC3FORGE_HEARTH_QML_MODULES ", " CPACK_DEBIAN_HEARTH_PACKAGE_DEPENDS)
+        endif()
     endif()
 
     find_program(AC3FORGE_RPMBUILD_EXECUTABLE rpmbuild)
@@ -402,6 +483,16 @@ elseif(UNIX)
         set(CPACK_RPM_LIBRUNTIME_PACKAGE_NAME "libac3forge0")
         set(CPACK_RPM_LIBRARY_PACKAGE_NAME "ac3forge-devel")
         set(CPACK_RPM_LIBRARY_PACKAGE_REQUIRES "libac3forge0 = %{version}-%{release}")
+
+        # ac3hearth's RPM, the DEB block's own reasoning above - no per-QML-
+        # module Requires here, the same asymmetry CPACK_RPM_PACKAGE_AUTOREQPROV's
+        # own comment already names for ac3gui: AUTOREQPROV's soname scan
+        # pulls the Qt Quick runtime in on Fedora/RHEL without a hand-written
+        # list, unlike Debian's split QML packages.
+        if(TARGET ac3hearth)
+            set(CPACK_RPM_HEARTH_PACKAGE_NAME "ac3forge-hearth")
+            set(CPACK_RPM_HEARTH_FILE_NAME RPM-DEFAULT)
+        endif()
     endif()
 endif()
 
@@ -463,6 +554,18 @@ set(CPACK_COMPONENTS_ALL runtime library libruntime)
 # which is where that choice is explained.
 if(AC3FORGE_BUILD_CRUCIBLE AND (WIN32 OR LINUX OR APPLE))
     list(APPEND CPACK_COMPONENTS_ALL crucible)
+endif()
+
+# ac3hearth (Hearth phase A7) as a fifth component, its own archive for the
+# same reason as Crucible's above - it carries its own Qt deployment on
+# Windows and macOS - but with no NSIS exclusion: unlike Crucible it has no
+# test-signed driver holding it out of the shared installer, so it stays in
+# CPACK_COMPONENTS_ALL for every generator, NSIS included. TARGET, not
+# AC3FORGE_BUILD_HEARTH, because apps/hearth/ui/CMakeLists.txt only WARNs
+# and skips when Qt6 is not found rather than failing the configure -
+# checking the option alone would try to package a component nothing built.
+if(TARGET ac3hearth)
+    list(APPEND CPACK_COMPONENTS_ALL hearth)
 endif()
 
 set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
@@ -537,6 +640,8 @@ set(CPACK_ARCHIVE_RUNTIME_FILE_NAME "${CPACK_PACKAGE_FILE_NAME}")
 set(CPACK_ARCHIVE_CRUCIBLE_FILE_NAME
     "ac3forge-crucible-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
 set(CPACK_ARCHIVE_DEV_FILE_NAME "ac3forge-dev-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
+set(CPACK_ARCHIVE_HEARTH_FILE_NAME
+    "ac3forge-hearth-${PROJECT_VERSION_FULL}-${CPACK_SYSTEM_NAME}")
 
 include(CPack)
 

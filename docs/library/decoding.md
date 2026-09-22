@@ -546,10 +546,20 @@ What is still refused, and why each one has to be:
 | `emdf_version` ≠ 0 | §H.2.2.2 defines the container's fields only for version 0. |
 | `protection_length_primary` = `0b00` | Table H.2.5 reserves it, so it names no width to skip. |
 
-Two values are read but deliberately not *applied*. `joc_clipgain` (§6.3.3.2) is computed onto
-`FrameParameters::clip_gain` and left there: no clause in TS 103 420 says where in the decode
-chain the gain belongs, and the published equation renders ambiguously enough that a real DEE
-stream's own value lands outside the range the same clause states. And Table 47's two "90 degree
+Two values are read but not yet *applied*. `joc_clipgain` (§6.3.3.2) is computed onto
+`FrameParameters::clip_gain` — correctly: the published equation reads as ambiguous only through
+plain text extraction, which drops a "-4" bias the exponent actually carries; rendering the PDF
+page as an image (both the 2016 and 2018 editions) shows `1 + (y/32) * 2^(x-4)`, which matches the
+clause's own stated [1; 8,75] range exactly at both ends. No clause in TS 103 420 says where in the
+decode chain the gain belongs, but that was confirmed empirically (2026-09-22, Dolby Reference
+Player oracle): it multiplies reconstructed *object* PCM, never the bed — the player's raw bed
+output matched this project's own bed decode at correlation 1.0000 regardless of clip gain, while
+its object output tracked the formula's prediction to within ~0.03 dB with the OAR's own limiter
+disabled. The multiply belongs once in `reconstruct()`'s own dispatcher, on the per-object PCM it
+gets back from whichever domain function it calls — every caller already passes `FrameParameters`
+through unchanged, so one post-multiply there covers all of them with no duplication. Wiring it in
+is deferred to a follow-up rather than done alongside concurrent work on the domain functions
+themselves. And Table 47's two "90 degree
 phase shift" downmix configurations reconstruct like their unshifted siblings — the shift is a
 property of how the downmix was *built*, §6.6.6 says nothing about undoing it before matrixing,
 and there is no Hilbert filterbank here to undo it with.

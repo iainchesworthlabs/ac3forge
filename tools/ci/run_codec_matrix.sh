@@ -783,6 +783,26 @@ else
     run_ffmpeg_check atmos_iab.ec3
 fi
 
+# atmos-cbi: a channel-based-immersive (CBI) bed already mixed into a fixed
+# 5.1.4/7.1.4/9.1.6 layout - unlike atmos-encode's "every channel is its own
+# object" reading of the same kind of file, this one is program.bed != 0,
+# 0 dynamic objects (Dolby's own dee_ddpjoc_encoder --input-format cbi_wav
+# shape). Reuses eac3_514.wav (the eac3-sine/decode loop's own "514" leg,
+# above) as a real 10-channel source: its channel order follows the WAV/
+# chanmap convention the decoder writes, not atmos-cbi's own DEE cbi_wav/
+# Table 12 order, but a channel COUNT match is all this smoke-coverage script
+# needs - the per-channel semantic labeling (which physical channel lands as
+# which OAMD bed label) is what tests/oba/test_atmos_cbi.cpp and
+# tests/cli/test_cli_atmos_cbi.cpp prove, with a distinct tone per channel
+# identified after JOC reconstruction, which this script does not repeat.
+# Always a 5.1 bed physically (OAMD+JOC ride in the same independent
+# substream, same as every other Atmos command above), so FFmpeg reads it and
+# the profile check applies exactly as it does for 'atmos'/'atmos-encode'.
+run atmos-cbi eac3_514.wav atmos_cbi.ec3 448 5.1.4
+run decode atmos_cbi.ec3 atmos_cbi.wav
+run_ffmpeg_check atmos_cbi.ec3
+run_atmos_profile_check atmos_cbi.ec3 atmos
+
 # --- Stream tools (stream tools): no re-encode except where one is the point -
 # transcode is the DD+-to-DD path and is the only one of the five that
 # re-encodes; metadata/normalize rewrite bsi in place and re-stamp the CRCs;

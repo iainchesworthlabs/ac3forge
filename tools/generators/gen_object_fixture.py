@@ -13,7 +13,9 @@ only check that the object layer reads syntax nobody here writes:
   - two oa_elements, the second a trim_element with a custom global trim mode
     and a per-object disable list;
   - joc_dmx_config_idx 3 (5.X with a 90 degree phase shift), a nonzero
-    joc_clipgain, joc_num_bands_idx 5, and sparse coding for every object;
+    joc_clipgain_x_bits (4, though joc_clipgain_y_bits is 0, so the computed
+    joc_clipgain is exactly unity - see oba::joc::parse_payload's comment),
+    joc_num_bands_idx 5, and sparse coding for every object;
   - and, in the EMDF container, an OAMD payload with payload_frame_aligned 0
     beside a JOC payload with it set, plus two further payloads whose
     configurations use duratione and discard_unknown_payload.

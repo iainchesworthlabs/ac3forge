@@ -507,8 +507,8 @@ void print_option_blocks(std::uint32_t mask) {
         fmt::println("  mixmeta           E-AC-3 only: emit the mixmdate group (Table E1.2)");
         fmt::println("  lfemix=<0..31>|off      E-AC-3 LFE mix level, 10-code dB (§E2.3.1.11)");
         fmt::println("  dmixmod=ltrt|loro|none  preferred stereo downmix (Table D2.2)");
-        fmt::println("  keep-partial      encode/eac3-encode/atmos-encode: if the run fails partway, "
-                     "keep whatever frames were already encoded (named beside the intended output as "
+        fmt::println("  keep-partial      encode/eac3-encode/atmos-encode/atmos-cbi: if the run fails "
+                     "partway, keep whatever frames were already encoded (named beside the intended output as "
                      "<name>.partial.<ext>) instead of discarding them - off by default, matching the "
                      "GUI's own keep-partial-output preference");
         fmt::println("  fast-mdct=off     force the direct §8.2.3.2 forward MDCT instead of the "
@@ -581,8 +581,8 @@ void print_option_blocks(std::uint32_t mask) {
                      "the bare nodelta token. The encoders' first effort level "
                      "(planning/arithmetic-tiers.md): what a part with little time for the "
                      "search gives up, measured on the ESP32-S3 page");
-        fmt::println("  sign-objects      atmos/atmos-path/atmos-encode: write a keyed EMDF object "
-                     "signature (needs signing-key=); see docs/concepts/object-signing.md");
+        fmt::println("  sign-objects      atmos/atmos-path/atmos-encode/atmos-cbi: write a keyed EMDF "
+                     "object signature (needs signing-key=); see docs/concepts/object-signing.md");
         fmt::println("  verify-objects    decode/monitor: check each frame's EMDF object signature "
                      "against signing-key= instead of just playing it - a mismatch refuses the "
                      "command; omitted (the default) decodes signed and unsigned streams alike, "

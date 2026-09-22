@@ -7,5 +7,4 @@ Exec=ac3gui %F
 Icon=ac3gui
 Terminal=false
 Categories=AudioVideo;Audio;
-MimeType=audio/ac3;audio/eac3;
 StartupNotify=true

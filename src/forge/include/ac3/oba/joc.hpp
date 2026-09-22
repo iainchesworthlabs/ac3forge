@@ -118,9 +118,14 @@ struct FrameParameters {
     int seq_count = 0;
     // §6.3.2.2 Table 47, which is also where `channels` comes from.
     int dmx_config_idx = kDmxConfig5X;
-    // §6.3.3.2. Parsed and reported, never applied: no clause in TS 103 420
-    // says where in the decode chain this gain belongs, and its own stated
-    // range does not match the equation as printed (see parse_payload).
+    // §6.3.3.2: 1 + (y/32) * 2^(x-4) - see parse_payload for how the
+    // equation's true typesetting was confirmed. Parsed and reported, but
+    // still not applied here: empirically confirmed (2026-09-22, against the
+    // Dolby Reference Player) to belong as a single post-multiply on the
+    // per-object PCM reconstruct()'s own dispatcher returns, never the bed -
+    // wiring that in is deferred to a follow-up so it does not collide with
+    // concurrent work on the domain functions it calls (see parse_payload's
+    // comment).
     double clip_gain = 1.0;
     // Per-object headers, or empty for a uniform frame - see above.
     std::vector<ObjectShape> shapes{};

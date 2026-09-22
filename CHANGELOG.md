@@ -233,6 +233,13 @@ The sections below contain the complete change list and fixes.
 
 **Hearth**
 
+- **`ac3hearth` packages, as `ac3forge-hearth`, on Windows (NSIS and ZIP), macOS (DMG) and
+  Linux (DEB, RPM and TGZ).** Its own CPack component follows `apps/crucible`'s own pattern -
+  notices and licence beside the executable, Qt's runtime deployed into the package - except
+  that it ships in the shared NSIS installer and the CI-built RPM, since neither of Crucible's
+  reasons for staying out (a test-signed driver, no RPM host to verify against) applies to it.
+  `ac3hearth` also becomes the `.ac3`/`.ec3` handler on all three platforms, taking that role
+  from `ac3gui`.
 - **The Sendspin time filter learns faster and ignores delayed replies.** Once it has
   converged, `ac3::sendspin::ClockSync` runs thirty bursts a second apart before settling to one
   every ten seconds. It leaves out a burst whose best reply is well above the recent floor, since
@@ -770,6 +777,13 @@ The sections below contain the complete change list and fixes.
   over §E2.3.1.4 short syncframes across 1/2/3-block frames — completing roadmap EQ11.
   Worst-object SNR at every short code matches the six-block control on stationary
   material.
+- **OAMD encoding now covers what this project's decoder already reads.** `AtmosEncoder`
+  marks an object `b_object_not_active` for a frame where it has no energy in any band —
+  the same per-band test the JOC reconstruction matrix already used for silence, now also
+  read off as object metadata rather than only affecting the mix. `oba::build_payload_updates()`
+  writes more than one §5.5.6/§5.5.7 metadata update inside a single E-AC-3 frame
+  (`sample_offset_code`, `num_obj_info_blocks_bits`) instead of only at the frame boundary,
+  for a caller that wants sub-frame object motion; `oba::build_payload()` itself is unchanged.
 - **`downmix=auto` on `decode` and `monitor`**: A/52 §D3.1.1's automatic choice of
   stereo fold, from the stream's own `dmixmod`. Lt/Rt when it prefers Lt/Rt at an
   acmod Table D2.2 defines the field for (`3/0`, `2/1`, `3/1`, `2/2`, `3/2`); Lo/Ro
@@ -1714,6 +1728,15 @@ The sections below contain the complete change list and fixes.
   stopped `running()` refuses every `submit()` without ever reaching the render code
   that counts a real underrun. All now stop (or, once their next reprobe/reconcile
   runs, restart) instead of hanging.
+- **Two more callers kept retrying a spatial sink that had already stopped itself.**
+  `ac3cli spatial`'s submit loop had no `running()` check at all, so an unplugged or
+  disabled endpoint hung the command for ever rather than ending with the reason
+  printed, the way a lost device already ends other commands; its final drain-wait
+  gets the same check. Crucible's `submit_with_patience()` - shared by the passthrough,
+  monitor and spatial legs - still waited out its full ~200 ms patience window on every
+  single frame once a sink had stopped itself, rather than counting the one underrun
+  and moving on immediately; `OutputStage::apply()`'s own reprobe already restarts a
+  sink in this state (see above), so only the per-frame wait needed shortening.
 - **`PassthroughSink` crashed the instant a real exclusive-mode bitstream endpoint drove
   it** — surfaced once an Onkyo TX-RZ740 over HDMI locked AC-3, E-AC-3 and signed Atmos
   through it for the first time. `Activate`/`Initialize` ran on the calling thread while

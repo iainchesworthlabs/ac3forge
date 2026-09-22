@@ -252,9 +252,9 @@
       "label": "Hearth desktop player",
       "page": "hearth/index.md",
       "cells": {
-        "windows": ["development", "ci", "engine only; no window or package"],
-        "linux": ["development", "ci", "engine only; no window or package"],
-        "macos": ["development", "ci", "engine only; no window or package"],
+        "windows": ["development", "hardware", "Qt/QML shell built and run; Play page confirmed, other tabs are placeholders"],
+        "linux": ["development", "ci", "Qt/QML shell builds; Play page implemented, other tabs are placeholders"],
+        "macos": ["development", "ci", "Qt/QML shell builds; Play page implemented, other tabs are placeholders"],
         "browser": ["unavailable", "not-applicable", ""],
         "android": ["unavailable", "not-applicable", ""],
         "esp32": ["unavailable", "not-applicable", ""],
@@ -270,7 +270,7 @@
         "macos": ["unavailable", "not-applicable", ""],
         "browser": ["unavailable", "not-applicable", ""],
         "android": ["unavailable", "not-applicable", ""],
-        "esp32": ["source", "hardware", "S3 group run, no DAC; C6 stereo only, no Sendspin CI"],
+        "esp32": ["source", "hardware", "S3 and C6 group runs, no DAC; C6 sink is stereo-only"],
         "bare-metal": ["unavailable", "not-applicable", ""]
       }
     },
@@ -310,7 +310,7 @@
         ["Forge CLI", ["published", "hardware", "ZIP and NSIS installer"], ["configured", "experimental-ci", "ZIP and NSIS installer"]],
         ["Forge GUI", ["published", "hardware", "ships with Forge"], ["unavailable", "not-applicable", "Qt kit is not wired"]],
         ["Crucible", ["published", "hardware", "UI/driver run; receiver output untested"], ["unavailable", "not-applicable", ""]],
-        ["Hearth desktop player", ["development", "ci", "engine and test tools only"], ["unavailable", "not-applicable", ""]],
+        ["Hearth desktop player", ["development", "hardware", "Qt/QML shell built and run; Play page confirmed, other tabs are placeholders"], ["unavailable", "not-applicable", ""]],
         ["Live capture and PCM monitor", ["source", "hardware", "WASAPI"], ["source", "experimental-ci", "compiled with the CLI"]],
         ["IEC 61937 output", ["source", "hardware", "AC-3, E-AC-3 and signed Atmos"], ["source", "experimental-ci", "no receiver run"]],
         ["Per-application capture", ["source", "hardware", "Windows process loopback"], ["source", "experimental-ci", "compiled; runtime untested"]],
@@ -325,7 +325,7 @@
         ["Forge CLI", ["published", "ci", "TGZ, DEB and RPM"], ["published", "hardware", "TGZ, DEB and RPM"]],
         ["Forge GUI", ["published", "ci", "packages plus AppImage"], ["published", "hardware", "packages; no AppImage"]],
         ["Crucible", ["configured", "ci", "TGZ and DEB; check the release assets"], ["configured", "hardware", "TGZ and DEB; check the release assets"]],
-        ["Hearth desktop player", ["development", "ci", "engine and test tools only"], ["development", "ci", "engine and test tools only"]],
+        ["Hearth desktop player", ["development", "ci", "Qt/QML shell builds; Play page implemented, other tabs are placeholders"], ["development", "ci", "Qt/QML shell builds; Play page implemented, other tabs are placeholders"]],
         ["Live capture and PCM monitor", ["source", "ci", "ALSA or PipeWire"], ["source", "hardware", "ALSA or PipeWire"]],
         ["IEC 61937 output", ["source", "ci", "hardware untried"], ["source", "hardware", "ALSA and PipeWire on one Pi 4B"]],
         ["Per-application capture", ["source", "ci", "PipeWire"], ["source", "hardware", "PipeWire on one Pi 4B"]]
@@ -339,7 +339,7 @@
         ["Forge CLI", ["source", "ci", "native arm64"], ["source", "ci", "native x86_64"], ["published", "ci", "DMG"]],
         ["Forge GUI", ["source", "ci", "native arm64"], ["source", "ci", "native x86_64"], ["published", "ci", "DMG; never used on a Mac"]],
         ["Crucible", ["development", "ci", "builds and tests"], ["development", "ci", "builds and tests"], ["unavailable", "not-applicable", "no package"]],
-        ["Hearth desktop player", ["development", "ci", "engine only"], ["development", "ci", "engine only"], ["unavailable", "not-applicable", "no package"]],
+        ["Hearth desktop player", ["development", "ci", "Qt/QML shell builds; Play page implemented, other tabs are placeholders"], ["development", "ci", "Qt/QML shell builds; Play page implemented, other tabs are placeholders"], ["unavailable", "not-applicable", "no package"]],
         ["Live capture and PCM monitor", ["source", "build", "Core Audio; no audio run"], ["source", "build", "Core Audio; no audio run"], ["unavailable", "not-applicable", ""]],
         ["IEC 61937 output", ["source", "build", "no receiver run"], ["source", "build", "no receiver run"], ["unavailable", "not-applicable", ""]],
         ["Per-application capture", ["development", "not-run", "disabled by default after a CI hang"], ["development", "not-run", "creation path unconfirmed"], ["unavailable", "not-applicable", ""]]
@@ -387,7 +387,7 @@
         ["AC-3 and E-AC-3 decode", ["source", "emulated", "all fixtures"], ["source", "hardware", "all fixtures in real time"], ["limited", "emulated", "12 of 14; 7.1.4 exceeds heap"], ["limited", "hardware", "all except 7.1.4 fit; most real time with Wi-Fi"], ["source", "ci", "wraps the S3 decoder"]],
         ["AC-3 and E-AC-3 encode", ["source", "emulated", "six fixture rows"], ["limited", "hardware", "correct; widest layouts miss real time"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", ""]],
         ["Atmos object reconstruction", ["source", "emulated", "fixture coverage"], ["source", "hardware", "placed onto 7.1.4"], ["unavailable", "not-applicable", "7.1.4 fixtures exceed heap"], ["unavailable", "not-applicable", "7.1.4 exceeds heap"], ["source", "ci", "inherits S3 component"]],
-        ["Hearth Sendspin sink", ["unavailable", "not-applicable", ""], ["source", "hardware", "two-board group run; no DAC connected"], ["unavailable", "not-applicable", ""], ["limited", "hardware", "stereo only; two-board group with an S3, no underruns; no Sendspin CI"], ["unavailable", "not-applicable", "not yet a media_player or speaker"]],
+        ["Hearth Sendspin sink", ["unavailable", "not-applicable", ""], ["source", "hardware", "two-board group run; no DAC connected"], ["unavailable", "not-applicable", ""], ["limited", "hardware", "two-board group run with S3; stereo only; no DAC; no Sendspin CI"], ["unavailable", "not-applicable", "not yet a media_player or speaker"]],
         ["Downloadable firmware", ["unavailable", "not-applicable", "build from source"], ["unavailable", "not-applicable", "build and flash from source"], ["unavailable", "not-applicable", "probe target only"], ["unavailable", "not-applicable", "probe/overlay only"], ["unavailable", "not-applicable", "external component source"]]
       ]
     }

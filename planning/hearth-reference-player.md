@@ -9,7 +9,9 @@
           #752).
         - A4 has merged (#684, #704 and #706), but its Music Assistant exit is still open.
         - A0 is signed off (2026-09-22; [planning/hearth-design.md](hearth-design.md)). A5 is
-          starting; A6 to A8 follow it.
+          under way: the application shell and Play page (#787) and the engine's routing/trim/
+          delay/crossover surface (#793) have merged; the Speakers and Decoder pages (#810) are
+          open. A6 to A8 follow it.
     - **[The ESP32-S3 sink](#chip-b-the-esp32-s3-sink).**
         - Merged: B1 (#709), B2 (#726), B3 (#737), B4 (#738) and B5 (#756), with fixes in #741
           and #743.

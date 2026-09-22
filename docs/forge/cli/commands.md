@@ -1,6 +1,6 @@
 # Commands
 
-The command list from the usage text, reproduced rather than paraphrased — 42 commands, as
+The command list from the usage text, reproduced rather than paraphrased — 43 commands, as
 a Windows build without `-DAC3FORGE_BUILD_ADM=ON` prints them. The two ADM commands read
 `UNAVAILABLE HERE` because that flag is off; `spatial` does not, because Windows is the one
 platform with a spatial backend. Nothing in the build compares this block against the binary, so
@@ -20,6 +20,7 @@ Usage:
   ac3cli atmos-encode  <in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a scene file (same formats as atmos-path), objects it doesn't mention keep their default placement)
   ac3cli atmos-adm     <in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
   ac3cli atmos-iab     <in.iab|in.mxf> <out.ec3> [bitrate_kbps] (UNAVAILABLE HERE)
+  ac3cli atmos-cbi     <in.wav> <out.ec3> [bitrate_kbps] [layout] (a channel-based-immersive bed (Dolby's dee_ddpjoc_encoder --input-format cbi_wav shape) straight to DD+ JOC E-AC-3 with program.bed != 0 and 0 dynamic objects; layout is one of 5.1.4, 7.1.4, 9.1.6 (default: inferred from the file's channel count))
   ac3cli strip-objects <in.ec3> <out.ec3>                     (remove the JOC/OAMD object layer from a DD+ stream, leaving a bit-identical 5.1 bed)
   ac3cli record        <out.ac3|out.ec3> [seconds] [bitrate_kbps] [device_index] (capture straight to a file; layout=/codec=/container= decide its shape)
   ac3cli live          <out.ac3|out.ec3> <capture_device> [seconds] [bitrate_kbps] [monitor_device] [passthrough_device] [mode] (capture -> encode -> live monitor and/or passthrough)
@@ -110,6 +111,7 @@ so a misrouted channel is identifiable by ear.)
 | `encode` | WAV → AC-3. Without `[layout]`, follows the source channel count (1→mono, 2→stereo, 3–6→5.1); a wider source is refused, since no AC-3 coding mode is wider than 3/2 + LFE. |
 | `eac3-encode` | WAV → E-AC-3, with the Annex E `tools:` token and an optional `vbr:` token available (see [Options & grammars](metadata-options.md)). Without `[layout]`, follows the source channel count (1→mono, 2→stereo, 3–6→5.1, 8→7.1, 10→5.1.4, 12→7.1.4). |
 | `atmos-encode` | WAV → E-AC-3 Atmos, every source channel becomes its own object; optional `[paths.txt]` drives per-object motion from an authored scene file the same way `atmos-path` does, keyed by WAV channel index — an object it doesn't mention keeps its default (fanned-out) placement |
+| `atmos-cbi` | WAV already mixed into a fixed channel-based-immersive (CBI) bed layout → E-AC-3 Atmos with `program.bed != 0` and 0 dynamic objects — Dolby's `dee_ddpjoc_encoder --input-format cbi_wav` shape, not free-floating objects |
 
 ```bash
 ac3cli encode in.wav out.ac3 448 couple
@@ -139,6 +141,20 @@ ac3cli encode - - 448 couple < in.wav > out.ac3
 The status text these commands normally print (frame count, routing, per-channel levels,
 `dialnorm=auto`'s measurement line) goes to stderr instead of stdout whenever the output side is
 `-`, so it never ends up inside the piped stream — `src=`/`map=` multi-source runs included.
+
+```bash
+ac3cli atmos-cbi bed_714.wav out.ec3 448 7.1.4
+```
+
+`bed_714.wav`'s 12 channels are read in `ac3::oba::bed_labels()`'s own Table 12 order — L, R, C,
+LFE, Ls, Rs, Lb, Rb, Tfl, Tfr, Tbl, Tbr for 7.1.4 — which is also Dolby's own `cbi_wav` channel
+order (confirmed against a real DEE-produced 5.1.4 stream; 7.1.4/9.1.6 extend it by the same
+Table 12 rule, unverified against DEE itself). `[layout]` is one of `5.1.4`, `7.1.4`, `9.1.6` and
+defaults to whichever one matches the file's channel count (10, 12 or 16) when omitted. Unlike
+`atmos-encode`, every channel is anchored to its speaker label rather than free-floating, so there
+is no `[paths.txt]` argument and `dialnorm=auto` is refused for the same reason it is on
+`atmos-adm`/`atmos-iab` below — see [Atmos & JOC](../../concepts/atmos-joc.md#oamd) and
+[Spatial & Atmos objects](../../library/spatial-and-atmos.md#channel-based-immersive-cbi-beds).
 
 ### ADM ingest — professional master files (opt-in)
 

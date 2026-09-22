@@ -195,6 +195,51 @@ jobs:
         shell: bash
         run: ctest --preset test-linux-gcc-coverage -LE Performance
 
+      # tools/checks/ac4_syntax_trace.cpp is deliberately not a CMake target
+      # (see its own header) - a development tool, built here the same way its
+      # header documents building it by hand, against the coverage build's own
+      # already-instrumented ac4dec_static/ac4_static. gcov accumulates a
+      # binary's hits into the same .gcda files across every process that
+      # exercises those objects, the same way ctest's many separate test
+      # binaries already do above, so this run's counts fold into Test's
+      # rather than replace them.
+      #
+      # tools/checks/ac4_syntax_differential.py exists because most of the
+      # AC-4 decoder's syntax - noise fill, VARVAR framing, time-interleaved
+      # A-SPX, the mono/3.0/7.X channel modes, transmitted DRC gains,
+      # dialogue enhancement, alternative presentations - is not something any
+      # encoded stream here reaches (docs/verification.md, "Where no stream
+      # reaches"); its mutated-DEE-frame and synthetic-table-of-contents
+      # streams are what does. That is also most of why new_coverage read
+      # 70.3% against the required 80% when issue #664 opened: this decoder's
+      # own test suite does not reach it either. 3800 streams (measured
+      # locally: ~5s for 600, so comfortably inside this job's timeout even at
+      # 10x that) took new-code coverage on the worst files - metadata.cpp,
+      # channel_elements.cpp, presentation.cpp, decoder.cpp and friends - from
+      # single digits to 47-91%. A fixed --seed keeps the same streams, and so
+      # the same coverage figure, every night.
+      #
+      # continue-on-error, same reasoning as Test above: a DIVERGE/END/TOC/
+      # KIND finding here is the differential doing its actual job (catching
+      # a real decoder/reference-parser disagreement), not a coverage-scan
+      # concern - it belongs to whoever is driving the AC-4 decoder work, not
+      # to a failed nightly quality scan.
+      - name: AC-4 syntax differential (coverage)
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          g++ -std=c++23 --coverage -o "${BUILD_DIR}/ac4_syntax_trace" \
+            tools/checks/ac4_syntax_trace.cpp \
+            -DAC4_STATIC_DEFINE -DAC4DEC_STATIC_DEFINE \
+            -Isrc/ac4/include -Isrc/ac4dec/include \
+            -I"${BUILD_DIR}/src/ac4/generated" -I"${BUILD_DIR}/src/ac4dec/generated" \
+            "${BUILD_DIR}/src/ac4dec/libac4dec_static.a" "${BUILD_DIR}/src/ac4/libac4_static.a"
+          python3 tools/checks/ac4_syntax_differential.py \
+            --trace-tool "${BUILD_DIR}/ac4_syntax_trace" \
+            --work-dir "${BUILD_DIR}/ac4-differential" \
+            --mutations 3000 --synthetic 800 --seed 1
+
       # SonarQube's generic coverage XML, from the same gcov data
       # tools/checks/coverage_report.sh reads, with the same flags for
       # throw/unreachable branches and the mdct.cpp suspicious-hits gcov bug.
