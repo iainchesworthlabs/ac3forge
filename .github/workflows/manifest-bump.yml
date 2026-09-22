@@ -197,12 +197,13 @@ jobs:
             exit 0
           fi
 
-          # bugfix/, not chore/: ci.yml's required "Branch Name" gate enforces
-          # ^(feature|bugfix)/[a-z0-9._-]+$ and rejects anything else, so the PR this
-          # job opens could never satisfy its own repository's CI. Same first-run
-          # blind spot as the tap push below - no release had exercised this until
-          # v0.10.0-beta.1, whose bump PR (#481) failed Branch Name outright.
-          branch="bugfix/bump-packaging-manifests-${VERSION_TAG}"
+          # chore/: packaging-manifest bumps are maintenance, not bugfixes. The
+          # Branch Name gate allows feature|bugfix|hotfix|docs|chore with a
+          # lowercase kebab short name — slug the version tag so dots in
+          # v0.10.0-beta.1 become hyphens (v0-10-0-beta-1).
+          slug=$(printf '%s' "$VERSION_TAG" | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g')
+          branch="chore/bump-packaging-manifests-${slug}"
           if gh pr list --repo "$REPO" --head "$branch" --state open --json number \
                --jq 'length' | grep -qx 0; then
             git config user.name "github-actions[bot]"

@@ -80,8 +80,9 @@ fail() {
     exit 1
 }
 
-# The token, once the player is up. The console ends lines with CR, so the
-# pattern is not anchored at either end.
+# The token, once the player is up. The pattern is anchored at neither end:
+# the token has a word in front of it, and how a console ends its lines is its
+# own business.
 token=""
 for _ in $(seq 1 300); do
     token="$(grep -aoE 'pairing token SP:0[A-Za-z0-9_-]+' "$console" | head -1 | sed 's/^pairing token //')" || true
