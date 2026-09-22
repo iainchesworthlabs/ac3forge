@@ -71,6 +71,39 @@ ScrollView {
                 readonly property int labelWidth: 72
                 readonly property int noneWidth: 56
 
+                // Arrow keys move focus only (Space/Enter/click below still do the
+                // assigning). Looked up fresh via Repeater.itemAt() on every press
+                // rather than cached, so focus can't ever target a stale item.
+                function cellAt(row, column) {
+                    const rowCount = root.labels.length;
+                    if (rowCount === 0) {
+                        return null;
+                    }
+                    row = Math.max(0, Math.min(rowCount - 1, row));
+                    const rowItem = rowsRepeater.itemAt(row);
+                    if (!rowItem) {
+                        return null;
+                    }
+                    column = Math.max(0, Math.min(root.outputs, column));
+                    return column < root.outputs ? rowItem.outputsRepeater.itemAt(column) : rowItem.noneOutputCell;
+                }
+
+                function moveFocus(row, column, event) {
+                    let dRow = 0, dColumn = 0;
+                    switch (event.key) {
+                    case Qt.Key_Left: dColumn = -1; break;
+                    case Qt.Key_Right: dColumn = 1; break;
+                    case Qt.Key_Up: dRow = -1; break;
+                    case Qt.Key_Down: dRow = 1; break;
+                    default: return;
+                    }
+                    const target = grid.cellAt(row + dRow, column + dColumn);
+                    if (target) {
+                        target.forceActiveFocus();
+                    }
+                    event.accepted = true;
+                }
+
                 Row {
                     spacing: 1
                     Item { width: grid.labelWidth; height: grid.cellSize }
@@ -99,6 +132,7 @@ ScrollView {
                 }
 
                 Repeater {
+                    id: rowsRepeater
                     model: root.labels
 
                     delegate: Row {
@@ -106,6 +140,9 @@ ScrollView {
                         required property int index
                         required property string modelData
                         spacing: 1
+
+                        property alias outputsRepeater: cellsRepeater
+                        property alias noneOutputCell: noneCell
 
                         Text {
                             width: grid.labelWidth
@@ -117,6 +154,7 @@ ScrollView {
                         }
 
                         Repeater {
+                            id: cellsRepeater
                             model: root.outputs
 
                             delegate: Rectangle {
@@ -138,6 +176,7 @@ ScrollView {
                                     HearthController.setRoutingAssignment(rowItem.index, cell.index)
 
                                 activeFocusOnTab: true
+                                Keys.onPressed: function(event) { grid.moveFocus(rowItem.index, cell.index, event); }
                                 Keys.onSpacePressed: HearthController.setRoutingAssignment(rowItem.index, cell.index)
                                 Keys.onReturnPressed: HearthController.setRoutingAssignment(rowItem.index, cell.index)
 
@@ -175,6 +214,7 @@ ScrollView {
                             Accessible.onPressAction: HearthController.setRoutingAssignment(rowItem.index, -1)
 
                             activeFocusOnTab: true
+                            Keys.onPressed: function(event) { grid.moveFocus(rowItem.index, root.outputs, event); }
                             Keys.onSpacePressed: HearthController.setRoutingAssignment(rowItem.index, -1)
                             Keys.onReturnPressed: HearthController.setRoutingAssignment(rowItem.index, -1)
 
@@ -201,7 +241,8 @@ ScrollView {
                 Layout.fillWidth: true
                 text: qsTr("Every speaker reaches an output, and no output carries two speakers. A speaker "
                           + "sent to no output is not heard, and an output no speaker reaches stays silent. "
-                          + "Tab reaches every cell; Space or Enter sends the speaker there.")
+                          + "Tab reaches the grid; arrow keys move through it, and Space or Enter sends the "
+                          + "speaker to the focused output.")
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontSmall
                 wrapMode: Text.WordWrap
