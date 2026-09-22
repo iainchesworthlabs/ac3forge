@@ -1589,6 +1589,20 @@ The sections below contain the complete change list and fixes.
   that will not move again; before, a lost device left it playing for ever with nothing
   said. Two hidden cases, `ac3tests "[passthrough-unplug]"` and `"[monitor-unplug]"`, take
   a person through unplugging a real output.
+- **The GUI, Crucible and the Shield Android demo still spun forever on a lost output
+  device.** `running()` turning false (see above) was not enough on its own:
+  `EncoderController`'s file-to-receiver, motion-preview and live-session workers,
+  `ObjectDecodeController`'s audition and `StreamPlayerController`'s playback all retried
+  `submit()` on nothing but a stop or pause flag, so a lost device left each one waiting
+  on audio that would never resume - the file-to-receiver play flag never cleared,
+  refusing every later play. `OutputStage`'s own seam (`BurstSink`/`PcmSink`/`ObjectSink`)
+  exposed no `running()` at all, so a re-probe that still found the same dead endpoint
+  listed read as "nothing changed" and kept the dead sink for good. Shield's
+  `live_cursor` encode loop had the same shape, and `MainActivity`'s underrun-based
+  recovery stopped working at exactly the point it mattered, because a sink that has
+  stopped `running()` refuses every `submit()` without ever reaching the render code
+  that counts a real underrun. All now stop (or, once their next reprobe/reconcile
+  runs, restart) instead of hanging.
 - **`PassthroughSink` crashed the instant a real exclusive-mode bitstream endpoint drove
   it** — surfaced once an Onkyo TX-RZ740 over HDMI locked AC-3, E-AC-3 and signed Atmos
   through it for the first time. `Activate`/`Initialize` ran on the calling thread while
