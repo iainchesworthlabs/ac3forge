@@ -133,6 +133,15 @@ constexpr int kPollMs = 60;
     return ac3::render::ObjectsPolicy::kAuto;
 }
 
+[[nodiscard]] QString joc_domain_name(ac3::oba::joc::Domain domain) {
+    return domain == ac3::oba::joc::Domain::kMdctBand ? QStringLiteral("mdct") : QStringLiteral("qmf");
+}
+
+[[nodiscard]] ac3::oba::joc::Domain joc_domain_from_name(const QString& name) {
+    return name == QLatin1String("mdct") ? ac3::oba::joc::Domain::kMdctBand
+                                          : ac3::oba::joc::Domain::kQmf;
+}
+
 [[nodiscard]] QString concealment_name(ac3::ConcealmentPolicy policy) {
     switch (policy) {
         case ac3::ConcealmentPolicy::kNone:
@@ -167,6 +176,7 @@ constexpr int kPollMs = 60;
     map[QStringLiteral("mixLfe")] = settings.mix_lfe;
     map[QStringLiteral("dualMono")] = dual_mono_name(settings.dual_mono);
     map[QStringLiteral("objects")] = objects_policy_name(settings.objects);
+    map[QStringLiteral("jocDomain")] = joc_domain_name(settings.joc_domain);
     map[QStringLiteral("concealment")] = concealment_name(settings.concealment);
     return map;
 }
@@ -207,6 +217,9 @@ constexpr int kPollMs = 60;
     }
     if (map.contains(QStringLiteral("objects"))) {
         out.objects = objects_policy_from_name(map[QStringLiteral("objects")].toString());
+    }
+    if (map.contains(QStringLiteral("jocDomain"))) {
+        out.joc_domain = joc_domain_from_name(map[QStringLiteral("jocDomain")].toString());
     }
     if (map.contains(QStringLiteral("concealment"))) {
         out.concealment = concealment_from_name(map[QStringLiteral("concealment")].toString());

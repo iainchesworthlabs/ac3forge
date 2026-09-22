@@ -317,7 +317,7 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
     CHECK(describe(DecoderSettings{}) ==
           "line mode, stereo fold Lo/Ro, no LFE in folds, the stream's mix levels, "
           "dual mono: both, the first programme, objects for height layouts, "
-          "concealment: repeat and fade");
+          "objects reconstructed in the QMF domain, concealment: repeat and fade");
     DecoderSettings custom;
     custom.mode = ac3::OperatingMode::kCustom;
     custom.drc_cut = 0.5;
@@ -338,7 +338,8 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
           "custom mode (cut 0.50, boost 0.25, compr on, dialogue as coded), "
           "stereo fold Lt/Rt (phase shift off), LFE in folds, "
           "mix levels Lo/Ro centre 0.500, Lt/Rt surround 0.707, LFE -3.0 dB, "
-          "dual mono: channel 2, programme 2, objects never, no concealment");
+          "dual mono: channel 2, programme 2, objects never, "
+          "objects reconstructed in the QMF domain, no concealment");
     DecoderSettings rf;
     rf.mode = ac3::OperatingMode::kRf;
     rf.mix_levels.loro_slev = 0.0;
@@ -349,7 +350,8 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
     CHECK(describe(rf) ==
           "RF mode, stereo fold Lo/Ro, no LFE in folds, "
           "mix levels Lo/Ro surround 0.000, Lt/Rt centre 1.000, "
-          "dual mono: channel 1, the first programme, objects always, concealment: mute");
+          "dual mono: channel 1, the first programme, objects always, "
+          "objects reconstructed in the QMF domain, concealment: mute");
 
     CHECK(ac3::hearth::describe_item(0, "First") == "item 1 \"First\"");
     CHECK(ac3::hearth::describe_item(ac3::hearth::Queue::kNone, "Gone") ==
