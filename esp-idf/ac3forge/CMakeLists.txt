@@ -81,6 +81,19 @@ idf_component_register(
     PRIV_REQUIRES lwip
     EMBED_FILES "ui/ac3forge_ui.html" "ui/ac3forge_ui.js")
 
+# ac3forge_lwip_ip4_input (src/tcp_arrivals.cpp) is called only from lwIP's own
+# ip4.c, once a project installs the hook (lwip_hooks/ac3forge_lwip_hooks.h) -
+# nothing in this component's own sources calls it, so a linker that pulls
+# object files from this archive on an as-needed basis has no reason to keep
+# that translation unit unless something forces it, and drops it whenever
+# nothing else in the same build happens to reference tcp_arrivals.cpp's other
+# symbols (as when CONFIG_AC3FORGE_SENDSPIN is off: undefined reference to
+# ac3forge_lwip_ip4_input from ip4.c, 2026-09-22). PRIV_REQUIRES lwip above is
+# unconditional, so liblwip.a - and this component's own tcp_arrivals.cpp.obj -
+# are always part of the link; this just makes the linker keep the one symbol
+# a hook, once installed, needs to find.
+target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--undefined=ac3forge_lwip_ip4_input")
+
 # How the interleave converts a float sample to an integer slot is chosen by
 # part, as a header directory: conversion/float/ where the CPU has a
 # floating-point unit, conversion/bits/ where it does not. Each holds

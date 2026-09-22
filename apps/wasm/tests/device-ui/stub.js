@@ -188,6 +188,8 @@ function idleSendspin() {
         role: '',
         clock_converged: false,
         clock_error_us: 0,
+        clock_updates: 0,
+        clock_rejected: 0,
         connections: 0,
         client_id: 'gS3cmMlDUaQGhxYd0PF0x0jWR2OGdhxwUwBBwyD3O1c',
         paired: 0,
