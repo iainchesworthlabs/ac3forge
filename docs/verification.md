@@ -35,8 +35,11 @@ In rough order of strength:
    It is the only Atmos stream here this project's own encoder did not make, and every part of
    the object layer it exercises was refused outright before it existed: a bed programme with a
    twelve-channel assignment and `b_bed_chan_distribute` set, `object_gain_idx` 3, a second
-   `oa_element` carrying a `trim_element`, `joc_dmx_config_idx` 3 with a nonzero clip gain and
-   sparse coding, and an EMDF container mixing `payload_frame_aligned` 0 and 1 across its
+   `oa_element` carrying a `trim_element`, `joc_dmx_config_idx` 3 with a nonzero `joc_clipgain_x_bits`
+   (4, though `joc_clipgain_y_bits` is 0, which makes the computed `joc_clipgain` exactly unity —
+   see `oba::joc::parse_payload`'s own comment; this fixture exercises the nonzero-field parse path
+   but not a non-unity gain) and sparse coding, and an EMDF container mixing `payload_frame_aligned`
+   0 and 1 across its
    payloads. Decoding it also caught a real audio-layer bug — `audblk` reads `cplfgaincod` and
    `cplfsnroffst` ahead of the per-channel lists when the block couples, and the decoder skipped
    both, which no stream this project produces could have exposed.

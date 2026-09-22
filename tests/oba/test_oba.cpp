@@ -1219,8 +1219,8 @@ TEST_CASE("JOC parses every Table 47 downmix configuration it can", "[oba][joc]"
         CHECK_FALSE(decoded->shapes[0].fine_quant);
         CHECK(decoded->shapes[1].num_bands_idx == 1);
         CHECK(decoded->shapes[1].fine_quant);
-        // §6.3.3.2 as this codebase reads it: (1 + y/32) * 2^x.
-        CHECK(decoded->clip_gain == Catch::Approx((1.0 + 4.0 / 32.0) * 8.0));
+        // §6.3.3.2: joc_clipgain = 1 + (y/32) * 2^(x-4).
+        CHECK(decoded->clip_gain == Catch::Approx(1.0 + (4.0 / 32.0) * std::exp2(3.0 - 4.0)));
         CHECK(decoded->seq_count == 7);
         // Value 0 in each table is the largest negative step; what matters
         // here is that the matrix is sized per object, not per frame.
