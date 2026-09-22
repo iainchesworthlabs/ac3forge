@@ -1075,8 +1075,19 @@ The sections below contain the complete change list and fixes.
   1.** Each `presentations_v0[].substreams[]` entry held an unnamed object beside its
   `role`. The substream's members now sit beside `role` in the entry. No stream on hand has
   such a table of contents, so no output seen so far changes.
-
-**ESP32 / bare-metal**
+- **`ac3cli play`, `monitor`, `identify` and `live`'s output legs spun for ever once an
+  output device went away.** None of them looked at `running()`, so a lost render endpoint
+  left `submit()` refusing and a drain loop waiting on counts that had stopped moving -
+  the same hang the queue-full case already had before the sinks themselves learned to stop
+  (see "An output device that went away left the sink saying it was still playing" above).
+  Every submit and drain loop now ends as soon as the sink reports itself not running, and
+  says which endpoint went and how (unplugged, switched off, disabled, or taken by the
+  system), through a shared `ac3::apps::submit_while_running`/`wait_while_running`
+  (`apps/common/sink_wait.hpp`). `play`, `monitor` and `identify` exit `5`; `live`'s
+  monitor and passthrough legs are dropped and the take carries on, ending the session as a
+  failure only because it did not do everything asked. `tools/checks/passthrough_probe.cpp`
+  gets the same fix, exiting `5` rather than looping past a pulled cable. `ac3cli spatial`
+  is unchanged - `SpatialObjectSink` was not touched by #775 and needs its own fix.
 
 - **A twelve-channel play aborted on the ESP32-S3 for want of internal RAM.** The E-AC-3
   decoder held all 32 substream-identity slots (`strmtyp * 8 + substreamid`) by value, so

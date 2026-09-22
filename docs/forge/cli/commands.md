@@ -1128,7 +1128,7 @@ payload) and `verbose` (the stderr progress line whatever the run's length). See
 | `2` | Input — unreadable, absent, or not a valid stream |
 | `3` | Output — the destination could not be created, written or finalized |
 | `4` | Unavailable here — this build or machine cannot run the command at all |
-| `5` | Runtime — the run started and then failed (a capture dropout, a measurement with nothing to measure) |
+| `5` | Runtime — the run started and then failed (a capture dropout, an output device that went away, a measurement with nothing to measure) |
 | `6` | A QC gate failed |
 | `7` | Internal — an exception escaped a command |
 
