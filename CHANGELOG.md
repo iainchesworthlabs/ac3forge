@@ -1203,6 +1203,18 @@ The sections below contain the complete change list and fixes.
     freeing the player's memory, and the board rejoins from there: on a board with
     about a kilobyte of internal heap free while streaming, the rejoin came 8.7 s after
     the access point returned, and the next play was clean.
+- **A Hearth sink's first play right after a Wi-Fi reconnect could start with a few chunks
+  late and an underrun or two, converging again over about a second.** Learning bursts run
+  one after another until the clock filter's own error estimate reads as converged, which
+  says only how well a run of replies agrees with itself, not with the truth - and a run
+  taken in the turbulent seconds right after a reconnect, where reassociation, mDNS's
+  re-announce and an ARP round can all delay a reply the same way, could agree with itself
+  as well as an accurate run and read as converged on an offset that was still several
+  milliseconds off. `ac3::sendspin::ClockSync` now takes convergence in two steps: once a
+  run reads as converged, one more burst, a learning interval later and so genuinely apart
+  in time, must measure within a millisecond of that run's own last reading before the
+  clock is reported converged and a stream is let start. A confirming burst that disagrees
+  is not trusted; the run starts over.
 - **A Hearth sink's page could reach its Sendspin player before the player had started,
   and after a failed start had freed it.** `hearth_sink` set two global pointers to the
   player and its server as it made them, on the task that starts them. The control
