@@ -131,25 +131,48 @@ void put_size(BitWriter& w, const ObjectSize& size) {
     w.put(code(size.height), 5);
 }
 
-// §5.5.9 object_info_block for the single update block this encoder sends.
-// Everything that block 0 implies is implied here too, so nothing that the
-// status indices would have carried is written: §5.5.9 fixes
-// object_basic_info_status_idx to 0b01 for blk == 0, and §5.5.10 turns that
-// into "both fields present" without a bit on the wire.
-void put_object_info_block(BitWriter& w, const DynamicObject* dynamic) {
-    w.put(0, 1);  // b_object_not_active: every object carries essence
+// §5.5.9 object_info_block. Everything that block 0 implies is implied here
+// too when blk == 0, so nothing the status indices would have carried is
+// written: §5.5.9 fixes both status_idx fields to 0b01 for blk == 0, and
+// §5.5.10/§5.5.11 turn that into "every field present" without a bit on the
+// wire. A later block cannot rely on that shortcut - its status is one of
+// several legal shapes, so it has to say which - and this always picks the
+// same two: an anchored (bed/ISF) object's gain/priority cannot vary under
+// this Program model, so it reuses block 0's (Table 28 "full reuse", 0b10,
+// nothing further coded); a dynamic object always resends a full, absolute
+// update (0b01, plus an explicit b_differential_position_specified = 0)
+// rather than detecting an unchanged value to reuse or coding a stepped
+// position - both legal and both left for a future encoder that wants the
+// smaller payload.
+void put_object_info_block(BitWriter& w, int blk, const DynamicObject* dynamic) {
+    if (dynamic != nullptr && !dynamic->active) {
+        // §5.5.9's own short-circuit, mirrored from the read side
+        // (read_object_info_block's `not_active` branch): neither status
+        // index is transmitted, so nothing past it is either.
+        w.put(1, 1);  // b_object_not_active
+        w.put(0, 1);  // b_additional_table_data_exists
+        return;
+    }
+    w.put(0, 1);  // b_object_not_active
 
-    // object_basic_info(), status 0b01 => object_basic_info[] = {true, true}.
-    put_gain(w, dynamic ? dynamic->gain_db : 0.0);
-    put_priority(w, dynamic ? dynamic->priority : 1.0);
+    if (blk != 0) {
+        w.put(dynamic == nullptr ? 0b10u : 0b01u, 2);  // object_basic_info_status_idx
+    }
+    if (blk == 0 || dynamic != nullptr) {
+        // object_basic_info(): status 0b01 => object_basic_info[] = {true, true}.
+        put_gain(w, dynamic ? dynamic->gain_db : 0.0);
+        put_priority(w, dynamic ? dynamic->priority : 1.0);
+    }
 
     // §5.5.9 again: an object in a bed has its position from its speaker
     // label, so object_render_info_status_idx is forced to 0b00 and the whole
-    // block is absent. Only dynamic objects describe themselves.
+    // block is absent, at every blk. Only dynamic objects describe themselves.
     if (dynamic != nullptr) {
+        if (blk != 0) {
+            w.put(0b01, 2);  // object_render_info_status_idx: full
+            w.put(0, 1);      // b_differential_position_specified: absolute
+        }
         // object_render_info(), status 0b01 => obj_render_info[] all true.
-        // blk == 0 forces b_differential_position_specified to FALSE, and it
-        // is implied rather than transmitted.
         w.put(quantize_xy(dynamic->position.x), 6);
         w.put(quantize_xy(dynamic->position.y), 6);
         put_z(w, dynamic->position.z);
@@ -167,30 +190,32 @@ void put_object_info_block(BitWriter& w, const DynamicObject* dynamic) {
     w.put(0, 1);  // b_additional_table_data_exists
 }
 
-// §5.5.5 object_element. Written into whatever writer it is handed, so it can
-// be emitted once into a probe to measure it and once into the payload for
-// real - the element's bits do not start on a byte boundary, so they cannot be
-// copied through a byte buffer without picking up padding that is not theirs.
-void put_object_element(BitWriter& w, const Program& program,
-                        std::span<const DynamicObject> objects, int ramp_samples) {
-    // Objects that are anchored rather than placed: the LFE in the
-    // dynamic-only branch, or the whole bed instance otherwise. They come
-    // first (§5.6.4.8) and carry no render info.
-    const int anchored = object_count(program) - program.dynamic_objects;
-    const int total = object_count(program);
+// §5.5.6 md_update_info's sample_offset_code/sample_offset_bits, Table 22/23.
+// Only the first update in an object_element carries this - see
+// ObjectUpdate::sample_offset's own comment.
+void put_sample_offset(BitWriter& w, int sample_offset) {
+    constexpr std::array<int, 4> kOffsets = {8, 16, 18, 24};  // Table 23
+    if (sample_offset == 0) {
+        w.put(0b00, 2);
+        return;
+    }
+    for (std::uint32_t i = 0; i < kOffsets.size(); ++i) {
+        if (kOffsets[i] == sample_offset) {
+            w.put(0b01, 2);
+            w.put(i, 2);
+            return;
+        }
+    }
+    assert(sample_offset >= 0 && sample_offset <= 31);
+    w.put(0b10, 2);
+    w.put(static_cast<std::uint32_t>(sample_offset), 5);
+}
 
-    // md_update_info (§5.5.6). One update per frame, aligned to its first
-    // sample: sample_offset_code 0 is sample_offset 0, and
-    // num_obj_info_blocks_bits 0 is a single block.
-    w.put(0b00, 2);  // sample_offset_code
-    w.put(0, 3);     // num_obj_info_blocks_bits => 1 block
-    // block_update_info (§5.5.7).
-    w.put(0, 6);     // block_offset_factor_bits: the update starts the frame
-    // The ramp covers exactly one frame - `ramp_samples` - so object
-    // properties interpolate across the frame instead of stepping at its
-    // edge. Code 0 would be a jump, and a moving object would zipper. Table
-    // 24 spells 1536 and 512 directly; 256 is in Table 25's ramp table; a
-    // three-block frame's 768 is in neither and takes the 11-bit literal.
+// §5.5.7 block_update_info's ramp_duration_code, Table 24/25. Code 0b00 (an
+// instant jump, no ramp) is never written - every update this encoder makes
+// covers a real span of samples that should interpolate across it, not step
+// at its edge - so it is not one of the cases below.
+void put_ramp_duration(BitWriter& w, int ramp_samples) {
     switch (ramp_samples) {
         case 1536:
             w.put(0b10, 2);  // ramp_duration_code
@@ -210,14 +235,46 @@ void put_object_element(BitWriter& w, const Program& program,
             w.put(static_cast<std::uint32_t>(ramp_samples), 11);
             break;
     }
+}
+
+// §5.5.5 object_element. Written into whatever writer it is handed, so it can
+// be emitted once into a probe to measure it and once into the payload for
+// real - the element's bits do not start on a byte boundary, so they cannot be
+// copied through a byte buffer without picking up padding that is not theirs.
+void put_object_element(BitWriter& w, const Program& program,
+                        std::span<const ObjectUpdate> updates) {
+    // Objects that are anchored rather than placed: the LFE in the
+    // dynamic-only branch, or the whole bed instance otherwise. They come
+    // first (§5.6.4.8) and carry no render info.
+    const int anchored = object_count(program) - program.dynamic_objects;
+    const int total = object_count(program);
+    const auto num_blocks = static_cast<std::uint32_t>(updates.size());
+
+    // md_update_info (§5.5.6).
+    assert(!updates.empty());
+    put_sample_offset(w, updates.front().sample_offset);
+    assert(num_blocks >= 1 && num_blocks <= 8);
+    w.put(num_blocks - 1, 3);  // num_obj_info_blocks_bits
+
+    // block_update_info (§5.5.7), once per update.
+    for (const auto& update : updates) {
+        w.put(static_cast<std::uint32_t>(update.block_offset_factor), 6);
+        put_ramp_duration(w, update.ramp_duration);
+    }
 
     w.put(1, 1);  // b_reserved_data_not_present
 
+    // §5.5.8: every block of one object, then the next object - not every
+    // object of one block. So an object's own column is contiguous.
     for (int object = 0; object < total; ++object) {
         const bool is_anchored = object < anchored;
-        put_object_info_block(
-            w, is_anchored ? nullptr
-                           : &objects[static_cast<std::size_t>(object - anchored)]);
+        for (int blk = 0; blk < static_cast<int>(num_blocks); ++blk) {
+            const DynamicObject* dynamic =
+                is_anchored ? nullptr
+                            : &updates[static_cast<std::size_t>(blk)]
+                                   .objects[static_cast<std::size_t>(object - anchored)];
+            put_object_info_block(w, blk, dynamic);
+        }
     }
 }
 
@@ -352,10 +409,12 @@ std::vector<int> joc_object_indices(const Program& program) {
     return indices;
 }
 
-std::vector<std::byte> build_payload(const Program& program,
-                                     std::span<const DynamicObject> objects,
-                                     int ramp_samples) {
-    assert(static_cast<int>(objects.size()) == program.dynamic_objects);
+std::vector<std::byte> build_payload_updates(const Program& program,
+                                             std::span<const ObjectUpdate> updates) {
+    assert(!updates.empty() && updates.size() <= 8);  // num_obj_info_blocks_bits is 3 bits
+    for ([[maybe_unused]] const auto& update : updates) {
+        assert(static_cast<int>(update.objects.size()) == program.dynamic_objects);
+    }
     // The writer covers one standard bed instance and no ISF, which is every
     // program this project produces. parse_payload reads the wider shapes;
     // this side would silently drop them, so it refuses them instead.
@@ -368,7 +427,7 @@ std::vector<std::byte> build_payload(const Program& program,
     // padding is whatever rounds the three of them up to whole bytes.
     const std::size_t element_bits = [&] {
         BitWriter probe;
-        put_object_element(probe, program, objects, ramp_samples);
+        put_object_element(probe, program, updates);
         return probe.bit_count() + 1;
     }();
     const auto element_bytes = static_cast<std::uint32_t>((element_bits + 7) / 8);
@@ -420,7 +479,7 @@ std::vector<std::byte> build_payload(const Program& program,
     // A decoder that does not know this element can skip it by its size, so
     // there is no reason to make it throw the payload away.
     w.put(0, 1);  // b_discard_unknown_element
-    put_object_element(w, program, objects, ramp_samples);
+    put_object_element(w, program, updates);
     for (std::size_t bit = 0; bit < element_padding; ++bit) {
         w.put(0, 1);  // §5.6.4.14 padding: zero bits, counted by the size
     }
@@ -429,6 +488,13 @@ std::vector<std::byte> build_payload(const Program& program,
     // element is a whole number of bytes measured from a bit offset that is
     // not itself byte-aligned, so the payload still has a few bits to go.
     return w.take();
+}
+
+std::vector<std::byte> build_payload(const Program& program,
+                                     std::span<const DynamicObject> objects,
+                                     int ramp_samples) {
+    const ObjectUpdate update{.ramp_duration = ramp_samples, .objects = objects};
+    return build_payload_updates(program, std::span{&update, 1});
 }
 
 

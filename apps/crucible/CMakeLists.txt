@@ -266,12 +266,12 @@ set_target_properties(ac3crucible-run PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMA
 # kit still configures: the UI is simply skipped, with a warning.
 #
 # Theme, Card, RailBlock and SegmentedControl are the GUI's own files, not
-# copies: each is read at configure time, its `import Ac3Forge` rewritten to
-# this module's URI, and the result written to an ignored directory under
-# ui/qml/ and registered here. Edit apps/gui/qml/*.qml and both apps follow. The Theme
-# needs the GUI's SystemTheme singleton (the desktop accent colour), so that
-# C++ is compiled into this target too, where QML_ELEMENT registers it in
-# this module.
+# copies: cmake/SharedFamilyQml.cmake reads each at configure time, rewrites
+# its `import Ac3Forge` to this module's URI, and writes the result to an
+# ignored directory under ui/qml/. Edit apps/gui/qml/*.qml and both apps
+# follow. The Theme needs the GUI's SystemTheme singleton (the desktop accent
+# colour), so that C++ is compiled into this target too, where QML_ELEMENT
+# registers it in this module.
 # ---------------------------------------------------------------------------
 # Widgets is for the tray alone - Qt.labs.platform's SystemTrayIcon is
 # QSystemTrayIcon underneath - and is what lets it exist on Linux.
@@ -324,25 +324,16 @@ else()
         message(STATUS "Qt SVG not found: SVG-only application icons show the monogram")
     endif()
 
-    set(AC3DESK_SHARED_QML Theme.qml Card.qml RailBlock.qml SegmentedControl.qml FocusRing.qml)
     # Generated INTO the source tree (ignored by git, see ui/qml/shared/.gitignore)
     # rather than the build tree: the QML ahead-of-time compiler names its
     # cache files after the path relative to the source directory, and a
     # build-tree path produced an unusable name with a drive letter in the
-    # middle of it.
+    # middle of it. cmake/SharedFamilyQml.cmake carries the copy-and-rewrite
+    # loop itself now (apps/hearth/ui/CMakeLists.txt calls the same function) -
+    # see its header for why.
+    include(SharedFamilyQml)
     set(AC3DESK_SHARED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/shared")
-    file(MAKE_DIRECTORY "${AC3DESK_SHARED_DIR}")
-    set(AC3DESK_SHARED_OUT)
-    foreach(name IN LISTS AC3DESK_SHARED_QML)
-        set(src "${CMAKE_CURRENT_SOURCE_DIR}/../gui/qml/${name}")
-        set(dst "${AC3DESK_SHARED_DIR}/${name}")
-        file(READ "${src}" contents)
-        string(REPLACE "import Ac3Forge\n" "import Ac3ForgeCrucible\n" contents "${contents}")
-        file(WRITE "${dst}" "${contents}")
-        # Re-run configure when the GUI's file changes, so the rewrite follows it.
-        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${src}")
-        list(APPEND AC3DESK_SHARED_OUT "${dst}")
-    endforeach()
+    ac3forge_stage_shared_qml(Ac3ForgeCrucible "${AC3DESK_SHARED_DIR}" AC3DESK_SHARED_OUT)
 
     set(AC3DESK_QML_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/ui/qml/Main.qml"

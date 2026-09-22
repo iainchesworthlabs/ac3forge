@@ -9,13 +9,16 @@
   variables, substituted the same way its default template substitutes
   them - see apps/gui/CMakeLists.txt's APPLE branch for where each is set.
 
-  .ac3/.ec3 are not types macOS already knows, so this both DECLARES them
-  (UTExportedTypeDeclarations, conforming to public.audio so Spotlight/
-  Quick Look/other audio-aware tooling treats them as audio rather than
-  opaque data) and CLAIMS them (CFBundleDocumentTypes, LSHandlerRank Owner)
-  in the same file - a UTI with nothing to export it would leave the
-  extension unrecognised, and a document type with no UTI to name would have
-  nothing to claim.
+  .ac3/.ec3 no longer appear here (Hearth phase A7,
+  planning/hearth-reference-player.md): ac3hearth is the reference player
+  and now owns both UTIs in apps/hearth/ui/Info.plist.in, the same
+  CFBundleDocumentTypes/UTExportedTypeDeclarations shape this file used to
+  carry. A UTI with two LSHandlerRank Owner claims is undefined which
+  application Launch Services picks, so only one bundle may declare it.
+  Everything else below is CMake's own default template's own fields,
+  kept here rather than dropping this file, since ac3gui still needs a
+  custom template for no other reason than historical inertia - removing
+  it is a separate change, not part of this one.
 -->
 <plist version="1.0">
 <dict>
@@ -49,77 +52,5 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>${MACOSX_BUNDLE_COPYRIGHT}</string>
-	<key>CFBundleDocumentTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeName</key>
-			<string>AC-3 Audio Stream</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-			<key>LSHandlerRank</key>
-			<string>Owner</string>
-			<key>CFBundleTypeIconFile</key>
-			<string>${MACOSX_BUNDLE_ICON_FILE}</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.ac3</string>
-			</array>
-		</dict>
-		<dict>
-			<key>CFBundleTypeName</key>
-			<string>E-AC-3 Audio Stream</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-			<key>LSHandlerRank</key>
-			<string>Owner</string>
-			<key>CFBundleTypeIconFile</key>
-			<string>${MACOSX_BUNDLE_ICON_FILE}</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.ec3</string>
-			</array>
-		</dict>
-	</array>
-	<key>UTExportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.ac3</string>
-			<key>UTTypeDescription</key>
-			<string>AC-3 Audio Stream</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.audio</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>ac3</string>
-				</array>
-				<key>public.mime-type</key>
-				<string>audio/ac3</string>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}.ec3</string>
-			<key>UTTypeDescription</key>
-			<string>E-AC-3 Audio Stream</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.audio</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>ec3</string>
-				</array>
-				<key>public.mime-type</key>
-				<string>audio/eac3</string>
-			</dict>
-		</dict>
-	</array>
 </dict>
 </plist>

@@ -319,6 +319,11 @@ namespace {
 // has never changed.
 constexpr std::uint32_t kSpeakerLowFrequency = 0x8;
 
+// What can take the spatial output away mid-run, for the error that says it
+// went.
+constexpr std::string_view kSpatialGoneReasons =
+    "unplugged, switched off, disabled, or taken by the system";
+
 // TS 103 420 §4.2.1's room-anchored cube (x,y in [0,1]; z in [-1,1] about ear
 // height - see ac3::oba::scene.hpp's Orientation comment and
 // bed_label_position's "front wall at y=0, ceiling at z=+1, sides at x=0 and
@@ -443,9 +448,10 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
         ac3::oba::joc::reconstruction_delay(decoder_config.joc_domain))};
     std::vector<float> delayed_lfe;
 
-    // Plays one unit, opening the sink on the first. False once the sink has
-    // refused, with the reason printed.
-    const auto spatial_unit = [&](const ac3::DecodedAccessUnit& out) -> bool {
+    // Plays one unit, opening the sink on the first. kExitOk to carry on;
+    // otherwise the code to end with, the reason printed: the sink refused
+    // to open, or went away.
+    const auto spatial_unit = [&](const ac3::DecodedAccessUnit& out) -> int {
         if (!started) {
             const bool has_lfe =
                 out.object_metadata && ac3::oba::has_lfe(out.object_metadata->program);
@@ -455,7 +461,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
                           static_cast<std::uint32_t>(out.object_audio.size()));
             if (!started_result.has_value()) {
                 fmt::println(stderr, "error: {}", ac3::audio::describe(started_result.error()));
-                return false;
+                return kExitUnavailable;
             }
             started = true;
             opened_objects = out.object_audio.size();
@@ -464,7 +470,7 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
                            out.object_audio.size(),
                            has_lfe ? " + the bed's LFE (static)" : "", device_name);
         } else if (out.object_audio.size() != opened_objects) {
-            return true;
+            return kExitOk;
         }
 
         dynamic_updates.clear();
@@ -492,11 +498,19 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
             static_updates.push_back({.pcm = delayed_lfe, .channel = kSpeakerLowFrequency});
         }
 
+        // Queues one unit, waiting for room while the sink plays what is
+        // ahead of it. A sink that stopped itself never makes room again,
+        // which is what running() is for.
         while (!sink.submit(dynamic_updates, static_updates)) {
+            if (!sink.running()) {
+                fmt::println(stderr, "error: \"{}\" went away ({}); playback stopped",
+                             device_name, kSpatialGoneReasons);
+                return kExitRuntime;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(4));
         }
         ++units_played;
-        return true;
+        return kExitOk;
     };
 
     for (const auto& unit : *units) {
@@ -511,8 +525,8 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
             // comes out with a later unit, or from flush() below.
             continue;
         }
-        if (!spatial_unit(**decoded)) {
-            return kExitUnavailable;
+        if (const int code = spatial_unit(**decoded); code != kExitOk) {
+            return code;
         }
     }
     // §3.7 again: whatever the decoder still holds once the stream has
@@ -522,15 +536,30 @@ int run_spatial(std::string_view in_path, int device_index, const Options& meta)
     // same fold flag applies to what flush() already applied per substream.
     const auto held = ac3::apps::held_back_unit(
         decoder->flush(), programme, meta.output.target != ac3::DownmixTarget::kAsCoded);
-    if (held.has_value() && !spatial_unit(*held)) {
-        return kExitUnavailable;
+    if (held.has_value()) {
+        if (const int code = spatial_unit(*held); code != kExitOk) {
+            return code;
+        }
     }
 
+    // Drains before tearing the sink down. A sink that went away right as
+    // the stream ended never reaches updates_submitted on its own, so this
+    // waits on running() too rather than only on the counts.
+    bool played_out = true;
     while (sink.stats().updates_rendered < sink.stats().updates_submitted) {
+        if (!sink.running()) {
+            played_out = false;
+            break;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     const auto stats = sink.stats();
     sink.stop();
+    if (!played_out) {
+        fmt::println(stderr, "error: \"{}\" went away ({}) before the last access units played",
+                     device_name, kSpatialGoneReasons);
+        return kExitRuntime;
+    }
     status_println(status_stream(),
                    "played {} access units, {} active dynamic objects, {} underruns",
                    units_played, stats.active_dynamic_objects, stats.underruns);

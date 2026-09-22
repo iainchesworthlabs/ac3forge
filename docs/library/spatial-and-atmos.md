@@ -132,6 +132,49 @@ Two limits are structural, not bugs: objects sharing a direction cannot be separ
 linear combination of the bed, and Dolby's decoder will not treat these as objects at all. Both
 are covered in [Atmos & JOC](../concepts/atmos-joc.md#two-limitations).
 
+## Channel-based-immersive (CBI) beds
+
+Everything above assumes objects: free-floating placements an application authors. A CBI
+programme is the other shape TS 103 420 allows — a *bed*, a fixed speaker layout (5.1.4, 7.1.4,
+9.1.6) coded through OAMD+JOC exactly like objects but anchored to speaker labels rather than
+positions, `program.dynamic_objects == 0` throughout. It is what Dolby's own DEE encoder produces
+from `--input-format cbi_wav`, and it is what most channel-based-immersive Atmos content actually
+is — see [Atmos & JOC](../concepts/atmos-joc.md#oamd)'s "a programme need not be objects" note.
+
+`AtmosEncoder` has a second constructor for it, taking a `BedProgram` (the Table 12 bed
+assignment) instead of an object count:
+
+```cpp
+using ac3::oba::bed;
+const std::uint16_t layout = bed::kLR | bed::kC | bed::kLfe | bed::kLsRs |
+                             bed::kTflTfr | bed::kTblTbr;  // 5.1.4
+ac3::oba::AtmosEncoder encoder{{.bitrate_kbps = 448}, ac3::oba::BedProgram{.bed = layout}};
+```
+
+`encode_bed_frame` replaces `encode_frame`: no `ObjectPlacement` to supply, because a bed
+channel's position comes from its label, not an argument (TS 103 420 §5.5.9) — just one span of
+audio per channel, in `ac3::oba::bed_labels(layout)`'s own order (LFE included, at whichever
+position that order puts it):
+
+```cpp
+// channels.size() == ac3::oba::bed_channel_count(encoder.program()).
+const auto unit = encoder.encode_bed_frame(channels);
+```
+
+Every channel but the LFE is folded onto the 5-channel ring at its own fixed, speaker-implied
+position and reconstructed by JOC from there — the base ring channels (L, C, R, Ls, Rs) at unity,
+since they physically **are** the downmix, and every other bed channel (Lb/Rb, the height pairs,
+Lw/Rw) at a small fixed downmix attenuation, a non-normative encoder policy choice (see
+`kExtensionDownmixScale` in `atmos.cpp`) that a JOC-aware decoder undoes exactly, the same way it
+already undoes an authored object's own gain. The LFE feeds the bed's own LFE channel directly,
+unpanned — it is not a JOC object either way (§6.3.2.2 bypasses it for a bed programme exactly as
+it does for a dynamic-object one).
+
+Only the 5.1.4 channel order has been checked against a real DEE-produced stream
+(`tests/oba/test_dee_joc_fixture.cpp`); 7.1.4 and 9.1.6 extend it by Table 12's own channel order,
+unverified against DEE itself. `ac3cli atmos-cbi` is the CLI surface — see
+[CLI commands](../forge/cli/commands.md).
+
 ## Getting the objects back: `oba::joc::reconstruct`
 
 `Eac3Decoder` reconstructs object audio into `DecodedSubstream::object_audio` whenever a frame
