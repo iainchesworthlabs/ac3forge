@@ -38,6 +38,10 @@ struct DecoderSettings {
     // §7.7's operating mode. kLine and kRf each fix the dynamic range
     // handling and normalise dialogue; kCustom uses the four switches below.
     OperatingMode mode = OperatingMode::kLine;
+    // kRf only: OutputConfig::rf_ceiling, in dBFS rather than the library's
+    // own linear magnitude - decoder_setup() converts it, held to full scale.
+    // 0.0 is OutputConfig's own default, and this has no effect outside kRf.
+    double rf_ceiling_db = 0.0;
     // kCustom only: §7.7.1's partial compression, as the share of each dynrng
     // cut and boost applied, 0 to 1.
     double drc_cut = 1.0;

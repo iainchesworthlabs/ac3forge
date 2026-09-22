@@ -9,13 +9,12 @@ import Ac3ForgeHearth
 // HearthController.decoderSettings - a real, working decoder, not a
 // settings-only form.
 //
-// Two controls the design shows have no field to bind yet, and are shown
-// inactive with a short reason rather than silently dropped: RF ceiling
-// (OutputConfig's, not DecoderSettings') and the fast-inverse-transform
-// switch (a library-level choice this app does not carry a setting for).
-// "This stream" and "Programme" need the current item's own media
-// information, which this controller does not read yet - left for the
-// Media page's own slice.
+// One control the design shows has no field to bind yet, and is shown
+// inactive with a short reason rather than silently dropped: the
+// fast-inverse-transform switch (a library-level choice this app does not
+// carry a setting for). "This stream" and "Programme" need the current
+// item's own media information, which this controller does not read yet -
+// left for the Media page's own slice.
 ScrollView {
     id: root
     clip: true
@@ -142,15 +141,32 @@ ScrollView {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
+                        enabled: root.settings.mode === "rf"
                         Text { text: qsTr("RF ceiling"); color: Theme.textMuted; Layout.preferredWidth: 90 }
                         TextField {
                             Layout.preferredWidth: 90
-                            enabled: false
-                            text: qsTr("0.0 dBFS")
+                            horizontalAlignment: Text.AlignRight
+                            font.family: Theme.monoFamily
+                            // No lower bound: output.hpp's own comment on
+                            // rf_ceiling treats more headroom than asked for
+                            // as a valid choice, just a quieter one. The
+                            // upper bound is real - full scale is as high as
+                            // a ceiling means anything.
+                            validator: DoubleValidator { top: 0; decimals: 1 }
+                            text: Number(root.settings.rfCeilingDb ?? 0).toFixed(1)
+                            Accessible.name: qsTr("RF ceiling, dBFS")
+                            onEditingFinished: {
+                                const value = parseFloat(text);
+                                if (!isNaN(value)) {
+                                    root.set("rfCeilingDb", value);
+                                }
+                            }
                         }
+                        Text { text: qsTr("dBFS"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall }
                         Text {
                             Layout.fillWidth: true
-                            text: qsTr("Not adjustable from this build yet; RF mode holds the fold under full scale regardless.")
+                            text: qsTr("What RF mode holds the fold under. Full scale by default; no effect in "
+                                      + "Line or Custom mode.")
                             color: Theme.textMuted
                             font.pixelSize: Theme.fontSmall
                             wrapMode: Text.WordWrap
