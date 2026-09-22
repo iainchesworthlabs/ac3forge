@@ -38,7 +38,7 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+4"; onActivated: window.page = "decoder" }
     Shortcut { sequence: "Ctrl+5"; onActivated: window.page = "network" }
     Shortcut { sequence: "Ctrl+6"; onActivated: window.page = "settings" }
-    Shortcut { sequence: StandardKey.HelpContents; onActivated: about.open() }
+    Shortcut { sequence: StandardKey.HelpContents; onActivated: shortcuts.open() }
 
     header: Rectangle {
         color: Theme.surface
@@ -83,19 +83,27 @@ ApplicationWindow {
                 ]
                 onSelected: function(value) { window.page = value; }
             }
+
             Button {
-                objectName: "aboutButton"
+                objectName: "helpButton"
                 text: "?"
                 implicitWidth: 30
-                onClicked: about.open()
-                Accessible.name: qsTr("About Hearth")
+                onClicked: shortcuts.open()
+                Accessible.name: qsTr("Keyboard shortcuts")
             }
         }
     }
 
-    // Reached from the header's "?" button, and from `--page about` /
-    // `--page licences` (main.cpp) for a capture - the same wiring
-    // apps/crucible/ui/qml/Main.qml uses for its own About and Licences.
+    // Reached from the header's "?" button and F1; ShortcutsDialog's own
+    // About… chains to AboutDialog, whose own Licences… chains to
+    // LicencesDialog one hop further ("? -> Shortcuts -> About ->
+    // Licences") - agreed between the #830 and #854 sessions rather than a
+    // second header control. `--page shortcuts`/`about`/`licences`
+    // (main.cpp) open any of the three directly, for a capture.
+    ShortcutsDialog { id: shortcuts; onShowAbout: about.open() }
+    function openShortcuts() { shortcuts.open(); }
+    property alias shortcutsDialog: shortcuts
+
     AboutDialog { id: about; onShowLicences: licences.open() }
     function openAbout() { about.open(); }
     LicencesDialog { id: licences }

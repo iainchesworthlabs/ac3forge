@@ -5,9 +5,9 @@
 // the window after it has settled and quits, so a headless check (or the
 // screenshot script, later) can see it; `--page <name>` picks the page it
 // opens on first - play, media, speakers, decoder, network or settings, or
-// opens the About dialog (about) or its Licences view (licences) over the
-// Play page, the same two special values apps/crucible/ui/main.cpp's own
-// `--page` accepts.
+// opens the keyboard-shortcuts reference (shortcuts, issue #830), the About
+// dialog (about) or its Licences view (licences) over the Play page, the
+// same special values apps/crucible/ui/main.cpp's own `--page` accepts.
 //
 // Translations and the first-run dialog are not wired up yet: this slice is
 // the shell and the Play page over the real engine, with the other five
@@ -88,9 +88,12 @@ int main(int argc, char** argv) {
     if (engine.rootObjects().isEmpty()) {
         return 1;
     }
-    // `--page about` opens the About dialog over the Play page, for a
-    // capture; `--page licences` opens the notices view the same way.
-    if (page == QLatin1String("about")) {
+    // `--page shortcuts`/`about`/`licences` open their dialog over the Play
+    // page, for a capture.
+    if (page == QLatin1String("shortcuts")) {
+        engine.rootObjects().first()->setProperty("page", QStringLiteral("play"));
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openShortcuts");
+    } else if (page == QLatin1String("about")) {
         engine.rootObjects().first()->setProperty("page", QStringLiteral("play"));
         QMetaObject::invokeMethod(engine.rootObjects().first(), "openAbout");
     } else if (page == QLatin1String("licences")) {

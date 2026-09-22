@@ -5,9 +5,11 @@ import QtQuick.Layouts
 import Ac3ForgeHearth
 
 // About: what this is, the version and build it came from, the licences it
-// carries. Reached from the header's "?" button. The same shape as
-// AC3Forge Crucible's About (apps/crucible/ui/qml/AboutDialog.qml), on
-// Hearth's own theme, for Hearth's own notices.
+// carries. Reached from ShortcutsDialog's own About… button ("? -> Shortcuts
+// -> About -> Licences" - Main.qml's own comment says why there is no
+// second header control for this). The same shape as AC3Forge Crucible's
+// About (apps/crucible/ui/qml/AboutDialog.qml), on Hearth's own theme, for
+// Hearth's own notices.
 Dialog {
     id: root
     objectName: "aboutDialog"
