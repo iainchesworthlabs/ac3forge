@@ -43,6 +43,7 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 #include "recording_sink.hpp"
+#include "sink_wait.hpp"
 #include "stream_playback.hpp"
 
 namespace ac3cli::commands {
@@ -131,10 +132,16 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
 
     ac3::audio::MonitorSink sink;
     std::uint64_t units_played = 0;
+    // Queues one unit, waiting for room while the device plays what is ahead
+    // of it. False once the device has gone away, with that printed: a sink
+    // that stopped itself never makes room again.
     auto play = [&](std::span<const float> interleaved) {
-        while (!sink.submit(interleaved)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+        if (ac3::apps::submit_while_running(sink, std::chrono::milliseconds(4), interleaved)) {
+            return true;
         }
+        fmt::println(stderr, "error: \"{}\" went away ({}); playback stopped", device_name,
+                     kOutputGoneReasons);
+        return false;
     };
 
     if (access_units) {
@@ -159,9 +166,10 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         // The programme's layout, from the first unit played. The held-back
         // unit after the loop is laid out against it.
         std::optional<ac3::eac3::chanmap::Layout> programme;
-        // Plays one unit, opening the device on the first. False once the
-        // device has refused, with the reason printed.
-        const auto monitor_unit = [&](const ac3::DecodedAccessUnit& out) -> bool {
+        // Plays one unit, opening the device on the first. kExitOk to carry
+        // on; otherwise the code to end with, the reason printed: the device
+        // refused to open, or went away.
+        const auto monitor_unit = [&](const ac3::DecodedAccessUnit& out) -> int {
             if (order.empty()) {
                 programme = out.layout;
                 // Dual mono has no Table E2.5 location to order by - `layout`
@@ -187,7 +195,7 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                                                 static_cast<std::uint16_t>(order.size()));
                 if (!started.has_value()) {
                     fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
-                    return false;
+                    return kExitUnavailable;
                 }
                 status_println(status_stream(), "monitoring {} ({} channels, {} Hz) on \"{}\"…",
                                in_path, order.size(), sample_rate_hz(out.sample_rate),
@@ -204,9 +212,11 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                                          : ", JOC audio reconstructed (not played here; see "
                                            "'ac3cli decode' with objects_dir to export it)");
             }
-            play(interleave_reordered(out.channels, order));
+            if (!play(interleave_reordered(out.channels, order))) {
+                return kExitRuntime;
+            }
             ++units_played;
-            return true;
+            return kExitOk;
         };
         for (const auto& unit : *units) {
             const auto decoded = decoder->decode_access_unit(unit);
@@ -221,8 +231,8 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                 // comes out with a later unit, or from flush() below.
                 continue;
             }
-            if (!monitor_unit(**decoded)) {
-                return kExitUnavailable;
+            if (const int code = monitor_unit(**decoded); code != kExitOk) {
+                return code;
             }
         }
         // §3.7 again: what the decoder still holds once the stream has ended,
@@ -232,9 +242,10 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
         // was laid out, so it plays in the same order. A unit whose width no
         // longer matches the open device is not played.
         const auto held = ac3::apps::held_back_unit(decoder->flush(), programme, folded);
-        if (held.has_value() && (order.empty() || held->channels.size() == order.size()) &&
-            !monitor_unit(*held)) {
-            return kExitUnavailable;
+        if (held.has_value() && (order.empty() || held->channels.size() == order.size())) {
+            if (const int code = monitor_unit(*held); code != kExitOk) {
+                return code;
+            }
         }
     } else {
         const auto frames = ac3::split_frames(stream);
@@ -275,16 +286,25 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
                                in_path, order.size(), sample_rate_hz(decoded->sample_rate),
                                device_name);
             }
-            play(interleave_reordered(decoded->channels, order));
+            if (!play(interleave_reordered(decoded->channels, order))) {
+                return kExitRuntime;
+            }
             ++units_played;
         }
     }
 
-    while (sink.stats().frames_rendered < sink.stats().frames_submitted) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
+    const bool played_out =
+        ac3::apps::wait_while_running(sink, std::chrono::milliseconds(10), [&sink] {
+            const auto counts = sink.stats();
+            return counts.frames_rendered >= counts.frames_submitted;
+        });
     const auto stats = sink.stats();
     sink.stop();
+    if (!played_out) {
+        fmt::println(stderr, "error: \"{}\" went away ({}) before the last {} played", device_name,
+                     kOutputGoneReasons, access_units ? "access units" : "frames");
+        return kExitRuntime;
+    }
     status_println(status_stream(), "played {} {}, {} underruns", units_played,
                    access_units ? "access units" : "frames", stats.underruns);
     return kExitOk;
@@ -842,6 +862,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
 
     ac3::audio::MonitorSink monitor_sink;
     bool monitoring = false;
+    std::string monitor_name;
     if (monitor_device != -2) {
         const auto target = resolve_render_device(monitor_device);
         if (!target.has_value()) {
@@ -855,8 +876,8 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                              ac3::audio::describe(mstarted.error()));
             } else {
                 monitoring = true;
-                status_println(status, "monitoring on \"{}\"",
-                               target->name.empty() ? "default endpoint" : target->name);
+                monitor_name = target->name.empty() ? "default endpoint" : target->name;
+                status_println(status, "monitoring on \"{}\"", monitor_name);
             }
         }
     }
@@ -869,6 +890,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // full stream. downmix=off keeps the old plain refusal.
     ac3::audio::PassthroughSink passthrough_sink;
     bool passing_through = false;
+    std::string passthrough_name;
     bool downmix_leg = false;
     if (passthrough_device != -2) {
         const auto target = resolve_render_device(passthrough_device);
@@ -901,9 +923,9 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                                  ac3::audio::describe(pstarted.error()));
                 } else {
                     passing_through = true;
+                    passthrough_name = target->name.empty() ? "default endpoint" : target->name;
                     status_println(status, "passthrough ({}) on \"{}\"{}",
-                                   leg_eac3 ? "E-AC-3" : "AC-3",
-                                   target->name.empty() ? "default endpoint" : target->name,
+                                   leg_eac3 ? "E-AC-3" : "AC-3", passthrough_name,
                                    downmix_leg ? " - parallel 5.1 downmix leg; the file still "
                                                  "carries the full stream"
                                                : "");
@@ -1033,6 +1055,17 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
 
     std::uint64_t n0 = 0;
     std::uint64_t frames_written = 0;
+    // How far into the take the session is, as the meter line counts it.
+    const auto take_seconds = [&] {
+        return static_cast<double>(frames_written * ac3::kSamplesPerFrame) / rate_hz;
+    };
+    // An output leg whose device goes away is dropped there and then, and the
+    // take carries on: the file is still correct without it, which is why a
+    // leg that cannot start is only a warning. The command still ends as a
+    // failure, naming the leg and when it went, because the session did not
+    // do everything it was asked to.
+    std::optional<double> monitor_lost_at;
+    std::optional<double> passthrough_lost_at;
     for (std::uint64_t f = 0; f < target_frames; ++f) {
         std::size_t filled = 0;
         while (filled < interleaved.size()) {
@@ -1243,10 +1276,16 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                     to_play = interleave_reordered(decoded->channels, order);
                 }
             }
-            if (to_play) {
-                while (!monitor_sink.submit(*to_play)) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(4));
-                }
+            if (to_play && !ac3::apps::submit_while_running(
+                               monitor_sink, std::chrono::milliseconds(4), *to_play)) {
+                monitoring = false;
+                monitor_sink.stop();
+                monitor_lost_at = take_seconds();
+                status_println(status);
+                fmt::println(stderr,
+                             "warning: monitor output \"{}\" went away {:.1f} s in ({}); "
+                             "monitoring stopped, the take carries on",
+                             monitor_name, *monitor_lost_at, kOutputGoneReasons);
             }
         }
 
@@ -1273,10 +1312,16 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                     burst = *wrapped;
                 }
             }
-            if (burst.has_value()) {
-                while (!passthrough_sink.submit(*burst)) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(4));
-                }
+            if (burst.has_value() && !ac3::apps::submit_while_running(
+                                         passthrough_sink, std::chrono::milliseconds(4), *burst)) {
+                passing_through = false;
+                passthrough_sink.stop();
+                passthrough_lost_at = take_seconds();
+                status_println(status);
+                fmt::println(stderr,
+                             "warning: passthrough output \"{}\" went away {:.1f} s in ({}); "
+                             "passthrough stopped, the take carries on",
+                             passthrough_name, *passthrough_lost_at, kOutputGoneReasons);
             }
         }
 
@@ -1299,15 +1344,24 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         position_source->stop();
     }
     if (monitoring) {
-        while (monitor_sink.stats().frames_rendered < monitor_sink.stats().frames_submitted) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        const bool played_out =
+            ac3::apps::wait_while_running(monitor_sink, std::chrono::milliseconds(10), [&] {
+                const auto counts = monitor_sink.stats();
+                return counts.frames_rendered >= counts.frames_submitted;
+            });
+        if (!played_out) {
+            monitor_lost_at = take_seconds();
         }
         monitor_sink.stop();
     }
     if (passing_through) {
-        while (passthrough_sink.stats().bursts_rendered <
-               passthrough_sink.stats().bursts_submitted) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        const bool played_out =
+            ac3::apps::wait_while_running(passthrough_sink, std::chrono::milliseconds(10), [&] {
+                const auto counts = passthrough_sink.stats();
+                return counts.bursts_rendered >= counts.bursts_submitted;
+            });
+        if (!played_out) {
+            passthrough_lost_at = take_seconds();
         }
         const auto pstats = passthrough_sink.stats();
         passthrough_sink.stop();
@@ -1315,6 +1369,20 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                        pstats.bursts_submitted, pstats.bursts_rendered, pstats.underruns);
     }
     const auto stats = capture.stats();
+    // An output leg that went away was dropped and the take carried on
+    // without it. However the run ends, the last thing it says is which leg
+    // went, and when.
+    const auto report_lost_outputs = [&] {
+        if (monitor_lost_at.has_value()) {
+            fmt::println(stderr, "error: monitor output \"{}\" went away {:.1f} s into the session",
+                         monitor_name, *monitor_lost_at);
+        }
+        if (passthrough_lost_at.has_value()) {
+            fmt::println(stderr,
+                         "error: passthrough output \"{}\" went away {:.1f} s into the session",
+                         passthrough_name, *passthrough_lost_at);
+        }
+    };
     // Finalized whether or not the session ended early: every unit already
     // pushed is on disk and playable, which is the whole reason a take
     // streams rather than accumulating (wide-layout record/live paths). A close() complaint is
@@ -1324,6 +1392,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     const auto close_problem = sink.close();
     if (!close_problem.empty() && !device_lost) {
         fmt::println(stderr, "error: {}: {}", out_path, close_problem);
+        report_lost_outputs();
         return kExitOutput;
     }
     if (device_lost) {
@@ -1333,6 +1402,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                      lost_is_slave && device2 != nullptr ? device2->name : device.name,
                      meta.watchdog.count(),
                      close_problem.empty() ? "" : " - " + close_problem);
+        report_lost_outputs();
         return kExitRuntime;
     }
     status_println(status, "wrote {} {} ({} kbps, {}) to {}{}", frames_written,
@@ -1360,7 +1430,11 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         status_println(status, "capture2 drift: {:+.1f} ppm", slave_drift->drift_ppm());
     }
     print_channel_summary(meter, status);
-    return encode_failed ? kExitUsage : kExitOk;
+    report_lost_outputs();
+    if (encode_failed) {
+        return kExitUsage;
+    }
+    return monitor_lost_at.has_value() || passthrough_lost_at.has_value() ? kExitRuntime : kExitOk;
 }
 
 }  // namespace ac3cli::commands

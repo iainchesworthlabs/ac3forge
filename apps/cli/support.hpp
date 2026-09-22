@@ -576,6 +576,14 @@ inline void status_println(FILE* out) {
     }
 }
 
+// What can take an output away mid-run, for the error that says it went.
+// A PassthroughSink or MonitorSink whose device goes away stops itself
+// (PassthroughSink::running()), and every command that plays to one ends up
+// saying so the same way: 'play', 'monitor', 'identify' and the output legs
+// of 'live'.
+inline constexpr std::string_view kOutputGoneReasons =
+    "unplugged, switched off, disabled, or taken by the system";
+
 // A one-line "done / total" report on stderr for a run long enough to be
 // worth watching, rewritten in place the way print_live_meter's own line is.
 // stderr, never stdout: a '-' output owns stdout, and a progress line in the
