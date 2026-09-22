@@ -205,6 +205,35 @@ struct ServiceInfo {
     std::optional<std::uint8_t> asvc = std::nullopt;
 };
 
+// The read side of the four descriptor builders in mpegts.cpp: given a
+// service descriptor's tag (kTagAc3Descriptor, kTagEnhancedAc3Descriptor,
+// kTagAtscAc3Descriptor or kTagAtscEac3Descriptor - see mpegts.cpp, they are
+// not public, a caller identifies the tag off the PMT the same way the
+// reader itself does) and its payload bytes (after the 2-byte tag+length
+// header), decodes it back into a ServiceInfo. std::nullopt for an
+// unrecognised tag or a body too short for what its own flags claim - never
+// a guessed value, the same convention the builders themselves follow.
+//
+// Not every ServiceInfo field survives the round trip, because the wire
+// format itself does not carry enough to reconstruct them:
+//   - bsmod_present collapses to true whenever a service type was written at
+//     all, because Table D.4/G.2/A4.4 have no "not indicated" code of their
+//     own - service_type()'s forward mapping already sends "absent" and
+//     "explicitly complete main" to the same bits (see mpegts.cpp).
+//   - full_service comes back as the bit that was actually sent, not as
+//     "was this an explicit override" - the wire cannot tell those apart
+//     either, and the resolved value is what a caller re-deriving or
+//     displaying it wants.
+//   - acmod/channels/lfe/dsurmod are NOT reconstructed and stay at
+//     ServiceInfo's own defaults: channel_flags() is a many-to-one summary
+//     (Table D.5/G.3/A4.5's ">5.1" and "up to 5.1" rows in particular cover
+//     a range, not one value), so guessing a specific acmod back out of it
+//     would invent a channel layout the descriptor never actually claimed.
+//     A caller that has the elementary stream already has the exact values
+//     from ac3::io::scan() - the same source mux()'s own caller used.
+[[nodiscard]] MPEGTS_EXPORT std::optional<ServiceInfo> parse_service_descriptor(
+    std::uint8_t tag, std::span<const std::byte> body);
+
 enum class MuxError : std::uint8_t {
     kNoFrames,
     kInvalidTrack,    // zero/negative channels, zero sample rate or zero samples_per_frame

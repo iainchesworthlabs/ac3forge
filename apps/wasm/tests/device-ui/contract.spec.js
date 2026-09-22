@@ -79,7 +79,8 @@ test("the stand-in has the firmware's routes and no others", () => {
     const registered = [...CONTROL.matchAll(/\.uri = "([^"]+)",\s*\.method = HTTP_(GET|POST|PUT)/g)].map(
         (m) => `${m[2]} ${m[1]}`,
     );
-    expect(registered.sort()).toEqual([...ROUTES].sort());
+    const byName = (a, b) => a.localeCompare(b);
+    expect(registered.sort(byName)).toEqual([...ROUTES].sort(byName));
 });
 
 test('every request the page makes is to a route the firmware registers', () => {
@@ -91,7 +92,7 @@ test('every request the page makes is to a route the firmware registers', () => 
     );
     // No POST /play, /stop or /volume: a server owns playback from B2 on, and
     // the page is what the board itself is.
-    expect(made.sort()).toEqual([
+    expect(made.sort((a, b) => a.localeCompare(b))).toEqual([
         'GET /status',
         'POST /pairing',
         'POST /pairing',
@@ -112,7 +113,7 @@ test('every request the page makes is to a route the firmware registers', () => 
 
 test('the page asks for nothing the device does not serve', () => {
     const links = [...PAGE.matchAll(/(?:src|href)="([^"]*)"/g)].map((m) => m[1]);
-    expect(links.sort()).toEqual(['api', 'api', 'data:,', 'status', 'ui.js']);
+    expect(links.sort((a, b) => a.localeCompare(b))).toEqual(['api', 'api', 'data:,', 'status', 'ui.js']);
     expect(PAGE).not.toMatch(/url\(|@import|https?:\/\//);
 });
 

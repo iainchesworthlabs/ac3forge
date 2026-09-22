@@ -58,6 +58,11 @@ std::string_view bsmod_label(int bsmod, Acmod acmod) {
     return "reserved";
 }
 
+// ETSI TS 102 366 Annex F §F.6's dec3 asvc bit - "is this programme's own
+// bsmod an associated one", per the same Table 5.7 split bsmod_label above
+// names in full.
+std::string_view asvc_label(bool asvc) { return asvc ? "associated service" : "main service"; }
+
 std::string_view exp_strategy_token(ExpStrategy strategy) {
     switch (strategy) {
         case ExpStrategy::kReuse: return "reuse";

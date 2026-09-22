@@ -100,7 +100,8 @@ constexpr std::array<OptionToken, 60> kOptionTokens{{
     {"detail=", "probe: frames or blocks - add per-access-unit/per-block detail"},
     {"fallback-51", "fmp4: also write the object-stripped 5.1 companion rendition"},
     {"mainid=", "ts: this service's A/52 Annex A main-service number"},
-    {"asvc=", "ts: the main service this one is associated with (A/52 Annex A)"},
+    {"asvc=", "ts: the main service(s) this one is associated with (A/52 Annex A) - a raw "
+             "0-255/0x00-0xFF mask, or a comma list of main-service numbers, e.g. asvc=0,2"},
     {"programme=", "decode/qc/levels: which independent substream (0..7) of a multi-programme "
                    "stream"},
     {"programme2=", "eac3-encode: another input file, encoded as its own independent substream "

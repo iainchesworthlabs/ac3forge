@@ -23,6 +23,7 @@
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/object_strip.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac4/ac4.hpp"
 #include "container_input.hpp"
 #include "matroska/matroska.hpp"
@@ -619,6 +620,36 @@ mpegts::ServiceInfo service_info_from(const ac3::io::ScannedStream& scanned,
     return service;
 }
 
+// mainid=/asvc= describe how THIS service relates to others in a multiplex,
+// and which of the two even makes sense is exactly what the stream's own
+// bsmod already says (§5.4.2.2, Table 5.7's main-vs-associated split) -
+// asvc= on what bsmod calls a main service, or mainid= on what it calls an
+// associated one, describes a relationship this file cannot actually have.
+// An absent bsmod (bsmod_present false) resolves to complete main here, the
+// same convention service_info_from()/the descriptor writer itself use.
+[[nodiscard]] bool validate_service_association(const ac3::io::ScannedStream& scanned,
+                                                const Options& meta) {
+    const auto bsmod = scanned.bsmod_present
+                           ? static_cast<ac3::meta::BitstreamMode>(scanned.bsmod)
+                           : ac3::meta::BitstreamMode::kCompleteMain;
+    const bool associated = ac3::meta::is_associated_service(bsmod, scanned.acmod);
+    if (meta.mainid.has_value() && associated) {
+        fmt::println(stderr,
+                     "error: mainid= given but this stream's bsmod ({}) is an associated "
+                     "service - did you mean asvc=?",
+                     ac3::meta::describe(bsmod, scanned.acmod));
+        return false;
+    }
+    if (meta.asvc.has_value() && !associated) {
+        fmt::println(stderr,
+                     "error: asvc= given but this stream's bsmod ({}) is a main service - "
+                     "did you mean mainid=?",
+                     ac3::meta::describe(bsmod, scanned.acmod));
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 int run_ts(std::string_view in_path, std::string_view out_path, std::string_view profile_name,
@@ -685,6 +716,9 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
     warn_if_programmes_dropped(*scanned);
     if (reject_legacy_core(*scanned, in_path, "MPEG-TS")) {
         return kExitInput;
+    }
+    if (!validate_service_association(*scanned, meta)) {
+        return kExitUsage;
     }
     const bool eac3 = scanned->kind == ac3::io::StreamKind::kEac3;
 

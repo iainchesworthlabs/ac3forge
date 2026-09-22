@@ -15,6 +15,7 @@
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
+#include "ac3/meta/bsi.hpp"
 #include "ac3/oba/atmos.hpp"
 #include "mp4/hls.hpp"
 #include "mp4/mp4.hpp"
@@ -510,6 +511,77 @@ TEST_CASE("dec3 box matches a real E-AC-3 stream with no Atmos extension", "[dec
 
     // The Atmos extension's flag_ec3_extension_type_a bit must read clear.
     CHECK(byte_at(payload, 5) == 0x00);
+}
+
+// Table 5.7's one acmod-dependent bsmod: code 7 is karaoke (a MAIN service)
+// at any acmod other than 1/0, and voice-over (an ASSOCIATED service) only at
+// 1/0. dec3's asvc bit must follow that split, not just "bsmod >= 2".
+TEST_CASE("dec3 box's asvc bit follows the karaoke/voice-over acmod split", "[dec3]") {
+    using ac3::eac3::AccessUnitConfig;
+
+    SECTION("karaoke (bsmod 7, acmod wider than 1/0) is a main service: asvc clear") {
+        const AccessUnitConfig config{
+            .independent = {.bitrate_kbps = 448,
+                            .acmod = ac3::Acmod::k3_2,
+                            .lfe = true,
+                            .info = ac3::meta::BsiInfo{
+                                .bsmod = ac3::meta::BitstreamMode::kVoiceOverOrKaraoke}}};
+        ac3::eac3::AccessUnitEncoder encoder{config};
+
+        std::vector<std::vector<float>> pcm(6, std::vector<float>(ac3::kSamplesPerFrame));
+        for (std::size_t ch = 0; ch < pcm.size(); ++ch) {
+            for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+                pcm[ch][static_cast<std::size_t>(n)] = static_cast<float>(
+                    0.3 * std::sin(2.0 * std::numbers::pi * (440.0 + 110.0 * static_cast<double>(ch)) *
+                                  static_cast<double>(n) / 48000.0));
+            }
+        }
+        std::vector<std::span<const float>> views;
+        for (const auto& channel : pcm) {
+            views.emplace_back(channel);
+        }
+        const auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+
+        const auto scanned = ac3::io::scan(unit->bytes);
+        REQUIRE(scanned.has_value());
+        REQUIRE(scanned->bsmod == static_cast<int>(ac3::meta::BitstreamMode::kVoiceOverOrKaraoke));
+        REQUIRE(scanned->acmod == ac3::Acmod::k3_2);
+
+        const auto payload = ac3::io::build_codec_config_box(*scanned);
+        REQUIRE(payload.size() >= 4);
+        const auto asvc = static_cast<std::uint32_t>(byte_at(payload, 3) >> 7);
+        CHECK(asvc == 0);
+    }
+
+    SECTION("voice-over (bsmod 7, acmod 1/0) is an associated service: asvc set") {
+        const AccessUnitConfig config{
+            .independent = {.bitrate_kbps = 192,
+                            .acmod = ac3::Acmod::k1_0,
+                            .info = ac3::meta::BsiInfo{
+                                .bsmod = ac3::meta::BitstreamMode::kVoiceOverOrKaraoke}}};
+        ac3::eac3::AccessUnitEncoder encoder{config};
+
+        std::vector<float> mono(ac3::kSamplesPerFrame);
+        for (int n = 0; n < ac3::kSamplesPerFrame; ++n) {
+            mono[static_cast<std::size_t>(n)] =
+                static_cast<float>(0.3 * std::sin(2.0 * std::numbers::pi * 440.0 *
+                                                  static_cast<double>(n) / 48000.0));
+        }
+        const std::vector<std::span<const float>> views{mono};
+        const auto unit = encoder.encode_access_unit(views);
+        REQUIRE(unit.has_value());
+
+        const auto scanned = ac3::io::scan(unit->bytes);
+        REQUIRE(scanned.has_value());
+        REQUIRE(scanned->bsmod == static_cast<int>(ac3::meta::BitstreamMode::kVoiceOverOrKaraoke));
+        REQUIRE(scanned->acmod == ac3::Acmod::k1_0);
+
+        const auto payload = ac3::io::build_codec_config_box(*scanned);
+        REQUIRE(payload.size() >= 4);
+        const auto asvc = static_cast<std::uint32_t>(byte_at(payload, 3) >> 7);
+        CHECK(asvc == 1);
+    }
 }
 
 TEST_CASE("dec3 box signals Dolby Atmos objects", "[dec3]") {

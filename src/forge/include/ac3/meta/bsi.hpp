@@ -214,6 +214,13 @@ struct AlternateBsi {
 [[nodiscard]] AC3FORGE_EXPORT bool valid_bsi_info(const BsiInfo& value);
 [[nodiscard]] AC3FORGE_EXPORT bool valid_alternate_bsi(const AlternateBsi& value);
 
+// True for Table 5.7's associated-service codes (VI, HI, D, C, E, and VO -
+// code 7 at acmod 1/0 only); false for a main service (CM, ME, or karaoke -
+// code 7 anywhere else). The one place bsmod's meaning depends on acmod, same
+// condition describe() below already renders as text - this is that same
+// question asked as a bool, for a caller deciding rather than displaying.
+[[nodiscard]] AC3FORGE_EXPORT bool is_associated_service(BitstreamMode value, Acmod acmod);
+
 // Names for a front end to show, in the same order as each enum's values.
 [[nodiscard]] AC3FORGE_EXPORT std::string_view describe(BitstreamMode value, Acmod acmod);
 [[nodiscard]] AC3FORGE_EXPORT std::string_view describe(SurroundMode value);

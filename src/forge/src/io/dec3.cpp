@@ -10,6 +10,7 @@
 #include "ac3/core/bitwriter.hpp"
 #include "ac3/core/tables.hpp"
 #include "ac3/io/elementary.hpp"
+#include "ac3/meta/bsi.hpp"
 
 namespace ac3::io {
 
@@ -111,13 +112,17 @@ std::vector<std::byte> build_codec_config_box(const ScannedStream& stream) {
     w.put(static_cast<std::uint32_t>(stream.bsid), 5);  // bsid
     w.put(0, 1);                                        // reserved
     // asvc: the associated-service flag. A/52 §5.4.2.2 puts the service type
-    // in bsmod, and 2-7 are the associated services (audio description,
-    // commentary, emergency and the rest) a receiver mixes against a main
-    // one, while 0-1 are complete main services. So this is exactly "is this
-    // programme's own bsmod an associated one", read off the bitstream rather
-    // than assumed - which for the ordinary main-service stream still comes
-    // out 0, as it always did.
-    w.put(programme.bsmod >= 2 ? 1U : 0U, 1);            // asvc
+    // in bsmod - CM/ME are main services, VI/HI/D/C/E are associated, and
+    // code 7 is voice-over (associated) at acmod 1/0 but karaoke (a MAIN
+    // service) everywhere else, Table 5.7's one acmod-dependent split. So
+    // this is exactly "is this programme's own bsmod an associated one, per
+    // Table 5.7", read off the bitstream rather than assumed - which for the
+    // ordinary main-service stream still comes out 0, as it always did.
+    w.put(meta::is_associated_service(static_cast<meta::BitstreamMode>(programme.bsmod),
+                                      programme.acmod)
+              ? 1U
+              : 0U,
+          1);  // asvc
     w.put(static_cast<std::uint32_t>(stream.bsmod), 3);  // bsmod
     w.put(static_cast<std::uint32_t>(stream.acmod), 3);  // acmod
     w.put(stream.lfe ? 1U : 0U, 1);                      // lfeon

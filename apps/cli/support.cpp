@@ -910,6 +910,27 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             continue;
         }
         if (key == "asvc") {
+            // A comma means a list of main-service indices (0-7) to OR
+            // together instead of a hand-computed mask - "goes with
+            // services 0 and 2" rather than 0x05. A comma was always a hard
+            // parse error for the plain mask form below, so this
+            // reinterprets nothing that used to work.
+            if (value.find(',') != std::string_view::npos) {
+                unsigned mask = 0;
+                for (const auto part : split(value, ',')) {
+                    int index = 0;
+                    if (!parse_index(part, 7, index)) {
+                        fmt::println(stderr,
+                                     "error: asvc main-service list must be comma-separated "
+                                     "0-7 (got '{}')",
+                                     token);
+                        return false;
+                    }
+                    mask |= (1u << index);
+                }
+                out.asvc = static_cast<int>(mask);
+                continue;
+            }
             // Eight bits, one per main service this associated service may be
             // reproduced with; bit 7 is main service 7. Accepts decimal or
             // 0x-prefixed hex, since it reads as a mask far more often than
