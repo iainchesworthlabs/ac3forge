@@ -144,3 +144,54 @@ TEST_CASE("speakers: a mask reads back as the names a report shows", "[audio-bac
     CHECK(describe_speakers(kSpeakerTopBackCentre) == "+1");
     CHECK(describe_speakers(kSpeakersStereo | kSpeakerTopBackCentre) == "L R +1");
 }
+
+TEST_CASE("speakers: one bit's own output name, unlike a rendered location",
+          "[audio-backend][speakers]") {
+    using namespace ac3::audio;
+
+    CHECK(mask_position_name(kSpeakerFrontLeft) == "FL");
+    CHECK(mask_position_name(kSpeakerLowFrequency) == "LFE");
+    CHECK(mask_position_name(kSpeakerSideLeft) == "SL");
+    CHECK(mask_position_name(kSpeakerSideRight) == "SR");
+    // The back pair is always BL/BR here, never resolved to the rear
+    // surrounds the way locations_of() reads them beside SPEAKER_SIDE_* - an
+    // output's own name does not depend on the mask's other bits.
+    CHECK(mask_position_name(kSpeakerBackLeft) == "BL");
+    CHECK(mask_position_name(kSpeakerBackRight) == "BR");
+    // Named here even though Table E2.5 has no render location for it
+    // (location_of() answers nullopt for the same bit).
+    CHECK(mask_position_name(kSpeakerTopBackCentre) == "TBC");
+
+    CHECK_FALSE(mask_position_name(0).has_value());
+    CHECK_FALSE(mask_position_name(kSpeakersStereo).has_value());
+    CHECK_FALSE(mask_position_name(0x80000000).has_value());
+}
+
+TEST_CASE("speakers: the routing grid's per-output names, in interleave order",
+          "[audio-backend][speakers]") {
+    using namespace ac3::audio;
+
+    // The mockup's own 8-output case (docs/hearth/design/screenshots/
+    // speakers-setup.png, "03 Routing"): "1 FL" .. "8 SR".
+    CHECK(output_names(kSpeakers7_1, 8) ==
+          std::vector<std::string>{"FL", "FR", "FC", "LFE", "BL", "BR", "SL", "SR"});
+    CHECK(output_names(kSpeakers5_1, 6) ==
+          std::vector<std::string>{"FL", "FR", "FC", "LFE", "BL", "BR"});
+
+    // No mask reported: default_speakers(outputs) is tried instead, the same
+    // fallback speaker_routing() uses for its default patch.
+    CHECK(output_names(0, 6) == output_names(kSpeakers5_1, 6));
+    CHECK(output_names(0, 8) == output_names(kSpeakers7_1, 8));
+
+    // A width with no standard arrangement, and no mask either: nothing to
+    // name any output by, so every entry is empty for the caller to show a
+    // bare number instead - never fewer than `outputs` entries.
+    CHECK(output_names(0, 10) == std::vector<std::string>{"", "", "", "", "", "", "", "", "", ""});
+
+    // Always exactly `outputs` entries even when the mask names a different
+    // count: a short mask pads with empty strings, a long one is truncated.
+    CHECK(output_names(kSpeakersStereo, 4) == std::vector<std::string>{"FL", "FR", "", ""});
+    CHECK(output_names(kSpeakers5_1, 2) == std::vector<std::string>{"FL", "FR"});
+
+    CHECK(output_names(0, 0).empty());
+}

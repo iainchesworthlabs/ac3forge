@@ -121,4 +121,30 @@ inline constexpr std::uint32_t kSpeakers7_1_4 = kSpeakers7_1_2 | kSpeakerTopBack
 // a trailing count of the positions with no location of their own.
 [[nodiscard]] std::string describe_speakers(std::uint32_t mask);
 
+// The abbreviation WAVEFORMATEXTENSIBLE's own convention gives one speaker
+// bit - "FL", "LFE", "SL" and so on for the rest of kSpeakerAllPositions - for
+// the Speakers page's routing grid to name a device OUTPUT by. A different
+// vocabulary from chanmap::name(), which names the RENDERER's locations in
+// the bitstream's own terms ("L", "Ls") and folds SPEAKER_BACK_LEFT/RIGHT into
+// the rear surrounds when the mask also names the sides (locations_of()'s own
+// comment); an output's own name does not depend on the company its mask
+// keeps, so this is a plain one-bit-to-one-name table, not a location lookup.
+// Nothing for a bit outside kSpeakerAllPositions or with more than one bit
+// set.
+[[nodiscard]] std::optional<std::string> mask_position_name(std::uint32_t speaker);
+
+// One name per output, in the ascending bit order an interleaved stream
+// carries them (locations_of()'s own order) - what the Speakers page's
+// routing grid header names each column by, alongside its 1-based output
+// number. `mask` is normally the open device's own (PcmSink::speaker_mask());
+// with none (0), default_speakers(outputs) is tried the same way
+// speaker_routing() falls back for its default patch, and a width neither can
+// name (default_speakers()'s own comment: ten channels is 5.1.4 or 7.1.2, and
+// nothing says which) gives back `outputs` empty strings, for a caller to
+// show a bare output number instead. Always exactly `outputs` entries, even
+// when the resolved mask names more or fewer speakers than that: a short
+// mask pads with empty strings, and a long one is truncated, since the
+// caller's own output count is the one the routing grid actually draws.
+[[nodiscard]] std::vector<std::string> output_names(std::uint32_t mask, std::uint16_t outputs);
+
 }  // namespace ac3::audio

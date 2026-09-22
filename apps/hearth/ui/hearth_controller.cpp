@@ -16,6 +16,7 @@
 // needs no access-specifier keyword at all.
 #undef slots
 
+#include "ac3/audio/speakers.hpp"
 #include "ac3/render/layout.hpp"
 #include "decoder_settings.hpp"
 #include "engine_thread.hpp"
@@ -398,15 +399,21 @@ void HearthController::poll() {
     for (std::size_t slot = 0; slot < slots; ++slot) {
         new_routing.push_back(status.routing.output_of(slot));
     }
+    const auto new_routing_outputs = static_cast<std::uint16_t>(status.routing.outputs());
+    QStringList new_output_names;
+    for (const std::string& name : ac3::audio::output_names(status.speaker_mask, new_routing_outputs)) {
+        new_output_names.push_back(QString::fromStdString(name));
+    }
     const QString new_device_name = QString::fromStdString(status.device_name);
     if (new_trim_db != trim_db_ || new_delay_ms != delay_ms_ || status.crossover_hz != crossover_hz_ ||
-        new_routing != routing_ || static_cast<int>(status.routing.outputs()) != routing_outputs_ ||
-        new_device_name != device_name_) {
+        new_routing != routing_ || static_cast<int>(new_routing_outputs) != routing_outputs_ ||
+        new_output_names != output_names_ || new_device_name != device_name_) {
         trim_db_ = std::move(new_trim_db);
         delay_ms_ = std::move(new_delay_ms);
         crossover_hz_ = status.crossover_hz;
         routing_ = std::move(new_routing);
-        routing_outputs_ = static_cast<int>(status.routing.outputs());
+        routing_outputs_ = static_cast<int>(new_routing_outputs);
+        output_names_ = std::move(new_output_names);
         device_name_ = new_device_name;
         emit speakerSetupChanged();
     }
