@@ -426,6 +426,12 @@ elseif(AC3FORGE_AUDIO_BACKEND STREQUAL "macos")
     # compiles and runs this file.
     target_sources(ac3tests PRIVATE backend/macos/test_macos_support.cpp)
     target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
+elseif(AC3FORGE_AUDIO_BACKEND STREQUAL "windows")
+    # Like macos above, this branch runs on desktop-hosted ac3tests for real:
+    # src/audio/CMakeLists.txt selects windows/ unconditionally under WIN32,
+    # so every Windows CI leg's ac3tests build compiles and runs this file.
+    target_sources(ac3tests PRIVATE backend/windows/test_windows_support.cpp)
+    target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_BACKEND_DIR}")
 endif()
 
 # audio/test_live_positions.cpp needs UdpSocket (src/audio/src/net/udp_socket.hpp)

@@ -20,23 +20,22 @@
 #include <thread>
 #include <utility>
 
+#include "windows_support.hpp"
+
 namespace ac3::audio {
 
 namespace {
 
 using Microsoft::WRL::ComPtr;
+using windows_audio::ComScope;
+using windows_audio::kClsidMmDeviceEnumerator;
+using windows_audio::kIidMmDeviceEnumerator;
+using windows_audio::kIidUnknown;
 
-// Spelled out rather than taken from __uuidof, for the reason capture.cpp
-// gives: the SDK declares these but ships no import library defining them,
-// and __uuidof is an MSVC extension clang rejects under -Wpedantic.
-constexpr CLSID kClsidMmDeviceEnumerator = {  // {bcde0395-e52f-467c-8e3d-c4579291692e}
-    0xbcde0395, 0xe52f, 0x467c, {0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e}};
-constexpr IID kIidMmDeviceEnumerator = {  // {a95664d2-9614-4f35-a746-de8db63617e6}
-    0xa95664d2, 0x9614, 0x4f35, {0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6}};
+// This listener's own interface id - device_watcher.cpp's alone, so it stays
+// here rather than in windows_support.hpp.
 constexpr IID kIidMmNotificationClient = {  // {7991eec9-7e89-4d85-8390-6c703cec60c0}
     0x7991eec9, 0x7e89, 0x4d85, {0x83, 0x90, 0x6c, 0x70, 0x3c, 0xec, 0x60, 0xc0}};
-constexpr IID kIidUnknown = {  // {00000000-0000-0000-c000-000000000046}
-    0x00000000, 0x0000, 0x0000, {0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
 
 std::string to_utf8(const wchar_t* wide) {
     if (wide == nullptr) {
@@ -51,23 +50,6 @@ std::string to_utf8(const wchar_t* wide) {
     WideCharToMultiByte(CP_UTF8, 0, wide, -1, out.data(), needed, nullptr, nullptr);
     return out;
 }
-
-// COM lifetime for one thread, same as capture.cpp's.
-class ComScope {
-public:
-    ComScope() : hr_(CoInitializeEx(nullptr, COINIT_MULTITHREADED)) {}
-    ~ComScope() {
-        if (SUCCEEDED(hr_)) {
-            CoUninitialize();
-        }
-    }
-    ComScope(const ComScope&) = delete;
-    ComScope& operator=(const ComScope&) = delete;
-    [[nodiscard]] bool ok() const { return SUCCEEDED(hr_) || hr_ == RPC_E_CHANGED_MODE; }
-
-private:
-    HRESULT hr_;
-};
 
 // What the audio subsystem calls back into. Every notification is delivered
 // under mutex_, which is what lets disarm() promise that once it returns no
