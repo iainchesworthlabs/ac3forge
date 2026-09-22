@@ -94,11 +94,9 @@ std::vector<std::byte> build_payload(const FrameParameters& params) {
     w.put(0, 3);  // joc_ext_config_idx: no extensional configuration data
 
     // --- joc_info (§6.2.3) ---
-    // §6.3.3.2's equation renders ambiguously in the published PDF - the
-    // fraction, the power of two and the bracketing all collide - but every
-    // reading of it agrees that zero for both fields is joc_clipgain = 1. This
-    // encoder applies no clip protection, so unity is the honest value and the
-    // ambiguity does not bite.
+    // §6.3.3.2: joc_clipgain = 1 + (y/32) * 2^(x-4) (see parse_payload for
+    // how that reading was pinned down) is 1 for y=0 regardless of x. This
+    // encoder applies no clip protection, so unity is the honest value.
     w.put(0, 3);  // joc_clipgain_x_bits
     w.put(0, 5);  // joc_clipgain_y_bits
     w.put(static_cast<std::uint32_t>(params.seq_count), 10);
@@ -172,18 +170,40 @@ std::optional<FrameParameters> parse_payload(std::span<const std::byte> payload)
     }
 
     // --- joc_info (§6.2.3) ---
-    // §6.3.3.2 renders ambiguously in the published PDF - the fraction, the
-    // power of two and the bracketing all collide - and the only reading the
-    // fragments support, (1 + y/32) * 2^x, does not agree with the clause's
-    // own stated range of [1; 8,75]: a real DEE stream sends x = 4, y = 0,
-    // which that reading makes 16. Nothing in TS 103 420 says where in the
-    // decode chain the gain is applied either. So it is computed, reported
-    // and left alone rather than folded into audio on a formula this
-    // codebase cannot verify.
+    // §6.3.3.2's equation LOOKS ambiguous through a text extraction of the
+    // published PDF - copy-pasted or machine-read text drops the exponent's
+    // "-4" bias entirely, leaving what reads like (1 + y/32) * 2^x, which
+    // does not agree with the clause's own stated range of [1; 8,75]: a real
+    // DEE stream sends x = 4, y = 0, which that reading makes 16. Rendering
+    // the actual page as an image (both V1.1.1 2016-07 and V1.2.1 2018-10,
+    // identical in both) shows the real typesetting: the exponent is
+    // (joc_clipgain_x_bits - 4), and the "1 +" is NOT distributed over the
+    // multiplication. That reading matches the stated [1; 8,75] range
+    // exactly at both ends (y=0 -> 1 for any x; x=7,y=31 -> 1+(31/32)*8 =
+    // 8,75) and was confirmed empirically 2026-09-22 against the Dolby
+    // Reference Player (dlbac3dec+dlboar) on DEE-produced streams carrying a
+    // genuine non-unity clip gain: the player's reconstructed object PCM
+    // matched this formula's prediction to within ~0.03 dB (limiter
+    // disabled; 7 of 9 directly-comparable objects, the other two - Lb/Rb -
+    // confounded by the OAR folding them into Ls/Rs at a 5.1.4 render
+    // target), while the player's own BED output matched this project's
+    // unscaled bed decode to bit-exact correlation (1.0000) regardless of
+    // clip gain - i.e. the gain is applied to reconstructed OBJECT PCM only,
+    // never to the bed. See docs/library/decoding.md for the full writeup.
+    // The multiply belongs ONCE in reconstruct()'s own dispatcher, on the
+    // per-object PCM it gets back from whichever of reconstruct_qmf/
+    // reconstruct_mdct_band it calls - both of reconstruct()'s callers
+    // (decode_substream_core and, once landed, decode_access_unit_core's
+    // 7-channel path) already pass FrameParameters through unchanged, so a
+    // single post-multiply there covers everything with no duplication.
+    // Left unwired here only to avoid colliding with concurrent work
+    // restructuring the domain functions themselves (phase-shift downmix +
+    // 7-channel Lb/Rb) - not because anything here, including where it goes,
+    // is still in doubt.
     const auto clipgain_x = r.read(3);
     const auto clipgain_y = r.read(5);
-    const double clip_gain =
-        (1.0 + static_cast<double>(clipgain_y) / 32.0) * std::exp2(static_cast<double>(clipgain_x));
+    const double clip_gain = 1.0 + (static_cast<double>(clipgain_y) / 32.0) *
+                                        std::exp2(static_cast<double>(clipgain_x) - 4.0);
     const int seq_count = static_cast<int>(r.read(10));
 
     FrameParameters params;
