@@ -21,6 +21,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/render/layout.hpp"
+#include "ac3/render/routing.hpp"
 #include "engine_thread.hpp"
 #include "pcm_sink.hpp"
 
@@ -663,4 +664,41 @@ TEST_CASE("engine: a restored queue waits at its item and position until asked t
     engine->stop();
     engine->sync();
     CHECK(engine->status().current == 0);
+}
+
+TEST_CASE("engine: the speaker setup commands reach EngineStatus, and a refused one leaves it "
+          "alone but says so",
+          "[hearth][engine]") {
+    Library library;
+    auto state = std::make_shared<ClockedDevice::State>();
+    const auto engine = make_engine(library, state);
+
+    engine->set_trim_db(0, -3.0);
+    engine->set_delay_ms(0, 5.0);
+    engine->set_crossover_hz(100.0);
+    engine->sync();
+
+    const EngineStatus applied = engine->status();
+    REQUIRE(applied.trim_db.size() == 2);  // make_engine's layout is "2.0"
+    CHECK(applied.trim_db[0] == 3.0 * -1.0);
+    CHECK(applied.delay_ms[0] == 5.0);
+    CHECK(applied.crossover_hz == 100.0);
+
+    // No slot 2 on a 2.0 layout: refused, noted, and nothing changes.
+    engine->set_trim_db(2, -1.0);
+    engine->sync();
+    const EngineStatus after_refusal = engine->status();
+    CHECK(after_refusal.note.find("refused") != std::string::npos);
+    CHECK(after_refusal.trim_db[0] == -3.0);
+    CHECK(after_refusal.trim_db.size() == 2);
+
+    // No PCM sink here supports routing (ClockedDevice, like FakeDevice,
+    // takes PcmSink's own inert defaults): refused, and EngineStatus's
+    // routing/device facts stay at their own defaults.
+    engine->set_routing(ac3::render::Routing{});
+    engine->sync();
+    const EngineStatus routing_status = engine->status();
+    CHECK(routing_status.note.find("refused") != std::string::npos);
+    CHECK(routing_status.device_name.empty());
+    CHECK(routing_status.speaker_mask == 0);
 }

@@ -22,6 +22,9 @@
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/render/layout.hpp"
+#include "ac3/render/render.hpp"
+#include "ac3/render/routing.hpp"
+#include "ac3/render/trim_delay.hpp"
 #include "container_input.hpp"
 #include "matroska/matroska.hpp"
 #include "mp4/mp4.hpp"
@@ -2083,4 +2086,136 @@ TEST_CASE("player: an output whose device goes away stops playback, and says so"
     REQUIRE(play_out(*player, *log));
     CHECK(log->opens == 2);
     CHECK(player->history().back().frames == item_frames);
+}
+
+// The speaker setup (planning/hearth-reference-player.md, A5's Speakers
+// page): trim and delay on the render layout's own slots, the crossover's
+// corner, and routing/device facts forwarded to whatever PcmSink is open.
+// Each setting is keyed by slot, exercised here against "5.1" (L C R Ls Rs
+// LFE - slot 0 is L) or "2.0" (L R) so the tests read the same names
+// layout.hpp's own header comment gives.
+
+TEST_CASE("player: trim attenuates a slot's rendered samples by the configured amount",
+          "[hearth][player][speakers]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(4);
+
+    auto trimmed_log = std::make_shared<FakeDevice::Log>();
+    trimmed_log->keep = true;
+    const auto trimmed = make_player(library, trimmed_log);
+    REQUIRE(trimmed->set_trim_db(0, -6.0));
+    trimmed->queue().add(item("a.ec3"));
+    trimmed->play();
+    REQUIRE(play_out(*trimmed, *trimmed_log));
+
+    auto plain_log = std::make_shared<FakeDevice::Log>();
+    plain_log->keep = true;
+    const auto plain = make_player(library, plain_log);
+    plain->queue().add(item("a.ec3"));
+    plain->play();
+    REQUIRE(play_out(*plain, *plain_log));
+
+    REQUIRE_FALSE(plain_log->kept[0].empty());
+    REQUIRE(trimmed_log->kept[0].size() == plain_log->kept[0].size());
+    const double gain = std::pow(10.0, -6.0 / 20.0);
+    for (std::size_t i = 0; i < trimmed_log->kept[0].size(); ++i) {
+        CHECK(static_cast<double>(trimmed_log->kept[0][i]) ==
+              Catch::Approx(static_cast<double>(plain_log->kept[0][i]) * gain).margin(1e-5));
+    }
+    // A slot with no trim of its own is exactly what the untrimmed run gave.
+    CHECK(trimmed_log->kept[1] == plain_log->kept[1]);
+}
+
+TEST_CASE("player: delay shifts a slot's rendered samples later by the configured amount",
+          "[hearth][player][speakers]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(4);
+    constexpr double kDelayMs = 5.0;
+
+    auto delayed_log = std::make_shared<FakeDevice::Log>();
+    delayed_log->keep = true;
+    const auto delayed = make_player(library, delayed_log);
+    REQUIRE(delayed->set_delay_ms(0, kDelayMs));
+    delayed->queue().add(item("a.ec3"));
+    delayed->play();
+    REQUIRE(play_out(*delayed, *delayed_log));
+
+    auto plain_log = std::make_shared<FakeDevice::Log>();
+    plain_log->keep = true;
+    const auto plain = make_player(library, plain_log);
+    plain->queue().add(item("a.ec3"));
+    plain->play();
+    REQUIRE(play_out(*plain, *plain_log));
+
+    const std::size_t delay_samples = ac3::render::TrimDelay::samples_for_ms(kDelayMs, 48000);
+    REQUIRE(delay_samples > 0);
+    REQUIRE(delayed_log->kept[0].size() == plain_log->kept[0].size());
+    for (std::size_t i = 0; i < delay_samples; ++i) {
+        CHECK(delayed_log->kept[0][i] == 0.0F);
+    }
+    for (std::size_t i = delay_samples; i < delayed_log->kept[0].size(); ++i) {
+        CHECK(delayed_log->kept[0][i] == plain_log->kept[0][i - delay_samples]);
+    }
+    // An undelayed slot is untouched.
+    CHECK(delayed_log->kept[1] == plain_log->kept[1]);
+}
+
+TEST_CASE("player: set_trim_db and set_delay_ms refuse an out-of-range slot or value",
+          "[hearth][player][speakers]") {
+    Library library;
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log, 8192, "2.0");  // two slots: L, R
+
+    CHECK(player->set_trim_db(0, -3.0));
+    CHECK(player->set_trim_db(1, 6.0));
+    CHECK_FALSE(player->set_trim_db(2, 0.0));                                    // no slot 2 on 2.0
+    CHECK_FALSE(player->set_trim_db(0, ac3::render::TrimDelay::kMinTrimDb - 1.0));  // too quiet
+    CHECK_FALSE(player->set_trim_db(0, ac3::render::TrimDelay::kMaxTrimDb + 1.0));  // too loud
+    CHECK(player->trim_db(0) == -3.0);  // the refused calls changed nothing
+    CHECK(player->trim_db(1) == 6.0);
+    CHECK(player->trim_db(2) == 0.0);  // out of range reads as the neutral default
+
+    CHECK(player->set_delay_ms(0, 10.0));
+    CHECK_FALSE(player->set_delay_ms(2, 0.0));                  // no slot 2 on 2.0
+    CHECK_FALSE(player->set_delay_ms(0, -1.0));                 // negative
+    CHECK_FALSE(player->set_delay_ms(0, Player::kMaxDelayMs + 1.0));
+    CHECK(player->delay_ms(0) == 10.0);
+    CHECK(player->delay_ms(2) == 0.0);
+}
+
+TEST_CASE("player: set_crossover_hz refuses outside LayoutRenderer's own range, and the setting "
+          "survives the decoder the first item builds",
+          "[hearth][player][speakers]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(2);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log, 8192, "5.1");
+
+    CHECK(player->crossover_hz() == ac3::render::LayoutRenderer::kDefaultCrossoverHz);
+    CHECK(player->set_crossover_hz(100.0));
+    CHECK(player->crossover_hz() == 100.0);
+    CHECK_FALSE(player->set_crossover_hz(ac3::render::LayoutRenderer::kMinCrossoverHz - 1.0));
+    CHECK_FALSE(player->set_crossover_hz(ac3::render::LayoutRenderer::kMaxCrossoverHz + 1.0));
+    CHECK(player->crossover_hz() == 100.0);  // unchanged by the refused calls
+
+    player->queue().add(item("a.ec3"));
+    player->play();
+    REQUIRE(play_out(*player, *log));
+    CHECK(player->crossover_hz() == 100.0);
+}
+
+TEST_CASE("player: routing and device facts are PcmSink's own, and default to its inert answers",
+          "[hearth][player][speakers]") {
+    // FakeDevice (this file) takes PcmSink's defaults for these rather than
+    // overriding them, the way a sink written before A5's speaker setup
+    // existed would - proving the base class's own "nothing to route or
+    // say" answers, which pcm_sink.hpp documents, actually hold.
+    Library library;
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log, 8192, "5.1");
+
+    CHECK_FALSE(player->set_routing(ac3::render::Routing{}));
+    CHECK(player->routing().channels() == 0);
+    CHECK(player->device_name().empty());
+    CHECK(player->speaker_mask() == 0);
 }

@@ -10,6 +10,7 @@
 
 #include "ac3/audio/monitor.hpp"
 #include "ac3/render/layout.hpp"
+#include "ac3/render/routing.hpp"
 #include "transport.hpp"
 
 // Where a session's rendered audio goes (planning/hearth-reference-player.md,
@@ -68,6 +69,39 @@ public:
     // nothing is open or the platform refused.
     virtual bool pause() = 0;
     virtual bool resume() = 0;
+
+    // The Speakers page (planning/hearth-reference-player.md, A5): where each
+    // rendered slot comes out, and what the device is. Non-pure with inert
+    // defaults - a sink built before these existed (a test fake, mainly)
+    // keeps compiling and simply does not support them, rather than every
+    // implementer needing a change the day these were added. The real one,
+    // ac3::hearth::make_device_sink's DeviceSink, forwards to
+    // ac3::audio::PcmOutput, which already carries a routing patch - see
+    // that header's own comment for why trim and delay are deliberately NOT
+    // here too: PcmSink::submit() takes the RENDERED (slot-ordered) blocks,
+    // and Player applies TrimDelay to those before they ever reach here, so
+    // one pass covers whichever sink is open.
+
+    // Replaces the routing patch between the renderer's slots and this
+    // sink's outputs, between blocks. False, changing nothing, when nothing
+    // is open, when `routing`'s own output count does not match what is
+    // open, or when this sink does not support routing control.
+    virtual bool set_routing(const render::Routing& routing) {
+        static_cast<void>(routing);
+        return false;
+    }
+    // The routing patch in effect, or a default (every slot unassigned) when
+    // nothing is open or this sink does not support routing control.
+    [[nodiscard]] virtual render::Routing routing() const { return render::Routing{}; }
+    // The open device's own name - "Onkyo receiver", "Realtek" - for a
+    // settings page; empty where there is none to show. Never used to decide
+    // anything, only to say what is set up.
+    [[nodiscard]] virtual std::string device_name() const { return {}; }
+    // The open device's own speaker mask, 0 where it has none
+    // (ac3::audio::speakers.hpp) - what speaker_routing() built the default
+    // patch from, and what a settings page reads to label the routing grid's
+    // columns by speaker rather than by bare output number.
+    [[nodiscard]] virtual std::uint32_t speaker_mask() const { return 0; }
 };
 
 // The real one: a local render endpoint through ac3::audio::PcmOutput.

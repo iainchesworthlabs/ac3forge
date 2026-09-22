@@ -16,6 +16,8 @@
 #include <vector>
 
 #include "ac3/render/layout.hpp"
+#include "ac3/render/render.hpp"
+#include "ac3/render/routing.hpp"
 #include "bitstream_sink.hpp"
 #include "decoder_settings.hpp"
 #include "diagnostic_log.hpp"
@@ -99,6 +101,21 @@ struct EngineStatus {
     // the player's last error.
     std::string note{};
     std::string error{};
+
+    // The speaker setup (planning/hearth-reference-player.md, A5's Speakers
+    // page; Player::set_trim_db() and friends). trim_db/delay_ms are one
+    // entry per render layout slot (index i is slot i, not necessarily
+    // output i - the routing patch below may send it elsewhere), always
+    // sized to the layout this engine was built with. routing, device_name
+    // and speaker_mask are PcmSink's own (pcm_sink.hpp): a default-
+    // constructed Routing, an empty name and a zero mask where there is no
+    // PCM sink or nothing is open.
+    std::vector<double> trim_db{};
+    std::vector<double> delay_ms{};
+    double crossover_hz = render::LayoutRenderer::kDefaultCrossoverHz;
+    render::Routing routing{};
+    std::string device_name{};
+    std::uint32_t speaker_mask = 0;
 };
 
 class Engine {
@@ -139,6 +156,18 @@ public:
     void clear();
     void play_item(std::size_t index);
     void set_decoder_settings(const DecoderSettings& settings);
+    // The speaker setup (EngineStatus's own fields say what is in effect).
+    // Each posts and returns at once, like every other command; a slot out
+    // of range or a value out of bounds is refused on the engine thread and
+    // reaches the caller as EngineStatus::note, the way a refused transport
+    // command already does - the trim/delay/crossover/routing fields simply
+    // do not change, which is the caller's own sign that a set was refused.
+    void set_trim_db(std::size_t slot, double db);
+    void set_delay_ms(std::size_t slot, double ms);
+    void set_crossover_hz(double hz);
+    // Refused when this engine has no PCM sink (PlayerOutputs::pcm unset) -
+    // there is nothing to route.
+    void set_routing(const render::Routing& routing);
     void set_gapless(bool on);
     void set_repeat(bool on);
     void set_on_failure(FailurePolicy policy);
