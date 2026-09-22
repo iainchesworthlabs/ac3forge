@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QSettings>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -9,8 +10,12 @@
 
 #include <memory>
 
+#include "diagnostic_log.hpp"
+
 namespace ac3::hearth {
 class Engine;
+class SettingsStore;
+class PairingStore;
 }
 
 // The one object QML talks to for the queue and the transport
@@ -90,6 +95,46 @@ class HearthController : public QObject {
     // reason as speakerLabels.
     Q_PROPERTY(QVariantList speakerSmall READ speakerSmall NOTIFY speakerSetupChanged)
 
+    // --- settings (the Settings page) ------------------------------------
+    // Playback and network are ac3::hearth::EngineSettings, kept through a
+    // SettingsStore this controller implements over QSettings
+    // (hearth_controller.cpp's own QSettingsStore) - the way
+    // apps/hearth/engine/settings_model.hpp says the window has to. Read
+    // fresh from the store on every call rather than cached here as
+    // EngineSettings by value, for the same reason decoderSettings() above
+    // takes a fresh read rather than a cached DecoderSettings: caching the
+    // type by value would need settings_model.hpp in this header, which
+    // pulls in engine_thread.hpp and so ac3::render::OutputLayout, ahead of
+    // this header's own Qt includes - see hearth_controller.cpp's #undef
+    // slots for what that collision does.
+    Q_PROPERTY(bool resumeQueue READ resumeQueue WRITE setResumeQueue NOTIFY settingsChanged)
+    // "skip" or "stop" (ac3::hearth::FailurePolicy).
+    Q_PROPERTY(QString onFailure READ onFailure WRITE setOnFailure NOTIFY settingsChanged)
+    Q_PROPERTY(QString networkName READ networkName WRITE setNetworkName NOTIFY settingsChanged)
+    Q_PROPERTY(bool networkDiscover READ networkDiscover WRITE setNetworkDiscover NOTIFY settingsChanged)
+    // Each entry: id (the pairing record's client key, in hex - what
+    // forgetPairing() takes back), name, pairedOn. Empty until a Sendspin
+    // server actually pairs a client (A6); the store and this page are real
+    // now, so nothing here has to change when that server lands.
+    Q_PROPERTY(QVariantList pairingRecords READ pairingRecords NOTIFY pairingChanged)
+
+    // --- appearance --------------------------------------------------------
+    // Window-level, not part of EngineSettings: kept through the same
+    // QSettings this controller already opens, under "appearance/" rather
+    // than through the engine's SettingsStore. "system"/"light"/"dark",
+    // the palette name, and "100"/"125"/"150"/"175"/"system" - Main.qml
+    // writes these straight into Theme.preference/Theme.paletteChoice/
+    // Theme.fontScale, the same trio apps/crucible/ui/crucible_controller.hpp
+    // exposes for the same reason, so the two windows' Settings pages behave
+    // alike.
+    Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY settingsChanged)
+    Q_PROPERTY(QString palette READ palette WRITE setPalette NOTIFY settingsChanged)
+    Q_PROPERTY(QString textScale READ textScale WRITE setTextScale NOTIFY settingsChanged)
+
+    // The outcome of the last diagnostics export (the Settings page's "Save
+    // diagnostics").
+    Q_PROPERTY(QString diagnosticsMessage READ diagnosticsMessage NOTIFY diagnosticsChanged)
+
 public:
     explicit HearthController(QObject* parent = nullptr);
     ~HearthController() override;
@@ -150,17 +195,81 @@ public:
     // order" button.
     Q_INVOKABLE void useDeviceOrder();
 
+    [[nodiscard]] bool resumeQueue() const;
+    void setResumeQueue(bool on);
+    [[nodiscard]] QString onFailure() const;
+    void setOnFailure(const QString& policy);
+    [[nodiscard]] QString networkName() const;
+    void setNetworkName(const QString& name);
+    [[nodiscard]] bool networkDiscover() const;
+    void setNetworkDiscover(bool on);
+    [[nodiscard]] QVariantList pairingRecords() const;
+    // Forgets the pairing record whose id is `id` (pairingRecords()' own
+    // "id" field): the sink or player has to pair again, with a new code.
+    // Silently does nothing for an id that is not a well-formed record key,
+    // which covers a stale id from a row the list has already dropped.
+    Q_INVOKABLE void forgetPairing(const QString& id);
+
+    [[nodiscard]] QString theme() const;
+    void setTheme(const QString& theme);
+    [[nodiscard]] QString palette() const;
+    void setPalette(const QString& palette);
+    [[nodiscard]] QString textScale() const;
+    void setTextScale(const QString& scale);
+
+    // The diagnostics file: the report as text, composed from named facts
+    // and never from a pairing key, a pairing code or a queued item's path
+    // (diagnostics_report.hpp says how that is held); a suggested file: URL
+    // in the Documents folder; and the export itself, which writes UTF-8
+    // with LF line endings and reports through diagnosticsMessage - the same
+    // three-invokable shape apps/crucible/ui/crucible_controller.hpp uses.
+    [[nodiscard]] QString diagnosticsMessage() const { return diagnostics_message_; }
+    Q_INVOKABLE QString diagnosticsReport() const;
+    Q_INVOKABLE QString suggestedDiagnosticsFile() const;
+    Q_INVOKABLE bool exportDiagnostics(const QString& fileUrl);
+
 signals:
     void queueChanged();
     void stateChanged();
     void decoderSettingsChanged();
     void speakerSetupChanged();
+    void settingsChanged();
+    void pairingChanged();
+    void diagnosticsChanged();
 
 private:
     void poll();
+    // Saves the settings and, while resumeQueue is on, the queue and its
+    // play position - connected to QCoreApplication::aboutToQuit, since a
+    // play position changes on every pump and has nowhere sensible to save
+    // from on every one of them. A hard kill loses whatever this would have
+    // written, the same trade every setting here already makes by calling
+    // sync() only on a change rather than continuously.
+    void save_on_quit();
 
     std::unique_ptr<ac3::hearth::Engine> engine_;
     QTimer poll_timer_;
+
+    // The process-wide note ring the engine and this controller share -
+    // given to the engine in start() so a diagnostics export carries what it
+    // did, not just what this controller did. Declared before the settings
+    // members below: it does not depend on them, and the constructor's
+    // initialiser list has to follow this declaration order regardless.
+    ac3::hearth::DiagnosticLog& log_;
+    // The four-argument constructor: the two-argument one always uses the
+    // native store (the registry here) whatever QSettings::setDefaultFormat
+    // says, which would let a QML test suite read and write the developer's
+    // own settings - apps/crucible/ui/crucible_controller.cpp's own
+    // constructor carries the identical comment for the identical reason.
+    QSettings settings_;
+    // Implements ac3::hearth::SettingsStore over settings_
+    // (hearth_controller.cpp's QSettingsStore); held through the base class
+    // so this header never needs settings_model.hpp's full definition.
+    // Declared after settings_ and before pairing_: both depend on the one
+    // before them, in this order.
+    std::unique_ptr<ac3::hearth::SettingsStore> store_;
+    std::unique_ptr<ac3::hearth::PairingStore> pairing_;
+    QString diagnostics_message_;
 
     QVariantList queue_;
     int current_index_ = -1;

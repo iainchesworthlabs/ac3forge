@@ -7,9 +7,9 @@ import Ac3ForgeHearth
 // The window (planning/hearth-reference-player.md, A5): a header with the
 // six-page switch, one page at a time in the body, and the transport bar
 // pinned to the bottom on every page, the way planning/hearth-design.md's
-// artboards show it. Play, Speakers and Decoder are built to the design;
-// Media information, Network and Settings are placeholders their own
-// slices replace.
+// artboards show it. Play, Speakers, Decoder and Settings are built to the
+// design; Media information and Network are placeholders their own slices
+// replace.
 ApplicationWindow {
     id: window
     width: 1280
@@ -30,7 +30,42 @@ ApplicationWindow {
     readonly property var pageOrder: ["play", "media", "speakers", "decoder", "network", "settings"]
     property string page: "play"
 
-    Component.onCompleted: HearthController.start()
+    // The text size choice becomes Theme.fontScale here rather than in
+    // Theme.qml itself, the same split apps/crucible/ui/qml/Main.qml's own
+    // applyTextScale() keeps: Theme has no idea what a shell's settings look
+    // like, only what the resolved scale means to the tokens it hands out.
+    // "system" takes the point size the platform theme reports and counts
+    // 9 pt as 100%, the same reading Crucible's and ac3gui's Settings pages
+    // give it.
+    function applyTextScale() {
+        const choice = HearthController.textScale;
+        if (choice === "system") {
+            const points = Application.font.pointSize;
+            Theme.fontScale = points > 0 ? Math.max(1.0, Math.min(2.0, points / 9)) : 1.0;
+        } else {
+            Theme.fontScale = Number(choice) / 100;
+        }
+    }
+
+    Component.onCompleted: {
+        Theme.preference = HearthController.theme;
+        Theme.paletteChoice = HearthController.palette;
+        window.applyTextScale();
+        HearthController.start();
+    }
+
+    // HearthController.settingsChanged covers theme/palette/textScale
+    // together with the playback and network settings the Settings page
+    // also writes - Theme only cares about the first three, so this handler
+    // re-reads all three on every fire rather than trying to tell them apart.
+    Connections {
+        target: HearthController
+        function onSettingsChanged() {
+            Theme.preference = HearthController.theme;
+            Theme.paletteChoice = HearthController.palette;
+            window.applyTextScale();
+        }
+    }
 
     Shortcut { sequence: "Ctrl+1"; onActivated: window.page = "play" }
     Shortcut { sequence: "Ctrl+2"; onActivated: window.page = "media" }
@@ -94,7 +129,7 @@ ApplicationWindow {
         Speakers { }
         DecoderPage { }
         PlaceholderPage { pageName: qsTr("Network") }
-        PlaceholderPage { pageName: qsTr("Settings") }
+        Settings { }
     }
 
     footer: TransportBar { }
