@@ -23,6 +23,18 @@ The sections below contain the complete change list and fixes.
 
 ### Added
 
+**Associated-service identification, both directions**
+
+- **MPEG-TS's `mainid`/`asvc` now read back, not just write.** `mpegts::demux`/`Reader` decode
+  the PMT's own AC-3/E-AC-3 audio descriptor into `ReadStream::service` — `bsmod`, `full_service`,
+  `mainid`, `asvc`, `bsid`, `mix_metadata` and the `substream1`–`3` bytes, for both the DVB and
+  ATSC profiles — where before only the descriptor *tag* was read, to identify the codec.
+- **`ac3cli ts`'s `asvc=` accepts a comma-separated main-service list** (`asvc=0,2`) alongside the
+  existing raw mask (`asvc=0x05`), and `mainid=`/`asvc=` are now checked against the stream's own
+  `bsmod`: giving `asvc=` on a stream `bsmod` calls a main service, or `mainid=` on one it calls
+  an associated service, is a usage error instead of a descriptor that silently says the wrong
+  thing.
+
 **Minimum-footprint / ESP32 decode profile**
 
 - **A Hearth sink knows what it is, joins a network it was told about, and is
@@ -1015,6 +1027,14 @@ The sections below contain the complete change list and fixes.
   tagged release when it isn't.
 
 ### Fixed
+
+**Containers**
+
+- **The `dec3`/`EC3SpecificBox` `asvc` bit misclassified karaoke as an associated service.**
+  `ac3::io::build_codec_config_box` used a plain `bsmod >= 2` test, which reads bsmod 7 (karaoke
+  at an acmod other than 1/0 — a *main* service per A/52 Table 5.7) the same as bsmod 7's other
+  meaning, voice-over. The MPEG-TS descriptor writer already got this split right; the `dec3`
+  writer now shares its rule, `ac3::meta::is_associated_service`.
 
 **Command line and GUI**
 

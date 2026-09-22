@@ -933,6 +933,159 @@ TEST_CASE("MPEG-TS Reader surfaces a walk error directly from push()", "[mpegts]
     CHECK(pushed.error() == mpegts::DemuxError::kNotTransportStream);
 }
 
+TEST_CASE("MPEG-TS reads the service descriptor back through mux()/demux()",
+         "[mpegts][reader][service]") {
+    const std::vector<Bytes> frames{frame_of(300, 0x11)};
+
+    SECTION("DVB E-AC-3: an associated service with asvc and substreams round-trips") {
+        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kEac3,
+                                 .sample_rate = 48000,
+                                 .channels = 2,
+                                 .samples_per_frame = 1536};
+        track.service.bsmod = 2;  // visually impaired
+        track.service.bsid = 16;
+        track.service.mix_metadata = true;
+        track.service.asvc = 0x05;  // main services 0 and 2
+        track.service.associated_substreams[0] = {
+            .present = true, .bsmod = 3, .bsmod_present = true};
+        const auto file = mpegts::mux(track, views_of(frames));
+        REQUIRE(file.has_value());
+
+        const auto out = mpegts::demux(*file);
+        REQUIRE(out.has_value());
+        REQUIRE(out->stream.service.has_value());
+        const auto& service = *out->stream.service;
+        CHECK(service.bsmod == 2);
+        CHECK(service.bsmod_present);
+        CHECK(service.bsid == 16);
+        CHECK(service.mix_metadata);
+        CHECK_FALSE(service.mainid.has_value());
+        REQUIRE(service.asvc.has_value());
+        CHECK(*service.asvc == 0x05);
+        CHECK(service.associated_substreams[0].present);
+        CHECK(service.associated_substreams[0].bsmod == 3);
+        CHECK_FALSE(service.associated_substreams[1].present);
+        CHECK((service.independent_substreams & 0x02) != 0);  // I1 present
+    }
+
+    SECTION("DVB AC-3: a main service round-trips, full_service resolves to Table D.4's pin") {
+        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc3,
+                                 .sample_rate = 48000,
+                                 .channels = 2,
+                                 .samples_per_frame = 1536};
+        track.service.bsmod = 0;  // complete main
+        track.service.bsid = 8;
+        // full_service left std::nullopt: Table D.4 pins CM to 1 regardless,
+        // which is exactly what the wire's own resolved bit reads back as -
+        // there is no wire state distinguishing "explicit true" from "CM's
+        // own pinned default", so the parser reports the resolved value.
+        const auto file = mpegts::mux(track, views_of(frames));
+        REQUIRE(file.has_value());
+
+        const auto out = mpegts::demux(*file);
+        REQUIRE(out.has_value());
+        REQUIRE(out->stream.service.has_value());
+        CHECK(out->stream.service->bsmod == 0);
+        REQUIRE(out->stream.service->full_service.has_value());
+        CHECK(*out->stream.service->full_service);
+        CHECK_FALSE(out->stream.service->mainid.has_value());
+        CHECK_FALSE(out->stream.service->asvc.has_value());
+    }
+
+    SECTION("ATSC E-AC-3: an associated service with asvc and substreams round-trips") {
+        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kEac3,
+                                 .sample_rate = 48000,
+                                 .channels = 6,
+                                 .samples_per_frame = 1536};
+        track.service.bsmod = 5;  // commentary
+        track.service.bsid = 16;
+        track.service.asvc = 0x01;
+        track.service.associated_substreams[1] = {
+            .present = true, .bsmod = 4, .bsmod_present = true};
+        const auto file = mpegts::mux(track, views_of(frames),
+                                      mpegts::MuxOptions{.profile = mpegts::BroadcastProfile::kAtsc});
+        REQUIRE(file.has_value());
+
+        const auto out = mpegts::demux(*file);
+        REQUIRE(out.has_value());
+        REQUIRE(out->stream.service.has_value());
+        const auto& service = *out->stream.service;
+        CHECK(service.bsmod == 5);
+        CHECK(service.bsid == 16);
+        REQUIRE(service.asvc.has_value());
+        CHECK(*service.asvc == 0x01);
+        CHECK(service.associated_substreams[1].present);
+        CHECK(service.associated_substreams[1].bsmod == 4);
+    }
+
+    SECTION("ATSC AC-3: a main service with mainid, priority and sample_rate_code round-trips") {
+        mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc3,
+                                 .sample_rate = 44100,
+                                 .channels = 2,
+                                 .samples_per_frame = 1536};
+        track.service.bsmod = 0;
+        track.service.bsid = 8;
+        track.service.sample_rate_code = 1;  // 44.1 kHz, Table A4.2
+        track.service.mainid = 3;
+        track.service.priority = 2;
+        const auto file = mpegts::mux(track, views_of(frames),
+                                      mpegts::MuxOptions{.profile = mpegts::BroadcastProfile::kAtsc});
+        REQUIRE(file.has_value());
+
+        const auto out = mpegts::demux(*file);
+        REQUIRE(out.has_value());
+        REQUIRE(out->stream.service.has_value());
+        REQUIRE(out->stream.service->mainid.has_value());
+        CHECK(*out->stream.service->mainid == 3);
+        CHECK(out->stream.service->priority == 2);
+        CHECK(out->stream.service->sample_rate_code == 1);
+        CHECK_FALSE(out->stream.service->asvc.has_value());
+    }
+
+    SECTION("ATSC AC-3: the plain 3-byte form (no association) still parses") {
+        const mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc3,
+                                       .sample_rate = 48000,
+                                       .channels = 2,
+                                       .samples_per_frame = 1536};
+        const auto file = mpegts::mux(track, views_of(frames),
+                                      mpegts::MuxOptions{.profile = mpegts::BroadcastProfile::kAtsc});
+        REQUIRE(file.has_value());
+
+        const auto out = mpegts::demux(*file);
+        REQUIRE(out.has_value());
+        REQUIRE(out->stream.service.has_value());
+        CHECK(out->stream.service->bsmod == 0);
+        CHECK_FALSE(out->stream.service->mainid.has_value());
+        CHECK_FALSE(out->stream.service->asvc.has_value());
+    }
+
+    SECTION("a registration-descriptor-signalled stream has no A/52 descriptor to read") {
+        Bytes descriptors;
+        put_u8(descriptors, 0x05);
+        put_u8(descriptors, 4);
+        for (const char c : std::string{"EAC3"}) {
+            put_u8(descriptors, static_cast<std::uint8_t>(c));
+        }
+        const std::array<EsSpec, 1> streams{
+            EsSpec{.stream_type = 0x87, .pid = 0x0100, .descriptors = descriptors}};
+        const auto out = mpegts::demux(build_stream(streams, frames));
+        REQUIRE(out.has_value());
+        CHECK_FALSE(out->stream.service.has_value());
+    }
+
+    SECTION("an AC-4 stream has no A/52 descriptor to read") {
+        const mpegts::AudioTrack track{.codec = mpegts::AudioCodec::kAc4,
+                                       .sample_rate = 48000,
+                                       .channels = 2,
+                                       .samples_per_frame = 2048};
+        const auto file = mpegts::mux(track, views_of(frames));
+        REQUIRE(file.has_value());
+        const auto out = mpegts::demux(*file);
+        REQUIRE(out.has_value());
+        CHECK_FALSE(out->stream.service.has_value());
+    }
+}
+
 TEST_CASE("MPEG-TS round-trips an AC-4 track", "[mpegts][reader][ac4]") {
     const std::vector<Bytes> frames{frame_of(700, 0x1A), frame_of(512, 0x2B),
                                     frame_of(280, 0x3C)};

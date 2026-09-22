@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "mpegts/mpegts.hpp"
 #include "ts_detail.hpp"
 
 namespace mpegts {
@@ -308,6 +309,37 @@ void emit_pes(ReaderState& s, const Reader::PayloadFn& on_payload) {
         }
 
         if (matched) {
+            // The loop above only IDENTIFIES the codec: ATSC's own
+            // stream_type match never even looks at the descriptor loop
+            // (matched is already true, so the `!matched` guard on that
+            // for-loop's own condition skips its body entirely), and the DVB
+            // path stops at the first descriptor recognised for THAT
+            // purpose. A second, independent pass - run regardless of which
+            // branch above set `matched` - finds the A/52 audio descriptor's
+            // raw bytes, if any, for parse_service_descriptor(). It never
+            // changes matched/eac3/ac4/signalling, only what (if anything)
+            // ends up in ReadStream::service.
+            std::optional<ServiceInfo> service;
+            if (!ac4) {
+                const std::uint8_t dvb_tag =
+                    eac3 ? kTagEnhancedAc3Descriptor : kTagAc3Descriptor;
+                const std::uint8_t atsc_tag =
+                    eac3 ? kTagAtscEac3Descriptor : kTagAtscAc3Descriptor;
+                for (std::size_t d = descriptors_at; d + 2 <= descriptors_at + es_info_length;) {
+                    const std::uint8_t desc_tag = byte_at(section, d);
+                    const std::size_t desc_length = byte_at(section, d + 1);
+                    if (d + 2 + desc_length > descriptors_at + es_info_length) {
+                        break;  // already bounds-checked by the identification pass above
+                    }
+                    if (desc_tag == dvb_tag || desc_tag == atsc_tag) {
+                        service = parse_service_descriptor(desc_tag,
+                                                            section.subspan(d + 2, desc_length));
+                        break;
+                    }
+                    d += 2 + desc_length;
+                }
+            }
+
             s.stream = ReadStream{.program_number = program_number,
                                   .pmt_pid = s.pmt_pid,
                                   .elementary_pid = pid,
@@ -315,7 +347,8 @@ void emit_pes(ReaderState& s, const Reader::PayloadFn& on_payload) {
                                   .eac3 = eac3,
                                   .ac4 = ac4,
                                   .signalling = signalling,
-                                  .packet_size = s.grid.stride};
+                                  .packet_size = s.grid.stride,
+                                  .service = service};
             s.stream_found = true;
             return true;
         }

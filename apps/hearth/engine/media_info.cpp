@@ -120,6 +120,14 @@ void member_or_null(JsonSink& json, std::string_view name, const std::optional<i
     }
 }
 
+void member_or_null(JsonSink& json, std::string_view name, const std::optional<bool>& value) {
+    if (value) {
+        json.member(name, *value);
+    } else {
+        json.member_null(name);
+    }
+}
+
 void text_or_null(JsonSink& json, std::string_view name, std::string_view text) {
     if (text.empty()) {
         json.member_null(name);
@@ -180,6 +188,8 @@ void write_container(JsonSink& json, const apps::ContainerFacts& facts) {
             json.member("fscod", static_cast<std::int64_t>(box.fscod));
             json.member("bsid", static_cast<std::int64_t>(box.bsid));
             json.member("bsmod", static_cast<std::int64_t>(box.bsmod));
+            json.member("bsmod_label",
+                        apps::probe_json::bsmod_label(box.bsmod, static_cast<Acmod>(box.acmod)));
             json.member("acmod", static_cast<std::int64_t>(box.acmod));
             json.member("lfeon", box.lfeon);
             json.member("bit_rate_code", static_cast<std::int64_t>(box.bit_rate_code));
@@ -189,6 +199,7 @@ void write_container(JsonSink& json, const apps::ContainerFacts& facts) {
             json.member("num_dep_sub", static_cast<std::int64_t>(box.num_dep_sub));
             json.member("chan_loc", static_cast<std::int64_t>(box.chan_loc));
             json.member("asvc", box.asvc);
+            json.member("asvc_label", apps::probe_json::asvc_label(box.asvc));
             member_or_null(json, "complexity_index", box.complexity_index);
             json.end_object();
         } else {
@@ -207,6 +218,29 @@ void write_container(JsonSink& json, const apps::ContainerFacts& facts) {
         json.member("stream_type", static_cast<std::int64_t>(facts.stream_type));
         json.member("signalling", facts.signalling);
         json.member("packet_size", static_cast<std::uint64_t>(facts.packet_size));
+        json.key("service");
+        if (facts.service_present) {
+            json.begin_object();
+            json.member("bsmod", static_cast<std::int64_t>(facts.service_bsmod));
+            json.member("bsmod_present", facts.service_bsmod_present);
+            // No bsmod_label here: bsmod 7's label depends on acmod (voice
+            // over vs. karaoke), and channel_flags() - the only acmod-shaped
+            // thing this descriptor carries - is a many-to-one summary that
+            // cannot be read back into an exact acmod (see
+            // mpegts::parse_service_descriptor's own comment). Showing one
+            // label anyway would sometimes just be wrong; a caller that has
+            // the elementary stream can label service_bsmod itself with the
+            // acmod ac3::io::scan() actually read.
+            member_or_null(json, "full_service", facts.service_full_service);
+            json.member("bsid", static_cast<std::int64_t>(facts.service_bsid));
+            member_or_null(json, "mainid", facts.service_mainid);
+            json.member("priority", static_cast<std::int64_t>(facts.service_priority));
+            member_or_null(json, "asvc", facts.service_asvc);
+            json.member("mix_metadata", facts.service_mix_metadata);
+            json.end_object();
+        } else {
+            json.value_null();
+        }
         json.end_object();
     } else {
         json.value_null();

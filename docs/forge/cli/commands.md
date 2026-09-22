@@ -803,16 +803,23 @@ Either way the descriptor's identification fields are read off the bitstream, no
 service type (`bsmod`), the channel mode and rendered channel count, the surround mode
 (`dsurmod`), `bsid`, whether mixing metadata is present, and which independent substreams the
 stream uses. Two values are not in any bitstream, because they describe how services in a
-multiplex *relate* rather than what one stream contains, so they are omitted unless given:
+multiplex *relate* rather than what one stream contains, so they are omitted unless given —
+and checked against the stream's own `bsmod` either way: `asvc=` on what Table 5.7 calls a main
+service, or `mainid=` on what it calls an associated one, is a usage error rather than a
+descriptor that quietly says the wrong thing.
 
 | Option | What it says |
 |---|---|
-| `mainid=<0-7>` | The main-service number this service is, or that an associated service points at |
-| `asvc=<mask>` | Which main services an **associated** service may be reproduced with, one bit each — decimal or `0xNN` |
+| `mainid=<0-7>` | The main-service number this service is (only valid on a **main** service) |
+| `asvc=<mask>` | Which main services an **associated** service may be reproduced with, one bit each — decimal, `0xNN`, or a comma-separated list of main-service numbers (`asvc=0,2`) |
 
 ```bash
-ac3cli ts commentary.ac3 commentary.ts atsc asvc=0x05
+ac3cli ts commentary.ac3 commentary.ts atsc asvc=0,2
 ```
+
+Reading a `.ts` back out (`mpegts::demux`/`Reader`) decodes the same descriptor into
+`ReadStream::service` — see [muxing-and-sinks.md](../../library/muxing-and-sinks.md#demuxing-mpegtsdemux-mpegtsreader)
+for what does and does not survive the round trip.
 
 ### Live & hardware
 
