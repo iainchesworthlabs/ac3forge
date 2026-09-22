@@ -7,7 +7,8 @@ measurement.
 
 Related targets provide container writing, IAB and ADM/BW64 reading, IAMF writing, object
 signing, platform audio, and an AC-4 bitstream inspector. Build and linkage requirements differ
-by target. [Capabilities](capabilities.md) lists supported formats and limits.
+by target. [Capabilities](capabilities.md) lists supported formats and limits;
+[Development status](development-status.md) is the compact done / partial / not-started companion.
 [Validation](../verification.md) describes how output is checked.
 
 Use this page to link the C++ library. Other interfaces are documented under the
@@ -150,6 +151,9 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 
 ## In this section
 
+- [Capabilities](capabilities.md) — what ships, with spec sections and limitations.
+- [Development status](development-status.md) — at-a-glance status across every codec and bitstream feature.
+- [Application coverage](application-coverage.md) — which applications expose each broad capability.
 - [Example programs](examples.md) — every `examples/` program, what it shows, and which page discusses it.
 - [Encoding AC-3](encoding-ac3.md) — `ac3::FrameEncoder` and `EncoderConfig`.
 - [Encoding E-AC-3](encoding-eac3.md) — `ac3::eac3::FrameEncoder` and wide layouts via `ac3::eac3::AccessUnitEncoder`.
