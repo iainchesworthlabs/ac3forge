@@ -1200,6 +1200,40 @@ jobs:
           printf 'packaged: %s\n' "${archives[@]}"
           python3 tools/ci/check_cli_docs_package.py "${archives[0]}"
 
+      # Hearth's own archive (cmake/Packaging.cmake's hearth component,
+      # apps/hearth/ui/CMakeLists.txt's install rules, phase A7) - unlike
+      # Crucible's Linux package, which is a wholly separate build/crucible
+      # configure+build+pack pass further up (Crucible needs PipeWire
+      # installed; Hearth needs nothing beyond what every `hearth: true` leg
+      # already builds), so this hooks into the SAME shared Package step
+      # above that the runtime archive and the CLI docs assert both use,
+      # the same way the CLI docs assert just above does. Same condition as
+      # that step, with matrix.hearth added: on Linux the windows-msvc and
+      # macos-llvm/macos-llvm-x64 clauses never match, so this only ever
+      # fires on a do_package release run, on whichever legs carry both
+      # matrix.hearth and matrix.release_package (linux-gcc,
+      # linux-gcc-arm64) - the same "Linux checked before a release ships
+      # rather than on every commit" split that comment above describes.
+      - name: Assert the AC3Forge Hearth was packaged (Linux)
+        if: >-
+          matrix.hearth &&
+          matrix.packageable &&
+          (matrix.preset == 'windows-msvc' ||
+           (inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          tars=(packages/ac3forge-hearth-*.tar.gz)
+          if [ ${#tars[@]} -eq 0 ]; then
+            echo "::error::cpack produced no ac3forge-hearth-*.tar.gz - the hearth component did not reach CPACK_COMPONENTS_ALL on Linux (cmake/Packaging.cmake) or its install rules produced nothing (apps/hearth/ui/CMakeLists.txt)."
+            ls -1 packages/ || true
+            exit 1
+          fi
+          printf 'packaged: %s\n' "${tars[@]}"
+          python3 tools/ci/check_hearth_package.py "${tars[0]}"
+
       - name: Upload package artifacts
         if: >-
           matrix.packageable &&

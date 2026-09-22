@@ -432,6 +432,36 @@ jobs:
           printf 'packaged: %s\n' "${zips[@]}"
           python3 tools/ci/check_crucible_package.py "${zips[0]}"
 
+      # Hearth's own archive (cmake/Packaging.cmake's hearth component,
+      # apps/hearth/ui/CMakeLists.txt's install rules, phase A7). Same cpack
+      # pass as Package above, same reasoning as the Crucible assert just
+      # above it - this just asserts a second component of that one pass.
+      # matrix.hearth && matrix.packageable rather than matrix.packageable
+      # alone (which is all the Crucible assert needed, hearth and
+      # packageable tracking the same two entries on this file): explicit
+      # about which flag is actually load-bearing here, the same reason
+      # _ci-windows.yml's own Hearth assert names matrix.hearth rather than
+      # reusing Crucible's matrix.crucible.
+      - name: Assert the AC3Forge Hearth was packaged (macOS)
+        if: >-
+          matrix.hearth &&
+          matrix.packageable &&
+          (matrix.preset == 'windows-msvc' ||
+           (inputs.do_package && matrix.release_package) ||
+           ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(packages/ac3forge-hearth-*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "::error::cpack produced no ac3forge-hearth-*.zip - the hearth component did not reach CPACK_COMPONENTS_ALL on macOS (cmake/Packaging.cmake) or its install rules produced nothing (apps/hearth/ui/CMakeLists.txt)."
+            ls -1 packages/ || true
+            exit 1
+          fi
+          printf 'packaged: %s\n' "${zips[@]}"
+          python3 tools/ci/check_hearth_package.py "${zips[0]}"
+
       # The counterpart to the two Windows asserts above, for the files that
       # had no assertion at all: ac3cli's generated man page and its four
       # shell completions (apps/cli/CMakeLists.txt, CLI shell completions). Those are
