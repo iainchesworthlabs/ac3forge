@@ -4,12 +4,15 @@
 // QML up and offers Crucible's own debugging aid: `--shot <path.png>` grabs
 // the window after it has settled and quits, so a headless check (or the
 // screenshot script, later) can see it; `--page <name>` picks the page it
-// opens on first - play, media, speakers, decoder, network or settings.
+// opens on first - play, media, speakers, decoder, network, settings, or
+// firstrun for the "Before you play anything" dialog over the Play page. A
+// `--shot` run never shows that dialog unless `--page firstrun` asked for
+// it, so a capture against a fresh settings store is clean (Crucible's own
+// main.cpp carries the identical shape for the identical reason).
 //
-// Translations and the first-run dialog are not wired up yet: this slice is
-// the shell and the Play page over the real engine, with the other five
-// pages as placeholders. Both follow once there is more of the window for
-// them to cover.
+// Translations are not wired up yet: this slice is the shell and the Play
+// page over the real engine, with the other five pages as placeholders, and
+// follows once there is more of the window for it to cover.
 
 #include <QFont>
 #include <QFontDatabase>
@@ -74,7 +77,7 @@ int main(int argc, char** argv) {
         if (args[i] == QLatin1String("--shot")) {
             shot_path = args[i + 1];
         } else if (args[i] == QLatin1String("--page")) {
-            page = args[i + 1];  // play, media, speakers, decoder, network or settings
+            page = args[i + 1];  // play, media, speakers, decoder, network, settings or firstrun
         }
     }
 
@@ -84,6 +87,16 @@ int main(int argc, char** argv) {
     engine.loadFromModule("Ac3ForgeHearth", "Main");
     if (engine.rootObjects().isEmpty()) {
         return 1;
+    }
+    // A capture never shows the first-run dialog it did not ask for:
+    // Main.qml reads this one event-loop turn later, after main() has had
+    // its say. `--page firstrun` opens the dialog over the Play page.
+    if (!shot_path.isEmpty()) {
+        engine.rootObjects().first()->setProperty("suppressFirstRun", true);
+    }
+    if (page == QLatin1String("firstrun")) {
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openFirstRun");
+        page.clear();
     }
     if (!page.isEmpty()) {
         engine.rootObjects().first()->setProperty("page", page);

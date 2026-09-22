@@ -478,4 +478,21 @@ void HearthController::useDeviceOrder() {
     }
 }
 
+bool HearthController::firstRunSeen() const {
+    return settings_.value(QStringLiteral("firstRun/seen"), false).toBool();
+}
+
+void HearthController::setFirstRunSeen(bool seen) {
+    if (seen == firstRunSeen()) {
+        return;
+    }
+    if (seen) {
+        settings_.setValue(QStringLiteral("firstRun/seen"), true);
+    } else {
+        settings_.remove(QStringLiteral("firstRun/seen"));
+    }
+    settings_.sync();  // survive a hard exit
+    emit firstRunSeenChanged();
+}
+
 }  // namespace ac3::hearth::ui

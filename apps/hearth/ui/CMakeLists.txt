@@ -71,6 +71,7 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/DecoderAc4.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlaceholderPage.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/TransportBar.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/FirstRunDialog.qml"
         ${AC3HEARTH_SHARED_OUT})
     foreach(qml_file IN LISTS AC3HEARTH_QML_FILES)
         get_filename_component(qml_name "${qml_file}" NAME)

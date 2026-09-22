@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QSettings>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -49,6 +50,13 @@ class HearthController : public QObject {
     Q_PROPERTY(QString outputReason READ outputReason NOTIFY stateChanged)
     Q_PROPERTY(QString noteText READ noteText NOTIFY stateChanged)
     Q_PROPERTY(QString errorText READ errorText NOTIFY stateChanged)
+    // Whether FirstRunDialog.qml has been dismissed once already. Persisted
+    // through QSettings under organisation "ac3forge", application "Hearth"
+    // (set in main.cpp) - this window's only settings storage so far. The
+    // queue/decoder/speaker settings apps/hearth/engine/settings_model.hpp
+    // describes are a separate, later piece (the Settings page proper), not
+    // wired to this controller yet.
+    Q_PROPERTY(bool firstRunSeen READ firstRunSeen WRITE setFirstRunSeen NOTIFY firstRunSeenChanged)
 
     // --- decoder settings (the Decoder page, AC-3 and E-AC-3) ------------
     // The whole of DecoderSettings, as one map QML reads field by field and
@@ -108,6 +116,8 @@ public:
     [[nodiscard]] QString outputReason() const { return output_reason_; }
     [[nodiscard]] QString noteText() const { return note_; }
     [[nodiscard]] QString errorText() const { return error_; }
+    [[nodiscard]] bool firstRunSeen() const;
+    void setFirstRunSeen(bool seen);
 
     Q_INVOKABLE void play();
     Q_INVOKABLE void pause();
@@ -155,12 +165,14 @@ signals:
     void stateChanged();
     void decoderSettingsChanged();
     void speakerSetupChanged();
+    void firstRunSeenChanged();
 
 private:
     void poll();
 
     std::unique_ptr<ac3::hearth::Engine> engine_;
     QTimer poll_timer_;
+    QSettings settings_;
 
     QVariantList queue_;
     int current_index_ = -1;
