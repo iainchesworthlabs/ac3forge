@@ -1575,6 +1575,15 @@ The sections below contain the complete change list and fixes.
   stopped `running()` refuses every `submit()` without ever reaching the render code
   that counts a real underrun. All now stop (or, once their next reprobe/reconcile
   runs, restart) instead of hanging.
+- **Two more callers kept retrying a spatial sink that had already stopped itself.**
+  `ac3cli spatial`'s submit loop had no `running()` check at all, so an unplugged or
+  disabled endpoint hung the command for ever rather than ending with the reason
+  printed, the way a lost device already ends other commands; its final drain-wait
+  gets the same check. Crucible's `submit_with_patience()` - shared by the passthrough,
+  monitor and spatial legs - still waited out its full ~200 ms patience window on every
+  single frame once a sink had stopped itself, rather than counting the one underrun
+  and moving on immediately; `OutputStage::apply()`'s own reprobe already restarts a
+  sink in this state (see above), so only the per-frame wait needed shortening.
 - **`PassthroughSink` crashed the instant a real exclusive-mode bitstream endpoint drove
   it** — surfaced once an Onkyo TX-RZ740 over HDMI locked AC-3, E-AC-3 and signed Atmos
   through it for the first time. `Activate`/`Initialize` ran on the calling thread while

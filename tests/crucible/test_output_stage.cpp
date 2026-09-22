@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <chrono>
 #include <cmath>
 #include <memory>
 #include <numbers>
@@ -340,6 +341,27 @@ TEST_CASE("output stage: a full sink is waited on briefly, then counted as an un
     stage.submit(encoded.unit, raw);
     CHECK(stage.status().underruns == 1);
     CHECK(devices->burst_sinks[0]->submits == 0);
+}
+
+TEST_CASE("output stage: a sink that has stopped itself is not waited out to the full patience window",
+         "[crucible][output_stage]") {
+    auto devices = std::make_shared<FakeDevices>();
+    devices->devices = {null_sink(), hdmi_avr()};
+    devices->refuse_next_submits = 1000000;  // never accepts
+    OutputStage stage(config_over(devices));
+    CHECK(stage.reprobe(false).mode == OutputMode::kDdPlus51);
+    // The device went away: submit_with_patience() must find this out from
+    // running() rather than from spending its ~200 ms deadline finding out
+    // the same submit() was always going to refuse.
+    devices->burst_sinks[0]->running = false;
+    Encoded encoded;
+    const auto raw = encoded.next();
+    const auto start = std::chrono::steady_clock::now();
+    stage.submit(encoded.unit, raw);
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    CHECK(stage.status().underruns == 1);
+    CHECK(devices->burst_sinks[0]->submits == 0);
+    CHECK(elapsed < std::chrono::milliseconds(100));
 }
 
 TEST_CASE("output stage: stop tears the sink down and submit is then a no-op", "[crucible][output_stage]") {

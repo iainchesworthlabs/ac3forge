@@ -85,6 +85,14 @@ template <typename Sink, typename... Args>
 bool submit_with_patience(Sink& sink, std::uint64_t& underruns, Args&&... args) {
     const auto deadline = std::chrono::steady_clock::now() + kSubmitPatience;
     while (!sink.submit(std::forward<Args>(args)...)) {
+        // A sink that has stopped itself (device unplugged, disabled, or
+        // taken by another exclusive app) never makes room again - waiting
+        // out the rest of the patience window on every frame only delays
+        // the one underrun this frame was always going to be.
+        if (!sink.running()) {
+            ++underruns;
+            return false;
+        }
         if (std::chrono::steady_clock::now() >= deadline) {
             ++underruns;
             return false;
