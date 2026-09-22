@@ -51,6 +51,15 @@ public:
                                                                  std::uint32_t sample_rate,
                                                                  bool eac3) = 0;
     virtual bool submit(std::span<const std::byte> burst) = 0;
+    // True from a successful start() until stop() - or until the endpoint
+    // goes away under the stream, exactly as ac3::audio::PassthroughSink::
+    // running() documents (the production implementation just forwards to
+    // it). OutputStage reads this so a re-probe that finds the same
+    // mode/endpoint does not keep a dead sink forever: a lost device can
+    // still be re-enumerated with the same id and the same accepted
+    // formats, so "nothing changed" is not the same question as "is this
+    // still alive".
+    [[nodiscard]] virtual bool running() const = 0;
     virtual void stop() = 0;
 };
 
@@ -68,6 +77,9 @@ public:
     // Sample-frames submitted but not yet rendered: the sink's queue depth,
     // which is latency once the sink has started consuming.
     [[nodiscard]] virtual std::size_t queued_frames() const = 0;
+    // Same contract as BurstSink::running() above, forwarding to
+    // ac3::audio::MonitorSink::running().
+    [[nodiscard]] virtual bool running() const = 0;
     virtual void stop() = 0;
 };
 
@@ -81,6 +93,9 @@ public:
                                                                  std::uint32_t max_dynamic_objects) = 0;
     virtual bool submit(std::span<const ac3::audio::DynamicObjectUpdate> dynamic,
                         std::span<const ac3::audio::StaticObjectUpdate> static_objects) = 0;
+    // Same contract as BurstSink::running() above, forwarding to
+    // ac3::audio::SpatialObjectSink::running().
+    [[nodiscard]] virtual bool running() const = 0;
     virtual void stop() = 0;
 };
 

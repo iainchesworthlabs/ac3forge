@@ -433,7 +433,12 @@ void StreamPlayerController::play() {
             meter.process(views);
 
             bool submitted = false;
-            while (!submitted && should_play_.load(std::memory_order_relaxed)) {
+            // sink_->running() turns false, not just submit() false-forever,
+            // once the device goes away under the stream - without it in
+            // the loop condition this spins until pause() is pressed by
+            // hand, however long the file runs.
+            while (!submitted && should_play_.load(std::memory_order_relaxed) &&
+                  sink_->running()) {
                 submitted = sink_->submit(chunk);
                 if (!submitted) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(4));
@@ -469,7 +474,11 @@ void StreamPlayerController::play() {
         }
 
         const bool reached_end = at >= result->frame_count;
-        QMetaObject::invokeMethod(this, [this, result, reached_end] {
+        // Read before sink_->stop()/reset() below, which would otherwise
+        // make this always false (stop() is itself indistinguishable from
+        // a device that was already gone).
+        const bool sink_lost = sink_ && !sink_->running();
+        QMetaObject::invokeMethod(this, [this, result, reached_end, sink_lost] {
             // sink_/worker_active_ are exclusively this worker's to tear
             // down regardless of which file is current: play() refuses to
             // spawn a second worker while worker_active_ is true, so sink_
@@ -490,6 +499,14 @@ void StreamPlayerController::play() {
             emit playingChanged();
             if (reached_end) {
                 read_frame_.store(0, std::memory_order_relaxed);
+            } else if (sink_lost) {
+                // positionSeconds() stays where read_frame_ (what was
+                // actually SUBMITTED) last left it, the same as a pause -
+                // sink_->position() would read no better here, since
+                // MonitorSink::position() also answers nothing once
+                // running() is false.
+                error_ = QStringLiteral("The playback output device disappeared.");
+                emit resultChanged();
             }
             emit positionChanged();
         });

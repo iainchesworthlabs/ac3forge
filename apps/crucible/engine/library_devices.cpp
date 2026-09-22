@@ -43,6 +43,7 @@ public:
         return {};
     }
     bool submit(std::span<const std::byte> burst) override { return sink_.submit(burst); }
+    bool running() const override { return sink_.running(); }
     void stop() override { sink_.stop(); }
 
 private:
@@ -67,6 +68,7 @@ public:
                    ? static_cast<std::size_t>(stats.frames_submitted - stats.frames_rendered)
                    : 0;
     }
+    bool running() const override { return sink_.running(); }
     void stop() override { sink_.stop(); }
 
 private:
@@ -88,6 +90,7 @@ public:
                 std::span<const ac3::audio::StaticObjectUpdate> static_objects) override {
         return sink_.submit(dynamic, static_objects);
     }
+    bool running() const override { return sink_.running(); }
     void stop() override { sink_.stop(); }
 
 private:
