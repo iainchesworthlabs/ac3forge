@@ -36,6 +36,17 @@ namespace improv = ac3forge::improv;
 // which sends its buffer to the host at a newline, and a packet carries none:
 // the answer to a client's request sat there until the board next printed a
 // line, which on an idle board, or after cannot_connect, was never.
+//
+// These bytes are not text, and the console must not treat them as text.
+// ESP-IDF converts line endings both ways by default: a CR goes out before
+// every LF, and a CR that arrives becomes an LF. Either one rewrites a length
+// byte, a string or a checksum inside a packet, which then fails its checksum
+// at the other end - a board could not be given a network named
+// "MyHomeNetwork", thirteen characters, because the length byte in front of
+// it is a CR; and an answer carrying a ten-character name, whose length byte
+// is an LF, left broken. sdkconfig.defaults asks for LF in both
+// directions, which is no conversion at all, and the comment there has the
+// measurements; tools/checks/run_improv_qemu.sh holds the board to it.
 void send(std::span<const std::uint8_t> packet) {
     if (packet.empty()) {
         return;
