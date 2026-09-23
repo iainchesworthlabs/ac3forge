@@ -2,8 +2,14 @@
 # Linux GCC Toolchain Configuration
 #
 # Chainloaded by the config-linux-gcc* presets via
-# VCPKG_CHAINLOAD_TOOLCHAIN_FILE. GCC 16 is the pinned version; the older names
-# are a fallback so a developer box one release behind still configures.
+# VCPKG_CHAINLOAD_TOOLCHAIN_FILE. GCC 16 is the pinned version; the older
+# versioned names are a fallback so a developer box one release behind still
+# configures. The bare "gcc"/"g++" names are listed last, after every
+# explicit version: find_program takes the first NAME that resolves, not the
+# newest, and a bare name's meaning depends on whatever update-alternatives
+# (or a manual symlink) currently points it at - putting it ahead of the
+# explicit fallbacks could silently pick an older or newer compiler than the
+# versioned names would, on a box where that pointer disagrees with them.
 #------------------------------------------------------------------------------
 
 message(STATUS "Configuring Linux Toolchain (GCC Variant)")
@@ -39,12 +45,12 @@ set(_GCC_BIN_HINTS
     "$ENV{GCC_ROOT}/bin")
 
 find_program(CMAKE_C_COMPILER
-    NAMES gcc-16 gcc gcc-15 gcc-14 gcc-13
+    NAMES gcc-16 gcc-15 gcc-14 gcc-13 gcc
     HINTS ${_GCC_BIN_HINTS}
     REQUIRED)
 
 find_program(CMAKE_CXX_COMPILER
-    NAMES g++-16 g++ g++-15 g++-14 g++-13
+    NAMES g++-16 g++-15 g++-14 g++-13 g++
     HINTS ${_GCC_BIN_HINTS}
     REQUIRED)
 
