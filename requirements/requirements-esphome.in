@@ -1,0 +1,6 @@
+# ESPHome for esp-component.yml's esphome job (esphome config, validating the
+# ESPHome external component against esphome/tests/ac3forge-test.yaml).
+# Regenerate the lock after any change here with:
+#   python -m piptools compile --generate-hashes --strip-extras \
+#     --output-file=requirements-esphome.txt requirements-esphome.in
+esphome
