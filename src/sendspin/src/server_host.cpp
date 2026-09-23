@@ -366,7 +366,11 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
         ServerHost::State* host = host_;
         host->post([host, client_id] { host->member_changed(client_id); });
     }
-    void on_goodbye(m::GoodbyeReason /*reason*/) override {}
+    void on_goodbye(m::GoodbyeReason reason) override {
+        const std::string client_id = base64url::encode(session_->client_key());
+        ServerHost::State* host = host_;
+        host->post([host, client_id, reason] { host->events->on_client_goodbye(client_id, reason); });
+    }
     void on_leave() override {}
 
     void on_controller_command(const controller::CommandMessage& command) override {

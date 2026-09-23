@@ -176,3 +176,22 @@ TEST_CASE("network view: three codecs read as an Oxford list", "[hearth][network
     const auto detail = to_detail(facts);
     CHECK(detail.takes_text == "FLAC, PCM and Opus");
 }
+
+TEST_CASE("network view: a sink's notice reaches both the row and the detail panel",
+          "[hearth][network-view]") {
+    SinkFacts facts = hearth_sink();
+    facts.notice = "In use by another server.";
+
+    const auto row = to_row(facts);
+    CHECK(row.notice == "In use by another server.");
+
+    const auto detail = to_detail(facts);
+    CHECK(detail.notice == "In use by another server.");
+}
+
+TEST_CASE("network view: no notice is the ordinary, empty case", "[hearth][network-view]") {
+    const auto row = to_row(hearth_sink());
+    CHECK(row.notice.empty());
+    const auto detail = to_detail(hearth_sink());
+    CHECK(detail.notice.empty());
+}

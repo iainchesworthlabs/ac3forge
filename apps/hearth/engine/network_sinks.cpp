@@ -195,6 +195,10 @@ SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& e
         facts.clock_converged = client.available;
     }
 
+    if (const auto notice = notice_by_instance_.find(instance); notice != notice_by_instance_.end()) {
+        facts.notice = notice->second;
+    }
+
     // ac3hearth-testsink names itself in DeviceInfo::product_name; nothing
     // else in client/hello says "this is a test double" more directly than
     // that, so this is a heuristic, not a protocol fact.
@@ -249,6 +253,7 @@ void NetworkSinks::on_lost(const std::string& instance) {
     if (it != sinks_.end() && !it->second.client.has_value()) {
         instance_by_url_.erase(it->second.service.url().value_or(std::string()));
         sinks_.erase(it);
+        notice_by_instance_.erase(instance);
         publish_locked();
     }
 }
@@ -265,6 +270,9 @@ void NetworkSinks::on_client(const ss::ClientView& client) {
             return;
         }
         const std::string& instance = url_it->second;
+        // A connection reaching on_client() at all supersedes any notice left
+        // by a past disconnect on this instance.
+        notice_by_instance_.erase(instance);
         instance_by_client_id_[client.client_id] = instance;
         Entry& entry = sinks_[instance];
         entry.client = client;
@@ -294,6 +302,34 @@ void NetworkSinks::on_client_gone(const std::string& client_id) {
         sinks_.erase(sink_it);
     }
     instance_by_client_id_.erase(id_it);
+    publish_locked();
+}
+
+void NetworkSinks::on_client_goodbye(const std::string& client_id, ss::messages::GoodbyeReason reason) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto id_it = instance_by_client_id_.find(client_id);
+    if (id_it == instance_by_client_id_.end()) {
+        return;
+    }
+    using ss::messages::GoodbyeReason;
+    switch (reason) {
+        case GoodbyeReason::kAnotherServer:
+            notice_by_instance_[id_it->second] = "In use by another server.";
+            break;
+        case GoodbyeReason::kConcurrentAttempt:
+            notice_by_instance_[id_it->second] = "Another server is pairing with this sink right now.";
+            break;
+        case GoodbyeReason::kShutdown:
+        case GoodbyeReason::kRestart:
+        case GoodbyeReason::kUserRequest:
+        case GoodbyeReason::kUnauthorized:
+        case GoodbyeReason::kPairingRequired:
+        case GoodbyeReason::kUnpaired:
+        default:
+            // Not "someone else is using this sink" - on_client() and
+            // on_client_gone() already cover what the row shows for these.
+            return;
+    }
     publish_locked();
 }
 
