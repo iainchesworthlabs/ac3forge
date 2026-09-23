@@ -324,6 +324,17 @@ jobs:
       # archives, so an in-job retry resumes from where the last attempt
       # died instead of coin-flipping from zero. Three attempts covered the
       # worst observed run (2026-08-31: attempt 1 died at 31/43 on main).
+      #
+      # -DAC3FORGE_BUILD_HEARTH=OFF: AC3FORGE_BUILD_HEARTH now defaults ON (root
+      # CMakeLists.txt), and config-linux-gcc's own "core" fragment defaults
+      # VCPKG_MANIFEST_FEATURES to "hearth" to match - but the explicit
+      # -DVCPKG_MANIFEST_FEATURES=adm above overrides that back to just "adm"
+      # (command-line -D always wins over a preset's cacheVariables), same as this
+      # job's own header comment already explains it wants: the narrow, ADM-only
+      # install set with its own "adm" cache key, not the 5 extra ports "hearth"
+      # would add on top. Without this flag, AC3FORGE_BUILD_HEARTH stayed on with
+      # none of its vcpkg packages selected, and src/sendspin/CMakeLists.txt's
+      # find_package(MbedTLS CONFIG REQUIRED) failed configure outright.
       - name: Configure
         shell: bash
         run: |
@@ -331,7 +342,8 @@ jobs:
           for attempt in 1 2 3; do
             if cmake --preset config-linux-gcc \
                  -DVCPKG_MANIFEST_FEATURES=adm \
-                 -DAC3FORGE_BUILD_ADM=ON; then
+                 -DAC3FORGE_BUILD_ADM=ON \
+                 -DAC3FORGE_BUILD_HEARTH=OFF; then
               exit 0
             fi
             rm -rf build/config-linux-gcc/CMakeCache.txt
