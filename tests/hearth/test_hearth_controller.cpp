@@ -144,7 +144,7 @@ TEST_CASE("queue_row: a plain AC-3 item's badge is A3, not E3", "[hearth][hearth
 
     const QVariantMap row = ac3::hearth::ui::queue_row(item, false);
     CHECK(row.value(QStringLiteral("codecBadge")).toString().toStdString() == "A3");
-    CHECK(row.value(QStringLiteral("streamKind")).toString().toStdString() == "AC-3/E-AC-3");
+    CHECK(row.value(QStringLiteral("streamKind")).toString().toStdString() == "AC-3");
 }
 
 // --- media_container_to_map() ------------------------------------------
@@ -231,29 +231,16 @@ TEST_CASE("media_bitstream_to_map: Lo/Ro mix levels and the preferred downmix la
     CHECK(mix.value(QStringLiteral("lfeDb")).toDouble() == Catch::Approx(3.0));
 }
 
-TEST_CASE("media_bitstream_to_map: KNOWN GAP - Lt/Rt mix levels (ltrt_clev/ltrt_slev) are never "
-          "copied into the map, only Lo/Ro",
-          "[hearth][hearth-controller][known-gap]") {
-    // ac3::MixLevels carries ltrt_clev/ltrt_slev (src/forge/include/ac3/decoder/output.hpp)
-    // alongside loro_clev/loro_slev, and media_bitstream_to_map() reads only
-    // the loro_* pair into mixLevels.centreDb/surroundDb - confirmed by
-    // reading the function body directly (hearth_controller.cpp). This
-    // characterises today's real behaviour rather than papering over it:
-    // setting ltrt_clev/ltrt_slev to values that would produce clearly
-    // different dB readings than the loro_* pair still yields the SAME
-    // centreDb/surroundDb the previous test got from loro_clev/loro_slev
-    // alone - i.e. no Lt/Rt-specific key exists in the map at all. This is
-    // exactly the class of bug issue #886 itself names as the reason this
-    // test file exists ("Lt/Rt mix levels dropped"), and is tracked as a
-    // real, already-filed gap in issue #904 (point 1 there, same function,
-    // same line). Left as a documented, deliberately-not-fixed gap here:
-    // fixing hearth_controller.cpp's behaviour belongs to #904, a separate
-    // change from standing up its test coverage, and
-    // apps/hearth/ui/hearth_controller.cpp is one of the hottest files in
-    // this repo's current review round. If this test starts failing
-    // because ltrtCentreDb/ltrtSurroundDb (or similar) keys have been
-    // added, that is #904 being closed - update or remove this test case
-    // then, it is not a regression.
+TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels are copied alongside Lo/Ro, from their own fields",
+          "[hearth][hearth-controller]") {
+    // Was KNOWN GAP (issue #904, point 1): media_bitstream_to_map() used to
+    // read only loro_clev/loro_slev into mixLevels.centreDb/surroundDb,
+    // dropping ac3::MixLevels' own ltrt_clev/ltrt_slev pair entirely. Fixed
+    // since - confirmed by reading the function body directly
+    // (hearth_controller.cpp) - which now also writes ltrtCentreDb/
+    // ltrtSurroundDb from ltrt_clev/ltrt_slev. Lo/Ro and Lt/Rt set to
+    // clearly different values proves the two pairs are read from their own
+    // fields rather than one aliasing the other.
     MediaBitstream bits;
     bits.levels.loro_clev = 0.5;
     bits.levels.loro_slev = 1.0;
@@ -265,8 +252,12 @@ TEST_CASE("media_bitstream_to_map: KNOWN GAP - Lt/Rt mix levels (ltrt_clev/ltrt_
 
     CHECK(mix.value(QStringLiteral("centreDb")).toDouble() ==
           Catch::Approx(20.0 * std::log10(0.5)));
-    CHECK_FALSE(mix.contains(QStringLiteral("ltrtCentreDb")));
-    CHECK_FALSE(mix.contains(QStringLiteral("ltrtSurroundDb")));
+    CHECK(mix.value(QStringLiteral("surroundDb")).toDouble() ==
+          Catch::Approx(20.0 * std::log10(1.0)));
+    CHECK(mix.value(QStringLiteral("ltrtCentreDb")).toDouble() ==
+          Catch::Approx(20.0 * std::log10(0.25)));
+    CHECK(mix.value(QStringLiteral("ltrtSurroundDb")).toDouble() ==
+          Catch::Approx(20.0 * std::log10(0.25)));
 }
 
 // --- media_probe_to_map() ------------------------------------------------
@@ -313,19 +304,20 @@ TEST_CASE("media_probe_to_map: EMDF payload ids and the reconstructed object cou
     CHECK(map.value(QStringLiteral("objectCount")).toInt() == 5);
 }
 
-TEST_CASE("media_probe_to_map: KNOWN GAP (issue #904 point 3) - compr/dynrng collapse to a bare "
-          "seen flag, the real min/max range is discarded",
-          "[hearth][hearth-controller][known-gap]") {
-    // ProbeReport::compr/dynrng are MinMax (seen + min + max), the same
-    // shape dialnorm above carries its own min/max through - but
-    // media_probe_to_map() only ever reads report.compr.seen/report.dynrng.seen
-    // (confirmed by reading the function body directly), never .min/.max.
-    // Two reports with identical .seen but very different ranges therefore
-    // produce IDENTICAL comprSeen/dynrngSeen output, and no comprMinDb/
-    // comprMaxDb/dynrngMinDb/dynrngMaxDb key exists at all - matching #904's
-    // own description ("collapse to a bare boolean... discarding the real
-    // min/max range"). If this test starts failing because such keys have
-    // been added, that is #904 being closed - update or remove it then.
+TEST_CASE("media_probe_to_map: compr/dynrng's real min/max range is kept, not just a bare seen flag",
+          "[hearth][hearth-controller]") {
+    // Was KNOWN GAP (issue #904, point 3): media_probe_to_map() used to read
+    // only report.compr.seen/report.dynrng.seen, discarding .min/.max
+    // entirely, so two reports with identical .seen but very different
+    // ranges produced identical output. Fixed since - confirmed by reading
+    // the function body directly - which now also writes comprMinDb/
+    // comprMaxDb/dynrngMinDb/dynrngMaxDb (via meta::compr_gain()/
+    // dynrng_gain() on the raw min/max words) whenever .seen is true. Two
+    // reports with clearly different ranges but the same .seen proves the
+    // range itself is read, not just collapsed to the flag: checked by
+    // presence and by the narrow and wide reports disagreeing, rather than
+    // by a hand-computed dB literal, since compr_gain()/dynrng_gain()'s own
+    // scale is documented in src/forge/include/ac3/meta/drc.hpp, not here.
     ac3::io::ProbeReport narrow;
     narrow.compr.seen = true;
     narrow.compr.min = 0;
@@ -349,10 +341,18 @@ TEST_CASE("media_probe_to_map: KNOWN GAP (issue #904 point 3) - compr/dynrng col
     CHECK(wide_map.value(QStringLiteral("comprSeen")).toBool());
     CHECK(narrow_map.value(QStringLiteral("dynrngSeen")).toBool());
     CHECK(wide_map.value(QStringLiteral("dynrngSeen")).toBool());
-    CHECK_FALSE(narrow_map.contains(QStringLiteral("comprMinDb")));
-    CHECK_FALSE(narrow_map.contains(QStringLiteral("comprMaxDb")));
-    CHECK_FALSE(narrow_map.contains(QStringLiteral("dynrngMinDb")));
-    CHECK_FALSE(narrow_map.contains(QStringLiteral("dynrngMaxDb")));
+    CHECK(narrow_map.contains(QStringLiteral("comprMinDb")));
+    CHECK(narrow_map.contains(QStringLiteral("comprMaxDb")));
+    CHECK(narrow_map.contains(QStringLiteral("dynrngMinDb")));
+    CHECK(narrow_map.contains(QStringLiteral("dynrngMaxDb")));
+    CHECK(wide_map.contains(QStringLiteral("comprMinDb")));
+    CHECK(wide_map.contains(QStringLiteral("dynrngMinDb")));
+    // The narrow and wide reports must disagree on the actual range - if
+    // they read the same, the range is still being collapsed to the flag.
+    CHECK(narrow_map.value(QStringLiteral("comprMinDb")) != wide_map.value(QStringLiteral("comprMinDb")));
+    CHECK(narrow_map.value(QStringLiteral("comprMaxDb")) != wide_map.value(QStringLiteral("comprMaxDb")));
+    CHECK(narrow_map.value(QStringLiteral("dynrngMinDb")) != wide_map.value(QStringLiteral("dynrngMinDb")));
+    CHECK(narrow_map.value(QStringLiteral("dynrngMaxDb")) != wide_map.value(QStringLiteral("dynrngMaxDb")));
 }
 
 TEST_CASE("media_probe_to_map: tool-usage counters and crc/parse failures round trip",
