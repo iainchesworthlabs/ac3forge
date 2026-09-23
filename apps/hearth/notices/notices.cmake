@@ -118,7 +118,7 @@ if(EXISTS "${AC3HEARTH_VCPKG_SHARE}/libogg/copyright")
     list(APPEND AC3HEARTH_NOTICE_TOKENS "LIBOGG_VERSION=${version}")
     list(APPEND AC3HEARTH_NOTICE_FILES "LIBOGG_COPYRIGHT=${AC3HEARTH_VCPKG_SHARE}/libogg/copyright")
 endif()
-list(APPEND AC3HEARTH_NOTICE_FRAGMENTS opus time-filter fmt fonts trademarks)
+list(APPEND AC3HEARTH_NOTICE_FRAGMENTS opus time-filter fmt fonts material-symbols trademarks)
 list(APPEND AC3HEARTH_NOTICE_TOKENS
     "QT_VERSION=${AC3HEARTH_UI_QT_VERSION}"
     "QT_SERIES=${AC3HEARTH_QT_SERIES}"
@@ -138,7 +138,8 @@ list(APPEND AC3HEARTH_NOTICE_TOKENS
 list(APPEND AC3HEARTH_NOTICE_FILES
     "LGPL3=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/LGPL-3.0.txt"
     "FMT_MIT=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/MIT-fmt.txt"
-    "OFL=${CMAKE_SOURCE_DIR}/apps/gui/fonts/OFL.txt")
+    "OFL=${CMAKE_SOURCE_DIR}/apps/gui/fonts/OFL.txt"
+    "MATERIAL_SYMBOLS_LICENSE=${CMAKE_SOURCE_DIR}/apps/gui/fonts/MaterialSymbolsSharp-Apache-2.0.txt")
 
 if(NOT AC3HEARTH_NOTICES_FILE)
     message(FATAL_ERROR

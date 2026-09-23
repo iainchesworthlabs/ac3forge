@@ -11,6 +11,7 @@ import Ac3ForgeHearth
 Card {
     id: root
     title: qsTr("07 Signal path")
+    flat: true
 
     Rectangle {
         Layout.fillWidth: true

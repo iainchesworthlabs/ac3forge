@@ -76,6 +76,8 @@ set(AC3_QML_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/Main.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/Theme.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/Card.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/SectionHeader.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/StatTile.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/ChannelMeter.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/SoundfieldView.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/SegmentedControl.qml"

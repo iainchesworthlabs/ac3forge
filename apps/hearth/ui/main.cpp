@@ -77,7 +77,8 @@ int main(int argc, char** argv) {
     // The family's own faces (apps/gui/fonts), registered before the engine
     // loads so the Theme's font probe finds them.
     for (const auto* face : {":/fonts/Archivo-Regular.ttf", ":/fonts/Archivo-Medium.ttf",
-                             ":/fonts/Archivo-SemiBold.ttf", ":/fonts/Archivo-ExtraBold.ttf"}) {
+                             ":/fonts/Archivo-SemiBold.ttf", ":/fonts/Archivo-ExtraBold.ttf",
+                             ":/fonts/MaterialSymbolsSharp-Regular.ttf"}) {
         if (QFontDatabase::addApplicationFont(QLatin1String(face)) < 0) {
             qWarning("could not register bundled font %s", face);
         }

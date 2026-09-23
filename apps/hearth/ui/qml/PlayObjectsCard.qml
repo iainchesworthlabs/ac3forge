@@ -10,6 +10,7 @@ import Ac3ForgeHearth
 // (PlayPage.qml's `narrow`, matching play-minimum-size.png's own collapse).
 Card {
     title: qsTr("06 Objects")
+    flat: true
     summary: HearthController.hasObjectMetadata
              ? qsTr("%1 placed").arg(HearthController.objectsPlaced)
              : (HearthController.playing ? qsTr("No object metadata in this stream")
