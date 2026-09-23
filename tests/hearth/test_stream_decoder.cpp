@@ -228,6 +228,30 @@ TEST_CASE("stream decoder: a reset starts the next stream clean", "[hearth][stre
     CHECK(play(decoder, second).frames == 4 * ac3::kSamplesPerFrame);
 }
 
+TEST_CASE("stream decoder: a reset (a seek) keeps the crossover corner set before it",
+          "[hearth][stream-decoder]") {
+    // A layout with a small speaker, so the corner is not just stored but has
+    // a filter to move (render.hpp's LayoutRenderer) - the list form, since
+    // ":small" is not a recognised modifier on a name like "5.1".
+    const auto layout = ac3::render::OutputLayout::parse("L:small,C,R,Ls,Rs,LFE");
+    REQUIRE(layout.has_value());
+    StreamDecoder decoder{*layout, 48000};
+
+    REQUIRE(decoder.set_crossover_hz(120.0));
+    REQUIRE(decoder.crossover_hz() == 120.0);
+
+    // reset() is what Session::start_at()/seek() call on every seek within
+    // the same item (session.cpp) - a fresh LayoutRenderer built inside it
+    // must not silently hand the corner back to kDefaultCrossoverHz.
+    decoder.reset();
+    CHECK(decoder.crossover_hz() == 120.0);
+
+    // And decoding after the reset still works, at the kept corner.
+    const Played played = play(decoder, eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 3));
+    CHECK(played.frames == 3 * ac3::kSamplesPerFrame);
+    CHECK(decoder.crossover_hz() == 120.0);
+}
+
 TEST_CASE("stream decoder: a unit that is not a stream is reported, not played",
           "[hearth][stream-decoder]") {
     const auto layout = ac3::render::OutputLayout::parse("2.0");
@@ -475,6 +499,53 @@ TEST_CASE("stream decoder: dual mono plays the programme the settings choose",
         CHECK(std::ranges::equal(second_left, both_right));
         CHECK(std::ranges::equal(second_right, both_right));
     }
+}
+
+TEST_CASE("stream decoder: fast inverse transform reaches the decoder, closely matching the "
+          "reference transform",
+          "[hearth][stream-decoder]") {
+    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    REQUIRE(layout.has_value());
+    const auto units = eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 8);
+
+    const auto heard = [&](bool fast) {
+        ac3::hearth::DecoderSettings settings;
+        settings.fast_inverse_transform = fast;
+        StreamDecoder decoder{*layout, 48000, settings};
+        std::vector<float> left;
+        const auto deliver = [&left](std::span<const std::span<const float>> slots,
+                                     std::size_t frames) {
+            REQUIRE_FALSE(slots.empty());
+            left.insert(left.end(), slots[0].begin(),
+                       slots[0].begin() + static_cast<std::ptrdiff_t>(frames));
+        };
+        for (const auto& unit : units) {
+            REQUIRE(decoder.decode(unit, deliver).has_value());
+        }
+        decoder.finish(deliver);
+        return left;
+    };
+
+    const std::vector<float> fast = heard(true);
+    const std::vector<float> reference = heard(false);
+    REQUIRE(fast.size() == reference.size());
+    REQUIRE(fast.size() == 8 * ac3::kSamplesPerFrame);
+
+    // The setting must reach DecoderConfig::fast_imdct rather than the same
+    // path running twice (decoder_settings.cpp's decoder_setup()) - but both
+    // remain a correct decode of the same signal: tests/decoder/test_decoder.cpp's
+    // own fast_imdct test pins the two transform paths' agreement above 200 dB SNR.
+    CHECK_FALSE(std::ranges::equal(fast, reference));
+    double squared_diff = 0.0;
+    double squared_signal = 0.0;
+    for (std::size_t n = 0; n < fast.size(); ++n) {
+        const double diff = static_cast<double>(fast[n]) - static_cast<double>(reference[n]);
+        squared_diff += diff * diff;
+        squared_signal += static_cast<double>(reference[n]) * static_cast<double>(reference[n]);
+    }
+    REQUIRE(squared_diff > 0.0);
+    const double snr_db = 10.0 * std::log10(squared_signal / squared_diff);
+    CHECK(snr_db > 100.0);
 }
 
 TEST_CASE("stream decoder: an independent-only decoder plays a unit's first substream alone",

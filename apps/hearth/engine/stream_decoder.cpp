@@ -149,7 +149,15 @@ void StreamDecoder::reset() {
     beds_.clear();
     renderer_bed_.reset();
     dual_mono_ = false;
-    renderer_ = render::LayoutRenderer{layout_, sample_rate_};
+    renderer_ = render::LayoutRenderer{layout_, sample_rate_, crossover_hz_};
+}
+
+bool StreamDecoder::set_crossover_hz(double hz) {
+    if (!renderer_.set_crossover_hz(hz)) {
+        return false;
+    }
+    crossover_hz_ = hz;
+    return true;
 }
 
 std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const std::byte> whole,

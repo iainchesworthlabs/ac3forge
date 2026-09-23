@@ -66,6 +66,9 @@ struct DecoderSettings {
     render::ObjectsPolicy objects = render::ObjectsPolicy::kAuto;
     // §7.10. A player keeps a stream continuous through a damaged frame.
     ConcealmentPolicy concealment = ConcealmentPolicy::kRepeatFade;
+    // Passed straight to DecoderConfig::fast_imdct: the FFT evaluation of
+    // §7.9.4 step 3's inverse transform, against its reference direct form.
+    bool fast_inverse_transform = true;
 
     friend bool operator==(const DecoderSettings&, const DecoderSettings&) = default;
 };
