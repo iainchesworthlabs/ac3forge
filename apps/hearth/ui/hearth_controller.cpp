@@ -241,6 +241,34 @@ constexpr int kPollMs = 60;
     return out;
 }
 
+[[nodiscard]] QString realization_name(ac3::render::Speaker::Realization realization) {
+    switch (realization) {
+        case ac3::render::Speaker::Realization::kTop:
+            return QStringLiteral("ceiling");
+        case ac3::render::Speaker::Realization::kUpFiring:
+            return QStringLiteral("upfiring");
+        case ac3::render::Speaker::Realization::kDefault:
+        case ac3::render::Speaker::Realization::kHeight:
+        default:
+            // kHeight (a wall-mounted, angled speaker) reads the same as
+            // kDefault: layout.hpp's own header comment says the two render
+            // identically, and "wall" is what setHeights("wall") writes -
+            // kDefault, never kHeight - so a round trip through this control
+            // is stable.
+            return QStringLiteral("wall");
+    }
+}
+
+[[nodiscard]] ac3::render::Speaker::Realization realization_from_name(const QString& name) {
+    if (name == QLatin1String("ceiling")) {
+        return ac3::render::Speaker::Realization::kTop;
+    }
+    if (name == QLatin1String("upfiring")) {
+        return ac3::render::Speaker::Realization::kUpFiring;
+    }
+    return ac3::render::Speaker::Realization::kDefault;
+}
+
 [[nodiscard]] ac3::hearth::QueueItem queue_item_from_path(const QString& path) {
     ac3::hearth::QueueItem item;
     item.path = path.toStdString();
@@ -544,24 +572,45 @@ void HearthController::poll() {
     }
 
     const std::size_t slots = status.layout.slots();
-    if (speaker_labels_.isEmpty() && slots > 0) {
-        // Fixed for the engine's lifetime (Player::layout()'s own comment
-        // says why), so computed only the first time slots appear - the
-        // block below's speakerSetupChanged() still covers telling QML,
-        // since trim_db/delay_ms/routing all go from empty to populated on
-        // this same tick.
-        QStringList labels;
-        QVariantList small_flags;
-        labels.reserve(static_cast<qsizetype>(slots));
-        small_flags.reserve(static_cast<qsizetype>(slots));
+    // The layout can change now (setLayoutText()/setHeights()/
+    // setSpeakerSmall()), not just appear once, so everything keyed by slot
+    // index - the labels, which are small, which is LFE, the Heights
+    // reading - is recomputed whenever the text says it changed, not only
+    // the first time slots appear.
+    const QString new_layout_text = QString::fromStdString(std::string(status.layout.text()));
+    const bool layout_changed = new_layout_text != layout_text_;
+    QStringList new_labels;
+    QVariantList new_small;
+    QVariantList new_is_lfe;
+    bool new_has_height = layout_has_height_;
+    QString new_heights = heights_realization_;
+    if (layout_changed) {
+        new_labels.reserve(static_cast<qsizetype>(slots));
+        new_small.reserve(static_cast<qsizetype>(slots));
+        new_is_lfe.reserve(static_cast<qsizetype>(slots));
+        bool has_height = false;
+        bool heights_mixed = false;
+        std::optional<ac3::render::Speaker::Realization> shared_realization;
         for (std::size_t slot = 0; slot < slots; ++slot) {
             std::array<char, 32> name{};
             status.layout.slot_name(slot, name);
-            labels.push_back(QString::fromLatin1(name.data()));
-            small_flags.push_back(status.layout.slot(slot).small);
+            const ac3::render::Speaker& speaker = status.layout.slot(slot);
+            new_labels.push_back(QString::fromLatin1(name.data()));
+            new_small.push_back(speaker.small);
+            new_is_lfe.push_back(speaker.kind == ac3::render::Speaker::Kind::kLfe);
+            if (speaker.location.has_value() &&
+                ac3::render::OutputLayout::is_realizable_height(*speaker.location)) {
+                has_height = true;
+                if (!shared_realization) {
+                    shared_realization = speaker.realization;
+                } else if (*shared_realization != speaker.realization) {
+                    heights_mixed = true;
+                }
+            }
         }
-        speaker_labels_ = labels;
-        speaker_small_ = small_flags;
+        new_has_height = has_height;
+        new_heights =
+            (has_height && !heights_mixed) ? realization_name(*shared_realization) : QString();
     }
 
     QVariantList new_trim_db;
@@ -580,19 +629,30 @@ void HearthController::poll() {
         new_routing.push_back(status.routing.output_of(slot));
     }
     const QString new_device_name = QString::fromStdString(status.device_name);
+    const bool new_has_lfe = status.layout.lfe_count() > 0;
     const int new_identify_slot = status.identify_slot == ac3::hearth::Queue::kNone
                                       ? -1
                                       : static_cast<int>(status.identify_slot);
-    if (new_trim_db != trim_db_ || new_delay_ms != delay_ms_ || status.crossover_hz != crossover_hz_ ||
-        new_routing != routing_ || static_cast<int>(status.routing.outputs()) != routing_outputs_ ||
-        new_device_name != device_name_ || status.identify_level_db != identify_level_db_ ||
-        new_identify_slot != identify_slot_) {
+    if (layout_changed || new_trim_db != trim_db_ || new_delay_ms != delay_ms_ ||
+        status.crossover_hz != crossover_hz_ || new_routing != routing_ ||
+        static_cast<int>(status.routing.outputs()) != routing_outputs_ ||
+        new_device_name != device_name_ || new_has_lfe != layout_has_lfe_ ||
+        status.identify_level_db != identify_level_db_ || new_identify_slot != identify_slot_) {
         trim_db_ = std::move(new_trim_db);
         delay_ms_ = std::move(new_delay_ms);
         crossover_hz_ = status.crossover_hz;
         routing_ = std::move(new_routing);
         routing_outputs_ = static_cast<int>(status.routing.outputs());
         device_name_ = new_device_name;
+        layout_has_lfe_ = new_has_lfe;
+        if (layout_changed) {
+            layout_text_ = new_layout_text;
+            speaker_labels_ = new_labels;
+            speaker_small_ = new_small;
+            speaker_is_lfe_ = new_is_lfe;
+            layout_has_height_ = new_has_height;
+            heights_realization_ = new_heights;
+        }
         identify_level_db_ = status.identify_level_db;
         identify_slot_ = new_identify_slot;
         emit speakerSetupChanged();
@@ -662,6 +722,37 @@ void HearthController::useDeviceOrder() {
                                                        static_cast<std::size_t>(routing_outputs_));
     if (patch) {
         engine_->set_routing(*patch);
+    }
+}
+
+void HearthController::setLayoutText(const QString& text) {
+    if (!engine_) {
+        return;
+    }
+    const auto layout = ac3::render::OutputLayout::parse(text.toStdString());
+    if (layout) {
+        engine_->set_layout(*layout);
+    }
+}
+
+void HearthController::setHeights(const QString& realization) {
+    if (!engine_) {
+        return;
+    }
+    // A fresh read, not the (possibly one poll stale) layoutText property -
+    // same reasoning as setDecoderSettings()'s own comment.
+    const ac3::render::OutputLayout layout = engine_->status().layout;
+    engine_->set_layout(layout.with_realization(realization_from_name(realization)));
+}
+
+void HearthController::setSpeakerSmall(int slot, bool small) {
+    if (!engine_ || slot < 0) {
+        return;
+    }
+    const ac3::render::OutputLayout layout = engine_->status().layout;
+    const auto changed = layout.with_small(static_cast<std::size_t>(slot), small);
+    if (changed) {
+        engine_->set_layout(*changed);
     }
 }
 

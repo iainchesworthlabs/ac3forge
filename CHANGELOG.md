@@ -940,6 +940,14 @@ The sections below contain the complete change list and fixes.
   needed 6.
 - The Python oracles under `tools/` now have unit tests of their own
   (`test_compare_wav.py`), pinning the single-floor blind spot fixed above.
+- **Hearth's speaker layout can be changed live** (`Player::set_layout()`,
+  `Engine::set_layout()`): reconfiguring `OutputLayout` while an item is playing closes and
+  reopens the output at the new width, resuming the same item from where it had got to,
+  rather than needing the whole engine torn down - the same close/reopen/seek-back shape an
+  output-endpoint change already used. `ac3::render::OutputLayout` gained `with_small()` and
+  `with_realization()`, structural mutators for a settings page that has a slot index or a
+  Heights choice rather than text to re-parse. The Speakers page's layout picker, "As text"
+  field, Heights control and per-speaker Size toggle are wired to it.
 
 ### Changed
 
