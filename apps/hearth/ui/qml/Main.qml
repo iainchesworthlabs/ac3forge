@@ -33,6 +33,10 @@ ApplicationWindow {
     // turn, so the first-run dialog never lands in a screenshot that did not
     // ask for it.
     property bool suppressFirstRun: false
+    // DecoderPage's own sub-tab ("eac3"/"ac4"), settable headlessly from
+    // main.cpp's --decoder-format the same way --shot sets suppressFirstRun -
+    // otherwise nothing reaches the AC-4 sub-tab for a capture (issue #901).
+    property string decoderFormat: "eac3"
 
     // The text size choice becomes Theme.fontScale here rather than in
     // Theme.qml itself, the same split apps/crucible/ui/qml/Main.qml's own
@@ -239,7 +243,7 @@ ApplicationWindow {
         PlayPage { }
         Media { }
         Speakers { }
-        DecoderPage { }
+        DecoderPage { format: window.decoderFormat }
         Network { }
         Settings { }
     }

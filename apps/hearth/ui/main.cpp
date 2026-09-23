@@ -14,7 +14,10 @@
 // (Crucible's own main.cpp carries the identical shape for the identical
 // reason). `--open-output-picker` opens the output picker dialog
 // (OutputPicker.qml) before the grab, since nothing else drives its mouse
-// click headlessly.
+// click headlessly. `--decoder-format ac4` switches the Decoder page's own
+// AC-3/E-AC-3 vs AC-4 sub-tab (DecoderPage.qml's `format` property) before
+// the grab - otherwise nothing reaches that sub-tab headlessly either
+// (issue #901).
 //
 // Translations are not wired up yet: this slice is the shell and the Play
 // page over the real engine, with the other five pages as placeholders, and
@@ -78,6 +81,7 @@ int main(int argc, char** argv) {
 
     QString shot_path;
     QString page;
+    QString decoder_format;
     const QStringList args = QCoreApplication::arguments();
     // A bare flag, not a "--name value" pair: checked separately so it can
     // be the last argument with nothing following it.
@@ -89,6 +93,9 @@ int main(int argc, char** argv) {
             // play, media, speakers, decoder, network, settings, firstrun,
             // shortcuts, about or licences
             page = args[i + 1];
+        } else if (args[i] == QLatin1String("--decoder-format")) {
+            // "eac3" or "ac4" - DecoderPage.qml's own `format` values.
+            decoder_format = args[i + 1];
         }
     }
 
@@ -119,6 +126,9 @@ int main(int argc, char** argv) {
         QMetaObject::invokeMethod(engine.rootObjects().first(), "openLicences");
     } else if (!page.isEmpty()) {
         engine.rootObjects().first()->setProperty("page", page);
+    }
+    if (!decoder_format.isEmpty()) {
+        engine.rootObjects().first()->setProperty("decoderFormat", decoder_format);
     }
     if (open_output_picker) {
         QMetaObject::invokeMethod(engine.rootObjects().first(), "openOutputPicker");
