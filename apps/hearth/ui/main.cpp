@@ -4,14 +4,15 @@
 // QML up and offers Crucible's own debugging aid: `--shot <path.png>` grabs
 // the window after it has settled and quits, so a headless check (or the
 // screenshot script, later) can see it; `--page <name>` picks the page it
-// opens on first - play, media, speakers, decoder, network or settings.
-// `--page firstrun` opens the "Before you play anything" dialog over the
-// Play page; a `--shot` run never shows that dialog unless `--page firstrun`
+// opens on first - play, media, speakers, decoder, network or settings, or
+// opens the "Before you play anything" dialog (firstrun), the
+// keyboard-shortcuts reference (shortcuts, issue #830), the About dialog
+// (about) or its Licences view (licences) over the Play page, the same
+// special values apps/crucible/ui/main.cpp's own `--page` accepts. A
+// `--shot` run never shows the first-run dialog unless `--page firstrun`
 // asked for it, so a capture against a fresh settings store is clean
 // (Crucible's own main.cpp carries the identical shape for the identical
-// reason). `--page shortcuts` opens the keyboard-shortcuts reference (issue
-// #830) over Play, the same way Crucible's `--page about`/`--page licences`
-// open their own dialogs over Room.
+// reason).
 //
 // Translations are not wired up yet: this slice is the shell and the Play
 // page over the real engine, with the other five pages as placeholders, and
@@ -80,7 +81,9 @@ int main(int argc, char** argv) {
         if (args[i] == QLatin1String("--shot")) {
             shot_path = args[i + 1];
         } else if (args[i] == QLatin1String("--page")) {
-            page = args[i + 1];  // play, media, speakers, decoder, network, settings, firstrun or shortcuts
+            // play, media, speakers, decoder, network, settings, firstrun,
+            // shortcuts, about or licences
+            page = args[i + 1];
         }
     }
 
@@ -93,15 +96,22 @@ int main(int argc, char** argv) {
     }
     // A capture never shows the first-run dialog it did not ask for:
     // Main.qml reads this one event-loop turn later, after main() has had
-    // its say. `--page firstrun` opens the dialog over the Play page.
+    // its say. `--page firstrun`/`shortcuts`/`about`/`licences` open their
+    // dialog over the Play page, for a capture.
     if (!shot_path.isEmpty()) {
         engine.rootObjects().first()->setProperty("suppressFirstRun", true);
     }
     if (page == QLatin1String("firstrun")) {
         QMetaObject::invokeMethod(engine.rootObjects().first(), "openFirstRun");
-    } else if (page == QLatin1String("shortcuts")) {  // over Play, for a capture
+    } else if (page == QLatin1String("shortcuts")) {
         engine.rootObjects().first()->setProperty("page", QStringLiteral("play"));
         QMetaObject::invokeMethod(engine.rootObjects().first(), "openShortcuts");
+    } else if (page == QLatin1String("about")) {
+        engine.rootObjects().first()->setProperty("page", QStringLiteral("play"));
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openAbout");
+    } else if (page == QLatin1String("licences")) {
+        engine.rootObjects().first()->setProperty("page", QStringLiteral("play"));
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openLicences");
     } else if (!page.isEmpty()) {
         engine.rootObjects().first()->setProperty("page", page);
     }

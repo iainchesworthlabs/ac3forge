@@ -36,6 +36,13 @@ class HearthController : public QObject {
     QML_ELEMENT
     QML_SINGLETON
 
+    // --- about ------------------------------------------------------------
+    // Version, commit and build target, for About (ac3::version_details()).
+    Q_PROPERTY(QString versionDetails READ versionDetails CONSTANT)
+    // The third-party notices this build ships - the package's NOTICES.txt,
+    // embedded at build time - for About > Licences.
+    Q_PROPERTY(QString licenceNotices READ licenceNotices CONSTANT)
+
     // --- queue and transport --------------------------------------------
     // Each entry: path, title, playable (bool), note (why not, or a
     // decode-time remark), durationMs, channels, sampleRate, hasObjects,
@@ -113,6 +120,9 @@ public:
     // - not the constructor, so a singleton QML creates before the window is
     // on screen does not open a device with nothing yet shown for it.
     Q_INVOKABLE void start();
+
+    [[nodiscard]] QString versionDetails() const;
+    [[nodiscard]] QString licenceNotices() const;
 
     [[nodiscard]] QVariantList queue() const { return queue_; }
     [[nodiscard]] int currentIndex() const { return current_index_; }

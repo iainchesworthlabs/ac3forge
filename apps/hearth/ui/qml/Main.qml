@@ -109,10 +109,20 @@ ApplicationWindow {
         }
     }
 
-    ShortcutsDialog { id: shortcuts }
-    // For `--page shortcuts` (main.cpp): a screenshot with the dialog open.
+    // Reached from the header's "?" button and F1; ShortcutsDialog's own
+    // About… chains to AboutDialog, whose own Licences… chains to
+    // LicencesDialog one hop further ("? -> Shortcuts -> About ->
+    // Licences") - agreed between the #830 and #854 sessions rather than a
+    // second header control. `--page shortcuts`/`about`/`licences`
+    // (main.cpp) open any of the three directly, for a capture.
+    ShortcutsDialog { id: shortcuts; onShowAbout: about.open() }
     function openShortcuts() { shortcuts.open(); }
     property alias shortcutsDialog: shortcuts
+
+    AboutDialog { id: about; onShowLicences: licences.open() }
+    function openAbout() { about.open(); }
+    LicencesDialog { id: licences }
+    function openLicences() { licences.open(); }
 
     StackLayout {
         anchors.fill: parent
