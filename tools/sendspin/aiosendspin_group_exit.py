@@ -111,7 +111,11 @@ async def run(ac3tests: Path, out: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--ac3tests", required=True, type=Path, help="the ac3tests binary")
-    parser.add_argument("--out", type=Path, help="where the run's files go; a temporary directory otherwise")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        help="where the run's files go; a temporary directory otherwise",
+    )
     parser.add_argument("--verbose", action="store_true", help="the SDK's debug log")
     arguments = parser.parse_args()
     logging.basicConfig(level=logging.DEBUG if arguments.verbose else logging.WARNING)
