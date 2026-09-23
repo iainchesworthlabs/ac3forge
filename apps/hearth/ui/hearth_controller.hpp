@@ -64,6 +64,12 @@ class HearthController : public QObject {
     Q_PROPERTY(QString state READ state NOTIFY stateChanged)
     Q_PROPERTY(bool playing READ playing NOTIFY stateChanged)
     Q_PROPERTY(bool gapless READ gapless WRITE setGapless NOTIFY stateChanged)
+    // The transport bar's master volume, in dB (EngineStatus::volume_db) -
+    // not writable directly: like trimDb/crossoverHz, a set can be refused
+    // (out of [Player::kMinVolumeDb, Player::kMaxVolumeDb]), so it goes
+    // through setVolumeDb() and comes back through poll() rather than an
+    // optimistic local write.
+    Q_PROPERTY(double volumeDb READ volumeDb NOTIFY stateChanged)
     // The output decision's own sentence (EngineStatus::output_reason), and
     // the latest note/error the transport or an item had to say.
     Q_PROPERTY(QString outputReason READ outputReason NOTIFY stateChanged)
@@ -300,6 +306,7 @@ public:
     [[nodiscard]] bool playing() const { return state_ == QStringLiteral("playing"); }
     [[nodiscard]] bool gapless() const { return gapless_; }
     void setGapless(bool on);
+    [[nodiscard]] double volumeDb() const { return volume_db_; }
     [[nodiscard]] QString outputReason() const { return output_reason_; }
     [[nodiscard]] QString noteText() const { return note_; }
     [[nodiscard]] QString errorText() const { return error_; }
@@ -340,6 +347,7 @@ public:
     // make_file_item_loader() cannot yet open, which lands in the queue
     // unplayable with a reason, same as addFiles() already does for one.
     Q_INVOKABLE void addFolder(const QString& path);
+    Q_INVOKABLE void setVolumeDb(double db);
 
     [[nodiscard]] QVariantMap decoderSettings() const { return decoder_settings_; }
     // Rebuilds a DecoderSettings from `settings` (every key
@@ -515,6 +523,7 @@ private:
     int current_index_ = -1;
     QString state_ = QStringLiteral("stopped");
     bool gapless_ = true;
+    double volume_db_ = 0.0;
     QString output_reason_;
     QString note_;
     QString error_;

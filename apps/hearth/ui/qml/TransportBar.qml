@@ -136,5 +136,44 @@ Rectangle {
             checked: HearthController.gapless
             onToggled: HearthController.gapless = checked
         }
+
+        // The transport bar's master volume - one gain applied after
+        // everything else (Player::take_block()), not the per-speaker trim
+        // on the Speakers page. -60..0 dB matches Player::kMinVolumeDb/
+        // kMaxVolumeDb; a literal here rather than a shared binding, the way
+        // Speakers.qml's own DoubleValidator ranges already are.
+        Text {
+            text: qsTr("Volume")
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontSmall
+        }
+        Slider {
+            id: volumeSlider
+            objectName: "transportVolume"
+            Layout.preferredWidth: 120
+            from: -60
+            to: 0
+            value: HearthController.volumeDb
+            // A plain binding on `value` does not survive a drag - Slider's
+            // own drag handling writes it directly, which breaks the binding
+            // for good (StreamPlayerDialog.qml's scrub slider has the same
+            // comment) - so it is resynced explicitly below rather than
+            // trusted to still be bound after the first move.
+            onMoved: HearthController.setVolumeDb(value)
+            Accessible.name: qsTr("Volume")
+        }
+        Connections {
+            target: HearthController
+            function onStateChanged() { volumeSlider.value = HearthController.volumeDb; }
+        }
+        Text {
+            objectName: "transportVolumeReadout"
+            Layout.preferredWidth: 56
+            horizontalAlignment: Text.AlignRight
+            text: qsTr("%1 dB").arg(HearthController.volumeDb.toFixed(1))
+            color: Theme.textMuted
+            font.family: Theme.monoFamily
+            font.pixelSize: Theme.fontSmall
+        }
     }
 }

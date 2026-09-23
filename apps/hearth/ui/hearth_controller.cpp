@@ -918,6 +918,12 @@ void HearthController::addFolder(const QString& path) {
     engine_->add(std::move(items));
 }
 
+void HearthController::setVolumeDb(double db) {
+    if (engine_) {
+        engine_->set_volume_db(db);
+    }
+}
+
 void HearthController::inspectItem(int index) {
     if (index == inspected_index_) {
         return;
@@ -972,10 +978,12 @@ void HearthController::poll() {
     const QString new_note = QString::fromStdString(status.note);
     const QString new_error = QString::fromStdString(status.error);
     QVariantMap new_output_format = output_format_to_map(status.output);
-    if (new_state != state_ || status.gapless != gapless_ || new_output_reason != output_reason_ ||
-        new_note != note_ || new_error != error_ || new_output_format != output_format_) {
+    if (new_state != state_ || status.gapless != gapless_ || status.volume_db != volume_db_ ||
+        new_output_reason != output_reason_ || new_note != note_ || new_error != error_ ||
+        new_output_format != output_format_) {
         state_ = new_state;
         gapless_ = status.gapless;
+        volume_db_ = status.volume_db;
         output_reason_ = new_output_reason;
         note_ = new_note;
         error_ = new_error;

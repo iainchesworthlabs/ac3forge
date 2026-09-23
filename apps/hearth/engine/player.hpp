@@ -278,6 +278,21 @@ public:
     bool set_identify_level_db(double db);
     [[nodiscard]] double identify_level_db() const { return identify_level_db_; }
 
+    // The transport bar's master volume - not the per-speaker trim above,
+    // which matches speakers to each other: this is the one overall
+    // listening level every artboard's footer shows, applied in take_block()
+    // after render and after trim/delay, the last thing done to a block
+    // before it joins the pending ring. Local PCM only, the same scope trim
+    // and delay already have: a bitstream or a transcode is decoded by the
+    // receiver, which has its own volume, so neither reaches this gain
+    // (take_block()'s own early returns for both apply here too). 0 dB is
+    // unity - what a fresh player already sends - so there is no headroom to
+    // add above it, only to attenuate.
+    static constexpr double kMinVolumeDb = -60.0;
+    static constexpr double kMaxVolumeDb = 0.0;
+    bool set_volume_db(double db);
+    [[nodiscard]] double volume_db() const { return volume_db_; }
+
     // The routing patch, and what the local device is: PcmSink's own
     // (pcm_sink.hpp), forwarded - sink_ is this player's PCM sink whether or
     // not it is the output currently open, and is null for a player given no
@@ -564,6 +579,15 @@ private:
     // Reconfigures identify_tone_ for `rate` if it is not already, then
     // reapplies identify_level_db_.
     void reconfigure_identify(std::uint32_t rate);
+
+    // The transport bar's master volume: volume_db_ is the source of truth,
+    // volume_gain_ the linear factor take_block() applies, recomputed
+    // whenever set_volume_db() changes it - the same split trim_delay_'s own
+    // gain array keeps, and for the same reason (a block's hot loop multiplies
+    // floats; it does not call std::pow).
+    double volume_db_ = 0.0;
+    float volume_gain_ = 1.0F;
+
     Queue queue_;
     Transport transport_{queue_};
 

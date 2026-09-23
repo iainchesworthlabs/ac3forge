@@ -85,6 +85,10 @@ struct EngineStatus {
     bool gapless = true;
     bool repeat = false;
     FailurePolicy on_failure = FailurePolicy::kSkip;
+    // The transport bar's master volume (Player::set_volume_db() and
+    // friends) - not part of the speaker setup below, which is the Speakers
+    // page's own.
+    double volume_db = 0.0;
     DecoderSettings settings{};
     // Why the settings are not what is heard, or empty: a bitstream is
     // decoded by the receiver (Player::settings_note()).
@@ -195,6 +199,10 @@ public:
     void set_identify_level_db(double db);
     void identify_start(std::size_t slot);
     void identify_stop();
+    // The transport bar's master volume (EngineStatus::volume_db). Refused
+    // the same way as the speaker setup above, outside
+    // [Player::kMinVolumeDb, Player::kMaxVolumeDb].
+    void set_volume_db(double db);
     void set_gapless(bool on);
     void set_repeat(bool on);
     void set_on_failure(FailurePolicy policy);
