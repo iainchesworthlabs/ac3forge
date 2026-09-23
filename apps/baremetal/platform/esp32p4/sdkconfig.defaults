@@ -1,0 +1,90 @@
+# ESP-IDF configuration for the minimum-footprint decoder probe on ESP32-P4.
+#
+# Only settings that differ from IDF's own defaults, or that a comparison
+# depends on. The S3 project's copy of this file carries the arguments these
+# share - why -Os, why the task watchdog is off for a batch computation that
+# never yields.
+
+CONFIG_IDF_TARGET="esp32p4"
+
+# -Os, matching every other leg. The footprint numbers are only comparable if
+# every leg optimised for the same thing.
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+
+# 360 MHz, this chip's revision's maximum, asked for rather than inherited -
+# the S3 project's copy of this file has the story of what silently building
+# at a lower default clock costs a timing figure.
+#
+# 400 MHz is NOT this: it is v3.x silicon's maximum, reached from a 360 MHz
+# base by a CPLL calibration IDF runs at startup
+# (components/esp_hw_support/port/esp32p4/rtc_clk.c) - and on this board's
+# v1.3 chip that calibration hits `assert failed: esp_clk_init clk.c:105
+# (res)` in a boot-crash-reboot loop, immediately after "cpu_start: Multicore
+# app", before app_main ever runs. components/esp_system/port/soc/esp32p4/Kconfig.cpu
+# already knows this split: ESP_DEFAULT_CPU_FREQ_MHZ_360 is the documented
+# default "if ESP32P4_SELECTS_REV_LESS_V3", 400 only otherwise - this is the
+# intended setting for this silicon, not a workaround for a missing one.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_360=y
+
+# PSRAM stays OFF, deliberately, even though the board this is developed
+# against has 32 MB of it (DFRobot FireBeetle 2 ESP32-P4).
+#
+# There is no QEMU leg for this part at all (see the top-level CMakeLists.txt),
+# so the "QEMU cannot emulate it" argument the S3 project gives does not even
+# apply here - the reason that carries over is the second one: this profile's
+# whole point is what fits in internal SRAM with no PSRAM, and turning PSRAM
+# on would hide that question rather than answer it. Turn it on for a shape
+# that needs the headroom; do not turn it on to make a footprint number go
+# away.
+
+# 16 MB, matching this board. The image is nowhere near this - see the S3
+# project's copy of this comment - so this only affects the partition table,
+# never the measurement.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# The task that calls app_main(), and therefore the task the whole decode runs
+# on. 40 KB, the S3 project's current size, with no attempt to trim it: this
+# is a measurement harness, and an integrator sizing a real decoding task
+# should measure with uxTaskGetStackHighWaterMark() rather than copy this
+# number - the probe reports it. Revisit once a board run measures this
+# part's actual margin, the way the S3's own figure came from PR #698's
+# measured shortfall rather than a guess.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=40960
+
+# No task watchdog: the probe deliberately runs flat out and never yields,
+# which is what the watchdog exists to catch in an application that should be
+# yielding.
+CONFIG_ESP_TASK_WDT_INIT=n
+
+# The console. This board has no USB-UART bridge chip, but it DOES have two
+# USB-C connectors, each wired to a different one of the part's on-die USB
+# peripherals: one to the native USB-OTG controller (the ROM's download mode
+# answers there - esptool reports "USB mode: USB-OTG" - and it is the only
+# one silkscreened, "USB 2.0 OTG"), the other to SOC_USB_SERIAL_JTAG_SUPPORTED,
+# the same lightweight controller the S3/C3/C6 boards use. This part has no
+# SOC_USB_OTG_CONSOLE_SUPPORTED ROM CDC console the way the S3 and S2 do, so
+# CONFIG_ESP_CONSOLE_USB_CDC is not offered here - but CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+# below reaches the second connector, confirmed on a board 2026-09-23: it
+# enumerates as its own composite device (VID_303A, PID_1001, the same PID
+# the S3/C6 boards use) the moment the chip boots, independent of whichever
+# port is running the download-mode conversation.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# The chip revision. This board carries pre-production ESP32-P4 silicon,
+# revision v1.3, efuse block revision v0.3 (read at boot: "chip revision:
+# v1.3", "efuse block revision: v0.3"). ESP-IDF v6.1 defaults
+# ESP32P4_REV_MIN to v3.1 - not an errata floor, a different hardware
+# generation: components/esp_hw_support/port/esp32p4/Kconfig.hw_support says
+# plainly "revisions higher than 3.0 (included) and revisions less than 3.0
+# have huge hardware difference... not compatible with 0.x and 1.x." A
+# default build's bootloader refuses this chip outright (esptool: "requires
+# chip revision in range [v3.1 - v3.99] (this chip is revision v1.3)").
+#
+# The costly part: `idf.py flash`'s default --skip-flashed masked this
+# completely - it printed no write progress at all and exited 0, leaving
+# whatever was already in flash running, so the probe looked merely silent
+# rather than never-written. Diagnosed by flashing with esptool directly
+# (dropping --skip-flashed), which surfaces the refusal in the open rather
+# than swallowing it.
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_100=y
