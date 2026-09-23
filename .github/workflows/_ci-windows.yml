@@ -721,11 +721,18 @@ jobs:
       # same step, mirroring _build.yml's identical fix for the same
       # v4.4.0 change on the Linux AppImage leg (see its own "Install Qt
       # (prebuilt)" step's comment).
+      #
+      # choco, not actions/setup-python: this fleet's runners are persistent,
+      # reused machines, not fresh-per-job GitHub-hosted images, and
+      # actions/setup-python's own MSI-based installer can fail outright on
+      # one ("Error happened during Python installation" after its own
+      # cleanup of a previous run's leftover registry entries - confirmed
+      # against a real CI run). choco already installs ninja/nsis/ffmpeg
+      # reliably in this exact job; python is no different.
       - name: Setup Python (for install-qt-action)
         if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.x"
+        shell: bash
+        run: choco install python -y --no-progress --requirechecksums
 
       - name: Install Qt (prebuilt)
         if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
