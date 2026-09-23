@@ -472,3 +472,99 @@ TEST_CASE("network sinks: a client going away removes its row", "[hearth][networ
     sinks.on_client_gone("client-ghi");
     CHECK(sinks.status().sinks.empty());
 }
+
+TEST_CASE("network sinks: another server taking the sink becomes the row's notice",
+          "[hearth][network-sinks]") {
+    MemorySettingsStore settings;
+    PairingStore store{settings, today};
+    const auto identity = ss::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    NetworkSinks sinks{*identity, "Test Hearth", store};
+
+    const ss::discovery::Service service = test_service("hearth-s3-study", 1);
+    sinks.on_found(service);
+    ss::ClientView client;
+    client.client_id = "client-jkl";
+    client.url = *service.url();
+    client.hello = true;
+    sinks.on_client(client);
+
+    // Received while the row still exists (client/goodbye arrives before the
+    // connection actually closes) - the notice shows right away.
+    sinks.on_client_goodbye("client-jkl", ss::messages::GoodbyeReason::kAnotherServer);
+    REQUIRE(sinks.status().sinks.size() == 1);
+    CHECK(sinks.status().sinks.front().notice == "In use by another server.");
+
+    // The row itself is removed once the connection actually ends, as
+    // before, but the notice is kept by instance and reattaches once the
+    // sink is found again - not lost just because the row briefly was.
+    sinks.on_client_gone("client-jkl");
+    CHECK(sinks.status().sinks.empty());
+    sinks.on_found(service);
+    REQUIRE(sinks.status().sinks.size() == 1);
+    CHECK(sinks.status().sinks.front().notice == "In use by another server.");
+
+    // A fresh connection supersedes the stale notice.
+    ss::ClientView reconnected;
+    reconnected.client_id = "client-jkl";
+    reconnected.url = *service.url();
+    reconnected.hello = true;
+    sinks.on_client(reconnected);
+    CHECK(sinks.status().sinks.front().notice.empty());
+}
+
+TEST_CASE("network sinks: a rejected concurrent activation becomes a pairing-in-progress notice",
+          "[hearth][network-sinks]") {
+    MemorySettingsStore settings;
+    PairingStore store{settings, today};
+    const auto identity = ss::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    NetworkSinks sinks{*identity, "Test Hearth", store};
+
+    const ss::discovery::Service service = test_service("hearth-s3-study", 1);
+    sinks.on_found(service);
+    ss::ClientView client;
+    client.client_id = "client-mno";
+    client.url = *service.url();
+    client.hello = true;
+    sinks.on_client(client);
+
+    sinks.on_client_goodbye("client-mno", ss::messages::GoodbyeReason::kConcurrentAttempt);
+    CHECK(sinks.status().sinks.front().notice == "Another server is pairing with this sink right now.");
+}
+
+TEST_CASE("network sinks: a goodbye reason that is not about another server leaves no notice",
+          "[hearth][network-sinks]") {
+    MemorySettingsStore settings;
+    PairingStore store{settings, today};
+    const auto identity = ss::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    NetworkSinks sinks{*identity, "Test Hearth", store};
+
+    const ss::discovery::Service service = test_service("hearth-s3-study", 1);
+    sinks.on_found(service);
+    ss::ClientView client;
+    client.client_id = "client-pqr";
+    client.url = *service.url();
+    client.hello = true;
+    sinks.on_client(client);
+
+    // kUnpaired, kShutdown, kRestart, kUserRequest, kUnauthorized and
+    // kPairingRequired are this app's own doing or the sink's, and already
+    // covered by on_client()/on_client_gone() - none of them says "another
+    // server", so none becomes a notice.
+    sinks.on_client_goodbye("client-pqr", ss::messages::GoodbyeReason::kUnpaired);
+    CHECK(sinks.status().sinks.front().notice.empty());
+}
+
+TEST_CASE("network sinks: on_client_goodbye on an id nothing has ever found is quietly ignored",
+          "[hearth][network-sinks]") {
+    MemorySettingsStore settings;
+    PairingStore store{settings, today};
+    const auto identity = ss::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    NetworkSinks sinks{*identity, "Test Hearth", store};
+
+    sinks.on_client_goodbye("no-such-client", ss::messages::GoodbyeReason::kAnotherServer);
+    CHECK(sinks.status().sinks.empty());
+}

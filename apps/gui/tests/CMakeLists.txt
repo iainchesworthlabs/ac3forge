@@ -140,12 +140,19 @@ target_link_libraries(ac3gui_qmltests
         mpegts::mpegts
         ac3::warnings
         ac3::fmt
+        # This target recompiles encoder_controller.cpp/stream_player_controller.cpp
+        # from scratch (this file's own header comment), so it needs the same
+        # profiling header pair ../CMakeLists.txt's ac3gui target links -
+        # otherwise a Tracy-enabled configure fails only on this target.
+        ac3::tracy
         Qt6::Core
         Qt6::Gui
         Qt6::Quick
         Qt6::QuickControls2
         Qt6::QuickTest
         Qt6::Concurrent)
+target_include_directories(ac3gui_qmltests PRIVATE
+    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
 
 # QT_QPA_PLATFORM=offscreen on the test itself, not just -platform offscreen
 # on the command line: belt and suspenders again, and it means running the

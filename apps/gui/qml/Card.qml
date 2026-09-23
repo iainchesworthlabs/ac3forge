@@ -7,63 +7,46 @@ import Ac3Forge
 Rectangle {
     id: root
 
-    property alias title: heading.text
+    property alias title: header.label
     // A short right-aligned caption on the title's own row, e.g. "Onkyo
     // receiver · 8 outputs" - the handoff draws a rule between it and the
     // title on every card, whether or not a summary is set (an untitled
     // summary just leaves the rule running to the card's edge).
-    property alias summary: summaryLabel.text
+    property alias summary: header.summary
+    // Drops the outer fill/border so the header and content sit flat on
+    // whatever panel this Card is placed on, keeping only the title/rule
+    // header - the design boxes individual stats and steps (StatTile,
+    // PlaySignalPathCard's own decode/render/output boxes), never a whole
+    // section (main-play.png: "02 NOW PLAYING" through "07 SIGNAL PATH" are
+    // flat). Off by default so every existing boxed Card is unaffected.
+    property bool flat: false
     default property alias content: column.data
 
-    color: Theme.surface
+    color: root.flat ? "transparent" : Theme.surface
     border.color: Theme.border
-    border.width: 1
+    border.width: root.flat ? 0 : 1
     radius: Theme.radius
     Layout.fillWidth: true
-    implicitHeight: layout.implicitHeight + Theme.pad * 2
+    implicitHeight: layout.implicitHeight + (root.flat ? 0 : Theme.pad * 2)
 
     // A titled group of controls - the same "what am I looking at" question
     // the heading answers visually, given to a screen reader too. Reading
-    // root.title directly (rather than heading.visible/heading.text) is
+    // root.title directly (rather than header.visible/header.label) is
     // deliberate, not just simpler - an untitled Card already produces "",
-    // the same "no name worth announcing" outcome heading.visible's
-    // text.length > 0 condition means, without a second property to depend
-    // on for change notification.
+    // the same "no name worth announcing" outcome SectionHeader's own
+    // text.length > 0 visibility condition means, without a second property
+    // to depend on for change notification.
     Accessible.role: Accessible.Grouping
     Accessible.name: root.title
 
     ColumnLayout {
         id: layout
         anchors.fill: parent
-        anchors.margins: Theme.pad
+        anchors.margins: root.flat ? 0 : Theme.pad
         spacing: Theme.gap
 
-        RowLayout {
-            id: headingRow
-            Layout.fillWidth: true
-            spacing: Theme.gap
-            visible: heading.text.length > 0
-
-            Text {
-                id: heading
-                color: Theme.textMuted
-                font.pixelSize: Theme.fontSmall
-                font.bold: true
-                font.capitalization: Font.AllUppercase
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 1
-                color: Theme.divider
-            }
-
-            Text {
-                id: summaryLabel
-                visible: text.length > 0
-                color: Theme.textMuted
-                font.pixelSize: Theme.fontSmall
-            }
+        SectionHeader {
+            id: header
         }
 
         ColumnLayout {

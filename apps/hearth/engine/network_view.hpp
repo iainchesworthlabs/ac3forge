@@ -99,6 +99,12 @@ struct SinkFacts {
     // Set only when pair_state is kPaired: the date the pairing record was
     // made (PairingRecordView::paired_on).
     std::string paired_on{};
+    // Set for a while after this sink's connection ended with client/goodbye
+    // kAnotherServer or kConcurrentAttempt (network_sinks.hpp's own comment):
+    // another server took, or already held, playback here. Cleared once a
+    // fresh connection to it succeeds, or it is not heard from again at all;
+    // empty when nothing of the kind has happened.
+    std::string notice{};
 
     // --- a Hearth sink's own settings pages -----------------------------
     // The sink's own support object (client/hello's `_ac3forge_player@v1_
@@ -137,6 +143,8 @@ struct SinkRow {
     // "not paired" | "paired" - the design's own words, for the badge
     // chip's own label.
     std::string badge_text{};
+    // SinkFacts::notice, verbatim; empty when there is none to show.
+    std::string notice{};
 };
 
 [[nodiscard]] SinkRow to_row(const SinkFacts& facts);
@@ -157,6 +165,8 @@ struct SinkDetail {
     std::string latency_text{};
     std::string clock_text{};
     std::string paired_on_text{};
+    // SinkFacts::notice, verbatim; empty when there is none to show.
+    std::string notice{};
 };
 
 [[nodiscard]] SinkDetail to_detail(const SinkFacts& facts);

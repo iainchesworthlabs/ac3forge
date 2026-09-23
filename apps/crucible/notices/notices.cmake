@@ -94,6 +94,10 @@ ac3_generate_notices("${AC3CRUCIBLE_NOTICES_FILE}"
         "FMT_VERSION=${AC3CRUCIBLE_FMT_VERSION}"
         "PIPEWIRE_VERSION=${AC3CRUCIBLE_PIPEWIRE_VERSION}"
         "TRACY_VERSION=${AC3CRUCIBLE_TRACY_VERSION}"
+        # Named explicitly, not left implicit, now that apps/hearth/notices/notices.cmake and
+        # apps/notices/notices.cmake share this fragment too (search their own FRAGMENT_DIR
+        # lists) and each has a different answer.
+        "TRACY_USERS=ac3crucible and ac3crucible-run"
     FILES
         "LGPL3=${AC3CRUCIBLE_NOTICES_DIR}/licences/LGPL-3.0.txt"
         "OFL=${CMAKE_SOURCE_DIR}/apps/gui/fonts/OFL.txt"

@@ -378,6 +378,7 @@ struct LayoutFields {
     map[QStringLiteral("subtitle")] = QString::fromStdString(row.subtitle);
     map[QStringLiteral("badge")] = QString::fromStdString(row.badge);
     map[QStringLiteral("badgeText")] = QString::fromStdString(row.badge_text);
+    map[QStringLiteral("notice")] = QString::fromStdString(row.notice);
     return map;
 }
 
@@ -394,6 +395,7 @@ struct LayoutFields {
     map[QStringLiteral("latencyText")] = QString::fromStdString(detail.latency_text);
     map[QStringLiteral("clockText")] = QString::fromStdString(detail.clock_text);
     map[QStringLiteral("pairedOnText")] = QString::fromStdString(detail.paired_on_text);
+    map[QStringLiteral("notice")] = QString::fromStdString(detail.notice);
     return map;
 }
 

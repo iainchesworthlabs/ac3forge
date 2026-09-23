@@ -256,6 +256,56 @@ TEST_CASE("outputs enumerates or explains itself, and points at the spdif substi
     }
 }
 
+// 'identify' (apps/cli/commands/audio_io.cpp's run_identify) had no test in
+// this suite at all until the three below - added to the CLI after
+// devices/outputs/record/live/monitor above, so coverage floors never
+// reached it either.
+
+TEST_CASE("identify walks an output's speakers, or refuses by name",
+          "[cli][audio-io][concurrency]") {
+    // Bare invocation: default endpoint, the endpoint's own speakers as the
+    // layout (falling back to stereo), a 2 s walk, no patch, -20 dB - the
+    // same "runs for real or says why not" contract as every other
+    // device-facing case in this file.
+    const auto log = scratch_dir() / "identify.log";
+    const auto rc = run_cli("identify", log);
+    const auto out = read_log(log);
+    check_spoke_either_way(rc, out);
+}
+
+TEST_CASE("identify refuses an out-of-range device index before touching a layout or a patch",
+          "[cli][audio-io]") {
+    // 99999 can never be a valid index: either enumeration itself fails
+    // (reported by ac3::audio::describe()) or it succeeds with far fewer
+    // entries than that (run_identify's own "no render endpoint with index"
+    // refusal) - deterministic either way, with or without real render
+    // hardware, and reached before layout/routing parsing or any device open.
+    const auto log = scratch_dir() / "identify_bad_index.log";
+    const auto rc = run_cli("identify 99999", log);
+    const auto out = read_log(log);
+    INFO(out);
+    REQUIRE(rc != 0);
+    CHECK(out.find("error") != std::string::npos);
+}
+
+TEST_CASE("identify refuses a layout that does not parse, before any device is touched",
+          "[cli][audio-io]") {
+    // device_index -1 (the default endpoint) skips run_identify's own
+    // enumeration checks entirely - they only run for an explicit index >= 0
+    // - so layout parsing is reached deterministically regardless of what
+    // render hardware, if any, this machine has. A build with no monitor
+    // backend at all still refuses at main.cpp's Needs::kMonitor gate first,
+    // same caveat as 'play's "too short to hold a syncframe" case.
+    const auto log = scratch_dir() / "identify_bad_layout.log";
+    const auto rc = run_cli("identify -1 not-a-layout 1", log);
+    const auto out = read_log(log);
+    INFO(out);
+    CHECK(rc != 0);
+    if (out.find("is unavailable on this platform") == std::string::npos) {
+        CHECK(out.find("is not a layout") != std::string::npos);
+    }
+}
+
 TEST_CASE("record either captures a real endpoint or refuses by name",
           "[cli][audio-io][concurrency]") {
     const auto dir = scratch_dir();
@@ -363,6 +413,23 @@ TEST_CASE("live mode=atmos positions=osc either runs a live-driven session or re
         CHECK(out.find("positions: OSC on") != std::string::npos);
         CHECK(fs::exists(out_path));
     } else {
+        CHECK_FALSE(fs::exists(out_path));
+    }
+}
+
+TEST_CASE("live mode=atmos with no positions= runs the built-in orbit, or refuses by name",
+          "[cli][audio-io][atmos][concurrency]") {
+    // Every mode=atmos case above supplies positions=, so the synthetic
+    // orbit run_live falls back to whenever no live position source is bound
+    // (its own per-frame angle/height computation) has never run through
+    // this suite - only the OSC-driven path has.
+    const auto dir = scratch_dir();
+    const auto out_path = dir / "live_orbit.ec3";
+    const auto log = dir / "live_orbit.log";
+    fs::remove(out_path);
+    const auto rc = run_cli("live \"" + out_path.string() + "\" 0 1 192 -2 -2 atmos", log);
+    check_spoke_either_way(rc, read_log(log));
+    if (rc != 0) {
         CHECK_FALSE(fs::exists(out_path));
     }
 }

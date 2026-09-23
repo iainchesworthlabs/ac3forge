@@ -144,6 +144,10 @@ TEST_CASE("queue_row: a plain AC-3 item's badge is A3, not E3", "[hearth][hearth
 
     const QVariantMap row = ac3::hearth::ui::queue_row(item, false);
     CHECK(row.value(QStringLiteral("codecBadge")).toString().toStdString() == "A3");
+    // stream_kind_name() names AC-3 and E-AC-3 apart (issue #922's
+    // disambiguation), matching codecBadge's own A3/E3 split above - not the
+    // combined "AC-3/E-AC-3" this test's own name already distinguishes
+    // codecBadge for.
     CHECK(row.value(QStringLiteral("streamKind")).toString().toStdString() == "AC-3");
 }
 
@@ -231,16 +235,16 @@ TEST_CASE("media_bitstream_to_map: Lo/Ro mix levels and the preferred downmix la
     CHECK(mix.value(QStringLiteral("lfeDb")).toDouble() == Catch::Approx(3.0));
 }
 
-TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels are copied alongside Lo/Ro, from their own fields",
+TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels (ltrt_clev/ltrt_slev) join the Lo/Ro pair",
           "[hearth][hearth-controller]") {
-    // Was KNOWN GAP (issue #904, point 1): media_bitstream_to_map() used to
-    // read only loro_clev/loro_slev into mixLevels.centreDb/surroundDb,
-    // dropping ac3::MixLevels' own ltrt_clev/ltrt_slev pair entirely. Fixed
-    // since - confirmed by reading the function body directly
-    // (hearth_controller.cpp) - which now also writes ltrtCentreDb/
-    // ltrtSurroundDb from ltrt_clev/ltrt_slev. Lo/Ro and Lt/Rt set to
-    // clearly different values proves the two pairs are read from their own
-    // fields rather than one aliasing the other.
+    // ac3::MixLevels carries ltrt_clev/ltrt_slev (src/forge/include/ac3/decoder/output.hpp)
+    // alongside loro_clev/loro_slev; media_bitstream_to_map() reads both pairs
+    // into mixLevels, the Lo/Ro one unlabelled (centreDb/surroundDb, kept as
+    // DecoderEac3.qml's own "This stream" card already reads it) and the
+    // Lt/Rt one under its own ltrtCentreDb/ltrtSurroundDb names (issue #904
+    // point 1, closed). Setting the two pairs to clearly different values
+    // and checking both confirms they are read independently, not one
+    // shadowing the other.
     MediaBitstream bits;
     bits.levels.loro_clev = 0.5;
     bits.levels.loro_slev = 1.0;
@@ -254,8 +258,10 @@ TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels are copied alongside Lo/Ro, 
           Catch::Approx(20.0 * std::log10(0.5)));
     CHECK(mix.value(QStringLiteral("surroundDb")).toDouble() ==
           Catch::Approx(20.0 * std::log10(1.0)));
+    REQUIRE(mix.contains(QStringLiteral("ltrtCentreDb")));
     CHECK(mix.value(QStringLiteral("ltrtCentreDb")).toDouble() ==
           Catch::Approx(20.0 * std::log10(0.25)));
+    REQUIRE(mix.contains(QStringLiteral("ltrtSurroundDb")));
     CHECK(mix.value(QStringLiteral("ltrtSurroundDb")).toDouble() ==
           Catch::Approx(20.0 * std::log10(0.25)));
 }
@@ -304,20 +310,17 @@ TEST_CASE("media_probe_to_map: EMDF payload ids and the reconstructed object cou
     CHECK(map.value(QStringLiteral("objectCount")).toInt() == 5);
 }
 
-TEST_CASE("media_probe_to_map: compr/dynrng's real min/max range is kept, not just a bare seen flag",
+TEST_CASE("media_probe_to_map: compr/dynrng expose their real min/max range, not just a seen flag",
           "[hearth][hearth-controller]") {
-    // Was KNOWN GAP (issue #904, point 3): media_probe_to_map() used to read
-    // only report.compr.seen/report.dynrng.seen, discarding .min/.max
-    // entirely, so two reports with identical .seen but very different
-    // ranges produced identical output. Fixed since - confirmed by reading
-    // the function body directly - which now also writes comprMinDb/
-    // comprMaxDb/dynrngMinDb/dynrngMaxDb (via meta::compr_gain()/
-    // dynrng_gain() on the raw min/max words) whenever .seen is true. Two
-    // reports with clearly different ranges but the same .seen proves the
-    // range itself is read, not just collapsed to the flag: checked by
-    // presence and by the narrow and wide reports disagreeing, rather than
-    // by a hand-computed dB literal, since compr_gain()/dynrng_gain()'s own
-    // scale is documented in src/forge/include/ac3/meta/drc.hpp, not here.
+    // ProbeReport::compr/dynrng are MinMax (seen + min + max), the same
+    // shape dialnorm above carries its own min/max through, and
+    // media_probe_to_map() converts both tracked endpoints (compr_gain()/
+    // dynrng_gain(), unsigned wire bytes) into comprMinDb/comprMaxDb/
+    // dynrngMinDb/dynrngMaxDb (issue #904 point 3, closed) - present only
+    // when .seen is true, same as dialnorm's own optional keys above. Two
+    // reports with identical .seen but very different ranges producing
+    // different Min/Max readings confirms the real range is carried
+    // through, not collapsed to the bare boolean.
     ac3::io::ProbeReport narrow;
     narrow.compr.seen = true;
     narrow.compr.min = 0;
@@ -341,18 +344,25 @@ TEST_CASE("media_probe_to_map: compr/dynrng's real min/max range is kept, not ju
     CHECK(wide_map.value(QStringLiteral("comprSeen")).toBool());
     CHECK(narrow_map.value(QStringLiteral("dynrngSeen")).toBool());
     CHECK(wide_map.value(QStringLiteral("dynrngSeen")).toBool());
-    CHECK(narrow_map.contains(QStringLiteral("comprMinDb")));
-    CHECK(narrow_map.contains(QStringLiteral("comprMaxDb")));
-    CHECK(narrow_map.contains(QStringLiteral("dynrngMinDb")));
-    CHECK(narrow_map.contains(QStringLiteral("dynrngMaxDb")));
-    CHECK(wide_map.contains(QStringLiteral("comprMinDb")));
-    CHECK(wide_map.contains(QStringLiteral("dynrngMinDb")));
-    // The narrow and wide reports must disagree on the actual range - if
-    // they read the same, the range is still being collapsed to the flag.
-    CHECK(narrow_map.value(QStringLiteral("comprMinDb")) != wide_map.value(QStringLiteral("comprMinDb")));
-    CHECK(narrow_map.value(QStringLiteral("comprMaxDb")) != wide_map.value(QStringLiteral("comprMaxDb")));
-    CHECK(narrow_map.value(QStringLiteral("dynrngMinDb")) != wide_map.value(QStringLiteral("dynrngMinDb")));
-    CHECK(narrow_map.value(QStringLiteral("dynrngMaxDb")) != wide_map.value(QStringLiteral("dynrngMaxDb")));
+    REQUIRE(narrow_map.contains(QStringLiteral("comprMinDb")));
+    REQUIRE(narrow_map.contains(QStringLiteral("comprMaxDb")));
+    REQUIRE(narrow_map.contains(QStringLiteral("dynrngMinDb")));
+    REQUIRE(narrow_map.contains(QStringLiteral("dynrngMaxDb")));
+    REQUIRE(wide_map.contains(QStringLiteral("comprMinDb")));
+    REQUIRE(wide_map.contains(QStringLiteral("comprMaxDb")));
+    REQUIRE(wide_map.contains(QStringLiteral("dynrngMinDb")));
+    REQUIRE(wide_map.contains(QStringLiteral("dynrngMaxDb")));
+    // The real point: narrow's and wide's readings differ, proving the
+    // tracked min/max bytes drive the output rather than being discarded
+    // in favour of the bare seen flag both maps already share above.
+    CHECK(narrow_map.value(QStringLiteral("comprMinDb")).toDouble() !=
+          Catch::Approx(wide_map.value(QStringLiteral("comprMinDb")).toDouble()));
+    CHECK(narrow_map.value(QStringLiteral("comprMaxDb")).toDouble() !=
+          Catch::Approx(wide_map.value(QStringLiteral("comprMaxDb")).toDouble()));
+    CHECK(narrow_map.value(QStringLiteral("dynrngMinDb")).toDouble() !=
+          Catch::Approx(wide_map.value(QStringLiteral("dynrngMinDb")).toDouble()));
+    CHECK(narrow_map.value(QStringLiteral("dynrngMaxDb")).toDouble() !=
+          Catch::Approx(wide_map.value(QStringLiteral("dynrngMaxDb")).toDouble()));
 }
 
 TEST_CASE("media_probe_to_map: tool-usage counters and crc/parse failures round trip",

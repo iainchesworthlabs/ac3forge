@@ -135,6 +135,17 @@ else()
     # The family's own faces and application icon, reused rather than
     # duplicated - apps/crucible/CMakeLists.txt does the same for the same
     # reason.
+    #
+    # MaterialSymbolsSharp-Regular.ttf is Google's Material Symbols Sharp
+    # variable font (github.com/google/material-design-icons, Apache
+    # License 2.0, licence text at fonts/MaterialSymbolsSharp-Apache-2.0.txt
+    # - kept beside the face, same reason Archivo's OFL.txt is), pinned to
+    # its default static instance (FILL=0, GRAD=0, opsz=24, wght=400) and
+    # subset to the 8 glyphs Hearth's transport/queue controls actually use
+    # (play_arrow e037, pause e034, stop e047, skip_previous e045,
+    # skip_next e044, create_new_folder e2cc, add e145, volume_up e050) via
+    # fontTools - 2 KB rather than the upstream file's 8.46 MB. Only Hearth
+    # ships this today, so it is not in apps/gui's own font resource list.
     qt_add_resources(ac3hearth "ac3hearth_fonts"
         PREFIX "/fonts"
         BASE "${CMAKE_SOURCE_DIR}/apps/gui/fonts"
@@ -142,7 +153,8 @@ else()
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-Regular.ttf"
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-Medium.ttf"
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-SemiBold.ttf"
-            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-ExtraBold.ttf")
+            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-ExtraBold.ttf"
+            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/MaterialSymbolsSharp-Regular.ttf")
     qt_add_resources(ac3hearth "ac3hearth_icons"
         PREFIX "/icons"
         BASE "${CMAKE_SOURCE_DIR}/apps/gui/icons"

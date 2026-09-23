@@ -69,3 +69,4 @@ class ZoneScope {
 // Frame marks are for Tracy's frame view; the probe already knows where its
 // frames are, since it is the thing calling decode_frame_into.
 #define AC3_FRAME_MARK()
+#define AC3_FRAME_MARK_NAMED(name)

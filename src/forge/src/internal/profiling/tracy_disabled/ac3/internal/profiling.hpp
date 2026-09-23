@@ -13,3 +13,4 @@
 #define AC3_ZONE_BEGIN(var, name)
 #define AC3_ZONE_END(var)
 #define AC3_FRAME_MARK()
+#define AC3_FRAME_MARK_NAMED(name)

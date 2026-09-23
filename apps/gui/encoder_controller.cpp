@@ -1,5 +1,7 @@
 #include "encoder_controller.hpp"
 
+#include "ac3/internal/profiling.hpp"
+
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -3666,6 +3668,7 @@ void EncoderController::clearLayout() {
 }
 
 void EncoderController::publishLevels(std::span<const ac3::analysis::ChannelLevel> levels) {
+    AC3_ZONE_SCOPED_N("encoder publish");
     // Grow-or-shrink only - resize() never touches a surviving element's
     // value, which is exactly what a latch needs: it must not un-set itself
     // just because another snapshot arrived. Only clearClipLatches()

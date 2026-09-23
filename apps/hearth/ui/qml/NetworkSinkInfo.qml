@@ -19,7 +19,7 @@ ColumnLayout {
         if (!root.sink || root.sink.id === undefined) {
             return [];
         }
-        return [
+        const rows = [
             { label: qsTr("Kind"), value: root.sink.kindText ?? "" },
             { label: qsTr("Address"), value: root.sink.address ?? "" },
             { label: qsTr("Roles"), value: root.sink.rolesText ?? "" },
@@ -28,6 +28,10 @@ ColumnLayout {
             { label: qsTr("Latency"), value: root.sink.latencyText ?? "" },
             { label: qsTr("Clock"), value: root.sink.clockText ?? "" }
         ];
+        if ((root.sink.notice ?? "").length > 0) {
+            rows.unshift({ label: qsTr("Status"), value: root.sink.notice });
+        }
+        return rows;
     }
 
     Card {
