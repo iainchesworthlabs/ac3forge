@@ -318,6 +318,47 @@ jobs:
             return $result
           }
 
+          # DIAGNOSTIC (ci-runners#26): a 2026-09-22 occurrence (ac3forge#796,
+          # job 106819480284) showed the process tree/network/thread-state
+          # diagnostics above earning their keep - winget itself now works
+          # (see the source-agreements fix elsewhere in this step's git
+          # history) and successfully launches the real NSIS child
+          # (LLVM-*-win64.exe), which then sits at 0% CPU with zero network
+          # activity for the rest of the timeout. The thread-wait signature
+          # (sustained Wait/EventPairLow - an LPC-to-csrss wait associated
+          # with window-message handling, not I/O or a lock) points at that
+          # NSIS installer having created a window - a wizard page, or a
+          # MessageBox - that nothing can dismiss on a non-interactive
+          # desktop despite /S. A known NSIS failure class: a script branch
+          # not gated on ${If} ${Silent} still shows a page/MessageBox.
+          # PowerShell has no built-in cmdlet for "every window a process
+          # owns" (Get-Process's own MainWindowTitle can miss a MessageBox
+          # that isn't registered as the process's main window - confirmed
+          # by testing: it worked in one local test but is not guaranteed),
+          # so this P/Invokes user32's EnumWindows directly. #32770 is the
+          # well-known Win32 class name for a standard dialog box/MessageBox
+          # - that specific ClassName appearing here would be the smoking
+          # gun. Verified locally against a real MessageBox in a separate
+          # process before writing this into the step (found it correctly:
+          # title, "#32770" class, Visible=True, alongside the unrelated
+          # hidden helper windows every process has).
+          # A here-string would be the natural way to write this, but its
+          # closing delimiter must sit at column 0 in this shell (Windows
+          # PowerShell 5.1, not pwsh) while GitHub's own YAML block scalar
+          # requires every line at or above this block's indentation -
+          # confirmed the hard way (actionlint: "could not find expected
+          # ':'" at the dedented `using System;` line, since column 0 ends
+          # the YAML block early). One single-quoted line instead - C# does
+          # not care about line breaks, so this compiles identically to a
+          # normal multi-line source file, just less readable in the raw
+          # workflow (see this comment's own git history for that version).
+          $windowEnumeratorSrc = 'using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices; public class WindowEnumerator { public class WindowInfo { public long Handle; public string Title; public string ClassName; public bool Visible; } private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam); [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam); [DllImport("user32.dll", CharSet = CharSet.Auto)] private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount); [DllImport("user32.dll")] private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount); [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd); [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId); public static List<WindowInfo> GetWindowsForProcess(uint processId) { var result = new List<WindowInfo>(); EnumWindows((hWnd, lParam) => { uint pid; GetWindowThreadProcessId(hWnd, out pid); if (pid == processId) { var sbTitle = new StringBuilder(256); GetWindowText(hWnd, sbTitle, sbTitle.Capacity); var sbClass = new StringBuilder(256); GetClassName(hWnd, sbClass, sbClass.Capacity); result.Add(new WindowInfo { Handle = hWnd.ToInt64(), Title = sbTitle.ToString(), ClassName = sbClass.ToString(), Visible = IsWindowVisible(hWnd) }); } return true; }, IntPtr.Zero); return result; } }'
+          try {
+            Add-Type -TypeDefinition $windowEnumeratorSrc -Language CSharp
+          } catch {
+            Write-Host "::warning::Could not compile window enumerator ($_) - window snapshots will be unavailable"
+          }
+
           function Invoke-TimedProcess {
             param([string]$FilePath, [string[]]$ArgumentList, [string]$Label, [string]$WatchDir)
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -346,8 +387,17 @@ jobs:
                 } else {
                   Write-Host "  network connections: none"
                 }
+                if ('WindowEnumerator' -as [type]) {
+                  $windows = foreach ($treePid in $treePids) { [WindowEnumerator]::GetWindowsForProcess([uint32]$treePid) }
+                  if ($windows) {
+                    Write-Host "  windows owned by this tree:"
+                    ($windows | Select-Object Handle, Title, ClassName, Visible | Format-Table -AutoSize | Out-String -Width 300).Trim() | Write-Host
+                  } else {
+                    Write-Host "  windows owned by this tree: none"
+                  }
+                }
               } catch {
-                Write-Host "  process tree/network snapshot failed: $_"
+                Write-Host "  process tree/network/window snapshot failed: $_"
               }
               try {
                 $proc = Get-Process -Id $p.Id -ErrorAction Stop

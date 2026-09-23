@@ -15,7 +15,7 @@
 #include <process.h>
 #else
 #include <sys/wait.h>
-#include <unistd.h>  // getpid
+#include <unistd.h>  // getpid()
 #endif
 
 #include "ac3/decoder/decoder.hpp"  // split_frames, to lift the dependent out of a legacy-core unit

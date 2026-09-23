@@ -15,6 +15,7 @@
 #include <thread>
 #include <vector>
 
+#include "ac3/render/identify.hpp"
 #include "ac3/render/layout.hpp"
 #include "ac3/render/render.hpp"
 #include "ac3/render/routing.hpp"
@@ -120,6 +121,12 @@ struct EngineStatus {
     render::Routing routing{};
     std::string device_name{};
     std::uint32_t speaker_mask = 0;
+    // The identify tone (Player::identify_start() and friends): the level
+    // every session plays at, and the render layout slot currently sounding
+    // it, or Queue::kNone while none is - the same sentinel and the same
+    // reason as PlayPosition::item.
+    double identify_level_db = render::IdentifyTone::kDefaultLevelDb;
+    std::size_t identify_slot = Queue::kNone;
     // What every item is rendered onto (Player::layout()) - fixed for this
     // engine's lifetime. A settings page reads each slot's own name
     // (OutputLayout::slot_name()) to label the routing grid and the
@@ -177,6 +184,14 @@ public:
     // Refused when this engine has no PCM sink (PlayerOutputs::pcm unset) -
     // there is nothing to route.
     void set_routing(const render::Routing& routing);
+    // The identify tone: a level that persists like crossover_hz, and a
+    // slot that plays until identify_stop() or another identify_start()
+    // moves it there instead. Refused, with a note, for an out-of-range
+    // slot or level, leaving EngineStatus unchanged - the same rule as
+    // every other speaker-setup command above.
+    void set_identify_level_db(double db);
+    void identify_start(std::size_t slot);
+    void identify_stop();
     // The transport bar's master volume (EngineStatus::volume_db). Refused
     // the same way as the speaker setup above, outside
     // [Player::kMinVolumeDb, Player::kMaxVolumeDb].

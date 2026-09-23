@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QSettings>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -35,6 +36,13 @@ class HearthController : public QObject {
     QML_ELEMENT
     QML_SINGLETON
 
+    // --- about ------------------------------------------------------------
+    // Version, commit and build target, for About (ac3::version_details()).
+    Q_PROPERTY(QString versionDetails READ versionDetails CONSTANT)
+    // The third-party notices this build ships - the package's NOTICES.txt,
+    // embedded at build time - for About > Licences.
+    Q_PROPERTY(QString licenceNotices READ licenceNotices CONSTANT)
+
     // --- queue and transport --------------------------------------------
     // Each entry: path, title, playable (bool), note (why not, or a
     // decode-time remark), durationMs, channels, sampleRate, hasObjects,
@@ -55,15 +63,29 @@ class HearthController : public QObject {
     Q_PROPERTY(QString outputReason READ outputReason NOTIFY stateChanged)
     Q_PROPERTY(QString noteText READ noteText NOTIFY stateChanged)
     Q_PROPERTY(QString errorText READ errorText NOTIFY stateChanged)
+    // Whether FirstRunDialog.qml has been dismissed once already. Persisted
+    // through QSettings under organisation "ac3forge", application "Hearth"
+    // (set in main.cpp) - this window's only settings storage so far. The
+    // queue/decoder/speaker settings apps/hearth/engine/settings_model.hpp
+    // describes are a separate, later piece (the Settings page proper), not
+    // wired to this controller yet.
+    Q_PROPERTY(bool firstRunSeen READ firstRunSeen WRITE setFirstRunSeen NOTIFY firstRunSeenChanged)
+
+    // --- position (the transport bar's scrubber) -------------------------
+    // Where the item playing now has got to - Engine::position(), read apart
+    // from status() so a poll sixteen times a second does not copy the whole
+    // queue with it (that method's own comment). Both zero with nothing
+    // current to play.
+    Q_PROPERTY(qlonglong positionMs READ positionMs NOTIFY positionChanged)
+    Q_PROPERTY(qlonglong durationMs READ durationMs NOTIFY positionChanged)
 
     // --- decoder settings (the Decoder page, AC-3 and E-AC-3) ------------
     // The whole of DecoderSettings, as one map QML reads field by field and
     // writes back through setDecoderSettings() - see that method's own
     // comment for the field names. Not every control the design shows has a
-    // field here yet: rf_ceiling (OutputConfig's, not DecoderSettings')
-    // and the JOC domain/fast-inverse-transform switches are library-level
-    // settings this app does not carry a knob for yet, so the page shows
-    // them inactive.
+    // field here yet: the JOC domain/fast-inverse-transform switches are
+    // library-level settings this app does not carry a knob for yet, so the
+    // page shows them inactive.
     Q_PROPERTY(QVariantMap decoderSettings READ decoderSettings NOTIFY decoderSettingsChanged)
 
     // --- speaker setup (the Speakers page) -------------------------------
@@ -95,6 +117,13 @@ class HearthController : public QObject {
     // corner those small speakers share (crossoverHz). Same NOTIFY, same
     // reason as speakerLabels.
     Q_PROPERTY(QVariantList speakerSmall READ speakerSmall NOTIFY speakerSetupChanged)
+    // The identify tone's IDENTIFY card: the pink-noise level every session
+    // plays at (the design offers -30/-20/-12 dB; render::IdentifyTone's
+    // own range is wider) and which speakerLabels slot is currently
+    // sounding it, or -1 for none - the same index space as trimDb/
+    // speakerLabels, not a device output.
+    Q_PROPERTY(double identifyLevelDb READ identifyLevelDb NOTIFY speakerSetupChanged)
+    Q_PROPERTY(int identifySlot READ identifySlot NOTIFY speakerSetupChanged)
 
 public:
     explicit HearthController(QObject* parent = nullptr);
@@ -104,6 +133,9 @@ public:
     // - not the constructor, so a singleton QML creates before the window is
     // on screen does not open a device with nothing yet shown for it.
     Q_INVOKABLE void start();
+
+    [[nodiscard]] QString versionDetails() const;
+    [[nodiscard]] QString licenceNotices() const;
 
     [[nodiscard]] QVariantList queue() const { return queue_; }
     [[nodiscard]] int currentIndex() const { return current_index_; }
@@ -115,16 +147,31 @@ public:
     [[nodiscard]] QString outputReason() const { return output_reason_; }
     [[nodiscard]] QString noteText() const { return note_; }
     [[nodiscard]] QString errorText() const { return error_; }
+    [[nodiscard]] bool firstRunSeen() const;
+    void setFirstRunSeen(bool seen);
+
+    [[nodiscard]] qlonglong positionMs() const { return position_ms_; }
+    [[nodiscard]] qlonglong durationMs() const { return duration_ms_; }
 
     Q_INVOKABLE void play();
     Q_INVOKABLE void pause();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
+    // Jumps the item playing now to `ms` from its start, clamped to it.
+    // Legal whatever the transport state, and does not itself start or stop
+    // playback (Player::seek()'s own comment).
+    Q_INVOKABLE void seek(qlonglong ms);
     Q_INVOKABLE void playItem(int index);
     Q_INVOKABLE void removeAt(int index);
     // Each path becomes one queue item, titled by its file name.
     Q_INVOKABLE void addFiles(const QStringList& paths);
+    // Every media file item_loader.hpp's list_folder_items() finds under
+    // `path` (recursively), added the same way addFiles() adds a file
+    // picked directly - including a container list_folder_items() lists but
+    // make_file_item_loader() cannot yet open, which lands in the queue
+    // unplayable with a reason, same as addFiles() already does for one.
+    Q_INVOKABLE void addFolder(const QString& path);
     Q_INVOKABLE void setVolumeDb(double db);
 
     [[nodiscard]] QVariantMap decoderSettings() const { return decoder_settings_; }
@@ -143,6 +190,8 @@ public:
     [[nodiscard]] QString deviceName() const { return device_name_; }
     [[nodiscard]] QStringList speakerLabels() const { return speaker_labels_; }
     [[nodiscard]] QVariantList speakerSmall() const { return speaker_small_; }
+    [[nodiscard]] double identifyLevelDb() const { return identify_level_db_; }
+    [[nodiscard]] int identifySlot() const { return identify_slot_; }
 
     Q_INVOKABLE void setTrimDb(int slot, double db);
     Q_INVOKABLE void setDelayMs(int slot, double ms);
@@ -158,17 +207,26 @@ public:
     // order" button.
     Q_INVOKABLE void useDeviceOrder();
 
+    Q_INVOKABLE void setIdentifyLevelDb(double db);
+    // Starts the identify tone on `slot`, moving it there if another slot
+    // was already sounding it. No-op for slot < 0.
+    Q_INVOKABLE void startIdentify(int slot);
+    Q_INVOKABLE void stopIdentify();
+
 signals:
     void queueChanged();
     void stateChanged();
+    void positionChanged();
     void decoderSettingsChanged();
     void speakerSetupChanged();
+    void firstRunSeenChanged();
 
 private:
     void poll();
 
     std::unique_ptr<ac3::hearth::Engine> engine_;
     QTimer poll_timer_;
+    QSettings settings_;
 
     QVariantList queue_;
     int current_index_ = -1;
@@ -178,6 +236,9 @@ private:
     QString output_reason_;
     QString note_;
     QString error_;
+
+    qlonglong position_ms_ = 0;
+    qlonglong duration_ms_ = 0;
 
     QVariantMap decoder_settings_;
 
@@ -189,6 +250,12 @@ private:
     QString device_name_;
     QStringList speaker_labels_;
     QVariantList speaker_small_;
+    // -20.0 here mirrors render::IdentifyTone::kDefaultLevelDb without this
+    // header needing that include - see setDecoderSettings()'s own comment
+    // on why ac3::render stays out of this file. Overwritten by the first
+    // poll() regardless, the way speakerLabels' own comment explains.
+    double identify_level_db_ = -20.0;
+    int identify_slot_ = -1;
 };
 
 }  // namespace ac3::hearth::ui
