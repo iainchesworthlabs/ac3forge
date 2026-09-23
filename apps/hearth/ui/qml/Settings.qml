@@ -20,6 +20,12 @@ ScrollView {
     clip: true
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
+    // The label gutter settings.png measures: every control in both columns
+    // starts 122 px after the card's content edge, which is this plus
+    // Theme.gap. In pixels scaled by the text-size setting, since a label
+    // that grows has to keep its column.
+    readonly property int labelWidth: Math.round(110 * Theme.fontScale)
+
     // Where the diagnostics file goes. selectedFile is set before open(), so
     // the suggested name and folder appear in the dialog - the same shape as
     // apps/gui/qml/PreferencesDialog.qml's own diagnosticsDialog.
@@ -39,6 +45,7 @@ ScrollView {
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.margins: Theme.pad
             spacing: Theme.gap * 2
 
             // --- left column: playback and network -----------------------
@@ -49,52 +56,40 @@ ScrollView {
                 spacing: Theme.gap * 2
 
                 Card {
-                    title: qsTr("01 Playback")
+                    ordinal: "01"
+                    title: qsTr("Playback")
+                    framed: true
 
-                    ColumnLayout {
+                    AppCheckBox {
+                        objectName: "settingsGapless"
                         Layout.fillWidth: true
-                        spacing: 0
-                        CheckBox {
-                            objectName: "settingsGapless"
-                            text: qsTr("Gapless between items")
-                            checked: HearthController.gapless
-                            onToggled: HearthController.gapless = checked
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 32
-                            text: qsTr("Keeps the output open from one item to the next when both have the "
-                                      + "same sample rate and speaker layout. When either changes, the "
-                                      + "output reopens and the queue says so.")
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
-                        }
+                        text: qsTr("Gapless between items")
+                        note: qsTr("Keeps the output open from one item to the next when both have the "
+                                  + "same sample rate and speaker layout. When either changes, the "
+                                  + "output reopens and the queue says so.")
+                        checked: HearthController.gapless
+                        onToggled: function(on) { HearthController.gapless = on; }
                     }
 
-                    ColumnLayout {
+                    AppCheckBox {
+                        objectName: "settingsResumeQueue"
                         Layout.fillWidth: true
-                        spacing: 0
-                        CheckBox {
-                            objectName: "settingsResumeQueue"
-                            text: qsTr("Pick up the queue where it was left")
-                            checked: HearthController.resumeQueue
-                            onToggled: HearthController.resumeQueue = checked
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 32
-                            text: qsTr("On the next start, at the item and position playing when Hearth closed.")
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
-                        }
+                        text: qsTr("Pick up the queue where it was left")
+                        note: qsTr("On the next start, at the item and position playing when Hearth closed.")
+                        checked: HearthController.resumeQueue
+                        onToggled: function(on) { HearthController.resumeQueue = on; }
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("An item fails"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text {
+                            text: qsTr("An item fails")
+                            color: Theme.text
+                            font.pixelSize: Theme.fontNormal
+                            elide: Text.ElideRight
+                            Layout.preferredWidth: root.labelWidth
+                        }
                         SegmentedControl {
                             accessibleName: qsTr("When an item fails")
                             currentValue: HearthController.onFailure
@@ -108,46 +103,61 @@ ScrollView {
                 }
 
                 Card {
-                    title: qsTr("02 Network")
+                    ordinal: "02"
+                    title: qsTr("Network")
+                    framed: true
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Name"); color: Theme.textMuted; Layout.preferredWidth: 90 }
-                        TextField {
+                        Text {
+                            text: qsTr("Name")
+                            color: Theme.text
+                            font.pixelSize: Theme.fontNormal
+                            elide: Text.ElideRight
+                            Layout.preferredWidth: root.labelWidth
+                        }
+                        AppTextField {
                             id: networkNameField
                             objectName: "settingsNetworkName"
-                            Layout.fillWidth: true
+                            Layout.preferredWidth: Math.round(320 * Theme.fontScale)
                             text: HearthController.networkName
                             Accessible.name: qsTr("Name")
                             onEditingFinished: HearthController.networkName = text
+                            // Typing writes `text` directly, which destroys
+                            // the declarative binding for good - so the field
+                            // is re-read from the controller whenever it is
+                            // not the one being edited. Without this it shows
+                            // whatever was typed even when the engine kept
+                            // something else.
+                            Binding on text {
+                                value: HearthController.networkName
+                                when: !networkNameField.activeFocus
+                                restoreMode: Binding.RestoreBindingOrValue
+                            }
                         }
+                        Item { Layout.fillWidth: true }
                     }
-                    Text {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: qsTr("How sinks and players show this computer.")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSmall
-                        wrapMode: Text.WordWrap
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 0
-                        CheckBox {
-                            objectName: "settingsNetworkDiscover"
-                            text: qsTr("Look for Sendspin players on this network")
-                            checked: HearthController.networkDiscover
-                            onToggled: HearthController.networkDiscover = checked
-                        }
+                        spacing: Theme.gap
+                        Item { Layout.preferredWidth: root.labelWidth }
                         Text {
                             Layout.fillWidth: true
-                            Layout.leftMargin: 32
-                            text: qsTr("Over mDNS. Off, the Network page lists only players already paired.")
+                            text: qsTr("How sinks and players show this computer.")
                             color: Theme.textMuted
                             font.pixelSize: Theme.fontSmall
                             wrapMode: Text.WordWrap
                         }
+                    }
+
+                    AppCheckBox {
+                        objectName: "settingsNetworkDiscover"
+                        Layout.fillWidth: true
+                        text: qsTr("Look for Sendspin players on this network")
+                        note: qsTr("Over mDNS. Off, the Network page lists only players already paired.")
+                        checked: HearthController.networkDiscover
+                        onToggled: function(on) { HearthController.networkDiscover = on; }
                     }
 
                     ColumnLayout {
@@ -160,7 +170,7 @@ ScrollView {
                             color: Theme.textMuted
                             font.pixelSize: Theme.fontMicro
                             font.bold: true
-                            font.letterSpacing: 1
+                            font.letterSpacing: Theme.trackingWide
                         }
 
                         Text {
@@ -172,50 +182,100 @@ ScrollView {
                             wrapMode: Text.WordWrap
                         }
 
-                        ColumnLayout {
+                        // One bordered table with a rule under the header and
+                        // between the rows, not a stack of loose rows - the
+                        // shape settings.png draws (and the same one the
+                        // output picker's device list wants).
+                        Rectangle {
                             Layout.fillWidth: true
                             visible: HearthController.pairingRecords.length > 0
-                            spacing: Theme.gap / 2
+                            implicitHeight: pairingTable.implicitHeight
+                            color: Theme.bg
+                            border.color: Theme.divider
+                            border.width: 1
+                            radius: Theme.radius
 
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: Theme.gap
-                                Text { Layout.fillWidth: true; text: qsTr("SINK OR PLAYER"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro }
-                                Text { Layout.preferredWidth: 96; text: qsTr("PAIRED"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro }
-                                Item { Layout.preferredWidth: 64 }
-                            }
+                            ColumnLayout {
+                                id: pairingTable
+                                anchors.fill: parent
+                                spacing: 0
 
-                            Repeater {
-                                model: HearthController.pairingRecords
-
-                                delegate: RowLayout {
-                                    id: pairingRow
-                                    required property var modelData
-                                    required property int index
+                                RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.margins: Theme.space2
                                     spacing: Theme.gap
-
                                     Text {
                                         Layout.fillWidth: true
-                                        text: pairingRow.modelData.name.length > 0
-                                              ? pairingRow.modelData.name
-                                              : pairingRow.modelData.id.substring(0, 12)
-                                        color: Theme.text
-                                        elide: Text.ElideRight
+                                        text: qsTr("SINK OR PLAYER")
+                                        color: Theme.textMuted
+                                        font.pixelSize: Theme.fontMicro
+                                        font.bold: true
+                                        font.letterSpacing: Theme.trackingWide
                                     }
                                     Text {
-                                        Layout.preferredWidth: 96
-                                        text: pairingRow.modelData.pairedOn
+                                        Layout.preferredWidth: Math.round(132 * Theme.fontScale)
+                                        text: qsTr("PAIRED")
                                         color: Theme.textMuted
-                                        font.family: Theme.monoFamily
-                                        font.pixelSize: Theme.fontSmall
+                                        font.pixelSize: Theme.fontMicro
+                                        font.bold: true
+                                        font.letterSpacing: Theme.trackingWide
                                     }
-                                    Button {
-                                        objectName: "pairingForget-" + pairingRow.index
-                                        Layout.preferredWidth: 64
-                                        text: qsTr("Forget")
-                                        Accessible.description: qsTr("Forgets this pairing; it has to pair again with a new code.")
-                                        onClicked: HearthController.forgetPairing(pairingRow.modelData.id)
+                                    Item { Layout.preferredWidth: Math.round(64 * Theme.fontScale) }
+                                }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 1
+                                    color: Theme.divider
+                                }
+
+                                Repeater {
+                                    model: HearthController.pairingRecords
+
+                                    delegate: ColumnLayout {
+                                        id: pairingRow
+                                        required property var modelData
+                                        required property int index
+                                        Layout.fillWidth: true
+                                        spacing: 0
+
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Layout.margins: Theme.space2
+                                            spacing: Theme.gap
+
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: pairingRow.modelData.name.length > 0
+                                                      ? pairingRow.modelData.name
+                                                      : pairingRow.modelData.id.substring(0, 12)
+                                                color: Theme.text
+                                                font.pixelSize: Theme.fontNormal
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                Layout.preferredWidth: Math.round(132 * Theme.fontScale)
+                                                text: pairingRow.modelData.pairedOn.length > 0
+                                                      ? qsTr("paired %1").arg(pairingRow.modelData.pairedOn)
+                                                      : ""
+                                                color: Theme.textMuted
+                                                font.family: Theme.monoFamily
+                                                font.pixelSize: Theme.fontSmall
+                                                elide: Text.ElideRight
+                                            }
+                                            AppButton {
+                                                objectName: "pairingForget-" + pairingRow.index
+                                                Layout.preferredWidth: Math.round(64 * Theme.fontScale)
+                                                text: qsTr("Forget")
+                                                Accessible.description: qsTr("Forgets this pairing; it has to pair again with a new code.")
+                                                onClicked: HearthController.forgetPairing(pairingRow.modelData.id)
+                                            }
+                                        }
+                                        Rectangle {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: 1
+                                            visible: pairingRow.index < HearthController.pairingRecords.length - 1
+                                            color: Theme.divider
+                                        }
                                     }
                                 }
                             }
@@ -241,12 +301,20 @@ ScrollView {
                 spacing: Theme.gap * 2
 
                 Card {
-                    title: qsTr("03 Appearance")
+                    ordinal: "03"
+                    title: qsTr("Appearance")
+                    framed: true
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Theme"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text {
+                            text: qsTr("Theme")
+                            color: Theme.text
+                            font.pixelSize: Theme.fontNormal
+                            elide: Text.ElideRight
+                            Layout.preferredWidth: root.labelWidth
+                        }
                         SegmentedControl {
                             accessibleName: qsTr("Theme")
                             currentValue: HearthController.theme
@@ -261,7 +329,13 @@ ScrollView {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Palette"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text {
+                            text: qsTr("Palette")
+                            color: Theme.text
+                            font.pixelSize: Theme.fontNormal
+                            elide: Text.ElideRight
+                            Layout.preferredWidth: root.labelWidth
+                        }
                         SegmentedControl {
                             accessibleName: qsTr("Palette")
                             currentValue: HearthController.palette
@@ -280,7 +354,13 @@ ScrollView {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Text size"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text {
+                            text: qsTr("Text size")
+                            color: Theme.text
+                            font.pixelSize: Theme.fontNormal
+                            elide: Text.ElideRight
+                            Layout.preferredWidth: root.labelWidth
+                        }
                         SegmentedControl {
                             objectName: "settingsTextSize"
                             accessibleName: qsTr("Text size")
@@ -295,55 +375,76 @@ ScrollView {
                             onSelected: function(value) { HearthController.textScale = value; }
                         }
                     }
-                    Text {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: qsTr("Every size in the window follows this; 100% is the size it is drawn at. "
-                                  + "System takes the text size the desktop reports and counts 9 pt as 100%.")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSmall
-                        wrapMode: Text.WordWrap
+                        spacing: Theme.gap
+                        Item { Layout.preferredWidth: root.labelWidth }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Every size in the window follows this; 100% is the size it is drawn at. "
+                                      + "System takes the text size the desktop reports and counts 9 pt as 100%.")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
                     }
                 }
 
                 Card {
-                    title: qsTr("04 Language")
+                    ordinal: "04"
+                    title: qsTr("Language")
+                    framed: true
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Language"); color: Theme.textMuted; Layout.preferredWidth: 90 }
-                        ComboBox {
+                        Text {
+                            text: qsTr("Language")
+                            color: Theme.text
+                            font.pixelSize: Theme.fontNormal
+                            elide: Text.ElideRight
+                            Layout.preferredWidth: root.labelWidth
+                        }
+                        AppComboBox {
                             enabled: false
-                            Layout.fillWidth: true
+                            Layout.preferredWidth: Math.round(320 * Theme.fontScale)
                             model: [qsTr("English · the system language")]
                             Accessible.name: qsTr("Language")
                         }
+                        Item { Layout.fillWidth: true }
                     }
-                    Text {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: qsTr("Not adjustable from this build yet: Hearth has no translation catalogues "
-                                  + "wired in, so every page reads in English regardless of the desktop's own "
-                                  + "language. A later slice adds the six languages ac3gui and Crucible already "
-                                  + "offer.")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSmall
-                        wrapMode: Text.WordWrap
+                        spacing: Theme.gap
+                        Item { Layout.preferredWidth: root.labelWidth }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Not adjustable from this build yet: Hearth has no translation catalogues "
+                                      + "wired in, so every page reads in English regardless of the desktop's own "
+                                      + "language. A later slice adds the six languages ac3gui and Crucible already "
+                                      + "offer.")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
                     }
                 }
 
                 Card {
-                    title: qsTr("05 Diagnostics")
+                    ordinal: "05"
+                    title: qsTr("Diagnostics")
+                    framed: true
 
                     Text {
                         Layout.fillWidth: true
                         text: qsTr("A text file of what Hearth has done: outputs opened, streams played, sinks "
                                   + "found and paired, and every error. Pairing keys, codes and file paths are "
                                   + "left out.")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSmall
+                        color: Theme.text
+                        font.pixelSize: Theme.fontNormal
                         wrapMode: Text.WordWrap
                     }
-                    Button {
+                    AppButton {
                         objectName: "settingsDiagnosticsButton"
                         text: qsTr("Save diagnostics…")
                         Accessible.description: qsTr("Writes a plain-text support file where you choose. Nothing is sent anywhere.")
