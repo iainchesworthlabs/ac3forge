@@ -233,12 +233,12 @@
 <context>
     <name>EncoderController</name>
     <message>
-        <location filename="../encoder_controller.cpp" line="7331"/>
+        <location filename="../encoder_controller.cpp" line="7334"/>
         <source>Saved to %1</source>
         <translation>Enregistré dans %1</translation>
     </message>
     <message>
-        <location filename="../encoder_controller.cpp" line="7334"/>
+        <location filename="../encoder_controller.cpp" line="7337"/>
         <source>Could not write %1: %2</source>
         <translation>Impossible d&apos;écrire %1 : %2</translation>
     </message>
