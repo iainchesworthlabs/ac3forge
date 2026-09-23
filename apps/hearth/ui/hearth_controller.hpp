@@ -36,6 +36,13 @@ class HearthController : public QObject {
     QML_ELEMENT
     QML_SINGLETON
 
+    // --- about ------------------------------------------------------------
+    // Version, commit and build target, for About (ac3::version_details()).
+    Q_PROPERTY(QString versionDetails READ versionDetails CONSTANT)
+    // The third-party notices this build ships - the package's NOTICES.txt,
+    // embedded at build time - for About > Licences.
+    Q_PROPERTY(QString licenceNotices READ licenceNotices CONSTANT)
+
     // --- queue and transport --------------------------------------------
     // Each entry: path, title, playable (bool), note (why not, or a
     // decode-time remark), durationMs, channels, sampleRate, hasObjects,
@@ -107,6 +114,13 @@ class HearthController : public QObject {
     // The layout's own text ("5.1.2", or a list form) - render::OutputLayout::
     // text(). Same fixed-once-slots-appear lifetime as speakerLabels.
     Q_PROPERTY(QString layoutText READ layoutText NOTIFY speakerSetupChanged)
+    // The identify tone's IDENTIFY card: the pink-noise level every session
+    // plays at (the design offers -30/-20/-12 dB; render::IdentifyTone's
+    // own range is wider) and which speakerLabels slot is currently
+    // sounding it, or -1 for none - the same index space as trimDb/
+    // speakerLabels, not a device output.
+    Q_PROPERTY(double identifyLevelDb READ identifyLevelDb NOTIFY speakerSetupChanged)
+    Q_PROPERTY(int identifySlot READ identifySlot NOTIFY speakerSetupChanged)
 
     // --- play monitor (the Play page: levels, loudness, this frame's ------
     // detail, object placement and signal path) ---------------------------
@@ -160,6 +174,9 @@ public:
     // on screen does not open a device with nothing yet shown for it.
     Q_INVOKABLE void start();
 
+    [[nodiscard]] QString versionDetails() const;
+    [[nodiscard]] QString licenceNotices() const;
+
     [[nodiscard]] QVariantList queue() const { return queue_; }
     [[nodiscard]] int currentIndex() const { return current_index_; }
     [[nodiscard]] QString state() const { return state_; }
@@ -188,6 +205,12 @@ public:
     Q_INVOKABLE void removeAt(int index);
     // Each path becomes one queue item, titled by its file name.
     Q_INVOKABLE void addFiles(const QStringList& paths);
+    // Every media file item_loader.hpp's list_folder_items() finds under
+    // `path` (recursively), added the same way addFiles() adds a file
+    // picked directly - including a container list_folder_items() lists but
+    // make_file_item_loader() cannot yet open, which lands in the queue
+    // unplayable with a reason, same as addFiles() already does for one.
+    Q_INVOKABLE void addFolder(const QString& path);
 
     [[nodiscard]] QVariantMap decoderSettings() const { return decoder_settings_; }
     // Rebuilds a DecoderSettings from `settings` (every key
@@ -206,6 +229,8 @@ public:
     [[nodiscard]] QStringList speakerLabels() const { return speaker_labels_; }
     [[nodiscard]] QVariantList speakerSmall() const { return speaker_small_; }
     [[nodiscard]] QString layoutText() const { return layout_text_; }
+    [[nodiscard]] double identifyLevelDb() const { return identify_level_db_; }
+    [[nodiscard]] int identifySlot() const { return identify_slot_; }
 
     [[nodiscard]] QVariantList levels() const { return levels_; }
     [[nodiscard]] QVariantMap loudness() const { return loudness_; }
@@ -228,6 +253,12 @@ public:
     // slot per output in slot order) - the routing grid's "Use the device's
     // order" button.
     Q_INVOKABLE void useDeviceOrder();
+
+    Q_INVOKABLE void setIdentifyLevelDb(double db);
+    // Starts the identify tone on `slot`, moving it there if another slot
+    // was already sounding it. No-op for slot < 0.
+    Q_INVOKABLE void startIdentify(int slot);
+    Q_INVOKABLE void stopIdentify();
 
 signals:
     void queueChanged();
@@ -267,6 +298,12 @@ private:
     QStringList speaker_labels_;
     QVariantList speaker_small_;
     QString layout_text_;
+    // -20.0 here mirrors render::IdentifyTone::kDefaultLevelDb without this
+    // header needing that include - see setDecoderSettings()'s own comment
+    // on why ac3::render stays out of this file. Overwritten by the first
+    // poll() regardless, the way speakerLabels' own comment explains.
+    double identify_level_db_ = -20.0;
+    int identify_slot_ = -1;
 
     QVariantList levels_;
     QVariantMap loudness_;

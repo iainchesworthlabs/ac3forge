@@ -6,13 +6,16 @@ import Ac3ForgeHearth
 
 // Keyboard shortcuts reference, opened from the header's "?" button and F1
 // (issue #830). The same Dialog shape as Crucible's AboutDialog.qml, on
-// Hearth's own plain-Button convention. About and Licences (issue #854)
-// are not built yet, so this is the header button's whole scope for now -
-// whoever builds #854 decides whether it joins this dialog or gets its own
-// entry point.
+// Hearth's own plain-Button convention. The header "?"/F1 stays this
+// dialog's alone (agreed between the #830 and #854 sessions rather than a
+// second header control); About… chains to AboutDialog.qml (issue #854),
+// which chains its own Licences… to LicencesDialog.qml one hop further -
+// "? -> Shortcuts -> About -> Licences".
 Dialog {
     id: root
     objectName: "shortcutsDialog"
+    // About…: Main.qml opens AboutDialog over this one.
+    signal showAbout()
     modal: true
     // A Popup honours CloseOnEscape only while it has active focus, so the
     // dialog takes it as it opens; and Close is where a keyboard user wants
@@ -100,6 +103,7 @@ Dialog {
         RowLayout {
             Layout.topMargin: Theme.space3
             Item { Layout.fillWidth: true }
+            Button { objectName: "shortcutsAboutButton"; text: qsTr("About…"); onClicked: root.showAbout() }
             Button {
                 id: shortcutsCloseButton
                 objectName: "shortcutsCloseButton"
