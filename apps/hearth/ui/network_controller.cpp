@@ -17,6 +17,7 @@
 #include "network_sinks.hpp"
 #include "network_view.hpp"
 #include "pairing_store.hpp"
+#include "qsettings_store.hpp"
 #include "settings_model.hpp"
 
 namespace ac3::hearth::ui {
@@ -56,7 +57,14 @@ constexpr int kPollMs = 60;
 
 NetworkController::NetworkController(QObject* parent)
     : QObject(parent),
-      settings_store_(std::make_unique<ac3::hearth::MemorySettingsStore>()),
+      // The four-argument constructor: the two-argument one always uses the
+      // native store (the registry here) whatever QSettings::setDefaultFormat
+      // says, which would let a QML test suite - or a --shot capture - read
+      // and write the developer's own settings. hearth_controller.cpp's own
+      // constructor carries the identical comment for the identical reason.
+      settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"),
+                QStringLiteral("Hearth")),
+      settings_store_(std::make_unique<ac3::hearth::ui::QSettingsStore>(settings_)),
       pairing_store_(std::make_unique<ac3::hearth::PairingStore>(
           *settings_store_, [] { return QDate::currentDate().toString(Qt::ISODate).toStdString(); })) {
     poll_timer_.setInterval(kPollMs);

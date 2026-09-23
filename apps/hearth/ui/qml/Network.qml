@@ -90,19 +90,9 @@ Item {
                 Layout.preferredWidth: 2
                 spacing: Theme.gap
 
-                Text {
-                    Layout.fillWidth: true
-                    // See NetworkSinkList.qml's own comment on elide vs.
-                    // Layout.minimumWidth.
-                    Layout.minimumWidth: 0
-                    text: qsTr("02 %1").arg(NetworkController.selectedSink.name ?? "").toUpperCase()
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.fontSmall
-                    font.bold: true
-                    elide: Text.ElideRight
-                }
-
                 Card {
+                    title: qsTr("02 %1").arg(NetworkController.selectedSink.name ?? "").toUpperCase()
+
                     Text {
                         Layout.fillWidth: true
                         // See NetworkSinkList.qml's own comment: a wrapped
