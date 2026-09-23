@@ -192,11 +192,16 @@ jobs:
       - name: Upload
         env:
           IDF_COMPONENT_API_TOKEN: ${{ secrets.IDF_COMPONENT_API_TOKEN }}
+          # Env, not spliced straight into the script (zizmor's
+          # template-injection check, alerts #336/#337): steps.pack.outputs.version
+          # is only ever a tag name today, but this is the same guard regardless
+          # of what a future step ever sets it from.
+          VERSION: ${{ steps.pack.outputs.version }}
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
           compote component upload \
             --namespace iainchesworthlabs \
             --name ac3forge \
-            --version "${{ steps.pack.outputs.version }}" \
-            --archive "dist/esp-component/ac3forge_${{ steps.pack.outputs.version }}.tgz"
+            --version "$VERSION" \
+            --archive "dist/esp-component/ac3forge_${VERSION}.tgz"
