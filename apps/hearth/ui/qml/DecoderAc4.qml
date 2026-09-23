@@ -6,11 +6,15 @@ import Ac3ForgeHearth
 
 // The AC-4 decoder page (planning/hearth-design.md), inactive: AC-4 needs a
 // decoder this build does not have (chip D). Every control the format will
-// use is drawn so the page is complete, held inactive with the "not in this
-// build" banner the design gives it, and the two controls AC-4 shares with
-// AC-3/E-AC-3 (dynamic range mode, stereo/mono downmix) mirror what the
-// Decoder tab's own AC-3/E-AC-3 page holds, live, so the two pages cannot
-// disagree once chip D lands and this one turns on for real.
+// use is drawn, held inactive with the "not in this build" banner the design
+// gives it, and the two controls AC-4 shares with AC-3/E-AC-3 (dynamic range
+// mode, stereo/mono downmix) mirror what the Decoder tab's own AC-3/E-AC-3
+// page holds, live, so the two pages cannot disagree once chip D lands and
+// this one turns on for real. One simplification: "01 Presentation" is a
+// single static ComboBox row, not the design's real #/language/channels/
+// content/groups table - there is no stream to read a real table's worth of
+// presentations from yet, so building it now would mean inventing rows
+// rather than reading them.
 ScrollView {
     id: root
     clip: true
@@ -108,7 +112,19 @@ ScrollView {
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.WordWrap
                     }
-                    CheckBox { text: qsTr("Mix in audio description") }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+                        CheckBox { text: qsTr("Mix in audio description") }
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 32
+                            text: qsTr("When the presentation carries an associated programme.")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
+                    }
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap

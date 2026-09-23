@@ -294,6 +294,12 @@ constexpr int kPollMs = 60;
         map[QStringLiteral("objectCount")] = report.program->dynamic_objects;
         map[QStringLiteral("bedLabel")] =
             QString::fromStdString(apps::probe_json::bed_label(*report.program));
+        // What JOC actually reconstructs (bed and ISF objects, less the LFE
+        // bypass) - objectCount above is dynamic_objects alone, which is 0
+        // for a JOC-reconstructed bed with no dynamic layer, so the Decoder
+        // page's "This stream" card needs this to say how many objects that
+        // is rather than none at all (issue #905).
+        map[QStringLiteral("jocReconstructedCount")] = oba::joc_object_count(*report.program);
     }
     map[QStringLiteral("authenticityTaggedFrames")] =
         static_cast<qlonglong>(report.authenticity_tagged_frames);
