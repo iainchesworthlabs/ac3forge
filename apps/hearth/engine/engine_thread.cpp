@@ -44,6 +44,7 @@ Engine::Engine(EngineOutputs outputs, ItemLoader loader, const render::OutputLay
                                                  /*bitstream_output=*/outputs.bitstream != nullptr)),
       player_(PlayerOutputs{.pcm = std::move(outputs.pcm),
                             .bitstream = std::move(outputs.bitstream),
+                            .group = std::move(outputs.group),
                             .choose = [chooser = selector_.get()](const ItemFacts& facts,
                                                                   const HeldOutput& held) {
                                 return chooser->choose(facts, held);
