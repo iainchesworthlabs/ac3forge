@@ -2,7 +2,9 @@
 // controller carries 512 bits a frame (I2S_LL_SLOT_FRAME_BIT_MAX), four
 // times the ESP32-S3/C6's 128, which is enough on its own to reach this
 // product's full sixteen-channel target (planning/esp32-sink-tiers.md's
-// "best" tier: one wide controller into both ES9080 DACs, 16x32-bit).
+// "best" tier: one wide controller into both ES9080 DACs, 16x32-bit) - on
+// >=v3.0 silicon. See "TDM MODE IS NOT REACHABLE..." below for what this
+// means on the pre-production chip revision this was brought up on.
 //
 // See ../../audio_sink.hpp for why this is a directory CMake picks rather
 // than a branch in the player, and ../../../../include/ac3forge/sink_plan.hpp
@@ -26,6 +28,31 @@
 // holds I2S_LL_SLOT_FRAME_BIT_MAX bits). CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME=1
 // opens TDM at the full width for 1-2 channels too, for a TDM DAC set up for
 // one frame shape (an ES9080) - see sink_plan.hpp's header comment for why.
+//
+// TDM MODE IS NOT REACHABLE ON PRE-PRODUCTION (< v3.0) P4 SILICON AT ALL,
+// found on a board 2026-09-23, not specific to sixteen slots. TDM always
+// opens at the line's FULL width regardless of how many of those slots a
+// layout actually uses (slot_mask below is "always the full width, not the
+// channel count" - see sink/i2s/audio_sink.cpp's own copy of that rule,
+// because a real TDM DAC is set up for one fixed frame shape and a play
+// cannot change it out from under it). That full width is
+// I2S_LL_SLOT_FRAME_BIT_MAX - 512 bits, fixed by the part, not by the
+// layout - and this chip revision's I2S peripheral has no PLL clock source
+// at all (components/esp_hal_i2s/esp32p4/include/hal/i2s_ll.h: "No PLL
+// clock source before version 3, use XTAL as default"). Of the two sources
+// that remain, XTAL is 40 MHz (nowhere close) and APLL's own hardware
+// ceiling is 125 MHz (CLK_LL_APLL_MAX_HZ) - enough for at most ~13 slots at
+// 32-bit (~434 bits/frame) at 48 kHz, short of the 16 this sink's TDM path
+// always asks for once ANY layout has 3 or more channels. A 7.1.4 (12
+// slots' worth of real channels) play still failed identically to a 9.1.6
+// one - same "adjust the mclk multiple to 1536" - because both open the
+// same 16-slot frame. Confirmed correct on the arithmetic and clock-source
+// choice below (I2S_CLK_SRC_APLL, itself needed - the DEFAULT source is
+// worse, not better); this is a real ceiling of this exact silicon
+// revision, not a bug here. A >=v3.0 chip's 160 MHz PLL
+// (I2S_CLK_SRC_PLL_160M) clears this with room to spare - see
+// docs/platforms/bare-metal/esp32-p4.md for this board's other
+// pre-production-only findings.
 //
 // Slot width and sample rate: CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS, 32 by
 // default, reused unchanged from the narrow sink - the same Kconfig options
@@ -238,6 +265,28 @@ bool configure_line(Line& line, const ac3forge::SinkLinePlan& plan, const LineGp
     if (plan.tdm) {
         i2s_tdm_config_t tdm_cfg = {};
         tdm_cfg.clk_cfg = I2S_TDM_CLK_DEFAULT_CONFIG(sample_rate);
+        // I2S_CLK_SRC_DEFAULT resolves to a fixed clock (I2S_LL_DEFAULT_CLK_SRC) rather
+        // than one tuned to what is asked of it. At this controller's full sixteen
+        // 32-bit slots the required bit clock is high enough that
+        // I2S_TDM_CLK_DEFAULT_CONFIG's own 256x MCLK multiple is not just "not the
+        // fastest option" but flatly too small - i2s_tdm_calculate_clock corrects it
+        // to 1536x on its own (esp_driver_i2s/i2s_tdm.c) - and DEFAULT's fixed source
+        // clock does not have the headroom that correction then needs, failing
+        // "sample rate is too large" before a channel is even enabled. Found on a
+        // board 2026-09-23: the 1-2 channel case never hits this (standard mode's own,
+        // much narrower, clock math), which is why sink/i2s's TDM path - verified on
+        // the S3 and C6 already, both a different clock tree from this part's - was no
+        // guide here. APLL (SOC_I2S_SUPPORTS_APLL) is tuned to the mclk it is actually
+        // asked for (i2s_set_get_apll_freq) rather than fixed, and is the better of the
+        // two sources this pre-production chip revision actually has (see the
+        // top-of-file comment) - but APLL's own 125 MHz ceiling still falls short of
+        // what TDM's full sixteen-slot frame needs, so this line makes TDM mode
+        // reachable for NOTHING wider than about 13 slots at 32-bit on this exact
+        // revision, not the sixteen the arithmetic below plans for. Left in rather
+        // than reverted to DEFAULT: it is still strictly better here (DEFAULT cannot
+        // open TDM at ANY width past two channels on this revision, APLL can up to
+        // ~13), and it is exactly correct, with full headroom, on >=v3.0 silicon.
+        tdm_cfg.clk_cfg.clk_src = I2S_CLK_SRC_APLL;
         tdm_cfg.slot_cfg = I2S_TDM_PHILIPS_SLOT_DEFAULT_CONFIG(data_bits(), I2S_SLOT_MODE_STEREO,
                                                                slot_mask(plan.slots));
         tdm_cfg.gpio_cfg.mclk = I2S_GPIO_UNUSED;
