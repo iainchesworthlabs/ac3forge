@@ -28,7 +28,9 @@
 # without its own sources here QML fails at runtime with "NetworkController
 # is not defined" rather than at configure or compile time - moc/qmltyperegistrar
 # only register a QML_ELEMENT class that is actually part of the target it runs
-# against.
+# against. apps/gui/language_manager.cpp/.hpp is the third, for the same
+# reason: Settings.qml imports Ac3ForgeHearthLanguage, whose LanguageManager
+# main.cpp registers as a singleton instance.
 # ---------------------------------------------------------------------------
 find_package(Qt6 6.8 REQUIRED COMPONENTS QuickTest)
 
@@ -40,6 +42,11 @@ qt_add_executable(ac3hearth_qmltests
     item_loader.hpp
     network_controller.cpp
     network_controller.hpp
+    # Settings.qml imports Ac3ForgeHearthLanguage now, so the suite needs the
+    # same LanguageManager ac3hearth itself compiles in - a third singleton,
+    # registered the same way and failing the same way without its sources.
+    "${PROJECT_SOURCE_DIR}/apps/gui/language_manager.cpp"
+    "${PROJECT_SOURCE_DIR}/apps/gui/language_manager.hpp"
     "${PROJECT_SOURCE_DIR}/apps/common/container_input.cpp"
     "${PROJECT_SOURCE_DIR}/apps/common/container_input.hpp")
 
@@ -62,6 +69,7 @@ add_dependencies(ac3hearth_qmltests ac3hearth)
 
 target_include_directories(ac3hearth_qmltests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/apps/gui"
     "${CMAKE_SOURCE_DIR}/apps/common")
 target_compile_definitions(ac3hearth_qmltests PRIVATE
     QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml")

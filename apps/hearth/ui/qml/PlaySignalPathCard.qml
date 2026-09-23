@@ -10,7 +10,8 @@ import Ac3ForgeHearth
 // way as PlayObjectsCard.qml - see that file's own header comment.
 Card {
     id: root
-    title: qsTr("07 Signal path")
+    ordinal: "07"
+    title: qsTr("Signal path")
     flat: true
 
     Rectangle {
@@ -169,7 +170,7 @@ Card {
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSmall
                 }
-                Button {
+                AppButton {
                     objectName: "playChooseOutput"
                     text: qsTr("Choose…")
                     // The enclosing ApplicationWindow, reached through the

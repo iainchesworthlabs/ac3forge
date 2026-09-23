@@ -75,7 +75,7 @@ Rectangle {
             font.pixelSize: Theme.fontSmall
         }
 
-        Slider {
+        AppSlider {
             id: scrubber
             objectName: "transportPosition"
             Layout.fillWidth: true
@@ -114,35 +114,6 @@ Rectangle {
             Accessible.description: qsTr("%1 of %2")
                 .arg(formatMs(HearthController.positionMs))
                 .arg(formatMs(HearthController.durationMs))
-
-            // A slim progress bar with a tick handle (main-play.png's own
-            // footer), not QQC2 Basic's stock groove-and-circle - the same
-            // reason every custom-shaped control in this family draws its
-            // own look rather than leaving a native control's default (this
-            // file's own header comment on the plain-Rectangle queue-row
-            // idiom, though here the native Slider is kept for its real
-            // drag/keyboard handling and only its two visual delegates are
-            // replaced).
-            background: Rectangle {
-                x: scrubber.leftPadding
-                y: scrubber.topPadding + scrubber.availableHeight / 2 - height / 2
-                width: scrubber.availableWidth
-                height: 4
-                color: Theme.neutral300
-
-                Rectangle {
-                    width: scrubber.visualPosition * parent.width
-                    height: parent.height
-                    color: Theme.accent
-                }
-            }
-            handle: Rectangle {
-                x: scrubber.leftPadding + scrubber.visualPosition * (scrubber.availableWidth - width)
-                y: scrubber.topPadding + scrubber.availableHeight / 2 - height / 2
-                width: 4
-                height: 16
-                color: Theme.text
-            }
         }
         Connections {
             target: HearthController
@@ -234,7 +205,7 @@ Rectangle {
             font.pixelSize: Theme.iconSize
             color: Theme.textMuted
         }
-        Slider {
+        AppSlider {
             id: volumeSlider
             objectName: "transportVolume"
             Layout.preferredWidth: 120
@@ -248,29 +219,6 @@ Rectangle {
             // trusted to still be bound after the first move.
             onMoved: HearthController.setVolumeDb(value)
             Accessible.name: qsTr("Volume")
-
-            // Same slim-bar-and-tick look as the scrubber above, not QQC2
-            // Basic's stock groove-and-circle.
-            background: Rectangle {
-                x: volumeSlider.leftPadding
-                y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
-                width: volumeSlider.availableWidth
-                height: 4
-                color: Theme.neutral300
-
-                Rectangle {
-                    width: volumeSlider.visualPosition * parent.width
-                    height: parent.height
-                    color: Theme.accent
-                }
-            }
-            handle: Rectangle {
-                x: volumeSlider.leftPadding + volumeSlider.visualPosition * (volumeSlider.availableWidth - width)
-                y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
-                width: 4
-                height: 16
-                color: Theme.text
-            }
         }
         Connections {
             target: HearthController

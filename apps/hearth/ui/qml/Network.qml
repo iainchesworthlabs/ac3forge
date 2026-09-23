@@ -116,7 +116,12 @@ Item {
                 spacing: Theme.gap
 
                 Card {
-                    title: qsTr("02 %1").arg(NetworkController.selectedSink.name ?? "").toUpperCase()
+                    ordinal: "02"
+                    // SectionHeader uppercases the label itself, so the
+                    // name goes in as it is rather than through
+                    // toUpperCase(), which has no business running over a
+                    // translated or non-Latin string.
+                    title: NetworkController.selectedSink.name ?? ""
 
                     Text {
                         Layout.fillWidth: true

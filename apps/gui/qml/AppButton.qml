@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Layouts
 
 import Ac3Forge
 
@@ -17,12 +18,15 @@ Rectangle {
     property string text: ""
     property bool primary: false
     property bool enabled: true
+    // One of Theme's icon tokens, drawn before the label - the sheet's
+    // "＋ With icon" button. Empty for a plain one.
+    property string glyph: ""
     signal clicked()
 
     // The design's 30, and taller when the text is larger, rather than a
     // label clipped inside a fixed box.
-    implicitHeight: Math.max(30, label.implicitHeight + 12)
-    implicitWidth: label.implicitWidth + 24
+    implicitHeight: Math.max(30, row.implicitHeight + 12)
+    implicitWidth: row.implicitWidth + 24
     color: primary ? Theme.accent : "transparent"
     border.color: Theme.divider
     border.width: 1
@@ -51,19 +55,32 @@ Rectangle {
         }
     }
 
-    Text {
-        id: label
+    RowLayout {
+        id: row
         anchors.centerIn: parent
-        // A button narrower than its label (a long translation in a fixed
+        // A button narrower than its content (a long translation in a fixed
         // rail) elides rather than spills.
         width: Math.min(implicitWidth, root.width - 16)
-        horizontalAlignment: Text.AlignHCenter
-        elide: Text.ElideRight
-        text: root.text
-        // On an accent fill, whichever end of the palette reads better on
-        // it (Theme.accentText); plain text otherwise.
-        color: root.primary ? Theme.accentText : Theme.text
-        font.pixelSize: Theme.fontBody
+        spacing: Theme.space2
+
+        Text {
+            visible: root.glyph.length > 0
+            text: root.glyph
+            font.family: Theme.iconFamily
+            font.pixelSize: Theme.iconSize
+            color: root.primary ? Theme.accentText : Theme.text
+        }
+        Text {
+            id: label
+            Layout.fillWidth: true
+            horizontalAlignment: root.glyph.length > 0 ? Text.AlignLeft : Text.AlignHCenter
+            elide: Text.ElideRight
+            text: root.text
+            // On an accent fill, whichever end of the palette reads better on
+            // it (Theme.accentText); plain text otherwise.
+            color: root.primary ? Theme.accentText : Theme.text
+            font.pixelSize: Theme.fontBody
+        }
     }
     MouseArea {
         anchors.fill: parent

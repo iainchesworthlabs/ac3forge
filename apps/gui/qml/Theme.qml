@@ -298,6 +298,12 @@ QtObject {
     readonly property int fontMono: Math.round(11 * fontScale)
     readonly property int fontMicro: Math.round(10 * fontScale)
     readonly property int fontFine: Math.round(9 * fontScale)
+    // The tracking the design gives its small uppercase labels - section
+    // headers, table column heads, eyebrows. Measured off the mockups, where
+    // "NOW PLAYING" at fontSmall runs about a pixel per glyph wider than the
+    // same string set solid. In pixels, so it follows fontScale with the
+    // type it spaces.
+    readonly property real trackingWide: 1.2 * fontScale
 
     // The handoff's faces, resolved against what this machine actually has:
     // Archivo (weight 800 headings) with the platform UI face as the

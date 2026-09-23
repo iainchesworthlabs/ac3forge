@@ -15,6 +15,12 @@ import Ac3ForgeHearth
 // the Media page reads for any queue item, not just this one.
 ScrollView {
     id: root
+
+    // The control column the mockups measure: every row's control starts
+    // 120 px after the card's content edge, which is this plus Theme.gap.
+    // Scaled, so a label that grows keeps its column instead of pushing
+    // through the control beside it.
+    readonly property int labelWidth: Math.round(108 * Theme.fontScale)
     clip: true
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
@@ -76,15 +82,19 @@ ScrollView {
             ColumnLayout {
                 Layout.preferredWidth: 1
                 Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
                 spacing: Theme.gap * 2
 
                 Card {
-                    title: qsTr("01 Dynamic range")
+                    ordinal: "01"
+                    title: qsTr("Dynamic range")
+                    framed: true
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Mode"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text { text: qsTr("Mode"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                         SegmentedControl {
                             accessibleName: qsTr("Mode")
                             currentValue: root.settings.mode ?? "line"
@@ -109,86 +119,125 @@ ScrollView {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        enabled: root.settings.mode === "custom"
-                        Text { text: qsTr("Cut"); color: Theme.textMuted; Layout.preferredWidth: 90 }
-                        Slider {
-                            Layout.fillWidth: true
+                        // `enabled` belongs on the control, not the row: the
+                        // design dims a disabled slider but keeps its label
+                        // at full strength (measured on decoder-ac3-eac3.png
+                        // with mode = Line).
+                        Text { text: qsTr("Cut"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                        AppSlider {
+                            id: cutSlider
+                            Layout.preferredWidth: Math.round(200 * Theme.fontScale)
+                            enabled: root.settings.mode === "custom"
                             from: 0; to: 1
                             value: root.settings.drcCut ?? 1.0
                             onMoved: root.set("drcCut", value)
+                            // A drag writes `value` directly and the binding
+                            // above is gone for good, so it is resynced from
+                            // the controller whenever the settings change -
+                            // the same shape TransportBar's scrubber uses.
+                            Connections {
+                                target: HearthController
+                                function onDecoderSettingsChanged() {
+                                    cutSlider.value = root.settings.drcCut ?? 1.0;
+                                }
+                            }
                         }
                         Text {
                             text: qsTr("%1%").arg(Math.round((root.settings.drcCut ?? 1.0) * 100))
                             color: Theme.textMuted
+                            font.family: Theme.monoFamily
+                            font.pixelSize: Theme.fontNormal
+                            Layout.preferredWidth: Math.round(44 * Theme.fontScale)
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        // `enabled` belongs on the control, not the row: the
+                        // design dims a disabled slider but keeps its label
+                        // at full strength (measured on decoder-ac3-eac3.png
+                        // with mode = Line).
+                        Text { text: qsTr("Boost"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                        AppSlider {
+                            id: boostSlider
+                            Layout.preferredWidth: Math.round(200 * Theme.fontScale)
+                            enabled: root.settings.mode === "custom"
+                            from: 0; to: 1
+                            value: root.settings.drcBoost ?? 1.0
+                            onMoved: root.set("drcBoost", value)
+                            // A drag writes `value` directly and the binding
+                            // above is gone for good, so it is resynced from
+                            // the controller whenever the settings change -
+                            // the same shape TransportBar's scrubber uses.
+                            Connections {
+                                target: HearthController
+                                function onDecoderSettingsChanged() {
+                                    boostSlider.value = root.settings.drcBoost ?? 1.0;
+                                }
+                            }
+                        }
+                        Text {
+                            text: qsTr("%1%").arg(Math.round((root.settings.drcBoost ?? 1.0) * 100))
+                            color: Theme.textMuted
+                            font.family: Theme.monoFamily
+                            font.pixelSize: Theme.fontNormal
+                            Layout.preferredWidth: Math.round(44 * Theme.fontScale)
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        Item { Layout.preferredWidth: root.labelWidth }
+                        AppCheckBox {
+                            Layout.fillWidth: true
+                            enabled: root.settings.mode === "custom"
+                            text: qsTr("Heavy compression")
+                            note: qsTr("Uses the compr words where the stream carries them.")
+                            checked: root.settings.heavyCompression ?? false
+                            onToggled: function(on) { root.set("heavyCompression", on); }
                         }
                     }
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        enabled: root.settings.mode === "custom"
-                        Text { text: qsTr("Boost"); color: Theme.textMuted; Layout.preferredWidth: 90 }
-                        Slider {
+                        Item { Layout.preferredWidth: root.labelWidth }
+                        AppCheckBox {
                             Layout.fillWidth: true
-                            from: 0; to: 1
-                            value: root.settings.drcBoost ?? 1.0
-                            onMoved: root.set("drcBoost", value)
-                        }
-                        Text {
-                            text: qsTr("%1%").arg(Math.round((root.settings.drcBoost ?? 1.0) * 100))
-                            color: Theme.textMuted
-                        }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 0
-                        enabled: root.settings.mode === "custom"
-                        CheckBox {
-                            text: qsTr("Heavy compression")
-                            checked: root.settings.heavyCompression ?? false
-                            onToggled: root.set("heavyCompression", checked)
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 32
-                            text: qsTr("Uses the compr words where the stream carries them.")
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
-                        }
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 0
-                        enabled: root.settings.mode === "custom"
-                        CheckBox {
+                            enabled: root.settings.mode === "custom"
                             text: qsTr("Dialogue normalisation")
+                            note: qsTr("Brings dialogue to −31 dBFS and never raises it. Line and RF turn it on.")
                             checked: root.settings.normaliseDialogue ?? true
-                            onToggled: root.set("normaliseDialogue", checked)
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 32
-                            text: qsTr("Brings dialogue to −31 dBFS and never raises it. Line and RF turn it on.")
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
+                            onToggled: function(on) { root.set("normaliseDialogue", on); }
                         }
                     }
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
                         enabled: root.settings.mode === "rf"
-                        Text { text: qsTr("RF ceiling"); color: Theme.textMuted; Layout.preferredWidth: 90 }
-                        TextField {
-                            Layout.preferredWidth: 90
-                            horizontalAlignment: Text.AlignRight
-                            font.family: Theme.monoFamily
+                        Text { text: qsTr("RF ceiling"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                        AppTextField {
+                            id: rfCeilingField
+                            Layout.preferredWidth: Math.round(140 * Theme.fontScale)
+                            enabled: root.settings.mode === "rf"
+                            // The design writes the unit inside the box,
+                            // right-aligned, rather than as a label after it.
+                            unit: qsTr("dBFS")
                             // No lower bound: output.hpp's own comment on
                             // rf_ceiling treats more headroom than asked for
                             // as a valid choice, just a quieter one. The
                             // upper bound is real - full scale is as high as
-                            // a ceiling means anything.
-                            validator: DoubleValidator { top: 0; decimals: 1 }
+                            // a ceiling means anything. StandardNotation
+                            // because the default accepts "-1e3" as valid.
+                            validator: DoubleValidator {
+                                top: 0
+                                decimals: 1
+                                notation: DoubleValidator.StandardNotation
+                            }
                             text: Number(root.settings.rfCeilingDb ?? 0).toFixed(1)
                             Accessible.name: qsTr("RF ceiling, dBFS")
                             onEditingFinished: {
@@ -197,8 +246,15 @@ ScrollView {
                                     root.set("rfCeilingDb", value);
                                 }
                             }
+                            // Typing writes `text` directly and the binding
+                            // above is gone for good, so it is re-read
+                            // whenever this is not the field being edited.
+                            Binding on text {
+                                value: Number(root.settings.rfCeilingDb ?? 0).toFixed(1)
+                                when: !rfCeilingField.activeFocus
+                                restoreMode: Binding.RestoreBindingOrValue
+                            }
                         }
-                        Text { text: qsTr("dBFS"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall }
                         Text {
                             Layout.fillWidth: true
                             text: qsTr("What RF mode holds the fold under. Full scale by default; no effect in "
@@ -211,7 +267,9 @@ ScrollView {
                 }
 
                 Card {
-                    title: qsTr("02 Stereo and mono")
+                    ordinal: "02"
+                    title: qsTr("Stereo and mono")
+                    framed: true
 
                     Text {
                         Layout.fillWidth: true
@@ -228,7 +286,8 @@ ScrollView {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Downmix"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text { text: qsTr("Downmix"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                         SegmentedControl {
                             accessibleName: qsTr("Downmix")
                             currentValue: root.settings.stereoFold ?? "loro"
@@ -239,15 +298,30 @@ ScrollView {
                             onSelected: function(value) { root.set("stereoFold", value); }
                         }
                     }
-                    CheckBox {
-                        text: qsTr("Phase-shift the surround sum")
-                        checked: root.settings.ltrtPhaseShift ?? true
-                        onToggled: root.set("ltrtPhaseShift", checked)
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        Item { Layout.preferredWidth: root.labelWidth }
+                        AppCheckBox {
+                            Layout.fillWidth: true
+                            text: qsTr("Phase-shift the surround sum")
+                            note: qsTr("Lt/Rt only. Delays the output by 63 samples.")
+                            checked: root.settings.ltrtPhaseShift ?? true
+                            onToggled: function(on) { root.set("ltrtPhaseShift", on); }
+                        }
                     }
-                    CheckBox {
-                        text: qsTr("Mix the LFE in")
-                        checked: root.settings.mixLfe ?? false
-                        onToggled: root.set("mixLfe", checked)
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        Item { Layout.preferredWidth: root.labelWidth }
+                        AppCheckBox {
+                            Layout.fillWidth: true
+                            text: qsTr("Mix the LFE in")
+                            note: qsTr("At the stream's own LFE mix level where it carries one, "
+                                      + "and +10 dB where it does not.")
+                            checked: root.settings.mixLfe ?? false
+                            onToggled: function(on) { root.set("mixLfe", on); }
+                        }
                     }
                 }
             }
@@ -256,10 +330,13 @@ ScrollView {
             ColumnLayout {
                 Layout.preferredWidth: 1
                 Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
                 spacing: Theme.gap * 2
 
                 Card {
-                    title: qsTr("03 This stream")
+                    ordinal: "03"
+                    title: qsTr("This stream")
+                    framed: true
                     summary: root.fileNameOf(root.media.path)
 
                     Text {
@@ -338,7 +415,9 @@ ScrollView {
                 }
 
                 Card {
-                    title: qsTr("04 Programme")
+                    ordinal: "04"
+                    title: qsTr("Programme")
+                    framed: true
 
                     Text {
                         Layout.fillWidth: true
@@ -360,9 +439,10 @@ ScrollView {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: Theme.gap
-                            Text { text: qsTr("Programme"); color: Theme.textMuted; Layout.preferredWidth: 90 }
-                            ComboBox {
-                                Layout.fillWidth: true
+                            Text { text: qsTr("Programme"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                            AppComboBox {
+                                Layout.preferredWidth: Math.round(319 * Theme.fontScale)
                                 enabled: false
                                 model: (root.media.programmes ?? []).map(function(p) {
                                     return qsTr("%1 · %2 · %3").arg(p.substreamId).arg(p.layoutLabel).arg(p.bsmodLabel);
@@ -370,6 +450,7 @@ ScrollView {
                                 currentIndex: 0
                                 Accessible.name: qsTr("Programme")
                             }
+                            Item { Layout.fillWidth: true }
                         }
                         Text {
                             Layout.fillWidth: true
@@ -395,7 +476,8 @@ ScrollView {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Dual mono"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text { text: qsTr("Dual mono"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                         SegmentedControl {
                             accessibleName: qsTr("Dual mono")
                             currentValue: root.settings.dualMono ?? "both"
@@ -410,12 +492,15 @@ ScrollView {
                 }
 
                 Card {
-                    title: qsTr("05 Objects")
+                    ordinal: "05"
+                    title: qsTr("Objects")
+                    framed: true
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Reconstruct"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text { text: qsTr("Reconstruct"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                         SegmentedControl {
                             accessibleName: qsTr("Reconstruct")
                             currentValue: root.settings.objects ?? "auto"
@@ -437,7 +522,8 @@ ScrollView {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Domain"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text { text: qsTr("Domain"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                         SegmentedControl {
                             accessibleName: qsTr("Domain")
                             currentValue: root.settings.jocDomain ?? "qmf"
@@ -459,12 +545,15 @@ ScrollView {
                 }
 
                 Card {
-                    title: qsTr("06 Errors and transform")
+                    ordinal: "06"
+                    title: qsTr("Errors and transform")
+                    framed: true
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Bad frame"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text { text: qsTr("Bad frame"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                         SegmentedControl {
                             accessibleName: qsTr("Bad frame")
                             currentValue: root.settings.concealment ?? "repeatFade"
@@ -476,22 +565,15 @@ ScrollView {
                             onSelected: function(value) { root.set("concealment", value); }
                         }
                     }
-                    ColumnLayout {
+                    // Flush with the card's content edge, unlike the boxes in
+                    // 01 and 02: this one has no label column beside it in
+                    // the mockup either.
+                    AppCheckBox {
                         Layout.fillWidth: true
-                        spacing: 0
-                        CheckBox {
-                            text: qsTr("Fast inverse transform")
-                            checked: root.settings.fastInverseTransform ?? true
-                            onToggled: root.set("fastInverseTransform", checked)
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 32
-                            text: qsTr("The FFT form. Off uses the reference form, to compare the two.")
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
-                        }
+                        text: qsTr("Fast inverse transform")
+                        note: qsTr("The FFT form. Off uses the reference form, to compare the two.")
+                        checked: root.settings.fastInverseTransform ?? true
+                        onToggled: function(on) { root.set("fastInverseTransform", on); }
                     }
                 }
             }

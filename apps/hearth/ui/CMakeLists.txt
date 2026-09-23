@@ -16,12 +16,12 @@
 # entered by a board configure, and needs no guard of its own for that - see
 # this change's PR for the WSL configure-only check that confirmed it.
 # ---------------------------------------------------------------------------
-# LinguistTools is deliberately NOT requested here, unlike apps/gui and
-# apps/crucible's own find_package(Qt6 ...) lines: this file has no
-# qt_add_translations() call, no translations/ directory and no .ts files -
-# Hearth's window has no localisation pipeline yet - so the component was
-# pure copy-paste ballast that only made Qt6_FOUND more fragile than it
-# needed to be. That cost real build coverage (issue #890): a WSL image with
+# LinguistTools used to be left out of this call deliberately, because this
+# file had no qt_add_translations() call, no translations/ directory and no
+# .ts files - Hearth's window had no localisation pipeline at all - so the
+# component was pure copy-paste ballast that only made Qt6_FOUND more
+# fragile than it needed to be. That cost real build coverage (issue #890):
+# a WSL image with
 # qt6-base-dev and qt6-declarative-dev installed, but not qt6-tools-dev (the
 # package that actually ships Qt6LinguistToolsConfig.cmake - see
 # .github/workflows/_ci-linux.yml's "Install Qt6 (Linux GUI)" step comment
@@ -29,10 +29,16 @@
 # no reason a syntax-only build cares about, which silently dropped the
 # entire ac3hearth target - and every apps/hearth/ui/*.cpp compile_commands.json
 # entry along with it - behind the message(WARNING) below, with nothing
-# louder to catch it. Add LinguistTools back to this call, mirroring
-# apps/crucible/CMakeLists.txt's own find_package line, in the same commit
-# that gives Hearth its first qt_add_translations() call.
-find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Qml Quick QuickControls2)
+# louder to catch it.
+#
+# It is back now, in exactly the commit that comment asked for: the one that
+# gives Hearth its first qt_add_translations() call, below. The package that
+# was missing in #890 (qt6-tools-dev, which is where
+# Qt6LinguistToolsConfig.cmake actually ships - qt6-l10n-tools carries only
+# the binaries) is installed by both Linux legs of the workflow today; see
+# .github/workflows/_ci-linux.yml's own "Install Qt6 (Linux GUI)" step, whose
+# comment spells out the same split.
+find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Qml Quick QuickControls2 LinguistTools)
 
 # Exported so apps/hearth/notices/notices.cmake (include()d from
 # apps/hearth/CMakeLists.txt, one directory up) can tell whether the hearth
@@ -74,10 +80,17 @@ else()
         network_controller.cpp
         network_controller.hpp
         qsettings_store.hpp
+        # The family's own translator installer, shared rather than copied -
+        # apps/crucible/CMakeLists.txt takes it from the same place, and the
+        # class's own header says it exists so a second Qt app in this
+        # repository reuses it.
+        "${PROJECT_SOURCE_DIR}/apps/gui/language_manager.cpp"
+        "${PROJECT_SOURCE_DIR}/apps/gui/language_manager.hpp"
         "${PROJECT_SOURCE_DIR}/apps/common/container_input.cpp"
         "${PROJECT_SOURCE_DIR}/apps/common/container_input.hpp")
     target_include_directories(ac3hearth PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${PROJECT_SOURCE_DIR}/apps/gui"
         "${CMAKE_CURRENT_SOURCE_DIR}/../engine"
         "${PROJECT_SOURCE_DIR}/apps/common")
     target_link_libraries(ac3hearth PRIVATE
@@ -154,7 +167,13 @@ else()
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-Medium.ttf"
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-SemiBold.ttf"
             "${CMAKE_SOURCE_DIR}/apps/gui/fonts/Archivo-ExtraBold.ttf"
-            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/MaterialSymbolsSharp-Regular.ttf")
+            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/MaterialSymbolsSharp-Regular.ttf"
+            # Archivo has no Arabic or Hebrew coverage, and Yiddish is
+            # written in Hebrew script, so without these two faces three of
+            # the six languages below render as tofu. apps/gui bundles the
+            # same pair for the same reason.
+            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/NotoSansArabic.ttf"
+            "${CMAKE_SOURCE_DIR}/apps/gui/fonts/NotoSansHebrew.ttf")
     qt_add_resources(ac3hearth "ac3hearth_icons"
         PREFIX "/icons"
         BASE "${CMAKE_SOURCE_DIR}/apps/gui/icons"
@@ -174,6 +193,44 @@ else()
         PREFIX "/notices"
         BASE "${AC3HEARTH_NOTICES_OUT_DIR}"
         FILES "${AC3HEARTH_NOTICES_FILE}")
+
+    # ---------------------------------------------------------------------
+    # Localisation. The same six languages ac3gui and Crucible ship, through
+    # the same LanguageManager (compiled into this target above), which loads
+    # :/i18n/ac3hearth_<code>.qm at runtime.
+    #
+    # The catalogues are generated, not hand-written: run
+    # `cmake --build <dir> --target ac3hearth_lupdate` to re-extract every
+    # qsTr() in AC3HEARTH_QML_FILES into them after changing a string.
+    # -no-obsolete for the reason apps/gui and Crucible both give: an entry
+    # whose source string is gone is kept as translation memory otherwise,
+    # and git history is that memory.
+    #
+    # They carry every source string and NO translations yet - each entry is
+    # marked unfinished, which is what Qt calls an untranslated message, and
+    # what it does with one is fall back to the English source. So choosing a
+    # language today changes the layout direction and the font (which is why
+    # the two Noto faces are bundled above) but leaves the words in English
+    # until a translator fills these in. That is a content task, not a build
+    # one; the machinery is what was missing.
+    #
+    # Deliberately no test asserting the catalogues are complete, unlike
+    # tests/crucible/test_translations.cpp: Crucible's are filled, and
+    # holding these to the same bar would fail from the first commit.
+    set(AC3HEARTH_TS_FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_fr.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_de.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_es.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_ar.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_he.ts"
+        "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_yi.ts")
+    qt_add_translations(ac3hearth
+        IMMEDIATE_CALL
+        SOURCE_TARGETS ac3hearth
+        TS_FILES ${AC3HEARTH_TS_FILES}
+        LUPDATE_OPTIONS -no-obsolete
+        LUPDATE_TARGET ac3hearth_lupdate
+        LRELEASE_TARGET ac3hearth_lrelease)
 
     set_target_properties(ac3hearth PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
     if(WIN32)
