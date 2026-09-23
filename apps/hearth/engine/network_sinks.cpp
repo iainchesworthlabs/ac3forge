@@ -65,6 +65,13 @@ NetworkSinks::~NetworkSinks() {
     // explicitly here, before any other member's destructor runs, closes
     // that window regardless of member declaration order.
     browser_.reset();
+    // groups_ holds shared_ptr<Group>, whose destructor (~Group -> Group::State::leave()/stop())
+    // calls back into host_'s ServerHost::State through Group::State::host, a non-owning pointer
+    // - the same hazard this destructor already guards against for browser_/host_ themselves, just
+    // in the opposite direction: groups_ must be torn down while host_ is still alive, not after.
+    // Confirmed by a real hang otherwise: ~Group -> leave() -> host->find() -> State::all()
+    // locking a mutex on a ServerHost::State host_.reset() below had already destroyed.
+    groups_.clear();
     host_.reset();
 }
 
