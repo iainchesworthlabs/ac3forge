@@ -825,6 +825,91 @@ TEST_CASE("group: test sinks' other roles get the group's metadata, colours, tra
     host->reset();
 }
 
+TEST_CASE("group: the host sets a member's volume and mute directly, and the group's own, without a controller",
+          "[hearth][group][websocket]") {
+    namespace ss = ac3::sendspin;
+    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_host_volume_" + scratch_pid_suffix());
+    fs::remove_all(scratch);
+    QuietLog log;
+    // The extension role (kitchen, paired) and player@v1 (lounge, approved
+    // unpaired) - the same two shapes player_of() branches on, neither with
+    // any other role that could complicate what "volume" reads.
+    const std::unique_ptr<testsink::Sink> kitchen = start_sink(scratch / "kitchen", "Kitchen", m::Codec::kPcm, log, false);
+    const std::unique_ptr<testsink::Sink> lounge = start_sink(scratch / "lounge", "Lounge", m::Codec::kFlac, log);
+
+    std::optional<ss::noise::KeyPair> identity = ss::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    ss::MemoryServerStore store;
+    HostEvents events;
+    auto host = ss::ServerHost::start(
+        {.identity = *identity, .name = "Test host", .languages = {"en"}, .address = "127.0.0.1", .port = std::nullopt,
+         .advertise = false, .browse = false, .mdns_interfaces = {}},
+        store, events);
+    REQUIRE(host.has_value());
+    REQUIRE((*host)->enter_pairing_token(kitchen->pairing_token()));
+    (*host)->dial("ws://127.0.0.1:" + std::to_string(kitchen->port()) + "/sendspin");
+    (*host)->dial("ws://127.0.0.1:" + std::to_string(lounge->port()) + "/sendspin");
+    REQUIRE(events.wait([&](const auto& clients) { return clients.contains(lounge->client_id()); }, 15s));
+    REQUIRE((*host)->approve(lounge->client_id(), true));
+    REQUIRE(events.wait(
+        [](const auto& clients) {
+            return clients.size() == 2 && std::all_of(clients.begin(), clients.end(), [](const auto& entry) {
+                       return entry.second.playing && entry.second.available;
+                   });
+        },
+        30s));
+
+    const std::string kitchen_id = kitchen->client_id();
+    const std::string lounge_id = lounge->client_id();
+    std::shared_ptr<ss::Group> group = (*host)->make_group("Downstairs");
+    group->add(kitchen_id);
+    group->add(lounge_id);
+
+    // Nothing to read before a client is a member, or for one that never was.
+    CHECK_FALSE(group->member_player("not-a-member").has_value());
+
+    const auto member_shows = [&](const std::string& client_id, std::int32_t volume, bool muted) {
+        const std::optional<ss::controller::Player> player = group->member_player(client_id);
+        return player.has_value() && player->volume == volume && player->muted == muted;
+    };
+    REQUIRE(eventually([&] { return member_shows(kitchen_id, 100, false) && member_shows(lounge_id, 100, false); }, 10s));
+
+    // The group's own volume redistributes across every member that
+    // supports it - a DELTA applied to each player's own current volume
+    // (100 -> 80 for both, since both started equal), not "set everyone to
+    // exactly this value".
+    group->set_group_volume(80);
+    REQUIRE(eventually([&] { return member_shows(kitchen_id, 80, false) && member_shows(lounge_id, 80, false); }, 10s));
+
+    // Setting one member's volume directly leaves the other alone - no
+    // redistribution, unlike the group-wide command above.
+    group->set_member_volume(kitchen_id, 30);
+    REQUIRE(eventually([&] { return member_shows(kitchen_id, 30, false); }, 10s));
+    CHECK(member_shows(lounge_id, 80, false));
+    // Reaches the sink itself, not just this read-back.
+    const std::optional<ss::ClientView> kitchen_after_member_set = (*host)->client(kitchen_id);
+    REQUIRE(kitchen_after_member_set.has_value());
+    REQUIRE(kitchen_after_member_set->ac3forge_state.has_value());
+    CHECK(kitchen_after_member_set->ac3forge_state->volume == 30);
+
+    // A member's mute is direct too.
+    group->set_member_muted(lounge_id, true);
+    REQUIRE(eventually([&] { return member_shows(lounge_id, 80, true); }, 10s));
+    CHECK(member_shows(kitchen_id, 30, false));
+
+    // The group's mute reaches every member unconditionally - unlike
+    // volume, mute is not relative, so both are muted regardless of their
+    // now-different volumes.
+    group->set_group_muted(true);
+    REQUIRE(eventually([&] { return member_shows(kitchen_id, 30, true) && member_shows(lounge_id, 80, true); }, 10s));
+
+    group->remove(kitchen_id);
+    CHECK_FALSE(group->member_player(kitchen_id).has_value());
+
+    group.reset();
+    host->reset();
+}
+
 TEST_CASE("group: a mixed group delivers PCM and bursts to their own members at once",
           "[hearth][group][websocket]") {
     // Every other group test in this file gives a group either all PCM/FLAC

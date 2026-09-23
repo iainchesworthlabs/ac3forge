@@ -373,16 +373,22 @@ option(AC3FORGE_BUILD_CAPI "Build the C API over the encode/decode core (src/cap
 option(AC3FORGE_BUILD_PYTHON "Build the pybind11 Python extension module (python/)" OFF)
 
 # Hearth, the desktop reference player (planning/hearth-reference-player.md): src/sendspin and
-# apps/hearth (the engine, the window, the test sink and server). ON by default: every CI leg has
-# built and tested it since A7, so a plain local configure now matches what CI already proves
-# rather than needing -DAC3FORGE_BUILD_HEARTH=ON by hand to see the same targets. Its dependencies
-# (cpp-httplib, mdns, mbedTLS, libFLAC, Opus) still come through vcpkg's own opt-in "hearth"
-# feature rather than the base manifest - CMakePresets.json's "core" fragment selects it by
-# default for every hosted preset, the same way this option now defaults ON, but the minimum-
-# footprint decoder profile, the Emscripten/WASM demo and the Windows Crucible-coverage leg turn
-# BOTH back off explicitly (see their own entries in CMakePresets.json) because none of the three
-# can build Hearth at all - no OS for the minimum-footprint profile, no vcpkg toolchain under
-# Emscripten, and a deliberately Crucible-only scope for that coverage leg.
+# apps/hearth (the engine, the window, the test sink and server). ON by default: every leg of
+# build-and-test's own matrix (_build.yml) has built and tested it since A7, so a plain local
+# configure now matches what CI already proves rather than needing -DAC3FORGE_BUILD_HEARTH=ON by
+# hand to see the same targets. Its dependencies (cpp-httplib, mdns, mbedTLS, libFLAC, Opus) still
+# come through vcpkg's own opt-in "hearth" feature rather than the base manifest - CMakePresets.json's
+# "core" fragment selects it by default for every hosted preset, the same way this option now
+# defaults ON, but the minimum-footprint decoder profile, the Emscripten/WASM demo and the Windows
+# Crucible-coverage leg turn BOTH back off explicitly (see their own entries in CMakePresets.json)
+# because none of the three can build Hearth at all - no OS for the minimum-footprint profile, no
+# vcpkg toolchain under Emscripten, and a deliberately Crucible-only scope for that coverage leg.
+# "Every CI leg" above means build-and-test's matrix specifically, not every job in the repo's CI:
+# _ci-core.yml's own standalone jobs are not part of that matrix and do not all request the
+# "hearth" vcpkg feature, so a leg that narrows VCPKG_MANIFEST_FEATURES away from it (adm-validate's
+# own "adm"-only feature list is the one example found so far) needs this same explicit OFF or its
+# plain add_subdirectory(src/sendspin) below fails resolving mbedTLS/cpp-httplib/libFLAC/Opus/mdns
+# that were never installed - found the hard way once this option's default flipped to ON.
 option(AC3FORGE_BUILD_HEARTH "Build Hearth: src/sendspin and apps/hearth - see vcpkg.json's \"hearth\" feature, selected by default via CMakePresets.json's core fragment" ON)
 
 # enable_testing() has to run before ANY add_subdirectory() that might contain

@@ -107,6 +107,7 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkList.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkPairing.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkInfo.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkGroupEdit.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlaceholderPage.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/Settings.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/ShortcutsDialog.qml"
