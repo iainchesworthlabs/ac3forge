@@ -7,3 +7,21 @@ dependencies:
   # (main/discovery.cpp). Espressif moved it out of esp-idf at v5.0, so it is
   # a managed dependency rather than a component in the IDF tree.
   espressif/mdns: "^1.8.0"
+  # The ESP32-P4 (and the ESP32-H2) have no Wi-Fi radio of their own; these
+  # two answer the same esp_wifi_*/esp_netif_* calls main/net/wifi/network.cpp
+  # already makes, over esp_hosted/SDIO to a companion chip (an onboard
+  # ESP32-C6 on the board this was brought up on) that does. Confirmed
+  # end to end on that board 2026-09-23 by a standalone connectivity test
+  # before this manifest carried them: SDIO up, the co-processor identified,
+  # a real AP joined, a DHCP lease. Versions match ESP-IDF v6.1's own
+  # examples/wifi/getting_started/station, the reference this was modelled
+  # on. Unused, and not pulled in at all, on every other target this example
+  # already builds for - see examples/wifi/README.md's "Two-Chip Solution".
+  espressif/esp_wifi_remote:
+    version: ">=0.10,<2.0"
+    rules:
+      - if: "target in [esp32p4, esp32h2]"
+  espressif/esp_hosted:
+    version: "~2"
+    rules:
+      - if: "target in [esp32p4, esp32h2]"
