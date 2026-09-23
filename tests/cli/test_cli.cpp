@@ -1383,7 +1383,7 @@ TEST_CASE("verify-objects checks a decode against the signer's own tag",
         // Compared as a bool: on a mismatch Catch2 would otherwise print both
         // WAVs, a megabyte each, and take minutes over it.
         const auto piped = read_log(piped_wav);
-        CHECK(piped.substr(0, 4) == "RIFF");
+        CHECK(piped.starts_with("RIFF"));
         const bool same_wav = piped == read_log(file_wav);
         CHECK(same_wav);
     }

@@ -324,7 +324,7 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
         return MetadataOptionResult::kError;
     }
     static constexpr std::array<std::string_view, 3> kAnnexDOnly{"annexd", "encinfo", "timecode"};
-    if (std::ranges::find(kAnnexDOnly, suffix) != kAnnexDOnly.end()) {
+    if (std::ranges::contains(kAnnexDOnly, suffix)) {
         fmt::println(stderr,
                      "error: {} is an AC-3 Annex D field; an extra programme is always E-AC-3 "
                      "and has no bsid-6 alternate syntax to carry it",
@@ -333,7 +333,7 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
     }
     static constexpr std::array<std::string_view, 7> kDualMonoOnly{
         "dialnorm2", "drc2", "heavy2", "ceiling2", "dialogue2", "pgmscl2", "paninfo2"};
-    if (std::ranges::find(kDualMonoOnly, suffix) != kDualMonoOnly.end()) {
+    if (std::ranges::contains(kDualMonoOnly, suffix)) {
         fmt::println(stderr,
                      "error: {} is 1+1 dual-mono only, and layout 1+1 is not supported for an "
                      "extra programme (see programmeN-layout=)",
@@ -341,7 +341,7 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
         return MetadataOptionResult::kError;
     }
     static constexpr std::array<std::string_view, 2> kMixlevel2Roomtyp2{"mixlevel2", "roomtyp2"};
-    if (std::ranges::find(kMixlevel2Roomtyp2, suffix) != kMixlevel2Roomtyp2.end()) {
+    if (std::ranges::contains(kMixlevel2Roomtyp2, suffix)) {
         fmt::println(stderr,
                      "error: {} is 1+1 dual-mono only, and layout 1+1 is not supported for an "
                      "extra programme (see programmeN-layout=)",
@@ -2215,7 +2215,7 @@ std::optional<int> choose_programme(std::span<const int> ids, std::optional<int>
     if (!wanted.has_value()) {
         return ids.front();
     }
-    if (std::ranges::find(ids, *wanted) == ids.end()) {
+    if (!std::ranges::contains(ids, *wanted)) {
         fmt::println(stderr, "error: no programme {} in this stream (it carries {})", *wanted,
                      format_programme_ids(ids));
         return std::nullopt;

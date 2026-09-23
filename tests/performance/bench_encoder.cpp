@@ -400,7 +400,7 @@ int main(int argc, char** argv) {
         }
     }
     const auto wanted = [&only](std::string_view name) {
-        return only.empty() || std::ranges::find(only, name) != only.end();
+        return only.empty() || std::ranges::contains(only, name);
     };
 
     const ac3::io::WavData audio =

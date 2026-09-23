@@ -671,7 +671,7 @@ struct Rig {
 };
 
 bool has_note(const std::vector<std::string>& notes, const std::string& line) {
-    return std::ranges::find(notes, line) != notes.end();
+    return std::ranges::contains(notes, line);
 }
 
 }  // namespace
@@ -1296,7 +1296,7 @@ TEST_CASE("bitstream: an engine decides from its endpoints and follows their cha
         engine.sync();
         status = engine.status();
         CHECK(status.output.mode == OutputMode::kLocalPcm);
-        CHECK(status.note.find("The output changed: Decoding here") == 0);
+        CHECK(status.note.starts_with("The output changed: Decoding here"));
 
         // A pinned decode, then automatic again with the receiver back. The
         // receiver comes back only once the pin has been decided, so only
