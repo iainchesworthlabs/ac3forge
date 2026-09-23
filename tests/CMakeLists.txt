@@ -735,6 +735,97 @@ if(AC3FORGE_BUILD_HEARTH)
         hearth/test_transport.cpp)
     target_link_libraries(ac3tests PRIVATE ac3hearth_engine)
 
+    # ac3hearth_controller_tests - Catch2 coverage for hearth_controller.cpp's
+    # QML-translation layer (issue #886, part 2: queue_row(), media_info_to_map()
+    # and friends - see tests/hearth/test_hearth_controller.cpp's own header for
+    # the full rationale). A SEPARATE small binary rather than folding into
+    # ac3tests above: ac3tests is Qt-free by design (see gui_diagnostics.cpp's
+    # and the Crucible engine sources' own comments elsewhere in this file), and
+    # hearth_controller.cpp needs Qt Core (QVariantMap/QString) plus a
+    # QObject-derived class that also touches Qt Gui/Qml - never Quick,
+    # QuickControls2 or Widgets, and never a live QGuiApplication instance.
+    # Gated on AC3FORGE_SENDSPIN_CORE_ONLY the same way apps/hearth/CMakeLists.txt
+    # itself gates add_subdirectory(ui): apps/hearth/ui does not exist at all
+    # under that build (its own comment: the window "needs more than [the] core"),
+    # so there is nothing here to compile against. find_package() is called
+    # directly rather than reusing apps/hearth/ui/CMakeLists.txt's own
+    # AC3HEARTH_UI_QT_FOUND: that PARENT_SCOPE variable stops at
+    # apps/hearth/CMakeLists.txt's own scope (it is never re-exported past that
+    # one level), so it does not reach this file's scope as a plain variable read.
+    if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
+        find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Qml)
+        if(Qt6_FOUND)
+            add_executable(ac3hearth_controller_tests
+                hearth/test_hearth_controller.cpp
+                "${CMAKE_SOURCE_DIR}/apps/hearth/ui/hearth_controller.hpp"
+                "${CMAKE_SOURCE_DIR}/apps/hearth/ui/item_loader.cpp"
+                "${CMAKE_SOURCE_DIR}/apps/hearth/ui/item_loader.hpp"
+                "${CMAKE_SOURCE_DIR}/apps/common/container_input.cpp"
+                "${CMAKE_SOURCE_DIR}/apps/common/container_input.hpp")
+            # hearth_controller.cpp itself is NOT listed as a source: it is
+            # #include'd directly by test_hearth_controller.cpp (that file's own
+            # header explains why - internal-linkage functions with no header to
+            # declare them), so listing it here too would compile it twice and
+            # fail at link time with duplicate HearthController symbols. AUTOMOC
+            # still needs ON to satisfy the QObject vtable HearthController's
+            # methods pull in once compiled (even though no test here ever
+            # constructs one) - CMake's dependency scan finds hearth_controller.hpp
+            # transitively through the #include chain from the listed .cpp/.hpp
+            # sources above.
+            set_target_properties(ac3hearth_controller_tests PROPERTIES AUTOMOC ON)
+            target_include_directories(ac3hearth_controller_tests PRIVATE
+                "${CMAKE_SOURCE_DIR}/apps/hearth/ui"
+                "${CMAKE_SOURCE_DIR}/apps/common")
+            target_link_libraries(ac3hearth_controller_tests PRIVATE
+                ac3hearth_engine
+                matroska::matroska mp4::mp4 mpegts::mpegts
+                ac3::warnings ac3::fmt ac3::coverage
+                Qt6::Core Qt6::Gui Qt6::Qml
+                Catch2::Catch2WithMain)
+            # Windows only: this target links Qt6 as shared libraries
+            # (Qt6Core(d).dll etc.) with nothing of its own to put them next
+            # to it, and CMake's global RUNTIME_OUTPUT_DIRECTORY (set at the
+            # repo root - every test/CLI executable lands in a flat bin/,
+            # windows-native-build-incantation's own finding) puts this exe
+            # there alongside ac3hearth.exe, whose own POST_BUILD windeployqt
+            # step (apps/hearth/ui/CMakeLists.txt) already deploys exactly
+            # those DLLs into that same directory. Depending on ac3hearth
+            # here reuses that existing deployment rather than adding a
+            # second windeployqt pass - real fix for a real, reproduced
+            # failure: catch_discover_tests()'s own POST_BUILD test-listing
+            # step launched this exe before any Qt DLL had been deployed
+            # anywhere near it and got Windows' STATUS_DLL_NOT_FOUND
+            # (0xc0000135), which read as "Error listing tests from
+            # executable" with no further detail.
+            if(WIN32 AND TARGET ac3hearth)
+                add_dependencies(ac3hearth_controller_tests ac3hearth)
+            endif()
+            # Same rationale as apps/gui/tests/CMakeLists.txt's identical loop:
+            # Qt's generated moc output for THIS target compiles under the
+            # strict warning set unless excluded.
+            get_target_property(AC3HEARTH_CTRLTEST_SOURCES ac3hearth_controller_tests SOURCES)
+            set(AC3HEARTH_CTRLTEST_GENERATED_SOURCES "")
+            foreach(source IN LISTS AC3HEARTH_CTRLTEST_SOURCES)
+                if(source MATCHES "^${CMAKE_CURRENT_BINARY_DIR}/.*\\.(cpp|cxx|cc)$")
+                    list(APPEND AC3HEARTH_CTRLTEST_GENERATED_SOURCES "${source}")
+                endif()
+            endforeach()
+            if(AC3HEARTH_CTRLTEST_GENERATED_SOURCES)
+                set_source_files_properties(${AC3HEARTH_CTRLTEST_GENERATED_SOURCES}
+                    PROPERTIES COMPILE_OPTIONS "${AC3_WARNINGS_OFF_FLAG}")
+            endif()
+            # include(Catch) itself only happens much further down this file
+            # (right before ac3tests's own catch_discover_tests() call), so
+            # this block - defined well before that point - needs its own
+            # copy. Harmless to include twice: CMake modules are idempotent,
+            # and the later include(Catch) for ac3tests still runs unchanged.
+            include(Catch)
+            catch_discover_tests(ac3hearth_controller_tests ADD_TAGS_AS_LABELS)
+        else()
+            message(STATUS "Qt6 not found: ac3hearth_controller_tests (hearth_controller.cpp coverage) is skipped")
+        endif()
+    endif()
+
     target_sources(ac3tests PRIVATE
         sendspin/test_ac3forge_player.cpp
         sendspin/test_arbiter.cpp
