@@ -14,8 +14,8 @@ receiver.
     DAC has been connected yet.
     [An ESP32-S3 sink](sink-esp32-s3.md) explains setup.
 
-    **The desktop player `ac3hearth` is being built for Windows, Linux, and macOS.** Its engine
-    and tests are in `apps/hearth`. It has no window and cannot send audio to a sink.
+    **The desktop player `ac3hearth` has a window, on Windows, Linux, and macOS with a Qt 6.8+
+    kit.** Its engine and tests are in `apps/hearth`. It still cannot send audio to a sink.
     `ac3hearth-testserver` provides that function during development. See the
     [design record](design/player-appliance.md).
 
@@ -27,7 +27,7 @@ receiver.
 | [ESP32-C3](../platforms/bare-metal/esp32-c3.md) | The same decoder, in the fixed-point tier | Correct under `qemu-riscv32` emulation. No board has run it |
 | [ESP32-C6](../platforms/bare-metal/esp32-c6.md) | Fixed-point decoder; `hearth_sink`'s Sendspin player, stereo only | All decode fixtures run on a board; a stereo Sendspin group with an ESP32-S3 played ten minutes with no underruns on either board ([setup guide](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6)). There is still no C6 Sendspin CI job |
 | [ESPHome](../platforms/bare-metal/esphome.md) | An external component wrapping the ESP32-S3 decoder | Config-checked in CI against the manifest; not yet a `media_player` or `speaker` source |
-| Windows, Linux and macOS | `ac3hearth` engine; `ac3hearth-testsink` and `ac3hearth-testserver` development tools | Engine and Sendspin interoperability tests run in CI. There is no desktop window |
+| Windows, Linux and macOS | `ac3hearth` (the desktop window, Qt 6.8+) and its engine; `ac3hearth-testsink` and `ac3hearth-testserver` development tools | Engine and Sendspin interoperability tests run in CI. The window cannot yet send audio to a sink |
 
 The desktop player's passthrough design uses the same path as `ac3cli play`. That command has
 played every supported stream shape, including signed Atmos, to a receiver through a Raspberry
@@ -35,9 +35,9 @@ Pi 4B without an underrun. See [Raspberry Pi passthrough](../platforms/raspberry
 
 ## What it does not do (yet)
 
-The desktop application has no window, package, or user guide. The ESP32-S3 sink is source code
-that you build and flash; there is no firmware download. Its [setup guide](sink-esp32-s3.md)
-covers network setup, pairing, groups, wiring, and slot widths.
+The desktop application has no package or user guide, and cannot yet send audio to a sink. The
+ESP32-S3 sink is source code that you build and flash; there is no firmware download. Its
+[setup guide](sink-esp32-s3.md) covers network setup, pairing, groups, wiring, and slot widths.
 
 ## Where to go next
 

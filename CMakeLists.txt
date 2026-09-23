@@ -372,11 +372,18 @@ option(AC3FORGE_BUILD_CAPI "Build the C API over the encode/decode core (src/cap
 # drives the configure for `pip install`/cibuildwheel - see python/CMakeLists.txt.
 option(AC3FORGE_BUILD_PYTHON "Build the pybind11 Python extension module (python/)" OFF)
 
-# Hearth, the desktop reference player (planning/hearth-reference-player.md): src/sendspin now,
-# apps/hearth as its phases land. Off by default like AC3FORGE_BUILD_ADM, for the same reason:
-# its dependencies (cpp-httplib, mdns, mbedTLS, libFLAC, Opus) come through vcpkg's "hearth"
-# feature, which a normal build never pulls in, and nothing outside it links it.
-option(AC3FORGE_BUILD_HEARTH "Build Hearth: src/sendspin, and apps/hearth as it lands - see vcpkg.json's \"hearth\" feature" OFF)
+# Hearth, the desktop reference player (planning/hearth-reference-player.md): src/sendspin and
+# apps/hearth (the engine, the window, the test sink and server). ON by default: every CI leg has
+# built and tested it since A7, so a plain local configure now matches what CI already proves
+# rather than needing -DAC3FORGE_BUILD_HEARTH=ON by hand to see the same targets. Its dependencies
+# (cpp-httplib, mdns, mbedTLS, libFLAC, Opus) still come through vcpkg's own opt-in "hearth"
+# feature rather than the base manifest - CMakePresets.json's "core" fragment selects it by
+# default for every hosted preset, the same way this option now defaults ON, but the minimum-
+# footprint decoder profile, the Emscripten/WASM demo and the Windows Crucible-coverage leg turn
+# BOTH back off explicitly (see their own entries in CMakePresets.json) because none of the three
+# can build Hearth at all - no OS for the minimum-footprint profile, no vcpkg toolchain under
+# Emscripten, and a deliberately Crucible-only scope for that coverage leg.
+option(AC3FORGE_BUILD_HEARTH "Build Hearth: src/sendspin and apps/hearth - see vcpkg.json's \"hearth\" feature, selected by default via CMakePresets.json's core fragment" ON)
 
 # enable_testing() has to run before ANY add_subdirectory() that might contain
 # an add_test() call, not merely before tests/ itself - CTest silently drops
