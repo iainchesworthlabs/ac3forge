@@ -16,8 +16,10 @@
 
 #include "ac3/version.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -38,6 +40,8 @@
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/passthrough.hpp"
 #include "ac3/audio/speakers.hpp"
+#include "ac3/meta/drc.hpp"
+#include "ac3/oba/oamd.hpp"
 #include "ac3/render/layout.hpp"
 #include "ac3/sendspin/crypto.hpp"
 #include "decoder_settings.hpp"
@@ -529,6 +533,65 @@ constexpr int kPollMs = 60;
     return out;
 }
 
+// --- the play monitor: MeterSnapshot/UnitReport <-> QVariant, field by ----
+// field (play_meters.hpp, stream_decoder.hpp) --------------------------
+
+[[nodiscard]] QVariantMap channel_level_to_map(const ac3::analysis::ChannelLevel& level) {
+    QVariantMap map;
+    map[QStringLiteral("peakDb")] = level.peak_db;
+    map[QStringLiteral("holdDb")] = level.hold_db;
+    map[QStringLiteral("rmsDb")] = level.rms_db;
+    map[QStringLiteral("clipped")] = level.clipped;
+    return map;
+}
+
+[[nodiscard]] QString output_mode_name(ac3::hearth::OutputMode mode) {
+    switch (mode) {
+        case ac3::hearth::OutputMode::kBitstream:
+            return QStringLiteral("bitstream");
+        case ac3::hearth::OutputMode::kBitstreamAsAc3:
+            return QStringLiteral("bitstreamAsAc3");
+        case ac3::hearth::OutputMode::kLocalPcm:
+            return QStringLiteral("pcm");
+        case ac3::hearth::OutputMode::kNetworkGroup:
+            return QStringLiteral("networkGroup");
+        case ac3::hearth::OutputMode::kNone:
+        default:
+            return QStringLiteral("none");
+    }
+}
+
+[[nodiscard]] QVariantMap output_format_to_map(const ac3::hearth::OpenOutputFormat& format) {
+    QVariantMap map;
+    map[QStringLiteral("sampleRate")] = format.sample_rate;
+    map[QStringLiteral("channels")] = format.channels;
+    map[QStringLiteral("mode")] = output_mode_name(format.mode);
+    return map;
+}
+
+// oba::describe_objects()'s DisplayObject, as QML reads it - the same shape
+// apps/gui's ObjectDecodeController already settled on for its own room-plan
+// view (object_decode_controller.cpp), so the two applications' object
+// markers read the same fields the same way.
+[[nodiscard]] QVariantMap display_object_to_map(const ac3::oba::DisplayObject& object) {
+    QVariantMap map;
+    map[QStringLiteral("x")] = object.position.x;
+    map[QStringLiteral("y")] = object.position.y;
+    map[QStringLiteral("z")] = object.position.z;
+    map[QStringLiteral("gainDb")] = object.gain_db;
+    map[QStringLiteral("snap")] = object.snap;
+    map[QStringLiteral("active")] = object.active;
+    map[QStringLiteral("label")] =
+        QString::fromUtf8(object.label.data(), static_cast<qsizetype>(object.label.size()));
+    // Above the bed plane: the room z axis every oba::Position shares (-1
+    // floor, 0 ear height, +1 ceiling) - there is no separate "is this a
+    // height channel" flag on the wire, so a threshold on z is what the
+    // Objects panel's "raised" marker means, for a bed speaker (Table 12
+    // heights sit well above 0) and a dynamic object alike.
+    map[QStringLiteral("raised")] = object.position.z > 0.0;
+    return map;
+}
+
 [[nodiscard]] QString realization_name(ac3::render::Speaker::Realization realization) {
     switch (realization) {
         case ac3::render::Speaker::Realization::kTop:
@@ -908,13 +971,15 @@ void HearthController::poll() {
     const QString new_output_reason = QString::fromStdString(status.output_reason);
     const QString new_note = QString::fromStdString(status.note);
     const QString new_error = QString::fromStdString(status.error);
+    QVariantMap new_output_format = output_format_to_map(status.output);
     if (new_state != state_ || status.gapless != gapless_ || new_output_reason != output_reason_ ||
-        new_note != note_ || new_error != error_) {
+        new_note != note_ || new_error != error_ || new_output_format != output_format_) {
         state_ = new_state;
         gapless_ = status.gapless;
         output_reason_ = new_output_reason;
         note_ = new_note;
         error_ = new_error;
+        output_format_ = std::move(new_output_format);
         emit stateChanged();
     }
 
@@ -1073,6 +1138,94 @@ void HearthController::poll() {
         identify_level_db_ = status.identify_level_db;
         identify_slot_ = new_identify_slot;
         emit speakerSetupChanged();
+    }
+
+    // --- the play monitor: Engine::meters() and Engine::unit_report(), ----
+    // read every tick the same as status() above - both calls have existed
+    // on Engine since A3 (slices 6 and 8); this is the first place in the
+    // tree that polls them (planning/hearth-reference-player.md, Monitor).
+    bool monitor_changed = false;
+
+    QVariantList new_levels;
+    QVariantMap new_loudness;
+    if (const std::optional<ac3::hearth::MeterSnapshot> snapshot = engine_->meters()) {
+        new_levels.reserve(static_cast<qsizetype>(snapshot->levels.size()));
+        for (const auto& level : snapshot->levels) {
+            new_levels.push_back(channel_level_to_map(level));
+        }
+        if (snapshot->momentary_lkfs) {
+            new_loudness[QStringLiteral("momentary")] = *snapshot->momentary_lkfs;
+        }
+        if (snapshot->short_term_lkfs) {
+            new_loudness[QStringLiteral("shortTerm")] = *snapshot->short_term_lkfs;
+        }
+        if (snapshot->integrated_lkfs) {
+            new_loudness[QStringLiteral("integrated")] = *snapshot->integrated_lkfs;
+        }
+        if (snapshot->loudness_range) {
+            new_loudness[QStringLiteral("range")] = *snapshot->loudness_range;
+        }
+        if (snapshot->true_peak_dbtp) {
+            new_loudness[QStringLiteral("truePeak")] = *snapshot->true_peak_dbtp;
+        }
+    }
+    if (new_levels != levels_ || new_loudness != loudness_) {
+        levels_ = std::move(new_levels);
+        loudness_ = std::move(new_loudness);
+        monitor_changed = true;
+    }
+
+    QVariantMap new_this_frame;
+    QVariantList new_objects;
+    int new_objects_placed = 0;
+    bool new_has_object_metadata = false;
+    if (const std::optional<ac3::hearth::UnitReport> report = engine_->unit_report()) {
+        new_this_frame[QStringLiteral("dialnorm")] = report->dialnorm;
+        if (report->compr) {
+            new_this_frame[QStringLiteral("comprDb")] =
+                20.0 * std::log10(ac3::meta::compr_gain(*report->compr));
+        }
+        if (report->blocks > 0) {
+            double dynrng_min_db = std::numeric_limits<double>::infinity();
+            double dynrng_max_db = -std::numeric_limits<double>::infinity();
+            for (int i = 0; i < report->blocks; ++i) {
+                const double db = 20.0 * std::log10(
+                    ac3::meta::dynrng_gain(report->dynrng[static_cast<std::size_t>(i)]));
+                dynrng_min_db = std::min(dynrng_min_db, db);
+                dynrng_max_db = std::max(dynrng_max_db, db);
+            }
+            new_this_frame[QStringLiteral("dynrngMinDb")] = dynrng_min_db;
+            new_this_frame[QStringLiteral("dynrngMaxDb")] = dynrng_max_db;
+        }
+        if (report->short_blocks) {
+            new_this_frame[QStringLiteral("shortBlocks")] = *report->short_blocks;
+        }
+        new_this_frame[QStringLiteral("blocks")] = report->blocks;
+
+        if (report->objects) {
+            new_has_object_metadata = true;
+            const std::vector<ac3::oba::DisplayObject> described =
+                ac3::oba::describe_objects(*report->objects);
+            new_objects.reserve(static_cast<qsizetype>(described.size()));
+            for (const auto& object : described) {
+                new_objects.push_back(display_object_to_map(object));
+                if (object.label.empty() && object.active) {
+                    ++new_objects_placed;
+                }
+            }
+        }
+    }
+    if (new_this_frame != this_frame_ || new_objects != objects_ ||
+        new_objects_placed != objects_placed_ || new_has_object_metadata != has_object_metadata_) {
+        this_frame_ = std::move(new_this_frame);
+        objects_ = std::move(new_objects);
+        objects_placed_ = new_objects_placed;
+        has_object_metadata_ = new_has_object_metadata;
+        monitor_changed = true;
+    }
+
+    if (monitor_changed) {
+        emit monitorChanged();
     }
 }
 
