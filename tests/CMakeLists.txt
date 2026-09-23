@@ -886,9 +886,12 @@ if(AC3FORGE_BUILD_HEARTH)
             hearth/test_engine_network_group.cpp)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
         # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
-        # as core/test_simd_kernels.cpp's.
+        # as core/test_simd_kernels.cpp's. test_aiosendspin_group.cpp's own environment() helper
+        # takes the same address the same way.
         if(AC3FORGE_IS_MSVC_LIKE)
-            set_source_files_properties(hearth/test_aiosendspin.cpp PROPERTIES COMPILE_OPTIONS "/wd4996")
+            set_source_files_properties(
+                hearth/test_aiosendspin.cpp hearth/test_aiosendspin_group.cpp
+                PROPERTIES COMPILE_OPTIONS "/wd4996")
         endif()
     endif()
     target_link_libraries(ac3tests PRIVATE ac3::sendspin)
