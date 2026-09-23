@@ -31,7 +31,7 @@
       ]
     },
     "hearth": {
-      "description": "Hearth's dependencies (AC3FORGE_BUILD_HEARTH, planning/hearth-reference-player.md) - opt-in via -DVCPKG_MANIFEST_FEATURES=hearth, off by default so a library-only build pulls none of them. mbedTLS provides the PSA Crypto API behind src/sendspin's Noise and CPace; cpp-httplib carries its WebSocket transport, without the port's default brotli feature, and at 0.56.0 from the overlay port in cmake/vcpkg/ports; mjansson's mdns advertises and browses Sendspin's DNS-SD services; libFLAC and Opus encode and decode player@v1's FLAC and Opus streams.",
+      "description": "Hearth's dependencies (AC3FORGE_BUILD_HEARTH, planning/hearth-reference-player.md) - selected by default via CMakePresets.json's \"core\" fragment, so AC3FORGE_BUILD_HEARTH's own ON default (root CMakeLists.txt) resolves without a hand-passed -D; a preset that should not build Hearth clears VCPKG_MANIFEST_FEATURES itself (see that fragment's own description) so a library-only build pulls none of them. mbedTLS provides the PSA Crypto API behind src/sendspin's Noise and CPace; cpp-httplib carries its WebSocket transport, without the port's default brotli feature, and at 0.56.0 from the overlay port in cmake/vcpkg/ports; mjansson's mdns advertises and browses Sendspin's DNS-SD services; libFLAC and Opus encode and decode player@v1's FLAC and Opus streams.",
       "dependencies": [
         {
           "name": "cpp-httplib",
