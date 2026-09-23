@@ -12,7 +12,9 @@
 // `--shot` run never shows the first-run dialog unless `--page firstrun`
 // asked for it, so a capture against a fresh settings store is clean
 // (Crucible's own main.cpp carries the identical shape for the identical
-// reason).
+// reason). `--open-output-picker` opens the output picker dialog
+// (OutputPicker.qml) before the grab, since nothing else drives its mouse
+// click headlessly.
 //
 // Translations are not wired up yet: this slice is the shell and the Play
 // page over the real engine, with the other five pages as placeholders, and
@@ -77,6 +79,9 @@ int main(int argc, char** argv) {
     QString shot_path;
     QString page;
     const QStringList args = QCoreApplication::arguments();
+    // A bare flag, not a "--name value" pair: checked separately so it can
+    // be the last argument with nothing following it.
+    const bool open_output_picker = args.contains(QLatin1String("--open-output-picker"));
     for (qsizetype i = 1; i + 1 < args.size(); ++i) {
         if (args[i] == QLatin1String("--shot")) {
             shot_path = args[i + 1];
@@ -114,6 +119,9 @@ int main(int argc, char** argv) {
         QMetaObject::invokeMethod(engine.rootObjects().first(), "openLicences");
     } else if (!page.isEmpty()) {
         engine.rootObjects().first()->setProperty("page", page);
+    }
+    if (open_output_picker) {
+        QMetaObject::invokeMethod(engine.rootObjects().first(), "openOutputPicker");
     }
 
     if (!shot_path.isEmpty()) {

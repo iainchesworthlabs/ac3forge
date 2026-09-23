@@ -62,6 +62,8 @@ public:
 
     [[nodiscard]] std::string device_name() const override { return output_.info().device_name; }
 
+    [[nodiscard]] std::string device_id() const override { return output_.info().device_id; }
+
     [[nodiscard]] std::uint32_t speaker_mask() const override { return output_.info().speakers; }
 
 private:
