@@ -49,7 +49,10 @@ desired, both DACs @ 32-bit on one I2S). Study:
 then A6 network UI.
 
 **Not started:** ESP32-C6 Sendspin sink (planning C3, after the S3 sink pattern); ESP32-P4
-wide sink (tier study P1+, after S3 DAC / C6 pattern as needed).
+wide sink past its probe (tier study P2+: a networked shape onto TDM and the ES9080 pair).
+
+**Done:** ESP32-P4 probe and board timing table, no network (tier study P1) — real time on every
+fixture at this board's 360 MHz. [`docs/platforms/bare-metal/esp32-p4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-p4.md).
 
 ### Library — AC-4 audio decode (Partial)
 

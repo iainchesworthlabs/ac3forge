@@ -2995,8 +2995,10 @@ jobs:
           # qemu-system-riscv32 and export.sh still does not put it on PATH -
           # `idf.py qemu` then reports it as not installed, several steps
           # later and pointing at the install that just succeeded. Idempotent
-          # where the image already enables every target.
-          python "$IDF_PATH/tools/idf_tools.py" install --targets=esp32c3
+          # where the image already enables every target. esp32p4 is here for
+          # the ESP32-P4 step below, which shares this job for the same
+          # reason the ESP32-C6 one does - see its own comment.
+          python "$IDF_PATH/tools/idf_tools.py" install --targets=esp32c3,esp32p4
 
       - name: Report toolchain versions
         shell: bash
@@ -3052,6 +3054,22 @@ jobs:
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
             "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6" \
             build
+
+      # The ESP32-P4 probe project (planning/esp32-sink-tiers.md's Phase P1),
+      # built and not run, for the same reason as the ESP32-C6 step above:
+      # qemu-system-riscv32 has no machine for this part either, so its
+      # figures come from a board (docs/platforms/bare-metal/esp32-p4.md).
+      # What CI can hold is that the decoder direction still compiles and
+      # links for the target. Same container and toolchain as the C3 and C6
+      # steps above.
+      - name: Build the ESP32-P4 probe (no emulator for this part)
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd apps/baremetal/platform/esp32p4
+          dir="$RUNNER_TEMP/esp32p4"
+          idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32p4 build
 
   build-footprint:
     name: Minimum-footprint decoder (arm-none-eabi, QEMU)
