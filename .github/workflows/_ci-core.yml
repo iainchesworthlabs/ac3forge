@@ -331,16 +331,6 @@ jobs:
       # archives, so an in-job retry resumes from where the last attempt
       # died instead of coin-flipping from zero. Three attempts covered the
       # worst observed run (2026-08-31: attempt 1 died at 31/43 on main).
-      #
-      # AC3FORGE_BUILD_HEARTH=OFF: root CMakeLists.txt defaults it ON now
-      # (config-linux-gcc's own "core" preset fragment sets VCPKG_MANIFEST_
-      # FEATURES to "hearth" to match), but this job's own -D above replaces
-      # that with "adm" alone rather than adding to it - so without turning
-      # the option off explicitly, src/sendspin still configures and calls
-      # find_package(MbedTLS), which was never installed for this job's
-      # narrower feature set. Same reasoning as CMakePresets.json's own
-      # minimal-decoder/minimal-encoder/wasm-emscripten/config-windows-llvm-
-      # coverage entries, which all turn it off for the identical reason.
       - name: Configure
         shell: bash
         run: |
