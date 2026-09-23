@@ -48,6 +48,28 @@ TestCase {
     // one snapshot and removing every match from it, highest index first,
     // is what keeps each removeAt() call's own index valid against every
     // removal still ahead of it in the same pass.
+    // The exact bug PlayPage.qml's Add files/Add folder dialogs and drag-drop
+    // hit (issue tracked in the PR this test landed with): a FileDialog/
+    // FolderDialog's own `url` value (selectedFiles/selectedFolder) or a
+    // DropArea drop.urls entry has no toLocalFile() of its own once QML
+    // hands it to JavaScript - only a real C++ QUrl does, which is what
+    // marshalling it through urlToLocalFile()'s own QUrl parameter produces.
+    // This is deliberately a unit test of that conversion, not the real
+    // dialogs themselves: Qt Quick Dialogs' native FileDialog/FolderDialog
+    // populate selectedFiles/selectedFolder from the OS's own picker, which
+    // cannot be driven headlessly under -platform offscreen - exactly the
+    // gap that let the original bug ship untested. Qt.resolvedUrl() gives a
+    // real `url`-typed value here (resolved against this file's own file://
+    // location), the same shape QML hands the invokable from a real dialog.
+    function test_urlToLocalFileConvertsAUrlWithoutThrowing() {
+        const fileName = testCase.name + "-urlToLocalFile.ac3";
+        const url = Qt.resolvedUrl(fileName);
+        const path = HearthController.urlToLocalFile(url);
+        verify(path.length > 0, "urlToLocalFile() returned an empty path for " + url);
+        verify(path.indexOf(fileName) >= 0,
+               "urlToLocalFile() did not return the expected file name: " + path);
+    }
+
     function removeAllWithPaths(paths) {
         for (let i = HearthController.queue.length - 1; i >= 0; --i) {
             if (paths.indexOf(HearthController.queue[i].path) >= 0) {
