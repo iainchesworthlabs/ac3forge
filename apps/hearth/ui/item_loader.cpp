@@ -39,11 +39,17 @@ constexpr std::array<std::string_view, 5> kFolderMediaExtensions{
 ac3::hearth::ItemLoader make_file_item_loader() {
     return [](const std::string& path) -> std::expected<LoadedItem, std::string> {
         const std::string extension = lowercase_extension(path);
-        if (extension != ".ac3" && extension != ".ec3") {
+        // .ac4 reads its bytes but is never playable here (io::scan() only
+        // knows AC-3 and E-AC-3, so Session::open() fails on them with its
+        // own sentence) - accepted at this gate anyway so a MediaInspector
+        // reading the same loader (hearth_controller.cpp) can still describe
+        // an AC-4 item's table of contents for the Media page, which is a
+        // question about the bytes rather than about playback.
+        if (extension != ".ac3" && extension != ".ec3" && extension != ".ac4") {
             // apps/common/container_input.hpp's readers join this loader in a
-            // later slice; until then a container or an AC-4 stream is
-            // recognised but not playable, which is what this sentence says.
-            return std::unexpected("not yet playable: ac3hearth reads raw .ac3/.ec3 only so far");
+            // later slice; until then a container is recognised but not
+            // playable, which is what this sentence says.
+            return std::unexpected("not yet playable: ac3hearth reads raw .ac3/.ec3/.ac4 only so far");
         }
         std::error_code sized;
         const std::uintmax_t size = std::filesystem::file_size(path, sized);
