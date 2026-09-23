@@ -145,8 +145,10 @@ public:
     // refuses. A player applies this once per StreamDecoder - a new one is
     // built on every rate change (decoder_rate_) - rather than this taking
     // it in its constructor, so the one setting that changes at runtime does
-    // not grow every call site that only ever passes the default.
-    bool set_crossover_hz(double hz) { return renderer_.set_crossover_hz(hz); }
+    // not grow every call site that only ever passes the default. Kept
+    // across reset() (a seek), which would otherwise hand the corner back to
+    // a fresh LayoutRenderer's own kDefaultCrossoverHz.
+    bool set_crossover_hz(double hz);
     [[nodiscard]] double crossover_hz() const { return renderer_.crossover_hz(); }
 
     // How many samples the renderer holds the bed's LFE back for while it
@@ -181,6 +183,9 @@ private:
     render::Serving serving_;
     DecoderConfig config_;
     render::LayoutRenderer renderer_;
+    // renderer_'s own corner, kept so reset() can hand it to the fresh
+    // LayoutRenderer it builds rather than losing it to the class's default.
+    double crossover_hz_ = render::LayoutRenderer::kDefaultCrossoverHz;
     std::optional<FrameDecoder> ac3_decoder_;
     std::optional<Eac3Decoder> eac3_decoder_;
     std::optional<int> programme_;

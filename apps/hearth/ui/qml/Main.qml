@@ -7,8 +7,9 @@ import Ac3ForgeHearth
 // The window (planning/hearth-reference-player.md, A5): a header with the
 // six-page switch, one page at a time in the body, and the transport bar
 // pinned to the bottom on every page, the way planning/hearth-design.md's
-// artboards show it. Play, Speakers and Decoder are built to the design;
-// Media information, Network and Settings are placeholders their own
+// artboards show it. Play, Speakers, Decoder and Network (A6's first slice:
+// discovery and pairing, not yet groups or a sink's own settings) are built
+// to the design; Media information and Settings are placeholders their own
 // slices replace.
 ApplicationWindow {
     id: window
@@ -53,6 +54,10 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+4"; onActivated: window.page = "decoder" }
     Shortcut { sequence: "Ctrl+5"; onActivated: window.page = "network" }
     Shortcut { sequence: "Ctrl+6"; onActivated: window.page = "settings" }
+    // The Speakers page's IDENTIFY card says this stops it. A harmless no-op
+    // when nothing is sounding the tone, so this needs no guard on which
+    // page is showing.
+    Shortcut { sequence: "Escape"; onActivated: HearthController.stopIdentify() }
     Shortcut { sequence: StandardKey.HelpContents; onActivated: shortcuts.open() }
 
     header: Rectangle {
@@ -109,10 +114,20 @@ ApplicationWindow {
         }
     }
 
-    ShortcutsDialog { id: shortcuts }
-    // For `--page shortcuts` (main.cpp): a screenshot with the dialog open.
+    // Reached from the header's "?" button and F1; ShortcutsDialog's own
+    // About… chains to AboutDialog, whose own Licences… chains to
+    // LicencesDialog one hop further ("? -> Shortcuts -> About ->
+    // Licences") - agreed between the #830 and #854 sessions rather than a
+    // second header control. `--page shortcuts`/`about`/`licences`
+    // (main.cpp) open any of the three directly, for a capture.
+    ShortcutsDialog { id: shortcuts; onShowAbout: about.open() }
     function openShortcuts() { shortcuts.open(); }
     property alias shortcutsDialog: shortcuts
+
+    AboutDialog { id: about; onShowLicences: licences.open() }
+    function openAbout() { about.open(); }
+    LicencesDialog { id: licences }
+    function openLicences() { licences.open(); }
 
     StackLayout {
         anchors.fill: parent
@@ -122,7 +137,7 @@ ApplicationWindow {
         PlaceholderPage { pageName: qsTr("Media information") }
         Speakers { }
         DecoderPage { }
-        PlaceholderPage { pageName: qsTr("Network") }
+        Network { }
         PlaceholderPage { pageName: qsTr("Settings") }
     }
 
