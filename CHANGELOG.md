@@ -747,6 +747,14 @@ The sections below contain the complete change list and fixes.
   into the page's rows and labels, tested the way `output_decision.hpp` is. Groups, a sink's own
   settings pages and reported levels are later slices — a sink already in use by another server
   needs `ac3::sendspin` to grow a way to learn that at all, which pairing alone does not give it.
+- **`ac3hearth` and `ac3hearth-testsink` register their own Windows Firewall exception before
+  their first mDNS or Sendspin socket binds**, rather than leaving it to Windows' own "these
+  features have been blocked" prompt. `ac3::sendspin::firewall::ensure_inbound_rule()`
+  (`src/sendspin/include/ac3/sendspin/firewall.hpp`, Windows only) adds a rule scoped to the
+  calling executable, the one port being bound, and the private/domain network profiles — never
+  public — the first time it finds none there, elevating once through a UAC prompt if the process
+  is not already elevated; every later run finds the rule already in place. A loopback-only bind
+  needs none of this and skips it; Linux and macOS do nothing at all.
 
 **Audio outputs**
 

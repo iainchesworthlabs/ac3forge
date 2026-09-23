@@ -14,6 +14,7 @@
 #include <thread>
 #include <vector>
 
+#include "ac3/sendspin/firewall.hpp"
 #include "ac3/sendspin/state_roles.hpp"
 #include "ac3/sendspin/stream_roles.hpp"
 #include "sink.hpp"
@@ -119,6 +120,11 @@ class ConsoleLog final : public testsink::SinkLog {
 }  // namespace
 
 int main(int argc, char** argv) {
+    // Elevated relaunch for a Windows Firewall rule this sink's own listener or mDNS
+    // advertisement is about to need (ac3/sendspin/firewall.hpp): std::exit()s before anything
+    // below when argv says this is that relaunch, not an ordinary launch of the sink itself.
+    ac3::sendspin::firewall::maybe_run_as_firewall_helper_and_exit(argc, argv);
+
     testsink::SinkOptions options;
     options.state_directory = "hearth-testsink-state";
     std::optional<std::chrono::seconds> run_for;
