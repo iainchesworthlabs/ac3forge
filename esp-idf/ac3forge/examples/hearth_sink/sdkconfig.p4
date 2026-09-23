@@ -105,9 +105,11 @@ CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y
 # part's boot-mode strapping group - GPIO35 is this board's own BOOT button,
 # docs/platforms/bare-metal/esp32-p4.md's "Reading the console"). I2S goes
 # through the GPIO matrix, so any free pin works; whether these three
-# specific ones are free on the FireBeetle 2's exposed headers is what the
-# next board flash checks, the same "TDM opens, nothing connected to the
-# pins yet" checkpoint the ESP32-C6 page used for its own first measurement.
+# specific ones are free on the FireBeetle 2's exposed headers is a real
+# board check still to do. It is not the standard-I2S (1-2 channel) path,
+# though: that one is confirmed open and playing on these three pins
+# (sink/i2s_wide/audio_sink.cpp's own comment has why TDM mode - three
+# channels or more - cannot be checked on this exact chip revision at all).
 CONFIG_AC3FORGE_EXAMPLE_I2S_BCLK_GPIO=20
 CONFIG_AC3FORGE_EXAMPLE_I2S_WS_GPIO=21
 CONFIG_AC3FORGE_EXAMPLE_I2S_DOUT_GPIO=22
