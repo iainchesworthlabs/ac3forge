@@ -874,31 +874,34 @@ TEST_CASE("group: the host sets a member's volume and mute directly, and the gro
     };
     REQUIRE(eventually([&] { return member_shows(kitchen_id, 100, false) && member_shows(lounge_id, 100, false); }, 10s));
 
+    // The group's own volume redistributes across every member that
+    // supports it - a DELTA applied to each player's own current volume
+    // (100 -> 80 for both, since both started equal), not "set everyone to
+    // exactly this value".
+    group->set_group_volume(80);
+    REQUIRE(eventually([&] { return member_shows(kitchen_id, 80, false) && member_shows(lounge_id, 80, false); }, 10s));
+
     // Setting one member's volume directly leaves the other alone - no
-    // redistribution, unlike a group-wide command.
+    // redistribution, unlike the group-wide command above.
     group->set_member_volume(kitchen_id, 30);
     REQUIRE(eventually([&] { return member_shows(kitchen_id, 30, false); }, 10s));
-    CHECK(member_shows(lounge_id, 100, false));
+    CHECK(member_shows(lounge_id, 80, false));
     // Reaches the sink itself, not just this read-back.
     const std::optional<ss::ClientView> kitchen_after_member_set = (*host)->client(kitchen_id);
     REQUIRE(kitchen_after_member_set.has_value());
     REQUIRE(kitchen_after_member_set->ac3forge_state.has_value());
     CHECK(kitchen_after_member_set->ac3forge_state->volume == 30);
 
-    // The group's own volume redistributes across both members, the same
-    // arithmetic (state_roles.hpp's set_group_volume()) a controller@v1
-    // client's own command already uses.
-    group->set_group_volume(65);
-    REQUIRE(eventually([&] { return member_shows(kitchen_id, 65, false) && member_shows(lounge_id, 65, false); }, 10s));
-
     // A member's mute is direct too.
     group->set_member_muted(lounge_id, true);
-    REQUIRE(eventually([&] { return member_shows(lounge_id, 65, true); }, 10s));
-    CHECK(member_shows(kitchen_id, 65, false));
+    REQUIRE(eventually([&] { return member_shows(lounge_id, 80, true); }, 10s));
+    CHECK(member_shows(kitchen_id, 30, false));
 
-    // The group's mute reaches every member.
+    // The group's mute reaches every member unconditionally - unlike
+    // volume, mute is not relative, so both are muted regardless of their
+    // now-different volumes.
     group->set_group_muted(true);
-    REQUIRE(eventually([&] { return member_shows(kitchen_id, 65, true) && member_shows(lounge_id, 65, true); }, 10s));
+    REQUIRE(eventually([&] { return member_shows(kitchen_id, 30, true) && member_shows(lounge_id, 80, true); }, 10s));
 
     group->remove(kitchen_id);
     CHECK_FALSE(group->member_player(kitchen_id).has_value());
