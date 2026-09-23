@@ -388,6 +388,12 @@ NetworkStatus NetworkSinks::status() const {
     return status;
 }
 
+std::shared_ptr<sendspin::Group> NetworkSinks::group(const std::string& group_id) const {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    const auto found = groups_.find(group_id);
+    return found != groups_.end() ? found->second.group : nullptr;
+}
+
 SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& entry) const {
     SinkFacts facts;
     facts.id = instance;

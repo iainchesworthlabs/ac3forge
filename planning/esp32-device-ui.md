@@ -259,6 +259,50 @@ extra 128 bytes was enough by itself. The figures above stand unchanged; a fully
 longer than 96 characters loses its tail in `text()`'s echo rather than the configuration itself,
 which is parsed from the caller's full string before any truncation happens.)
 
+### What `/hardware` adds
+
+A route of its own (decision 19), not a `/status` field: `GET /hardware`, JSON, fetched once when
+the page loads rather than polled every second, since nothing in it changes while the board runs.
+
+| Field | What it is | Where it comes from |
+|---|---|---|
+| `target` | `CONFIG_IDF_TARGET`, verbatim (`esp32p4`): what this firmware was built for | The build |
+| `chip` | `esp_chip_info()`'s model, named (`ESP32-P4`): what is actually running it | The chip |
+| `revision` | The chip's silicon revision (`1.3`) | `esp_chip_info()` |
+| `cores` | CPU core count | `esp_chip_info()` |
+| `fpu` | Whether this die has a hardware floating-point unit | `CONFIG_SOC_CPU_HAS_FPU` |
+| `psram_bytes` | PSRAM actually brought up, in bytes; 0 when none is fitted or this build never turned it on | `esp_psram_get_size()` |
+| `sink_max_slots` | This sink's own ceiling at any setting it takes, not just the one in force; left out when the owner has nothing to say | A new `ControlHandlers::sink_max_slots`; the example answers with `player::sink_max_slots()` |
+| `capabilities` | Plain sentences: cores and arithmetic, PSRAM size, the sink's ceiling | `ac3forge::describe_hardware` (`ac3forge/hardware_info.hpp`) |
+| `notices` | Plain sentences: no FPU, no PSRAM, a firmware running on a different chip than it was built for, or (the ESP32-P4 only) a build accommodating pre-production silicon whose detected chip actually clears v3.0 | The same |
+
+For a P4 dev board built with `CONFIG_ESP32P4_SELECTS_REV_LESS_V3` (so the bootloader admits
+anything from v1.0 up), running genuinely v3.0+ silicon - the notice checks against v3.0
+specifically (where `hal/i2s_ll.h`'s own clock-source choice changes), not against this build's
+own lowered floor, since a v1.3 board under the same build has nothing to be noticed about:
+
+```json
+{"target":"esp32p4","chip":"ESP32-P4","revision":"3.0","cores":2,"fpu":true,
+ "psram_bytes":33554432,"sink_max_slots":16,
+ "capabilities":["2 cores, a hardware floating-point unit","32 MiB of PSRAM",
+ "This sink's bus reaches up to 16 slots"],
+ "notices":["The detected chip is v3.0, v3.0 or newer. This build was compiled to also accept
+ older, pre-production silicon, and so falls back to the 40 MHz crystal for I2S rather than the
+ 160 MHz PLL v3.0+ silicon supports (I2S_CLK_SRC_XTAL/PLL_160M, hal/i2s_ll.h) - a build that
+ required v3.0 or newer could reach wider TDM frames than this one's own clock source does."]}
+```
+
+The page's own **Hardware** section reads `chip`, `revision`, `cores`, `fpu` and `psram_bytes` as
+its own rows (`hw-chip`, `hw-cores`, `hw-arithmetic`, `hw-psram`) and `sink_max_slots` as
+`hw-sink`; `notices` is shown as a plain list under them, verbatim, and `capabilities` is not
+re-rendered on the page at all - it says the same thing the rows above it already do, in words a
+`curl` of the route can read without a browser. `target` is not its own row either: a mismatch
+with `chip` is exactly what a `notices` entry already says, and showing both a build target and a
+chip name that almost always agree would read as two facts where there is one.
+
+**What it costs**, measured on the two files together: 25,594 to 28,103 bytes, 2,509 more - within
+decision 18's 28,672-byte budget with 569 to spare, so nothing there was raised for this.
+
 ## How the page updates
 
 By polling `GET /status`:
@@ -680,3 +724,32 @@ run as root, so Playwright can install Chromium's system libraries).
     boards have 16 MB of flash, so a larger partition is a table change away when the image
     needs one. What the budget holds is still how much one page load sends, which the section's
     table of levels, at up to sixteen rows, is the largest part of that is not text.
+
+19. **Where the hardware self-report goes.** (a) **a route of its own, `GET /hardware`, fetched
+    once when the page loads**; (b) fields added to `/status`, polled every second like the rest
+    of it; (c) console text only, nothing on the page. **Recommend (a).** Nothing in a chip
+    model, a silicon revision, whether an FPU or PSRAM came up, or this sink's own ceiling changes
+    while the board runs, so (b) would resend the same bytes once a second forever for no reason
+    - the exact waste decision 1 already chose polling over WebSockets to avoid elsewhere on this
+    page - and would grow `/status`'s own key-order contract test
+    (`apps/wasm/tests/device-ui/contract.spec.js`) with a second hand-maintained nested-object
+    special case beside `sendspin`'s. (c) puts exactly the fact a board misbehaving in the field
+    needs - "I am an ESP32-P4, revision 1.3, no PSRAM" - somewhere a phone browser on the same
+    network cannot reach, which is the debugging path this exists to shorten. Cost of (a): a
+    second request per page load (about 480 bytes down, once), and an owner with a sink now
+    answers one more optional `ControlHandlers` callback (`sink_max_slots`) if it wants that row
+    filled in. **Taken, (a).**
+
+20. **What counts as a notice versus a capability.** (a) **a capability is what this build's own
+    facts already say positively (cores, PSRAM size, the sink's ceiling); a notice is a limit, an
+    absence, or two facts that disagree (no FPU, no PSRAM, built for one chip and running on
+    another, or - the ESP32-P4 only - a detected chip revision that clears the threshold a
+    stricter build would have required)**;
+    (b) one flat list, unlabelled; (c) a severity field per entry. **Recommend (a).** Splitting the
+    two answers "what can this board do" and "what should I watch out for" separately, which is
+    what the user asked this feature to say in the first place, without inventing a severity scale
+    for a handful of plain-English sentences. (b) reads as a random pile once both kinds are mixed
+    in; (c) is precision this page does not need - every notice here is worth reading, not worth
+    triaging. Cost of (a): `ac3forge::describe_hardware` (`ac3forge/hardware_info.hpp`) decides
+    which list a fact goes in, so a future fact's placement is a judgement call made once, in one
+    place, rather than left to whoever reads the JSON. **Taken, (a).**

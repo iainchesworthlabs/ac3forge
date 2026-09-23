@@ -184,6 +184,18 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
 
     [[nodiscard]] NetworkStatus status() const;
 
+    // The real Group behind `group_id` (a GroupFacts::id status() lists),
+    // for the app's own network output seam to resolve and stream to
+    // (issue #874's own exit) - this class's other methods only ever call
+    // add()/remove()/set_group_volume() and the like on it (this file's own
+    // header comment says why), never start()/push()/push_burst(), which is
+    // Player's job once handed the group itself. Null for an id this class
+    // does not know. By id, not by this class's own bookkeeping name
+    // (GroupEntry::name): rename_group() is bookkeeping only, with no
+    // uniqueness check, so a name cannot resolve one group unambiguously the
+    // way ac3::sendspin::Group::id() (unique per host) does.
+    [[nodiscard]] std::shared_ptr<sendspin::Group> group(const std::string& group_id) const;
+
     // discovery::BrowseListener and ServerHostEvents - public, rather than
     // the more usual private override, so a test can drive this class with a
     // synthetic Service or ClientView directly instead of standing up a real
