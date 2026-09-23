@@ -126,7 +126,7 @@ if(EXISTS "${AC3HEARTH_VCPKG_SHARE}/libogg/copyright")
     list(APPEND AC3HEARTH_NOTICE_TOKENS "LIBOGG_VERSION=${version}")
     list(APPEND AC3HEARTH_NOTICE_FILES "LIBOGG_COPYRIGHT=${AC3HEARTH_VCPKG_SHARE}/libogg/copyright")
 endif()
-list(APPEND AC3HEARTH_NOTICE_FRAGMENTS opus time-filter fmt fonts trademarks)
+list(APPEND AC3HEARTH_NOTICE_FRAGMENTS opus time-filter fmt fonts material-symbols trademarks)
 # Tracy's client library: ac3hearth_engine (engine/CMakeLists.txt) links ac3::tracy
 # unconditionally, which only pulls in Tracy::TracyClient - and so is only worth
 # disclosing - when AC3FORGE_ENABLE_TRACY is on (cmake/Tracy.cmake). Same fact,
@@ -150,14 +150,16 @@ list(APPEND AC3HEARTH_NOTICE_TOKENS
     "TRACY_VERSION=${AC3HEARTH_TRACY_VERSION}"
     "TRACY_USERS=Hearth's programs")
 # LGPL3 is read only when qt-bundled is actually in the fragment list above; FMT_MIT
-# and OFL are read by the unconditional fmt/fonts fragments just added; TRACY_BSD
-# only when AC3FORGE_ENABLE_TRACY added tracy above. ac3_generate_notices ignores a
-# {{FILE:...}} marker no fragment mentions, so passing all four here unconditionally
-# is safe regardless of platform, Qt-bundling or AC3FORGE_ENABLE_TRACY.
+# and OFL are read by the unconditional fmt/fonts fragments just added; MATERIAL_SYMBOLS_
+# LICENSE by the unconditional material-symbols fragment; TRACY_BSD only when
+# AC3FORGE_ENABLE_TRACY added tracy above. ac3_generate_notices ignores a {{FILE:...}}
+# marker no fragment mentions, so passing all five here unconditionally is safe
+# regardless of platform, Qt-bundling or AC3FORGE_ENABLE_TRACY.
 list(APPEND AC3HEARTH_NOTICE_FILES
     "LGPL3=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/LGPL-3.0.txt"
     "FMT_MIT=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/MIT-fmt.txt"
     "OFL=${CMAKE_SOURCE_DIR}/apps/gui/fonts/OFL.txt"
+    "MATERIAL_SYMBOLS_LICENSE=${CMAKE_SOURCE_DIR}/apps/gui/fonts/MaterialSymbolsSharp-Apache-2.0.txt"
     "TRACY_BSD=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/BSD-3-Clause-Tracy.txt")
 
 if(NOT AC3HEARTH_NOTICES_FILE)

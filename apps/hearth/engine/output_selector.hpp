@@ -55,6 +55,14 @@ struct OutputPreferences {
     std::string endpoint_id{};
     // follow=off: refuse rather than fall back.
     bool follow_sink = true;
+    // A group of network sinks the person has selected in the Network page,
+    // and whether it is ready to take a stream (paired, and not held by
+    // another server) - mirror OutputRequest::group_name/group_ready
+    // (output_decision.hpp), which choose() threads straight through. Set
+    // by whatever couples this to the Network page's own state; nothing in
+    // this engine populates them itself.
+    std::string group_name{};
+    bool group_ready = false;
 
     friend bool operator==(const OutputPreferences&, const OutputPreferences&) = default;
 };

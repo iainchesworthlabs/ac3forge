@@ -173,6 +173,7 @@ SinkRow to_row(const SinkFacts& facts) {
             row.badge_text = "not paired";
             break;
     }
+    row.notice = facts.notice;
     return row;
 }
 
@@ -237,6 +238,7 @@ SinkDetail to_detail(const SinkFacts& facts) {
     }
 
     detail.paired_on_text = facts.paired_on;
+    detail.notice = facts.notice;
 
     return detail;
 }

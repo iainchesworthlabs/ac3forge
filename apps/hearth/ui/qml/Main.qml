@@ -251,7 +251,9 @@ ApplicationWindow {
             Button {
                 objectName: "helpButton"
                 text: "?"
+                font.pixelSize: Theme.fontBody
                 implicitWidth: 30
+                implicitHeight: 30
                 onClicked: shortcuts.open()
                 Accessible.name: qsTr("Keyboard shortcuts")
             }

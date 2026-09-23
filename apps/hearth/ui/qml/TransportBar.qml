@@ -31,30 +31,46 @@ Rectangle {
         anchors.rightMargin: Theme.pad
         spacing: Theme.gap
 
+        // Icon-only, the way every round-1 artboard shows the transport
+        // (planning/hearth-design.md) - each needs its own Accessible.name
+        // now that `text` is a glyph rather than a word a screen reader
+        // could read directly.
         Button {
             objectName: "transportPrevious"
-            text: qsTr("Previous")
+            text: Theme.iconSkipPrevious
+            font.family: Theme.iconFamily
+            font.pixelSize: Theme.iconSize
             enabled: HearthController.currentIndex > 0
             onClicked: HearthController.previous()
+            Accessible.name: qsTr("Previous")
         }
         Button {
             objectName: "transportPlayPause"
-            text: HearthController.playing ? qsTr("Pause") : qsTr("Play")
+            text: HearthController.playing ? Theme.iconPause : Theme.iconPlayArrow
+            font.family: Theme.iconFamily
+            font.pixelSize: Theme.iconSize
             enabled: HearthController.queue.length > 0
             onClicked: HearthController.playing ? HearthController.pause() : HearthController.play()
+            Accessible.name: HearthController.playing ? qsTr("Pause") : qsTr("Play")
         }
         Button {
             objectName: "transportStop"
-            text: qsTr("Stop")
+            text: Theme.iconStop
+            font.family: Theme.iconFamily
+            font.pixelSize: Theme.iconSize
             enabled: HearthController.state !== "stopped"
             onClicked: HearthController.stop()
+            Accessible.name: qsTr("Stop")
         }
         Button {
             objectName: "transportNext"
-            text: qsTr("Next")
+            text: Theme.iconSkipNext
+            font.family: Theme.iconFamily
+            font.pixelSize: Theme.iconSize
             enabled: HearthController.currentIndex >= 0 &&
                      HearthController.currentIndex + 1 < HearthController.queue.length
             onClicked: HearthController.next()
+            Accessible.name: qsTr("Next")
         }
 
         Text {
@@ -104,6 +120,35 @@ Rectangle {
             Accessible.description: qsTr("%1 of %2")
                 .arg(formatMs(HearthController.positionMs))
                 .arg(formatMs(HearthController.durationMs))
+
+            // A slim progress bar with a tick handle (main-play.png's own
+            // footer), not QQC2 Basic's stock groove-and-circle - the same
+            // reason every custom-shaped control in this family draws its
+            // own look rather than leaving a native control's default (this
+            // file's own header comment on the plain-Rectangle queue-row
+            // idiom, though here the native Slider is kept for its real
+            // drag/keyboard handling and only its two visual delegates are
+            // replaced).
+            background: Rectangle {
+                x: scrubber.leftPadding
+                y: scrubber.topPadding + scrubber.availableHeight / 2 - height / 2
+                width: scrubber.availableWidth
+                height: 4
+                color: Theme.neutral300
+
+                Rectangle {
+                    width: scrubber.visualPosition * parent.width
+                    height: parent.height
+                    color: Theme.accent
+                }
+            }
+            handle: Rectangle {
+                x: scrubber.leftPadding + scrubber.visualPosition * (scrubber.availableWidth - width)
+                y: scrubber.topPadding + scrubber.availableHeight / 2 - height / 2
+                width: 4
+                height: 16
+                color: Theme.text
+            }
         }
         Connections {
             target: HearthController
@@ -143,9 +188,10 @@ Rectangle {
         // kMaxVolumeDb; a literal here rather than a shared binding, the way
         // Speakers.qml's own DoubleValidator ranges already are.
         Text {
-            text: qsTr("Volume")
+            text: Theme.iconVolumeUp
+            font.family: Theme.iconFamily
+            font.pixelSize: Theme.iconSize
             color: Theme.textMuted
-            font.pixelSize: Theme.fontSmall
         }
         Slider {
             id: volumeSlider
@@ -161,6 +207,29 @@ Rectangle {
             // trusted to still be bound after the first move.
             onMoved: HearthController.setVolumeDb(value)
             Accessible.name: qsTr("Volume")
+
+            // Same slim-bar-and-tick look as the scrubber above, not QQC2
+            // Basic's stock groove-and-circle.
+            background: Rectangle {
+                x: volumeSlider.leftPadding
+                y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
+                width: volumeSlider.availableWidth
+                height: 4
+                color: Theme.neutral300
+
+                Rectangle {
+                    width: volumeSlider.visualPosition * parent.width
+                    height: parent.height
+                    color: Theme.accent
+                }
+            }
+            handle: Rectangle {
+                x: volumeSlider.leftPadding + volumeSlider.visualPosition * (volumeSlider.availableWidth - width)
+                y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
+                width: 4
+                height: 16
+                color: Theme.text
+            }
         }
         Connections {
             target: HearthController
