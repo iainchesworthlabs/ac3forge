@@ -3034,6 +3034,25 @@ jobs:
               "-DSDKCONFIG_DEFAULTS=$defaults" build
           done
 
+      # hearth_sink's actual Sendspin player, not the baremetal probe above - built and not
+      # run, same reason: no qemu-riscv32 machine for esp32c6. The config combination is the
+      # one esp-idf/ac3forge/examples/hearth_sink/sdkconfig.c6 and sdkconfig.sendspin-c6 each
+      # name in their own header comments, and the one docs/hearth/index.md's "Where it runs"
+      # table has flagged as "no C6 Sendspin CI job" - a board has built, run and measured
+      # this combination (the README's "On the ESP32-C6" section, including a ten-minute
+      # two-board group play), but nothing before this step caught whether it still compiles.
+      # Same container and toolchain as the two steps above, so it costs one more build.
+      - name: Build hearth_sink's Sendspin player for the ESP32-C6 (no emulator for this part)
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          dir="$RUNNER_TEMP/hearth_sink-c6-sendspin"
+          idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
+            "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6" \
+            build
+
   build-footprint:
     name: Minimum-footprint decoder (arm-none-eabi, QEMU)
     # Leg 5 of check-runners' Linux fan-out: everything here runs inside the
