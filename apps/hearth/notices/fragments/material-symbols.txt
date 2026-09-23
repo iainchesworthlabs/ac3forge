@@ -1,0 +1,10 @@
+Material Symbols
+-----------------
+
+Hearth's programs embed eight glyphs (play, pause, stop, skip previous,
+skip next, create new folder, add and volume up) from Google's Material
+Symbols Sharp icon font (github.com/google/material-design-icons), Copyright
+Google Inc., subset to just those glyphs for the transport bar and queue
+controls. It is used under the Apache License, Version 2.0.
+
+{{FILE:MATERIAL_SYMBOLS_LICENSE}}
