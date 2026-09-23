@@ -722,17 +722,36 @@ jobs:
       # v4.4.0 change on the Linux AppImage leg (see its own "Install Qt
       # (prebuilt)" step's comment).
       #
-      # choco, not actions/setup-python: this fleet's runners are persistent,
-      # reused machines, not fresh-per-job GitHub-hosted images, and
-      # actions/setup-python's own MSI-based installer can fail outright on
-      # one ("Error happened during Python installation" after its own
-      # cleanup of a previous run's leftover registry entries - confirmed
-      # against a real CI run). choco already installs ninja/nsis/ffmpeg
-      # reliably in this exact job; python is no different.
+      # Neither actions/setup-python nor choco's own python package can be
+      # trusted to actually install anything here: this fleet's runners are
+      # persistent, reused machines, not fresh-per-job GitHub-hosted images,
+      # and BOTH installers have now failed outright on one with an
+      # "already there in some form MSI itself does not like" signature -
+      # actions/setup-python's "Error happened during Python installation"
+      # after cleaning up a previous run's leftover registry entries, then
+      # choco's own MSI error 1603 ("could mean... the same version is
+      # already installed") on the very next attempt. Probing for a working
+      # python.exe already on disk first - the same "was on disk but never
+      # on PATH" philosophy the NSIS step above uses, and the reason
+      # actions/setup-python's own RUNNER_TOOL_CACHE path is checked by name
+      # here - sidesteps the installer entirely rather than fighting it a
+      # third way; only actually installs when truly nothing is found.
       - name: Setup Python (for install-qt-action)
         if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
-        shell: bash
-        run: choco install python -y --no-progress --requirechecksums
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $existing = @(
+            (Get-ChildItem -Path (Join-Path $env:RUNNER_TOOL_CACHE 'Python') -Filter python.exe -Recurse -ErrorAction SilentlyContinue),
+            (Get-ChildItem -Path 'C:\Python*\python.exe' -ErrorAction SilentlyContinue),
+            (Get-ChildItem -Path (Join-Path $env:ProgramFiles 'Python*\python.exe') -ErrorAction SilentlyContinue)
+          ) | ForEach-Object { $_ } | Select-Object -First 1
+          if ($existing) {
+            Write-Host "Found existing python.exe at $($existing.FullName) - adding its directory to PATH rather than installing."
+            $existing.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          } else {
+            choco install python -y --no-progress --requirechecksums
+          }
 
       - name: Install Qt (prebuilt)
         if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
