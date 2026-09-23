@@ -218,9 +218,13 @@ class HearthController : public QObject {
     // (MeterSnapshot's own optionals) - QML checks with `!== undefined`.
     Q_PROPERTY(QVariantMap loudness READ loudness NOTIFY monitorChanged)
     // The access unit the device is playing now: dialnorm, compr, dynrng
-    // (its block range) and shortBlocks. shortBlocks is AC-3 only and absent
-    // for E-AC-3 (UnitReport::short_blocks' own comment says why) - the
-    // panel says so rather than showing a wrong number.
+    // (its block range), shortBlocks, bitrateKbps and sequence. shortBlocks
+    // is AC-3 only and absent for E-AC-3 (UnitReport::short_blocks' own
+    // comment says why); bitrateKbps is likewise absent for the last unit of
+    // a stream, released by finish() (UnitReport::bitrate_kbps' own comment
+    // says why) - the panel says so rather than showing a wrong number.
+    // sequence is a running count of units reported so far, not a position
+    // in the file (UnitReport::sequence's own comment).
     Q_PROPERTY(QVariantMap thisFrame READ thisFrame NOTIFY monitorChanged)
     // This unit's objects, bed channels and dynamic alike, one entry per
     // oba::describe_objects() result: {x, y, z, gainDb, snap, active, label,
