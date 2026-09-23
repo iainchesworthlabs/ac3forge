@@ -14,6 +14,7 @@
 #include "ac3/io/probe.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac3/meta/mixing.hpp"
+#include "ac3/oba/oamd.hpp"
 #include "container_input.hpp"
 #include "probe_json.hpp"
 #include "session.hpp"
@@ -148,6 +149,14 @@ struct MediaInfo {
     std::optional<std::uint16_t> channel_map = std::nullopt;
     std::optional<io::ProbeReport> probe = std::nullopt;
     std::optional<MediaBitstream> bitstream = std::nullopt;
+    // The first OAMD payload's full per-object detail (position, gain, snap,
+    // active) - probe->program (above) is that SAME payload's bed/object-count
+    // summary; this is its DecodedProgram twin, with the object list
+    // oba::describe_objects() needs for the Media page's own OAMD table.
+    // std::nullopt under the same condition as probe->program: no OAMD payload
+    // parsed. Not part of media_info_json()'s document - like the Play page's
+    // own monitor, this is a live-UI concern, not an exported fact.
+    std::optional<oba::DecodedProgram> objects = std::nullopt;
     // AC-4.
     std::optional<apps::probe_json::Ac4Summary> ac4 = std::nullopt;
 
