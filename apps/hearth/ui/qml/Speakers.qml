@@ -28,6 +28,18 @@ ScrollView {
     readonly property var isLfeFlags: HearthController.speakerIsLfe
     readonly property var routingList: HearthController.routing
     readonly property int outputs: HearthController.routingOutputs
+    readonly property var outputNames: HearthController.outputNames
+
+    // The routing grid's column header for output `index`: the device's own
+    // name beside its 1-based number ("1 FL", planning/hearth-design.md's
+    // mockup) where HearthController.outputNames has one, else the bare
+    // number alone - a device that cannot say, or a width no standard
+    // arrangement fits, leaves that entry empty.
+    function outputHeading(index) {
+        const name = root.outputNames[index];
+        return name ? qsTr("%1\n%2").arg(index + 1).arg(name) : String(index + 1);
+    }
+
     // The layout picker's own preset names - a plain "5.1.2" etc. is what
     // the picker's own SegmentedControl offers, and also what its currently-
     // selected segment is computed against (falling back to "List" once a
@@ -439,6 +451,10 @@ ScrollView {
                 readonly property int cellSize: 32
                 readonly property int labelWidth: 72
                 readonly property int noneWidth: 56
+                // Taller than a body row: a header cell with a device name
+                // wraps its number and name onto two lines (outputHeading()),
+                // which a plain cellSize-square box is too short for.
+                readonly property int headerHeight: cellSize * 1.6
 
                 // Arrow keys move focus only (Space/Enter/click below still do the
                 // assigning). Looked up fresh via Repeater.itemAt() on every press
@@ -475,23 +491,23 @@ ScrollView {
 
                 Row {
                     spacing: 1
-                    Item { width: grid.labelWidth; height: grid.cellSize }
+                    Item { width: grid.labelWidth; height: grid.headerHeight }
                     Repeater {
                         model: root.outputs
                         delegate: Text {
                             required property int index
                             width: grid.cellSize
-                            height: grid.cellSize
+                            height: grid.headerHeight
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
-                            text: String(index + 1)
+                            text: root.outputHeading(index)
                             color: Theme.textMuted
-                            font.pixelSize: Theme.fontSmall
+                            font.pixelSize: Theme.fontMicro
                         }
                     }
                     Text {
                         width: grid.noneWidth
-                        height: grid.cellSize
+                        height: grid.headerHeight
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         text: qsTr("NONE")

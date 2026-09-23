@@ -124,6 +124,14 @@ class HearthController : public QObject {
     // routing grid draws one radio button per (slot, output) pair from.
     Q_PROPERTY(QVariantList routing READ routing NOTIFY speakerSetupChanged)
     Q_PROPERTY(int routingOutputs READ routingOutputs NOTIFY speakerSetupChanged)
+    // Each device output's own name - "FL", "LFE", "SL" - for the routing
+    // grid's column headers to show beside their 1-based output number
+    // (Speakers.qml's own "1 FL" mockup, planning/hearth-design.md). From
+    // EngineStatus::speaker_mask (ac3::audio::speakers.hpp's output_names()),
+    // which falls back to the standard arrangement for routingOutputs' width
+    // when the device does not report a mask; an entry is empty where even
+    // that cannot name the output, and the grid shows the bare number alone.
+    Q_PROPERTY(QStringList outputNames READ outputNames NOTIFY speakerSetupChanged)
     Q_PROPERTY(QString deviceName READ deviceName NOTIFY speakerSetupChanged)
     // The open device's own endpoint id - what the output picker (A5's
     // output-picker dialog) compares each row's own id against to say which
@@ -346,6 +354,7 @@ public:
     [[nodiscard]] double crossoverHz() const { return crossover_hz_; }
     [[nodiscard]] QVariantList routing() const { return routing_; }
     [[nodiscard]] int routingOutputs() const { return routing_outputs_; }
+    [[nodiscard]] QStringList outputNames() const { return output_names_; }
     [[nodiscard]] QString deviceName() const { return device_name_; }
     [[nodiscard]] QString currentDeviceId() const { return device_id_; }
     [[nodiscard]] QStringList speakerLabels() const { return speaker_labels_; }
@@ -533,6 +542,7 @@ private:
     double crossover_hz_ = 80.0;
     QVariantList routing_;
     int routing_outputs_ = 0;
+    QStringList output_names_;
     QString device_name_;
     QString device_id_;
     QStringList speaker_labels_;
