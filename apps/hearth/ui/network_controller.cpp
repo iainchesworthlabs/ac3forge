@@ -248,7 +248,7 @@ struct LayoutFields {
     routing.reserve(static_cast<qsizetype>(fields.labels.size()));
     const std::optional<ac3::render::Routing> parsed_routing =
         settings.routing ? ac3::render::Routing::parse(*settings.routing, outputs) : std::nullopt;
-    for (std::size_t slot = 0; slot < fields.labels.size(); ++slot) {
+    for (std::size_t slot = 0; slot < static_cast<std::size_t>(fields.labels.size()); ++slot) {
         routing.push_back(parsed_routing ? parsed_routing->output_of(slot) : ac3::render::Routing::kUnassigned);
     }
     map[QStringLiteral("routing")] = routing;
