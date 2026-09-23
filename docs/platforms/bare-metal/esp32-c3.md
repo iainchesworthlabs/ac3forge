@@ -28,7 +28,7 @@ Whether a part is viable comes down to floating point, not RAM. Espressif measur
 | Part | Usable RAM | Clock | FPU | Vector unit | Viable |
 |---|---|---|---|---|---|
 | **ESP32-S3** | 341,760 DIRAM | 240 MHz | single | PIE, integer-only; 128-bit float load/store | **Yes** — [the primary target](esp32-s3.md) |
-| **ESP32-P4** | 768 KB L2MEM | 400 MHz | single | PIE, integer-only; no wide float load | **Not as S3 replacement** — complementary **best** sink module Proposed ([sink tiers](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md)) |
+| **ESP32-P4** | 768 KB L2MEM | 400 MHz (360 on pre-production v1.x silicon) | single | PIE, integer-only; no wide float load | **Not as S3 replacement** — complementary **best** sink module, real time on every fixture, no network yet ([ESP32-P4](esp32-p4.md), [sink tiers](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md)) |
 | ESP32 (LX6) | ~320 KB | 240 MHz | single | none | Plausible, slower |
 | ESP32-S2 | 320 KB | 240 MHz | **none** | none | No — soft-float everything |
 | **ESP32-C3**/C6/C61 | 400/512/320+PSRAM KB | 160 MHz | **none** | none | **Yes, in the fixed-point tier** — this page and [ESP32-C6](esp32-c6.md); C61 proposed, no board ([sink tiers](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md)) |
@@ -67,6 +67,9 @@ this die; C61 = good, 5.1 desired / PSRAM-backed, proposed, no board yet; S3 = b
 without enhanced coupling / both DACs @ 16-bit, shipped; P4 = best ≤9.1.6 with full tools
 desired / both DACs @ 32-bit). See
 [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md).
+Phase P1 of that plan is done: [ESP32-P4](esp32-p4.md) is real time on every fixture, no network
+yet, on a board — with a chip-revision trap specific to pre-production silicon worth reading
+before flashing one.
 
 ## Building
 

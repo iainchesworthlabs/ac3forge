@@ -1,10 +1,12 @@
 # ESP32 sink tiers: C6 / C61 / S3 / P4 into one ES9080 TDM chain
 
-**Status, 2026-09-21:** proposed study. Complementary to the shipped S3 sink and the
+**Status, 2026-09-23:** Phase P1 done. Complementary to the shipped S3 sink and the
 planned C6 sink — not a replacement for either. The 2026-09-08 close of the ESP32-P4 as a
 decoder target ([`docs/platforms/bare-metal/esp32-c3.md`](../docs/platforms/bare-metal/esp32-c3.md#why-not-the-esp32-p4))
 still holds for *replacing* the S3 Wi-Fi Sendspin product; this page reopens P4 only as the
-**best** tier of a shared TDM sink family.
+**best** tier of a shared TDM sink family. The probe now exists and is real time on every
+fixture, no network, on a board:
+[`docs/platforms/bare-metal/esp32-p4.md`](../docs/platforms/bare-metal/esp32-p4.md).
 
 **Update, 2026-09-23:** added a fourth tier, **C61**, between C6 and S3. Prompted by a question
 about whether a PSRAM-equipped C6 board could unlock 5.1 — it can't, on any board, ever (the C6
@@ -143,7 +145,9 @@ is a **measurement gate**, not an assumption.
 ### Exit criteria (board)
 
 1. **Probe** — float tier: fourteen fixtures + stream-set `714-*` and objects-render rows in
-   real time; PCM levels/hashes as on the S3 float path.
+   real time; PCM levels/hashes as on the S3 float path. **Done, 2026-09-23**: all fourteen
+   fixtures and all eleven `714-*` stream-set files, every one correct and in real time, no
+   network, on a board (`docs/platforms/bare-metal/esp32-p4.md`).
 2. **Player, tools** — `714-aht`, `714-all`, `714-ecpl` onto **12 and 16 slots** with zero
    underruns over ≥10 minutes (null/capture first; then TDM to the ES9080 pair).
 3. **TDM** — **16 × 32-bit** opens on **one** P4 I2S controller into **both** DACs; fixed-frame
@@ -151,10 +155,19 @@ is a **measurement gate**, not an assumption.
 4. **9.1.6** — sixteen-slot layout plays as coded (or with objects placed) without underrun
    when the stream and tools are in the supported set.
 5. **Network shapes** (same decode/TDM exit, measure both if both are product bets):
-   - **P4 + Ethernet** — appliance / PoE; isolates decode and TDM from radio tax.
+   - **P4 + Ethernet** — not applicable to the DFRobot FireBeetle 2 (compact SKU): no Ethernet
+     PHY on this board.
    - **P4 + C6 (`esp_hosted` / SDIO)** — Wi-Fi groups like S3/C6; report SDIO + remote Wi-Fi
-     cost against the same streams.
-6. **Memory** — least free internal heap during play, compared to the S3's ~1 KB margin.
+     cost against the same streams. **Foundation proven, 2026-09-23**: `esp_wifi_remote` +
+     `esp_hosted` (both `espressif/`, gated `target in [esp32p4, esp32h2]` — already the default
+     manifest in ESP-IDF v6.1's `examples/wifi/getting_started/station`) bring the onboard
+     ESP32-C6-MINI-1 up over SDIO and join a real AP: `esp_wifi_init` → `wifi_init_sta finished`
+     → associated → DHCP → IP address, cold boot to IP in ~6.8 s. This board's C6 is NOT one of
+     the units affected by DFRobot's documented factory mis-flash (forum topic 400107) - no
+     extra hardware needed. **Not yet done**: the actual player (`hearth_sink` for P4, streaming
+     the same fixtures/stream-set over this link) and the cost report the criterion asks for -
+     this was a standalone connectivity smoke test, not `hearth_sink` integration.
+6. **Memory** — least free internal heap during play, compared to the S3’s ~1 KB margin.
 7. **Go / no-go** — ship as the **best** module for the shared PCB, or leave P4 closed again
    with numbers.
 
@@ -170,19 +183,21 @@ is a **measurement gate**, not an assumption.
 
 ## Phasing
 
-| Phase | Work | Size | Depends on |
-|---|---|---|---|
-| **P0** | This page + roadmap Proposed line; correct the old "P4 closed" wording to "closed as S3 replacement" | S | — |
-| **C61-P1** | `esp32c61` probe under `apps/baremetal/platform/` + component target; board timing table (no network), mirroring the C6 probe | L | C61 board |
-| **C61-P2** | Sendspin sink shape: `sdkconfig.sendspin-c61`, PSRAM-routed scratch, memory and DMA-queue measurement per "What 'good' must prove" | L | C61-P1 |
-| **P1** | `esp32p4` probe under `apps/baremetal/platform/` + component target; board timing table (no network) | L | P4 board |
-| **P2** | Ethernet player shape: stream set + tools rows onto 12/16 slots (capture, then TDM to one or both ES9080s) | L | P1; ES9080 hardware |
-| **P3** | Hosted C6 Wi-Fi shape (optional if Ethernet-only "best" is enough) | L | P2; Function-EV or equivalent |
-| **P4** | `hearth_sink` target + guide; advertise tier capabilities on the modular PCB | XL | P2 (and P3 if Wi-Fi best) |
+| Phase | Work | Size | Depends on | Status |
+|---|---|---|---|---|
+| **P0** | This page + roadmap Proposed line; correct the old “P4 closed” wording to “closed as S3 replacement” | S | — | Done |
+| **C61-P1** | `esp32c61` probe under `apps/baremetal/platform/` + component target; board timing table (no network), mirroring the C6 probe | L | C61 board | Not started |
+| **C61-P2** | Sendspin sink shape: `sdkconfig.sendspin-c61`, PSRAM-routed scratch, memory and DMA-queue measurement per "What 'good' must prove" | L | C61-P1 | Not started |
+| **P1** | `esp32p4` probe under `apps/baremetal/platform/` + component target; board timing table (no network) | L | P4 board | **Done, 2026-09-23** — real time on every fixture and every stream-set `714-*` file, at 360 MHz (this board's chip-revision ceiling, not the part's 400 MHz maximum) |
+| **P2** | Ethernet player shape: stream set + tools rows onto 12/16 slots (capture, then TDM to one or both ES9080s) | L | P1; ES9080 hardware | **N/A on the DFRobot FireBeetle 2 (compact SKU)** — no Ethernet PHY on this board. Still the right path on a board that has one (e.g. the Function-EV board) |
+| **P3** | Hosted C6 Wi-Fi shape | L | P1; the onboard C6 | **In progress.** Foundation done 2026-09-23: `esp_wifi_remote`/`esp_hosted` over SDIO join a real AP and get an IP address (see exit criterion 5). Not yet: `hearth_sink` built for P4 and streaming over this link, TDM to the ES9080 pair (not wired up yet) |
+| **P4** | `hearth_sink` target + guide; advertise tier capabilities on the modular PCB | XL | P2 (and P3 if Wi-Fi best) | Not started |
 
-**Recommended order:** Ethernet first (clean headroom), hosted Wi-Fi only if multi-room
-groups on the best module matter. C61-P1/P2 run independently of the P4 track — whichever
-board arrives first.
+**Recommended order, revised for this board:** no Ethernet PHY here, so Wi-Fi via the onboard C6
+(P3) is the only network path on the DFRobot FireBeetle 2 — P2 stays the right choice for a board
+that does have Ethernet (the ES9080 pair isn't wired up on either board yet, so P4's TDM/DAC exit
+criteria are unreached regardless of which network shape gets there first). C61-P1/P2 run
+independently of this track entirely — whichever board arrives first.
 
 ## Shared ES9080 contract (all tiers)
 

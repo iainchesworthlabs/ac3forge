@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/sendspin/firewall.hpp"
 #include "ac3/sendspin/transport.hpp"
 #include "listen_socket.hpp"
 
@@ -315,6 +316,18 @@ std::unique_ptr<Listener> Listener::start(ListenerOptions options, Handler handl
     server.WebSocket(shared.options.path, [&shared](const httplib::Request& request, ws::WebSocket& socket) {
         shared.serve(request, socket);
     });
+
+    // A loopback-only listener needs no exception - Windows never gates loopback traffic - and
+    // port 0 takes whichever free port the OS hands back, a different one on every run that a
+    // persistent, name-keyed rule could never usefully track; both are skipped for that reason,
+    // not asked and left unanswered.
+    if (shared.options.address != "127.0.0.1" && shared.options.port != 0) {
+        // "Listener", not "Server": this class is shared by both directions (this header's own
+        // comment above) - a server's clients-that-dial-in port, and equally a player's own
+        // listener for servers that dial it, which is what ac3hearth-testsink binds.
+        firewall::ensure_inbound_rule(
+            {.name = "Sendspin Listener", .protocol = firewall::Protocol::kTcp, .port = shared.options.port});
+    }
 
     int bound = -1;
     if (shared.options.port == 0) {

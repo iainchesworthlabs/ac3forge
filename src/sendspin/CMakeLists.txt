@@ -147,17 +147,20 @@ elseif(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
             src/session_driver.cpp
             src/transport/httplib/websocket.cpp)
     # The listening socket's options and the mDNS sockets' system calls, which differ by
-    # platform (listen_socket.hpp, discovery/mdns/platform.hpp).
+    # platform (listen_socket.hpp, discovery/mdns/platform.hpp), and the Windows Firewall
+    # exception a listening or mDNS socket needs on Windows only (ac3/sendspin/firewall.hpp).
     if(WIN32)
         target_sources(ac3sendspin
             PRIVATE
                 src/discovery/mdns/platform_windows.cpp
+                src/platform/firewall_windows.cpp
                 src/transport/httplib/listen_socket_windows.cpp)
-        target_link_libraries(ac3sendspin PRIVATE iphlpapi ws2_32)
+        target_link_libraries(ac3sendspin PRIVATE iphlpapi ole32 oleaut32 shell32 ws2_32)
     else()
         target_sources(ac3sendspin
             PRIVATE
                 src/discovery/mdns/platform_posix.cpp
+                src/platform/firewall_posix.cpp
                 src/transport/httplib/listen_socket_posix.cpp)
     endif()
     target_include_directories(ac3sendspin SYSTEM PRIVATE "${AC3FORGE_MDNS_INCLUDE_DIR}")
