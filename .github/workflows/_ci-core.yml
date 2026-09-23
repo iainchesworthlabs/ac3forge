@@ -483,6 +483,16 @@ jobs:
           /tmp/aiosendspin-venv/bin/python tools/sendspin/aiosendspin_exit.py \
             --ac3tests ./build/config-linux-gcc/bin/ac3tests
 
+      # A6's own exit (same planning doc): the scripted player as one member of a group alongside
+      # a burst-taking test sink, played from the app's own ac3::hearth::Engine - not just Group
+      # directly, the way the step above's own host case does for A4. Reuses the venv above.
+      - name: aiosendspin 9.1.1 player, as a group member
+        shell: bash
+        run: |
+          set -eu
+          /tmp/aiosendspin-venv/bin/python tools/sendspin/aiosendspin_group_exit.py \
+            --ac3tests ./build/config-linux-gcc/bin/ac3tests
+
       # Music Assistant's side of the same exit, rehearsed: aiosendspin 9.1.1's server, which Music
       # Assistant runs, pairs with the test sink by its token and by its dynamic code, and plays it
       # PCM, FLAC and Opus.

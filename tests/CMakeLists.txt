@@ -864,9 +864,15 @@ if(AC3FORGE_BUILD_HEARTH)
         target_link_libraries(ac3tests_websocket
             PRIVATE ac3::sendspin ac3sendspin_httplib ac3::warnings ac3::coverage Catch2::Catch2)
         target_link_libraries(ac3tests PRIVATE ac3tests_websocket)
-        # Hearth's test sink, run in process (apps/hearth/testsink), and the server's half of A4's
-        # exit with aiosendspin 9.1.1, which tools/sendspin/aiosendspin_exit.py runs.
-        target_sources(ac3tests PRIVATE hearth/test_aiosendspin.cpp hearth/test_group.cpp hearth/test_testsink.cpp)
+        # Hearth's test sink, run in process (apps/hearth/testsink), the server's half of A4's
+        # exit with aiosendspin 9.1.1 (tools/sendspin/aiosendspin_exit.py), and A6's own
+        # (tools/sendspin/aiosendspin_group_exit.py) - a group with the scripted player as one
+        # of its members, played from the app's own Engine.
+        target_sources(ac3tests PRIVATE
+            hearth/test_aiosendspin.cpp
+            hearth/test_aiosendspin_group.cpp
+            hearth/test_group.cpp
+            hearth/test_testsink.cpp)
         # The engine's pairing records, its Network page bookkeeping (A6), its
         # NetworkGroupSink (A6, streaming to a group) and issue #874's own
         # exit - a group of two test sinks played from ac3::hearth::Engine
