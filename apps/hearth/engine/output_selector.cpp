@@ -155,6 +155,8 @@ OutputChoice OutputSelector::choose(const ItemFacts& item, const HeldOutput& hel
     request.pinned = preferences_.pinned;
     request.preferred_endpoint_id = preferences_.endpoint_id;
     request.follow_sink = preferences_.follow_sink;
+    request.group_name = preferences_.group_name;
+    request.group_ready = preferences_.group_ready;
     // The player transcodes over its passthrough output, at a rate AC-3 has;
     // with no such output, no row takes AC-3 in the first place.
     request.transcode_available = Ac3Transcoder::carries(rate);
