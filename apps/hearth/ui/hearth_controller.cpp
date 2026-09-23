@@ -83,7 +83,10 @@ constexpr int kPollMs = 60;
     if (!facts.stream.has_value()) {
         return QString();
     }
-    return facts.has_objects ? QStringLiteral("E-AC-3 JOC") : QStringLiteral("AC-3/E-AC-3");
+    if (facts.has_objects) {
+        return QStringLiteral("E-AC-3 JOC");
+    }
+    return *facts.stream == audio::BitstreamFormat::kAc3 ? QStringLiteral("AC-3") : QStringLiteral("E-AC-3");
 }
 
 // The queue row's own codec chip (main-play.png, "01 QUEUE"): "A3"/"E3" from
@@ -1233,6 +1236,10 @@ void HearthController::poll() {
             new_this_frame[QStringLiteral("shortBlocks")] = *report->short_blocks;
         }
         new_this_frame[QStringLiteral("blocks")] = report->blocks;
+        if (report->bitrate_kbps) {
+            new_this_frame[QStringLiteral("bitrateKbps")] = *report->bitrate_kbps;
+        }
+        new_this_frame[QStringLiteral("sequence")] = static_cast<qlonglong>(report->sequence);
 
         if (report->objects) {
             new_has_object_metadata = true;

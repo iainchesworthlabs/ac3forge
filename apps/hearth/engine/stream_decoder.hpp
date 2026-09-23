@@ -93,6 +93,17 @@ struct UnitReport {
     // The program its object metadata describes, with every update block's
     // positions, when it carried any.
     std::optional<oba::DecodedProgram> objects = std::nullopt;
+    // This unit's own bitrate: its bytes over its duration (blocks *
+    // kSamplesPerBlock, at the decoder's sample rate). Unset for the unit
+    // finish() releases - flush() hands back already-decoded PCM, not the
+    // raw bytes a bitrate needs.
+    std::optional<double> bitrate_kbps = std::nullopt;
+    // A running count of units reported so far, starting at 1 - "This
+    // frame"'s own access-unit counter. Not a position in the file (only
+    // Session/Player track that): it counts from this StreamDecoder's own
+    // construction and is not rewound by reset() (a seek), the honest
+    // choice given what a decoder alone can know.
+    std::uint64_t sequence = 0;
 };
 
 // Which of an access unit's substreams are decoded.
@@ -175,6 +186,12 @@ private:
     void place(const PcmBlock& block, const BlockFn& deliver);
     std::size_t render_flushed(std::span<DecodedSubstream> substreams, const BlockFn& deliver,
                                const UnitFn& reported);
+    // The two fields report_frame()/report_unit() cannot fill in themselves:
+    // `out.blocks` must already be set (both of those, or render_flushed()'s
+    // own manual block, do this first). `unit_bytes` is the raw bytes this
+    // call decoded, absent for render_flushed()'s own final unit - see
+    // UnitReport::bitrate_kbps' own comment on why.
+    void finish_report(UnitReport& out, std::optional<std::size_t> unit_bytes);
 
     render::OutputLayout layout_;
     std::uint32_t sample_rate_;
@@ -197,6 +214,8 @@ private:
     std::size_t delivered_ = 0;
     // Filled for each unit and handed out by reference, keeping its storage.
     UnitReport report_{};
+    // finish_report()'s own counter - see UnitReport::sequence's comment.
+    std::uint64_t sequence_ = 0;
 };
 
 }  // namespace ac3::hearth

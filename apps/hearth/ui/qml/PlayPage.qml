@@ -85,11 +85,15 @@ Item {
         var parts = [];
         var codec = { "ac3": qsTr("AC-3"), "eac3": qsTr("E-AC-3"), "ac3+eac3": qsTr("AC-3 core + E-AC-3"),
                       "ac4": qsTr("AC-4") }[media.codec];
+        var objectCount = media.probe?.objectCount;
         if (codec !== undefined) {
-            parts.push(codec);
+            // stream_kind_name() (hearth_controller.cpp) makes this same
+            // call for the queue row's own codec string; kept in step by
+            // hand here since this line reads media.codec (MediaInfo's own,
+            // richer probe) rather than the queue's ItemFacts.
+            parts.push(media.codec === "eac3" && objectCount !== undefined ? codec + qsTr(" JOC") : codec);
         }
         var programme = (media.programmes ?? [])[0];
-        var objectCount = media.probe?.objectCount;
         if (programme !== undefined) {
             parts.push(programme.layoutLabel + (objectCount !== undefined
                         ? qsTr(" bed + %1 objects").arg(objectCount) : ""));
@@ -581,7 +585,8 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         text: Object.keys(HearthController.thisFrame).length > 0
-                              ? qsTr("At play time")
+                              ? qsTr("At play time · access unit %1")
+                                    .arg(Number(HearthController.thisFrame.sequence).toLocaleString())
                               : qsTr("Nothing playing.")
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontSmall
@@ -590,7 +595,7 @@ Item {
                     GridLayout {
                         Layout.fillWidth: true
                         visible: Object.keys(HearthController.thisFrame).length > 0
-                        columns: 4
+                        columns: 5
                         columnSpacing: Theme.gap
                         rowSpacing: Theme.gap / 2
 
@@ -654,6 +659,24 @@ Item {
                                       ? qsTr("%1 of %2").arg(HearthController.thisFrame.shortBlocks)
                                                          .arg(HearthController.thisFrame.blocks)
                                       : qsTr("n/a")
+                                color: Theme.text; font.pixelSize: Theme.fontBody; font.bold: true
+                                font.family: Theme.monoFamily
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: qsTr("BITRATE")
+                                color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true
+                            }
+                            Text {
+                                // Absent for the stream's last unit, released
+                                // by finish() - UnitReport::bitrate_kbps' own
+                                // comment says why.
+                                text: HearthController.thisFrame.bitrateKbps !== undefined
+                                      ? qsTr("%1 kbit/s").arg(Math.round(HearthController.thisFrame.bitrateKbps))
+                                      : qsTr("—")
                                 color: Theme.text; font.pixelSize: Theme.fontBody; font.bold: true
                                 font.family: Theme.monoFamily
                             }

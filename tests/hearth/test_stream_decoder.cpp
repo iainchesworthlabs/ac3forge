@@ -377,6 +377,12 @@ TEST_CASE("stream decoder: an AC-3 unit's report follows its blocks", "[hearth][
         CHECK(report.levels.loro_clev == ac3::meta::level::kMinus3dB);
         CHECK_FALSE(report.concealed.has_value());
         CHECK_FALSE(report.objects.has_value());
+        // sequence counts from 1; bitrate_kbps is close to the encoder's own
+        // 448 kbit/s (not exact: AC-3 frame size quantises to whole words).
+        CHECK(report.sequence == k + 1);
+        REQUIRE(report.bitrate_kbps.has_value());
+        CHECK(*report.bitrate_kbps > 400.0);
+        CHECK(*report.bitrate_kbps < 500.0);
     }
 }
 
@@ -415,6 +421,12 @@ TEST_CASE("stream decoder: an E-AC-3 unit's report comes with the call that deli
         CHECK_FALSE(report.short_blocks.has_value());
         CHECK(report.levels.preferred == ac3::meta::DownmixMode::kLtRt);
         CHECK(report.levels.lfe_mix_level_db == 0.0);
+        // sequence counts from 1; bitrate_kbps is close to the encoder's own
+        // 384 kbit/s (not exact: E-AC-3 frame size quantises to whole words).
+        CHECK(report.sequence == 1);
+        REQUIRE(report.bitrate_kbps.has_value());
+        CHECK(*report.bitrate_kbps > 340.0);
+        CHECK(*report.bitrate_kbps < 420.0);
     }
 
     SECTION("a unit held back is reported by the call that releases it, the last by finish()") {
@@ -428,6 +440,18 @@ TEST_CASE("stream decoder: an E-AC-3 unit's report comes with the call that deli
             CHECK(before == static_cast<std::size_t>(ac3::kSamplesPerFrame));
         }
         CHECK(played.reports.back().layout.count == 2);
+        // sequence counts every reported unit, including the one finish()
+        // releases; bitrate is unset only for that last one - render_flushed()
+        // has no raw bytes left to measure it from.
+        for (std::size_t k = 0; k < played.reports.size(); ++k) {
+            INFO("unit " << k);
+            CHECK(played.reports[k].sequence == k + 1);
+        }
+        CHECK_FALSE(played.reports.back().bitrate_kbps.has_value());
+        for (std::size_t k = 0; k + 1 < played.reports.size(); ++k) {
+            INFO("unit " << k);
+            CHECK(played.reports[k].bitrate_kbps.has_value());
+        }
     }
 }
 

@@ -168,6 +168,21 @@ bool StreamDecoder::set_crossover_hz(double hz) {
     return true;
 }
 
+void StreamDecoder::finish_report(UnitReport& out, std::optional<std::size_t> unit_bytes) {
+    out.sequence = ++sequence_;
+    if (!unit_bytes) {
+        // render_flushed()'s own final unit: no raw bytes survive flush() to
+        // measure a bitrate from, only the already-decoded PCM.
+        out.bitrate_kbps.reset();
+        return;
+    }
+    const double seconds =
+        static_cast<double>(out.blocks) * kSamplesPerBlock / static_cast<double>(sample_rate_);
+    out.bitrate_kbps = seconds > 0.0
+                            ? std::optional<double>(static_cast<double>(*unit_bytes) * 8.0 / 1000.0 / seconds)
+                            : std::nullopt;
+}
+
 std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const std::byte> whole,
                                                               const BlockFn& deliver,
                                                               const UnitFn& reported) {
@@ -215,6 +230,7 @@ std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const st
         }
         if (reported) {
             report_frame(*decoded, report_);
+            finish_report(report_, unit.size());
             reported(report_);
         }
         return delivered_;
@@ -232,6 +248,7 @@ std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const st
     // blocks this call delivered.
     if (*decoded && reported) {
         report_unit(**decoded, report_);
+        finish_report(report_, unit.size());
         reported(report_);
     }
     return delivered_;
@@ -438,6 +455,7 @@ std::size_t StreamDecoder::render_flushed(std::span<DecodedSubstream> substreams
                 report_.objects = dependent->object_metadata;
             }
         }
+        finish_report(report_, std::nullopt);
         reported(report_);
     }
     return frames;
