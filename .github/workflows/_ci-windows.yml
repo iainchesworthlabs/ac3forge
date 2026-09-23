@@ -706,6 +706,25 @@ jobs:
       # warning when it is absent, so without these the packaged window would
       # quietly ship with a 2D-only room and the ctest suite would exercise
       # the skipped path instead of the real one.
+      # install-qt-action needs a python on PATH BEFORE its own setup-python
+      # can run: the first step of its composite action.yml is a guard written
+      # in `shell: python` ("Check the existence of built JavaScript action"),
+      # so on an image without python it dies there and skips its own Setup
+      # Python step entirely - `setup-python: false` would not avoid it either,
+      # that input only governs the later step. Hosted Windows images ship
+      # python, the fleet's does not (`ci-runners`
+      # scripts/windows/05-choco-packages.ps1 installs nsis/7zip/ccache/gh/
+      # winget and no python), which is the same "the fleet image does not
+      # ship it, so the workflow provides it" case docs/ci-self-hosted-
+      # runners.md already records for pwsh on Linux and pip for the wheels.
+      # Pinned inside install-qt-action v4.4.0's own supported range
+      # (>=3.9.0 <=3.13.3) so this and its Setup Python agree on one install.
+      - name: Setup Python (for install-qt-action)
+        if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
       - name: Install Qt (prebuilt)
         if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
         uses: jurplel/install-qt-action@bcb88e3bed2e992f5f9e24c0f9e364a231d278eb # v4.4.0

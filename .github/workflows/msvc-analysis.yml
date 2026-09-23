@@ -110,6 +110,15 @@ jobs:
       - name: Setup MSVC environment
         uses: ./.github/actions/setup-msvc-env
 
+      # install-qt-action's composite opens with a `shell: python` guard step,
+      # and the fleet's Windows image has no python - see _ci-windows.yml's own
+      # comment on this step for the full reasoning. This job runs on the same
+      # fleet (check-runner above), so it needs the same python first.
+      - name: Setup Python (for install-qt-action)
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
       # windows-msvc defaults AC3FORGE_BUILD_GUI to ON (CMakePresets.json),
       # and Qt is a prebuilt dependency (cmake/FindQt6.cmake), never a vcpkg
       # port - see _build.yml's own precedent for this exact install step.
