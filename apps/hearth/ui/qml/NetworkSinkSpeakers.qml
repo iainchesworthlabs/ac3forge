@@ -30,6 +30,8 @@ ScrollView {
     readonly property var routingList: root.speakers.routing ?? []
     readonly property int outputs: root.speakers.outputs ?? 0
     readonly property var layoutPresets: ["2.0", "5.1", "7.1", "5.1.2"]
+    // Scaled, like every other page's label column: a fixed 90 clips at 150%.
+    readonly property int labelColumn: Math.round(90 * Theme.fontScale)
 
     function outputOf(slot) {
         return slot < root.routingList.length ? root.routingList[slot] : -1;
@@ -66,13 +68,23 @@ ScrollView {
         width: root.availableWidth
         spacing: Theme.gap * 2
 
+        // Flat and untitled: network-sink-speakers.png puts the layout and
+        // crossover rows straight onto the page under the Speakers/Decoder
+        // tabs, with no box and no heading of their own - only the routing
+        // grid and the levels table below are boxed. (The page's own numbered
+        // heading is its column's, drawn by NetworkSinkSettings.qml.)
         Card {
-            title: qsTr("01 Speaker layout")
+            flat: true
 
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.gap
-                Text { text: qsTr("Layout"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                Text {
+                    text: qsTr("Layout")
+                    color: Theme.textMuted
+                    Layout.preferredWidth: root.labelColumn
+                    elide: Text.ElideRight
+                }
                 SegmentedControl {
                     objectName: "networkSinkLayoutPreset"
                     accessibleName: qsTr("Speaker layout")
@@ -93,12 +105,21 @@ ScrollView {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.gap
-                Text { text: qsTr(""); Layout.preferredWidth: 90 }
-                TextField {
+                Item { Layout.preferredWidth: root.labelColumn; Layout.preferredHeight: 1 }
+                AppTextField {
+                    id: layoutField
                     objectName: "networkSinkLayoutText"
                     Layout.fillWidth: true
                     font.family: Theme.monoFamily
-                    text: root.speakers.layoutText ?? ""
+                    // Typing writes `text` onto the control and the binding is
+                    // destroyed for good, so the sink's own layout would never
+                    // reach it again. Restored whenever the field is not being
+                    // edited - Speakers.qml's own layout field does the same.
+                    Binding on text {
+                        when: !layoutField.activeFocus
+                        value: root.speakers.layoutText ?? ""
+                        restoreMode: Binding.RestoreBindingOrValue
+                    }
                     Accessible.name: qsTr("Layout, as text")
                     onEditingFinished: NetworkController.setSinkLayoutText(text)
                 }
@@ -107,17 +128,25 @@ ScrollView {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.gap
-                Text { text: qsTr("Crossover"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                Text {
+                    text: qsTr("Crossover")
+                    color: Theme.textMuted
+                    Layout.preferredWidth: root.labelColumn
+                    elide: Text.ElideRight
+                }
+                // Bare numbers, no "Hz" per segment: the mockup puts the unit
+                // in the sentence underneath instead, and four "NNN Hz"
+                // segments do not fit this column at 150% text.
                 SegmentedControl {
                     objectName: "networkSinkCrossover"
-                    accessibleName: qsTr("Crossover")
+                    accessibleName: qsTr("Crossover, Hz")
                     currentValue: [60, 80, 100, 120].includes(root.speakers.crossoverHz)
                                   ? String(root.speakers.crossoverHz) : ""
                     model: [
-                        { value: "60", label: qsTr("60 Hz") },
-                        { value: "80", label: qsTr("80 Hz") },
-                        { value: "100", label: qsTr("100 Hz") },
-                        { value: "120", label: qsTr("120 Hz") }
+                        { value: "60", label: "60" },
+                        { value: "80", label: "80" },
+                        { value: "100", label: "100" },
+                        { value: "120", label: "120" }
                     ]
                     onSelected: function(value) { NetworkController.setSinkCrossoverHz(Number(value)); }
                 }
@@ -133,8 +162,12 @@ ScrollView {
             }
         }
 
+        // Boxed, and the two status lines sit OUTSIDE the box - the mockup
+        // draws the border around the grid alone and lets the ✓ sentences run
+        // on the page beneath it.
         Card {
-            title: qsTr("02 Routing · speaker to sink slot")
+            rule: false
+            title: qsTr("Routing · speaker to sink slot")
 
             Column {
                 id: grid
@@ -147,9 +180,13 @@ ScrollView {
                     }
                 }
 
-                readonly property int cellSize: 32
-                readonly property int labelWidth: 72
-                readonly property int noneWidth: 56
+                // 28, and NONE the same square as the rest - measured off
+                // network-sink-speakers.png, where every cell in the grid
+                // including NONE is one size. Speakers.qml's own grid was
+                // corrected to the same numbers.
+                readonly property int cellSize: Math.round(28 * Theme.fontScale)
+                readonly property int labelWidth: Math.round(72 * Theme.fontScale)
+                readonly property int noneWidth: grid.cellSize
 
                 function cellAt(row, column) {
                     const rowCount = root.labels.length;
@@ -177,7 +214,14 @@ ScrollView {
 
                 Row {
                     spacing: 1
-                    Item { width: grid.labelWidth; height: grid.cellSize }
+                    Text {
+                        width: grid.labelWidth
+                        height: grid.cellSize
+                        verticalAlignment: Text.AlignVCenter
+                        text: qsTr("SPEAKER")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontMicro
+                    }
                     Repeater {
                         model: root.outputs
                         delegate: Text {
@@ -234,9 +278,21 @@ ScrollView {
 
                                 width: grid.cellSize
                                 height: grid.cellSize
-                                color: assigned ? Theme.accent : "transparent"
+                                // A patched cell KEEPS its outline and fills a
+                                // smaller square inside it - it does not flood
+                                // the whole box. Speakers.qml had the same bug
+                                // against the same mockup family.
+                                color: "transparent"
                                 border.color: Theme.divider
                                 border.width: 1
+
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: Math.round(parent.width / 2)
+                                    height: width
+                                    visible: cell.assigned
+                                    color: Theme.accent
+                                }
 
                                 Accessible.role: Accessible.RadioButton
                                 Accessible.name: qsTr("%1 to slot %2").arg(rowItem.modelData).arg(cell.index + 1)
@@ -274,9 +330,17 @@ ScrollView {
 
                             width: grid.noneWidth
                             height: grid.cellSize
-                            color: assigned ? Theme.accent : "transparent"
+                            color: "transparent"
                             border.color: Theme.divider
                             border.width: 1
+
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: Math.round(parent.width / 2)
+                                height: width
+                                visible: noneCell.assigned
+                                color: Theme.accent
+                            }
 
                             Accessible.role: Accessible.RadioButton
                             Accessible.name: qsTr("%1 to no slot").arg(rowItem.modelData)
@@ -308,39 +372,42 @@ ScrollView {
                     }
                 }
             }
+        }
 
-            Text {
-                objectName: "networkSinkSlotsStatus"
-                Layout.fillWidth: true
-                text: root.slotsStatusText()
-                color: Theme.textMuted
-                font.pixelSize: Theme.fontSmall
-                wrapMode: Text.WordWrap
-            }
-            Text {
-                Layout.fillWidth: true
-                text: qsTr("✓ %1 slots at %2-bit, as the sink reports. Slot width is set on the sink's "
-                          + "own page, to match its DACs.")
-                          .arg(root.outputs).arg(root.speakers.outputBitDepth ?? 0)
-                color: Theme.textMuted
-                font.pixelSize: Theme.fontSmall
-                wrapMode: Text.WordWrap
-            }
+        Text {
+            objectName: "networkSinkSlotsStatus"
+            Layout.fillWidth: true
+            text: root.slotsStatusText()
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontSmall
+            wrapMode: Text.WordWrap
+        }
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("✓ %1 slots at %2-bit, as the sink reports. Slot width is set on the sink's "
+                      + "own page, to match its DACs.")
+                      .arg(root.outputs).arg(root.speakers.outputBitDepth ?? 0)
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontSmall
+            wrapMode: Text.WordWrap
         }
 
         Card {
-            title: qsTr("03 Levels and delays")
+            rule: false
+            title: qsTr("Levels and delays")
 
             Column {
                 id: levels
                 Layout.fillWidth: true
                 spacing: Theme.gap / 2
 
-                readonly property int labelWidth: 40
-                readonly property int outWidth: 32
-                readonly property int sizeWidth: 120
-                readonly property int fieldWidth: 64
-                readonly property int unitWidth: 24
+                readonly property int labelWidth: Math.round(40 * Theme.fontScale)
+                readonly property int outWidth: Math.round(32 * Theme.fontScale)
+                readonly property int sizeWidth: Math.round(120 * Theme.fontScale)
+                // The unit is drawn INSIDE the field now (AppTextField.unit),
+                // which is where the mockup puts dB and ms, so the column is
+                // the old field plus the old separate unit label.
+                readonly property int fieldWidth: Math.round(88 * Theme.fontScale)
 
                 Row {
                     spacing: Theme.gap / 2
@@ -351,12 +418,10 @@ ScrollView {
                         width: levels.fieldWidth; horizontalAlignment: Text.AlignRight
                         text: qsTr("TRIM"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
                     }
-                    Item { width: levels.unitWidth; height: 1 }
                     Text {
                         width: levels.fieldWidth; horizontalAlignment: Text.AlignRight
                         text: qsTr("DELAY"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
                     }
-                    Item { width: levels.unitWidth; height: 1 }
                     Item { width: Theme.gap; height: 1 }
                     Text { text: qsTr("IDENTIFY"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro }
                 }
@@ -413,19 +478,31 @@ ScrollView {
                             }
                         }
 
-                        TextField {
+                        // Typing writes `text` onto the control and destroys
+                        // the declarative binding for good - so the sink's own
+                        // trim and delay are restored whenever the field is
+                        // not being edited, rather than never reaching it
+                        // again after the first keystroke.
+                        AppTextField {
                             id: trimField
                             objectName: "networkSinkTrim-" + row.index
                             width: levels.fieldWidth
                             horizontalAlignment: Text.AlignRight
                             font.family: Theme.monoFamily
                             enabled: row.output >= 0
+                            unit: qsTr("dB")
                             validator: DoubleValidator {
                                 bottom: (root.speakers.management ?? {}).trimMinDb ?? -24
                                 top: (root.speakers.management ?? {}).trimMaxDb ?? 12
                                 decimals: 1
+                                notation: DoubleValidator.StandardNotation
                             }
-                            text: Number(row.output >= 0 ? ((root.speakers.trimDb ?? [])[row.output] ?? 0) : 0).toFixed(1)
+                            Binding on text {
+                                when: !trimField.activeFocus
+                                value: Number(row.output >= 0
+                                              ? ((root.speakers.trimDb ?? [])[row.output] ?? 0) : 0).toFixed(1)
+                                restoreMode: Binding.RestoreBindingOrValue
+                            }
                             Accessible.name: qsTr("Trim for %1, dB").arg(row.modelData)
                             onEditingFinished: {
                                 const value = parseFloat(text);
@@ -434,25 +511,27 @@ ScrollView {
                                 }
                             }
                         }
-                        Text {
-                            width: levels.unitWidth
-                            height: trimField.implicitHeight
-                            verticalAlignment: Text.AlignVCenter
-                            text: qsTr("dB"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
-                        }
 
-                        TextField {
+                        AppTextField {
+                            id: delayField
                             objectName: "networkSinkDelay-" + row.index
                             width: levels.fieldWidth
                             horizontalAlignment: Text.AlignRight
                             font.family: Theme.monoFamily
                             enabled: row.output >= 0
+                            unit: qsTr("ms")
                             validator: DoubleValidator {
                                 bottom: 0
                                 top: (root.speakers.management ?? {}).maxDelayMs ?? 40
                                 decimals: 1
+                                notation: DoubleValidator.StandardNotation
                             }
-                            text: Number(row.output >= 0 ? ((root.speakers.delayMs ?? [])[row.output] ?? 0) : 0).toFixed(1)
+                            Binding on text {
+                                when: !delayField.activeFocus
+                                value: Number(row.output >= 0
+                                              ? ((root.speakers.delayMs ?? [])[row.output] ?? 0) : 0).toFixed(1)
+                                restoreMode: Binding.RestoreBindingOrValue
+                            }
                             Accessible.name: qsTr("Delay for %1, milliseconds").arg(row.modelData)
                             onEditingFinished: {
                                 const value = parseFloat(text);
@@ -460,12 +539,6 @@ ScrollView {
                                     NetworkController.setSinkDelayMs(row.output, value);
                                 }
                             }
-                        }
-                        Text {
-                            width: levels.unitWidth
-                            height: trimField.implicitHeight
-                            verticalAlignment: Text.AlignVCenter
-                            text: qsTr("ms"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
                         }
 
                         Item { width: Theme.gap; height: 1 }
