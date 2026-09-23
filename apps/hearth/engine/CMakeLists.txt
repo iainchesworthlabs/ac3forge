@@ -61,3 +61,14 @@ target_link_libraries(ac3hearth_engine PRIVATE ac3::warnings ac3::fmt ac3::signi
 # The engine thread (engine_thread.cpp).
 find_package(Threads REQUIRED)
 target_link_libraries(ac3hearth_engine PUBLIC Threads::Threads)
+
+# The profiling header pair, PUBLIC so the window (ui/, linked PRIVATE below
+# it in ../ui/CMakeLists.txt) and ac3hearth_qmltests (which links this same
+# library) both resolve every `#include "ac3/internal/profiling.hpp"` they
+# carry - apps/crucible/CMakeLists.txt's own ac3crucible_engine target sets up
+# the identical pair, for the identical reason (its own comment there has the
+# history of why this lives at the engine level rather than per-platform or
+# per-executable).
+target_link_libraries(ac3hearth_engine PUBLIC ac3::tracy)
+target_include_directories(ac3hearth_engine PUBLIC
+    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
