@@ -38,22 +38,13 @@
 #include <string_view>
 #include <vector>
 
+#include "binding_support.hpp"
+#include "optional_modules.hpp"
+
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/io/dec3.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/qc.hpp"
-#ifdef AC3FORGE_PY_HAVE_CONTAINERS
-#include "matroska/matroska.hpp"
-#include "matroska/reader.hpp"
-#include "mp4/mp4.hpp"
-#include "mp4/reader.hpp"
-#include "mpegts/mpegts.hpp"
-#include "mpegts/reader.hpp"
-#endif
-#ifdef AC3FORGE_PY_HAVE_SIGNING
-#include "ac3/signing/emdf_atmos_signer.hpp"
-#include "ac3/signing/signing_key.hpp"
-#endif
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
@@ -71,6 +62,14 @@ namespace py = pybind11;
 
 namespace {
 
+// KwargBinder, to_bytes and to_bytes_list moved to binding_support.hpp when the
+// signing and containers submodules became their own translation units (see
+// optional_modules.hpp) and needed them too. Named here so they stay
+// unqualified throughout this file, exactly as when they were defined in it.
+using ac3::python::detail::KwargBinder;
+using ac3::python::detail::to_bytes;
+using ac3::python::detail::to_bytes_list;
+
 // decode_frame_into/decode_access_unit_into's own `out` sizing contract (Python bindings completeness) - see
 // ac3::FrameDecoder::decode_frame_into and ac3::Eac3Decoder::decode_access_unit_into's doc
 // comments ("six covers every AC-3 layout" / "16 covers §E3.8.2's cap"). Exposed to Python as
@@ -79,49 +78,6 @@ namespace {
 constexpr std::size_t kMaxAc3Channels = 6;
 constexpr std::size_t kMaxEac3RenderChannels = 16;
 
-// --- kwargs-constructible plain config structs ------------------------------
-// Every EncoderConfig/AtmosConfig/DecoderConfig/Profile/HeavyConfig/Position/ObjectPlacement
-// field already has a real C++ default, so a Python caller only needs to name what they want to
-// change - this is the one piece of binding-layer machinery that gets reused across all of them,
-// in place of writing the same "collect kwargs, apply known ones, reject the rest" logic six
-// times over. Rejecting unknown keys (rather than silently ignoring them) catches the ordinary
-// typo ("EncoderConfig(dialnrm=10)") that a silently-accepted **kwargs would hide as a
-// wrong-but-legal default.
-template <typename T>
-class KwargBinder {
-   public:
-    explicit KwargBinder(py::kwargs kwargs) : kwargs_(std::move(kwargs)) {}
-
-    template <typename V>
-    KwargBinder& field(const char* name, V T::* member) {
-        if (kwargs_.contains(name)) {
-            // kwargs_[name] is an access through the implicit this-> of a class template, so
-            // two-phase lookup treats it as dependent regardless of kwargs_'s own (non-dependent)
-            // declared type - Clang enforces the standard's `template` disambiguator here and
-            // rejects the call without it; MSVC/GCC merely tolerate the omission as a
-            // permissive extension. Confirmed the hard way: this built clean on both of those
-            // and only failed in CI's real AppleClang leg.
-            value_.*member = kwargs_[name].template cast<V>();
-            seen_.insert(name);
-        }
-        return *this;
-    }
-
-    T finish() {
-        for (auto item : kwargs_) {
-            const auto key = py::cast<std::string>(item.first);
-            if (!seen_.contains(key)) {
-                throw py::type_error("unexpected keyword argument '" + key + "'");
-            }
-        }
-        return value_;
-    }
-
-   private:
-    py::kwargs kwargs_;
-    T value_{};
-    std::set<std::string> seen_;
-};
 
 // --- error translation -------------------------------------------------------
 
@@ -145,19 +101,6 @@ struct ScanFailure : std::runtime_error {
 
 // --- buffer / array plumbing -------------------------------------------------
 
-std::vector<std::byte> to_bytes(const py::buffer& buf) {
-    const py::buffer_info info = buf.request();
-    if (info.ndim != 1) {
-        throw py::value_error("expected a 1-D bytes-like object");
-    }
-    const auto total =
-        static_cast<std::size_t>(info.size) * static_cast<std::size_t>(info.itemsize);
-    std::vector<std::byte> out(total);
-    if (total > 0) {
-        std::memcpy(out.data(), info.ptr, total);
-    }
-    return out;
-}
 
 //
 // Builds spans directly over each array's own buffer instead of copying into an intermediate
@@ -263,14 +206,6 @@ struct ScanResult {
     std::uint16_t channel_map = 0;
 };
 
-std::vector<py::bytes> to_bytes_list(const std::vector<std::span<const std::byte>>& spans) {
-    std::vector<py::bytes> out;
-    out.reserve(spans.size());
-    for (const auto span : spans) {
-        out.emplace_back(reinterpret_cast<const char*>(span.data()), span.size());
-    }
-    return out;
-}
 
 ScanProgrammeInfo to_programme_info(const ac3::io::ScannedProgramme& p) {
     ScanProgrammeInfo info;
@@ -1776,302 +1711,10 @@ PYBIND11_MODULE(_ac3forge, m) {
         "containers.Mp4Track.codec_config wants. Empty for the legacy-core arrangement no "
         "box can describe.");
 
-#ifdef AC3FORGE_PY_HAVE_SIGNING
-    // --- Object signing (Python bindings completeness) --------------------------------------
-    auto signing = m.def_submodule(
-        "signing",
-        "EMDF object-layer signing - see docs/concepts/object-signing.md. Sign an encoded "
-        "Atmos stream's frames, detect tags, verify with the matching key.");
+    // The two optional submodules - see optional_modules.hpp. Each is its own
+    // translation unit, picked by python/CMakeLists.txt from a {present,absent}
+    // pair on exactly the condition that used to set a compile definition here.
+    ac3::python::register_signing(m);
 
-    py::class_<ac3::signing::SigningKey>(signing, "SigningKey",
-                                         "Owns the key bytes; zeroizes them on destruction.")
-        .def(py::init([](const py::buffer& content) {
-                 auto decoded = ac3::signing::decode_signing_key(to_bytes(content));
-                 if (!decoded) {
-                     throw py::value_error("empty signing key");
-                 }
-                 return *decoded;
-             }),
-             py::arg("content"),
-             "Decode a key from bytes: base64 when the content is valid base64 (the "
-             "CI/secret transport form), raw key bytes otherwise - the same single decode "
-             "every other front end uses.")
-        .def_property_readonly("empty", &ac3::signing::SigningKey::empty);
-
-    signing.def(
-        "load_signing_key",
-        [](const std::string& explicit_path) {
-            auto key = ac3::signing::load_signing_key(explicit_path);
-            if (!key) {
-                throw py::value_error(key.error().message);
-            }
-            return *key;
-        },
-        py::arg("path") = std::string{},
-        "Resolve a key from `path` if given, else $AC3FORGE_SIGNING_KEY_FILE, else "
-        "$AC3FORGE_SIGNING_KEY - the CLI's own resolution order. Raises ValueError with the "
-        "loader's message when nothing usable was found.");
-
-    signing.def(
-        "sign_atmos_stream",
-        [](const py::buffer& stream, const ac3::signing::SigningKey& key) {
-            auto bytes = to_bytes(stream);
-            int signed_count = 0;
-            {
-                py::gil_scoped_release release;
-                signed_count = ac3::signing::sign_atmos_stream(bytes, key);
-            }
-            return py::make_tuple(
-                py::bytes(reinterpret_cast<const char*>(bytes.data()), bytes.size()),
-                signed_count);
-        },
-        py::arg("stream"), py::arg("key"),
-        "Sign every Atmos frame in an elementary stream. Returns (signed_stream, "
-        "frames_signed) - the input is not modified (Python bytes are immutable; the C++ "
-        "in-place form signs a copy here).");
-
-    signing.def(
-        "has_authenticity_tag",
-        [](const py::buffer& frame) {
-            return ac3::signing::has_authenticity_tag(to_bytes(frame));
-        },
-        py::arg("frame"),
-        "Whether this frame carries an authenticity tag - answerable without any key.");
-
-    py::class_<ac3::signing::VerifySummary>(signing, "VerifySummary")
-        .def_readonly("valid", &ac3::signing::VerifySummary::valid)
-        .def_readonly("mismatch", &ac3::signing::VerifySummary::mismatch)
-        .def_readonly("no_container", &ac3::signing::VerifySummary::no_container)
-        .def_property_readonly("all_valid", [](const ac3::signing::VerifySummary& s) {
-            return s.valid > 0 && s.mismatch == 0;
-        });
-
-    signing.def(
-        "verify_atmos_stream",
-        [](const py::buffer& stream, const ac3::signing::SigningKey& key) {
-            const auto bytes = to_bytes(stream);
-            py::gil_scoped_release release;
-            return ac3::signing::verify_atmos_stream(bytes, key);
-        },
-        py::arg("stream"), py::arg("key"),
-        "Verify every frame's tag against `key`. See VerifySummary.");
-#endif
-
-#ifdef AC3FORGE_PY_HAVE_CONTAINERS
-    // --- Containers (Python bindings completeness) ------------------------------------------
-    //
-    // The three writers and the batch read side, bytes in / bytes out. The
-    // incremental Reader/Writer classes and the fragmented-MP4/HLS/DASH
-    // surface stay C++-only for now - recorded in docs/library/python-api.md
-    // as the boundary, not silently missing.
-    auto containers = m.def_submodule(
-        "containers",
-        "Matroska/MP4/MPEG-TS carriage for encoded frames - the library twins of `ac3cli "
-        "mkv`/`mp4`/`ts`/`demux`.");
-
-    const auto frames_to_views = [](const std::vector<py::bytes>& frames,
-                                    std::vector<std::vector<std::byte>>& storage) {
-        storage.reserve(frames.size());
-        for (const auto& frame : frames) {
-            std::string_view view = frame;
-            const auto* data = reinterpret_cast<const std::byte*>(view.data());
-            storage.emplace_back(data, data + view.size());
-        }
-        std::vector<std::span<const std::byte>> views;
-        views.reserve(storage.size());
-        for (const auto& owned : storage) {
-            views.emplace_back(owned);
-        }
-        return views;
-    };
-
-    py::class_<matroska::AudioTrack>(containers, "MatroskaTrack")
-        .def(py::init([](py::kwargs kwargs) {
-            return KwargBinder<matroska::AudioTrack>(std::move(kwargs))
-                .field("codec_id", &matroska::AudioTrack::codec_id)
-                .field("sample_rate", &matroska::AudioTrack::sample_rate)
-                .field("channels", &matroska::AudioTrack::channels)
-                .field("samples_per_frame", &matroska::AudioTrack::samples_per_frame)
-                .field("language", &matroska::AudioTrack::language)
-                .finish();
-        }))
-        .def_readwrite("codec_id", &matroska::AudioTrack::codec_id)
-        .def_readwrite("sample_rate", &matroska::AudioTrack::sample_rate)
-        .def_readwrite("channels", &matroska::AudioTrack::channels)
-        .def_readwrite("samples_per_frame", &matroska::AudioTrack::samples_per_frame)
-        .def_readwrite("language", &matroska::AudioTrack::language);
-
-    py::class_<mp4::AudioTrack>(containers, "Mp4Track")
-        .def(py::init([](py::kwargs kwargs) {
-            // codec_config is bytes, which KwargBinder's field() cannot
-            // convert - lifted out of the kwargs first, applied after.
-            std::vector<std::byte> config;
-            if (kwargs.contains("codec_config")) {
-                config = to_bytes(py::cast<py::buffer>(kwargs["codec_config"]));
-                kwargs.attr("pop")("codec_config");
-            }
-            auto track = KwargBinder<mp4::AudioTrack>(std::move(kwargs))
-                .field("codec_id", &mp4::AudioTrack::codec_id)
-                .field("sample_rate", &mp4::AudioTrack::sample_rate)
-                .field("channels", &mp4::AudioTrack::channels)
-                .field("samples_per_frame", &mp4::AudioTrack::samples_per_frame)
-                .field("language", &mp4::AudioTrack::language)
-                .field("rfc6381", &mp4::AudioTrack::rfc6381)
-                .finish();
-            track.codec_config = std::move(config);
-            return track;
-        }))
-        .def_readwrite("codec_id", &mp4::AudioTrack::codec_id)
-        .def_readwrite("sample_rate", &mp4::AudioTrack::sample_rate)
-        .def_readwrite("channels", &mp4::AudioTrack::channels)
-        .def_readwrite("samples_per_frame", &mp4::AudioTrack::samples_per_frame)
-        .def_property(
-            "codec_config",
-            [](const mp4::AudioTrack& t) {
-                return py::bytes(reinterpret_cast<const char*>(t.codec_config.data()),
-                                 t.codec_config.size());
-            },
-            [](mp4::AudioTrack& t, const py::buffer& value) {
-                t.codec_config = to_bytes(value);
-            },
-            "The dac3/dec3 sample-entry box payload - build_codec_config_box() produces it.")
-        .def_readwrite("language", &mp4::AudioTrack::language)
-        .def_readwrite("rfc6381", &mp4::AudioTrack::rfc6381);
-
-    py::class_<mpegts::AudioTrack>(containers, "TsTrack")
-        .def(py::init([](py::kwargs kwargs) {
-            return KwargBinder<mpegts::AudioTrack>(std::move(kwargs))
-                .field("codec", &mpegts::AudioTrack::codec)
-                .field("sample_rate", &mpegts::AudioTrack::sample_rate)
-                .field("channels", &mpegts::AudioTrack::channels)
-                .field("samples_per_frame", &mpegts::AudioTrack::samples_per_frame)
-                .finish();
-        }))
-        .def_readwrite("codec", &mpegts::AudioTrack::codec)
-        .def_readwrite("sample_rate", &mpegts::AudioTrack::sample_rate)
-        .def_readwrite("channels", &mpegts::AudioTrack::channels)
-        .def_readwrite("samples_per_frame", &mpegts::AudioTrack::samples_per_frame);
-
-    py::enum_<mpegts::AudioCodec>(containers, "TsCodec")
-        .value("kAc3", mpegts::AudioCodec::kAc3)
-        .value("kEac3", mpegts::AudioCodec::kEac3)
-        .value("kAc4", mpegts::AudioCodec::kAc4);
-
-    py::enum_<mpegts::BroadcastProfile>(containers, "TsProfile")
-        .value("kDvb", mpegts::BroadcastProfile::kDvb)
-        .value("kAtsc", mpegts::BroadcastProfile::kAtsc);
-
-    containers.def(
-        "mux_matroska",
-        [frames_to_views](const matroska::AudioTrack& track,
-                          const std::vector<py::bytes>& frames) {
-            std::vector<std::vector<std::byte>> storage;
-            const auto views = frames_to_views(frames, storage);
-            std::vector<std::byte> file;
-            {
-                py::gil_scoped_release release;
-                auto muxed = matroska::mux(track, views);
-                if (!muxed) {
-                    throw py::value_error(std::string{matroska::describe(muxed.error())});
-                }
-                file = std::move(*muxed);
-            }
-            return py::bytes(reinterpret_cast<const char*>(file.data()), file.size());
-        },
-        py::arg("track"), py::arg("frames"),
-        "One Matroska file from encoded frames (one block per access unit).");
-
-    containers.def(
-        "mux_mp4",
-        [frames_to_views](const mp4::AudioTrack& track, const std::vector<py::bytes>& frames) {
-            std::vector<std::vector<std::byte>> storage;
-            const auto views = frames_to_views(frames, storage);
-            std::vector<std::byte> file;
-            {
-                py::gil_scoped_release release;
-                auto muxed = mp4::mux(track, views);
-                if (!muxed) {
-                    throw py::value_error(std::string{mp4::describe(muxed.error())});
-                }
-                file = std::move(*muxed);
-            }
-            return py::bytes(reinterpret_cast<const char*>(file.data()), file.size());
-        },
-        py::arg("track"), py::arg("frames"),
-        "One MP4/ISOBMFF file from encoded frames (one sample per access unit). "
-        "track.codec_config must hold the dac3/dec3 payload - see build_codec_config_box().");
-
-    containers.def(
-        "mux_mpegts",
-        [frames_to_views](const mpegts::AudioTrack& track, const std::vector<py::bytes>& frames,
-                          mpegts::BroadcastProfile profile) {
-            std::vector<std::vector<std::byte>> storage;
-            const auto views = frames_to_views(frames, storage);
-            std::vector<std::byte> file;
-            {
-                py::gil_scoped_release release;
-                auto muxed = mpegts::mux(track, views, mpegts::MuxOptions{.profile = profile});
-                if (!muxed) {
-                    throw py::value_error(std::string{mpegts::describe(muxed.error())});
-                }
-                file = std::move(*muxed);
-            }
-            return py::bytes(reinterpret_cast<const char*>(file.data()), file.size());
-        },
-        py::arg("track"), py::arg("frames"),
-        py::arg("profile") = mpegts::BroadcastProfile::kDvb,
-        "One MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per "
-        "the chosen broadcast profile.");
-
-    containers.def(
-        "demux_matroska",
-        [](const py::buffer& file) {
-            const auto bytes = to_bytes(file);
-            const auto demuxed = matroska::demux(bytes);
-            if (!demuxed) {
-                throw py::value_error(std::string{matroska::describe(demuxed.error())});
-            }
-            return py::make_tuple(demuxed->track.codec_id,
-                                  to_bytes_list(demuxed->frames));
-        },
-        py::arg("file"),
-        "(codec_id, frames) back out of a Matroska file - the read twin of mux_matroska.");
-
-    containers.def(
-        "demux_mp4",
-        [](const py::buffer& file) {
-            const auto bytes = to_bytes(file);
-            const auto demuxed = mp4::demux(bytes);
-            if (!demuxed) {
-                throw py::value_error(std::string{mp4::describe(demuxed.error())});
-            }
-            const auto& config = demuxed->track.codec_config;
-            return py::make_tuple(
-                demuxed->track.codec_id,
-                py::bytes(reinterpret_cast<const char*>(config.payload.data()),
-                          config.payload.size()),
-                to_bytes_list(demuxed->samples));
-        },
-        py::arg("file"),
-        "(codec_id, codec_config_payload, samples) back out of an MP4 - the read twin of "
-        "mux_mp4. codec_config_payload is the raw dac3/dec3/dac4 box body, verbatim.");
-
-    containers.def(
-        "demux_mpegts",
-        [](const py::buffer& file) {
-            const auto bytes = to_bytes(file);
-            const auto demuxed = mpegts::demux(bytes);
-            if (!demuxed) {
-                throw py::value_error(std::string{mpegts::describe(demuxed.error())});
-            }
-            const auto codec = demuxed->stream.ac4    ? mpegts::AudioCodec::kAc4
-                               : demuxed->stream.eac3 ? mpegts::AudioCodec::kEac3
-                                                      : mpegts::AudioCodec::kAc3;
-            return py::make_tuple(codec, to_bytes_list(demuxed->payloads));
-        },
-        py::arg("file"),
-        "(codec, pes_payloads) back out of a transport stream. Payloads are PES payloads, "
-        "not necessarily one access unit each - concatenate and re-split with "
-        "ac3.split_access_units for the A/52 codecs.");
-#endif
+    ac3::python::register_containers(m);
 }

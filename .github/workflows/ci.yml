@@ -410,7 +410,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Check for preprocessor conditionals in src/
+      - name: Check for preprocessor conditionals in the first-party trees
         shell: pwsh
         run: ./tools/checks/check_platform_macros.ps1 -Root $PWD
 

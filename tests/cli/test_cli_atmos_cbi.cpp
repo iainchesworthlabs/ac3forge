@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "platform/process.hpp"
+
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/io/wav.hpp"
@@ -37,17 +39,13 @@ fs::path scratch_dir() {
     return dir;
 }
 
-// See tests/cli/test_cli.cpp's own run_cli for the full reasoning behind the
-// Windows double-quote-wrapping workaround this duplicates.
+// Runs `ac3cli <args>` with both streams redirected to `log`. The platform
+// differences - cmd.exe's quoting and std::system()'s two return-value
+// shapes - live in tests/platform/process.hpp's run_shell, not here.
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-#ifdef _WIN32
-    const std::string wrapped = "\"" + command + "\"";
-    return std::system(wrapped.c_str());
-#else
-    return std::system(command.c_str());
-#endif
+    return ac3::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {

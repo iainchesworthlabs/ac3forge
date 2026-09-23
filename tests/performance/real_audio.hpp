@@ -39,10 +39,14 @@
 #include "ac3/io/wav.hpp"
 
 // Set by CMake to the repo root, so the fixtures resolve regardless of the
-// working directory a bench binary is launched from.
-#ifndef AC3FORGE_SOURCE_DIR
-#define AC3FORGE_SOURCE_DIR "."
-#endif
+// working directory a bench binary is launched from. Every target that
+// includes this header defines it - ac3perf, ac3bench and ac3kernelbench, see
+// tests/performance/CMakeLists.txt - and there is deliberately no fallback:
+// the "." this used to default to resolved the fixtures against whatever
+// directory the binary happened to be launched from, so a target that forgot
+// the define did not fail to build, it failed to find reference_51.wav at run
+// time and reported that as missing programme material. A target added
+// without the define is now a compile error naming this macro.
 
 namespace perf {
 

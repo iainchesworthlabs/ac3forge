@@ -17,11 +17,7 @@
 #include <thread>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform/process.hpp"
 
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/iec61937/iec61937.hpp"
@@ -55,13 +51,7 @@ namespace m = ac3::sendspin::messages;
 namespace testsink = ac3::hearth::testsink;
 using namespace std::chrono_literals;
 
-std::string scratch_pid_suffix() {
-#ifdef _WIN32
-    return std::to_string(_getpid());
-#else
-    return std::to_string(getpid());
-#endif
-}
+std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
 
 class QuietLog final : public testsink::SinkLog {
    public:
