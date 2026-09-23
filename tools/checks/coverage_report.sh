@@ -41,6 +41,14 @@
 # that are the only thing driving its platform seams - so a figure taken in
 # this job would cover the platform-free engine core and nothing else.
 #
+# src/sendspin and apps/hearth (Hearth, planning/hearth-reference-player.md) ARE gated here,
+# unlike apps/crucible above: config-linux-gcc-coverage is the one coverage preset that turns
+# AC3FORGE_BUILD_HEARTH on (CMakePresets.json), and both ac3::sendspin and ac3hearth_engine link
+# ac3::coverage themselves for exactly the reason apps/cli's own link does - see their
+# CMakeLists.txt. apps/hearth/testsink joins the apps/hearth row (its sources link into ac3tests
+# too); apps/hearth/testserver does not, since nothing on this leg ever runs that executable, and
+# apps/hearth/ui is Qt - same reason apps/gui is out of scope above, no Qt kit on this leg.
+#
 # Run by .github/workflows/ci.yml's coverage job after `ctest`; runnable
 # locally the same way, from the repository root (see docs/building.md):
 #
@@ -115,6 +123,14 @@ fi
 # container (which has nothing). Roughly 15% of apps/cli's lines sit behind
 # that difference, so the floor is set to survive the no-device case rather
 # than the measurement that produced it.
+#
+# src/sendspin and apps/hearth are NOT calibrated the same way as the rows above: nothing has
+# measured them against the CI toolchain pin yet (Hearth only just started building on this leg -
+# see CMakePresets.json's config-linux-gcc-coverage). Their floors are deliberately low - proof
+# the components produce coverage data at all (the no-data check a few lines down is the real
+# protection until a first real run exists), not a claim about what fraction of either is
+# exercised. Tighten both against the first hosted-runner coverage run that includes them, the
+# same "measure, then set a few points under" process every other row already went through.
 components="
 src/forge      88 78
 src/audio      25 15
@@ -125,7 +141,9 @@ src/mpegts     88 85
 src/capi       82 72
 src/ac3adm     82 75
 src/admbridge  85 78
+src/sendspin   10 5
 apps/cli       40 34
+apps/hearth    10 5
 "
 
 json="$build_dir/coverage.json"
@@ -148,8 +166,9 @@ html="$build_dir/coverage.html"
 # suspicious-hit line elsewhere still shows up in the log instead of
 # vanishing silently.
 gcovr --root . \
-    --filter 'src/(forge|audio|signing|matroska|mp4|mpegts|capi|ac3adm|admbridge)/.*' \
+    --filter 'src/(forge|audio|signing|matroska|mp4|mpegts|capi|ac3adm|admbridge|sendspin)/.*' \
     --filter 'apps/cli/.*' \
+    --filter 'apps/hearth/(engine|testsink)/.*' \
     --gcov-executable "$gcov_exe" \
     --exclude-throw-branches --exclude-unreachable-branches \
     --gcov-ignore-errors=no_working_dir_found \
