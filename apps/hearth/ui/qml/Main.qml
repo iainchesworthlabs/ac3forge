@@ -53,6 +53,10 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+4"; onActivated: window.page = "decoder" }
     Shortcut { sequence: "Ctrl+5"; onActivated: window.page = "network" }
     Shortcut { sequence: "Ctrl+6"; onActivated: window.page = "settings" }
+    // The Speakers page's IDENTIFY card says this stops it. A harmless no-op
+    // when nothing is sounding the tone, so this needs no guard on which
+    // page is showing.
+    Shortcut { sequence: "Escape"; onActivated: HearthController.stopIdentify() }
     Shortcut { sequence: StandardKey.HelpContents; onActivated: shortcuts.open() }
 
     header: Rectangle {
