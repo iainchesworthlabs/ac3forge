@@ -13,8 +13,8 @@
 version: "0.10.0-beta.1"
 description: >-
   Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) decoding and encoding for
-  ESP32-S3, ESP32-C3 and ESP32-C6, in the minimum-footprint profile: a static archive built
-  without exceptions or RTTI, decode-only or encode-only, sized to run out of
+  ESP32-S3, ESP32-C3, ESP32-C6 and ESP32-P4, in the minimum-footprint profile: a static
+  archive built without exceptions or RTTI, decode-only or encode-only, sized to run out of
   internal SRAM with no PSRAM. The decode arithmetic follows the part - single
   precision where there is a floating-point unit, fixed point where there is
   not.
@@ -44,15 +44,19 @@ license: "GPL-3.0-or-later"  # matches LICENSE at the repo root
 #   - The original ESP32 and the S2 have no FPU worth the name for this (the S2
 #     has none at all). The fixed tier is what they would want too, and neither
 #     has been built.
-#   - The ESP32-P4 is not a target here yet. Closed as an S3 Wi-Fi replacement
-#     (integer-only PIE; no on-die radio; S3 probe already real-time). Proposed
-#     as a complementary "best" module (Ethernet / hosted C6, dual ES9080 at
-#     16x32-bit on one I2S) in planning/esp32-sink-tiers.md — not listed until
-#     that study lands a probe.
+#   - The ESP32-P4 is the "best" tier of the same shared sink family
+#     (planning/esp32-sink-tiers.md): closed 2026-09-08 as an S3 Wi-Fi
+#     replacement (integer-only PIE; no on-die radio; the S3 probe was already
+#     real-time), reopened 2026-09-21 as a complementary module once a board
+#     existed to measure it on. Dual-core RV32IMAFC at 400 MHz with a
+#     single-precision FPU, so it decodes in the same float tier as the S3,
+#     and 768 KB of L2MEM. No radio of its own; a board wanting one pairs it
+#     with a companion ESP32-C6 over SDIO, which this probe does not touch.
 targets:
   - esp32s3
   - esp32c3
   - esp32c6
+  - esp32p4
 
 dependencies:
   # 5.3 is the floor the CMake in this directory needs, not the version it is

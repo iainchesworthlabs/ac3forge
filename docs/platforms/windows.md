@@ -316,6 +316,32 @@ The NSIS installer also registers `.ac3` and `.ec3` as `AC3Forge.Stream`, pointi
 on every push; running it and double-clicking a `.ac3` file to confirm the file association end
 to end is still a manual, unautomated check.
 
+## Windows Firewall
+
+`ac3hearth` and `ac3hearth-testsink` each open a socket a Windows Firewall rule has to allow:
+`ac3hearth`'s mDNS browse for `_sendspin._tcp` players, and `ac3hearth-testsink`'s own Sendspin
+listener and mDNS advertisement. Rather than leave this to Windows' own "these features have been
+blocked" prompt, `ac3::sendspin::firewall::ensure_inbound_rule()`
+(`src/sendspin/include/ac3/sendspin/firewall.hpp`) adds the rule itself, through the same
+`INetFwPolicy2` COM policy object the Settings app's firewall page edits, the first time it finds
+none already there for that executable and port.
+
+Adding a rule needs an elevated token. `ensure_inbound_rule()` adds it directly when the calling
+process is already elevated; otherwise, on an interactive desktop session, it relaunches its own
+executable once with a UAC prompt (`--ac3-sendspin-firewall-helper`,
+`maybe_run_as_firewall_helper_and_exit()` in the same header) to make just that one COM call, then
+returns to running unelevated. A non-interactive session - a service, a CI runner - is left for
+Windows' own prompt instead, same as before this existed. Every rule is scoped to the private and
+domain network profiles only, never public, and to `LocalSubnet`: this only ever opens LAN
+discovery/streaming traffic to the executable that is actually listening, never to the internet or
+to a different program.
+
+A loopback-only bind needs none of this - Windows does not gate loopback traffic - and is skipped
+before `ensure_inbound_rule()` is ever called. `ac3hearth-testserver`'s own `ServerHost` and
+reference sink are loopback-only today and so never reach it; `ac3tests`' own `ServerHost`
+fixtures are the same. Linux and macOS build a no-op implementation of the same two functions and
+never show a prompt of any kind.
+
 ## ARM64
 
 A third Windows leg, `windows-msvc-arm64`, targets GitHub's hosted `windows-11-vs2026-arm` runner — real

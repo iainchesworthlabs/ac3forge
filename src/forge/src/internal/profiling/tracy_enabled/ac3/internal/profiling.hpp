@@ -27,3 +27,9 @@
 #define AC3_ZONE_END(var) TracyCZoneEnd(var)
 // One per real-time frame, for the frame view.
 #define AC3_FRAME_MARK() FrameMark
+// A second, independent frame view alongside the default one - for a
+// real-time cadence that is not "the" main loop (e.g. Qt Quick's render
+// frames in an app whose own primary loop, like Crucible's audio frame,
+// already marks the default/unnamed set - two unrelated cadences on one
+// frame set would interleave into a single meaningless graph).
+#define AC3_FRAME_MARK_NAMED(name) FrameMarkNamed(name)

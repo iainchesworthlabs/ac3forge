@@ -66,6 +66,18 @@ if(NOT AC3FORGE_BUILD_GUI)
         qt-windows qt-macos qt-linux windows-runtime fonts)
 endif()
 
+# Tracy's client library: apps/gui/CMakeLists.txt's ac3gui links ac3::tracy
+# unconditionally, which only pulls in Tracy::TracyClient - and so is only worth
+# disclosing - when AC3FORGE_ENABLE_TRACY is on (cmake/Tracy.cmake); ac3cli links no
+# such thing, so a CLI-only build (AC3FORGE_BUILD_GUI off) never carries this section
+# either way. Same fact, same fragment (found via the apps/crucible/notices/fragments
+# FRAGMENT_DIR entry below, not copied) and same conditional as
+# apps/crucible/notices/notices.cmake's and apps/hearth/notices/notices.cmake's own
+# tracy sections.
+if(AC3FORGE_BUILD_GUI AND AC3FORGE_ENABLE_TRACY)
+    list(APPEND AC3FORGE_NOTICE_FRAGMENTS tracy)
+endif()
+
 # Who each section is about. The header names the programs the reader has;
 # FMT_USERS and FONT_USER fill the two fragments shared verbatim with
 # apps/crucible/notices/fragments/ (see the FRAGMENT_DIR search path below,
@@ -88,6 +100,13 @@ if(fmt_VERSION)
     set(AC3FORGE_NOTICES_FMT_VERSION "${fmt_VERSION}")
 else()
     set(AC3FORGE_NOTICES_FMT_VERSION "${AC3FORGE_FMT_VERSION}")
+endif()
+# Tracy's version, from its package - the same Tracy_VERSION/"not reported" choice
+# apps/crucible/notices/notices.cmake makes for the identical shared fragment.
+if(Tracy_VERSION)
+    set(AC3FORGE_NOTICES_TRACY_VERSION "${Tracy_VERSION}")
+else()
+    set(AC3FORGE_NOTICES_TRACY_VERSION "(version not reported by the Tracy package)")
 endif()
 # The one value here that crosses an add_subdirectory() boundary, checked
 # rather than trusted. An empty Qt version passes the generator's leftover
@@ -131,12 +150,17 @@ ac3_generate_notices("${AC3FORGE_NOTICES_FILE}"
         "FMT_VERSION=${AC3FORGE_NOTICES_FMT_VERSION}"
         "FMT_USERS=${AC3FORGE_NOTICES_FMT_USERS}"
         "FONT_USER=ac3gui"
+        "TRACY_VERSION=${AC3FORGE_NOTICES_TRACY_VERSION}"
+        # Always ac3gui, unlike FMT_USERS above: ac3cli links no ac3::tracy in any
+        # configuration, so the tracy fragment only ever names the one binary that does.
+        "TRACY_USERS=ac3gui"
     FILES
         "LGPL3=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/LGPL-3.0.txt"
         "OFL=${CMAKE_SOURCE_DIR}/apps/gui/fonts/OFL.txt"
         "FMT_MIT=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/MIT-fmt.txt"
         "MESA_MIT=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/MIT-mesa.txt"
-        "DXC_NCSA=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/NCSA-dxc.txt")
+        "DXC_NCSA=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/NCSA-dxc.txt"
+        "TRACY_BSD=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/BSD-3-Clause-Tracy.txt")
 message(STATUS "Forge notices  : ${AC3FORGE_NOTICES_PLATFORM} build, sections: ${AC3FORGE_NOTICE_FRAGMENTS}")
 
 # ---------------------------------------------------------------------------

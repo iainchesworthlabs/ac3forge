@@ -9,14 +9,17 @@ import Ac3ForgeHearth
 // state; which view fills the rest of the page follows the selected sink's
 // own pair state, the same switch DecoderPage.qml makes on stream format.
 //
-// Groups, a sink's own speaker/decoder settings pages, a sink already in use
-// by another server, and a group's reported levels are the rest of A6 and are
-// not built here - the plan splits A6 into slices, and this is the first: a
-// sink can be found and paired. "In use elsewhere" needs ac3::sendspin to
-// grow a way to learn that (network_sinks.hpp's own comment says why it
+// A sink already in use by another server and a group's reported levels
+// (beside a live stream) are the rest of A6 and are not built here - the plan
+// splits A6 into slices. Groups (create, add, remove, volume, mute) are
+// issue #874's own slice: real membership and volume/mute, backed by an
+// actual ac3::sendspin::Group, but not yet a live programme - Player has no
+// network-group output seam yet (issue #874's own follow-up), so the group
+// editor's "State"/"Late chunks" rows say so honestly rather than showing
+// numbers this slice cannot make true. "In use elsewhere" needs ac3::sendspin
+// to grow a way to learn that (network_sinks.hpp's own comment says why it
 // cannot today), so it is not a UI gap this slice left behind - there is
-// nothing yet for the page to show. NetworkSinkList's "+ New group..." names
-// the grouping slice rather than hiding it.
+// nothing yet for the page to show.
 Item {
     id: root
 
@@ -43,6 +46,10 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             sourceComponent: {
+                const group = NetworkController.selectedGroup;
+                if (group && group.id !== undefined) {
+                    return groupState;
+                }
                 const sink = NetworkController.selectedSink;
                 if (!sink || sink.id === undefined) {
                     return emptyState;
@@ -50,6 +57,11 @@ Item {
                 return sink.badge === "paired" ? pairedState : pairingState;
             }
         }
+    }
+
+    Component {
+        id: groupState
+        NetworkGroupEdit { }
     }
 
     Component {
@@ -108,8 +120,8 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
-                        text: qsTr("Grouping this sink with others, and its own speaker and "
-                                  + "decoder settings, are not built in this version yet.")
+                        text: qsTr("Add it to a group from the list on the left, or make a new one. Its "
+                                  + "own speaker and decoder settings are not built in this version yet.")
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.WordWrap

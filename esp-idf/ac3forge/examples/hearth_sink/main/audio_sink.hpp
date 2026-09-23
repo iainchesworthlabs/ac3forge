@@ -11,13 +11,19 @@
 // choices (tools/checks/check_platform_macros.ps1, and the arch/ and profile/
 // directories under src/internal/).
 //
-// Three implementations, one chosen per build:
+// Four implementations, one chosen per build:
 //
-//   sink/i2s/      the real one. Standard I2S or TDM, reconfiguring its own
-//                  mode and slot count to whatever a layout needs (up to a
-//                  hardware ceiling - ac3forge/sink_plan.hpp), across one or
-//                  two of the S3's I2S lines.
-//   sink/capture/  converts exactly as the real one does and checks the
+//   sink/i2s/      the real one for a part whose I2S TDM frame is 128 bits
+//                  (the ESP32-S3, the ESP32-C6). Standard I2S or TDM,
+//                  reconfiguring its own mode and slot count to whatever a
+//                  layout needs (up to a hardware ceiling -
+//                  ac3forge/sink_plan.hpp), across one or two of the part's
+//                  I2S lines.
+//   sink/i2s_wide/ the same arithmetic for a part whose one controller
+//                  reaches the product's full channel target alone, at a
+//                  wider frame (512 bits on the ESP32-P4) - never a second
+//                  line, see that directory's own top-of-file comment.
+//   sink/capture/  converts exactly as the real ones do and checks the
 //                  result; what CI runs.
 //   sink/null/     counts what it is given and returns.
 //

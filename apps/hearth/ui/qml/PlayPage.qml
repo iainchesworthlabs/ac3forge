@@ -717,7 +717,7 @@ Item {
         anchors.fill: parent
         onDropped: function(drop) {
             if (drop.hasUrls) {
-                HearthController.addFiles(drop.urls.map(function(u) { return u.toLocalFile ? u.toLocalFile() : u; }));
+                HearthController.addFiles(drop.urls.map(function(u) { return HearthController.urlToLocalFile(u); }));
             }
         }
     }
@@ -727,12 +727,12 @@ Item {
         title: qsTr("Add files")
         fileMode: FileDialog.OpenFiles
         nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"), qsTr("All files (*)")]
-        onAccepted: HearthController.addFiles(selectedFiles.map(function(u) { return u.toLocalFile(); }))
+        onAccepted: HearthController.addFiles(selectedFiles.map(function(u) { return HearthController.urlToLocalFile(u); }))
     }
 
     FolderDialog {
         id: addFolderDialog
         title: qsTr("Add folder")
-        onAccepted: HearthController.addFolder(selectedFolder.toLocalFile())
+        onAccepted: HearthController.addFolder(HearthController.urlToLocalFile(selectedFolder))
     }
 }

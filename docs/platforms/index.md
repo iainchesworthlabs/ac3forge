@@ -60,7 +60,7 @@ without it. [The null-sink driver on ACX](windows-driver-acx.md) has the detail,
 | **C** | Wherever the C++ library builds | [C API](../library/c-api.md) |
 | **Python** | `pip install ac3forge` — wheels for Windows x64, macOS arm64 and x86_64, Linux x86_64 and aarch64 | [Python bindings](../library/python-api.md) |
 | **Rust** | In-tree at `rust/`, over the C API; not published to crates.io | [Rust bindings](../library/rust-api.md) |
-| **An ESP-IDF component** | An ESP32-S3, decode-only or encode-only; ESP32-C3 and ESP32-C6 decode in the fixed-point tier (C3 under QEMU, C6 timed on a board). ESP-IDF owns the build, so there is no ac3forge preset | [ESP32-S3](bare-metal/esp32-s3.md), [ESP32-C3](bare-metal/esp32-c3.md), [ESP32-C6](bare-metal/esp32-c6.md) |
+| **An ESP-IDF component** | An ESP32-S3, decode-only or encode-only; ESP32-C3 and ESP32-C6 decode in the fixed-point tier (C3 under QEMU, C6 timed on a board); ESP32-P4 decodes in the float tier, timed on a board at 360 MHz — this chip revision's ceiling, not the part's 400 MHz maximum. ESP-IDF owns the build, so there is no ac3forge preset | [ESP32-S3](bare-metal/esp32-s3.md), [ESP32-C3](bare-metal/esp32-c3.md), [ESP32-C6](bare-metal/esp32-c6.md), [ESP32-P4](bare-metal/esp32-p4.md) |
 | **An ESPHome component** | The same ESP32-S3 decoder, wrapped for an ESPHome project; not yet a `media_player` or `speaker` source | [ESPHome](bare-metal/esphome.md) |
 | **JavaScript** | A browser, through WebAssembly; the npm package is unpublished | [WebAssembly](wasm.md) |
 | **Shield Atmos Demo** | An NVIDIA Shield, sideloaded | [Android](android.md) |

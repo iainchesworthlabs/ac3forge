@@ -33,7 +33,7 @@ place as the family's fourth member, and its build identity carried over.
 As of 2026-09-16. Detail: [Hearth overview](../index.md).
 
 - **ESP32-S3 `hearth_sink`.** Network player (Sendspin). Two boards played one programme as a group. Setup: [An ESP32-S3 sink](../sink-esp32-s3.md). No DAC wired yet.
-- **`apps/hearth`.** `ac3hearth` engine (no window; cannot play to a sink), `ac3hearth-testsink`, `ac3hearth-testserver`. CI runs the engine tests and plays to an emulated S3 from the test server.
+- **`apps/hearth`.** `ac3hearth` engine and window (Qt Quick; builds on Windows, Linux and macOS when Qt6 6.8+ is found, but still cannot play to a sink), `ac3hearth-testsink`, `ac3hearth-testserver`. CI runs the engine tests and plays to an emulated S3 from the test server.
 - **`src/sendspin`.** Shared by the desktop tools and the board.
 - **ESP32-C6.** Decode probe timed on a board. `hearth_sink`'s Sendspin player runs on this board, stereo only: a ten-minute group run with an ESP32-S3 had no underruns on either board. Setup: [README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6). Still no C6 Sendspin CI job.
 

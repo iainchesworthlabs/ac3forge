@@ -140,6 +140,11 @@ struct OutputChoice {
     OutputMode mode = OutputMode::kNone;
     std::string endpoint_id{};
     std::string endpoint_name{};
+    // Set only for kNetworkGroup, echoing OutputRequest::group_name: which
+    // group Player's own open_chosen() resolves and opens (player.cpp).
+    // endpoint_id/endpoint_name stay empty there - a group is not an
+    // endpoint of this machine (choose_output()'s own comment says why).
+    std::string group_name{};
     // One line for the Output screen and the log: why this, or why not
     // something better. Never empty.
     std::string reason{};

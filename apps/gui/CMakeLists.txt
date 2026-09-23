@@ -296,11 +296,20 @@ target_link_libraries(ac3gui
         mpegts::mpegts
         ac3::warnings
         ac3::fmt
+        # Unlike ac3::forge's own PRIVATE, $<BUILD_INTERFACE:...>-wrapped link
+        # (src/forge/CMakeLists.txt), this app has no intermediate engine
+        # library of its own to hang the profiling header pair on the way
+        # apps/crucible/CMakeLists.txt and apps/hearth/engine/CMakeLists.txt
+        # do for their windows - so ac3gui (and ac3gui_qmltests, tests/CMakeLists.txt's
+        # identical pair below) links and includes it directly.
+        ac3::tracy
         Qt6::Core
         Qt6::Gui
         Qt6::Quick
         Qt6::QuickControls2
         Qt6::Concurrent)
+target_include_directories(ac3gui PRIVATE
+    "$<IF:$<BOOL:${AC3FORGE_ENABLE_TRACY}>,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_enabled,${CMAKE_SOURCE_DIR}/src/forge/src/internal/profiling/tracy_disabled>")
 
 # A GUI app rather than a console one. MACOSX_BUNDLE moves the binary to
 # bin/ac3gui.app/Contents/MacOS/ac3gui, which is where --smoke lives on macOS;
