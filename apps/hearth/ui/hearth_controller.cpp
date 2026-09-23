@@ -114,6 +114,10 @@ constexpr int kPollMs = 60;
     return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
 }
 
+// Forward-declared: defined below, in the play-monitor section, but the
+// Media page's own OAMD table (media_objects_to_list()) needs it too.
+[[nodiscard]] QVariantMap display_object_to_map(const ac3::oba::DisplayObject& object);
+
 [[nodiscard]] QVariantMap media_container_to_map(const apps::ContainerFacts& facts) {
     QVariantMap map;
     if (facts.kind == apps::ContainerKind::kUnknown) {
@@ -122,6 +126,7 @@ constexpr int kPollMs = 60;
         return map;
     }
     map[QStringLiteral("format")] = to_qstring(apps::container_token(facts.kind));
+    map[QStringLiteral("codecId")] = QString::fromStdString(facts.codec_id);
     map[QStringLiteral("track")] = static_cast<int>(facts.track);
     map[QStringLiteral("language")] = QString::fromStdString(facts.language);
     if (facts.sample_rate != 0) {
@@ -179,6 +184,25 @@ constexpr int kPollMs = 60;
     return list;
 }
 
+// The first OAMD payload's per-object detail (MediaInfo::objects), as the
+// Media page's "OBJECTS · OAMD" table reads it - display_object_to_map()'s
+// shape, one entry per oba::describe_objects() result, the same call and the
+// same map shape the Play page's own monitor already uses for a playing
+// unit's objects (see this file's own poll()).
+[[nodiscard]] QVariantList media_objects_to_list(
+    const std::optional<ac3::oba::DecodedProgram>& objects) {
+    QVariantList list;
+    if (!objects) {
+        return list;
+    }
+    const std::vector<ac3::oba::DisplayObject> described = ac3::oba::describe_objects(*objects);
+    list.reserve(static_cast<qsizetype>(described.size()));
+    for (const auto& object : described) {
+        list.push_back(display_object_to_map(object));
+    }
+    return list;
+}
+
 [[nodiscard]] QVariantMap media_bitstream_to_map(const ac3::hearth::MediaBitstream& bits) {
     QVariantMap map;
     if (bits.info) {
@@ -195,8 +219,14 @@ constexpr int kPollMs = 60;
     }
     const MixLevels& levels = bits.levels;
     QVariantMap mix;
+    // centreDb/surroundDb (Lo/Ro) are read by DecoderEac3.qml's own "This
+    // stream" card too, unlabelled there as well - kept as-is rather than
+    // renamed, and the Lt/Rt pair added alongside under its own names, so
+    // that reading is undisturbed.
     mix[QStringLiteral("centreDb")] = 20.0 * std::log10(levels.loro_clev);
     mix[QStringLiteral("surroundDb")] = 20.0 * std::log10(levels.loro_slev);
+    mix[QStringLiteral("ltrtCentreDb")] = 20.0 * std::log10(levels.ltrt_clev);
+    mix[QStringLiteral("ltrtSurroundDb")] = 20.0 * std::log10(levels.ltrt_slev);
     if (levels.lfe_mix_level_db) {
         mix[QStringLiteral("lfeDb")] = *levels.lfe_mix_level_db;
     }
@@ -205,12 +235,6 @@ constexpr int kPollMs = 60;
     return map;
 }
 
-// dynrng/compr are carried as raw §7.7 words, not linear in dB across their
-// full range (ac3::meta::dynrng_gain()'s own comment shows the sign-magnitude
-// wrap at 0x80) - the same reason apps/common/probe_json.cpp's write_range()
-// writes "compr"/"dynrng" as a raw word MinMax rather than a "_db" one the
-// way it does for dialnorm. This follows that precedent rather than
-// inventing its own dB range over a MinMax that may span the wrap.
 [[nodiscard]] QVariantMap media_probe_to_map(const io::ProbeReport& report) {
     QVariantMap map;
     map[QStringLiteral("measuredBitrateKbps")] = report.bitrate_kbps;
@@ -232,6 +256,29 @@ constexpr int kPollMs = 60;
     }
     map[QStringLiteral("comprSeen")] = report.compr.seen;
     map[QStringLiteral("dynrngSeen")] = report.dynrng.seen;
+    // compr/dynrng's tracked min/max is the raw §7.7 wire byte in UNSIGNED
+    // order (io::Prober accumulates it that way), but compr_gain()/
+    // dynrng_gain() read it SIGNED - sign-magnitude, wrapping at 0x80, that
+    // pair's own comment shows. So the tracked "min" byte is not reliably the
+    // quietest dB, nor "max" the loudest; converting both tracked endpoints
+    // and taking the numeric min/max of the two dB readings at least keeps
+    // the displayed range the right way round. It can still understate the
+    // true extreme for a stream whose words cross the wrap between the two
+    // tracked endpoints - a MinMax (only ever the two extremes, never the
+    // full per-frame history) has no way to catch that, and neither does
+    // this.
+    if (report.compr.seen) {
+        const double at_min = 20.0 * std::log10(meta::compr_gain(static_cast<std::uint8_t>(report.compr.min)));
+        const double at_max = 20.0 * std::log10(meta::compr_gain(static_cast<std::uint8_t>(report.compr.max)));
+        map[QStringLiteral("comprMinDb")] = std::min(at_min, at_max);
+        map[QStringLiteral("comprMaxDb")] = std::max(at_min, at_max);
+    }
+    if (report.dynrng.seen) {
+        const double at_min = 20.0 * std::log10(meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.min)));
+        const double at_max = 20.0 * std::log10(meta::dynrng_gain(static_cast<std::uint8_t>(report.dynrng.max)));
+        map[QStringLiteral("dynrngMinDb")] = std::min(at_min, at_max);
+        map[QStringLiteral("dynrngMaxDb")] = std::max(at_min, at_max);
+    }
 
     map[QStringLiteral("blocksParsed")] = static_cast<qlonglong>(report.tools.blocks);
     map[QStringLiteral("blockSwitchBlocks")] = static_cast<qlonglong>(report.tools.block_switch);
@@ -252,10 +299,16 @@ constexpr int kPollMs = 60;
         static_cast<qlonglong>(report.authenticity_tagged_frames);
 
     QVariantList payload_ids;
+    QStringList payload_labels;
     for (const int id : report.emdf_payload_ids) {
         payload_ids.push_back(id);
+        const std::string_view label = apps::probe_json::emdf_payload_label(id);
+        payload_labels.push_back(label.empty() ? QString::number(id)
+                                                : to_qstring(label) + QStringLiteral(" (")
+                                                      + QString::number(id) + QStringLiteral(")"));
     }
     map[QStringLiteral("emdfPayloadIds")] = payload_ids;
+    map[QStringLiteral("emdfPayloadLabels")] = payload_labels;
     return map;
 }
 
@@ -316,6 +369,7 @@ constexpr int kPollMs = 60;
 
     QVariantList groups;
     int group_index = 0;
+    bool has_ajoc = false;
     for (const ac4::SubstreamGroupInfo& group : toc.substream_groups) {
         QVariantMap row;
         row[QStringLiteral("index")] = group_index++;
@@ -323,11 +377,19 @@ constexpr int kPollMs = 60;
         QVariantList substreams;
         for (const ac4::GroupSubstream& sub : group.substreams) {
             substreams.push_back(QString::fromStdString(apps::probe_json::describe_group_substream(sub)));
+            has_ajoc = has_ajoc || sub.kind == ac4::GroupSubstream::Kind::kAjoc;
         }
         row[QStringLiteral("substreams")] = substreams;
         groups.push_back(row);
     }
     map[QStringLiteral("substreamGroups")] = groups;
+    // Gates the Media page's own "Immersive" card - A-JOC's own object
+    // metadata is read only far enough to say how the substream folds down
+    // (describe_group_substream() above), not to reconstruct objects; a
+    // decoder for it does not exist in this build (ac4dec has no A-JOC
+    // support), so the card can only say the layer is present, honestly, not
+    // describe what is in it.
+    map[QStringLiteral("hasAjoc")] = has_ajoc;
     return map;
 }
 
@@ -351,6 +413,7 @@ constexpr int kPollMs = 60;
     }
     map[QStringLiteral("streamSamples")] = static_cast<qlonglong>(info.stream_samples);
     map[QStringLiteral("programmes")] = media_programmes_to_list(info.programmes);
+    map[QStringLiteral("objects")] = media_objects_to_list(info.objects);
     if (info.bitstream) {
         map[QStringLiteral("bitstream")] = media_bitstream_to_map(*info.bitstream);
     }

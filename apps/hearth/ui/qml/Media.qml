@@ -25,6 +25,34 @@ Item {
                                           ? HearthController.inspectedIndex : HearthController.currentIndex
     readonly property var showingLabels: HearthController.queue.map(function(item) { return item.title; })
 
+    // media_info_to_map() always sets several keys (path, container,
+    // programmes, json, ...) once a probe reply has landed for the item
+    // inspectedMedia currently names - before that, poll() has cleared it to
+    // {}. Reading this distinguishes "not read yet" from "read, and this
+    // particular field came back empty/absent", which a `?? {}`/`undefined`
+    // default alone cannot - see the Container row below for why that
+    // distinction matters.
+    readonly property bool mediaLoaded: Object.keys(root.media).length > 0
+    readonly property bool hasContainer: Object.keys(root.container).length > 0
+    readonly property bool hasOamdTable: root.probe.oamd === true
+    readonly property bool hasMultipleProgrammes: (root.media.programmes ?? []).length > 1
+
+    // Card numbering runs as one sequence over whichever of the optional
+    // cards below actually renders (Container, Programmes, Objects · OAMD),
+    // so a hidden one never leaves a skipped number behind it - the same
+    // "numbering fossil" the AC-4 cards had before this file's own renumber.
+    readonly property int nContainer: 1
+    readonly property int nStream: root.hasContainer ? 2 : 1
+    readonly property int nBitstream: root.nStream + 1
+    readonly property int nProgrammes: root.nBitstream + 1
+    readonly property int nOamd: (root.hasMultipleProgrammes ? root.nProgrammes : root.nBitstream) + 1
+    readonly property int nProbe: (root.hasOamdTable ? root.nOamd
+                                   : (root.hasMultipleProgrammes ? root.nProgrammes : root.nBitstream)) + 1
+
+    function cardTitle(n, text) {
+        return (n < 10 ? "0" + n : "" + n) + " " + text;
+    }
+
     // ac3::hearth::codec_token()'s lower-case wire tokens, spelled the way
     // the rest of this page's prose does ("AC-3", not "AC3").
     function codecLabel(token) {
@@ -34,6 +62,15 @@ Item {
             case "ac3+eac3": return qsTr("AC-3 core + E-AC-3");
             case "ac4": return qsTr("AC-4");
             default: return qsTr("unknown");
+        }
+    }
+    // apps::container_token()'s lower-case wire tokens.
+    function containerLabel(token) {
+        switch (token) {
+            case "mp4": return qsTr("MP4");
+            case "matroska": return qsTr("Matroska");
+            case "mpegts": return qsTr("MPEG-TS");
+            default: return token ?? "";
         }
     }
     function formatDb(value, digits) {
@@ -51,6 +88,24 @@ Item {
         const mm = Math.floor(total / 60);
         const ss = total % 60;
         return mm + ":" + (ss < 10 ? "0" : "") + ss;
+    }
+    // Shared between the Stream card's "Objects" row and the Objects · OAMD
+    // card's own summary line, so the two never drift apart.
+    function objectsSummary() {
+        if (!root.mediaLoaded) {
+            return qsTr("reading…");
+        }
+        if (root.probe.objectCount === undefined) {
+            return qsTr("none");
+        }
+        if (root.probe.joc && root.probe.objectCount === 0) {
+            // JOC reconstructs its objects from the bed at decode time
+            // (§oba/joc), so the parse tier's own dynamic_objects count -
+            // what a literal OAMD payload carries - is genuinely 0 for this
+            // shape of stream.
+            return qsTr("reconstructed by JOC from the %1").arg(root.probe.bedLabel ?? "");
+        }
+        return qsTr("%1 · %2").arg(root.probe.objectCount).arg(root.probe.bedLabel ?? "");
     }
 
     // A hidden TextEdit is the portable way to reach the system clipboard
@@ -208,7 +263,14 @@ Item {
                     spacing: Theme.gap * 2
 
                     Card {
-                        title: qsTr("01 Stream")
+                        title: root.cardTitle(root.nStream, qsTr("Stream"))
+                        // Pre-existing gap, fixed alongside this card's own
+                        // renumbering: nothing gated this out for an AC-4
+                        // item, which has its own "01 Stream" card in the
+                        // right column instead - this one has nothing of its
+                        // own to say for it (every field below reads
+                        // "unknown"/"none").
+                        visible: root.ac4 === undefined
 
                         GridLayout {
                             columns: 2
@@ -246,22 +308,23 @@ Item {
                             Text { text: qsTr("Objects"); color: Theme.textMuted }
                             Text {
                                 Layout.fillWidth: true
-                                text: root.probe.objectCount === undefined
-                                      ? qsTr("none")
-                                      : (root.probe.joc && root.probe.objectCount === 0
-                                         // JOC reconstructs its objects from the bed at decode
-                                         // time (§oba/joc), so the parse tier's own
-                                         // dynamic_objects count - what a literal OAMD payload
-                                         // carries - is genuinely 0 for this shape of stream.
-                                         ? qsTr("reconstructed by JOC from the %1").arg(root.probe.bedLabel ?? "")
-                                         : qsTr("%1 · %2").arg(root.probe.objectCount)
-                                                          .arg(root.probe.bedLabel ?? ""))
+                                text: root.objectsSummary()
                                 color: Theme.text
                             }
-                            Text { text: qsTr("Container"); color: Theme.textMuted }
+                            // Only while there is no dedicated Container card
+                            // to show this instead (below) - a real container
+                            // moves this row there, matching how the design's
+                            // own raw-stream mockup shows no Container card
+                            // at all and its wrapped-stream mockup shows no
+                            // Container row here.
+                            Text {
+                                text: qsTr("Container"); color: Theme.textMuted
+                                visible: !root.hasContainer
+                            }
                             Text {
                                 Layout.fillWidth: true
-                                text: root.container.format ?? qsTr("none: an elementary stream")
+                                visible: !root.hasContainer
+                                text: !root.mediaLoaded ? qsTr("reading…") : qsTr("none: an elementary stream")
                                 color: Theme.text
                                 wrapMode: Text.WordWrap
                             }
@@ -269,8 +332,97 @@ Item {
                     }
 
                     Card {
-                        title: qsTr("02 Bitstream information")
-                        visible: Object.keys(root.bitstream).length > 0
+                        title: root.cardTitle(root.nContainer, qsTr("Container"))
+                        visible: root.ac4 === undefined && root.hasContainer
+
+                        GridLayout {
+                            columns: 2
+                            columnSpacing: Theme.gap
+                            rowSpacing: 4
+                            Layout.fillWidth: true
+
+                            Text { text: qsTr("Format"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.containerLabel(root.container.format)
+                                      + (root.container.codecId ? qsTr(" · %1").arg(root.container.codecId) : "")
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("Track"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.container.track !== undefined
+                                      ? qsTr("%1").arg(root.container.track)
+                                        + (root.container.language && root.container.language !== "und"
+                                           ? qsTr(" · %1").arg(root.container.language) : "")
+                                      : ""
+                                color: Theme.text
+                            }
+                            Text {
+                                text: qsTr("Edit list"); color: Theme.textMuted
+                                visible: root.container.edits !== undefined
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: root.container.edits !== undefined
+                                text: root.container.edits > 0
+                                      ? qsTr("%1 entr%2").arg(root.container.edits)
+                                                         .arg(root.container.edits === 1 ? "y" : "ies")
+                                      : qsTr("none")
+                                color: Theme.text
+                            }
+                            Text {
+                                text: qsTr("dec3"); color: Theme.textMuted
+                                visible: root.container.codecBox !== undefined
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: root.container.codecBox !== undefined
+                                text: root.container.codecBox
+                                      ? qsTr("data rate %1 kbit/s · %2 independent substream%3, %4 dependent "
+                                            + "· bsid %5 · %6%7")
+                                            .arg(root.container.codecBox.dataRateKbps)
+                                            .arg(root.container.codecBox.independentSubstreams)
+                                            .arg(root.container.codecBox.independentSubstreams === 1 ? "" : "s")
+                                            .arg(root.container.codecBox.numDepSub)
+                                            .arg(root.container.codecBox.bsid)
+                                            .arg(root.container.codecBox.bsmodLabel)
+                                            .arg(root.container.codecBox.lfeon ? qsTr(" · LFE on") : "")
+                                      : ""
+                                color: Theme.text
+                                wrapMode: Text.WordWrap
+                            }
+                            Text {
+                                text: qsTr("Atmos extension"); color: Theme.textMuted
+                                visible: root.container.codecBox?.complexityIndex !== undefined
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: root.container.codecBox?.complexityIndex !== undefined
+                                text: qsTr("complexity index %1").arg(root.container.codecBox?.complexityIndex)
+                                color: Theme.text
+                            }
+                            Text {
+                                text: qsTr("MPEG-TS"); color: Theme.textMuted
+                                visible: root.container.mpegts !== undefined
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: root.container.mpegts !== undefined
+                                text: root.container.mpegts
+                                      ? qsTr("program %1 · PMT PID %2 · stream type %3")
+                                            .arg(root.container.mpegts.programNumber)
+                                            .arg(root.container.mpegts.pmtPid)
+                                            .arg(root.container.mpegts.streamType)
+                                      : ""
+                                color: Theme.text
+                            }
+                        }
+                    }
+
+                    Card {
+                        title: root.cardTitle(root.nBitstream, qsTr("Bitstream information"))
+                        visible: root.ac4 === undefined && Object.keys(root.bitstream).length > 0
 
                         GridLayout {
                             columns: 2
@@ -299,7 +451,7 @@ Item {
                                 text: root.bitstream.dsurmodLabel ?? ""
                                 color: Theme.text
                             }
-                            Text { text: qsTr("Mix levels"); color: Theme.textMuted }
+                            Text { text: qsTr("Lo/Ro mix levels"); color: Theme.textMuted }
                             Text {
                                 Layout.fillWidth: true
                                 text: qsTr("centre %1 · surround %2%3")
@@ -308,6 +460,15 @@ Item {
                                       .arg(root.bitstream.mixLevels?.lfeDb !== undefined
                                            ? qsTr(" · LFE %1").arg(root.formatDb(root.bitstream.mixLevels.lfeDb))
                                            : "")
+                                color: Theme.text
+                                wrapMode: Text.WordWrap
+                            }
+                            Text { text: qsTr("Lt/Rt mix levels"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("centre %1 · surround %2")
+                                      .arg(root.formatDb(root.bitstream.mixLevels?.ltrtCentreDb))
+                                      .arg(root.formatDb(root.bitstream.mixLevels?.ltrtSurroundDb))
                                 color: Theme.text
                                 wrapMode: Text.WordWrap
                             }
@@ -331,16 +492,9 @@ Item {
                     spacing: Theme.gap * 2
 
                     Card {
-                        title: qsTr("03 Programmes")
-                        visible: root.ac4 === undefined
+                        title: root.cardTitle(root.nProgrammes, qsTr("Programmes"))
+                        visible: root.ac4 === undefined && root.hasMultipleProgrammes
 
-                        Text {
-                            Layout.fillWidth: true
-                            visible: (root.media.programmes ?? []).length === 0
-                            text: qsTr("Read once the item has been probed.")
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.fontSmall
-                        }
                         Repeater {
                             model: root.media.programmes ?? []
                             delegate: RowLayout {
@@ -365,7 +519,7 @@ Item {
                     }
 
                     Card {
-                        title: qsTr("03 Stream")
+                        title: root.cardTitle(1, qsTr("Stream"))
                         visible: root.ac4 !== undefined
 
                         GridLayout {
@@ -391,7 +545,7 @@ Item {
                     }
 
                     Card {
-                        title: qsTr("04 Presentations")
+                        title: root.cardTitle(2, qsTr("Presentations"))
                         visible: root.ac4 !== undefined && (root.ac4?.presentations ?? []).length > 0
 
                         Repeater {
@@ -424,7 +578,7 @@ Item {
                     }
 
                     Card {
-                        title: qsTr("05 Substream groups")
+                        title: root.cardTitle(3, qsTr("Substream groups"))
                         visible: root.ac4 !== undefined && (root.ac4?.substreamGroups ?? []).length > 0
 
                         Repeater {
@@ -456,7 +610,125 @@ Item {
                     }
 
                     Card {
-                        title: qsTr("06 Probe summary")
+                        title: root.cardTitle(4, qsTr("Immersive"))
+                        visible: root.ac4 !== undefined && root.ac4?.hasAjoc === true
+
+                        GridLayout {
+                            columns: 2
+                            columnSpacing: Theme.gap
+                            rowSpacing: 4
+                            Layout.fillWidth: true
+
+                            Text { text: qsTr("A-JOC"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("present")
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("Object metadata"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("present · not read by this build's inspector")
+                                color: Theme.text
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    Card {
+                        title: root.cardTitle(root.nOamd, qsTr("Objects · OAMD"))
+                        visible: root.ac4 === undefined && root.hasOamdTable
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.gap
+
+                            GridLayout {
+                                columns: 2
+                                columnSpacing: Theme.gap
+                                rowSpacing: 4
+                                Layout.fillWidth: true
+
+                                Text { text: qsTr("Objects"); color: Theme.textMuted }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.objectsSummary()
+                                    color: Theme.text
+                                }
+                                Text { text: qsTr("Complexity index"); color: Theme.textMuted }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.probe.complexityIndex !== undefined
+                                          ? qsTr("%1").arg(root.probe.complexityIndex) : qsTr("not carried")
+                                    color: Theme.text
+                                }
+                                Text { text: qsTr("Authenticity tag"); color: Theme.textMuted }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: (root.probe.authenticityTaggedFrames ?? 0) > 0
+                                          ? qsTr("%1 of %2 access units")
+                                                .arg(root.probe.authenticityTaggedFrames).arg(root.probe.accessUnits)
+                                          : qsTr("none in this stream")
+                                    color: Theme.text
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+                                visible: (root.media.objects ?? []).length > 0
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.gap
+                                    Text { text: qsTr("#"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall
+                                           Layout.preferredWidth: 22 }
+                                    Text { text: qsTr("X"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall
+                                           Layout.preferredWidth: 46 }
+                                    Text { text: qsTr("Y"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall
+                                           Layout.preferredWidth: 46 }
+                                    Text { text: qsTr("Z"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall
+                                           Layout.preferredWidth: 46 }
+                                    Text { text: qsTr("GAIN"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall
+                                           Layout.preferredWidth: 64 }
+                                    Text { text: qsTr("ACTIVE"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall
+                                           Layout.fillWidth: true }
+                                }
+                                Repeater {
+                                    model: root.media.objects ?? []
+                                    delegate: RowLayout {
+                                        required property var modelData
+                                        required property int index
+                                        Layout.fillWidth: true
+                                        spacing: Theme.gap
+                                        Text { text: qsTr("%1").arg(index + 1); color: Theme.text
+                                               Layout.preferredWidth: 22 }
+                                        Text { text: Number(modelData.x).toFixed(2); color: Theme.text
+                                               Layout.preferredWidth: 46 }
+                                        Text { text: Number(modelData.y).toFixed(2); color: Theme.text
+                                               Layout.preferredWidth: 46 }
+                                        Text { text: Number(modelData.z).toFixed(2); color: Theme.text
+                                               Layout.preferredWidth: 46 }
+                                        Text { text: root.formatDb(modelData.gainDb); color: Theme.text
+                                               Layout.preferredWidth: 64 }
+                                        Text { text: modelData.active ? qsTr("yes") : qsTr("no"); color: Theme.text
+                                               Layout.fillWidth: true }
+                                    }
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: (root.media.objects ?? []).length === 0
+                                text: qsTr("The object layer could not be read as per-object detail for this stream.")
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontSmall
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    Card {
+                        title: root.cardTitle(root.nProbe, qsTr("Probe summary"))
                         visible: root.ac4 === undefined && Object.keys(root.probe).length > 0
 
                         GridLayout {
@@ -468,13 +740,21 @@ Item {
                             Text { text: qsTr("Dynamic range"); color: Theme.textMuted }
                             Text {
                                 Layout.fillWidth: true
-                                text: root.probe.dynrngSeen ? qsTr("carried") : qsTr("not carried")
+                                text: root.probe.dynrngSeen
+                                      ? qsTr("%1 to %2")
+                                            .arg(root.formatDb(root.probe.dynrngMinDb))
+                                            .arg(root.formatDb(root.probe.dynrngMaxDb))
+                                      : qsTr("not carried")
                                 color: Theme.text
                             }
                             Text { text: qsTr("Heavy compression"); color: Theme.textMuted }
                             Text {
                                 Layout.fillWidth: true
-                                text: root.probe.comprSeen ? qsTr("carried") : qsTr("not carried")
+                                text: root.probe.comprSeen
+                                      ? qsTr("%1 to %2")
+                                            .arg(root.formatDb(root.probe.comprMinDb))
+                                            .arg(root.formatDb(root.probe.comprMaxDb))
+                                      : qsTr("not carried")
                                 color: Theme.text
                             }
                             Text { text: qsTr("Block switching"); color: Theme.textMuted }
@@ -494,9 +774,10 @@ Item {
                             Text { text: qsTr("EMDF payloads"); color: Theme.textMuted }
                             Text {
                                 Layout.fillWidth: true
-                                text: (root.probe.emdfPayloadIds ?? []).length > 0
-                                      ? root.probe.emdfPayloadIds.join(", ") : qsTr("none")
+                                text: (root.probe.emdfPayloadLabels ?? []).length > 0
+                                      ? root.probe.emdfPayloadLabels.join(", ") : qsTr("none")
                                 color: Theme.text
+                                wrapMode: Text.WordWrap
                             }
                         }
                     }
