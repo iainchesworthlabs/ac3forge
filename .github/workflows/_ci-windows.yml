@@ -93,7 +93,6 @@ jobs:
           - name: "Windows MSVC"
             runner: ${{ inputs.windows_runner_1 }}
             preset: windows-msvc
-            hearth: true
             # Declared once, here, so `matrix.experimental` in continue-on-error
             # above resolves against a property the matrix actually defines -
             # without it every leg silently reads null and actionlint reports the
@@ -123,7 +122,6 @@ jobs:
           - name: "Windows LLVM (clang-cl)"
             runner: ${{ inputs.windows_runner_2 }}
             preset: windows-llvm
-            hearth: true
             msvc: true          # clang-cl targets the MSVC ABI: same headers, same libs
             llvm: true
             packageable: true
@@ -179,7 +177,6 @@ jobs:
           - name: "Windows MSVC (arm64)"
             runner: '["windows-11-vs2026-arm"]'
             preset: windows-msvc-arm64
-            hearth: true
             experimental: true
             msvc: true
             msvc_arch: arm64
@@ -745,7 +742,6 @@ jobs:
           # `${{ matrix.gui }}` used to evaluate on this platform.
           gui: "false"
           crucible: ${{ matrix.crucible }}
-          hearth: ${{ matrix.hearth }}
           version-tag: ${{ inputs.version_tag }}
           # No Windows leg needs a GCC version to assert - see build-leg's
           # own toolchain-assert step, which only reads this inside its
@@ -1017,11 +1013,12 @@ jobs:
 
       # Hearth's own archive (cmake/Packaging.cmake's hearth component,
       # apps/hearth/ui/CMakeLists.txt's install rules, phase A7). Guarded by
-      # matrix.hearth rather than matrix.crucible above: Hearth builds and
-      # packages on every Windows leg, windows-msvc-arm64 included, where
-      # Crucible does not.
+      # matrix.release_package alone, not matrix.crucible above: Hearth
+      # builds and packages on every Windows leg (AC3FORGE_BUILD_HEARTH,
+      # root CMakeLists.txt, defaults ON), windows-msvc-arm64 included,
+      # where Crucible does not.
       - name: Assert the AC3Forge Hearth was packaged (Windows)
-        if: matrix.hearth && matrix.release_package && (matrix.preset == 'windows-msvc' || inputs.do_package)
+        if: matrix.release_package && (matrix.preset == 'windows-msvc' || inputs.do_package)
         shell: bash
         run: |
           set -euo pipefail

@@ -112,6 +112,7 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkDecoder.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkReport.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkOnlyOnSink.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkGroupEdit.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlaceholderPage.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/Settings.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/ShortcutsDialog.qml"

@@ -1,10 +1,17 @@
 #include "network_view.hpp"
 
+#include <algorithm>
+#include <cctype>
+
 #include <fmt/format.h>
+
+#include "ac3/sendspin/state_roles.hpp"
 
 namespace ac3::hearth {
 
 namespace {
+
+namespace controller = ac3::sendspin::controller;
 
 [[nodiscard]] std::string join(const std::vector<std::string>& items, std::string_view sep) {
     std::string out;
@@ -61,6 +68,54 @@ namespace {
     out += " and ";
     out += named.back();
     return out;
+}
+
+// Up to two letters from `name`'s own words - "Living room" -> "LR", "Den"
+// -> "D" - the same two-letter-tile idea to_row() uses for a sink's kind,
+// applied to whatever the person actually named the group.
+[[nodiscard]] std::string initials(std::string_view name) {
+    std::string out;
+    bool at_word_start = true;
+    for (const char c : name) {
+        if (c == ' ' || c == '\t') {
+            at_word_start = true;
+            continue;
+        }
+        if (at_word_start) {
+            out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+            at_word_start = false;
+            if (out.size() == 2) {
+                break;
+            }
+        }
+    }
+    return out;
+}
+
+// "2 Hearth sinks · 1 Sendspin player" - member counts by kind, in the same
+// kind order to_row()'s own icon switch uses, empty kinds left out.
+[[nodiscard]] std::string member_counts_text(const std::vector<GroupMemberFacts>& members) {
+    std::size_t hearth_sinks = 0;
+    std::size_t standard_players = 0;
+    std::size_t test_sinks = 0;
+    for (const GroupMemberFacts& member : members) {
+        switch (member.kind) {
+            case SinkKind::kHearthSink: ++hearth_sinks; break;
+            case SinkKind::kTestSink: ++test_sinks; break;
+            case SinkKind::kStandardPlayer: default: ++standard_players; break;
+        }
+    }
+    std::vector<std::string> parts;
+    if (hearth_sinks > 0) {
+        parts.push_back(fmt::format("{} Hearth sink{}", hearth_sinks, hearth_sinks == 1 ? "" : "s"));
+    }
+    if (standard_players > 0) {
+        parts.push_back(fmt::format("{} Sendspin player{}", standard_players, standard_players == 1 ? "" : "s"));
+    }
+    if (test_sinks > 0) {
+        parts.push_back(fmt::format("{} test sink{}", test_sinks, test_sinks == 1 ? "" : "s"));
+    }
+    return parts.empty() ? "No members yet" : join(parts, " · ");
 }
 
 }  // namespace
@@ -182,6 +237,66 @@ SinkDetail to_detail(const SinkFacts& facts) {
     }
 
     detail.paired_on_text = facts.paired_on;
+
+    return detail;
+}
+
+GroupRow to_group_row(const GroupFacts& facts) {
+    GroupRow row;
+    row.id = facts.id;
+    row.name = facts.name;
+    row.icon = initials(facts.name);
+    row.subtitle = member_counts_text(facts.members);
+    return row;
+}
+
+GroupDetail to_group_detail(const GroupFacts& facts) {
+    GroupDetail detail;
+    detail.id = facts.id;
+    detail.name = facts.name;
+    detail.members.reserve(facts.members.size());
+
+    std::vector<controller::Player> players;
+    std::size_t connected = 0;
+    std::optional<std::uint32_t> lead_time_ms;
+    for (const GroupMemberFacts& member : facts.members) {
+        GroupMemberRow row;
+        row.sink_id = member.sink_id;
+        row.name = member.name;
+        switch (member.kind) {
+            case SinkKind::kHearthSink:
+                row.gets_text = member.connected ? "E-AC-3 · this sink's own render" : "E-AC-3 · not connected";
+                break;
+            case SinkKind::kTestSink:
+            case SinkKind::kStandardPlayer:
+            default:
+                row.gets_text = member.connected ? "Stereo, this application's own mix" : "Stereo · not connected";
+                break;
+        }
+        row.volume = member.volume;
+        row.muted = member.muted;
+        row.volume_supported = member.volume_supported;
+        row.mute_supported = member.mute_supported;
+        row.connected = member.connected;
+        detail.members.push_back(std::move(row));
+
+        if (member.connected) {
+            ++connected;
+            players.push_back(controller::Player{.volume = member.volume,
+                                                 .muted = member.muted,
+                                                 .volume_supported = member.volume_supported,
+                                                 .mute_supported = member.mute_supported});
+            if (member.required_lead_time_ms.has_value()) {
+                lead_time_ms = std::max(lead_time_ms.value_or(0), *member.required_lead_time_ms);
+            }
+        }
+    }
+    detail.group_volume = controller::group_volume(players);
+    detail.group_muted = controller::group_muted(players);
+    detail.members_connected_text = fmt::format("{} of {} connected", connected, facts.members.size());
+    detail.lead_time_text =
+        lead_time_ms.has_value() ? fmt::format("{} ms · the largest a member asks for", *lead_time_ms)
+                                 : (facts.members.empty() ? std::string() : "not reported yet");
 
     return detail;
 }

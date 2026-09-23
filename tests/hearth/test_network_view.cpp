@@ -15,10 +15,14 @@
 // fixes the exact words (network-pairing.png's "N slots at N-bit, as it
 // reports", "not synchronised until paired").
 
+using ac3::hearth::GroupFacts;
+using ac3::hearth::GroupMemberFacts;
 using ac3::hearth::PairState;
 using ac3::hearth::SinkFacts;
 using ac3::hearth::SinkKind;
 using ac3::hearth::to_detail;
+using ac3::hearth::to_group_detail;
+using ac3::hearth::to_group_row;
 using ac3::hearth::to_row;
 
 namespace {
@@ -175,4 +179,129 @@ TEST_CASE("network view: three codecs read as an Oxford list", "[hearth][network
     facts.codecs = {"flac", "pcm", "opus"};
     const auto detail = to_detail(facts);
     CHECK(detail.takes_text == "FLAC, PCM and Opus");
+}
+
+namespace {
+
+// "Living room" with two Hearth sinks and one Sendspin player, all
+// connected, from network-group.png.
+GroupFacts living_room() {
+    GroupFacts facts;
+    facts.id = "group-1";
+    facts.name = "Living room";
+    GroupMemberFacts kitchen;
+    kitchen.sink_id = "hearth-s3-kitchen";
+    kitchen.name = "hearth-s3-kitchen";
+    kitchen.kind = SinkKind::kHearthSink;
+    kitchen.connected = true;
+    kitchen.volume = 80;
+    kitchen.volume_supported = true;
+    kitchen.mute_supported = true;
+    kitchen.required_lead_time_ms = 38;
+    GroupMemberFacts lounge;
+    lounge.sink_id = "hearth-s3-lounge";
+    lounge.name = "hearth-s3-lounge";
+    lounge.kind = SinkKind::kHearthSink;
+    lounge.connected = true;
+    lounge.volume = 100;
+    lounge.volume_supported = true;
+    lounge.mute_supported = true;
+    lounge.required_lead_time_ms = 180;
+    GroupMemberFacts speaker;
+    speaker.sink_id = "kitchen-speaker";
+    speaker.name = "Kitchen speaker";
+    speaker.kind = SinkKind::kStandardPlayer;
+    speaker.connected = true;
+    speaker.volume = 64;
+    speaker.volume_supported = true;
+    speaker.mute_supported = true;
+    speaker.required_lead_time_ms = 60;
+    facts.members = {kitchen, lounge, speaker};
+    return facts;
+}
+
+}  // namespace
+
+TEST_CASE("network view: a group's row names its members by kind", "[hearth][network-view]") {
+    const auto row = to_group_row(living_room());
+    CHECK(row.id == "group-1");
+    CHECK(row.name == "Living room");
+    CHECK(row.icon == "LR");
+    CHECK(row.badge == "group");
+    CHECK(row.badge_text == "group");
+    CHECK(row.subtitle == "2 Hearth sinks · 1 Sendspin player");
+}
+
+TEST_CASE("network view: an empty group's row says so plainly", "[hearth][network-view]") {
+    GroupFacts facts;
+    facts.id = "group-2";
+    facts.name = "New group";
+    const auto row = to_group_row(facts);
+    CHECK(row.icon == "NG");
+    CHECK(row.subtitle == "No members yet");
+}
+
+TEST_CASE("network view: a group's editor rows, and its volume as the mean of the members",
+          "[hearth][network-view]") {
+    const auto detail = to_group_detail(living_room());
+    CHECK(detail.id == "group-1");
+    CHECK(detail.name == "Living room");
+    REQUIRE(detail.members.size() == 3);
+
+    CHECK(detail.members[0].sink_id == "hearth-s3-kitchen");
+    CHECK(detail.members[0].volume == 80);
+    CHECK(mentions(detail.members[0].gets_text, "E-AC-3"));
+    CHECK(detail.members[1].sink_id == "hearth-s3-lounge");
+    CHECK(detail.members[2].sink_id == "kitchen-speaker");
+    CHECK(mentions(detail.members[2].gets_text, "Stereo"));
+
+    // (80 + 100 + 64) / 3, rounded - state_roles.hpp's own group_volume().
+    CHECK(detail.group_volume == 81);
+    CHECK_FALSE(detail.group_muted);
+    CHECK(detail.members_connected_text == "3 of 3 connected");
+    // The largest of 38, 180 and 60.
+    CHECK(detail.lead_time_text == "180 ms · the largest a member asks for");
+}
+
+TEST_CASE("network view: a disconnected member is shown but does not count toward the group volume or lead time",
+          "[hearth][network-view]") {
+    GroupFacts facts;
+    facts.id = "group-1";
+    facts.name = "Downstairs";
+    GroupMemberFacts gone;
+    // Its own sink has dropped off sinks_ entirely (network_sinks.hpp's own
+    // comment on why a member survives that) - name falls back to its id.
+    gone.sink_id = "hearth-s3-study";
+    gone.name = "hearth-s3-study";
+    gone.connected = false;
+    GroupMemberFacts here;
+    here.sink_id = "hearth-s3-kitchen";
+    here.name = "hearth-s3-kitchen";
+    here.kind = SinkKind::kHearthSink;
+    here.connected = true;
+    here.volume = 50;
+    here.volume_supported = true;
+    here.required_lead_time_ms = 40;
+    facts.members = {gone, here};
+
+    const auto detail = to_group_detail(facts);
+    REQUIRE(detail.members.size() == 2);
+    CHECK_FALSE(detail.members[0].connected);
+    CHECK(mentions(detail.members[0].gets_text, "not connected"));
+    // Only the connected member's volume counts.
+    CHECK(detail.group_volume == 50);
+    CHECK(detail.members_connected_text == "1 of 2 connected");
+    CHECK(detail.lead_time_text == "40 ms · the largest a member asks for");
+}
+
+TEST_CASE("network view: an empty group has nothing to report yet", "[hearth][network-view]") {
+    GroupFacts facts;
+    facts.id = "group-3";
+    facts.name = "Empty";
+    const auto detail = to_group_detail(facts);
+    CHECK(detail.members.empty());
+    CHECK(detail.group_volume == 100);
+    CHECK_FALSE(detail.group_muted);
+    CHECK(detail.members_connected_text == "0 of 0 connected");
+    CHECK(detail.lead_time_text.empty());
 }

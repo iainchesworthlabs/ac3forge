@@ -161,4 +161,84 @@ struct SinkDetail {
 
 [[nodiscard]] SinkDetail to_detail(const SinkFacts& facts);
 
+// One member of a group NetworkSinks has made: which sink it is, whether it
+// is connected right now, and the volume/mute it currently reports
+// (ac3::sendspin::Group::member_player() - not a value this layer invents).
+// A member whose sink NetworkSinks no longer knows about at all (it dropped
+// off mDNS and disconnected) still keeps its row, named by its bare id, so
+// removing it from the group stays possible.
+struct GroupMemberFacts {
+    std::string sink_id{};
+    std::string name{};
+    SinkKind kind = SinkKind::kStandardPlayer;
+    bool connected = false;
+    std::int32_t volume = 100;
+    bool muted = false;
+    bool volume_supported = false;
+    bool mute_supported = false;
+    // SinkFacts::required_lead_time_ms's own value, carried along so
+    // to_group_detail() can report the largest any member asks for without
+    // reaching back into NetworkSinks' own bookkeeping.
+    std::optional<std::uint32_t> required_lead_time_ms{};
+};
+
+// One group NetworkSinks has made (ac3::sendspin::ServerHost::make_group()),
+// gathered from its own membership bookkeeping (the library keeps no member
+// list of its own to read back) and each member's current facts.
+struct GroupFacts {
+    std::string id{};
+    std::string name{};
+    std::vector<GroupMemberFacts> members{};
+};
+
+// One row of NetworkSinkList.qml's `groups` model - shown above the sinks,
+// as planning/hearth-reference-player.md's own design does.
+struct GroupRow {
+    std::string id{};
+    std::string name{};
+    // Two letters, from the group's own name - to_row()'s own reasoning.
+    std::string icon{};
+    // "2 Hearth sinks · 1 Sendspin player".
+    std::string subtitle{};
+    std::string badge = "group";
+    std::string badge_text = "group";
+};
+
+[[nodiscard]] GroupRow to_group_row(const GroupFacts& facts);
+
+// One row of the group editor's member table.
+struct GroupMemberRow {
+    std::string sink_id{};
+    std::string name{};
+    // "Hearth sink · up to 8 channels" or "FLAC · stereo" - what kind of
+    // sink it is and, in general terms, what it is fed (planning/
+    // hearth-reference-player.md, Groups: a Hearth sink renders the
+    // programme to its own layout, a standard player always gets stereo).
+    // Not the sink's own CONFIGURED layout ("renders 5.1") - that needs a
+    // sink settings page (issue #875) this class has no way to read yet.
+    std::string gets_text{};
+    std::int32_t volume = 100;
+    bool muted = false;
+    bool volume_supported = false;
+    bool mute_supported = false;
+    bool connected = false;
+};
+
+// The group editor's own panels (NetworkGroupEdit.qml).
+struct GroupDetail {
+    std::string id{};
+    std::string name{};
+    std::vector<GroupMemberRow> members{};
+    std::int32_t group_volume = 100;
+    bool group_muted = false;
+    // "3 of 3 connected".
+    std::string members_connected_text{};
+    // "180 ms · the largest a member asks for", or "not reported yet" when no
+    // connected member has said (SinkFacts::required_lead_time_ms's own
+    // wording, reused).
+    std::string lead_time_text{};
+};
+
+[[nodiscard]] GroupDetail to_group_detail(const GroupFacts& facts);
+
 }  // namespace ac3::hearth

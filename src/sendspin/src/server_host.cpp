@@ -989,6 +989,44 @@ struct Group::State {
         }
     }
 
+    // One member's volume or mute, sent to it directly: no redistribution,
+    // unlike apply()'s group-wide command - only this connection is asked,
+    // on the same terms apply()'s own per-player loop already checks
+    // (connected, has a playback role active, that role lists the command).
+    void send_member_command(const std::string& client_id, controller::Command command, std::int32_t volume,
+                             bool mute) {
+        if (member_of(client_id) == nullptr) {
+            return;
+        }
+        const std::shared_ptr<HostConnection> connection = host->find(client_id);
+        if (!connection) {
+            return;
+        }
+        const ClientView client = connection->view();
+        const std::optional<controller::Player> player = player_of(client);
+        if (!player) {
+            return;
+        }
+        if ((command == controller::Command::kVolume && !player->volume_supported) ||
+            (command == controller::Command::kMute && !player->mute_supported)) {
+            return;
+        }
+        if (client.bursts) {
+            ac3forge::CommandMessage message;
+            message.command = command == controller::Command::kVolume ? ac3forge::Command::kVolume : ac3forge::Command::kMute;
+            message.volume = volume;
+            message.mute = mute;
+            (void)connection->driver().call([&] { return connection->session().ac3forge_command(message); });
+        } else {
+            const m::PlayerCommandMessage message{
+                .command = command == controller::Command::kVolume ? m::PlayerCommand::kVolume : m::PlayerCommand::kMute,
+                .volume = volume,
+                .mute = mute,
+                .output_delay_ms = 0};
+            (void)connection->driver().call([&] { return connection->session().command(message); });
+        }
+    }
+
     // Brings a member's other roles up to date with what the group shows. With the group's lock held.
     void sync_member(Member& member) {
         const std::shared_ptr<HostConnection> connection = host->find(member.client_id);
@@ -1376,6 +1414,38 @@ void Group::add(const std::string& client_id) {
             state_->sync_member(each);
         }
     }
+}
+
+std::optional<controller::Player> Group::member_player(const std::string& client_id) const {
+    const std::lock_guard lock(state_->mutex);
+    if (state_->member_of(client_id) == nullptr) {
+        return std::nullopt;
+    }
+    const std::shared_ptr<HostConnection> connection = state_->host->find(client_id);
+    if (!connection) {
+        return std::nullopt;
+    }
+    return State::player_of(connection->view());
+}
+
+void Group::set_member_volume(const std::string& client_id, std::int32_t volume) {
+    const std::lock_guard lock(state_->mutex);
+    state_->send_member_command(client_id, controller::Command::kVolume, volume, false);
+}
+
+void Group::set_member_muted(const std::string& client_id, bool muted) {
+    const std::lock_guard lock(state_->mutex);
+    state_->send_member_command(client_id, controller::Command::kMute, 0, muted);
+}
+
+void Group::set_group_volume(std::int32_t volume) {
+    const std::lock_guard lock(state_->mutex);
+    state_->apply(controller::CommandMessage{.command = controller::Command::kVolume, .volume = volume});
+}
+
+void Group::set_group_muted(bool muted) {
+    const std::lock_guard lock(state_->mutex);
+    state_->apply(controller::CommandMessage{.command = controller::Command::kMute, .mute = muted});
 }
 
 void Group::set_metadata(std::optional<metadata::State> state) {

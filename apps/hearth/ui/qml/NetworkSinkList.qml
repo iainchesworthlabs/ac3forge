@@ -6,20 +6,23 @@ import Ac3ForgeHearth
 
 // The Network page's left column (planning/hearth-design.md, "Network"): every
 // Sendspin player this computer has found, plus the groups it has made from
-// them. Shared by every Network sub-view (pairing, and later the group editor
-// and a sink's own settings) - every one of the design's artboards shows the
-// same list, with only the selection changing what the rest of the page shows.
+// them, shown above the sinks (network-group.png). Shared by every Network
+// sub-view (pairing, the group editor, and later a sink's own settings) -
+// every one of the design's artboards shows the same list, with only the
+// selection changing what the rest of the page shows.
 //
-// "+ New group..." is shown but refused (NetworkController.canCreateGroups is
-// false until a later slice wires real groups): the button belongs in the
-// design and a control that vanished the day groups are not yet playable would
-// be a worse surprise than one that says why it does nothing yet.
+// "+ New group..." makes one named "New group" and selects it - the group
+// editor's own "Name" field (NetworkGroupEdit.qml) is where it gets a real
+// name, the same way a new item elsewhere in this application is renamed
+// after creation rather than through an extra dialog first.
 ColumnLayout {
     id: root
     spacing: Theme.gap
 
     readonly property var sinks: NetworkController.sinks
     readonly property string selectedId: NetworkController.selectedId
+    readonly property var groups: NetworkController.groups
+    readonly property string selectedGroupId: NetworkController.selectedGroupId
 
     Text {
         Layout.fillWidth: true
@@ -53,7 +56,7 @@ ColumnLayout {
             objectName: "networkNewGroup"
             text: qsTr("+ New group…")
             enabled: NetworkController.canCreateGroups
-            Accessible.description: enabled ? "" : qsTr("Groups are not built in this version yet.")
+            onClicked: NetworkController.createGroup(qsTr("New group"))
         }
         Button {
             objectName: "networkRescan"
@@ -72,6 +75,108 @@ ColumnLayout {
         ColumnLayout {
             width: root.width
             spacing: Theme.gap / 2
+
+            Repeater {
+                objectName: "networkGroupRows"
+                model: root.groups
+
+                delegate: Rectangle {
+                    id: groupRow
+                    required property var modelData
+                    readonly property bool current: modelData.id === root.selectedGroupId
+
+                    Layout.fillWidth: true
+                    implicitHeight: groupRowLayout.implicitHeight + Theme.pad
+                    color: current ? Theme.accent100 : Theme.surface
+                    border.color: current ? Theme.accent : Theme.border
+                    border.width: current ? 2 : 1
+
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: qsTr("%1, group").arg(modelData.name)
+                    Accessible.checkable: true
+                    Accessible.checked: groupRow.current
+                    Accessible.onPressAction: NetworkController.selectGroup(modelData.id)
+
+                    activeFocusOnTab: true
+                    Keys.onSpacePressed: NetworkController.selectGroup(modelData.id)
+                    Keys.onReturnPressed: NetworkController.selectGroup(modelData.id)
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: -Theme.focusRingOffset
+                        visible: groupRow.activeFocus
+                        color: "transparent"
+                        border.color: Theme.focusRing
+                        border.width: Theme.focusRingWidth
+                        z: 100
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: NetworkController.selectGroup(groupRow.modelData.id)
+                    }
+
+                    RowLayout {
+                        id: groupRowLayout
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.margins: Theme.gap
+                        spacing: Theme.gap
+
+                        Rectangle {
+                            implicitWidth: 32
+                            implicitHeight: 32
+                            color: groupRow.current ? Theme.accent : Theme.neutral700
+                            Text {
+                                anchors.centerIn: parent
+                                text: groupRow.modelData.icon
+                                color: Theme.bg
+                                font.pixelSize: Theme.fontMicro
+                                font.bold: true
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Text {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                text: groupRow.modelData.name
+                                color: Theme.text
+                                font.pixelSize: Theme.fontBody
+                                font.bold: true
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                text: groupRow.modelData.subtitle
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontSmall
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        Rectangle {
+                            implicitWidth: groupBadgeText.implicitWidth + Theme.gap
+                            implicitHeight: groupBadgeText.implicitHeight + 4
+                            color: "transparent"
+                            border.color: Theme.divider
+                            border.width: 1
+                            Text {
+                                id: groupBadgeText
+                                anchors.centerIn: parent
+                                text: groupRow.modelData.badgeText
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontMicro
+                            }
+                        }
+                    }
+                }
+            }
 
             Repeater {
                 model: root.sinks

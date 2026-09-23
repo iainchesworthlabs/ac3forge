@@ -397,6 +397,47 @@ struct LayoutFields {
     return map;
 }
 
+[[nodiscard]] QVariantMap group_row_to_variant(const ac3::hearth::GroupRow& row) {
+    QVariantMap map;
+    map[QStringLiteral("id")] = QString::fromStdString(row.id);
+    map[QStringLiteral("name")] = QString::fromStdString(row.name);
+    map[QStringLiteral("icon")] = QString::fromStdString(row.icon);
+    map[QStringLiteral("subtitle")] = QString::fromStdString(row.subtitle);
+    map[QStringLiteral("badge")] = QString::fromStdString(row.badge);
+    map[QStringLiteral("badgeText")] = QString::fromStdString(row.badge_text);
+    return map;
+}
+
+[[nodiscard]] QVariantMap group_member_to_variant(const ac3::hearth::GroupMemberRow& member) {
+    QVariantMap map;
+    map[QStringLiteral("sinkId")] = QString::fromStdString(member.sink_id);
+    map[QStringLiteral("name")] = QString::fromStdString(member.name);
+    map[QStringLiteral("getsText")] = QString::fromStdString(member.gets_text);
+    map[QStringLiteral("volume")] = member.volume;
+    map[QStringLiteral("muted")] = member.muted;
+    map[QStringLiteral("volumeSupported")] = member.volume_supported;
+    map[QStringLiteral("muteSupported")] = member.mute_supported;
+    map[QStringLiteral("connected")] = member.connected;
+    return map;
+}
+
+[[nodiscard]] QVariantMap group_detail_to_variant(const ac3::hearth::GroupDetail& detail) {
+    QVariantMap map;
+    map[QStringLiteral("id")] = QString::fromStdString(detail.id);
+    map[QStringLiteral("name")] = QString::fromStdString(detail.name);
+    QVariantList members;
+    members.reserve(static_cast<qsizetype>(detail.members.size()));
+    for (const ac3::hearth::GroupMemberRow& member : detail.members) {
+        members.push_back(group_member_to_variant(member));
+    }
+    map[QStringLiteral("members")] = members;
+    map[QStringLiteral("groupVolume")] = detail.group_volume;
+    map[QStringLiteral("groupMuted")] = detail.group_muted;
+    map[QStringLiteral("membersConnectedText")] = QString::fromStdString(detail.members_connected_text);
+    map[QStringLiteral("leadTimeText")] = QString::fromStdString(detail.lead_time_text);
+    return map;
+}
+
 }  // namespace
 
 NetworkController::NetworkController(QObject* parent)
@@ -456,6 +497,69 @@ void NetworkController::cancelPairing(const QString& id) {
     }
 }
 
+QString NetworkController::createGroup(const QString& name) {
+    if (!sinks_engine_) {
+        return {};
+    }
+    const QString id = QString::fromStdString(sinks_engine_->create_group(name.toStdString()));
+    poll();
+    return id;
+}
+
+void NetworkController::renameGroup(const QString& groupId, const QString& name) {
+    if (sinks_engine_) {
+        sinks_engine_->rename_group(groupId.toStdString(), name.toStdString());
+    }
+}
+
+void NetworkController::deleteGroup(const QString& groupId) {
+    if (sinks_engine_) {
+        sinks_engine_->delete_group(groupId.toStdString());
+    }
+}
+
+void NetworkController::selectGroup(const QString& groupId) {
+    if (sinks_engine_) {
+        sinks_engine_->select_group(groupId.toStdString());
+    }
+}
+
+void NetworkController::addGroupMember(const QString& groupId, const QString& sinkId) {
+    if (sinks_engine_) {
+        sinks_engine_->add_group_member(groupId.toStdString(), sinkId.toStdString());
+    }
+}
+
+void NetworkController::removeGroupMember(const QString& groupId, const QString& sinkId) {
+    if (sinks_engine_) {
+        sinks_engine_->remove_group_member(groupId.toStdString(), sinkId.toStdString());
+    }
+}
+
+void NetworkController::setGroupVolume(const QString& groupId, int volume) {
+    if (sinks_engine_) {
+        sinks_engine_->set_group_volume(groupId.toStdString(), volume);
+    }
+}
+
+void NetworkController::setGroupMuted(const QString& groupId, bool muted) {
+    if (sinks_engine_) {
+        sinks_engine_->set_group_muted(groupId.toStdString(), muted);
+    }
+}
+
+void NetworkController::setMemberVolume(const QString& groupId, const QString& sinkId, int volume) {
+    if (sinks_engine_) {
+        sinks_engine_->set_member_volume(groupId.toStdString(), sinkId.toStdString(), volume);
+    }
+}
+
+void NetworkController::setMemberMuted(const QString& groupId, const QString& sinkId, bool muted) {
+    if (sinks_engine_) {
+        sinks_engine_->set_member_muted(groupId.toStdString(), sinkId.toStdString(), muted);
+    }
+}
+
 void NetworkController::poll() {
     if (!sinks_engine_) {
         return;
@@ -485,12 +589,25 @@ void NetworkController::poll() {
         }
     }
 
+    QVariantList group_rows;
+    group_rows.reserve(static_cast<qsizetype>(status.groups.size()));
+    QVariantMap selected_group;
+    for (const ac3::hearth::GroupFacts& facts : status.groups) {
+        group_rows.push_back(group_row_to_variant(ac3::hearth::to_group_row(facts)));
+        if (facts.id == status.selected_group_id) {
+            selected_group = group_detail_to_variant(ac3::hearth::to_group_detail(facts));
+        }
+    }
+
     const QString new_selected_id = QString::fromStdString(status.selected_id);
     const QString new_pairing_error = QString::fromStdString(status.pairing_error);
+    const QString new_selected_group_id = QString::fromStdString(status.selected_group_id);
     if (rows == sinks_ && new_selected_id == selected_id_ && selected == selected_sink_ &&
         new_pairing_error == pairing_error_ && selected_settable == selected_sink_settable_ &&
         speaker_settings == sink_speaker_settings_ && decoder_settings == sink_decoder_settings_ &&
-        report == sink_report_ && only_on_sink == sink_only_on_sink_) {
+        report == sink_report_ && only_on_sink == sink_only_on_sink_ &&
+        group_rows == groups_ && new_selected_group_id == selected_group_id_ &&
+        selected_group == selected_group_) {
         return;
     }
     sinks_ = std::move(rows);
@@ -502,6 +619,9 @@ void NetworkController::poll() {
     sink_decoder_settings_ = std::move(decoder_settings);
     sink_report_ = std::move(report);
     sink_only_on_sink_ = std::move(only_on_sink);
+    groups_ = std::move(group_rows);
+    selected_group_id_ = new_selected_group_id;
+    selected_group_ = std::move(selected_group);
     emit sinksChanged();
 }
 

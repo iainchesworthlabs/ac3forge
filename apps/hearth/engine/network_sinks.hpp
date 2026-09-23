@@ -15,25 +15,42 @@
 #include "network_view.hpp"
 #include "pairing_store.hpp"
 
-// Discovery and pairing (planning/hearth-reference-player.md, A6's first
-// slice - see planning/hearth-reference-player.md#a6-network-outputs-in-the-application
+// Discovery, pairing and groups (planning/hearth-reference-player.md, A6 -
+// see planning/hearth-reference-player.md#a6-network-outputs-in-the-application
 // for the rest of A6, not built here). Owns this computer's Sendspin server
-// identity, browses `_sendspin._tcp`, and pairs on request; the window polls
-// status() the way HearthController polls Engine::status() (A5's own reason:
-// no on_change() callback, so nothing here has to cross onto the Qt thread by
-// itself).
+// identity, browses `_sendspin._tcp`, pairs on request, and makes the groups
+// a person builds on the Network page; the window polls status() the way
+// HearthController polls Engine::status() (A5's own reason: no on_change()
+// callback, so nothing here has to cross onto the Qt thread by itself).
 //
-// What A6 asks for and is NOT here, and why:
-//   * Groups and a group's reported levels need a live programme playing to
-//     a sink - this class never starts one (ServerHost::Group is untouched),
-//     so there is nothing yet to hang them on. Tracked as follow-up work once
-//     this slice lands. A sink's own settings pages do NOT share that
-//     dependency, despite an earlier note here having said all three did:
-//     ServerHost::ac3forge_command() resolves by client_id alone (server_
-//     host.cpp), and ClientView carries ac3forge_support/ac3forge_state as
-//     soon as a client offering the role connects, neither Group-gated -
-//     confirmed by reading server_host.cpp directly rather than trusting
-//     this comment's own earlier claim. See push_sink_settings() below.
+// A group here is membership and volume/mute only - actually streaming a
+// programme to one (issue #874's own exit) is Player's job once it grows a
+// network-group output seam; this class only ever calls
+// ac3::sendspin::Group::add()/remove()/set_group_volume()/set_member_volume()
+// and the like, never start()/push()/push_burst(). ac3::sendspin::Group keeps
+// no member list of its own to read back, so groups_ (below) is this class's
+// own record of which of ITS sinks belong to which group, kept in sink-id
+// terms (this class's own mDNS-instance-name ids) rather than client_id:
+// a sink's client_id is stable across a reconnect (it comes from the
+// device's own long-term Noise key, confirmed against PairingRecordView's
+// own use of it above), but a sink can still vanish from sinks_ entirely
+// while disconnected (on_client_gone() erases the whole row) - membership
+// itself must outlive that, or a sink dropping off Wi-Fi for a few seconds
+// would silently evict it from every group it was in.
+//
+// A sink's own settings pages (issue #875, push_sink_settings()/
+// push_sink_identify() below) do not share that "needs a live programme"
+// dependency either, despite an earlier note here having said groups,
+// settings and levels all did: ServerHost::ac3forge_command() resolves by
+// client_id alone (server_host.cpp), and ClientView carries ac3forge_support/
+// ac3forge_state as soon as a client offering the role connects, neither
+// Group-gated - confirmed by reading server_host.cpp directly rather than
+// trusting this comment's own earlier claim.
+//
+// What A6 still asks for and is NOT here, and why:
+//   * A group's reported levels needs a live programme actually playing to
+//     one (Player's own network-group output seam, issue #874, still to
+//     come) - there is nothing yet to hang that on.
 //   * "A sink in use elsewhere, with an explicit takeover action"
 //     (network-in-use.png) needs the sink to say who else holds it, or at
 //     least that it is held. Nothing in ac3::sendspin reports this: pairing
@@ -67,6 +84,10 @@ struct NetworkStatus {
     // pairing (pairing_messages::AbortReason, in words); cleared by the next
     // select_sink() or a fresh attempt.
     std::string pairing_error{};
+    std::vector<GroupFacts> groups{};
+    // Mutually exclusive with selected_id: selecting a sink clears this, and
+    // selecting a group clears selected_id.
+    std::string selected_group_id{};
 };
 
 class NetworkSinks final : private sendspin::discovery::BrowseListener, private sendspin::ServerHostEvents {
@@ -134,6 +155,25 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     // wire has no "identify state" to read back either.
     bool push_sink_identify(const std::string& id, std::optional<sendspin::ac3forge::Identify> identify);
 
+    // Makes a new, empty group (ServerHost::make_group()) and selects it;
+    // empty string if the host never started. Not persisted across a run -
+    // see this file's own header comment on what A6 still needs.
+    std::string create_group(const std::string& name);
+    // Bookkeeping only: ac3::sendspin::Group has no concept of its own
+    // display name on the wire, so renaming never touches the library.
+    void rename_group(const std::string& group_id, const std::string& name);
+    // Ends the group's own programme if one was running and forgets it.
+    void delete_group(const std::string& group_id);
+    void select_group(const std::string& group_id);
+    // A no-op if the sink is not currently connected: Group::add() takes a
+    // client_id, which only exists once a sink has said hello.
+    void add_group_member(const std::string& group_id, const std::string& sink_id);
+    void remove_group_member(const std::string& group_id, const std::string& sink_id);
+    void set_group_volume(const std::string& group_id, std::int32_t volume);
+    void set_group_muted(const std::string& group_id, bool muted);
+    void set_member_volume(const std::string& group_id, const std::string& sink_id, std::int32_t volume);
+    void set_member_muted(const std::string& group_id, const std::string& sink_id, bool muted);
+
     [[nodiscard]] NetworkStatus status() const;
 
     // discovery::BrowseListener and ServerHostEvents - public, rather than
@@ -175,8 +215,21 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
         std::optional<std::int32_t> identify_slot{};
     };
 
+    struct GroupEntry {
+        std::string name{};
+        std::shared_ptr<sendspin::Group> group{};
+        // This class's own sink ids, in the order added - see this file's
+        // own header comment on why membership is kept here rather than
+        // read back from Group, and in sink-id rather than client_id terms.
+        std::vector<std::string> member_sink_ids{};
+    };
+
     // Rebuilds facts_ from `entry` and republishes; called with mutex_ held.
     [[nodiscard]] SinkFacts facts_locked(const std::string& instance, const Entry& entry) const;
+    [[nodiscard]] GroupFacts group_facts_locked(const std::string& group_id, const GroupEntry& entry) const;
+    // The member's current client_id, or empty if the sink is not known, or
+    // known but not currently connected.
+    [[nodiscard]] std::string member_client_id_locked(const std::string& sink_id) const;
     void publish_locked();
 
     PairingStore& store_;
@@ -198,6 +251,11 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     std::string selected_id_;
     std::string pairing_error_;
     std::uint64_t generation_ = 0;
+
+    // Keyed by ac3::sendspin::Group::id() - already unique per host, so
+    // there is no need for a second id scheme on top of it.
+    std::map<std::string, GroupEntry> groups_;
+    std::string selected_group_id_;
 };
 
 }  // namespace ac3::hearth

@@ -99,11 +99,12 @@ jobs:
             runner: ${{ inputs.linux_runner_1 }}
             container: ubuntu:26.04
             preset: linux-gcc
-            # Every leg builds Hearth (planning/hearth-reference-player.md, A7): src/sendspin
-            # and apps/hearth, and with them the [sendspin] and [hearth] cases ctest runs
-            # below. Until now one Linux job (hearth-validate in _ci-core.yml) was the only
-            # place either compiled. See build-leg's `hearth` input for what it adds.
-            hearth: true
+            # Hearth (planning/hearth-reference-player.md, A7): src/sendspin and apps/hearth,
+            # with the [sendspin] and [hearth] cases ctest runs below. AC3FORGE_BUILD_HEARTH
+            # defaults ON (root CMakeLists.txt) and CMakePresets.json's "core" fragment selects
+            # vcpkg's "hearth" feature by default too, so every leg here builds and tests it
+            # without a matrix field asking for it - hearth-validate (_ci-core.yml) is the only
+            # place still naming it explicitly, for its own narrower A4 aiosendspin exit.
             gcc: true
             gui: true
             packageable: true
@@ -116,7 +117,6 @@ jobs:
             runner: ${{ inputs.linux_runner_2 }}
             container: ubuntu:26.04
             preset: linux-llvm
-            hearth: true
             llvm: true
             gui: true
             packageable: true
@@ -141,7 +141,6 @@ jobs:
             runner: '["ubuntu-24.04-arm"]'
             container: ubuntu:26.04
             preset: linux-gcc-arm64
-            hearth: true
             gcc: true
             gui: true
             packageable: true
@@ -153,7 +152,6 @@ jobs:
             runner: '["ubuntu-24.04-arm"]'
             container: ubuntu:26.04
             preset: linux-llvm-arm64
-            hearth: true
             llvm: true
             gui: true
             packageable: true
@@ -202,7 +200,6 @@ jobs:
             runner: ${{ inputs.linux_runner_3 }}
             container: ubuntu:26.04
             preset: linux-llvm-asan-ubsan
-            hearth: true
             llvm: true
             sanitizer: true
 
@@ -243,7 +240,6 @@ jobs:
             runner: ${{ inputs.linux_runner_4 }}
             container: ubuntu:26.04
             preset: linux-llvm-tsan
-            hearth: true
             llvm: true
     steps:
       # Before checkout: the bare ubuntu image has no git, and actions/checkout
@@ -404,7 +400,6 @@ jobs:
           preset: ${{ matrix.preset }}
           gui: ${{ matrix.gui }}
           crucible: ${{ matrix.crucible }}
-          hearth: ${{ matrix.hearth }}
           version-tag: ${{ inputs.version_tag }}
           gcc-version: ${{ inputs.gcc_version }}
           llvm-version: ${{ inputs.llvm_version }}
@@ -1204,19 +1199,17 @@ jobs:
       # apps/hearth/ui/CMakeLists.txt's install rules, phase A7) - unlike
       # Crucible's Linux package, which is a wholly separate build/crucible
       # configure+build+pack pass further up (Crucible needs PipeWire
-      # installed; Hearth needs nothing beyond what every `hearth: true` leg
-      # already builds), so this hooks into the SAME shared Package step
-      # above that the runtime archive and the CLI docs assert both use,
-      # the same way the CLI docs assert just above does. Same condition as
-      # that step, with matrix.hearth added: on Linux the windows-msvc and
-      # macos-llvm/macos-llvm-x64 clauses never match, so this only ever
-      # fires on a do_package release run, on whichever legs carry both
-      # matrix.hearth and matrix.release_package (linux-gcc,
+      # installed; Hearth needs nothing beyond what every leg already builds
+      # by default), so this hooks into the SAME shared Package step above
+      # that the runtime archive and the CLI docs assert both use, the same
+      # way the CLI docs assert just above does. Same condition as that
+      # step: on Linux the windows-msvc and macos-llvm/macos-llvm-x64
+      # clauses never match, so this only ever fires on a do_package release
+      # run, on whichever legs carry matrix.release_package (linux-gcc,
       # linux-gcc-arm64) - the same "Linux checked before a release ships
       # rather than on every commit" split that comment above describes.
       - name: Assert the AC3Forge Hearth was packaged (Linux)
         if: >-
-          matrix.hearth &&
           matrix.packageable &&
           (matrix.preset == 'windows-msvc' ||
            (inputs.do_package && matrix.release_package) ||

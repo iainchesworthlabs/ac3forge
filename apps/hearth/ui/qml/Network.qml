@@ -9,15 +9,21 @@ import Ac3ForgeHearth
 // state; which view fills the rest of the page follows the selected sink's
 // own pair state, the same switch DecoderPage.qml makes on stream format.
 //
-// A sink's own speaker and decoder settings pages (NetworkSinkSettings.qml)
-// are A6's second slice, built here: once NetworkController.selectedSinkSettable
-// is true (a paired, connected Hearth sink), they replace the plain "paired"
-// card below. Groups, a sink already in use by another server, and a
-// group's reported levels are still the rest of A6 and not built here - "in
-// use elsewhere" needs ac3::sendspin to grow a way to learn that (issue
-// #876), so it is not a UI gap this slice left behind - there is nothing yet
-// for the page to show. NetworkSinkList's "+ New group..." names the
-// grouping slice rather than hiding it.
+// A sink's own speaker and decoder settings pages (NetworkSinkSettings.qml,
+// issue #875) show once NetworkController.selectedSinkSettable is true (a
+// paired, connected Hearth sink), replacing the plain "paired" card below.
+// Groups (NetworkGroupEdit.qml, issue #874: create, add, remove, volume,
+// mute) are real, backed by an actual ac3::sendspin::Group, but not yet a
+// live programme - Player has no network-group output seam yet (#874's own
+// follow-up), so the group editor's "State"/"Late chunks" rows say so
+// honestly rather than showing numbers this slice cannot make true.
+//
+// Still the rest of A6, not built here: a sink already in use by another
+// server needs ac3::sendspin to grow a way to learn that
+// (network_sinks.hpp's own comment says why it cannot today); a group's
+// reported levels needs that same network-group output seam #874's own
+// follow-up would add. Neither is a UI gap this slice left behind - there is
+// nothing yet for the page to show for either.
 Item {
     id: root
 
@@ -44,6 +50,10 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             sourceComponent: {
+                const group = NetworkController.selectedGroup;
+                if (group && group.id !== undefined) {
+                    return groupState;
+                }
                 const sink = NetworkController.selectedSink;
                 if (!sink || sink.id === undefined) {
                     return emptyState;
@@ -54,6 +64,11 @@ Item {
                 return NetworkController.selectedSinkSettable ? settingsState : pairedState;
             }
         }
+    }
+
+    Component {
+        id: groupState
+        NetworkGroupEdit { }
     }
 
     Component {
@@ -118,9 +133,9 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
-                        text: qsTr("A standard Sendspin player: it takes stereo only, with no "
-                                  + "settings of its own to show here. Grouping it with others is "
-                                  + "not built in this version yet.")
+                        text: qsTr("A standard Sendspin player: it takes stereo only, with no speaker "
+                                  + "or decoder settings of its own to show here. Add it to a group "
+                                  + "from the list on the left, or make a new one.")
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.WordWrap
