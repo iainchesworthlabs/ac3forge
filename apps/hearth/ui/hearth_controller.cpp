@@ -54,6 +54,7 @@
 #include "pairing_store.hpp"
 #include "pcm_sink.hpp"
 #include "probe_json.hpp"
+#include "qsettings_store.hpp"
 #include "queue.hpp"
 #include "settings_model.hpp"
 #include "transport.hpp"
@@ -689,46 +690,10 @@ constexpr int kPollMs = 60;
 
 // --- settings (the Settings page) ------------------------------------------
 
-// ac3::hearth::SettingsStore over QSettings (planning/hearth-reference-
-// player.md, A5: "it stores its settings through QSettings"). The key
-// strings settings_model.cpp and pairing_store.cpp already compose
-// ("playback/gapless", "queue/1/path", "pairing/1/client", ...) are plain
-// QSettings keys, so this is a thin pass-through that does not have to know
-// what any of them mean - MemorySettingsStore (settings_model.cpp) is the
-// test suites' own version of the same three methods.
-class QSettingsStore final : public ac3::hearth::SettingsStore {
-public:
-    explicit QSettingsStore(QSettings& settings) : settings_(settings) {}
-
-    [[nodiscard]] std::optional<std::string> value(std::string_view key) const override {
-        const QVariant found =
-            settings_.value(QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size())));
-        if (!found.isValid()) {
-            return std::nullopt;
-        }
-        return found.toString().toStdString();
-    }
-
-    void set_value(std::string_view key, std::string_view value) override {
-        settings_.setValue(QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size())),
-                           QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size())));
-    }
-
-    void remove_group(std::string_view group) override {
-        // QSettings::remove() already removes the key itself and everything
-        // under it; MemorySettingsStore::remove_group() only says so in a
-        // comment because it has to do that walk by hand.
-        settings_.remove(QString::fromUtf8(group.data(), static_cast<qsizetype>(group.size())));
-    }
-
-    [[nodiscard]] bool sync() override {
-        settings_.sync();
-        return settings_.status() == QSettings::NoError;
-    }
-
-private:
-    QSettings& settings_;
-};
+// QSettingsStore itself now lives in qsettings_store.hpp: NetworkController
+// needs it too (issue #889), and it could not stay a class local to this
+// file's own anonymous namespace once a second translation unit had to name
+// it.
 
 [[nodiscard]] QString failure_policy_name(ac3::hearth::FailurePolicy policy) {
     return policy == ac3::hearth::FailurePolicy::kStop ? QStringLiteral("stop") : QStringLiteral("skip");

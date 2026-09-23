@@ -57,6 +57,7 @@ else()
         item_loader.hpp
         network_controller.cpp
         network_controller.hpp
+        qsettings_store.hpp
         "${PROJECT_SOURCE_DIR}/apps/common/container_input.cpp"
         "${PROJECT_SOURCE_DIR}/apps/common/container_input.hpp")
     target_include_directories(ac3hearth PRIVATE

@@ -56,6 +56,7 @@ ApplicationWindow {
         Theme.paletteChoice = HearthController.palette;
         window.applyTextScale();
         HearthController.start();
+        NetworkController.start();
         // One turn later, so main.cpp's setProperty("suppressFirstRun", ...)
         // - which runs after this handler and before the event loop starts -
         // has already landed (Crucible's own Main.qml carries the identical
