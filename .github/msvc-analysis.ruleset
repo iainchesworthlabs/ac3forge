@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ac3forge's /analyze rule set: NativeRecommendedRules minus the two rules
-  whose entire history in this repository is dismissed false positives.
+  ac3forge's /analyze rule set: NativeRecommendedRules minus the rules
+  whose entire history in this repository is dismissed false positives, or
+  fires exclusively on generated (non-project) code.
 
   Alert identity in GitHub Code Scanning is ruleId + a line-content hash +
   the FILE PATH, so a false positive is not dismissed once: every file
@@ -12,8 +13,9 @@
   documented and dismissed under #70/#71/#8/#11/#22. Neither rule has a
   portable in-source suppression (#pragma warning(suppress:) breaks
   -Werror on GCC/clang, and [[gsl::suppress]] only covers C26xxx and
-  trips GCC's -Wattributes), so rules that only ever produce dismissals
-  are turned off at the source instead:
+  trips GCC's -Wattributes), so they are turned off at the source instead.
+  A third rule below is disabled for an unrelated reason - it fires only on
+  generated code, never on project source:
 
     C26829 (unwrapped possibly-empty optional) - 7 alerts, all dismissed
       as false positives at sites where a have_first/non-empty-stream
@@ -30,6 +32,22 @@
       covered by the linux-llvm-asan-ubsan leg (precise, at runtime) and
       CodeQL's dataflow queries.
 
+    C26495 (uninitialized member variable) - 1750 alerts opened in a single
+      burst on 2026-09-17, 100% under
+      build/config-windows-msvc/apps/gui/.rcc/qmlcache/ac3gui_qmltests_qml/:
+      qmlcachegen's generated glue for the GUI's QML tests, one
+      compiler-synthesized Storage struct per QML binding closure, not
+      project source (see issue #718). ac3gui_qmltests is include()'d into
+      apps/gui's own CMake directory scope (apps/gui/CMakeLists.txt has the
+      comment explaining why), so this action's directory-scoped
+      ignoredTargetPaths can't cleanly separate the test target from the
+      production ac3gui target without also blinding analysis to real GUI
+      source. No first-party finding has ever been seen under this rule;
+      the same defect class stays covered by clang-tidy's
+      cppcoreguidelines-pro-type-member-init on the nightly static-analysis
+      leg and CodeQL's cpp/uninitialized-local, both of which run against
+      project source only.
+
   C6262 (excessive stack usage) stays ON: it is this workflow's workhorse,
   with 25+ real heap-allocation fixes behind it and no clang-tidy
   equivalent - a genuine finding there gets FIXED, not dismissed, so the
@@ -45,5 +63,6 @@
   <Rules AnalyzerId="Microsoft.Analyzers.NativeCodeAnalysis" RuleNamespace="Microsoft.Rules.Native">
     <Rule Id="C26829" Action="None" />
     <Rule Id="C28020" Action="None" />
+    <Rule Id="C26495" Action="None" />
   </Rules>
 </RuleSet>
