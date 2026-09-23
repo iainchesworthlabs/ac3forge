@@ -877,17 +877,68 @@ ScrollView {
                                 font.family: Theme.monoFamily
                                 font.pixelSize: Theme.fontMicro
                             }
-                            Button {
+                            // A plain Rectangle + MouseArea, not a native
+                            // Button: this Repeater-backed delegate carries
+                            // real, non-empty speaker data, and a native QQC2
+                            // Button in that position has hung the offscreen
+                            // Qt Quick Test binary on Windows elsewhere in
+                            // this family (qml-native-button-repeater-
+                            // offscreen-hang) - the routing grid's own cells
+                            // above use the same shape for the same reason.
+                            Rectangle {
                                 id: identifyButton
                                 objectName: "speakersIdentify-" + row.index
-                                text: HearthController.identifySlot === row.index
-                                      ? qsTr("Stop") : qsTr("Identify")
-                                onClicked: HearthController.identifySlot === row.index
-                                           ? HearthController.stopIdentify()
-                                           : HearthController.startIdentify(row.index)
-                                Accessible.name: HearthController.identifySlot === row.index
+                                readonly property bool active: HearthController.identifySlot === row.index
+
+                                implicitWidth: identifyLabel.implicitWidth + Theme.gap * 2
+                                implicitHeight: identifyLabel.implicitHeight + Theme.gap
+                                color: identifyArea.containsMouse ? Theme.neutral200 : Theme.bg
+                                border.color: Theme.border
+                                border.width: 1
+                                radius: Theme.radius
+
+                                Accessible.role: Accessible.Button
+                                Accessible.name: identifyButton.active
                                                  ? qsTr("Stop the identify tone on %1").arg(row.modelData)
                                                  : qsTr("Identify %1, pink noise").arg(row.modelData)
+                                Accessible.onPressAction: identifyButton.active
+                                                           ? HearthController.stopIdentify()
+                                                           : HearthController.startIdentify(row.index)
+
+                                activeFocusOnTab: true
+                                Keys.onSpacePressed: identifyButton.active
+                                                      ? HearthController.stopIdentify()
+                                                      : HearthController.startIdentify(row.index)
+                                Keys.onReturnPressed: identifyButton.active
+                                                       ? HearthController.stopIdentify()
+                                                       : HearthController.startIdentify(row.index)
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: -Theme.focusRingOffset
+                                    visible: identifyButton.activeFocus
+                                    color: "transparent"
+                                    border.color: Theme.focusRing
+                                    border.width: Theme.focusRingWidth
+                                    z: 100
+                                }
+
+                                Text {
+                                    id: identifyLabel
+                                    anchors.centerIn: parent
+                                    text: identifyButton.active ? qsTr("Stop") : qsTr("Identify")
+                                    color: Theme.text
+                                }
+
+                                MouseArea {
+                                    id: identifyArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: identifyButton.active
+                                               ? HearthController.stopIdentify()
+                                               : HearthController.startIdentify(row.index)
+                                }
                             }
                         }
                     }
