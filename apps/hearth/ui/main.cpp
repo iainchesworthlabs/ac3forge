@@ -43,6 +43,8 @@
 
 #include <optional>
 
+#include "ac3/sendspin/firewall.hpp"
+
 namespace {
 
 bool save_window(QQmlApplicationEngine& engine, const QString& path) {
@@ -69,6 +71,11 @@ void mark_frames_for_tracy(QQuickWindow* window) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    // Elevated relaunch for a Windows Firewall rule NetworkController's mDNS browsing is about
+    // to need (ac3/sendspin/firewall.hpp): std::exit()s before touching Qt when argv says this
+    // is that relaunch, so an ordinary launch is the only one that reaches the window below.
+    ac3::sendspin::firewall::maybe_run_as_firewall_helper_and_exit(argc, argv);
+
     // Render on the GUI thread, as Crucible's window does and for the same
     // reason: the threaded loop's render thread paints a frame behind a
     // window drag on Windows.
