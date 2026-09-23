@@ -6,6 +6,8 @@
 #include <string_view>
 #include <vector>
 
+#include "ac3/sendspin/ac3forge_player.hpp"
+
 // Pure view-building for the Network page (planning/hearth-reference-player.md,
 // A6: discovery and pairing - the first slice; see network_sinks.hpp's own
 // comment for what is not here yet and why). Turning what NetworkSinks knows
@@ -14,6 +16,18 @@
 // is - hand-built facts, no socket, no clock - while network_sinks.cpp, the
 // harder-to-test layer that calls this from what ServerHost and discovery
 // actually report, stays thin.
+//
+// A6's second slice (a Hearth sink's own speaker and decoder settings pages,
+// planning/hearth-reference-player.md#a6-network-outputs-in-the-application)
+// reads SinkFacts' ac3forge_support/ac3forge_state directly rather than through
+// a new to_map()-style function here: unlike SinkRow/SinkDetail's plain display
+// strings, the settings pages need editable numeric fields QML binds to, and
+// HearthController's own decoder_settings_to_map()/from_map() (hearth_
+// controller.cpp) already sets the precedent of doing that conversion in the
+// Qt controller itself, not a separate hand-tested view layer - network_
+// controller.cpp follows the same pattern for the same reason. ac3forge_player.hpp
+// is a lightweight, dependency-free header (no Qt, no ac3::render), the same
+// reason network_sinks.hpp already includes sendspin headers directly.
 //
 // Wording follows planning/hearth-sendspin-extension.md's own terms: "roles",
 // "takes", "outputs", "latency" and "clock" are its words for client/hello's
@@ -59,6 +73,10 @@ struct SinkFacts {
     // DeviceInfo::product_name, e.g. "ESP32-S3"; empty when the sink has not
     // said, or has not been dialled yet.
     std::string hardware{};
+    // DeviceInfo::software_version, e.g. "hearth_sink 0.1.0" - the settings
+    // pages' own "only on the sink" panel; empty on the same terms as
+    // hardware.
+    std::string firmware{};
     // client/hello's own roles, in its own order (e.g.
     // {"_ac3forge_player@v1", "player@v1"}); empty before the sink has said.
     std::vector<std::string> roles{};
@@ -81,6 +99,29 @@ struct SinkFacts {
     // Set only when pair_state is kPaired: the date the pairing record was
     // made (PairingRecordView::paired_on).
     std::string paired_on{};
+
+    // --- a Hearth sink's own settings pages -----------------------------
+    // The sink's own support object (client/hello's `_ac3forge_player@v1_
+    // support`), when it offers the role: layout grammar, management ranges
+    // (trim/delay/crossover, whether it takes routing or identify) and which
+    // of the 11 decoder keys it accepts - what the settings pages gate their
+    // controls on.
+    std::optional<sendspin::ac3forge::Support> ac3forge_support{};
+    // The sink's own most recently reported client/state object: settings_
+    // revision/settings_error (whether intended_settings below has actually
+    // reached it), its decoder report, levels and counters - the "what the
+    // sink reports" panel. Absent before the sink has sent one.
+    std::optional<sendspin::ac3forge::State> ac3forge_state{};
+    // This app's own record of the last settings command it successfully
+    // sent this sink - NOT a read-back (ac3forge_player.hpp's own comment:
+    // the command is set-only). The settings pages show this, not
+    // ac3forge_state, as each control's "current" value.
+    std::optional<sendspin::ac3forge::Settings> intended_settings{};
+    // The output slot this app last told the sink to sound the identify tone
+    // on, or nothing - this app's own intent again, for the same reason as
+    // intended_settings: there is no "identify state" on the wire to read
+    // back either.
+    std::optional<std::int32_t> identify_slot{};
 };
 
 // One row of NetworkSinkList.qml's `sinks` model.

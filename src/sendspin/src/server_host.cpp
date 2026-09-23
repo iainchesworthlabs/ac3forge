@@ -202,6 +202,7 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
             view.hello = session.hello().has_value();
             if (session.hello()) {
                 view.name = session.hello()->name;
+                view.device_info = session.hello()->device_info;
                 view.offers_unpaired_access = session.hello()->unpaired_access;
                 for (const m::PairMethodDescriptor& method : session.hello()->pair_methods) {
                     view.pair_methods.push_back(method.method);

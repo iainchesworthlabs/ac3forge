@@ -140,6 +140,69 @@ void NetworkSinks::forget_pairing(const std::string& id) {
     }
 }
 
+bool NetworkSinks::push_sink_settings(const std::string& id, ss::ac3forge::Settings settings) {
+    std::string client_id;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = sinks_.find(id);
+        if (it == sinks_.end() || !it->second.client.has_value() ||
+            !it->second.client->ac3forge_support.has_value()) {
+            return false;
+        }
+        client_id = it->second.client_id;
+        // Incremented here, under the lock, whether or not the send below
+        // succeeds: a number spent on a failed attempt is harmless (the
+        // wire has no monotonicity rule to violate), while two calls racing
+        // to read the same number before either bumps it is not.
+        settings.revision = it->second.next_settings_revision++;
+    }
+    if (client_id.empty() || !host_) {
+        return false;
+    }
+    ss::ac3forge::CommandMessage message;
+    message.command = ss::ac3forge::Command::kSettings;
+    message.settings = settings;
+    const bool sent = host_->ac3forge_command(client_id, message);
+    if (sent) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = sinks_.find(id);
+        if (it != sinks_.end()) {
+            it->second.intended_settings = settings;
+            publish_locked();
+        }
+    }
+    return sent;
+}
+
+bool NetworkSinks::push_sink_identify(const std::string& id, std::optional<ss::ac3forge::Identify> identify) {
+    std::string client_id;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = sinks_.find(id);
+        if (it == sinks_.end() || !it->second.client.has_value() ||
+            !it->second.client->ac3forge_support.has_value()) {
+            return false;
+        }
+        client_id = it->second.client_id;
+    }
+    if (client_id.empty() || !host_) {
+        return false;
+    }
+    ss::ac3forge::CommandMessage message;
+    message.command = ss::ac3forge::Command::kIdentify;
+    message.identify = identify;
+    const bool sent = host_->ac3forge_command(client_id, message);
+    if (sent) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = sinks_.find(id);
+        if (it != sinks_.end()) {
+            it->second.identify_slot = identify.has_value() ? std::optional<std::int32_t>(identify->output) : std::nullopt;
+            publish_locked();
+        }
+    }
+    return sent;
+}
+
 NetworkStatus NetworkSinks::status() const {
     std::lock_guard<std::mutex> lock(mutex_);
     NetworkStatus status;
@@ -167,6 +230,10 @@ SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& e
         facts.pair_state =
             client.psk == ss::handshake::PskCategory::kLongTerm ? PairState::kPaired : PairState::kNotPaired;
         facts.roles = client.supported_roles;
+        facts.hardware = client.device_info.product_name;
+        facts.firmware = client.device_info.software_version;
+        facts.ac3forge_support = client.ac3forge_support;
+        facts.ac3forge_state = client.ac3forge_state;
 
         if (client.ac3forge_support.has_value()) {
             facts.kind = SinkKind::kHearthSink;
@@ -210,6 +277,9 @@ SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& e
             }
         }
     }
+
+    facts.intended_settings = entry.intended_settings;
+    facts.identify_slot = entry.identify_slot;
 
     return facts;
 }
