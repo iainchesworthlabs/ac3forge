@@ -137,6 +137,26 @@ ScrollView {
         return text;
     }
 
+    // The "01 Speaker layout" card's own read-out of whether the Decoder's
+    // object-reconstruction policy (DecoderEac3.qml's "05 Objects" card,
+    // HearthController.decoderSettings.objects) actually places objects for
+    // the layout set up here. "auto" is the only policy where that depends
+    // on this page's own Heights state (render::Serving::compute, serving.hpp) -
+    // "always"/"never" place regardless of it, so those two phrasings don't
+    // reference height at all.
+    function objectsStatusText() {
+        const policy = HearthController.decoderSettings.objects ?? "auto";
+        if (policy === "always") {
+            return qsTr("✓ Objects are always placed, regardless of height (Decoder: Always).");
+        }
+        if (policy === "never") {
+            return qsTr("Objects are never placed (Decoder: Never).");
+        }
+        return HearthController.layoutHasHeight
+            ? qsTr("✓ The layout has heights, so objects are placed (Decoder: Auto).")
+            : qsTr("The layout has no heights, so objects are not placed (Decoder: Auto).");
+    }
+
     function identifyStatusText() {
         const slot = HearthController.identifySlot;
         if (slot < 0) {
@@ -241,6 +261,19 @@ ScrollView {
                         { value: "upfiring", label: qsTr("Up-firing") }
                     ]
                     onSelected: function(value) { HearthController.setHeights(value); }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.gap
+                Text { text: qsTr("Objects"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                Text {
+                    Layout.fillWidth: true
+                    text: root.objectsStatusText()
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontSmall
+                    wrapMode: Text.WordWrap
                 }
             }
 
@@ -448,6 +481,22 @@ ScrollView {
                 id: grid
                 spacing: 1
 
+                // The grid's own single Tab stop (matching SegmentedControl's
+                // group-is-the-stop idiom, apps/gui/qml/SegmentedControl.qml) -
+                // individual cells no longer declare activeFocusOnTab
+                // themselves. Landing here from Tab hands real focus straight
+                // to a cell below, so the focus ring and Space/Enter both work
+                // immediately, with no arrow press needed first.
+                activeFocusOnTab: true
+                onActiveFocusChanged: {
+                    if (grid.activeFocus) {
+                        const target = grid.cellAt(0, 0);
+                        if (target) {
+                            target.forceActiveFocus();
+                        }
+                    }
+                }
+
                 readonly property int cellSize: 32
                 readonly property int labelWidth: 72
                 readonly property int noneWidth: 56
@@ -560,7 +609,6 @@ ScrollView {
                                 Accessible.onPressAction:
                                     HearthController.setRoutingAssignment(rowItem.index, cell.index)
 
-                                activeFocusOnTab: true
                                 Keys.onPressed: function(event) { grid.moveFocus(rowItem.index, cell.index, event); }
                                 Keys.onSpacePressed: HearthController.setRoutingAssignment(rowItem.index, cell.index)
                                 Keys.onReturnPressed: HearthController.setRoutingAssignment(rowItem.index, cell.index)
@@ -577,7 +625,10 @@ ScrollView {
 
                                 MouseArea {
                                     anchors.fill: parent
-                                    onClicked: HearthController.setRoutingAssignment(rowItem.index, cell.index)
+                                    onClicked: {
+                                        cell.forceActiveFocus();
+                                        HearthController.setRoutingAssignment(rowItem.index, cell.index);
+                                    }
                                 }
                             }
                         }
@@ -598,7 +649,6 @@ ScrollView {
                             Accessible.checked: noneCell.assigned
                             Accessible.onPressAction: HearthController.setRoutingAssignment(rowItem.index, -1)
 
-                            activeFocusOnTab: true
                             Keys.onPressed: function(event) { grid.moveFocus(rowItem.index, root.outputs, event); }
                             Keys.onSpacePressed: HearthController.setRoutingAssignment(rowItem.index, -1)
                             Keys.onReturnPressed: HearthController.setRoutingAssignment(rowItem.index, -1)
@@ -615,7 +665,10 @@ ScrollView {
 
                             MouseArea {
                                 anchors.fill: parent
-                                onClicked: HearthController.setRoutingAssignment(rowItem.index, -1)
+                                onClicked: {
+                                    noneCell.forceActiveFocus();
+                                    HearthController.setRoutingAssignment(rowItem.index, -1);
+                                }
                             }
                         }
                     }
