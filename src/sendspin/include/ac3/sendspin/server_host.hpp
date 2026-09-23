@@ -201,6 +201,28 @@ class Group {
     void add(const std::string& client_id);
     void remove(const std::string& client_id);
 
+    // What the group volume and mute see for one of its members right now:
+    // its own reported volume and mute, and whether its active playback role
+    // lists the commands - the same facts set_group_volume()'s own
+    // redistribution reads for every member. Nothing when the client is not
+    // a member, is not connected right now, or has no playback role active
+    // yet.
+    [[nodiscard]] std::optional<controller::Player> member_player(const std::string& client_id) const;
+    // Sets one member's volume or mute directly: unlike set_group_volume(),
+    // no redistribution across the rest of the group - only this member's
+    // own player is asked, whatever the group's own volume and mute end up
+    // reading as a result. Silently does nothing for a client_id that is not
+    // a member, is not connected right now, or whose active role does not
+    // list the command.
+    void set_member_volume(const std::string& client_id, std::int32_t volume);
+    void set_member_muted(const std::string& client_id, bool muted);
+    // Sets the group's own volume or mute, redistributed across every member
+    // that supports it - the same arithmetic (state_roles.hpp's
+    // set_group_volume()) a controller@v1 client's own kVolume/kMute command
+    // already applies, for the hosting application to call without one.
+    void set_group_volume(std::int32_t volume);
+    void set_group_muted(bool muted);
+
     struct Programme {
         // The PCM push() takes, for members playing player@v1: interleaved at its bit depth, in
         // 32 bits. Nothing for a programme only members playing _ac3forge_player@v1 can play.
