@@ -16,7 +16,23 @@
 # entered by a board configure, and needs no guard of its own for that - see
 # this change's PR for the WSL configure-only check that confirmed it.
 # ---------------------------------------------------------------------------
-find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Qml Quick QuickControls2 LinguistTools)
+# LinguistTools is deliberately NOT requested here, unlike apps/gui and
+# apps/crucible's own find_package(Qt6 ...) lines: this file has no
+# qt_add_translations() call, no translations/ directory and no .ts files -
+# Hearth's window has no localisation pipeline yet - so the component was
+# pure copy-paste ballast that only made Qt6_FOUND more fragile than it
+# needed to be. That cost real build coverage (issue #890): a WSL image with
+# qt6-base-dev and qt6-declarative-dev installed, but not qt6-tools-dev (the
+# package that actually ships Qt6LinguistToolsConfig.cmake - see
+# .github/workflows/_ci-linux.yml's "Install Qt6 (Linux GUI)" step comment
+# for the full qt6-l10n-tools/qt6-tools-dev split), left Qt6_FOUND false for
+# no reason a syntax-only build cares about, which silently dropped the
+# entire ac3hearth target - and every apps/hearth/ui/*.cpp compile_commands.json
+# entry along with it - behind the message(WARNING) below, with nothing
+# louder to catch it. Add LinguistTools back to this call, mirroring
+# apps/crucible/CMakeLists.txt's own find_package line, in the same commit
+# that gives Hearth its first qt_add_translations() call.
+find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Qml Quick QuickControls2)
 
 # Exported so apps/hearth/notices/notices.cmake (include()d from
 # apps/hearth/CMakeLists.txt, one directory up) can tell whether the hearth
