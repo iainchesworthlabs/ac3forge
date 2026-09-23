@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
+import QtQuick.Window
 
 import Ac3ForgeHearth
 
@@ -779,13 +780,15 @@ Item {
                                 Button {
                                     objectName: "playChooseOutput"
                                     text: qsTr("Choose…")
-                                    enabled: false
-                                    // The output picker dialog is its own,
-                                    // not-yet-built piece (a separate issue);
-                                    // this stays a visible, disabled
-                                    // placeholder rather than a fake action -
-                                    // the same convention the Speakers page's
-                                    // Identify card uses for render::IdentifyTone.
+                                    // The enclosing ApplicationWindow, reached
+                                    // through the Window attached property -
+                                    // root.parent does not reliably chain up
+                                    // to it (GuidedWizard.qml's own
+                                    // requestWindow() comment explains why) -
+                                    // opened the same way the header's own
+                                    // output pill does (Main.qml's
+                                    // openOutputPicker()).
+                                    onClicked: root.Window.window.openOutputPicker()
                                 }
                             }
                         }
