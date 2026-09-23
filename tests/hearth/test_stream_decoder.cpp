@@ -477,6 +477,53 @@ TEST_CASE("stream decoder: dual mono plays the programme the settings choose",
     }
 }
 
+TEST_CASE("stream decoder: fast inverse transform reaches the decoder, closely matching the "
+          "reference transform",
+          "[hearth][stream-decoder]") {
+    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    REQUIRE(layout.has_value());
+    const auto units = eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 8);
+
+    const auto heard = [&](bool fast) {
+        ac3::hearth::DecoderSettings settings;
+        settings.fast_inverse_transform = fast;
+        StreamDecoder decoder{*layout, 48000, settings};
+        std::vector<float> left;
+        const auto deliver = [&left](std::span<const std::span<const float>> slots,
+                                     std::size_t frames) {
+            REQUIRE_FALSE(slots.empty());
+            left.insert(left.end(), slots[0].begin(),
+                       slots[0].begin() + static_cast<std::ptrdiff_t>(frames));
+        };
+        for (const auto& unit : units) {
+            REQUIRE(decoder.decode(unit, deliver).has_value());
+        }
+        decoder.finish(deliver);
+        return left;
+    };
+
+    const std::vector<float> fast = heard(true);
+    const std::vector<float> reference = heard(false);
+    REQUIRE(fast.size() == reference.size());
+    REQUIRE(fast.size() == 8 * ac3::kSamplesPerFrame);
+
+    // The setting must reach DecoderConfig::fast_imdct rather than the same
+    // path running twice (decoder_settings.cpp's decoder_setup()) - but both
+    // remain a correct decode of the same signal: tests/decoder/test_decoder.cpp's
+    // own fast_imdct test pins the two transform paths' agreement above 200 dB SNR.
+    CHECK_FALSE(std::ranges::equal(fast, reference));
+    double squared_diff = 0.0;
+    double squared_signal = 0.0;
+    for (std::size_t n = 0; n < fast.size(); ++n) {
+        const double diff = static_cast<double>(fast[n]) - static_cast<double>(reference[n]);
+        squared_diff += diff * diff;
+        squared_signal += static_cast<double>(reference[n]) * static_cast<double>(reference[n]);
+    }
+    REQUIRE(squared_diff > 0.0);
+    const double snr_db = 10.0 * std::log10(squared_signal / squared_diff);
+    CHECK(snr_db > 100.0);
+}
+
 TEST_CASE("stream decoder: an independent-only decoder plays a unit's first substream alone",
           "[hearth][stream-decoder]") {
     // 7.1: a 5.1 independent substream and a dependent that adds to it.
